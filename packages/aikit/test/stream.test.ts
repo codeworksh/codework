@@ -8,9 +8,8 @@ import { Stream } from "../src/provider/stream";
 import { complete, completeSimple, stream, streamSimple } from "../src/stream";
 import { validateToolArguments } from "../src/utils/validation";
 import { expectAssistantToolUseMessage, expectValidToolCall } from "./utils/message";
+import { ROOT_MODELS_PATH } from "./utils/paths";
 import { calculatorTool } from "./utils/tools";
-
-const ROOT_MODELS_PATH = "/Users/sanchitrk/Developer/codework/models.json";
 
 function contextFor(prompt: string): Message.Context {
 	return {

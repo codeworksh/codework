@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const ROOT_MODELS_PATH = "/Users/sanchitrk/Developer/codework/models.json";
+import { ROOT_MODELS_PATH } from "../utils/paths";
 const ROOT_MODELS_JSON = readFileSync(ROOT_MODELS_PATH, "utf8");
 const ROOT_MODELS = JSON.parse(ROOT_MODELS_JSON) as Record<
 	string,

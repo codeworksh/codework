@@ -3,8 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelCatalog as ModelCatalogNamespace } from "../../src/model/catalog.ts";
-
-const ROOT_MODELS_PATH = "/Users/sanchitrk/Developer/codework/models.json";
+import { ROOT_MODELS_PATH } from "../utils/paths";
 const importFetch = globalThis.fetch;
 globalThis.fetch = (async () =>
 	({

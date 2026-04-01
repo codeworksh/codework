@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-
-const ROOT_MODELS_PATH = "/Users/sanchitrk/Developer/codework/models.json";
+import { ROOT_MODELS_PATH } from "./utils/paths";
 const importFetch = globalThis.fetch;
 globalThis.fetch = (async () =>
 	({
