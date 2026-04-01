@@ -1,0 +1,49 @@
+{
+  "name": "@codeworksh/aikit",
+  "version": "0.1.0",
+  "module": "src/index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
+    "@codeworksh/buntils": "^0.1.0",
+    "@sinclair/typebox": "catalog:",
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
+    "partial-json": "^0.1.7",
+    "remeda": "^2.33.6"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.11"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "description": "Bun-native AI kit for provider streaming, agent loops, message parts, and tool execution.",
+  "author": "Sanchit Kudari",
+  "license": "MIT",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "bun",
+    "typescript",
+    "ai",
+    "agent",
+    "anthropic",
+    "streaming"
+  ]
+}
