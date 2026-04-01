@@ -1,0 +1,19 @@
+<svg width="960" height="320" viewBox="0 0 960 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="320" rx="32" fill="#0D1117"/>
+  <rect x="16" y="16" width="928" height="288" rx="24" fill="#111827" stroke="#1F2937" stroke-width="2"/>
+  <text
+    x="56"
+    y="88"
+    xml:space="preserve"
+    fill="#E6EDF3"
+    font-family="SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"
+    font-size="28"
+    font-weight="700"
+  >
+    <tspan x="56" dy="0">  ____ ___  ____  _______        ______  ____  __ __</tspan>
+    <tspan x="56" dy="42"> / ___/ _ \|  _ \| ____\ \      / / __ \|  _ \| |/ /</tspan>
+    <tspan x="56" dy="42">| |  | | | | | | |  _|  \ \ /\ / / |  | | |_) | ' / </tspan>
+    <tspan x="56" dy="42">| |__| |_| | |_| | |___  \ V  V /| |__| |  _ &lt;| . \ </tspan>
+    <tspan x="56" dy="42"> \____\___/|____/|_____|  \_/\_/  \____/|_| \_\_|\_\</tspan>
+  </text>
+</svg>
