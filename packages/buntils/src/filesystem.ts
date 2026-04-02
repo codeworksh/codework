@@ -44,7 +44,9 @@ export namespace Filesystem {
 	}
 
 	function isEnoent(error: unknown): error is { code: "ENOENT" } {
-		return typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "ENOENT";
+		return (
+			typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "ENOENT"
+		);
 	}
 
 	export async function write(path: string, content: string | Buffer | Uint8Array, mode?: number): Promise<void> {
@@ -111,7 +113,7 @@ export namespace Filesystem {
 	export function overlaps(a: string, b: string): boolean {
 		const relA = relative(a, b);
 		const relB = relative(b, a);
-		return !relA || !relA.startsWith("..") || !relB || !relB.startsWith("..");
+		return !relA?.startsWith("..") || !relB?.startsWith("..");
 	}
 
 	export function contains(parent: string, child: string): boolean {
@@ -132,11 +134,7 @@ export namespace Filesystem {
 		return result;
 	}
 
-	export async function* up(options: {
-		targets: string[];
-		start: string;
-		stop?: string;
-	}): AsyncGenerator<string> {
+	export async function* up(options: { targets: string[]; start: string; stop?: string }): AsyncGenerator<string> {
 		const { targets, start, stop } = options;
 		let current = start;
 		while (true) {

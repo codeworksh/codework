@@ -1,5 +1,5 @@
-export { agent } from "./agent.ts";
 export { Agent } from "./agent/agent";
+export { agent } from "./agent.ts";
 export { Event } from "./event/event";
 export { llm } from "./llm";
 export { Message } from "./message/message";

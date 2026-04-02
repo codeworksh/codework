@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { ROOT_MODELS_PATH } from "./utils/paths";
+
 const importFetch = globalThis.fetch;
 globalThis.fetch = (async () =>
 	({

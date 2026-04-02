@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import { Agent } from "../src/agent/agent";
+import type { Agent } from "../src/agent/agent";
 
 type Assert<T extends true> = T;
 type IsEqual<A, B> =
@@ -84,5 +84,3 @@ const agentContext: Agent.AgentContext<typeof searchTool> = {
 
 type _stateToolAssert = Assert<IsEqual<(typeof agentState.tools)[number], typeof searchTool>>;
 type _contextToolAssert = Assert<IsEqual<NonNullable<typeof agentContext.tools>[number], typeof searchTool>>;
-
-export {};

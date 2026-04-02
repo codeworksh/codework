@@ -14,10 +14,7 @@ function formatErrors(): string {
 	return JSON.stringify(validateToolCallSchema.errors, null, 2);
 }
 
-export function expectValidToolCall(
-	toolCall: Message.ToolCall,
-	expectedStatus?: Message.ToolCall["status"],
-): void {
+export function expectValidToolCall(toolCall: Message.ToolCall, expectedStatus?: Message.ToolCall["status"]): void {
 	if (!validateToolCallSchema(toolCall)) {
 		throw new Error(`Invalid Message.ToolCall shape:\n${formatErrors()}`);
 	}

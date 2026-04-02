@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ModelCatalog as ModelCatalogNamespace } from "../../src/model/catalog.ts";
 import { ROOT_MODELS_PATH } from "../utils/paths";
+
 const importFetch = globalThis.fetch;
 globalThis.fetch = (async () =>
 	({
