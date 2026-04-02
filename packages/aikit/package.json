@@ -25,9 +25,18 @@
   "peerDependencies": {
     "typescript": "^5"
   },
-  "description": "Toolkit for building AI agents.",
+  "description": "AI toolkit for building AI agents and coding agents.",
   "author": "Sanchit Kudari",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codeworksh/codework.git",
+    "directory": "packages/aikit"
+  },
+  "homepage": "https://github.com/codeworksh/codework/tree/main/packages/aikit",
+  "bugs": {
+    "url": "https://github.com/codeworksh/codework/issues"
+  },
   "files": [
     "src",
     "README.md"
@@ -43,6 +52,8 @@
     "typescript",
     "ai",
     "agent",
+    "toolkit",
+    "coding-agent",
     "anthropic",
     "streaming"
   ]
