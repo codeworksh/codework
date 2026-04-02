@@ -6,7 +6,7 @@ import { Message } from "../message/message";
 // for _delta events we can have metadata KV that a provider can use for internal state
 // similar to index what anthropic does
 export namespace Event {
-	export const LLMMessageEventTypeEnum = {
+	export const LLMMessageEventType = {
 		start: "start",
 
 		textStart: "text_start",
@@ -24,7 +24,7 @@ export namespace Event {
 		done: "done",
 		error: "error",
 	} as const;
-	export type LLMMessageEventType = (typeof LLMMessageEventTypeEnum)[keyof typeof LLMMessageEventTypeEnum];
+	export type LLMMessageEventType = (typeof LLMMessageEventType)[keyof typeof LLMMessageEventType];
 
 	/**
 	 * Event protocol for AssistantMessageEventStream.
@@ -36,74 +36,74 @@ export namespace Event {
 	 */
 	export const LLMMessageEventSchema = Type.Union([
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.start),
+			type: Type.Literal(LLMMessageEventType.start),
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.textStart),
+			type: Type.Literal(LLMMessageEventType.textStart),
 			partIndex: Type.Number(),
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.textDelta),
+			type: Type.Literal(LLMMessageEventType.textDelta),
 			partIndex: Type.Number(),
 			delta: Type.String(),
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.textEnd),
+			type: Type.Literal(LLMMessageEventType.textEnd),
 			partIndex: Type.Number(),
 			content: Type.String(),
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.thinkingStart),
+			type: Type.Literal(LLMMessageEventType.thinkingStart),
 			partIndex: Type.Number(),
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.thinkingDelta),
+			type: Type.Literal(LLMMessageEventType.thinkingDelta),
 			partIndex: Type.Number(),
 			delta: Type.String(),
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.thinkingEnd),
+			type: Type.Literal(LLMMessageEventType.thinkingEnd),
 			partIndex: Type.Number(),
 			content: Type.String(),
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.toolcallStart),
+			type: Type.Literal(LLMMessageEventType.toolcallStart),
 			partIndex: Type.Number(),
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.toolcallDelta),
+			type: Type.Literal(LLMMessageEventType.toolcallDelta),
 			partIndex: Type.Number(),
 			delta: Type.String(),
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.toolcallEnd),
+			type: Type.Literal(LLMMessageEventType.toolcallEnd),
 			partIndex: Type.Number(),
 			toolCall: Message.ToolCallSchema,
 			partial: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.done),
+			type: Type.Literal(LLMMessageEventType.done),
 			reason: Type.Union([Type.Literal("stop"), Type.Literal("length"), Type.Literal("toolUse")]),
 			message: Message.AssistantMessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(LLMMessageEventTypeEnum.error),
+			type: Type.Literal(LLMMessageEventType.error),
 			reason: Type.Union([Type.Literal("aborted"), Type.Literal("error")]),
 			error: Message.AssistantMessageSchema,
 		}),
 	]);
 	export type LLMMessageEvent = Static<typeof LLMMessageEventSchema>;
 
-	export const AgentEventTypeEnum = {
+	export const AgentEventType = {
 		// Agent lifecycle
 		agentStart: "agent_start",
 		agentEnd: "agent_end",
@@ -124,7 +124,7 @@ export namespace Event {
 		toolExecutionUpdate: "tool_execution_update",
 		toolExecutionEnd: "tool_execution_end",
 	} as const;
-	export type AgentEventType = (typeof AgentEventTypeEnum)[keyof typeof AgentEventTypeEnum];
+	export type AgentEventType = (typeof AgentEventType)[keyof typeof AgentEventType];
 
 	//
 	// message parts
@@ -140,14 +140,14 @@ export namespace Event {
 	// user message part
 	// part start
 	const UserMessagePartStart = Type.Object({
-		type: Type.Literal(AgentEventTypeEnum.messagePartStart),
+		type: Type.Literal(AgentEventType.messagePartStart),
 		message: Message.UserMessageSchema,
 		partIndex: Type.Number(),
 		part: UserMessagePart,
 	});
 	// part end
 	const UserMessagePartEnd = Type.Object({
-		type: Type.Literal(AgentEventTypeEnum.messagePartEnd),
+		type: Type.Literal(AgentEventType.messagePartEnd),
 		message: Message.UserMessageSchema,
 		partIndex: Type.Number(),
 		part: UserMessagePart,
@@ -157,14 +157,14 @@ export namespace Event {
 	// assistant message part
 	// part start
 	const AssistantMessagePartStart = Type.Object({
-		type: Type.Literal(AgentEventTypeEnum.messagePartStart),
+		type: Type.Literal(AgentEventType.messagePartStart),
 		message: Message.AssistantMessageSchema,
 		partIndex: Type.Number(),
 		part: AssistantMessagePart,
 	});
 	// part update llm
 	const AssistantMessagePartLLMUpdate = Type.Object({
-		type: Type.Literal(AgentEventTypeEnum.messagePartUpdate),
+		type: Type.Literal(AgentEventType.messagePartUpdate),
 		message: Message.AssistantMessageSchema,
 		partIndex: Type.Number(),
 		part: AssistantMessagePart,
@@ -172,7 +172,7 @@ export namespace Event {
 	});
 	// part update tool
 	const AssistantMessagePartToolUpdate = Type.Object({
-		type: Type.Literal(AgentEventTypeEnum.messagePartUpdate),
+		type: Type.Literal(AgentEventType.messagePartUpdate),
 		message: Message.AssistantMessageSchema,
 		partIndex: Type.Number(),
 		part: AssistantMessagePart,
@@ -180,7 +180,7 @@ export namespace Event {
 	});
 	// part end
 	const AssistantMessagePartEnd = Type.Object({
-		type: Type.Literal(AgentEventTypeEnum.messagePartEnd),
+		type: Type.Literal(AgentEventType.messagePartEnd),
 		message: Message.AssistantMessageSchema,
 		partIndex: Type.Number(),
 		part: AssistantMessagePart,
@@ -191,7 +191,7 @@ export namespace Event {
 	const ToolExecutionStartSchema = Type.Composite([
 		Agent.ToolCallInFlightSchema,
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.toolExecutionStart),
+			type: Type.Literal(AgentEventType.toolExecutionStart),
 		}),
 	]);
 	export type ToolExecutionStart = Static<typeof ToolExecutionStartSchema>;
@@ -199,7 +199,7 @@ export namespace Event {
 	const ToolExecutionUpdateSchema = Type.Composite([
 		Agent.ToolCallInFlightSchema,
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.toolExecutionUpdate),
+			type: Type.Literal(AgentEventType.toolExecutionUpdate),
 		}),
 		Message.ToolRunningSchema,
 	]);
@@ -208,7 +208,7 @@ export namespace Event {
 	const ToolExecutionEndSchema = Type.Composite([
 		Agent.ToolCallInFlightSchema,
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.toolExecutionEnd),
+			type: Type.Literal(AgentEventType.toolExecutionEnd),
 		}),
 		Type.Union([Message.ToolCompletedSchema, Message.ToolErrorSchema]),
 	]);
@@ -222,25 +222,25 @@ export namespace Event {
 		//
 		// Agent lifecycle
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.agentStart),
+			type: Type.Literal(AgentEventType.agentStart),
 		}),
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.agentEnd),
+			type: Type.Literal(AgentEventType.agentEnd),
 			messages: Type.Array(Message.MessageSchema),
 		}),
 		//
 		// Turn lifecycle - a turn is one assistant response + any tool calls/results
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.turnStart),
+			type: Type.Literal(AgentEventType.turnStart),
 		}),
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.turnEnd),
+			type: Type.Literal(AgentEventType.turnEnd),
 			message: Message.AssistantMessageSchema,
 		}),
 		//
 		// Message lifecycle - emitted for user, assistant and corresponding parts
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.messageStart),
+			type: Type.Literal(AgentEventType.messageStart),
 			message: Message.MessageSchema,
 		}),
 		// user message parts lifecycle
@@ -254,11 +254,11 @@ export namespace Event {
 			AssistantMessagePartEnd,
 		]),
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.messageUpdate),
+			type: Type.Literal(AgentEventType.messageUpdate),
 			message: Message.MessageSchema,
 		}),
 		Type.Object({
-			type: Type.Literal(AgentEventTypeEnum.messageEnd),
+			type: Type.Literal(AgentEventType.messageEnd),
 			message: Message.MessageSchema,
 		}),
 		//
