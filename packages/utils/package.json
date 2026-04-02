@@ -1,7 +1,7 @@
 {
   "name": "@codeworksh/utils",
   "version": "0.1.0",
-  "description": "Bun-native utility toolkit for reusable filesystem, async, and runtime helpers.",
+  "description": "Utility toolkit for reusable filesystem, async, and runtime helpers.",
   "author": "Sanchit Kudari",
   "license": "MIT",
   "type": "module",

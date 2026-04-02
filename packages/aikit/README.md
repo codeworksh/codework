@@ -1,6 +1,6 @@
 # @codeworksh/aikit
 
-Bun-native AI toolkit for building AI agents and coding-agent workflows.
+Toolkit for Building AI Agents and Workflows.
 
 ## Installation
 

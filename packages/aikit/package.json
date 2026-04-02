@@ -25,7 +25,7 @@
   "peerDependencies": {
     "typescript": "^5"
   },
-  "description": "AI toolkit for building AI agents and coding agents.",
+  "description": "Toolkit for building AI agents and workflows.",
   "author": "Sanchit Kudari",
   "license": "MIT",
   "repository": {
