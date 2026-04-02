@@ -16,7 +16,7 @@ import type { AssistantMessageEventStream } from "./utils/eventstream";
  * });
  *
  * for await (const event of s) {
- *   if (event.type === "text_delta") {
+ *   if (event.type === "text.delta") {
  *     process.stdout.write(event.delta);
  *   }
  * }

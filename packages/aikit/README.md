@@ -32,7 +32,7 @@ const s = stream(model, context, {
 });
 
 for await (const event of s) {
-	if (event.type === "text_delta") {
+	if (event.type === "text.delta") {
 		process.stdout.write(event.delta);
 	}
 }
@@ -124,7 +124,7 @@ const run = agent.loop(
 );
 
 for await (const event of run) {
-	if (event.type === "message_part_update" && event.source === "tool") {
+	if (event.type === "message.part.update" && event.source === "tool") {
 		console.log(event.part);
 	}
 }
@@ -149,9 +149,9 @@ LLM streams emit low-level provider-normalized events:
 
 ```text
 start
-text_start / thinking_start / toolcall_start
-text_delta / thinking_delta / toolcall_delta
-text_end / thinking_end / toolcall_end
+text.start / thinking.start / toolcall.start
+text.delta / thinking.delta / toolcall.delta
+text.end / thinking.end / toolcall.end
 done | error
 ```
 
@@ -160,19 +160,19 @@ done | error
 Agent loops emit higher-level lifecycle events around messages, parts, turns, and tools:
 
 ```text
-agent_start
-turn_start
-message_start
-message_part_start
-message_part_update
-message_part_end
-message_update
-message_end
-tool_execution_start
-tool_execution_update
-tool_execution_end
-turn_end
-agent_end
+agent.start
+turn.start
+message.start
+message.part.start
+message.part.update
+message.part.end
+message.update
+message.end
+tool.execution.start
+tool.execution.update
+tool.execution.end
+turn.end
+agent.end
 ```
 
 Example:
@@ -236,15 +236,15 @@ const run = agent.loop(
 );
 
 for await (const event of run) {
-	if (event.type === "tool_execution_start") {
+	if (event.type === "tool.execution.start") {
 		console.log("tool started", event.name, event.args ?? event.rawArgs);
 	}
 
-	if (event.type === "tool_execution_update") {
+	if (event.type === "tool.execution.update") {
 		console.log("tool update", event.partial?.details);
 	}
 
-	if (event.type === "tool_execution_end") {
+	if (event.type === "tool.execution.end") {
 		console.log("tool finished", event.result.details);
 	}
 }

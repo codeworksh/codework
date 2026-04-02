@@ -570,7 +570,7 @@ export const streamAnthropic: Stream.StreamFunction<
 						output.parts.push(block); // push the block to parts
 						// `contentIndex` points to the index of the block within parts
 						// Useful for replaying message and corresponding parts based on stream.
-						stream.push({ type: "text_start", partIndex: output.parts.length - 1, partial: output });
+						stream.push({ type: "text.start", partIndex: output.parts.length - 1, partial: output });
 					} else if (event.content_block.type === "thinking") {
 						const block: Block = {
 							type: "thinking",
@@ -579,7 +579,7 @@ export const streamAnthropic: Stream.StreamFunction<
 							index: event.index,
 						};
 						output.parts.push(block);
-						stream.push({ type: "thinking_start", partIndex: output.parts.length - 1, partial: output });
+						stream.push({ type: "thinking.start", partIndex: output.parts.length - 1, partial: output });
 					} else if (event.content_block.type === "redacted_thinking") {
 						const block: Block = {
 							type: "thinking",
@@ -589,7 +589,7 @@ export const streamAnthropic: Stream.StreamFunction<
 							index: event.index,
 						};
 						output.parts.push(block);
-						stream.push({ type: "thinking_start", partIndex: output.parts.length - 1, partial: output });
+						stream.push({ type: "thinking.start", partIndex: output.parts.length - 1, partial: output });
 					} else if (event.content_block.type === "tool_use") {
 						const block: Block = {
 							type: "toolCall",
@@ -607,7 +607,7 @@ export const streamAnthropic: Stream.StreamFunction<
 							index: event.index,
 						};
 						output.parts.push(block);
-						stream.push({ type: "toolcall_start", partIndex: output.parts.length - 1, partial: output });
+						stream.push({ type: "toolcall.start", partIndex: output.parts.length - 1, partial: output });
 					}
 				} else if (event.type === "content_block_delta") {
 					// *_delta updates existing block part
@@ -620,7 +620,7 @@ export const streamAnthropic: Stream.StreamFunction<
 					if (event.delta.type === "text_delta" && block.type === "text") {
 						block.text += event.delta.text; // mutates block, implicitly mutating block in output.parts
 						stream.push({
-							type: "text_delta",
+							type: "text.delta",
 							partIndex: partIndex,
 							delta: event.delta.text,
 							partial: output,
@@ -628,7 +628,7 @@ export const streamAnthropic: Stream.StreamFunction<
 					} else if (event.delta.type === "thinking_delta" && block.type === "thinking") {
 						block.thinking += event.delta.thinking;
 						stream.push({
-							type: "thinking_delta",
+							type: "thinking.delta",
 							partIndex: partIndex,
 							delta: event.delta.thinking,
 							partial: output,
@@ -637,7 +637,7 @@ export const streamAnthropic: Stream.StreamFunction<
 						block.partialJson += event.delta.partial_json;
 						block.arguments = parseStreamingJson(block.partialJson);
 						stream.push({
-							type: "toolcall_delta",
+							type: "toolcall.delta",
 							partIndex: partIndex,
 							delta: event.delta.partial_json,
 							partial: output,
@@ -653,14 +653,14 @@ export const streamAnthropic: Stream.StreamFunction<
 						delete (block as any).index; // clear block index; used for internal loop state
 						if (block.type === "text") {
 							stream.push({
-								type: "text_end",
+								type: "text.end",
 								partIndex: partIndex,
 								content: block.text,
 								partial: output,
 							});
 						} else if (block.type === "thinking") {
 							stream.push({
-								type: "thinking_end",
+								type: "thinking.end",
 								partIndex: partIndex,
 								content: block.thinking,
 								partial: output,
@@ -669,7 +669,7 @@ export const streamAnthropic: Stream.StreamFunction<
 							block.arguments = parseStreamingJson(block.partialJson);
 							delete (block as any).partialJson; // clear partialJson; used for internal loop state
 							stream.push({
-								type: "toolcall_end",
+								type: "toolcall.end",
 								partIndex: partIndex,
 								toolCall: block,
 								partial: output,

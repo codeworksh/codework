@@ -83,15 +83,15 @@ function createTextResponseStream(model: Model.Value, text: string): AssistantMe
 		stream.push({ type: "start", partial });
 
 		partial.parts.push({ type: "text", text: "" });
-		stream.push({ type: "text_start", partIndex: 0, partial });
+		stream.push({ type: "text.start", partIndex: 0, partial });
 
 		(partial.parts[0] as Message.TextContent).text = text;
 		partial.usage.output = Math.max(1, text.length);
 		partial.usage.totalTokens = partial.usage.output;
 		partial.time.completed = partial.time.created + 1;
 
-		stream.push({ type: "text_delta", partIndex: 0, delta: text, partial });
-		stream.push({ type: "text_end", partIndex: 0, content: text, partial });
+		stream.push({ type: "text.delta", partIndex: 0, delta: text, partial });
+		stream.push({ type: "text.end", partIndex: 0, content: text, partial });
 		stream.push({ type: "done", reason: "stop", message: structuredClone(partial) });
 		stream.end();
 	});
@@ -117,11 +117,11 @@ function createToolUseResponseStream(model: Model.Value): AssistantMessageEventS
 				end: 10,
 			},
 		});
-		stream.push({ type: "toolcall_start", partIndex: 0, partial });
+		stream.push({ type: "toolcall.start", partIndex: 0, partial });
 
 		(partial.parts[0] as Message.ToolCallPendingPart).arguments = { expression: "25 * 18" };
 		stream.push({
-			type: "toolcall_delta",
+			type: "toolcall.delta",
 			partIndex: 0,
 			delta: '{"expression":"25 * 18"}',
 			partial,
@@ -129,7 +129,7 @@ function createToolUseResponseStream(model: Model.Value): AssistantMessageEventS
 
 		partial.time.completed = 12;
 		stream.push({
-			type: "toolcall_end",
+			type: "toolcall.end",
 			partIndex: 0,
 			toolCall: structuredClone(partial.parts[0]) as Message.ToolCall,
 			partial,
@@ -145,26 +145,26 @@ function collectToolLifecycle(
 	events: Event.AgentEvent[],
 	callID: string,
 ): {
-	toolExecutionStarts: Extract<Event.AgentEvent, { type: "tool_execution_start" }>[];
-	toolExecutionUpdates: Extract<Event.AgentEvent, { type: "tool_execution_update" }>[];
-	toolExecutionEnds: Extract<Event.AgentEvent, { type: "tool_execution_end" }>[];
-	toolPartUpdates: Extract<Event.AgentEvent, { type: "message_part_update" }>[];
+	toolExecutionStarts: Extract<Event.AgentEvent, { type: "tool.execution.start" }>[];
+	toolExecutionUpdates: Extract<Event.AgentEvent, { type: "tool.execution.update" }>[];
+	toolExecutionEnds: Extract<Event.AgentEvent, { type: "tool.execution.end" }>[];
+	toolPartUpdates: Extract<Event.AgentEvent, { type: "message.part.update" }>[];
 } {
 	const toolExecutionStarts = events.filter(
-		(event): event is Extract<Event.AgentEvent, { type: "tool_execution_start" }> =>
-			event.type === "tool_execution_start" && event.callID === callID,
+		(event): event is Extract<Event.AgentEvent, { type: "tool.execution.start" }> =>
+			event.type === "tool.execution.start" && event.callID === callID,
 	);
 	const toolExecutionUpdates = events.filter(
-		(event): event is Extract<Event.AgentEvent, { type: "tool_execution_update" }> =>
-			event.type === "tool_execution_update" && event.callID === callID,
+		(event): event is Extract<Event.AgentEvent, { type: "tool.execution.update" }> =>
+			event.type === "tool.execution.update" && event.callID === callID,
 	);
 	const toolExecutionEnds = events.filter(
-		(event): event is Extract<Event.AgentEvent, { type: "tool_execution_end" }> =>
-			event.type === "tool_execution_end" && event.callID === callID,
+		(event): event is Extract<Event.AgentEvent, { type: "tool.execution.end" }> =>
+			event.type === "tool.execution.end" && event.callID === callID,
 	);
 	const toolPartUpdates = events.filter(
-		(event): event is Extract<Event.AgentEvent, { type: "message_part_update" }> =>
-			event.type === "message_part_update" &&
+		(event): event is Extract<Event.AgentEvent, { type: "message.part.update" }> =>
+			event.type === "message.part.update" &&
 			event.source === "tool" &&
 			event.part.type === "toolCall" &&
 			event.part.callID === callID,
@@ -202,18 +202,18 @@ describe("Loop.agentLoop", () => {
 					stream.push({ type: "start", partial });
 
 					partial.parts.push({ type: "text", text: "" });
-					stream.push({ type: "text_start", partIndex: 0, partial });
+					stream.push({ type: "text.start", partIndex: 0, partial });
 
 					(partial.parts[0] as Message.TextContent).text += "Hello";
-					stream.push({ type: "text_delta", partIndex: 0, delta: "Hello", partial });
+					stream.push({ type: "text.delta", partIndex: 0, delta: "Hello", partial });
 
 					(partial.parts[0] as Message.TextContent).text += " world";
-					stream.push({ type: "text_delta", partIndex: 0, delta: " world", partial });
+					stream.push({ type: "text.delta", partIndex: 0, delta: " world", partial });
 
 					partial.usage.output = 2;
 					partial.usage.totalTokens = 2;
 					partial.time.completed = 3;
-					stream.push({ type: "text_end", partIndex: 0, content: "Hello world", partial });
+					stream.push({ type: "text.end", partIndex: 0, content: "Hello world", partial });
 
 					const finalMessage = structuredClone(partial);
 					stream.push({ type: "done", reason: "stop", message: finalMessage });
@@ -240,36 +240,36 @@ describe("Loop.agentLoop", () => {
 			(event) =>
 				"message" in event &&
 				event.message.role === "assistant" &&
-				(event.type === "message_start" ||
-					event.type === "message_part_start" ||
-					event.type === "message_part_update" ||
-					event.type === "message_part_end" ||
-					event.type === "message_update" ||
-					event.type === "message_end"),
+				(event.type === "message.start" ||
+					event.type === "message.part.start" ||
+					event.type === "message.part.update" ||
+					event.type === "message.part.end" ||
+					event.type === "message.update" ||
+					event.type === "message.end"),
 		);
 		const assistantEventTypes = assistantEvents.map((event) => event.type);
-		const partStarts = assistantEvents.filter((event) => event.type === "message_part_start");
-		const partUpdates = assistantEvents.filter((event) => event.type === "message_part_update");
-		const partEnds = assistantEvents.filter((event) => event.type === "message_part_end");
-		const messageUpdates = assistantEvents.filter((event) => event.type === "message_update");
+		const partStarts = assistantEvents.filter((event) => event.type === "message.part.start");
+		const partUpdates = assistantEvents.filter((event) => event.type === "message.part.update");
+		const partEnds = assistantEvents.filter((event) => event.type === "message.part.end");
+		const messageUpdates = assistantEvents.filter((event) => event.type === "message.update");
 
-		expect(assistantEvents.some((event) => event.type === "message_start")).toBe(true);
+		expect(assistantEvents.some((event) => event.type === "message.start")).toBe(true);
 		expect(partStarts).toHaveLength(1);
 		expect(partUpdates).toHaveLength(2);
 		expect(partEnds).toHaveLength(1);
 		expect(messageUpdates).toHaveLength(1);
 		expect(assistantEventTypes).toEqual([
-			"message_start",
-			"message_part_start",
-			"message_part_update",
-			"message_part_update",
-			"message_part_end",
-			"message_update",
-			"message_end",
+			"message.start",
+			"message.part.start",
+			"message.part.update",
+			"message.part.update",
+			"message.part.end",
+			"message.update",
+			"message.end",
 		]);
-		expect(assistantEvents.some((event) => event.type === "message_end")).toBe(true);
-		expect(events.some((event) => event.type === "turn_end" && event.message.role === "assistant")).toBe(true);
-		expect(events.some((event) => event.type === "agent_end")).toBe(true);
+		expect(assistantEvents.some((event) => event.type === "message.end")).toBe(true);
+		expect(events.some((event) => event.type === "turn.end" && event.message.role === "assistant")).toBe(true);
+		expect(events.some((event) => event.type === "agent.end")).toBe(true);
 	});
 
 	it("mutates assistant toolCall parts from pending to running to completed across the loop", async () => {
@@ -341,39 +341,39 @@ describe("Loop.agentLoop", () => {
 		expect(finalMessage.parts).toEqual([{ type: "text", text: "Done" }]);
 
 		const llmPartUpdates = events.filter(
-			(event) => event.type === "message_part_update" && event.source === "llm" && event.part.type === "toolCall",
+			(event) => event.type === "message.part.update" && event.source === "llm" && event.part.type === "toolCall",
 		);
 		const toolPartUpdates = events.filter(
-			(event) => event.type === "message_part_update" && event.source === "tool" && event.part.type === "toolCall",
+			(event) => event.type === "message.part.update" && event.source === "tool" && event.part.type === "toolCall",
 		);
-		const toolExecutionUpdate = events.find((event) => event.type === "tool_execution_update");
-		const toolExecutionEnd = events.find((event) => event.type === "tool_execution_end");
+		const toolExecutionUpdate = events.find((event) => event.type === "tool.execution.update");
+		const toolExecutionEnd = events.find((event) => event.type === "tool.execution.end");
 		const terminalPartStart = events.find(
 			(event) =>
-				event.type === "message_part_start" &&
+				event.type === "message.part.start" &&
 				event.message.role === "assistant" &&
 				event.part.type === "toolCall" &&
 				event.part.status === "completed",
 		);
 
 		expect(llmPartUpdates).toHaveLength(1);
-		expect((llmPartUpdates[0] as Extract<Event.AgentEvent, { type: "message_part_update" }>).part).toMatchObject({
+		expect((llmPartUpdates[0] as Extract<Event.AgentEvent, { type: "message.part.update" }>).part).toMatchObject({
 			type: "toolCall",
 			status: "pending",
 			arguments: { expression: "25 * 18" },
 		});
 		expect(toolPartUpdates).toHaveLength(1);
-		expect((toolPartUpdates[0] as Extract<Event.AgentEvent, { type: "message_part_update" }>).part).toMatchObject({
+		expect((toolPartUpdates[0] as Extract<Event.AgentEvent, { type: "message.part.update" }>).part).toMatchObject({
 			type: "toolCall",
 			status: "running",
 		});
 		expect(toolExecutionUpdate).toMatchObject({
-			type: "tool_execution_update",
+			type: "tool.execution.update",
 			status: "running",
 			callID: "call_1",
 		});
 		expect(toolExecutionEnd).toMatchObject({
-			type: "tool_execution_end",
+			type: "tool.execution.end",
 			status: "completed",
 			callID: "call_1",
 		});
@@ -611,7 +611,7 @@ describe("Loop.agentLoop", () => {
 		expect(lifecycle.toolExecutionUpdates).toHaveLength(1);
 		expect(lifecycle.toolExecutionEnds).toHaveLength(1);
 		expect(lifecycle.toolExecutionEnds[0]).toMatchObject({
-			type: "tool_execution_end",
+			type: "tool.execution.end",
 			status: "completed",
 			callID: "call_1",
 			result: {

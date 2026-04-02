@@ -3,23 +3,23 @@ import { Agent } from "../agent/agent";
 import { Message } from "../message/message";
 
 // TODO sanchitrk:
-// for _delta events we can have metadata KV that a provider can use for internal state
+// for delta events we can have metadata KV that a provider can use for internal state
 // similar to index what anthropic does
 export namespace Event {
 	export const LLMMessageEventType = {
 		start: "start",
 
-		textStart: "text_start",
-		textDelta: "text_delta",
-		textEnd: "text_end",
+		textStart: "text.start",
+		textDelta: "text.delta",
+		textEnd: "text.end",
 
-		thinkingStart: "thinking_start",
-		thinkingDelta: "thinking_delta",
-		thinkingEnd: "thinking_end",
+		thinkingStart: "thinking.start",
+		thinkingDelta: "thinking.delta",
+		thinkingEnd: "thinking.end",
 
-		toolcallStart: "toolcall_start",
-		toolcallDelta: "toolcall_delta",
-		toolcallEnd: "toolcall_end",
+		toolcallStart: "toolcall.start",
+		toolcallDelta: "toolcall.delta",
+		toolcallEnd: "toolcall.end",
 
 		done: "done",
 		error: "error",
@@ -105,24 +105,24 @@ export namespace Event {
 
 	export const AgentEventType = {
 		// Agent lifecycle
-		agentStart: "agent_start",
-		agentEnd: "agent_end",
+		agentStart: "agent.start",
+		agentEnd: "agent.end",
 		// Turn lifecycle - a turn is one assistant response + any tool calls/results
-		turnStart: "turn_start",
-		turnEnd: "turn_end",
+		turnStart: "turn.start",
+		turnEnd: "turn.end",
 		// Message lifecycle - emitted for user, assistant message and corresponding parts
-		messageStart: "message_start",
+		messageStart: "message.start",
 
-		messagePartStart: "message_part_start",
-		messagePartUpdate: "message_part_update",
-		messagePartEnd: "message_part_end",
+		messagePartStart: "message.part.start",
+		messagePartUpdate: "message.part.update",
+		messagePartEnd: "message.part.end",
 
-		messageUpdate: "message_update",
-		messageEnd: "message_end",
+		messageUpdate: "message.update",
+		messageEnd: "message.end",
 		// Tool execution lifecycle
-		toolExecutionStart: "tool_execution_start",
-		toolExecutionUpdate: "tool_execution_update",
-		toolExecutionEnd: "tool_execution_end",
+		toolExecutionStart: "tool.execution.start",
+		toolExecutionUpdate: "tool.execution.update",
+		toolExecutionEnd: "tool.execution.end",
 	} as const;
 	export type AgentEventType = (typeof AgentEventType)[keyof typeof AgentEventType];
 

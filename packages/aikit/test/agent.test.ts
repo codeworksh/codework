@@ -114,7 +114,7 @@ describe("Agent event schema", () => {
 	it("accepts tool execution events with raw args and optional validated params", () => {
 		const validate = ajv.compile(Event.AgentEventSchema);
 		const runningUpdate: Event.AgentEvent = {
-			type: "tool_execution_update",
+			type: "tool.execution.update",
 			callID: "call_1",
 			name: "search",
 			rawArgs: { query: "docs", limit: "5" },
@@ -125,7 +125,7 @@ describe("Agent event schema", () => {
 			},
 		};
 		const terminalEnd: Event.AgentEvent = {
-			type: "tool_execution_end",
+			type: "tool.execution.end",
 			callID: "call_1",
 			name: "search",
 			rawArgs: { query: "docs" },
@@ -150,7 +150,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "tool_execution_update",
+				type: "tool.execution.update",
 				callID: "call_1",
 				name: "search",
 				rawArgs: { query: "docs" },
@@ -164,7 +164,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "turn_end",
+				type: "turn.end",
 				message: userMessage,
 			}),
 		).toBe(false);
@@ -205,20 +205,20 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_update",
+				type: "message.update",
 				message: assistantMessage,
 			}),
 		).toBe(true);
 
 		expect(
 			validate({
-				type: "turn_end",
+				type: "turn.end",
 				message: assistantMessage,
 			}),
 		).toBe(true);
 	});
 
-	it("requires source on message_part_update and tolerates extra fields on message_update", () => {
+	it("requires source on message.part.update and tolerates extra fields on message.update", () => {
 		const validate = ajv.compile(Event.AgentEventSchema);
 		const assistantMessage: Message.AssistantMessage = {
 			role: "assistant",
@@ -265,7 +265,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_part_update",
+				type: "message.part.update",
 				message: assistantMessage,
 				partIndex: 0,
 				part: assistantMessage.parts[0],
@@ -274,7 +274,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_update",
+				type: "message.update",
 				message: assistantMessage,
 				source: "tool",
 			}),
@@ -282,7 +282,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_part_update",
+				type: "message.part.update",
 				message: assistantMessage,
 				partIndex: 0,
 				part: assistantMessage.parts[0],
@@ -346,7 +346,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_part_start",
+				type: "message.part.start",
 				message: userMessage,
 				partIndex: 1,
 				part: userMessage.parts[1],
@@ -355,7 +355,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_part_update",
+				type: "message.part.update",
 				message: assistantMessage,
 				partIndex: 0,
 				part: assistantMessage.parts[0],
@@ -365,7 +365,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_part_end",
+				type: "message.part.end",
 				message: assistantMessage,
 				partIndex: 0,
 				part: assistantMessage.parts[0],
@@ -413,7 +413,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_part_start",
+				type: "message.part.start",
 				message: userMessage,
 				partIndex: 0,
 				part: { type: "thinking", thinking: "secret" },
@@ -422,7 +422,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_part_end",
+				type: "message.part.end",
 				message: assistantMessage,
 				partIndex: 0,
 				part: { type: "image", data: "abc", mimeType: "image/png" },
@@ -481,7 +481,7 @@ describe("Agent event schema", () => {
 
 		expect(
 			validate({
-				type: "message_update",
+				type: "message.update",
 				message: assistantMessage,
 			}),
 		).toBe(true);

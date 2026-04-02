@@ -139,16 +139,16 @@ describe("streamAnthropic", () => {
 
 		expect(eventTypes).toEqual([
 			"start",
-			"text_start",
-			"text_delta",
-			"text_delta",
-			"text_end",
-			"thinking_start",
-			"thinking_delta",
-			"thinking_end",
-			"toolcall_start",
-			"toolcall_delta",
-			"toolcall_end",
+			"text.start",
+			"text.delta",
+			"text.delta",
+			"text.end",
+			"thinking.start",
+			"thinking.delta",
+			"thinking.end",
+			"toolcall.start",
+			"toolcall.delta",
+			"toolcall.end",
 			"done",
 		]);
 
@@ -177,10 +177,10 @@ describe("streamAnthropic", () => {
 		expect(message.usage.cacheWrite).toBe(2);
 		expect(message.usage.totalTokens).toBe(23);
 
-		const textDeltaSnapshot = snapshots.find((snapshot) => snapshot.type === "text_delta");
-		const thinkingEndSnapshot = snapshots.find((snapshot) => snapshot.type === "thinking_end");
-		const toolcallDeltaSnapshot = snapshots.find((snapshot) => snapshot.type === "toolcall_delta");
-		const toolcallEndSnapshot = snapshots.find((snapshot) => snapshot.type === "toolcall_end");
+		const textDeltaSnapshot = snapshots.find((snapshot) => snapshot.type === "text.delta");
+		const thinkingEndSnapshot = snapshots.find((snapshot) => snapshot.type === "thinking.end");
+		const toolcallDeltaSnapshot = snapshots.find((snapshot) => snapshot.type === "toolcall.delta");
+		const toolcallEndSnapshot = snapshots.find((snapshot) => snapshot.type === "toolcall.end");
 
 		expect(textDeltaSnapshot?.parts[0]).toMatchObject({ type: "text", text: "Hello world" });
 		expect(thinkingEndSnapshot?.parts[1]).toMatchObject({

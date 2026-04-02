@@ -148,11 +148,11 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY)("anthropic stream", () => {
 		let textCompleted = false;
 
 		for await (const event of s) {
-			if (event.type === "text_start") {
+			if (event.type === "text.start") {
 				textStarted = true;
-			} else if (event.type === "text_delta") {
+			} else if (event.type === "text.delta") {
 				textChunks += event.delta;
-			} else if (event.type === "text_end") {
+			} else if (event.type === "text.end") {
 				textCompleted = true;
 			}
 		}
@@ -218,11 +218,11 @@ describe.skipIf(!process.env.ANTHROPIC_API_KEY)("anthropic stream", () => {
 		let finalToolCall: Message.ToolCall | undefined;
 
 		for await (const event of s) {
-			if (event.type === "toolcall_start") {
+			if (event.type === "toolcall.start") {
 				toolCallStarted = true;
-			} else if (event.type === "toolcall_delta") {
+			} else if (event.type === "toolcall.delta") {
 				toolCallDelta += event.delta;
-			} else if (event.type === "toolcall_end") {
+			} else if (event.type === "toolcall.end") {
 				toolCallEnded = true;
 				finalToolCall = event.toolCall;
 			}

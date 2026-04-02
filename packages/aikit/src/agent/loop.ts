@@ -140,8 +140,8 @@ export namespace Loop {
 
 	function createAgentStream(): EventStream<Event.AgentEvent, Message.Message[]> {
 		return new EventStream<Event.AgentEvent, Message.Message[]>(
-			(event: Event.AgentEvent) => event.type === "agent_end",
-			(event: Event.AgentEvent) => (event.type === "agent_end" ? event.messages : []),
+			(event: Event.AgentEvent) => event.type === "agent.end",
+			(event: Event.AgentEvent) => (event.type === "agent.end" ? event.messages : []),
 		);
 	}
 
@@ -236,26 +236,26 @@ export namespace Loop {
 		const ensureMessageStarted = (message: Message.AssistantMessage): void => {
 			if (started) return;
 			started = true;
-			stream.push({ type: "message_start", message: snapshotAssistantMessage(message) });
+			stream.push({ type: "message.start", message: snapshotAssistantMessage(message) });
 		};
 
 		const emitMessageUpdate = (message: Message.AssistantMessage): void => {
-			stream.push({ type: "message_update", message: snapshotAssistantMessage(message) });
+			stream.push({ type: "message.update", message: snapshotAssistantMessage(message) });
 		};
 
 		const emitPartStart = (message: Message.AssistantMessage, partIndex: number): void => {
 			const snapshot = snapshotAssistantPartEvent(message, partIndex);
-			stream.push({ type: "message_part_start", partIndex, ...snapshot });
+			stream.push({ type: "message.part.start", partIndex, ...snapshot });
 		};
 
 		const emitPartUpdate = (message: Message.AssistantMessage, partIndex: number): void => {
 			const snapshot = snapshotAssistantPartEvent(message, partIndex);
-			stream.push({ type: "message_part_update", partIndex, ...snapshot, source: "llm" });
+			stream.push({ type: "message.part.update", partIndex, ...snapshot, source: "llm" });
 		};
 
 		const emitPartEnd = (message: Message.AssistantMessage, partIndex: number): void => {
 			const snapshot = snapshotAssistantPartEvent(message, partIndex);
-			stream.push({ type: "message_part_end", partIndex, ...snapshot });
+			stream.push({ type: "message.part.end", partIndex, ...snapshot });
 		};
 
 		// NOTE: Do not mutate context directly
@@ -269,25 +269,25 @@ export namespace Loop {
 					ensureMessageStarted(partialMessage);
 					break;
 				}
-				case "text_start":
-				case "thinking_start":
-				case "toolcall_start": {
+				case "text.start":
+				case "thinking.start":
+				case "toolcall.start": {
 					partialMessage = event.partial;
 					ensureMessageStarted(partialMessage);
 					emitPartStart(partialMessage, event.partIndex);
 					break;
 				}
-				case "text_delta":
-				case "thinking_delta":
-				case "toolcall_delta": {
+				case "text.delta":
+				case "thinking.delta":
+				case "toolcall.delta": {
 					partialMessage = event.partial;
 					ensureMessageStarted(partialMessage);
 					emitPartUpdate(partialMessage, event.partIndex);
 					break;
 				}
-				case "text_end":
-				case "thinking_end":
-				case "toolcall_end": {
+				case "text.end":
+				case "thinking.end":
+				case "toolcall.end": {
 					partialMessage = event.partial;
 					ensureMessageStarted(partialMessage);
 					emitPartEnd(partialMessage, event.partIndex);
@@ -296,12 +296,12 @@ export namespace Loop {
 				}
 				case "done": {
 					ensureMessageStarted(event.message);
-					stream.push({ type: "message_end", message: snapshotAssistantMessage(event.message) });
+					stream.push({ type: "message.end", message: snapshotAssistantMessage(event.message) });
 					return event.message;
 				}
 				case "error": {
 					ensureMessageStarted(event.error);
-					stream.push({ type: "message_end", message: snapshotAssistantMessage(event.error) });
+					stream.push({ type: "message.end", message: snapshotAssistantMessage(event.error) });
 					return event.error;
 				}
 			}
@@ -309,7 +309,7 @@ export namespace Loop {
 
 		const finalMessage = await events.result();
 		ensureMessageStarted(finalMessage);
-		stream.push({ type: "message_end", message: snapshotAssistantMessage(finalMessage) });
+		stream.push({ type: "message.end", message: snapshotAssistantMessage(finalMessage) });
 		return finalMessage;
 	}
 
@@ -321,8 +321,8 @@ export namespace Loop {
 		streamFn?: StreamFn,
 		signal?: AbortSignal,
 	): Promise<void> {
-		// initial `turn_start` is already emitted
-		// avoiding duplicate `turn_start` emits
+		// initial `turn.start` is already emitted
+		// avoiding duplicate `turn.start` emits
 		let firstTurn = true;
 		// Check for steering messages at start (user may have submitted while waiting)
 		let pendingMessages: Message.UserMessage[] = (await config.getSteeringMessages?.()) || [];
@@ -332,11 +332,11 @@ export namespace Loop {
 			let hasMoreToolCalls = true;
 
 			// Inner loop: process tool calls and steering messages
-			// Note: turn_start for full tool calls / pending messages.
+			// Note: turn.start for full tool calls / pending messages.
 			while (hasMoreToolCalls || pendingMessages.length > 0) {
-				// flip firstTurn, so next iterations starts emitting `turn_start` event
+				// flip firstTurn, so next iterations starts emitting `turn.start` event
 				if (!firstTurn) {
-					stream.push({ type: "turn_start" });
+					stream.push({ type: "turn.start" });
 				} else {
 					firstTurn = false;
 				}
@@ -344,13 +344,13 @@ export namespace Loop {
 				// Process pending messages (inject before next assistant response)
 				if (pendingMessages.length > 0) {
 					for (const message of pendingMessages) {
-						stream.push({ type: "message_start", message: message });
+						stream.push({ type: "message.start", message: message });
 						for (const [partIndex, part] of message.parts.entries()) {
-							stream.push({ type: "message_part_start", message: message, partIndex, part });
-							stream.push({ type: "message_part_end", message: message, partIndex, part });
-							stream.push({ type: "message_update", message: message });
+							stream.push({ type: "message.part.start", message: message, partIndex, part });
+							stream.push({ type: "message.part.end", message: message, partIndex, part });
+							stream.push({ type: "message.update", message: message });
 						}
-						stream.push({ type: "message_end", message: message });
+						stream.push({ type: "message.end", message: message });
 						currentContext.messages.push(message);
 						newMessages.push(message);
 					}
@@ -371,8 +371,8 @@ export namespace Loop {
 					currentContext.messages.push(message); // append the terminal message into the context
 					newMessages.push(message); // append the terminal message
 
-					stream.push({ type: "turn_end", message });
-					stream.push({ type: "agent_end", messages: newMessages });
+					stream.push({ type: "turn.end", message });
+					stream.push({ type: "agent.end", messages: newMessages });
 					stream.end(newMessages);
 
 					return;
@@ -392,7 +392,7 @@ export namespace Loop {
 				currentContext.messages.push(message);
 				newMessages.push(message);
 
-				stream.push({ type: "turn_end", message });
+				stream.push({ type: "turn.end", message });
 
 				//
 				// check for steering messages while turn loop was working.
@@ -411,7 +411,7 @@ export namespace Loop {
 			break;
 		}
 
-		stream.push({ type: "agent_end", messages: newMessages });
+		stream.push({ type: "agent.end", messages: newMessages });
 	}
 
 	async function executeToolCalls(
@@ -442,7 +442,7 @@ export namespace Loop {
 				rawArgs: toolCall.arguments,
 			};
 			stream.push({
-				type: "tool_execution_start",
+				type: "tool.execution.start",
 				...toolCallInFlight,
 			});
 			//
@@ -514,7 +514,7 @@ export namespace Loop {
 				rawArgs: toolCall.arguments,
 			};
 			stream.push({
-				type: "tool_execution_start",
+				type: "tool.execution.start",
 				...toolCallInFlight,
 			});
 			//
@@ -651,7 +651,7 @@ export namespace Loop {
 					partial: result.partial,
 				};
 				const toolExecutionUpdate: Event.ToolExecutionUpdate = {
-					type: "tool_execution_update",
+					type: "tool.execution.update",
 					...runnable,
 					...runningResult,
 				};
@@ -664,7 +664,7 @@ export namespace Loop {
 
 				message.parts[partIndex] = runningPart; // in-place mutate; add error part
 
-				stream.push({ type: "message_part_update", message, partIndex, part: runningPart, source: "tool" });
+				stream.push({ type: "message.part.update", message, partIndex, part: runningPart, source: "tool" });
 			});
 			return {
 				result,
@@ -689,7 +689,7 @@ export namespace Loop {
 		const { partIndex, ...pendingPart } = toolCall;
 		const { time } = pendingPart;
 		const toolExecutionEnd: Event.ToolExecutionEnd = {
-			type: "tool_execution_end",
+			type: "tool.execution.end",
 			...runnable,
 			...result,
 		};
@@ -706,9 +706,9 @@ export namespace Loop {
 
 		message.parts[partIndex] = part; // in-place mutate; add error part
 
-		stream.push({ type: "message_part_start", message: message, partIndex: partIndex, part: part });
-		stream.push({ type: "message_part_end", message: message, partIndex: partIndex, part: part });
-		stream.push({ type: "message_update", message: message });
+		stream.push({ type: "message.part.start", message: message, partIndex: partIndex, part: part });
+		stream.push({ type: "message.part.end", message: message, partIndex: partIndex, part: part });
+		stream.push({ type: "message.update", message: message });
 	}
 
 	async function finalizeExecutedToolCall(
@@ -763,15 +763,15 @@ export namespace Loop {
 				messages: [...context.messages, ...prompts],
 			};
 
-			stream.push({ type: "agent_start" });
-			stream.push({ type: "turn_start" });
+			stream.push({ type: "agent.start" });
+			stream.push({ type: "turn.start" });
 			for (const prompt of prompts) {
-				stream.push({ type: "message_start", message: prompt });
+				stream.push({ type: "message.start", message: prompt });
 				for (const [partIndex, part] of prompt.parts.entries()) {
-					stream.push({ type: "message_part_start", message: prompt, partIndex, part });
-					stream.push({ type: "message_part_end", message: prompt, partIndex, part });
+					stream.push({ type: "message.part.start", message: prompt, partIndex, part });
+					stream.push({ type: "message.part.end", message: prompt, partIndex, part });
 				}
-				stream.push({ type: "message_end", message: prompt });
+				stream.push({ type: "message.end", message: prompt });
 			}
 
 			await runLoop(config, currentContext, newMessages, stream, streamFn, signal);
