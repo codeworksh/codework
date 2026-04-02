@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
-    "@codeworksh/utils": "^0.1.0",
+    "@codeworksh/utils": "workspace:*",
     "@sinclair/typebox": "catalog:",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
