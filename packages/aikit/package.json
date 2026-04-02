@@ -25,7 +25,7 @@
   "peerDependencies": {
     "typescript": "^5"
   },
-  "description": "Bun-native AI kit for provider streaming, agent loops, message parts, and tool execution.",
+  "description": "Toolkit for building AI agents.",
   "author": "Sanchit Kudari",
   "license": "MIT",
   "files": [
