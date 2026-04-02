@@ -1,11 +1,11 @@
-# @codeworksh/buntils
+# @codeworksh/utils
 
 Bun-native utility toolkit for reusable filesystem, async, and runtime helpers.
 
 Install:
 
 ```bash
-bun add @codeworksh/buntils
+bun add @codeworksh/utils
 ```
 
 ## License

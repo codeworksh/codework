@@ -14,6 +14,15 @@ Toolkit for building AI agents.
 bun add @codeworksh/aikit
 ```
 
+## Publishing
+
+```bash
+bun run publish:aikit:dry-run
+bun run publish:aikit
+```
+
+For workspace publishing, the repo now includes `scripts/publish.ts`, which resolves the package directory and runs `bun publish` for `@codeworksh/*` packages such as `aikit` and `utils`.
+
 ## License
 
 MIT

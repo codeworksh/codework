@@ -1,4 +1,4 @@
-import { Filesystem, lazy } from "@codeworksh/buntils";
+import { Filesystem, lazy } from "@codeworksh/utils";
 
 export namespace ModelCatalog {
 	// Doesn't represent the full spec from models.dev.

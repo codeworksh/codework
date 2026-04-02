@@ -1,4 +1,4 @@
-import { NamedError } from "@codeworksh/buntils";
+import { NamedError } from "@codeworksh/utils";
 import { type Static, Type } from "@sinclair/typebox";
 import type { Message } from "../message/message";
 import { Model } from "../model/model";

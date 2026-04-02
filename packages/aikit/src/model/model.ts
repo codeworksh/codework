@@ -1,4 +1,4 @@
-import { lazy } from "@codeworksh/buntils";
+import { lazy } from "@codeworksh/utils";
 import { type Static, Type } from "@sinclair/typebox";
 import { keys, mapValues, pick, pipe } from "remeda";
 import { Provider } from "../provider/provider";

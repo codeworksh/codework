@@ -6,14 +6,15 @@
       "name": "codework",
       "devDependencies": {
         "@biomejs/biome": "^2.3.14",
+        "@types/bun": "catalog:",
       },
     },
     "packages/aikit": {
       "name": "@codeworksh/aikit",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.80.0",
-        "@codeworksh/buntils": "^0.1.0",
+        "@codeworksh/utils": "^1.0.0",
         "@sinclair/typebox": "catalog:",
         "ajv": "^8.18.0",
         "ajv-formats": "^3.0.1",
@@ -27,9 +28,9 @@
         "typescript": "^5",
       },
     },
-    "packages/buntils": {
-      "name": "@codeworksh/buntils",
-      "version": "0.1.0",
+    "packages/utils": {
+      "name": "@codeworksh/utils",
+      "version": "1.0.0",
       "dependencies": {
         "@sinclair/typebox": "^0.34.48",
       },
@@ -71,9 +72,11 @@
 
     "@codeworksh/aikit": ["@codeworksh/aikit@workspace:packages/aikit"],
 
-    "@codeworksh/buntils": ["@codeworksh/buntils@workspace:packages/buntils"],
+    "@codeworksh/utils": ["@codeworksh/utils@workspace:packages/utils"],
 
     "@sinclair/typebox": ["@sinclair/typebox@0.34.49", "", {}, "sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A=="],
+
+    "@types/bun": ["@types/bun@1.3.11", "", { "dependencies": { "bun-types": "1.3.11" } }, "sha512-5vPne5QvtpjGpsGYXiFyycfpDF2ECyPcTSsFBMa0fraoxiQyMJ3SmuQIGhzPg2WJuWxVBoxWJ2kClYTcw/4fAg=="],
 
     "@types/node": ["@types/node@25.5.0", "", { "dependencies": { "undici-types": "~7.18.0" } }, "sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw=="],
 
