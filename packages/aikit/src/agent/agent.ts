@@ -32,7 +32,7 @@ export namespace Agent {
 	// consumers can narrow on status if needed
 	// type inference:
 	// U - update
-	export type ToolUpdateCallback<U = any> = (result: ToolRunningResult<U>) => void;
+	export type ToolUpdateCallback<U = any> = (result: ToolRunningResult<U>) => Promise<void> | void;
 
 	export interface AgentTool<TParameters extends TSchema = TSchema, U = any, R = U> extends Message.Tool<TParameters> {
 		// A human-readable label for the tool for display

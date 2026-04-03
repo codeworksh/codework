@@ -34,8 +34,8 @@ describe("public api", () => {
 		expect(aikit.stream.completeSimple).toBe(aikit.completeSimple);
 		expect(aikit.stream.resolveProtocolProvider).toBe(Stream.resolveProtocolProvider);
 
-		expect(aikit.agent.loop).toBe(Loop.agentLoop);
-		expect(aikit.agent.continue).toBe(Loop.agentLoopContinue);
+		expect(aikit.agent.run).toBe(Loop.run);
+		expect(aikit.agent.runContinue).toBe(Loop.runContinue);
 	});
 
 	it("exports the core namespaces and validation helpers", () => {

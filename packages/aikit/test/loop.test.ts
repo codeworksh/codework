@@ -178,12 +178,12 @@ function collectToolLifecycle(
 	};
 }
 
-describe("Loop.agentLoop", () => {
+describe("Loop.run", () => {
 	it("streams assistant part lifecycle events and persists non-tool assistant replies", async () => {
 		const model = createModel();
 		const prompt = createUserMessage("say hello");
 
-		const agentStream = Loop.agentLoop(
+		const agentStream = Loop.run(
 			{
 				model,
 				convertToLlm: async (messages) => messages,
@@ -283,7 +283,7 @@ describe("Loop.agentLoop", () => {
 				expression: Type.String(),
 			}),
 			async execute(_callID, params, _signal, onUpdate) {
-				onUpdate?.({
+				await onUpdate?.({
 					status: "running",
 					partial: {
 						content: [{ type: "text", text: `Evaluating ${params.expression}` }],
@@ -303,7 +303,7 @@ describe("Loop.agentLoop", () => {
 		};
 
 		let invocation = 0;
-		const agentStream = Loop.agentLoop(
+		const agentStream = Loop.run(
 			{
 				model,
 				convertToLlm: async (messages) => messages,
@@ -407,7 +407,7 @@ describe("Loop.agentLoop", () => {
 			},
 		};
 
-		const agentStream = Loop.agentLoop(
+		const agentStream = Loop.run(
 			{
 				model,
 				convertToLlm: async (messages) => messages,
@@ -506,7 +506,7 @@ describe("Loop.agentLoop", () => {
 				expression: Type.String(),
 			}),
 			async execute(_callID, params, _signal, onUpdate) {
-				onUpdate?.({
+				await onUpdate?.({
 					status: "running",
 					partial: {
 						content: [{ type: "text", text: `Evaluating ${params.expression}` }],
@@ -525,7 +525,7 @@ describe("Loop.agentLoop", () => {
 			},
 		};
 
-		const agentStream = Loop.agentLoop(
+		const agentStream = Loop.run(
 			{
 				model,
 				convertToLlm: async (messages) => messages,

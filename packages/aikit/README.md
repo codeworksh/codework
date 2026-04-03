@@ -70,7 +70,7 @@ const message = await stream.complete(
 
 ### Agent
 
-`agent.loop(...)` runs a full assistant turn loop on top of model streaming. It handles tool calls, validates arguments, mutates tool-call parts in-place, and emits higher-level agent events.
+`agent.run(...)` runs a full assistant turn loop on top of model streaming. It handles tool calls, validates arguments, mutates tool-call parts in-place, and emits higher-level agent events.
 
 ```ts
 import { Type } from "@sinclair/typebox";
@@ -105,7 +105,7 @@ const prompt: Message.UserMessage = {
 	parts: [{ type: "text", text: "Use the calculator tool for 2 + 2." }],
 };
 
-const run = agent.loop(
+const run = agent.run(
 	{
 		model,
 		convertToLlm: async (messages) => messages,
@@ -137,7 +137,7 @@ console.log(messages.at(-1));
 
 Use `stream(...)` when you want raw provider events and manual control over tool handling.
 
-Use `agent.loop(...)` when you want a higher-level runtime that:
+Use `agent.run(...)` when you want a higher-level runtime that:
 - streams assistant message lifecycle events
 - validates tool arguments
 - executes tools sequentially or in parallel
@@ -192,7 +192,7 @@ const searchTool: Agent.AgentTool<typeof searchParams, { progress: number }, { h
 	description: "Search indexed documents",
 	parameters: searchParams,
 	async execute(callID, params, signal, onUpdate) {
-		onUpdate?.({
+		await onUpdate?.({
 			status: "running",
 			partial: {
 				content: [{ type: "text", text: `Searching for ${params.query}` }],
@@ -220,7 +220,7 @@ const prompt: Message.UserMessage = {
 	parts: [{ type: "text", text: "Search for agent loop documentation." }],
 };
 
-const run = agent.loop(
+const run = agent.run(
 	{
 		model,
 		apiKey: process.env.ANTHROPIC_API_KEY,
@@ -258,7 +258,7 @@ Tool execution mode is configurable with `toolExecution`:
 - `sequential`: prepares and executes each tool call one by one. Use this when tools depend on shared state, rate limits, or side effects that should not overlap.
 
 ```ts
-const run = agent.loop(
+const run = agent.run(
 	{
 		model,
 		convertToLlm: async (messages) => messages,
@@ -276,7 +276,7 @@ const run = agent.loop(
 Use it to inspect validated params, enforce policy, or block execution.
 
 ```ts
-const run = agent.loop(
+const run = agent.run(
 	{
 		model,
 		convertToLlm: async (messages) => messages,
@@ -303,7 +303,7 @@ Returning `{ block: true }` prevents the tool from running and turns that assist
 Use it to normalize output, attach metadata, or override the final tool result.
 
 ```ts
-const run = agent.loop(
+const run = agent.run(
 	{
 		model,
 		convertToLlm: async (messages) => messages,

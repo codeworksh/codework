@@ -1,5 +1,5 @@
 import { NamedError } from "@codeworksh/utils";
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 import type { Event } from "../event/event";
 import type { Message } from "../message/message";
 import type { Model } from "../model/model";
@@ -184,6 +184,7 @@ export namespace Loop {
 			message: Type.String(),
 		}),
 	);
+	export type AgentContextError = InstanceType<typeof AgentContextError>;
 
 	function snapshotAssistantMessage(message: Message.AssistantMessage): Message.AssistantMessage {
 		return structuredClone(message);
@@ -199,6 +200,10 @@ export namespace Loop {
 			throw new Error(`Assistant message part at index ${partIndex} was not found`);
 		}
 		return { message: snapshot, part };
+	}
+
+	async function emitEvent(emit: AgentEventSink, event: Event.AgentEvent): Promise<void> {
+		await emit(event);
 	}
 
 	async function streamAssistantResponse(
@@ -244,29 +249,29 @@ export namespace Loop {
 		let partialMessage: Message.AssistantMessage | null = null;
 		let started = false;
 
-		const ensureMessageStarted = (message: Message.AssistantMessage): void => {
+		const ensureMessageStarted = async (message: Message.AssistantMessage): Promise<void> => {
 			if (started) return;
 			started = true;
-			emit({ type: "message.start", message: snapshotAssistantMessage(message) });
+			await emitEvent(emit, { type: "message.start", message: snapshotAssistantMessage(message) });
 		};
 
-		const emitMessageUpdate = (message: Message.AssistantMessage): void => {
-			emit({ type: "message.update", message: snapshotAssistantMessage(message) });
+		const emitMessageUpdate = async (message: Message.AssistantMessage): Promise<void> => {
+			await emitEvent(emit, { type: "message.update", message: snapshotAssistantMessage(message) });
 		};
 
-		const emitPartStart = (message: Message.AssistantMessage, partIndex: number): void => {
+		const emitPartStart = async (message: Message.AssistantMessage, partIndex: number): Promise<void> => {
 			const snapshot = snapshotAssistantPartEvent(message, partIndex);
-			emit({ type: "message.part.start", partIndex, ...snapshot });
+			await emitEvent(emit, { type: "message.part.start", partIndex, ...snapshot });
 		};
 
-		const emitPartUpdate = (message: Message.AssistantMessage, partIndex: number): void => {
+		const emitPartUpdate = async (message: Message.AssistantMessage, partIndex: number): Promise<void> => {
 			const snapshot = snapshotAssistantPartEvent(message, partIndex);
-			emit({ type: "message.part.update", partIndex, ...snapshot, source: "llm" });
+			await emitEvent(emit, { type: "message.part.update", partIndex, ...snapshot, source: "llm" });
 		};
 
-		const emitPartEnd = (message: Message.AssistantMessage, partIndex: number): void => {
+		const emitPartEnd = async (message: Message.AssistantMessage, partIndex: number): Promise<void> => {
 			const snapshot = snapshotAssistantPartEvent(message, partIndex);
-			emit({ type: "message.part.end", partIndex, ...snapshot });
+			await emitEvent(emit, { type: "message.part.end", partIndex, ...snapshot });
 		};
 
 		// NOTE: Do not mutate context directly
@@ -277,50 +282,50 @@ export namespace Loop {
 			switch (event.type) {
 				case "start": {
 					partialMessage = event.partial;
-					ensureMessageStarted(partialMessage);
+					await ensureMessageStarted(partialMessage);
 					break;
 				}
 				case "text.start":
 				case "thinking.start":
 				case "toolcall.start": {
 					partialMessage = event.partial;
-					ensureMessageStarted(partialMessage);
-					emitPartStart(partialMessage, event.partIndex);
+					await ensureMessageStarted(partialMessage);
+					await emitPartStart(partialMessage, event.partIndex);
 					break;
 				}
 				case "text.delta":
 				case "thinking.delta":
 				case "toolcall.delta": {
 					partialMessage = event.partial;
-					ensureMessageStarted(partialMessage);
-					emitPartUpdate(partialMessage, event.partIndex);
+					await ensureMessageStarted(partialMessage);
+					await emitPartUpdate(partialMessage, event.partIndex);
 					break;
 				}
 				case "text.end":
 				case "thinking.end":
 				case "toolcall.end": {
 					partialMessage = event.partial;
-					ensureMessageStarted(partialMessage);
-					emitPartEnd(partialMessage, event.partIndex);
-					emitMessageUpdate(partialMessage);
+					await ensureMessageStarted(partialMessage);
+					await emitPartEnd(partialMessage, event.partIndex);
+					await emitMessageUpdate(partialMessage);
 					break;
 				}
 				case "done": {
-					ensureMessageStarted(event.message);
-					emit({ type: "message.end", message: snapshotAssistantMessage(event.message) });
+					await ensureMessageStarted(event.message);
+					await emitEvent(emit, { type: "message.end", message: snapshotAssistantMessage(event.message) });
 					return event.message;
 				}
 				case "error": {
-					ensureMessageStarted(event.error);
-					emit({ type: "message.end", message: snapshotAssistantMessage(event.error) });
+					await ensureMessageStarted(event.error);
+					await emitEvent(emit, { type: "message.end", message: snapshotAssistantMessage(event.error) });
 					return event.error;
 				}
 			}
 		}
 
 		const finalMessage = await events.result();
-		ensureMessageStarted(finalMessage);
-		emit({ type: "message.end", message: snapshotAssistantMessage(finalMessage) });
+		await ensureMessageStarted(finalMessage);
+		await emitEvent(emit, { type: "message.end", message: snapshotAssistantMessage(finalMessage) });
 		return finalMessage;
 	}
 
@@ -351,7 +356,7 @@ export namespace Loop {
 				name: toolCall.name,
 				rawArgs: toolCall.arguments,
 			};
-			emit({
+			await emitEvent(emit, {
 				type: "tool.execution.start",
 				...toolCallInFlight,
 			});
@@ -423,7 +428,7 @@ export namespace Loop {
 				name: toolCall.name,
 				rawArgs: toolCall.arguments,
 			};
-			emit({
+			await emitEvent(emit, {
 				type: "tool.execution.start",
 				...toolCallInFlight,
 			});
@@ -555,7 +560,7 @@ export namespace Loop {
 		const { toolCall, runnable, tool } = toolCallRunnable;
 		const { partIndex, ...pendingPart } = toolCall;
 		try {
-			const result = await tool.execute(runnable.callID, runnable.args, signal, (result) => {
+			const result = await tool.execute(runnable.callID, runnable.args, signal, async (result) => {
 				const runningResult: Agent.ToolRunningResult<any> = {
 					status: "running",
 					partial: result.partial,
@@ -565,7 +570,7 @@ export namespace Loop {
 					...runnable,
 					...runningResult,
 				};
-				emit({ ...toolExecutionUpdate });
+				await emitEvent(emit, { ...toolExecutionUpdate });
 
 				const runningPart: Message.ToolCallRunningPart = {
 					...pendingPart,
@@ -574,7 +579,13 @@ export namespace Loop {
 
 				message.parts[partIndex] = runningPart; // in-place mutate; add error part
 
-				emit({ type: "message.part.update", message, partIndex, part: runningPart, source: "tool" });
+				await emitEvent(emit, {
+					type: "message.part.update",
+					message,
+					partIndex,
+					part: runningPart,
+					source: "tool",
+				});
 			});
 			return {
 				result,
@@ -603,7 +614,7 @@ export namespace Loop {
 			...runnable,
 			...result,
 		};
-		emit({ ...toolExecutionEnd });
+		await emitEvent(emit, { ...toolExecutionEnd });
 
 		const part: Message.ToolCallErrorPart | Message.ToolCallCompletedPart = {
 			...pendingPart,
@@ -616,9 +627,9 @@ export namespace Loop {
 
 		message.parts[partIndex] = part; // in-place mutate; add error part
 
-		emit({ type: "message.part.start", message: message, partIndex: partIndex, part: part });
-		emit({ type: "message.part.end", message: message, partIndex: partIndex, part: part });
-		emit({ type: "message.update", message: message });
+		await emitEvent(emit, { type: "message.part.start", message: message, partIndex: partIndex, part: part });
+		await emitEvent(emit, { type: "message.part.end", message: message, partIndex: partIndex, part: part });
+		await emitEvent(emit, { type: "message.update", message: message });
 	}
 
 	async function finalizeExecutedToolCall(
@@ -650,7 +661,7 @@ export namespace Loop {
 	}
 
 	/**
-	 * Main core loop shared by agentLoop and agentLoopContinue.
+	 * Main core loop shared by run and runContinue.
 	 */
 	async function runLoop(
 		config: Config,
@@ -675,7 +686,7 @@ export namespace Loop {
 			while (hasMoreToolCalls || pendingMessages.length > 0) {
 				// flip firstTurn, so next iterations starts emitting `turn.start` event
 				if (!firstTurn) {
-					emit({ type: "turn.start" });
+					await emitEvent(emit, { type: "turn.start" });
 				} else {
 					firstTurn = false;
 				}
@@ -683,13 +694,13 @@ export namespace Loop {
 				// Process pending messages (inject before next assistant response)
 				if (pendingMessages.length > 0) {
 					for (const message of pendingMessages) {
-						emit({ type: "message.start", message: message });
+						await emitEvent(emit, { type: "message.start", message: message });
 						for (const [partIndex, part] of message.parts.entries()) {
-							emit({ type: "message.part.start", message: message, partIndex, part });
-							emit({ type: "message.part.end", message: message, partIndex, part });
-							emit({ type: "message.update", message: message });
+							await emitEvent(emit, { type: "message.part.start", message: message, partIndex, part });
+							await emitEvent(emit, { type: "message.part.end", message: message, partIndex, part });
+							await emitEvent(emit, { type: "message.update", message: message });
 						}
-						emit({ type: "message.end", message: message });
+						await emitEvent(emit, { type: "message.end", message: message });
 						currentContext.messages.push(message);
 						newMessages.push(message);
 					}
@@ -710,8 +721,8 @@ export namespace Loop {
 					currentContext.messages.push(message); // append the terminal message into the context
 					newMessages.push(message); // append the terminal message
 
-					emit({ type: "turn.end", message });
-					emit({ type: "agent.end", messages: newMessages });
+					await emitEvent(emit, { type: "turn.end", message });
+					await emitEvent(emit, { type: "agent.end", messages: newMessages });
 
 					return;
 				}
@@ -730,7 +741,7 @@ export namespace Loop {
 				currentContext.messages.push(message);
 				newMessages.push(message);
 
-				emit({ type: "turn.end", message });
+				await emitEvent(emit, { type: "turn.end", message });
 
 				//
 				// check for steering messages while turn loop was working.
@@ -749,7 +760,7 @@ export namespace Loop {
 			break;
 		}
 
-		emit({ type: "agent.end", messages: newMessages });
+		await emitEvent(emit, { type: "agent.end", messages: newMessages });
 	}
 
 	async function runAgentLoop(
@@ -772,15 +783,15 @@ export namespace Loop {
 			messages: [...context.messages, ...prompts],
 		};
 
-		emit({ type: "agent.start" });
-		emit({ type: "turn.start" });
+		await emitEvent(emit, { type: "agent.start" });
+		await emitEvent(emit, { type: "turn.start" });
 		for (const prompt of prompts) {
-			emit({ type: "message.start", message: prompt });
+			await emitEvent(emit, { type: "message.start", message: prompt });
 			for (const [partIndex, part] of prompt.parts.entries()) {
-				emit({ type: "message.part.start", message: prompt, partIndex, part });
-				emit({ type: "message.part.end", message: prompt, partIndex, part });
+				await emitEvent(emit, { type: "message.part.start", message: prompt, partIndex, part });
+				await emitEvent(emit, { type: "message.part.end", message: prompt, partIndex, part });
 			}
-			emit({ type: "message.end", message: prompt });
+			await emitEvent(emit, { type: "message.end", message: prompt });
 		}
 
 		await runLoop(config, currentContext, newMessages, emit, streamFn, signal);
@@ -804,8 +815,8 @@ export namespace Loop {
 		const newMessages: Message.Message[] = [];
 		const currentContext: Agent.AgentContext = { ...context };
 
-		emit({ type: "agent.start" });
-		emit({ type: "turn.start" });
+		await emitEvent(emit, { type: "agent.start" });
+		await emitEvent(emit, { type: "turn.start" });
 
 		await runLoop(config, currentContext, newMessages, emit, streamFn, signal);
 		return newMessages;

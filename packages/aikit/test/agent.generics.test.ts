@@ -38,7 +38,7 @@ const searchTool: Agent.AgentTool<typeof searchParams, UpdateDetails, ResultDeta
 		void _signal;
 		void _toolCallID;
 
-		onUpdate?.({
+		await onUpdate?.({
 			status: "running",
 			partial: {
 				content: [{ type: "text", text: `Searching for ${params.query}` }],

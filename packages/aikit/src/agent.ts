@@ -1,11 +1,11 @@
 import { Loop } from "./agent/loop";
 
 type Agent = {
-	loop: typeof Loop.agentLoop;
-	continue: typeof Loop.agentLoopContinue;
+	run: typeof Loop.run;
+	runContinue: typeof Loop.runContinue;
 };
 
 export const agent = {
-	loop: Loop.agentLoop,
-	continue: Loop.agentLoopContinue,
+	run: Loop.run,
+	runContinue: Loop.runContinue,
 } as Agent;
