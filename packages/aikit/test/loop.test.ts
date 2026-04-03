@@ -622,3 +622,53 @@ describe("Loop.run", () => {
 		});
 	});
 });
+
+describe("Loop.runContinue", () => {
+	it("continues from the current context and emits only new assistant events", async () => {
+		const model = createModel();
+		const existingMessage = createUserMessage("continue from here");
+		const context: Agent.AgentContext = {
+			systemPrompt: "Be concise.",
+			messages: [existingMessage],
+			tools: [],
+		};
+
+		const agentStream = Loop.runContinue(
+			{
+				model,
+				convertToLlm: async (messages) => messages,
+			},
+			context,
+			async () => createTextResponseStream(model, "continued response"),
+		);
+
+		const events: Event.AgentEvent[] = [];
+		for await (const event of agentStream) {
+			events.push(event);
+		}
+
+		const messages = await agentStream.result();
+		expect(messages).toHaveLength(1);
+		expect(messages[0]).toMatchObject({
+			role: "assistant",
+			parts: [{ type: "text", text: "continued response" }],
+		});
+
+		expect(events.map((event) => event.type)).toEqual([
+			"agent.start",
+			"turn.start",
+			"message.start",
+			"message.part.start",
+			"message.part.update",
+			"message.part.end",
+			"message.update",
+			"message.end",
+			"turn.end",
+			"agent.end",
+		]);
+
+		expect(
+			events.some((event) => event.type === "message.start" && "message" in event && event.message.role === "user"),
+		).toBe(false);
+	});
+});
