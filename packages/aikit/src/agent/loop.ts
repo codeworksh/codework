@@ -1,3 +1,5 @@
+import { NamedError } from "@codeworksh/utils";
+import { type Static, Type } from "@sinclair/typebox";
 import type { Event } from "../event/event";
 import type { Message } from "../message/message";
 import type { Model } from "../model/model";
@@ -33,7 +35,7 @@ export namespace Loop {
 	}
 
 	/** Context passed to `afterToolExecution`. */
-	export interface AfterToolExecutionContext {
+	export interface AfterToolExecutionContext<T = any> {
 		/** Current agent context at the time the tool call is finalized. */
 		context: Agent.AgentContext;
 		/** The assistant message that requested the tool call. */
@@ -41,7 +43,7 @@ export namespace Loop {
 		/** The validated in-flight tool call with validated arguments */
 		toolCall: Agent.ToolCallInFlight;
 		/** The executed tool result before any `afterToolExecution` overrides are applied. */
-		result: Agent.ToolTerminalResult<any>;
+		result: Agent.ToolTerminalResult<T>;
 	}
 
 	/**
@@ -145,6 +147,8 @@ export namespace Loop {
 		);
 	}
 
+	type AgentEventSink = (event: Event.AgentEvent) => Promise<void> | void;
+
 	type AssistantPart = Message.AssistantMessage["parts"][number];
 
 	type ToolCallPart = Message.ToolCallPendingPart & { partIndex: number }; // runtime toolcall pending part
@@ -174,6 +178,13 @@ export namespace Loop {
 		| { result: Agent.ToolTerminalResult<T>; error?: never }
 		| { result?: never; error: { message: string; details?: any } };
 
+	export const AgentContextError = NamedError.create(
+		"AgentContextError",
+		Type.Object({
+			message: Type.String(),
+		}),
+	);
+
 	function snapshotAssistantMessage(message: Message.AssistantMessage): Message.AssistantMessage {
 		return structuredClone(message);
 	}
@@ -193,7 +204,7 @@ export namespace Loop {
 	async function streamAssistantResponse(
 		config: Config,
 		context: Agent.AgentContext,
-		stream: EventStream<Event.AgentEvent, Message.Message[]>,
+		emit: AgentEventSink,
 		streamFn?: StreamFn,
 		signal?: AbortSignal,
 	): Promise<Message.AssistantMessage> {
@@ -236,26 +247,26 @@ export namespace Loop {
 		const ensureMessageStarted = (message: Message.AssistantMessage): void => {
 			if (started) return;
 			started = true;
-			stream.push({ type: "message.start", message: snapshotAssistantMessage(message) });
+			emit({ type: "message.start", message: snapshotAssistantMessage(message) });
 		};
 
 		const emitMessageUpdate = (message: Message.AssistantMessage): void => {
-			stream.push({ type: "message.update", message: snapshotAssistantMessage(message) });
+			emit({ type: "message.update", message: snapshotAssistantMessage(message) });
 		};
 
 		const emitPartStart = (message: Message.AssistantMessage, partIndex: number): void => {
 			const snapshot = snapshotAssistantPartEvent(message, partIndex);
-			stream.push({ type: "message.part.start", partIndex, ...snapshot });
+			emit({ type: "message.part.start", partIndex, ...snapshot });
 		};
 
 		const emitPartUpdate = (message: Message.AssistantMessage, partIndex: number): void => {
 			const snapshot = snapshotAssistantPartEvent(message, partIndex);
-			stream.push({ type: "message.part.update", partIndex, ...snapshot, source: "llm" });
+			emit({ type: "message.part.update", partIndex, ...snapshot, source: "llm" });
 		};
 
 		const emitPartEnd = (message: Message.AssistantMessage, partIndex: number): void => {
 			const snapshot = snapshotAssistantPartEvent(message, partIndex);
-			stream.push({ type: "message.part.end", partIndex, ...snapshot });
+			emit({ type: "message.part.end", partIndex, ...snapshot });
 		};
 
 		// NOTE: Do not mutate context directly
@@ -296,12 +307,12 @@ export namespace Loop {
 				}
 				case "done": {
 					ensureMessageStarted(event.message);
-					stream.push({ type: "message.end", message: snapshotAssistantMessage(event.message) });
+					emit({ type: "message.end", message: snapshotAssistantMessage(event.message) });
 					return event.message;
 				}
 				case "error": {
 					ensureMessageStarted(event.error);
-					stream.push({ type: "message.end", message: snapshotAssistantMessage(event.error) });
+					emit({ type: "message.end", message: snapshotAssistantMessage(event.error) });
 					return event.error;
 				}
 			}
@@ -309,109 +320,8 @@ export namespace Loop {
 
 		const finalMessage = await events.result();
 		ensureMessageStarted(finalMessage);
-		stream.push({ type: "message.end", message: snapshotAssistantMessage(finalMessage) });
+		emit({ type: "message.end", message: snapshotAssistantMessage(finalMessage) });
 		return finalMessage;
-	}
-
-	async function runLoop(
-		config: Config,
-		currentContext: Agent.AgentContext,
-		newMessages: Message.Message[],
-		stream: EventStream<Event.AgentEvent, Message.Message[]>,
-		streamFn?: StreamFn,
-		signal?: AbortSignal,
-	): Promise<void> {
-		// initial `turn.start` is already emitted
-		// avoiding duplicate `turn.start` emits
-		let firstTurn = true;
-		// Check for steering messages at start (user may have submitted while waiting)
-		let pendingMessages: Message.UserMessage[] = (await config.getSteeringMessages?.()) || [];
-
-		// Outer loop: continues when queued follow-up messages arrive after agent would stop
-		while (true) {
-			let hasMoreToolCalls = true;
-
-			// Inner loop: process tool calls and steering messages
-			// Note: turn.start for full tool calls / pending messages.
-			while (hasMoreToolCalls || pendingMessages.length > 0) {
-				// flip firstTurn, so next iterations starts emitting `turn.start` event
-				if (!firstTurn) {
-					stream.push({ type: "turn.start" });
-				} else {
-					firstTurn = false;
-				}
-
-				// Process pending messages (inject before next assistant response)
-				if (pendingMessages.length > 0) {
-					for (const message of pendingMessages) {
-						stream.push({ type: "message.start", message: message });
-						for (const [partIndex, part] of message.parts.entries()) {
-							stream.push({ type: "message.part.start", message: message, partIndex, part });
-							stream.push({ type: "message.part.end", message: message, partIndex, part });
-							stream.push({ type: "message.update", message: message });
-						}
-						stream.push({ type: "message.end", message: message });
-						currentContext.messages.push(message);
-						newMessages.push(message);
-					}
-					pendingMessages = [];
-				}
-
-				// Run llm and stream assistant response
-				const message: Message.AssistantMessage = await streamAssistantResponse(
-					config,
-					currentContext,
-					stream,
-					streamFn,
-					signal,
-				);
-
-				// terminal state
-				if (message.stopReason === "error" || message.stopReason === "aborted") {
-					currentContext.messages.push(message); // append the terminal message into the context
-					newMessages.push(message); // append the terminal message
-
-					stream.push({ type: "turn.end", message });
-					stream.push({ type: "agent.end", messages: newMessages });
-					stream.end(newMessages);
-
-					return;
-				}
-
-				// check for pending tool calls
-				// use partIndex for in-place mutation for tool call result parts in message.parts
-				const toolCalls: ToolCallPart[] = message.parts
-					.map((part, index) => ({ ...part, partIndex: index }))
-					.filter((part) => part.type === "toolCall" && part.status === "pending");
-
-				hasMoreToolCalls = toolCalls.length > 0;
-				if (hasMoreToolCalls) {
-					await executeToolCalls(config, currentContext, message, toolCalls, stream, signal);
-				}
-
-				currentContext.messages.push(message);
-				newMessages.push(message);
-
-				stream.push({ type: "turn.end", message });
-
-				//
-				// check for steering messages while turn loop was working.
-				pendingMessages = (await config.getSteeringMessages?.()) || [];
-			}
-
-			// Agent would stop here. Check for follow-up messages.
-			const followUpMessages = (await config.getFollowUpMessages?.()) || [];
-			if (followUpMessages.length > 0) {
-				// Set as pending so inner loop processes them
-				pendingMessages = followUpMessages;
-				continue;
-			}
-
-			// No more messages, exit
-			break;
-		}
-
-		stream.push({ type: "agent.end", messages: newMessages });
 	}
 
 	async function executeToolCalls(
@@ -419,12 +329,12 @@ export namespace Loop {
 		currentContext: Agent.AgentContext,
 		message: Message.AssistantMessage,
 		toolCalls: ToolCallPart[],
-		stream: EventStream<Event.AgentEvent, Message.Message[]>,
+		emit: AgentEventSink,
 		signal?: AbortSignal,
 	): Promise<void> {
 		if (config.toolExecution === "sequential")
-			return executeToolCallsSequential(config, currentContext, message, toolCalls, stream, signal);
-		return executeToolCallsParallel(config, currentContext, message, toolCalls, stream, signal);
+			return executeToolCallsSequential(config, currentContext, message, toolCalls, emit, signal);
+		return executeToolCallsParallel(config, currentContext, message, toolCalls, emit, signal);
 	}
 
 	async function executeToolCallsSequential(
@@ -432,7 +342,7 @@ export namespace Loop {
 		currentContext: Agent.AgentContext,
 		message: Message.AssistantMessage,
 		toolCalls: ToolCallPart[],
-		stream: EventStream<Event.AgentEvent, Message.Message[]>,
+		emit: AgentEventSink,
 		signal?: AbortSignal,
 	): Promise<void> {
 		for (const toolCall of toolCalls) {
@@ -441,7 +351,7 @@ export namespace Loop {
 				name: toolCall.name,
 				rawArgs: toolCall.arguments,
 			};
-			stream.push({
+			emit({
 				type: "tool.execution.start",
 				...toolCallInFlight,
 			});
@@ -460,14 +370,14 @@ export namespace Loop {
 						isError: true,
 					},
 				};
-				await emitToolCallTerminalResult(toolCall, prepared.runnable, message, stream, error);
+				await emitToolCallTerminalResult(toolCall, prepared.runnable, message, emit, error);
 			} else {
 				const runnable: ToolCallRunnable = {
 					toolCall,
 					runnable: prepared.runnable,
 					tool: prepared.tool,
 				};
-				const executed = await executeRunnableToolCall(runnable, message, stream, signal);
+				const executed = await executeRunnableToolCall(runnable, message, emit, signal);
 				if (executed.error) {
 					// tool call invocation failed with error
 					// create tool error result
@@ -479,7 +389,7 @@ export namespace Loop {
 							isError: true,
 						},
 					};
-					await emitToolCallTerminalResult(runnable.toolCall, runnable.runnable, message, stream, error);
+					await emitToolCallTerminalResult(runnable.toolCall, runnable.runnable, message, emit, error);
 				} else {
 					// finalize results from tool invocation
 					// invokes after tool exection callback
@@ -489,7 +399,7 @@ export namespace Loop {
 						runnable.toolCall,
 						runnable.runnable,
 						message,
-						stream,
+						emit,
 						executed.result,
 					);
 				}
@@ -502,7 +412,7 @@ export namespace Loop {
 		currentContext: Agent.AgentContext,
 		message: Message.AssistantMessage,
 		toolCalls: ToolCallPart[],
-		stream: EventStream<Event.AgentEvent, Message.Message[]>,
+		emit: AgentEventSink,
 		signal?: AbortSignal,
 	): Promise<void> {
 		const runnables: ToolCallRunnable[] = [];
@@ -513,7 +423,7 @@ export namespace Loop {
 				name: toolCall.name,
 				rawArgs: toolCall.arguments,
 			};
-			stream.push({
+			emit({
 				type: "tool.execution.start",
 				...toolCallInFlight,
 			});
@@ -532,7 +442,7 @@ export namespace Loop {
 						isError: true,
 					},
 				};
-				await emitToolCallTerminalResult(toolCall, prepared.runnable, message, stream, error);
+				await emitToolCallTerminalResult(toolCall, prepared.runnable, message, emit, error);
 			} else {
 				runnables.push({
 					toolCall,
@@ -544,7 +454,7 @@ export namespace Loop {
 
 		const runningExecutions = runnables.map((runnable) => ({
 			runnable,
-			execution: executeRunnableToolCall(runnable, message, stream, signal),
+			execution: executeRunnableToolCall(runnable, message, emit, signal),
 		}));
 
 		for (const running of runningExecutions) {
@@ -561,7 +471,7 @@ export namespace Loop {
 						isError: true,
 					},
 				};
-				await emitToolCallTerminalResult(runnable.toolCall, runnable.runnable, message, stream, error);
+				await emitToolCallTerminalResult(runnable.toolCall, runnable.runnable, message, emit, error);
 			} else {
 				// finalize results from tool invocation
 				// invokes after tool exection callback
@@ -571,7 +481,7 @@ export namespace Loop {
 					runnable.toolCall,
 					runnable.runnable,
 					message,
-					stream,
+					emit,
 					executed.result,
 				);
 			}
@@ -639,7 +549,7 @@ export namespace Loop {
 	async function executeRunnableToolCall(
 		toolCallRunnable: ToolCallRunnable,
 		message: Message.AssistantMessage,
-		stream: EventStream<Event.AgentEvent, Message.Message[]>,
+		emit: AgentEventSink,
 		signal?: AbortSignal,
 	): Promise<ToolCallExecutionResult> {
 		const { toolCall, runnable, tool } = toolCallRunnable;
@@ -655,7 +565,7 @@ export namespace Loop {
 					...runnable,
 					...runningResult,
 				};
-				stream.push({ ...toolExecutionUpdate });
+				emit({ ...toolExecutionUpdate });
 
 				const runningPart: Message.ToolCallRunningPart = {
 					...pendingPart,
@@ -664,7 +574,7 @@ export namespace Loop {
 
 				message.parts[partIndex] = runningPart; // in-place mutate; add error part
 
-				stream.push({ type: "message.part.update", message, partIndex, part: runningPart, source: "tool" });
+				emit({ type: "message.part.update", message, partIndex, part: runningPart, source: "tool" });
 			});
 			return {
 				result,
@@ -683,7 +593,7 @@ export namespace Loop {
 		toolCall: ToolCallPart,
 		runnable: Agent.ToolCallInFlight,
 		message: Message.AssistantMessage,
-		stream: EventStream<Event.AgentEvent, Message.Message[]>,
+		emit: AgentEventSink,
 		result: Agent.ToolTerminalResult<any>,
 	): Promise<void> {
 		const { partIndex, ...pendingPart } = toolCall;
@@ -693,7 +603,7 @@ export namespace Loop {
 			...runnable,
 			...result,
 		};
-		stream.push({ ...toolExecutionEnd });
+		emit({ ...toolExecutionEnd });
 
 		const part: Message.ToolCallErrorPart | Message.ToolCallCompletedPart = {
 			...pendingPart,
@@ -706,9 +616,9 @@ export namespace Loop {
 
 		message.parts[partIndex] = part; // in-place mutate; add error part
 
-		stream.push({ type: "message.part.start", message: message, partIndex: partIndex, part: part });
-		stream.push({ type: "message.part.end", message: message, partIndex: partIndex, part: part });
-		stream.push({ type: "message.update", message: message });
+		emit({ type: "message.part.start", message: message, partIndex: partIndex, part: part });
+		emit({ type: "message.part.end", message: message, partIndex: partIndex, part: part });
+		emit({ type: "message.update", message: message });
 	}
 
 	async function finalizeExecutedToolCall(
@@ -717,7 +627,7 @@ export namespace Loop {
 		toolCall: ToolCallPart,
 		runnable: Agent.ToolCallInFlight,
 		message: Message.AssistantMessage,
-		stream: EventStream<Event.AgentEvent, Message.Message[]>,
+		emit: AgentEventSink,
 		result: Agent.ToolTerminalResult<any>,
 		signal?: AbortSignal,
 	): Promise<void> {
@@ -732,14 +642,180 @@ export namespace Loop {
 				signal,
 			);
 			if (afterResult) {
-				await emitToolCallTerminalResult(toolCall, runnable, message, stream, afterResult);
+				await emitToolCallTerminalResult(toolCall, runnable, message, emit, afterResult);
 				return;
 			}
 		}
-		await emitToolCallTerminalResult(toolCall, runnable, message, stream, result);
+		await emitToolCallTerminalResult(toolCall, runnable, message, emit, result);
 	}
 
-	export function agentLoop(
+	/**
+	 * Main core loop shared by agentLoop and agentLoopContinue.
+	 */
+	async function runLoop(
+		config: Config,
+		currentContext: Agent.AgentContext,
+		newMessages: Message.Message[],
+		emit: AgentEventSink,
+		streamFn?: StreamFn,
+		signal?: AbortSignal,
+	): Promise<void> {
+		// initial `turn.start` is already emitted
+		// avoiding duplicate `turn.start` emits
+		let firstTurn = true;
+		// Check for steering messages at start (user may have submitted while waiting)
+		let pendingMessages: Message.UserMessage[] = (await config.getSteeringMessages?.()) || [];
+
+		// Outer loop: continues when queued follow-up messages arrive after agent would stop
+		while (true) {
+			let hasMoreToolCalls = true;
+
+			// Inner loop: process tool calls and steering messages
+			// Note: turn.start for full tool calls / pending messages.
+			while (hasMoreToolCalls || pendingMessages.length > 0) {
+				// flip firstTurn, so next iterations starts emitting `turn.start` event
+				if (!firstTurn) {
+					emit({ type: "turn.start" });
+				} else {
+					firstTurn = false;
+				}
+
+				// Process pending messages (inject before next assistant response)
+				if (pendingMessages.length > 0) {
+					for (const message of pendingMessages) {
+						emit({ type: "message.start", message: message });
+						for (const [partIndex, part] of message.parts.entries()) {
+							emit({ type: "message.part.start", message: message, partIndex, part });
+							emit({ type: "message.part.end", message: message, partIndex, part });
+							emit({ type: "message.update", message: message });
+						}
+						emit({ type: "message.end", message: message });
+						currentContext.messages.push(message);
+						newMessages.push(message);
+					}
+					pendingMessages = [];
+				}
+
+				// Run llm and emit assistant response
+				const message: Message.AssistantMessage = await streamAssistantResponse(
+					config,
+					currentContext,
+					emit,
+					streamFn,
+					signal,
+				);
+
+				// terminal state
+				if (message.stopReason === "error" || message.stopReason === "aborted") {
+					currentContext.messages.push(message); // append the terminal message into the context
+					newMessages.push(message); // append the terminal message
+
+					emit({ type: "turn.end", message });
+					emit({ type: "agent.end", messages: newMessages });
+
+					return;
+				}
+
+				// check for pending tool calls
+				// use partIndex for in-place mutation for tool call result parts in message.parts
+				const toolCalls: ToolCallPart[] = message.parts
+					.map((part, index) => ({ ...part, partIndex: index }))
+					.filter((part) => part.type === "toolCall" && part.status === "pending");
+
+				hasMoreToolCalls = toolCalls.length > 0;
+				if (hasMoreToolCalls) {
+					await executeToolCalls(config, currentContext, message, toolCalls, emit, signal);
+				}
+
+				currentContext.messages.push(message);
+				newMessages.push(message);
+
+				emit({ type: "turn.end", message });
+
+				//
+				// check for steering messages while turn loop was working.
+				pendingMessages = (await config.getSteeringMessages?.()) || [];
+			}
+
+			// Agent would stop here. Check for follow-up messages.
+			const followUpMessages = (await config.getFollowUpMessages?.()) || [];
+			if (followUpMessages.length > 0) {
+				// Set as pending so inner loop processes them
+				pendingMessages = followUpMessages;
+				continue;
+			}
+
+			// No more messages, exit
+			break;
+		}
+
+		emit({ type: "agent.end", messages: newMessages });
+	}
+
+	async function runAgentLoop(
+		config: Config,
+		context: Agent.AgentContext,
+		prompts: Message.UserMessage[],
+		emit: AgentEventSink,
+		streamFn?: StreamFn,
+		signal?: AbortSignal,
+	) {
+		/**
+		 * maintain 2 arrays to represent state, `context` the actual full state sent to the LLM,
+		 * `newMessages` for intermediate current loop state.
+		 * think of newMessages as subset of context.messages for the running current loop.
+		 * they do move at the same speed staring with initial user prompts.
+		 * */
+		const newMessages: Message.Message[] = [...prompts];
+		const currentContext: Agent.AgentContext = {
+			...context,
+			messages: [...context.messages, ...prompts],
+		};
+
+		emit({ type: "agent.start" });
+		emit({ type: "turn.start" });
+		for (const prompt of prompts) {
+			emit({ type: "message.start", message: prompt });
+			for (const [partIndex, part] of prompt.parts.entries()) {
+				emit({ type: "message.part.start", message: prompt, partIndex, part });
+				emit({ type: "message.part.end", message: prompt, partIndex, part });
+			}
+			emit({ type: "message.end", message: prompt });
+		}
+
+		await runLoop(config, currentContext, newMessages, emit, streamFn, signal);
+		return newMessages;
+	}
+
+	async function runAgentLoopContinue(
+		config: Config,
+		context: Agent.AgentContext,
+		emit: AgentEventSink,
+		streamFn?: StreamFn,
+		signal?: AbortSignal,
+	) {
+		if (context.messages.length === 0) {
+			throw new AgentContextError({ message: "connot continue: no messages in context" });
+		}
+		if (context.messages[context.messages.length - 1]?.role === "assistant") {
+			throw new AgentContextError({ message: "cannot continue from message role: assistant" });
+		}
+
+		const newMessages: Message.Message[] = [];
+		const currentContext: Agent.AgentContext = { ...context };
+
+		emit({ type: "agent.start" });
+		emit({ type: "turn.start" });
+
+		await runLoop(config, currentContext, newMessages, emit, streamFn, signal);
+		return newMessages;
+	}
+
+	/**
+	 * Start an agent loop with a new prompt message.
+	 * The prompt is added to the context and events are emitted for it.
+	 */
+	export function run(
 		config: Config,
 		context: Agent.AgentContext,
 		prompts: Message.UserMessage[],
@@ -747,40 +823,51 @@ export namespace Loop {
 		signal?: AbortSignal,
 	): EventStream<Event.AgentEvent, Message.Message[]> {
 		const stream = createAgentStream();
-		/**
-		 * maintain 2 arrays to represent state, `context` the actual full state sent to the LLM,
-		 * `newMessages` for intermediate current loop state.
-		 * think of newMessages as subset of context.messages for the running current loop.
-		 * they do move at the same speed staring with initial user prompts.
-		 * */
-		(async () => {
-			void config;
-			void signal;
-			void streamFn;
-			const newMessages: Message.Message[] = [...prompts];
-			const currentContext: Agent.AgentContext = {
-				...context,
-				messages: [...context.messages, ...prompts],
-			};
 
-			stream.push({ type: "agent.start" });
-			stream.push({ type: "turn.start" });
-			for (const prompt of prompts) {
-				stream.push({ type: "message.start", message: prompt });
-				for (const [partIndex, part] of prompt.parts.entries()) {
-					stream.push({ type: "message.part.start", message: prompt, partIndex, part });
-					stream.push({ type: "message.part.end", message: prompt, partIndex, part });
-				}
-				stream.push({ type: "message.end", message: prompt });
-			}
-
-			await runLoop(config, currentContext, newMessages, stream, streamFn, signal);
-		})();
+		void runAgentLoop(
+			config,
+			context,
+			prompts,
+			async (event) => {
+				stream.push(event);
+			},
+			streamFn,
+			signal,
+		).then((messages) => {
+			stream.end(messages);
+		});
 
 		return stream;
 	}
 
-	export function agentLoopContinue(): EventStream<Event.AgentEvent, Message.Message[]> {
-		return createAgentStream();
+	/**
+	 * Continue an agent loop from the current context without adding a new message.
+	 * Used for retries - context already has user message or tool results.
+	 *
+	 * **Important:** The last message in context must not be `assistant` message, convert
+	 * via `convertToLlm`. If it doesn't, the LLM provider will reject the request.
+	 * This cannot be validated here since `convertToLlm` is only called once per turn.
+	 */
+	export function runContinue(
+		config: Config,
+		context: Agent.AgentContext,
+		streamFn?: StreamFn,
+		signal?: AbortSignal,
+	): EventStream<Event.AgentEvent, Message.Message[]> {
+		const stream = createAgentStream();
+
+		void runAgentLoopContinue(
+			config,
+			context,
+			async (event) => {
+				stream.push(event);
+			},
+			streamFn,
+			signal,
+		).then((messages) => {
+			stream.end(messages);
+		});
+
+		return stream;
 	}
 }
