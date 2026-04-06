@@ -47,7 +47,6 @@ export namespace Agent {
 			onUpdate?: ToolUpdateCallback<U>,
 		) => Promise<ToolTerminalResult<R>>;
 	}
-	export type AnyAgentTool = AgentTool<any, any, any>;
 
 	export function defineTool<TParameters extends TSchema, U = unknown, R = U>(
 		tool: AgentTool<TParameters, U, R>,
@@ -55,11 +54,13 @@ export namespace Agent {
 		return tool;
 	}
 
-	export interface State<TTool extends AnyAgentTool = AnyAgentTool> {
+	export type AnyAgentTool = AgentTool<any, any, any>;
+
+	export interface State {
 		systemPrompt: string;
 		model: Model.Value;
 		thinkingLevel: Stream.ThinkingLevel;
-		tools: TTool[];
+		tools: AnyAgentTool[];
 		messages: Message.Message[];
 		isStreaming: boolean;
 		streamMessage: Message.Message | null;
@@ -68,10 +69,10 @@ export namespace Agent {
 	}
 
 	// AgentContext is like Message.Context but uses AgentTool
-	export interface AgentContext<TTool extends AnyAgentTool = AnyAgentTool> {
+	export interface AgentContext {
 		systemPrompt: string;
 		messages: Message.Message[];
-		tools?: TTool[];
+		tools?: AnyAgentTool[];
 	}
 
 	export const ToolCallInFlightSchema = Type.Object({

@@ -88,7 +88,7 @@ type _updateEventAssert = Assert<IsEqual<UpdateEvent, Agent.ToolRunningResult<Up
 type DefineToolParams = Parameters<typeof calculatorTool.execute>[1];
 type _defineToolParamsAssert = Assert<IsEqual<DefineToolParams, { expression: string }>>;
 
-const agentState: Agent.State<typeof searchTool> = {
+const agentState = {
 	systemPrompt: "Be concise.",
 	model: {} as never,
 	thinkingLevel: "medium" as never,
@@ -97,13 +97,13 @@ const agentState: Agent.State<typeof searchTool> = {
 	isStreaming: false,
 	streamMessage: null,
 	pendingToolCalls: new Set<string>(),
-};
+} satisfies Agent.State;
 
-const agentContext: Agent.AgentContext<typeof searchTool> = {
+const agentContext = {
 	systemPrompt: "Be concise.",
 	messages: [],
 	tools: [searchTool],
-};
+} satisfies Agent.AgentContext;
 
-type _stateToolAssert = Assert<IsEqual<(typeof agentState.tools)[number], typeof searchTool>>;
-type _contextToolAssert = Assert<IsEqual<NonNullable<typeof agentContext.tools>[number], typeof searchTool>>;
+void agentState;
+void agentContext;
