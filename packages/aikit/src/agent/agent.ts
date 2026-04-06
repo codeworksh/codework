@@ -32,9 +32,12 @@ export namespace Agent {
 	// consumers can narrow on status if needed
 	// type inference:
 	// U - update
-	export type ToolUpdateCallback<U = any> = (result: ToolRunningResult<U>) => Promise<void> | void;
+	export type ToolUpdateCallback<U = unknown> = (result: ToolRunningResult<U>) => Promise<void> | void;
 
-	export interface AgentTool<TParameters extends TSchema = TSchema, U = any, R = U> extends Message.Tool<TParameters> {
+	// @sanchitrk: does adding state flag makes sense?
+	// could be used by caller with name+callID as key for caching results, etc.
+	export interface AgentTool<TParameters extends TSchema = TSchema, U = unknown, R = U>
+		extends Message.Tool<TParameters> {
 		// A human-readable label for the tool for display
 		label: string;
 		execute: (
@@ -45,6 +48,12 @@ export namespace Agent {
 		) => Promise<ToolTerminalResult<R>>;
 	}
 	export type AnyAgentTool = AgentTool<any, any, any>;
+
+	export function defineTool<TParameters extends TSchema, U = unknown, R = U>(
+		tool: AgentTool<TParameters, U, R>,
+	): AgentTool<TParameters, U, R> {
+		return tool;
+	}
 
 	export interface State<TTool extends AnyAgentTool = AnyAgentTool> {
 		systemPrompt: string;
@@ -68,8 +77,8 @@ export namespace Agent {
 	export const ToolCallInFlightSchema = Type.Object({
 		callID: Type.String(),
 		name: Type.String(),
-		rawArgs: Type.Record(Type.String(), Type.Any()),
-		args: Type.Optional(Type.Any()), // post validation
+		rawArgs: Type.Record(Type.String(), Type.Unknown()),
+		args: Type.Optional(Type.Unknown()), // post validation
 	});
 	export type ToolCallInFlight = Static<typeof ToolCallInFlightSchema>;
 }

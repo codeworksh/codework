@@ -170,11 +170,7 @@ export namespace Message {
 	 * Generic tool definition with typed parameter schema.
 	 * Usage:
 	 *
-	 * function defineTool<T extends TSchema>(tool: Tool<T>): Tool<T> {
-	 *   return tool;
-	 * }
-	 *
-	 * const search = defineTool({
+	 * const search = Message.defineTool({
 	 *   name: "search",
 	 *   description: "Search documents",
 	 *   parameters: Type.Object({
@@ -196,6 +192,10 @@ export namespace Message {
 		parameters: TParameters;
 	}
 	export type ToolArguments<T extends Tool> = Static<T["parameters"]>;
+
+	export function defineTool<TParameters extends TSchema>(tool: Tool<TParameters>): Tool<TParameters> {
+		return tool;
+	}
 
 	export const ContextSchema = Type.Object({
 		systemPrompt: Type.Optional(Type.String()),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { Type } from "@sinclair/typebox";
-import type { Agent } from "../src/agent/agent";
+import { Agent } from "../src/agent/agent";
 import { Loop } from "../src/agent/loop";
 import type { Event } from "../src/event/event";
 import type { Message } from "../src/message/message";
@@ -275,13 +275,14 @@ describe("Loop.run", () => {
 	it("mutates assistant toolCall parts from pending to running to completed across the loop", async () => {
 		const model = createModel();
 		const prompt = createUserMessage("calculate 25 * 18");
-		const calculatorTool: Agent.AgentTool<ReturnType<typeof Type.Object>, { progress: number }, { value: number }> = {
+		const calculatorParams = Type.Object({
+			expression: Type.String(),
+		});
+		const calculatorTool: Agent.AgentTool<typeof calculatorParams, { progress: number }, { value: number }> = {
 			name: "calculator",
 			label: "Calculator",
 			description: "Evaluates arithmetic expressions",
-			parameters: Type.Object({
-				expression: Type.String(),
-			}),
+			parameters: calculatorParams,
 			async execute(_callID, params, _signal, onUpdate) {
 				await onUpdate?.({
 					status: "running",
@@ -394,7 +395,7 @@ describe("Loop.run", () => {
 			  }
 			| undefined;
 
-		const calculatorTool: Agent.AgentTool<ReturnType<typeof Type.Object>> = {
+		const calculatorTool = Agent.defineTool({
 			name: "calculator",
 			label: "Calculator",
 			description: "Evaluates arithmetic expressions",
@@ -405,7 +406,7 @@ describe("Loop.run", () => {
 				executeCalls += 1;
 				throw new Error("tool should have been blocked");
 			},
-		};
+		});
 
 		const agentStream = Loop.run(
 			{
@@ -493,18 +494,19 @@ describe("Loop.run", () => {
 			| {
 					callID: string;
 					args: unknown;
-					originalResult: Agent.ToolTerminalResult<any>;
+					originalResult: Agent.ToolTerminalResult<unknown>;
 					assistantParts: Message.AssistantMessage["parts"];
 			  }
 			| undefined;
 
-		const calculatorTool: Agent.AgentTool<ReturnType<typeof Type.Object>, { progress: number }, { value: number }> = {
+		const calculatorParams = Type.Object({
+			expression: Type.String(),
+		});
+		const calculatorTool: Agent.AgentTool<typeof calculatorParams, { progress: number }, { value: number }> = {
 			name: "calculator",
 			label: "Calculator",
 			description: "Evaluates arithmetic expressions",
-			parameters: Type.Object({
-				expression: Type.String(),
-			}),
+			parameters: calculatorParams,
 			async execute(_callID, params, _signal, onUpdate) {
 				await onUpdate?.({
 					status: "running",

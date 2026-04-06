@@ -2,7 +2,7 @@ import { type Static, Type } from "@sinclair/typebox";
 import { Agent } from "../agent/agent";
 import { Message } from "../message/message";
 
-// TODO sanchitrk:
+// TODO @sanchitrk:
 // for delta events we can have metadata KV that a provider can use for internal state
 // similar to index what anthropic does
 export namespace Event {

@@ -101,7 +101,7 @@ describe("stream", () => {
 			);
 		} finally {
 			for (const provider of registeredProviders) {
-				Stream.registerProtocolProvider(provider as Stream.ProtocolProvider, `test-restore-${provider.protocol}`);
+				Stream.registerProtocolProvider(provider, `test-restore-${provider.protocol}`);
 			}
 		}
 	});

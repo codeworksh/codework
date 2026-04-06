@@ -1,5 +1,5 @@
 import { Type } from "@sinclair/typebox";
-import type { Agent } from "../src/agent/agent";
+import { Agent } from "../src/agent/agent";
 
 type Assert<T extends true> = T;
 type IsEqual<A, B> =
@@ -57,6 +57,27 @@ const searchTool: Agent.AgentTool<typeof searchParams, UpdateDetails, ResultDeta
 	},
 };
 
+const calculatorTool = Agent.defineTool({
+	name: "calculator",
+	label: "Calculator",
+	description: "Evaluates arithmetic expressions",
+	parameters: Type.Object({
+		expression: Type.String(),
+	}),
+	async execute(_toolCallID, params) {
+		type Params = typeof params;
+		type _paramsAssert = Assert<IsEqual<Params, { expression: string }>>;
+
+		return {
+			status: "completed",
+			result: {
+				content: [{ type: "text", text: "ok" }],
+				isError: false,
+			},
+		};
+	},
+});
+
 type ExecuteParams = Parameters<typeof searchTool.execute>[1];
 type ExecuteUpdateCallback = NonNullable<Parameters<typeof searchTool.execute>[3]>;
 type ExecuteReturn = Awaited<ReturnType<typeof searchTool.execute>>;
@@ -64,6 +85,8 @@ type UpdateEvent = Parameters<ExecuteUpdateCallback>[0];
 type _executeParamsAssert = Assert<IsEqual<ExecuteParams, { query: string; limit?: number }>>;
 type _executeReturnAssert = Assert<IsEqual<ExecuteReturn, Agent.ToolTerminalResult<ResultDetails>>>;
 type _updateEventAssert = Assert<IsEqual<UpdateEvent, Agent.ToolRunningResult<UpdateDetails>>>;
+type DefineToolParams = Parameters<typeof calculatorTool.execute>[1];
+type _defineToolParamsAssert = Assert<IsEqual<DefineToolParams, { expression: string }>>;
 
 const agentState: Agent.State<typeof searchTool> = {
 	systemPrompt: "Be concise.",

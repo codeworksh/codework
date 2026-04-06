@@ -3,7 +3,6 @@ import { type Static, Type } from "@sinclair/typebox";
 import type { Message } from "../message/message";
 import { Model } from "../model/model";
 import type { AssistantMessageEventStream } from "../utils/eventstream";
-import type { Provider } from "./provider";
 
 export namespace Stream {
 	export const ProtocolProviderNotFoundError = NamedError.create(
@@ -96,18 +95,6 @@ export namespace Stream {
 		TOptions extends Options = Options,
 	> = (model: Model.TModel<TProtocol>, context: Message.Context, options?: TOptions) => AssistantMessageEventStream;
 
-	export interface IStream<
-		TProtocol extends Model.KnownProtocol = Model.KnownProtocol,
-		S extends Options = Options,
-		SS extends SimpleOptions = SimpleOptions,
-	> {
-		readonly provider: Provider.Info;
-		readonly protocol: Model.KnownProtocol;
-
-		stream: StreamFunction<TProtocol, S>;
-		streamSimple: StreamFunction<TProtocol, SS>;
-	}
-
 	export function buildBaseOptions(model: Model.Value, options?: SimpleOptions, apiKey?: string): Options {
 		return {
 			temperature: options?.temperature,
@@ -174,18 +161,12 @@ export namespace Stream {
 		streamSimple: StreamFunction<TProtocol, SimpleOptions>;
 	}
 
-	interface ProtocolProviderInternal {
-		protocol: Model.KnownProtocol;
-		stream: any;
-		streamSimple: any;
-	}
-
 	type RegisteredProtocolProvider = {
-		provider: ProtocolProviderInternal;
+		provider: ProtocolProvider<Model.KnownProtocol, Options>;
 		sourceId?: string;
 	};
 
-	const protocolProviderRegistry = new Map<string, RegisteredProtocolProvider>();
+	const protocolProviderRegistry = new Map<Model.KnownProtocol, RegisteredProtocolProvider>();
 
 	function wrapStream<TProtocol extends Model.KnownProtocol, TOptions extends Options>(
 		protocol: TProtocol,
@@ -205,7 +186,7 @@ export namespace Stream {
 	function wrapStreamSimple<TProtocol extends Model.KnownProtocol>(
 		protocol: TProtocol,
 		streamSimple: StreamFunction<TProtocol, SimpleOptions>,
-	): ProtocolStreamFunction {
+	): ProtocolStreamSimpleFunction {
 		return (model, context, options) => {
 			if (model.protocol !== protocol) {
 				throw new ProtocolMismatchError({
@@ -231,11 +212,13 @@ export namespace Stream {
 		});
 	}
 
-	export function getProtocolProvider(protocol: Model.KnownProtocol): ProtocolProviderInternal | undefined {
+	export function getProtocolProvider(
+		protocol: Model.KnownProtocol,
+	): ProtocolProvider<Model.KnownProtocol, Options> | undefined {
 		return protocolProviderRegistry.get(protocol)?.provider;
 	}
 
-	export function resolveProtocolProvider(model: Model.Value): ProtocolProviderInternal {
+	export function resolveProtocolProvider(model: Model.Value): ProtocolProvider<Model.KnownProtocol, Options> {
 		const provider = getProtocolProvider(model.protocol);
 		if (!provider) {
 			throw new ProtocolProviderNotFoundError({
@@ -281,7 +264,7 @@ export namespace Stream {
 		return s.result();
 	}
 
-	export function getApiProviders(): ProtocolProviderInternal[] {
+	export function getApiProviders(): ProtocolProvider<Model.KnownProtocol, Options>[] {
 		return Array.from(protocolProviderRegistry.values(), (entry) => entry.provider);
 	}
 

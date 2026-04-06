@@ -80,7 +80,7 @@ const calculatorParams = Type.Object({
 	expression: Type.String(),
 });
 
-const calculatorTool: Agent.AgentTool<typeof calculatorParams> = {
+const calculatorTool = Agent.defineTool({
 	name: "calculator",
 	label: "Calculator",
 	description: "Evaluate a math expression",
@@ -94,7 +94,7 @@ const calculatorTool: Agent.AgentTool<typeof calculatorParams> = {
 			},
 		};
 	},
-};
+});
 
 const model = await llm("anthropic", "claude-haiku-4-5-20251001");
 if (!model) throw new Error("Missing model");

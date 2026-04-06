@@ -1,5 +1,5 @@
 import { NamedError } from "@codeworksh/utils";
-import { Type } from "@sinclair/typebox";
+import { type TSchema, Type } from "@sinclair/typebox";
 import type { Event } from "../event/event";
 import type { Message } from "../message/message";
 import type { Model } from "../model/model";
@@ -35,7 +35,7 @@ export namespace Loop {
 	}
 
 	/** Context passed to `afterToolExecution`. */
-	export interface AfterToolExecutionContext<T = any> {
+	export interface AfterToolExecutionContext {
 		/** Current agent context at the time the tool call is finalized. */
 		context: Agent.AgentContext;
 		/** The assistant message that requested the tool call. */
@@ -43,7 +43,7 @@ export namespace Loop {
 		/** The validated in-flight tool call with validated arguments */
 		toolCall: Agent.ToolCallInFlight;
 		/** The executed tool result before any `afterToolExecution` overrides are applied. */
-		result: Agent.ToolTerminalResult<T>;
+		result: Agent.ToolTerminalResult<unknown>;
 	}
 
 	/**
@@ -52,10 +52,10 @@ export namespace Loop {
 	 * Returning `{ block: true }` prevents the tool from executing. The loop emits an error tool result instead.
 	 * `reason` becomes the text shown in that error result. If omitted, a default blocked message is used.
 	 */
-	export interface BeforeToolCallResult<T = any> {
+	export interface BeforeToolCallResult {
 		block?: boolean;
 		reason?: string;
-		details?: T;
+		details?: unknown;
 	}
 
 	/** Configuration for the agent loop. */
@@ -137,7 +137,7 @@ export namespace Loop {
 		afterToolExecution?: (
 			context: AfterToolExecutionContext,
 			signal?: AbortSignal,
-		) => Promise<Agent.ToolTerminalResult<any> | undefined>;
+		) => Promise<Agent.ToolTerminalResult<unknown> | undefined>;
 	}
 
 	function createAgentStream(): EventStream<Event.AgentEvent, Message.Message[]> {
@@ -153,30 +153,41 @@ export namespace Loop {
 
 	type ToolCallPart = Message.ToolCallPendingPart & { partIndex: number }; // runtime toolcall pending part
 
+	type RuntimeAgentTool = {
+		name: string;
+		parameters: TSchema;
+		execute: (
+			callID: string,
+			params: unknown,
+			signal?: AbortSignal,
+			onUpdate?: Agent.ToolUpdateCallback<unknown>,
+		) => Promise<Agent.ToolTerminalResult<unknown>>;
+	};
+
 	type ToolCallPrepared =
 		| {
 				error: {
 					kind: "error" | "blocked";
 					message: string;
-					details?: any;
+					details?: unknown;
 				};
 				runnable: Agent.ToolCallInFlight;
 		  }
 		| {
 				error?: never;
 				runnable: Agent.ToolCallInFlight;
-				tool: Agent.AnyAgentTool;
+				tool: RuntimeAgentTool;
 		  };
 
 	type ToolCallRunnable = {
 		toolCall: ToolCallPart;
 		runnable: Agent.ToolCallInFlight;
-		tool: Agent.AnyAgentTool;
+		tool: RuntimeAgentTool;
 	};
 
-	type ToolCallExecutionResult<T = any> =
-		| { result: Agent.ToolTerminalResult<T>; error?: never }
-		| { result?: never; error: { message: string; details?: any } };
+	type ToolCallExecutionResult =
+		| { result: Agent.ToolTerminalResult<unknown>; error?: never }
+		| { result?: never; error: { message: string; details?: unknown } };
 
 	export const AgentContextError = NamedError.create(
 		"AgentContextError",
@@ -277,7 +288,7 @@ export namespace Loop {
 		// NOTE: Do not mutate context directly
 		// once all the events are done return message
 		// mutate partialMessage and corresponding parts as required
-		// return the final built message form llm events
+		// return the final built message from llm events
 		for await (const event of events) {
 			switch (event.type) {
 				case "start": {
@@ -367,7 +378,7 @@ export namespace Loop {
 			// Mutates `message.parts` in-place to update the pending tool call with its result.
 			const prepared = await prepareToolCall(config, currentContext, message, toolCallInFlight, signal);
 			if (prepared.error) {
-				const error: Agent.ToolErrorResult<any> = {
+				const error: Agent.ToolErrorResult<unknown> = {
 					status: "error",
 					result: {
 						content: [{ type: "text", text: prepared.error.message }],
@@ -386,7 +397,7 @@ export namespace Loop {
 				if (executed.error) {
 					// tool call invocation failed with error
 					// create tool error result
-					const error: Agent.ToolErrorResult<any> = {
+					const error: Agent.ToolErrorResult<unknown> = {
 						status: "error",
 						result: {
 							content: [{ type: "text", text: executed.error.message }],
@@ -439,7 +450,7 @@ export namespace Loop {
 			// Mutates `message.parts` in-place to update the pending tool call with its result.
 			const prepared = await prepareToolCall(config, currentContext, message, toolCallInFlight, signal);
 			if (prepared.error) {
-				const error: Agent.ToolErrorResult<any> = {
+				const error: Agent.ToolErrorResult<unknown> = {
 					status: "error",
 					result: {
 						content: [{ type: "text", text: prepared.error.message }],
@@ -468,7 +479,7 @@ export namespace Loop {
 			if (executed.error) {
 				// tool call invocation failed with error
 				// create tool error result
-				const error: Agent.ToolErrorResult<any> = {
+				const error: Agent.ToolErrorResult<unknown> = {
 					status: "error",
 					result: {
 						content: [{ type: "text", text: executed.error.message }],
@@ -538,7 +549,7 @@ export namespace Loop {
 			}
 			return {
 				runnable: toolCallInFlight,
-				tool: tool as Agent.AnyAgentTool,
+				tool: tool as RuntimeAgentTool,
 			};
 		} catch (err) {
 			return {
@@ -561,7 +572,7 @@ export namespace Loop {
 		const { partIndex, ...pendingPart } = toolCall;
 		try {
 			const result = await tool.execute(runnable.callID, runnable.args, signal, async (result) => {
-				const runningResult: Agent.ToolRunningResult<any> = {
+				const runningResult: Agent.ToolRunningResult<unknown> = {
 					status: "running",
 					partial: result.partial,
 				};
@@ -605,7 +616,7 @@ export namespace Loop {
 		runnable: Agent.ToolCallInFlight,
 		message: Message.AssistantMessage,
 		emit: AgentEventSink,
-		result: Agent.ToolTerminalResult<any>,
+		result: Agent.ToolTerminalResult<unknown>,
 	): Promise<void> {
 		const { partIndex, ...pendingPart } = toolCall;
 		const { time } = pendingPart;
@@ -639,7 +650,7 @@ export namespace Loop {
 		runnable: Agent.ToolCallInFlight,
 		message: Message.AssistantMessage,
 		emit: AgentEventSink,
-		result: Agent.ToolTerminalResult<any>,
+		result: Agent.ToolTerminalResult<unknown>,
 		signal?: AbortSignal,
 	): Promise<void> {
 		if (config.afterToolExecution) {
@@ -798,6 +809,11 @@ export namespace Loop {
 		return newMessages;
 	}
 
+	/**
+	 * **Important:** The last message in context must not be `assistant` message, convert
+	 * via `convertToLlm`. If it doesn't, the LLM provider will reject the request.
+	 * This cannot be validated here since `convertToLlm` is only called once per turn.
+	 */
 	async function runAgentLoopContinue(
 		config: Config,
 		context: Agent.AgentContext,
@@ -854,10 +870,6 @@ export namespace Loop {
 	/**
 	 * Continue an agent loop from the current context without adding a new message.
 	 * Used for retries - context already has user message or tool results.
-	 *
-	 * **Important:** The last message in context must not be `assistant` message, convert
-	 * via `convertToLlm`. If it doesn't, the LLM provider will reject the request.
-	 * This cannot be validated here since `convertToLlm` is only called once per turn.
 	 */
 	export function runContinue(
 		config: Config,

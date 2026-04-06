@@ -1,11 +1,7 @@
-import { type TSchema, Type } from "@sinclair/typebox";
-import type { Message } from "../../src/message/message";
+import { Type } from "@sinclair/typebox";
+import { Message } from "../../src/message/message";
 
-export function defineTool<TParameters extends TSchema>(tool: Message.Tool<TParameters>): Message.Tool<TParameters> {
-	return tool;
-}
-
-export const searchTool = defineTool({
+export const searchTool = Message.defineTool({
 	name: "search",
 	description: "Search documents",
 	parameters: Type.Object({
@@ -15,7 +11,7 @@ export const searchTool = defineTool({
 	}),
 });
 
-export const calculatorTool = defineTool({
+export const calculatorTool = Message.defineTool({
 	name: "calculator",
 	description: "Calculates mathematical expressions",
 	parameters: Type.Object({
