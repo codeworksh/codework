@@ -30,17 +30,30 @@ function resolvePackageDir(target) {
 	return resolve(repoRoot, workspaceDir);
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, envOverrides = {}) {
 	return new Promise((resolveExit) => {
 		const proc = spawn(command, args, {
 			cwd,
-			env: process.env,
+			env: { ...process.env, ...envOverrides },
 			stdio: "inherit",
 		});
 
 		proc.on("close", (code) => resolveExit(code ?? 1));
 		proc.on("error", () => resolveExit(1));
 	});
+}
+
+async function createPublishEnv() {
+	const npmUserConfig = resolve(repoRoot, ".npmrc");
+
+	try {
+		await access(npmUserConfig);
+		return {
+			NPM_CONFIG_USERCONFIG: npmUserConfig,
+		};
+	} catch {
+		return {};
+	}
 }
 
 function compactObject(value) {
@@ -192,6 +205,6 @@ if (buildExitCode !== 0) {
 const publishDir = await preparePublishDirectory(packageDir, manifest);
 console.error(`Publishing ${manifest.name} from ${publishDir}`);
 
-const exitCode = await run("npm", publishArgs, publishDir);
+const exitCode = await run("npm", publishArgs, publishDir, await createPublishEnv());
 
 process.exit(exitCode);
