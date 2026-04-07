@@ -15,6 +15,13 @@ const packEntries =
 		: workspaceDir === "packages/utils"
 			? [workspaceEntries.utils]
 			: Object.values(workspaceEntries);
+const testIncludes =
+	workspaceDir === "packages/aikit"
+		? ["test/**/*.test.ts"]
+		: workspaceDir === "packages/utils"
+			? ["test/**/*.test.ts"]
+			: ["packages/**/*.test.ts"];
+const ignoredPaths = ["dist/**", "**/dist/**", "node_modules/**", "**/node_modules/**", ".pnpm-store/**", ".zed/**"];
 
 const external = (id: string) =>
 	builtinModules.includes(id) ||
@@ -34,17 +41,17 @@ export default defineConfig({
 		},
 	},
 	test: {
-		include: ["packages/**/*.test.ts"],
+		include: testIncludes,
 	},
 	lint: {
-		ignorePatterns: ["dist/**", "node_modules/**", ".pnpm-store/**", ".zed/**"],
+		ignorePatterns: ignoredPaths,
 		options: {
 			typeAware: true,
 			typeCheck: true,
 		},
 	},
 	fmt: {
-		ignorePatterns: ["dist/**", "node_modules/**", ".pnpm-store/**", ".zed/**"],
+		ignorePatterns: ignoredPaths,
 		printWidth: 120,
 		useTabs: true,
 		tabWidth: 3,
