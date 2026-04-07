@@ -8,6 +8,7 @@ globalThis.fetch = (async () =>
 		text: async () => "",
 	}) as Response) as unknown as typeof fetch;
 const aikit = await import("../src/index.ts");
+const { Agent } = await import("../src/agent/agent.ts");
 const { Loop } = await import("../src/agent/loop.ts");
 const { Stream } = await import("../src/provider/stream.ts");
 const { validateToolArguments, validateToolCall } = await import("../src/utils/validation.ts");
@@ -34,8 +35,9 @@ describe("public api", () => {
 		expect(aikit.stream.completeSimple).toBe(aikit.completeSimple);
 		expect(aikit.stream.resolveProtocolProvider).toBe(Stream.resolveProtocolProvider);
 
-		expect(aikit.agent.run).toBe(Loop.run);
-		expect(aikit.agent.runContinue).toBe(Loop.runContinue);
+		expect(aikit.agent.create).toBe(Agent.create);
+		expect(aikit.agent.loop).toBe(Loop.run);
+		expect(aikit.agent.loopContinue).toBe(Loop.runContinue);
 	});
 
 	it("exports the core namespaces and validation helpers", () => {

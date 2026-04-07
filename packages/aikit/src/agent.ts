@@ -1,11 +1,14 @@
+import { Agent } from "./agent/agent";
 import { Loop } from "./agent/loop";
 
-type Agent = {
-	run: typeof Loop.run;
-	runContinue: typeof Loop.runContinue;
+type AgentFacade = {
+	create: typeof Agent.create;
+	loop: typeof Loop.run;
+	loopContinue: typeof Loop.runContinue;
 };
 
 export const agent = {
-	run: Loop.run,
-	runContinue: Loop.runContinue,
-} as Agent;
+	create: Agent.create,
+	loop: Loop.run,
+	loopContinue: Loop.runContinue,
+} as AgentFacade;

@@ -3,6 +3,7 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import type { Event } from "../event/event";
 import { Message } from "../message/message";
 import { Model } from "../model/model";
+import "../provider/register";
 import type { Provider } from "../provider/provider";
 import { Stream } from "../provider/stream";
 import { Loop } from "./loop";
@@ -190,11 +191,12 @@ export namespace Agent {
 		}),
 	);
 
-	class Instance {
+	export class Instance {
 		private _state: State;
 
 		private listeners = new Set<(e: Event.AgentEvent) => void>();
 		private abortController?: AbortController;
+		private activeAssistantIndex?: number;
 
 		private convertToLlm: (messages: Message.Message[]) => Message.Message[] | Promise<Message.Message[]>;
 		private transformContext?: (messages: Message.Message[], signal?: AbortSignal) => Promise<Message.Message[]>;
@@ -229,8 +231,6 @@ export namespace Agent {
 
 		constructor(name: string, model: Model.Value, opts: AgentOptions = {}) {
 			this._state = {
-				name,
-				model,
 				systemPrompt: "",
 				thinkingLevel: "off",
 				tools: [],
@@ -240,6 +240,8 @@ export namespace Agent {
 				pendingToolCalls: new Set<string>(),
 				error: undefined,
 				...opts.initialState,
+				name,
+				model,
 			};
 			/**
 			 * Transformation logic to prepare messages for the LLM.
@@ -397,10 +399,32 @@ export namespace Agent {
 
 		replaceMessages(ms: Message.Message[]) {
 			this._state.messages = ms.slice();
+			this.activeAssistantIndex = undefined;
 		}
 
 		appendMessage(m: Message.Message) {
 			this._state.messages = [...this._state.messages, m];
+		}
+
+		private patchStoredAssistantPart(partIndex: number, part: Message.AssistantMessage["parts"][number]): boolean {
+			if (this.activeAssistantIndex === undefined) {
+				return false;
+			}
+
+			const messages = this._state.messages.slice();
+			const existing = messages[this.activeAssistantIndex];
+			if (!existing || existing.role !== "assistant") {
+				return false;
+			}
+
+			const nextParts = existing.parts.slice();
+			nextParts[partIndex] = part;
+			messages[this.activeAssistantIndex] = {
+				...existing,
+				parts: nextParts,
+			};
+			this._state.messages = messages;
+			return true;
 		}
 
 		/**
@@ -469,6 +493,7 @@ export namespace Agent {
 
 		clearMessages() {
 			this._state.messages = [];
+			this.activeAssistantIndex = undefined;
 		}
 
 		abort() {
@@ -485,12 +510,23 @@ export namespace Agent {
 			this._state.streamMessage = null;
 			this._state.pendingToolCalls = new Set<string>();
 			this._state.error = undefined;
+			this.activeAssistantIndex = undefined;
 			this.steeringQueue = [];
 			this.followUpQueue = [];
 		}
 
 		getName(): string {
 			return this._state.name;
+		}
+
+		private ensureIdle() {
+			if (this._state.isStreaming) {
+				throw new AgentInStreamingErr({
+					message:
+						"agent is already processing a prompt. Use steer() or followup() to queue messages, or wait for completion.",
+					name: this._state.name,
+				});
+			}
 		}
 
 		private async _runLoop(messages?: Message.UserMessage[], opts?: { skipInitialSteeringPoll?: boolean }) {
@@ -599,15 +635,18 @@ export namespace Agent {
 			}
 		}
 
-		// @codex: review
+		async loop(messages: Message.UserMessage[]): Promise<void> {
+			this.ensureIdle();
+			await this._runLoop(messages);
+		}
+
+		async loopContinue(): Promise<void> {
+			this.ensureIdle();
+			await this._runLoop();
+		}
+
 		async prompt(messages: Message.TextContent[], images?: Message.ImageContent[]): Promise<void> {
-			if (this._state.isStreaming) {
-				throw new AgentInStreamingErr({
-					message:
-						"agent is already processing a prompt. Use steer() or followup() to queue messages, or wait for completion.",
-					name: this._state.name,
-				});
-			}
+			this.ensureIdle();
 			const model = this._state.model;
 			if (!model)
 				throw new ModelNotConfiguredErr({
@@ -622,24 +661,36 @@ export namespace Agent {
 				parts: [...messages, ...(images ?? [])],
 			};
 
-			await this._runLoop([message]);
+			await this.loop([message]);
 		}
 
 		private _processLoopEvent(event: Event.AgentEvent): void {
 			switch (event.type) {
 				case "message.start": {
 					this._state.streamMessage = event.message;
+					if (event.message.role === "assistant") {
+						this.activeAssistantIndex = undefined;
+					}
 					break;
 				}
 				case "message.part.start":
 				case "message.part.update":
 				case "message.part.end": {
 					this._state.streamMessage = event.message;
+					if (event.message.role === "assistant") {
+						this.patchStoredAssistantPart(event.partIndex, event.part);
+					}
 					break;
 				}
+				case "message.update":
+					this._state.streamMessage = event.message;
+					break;
 				case "message.end":
 					this._state.streamMessage = null;
 					this.appendMessage(event.message);
+					if (event.message.role === "assistant") {
+						this.activeAssistantIndex = this._state.messages.length - 1;
+					}
 					break;
 				case "tool.execution.start": {
 					const pendingToolCalls = new Set(this._state.pendingToolCalls);
@@ -673,16 +724,22 @@ export namespace Agent {
 		}
 	}
 
-	export async function create<TProvider extends Provider.KnownProvider, TModel extends Model.Value["id"]>(options: {
-		provider: TProvider;
-		model: TModel;
-		name?: string;
-	}): Promise<Instance>;
-	export async function create(options: { model: Model.Value; name?: string }): Promise<Instance>;
+	export async function create<TProvider extends Provider.KnownProvider, TModel extends Model.Value["id"]>(
+		options: AgentOptions & {
+			provider: TProvider;
+			model: TModel;
+			name?: string;
+		},
+	): Promise<Instance>;
+	export async function create(options: AgentOptions & { model: Model.Value; name?: string }): Promise<Instance>;
 	export async function create(
 		options:
-			| { model: Model.Value; name?: string }
-			| { provider: Provider.KnownProvider; model: Model.Value["id"]; name?: string },
+			| (AgentOptions & { model: Model.Value; name?: string })
+			| (AgentOptions & {
+					provider: Provider.KnownProvider;
+					model: Model.Value["id"];
+					name?: string;
+			  }),
 	): Promise<Instance> {
 		let resolvedModel: Model.Value;
 		if ("provider" in options) {
@@ -699,6 +756,6 @@ export namespace Agent {
 			resolvedModel = options.model;
 		}
 
-		return new Instance(options.name ?? "main", resolvedModel, {});
+		return new Instance(options.name ?? "main", resolvedModel, options);
 	}
 }
