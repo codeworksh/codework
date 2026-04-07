@@ -6,7 +6,7 @@ import type { AssistantMessageEventStream } from "../utils/eventstream";
 
 export namespace Stream {
 	export const ProtocolProviderNotFoundError = NamedError.create(
-		"StreamProtocolProviderNotFoundError",
+		"ProtocolProviderNotFoundError",
 		Type.Object({
 			protocol: Model.KnownProtocolSchema,
 		}),
@@ -14,7 +14,7 @@ export namespace Stream {
 	export type ProtocolProviderNotFoundError = InstanceType<typeof ProtocolProviderNotFoundError>;
 
 	export const ProtocolMismatchError = NamedError.create(
-		"StreamProtocolMismatchError",
+		"ProtocolMismatchError",
 		Type.Object({
 			actual: Model.KnownProtocolSchema,
 			expected: Model.KnownProtocolSchema,
@@ -23,6 +23,7 @@ export namespace Stream {
 	export type ProtocolMismatchError = InstanceType<typeof ProtocolMismatchError>;
 
 	export const ThinkingLevelEnum = {
+		off: "off",
 		minimal: "minimal",
 		low: "low",
 		medium: "medium",
@@ -30,6 +31,7 @@ export namespace Stream {
 		xhigh: "xhigh",
 	} as const;
 	export const ThinkingLevelSchema = Type.Union([
+		Type.Literal(ThinkingLevelEnum.off),
 		Type.Literal(ThinkingLevelEnum.minimal),
 		Type.Literal(ThinkingLevelEnum.low),
 		Type.Literal(ThinkingLevelEnum.medium),
@@ -39,6 +41,7 @@ export namespace Stream {
 	export type ThinkingLevel = Static<typeof ThinkingLevelSchema>;
 
 	export const ThinkingBudgetsSchema = Type.Object({
+		off: Type.Optional(Type.Number()),
 		minimal: Type.Optional(Type.Number()),
 		low: Type.Optional(Type.Number()),
 		medium: Type.Optional(Type.Number()),

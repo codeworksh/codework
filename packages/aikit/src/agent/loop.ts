@@ -10,7 +10,14 @@ import { validateToolArguments } from "../utils/validation";
 import type { Agent } from "./agent";
 
 export namespace Loop {
-	/** Stream function - can return sync or Promise for async config lookup */
+	/** Stream function used by the core agent loop
+	 *
+	 * Contract:
+	 * - Must not throw or return a rejected promise for request/model/runtime (LLM) failures.
+	 * - Must return an AssistantMessageEventStream see: packages/aikit/src/utils/eventstream.ts
+	 * - Failures must be encoded in the returned stream via protocol events and a
+	 *   final Message.AssistantMessage with stopReason "error" or "aborted" and errorMessage.
+	 */
 	export type StreamFn = (
 		...args: Parameters<typeof Stream.streamSimple>
 	) => ReturnType<typeof Stream.streamSimple> | Promise<ReturnType<typeof Stream.streamSimple>>;
@@ -774,7 +781,7 @@ export namespace Loop {
 		await emitEvent(emit, { type: "agent.end", messages: newMessages });
 	}
 
-	async function runAgentLoop(
+	export async function runAgentLoop(
 		config: Config,
 		context: Agent.AgentContext,
 		prompts: Message.UserMessage[],
@@ -814,7 +821,7 @@ export namespace Loop {
 	 * via `convertToLlm`. If it doesn't, the LLM provider will reject the request.
 	 * This cannot be validated here since `convertToLlm` is only called once per turn.
 	 */
-	async function runAgentLoopContinue(
+	export async function runAgentLoopContinue(
 		config: Config,
 		context: Agent.AgentContext,
 		emit: AgentEventSink,

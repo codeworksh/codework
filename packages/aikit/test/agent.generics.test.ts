@@ -89,6 +89,7 @@ type DefineToolParams = Parameters<typeof calculatorTool.execute>[1];
 type _defineToolParamsAssert = Assert<IsEqual<DefineToolParams, { expression: string }>>;
 
 const agentState = {
+	name: "main",
 	systemPrompt: "Be concise.",
 	model: {} as never,
 	thinkingLevel: "medium" as never,
