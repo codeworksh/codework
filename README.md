@@ -11,7 +11,7 @@ Toolkit for building AI agents.
 ## Get Started
 
 ```bash
-bun add @codeworksh/aikit
+npm install @codeworksh/aikit
 ```
 
 [`@codeworksh/aikit`](./packages/aikit/README.md)

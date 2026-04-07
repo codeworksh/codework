@@ -1,4 +1,4 @@
-import { expect } from "bun:test";
+import { expect } from "vite-plus/test";
 import Ajv from "ajv";
 import { Message } from "../../src/message/message";
 
@@ -20,13 +20,14 @@ export function expectValidToolCall(toolCall: Message.ToolCall, expectedStatus?:
 	}
 
 	expect(toolCall.type).toBe("toolCall");
-	expect(toolCall.callID).toBeString();
+	expect(typeof toolCall.callID).toBe("string");
 	expect(toolCall.callID.length).toBeGreaterThan(0);
-	expect(toolCall.name).toBeString();
+	expect(typeof toolCall.name).toBe("string");
 	expect(toolCall.name.length).toBeGreaterThan(0);
-	expect(toolCall.arguments).toBeObject();
-	expect(toolCall.time.start).toBeNumber();
-	expect(toolCall.time.end).toBeNumber();
+	expect(toolCall.arguments).toBeTypeOf("object");
+	expect(toolCall.arguments).not.toBeNull();
+	expect(typeof toolCall.time.start).toBe("number");
+	expect(typeof toolCall.time.end).toBe("number");
 	expect(toolCall.time.end).toBeGreaterThanOrEqual(toolCall.time.start);
 
 	if (expectedStatus) {

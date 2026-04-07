@@ -1,8 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type {
-	ContentBlockParam,
-	MessageCreateParamsStreaming,
-	MessageParam,
+    ContentBlockParam,
+    MessageCreateParamsStreaming,
+    MessageParam,
 } from "@anthropic-ai/sdk/resources/messages.js";
 import { Message } from "../../../message/message";
 import { Model } from "../../../model/model";
@@ -24,11 +24,16 @@ function getEnvApiKey(_provider: Provider.Info): string | undefined {
 	return undefined;
 }
 
-function resolveCacheRetention(cacheRetention?: Stream.CacheRetention): Stream.CacheRetention {
+function resolveCacheRetention(
+	cacheRetention?: Stream.CacheRetention,
+): Stream.CacheRetention {
 	if (cacheRetention) {
 		return cacheRetention;
 	}
-	if (typeof process !== "undefined" && process.env.PI_CACHE_RETENTION === "long") {
+	if (
+		typeof process !== "undefined" &&
+		process.env.CODEWORK_CACHE_RETENTION === "long"
+	) {
 		return "long";
 	}
 	return "short";
@@ -37,12 +42,18 @@ function resolveCacheRetention(cacheRetention?: Stream.CacheRetention): Stream.C
 function getCacheControl(
 	baseUrl: string,
 	cacheRetention?: Stream.CacheRetention,
-): { retention: Stream.CacheRetention; cacheControl?: { type: "ephemeral"; ttl?: "1h" } } {
+): {
+	retention: Stream.CacheRetention;
+	cacheControl?: { type: "ephemeral"; ttl?: "1h" };
+} {
 	const retention = resolveCacheRetention(cacheRetention);
 	if (retention === "none") {
 		return { retention };
 	}
-	const ttl = retention === "long" && baseUrl.includes("api.anthropic.com") ? "1h" : undefined;
+	const ttl =
+		retention === "long" && baseUrl.includes("api.anthropic.com")
+			? "1h"
+			: undefined;
 	return {
 		retention,
 		cacheControl: { type: "ephemeral", ...(ttl && { ttl }) },
@@ -71,17 +82,22 @@ const claudeCodeTools = [
 ];
 const ccToolLookup = new Map(claudeCodeTools.map((t) => [t.toLowerCase(), t]));
 
-const toClaudeCodeName = (name: string) => ccToolLookup.get(name.toLowerCase()) ?? name;
+const toClaudeCodeName = (name: string) =>
+	ccToolLookup.get(name.toLowerCase()) ?? name;
 const fromClaudeCodeName = (name: string, tools?: Message.Tool[]) => {
 	if (tools && tools.length > 0) {
 		const lowerName = name.toLowerCase();
-		const matchedTool = tools.find((tool) => tool.name.toLowerCase() === lowerName);
+		const matchedTool = tools.find(
+			(tool) => tool.name.toLowerCase() === lowerName,
+		);
 		if (matchedTool) return matchedTool.name;
 	}
 	return name;
 };
 
-function convertContentBlocks(content: (Message.TextContent | Message.ImageContent)[]):
+function convertContentBlocks(
+	content: (Message.TextContent | Message.ImageContent)[],
+):
 	| string
 	| Array<
 			| { type: "text"; text: string }
@@ -96,7 +112,9 @@ function convertContentBlocks(content: (Message.TextContent | Message.ImageConte
 	  > {
 	const hasImages = content.some((c) => c.type === "image");
 	if (!hasImages) {
-		return sanitizeSurrogates(content.map((c) => (c as Message.TextContent).text).join("\n"));
+		return sanitizeSurrogates(
+			content.map((c) => (c as Message.TextContent).text).join("\n"),
+		);
 	}
 
 	const blocks = content.map((block) => {
@@ -110,7 +128,11 @@ function convertContentBlocks(content: (Message.TextContent | Message.ImageConte
 			type: "image" as const,
 			source: {
 				type: "base64" as const,
-				media_type: block.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+				media_type: block.mimeType as
+					| "image/jpeg"
+					| "image/png"
+					| "image/gif"
+					| "image/webp",
 				data: block.data,
 			},
 		};
@@ -126,7 +148,9 @@ function convertContentBlocks(content: (Message.TextContent | Message.ImageConte
 	return blocks;
 }
 
-function mergeHeaders(...headerSources: (Record<string, string> | undefined)[]): Record<string, string> {
+function mergeHeaders(
+	...headerSources: (Record<string, string> | undefined)[]
+): Record<string, string> {
 	const merged: Record<string, string> = {};
 	for (const headers of headerSources) {
 		if (headers) {
@@ -209,7 +233,9 @@ function assertReplayableAssistant(message: Message.AssistantMessage): void {
 
 	for (const part of message.parts) {
 		if (part.type === "image") {
-			throw new Error("Anthropic replay does not support assistant image parts");
+			throw new Error(
+				"Anthropic replay does not support assistant image parts",
+			);
 		}
 
 		if (part.type === "toolCall") {
@@ -223,20 +249,28 @@ function assertReplayableAssistant(message: Message.AssistantMessage): void {
 		}
 
 		if (sawToolCall) {
-			throw new Error("Assistant parts after a toolCall are not replayable for Anthropic");
+			throw new Error(
+				"Assistant parts after a toolCall are not replayable for Anthropic",
+			);
 		}
 	}
 
 	if (sawToolCall && message.stopReason !== "toolUse") {
-		throw new Error("Assistant message with tool calls must have stopReason 'toolUse'");
+		throw new Error(
+			"Assistant message with tool calls must have stopReason 'toolUse'",
+		);
 	}
 
 	if (!sawToolCall && message.stopReason === "toolUse") {
-		throw new Error("Assistant message with stopReason 'toolUse' must contain at least one toolCall");
+		throw new Error(
+			"Assistant message with stopReason 'toolUse' must contain at least one toolCall",
+		);
 	}
 
 	if (sawTerminalToolCall && sawNonTerminalToolCall) {
-		throw new Error("Assistant message cannot mix terminal and non-terminal toolCall states");
+		throw new Error(
+			"Assistant message cannot mix terminal and non-terminal toolCall states",
+		);
 	}
 }
 
@@ -247,7 +281,10 @@ function buildSyntheticToolResult(
 		type: "tool_result",
 		tool_use_id: block.callID,
 		content: convertContentBlocks([
-			{ type: "text", text: ["<result>", "No Result Provided", "</result>"].join("\n") },
+			{
+				type: "text",
+				text: ["<result>", "No Result Provided", "</result>"].join("\n"),
+			},
 		]),
 		is_error: true,
 	};
@@ -260,7 +297,11 @@ function convertMessages(
 	cacheControl?: { type: "ephemeral"; ttl?: "1h" },
 ): MessageParam[] {
 	const params: MessageParam[] = [];
-	const transformedMessages = Message.transformMessages(messages, model, normalizeToolCallId);
+	const transformedMessages = Message.transformMessages(
+		messages,
+		model,
+		normalizeToolCallId,
+	);
 
 	for (const msg of transformedMessages) {
 		if (msg.role === "user") {
@@ -275,13 +316,21 @@ function convertMessages(
 					type: "image",
 					source: {
 						type: "base64",
-						media_type: item.mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+						media_type: item.mimeType as
+							| "image/jpeg"
+							| "image/png"
+							| "image/gif"
+							| "image/webp",
 						data: item.data,
 					},
 				};
 			});
-			let filteredBlocks = !model.input.includes("image") ? blocks.filter((b) => b.type !== "image") : blocks;
-			filteredBlocks = filteredBlocks.filter((b) => (b.type === "text" ? b.text.trim().length > 0 : true));
+			let filteredBlocks = !model.input.includes("image")
+				? blocks.filter((b) => b.type !== "image")
+				: blocks;
+			filteredBlocks = filteredBlocks.filter((b) =>
+				b.type === "text" ? b.text.trim().length > 0 : true,
+			);
 			if (filteredBlocks.length === 0) continue;
 			params.push({
 				role: "user",
@@ -308,7 +357,10 @@ function convertMessages(
 				});
 			} else if (block.type === "thinking") {
 				if (block.thinking.trim().length === 0) continue;
-				if (!block.thinkingSignature || block.thinkingSignature.trim().length === 0) {
+				if (
+					!block.thinkingSignature ||
+					block.thinkingSignature.trim().length === 0
+				) {
 					assistantBlocks.push({
 						type: "text",
 						text: sanitizeSurrogates(block.thinking),
@@ -363,9 +415,13 @@ function convertMessages(
 				const lastBlock = lastMessage.content[lastMessage.content.length - 1];
 				if (
 					lastBlock &&
-					(lastBlock.type === "text" || lastBlock.type === "image" || lastBlock.type === "tool_result")
+					(lastBlock.type === "text" ||
+						lastBlock.type === "image" ||
+						lastBlock.type === "tool_result")
 				) {
-					(lastBlock as { cache_control?: { type: "ephemeral"; ttl?: "1h" } }).cache_control = cacheControl;
+					(
+						lastBlock as { cache_control?: { type: "ephemeral"; ttl?: "1h" } }
+					).cache_control = cacheControl;
 				}
 			} else if (typeof lastMessage.content === "string") {
 				lastMessage.content = [
@@ -382,7 +438,10 @@ function convertMessages(
 	return params;
 }
 
-function convertTools(tools: Message.Tool[], isOAuthToken: boolean): Anthropic.Messages.Tool[] {
+function convertTools(
+	tools: Message.Tool[],
+	isOAuthToken: boolean,
+): Anthropic.Messages.Tool[] {
 	if (!tools) return [];
 
 	return tools.map((tool) => {
@@ -400,7 +459,9 @@ function convertTools(tools: Message.Tool[], isOAuthToken: boolean): Anthropic.M
 	});
 }
 
-function mapStopReason(reason: Anthropic.Messages.StopReason | string): Message.StopReason {
+type AnthropicStopReason = Anthropic.Messages.StopReason | "sensitive";
+
+function mapStopReason(reason: AnthropicStopReason): Message.StopReason {
 	switch (reason) {
 		case "end_turn":
 			return "stop";
@@ -425,10 +486,18 @@ function buildParams(
 	isOAuthToken: boolean,
 	options?: AnthropicOptions,
 ): MessageCreateParamsStreaming {
-	const { cacheControl } = getCacheControl(model.baseUrl, options?.cacheRetention);
+	const { cacheControl } = getCacheControl(
+		model.baseUrl,
+		options?.cacheRetention,
+	);
 	const params: MessageCreateParamsStreaming = {
 		model: model.id,
-		messages: convertMessages(context.messages, model, isOAuthToken, cacheControl),
+		messages: convertMessages(
+			context.messages,
+			model,
+			isOAuthToken,
+			cacheControl,
+		),
 		max_tokens: options?.maxTokens || (model.maxTokens / 3) | 0,
 		stream: true,
 	};
@@ -481,13 +550,20 @@ function buildParams(
 	}
 
 	if (options?.toolChoice) {
-		params.tool_choice = typeof options.toolChoice === "string" ? { type: options.toolChoice } : options.toolChoice;
+		params.tool_choice =
+			typeof options.toolChoice === "string"
+				? { type: options.toolChoice }
+				: options.toolChoice;
 	}
 
 	return params;
 }
 
-type Block = (Message.ThinkingContent | Message.TextContent | (Message.ToolCall & { partialJson: string })) & {
+type Block = (
+	| Message.ThinkingContent
+	| Message.TextContent
+	| (Message.ToolCall & { partialJson: string })
+) & {
 	index: number;
 };
 
@@ -501,7 +577,7 @@ export const streamAnthropic: Stream.StreamFunction<
 ): AssistantMessageEventStream => {
 	const stream = new AssistantMessageEventStream();
 
-	(async () => {
+	void (async () => {
 		const output: Message.AssistantMessage = {
 			role: "assistant",
 			parts: [],
@@ -536,7 +612,12 @@ export const streamAnthropic: Stream.StreamFunction<
 					throw new Error(`No API key for provider: ${model.provider.id}`);
 				}
 
-				const created = createClient(model, apiKey, options?.interleavedThinking ?? true, options?.headers);
+				const created = createClient(
+					model,
+					apiKey,
+					options?.interleavedThinking ?? true,
+					options?.headers,
+				);
 				client = created.client;
 				isOAuthToken = created.isOAuthToken;
 			}
@@ -546,7 +627,10 @@ export const streamAnthropic: Stream.StreamFunction<
 			if (nextParams !== undefined) {
 				params = nextParams as MessageCreateParamsStreaming;
 			}
-			const anthropicStream = client.messages.stream({ ...params, stream: true }, { signal: options?.signal });
+			const anthropicStream = client.messages.stream(
+				{ ...params, stream: true },
+				{ signal: options?.signal },
+			);
 			stream.push({ type: "start", partial: output });
 
 			const blocks = output.parts as Block[];
@@ -558,11 +642,16 @@ export const streamAnthropic: Stream.StreamFunction<
 					// This ensures we have input token counts even if the stream is aborted early
 					output.usage.input = event.message.usage.input_tokens || 0;
 					output.usage.output = event.message.usage.output_tokens || 0;
-					output.usage.cacheRead = event.message.usage.cache_read_input_tokens || 0;
-					output.usage.cacheWrite = event.message.usage.cache_creation_input_tokens || 0;
+					output.usage.cacheRead =
+						event.message.usage.cache_read_input_tokens || 0;
+					output.usage.cacheWrite =
+						event.message.usage.cache_creation_input_tokens || 0;
 					// Anthropic doesn't provide total_tokens, compute from components
 					output.usage.totalTokens =
-						output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+						output.usage.input +
+						output.usage.output +
+						output.usage.cacheRead +
+						output.usage.cacheWrite;
 					Model.calculateCost(model, output.usage);
 				} else if (event.type === "content_block_start") {
 					if (event.content_block.type === "text") {
@@ -570,7 +659,11 @@ export const streamAnthropic: Stream.StreamFunction<
 						output.parts.push(block); // push the block to parts
 						// `contentIndex` points to the index of the block within parts
 						// Useful for replaying message and corresponding parts based on stream.
-						stream.push({ type: "text.start", partIndex: output.parts.length - 1, partial: output });
+						stream.push({
+							type: "text.start",
+							partIndex: output.parts.length - 1,
+							partial: output,
+						});
 					} else if (event.content_block.type === "thinking") {
 						const block: Block = {
 							type: "thinking",
@@ -579,7 +672,11 @@ export const streamAnthropic: Stream.StreamFunction<
 							index: event.index,
 						};
 						output.parts.push(block);
-						stream.push({ type: "thinking.start", partIndex: output.parts.length - 1, partial: output });
+						stream.push({
+							type: "thinking.start",
+							partIndex: output.parts.length - 1,
+							partial: output,
+						});
 					} else if (event.content_block.type === "redacted_thinking") {
 						const block: Block = {
 							type: "thinking",
@@ -589,7 +686,11 @@ export const streamAnthropic: Stream.StreamFunction<
 							index: event.index,
 						};
 						output.parts.push(block);
-						stream.push({ type: "thinking.start", partIndex: output.parts.length - 1, partial: output });
+						stream.push({
+							type: "thinking.start",
+							partIndex: output.parts.length - 1,
+							partial: output,
+						});
 					} else if (event.content_block.type === "tool_use") {
 						const block: Block = {
 							type: "toolCall",
@@ -597,7 +698,8 @@ export const streamAnthropic: Stream.StreamFunction<
 							name: isOAuthToken
 								? fromClaudeCodeName(event.content_block.name, context.tools)
 								: event.content_block.name,
-							arguments: (event.content_block.input as Record<string, any>) ?? {},
+							arguments:
+								(event.content_block.input as Record<string, any>) ?? {},
 							partialJson: "",
 							status: "pending",
 							time: {
@@ -607,7 +709,11 @@ export const streamAnthropic: Stream.StreamFunction<
 							index: event.index,
 						};
 						output.parts.push(block);
-						stream.push({ type: "toolcall.start", partIndex: output.parts.length - 1, partial: output });
+						stream.push({
+							type: "toolcall.start",
+							partIndex: output.parts.length - 1,
+							partial: output,
+						});
 					}
 				} else if (event.type === "content_block_delta") {
 					// *_delta updates existing block part
@@ -625,7 +731,10 @@ export const streamAnthropic: Stream.StreamFunction<
 							delta: event.delta.text,
 							partial: output,
 						});
-					} else if (event.delta.type === "thinking_delta" && block.type === "thinking") {
+					} else if (
+						event.delta.type === "thinking_delta" &&
+						block.type === "thinking"
+					) {
 						block.thinking += event.delta.thinking;
 						stream.push({
 							type: "thinking.delta",
@@ -633,7 +742,10 @@ export const streamAnthropic: Stream.StreamFunction<
 							delta: event.delta.thinking,
 							partial: output,
 						});
-					} else if (event.delta.type === "input_json_delta" && block.type === "toolCall") {
+					} else if (
+						event.delta.type === "input_json_delta" &&
+						block.type === "toolCall"
+					) {
 						block.partialJson += event.delta.partial_json;
 						block.arguments = parseStreamingJson(block.partialJson);
 						stream.push({
@@ -642,7 +754,10 @@ export const streamAnthropic: Stream.StreamFunction<
 							delta: event.delta.partial_json,
 							partial: output,
 						});
-					} else if (event.delta.type === "signature_delta" && block.type === "thinking") {
+					} else if (
+						event.delta.type === "signature_delta" &&
+						block.type === "thinking"
+					) {
 						block.thinkingSignature = block.thinkingSignature || "";
 						block.thinkingSignature += event.delta.signature;
 					}
@@ -696,7 +811,10 @@ export const streamAnthropic: Stream.StreamFunction<
 					}
 					// Anthropic doesn't provide total_tokens, compute from components
 					output.usage.totalTokens =
-						output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+						output.usage.input +
+						output.usage.output +
+						output.usage.cacheRead +
+						output.usage.cacheWrite;
 					Model.calculateCost(model, output.usage);
 				}
 			}
@@ -712,10 +830,12 @@ export const streamAnthropic: Stream.StreamFunction<
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			for (const block of output.parts) delete (block as { index?: number }).index;
+			for (const block of output.parts)
+				delete (block as { index?: number }).index;
 			output.time.completed = Date.now();
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
-			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+			output.errorMessage =
+				error instanceof Error ? error.message : JSON.stringify(error);
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
@@ -739,7 +859,10 @@ export const streamSimpleAnthropic: Stream.StreamFunction<
 
 	const base = Stream.buildBaseOptions(model, options, apiKey);
 	if (!options?.reasoning) {
-		return streamAnthropic(model, context, { ...base, thinkingEnabled: false } satisfies AnthropicOptions);
+		return streamAnthropic(model, context, {
+			...base,
+			thinkingEnabled: false,
+		} satisfies AnthropicOptions);
 	}
 
 	const adjusted = Stream.adjustMaxTokensForThinking(

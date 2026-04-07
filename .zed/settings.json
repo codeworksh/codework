@@ -1,34 +1,26 @@
 {
   "languages": {
     "TypeScript": {
-      "language_servers": [
-        "biome",
-        "...",
-      ],
       "formatter": {
-        "language_server": {
-          "name": "biome"
-        }
+        "external": {
+          "command": "node",
+          "arguments": [".zed/format-with-vp.mjs", "{buffer_path}"],
+        },
       },
       "code_actions_on_format": {
-        "source.fixAll.biome": true,
-        "source.organizeImports.biome": true
+        "source.organizeImports": true,
       },
       "format_on_save": "on",
     },
     "TSX": {
-      "language_servers": [
-        "biome",
-        "...",
-      ],
       "formatter": {
-        "language_server": {
-          "name": "biome"
-        }
+        "external": {
+          "command": "node",
+          "arguments": [".zed/format-with-vp.mjs", "{buffer_path}"],
+        },
       },
       "code_actions_on_format": {
-        "source.fixAll.biome": true,
-        "source.organizeImports.biome": true
+        "source.organizeImports": true,
       },
       "format_on_save": "on",
     },

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vite-plus/test";
 import type { Static } from "@sinclair/typebox";
 import Ajv from "ajv";
 import type { Agent } from "../src/agent/agent";

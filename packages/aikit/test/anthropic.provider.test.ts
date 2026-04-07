@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vite-plus/test";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Message } from "../src/message/message";
 import { Model } from "../src/model/model";

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { Agent } from "../src/agent/agent";
 import { llm } from "../src/llm";
 import type { Message } from "../src/message/message";
@@ -107,7 +107,9 @@ describe("stream", () => {
 	});
 });
 
-describe.skipIf(!process.env.ANTHROPIC_API_KEY)("anthropic stream", () => {
+const describeIfAnthropic = process.env.ANTHROPIC_API_KEY ? describe : describe.skip;
+
+describeIfAnthropic("anthropic stream", () => {
 	const originalModelsPath = process.env.CODEWORK_AIKIT_MODELS_PATH;
 
 	beforeEach(() => {

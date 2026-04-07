@@ -1,5 +1,6 @@
 # dependencies (bun install)
 node_modules
+.pnpm-store
 
 # output
 out
@@ -30,6 +31,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # IntelliJ based IDEs
 .idea
+.zed
 
 # Finder (MacOS) folder config
 .DS_Store

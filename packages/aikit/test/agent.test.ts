@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vite-plus/test";
 import Ajv from "ajv";
 import { Agent } from "../src/agent/agent";
 import { Event } from "../src/event/event";

@@ -41,8 +41,11 @@ export namespace Agent {
 
 	// @sanchitrk: does adding state flag makes sense?
 	// could be used by caller with name+callID as key for caching results, etc.
-	export interface AgentTool<TParameters extends TSchema = TSchema, U = unknown, R = U>
-		extends Message.Tool<TParameters> {
+	export interface AgentTool<
+		TParameters extends TSchema = TSchema,
+		U = unknown,
+		R = U,
+	> extends Message.Tool<TParameters> {
 		// A human-readable label for the tool for display
 		label: string;
 		execute: (

@@ -85,7 +85,7 @@ export namespace ModelCatalog {
 		modelsDevData.reset();
 	}
 
-	ModelCatalog.refresh();
+	void ModelCatalog.refresh();
 	setInterval(
 		async () => {
 			await ModelCatalog.refresh();

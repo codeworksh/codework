@@ -5,7 +5,7 @@ Utility toolkit for reusable filesystem, async, and runtime helpers.
 Install:
 
 ```bash
-bun add @codeworksh/utils
+npm install @codeworksh/utils
 ```
 
 ## License

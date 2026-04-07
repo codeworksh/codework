@@ -5,7 +5,7 @@ Toolkit for Building AI Agents and Workflows.
 ## Installation
 
 ```bash
-bun add @codeworksh/aikit
+npm install @codeworksh/aikit
 ```
 
 ## Quick Start
@@ -138,6 +138,7 @@ console.log(messages.at(-1));
 Use `stream(...)` when you want raw provider events and manual control over tool handling.
 
 Use `agent.run(...)` when you want a higher-level runtime that:
+
 - streams assistant message lifecycle events
 - validates tool arguments
 - executes tools sequentially or in parallel

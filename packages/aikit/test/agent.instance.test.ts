@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { Type } from "@sinclair/typebox";
 import { Agent } from "../src/agent/agent";
 import type { Event } from "../src/event/event";
@@ -418,7 +418,10 @@ describe("Agent.Instance", () => {
 				const lastUser = [...context.messages]
 					.reverse()
 					.find((message): message is Message.UserMessage => message.role === "user");
-				return createTextResponseStream(model, `Handled: ${lastUser?.parts[0]?.type === "text" ? lastUser.parts[0].text : ""}`);
+				return createTextResponseStream(
+					model,
+					`Handled: ${lastUser?.parts[0]?.type === "text" ? lastUser.parts[0].text : ""}`,
+				);
 			},
 		});
 
@@ -460,7 +463,12 @@ describe("Agent.Instance", () => {
 			"turn.end:stop",
 			"agent.end",
 		]);
-		expect(instance.state.messages.map((message) => message.role)).toEqual(["user", "assistant", "user", "assistant"]);
+		expect(instance.state.messages.map((message) => message.role)).toEqual([
+			"user",
+			"assistant",
+			"user",
+			"assistant",
+		]);
 		expect(getText(instance.state.messages[1] as Message.AssistantMessage)).toContain("first task");
 		expect(getText(instance.state.messages[3] as Message.AssistantMessage)).toContain("second task");
 	});
@@ -515,7 +523,9 @@ describe("Agent.Instance", () => {
 	});
 });
 
-describe.skipIf(!process.env.ANTHROPIC_API_KEY)("Agent.Instance integration", () => {
+const describeIfAnthropic = process.env.ANTHROPIC_API_KEY ? describe : describe.skip;
+
+describeIfAnthropic("Agent.Instance integration", () => {
 	const originalModelsPath = process.env.CODEWORK_AIKIT_MODELS_PATH;
 
 	beforeEach(() => {

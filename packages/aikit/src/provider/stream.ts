@@ -11,7 +11,9 @@ export namespace Stream {
 			protocol: Model.KnownProtocolSchema,
 		}),
 	);
-	export type ProtocolProviderNotFoundError = InstanceType<typeof ProtocolProviderNotFoundError>;
+	export type ProtocolProviderNotFoundError = InstanceType<
+		typeof ProtocolProviderNotFoundError
+	>;
 
 	export const ProtocolMismatchError = NamedError.create(
 		"ProtocolMismatchError",
@@ -20,7 +22,9 @@ export namespace Stream {
 			expected: Model.KnownProtocolSchema,
 		}),
 	);
-	export type ProtocolMismatchError = InstanceType<typeof ProtocolMismatchError>;
+	export type ProtocolMismatchError = InstanceType<
+		typeof ProtocolMismatchError
+	>;
 
 	export const ThinkingLevelEnum = {
 		off: "off",
@@ -49,10 +53,18 @@ export namespace Stream {
 	});
 	export type ThinkingBudgets = Static<typeof ThinkingBudgetsSchema>;
 
-	export const CacheRetentionSchema = Type.Union([Type.Literal("none"), Type.Literal("short"), Type.Literal("long")]);
+	export const CacheRetentionSchema = Type.Union([
+		Type.Literal("none"),
+		Type.Literal("short"),
+		Type.Literal("long"),
+	]);
 	export type CacheRetention = Static<typeof CacheRetentionSchema>;
 
-	export const TransportSchema = Type.Union([Type.Literal("sse"), Type.Literal("websocket"), Type.Literal("auto")]);
+	export const TransportSchema = Type.Union([
+		Type.Literal("sse"),
+		Type.Literal("websocket"),
+		Type.Literal("auto"),
+	]);
 	export type Transport = Static<typeof TransportSchema>;
 
 	export const OptionsSchema = Type.Object({
@@ -65,10 +77,7 @@ export namespace Stream {
 		sessionId: Type.Optional(Type.String()),
 		onPayload: Type.Optional(
 			Type.Unsafe<
-				(
-					payload: unknown,
-					model: Model.TModel<Model.KnownProtocol>,
-				) => unknown | undefined | Promise<unknown | undefined>
+				(payload: unknown, model: Model.TModel<Model.KnownProtocol>) => unknown
 			>(),
 		),
 		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
@@ -96,9 +105,17 @@ export namespace Stream {
 	export type StreamFunction<
 		TProtocol extends Model.KnownProtocol = Model.KnownProtocol,
 		TOptions extends Options = Options,
-	> = (model: Model.TModel<TProtocol>, context: Message.Context, options?: TOptions) => AssistantMessageEventStream;
+	> = (
+		model: Model.TModel<TProtocol>,
+		context: Message.Context,
+		options?: TOptions,
+	) => AssistantMessageEventStream;
 
-	export function buildBaseOptions(model: Model.Value, options?: SimpleOptions, apiKey?: string): Options {
+	export function buildBaseOptions(
+		model: Model.Value,
+		options?: SimpleOptions,
+		apiKey?: string,
+	): Options {
 		return {
 			temperature: options?.temperature,
 			maxTokens: options?.maxTokens || Math.min(model.maxTokens, 32000),
@@ -114,7 +131,9 @@ export namespace Stream {
 		};
 	}
 
-	export function clampReasoning(effort: ThinkingLevel | undefined): Exclude<ThinkingLevel, "xhigh"> | undefined {
+	export function clampReasoning(
+		effort: ThinkingLevel | undefined,
+	): Exclude<ThinkingLevel, "xhigh"> | undefined {
 		return effort === ThinkingLevelEnum.xhigh ? ThinkingLevelEnum.high : effort;
 	}
 
@@ -169,9 +188,15 @@ export namespace Stream {
 		sourceId?: string;
 	};
 
-	const protocolProviderRegistry = new Map<Model.KnownProtocol, RegisteredProtocolProvider>();
+	const protocolProviderRegistry = new Map<
+		Model.KnownProtocol,
+		RegisteredProtocolProvider
+	>();
 
-	function wrapStream<TProtocol extends Model.KnownProtocol, TOptions extends Options>(
+	function wrapStream<
+		TProtocol extends Model.KnownProtocol,
+		TOptions extends Options,
+	>(
 		protocol: TProtocol,
 		stream: StreamFunction<TProtocol, TOptions>,
 	): ProtocolStreamFunction {
@@ -182,7 +207,11 @@ export namespace Stream {
 					expected: protocol,
 				});
 			}
-			return stream(model as Model.TModel<TProtocol>, context, options as TOptions);
+			return stream(
+				model as Model.TModel<TProtocol>,
+				context,
+				options as TOptions,
+			);
 		};
 	}
 
@@ -201,15 +230,18 @@ export namespace Stream {
 		};
 	}
 
-	export function registerProtocolProvider<TProtocol extends Model.KnownProtocol, TOptions extends Options>(
-		provider: ProtocolProvider<TProtocol, TOptions>,
-		sourceId?: string,
-	): void {
+	export function registerProtocolProvider<
+		TProtocol extends Model.KnownProtocol,
+		TOptions extends Options,
+	>(provider: ProtocolProvider<TProtocol, TOptions>, sourceId?: string): void {
 		protocolProviderRegistry.set(provider.protocol, {
 			provider: {
 				protocol: provider.protocol,
 				stream: wrapStream(provider.protocol, provider.stream),
-				streamSimple: wrapStreamSimple(provider.protocol, provider.streamSimple),
+				streamSimple: wrapStreamSimple(
+					provider.protocol,
+					provider.streamSimple,
+				),
 			},
 			sourceId,
 		});
@@ -221,7 +253,9 @@ export namespace Stream {
 		return protocolProviderRegistry.get(protocol)?.provider;
 	}
 
-	export function resolveProtocolProvider(model: Model.Value): ProtocolProvider<Model.KnownProtocol, Options> {
+	export function resolveProtocolProvider(
+		model: Model.Value,
+	): ProtocolProvider<Model.KnownProtocol, Options> {
 		const provider = getProtocolProvider(model.protocol);
 		if (!provider) {
 			throw new ProtocolProviderNotFoundError({
@@ -267,8 +301,14 @@ export namespace Stream {
 		return s.result();
 	}
 
-	export function getApiProviders(): ProtocolProvider<Model.KnownProtocol, Options>[] {
-		return Array.from(protocolProviderRegistry.values(), (entry) => entry.provider);
+	export function getApiProviders(): ProtocolProvider<
+		Model.KnownProtocol,
+		Options
+	>[] {
+		return Array.from(
+			protocolProviderRegistry.values(),
+			(entry) => entry.provider,
+		);
 	}
 
 	export function unregisterProtocolProviders(sourceId: string): void {
