@@ -34,7 +34,7 @@
 		"@sinclair/typebox": "^0.34.48",
 		"@types/node": "^24.6.1",
 		"typescript": "^5.8.3",
-		"vite-plus": "latest"
+		"vite-plus": "0.1.16"
 	},
 	"packageManager": "pnpm@10.25.0"
 }
