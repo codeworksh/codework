@@ -53,14 +53,6 @@ type ToolExecutionStartEvent = {
 	callID: string;
 	name: string;
 };
-type ToolExecutionUpdateEvent = {
-	type: "tool.execution.update";
-	callID: string;
-	name: string;
-	partial?: {
-		content?: unknown[];
-	};
-};
 type ToolExecutionEndEvent = {
 	type: "tool.execution.end";
 	callID: string;
@@ -99,10 +91,6 @@ function isMessagePartEndEvent(event: AgentEvent): event is MessagePartEndEvent 
 
 function isToolExecutionStartEvent(event: AgentEvent): event is ToolExecutionStartEvent {
 	return event.type === "tool.execution.start" && isRecord(event) && "callID" in event && "name" in event;
-}
-
-function isToolExecutionUpdateEvent(event: AgentEvent): event is ToolExecutionUpdateEvent {
-	return event.type === "tool.execution.update" && isRecord(event) && "callID" in event && "name" in event;
 }
 
 function isToolExecutionEndEvent(event: AgentEvent): event is ToolExecutionEndEvent {
@@ -311,8 +299,6 @@ function createEventRenderer() {
 	const textLengths = new Map<string, number>();
 	let printedAssistantHeader = false;
 	let printedBody = false;
-	let currentToolCallID: string | undefined;
-	let currentToolName: string | undefined;
 
 	function ensureAssistantHeader(): void {
 		if (printedAssistantHeader) {
@@ -355,8 +341,6 @@ function createEventRenderer() {
 				if (event.source === "tool" && event.part.type === "toolCall") {
 					const preview = readTextPreview(event.part.partial?.content);
 					if (preview) {
-						currentToolCallID = event.part.callID;
-						currentToolName = event.part.name;
 						writeToolLine(`↳ ${event.part.name}: ${preview}`);
 					}
 				}
@@ -377,30 +361,13 @@ function createEventRenderer() {
 			}
 
 			if (isToolExecutionStartEvent(event)) {
-				currentToolCallID = event.callID;
-				currentToolName = event.name;
 				writeToolLine(`↳ running ${event.name}...`);
-				return;
-			}
-
-			if (isToolExecutionUpdateEvent(event)) {
-				if (event.callID !== currentToolCallID && currentToolName && event.name !== currentToolName) {
-					return;
-				}
-
-				const preview = readTextPreview(event.partial?.content);
-				if (preview) {
-					writeToolLine(`↳ ${event.name}: ${preview}`);
-				}
-
 				return;
 			}
 
 			if (isToolExecutionEndEvent(event)) {
 				const suffix = event.status === "completed" ? "done" : "error";
 				writeToolLine(`↳ ${event.name}: ${suffix}`);
-				currentToolCallID = undefined;
-				currentToolName = undefined;
 				return;
 			}
 
