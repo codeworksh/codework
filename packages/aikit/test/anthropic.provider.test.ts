@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vite-plus/test";
 import type Anthropic from "@anthropic-ai/sdk";
-import type { Message } from "../src/message/message";
+import { describe, expect, it } from "vite-plus/test";
+import { Message } from "../src/message/message";
 import { Model } from "../src/model/model";
 import { Provider } from "../src/provider/provider";
 import { streamAnthropic } from "../src/provider/providers/anthropic/index";
@@ -46,11 +46,11 @@ describe("streamAnthropic", () => {
 		const context: Message.Context = {
 			systemPrompt: "Use tools when helpful.",
 			messages: [
-				{
+				Message.createUserMessage({
 					role: "user",
 					time: { created: 1 },
 					parts: [{ type: "text", text: "Calculate 25 * 18" }],
-				},
+				}),
 			],
 			tools: [calculatorTool],
 		};
@@ -152,7 +152,9 @@ describe("streamAnthropic", () => {
 			"done",
 		]);
 
-		expect(message.responseID).toBe("msg_123");
+		expect(typeof message.messageId).toBe("string");
+		expect(message.messageId.length).toBeGreaterThan(0);
+		expect(message.responseId).toBe("msg_123");
 		expect(message.stopReason).toBe("toolUse");
 		expect(message.parts[0]).toEqual({ type: "text", text: "Hello world" });
 		expect(message.parts[1]).toEqual({

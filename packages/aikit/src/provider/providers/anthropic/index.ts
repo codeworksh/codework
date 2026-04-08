@@ -510,7 +510,7 @@ export const streamAnthropic: Stream.StreamFunction<
 	const stream = new AssistantMessageEventStream();
 
 	void (async () => {
-		const output: Message.AssistantMessage = {
+		const output = Message.createAssistantMessage({
 			role: "assistant",
 			parts: [],
 			protocol: model.protocol,
@@ -529,7 +529,7 @@ export const streamAnthropic: Stream.StreamFunction<
 				created: Date.now(),
 				completed: Date.now(),
 			},
-		};
+		});
 
 		try {
 			let client: Anthropic;
@@ -561,7 +561,7 @@ export const streamAnthropic: Stream.StreamFunction<
 
 			for await (const event of anthropicStream) {
 				if (event.type === "message_start") {
-					output.responseID = event.message.id;
+					output.responseId = event.message.id;
 					// Capture initial token usage from message_start event
 					// This ensures we have input token counts even if the stream is aborted early
 					output.usage.input = event.message.usage.input_tokens || 0;

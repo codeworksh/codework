@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { Agent } from "../src/agent/agent";
 import { llm } from "../src/llm";
-import type { Message } from "../src/message/message";
+import { Message } from "../src/message/message";
 import { ModelCatalog } from "../src/model/catalog";
 import { Model } from "../src/model/model";
 import { Stream } from "../src/provider/stream";
@@ -15,7 +15,7 @@ function contextFor(prompt: string): Message.Context {
 	return {
 		systemPrompt: "You are a helpful assistant. Be concise.",
 		messages: [
-			{
+			Message.createUserMessage({
 				role: "user",
 				time: {
 					created: Date.now(),
@@ -26,7 +26,7 @@ function contextFor(prompt: string): Message.Context {
 						text: prompt,
 					},
 				],
-			},
+			}),
 		],
 	};
 }
@@ -39,7 +39,7 @@ function getText(message: Message.AssistantMessage): string {
 }
 
 function userMessage(text: string): Message.UserMessage {
-	return {
+	return Message.createUserMessage({
 		role: "user",
 		time: {
 			created: Date.now(),
@@ -50,7 +50,7 @@ function userMessage(text: string): Message.UserMessage {
 				text,
 			},
 		],
-	};
+	});
 }
 
 function toToolExecution(toolCall: Message.ToolCall): Agent.ToolCallInFlight {

@@ -602,7 +602,7 @@ export namespace Agent {
 					);
 				}
 			} catch (err: any) {
-				const message: Message.AssistantMessage = {
+				const message = Message.createAssistantMessage({
 					role: "assistant",
 					protocol: model.protocol,
 					provider: model.provider,
@@ -622,7 +622,7 @@ export namespace Agent {
 						completed: Date.now(),
 					},
 					parts: [],
-				};
+				});
 
 				this.appendMessage(message);
 				this._state.error = err?.message || String(err);
@@ -656,13 +656,13 @@ export namespace Agent {
 					message: "no model configured yet.",
 				});
 
-			const message: Message.UserMessage = {
+			const message = Message.createUserMessage({
 				role: "user",
 				time: {
 					created: Date.now(),
 				},
 				parts: [...messages, ...(images ?? [])],
-			};
+			});
 
 			await this.loop([message]);
 		}

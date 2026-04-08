@@ -3,7 +3,7 @@ import { Type } from "@sinclair/typebox";
 import { Agent } from "../src/agent/agent";
 import { Loop } from "../src/agent/loop";
 import type { Event } from "../src/event/event";
-import type { Message } from "../src/message/message";
+import { Message } from "../src/message/message";
 import { Model } from "../src/model/model";
 import { Provider } from "../src/provider/provider";
 import { AssistantMessageEventStream } from "../src/utils/eventstream";
@@ -33,15 +33,15 @@ function createModel(): Model.Value {
 }
 
 function createUserMessage(text: string): Message.UserMessage {
-	return {
+	return Message.createUserMessage({
 		role: "user",
 		time: { created: 1 },
 		parts: [{ type: "text", text }],
-	};
+	});
 }
 
 function createAssistantMessage(model: Model.Value): Message.AssistantMessage {
-	return {
+	return Message.createAssistantMessage({
 		role: "assistant",
 		protocol: model.protocol,
 		provider: model.provider,
@@ -66,7 +66,7 @@ function createAssistantMessage(model: Model.Value): Message.AssistantMessage {
 			completed: 2,
 		},
 		parts: [],
-	};
+	});
 }
 
 function createToolUseMessage(model: Model.Value): Message.AssistantMessage {

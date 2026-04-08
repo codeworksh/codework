@@ -69,14 +69,14 @@ function createContext(): Message.Context {
 		systemPrompt: "Be concise.",
 		tools: [searchTool],
 		messages: [
-			{
+			Message.createUserMessage({
 				role: "user",
 				time: {
 					created: 1,
 				},
 				parts: [{ type: "text", text: "Find the docs" }],
-			},
-			{
+			}),
+			Message.createAssistantMessage({
 				role: "assistant",
 				protocol: Model.KnownProtocolEnum.openaiResponses,
 				provider: {
@@ -109,7 +109,7 @@ function createContext(): Message.Context {
 					createToolCall("completed", { query: "aikit docs", limit: 5 }),
 					{ type: "text", text: "Found the docs" },
 				],
-			},
+			}),
 		],
 	};
 }
@@ -123,6 +123,50 @@ function toToolExecution(toolCall: Message.ToolCall): Agent.ToolCallInFlight {
 }
 
 describe("Message schema", () => {
+	it("generates messageId values for user and assistant messages", () => {
+		const userMessage = Message.createUserMessage({
+			role: "user",
+			time: { created: 1 },
+			parts: [{ type: "text", text: "hello" }],
+		});
+		const assistantMessage = Message.createAssistantMessage({
+			role: "assistant",
+			protocol: Model.KnownProtocolEnum.openaiResponses,
+			provider: {
+				id: Provider.KnownProviderEnum.openai,
+				name: "OpenAI",
+				env: ["OPENAI_API_KEY"],
+			},
+			model: "gpt-5",
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: {
+					input: 0,
+					output: 0,
+					cacheRead: 0,
+					cacheWrite: 0,
+					total: 0,
+				},
+			},
+			stopReason: "stop",
+			time: {
+				created: 1,
+				completed: 2,
+			},
+			parts: [],
+		});
+
+		expect(typeof userMessage.messageId).toBe("string");
+		expect(userMessage.messageId.length).toBeGreaterThan(0);
+		expect(typeof assistantMessage.messageId).toBe("string");
+		expect(assistantMessage.messageId.length).toBeGreaterThan(0);
+		expect(assistantMessage.messageId).not.toBe(userMessage.messageId);
+	});
+
 	it("accepts typed tools in the tool and context schemas", () => {
 		const validateToolSchema = ajv.compile(Message.ToolSchema);
 		const validateContextSchema = ajv.compile(Message.ContextSchema);

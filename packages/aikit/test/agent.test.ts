@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import Ajv from "ajv";
 import { Agent } from "../src/agent/agent";
 import { Event } from "../src/event/event";
-import type { Message } from "../src/message/message";
+import { Message } from "../src/message/message";
 import { Model } from "../src/model/model";
 import { Provider } from "../src/provider/provider";
 
@@ -11,6 +11,50 @@ const ajv = new Ajv({
 	strict: false,
 	coerceTypes: true,
 });
+
+function createUserMessage(parts: Message.UserMessage["parts"]): Message.UserMessage {
+	return Message.createUserMessage({
+		role: "user",
+		time: { created: 1 },
+		parts,
+	});
+}
+
+function createAssistantMessage(
+	stopReason: Message.AssistantMessage["stopReason"],
+	parts: Message.AssistantMessage["parts"],
+): Message.AssistantMessage {
+	return Message.createAssistantMessage({
+		role: "assistant",
+		protocol: Model.KnownProtocolEnum.openaiResponses,
+		provider: {
+			id: Provider.KnownProviderEnum.openai,
+			name: "OpenAI",
+			env: ["OPENAI_API_KEY"],
+		},
+		model: "gpt-5",
+		usage: {
+			input: 1,
+			output: 1,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 2,
+			cost: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				total: 0,
+			},
+		},
+		stopReason,
+		time: {
+			created: 1,
+			completed: 2,
+		},
+		parts,
+	});
+}
 
 describe("Agent tool result schema", () => {
 	it("accepts valid running, completed, and error tool execution results", () => {
@@ -142,11 +186,7 @@ describe("Agent event schema", () => {
 
 	it("rejects terminal updates and non-assistant turn end messages", () => {
 		const validate = ajv.compile(Event.AgentEventSchema);
-		const userMessage: Message.UserMessage = {
-			role: "user",
-			time: { created: 1 },
-			parts: [{ type: "text", text: "hello" }],
-		};
+		const userMessage = createUserMessage([{ type: "text", text: "hello" }]);
 
 		expect(
 			validate({
@@ -172,36 +212,7 @@ describe("Agent event schema", () => {
 
 	it("accepts assistant message updates and turn end events", () => {
 		const validate = ajv.compile(Event.AgentEventSchema);
-		const assistantMessage: Message.AssistantMessage = {
-			role: "assistant",
-			protocol: Model.KnownProtocolEnum.openaiResponses,
-			provider: {
-				id: Provider.KnownProviderEnum.openai,
-				name: "OpenAI",
-				env: ["OPENAI_API_KEY"],
-			},
-			model: "gpt-5",
-			usage: {
-				input: 1,
-				output: 1,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 2,
-				cost: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					total: 0,
-				},
-			},
-			stopReason: "stop",
-			time: {
-				created: 1,
-				completed: 2,
-			},
-			parts: [{ type: "text", text: "hello" }],
-		};
+		const assistantMessage = createAssistantMessage("stop", [{ type: "text", text: "hello" }]);
 
 		expect(
 			validate({
@@ -220,48 +231,19 @@ describe("Agent event schema", () => {
 
 	it("requires source on message.part.update and tolerates extra fields on message.update", () => {
 		const validate = ajv.compile(Event.AgentEventSchema);
-		const assistantMessage: Message.AssistantMessage = {
-			role: "assistant",
-			protocol: Model.KnownProtocolEnum.openaiResponses,
-			provider: {
-				id: Provider.KnownProviderEnum.openai,
-				name: "OpenAI",
-				env: ["OPENAI_API_KEY"],
-			},
-			model: "gpt-5",
-			usage: {
-				input: 1,
-				output: 1,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 2,
-				cost: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					total: 0,
+		const assistantMessage = createAssistantMessage("toolUse", [
+			{
+				type: "toolCall",
+				callID: "call_1",
+				name: "search",
+				arguments: { query: "docs" },
+				status: "pending",
+				time: {
+					start: 1,
+					end: 2,
 				},
 			},
-			stopReason: "toolUse",
-			time: {
-				created: 1,
-				completed: 2,
-			},
-			parts: [
-				{
-					type: "toolCall",
-					callID: "call_1",
-					name: "search",
-					arguments: { query: "docs" },
-					status: "pending",
-					time: {
-						start: 1,
-						end: 2,
-					},
-				},
-			],
-		};
+		]);
 
 		expect(
 			validate({
@@ -293,56 +275,23 @@ describe("Agent event schema", () => {
 
 	it("accepts message part lifecycle events for user and assistant parts", () => {
 		const validate = ajv.compile(Event.AgentEventSchema);
-		const userMessage: Message.UserMessage = {
-			role: "user",
-			time: { created: 1 },
-			parts: [
-				{ type: "text", text: "hello" },
-				{ type: "image", data: "abc", mimeType: "image/png" },
-			],
-		};
-		const assistantMessage: Message.AssistantMessage = {
-			role: "assistant",
-			protocol: Model.KnownProtocolEnum.openaiResponses,
-			provider: {
-				id: Provider.KnownProviderEnum.openai,
-				name: "OpenAI",
-				env: ["OPENAI_API_KEY"],
-			},
-			model: "gpt-5",
-			usage: {
-				input: 1,
-				output: 1,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 2,
-				cost: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					total: 0,
+		const userMessage = createUserMessage([
+			{ type: "text", text: "hello" },
+			{ type: "image", data: "abc", mimeType: "image/png" },
+		]);
+		const assistantMessage = createAssistantMessage("toolUse", [
+			{
+				type: "toolCall",
+				callID: "call_1",
+				name: "search",
+				arguments: { query: "docs" },
+				status: "pending",
+				time: {
+					start: 1,
+					end: 2,
 				},
 			},
-			stopReason: "toolUse",
-			time: {
-				created: 1,
-				completed: 2,
-			},
-			parts: [
-				{
-					type: "toolCall",
-					callID: "call_1",
-					name: "search",
-					arguments: { query: "docs" },
-					status: "pending",
-					time: {
-						start: 1,
-						end: 2,
-					},
-				},
-			],
-		};
+		]);
 
 		expect(
 			validate({
@@ -375,41 +324,8 @@ describe("Agent event schema", () => {
 
 	it("rejects role-incompatible part events", () => {
 		const validate = ajv.compile(Event.AgentEventSchema);
-		const userMessage: Message.UserMessage = {
-			role: "user",
-			time: { created: 1 },
-			parts: [{ type: "text", text: "hello" }],
-		};
-		const assistantMessage: Message.AssistantMessage = {
-			role: "assistant",
-			protocol: Model.KnownProtocolEnum.openaiResponses,
-			provider: {
-				id: Provider.KnownProviderEnum.openai,
-				name: "OpenAI",
-				env: ["OPENAI_API_KEY"],
-			},
-			model: "gpt-5",
-			usage: {
-				input: 1,
-				output: 1,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 2,
-				cost: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					total: 0,
-				},
-			},
-			stopReason: "stop",
-			time: {
-				created: 1,
-				completed: 2,
-			},
-			parts: [{ type: "text", text: "hello" }],
-		};
+		const userMessage = createUserMessage([{ type: "text", text: "hello" }]);
+		const assistantMessage = createAssistantMessage("stop", [{ type: "text", text: "hello" }]);
 
 		expect(
 			validate({
@@ -432,52 +348,23 @@ describe("Agent event schema", () => {
 
 	it("accepts tool-driven message updates without provider stream events", () => {
 		const validate = ajv.compile(Event.AgentEventSchema);
-		const assistantMessage: Message.AssistantMessage = {
-			role: "assistant",
-			protocol: Model.KnownProtocolEnum.openaiResponses,
-			provider: {
-				id: Provider.KnownProviderEnum.openai,
-				name: "OpenAI",
-				env: ["OPENAI_API_KEY"],
-			},
-			model: "gpt-5",
-			usage: {
-				input: 1,
-				output: 1,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 2,
-				cost: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					total: 0,
+		const assistantMessage = createAssistantMessage("toolUse", [
+			{
+				type: "toolCall",
+				callID: "call_1",
+				name: "search",
+				arguments: { query: "docs" },
+				status: "completed",
+				result: {
+					content: [{ type: "text", text: "Done" }],
+					isError: false,
+				},
+				time: {
+					start: 1,
+					end: 2,
 				},
 			},
-			stopReason: "toolUse",
-			time: {
-				created: 1,
-				completed: 2,
-			},
-			parts: [
-				{
-					type: "toolCall",
-					callID: "call_1",
-					name: "search",
-					arguments: { query: "docs" },
-					status: "completed",
-					result: {
-						content: [{ type: "text", text: "Done" }],
-						isError: false,
-					},
-					time: {
-						start: 1,
-						end: 2,
-					},
-				},
-			],
-		};
+		]);
 
 		expect(
 			validate({

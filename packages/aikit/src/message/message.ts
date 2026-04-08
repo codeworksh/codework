@@ -1,4 +1,5 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { uuidv7 } from "uuidv7";
 import { Model } from "../model/model";
 import { Provider } from "../provider/provider";
 
@@ -138,6 +139,7 @@ export namespace Message {
 	export type StopReason = Static<typeof StopReasonSchema>;
 
 	export const UserMessageSchema = Type.Object({
+		messageId: Type.String(),
 		role: Type.Literal("user"),
 		time: Type.Object({
 			created: Type.Number(),
@@ -159,12 +161,41 @@ export namespace Message {
 			completed: Type.Number(),
 		}),
 		parts: Type.Array(Type.Union([TextContentSchema, ImageContentSchema, ThinkingContentSchema, ToolCallSchema])),
-		responseID: Type.Optional(Type.String()), // Provider-specific response/message identifier when the upstream API exposes one
+		responseId: Type.Optional(Type.String()), // Provider-specific response/message identifier when the upstream API exposes one
+		messageId: Type.String(),
 	});
 	export type AssistantMessage = Static<typeof AssistantMessageSchema>;
 
 	export const MessageSchema = Type.Union([UserMessageSchema, AssistantMessageSchema]);
 	export type Message = Static<typeof MessageSchema>;
+
+	type UserMessageInit = Omit<UserMessage, "messageId"> & {
+		messageId?: string;
+	};
+
+	type AssistantMessageInit = Omit<AssistantMessage, "messageId"> & {
+		messageId?: string;
+	};
+
+	export function createMessageId(): string {
+		return uuidv7();
+	}
+
+	export function createUserMessage(message: UserMessageInit): UserMessage {
+		const { messageId = createMessageId(), ...rest } = message;
+		return {
+			messageId,
+			...rest,
+		};
+	}
+
+	export function createAssistantMessage(message: AssistantMessageInit): AssistantMessage {
+		const { messageId = createMessageId(), ...rest } = message;
+		return {
+			messageId,
+			...rest,
+		};
+	}
 
 	/**
 	 * Generic tool definition with typed parameter schema.

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { Type } from "@sinclair/typebox";
 import { Agent } from "../src/agent/agent";
 import type { Event } from "../src/event/event";
-import type { Message } from "../src/message/message";
+import { Message } from "../src/message/message";
 import { ModelCatalog } from "../src/model/catalog";
 import { Model } from "../src/model/model";
 import { Provider } from "../src/provider/provider";
@@ -34,7 +34,7 @@ function createModel(): Model.Value {
 }
 
 function userMessage(text: string): Message.UserMessage {
-	return {
+	return Message.createUserMessage({
 		role: "user",
 		time: {
 			created: Date.now(),
@@ -45,7 +45,7 @@ function userMessage(text: string): Message.UserMessage {
 				text,
 			},
 		],
-	};
+	});
 }
 
 function textContent(text: string): Message.TextContent {
@@ -59,7 +59,7 @@ function createAssistantMessage(
 	model: Model.Value,
 	stopReason: Message.AssistantMessage["stopReason"] = "stop",
 ): Message.AssistantMessage {
-	return {
+	return Message.createAssistantMessage({
 		role: "assistant",
 		protocol: model.protocol,
 		provider: model.provider,
@@ -84,7 +84,7 @@ function createAssistantMessage(
 			completed: Date.now(),
 		},
 		parts: [],
-	};
+	});
 }
 
 function createTextResponseStream(model: Model.Value, text: string): AssistantMessageEventStream {

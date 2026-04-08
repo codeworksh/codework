@@ -48,7 +48,8 @@
 		"ajv": "^8.18.0",
 		"ajv-formats": "^3.0.1",
 		"partial-json": "^0.1.7",
-		"remeda": "^2.33.6"
+		"remeda": "^2.33.6",
+		"uuidv7": "^1.2.1"
 	},
 	"peerDependencies": {
 		"typescript": "^5"
