@@ -8,9 +8,9 @@ globalThis.fetch = (async () =>
 		text: async () => "",
 	}) as Response) as unknown as typeof fetch;
 const aikit = await import("../src/index.ts");
+const { Agent } = await import("../src/agent/agent.ts");
 const { Loop } = await import("../src/agent/loop.ts");
 const { Stream } = await import("../src/provider/stream.ts");
-const { validateToolArguments, validateToolCall } = await import("../src/utils/validation.ts");
 globalThis.fetch = importFetch;
 
 describe("public api", () => {
@@ -25,26 +25,20 @@ describe("public api", () => {
 	});
 
 	it("exports the facade entrypoints from the package root", () => {
+		expect(Object.keys(aikit).sort()).toEqual(["Agent", "Message", "agent", "llm", "stream"]);
+
+		expect(aikit.Agent).toBe(Agent);
 		expect(aikit.llm).toBeDefined();
 		expect(aikit.stream).toBeDefined();
 		expect(aikit.agent).toBeDefined();
+		expect(aikit.Message).toBeDefined();
 
-		expect(aikit.stream.complete).toBe(aikit.complete);
-		expect(aikit.stream.simple).toBe(aikit.streamSimple);
-		expect(aikit.stream.completeSimple).toBe(aikit.completeSimple);
 		expect(aikit.stream.resolveProtocolProvider).toBe(Stream.resolveProtocolProvider);
 
 		expect(aikit.agent.loop).toBe(Loop.run);
 		expect(aikit.agent.loopContinue).toBe(Loop.runContinue);
-	});
-
-	it("exports the core namespaces and validation helpers", () => {
-		expect(aikit.Agent).toBeDefined();
-		expect(aikit.Event).toBeDefined();
-		expect(aikit.Message).toBeDefined();
-		expect(aikit.Model).toBeDefined();
-		expect(aikit.Stream).toBe(Stream);
-		expect(aikit.validateToolArguments).toBe(validateToolArguments);
-		expect(aikit.validateToolCall).toBe(validateToolCall);
+		expect(aikit.stream.complete).toBeDefined();
+		expect(aikit.stream.simple).toBeDefined();
+		expect(aikit.stream.completeSimple).toBeDefined();
 	});
 });

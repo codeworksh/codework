@@ -18,33 +18,30 @@ Node `>=24.14.1` is required.
 - `agent.loop(...)` and `agent.loopContinue(...)` for lower-level turn orchestration
 - `Message` helpers for typed messages and generated `messageId` values
 
+## Root API
+
+```ts
+import { Agent, Message, agent, llm, stream } from "@codeworksh/aikit";
+```
+
 ## Quick Start
 
 ```ts
-import { Message, llm, stream } from "@codeworksh/aikit";
+import { Agent } from "@codeworksh/aikit";
 
-const model = await llm("anthropic", "claude-haiku-4-5-20251001");
-if (!model) throw new Error("Model not found");
+const agent = await Agent.create({
+	provider: "anthropic",
+	model: "claude-haiku-4-5-20251001",
+	getApiKey: async () => process.env.ANTHROPIC_API_KEY,
+});
 
-const message = await stream.complete(
-	model,
-	{
-		systemPrompt: "You are a concise assistant.",
-		messages: [
-			Message.createUserMessage({
-				role: "user",
-				time: { created: Date.now() },
-				parts: [{ type: "text", text: "Reply with exactly: hello" }],
-			}),
-		],
-	},
-	{
-		apiKey: process.env.ANTHROPIC_API_KEY,
-	},
-);
+agent.setSystemPrompt("Be concise.");
 
-console.log(message.messageId);
-console.log(message.parts);
+await agent.prompt([{ type: "text", text: "Reply with exactly: hello" }]);
+
+const lastMessage = agent.state.messages.at(-1);
+console.log(lastMessage?.messageId);
+console.log(lastMessage?.role);
 ```
 
 ## Stream Events
@@ -141,6 +138,40 @@ const instance = await Agent.create({
 });
 
 await instance.prompt([{ type: "text", text: "Use the calculator tool for 25 * 18." }]);
+```
+
+## Lower-Level Loop
+
+Use `agent.loop(...)` when you want loop execution without creating a stateful instance.
+
+```ts
+import { Message, agent, llm } from "@codeworksh/aikit";
+
+const model = await llm("anthropic", "claude-haiku-4-5-20251001");
+if (!model) throw new Error("Model not found");
+
+const run = agent.loop(
+	{
+		model,
+		apiKey: process.env.ANTHROPIC_API_KEY,
+		convertToLlm: async (messages) => messages,
+	},
+	{
+		systemPrompt: "Be concise.",
+		messages: [],
+		tools: [],
+	},
+	[
+		Message.createUserMessage({
+			role: "user",
+			time: { created: Date.now() },
+			parts: [{ type: "text", text: "Reply with exactly: ok" }],
+		}),
+	],
+);
+
+const messages = await run.result();
+console.log(messages.at(-1)?.role);
 ```
 
 ## Message IDs
