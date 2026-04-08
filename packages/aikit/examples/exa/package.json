@@ -1,0 +1,28 @@
+{
+	"name": "aikit-exa-example",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Example Node.js sales-research agent built with @codeworksh/aikit and exa-js.",
+	"type": "module",
+	"scripts": {
+		"dev": "vp pack && node --env-file-if-exists=.env dist/index.mjs",
+		"start": "node --env-file-if-exists=.env dist/index.mjs",
+		"build": "vp pack",
+		"check": "vp check",
+		"lint": "vp lint"
+	},
+	"dependencies": {
+		"@codeworksh/aikit": "link:../..",
+		"@codeworksh/utils": "link:../../../utils",
+		"@sinclair/typebox": "^0.34.48",
+		"exa-js": "^2.11.0"
+	},
+	"devDependencies": {
+		"@types/node": "^24.6.1",
+		"typescript": "^5.8.3",
+		"vite-plus": "0.1.16"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	}
+}
