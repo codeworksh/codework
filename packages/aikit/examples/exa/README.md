@@ -9,6 +9,8 @@ This example is intentionally not part of the repo workspace install.
 - Creates an `aikit` agent with a sales-research system prompt
 - Exposes an `exa_search` tool backed by `exa-js`
 - Runs an interactive shell with `node:readline`
+- Streams assistant text live from agent events
+- Shows tool planning, execution progress, and completion updates
 - Lets the model decide when to search for people or companies
 
 ## Setup
@@ -42,3 +44,11 @@ Find 5 AI healthcare companies in the US that look promising for outbound sales.
 ```
 
 Type `exit` or `quit` to stop the session.
+
+Useful shell commands:
+
+```text
+/help
+/reset
+/exit
+```

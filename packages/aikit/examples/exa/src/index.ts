@@ -13,6 +13,7 @@ const colors = {
 	green: "\x1b[32m",
 	yellow: "\x1b[33m",
 	blue: "\x1b[34m",
+	magenta: "\x1b[35m",
 } as const;
 
 const categorySchema = Type.Union([Type.Literal("company"), Type.Literal("people")]);
@@ -32,6 +33,91 @@ const exaSearchParameters = Type.Object({
 });
 
 type ExaSearchParams = Static<typeof exaSearchParameters>;
+type AssistantPart = Message.AssistantMessage["parts"][number];
+type AgentEvent = { type?: string };
+type MessagePartUpdateEvent = {
+	type: "message.part.update";
+	message: Message.AssistantMessage;
+	partIndex: number;
+	part: AssistantPart;
+	source: "llm" | "tool";
+};
+type MessagePartEndEvent = {
+	type: "message.part.end";
+	message: Message.AssistantMessage;
+	partIndex: number;
+	part: AssistantPart;
+};
+type ToolExecutionStartEvent = {
+	type: "tool.execution.start";
+	callID: string;
+	name: string;
+};
+type ToolExecutionUpdateEvent = {
+	type: "tool.execution.update";
+	callID: string;
+	name: string;
+	partial?: {
+		content?: unknown[];
+	};
+};
+type ToolExecutionEndEvent = {
+	type: "tool.execution.end";
+	callID: string;
+	name: string;
+	status: "completed" | "error";
+};
+type TurnEndEvent = {
+	type: "turn.end";
+	message: Message.AssistantMessage;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function isMessagePartUpdateEvent(event: AgentEvent): event is MessagePartUpdateEvent {
+	return (
+		event.type === "message.part.update" &&
+		isRecord(event) &&
+		"message" in event &&
+		"part" in event &&
+		"partIndex" in event &&
+		"source" in event
+	);
+}
+
+function isMessagePartEndEvent(event: AgentEvent): event is MessagePartEndEvent {
+	return (
+		event.type === "message.part.end" &&
+		isRecord(event) &&
+		"message" in event &&
+		"part" in event &&
+		"partIndex" in event
+	);
+}
+
+function isToolExecutionStartEvent(event: AgentEvent): event is ToolExecutionStartEvent {
+	return event.type === "tool.execution.start" && isRecord(event) && "callID" in event && "name" in event;
+}
+
+function isToolExecutionUpdateEvent(event: AgentEvent): event is ToolExecutionUpdateEvent {
+	return event.type === "tool.execution.update" && isRecord(event) && "callID" in event && "name" in event;
+}
+
+function isToolExecutionEndEvent(event: AgentEvent): event is ToolExecutionEndEvent {
+	return (
+		event.type === "tool.execution.end" &&
+		isRecord(event) &&
+		"callID" in event &&
+		"name" in event &&
+		"status" in event
+	);
+}
+
+function isTurnEndEvent(event: AgentEvent): event is TurnEndEvent {
+	return event.type === "turn.end" && isRecord(event) && "message" in event;
+}
 
 function requireEnv(name: string): string {
 	const value = process.env[name];
@@ -60,6 +146,10 @@ function getFinalAssistantText(agent: Agent.Instance): string {
 	return textParts.join("\n\n") || "The assistant finished without a text response.";
 }
 
+function last<T>(items: T[]): T | undefined {
+	return items.at(-1);
+}
+
 function readStringField(record: Record<string, unknown>, key: string): string | undefined {
 	const value = record[key];
 	return typeof value === "string" && value.trim().length > 0 ? value : undefined;
@@ -70,6 +160,11 @@ function readStringArrayField(record: Record<string, unknown>, key: string): str
 	return Array.isArray(value)
 		? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
 		: [];
+}
+
+function readTextPreview(content: unknown[] | undefined): string | undefined {
+	const preview = last(content ?? []);
+	return isRecord(preview) && preview.type === "text" && typeof preview.text === "string" ? preview.text : undefined;
 }
 
 function formatResult(result: Record<string, unknown>, index: number): string {
@@ -194,10 +289,136 @@ function printBanner(): void {
 	console.log(`${colors.dim}Try: ${defaultPrompt}${colors.reset}\n`);
 }
 
-function question(rl: readline.Interface, prompt: string): Promise<string> {
+function question(rl: readline.Interface, prompt: string): Promise<string | null> {
 	return new Promise((resolve) => {
-		rl.question(prompt, resolve);
+		const onClose = () => resolve(null);
+		rl.once("close", onClose);
+		rl.question(prompt, (answer) => {
+			rl.off("close", onClose);
+			resolve(answer);
+		});
 	});
+}
+
+function printHelp(): void {
+	console.log(`${colors.dim}Commands:${colors.reset}`);
+	console.log(`${colors.dim}  /help  Show commands${colors.reset}`);
+	console.log(`${colors.dim}  /reset Clear agent message history${colors.reset}`);
+	console.log(`${colors.dim}  /exit  Quit the shell${colors.reset}\n`);
+}
+
+function createEventRenderer() {
+	const textLengths = new Map<string, number>();
+	let printedAssistantHeader = false;
+	let printedBody = false;
+	let currentToolCallID: string | undefined;
+	let currentToolName: string | undefined;
+
+	function ensureAssistantHeader(): void {
+		if (printedAssistantHeader) {
+			return;
+		}
+
+		printedAssistantHeader = true;
+		process.stdout.write(`\n${colors.blue}${colors.bold}Agent:${colors.reset} `);
+	}
+
+	function writeToolLine(text: string): void {
+		ensureAssistantHeader();
+		if (printedBody) {
+			process.stdout.write("\n");
+		}
+		process.stdout.write(`${colors.dim}${text}${colors.reset}\n`);
+		printedBody = false;
+	}
+
+	return {
+		handleEvent(event: AgentEvent): void {
+			if (isMessagePartUpdateEvent(event)) {
+				if (event.message.role !== "assistant") {
+					return;
+				}
+
+				if (event.source === "llm" && event.part.type === "text") {
+					ensureAssistantHeader();
+					const key = `${event.message.messageId}:${event.partIndex}`;
+					const previousLength = textLengths.get(key) ?? 0;
+					const nextText = event.part.text.slice(previousLength);
+					if (nextText) {
+						process.stdout.write(nextText);
+						printedBody = true;
+						textLengths.set(key, event.part.text.length);
+					}
+					return;
+				}
+
+				if (event.source === "tool" && event.part.type === "toolCall") {
+					const preview = readTextPreview(event.part.partial?.content);
+					if (preview) {
+						currentToolCallID = event.part.callID;
+						currentToolName = event.part.name;
+						writeToolLine(`↳ ${event.part.name}: ${preview}`);
+					}
+				}
+
+				return;
+			}
+
+			if (isMessagePartEndEvent(event)) {
+				if (event.message.role !== "assistant") {
+					return;
+				}
+
+				if (event.part.type === "toolCall" && event.part.status === "pending") {
+					writeToolLine(`↳ planning tool call: ${event.part.name}`);
+				}
+
+				return;
+			}
+
+			if (isToolExecutionStartEvent(event)) {
+				currentToolCallID = event.callID;
+				currentToolName = event.name;
+				writeToolLine(`↳ running ${event.name}...`);
+				return;
+			}
+
+			if (isToolExecutionUpdateEvent(event)) {
+				if (event.callID !== currentToolCallID && currentToolName && event.name !== currentToolName) {
+					return;
+				}
+
+				const preview = readTextPreview(event.partial?.content);
+				if (preview) {
+					writeToolLine(`↳ ${event.name}: ${preview}`);
+				}
+
+				return;
+			}
+
+			if (isToolExecutionEndEvent(event)) {
+				const suffix = event.status === "completed" ? "done" : "error";
+				writeToolLine(`↳ ${event.name}: ${suffix}`);
+				currentToolCallID = undefined;
+				currentToolName = undefined;
+				return;
+			}
+
+			if (isTurnEndEvent(event)) {
+				if (event.message.role === "assistant" && event.message.stopReason === "toolUse") {
+					writeToolLine(`↳ model requested tool execution`);
+				}
+			}
+		},
+		finish(agent: Agent.Instance): void {
+			if (!printedAssistantHeader) {
+				console.log(`\n${colors.blue}${colors.bold}Agent:${colors.reset} ${getFinalAssistantText(agent)}\n`);
+				return;
+			}
+
+			process.stdout.write("\n\n");
+		},
+	};
 }
 
 async function runShell(agent: Agent.Instance): Promise<void> {
@@ -212,26 +433,49 @@ async function runShell(agent: Agent.Instance): Promise<void> {
 	});
 
 	printBanner();
+	printHelp();
 
 	while (true) {
-		const input = (await question(rl, `${colors.green}You:${colors.reset} `)).trim();
+		const answer = await question(rl, `${colors.green}You:${colors.reset} `);
+		if (answer === null) {
+			return;
+		}
+
+		const input = answer.trim();
 		if (!input) {
 			continue;
 		}
 
-		if (input.toLowerCase() === "exit" || input.toLowerCase() === "quit") {
+		if (input.toLowerCase() === "exit" || input.toLowerCase() === "quit" || input.toLowerCase() === "/exit") {
 			console.log(`\n${colors.dim}Goodbye.${colors.reset}`);
 			rl.close();
 			return;
 		}
 
+		if (input === "/help") {
+			printHelp();
+			continue;
+		}
+
+		if (input === "/reset") {
+			agent.reset();
+			console.log(`${colors.magenta}State cleared.${colors.reset}\n`);
+			continue;
+		}
+
+		const renderer = createEventRenderer();
+		const unsubscribe = agent.subscribe((event: AgentEvent) => {
+			renderer.handleEvent(event);
+		});
+
 		try {
-			console.log(`\n${colors.blue}${colors.bold}Agent:${colors.reset}`);
 			await agent.prompt([{ type: "text", text: input }]);
-			console.log(`${getFinalAssistantText(agent)}\n`);
+			renderer.finish(agent);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			console.error(`\n${colors.yellow}Error: ${message}${colors.reset}\n`);
+		} finally {
+			unsubscribe();
 		}
 	}
 }
