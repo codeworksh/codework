@@ -411,6 +411,82 @@ describe("Agent.Instance", () => {
 		expect(getText(finalMessage)).toContain("450");
 	});
 
+	it("reconciles tool updates onto the same assistant message after state is reloaded", async () => {
+		let instance!: Agent.Instance;
+		let callCount = 0;
+		let runningToolStatus: Message.ToolCall["status"] | undefined;
+
+		const calculatorTool = Agent.defineTool({
+			name: "calculator",
+			label: "Calculator",
+			description: "Evaluates arithmetic expressions",
+			parameters: Type.Object({
+				expression: Type.String(),
+			}),
+			async execute(_callID, params, _signal, onUpdate) {
+				const toolMessage = instance.state.messages.find(
+					(message): message is Message.AssistantMessage =>
+						message.role === "assistant" && message.stopReason === "toolUse",
+				);
+				if (!toolMessage) {
+					throw new Error("expected tool-use assistant message in state");
+				}
+
+				// Simulate a consumer reloading persisted messages mid-turn.
+				instance.replaceMessages(structuredClone(instance.state.messages));
+
+				await onUpdate?.({
+					status: "running",
+					partial: {
+						content: [{ type: "text", text: `Calculating ${params.expression}` }],
+					},
+				});
+
+				const storedToolMessage = instance.state.messages.find(
+					(message): message is Message.AssistantMessage => message.messageId === toolMessage.messageId,
+				);
+				const runningPart = storedToolMessage?.parts[0];
+				if (runningPart?.type === "toolCall") {
+					runningToolStatus = runningPart.status;
+				}
+
+				return {
+					status: "completed",
+					result: {
+						content: [{ type: "text", text: "450" }],
+						isError: false,
+					},
+				};
+			},
+		});
+
+		instance = await Agent.create({
+			model: createModel(),
+			initialState: {
+				tools: [calculatorTool],
+			},
+			streamFn: async (model) => {
+				callCount += 1;
+				if (callCount === 1) {
+					return createToolUseResponseStream(model);
+				}
+				return createTextResponseStream(model, "The answer is 450");
+			},
+		});
+
+		await instance.prompt([textContent("Use the calculator tool for 25 * 18")]);
+
+		expect(runningToolStatus).toBe("running");
+
+		const toolMessage = instance.state.messages.find(
+			(message): message is Message.AssistantMessage =>
+				message.role === "assistant" && message.stopReason === "toolUse",
+		);
+		const toolPart = toolMessage?.parts[0];
+		expect(toolPart?.type).toBe("toolCall");
+		expect(toolPart && "status" in toolPart ? toolPart.status : undefined).toBe("completed");
+	});
+
 	it("delivers queued follow-up messages in a later turn with the correct event order", async () => {
 		const instance = await Agent.create({
 			model: createModel(),

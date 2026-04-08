@@ -199,7 +199,6 @@ export namespace Agent {
 
 		private listeners = new Set<(e: Event.AgentEvent) => void>();
 		private abortController?: AbortController;
-		private activeAssistantIndex?: number;
 
 		private convertToLlm: (messages: Message.Message[]) => Message.Message[] | Promise<Message.Message[]>;
 		private transformContext?: (messages: Message.Message[], signal?: AbortSignal) => Promise<Message.Message[]>;
@@ -402,27 +401,54 @@ export namespace Agent {
 
 		replaceMessages(ms: Message.Message[]) {
 			this._state.messages = ms.slice();
-			this.activeAssistantIndex = undefined;
 		}
 
 		appendMessage(m: Message.Message) {
 			this._state.messages = [...this._state.messages, m];
 		}
 
-		private patchStoredAssistantPart(partIndex: number, part: Message.AssistantMessage["parts"][number]): boolean {
-			if (this.activeAssistantIndex === undefined) {
+		private findMessageIndexById(messageId: string): number {
+			return this._state.messages.findIndex((message) => message.messageId === messageId);
+		}
+
+		private replaceMessageById(message: Message.Message): boolean {
+			const messageIndex = this.findMessageIndexById(message.messageId);
+			if (messageIndex === -1) {
 				return false;
 			}
 
 			const messages = this._state.messages.slice();
-			const existing = messages[this.activeAssistantIndex];
+			messages[messageIndex] = message;
+			this._state.messages = messages;
+			return true;
+		}
+
+		private upsertMessage(message: Message.Message): void {
+			if (this.replaceMessageById(message)) {
+				return;
+			}
+			this.appendMessage(message);
+		}
+
+		private patchStoredAssistantPart(
+			messageId: string,
+			partIndex: number,
+			part: Message.AssistantMessage["parts"][number],
+		): boolean {
+			const messageIndex = this.findMessageIndexById(messageId);
+			if (messageIndex === -1) {
+				return false;
+			}
+
+			const messages = this._state.messages.slice();
+			const existing = messages[messageIndex];
 			if (!existing || existing.role !== "assistant") {
 				return false;
 			}
 
 			const nextParts = existing.parts.slice();
 			nextParts[partIndex] = part;
-			messages[this.activeAssistantIndex] = {
+			messages[messageIndex] = {
 				...existing,
 				parts: nextParts,
 			};
@@ -496,7 +522,6 @@ export namespace Agent {
 
 		clearMessages() {
 			this._state.messages = [];
-			this.activeAssistantIndex = undefined;
 		}
 
 		abort() {
@@ -513,7 +538,6 @@ export namespace Agent {
 			this._state.streamMessage = null;
 			this._state.pendingToolCalls = new Set<string>();
 			this._state.error = undefined;
-			this.activeAssistantIndex = undefined;
 			this.steeringQueue = [];
 			this.followUpQueue = [];
 		}
@@ -671,9 +695,6 @@ export namespace Agent {
 			switch (event.type) {
 				case "message.start": {
 					this._state.streamMessage = event.message;
-					if (event.message.role === "assistant") {
-						this.activeAssistantIndex = undefined;
-					}
 					break;
 				}
 				case "message.part.start":
@@ -681,19 +702,17 @@ export namespace Agent {
 				case "message.part.end": {
 					this._state.streamMessage = event.message;
 					if (event.message.role === "assistant") {
-						this.patchStoredAssistantPart(event.partIndex, event.part);
+						this.patchStoredAssistantPart(event.message.messageId, event.partIndex, event.part);
 					}
 					break;
 				}
 				case "message.update":
 					this._state.streamMessage = event.message;
+					this.replaceMessageById(event.message);
 					break;
 				case "message.end":
 					this._state.streamMessage = null;
-					this.appendMessage(event.message);
-					if (event.message.role === "assistant") {
-						this.activeAssistantIndex = this._state.messages.length - 1;
-					}
+					this.upsertMessage(event.message);
 					break;
 				case "tool.execution.start": {
 					const pendingToolCalls = new Set(this._state.pendingToolCalls);
