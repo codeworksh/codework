@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/aikit",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "Toolkit for building AI agents and workflows.",
 	"keywords": [
 		"agent",
