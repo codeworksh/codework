@@ -8,6 +8,8 @@
 
 Toolkit for building AI agents.
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/codeworksh/codework)
+
 ## Get Started
 
 ```bash
