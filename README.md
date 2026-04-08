@@ -18,6 +18,10 @@ npm install @codeworksh/aikit
 
 [`@codeworksh/aikit`](./packages/aikit/README.md)
 
+## Acknowledgements
+
+This project was heavily inspired by the great work of Mario Zechner on [Pi-Mono](https://github.com/badlogic/pi-mono).
+
 ## License
 
 MIT
