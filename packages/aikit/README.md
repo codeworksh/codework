@@ -1,6 +1,6 @@
 # @codeworksh/aikit
 
-Toolkit for Building AI Agents and Workflows.
+Toolkit for building AI agents and streaming LLM workflows.
 
 ## Installation
 
@@ -8,28 +8,68 @@ Toolkit for Building AI Agents and Workflows.
 npm install @codeworksh/aikit
 ```
 
+Node `>=24.14.1` is required.
+
+## What You Get
+
+- `llm(...)` to resolve a model from the built-in registry
+- `stream(...)` and `stream.complete(...)` for provider-normalized LLM streaming
+- `Agent.create(...)` for a stateful agent instance
+- `agent.loop(...)` and `agent.loopContinue(...)` for lower-level turn orchestration
+- `Message` helpers for typed messages and generated `messageId` values
+
 ## Quick Start
 
 ```ts
 import { Message, llm, stream } from "@codeworksh/aikit";
 
-const model = await llm("anthropic", "claude-sonnet-4-5");
+const model = await llm("anthropic", "claude-haiku-4-5-20251001");
 if (!model) throw new Error("Model not found");
 
-const context: Message.Context = {
-	systemPrompt: "You are a concise assistant.",
-	messages: [
-		{
-			role: "user",
-			time: { created: Date.now() },
-			parts: [{ type: "text", text: "Say hello in one line." }],
-		},
-	],
-};
+const message = await stream.complete(
+	model,
+	{
+		systemPrompt: "You are a concise assistant.",
+		messages: [
+			Message.createUserMessage({
+				role: "user",
+				time: { created: Date.now() },
+				parts: [{ type: "text", text: "Reply with exactly: hello" }],
+			}),
+		],
+	},
+	{
+		apiKey: process.env.ANTHROPIC_API_KEY,
+	},
+);
 
-const s = stream(model, context, {
-	apiKey: process.env.ANTHROPIC_API_KEY,
-});
+console.log(message.messageId);
+console.log(message.parts);
+```
+
+## Stream Events
+
+Use `stream(...)` when you want token and part-level events.
+
+```ts
+import { Message, llm, stream } from "@codeworksh/aikit";
+
+const model = await llm("anthropic", "claude-haiku-4-5-20251001");
+if (!model) throw new Error("Model not found");
+
+const s = stream(
+	model,
+	{
+		messages: [
+			Message.createUserMessage({
+				role: "user",
+				time: { created: Date.now() },
+				parts: [{ type: "text", text: "Count from 1 to 3" }],
+			}),
+		],
+	},
+	{ apiKey: process.env.ANTHROPIC_API_KEY },
+);
 
 for await (const event of s) {
 	if (event.type === "text.delta") {
@@ -37,312 +77,98 @@ for await (const event of s) {
 	}
 }
 
-const message = await s.result();
-console.log(message.parts);
+const finalMessage = await s.result();
+console.log(finalMessage.messageId);
 ```
 
-## Core Concepts
+## Agent Instance
 
-### LLM
-
-`llm(...)` resolves a model definition from the built-in registry. `stream(...)` and `stream.complete(...)` use that model to produce `AssistantMessage` output made of `message.parts`.
+`Agent.create(...)` is the simplest way to work with a stateful agent.
 
 ```ts
-import { llm, stream } from "@codeworksh/aikit";
+import { Agent } from "@codeworksh/aikit";
 
-const model = await llm("anthropic", "claude-haiku-4-5-20251001");
-if (!model) throw new Error("Missing model");
-
-const message = await stream.complete(
-	model,
-	{
-		messages: [
-			{
-				role: "user",
-				time: { created: Date.now() },
-				parts: [{ type: "text", text: "Reply with exactly: ok" }],
-			},
-		],
-	},
-	{ apiKey: process.env.ANTHROPIC_API_KEY },
-);
-```
-
-### Agent
-
-`agent.run(...)` runs a full assistant turn loop on top of model streaming. It handles tool calls, validates arguments, mutates tool-call parts in-place, and emits higher-level agent events.
-
-```ts
-import { Type } from "@sinclair/typebox";
-import { Agent, Message, agent, llm } from "@codeworksh/aikit";
-
-const calculatorParams = Type.Object({
-	expression: Type.String(),
+const agent = await Agent.create({
+	provider: "anthropic",
+	model: "claude-haiku-4-5-20251001",
+	getApiKey: async () => process.env.ANTHROPIC_API_KEY,
 });
 
-const calculatorTool = Agent.defineTool({
-	name: "calculator",
-	label: "Calculator",
-	description: "Evaluate a math expression",
-	parameters: calculatorParams,
-	async execute(callID, params) {
-		return {
-			status: "completed",
-			result: {
-				content: [{ type: "text", text: `${params.expression} = 4` }],
-				isError: false,
-			},
-		};
-	},
-});
+agent.setSystemPrompt("Be concise.");
 
-const model = await llm("anthropic", "claude-haiku-4-5-20251001");
-if (!model) throw new Error("Missing model");
-
-const prompt: Message.UserMessage = {
-	role: "user",
-	time: { created: Date.now() },
-	parts: [{ type: "text", text: "Use the calculator tool for 2 + 2." }],
-};
-
-const run = agent.run(
-	{
-		model,
-		convertToLlm: async (messages) => messages,
-		apiKey: process.env.ANTHROPIC_API_KEY,
-		beforeToolExecution: async ({ toolCall }) => {
-			console.log("validated args", toolCall.args);
-		},
-		afterToolExecution: async ({ result }) => result,
-	},
-	{
-		systemPrompt: "Use tools when helpful.",
-		messages: [],
-		tools: [calculatorTool],
-	},
-	[prompt],
-);
-
-for await (const event of run) {
-	if (event.type === "message.part.update" && event.source === "tool") {
-		console.log(event.part);
+agent.subscribe((event) => {
+	if (event.type === "message.end") {
+		console.log(event.message.role, event.message.messageId);
 	}
-}
+});
 
-const messages = await run.result();
-console.log(messages.at(-1));
-```
+await agent.prompt([{ type: "text", text: "Say hello in one line." }]);
 
-### Agent Vs LLM
-
-Use `stream(...)` when you want raw provider events and manual control over tool handling.
-
-Use `agent.run(...)` when you want a higher-level runtime that:
-
-- streams assistant message lifecycle events
-- validates tool arguments
-- executes tools sequentially or in parallel
-- supports `beforeToolExecution` and `afterToolExecution` callbacks
-
-## Event Flow
-
-LLM streams emit low-level provider-normalized events:
-
-```text
-start
-text.start / thinking.start / toolcall.start
-text.delta / thinking.delta / toolcall.delta
-text.end / thinking.end / toolcall.end
-done | error
+console.log(agent.state.messages);
 ```
 
 ## With Tools
 
-Agent loops emit higher-level lifecycle events around messages, parts, turns, and tools:
-
-```text
-agent.start
-turn.start
-message.start
-message.part.start
-message.part.update
-message.part.end
-message.update
-message.end
-tool.execution.start
-tool.execution.update
-tool.execution.end
-turn.end
-agent.end
-```
-
-Example:
-
 ```ts
 import { Type } from "@sinclair/typebox";
-import { Agent, Message, agent, llm } from "@codeworksh/aikit";
+import { Agent } from "@codeworksh/aikit";
 
-const searchParams = Type.Object({
-	query: Type.String(),
-	limit: Type.Optional(Type.Number()),
-});
-
-const searchTool: Agent.AgentTool<typeof searchParams, { progress: number }, { hits: number }> = {
-	name: "search",
-	label: "Search",
-	description: "Search indexed documents",
-	parameters: searchParams,
-	async execute(callID, params, signal, onUpdate) {
-		await onUpdate?.({
-			status: "running",
-			partial: {
-				content: [{ type: "text", text: `Searching for ${params.query}` }],
-				details: { progress: 50 },
-			},
-		});
-
+const calculatorTool = Agent.defineTool({
+	name: "calculator",
+	label: "Calculator",
+	description: "Evaluate arithmetic expressions",
+	parameters: Type.Object({
+		expression: Type.String(),
+	}),
+	async execute(_callID, params) {
 		return {
 			status: "completed",
 			result: {
-				content: [{ type: "text", text: `Found results for ${params.query}` }],
-				details: { hits: 3 },
+				content: [{ type: "text", text: `result for ${params.expression}` }],
 				isError: false,
 			},
 		};
 	},
-};
+});
 
-const model = await llm("anthropic", "claude-haiku-4-5-20251001");
-if (!model) throw new Error("Missing model");
+const instance = await Agent.create({
+	provider: "anthropic",
+	model: "claude-haiku-4-5-20251001",
+	getApiKey: async () => process.env.ANTHROPIC_API_KEY,
+	initialState: {
+		tools: [calculatorTool],
+	},
+});
 
-const prompt: Message.UserMessage = {
+await instance.prompt([{ type: "text", text: "Use the calculator tool for 25 * 18." }]);
+```
+
+## Message IDs
+
+Every user and assistant message has a `messageId`.
+
+Use the helpers when constructing messages yourself:
+
+```ts
+import { Message } from "@codeworksh/aikit";
+
+const userMessage = Message.createUserMessage({
 	role: "user",
 	time: { created: Date.now() },
-	parts: [{ type: "text", text: "Search for agent loop documentation." }],
-};
+	parts: [{ type: "text", text: "hello" }],
+});
 
-const run = agent.run(
-	{
-		model,
-		apiKey: process.env.ANTHROPIC_API_KEY,
-		convertToLlm: async (messages) => messages,
-		toolExecution: "parallel",
-	},
-	{
-		systemPrompt: "Use tools when useful.",
-		messages: [],
-		tools: [searchTool],
-	},
-	[prompt],
-);
-
-for await (const event of run) {
-	if (event.type === "tool.execution.start") {
-		console.log("tool started", event.name, event.args ?? event.rawArgs);
-	}
-
-	if (event.type === "tool.execution.update") {
-		console.log("tool update", event.partial?.details);
-	}
-
-	if (event.type === "tool.execution.end") {
-		console.log("tool finished", event.result.details);
-	}
-}
+console.log(userMessage.messageId);
 ```
 
-### Tool Execution Modes
+This is useful for persistence layers like SQLite, event reconciliation, and updating stored messages by identity instead of array position.
 
-Tool execution mode is configurable with `toolExecution`:
+## Lower-Level APIs
 
-- `parallel`: prepares tool calls in assistant order, then executes allowed calls concurrently. This is the default and is usually the right choice for independent tools.
-- `sequential`: prepares and executes each tool call one by one. Use this when tools depend on shared state, rate limits, or side effects that should not overlap.
+- `stream(...)`: raw provider-normalized stream
+- `stream.complete(...)`: final assistant message without manual iteration
+- `Agent.create(...)`: stateful agent instance
+- `agent.loop(...)`: lower-level agent loop
+- `agent.loopContinue(...)`: continue from an existing context
 
-```ts
-const run = agent.run(
-	{
-		model,
-		convertToLlm: async (messages) => messages,
-		toolExecution: "sequential",
-	},
-	context,
-	[prompt],
-);
-```
-
-### beforeToolExecution
-
-`beforeToolExecution` runs after tool arguments have been validated and before the tool executes.
-
-Use it to inspect validated params, enforce policy, or block execution.
-
-```ts
-const run = agent.run(
-	{
-		model,
-		convertToLlm: async (messages) => messages,
-		beforeToolExecution: async ({ toolCall }) => {
-			if (toolCall.name === "search" && toolCall.args?.query === "secret") {
-				return {
-					block: true,
-					reason: "This query is not allowed",
-				};
-			}
-		},
-	},
-	context,
-	[prompt],
-);
-```
-
-Returning `{ block: true }` prevents the tool from running and turns that assistant tool-call part into an error result.
-
-### afterToolExecution
-
-`afterToolExecution` runs after the tool finishes and before the terminal tool result is emitted.
-
-Use it to normalize output, attach metadata, or override the final tool result.
-
-```ts
-const run = agent.run(
-	{
-		model,
-		convertToLlm: async (messages) => messages,
-		afterToolExecution: async ({ result }) => {
-			if (result.status === "completed") {
-				return {
-					status: "completed",
-					result: {
-						...result.result,
-						details: {
-							...result.result.details,
-							source: "post-processed",
-						},
-					},
-				};
-			}
-		},
-	},
-	context,
-	[prompt],
-);
-```
-
-## Public API
-
-The root package exports the facades and core namespaces used to build on top of `aikit`:
-
-```ts
-import {
-	agent,
-	llm,
-	stream,
-	Agent,
-	Event,
-	Message,
-	Model,
-	Stream,
-	validateToolArguments,
-	validateToolCall,
-} from "@codeworksh/aikit";
-```
+API docs can be added later. For now, the tests under `packages/aikit/test/` are the best reference for concrete usage.
