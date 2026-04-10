@@ -13,6 +13,14 @@ const searchParams = Type.Object({
 	query: Type.String(),
 	limit: Type.Optional(Type.Number()),
 });
+const searchOutput = Type.Object({
+	hits: Type.Number(),
+	source: Type.Union([Type.Literal("cache"), Type.Literal("network")]),
+});
+const searchError = Type.Object({
+	code: Type.Union([Type.Literal("RATE_LIMIT"), Type.Literal("TIMEOUT")]),
+	retryable: Type.Boolean(),
+});
 
 type UpdateDetails = {
 	progress: number;
@@ -23,12 +31,18 @@ type ResultDetails = {
 	hits: number;
 	source: "cache" | "network";
 };
+type ErrorDetails = {
+	code: "RATE_LIMIT" | "TIMEOUT";
+	retryable: boolean;
+};
 
-const searchTool: Agent.AgentTool<typeof searchParams, UpdateDetails, ResultDetails> = {
+const searchTool: Agent.AgentTool<typeof searchParams, typeof searchOutput, UpdateDetails, typeof searchError> = {
 	name: "search",
 	label: "Search",
 	description: "Search indexed documents",
 	parameters: searchParams,
+	outputSchema: searchOutput,
+	errorSchema: searchError,
 	async execute(toolCallID, params, signal, onUpdate) {
 		type Params = typeof params;
 		type _paramsAssert = Assert<IsEqual<Params, { query: string; limit?: number }>>;
@@ -83,7 +97,7 @@ type ExecuteUpdateCallback = NonNullable<Parameters<typeof searchTool.execute>[3
 type ExecuteReturn = Awaited<ReturnType<typeof searchTool.execute>>;
 type UpdateEvent = Parameters<ExecuteUpdateCallback>[0];
 type _executeParamsAssert = Assert<IsEqual<ExecuteParams, { query: string; limit?: number }>>;
-type _executeReturnAssert = Assert<IsEqual<ExecuteReturn, Agent.ToolTerminalResult<ResultDetails>>>;
+type _executeReturnAssert = Assert<IsEqual<ExecuteReturn, Agent.ToolTerminalResult<ResultDetails, ErrorDetails>>>;
 type _updateEventAssert = Assert<IsEqual<UpdateEvent, Agent.ToolRunningResult<UpdateDetails>>>;
 type DefineToolParams = Parameters<typeof calculatorTool.execute>[1];
 type _defineToolParamsAssert = Assert<IsEqual<DefineToolParams, { expression: string }>>;

@@ -45,6 +45,7 @@
 		"@anthropic-ai/sdk": "^0.80.0",
 		"@codeworksh/utils": "workspace:*",
 		"@sinclair/typebox": "^0.34.48",
+		"@sinclair/typebox-codegen": "^0.11.1",
 		"ajv": "^8.18.0",
 		"ajv-formats": "^3.0.1",
 		"partial-json": "^0.1.7",

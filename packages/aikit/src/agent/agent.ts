@@ -3,8 +3,8 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import type { Event } from "../event/event";
 import { Message } from "../message/message";
 import { Model } from "../model/model";
-import "../provider/register";
 import type { Provider } from "../provider/provider";
+import "../provider/register";
 import { Stream } from "../provider/stream";
 import { Loop } from "./loop";
 
@@ -31,7 +31,10 @@ export namespace Agent {
 			details?: T;
 		};
 	};
-	export type ToolTerminalResult<T> = ToolCompletedResult<T> | ToolErrorResult<T>;
+	export type ToolTerminalResult<TCompleted = unknown, TError = unknown> =
+		| ToolCompletedResult<TCompleted>
+		| ToolErrorResult<TError>;
+	type InferSchema<T extends TSchema | undefined> = T extends TSchema ? Static<T> : unknown;
 
 	// callback for tool execution updates.
 	// consumers can narrow on status if needed
@@ -39,30 +42,34 @@ export namespace Agent {
 	// U - update
 	export type ToolUpdateCallback<U = unknown> = (result: ToolRunningResult<U>) => Promise<void> | void;
 
-	// @sanchitrk: does adding state flag makes sense?
-	// could be used by caller with name+callID as key for caching results, etc.
 	export interface AgentTool<
 		TParameters extends TSchema = TSchema,
-		U = unknown,
-		R = U,
+		TOutput extends TSchema | undefined = undefined,
+		TUpdate = unknown,
+		TError extends TSchema | undefined = undefined,
 	> extends Message.Tool<TParameters> {
 		// A human-readable label for the tool for display
 		label: string;
+		outputSchema?: TOutput;
+		errorSchema?: TError;
 		execute: (
 			callID: string,
 			params: Static<TParameters>,
 			signal?: AbortSignal,
-			onUpdate?: ToolUpdateCallback<U>,
-		) => Promise<ToolTerminalResult<R>>;
+			onUpdate?: ToolUpdateCallback<TUpdate>,
+		) => Promise<ToolTerminalResult<InferSchema<TOutput>, InferSchema<TError>>>;
 	}
 
-	export function defineTool<TParameters extends TSchema, U = unknown, R = U>(
-		tool: AgentTool<TParameters, U, R>,
-	): AgentTool<TParameters, U, R> {
+	export function defineTool<
+		TParameters extends TSchema,
+		TOutput extends TSchema | undefined = undefined,
+		TUpdate = unknown,
+		TError extends TSchema | undefined = undefined,
+	>(tool: AgentTool<TParameters, TOutput, TUpdate, TError>): AgentTool<TParameters, TOutput, TUpdate, TError> {
 		return tool;
 	}
 
-	export type AnyAgentTool = AgentTool<any, any, any>;
+	export type AnyAgentTool = AgentTool<any, any, any, any>;
 
 	export interface State {
 		name: string;

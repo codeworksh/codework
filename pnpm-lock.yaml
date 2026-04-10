@@ -32,6 +32,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.49
+      '@sinclair/typebox-codegen':
+        specifier: ^0.11.1
+        version: 0.11.1
       ajv:
         specifier: ^8.18.0
         version: 8.18.0
@@ -450,6 +453,12 @@ packages:
   '@rolldown/pluginutils@1.0.0-rc.13':
     resolution: {integrity: sha512-3ngTAv6F/Py35BsYbeeLeecvhMKdsKm4AoOETVhAA+Qc8nrA2I0kF7oa93mE9qnIurngOSpMnQ0x2nQY2FPviA==}
 
+  '@sinclair/typebox-codegen@0.11.1':
+    resolution: {integrity: sha512-Bckbrf1sJFTIVD88PvI0vWUfE3Sh/6pwu6Jov+6xyMrEqnabOxEFAmPSDWjB1FGPL5C1/HfdScwa1imwAtGi9w==}
+
+  '@sinclair/typebox@0.33.22':
+    resolution: {integrity: sha512-auUj4k+f4pyrIVf4GW5UKquSZFHJWri06QgARy9C0t9ZTjJLIuNIrr1yl9bWcJWJ1Gz1vOvYN1D+QPaIlNMVkQ==}
+
   '@sinclair/typebox@0.34.49':
     resolution: {integrity: sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A==}
 
@@ -772,6 +781,11 @@ packages:
   postcss@8.5.8:
     resolution: {integrity: sha512-OW/rX8O/jXnm82Ey1k44pObPtdblfiuWnrd8X7GJ7emImCOstunGbXUpp7HdBrFQX6rJzn3sPT397Wp5aCwCHg==}
     engines: {node: ^10 || ^12 || >=14}
+
+  prettier@2.8.8:
+    resolution: {integrity: sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q==}
+    engines: {node: '>=10.13.0'}
+    hasBin: true
 
   remeda@2.33.7:
     resolution: {integrity: sha512-cXlyjevWx5AcslOUEETG4o8XYi9UkoCXcJmj7XhPFVbla+ITuOBxv6ijBrmbeg+ZhzmDThkNdO+iXKUfrJep1w==}
@@ -1113,6 +1127,14 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.0-rc.13': {}
 
+  '@sinclair/typebox-codegen@0.11.1':
+    dependencies:
+      '@sinclair/typebox': 0.33.22
+      prettier: 2.8.8
+      typescript: 5.9.3
+
+  '@sinclair/typebox@0.33.22': {}
+
   '@sinclair/typebox@0.34.49': {}
 
   '@standard-schema/spec@1.1.0': {}
@@ -1370,6 +1392,8 @@ snapshots:
       nanoid: 3.3.11
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  prettier@2.8.8: {}
 
   remeda@2.33.7: {}
 
