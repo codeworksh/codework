@@ -1,6 +1,5 @@
 import { NamedError } from "@codeworksh/utils";
-import { Type, TypeGuard } from "@sinclair/typebox";
-import * as Codegen from "@sinclair/typebox-codegen";
+import { type TSchema, Type, TypeGuard } from "@sinclair/typebox";
 import { capitalize } from "remeda";
 import type { Agent } from "./agent";
 
@@ -36,8 +35,8 @@ export namespace CodeMode {
 	export interface ToolBinding {
 		name: string;
 		description: string;
-		inputSchema: Record<string, unknown>;
-		outputSchema?: Record<string, unknown>;
+		inputSchema: TSchema;
+		outputSchema?: TSchema;
 		execute: (
 			callID: string,
 			params: unknown,
@@ -57,12 +56,7 @@ export namespace CodeMode {
 	}
 
 	function toolToBinding(tool: Agent.AnyAgentTool, prefix: string = ""): ToolBinding {
-		const inputSchema = TypeGuard.IsSchema(tool.parameters)
-			? tool.parameters
-			: {
-					type: "object",
-					properties: {},
-				};
+		const inputSchema = TypeGuard.IsSchema(tool.parameters) ? tool.parameters : Type.Object({});
 		const outputSchema = TypeGuard.IsSchema(tool.outputSchema) ? tool.outputSchema : undefined;
 		let execute: (
 			callID: string,
@@ -101,6 +95,75 @@ export namespace CodeMode {
 		return bindings;
 	}
 
+	function indent(value: string, depth: number = 1): string {
+		const prefix = "\t".repeat(depth);
+		return value
+			.split("\n")
+			.map((line) => `${prefix}${line}`)
+			.join("\n");
+	}
+
+	function toPropertyKey(name: string): string {
+		return /^[$A-Z_a-z][$\w]*$/i.test(name) ? name : JSON.stringify(name);
+	}
+
+	function schemaToTypeScript(schema: TSchema): string {
+		if (TypeGuard.IsAny(schema)) return "any";
+		if (TypeGuard.IsUnknown(schema)) return "unknown";
+		if (TypeGuard.IsString(schema)) return "string";
+		if (TypeGuard.IsNumber(schema) || TypeGuard.IsInteger(schema)) return "number";
+		if (TypeGuard.IsBoolean(schema)) return "boolean";
+		if (TypeGuard.IsNull(schema)) return "null";
+		if (TypeGuard.IsUndefined(schema) || TypeGuard.IsVoid(schema)) return "undefined";
+		if (TypeGuard.IsLiteral(schema)) return JSON.stringify(schema.const);
+
+		if (TypeGuard.IsArray(schema)) {
+			return `Array<${schemaToTypeScript(schema.items)}>`;
+		}
+
+		if (TypeGuard.IsTuple(schema)) {
+			const items = schema.items ?? [];
+			return `[${items.map((item) => schemaToTypeScript(item)).join(", ")}]`;
+		}
+
+		if (TypeGuard.IsUnion(schema)) {
+			return schema.anyOf.map((item) => schemaToTypeScript(item)).join(" | ");
+		}
+
+		if (TypeGuard.IsIntersect(schema)) {
+			return schema.allOf.map((item) => schemaToTypeScript(item)).join(" & ");
+		}
+
+		if (TypeGuard.IsRecord(schema)) {
+			const valueSchema =
+				Object.values(schema.patternProperties ?? {}).find(TypeGuard.IsSchema) ??
+				(schema.additionalProperties && TypeGuard.IsSchema(schema.additionalProperties)
+					? schema.additionalProperties
+					: Type.Unknown());
+			return `Record<string, ${schemaToTypeScript(valueSchema)}>`;
+		}
+
+		if (TypeGuard.IsObject(schema)) {
+			const required = new Set(schema.required ?? []);
+			const properties = Object.entries(schema.properties ?? {}).map(([key, value]) => {
+				const optional = required.has(key) ? "" : "?";
+				return `${toPropertyKey(key)}${optional}: ${schemaToTypeScript(value)};`;
+			});
+
+			if (schema.additionalProperties === true) {
+				properties.push("[key: string]: unknown;");
+			} else if (schema.additionalProperties && TypeGuard.IsSchema(schema.additionalProperties)) {
+				properties.push(`[key: string]: ${schemaToTypeScript(schema.additionalProperties)};`);
+			}
+
+			if (properties.length === 0) return "{}";
+
+			return `{\n${indent(properties.join("\n"))}\n}`;
+		}
+
+		return "unknown";
+	}
+
 	/**
 	 * Generate TypeScript type stubs for all tool bindings
 	 *
@@ -120,26 +183,14 @@ export namespace CodeMode {
 			const inputTypeName = `${capitalize(name)}Input`;
 			const outputTypeName = `${capitalize(name)}Output`;
 
-			// 1. Generate Input Interface
-			// We create a model from the schema, then generate TS code from that model
-			const inputModel = Codegen.ModelToTypeScript.Generate(
-				Codegen.TypeScriptToModel.Generate(`export type ${inputTypeName} = ${JSON.stringify(binding.inputSchema)}`),
-			);
-			declarations.push(inputModel);
+			declarations.push(`type ${inputTypeName} = ${schemaToTypeScript(binding.inputSchema)};`);
 
-			// 2. Generate Output Interface
 			let outputTypeRef = "unknown";
-			if (binding.outputSchema) {
-				const outputModel = Codegen.ModelToTypeScript.Generate(
-					Codegen.TypeScriptToModel.Generate(
-						`export type ${outputTypeName} = ${JSON.stringify(binding.outputSchema)}`,
-					),
-				);
-				declarations.push(outputModel);
+			if (binding.outputSchema !== undefined) {
+				declarations.push(`type ${outputTypeName} = ${schemaToTypeScript(binding.outputSchema)};`);
 				outputTypeRef = outputTypeName;
 			}
 
-			// 3. Generate the actual tool function signature
 			const description = includeDescriptions && binding.description ? `/** ${binding.description} */\n` : "";
 
 			declarations.push(
@@ -164,57 +215,59 @@ export namespace CodeMode {
 			})
 			.join("\n");
 
-		return `## Code Execution Tool
-
-You have access to \`execute_typescript\` which runs TypeScript code in a sandboxed environment.
-
-### When to Use
-
-Use \`execute_typescript\` when you need to:
-- Process data with loops, conditionals, or complex logic
-- Make multiple API calls in parallel (Promise.all)
-- Transform, filter, or aggregate data
-- Perform calculations or data analysis
-
-For simple operations, prefer calling tools directly.
-
-### Available External APIs
-
-Inside your TypeScript code, you can call these async functions:
-
-${functionDocs}
-
-### Type Definitions
-
-\`\`\`typescript
-${typeStubs}
-\`\`\`
-
-### Example
-
-\`\`\`typescript
-// Fetch weather for multiple cities in parallel
-const cities = ["Tokyo", "Paris", "NYC"];
-const results = await Promise.all(
-  cities.map(city => external_fetchWeather({ location: city }))
-);
-
-// Find the warmest city
-const warmest = results.reduce((prev, curr) =>
-  curr.temperature > prev.temperature ? curr : prev
-);
-
-return { warmestCity: warmest.location, temperature: warmest.temperature };
-\`\`\`
-
-### Important Notes
-
-- All \`external_*\` calls are async - always use \`await\`
-- Return a value to pass results back to you
-- Use \`console.log()\` for debugging (logs are captured)
-- The sandbox is isolated - no network access or file system
-- Each execution is independent (no shared state between calls)
-`;
+		return [
+			"## Code Execution Tool",
+			"",
+			"You have access to `sandbox_execute_typescript` which runs TypeScript code in a sandboxed environment.",
+			"",
+			"### When to Use",
+			"",
+			"Use `sandbox_execute_typescript` when you need to:",
+			"- Process data with loops, conditionals, or complex logic",
+			"- Make multiple API calls in parallel (Promise.all)",
+			"- Transform, filter, or aggregate data",
+			"- Perform calculations or data analysis",
+			"",
+			"For simple operations, prefer calling tools directly.",
+			"",
+			"### Available External APIs",
+			"",
+			"Inside your TypeScript code, you can call these async functions:",
+			"",
+			functionDocs,
+			"",
+			"### Type Definitions",
+			"",
+			"```typescript",
+			typeStubs,
+			"```",
+			"",
+			"### Example",
+			"",
+			"```typescript",
+			"// Fetch weather for multiple cities in parallel",
+			'const cities = ["Tokyo", "Paris", "NYC"];',
+			"const results = await Promise.all(",
+			"  cities.map(city => external_fetchWeather({ location: city }))",
+			");",
+			"",
+			"// Find the warmest city",
+			"const warmest = results.reduce((prev, curr) =>",
+			"  curr.temperature > prev.temperature ? curr : prev",
+			");",
+			"",
+			"return { warmestCity: warmest.location, temperature: warmest.temperature };",
+			"```",
+			"",
+			"### Important Notes",
+			"",
+			"- All `external_*` calls are async - always use `await`",
+			"- Return a value to pass results back to you",
+			"- Use `console.log()` for debugging (logs are captured)",
+			// "- The sandbox is isolated - no network access or file system",
+			"- Each execution is independent (no shared state between calls)",
+			"",
+		].join("\n");
 	}
 
 	export async function create(config: ToolConfig) {
