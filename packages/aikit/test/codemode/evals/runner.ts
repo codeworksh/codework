@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { Agent } from "../../../src/agent/agent";
-import { CodeMode } from "../../../src/agent/codemode";
+import { CodeMode } from "../../../src/agent/codemode/codemode";
 import { Message } from "../../../src/message/message";
 import type { CodeModeEvalScenario } from "./scenarios";
 

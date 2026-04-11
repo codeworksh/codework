@@ -9,7 +9,7 @@ globalThis.fetch = (async () =>
 	}) as Response) as unknown as typeof fetch;
 const aikit = await import("../src/index.ts");
 const { Agent } = await import("../src/agent/agent.ts");
-const { CodeMode } = await import("../src/agent/codemode.ts");
+const { CodeMode } = await import("../src/agent/codemode/codemode.ts");
 const { Loop } = await import("../src/agent/loop.ts");
 const { Stream } = await import("../src/provider/stream.ts");
 globalThis.fetch = importFetch;

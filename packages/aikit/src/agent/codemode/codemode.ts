@@ -3,8 +3,8 @@ import { type Static, type TSchema, Type, TypeGuard } from "@sinclair/typebox";
 import { transform } from "esbuild";
 import { QuickJS } from "quickjs-wasi";
 import { capitalize } from "remeda";
-import { validateSchema } from "../utils/validation";
-import { Agent } from "./agent";
+import { validateSchema } from "../../utils/validation";
+import { Agent } from "../agent";
 
 export namespace CodeMode {
 	const DEFAULT_TIMEOUT_MS = 30_000;

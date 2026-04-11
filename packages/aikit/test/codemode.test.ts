@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Agent } from "../src/agent/agent";
-import { CodeMode } from "../src/agent/codemode";
+import { CodeMode } from "../src/agent/codemode/codemode";
 
 const PROMPT_SNAPSHOT_PATH = join(tmpdir(), "aikit-codemode-system-prompt.txt");
 
