@@ -9,6 +9,7 @@ globalThis.fetch = (async () =>
 	}) as Response) as unknown as typeof fetch;
 const aikit = await import("../src/index.ts");
 const { Agent } = await import("../src/agent/agent.ts");
+const { CodeMode } = await import("../src/agent/codemode.ts");
 const { Loop } = await import("../src/agent/loop.ts");
 const { Stream } = await import("../src/provider/stream.ts");
 globalThis.fetch = importFetch;
@@ -25,9 +26,10 @@ describe("public api", () => {
 	});
 
 	it("exports the facade entrypoints from the package root", () => {
-		expect(Object.keys(aikit).sort()).toEqual(["Agent", "Message", "agent", "llm", "stream"]);
+		expect(Object.keys(aikit).sort()).toEqual(["Agent", "CodeMode", "Message", "agent", "llm", "stream"]);
 
 		expect(aikit.Agent).toBe(Agent);
+		expect(aikit.CodeMode).toBe(CodeMode);
 		expect(aikit.llm).toBeDefined();
 		expect(aikit.stream).toBeDefined();
 		expect(aikit.agent).toBeDefined();
