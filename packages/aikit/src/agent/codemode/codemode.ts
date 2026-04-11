@@ -4,15 +4,6 @@ import { transform } from "esbuild";
 import { capitalize } from "remeda";
 import { validateSchema } from "../../utils/validation";
 import { Agent } from "../agent";
-import { createQuickJSWasiDriver as createQuickJSWasiDriverImpl } from "./drivers/quickjs-wasi-driver";
-import type {
-	Context as SandboxContext,
-	Driver as SandboxDriver,
-	DriverContextConfig as SandboxDriverContextConfig,
-	ExecutionResult as SandboxExecutionResult,
-	NormalizedError as SandboxNormalizedError,
-	ToolBinding as SandboxToolBinding,
-} from "./types";
 
 export namespace CodeMode {
 	export const ToolDefinitionErr = NamedError.create(
@@ -24,8 +15,7 @@ export namespace CodeMode {
 
 	export const SandboxExecutionInputSchema = Type.Object({
 		typescriptCode: Type.String({
-			description:
-				"TypeScript code to execute in the sandbox. Use external_* functions for host tools and return a value.",
+			description: "TypeScript code to execute in the sandbox.",
 		}),
 	});
 	export type SandboxExecutionInput = Static<typeof SandboxExecutionInputSchema>;
@@ -45,11 +35,35 @@ export namespace CodeMode {
 	});
 	export type SandboxExecutionError = Static<typeof SandboxExecutionErrorSchema>;
 
-	export type NormalizedError = SandboxNormalizedError;
-	export type ExecutionResult<T = unknown> = SandboxExecutionResult<T>;
-	export type Context = SandboxContext;
-	export type DriverContextConfig = SandboxDriverContextConfig;
-	export type Driver = SandboxDriver;
+	export interface NormalizedError {
+		message: string;
+		name?: string;
+		stack?: string;
+		line?: number;
+	}
+
+	export interface ExecutionResult<T = unknown> {
+		success: boolean;
+		value?: T;
+		logs?: string[];
+		error?: NormalizedError;
+	}
+
+	export interface Context {
+		execute: <T = unknown>(code: string) => Promise<ExecutionResult<T>>;
+		dispose: () => Promise<void>;
+	}
+
+	export interface DriverContextConfig {
+		bindings: Record<string, ToolBinding>;
+		timeout?: number;
+		memoryLimit?: number;
+		signal?: AbortSignal;
+	}
+
+	export interface Driver {
+		createContext: (config: DriverContextConfig) => Promise<Context>;
+	}
 
 	export interface ToolConfig {
 		/**
@@ -70,7 +84,14 @@ export namespace CodeMode {
 		memoryLimit?: number;
 	}
 
-	export type ToolBinding = SandboxToolBinding;
+	export interface ToolBinding {
+		name: string;
+		description: string;
+		inputSchema: TSchema;
+		outputSchema?: TSchema;
+		errorSchema?: TSchema;
+		execute: (callID: string, params: unknown, signal?: AbortSignal) => Promise<unknown>;
+	}
 
 	/**
 	 * Options for type stub generation
@@ -363,12 +384,10 @@ export namespace CodeMode {
 			format: "esm",
 			target: "es2022",
 			platform: "neutral",
-			sourcefile: "sandbox-user-script.ts",
+			sourcefile: "script.ts",
 		});
 		return transformed.code;
 	}
-
-	export const createQuickJSWasiDriver = createQuickJSWasiDriverImpl;
 
 	function buildToolDescription(tools: Agent.AnyAgentTool[]): string {
 		const externalFunctions = tools.map((tool) => `external_${tool.name}`).join(", ");
@@ -399,7 +418,7 @@ export namespace CodeMode {
 			parameters: SandboxExecutionInputSchema,
 			outputSchema: SandboxExecutionOutputSchema,
 			errorSchema: SandboxExecutionErrorSchema,
-			async execute(callID, params, signal, onUpdate) {
+			async execute(_callID, params, signal, onUpdate) {
 				const bindings = toolsForBinding(config.tools, "external_");
 				let context: Context | undefined;
 
@@ -445,7 +464,7 @@ export namespace CodeMode {
 					}
 
 					const details: SandboxExecutionError = {
-						message: executionResult.error?.message || "Sandbox execution failed",
+						message: executionResult.error?.message || "sandbox execution failed",
 						...(executionResult.error?.name ? { name: executionResult.error.name } : {}),
 						...(executionResult.error?.stack ? { stack: executionResult.error.stack } : {}),
 						...(executionResult.error?.line != null ? { line: executionResult.error.line } : {}),

@@ -1,5 +1,5 @@
 import { QuickJS } from "quickjs-wasi";
-import type { Context, Driver, DriverContextConfig, NormalizedError, ToolBinding } from "../types";
+import type { CodeMode } from "../codemode";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MEMORY_LIMIT_MB = 128;
@@ -10,7 +10,7 @@ function parseErrorLine(stack: unknown): number | undefined {
 	return lineMatch ? Number(lineMatch[1]) : undefined;
 }
 
-function normalizeExecutionError(error: unknown): NormalizedError {
+function normalizeExecutionError(error: unknown): CodeMode.NormalizedError {
 	if (error instanceof Error) {
 		return {
 			name: error.name,
@@ -64,7 +64,7 @@ function createConsole(vm: QuickJS, logs: string[]) {
 	vm.setProp(vm.global, "console", consoleObject);
 }
 
-function registerBindings(vm: QuickJS, bindings: Record<string, ToolBinding>, signal?: AbortSignal) {
+function registerBindings(vm: QuickJS, bindings: Record<string, CodeMode.ToolBinding>, signal?: AbortSignal) {
 	let callCounter = 0;
 
 	for (const [name, binding] of Object.entries(bindings)) {
@@ -77,9 +77,9 @@ function registerBindings(vm: QuickJS, bindings: Record<string, ToolBinding>, si
 	}
 }
 
-export function createQuickJSWasiDriver(): Driver {
+export function createQuickJSWasiDriver(): CodeMode.Driver {
 	return {
-		async createContext(config: DriverContextConfig): Promise<Context> {
+		async createContext(config: CodeMode.DriverContextConfig): Promise<CodeMode.Context> {
 			const timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
 			const deadline = Date.now() + timeout;
 			const logs: string[] = [];

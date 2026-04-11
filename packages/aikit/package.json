@@ -30,7 +30,8 @@
 	"type": "module",
 	"module": "src/index.ts",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./codemode/drivers": "./src/agent/codemode/drivers/index.ts"
 	},
 	"publishConfig": {
 		"access": "public"
