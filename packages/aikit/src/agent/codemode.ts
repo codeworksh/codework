@@ -144,6 +144,14 @@ export namespace CodeMode {
 		return lineMatch ? Number(lineMatch[1]) : undefined;
 	}
 
+	function serializeForContent(value: unknown): string {
+		return JSON.stringify(
+			value,
+			(_key, currentValue) => (typeof currentValue === "bigint" ? currentValue.toString() : currentValue),
+			2,
+		);
+	}
+
 	function toolContentToText(result: { content: Array<{ type: string; text?: string }> }): string {
 		const parts = result.content
 			.filter((part) => part.type === "text" && typeof part.text === "string")
@@ -553,7 +561,7 @@ export namespace CodeMode {
 						return {
 							status: "completed",
 							result: {
-								content: [{ type: "text", text: "Sandbox execution completed" }],
+								content: [{ type: "text", text: serializeForContent(details) }],
 								details,
 								isError: false,
 							},
@@ -571,7 +579,7 @@ export namespace CodeMode {
 					return {
 						status: "error",
 						result: {
-							content: [{ type: "text", text: details.message }],
+							content: [{ type: "text", text: serializeForContent(details) }],
 							details,
 							isError: true,
 						},
@@ -588,7 +596,7 @@ export namespace CodeMode {
 					return {
 						status: "error",
 						result: {
-							content: [{ type: "text", text: details.message }],
+							content: [{ type: "text", text: serializeForContent(details) }],
 							details,
 							isError: true,
 						},

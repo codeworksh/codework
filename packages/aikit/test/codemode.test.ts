@@ -34,6 +34,16 @@ function calculateLedgerTotals(entries: LedgerEntry[], feeBps: number) {
 	);
 }
 
+function parseContentJson(result: { content: Array<{ type: string; text?: string }> }) {
+	const textPart = result.content.find(
+		(part): part is { type: "text"; text: string } => part.type === "text" && !!part.text,
+	);
+	if (!textPart) {
+		throw new Error("Expected text content in tool result");
+	}
+	return JSON.parse(textPart.text) as Record<string, unknown>;
+}
+
 describe("CodeMode.generateTypeStubs", () => {
 	it("renders TypeScript value shapes for mixed schema kinds", () => {
 		const stubs = CodeMode.generateTypeStubs({
@@ -221,13 +231,17 @@ describe("CodeMode.create", () => {
 		expect(result).toEqual({
 			status: "completed",
 			result: {
-				content: [{ type: "text", text: "Sandbox execution completed" }],
+				content: expect.any(Array),
 				details: {
 					result: { ok: true },
 					logs: ["mock log"],
 				},
 				isError: false,
 			},
+		});
+		expect(parseContentJson(result.result)).toEqual({
+			result: { ok: true },
+			logs: ["mock log"],
 		});
 		expect(capturedCode).toContain("const invoice = {");
 		expect(capturedCode).not.toContain("type Invoice");
@@ -270,7 +284,7 @@ describe("CodeMode.create", () => {
 		expect(result).toEqual({
 			status: "error",
 			result: {
-				content: [{ type: "text", text: "mock sandbox failure" }],
+				content: expect.any(Array),
 				details: {
 					name: "SandboxError",
 					message: "mock sandbox failure",
@@ -279,6 +293,12 @@ describe("CodeMode.create", () => {
 				},
 				isError: true,
 			},
+		});
+		expect(parseContentJson(result.result)).toEqual({
+			name: "SandboxError",
+			message: "mock sandbox failure",
+			line: 7,
+			logs: ["ERROR: mock sandbox failure"],
 		});
 	});
 });
@@ -392,6 +412,14 @@ describe("CodeMode QuickJS-WASI driver", () => {
 		});
 
 		expect(result.status).toBe("completed");
+		expect(parseContentJson(result.result)).toEqual({
+			result: {
+				grossNanos: expected.grossNanos.toString(),
+				feeNanos: expected.feeNanos.toString(),
+				netNanos: expected.netNanos.toString(),
+			},
+			logs: [`${expected.grossNanos} ${expected.feeNanos} ${expected.netNanos}`],
+		});
 		expect(result.result.details).toEqual({
 			result: {
 				grossNanos: expected.grossNanos,
@@ -432,7 +460,7 @@ describe("CodeMode QuickJS-WASI driver", () => {
 		expect(result).toEqual({
 			status: "completed",
 			result: {
-				content: [{ type: "text", text: "Sandbox execution completed" }],
+				content: expect.any(Array),
 				details: {
 					result: {
 						grossProfit: 3333333.09,
@@ -440,6 +468,12 @@ describe("CodeMode QuickJS-WASI driver", () => {
 					},
 				},
 				isError: false,
+			},
+		});
+		expect(parseContentJson(result.result)).toEqual({
+			result: {
+				grossProfit: 3333333.09,
+				netProfit: 2633333.14,
 			},
 		});
 	});
@@ -486,6 +520,10 @@ describe("CodeMode QuickJS-WASI driver", () => {
 		});
 
 		expect(result.status).toBe("error");
+		expect(parseContentJson(result.result)).toMatchObject({
+			message: expect.stringContaining('Validation Failed For Tool "loadLedger" input'),
+			name: "Error",
+		});
 		expect(result.result.details).toMatchObject({
 			message: expect.stringContaining('Validation Failed For Tool "loadLedger" input'),
 		});
