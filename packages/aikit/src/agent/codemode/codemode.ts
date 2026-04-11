@@ -1,15 +1,20 @@
 import { NamedError } from "@codeworksh/utils";
 import { type Static, type TSchema, Type, TypeGuard } from "@sinclair/typebox";
 import { transform } from "esbuild";
-import { QuickJS } from "quickjs-wasi";
 import { capitalize } from "remeda";
 import { validateSchema } from "../../utils/validation";
 import { Agent } from "../agent";
+import { createQuickJSWasiDriver as createQuickJSWasiDriverImpl } from "./drivers/quickjs-wasi-driver";
+import type {
+	Context as SandboxContext,
+	Driver as SandboxDriver,
+	DriverContextConfig as SandboxDriverContextConfig,
+	ExecutionResult as SandboxExecutionResult,
+	NormalizedError as SandboxNormalizedError,
+	ToolBinding as SandboxToolBinding,
+} from "./types";
 
 export namespace CodeMode {
-	const DEFAULT_TIMEOUT_MS = 30_000;
-	const DEFAULT_MEMORY_LIMIT_MB = 128;
-
 	export const ToolDefinitionErr = NamedError.create(
 		"ToolDefinitionErr",
 		Type.Object({
@@ -40,35 +45,11 @@ export namespace CodeMode {
 	});
 	export type SandboxExecutionError = Static<typeof SandboxExecutionErrorSchema>;
 
-	export interface NormalizedError {
-		message: string;
-		name?: string;
-		stack?: string;
-		line?: number;
-	}
-
-	export interface ExecutionResult<T = unknown> {
-		success: boolean;
-		value?: T;
-		logs?: string[];
-		error?: NormalizedError;
-	}
-
-	export interface Context {
-		execute: <T = unknown>(code: string) => Promise<ExecutionResult<T>>;
-		dispose: () => Promise<void>;
-	}
-
-	export interface DriverContextConfig {
-		bindings: Record<string, ToolBinding>;
-		timeout?: number;
-		memoryLimit?: number;
-		signal?: AbortSignal;
-	}
-
-	export interface Driver {
-		createContext: (config: DriverContextConfig) => Promise<Context>;
-	}
+	export type NormalizedError = SandboxNormalizedError;
+	export type ExecutionResult<T = unknown> = SandboxExecutionResult<T>;
+	export type Context = SandboxContext;
+	export type DriverContextConfig = SandboxDriverContextConfig;
+	export type Driver = SandboxDriver;
 
 	export interface ToolConfig {
 		/**
@@ -89,14 +70,7 @@ export namespace CodeMode {
 		memoryLimit?: number;
 	}
 
-	export interface ToolBinding {
-		name: string;
-		description: string;
-		inputSchema: TSchema;
-		outputSchema?: TSchema;
-		errorSchema?: TSchema;
-		execute: (callID: string, params: unknown, signal?: AbortSignal) => Promise<unknown>;
-	}
+	export type ToolBinding = SandboxToolBinding;
 
 	/**
 	 * Options for type stub generation
@@ -382,10 +356,6 @@ export namespace CodeMode {
 		].join("\n");
 	}
 
-	function toMegabytes(value: number | undefined): number {
-		return (value ?? DEFAULT_MEMORY_LIMIT_MB) * 1024 * 1024;
-	}
-
 	async function transpileTypeScript(typescriptCode: string): Promise<string> {
 		const wrappedSource = ["(async () => {", typescriptCode, "})()"].join("\n");
 		const transformed = await transform(wrappedSource, {
@@ -398,101 +368,7 @@ export namespace CodeMode {
 		return transformed.code;
 	}
 
-	function createConsole(vm: QuickJS, logs: string[]) {
-		const consoleObject = vm.newObject();
-		const methods = [
-			["log", ""],
-			["info", "INFO: "],
-			["warn", "WARN: "],
-			["error", "ERROR: "],
-		] as const;
-
-		for (const [name, prefix] of methods) {
-			const fn = vm.newFunction(name, (...args) => {
-				const message = args.map((arg) => String(vm.dump(arg))).join(" ");
-				logs.push(`${prefix}${message}`);
-				return vm.undefined;
-			});
-			consoleObject.setProp(name, fn);
-		}
-
-		vm.setProp(vm.global, "console", consoleObject);
-	}
-
-	function registerBindings(vm: QuickJS, bindings: Record<string, ToolBinding>, signal?: AbortSignal) {
-		let callCounter = 0;
-
-		for (const [name, binding] of Object.entries(bindings)) {
-			const fn = vm.newFunction(name, (...args) => {
-				const input = args[0] ? vm.dump(args[0]) : undefined;
-				const result = Promise.resolve(binding.execute(`${name}:${++callCounter}`, input, signal));
-				return vm.hostToHandle(result);
-			});
-			vm.setProp(vm.global, name, fn);
-		}
-	}
-
-	export function createQuickJSWasiDriver(): Driver {
-		return {
-			async createContext(config: DriverContextConfig): Promise<Context> {
-				const timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
-				const deadline = Date.now() + timeout;
-				const logs: string[] = [];
-				const vm = await QuickJS.create({
-					memoryLimit: toMegabytes(config.memoryLimit),
-					interruptHandler: () => Boolean(config.signal?.aborted) || Date.now() > deadline,
-				});
-
-				createConsole(vm, logs);
-				registerBindings(vm, config.bindings, config.signal);
-
-				return {
-					async execute<T = unknown>(code: string): Promise<ExecutionResult<T>> {
-						let resultHandle: ReturnType<typeof vm.evalCode> | undefined;
-
-						try {
-							resultHandle = vm.evalCode(code, "sandbox-user-script.js");
-							vm.executePendingJobs();
-
-							const settled = await vm.resolvePromise(resultHandle);
-							if ("error" in settled) {
-								try {
-									return {
-										success: false,
-										error: normalizeExecutionError(vm.dump(settled.error)),
-										logs: [...logs],
-									};
-								} finally {
-									settled.error.dispose();
-								}
-							}
-
-							try {
-								return {
-									success: true,
-									value: vm.dump(settled.value) as T,
-									logs: [...logs],
-								};
-							} finally {
-								settled.value.dispose();
-							}
-						} catch (error) {
-							return {
-								success: false,
-								error: normalizeExecutionError(error),
-								logs: [...logs],
-							};
-						} finally {
-							resultHandle?.dispose();
-						}
-					},
-					async dispose() {
-						vm.dispose();
-					},
-				};
-			},
-		};
-	}
+	export const createQuickJSWasiDriver = createQuickJSWasiDriverImpl;
 
 	function buildToolDescription(tools: Agent.AnyAgentTool[]): string {
 		const externalFunctions = tools.map((tool) => `external_${tool.name}`).join(", ");
@@ -501,7 +377,7 @@ export namespace CodeMode {
 			: "No external APIs are exposed for this run. ";
 
 		return (
-			"Execute TypeScript code in a QuickJS-WASI sandbox. " +
+			"Execute TypeScript code in a sandboxed runtime. " +
 			externalApiText +
 			"All external_* calls are async and must be awaited. " +
 			"Return a value from the script to pass results back."
@@ -540,7 +416,7 @@ export namespace CodeMode {
 					await onUpdate?.({
 						status: "running",
 						partial: {
-							content: [{ type: "text", text: "Executing code in QuickJS-WASI sandbox" }],
+							content: [{ type: "text", text: "Executing code in sandbox runtime" }],
 						},
 					});
 

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Agent } from "../src/agent/agent";
 import { CodeMode } from "../src/agent/codemode/codemode";
+import { createQuickJSWasiDriver } from "../src/agent/codemode/drivers/quickjs-wasi-driver";
 
 const PROMPT_SNAPSHOT_PATH = join(tmpdir(), "aikit-codemode-system-prompt.txt");
 
@@ -371,7 +372,7 @@ describe("CodeMode QuickJS-WASI driver", () => {
 		});
 
 		const codeMode = await CodeMode.create({
-			driver: CodeMode.createQuickJSWasiDriver(),
+			driver: createQuickJSWasiDriver(),
 			tools: [loadLedgerTool, resolveFeeTool],
 		});
 
@@ -432,7 +433,7 @@ describe("CodeMode QuickJS-WASI driver", () => {
 
 	it("transpiles TypeScript business logic before executing it in QuickJS-WASI", async () => {
 		const codeMode = await CodeMode.create({
-			driver: CodeMode.createQuickJSWasiDriver(),
+			driver: createQuickJSWasiDriver(),
 			tools: [],
 		});
 
@@ -508,7 +509,7 @@ describe("CodeMode QuickJS-WASI driver", () => {
 		});
 
 		const codeMode = await CodeMode.create({
-			driver: CodeMode.createQuickJSWasiDriver(),
+			driver: createQuickJSWasiDriver(),
 			tools: [strictTool],
 		});
 
