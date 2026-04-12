@@ -83,12 +83,15 @@ export function createQuickJSWasiDriver(): CodeMode.Driver {
 			const timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
 			const deadline = Date.now() + timeout;
 			const logs: string[] = [];
+			// create VM for execution sandbox
 			const vm = await QuickJS.create({
 				memoryLimit: toMegabytes(config.memoryLimit),
 				interruptHandler: () => Boolean(config.signal?.aborted) || Date.now() > deadline,
 			});
 
+			// create console log bindings
 			createConsole(vm, logs);
+			// register tool fn bindings
 			registerBindings(vm, config.bindings, config.signal);
 
 			return {
@@ -96,7 +99,7 @@ export function createQuickJSWasiDriver(): CodeMode.Driver {
 					let resultHandle: ReturnType<typeof vm.evalCode> | undefined;
 
 					try {
-						resultHandle = vm.evalCode(code, "sandbox-user-script.js");
+						resultHandle = vm.evalCode(code, "script.js");
 						vm.executePendingJobs();
 
 						const settled = await vm.resolvePromise(resultHandle);

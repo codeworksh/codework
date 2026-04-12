@@ -13,6 +13,8 @@ export namespace CodeMode {
 		}),
 	);
 
+	const toolFnPrefix = process.env.CODEWORK_CODEMODE_FN_PREFIX ?? "external_";
+
 	export const SandboxExecutionInputSchema = Type.Object({
 		typescriptCode: Type.String({
 			description: "TypeScript code to execute in the sandbox.",
@@ -82,6 +84,11 @@ export namespace CodeMode {
 		 * Memory limit in MB for sandbox (default: 128)
 		 */
 		memoryLimit?: number;
+		/**
+		 * Tool function prefix.
+		 * @default env.CODEWORK_CODEMODE_FN_PREFIX ?? "external_"
+		 */
+		fnPrefix?: string;
 	}
 
 	export interface ToolBinding {
@@ -199,7 +206,7 @@ export namespace CodeMode {
 		};
 	}
 
-	function toolsForBinding(tools: Agent.AnyAgentTool[], prefix: string = ""): Record<string, ToolBinding> {
+	function toolsForBinding(tools: Agent.AnyAgentTool[], prefix: string): Record<string, ToolBinding> {
 		const bindings: Record<string, ToolBinding> = {};
 
 		for (const tool of tools) {
@@ -328,7 +335,8 @@ export namespace CodeMode {
 	}
 
 	export function generateSystemPrompt(config: ToolConfig): string {
-		const bindings = toolsForBinding(config.tools, "external_");
+		const fnPrefix = config.fnPrefix ?? toolFnPrefix;
+		const bindings = toolsForBinding(config.tools, fnPrefix);
 		const typeStubs = generateTypeStubs(bindings);
 		const functionDocs =
 			Object.entries(bindings)
@@ -348,7 +356,7 @@ export namespace CodeMode {
 			"- Transform, filter, or aggregate data",
 			"- Perform calculations or data analysis",
 			"",
-			"Prefer direct tool calls outside `sandbox_execute_typescript` when code execution is unnecessary.",
+			"For simple operations, prefer calling tools directly.",
 			"",
 			"### Available External APIs",
 			"",
@@ -368,10 +376,10 @@ export namespace CodeMode {
 			"",
 			"### Important Notes",
 			"",
-			"- All `external_*` calls are async, so always `await` them",
-			"- Use `return` to pass the final value back from the script",
-			"- `console.log()`, `console.info()`, `console.warn()`, and `console.error()` are captured",
-			"- If an `external_*` call fails, it rejects, so use `try/catch` when needed",
+			"- All" + `\`${fnPrefix}\`*` + "calls are async, so always use `await`",
+			"- Return a value to pass results back to you",
+			"- Use `console.log()` for debugging (logs are captured)",
+			"- The sandbox is isolated - no network access or file system",
 			"- Each execution is isolated and does not share state with previous runs",
 			"",
 		].join("\n");
@@ -381,29 +389,31 @@ export namespace CodeMode {
 		const wrappedSource = ["(async () => {", typescriptCode, "})()"].join("\n");
 		const transformed = await transform(wrappedSource, {
 			loader: "ts",
-			format: "esm",
 			target: "es2022",
-			platform: "neutral",
 			sourcefile: "script.ts",
+			// Don't minify - keep the code readable for debugging
+			minify: false,
+			// Don't use keepNames as it adds __name() helper calls that aren't available in the sandbox
+			keepNames: false,
 		});
 		return transformed.code;
 	}
 
-	function buildToolDescription(tools: Agent.AnyAgentTool[]): string {
-		const externalFunctions = tools.map((tool) => `external_${tool.name}`).join(", ");
-		const externalApiText = externalFunctions
-			? `Available external APIs: ${externalFunctions}. `
-			: "No external APIs are exposed for this run. ";
+	function buildToolDescription(tools: Agent.AnyAgentTool[], fnPrefix = toolFnPrefix): string {
+		const externalFunctions = tools.map((tool) => `${fnPrefix}${tool.name}`).join("\n");
 
-		return (
-			"Execute TypeScript code in a sandboxed runtime. " +
-			externalApiText +
-			"All external_* calls are async and must be awaited. " +
-			"Return a value from the script to pass results back."
-		);
+		return [
+			"Execute TypeScript code in a secure sandbox environment. ",
+			"The code can use these external API functions:",
+			"<functions>",
+			` ${externalFunctions}`,
+			"</functions>",
+			`All ${fnPrefix}* calls are async and must be awaited. `,
+			"Return a value to pass results back. Use console.log() for debugging.",
+		].join("\n");
 	}
 
-	export function createTool(
+	export function createCodeModeTool(
 		config: ToolConfig,
 	): Agent.AgentTool<
 		typeof SandboxExecutionInputSchema,
@@ -411,15 +421,19 @@ export namespace CodeMode {
 		unknown,
 		typeof SandboxExecutionErrorSchema
 	> {
-		return Agent.defineTool({
+		if (config.tools.length === 0) {
+			throw new ToolDefinitionErr({ message: "at least one tool must be provided to `createCodeModeTool`" });
+		}
+
+		const tool = Agent.defineTool({
 			name: "sandbox_execute_typescript",
 			label: "Sandbox TypeScript",
-			description: buildToolDescription(config.tools),
+			description: buildToolDescription(config.tools, config.fnPrefix),
 			parameters: SandboxExecutionInputSchema,
 			outputSchema: SandboxExecutionOutputSchema,
 			errorSchema: SandboxExecutionErrorSchema,
 			async execute(_callID, params, signal, onUpdate) {
-				const bindings = toolsForBinding(config.tools, "external_");
+				const bindings = toolsForBinding(config.tools, config.fnPrefix ?? toolFnPrefix);
 				let context: Context | undefined;
 
 				try {
@@ -501,11 +515,12 @@ export namespace CodeMode {
 				}
 			},
 		});
+		return tool;
 	}
 
 	export async function create(config: ToolConfig) {
 		return {
-			tool: createTool(config),
+			tool: createCodeModeTool(config),
 			systemPrompt: generateSystemPrompt(config),
 		};
 	}
