@@ -35,6 +35,28 @@ function calculateLedgerTotals(entries: LedgerEntry[], feeBps: number) {
 	);
 }
 
+function createNoopTool() {
+	return Agent.defineTool({
+		name: "noop",
+		label: "Noop",
+		description: "Noop tool",
+		parameters: Type.Object({}),
+		outputSchema: Type.Object({
+			ok: Type.Boolean(),
+		}),
+		async execute() {
+			return {
+				status: "completed" as const,
+				result: {
+					content: [{ type: "text" as const, text: "ok" }],
+					details: { ok: true },
+					isError: false as const,
+				},
+			};
+		},
+	});
+}
+
 function parseContentJson(result: { content: Array<{ type: string; text?: string }> }) {
 	const textPart = result.content.find(
 		(part): part is { type: "text"; text: string } => part.type === "text" && !!part.text,
@@ -275,7 +297,7 @@ describe("CodeMode.create", () => {
 					return context;
 				},
 			},
-			tools: [],
+			tools: [createNoopTool()],
 		});
 
 		const result = await codeMode.tool.execute("call_1", {
@@ -305,6 +327,29 @@ describe("CodeMode.create", () => {
 });
 
 describe("CodeMode QuickJS-WASI driver", () => {
+	it("preserves sandbox stack traces for thrown errors", async () => {
+		const codeMode = await CodeMode.create({
+			driver: createQuickJSWasiDriver(),
+			tools: [createNoopTool()],
+		});
+
+		const result = await codeMode.tool.execute("call_1", {
+			typescriptCode: `
+				throw new Error("sandbox boom");
+			`,
+		});
+
+		expect(result.status).toBe("error");
+		expect(result.result.details).toMatchObject({
+			message: "sandbox boom",
+			stack: expect.stringContaining("sandbox boom"),
+		});
+		expect(parseContentJson(result.result)).toMatchObject({
+			message: "sandbox boom",
+			stack: expect.stringContaining("sandbox boom"),
+		});
+	});
+
 	it("executes business logic with large-number calculations in the sandbox", async () => {
 		const ledgerEntries: LedgerEntry[] = [
 			{
@@ -434,7 +479,7 @@ describe("CodeMode QuickJS-WASI driver", () => {
 	it("transpiles TypeScript business logic before executing it in QuickJS-WASI", async () => {
 		const codeMode = await CodeMode.create({
 			driver: createQuickJSWasiDriver(),
-			tools: [],
+			tools: [createNoopTool()],
 		});
 
 		const result = await codeMode.tool.execute("call_1", {

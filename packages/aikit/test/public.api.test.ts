@@ -27,7 +27,15 @@ describe("public api", () => {
 	});
 
 	it("exports the facade entrypoints from the package root", () => {
-		expect(Object.keys(aikit).sort()).toEqual(["Agent", "CodeMode", "Message", "agent", "llm", "stream"]);
+		expect(Object.keys(aikit).sort()).toEqual([
+			"Agent",
+			"CodeMode",
+			"Message",
+			"agent",
+			"createQuickJSWasiDriver",
+			"llm",
+			"stream",
+		]);
 
 		expect(aikit.Agent).toBe(Agent);
 		expect(aikit.CodeMode).toBe(CodeMode);

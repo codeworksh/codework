@@ -1,6 +1,6 @@
 # Changelog
 
-This file is the canonical source for unreleased changes and published release notes for the workspace.
+This file is the canonical source for unreleased changes and published release notes for the codework.
 
 ## Format
 

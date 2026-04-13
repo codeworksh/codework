@@ -1,8 +1,8 @@
 {
-	"name": "aikit-exa-example",
+	"name": "aikit-codemode-finance-csv-example",
 	"version": "0.0.0",
 	"private": true,
-	"description": "Example recruitment-research agent built with @codeworksh/aikit and exa-js.",
+	"description": "CodeMode finance CSV example",
 	"type": "module",
 	"scripts": {
 		"dev": "pnpm -C ../../../.. --filter @codeworksh/utils build && pnpm -C ../../../.. --filter @codeworksh/aikit build && vp pack && node --env-file-if-exists=.env dist/index.mjs",
@@ -13,8 +13,7 @@
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "link:../..",
-		"@sinclair/typebox": "^0.34.48",
-		"exa-js": "^2.11.0"
+		"@sinclair/typebox": "^0.34.48"
 	},
 	"devDependencies": {
 		"@types/node": "^24.6.1",

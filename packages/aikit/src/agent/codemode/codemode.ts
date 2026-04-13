@@ -111,12 +111,17 @@ export namespace CodeMode {
 		includeDescriptions?: boolean;
 	}
 
+	function withMessageInStack(message: string, stack: string | undefined): string | undefined {
+		if (!stack) return undefined;
+		return stack.includes(message) ? stack : `${message}\n${stack}`;
+	}
+
 	function normalizeExecutionError(error: unknown): NormalizedError {
 		if (error instanceof Error) {
 			return {
 				name: error.name,
 				message: error.message,
-				stack: error.stack,
+				stack: withMessageInStack(error.message, error.stack),
 				line: parseErrorLine(error.stack),
 			};
 		}
@@ -129,7 +134,15 @@ export namespace CodeMode {
 					typeof candidate.message === "string"
 						? candidate.message
 						: JSON.stringify(candidate) || "Unknown execution error",
-				stack: typeof candidate.stack === "string" ? candidate.stack : undefined,
+				stack:
+					typeof candidate.stack === "string"
+						? withMessageInStack(
+								typeof candidate.message === "string"
+									? candidate.message
+									: JSON.stringify(candidate) || "Unknown execution error",
+								candidate.stack,
+							)
+						: undefined,
 				line: typeof candidate.line === "number" ? candidate.line : parseErrorLine(candidate.stack),
 			};
 		}
@@ -386,14 +399,35 @@ export namespace CodeMode {
 	}
 
 	async function transpileTypeScript(typescriptCode: string): Promise<string> {
-		const wrappedSource = ["(async () => {", typescriptCode, "})()"].join("\n");
+		const wrappedSource = [
+			"(async () => {",
+			"\tconst __codemodeNormalizeError = (error: unknown) => {",
+			"\t\tif (error instanceof Error) return { name: error.name, message: error.message, stack: error.stack };",
+			"\t\tif (typeof error === 'object' && error !== null) {",
+			"\t\t\tconst candidate = error as { name?: unknown; message?: unknown; stack?: unknown };",
+			"\t\t\treturn {",
+			"\t\t\t\tname: typeof candidate.name === 'string' ? candidate.name : 'Error',",
+			"\t\t\t\tmessage:",
+			"\t\t\t\t\ttypeof candidate.message === 'string'",
+			"\t\t\t\t\t\t? candidate.message",
+			"\t\t\t\t\t\t: JSON.stringify(candidate) || 'Unknown execution error',",
+			"\t\t\t\tstack: typeof candidate.stack === 'string' ? candidate.stack : undefined,",
+			"\t\t\t};",
+			"\t\t}",
+			"\t\treturn { name: 'Error', message: String(error) };",
+			"\t};",
+			"\ttry {",
+			typescriptCode,
+			"\t} catch (error) {",
+			"\t\tthrow __codemodeNormalizeError(error);",
+			"\t}",
+			"})()",
+		].join("\n");
 		const transformed = await transform(wrappedSource, {
 			loader: "ts",
 			target: "es2022",
 			sourcefile: "script.ts",
-			// Don't minify - keep the code readable for debugging
 			minify: false,
-			// Don't use keepNames as it adds __name() helper calls that aren't available in the sandbox
 			keepNames: false,
 		});
 		return transformed.code;

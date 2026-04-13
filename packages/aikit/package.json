@@ -24,14 +24,22 @@
 		"directory": "packages/aikit"
 	},
 	"files": [
+		"dist",
 		"src",
 		"README.md"
 	],
 	"type": "module",
-	"module": "src/index.ts",
+	"module": "./dist/pack/index.mjs",
+	"types": "./dist/pack/index.d.mts",
 	"exports": {
-		".": "./src/index.ts",
-		"./codemode/drivers": "./src/agent/codemode/drivers/index.ts"
+		".": {
+			"types": "./dist/pack/index.d.mts",
+			"import": "./dist/pack/index.mjs"
+		},
+		"./codemode/drivers": {
+			"types": "./dist/pack/index.d.mts",
+			"import": "./dist/pack/index.mjs"
+		}
 	},
 	"publishConfig": {
 		"access": "public"

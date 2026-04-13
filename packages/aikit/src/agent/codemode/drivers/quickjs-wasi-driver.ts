@@ -4,6 +4,11 @@ import type { CodeMode } from "../codemode";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MEMORY_LIMIT_MB = 128;
 
+function withMessageInStack(message: string, stack: string | undefined): string | undefined {
+	if (!stack) return undefined;
+	return stack.includes(message) ? stack : `${message}\n${stack}`;
+}
+
 function parseErrorLine(stack: unknown): number | undefined {
 	if (typeof stack !== "string") return undefined;
 	const lineMatch = stack.match(/:(\d+)(?::\d+)?\)?$/m);
@@ -15,20 +20,21 @@ function normalizeExecutionError(error: unknown): CodeMode.NormalizedError {
 		return {
 			name: error.name,
 			message: error.message,
-			stack: error.stack,
+			stack: withMessageInStack(error.message, error.stack),
 			line: parseErrorLine(error.stack),
 		};
 	}
 
 	if (typeof error === "object" && error !== null) {
 		const candidate = error as Record<string, unknown>;
+		const message =
+			typeof candidate.message === "string"
+				? candidate.message
+				: JSON.stringify(candidate) || "Unknown Execution Error";
 		return {
 			name: typeof candidate.name === "string" ? candidate.name : undefined,
-			message:
-				typeof candidate.message === "string"
-					? candidate.message
-					: JSON.stringify(candidate) || "Unknown execution error",
-			stack: typeof candidate.stack === "string" ? candidate.stack : undefined,
+			message,
+			stack: typeof candidate.stack === "string" ? withMessageInStack(message, candidate.stack) : undefined,
 			line: typeof candidate.line === "number" ? candidate.line : parseErrorLine(candidate.stack),
 		};
 	}
