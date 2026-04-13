@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { Agent } from "../../../src/agent/agent";
 import { CodeMode } from "../../../src/agent/codemode/codemode";
-import { createQuickJSWasiDriver } from "../../../src/agent/codemode/drivers";
+import { createQuickJSWasiDriver } from "../../../src/agent/codemode/drivers/drivers";
 import { Message } from "../../../src/message/message";
 import type { CodeModeEvalScenario } from "./scenarios";
 

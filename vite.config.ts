@@ -6,15 +6,18 @@ import { defineConfig } from "vite-plus";
 const repoRoot = fileURLToPath(new URL("./", import.meta.url));
 const workspaceEntries = {
 	aikit: fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),
+	aikitCodeModeDrivers: fileURLToPath(
+		new URL("./packages/aikit/src/agent/codemode/drivers/drivers.ts", import.meta.url),
+	),
 	utils: fileURLToPath(new URL("./packages/utils/src/index.ts", import.meta.url)),
 };
 const workspaceDir = relative(repoRoot, process.cwd()).replaceAll("\\", "/");
 const packEntries =
 	workspaceDir === "packages/aikit"
-		? [workspaceEntries.aikit]
+		? [workspaceEntries.aikit, workspaceEntries.aikitCodeModeDrivers]
 		: workspaceDir === "packages/utils"
 			? [workspaceEntries.utils]
-			: Object.values(workspaceEntries);
+			: [workspaceEntries.aikit, workspaceEntries.utils];
 const testIncludes =
 	workspaceDir === "packages/aikit"
 		? ["test/**/*.test.ts"]
@@ -31,7 +34,10 @@ const external = (id: string) =>
 export default defineConfig({
 	build: {
 		lib: {
-			entry: workspaceEntries,
+			entry: {
+				aikit: workspaceEntries.aikit,
+				utils: workspaceEntries.utils,
+			},
 			formats: ["es"],
 		},
 		outDir: "dist/build",

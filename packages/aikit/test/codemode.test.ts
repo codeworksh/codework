@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Agent } from "../src/agent/agent";
 import { CodeMode } from "../src/agent/codemode/codemode";
-import { createQuickJSWasiDriver } from "../src/agent/codemode/drivers";
+import { createQuickJSWasiDriver } from "../src/agent/codemode/drivers/drivers";
 
 const PROMPT_SNAPSHOT_PATH = join(tmpdir(), "aikit-codemode-system-prompt.txt");
 
