@@ -482,7 +482,7 @@ function createEventRenderer() {
 					return;
 				}
 
-				if (event.source === "tool" && event.part.type === "toolCall") {
+				if (event.source === "tool" && event.part.type === "toolCall" && event.part.status === "running") {
 					const preview = readTextPreview(event.part.partial?.content);
 					if (preview) {
 						writeToolLine(`-> ${event.part.name}: ${preview}`);

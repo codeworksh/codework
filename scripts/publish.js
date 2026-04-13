@@ -64,6 +64,30 @@ function compactObject(value) {
   );
 }
 
+function rewritePublishPath(value) {
+  if (typeof value !== "string") return value;
+  if (!value.startsWith("./dist/pack/")) return value;
+  return `./${value.slice("./dist/pack/".length)}`;
+}
+
+function rewritePublishValue(value) {
+  if (typeof value === "string") {
+    return rewritePublishPath(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => rewritePublishValue(entry));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, rewritePublishValue(entry)]),
+    );
+  }
+
+  return value;
+}
+
 async function resolveWorkspaceVersion(packageName) {
   const workspaceDir = workspaceMap.get(packageName);
   if (!workspaceDir) {
@@ -134,23 +158,18 @@ async function createPublishManifest(manifest) {
     author: manifest.author,
     repository: manifest.repository,
     type: manifest.type ?? "module",
-    main: "./index.mjs",
-    module: "./index.mjs",
-    types: "./index.d.mts",
-    exports: {
+    main: rewritePublishPath(manifest.main ?? manifest.module),
+    module: rewritePublishPath(manifest.module),
+    types: rewritePublishPath(manifest.types),
+    exports: rewritePublishValue(manifest.exports) ?? {
       ".": {
-        types: "./index.d.mts",
-        import: "./index.mjs",
-        default: "./index.mjs",
+        types: rewritePublishPath(manifest.types),
+        import: rewritePublishPath(manifest.module),
+        default: rewritePublishPath(manifest.module),
       },
     },
-    files: [
-      "index.mjs",
-      "index.mjs.map",
-      "index.d.mts",
-      "README.md",
-      "LICENSE",
-    ],
+    // Publish from dist/pack, so include the contents of that directory directly.
+    files: ["**/*", "README.md", "LICENSE"],
     sideEffects: manifest.sideEffects,
     publishConfig: manifest.publishConfig,
     engines: manifest.engines,

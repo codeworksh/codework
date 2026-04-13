@@ -1,6 +1,6 @@
 # codemode-finance-csv
 
-Node.js example for `@codeworksh/aikit` that uses `CodeMode` to analyze a local bank statement CSV.
+Eample for `@codeworksh/aikit` that uses `CodeMode` to analyze a local bank statement CSV.
 
 The agent gets a typed `readStatementCsv` tool, and `CodeMode` exposes that tool inside sandboxed TypeScript as `external_readStatementCsv(...)`. The model can then write code against the tool's type definitions to answer arbitrary finance questions.
 
@@ -25,7 +25,6 @@ Set these environment variables in `.env`:
 
 ```env
 ANTHROPIC_API_KEY=YOUR_ANTHROPIC_API_KEY
-AIKIT_MODEL=claude-haiku-4-5-20251001
 ```
 
 If your CSV lives somewhere else, set:

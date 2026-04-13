@@ -11,19 +11,24 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.3.0]
+
 ### Added
 
 - Added Code Mode to `@codeworksh/aikit` with TypeScript system-prompt stubs and the `sandbox_execute_typescript` tool.
 - Added a QuickJS-WASI sandbox driver for executing generated TypeScript code.
+- Added the [`codemode-finance-csv` example](./packages/aikit/examples/codemode-finance-csv/README.md) showing Code Mode over a typed CSV-backed finance workflow.
 
 ### Changed
 
 - Updated Code Mode to use pluggable drivers via `CodeMode.create({ driver, tools })`.
 - Exposed first-party Code Mode drivers from `@codeworksh/aikit/codemode/drivers`.
+- Updated `aikit` packaging so examples consume built package artifacts like external apps instead of bundling workspace source.
 
 ### Internal
 
 - Added runtime and live-agent test coverage for Code Mode, sandbox execution, and tool bindings.
+- Updated package publishing and subpath build outputs to support dedicated Code Mode driver artifacts.
 
 ## [@codeworksh/aikit@0.2.1]
 
