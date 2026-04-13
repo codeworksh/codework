@@ -177,11 +177,11 @@ function formatResult(result: Record<string, unknown>, index: number): string {
 	return lines.join("\n");
 }
 
-const exaSearchTool = Agent.defineTool({
+const exaSearchTool = Agent.defineTool<typeof exaSearchParameters>({
 	name: "exa_search",
 	label: "Exa Search",
 	description:
-		"Search Exa for people or companies relevant to sales research. Use category=company for company discovery and category=people for individual prospect discovery.",
+		"Search Exa for people or companies relevant doing technical recruitment. Use category=company for company discovery and category=people for hiring teams.",
 	parameters: exaSearchParameters,
 	async execute(_callID: string, params: ExaSearchParams, _signal?: AbortSignal, onUpdate?: Agent.ToolUpdateCallback) {
 		await onUpdate?.({
@@ -231,6 +231,7 @@ const exaSearchTool = Agent.defineTool({
 						},
 					],
 					isError: true,
+					details: error,
 				},
 			};
 		}
@@ -254,11 +255,11 @@ async function createAgent(): Promise<Agent.Instance> {
 
 	agent.setSystemPrompt(
 		`
-You are a concise sales research agent.
+You are a concise technical recruitment agent. Helping developers look for jobs.
 
 Use the exa_search tool whenever you need fresh company or people discovery.
 Prefer company search for account targeting and people search for individual prospecting.
-Return practical findings for sales outreach and include the URLs you used.
+Return practical findings for hiring outreach and include the URLs you used.
 `.trim(),
 	);
 
@@ -268,7 +269,7 @@ Return practical findings for sales outreach and include the URLs you used.
 function printBanner(): void {
 	console.log(
 		`${colors.cyan}${colors.bold}╔══════════════════════════════════════════════════════════════╗
-║                    aikit Exa Sales Agent                    ║
+║                    aikit Exa Recruitment Agent              ║
 ║           Interactive company and people research           ║
 ╚══════════════════════════════════════════════════════════════╝${colors.reset}
 `,
@@ -338,7 +339,7 @@ function createEventRenderer() {
 					return;
 				}
 
-				if (event.source === "tool" && event.part.type === "toolCall") {
+				if (event.source === "tool" && event.part.type === "toolCall" && event.part.status === "running") {
 					const preview = readTextPreview(event.part.partial?.content);
 					if (preview) {
 						writeToolLine(`↳ ${event.part.name}: ${preview}`);

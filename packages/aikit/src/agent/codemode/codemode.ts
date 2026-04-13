@@ -1,0 +1,561 @@
+import { NamedError } from "@codeworksh/utils";
+import { type Static, type TSchema, Type, TypeGuard } from "@sinclair/typebox";
+import { transform } from "esbuild";
+import { capitalize } from "remeda";
+import { validateSchema } from "../../utils/validation";
+import { Agent } from "../agent";
+
+export namespace CodeMode {
+	export const ToolDefinitionErr = NamedError.create(
+		"ToolDefinitionErr",
+		Type.Object({
+			message: Type.String(),
+		}),
+	);
+
+	const toolFnPrefix = process.env.CODEWORK_CODEMODE_FN_PREFIX ?? "external_";
+
+	export const SandboxExecutionInputSchema = Type.Object({
+		typescriptCode: Type.String({
+			description: "TypeScript code to execute in the sandbox.",
+		}),
+	});
+	export type SandboxExecutionInput = Static<typeof SandboxExecutionInputSchema>;
+
+	export const SandboxExecutionOutputSchema = Type.Object({
+		result: Type.Optional(Type.Unknown()),
+		logs: Type.Optional(Type.Array(Type.String())),
+	});
+	export type SandboxExecutionOutput = Static<typeof SandboxExecutionOutputSchema>;
+
+	export const SandboxExecutionErrorSchema = Type.Object({
+		message: Type.String(),
+		name: Type.Optional(Type.String()),
+		stack: Type.Optional(Type.String()),
+		line: Type.Optional(Type.Number()),
+		logs: Type.Optional(Type.Array(Type.String())),
+	});
+	export type SandboxExecutionError = Static<typeof SandboxExecutionErrorSchema>;
+
+	export interface NormalizedError {
+		message: string;
+		name?: string;
+		stack?: string;
+		line?: number;
+	}
+
+	export interface ExecutionResult<T = unknown> {
+		success: boolean;
+		value?: T;
+		logs?: string[];
+		error?: NormalizedError;
+	}
+
+	export interface Context {
+		execute: <T = unknown>(code: string) => Promise<ExecutionResult<T>>;
+		dispose: () => Promise<void>;
+	}
+
+	export interface DriverContextConfig {
+		bindings: Record<string, ToolBinding>;
+		timeout?: number;
+		memoryLimit?: number;
+		signal?: AbortSignal;
+	}
+
+	export interface Driver {
+		createContext: (config: DriverContextConfig) => Promise<Context>;
+	}
+
+	export interface ToolConfig {
+		/**
+		 * Driver for sandbox code execution
+		 */
+		driver: Driver;
+		/**
+		 * Tools to expose for functions in sandbox
+		 */
+		tools: Agent.AnyAgentTool[];
+		/**
+		 * Execution timeout in milliseconds (default: 30000)
+		 */
+		timeout?: number;
+		/**
+		 * Memory limit in MB for sandbox (default: 128)
+		 */
+		memoryLimit?: number;
+		/**
+		 * Tool function prefix.
+		 * @default env.CODEWORK_CODEMODE_FN_PREFIX ?? "external_"
+		 */
+		fnPrefix?: string;
+	}
+
+	export interface ToolBinding {
+		name: string;
+		description: string;
+		inputSchema: TSchema;
+		outputSchema?: TSchema;
+		errorSchema?: TSchema;
+		execute: (callID: string, params: unknown, signal?: AbortSignal) => Promise<unknown>;
+	}
+
+	/**
+	 * Options for type stub generation
+	 */
+	export interface TypeGeneratorOptions {
+		/**
+		 * Include JSDoc comments with descriptions
+		 * @default true
+		 */
+		includeDescriptions?: boolean;
+	}
+
+	function withMessageInStack(message: string, stack: string | undefined): string | undefined {
+		if (!stack) return undefined;
+		return stack.includes(message) ? stack : `${message}\n${stack}`;
+	}
+
+	function normalizeExecutionError(error: unknown): NormalizedError {
+		if (error instanceof Error) {
+			return {
+				name: error.name,
+				message: error.message,
+				stack: withMessageInStack(error.message, error.stack),
+				line: parseErrorLine(error.stack),
+			};
+		}
+
+		if (typeof error === "object" && error !== null) {
+			const candidate = error as Record<string, unknown>;
+			return {
+				name: typeof candidate.name === "string" ? candidate.name : undefined,
+				message:
+					typeof candidate.message === "string"
+						? candidate.message
+						: JSON.stringify(candidate) || "Unknown execution error",
+				stack:
+					typeof candidate.stack === "string"
+						? withMessageInStack(
+								typeof candidate.message === "string"
+									? candidate.message
+									: JSON.stringify(candidate) || "Unknown execution error",
+								candidate.stack,
+							)
+						: undefined,
+				line: typeof candidate.line === "number" ? candidate.line : parseErrorLine(candidate.stack),
+			};
+		}
+
+		return {
+			name: "Error",
+			message: String(error),
+		};
+	}
+
+	function parseErrorLine(stack: unknown): number | undefined {
+		if (typeof stack !== "string") return undefined;
+		const lineMatch = stack.match(/:(\d+)(?::\d+)?\)?$/m);
+		return lineMatch ? Number(lineMatch[1]) : undefined;
+	}
+
+	function serializeForContent(value: unknown): string {
+		return JSON.stringify(
+			value,
+			(_key, currentValue) => (typeof currentValue === "bigint" ? currentValue.toString() : currentValue),
+			2,
+		);
+	}
+
+	function toolContentToText(result: { content: Array<{ type: string; text?: string }> }): string {
+		const parts = result.content
+			.filter((part) => part.type === "text" && typeof part.text === "string")
+			.map((part) => part.text);
+		return parts.join("\n").trim();
+	}
+
+	function unwrapToolResult(tool: Agent.AnyAgentTool, result: Agent.ToolTerminalResult<unknown, unknown>): unknown {
+		if (result.status === "completed") {
+			if (tool.outputSchema) {
+				return validateSchema(tool.outputSchema, result.result.details, `Tool "${tool.name}" output`);
+			}
+			return result.result.details;
+		}
+
+		if (tool.errorSchema && result.result.details !== undefined) {
+			validateSchema(tool.errorSchema, result.result.details, `Tool "${tool.name}" error`);
+		}
+
+		const message = toolContentToText(result.result) || `Tool "${tool.name}" failed`;
+		const error = new Error(message);
+		if (result.result.details !== undefined) {
+			(error as Error & { cause?: unknown }).cause = result.result.details;
+		}
+		throw error;
+	}
+
+	function toolToBinding(tool: Agent.AnyAgentTool, prefix: string = ""): ToolBinding {
+		const inputSchema = TypeGuard.IsSchema(tool.parameters) ? tool.parameters : Type.Object({});
+		const outputSchema = TypeGuard.IsSchema(tool.outputSchema) ? tool.outputSchema : undefined;
+		const errorSchema = TypeGuard.IsSchema(tool.errorSchema) ? tool.errorSchema : undefined;
+
+		if (!("execute" in tool) || typeof tool.execute !== "function") {
+			throw new ToolDefinitionErr({
+				message: `tool "${tool.name}" does not have an execute function. code mode requires tools with implementation`,
+			});
+		}
+
+		return {
+			name: `${prefix}${tool.name}`,
+			description: tool.description,
+			inputSchema,
+			outputSchema,
+			errorSchema,
+			execute: async (callID: string, params: unknown, signal?: AbortSignal) => {
+				const validatedParams = validateSchema(inputSchema, params, `Tool "${tool.name}" input`);
+				const terminalResult = await tool.execute(callID, validatedParams, signal);
+				return unwrapToolResult(tool, terminalResult);
+			},
+		};
+	}
+
+	function toolsForBinding(tools: Agent.AnyAgentTool[], prefix: string): Record<string, ToolBinding> {
+		const bindings: Record<string, ToolBinding> = {};
+
+		for (const tool of tools) {
+			const name = `${prefix}${tool.name}`;
+			bindings[name] = toolToBinding(tool, prefix);
+		}
+
+		return bindings;
+	}
+
+	function indent(value: string, depth: number = 1): string {
+		const prefix = "\t".repeat(depth);
+		return value
+			.split("\n")
+			.map((line) => `${prefix}${line}`)
+			.join("\n");
+	}
+
+	function toPropertyKey(name: string): string {
+		return /^[$A-Z_a-z][$\w]*$/i.test(name) ? name : JSON.stringify(name);
+	}
+
+	function schemaToTypeScript(schema: TSchema): string {
+		if (TypeGuard.IsAny(schema)) return "any";
+		if (TypeGuard.IsUnknown(schema)) return "unknown";
+		if (TypeGuard.IsString(schema)) return "string";
+		if (TypeGuard.IsNumber(schema) || TypeGuard.IsInteger(schema)) return "number";
+		if (TypeGuard.IsBoolean(schema)) return "boolean";
+		if (TypeGuard.IsNull(schema)) return "null";
+		if (TypeGuard.IsUndefined(schema) || TypeGuard.IsVoid(schema)) return "undefined";
+		if (TypeGuard.IsLiteral(schema)) return JSON.stringify(schema.const);
+
+		if (TypeGuard.IsArray(schema)) {
+			return `Array<${schemaToTypeScript(schema.items)}>`;
+		}
+
+		if (TypeGuard.IsTuple(schema)) {
+			const items = schema.items ?? [];
+			return `[${items.map((item) => schemaToTypeScript(item)).join(", ")}]`;
+		}
+
+		if (TypeGuard.IsUnion(schema)) {
+			return schema.anyOf.map((item) => schemaToTypeScript(item)).join(" | ");
+		}
+
+		if (TypeGuard.IsIntersect(schema)) {
+			return schema.allOf.map((item) => schemaToTypeScript(item)).join(" & ");
+		}
+
+		if (TypeGuard.IsRecord(schema)) {
+			const valueSchema =
+				Object.values(schema.patternProperties ?? {}).find(TypeGuard.IsSchema) ??
+				(schema.additionalProperties && TypeGuard.IsSchema(schema.additionalProperties)
+					? schema.additionalProperties
+					: Type.Unknown());
+			return `Record<string, ${schemaToTypeScript(valueSchema)}>`;
+		}
+
+		if (TypeGuard.IsObject(schema)) {
+			const required = new Set(schema.required ?? []);
+			const properties = Object.entries(schema.properties ?? {}).map(([key, value]) => {
+				const optional = required.has(key) ? "" : "?";
+				return `${toPropertyKey(key)}${optional}: ${schemaToTypeScript(value)};`;
+			});
+
+			if (schema.additionalProperties === true) {
+				properties.push("[key: string]: unknown;");
+			} else if (schema.additionalProperties && TypeGuard.IsSchema(schema.additionalProperties)) {
+				properties.push(`[key: string]: ${schemaToTypeScript(schema.additionalProperties)};`);
+			}
+
+			if (properties.length === 0) return "{}";
+
+			return `{\n${indent(properties.join("\n"))}\n}`;
+		}
+
+		return "unknown";
+	}
+
+	/**
+	 * Generate TypeScript type stubs for all tool bindings.
+	 *
+	 * These stubs are included in the LLM system prompt so it knows the exact
+	 * type signatures of available tools.
+	 */
+	export function generateTypeStubs(
+		bindings: Record<string, ToolBinding>,
+		options: TypeGeneratorOptions = {},
+	): string {
+		const { includeDescriptions = true } = options;
+		const declarations: string[] = [];
+
+		for (const [name, binding] of Object.entries(bindings)) {
+			const inputTypeName = `${capitalize(name)}Input`;
+			const outputTypeName = `${capitalize(name)}Output`;
+
+			declarations.push(`type ${inputTypeName} = ${schemaToTypeScript(binding.inputSchema)};`);
+
+			let outputTypeRef = "unknown";
+			if (binding.outputSchema !== undefined) {
+				declarations.push(`type ${outputTypeName} = ${schemaToTypeScript(binding.outputSchema)};`);
+				outputTypeRef = outputTypeName;
+			}
+
+			const description = includeDescriptions && binding.description ? `/** ${binding.description} */\n` : "";
+			declarations.push(
+				`${description}declare function ${name}(input: ${inputTypeName}): Promise<${outputTypeRef}>;`,
+			);
+		}
+
+		return declarations.join("\n\n");
+	}
+
+	function buildExampleSnippet(): string[] {
+		return [
+			"```typescript",
+			"const numbers = [12, 24, 36];",
+			"const total = numbers.reduce((sum, value) => sum + value, 0);",
+			"",
+			"return {",
+			"  count: numbers.length,",
+			"  average: total / numbers.length,",
+			"};",
+			"```",
+		];
+	}
+
+	export function generateSystemPrompt(config: ToolConfig): string {
+		const fnPrefix = config.fnPrefix ?? toolFnPrefix;
+		const bindings = toolsForBinding(config.tools, fnPrefix);
+		const typeStubs = generateTypeStubs(bindings);
+		const functionDocs =
+			Object.entries(bindings)
+				.map(([name, binding]) => `- \`${name}(input)\`: ${binding.description}`)
+				.join("\n") || "- No external APIs available for this run.";
+
+		return [
+			"## Code Execution Tool",
+			"",
+			"You have access to `sandbox_execute_typescript` which runs TypeScript code in a sandboxed environment.",
+			"",
+			"### When to Use",
+			"",
+			"Use `sandbox_execute_typescript` when you need to:",
+			"- Process data with loops, conditionals, or complex logic",
+			"- Make multiple tool calls in parallel with `Promise.all(...)`",
+			"- Transform, filter, or aggregate data",
+			"- Perform calculations or data analysis",
+			"",
+			"For simple operations, prefer calling tools directly.",
+			"",
+			"### Available External APIs",
+			"",
+			"Inside your TypeScript code, you can call these async functions:",
+			"",
+			functionDocs,
+			"",
+			"### Type Definitions",
+			"",
+			"```typescript",
+			typeStubs,
+			"```",
+			"",
+			"### Example",
+			"",
+			...buildExampleSnippet(),
+			"",
+			"### Important Notes",
+			"",
+			"- All" + `\`${fnPrefix}\`*` + "calls are async, so always use `await`",
+			"- Return a value to pass results back to you",
+			"- Use `console.log()` for debugging (logs are captured)",
+			"- The sandbox is isolated - no network access or file system",
+			"- Each execution is isolated and does not share state with previous runs",
+			"",
+		].join("\n");
+	}
+
+	async function transpileTypeScript(typescriptCode: string): Promise<string> {
+		const wrappedSource = [
+			"(async () => {",
+			"\tconst __codemodeNormalizeError = (error: unknown) => {",
+			"\t\tif (error instanceof Error) return { name: error.name, message: error.message, stack: error.stack };",
+			"\t\tif (typeof error === 'object' && error !== null) {",
+			"\t\t\tconst candidate = error as { name?: unknown; message?: unknown; stack?: unknown };",
+			"\t\t\treturn {",
+			"\t\t\t\tname: typeof candidate.name === 'string' ? candidate.name : 'Error',",
+			"\t\t\t\tmessage:",
+			"\t\t\t\t\ttypeof candidate.message === 'string'",
+			"\t\t\t\t\t\t? candidate.message",
+			"\t\t\t\t\t\t: JSON.stringify(candidate) || 'Unknown execution error',",
+			"\t\t\t\tstack: typeof candidate.stack === 'string' ? candidate.stack : undefined,",
+			"\t\t\t};",
+			"\t\t}",
+			"\t\treturn { name: 'Error', message: String(error) };",
+			"\t};",
+			"\ttry {",
+			typescriptCode,
+			"\t} catch (error) {",
+			"\t\tthrow __codemodeNormalizeError(error);",
+			"\t}",
+			"})()",
+		].join("\n");
+		const transformed = await transform(wrappedSource, {
+			loader: "ts",
+			target: "es2022",
+			sourcefile: "script.ts",
+			minify: false,
+			keepNames: false,
+		});
+		return transformed.code;
+	}
+
+	function buildToolDescription(tools: Agent.AnyAgentTool[], fnPrefix = toolFnPrefix): string {
+		const externalFunctions = tools.map((tool) => `${fnPrefix}${tool.name}`).join("\n");
+
+		return [
+			"Execute TypeScript code in a secure sandbox environment. ",
+			"The code can use these external API functions:",
+			"<functions>",
+			` ${externalFunctions}`,
+			"</functions>",
+			`All ${fnPrefix}* calls are async and must be awaited. `,
+			"Return a value to pass results back. Use console.log() for debugging.",
+		].join("\n");
+	}
+
+	export function createCodeModeTool(
+		config: ToolConfig,
+	): Agent.AgentTool<
+		typeof SandboxExecutionInputSchema,
+		typeof SandboxExecutionOutputSchema,
+		unknown,
+		typeof SandboxExecutionErrorSchema
+	> {
+		if (config.tools.length === 0) {
+			throw new ToolDefinitionErr({ message: "at least one tool must be provided to `createCodeModeTool`" });
+		}
+
+		const tool = Agent.defineTool({
+			name: "sandbox_execute_typescript",
+			label: "Sandbox TypeScript",
+			description: buildToolDescription(config.tools, config.fnPrefix),
+			parameters: SandboxExecutionInputSchema,
+			outputSchema: SandboxExecutionOutputSchema,
+			errorSchema: SandboxExecutionErrorSchema,
+			async execute(_callID, params, signal, onUpdate) {
+				const bindings = toolsForBinding(config.tools, config.fnPrefix ?? toolFnPrefix);
+				let context: Context | undefined;
+
+				try {
+					await onUpdate?.({
+						status: "running",
+						partial: {
+							content: [{ type: "text", text: "Transpiling TypeScript for sandbox execution" }],
+						},
+					});
+
+					const javascriptCode = await transpileTypeScript(params.typescriptCode);
+
+					await onUpdate?.({
+						status: "running",
+						partial: {
+							content: [{ type: "text", text: "Executing code in sandbox runtime" }],
+						},
+					});
+
+					context = await config.driver.createContext({
+						bindings,
+						timeout: config.timeout,
+						memoryLimit: config.memoryLimit,
+						signal,
+					});
+
+					const executionResult = await context.execute(javascriptCode);
+					if (executionResult.success) {
+						const details: SandboxExecutionOutput = {
+							result: executionResult.value,
+							...(executionResult.logs && executionResult.logs.length > 0 ? { logs: executionResult.logs } : {}),
+						};
+
+						return {
+							status: "completed",
+							result: {
+								content: [{ type: "text", text: serializeForContent(details) }],
+								details,
+								isError: false,
+							},
+						};
+					}
+
+					const details: SandboxExecutionError = {
+						message: executionResult.error?.message || "sandbox execution failed",
+						...(executionResult.error?.name ? { name: executionResult.error.name } : {}),
+						...(executionResult.error?.stack ? { stack: executionResult.error.stack } : {}),
+						...(executionResult.error?.line != null ? { line: executionResult.error.line } : {}),
+						...(executionResult.logs && executionResult.logs.length > 0 ? { logs: executionResult.logs } : {}),
+					};
+
+					return {
+						status: "error",
+						result: {
+							content: [{ type: "text", text: serializeForContent(details) }],
+							details,
+							isError: true,
+						},
+					};
+				} catch (error) {
+					const normalizedError = normalizeExecutionError(error);
+					const details: SandboxExecutionError = {
+						message: normalizedError.message,
+						...(normalizedError.name ? { name: normalizedError.name } : {}),
+						...(normalizedError.stack ? { stack: normalizedError.stack } : {}),
+						...(normalizedError.line != null ? { line: normalizedError.line } : {}),
+					};
+
+					return {
+						status: "error",
+						result: {
+							content: [{ type: "text", text: serializeForContent(details) }],
+							details,
+							isError: true,
+						},
+					};
+				} finally {
+					await context?.dispose();
+				}
+			},
+		});
+		return tool;
+	}
+
+	export async function create(config: ToolConfig) {
+		return {
+			tool: createCodeModeTool(config),
+			systemPrompt: generateSystemPrompt(config),
+		};
+	}
+}

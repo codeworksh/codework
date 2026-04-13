@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/aikit",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"description": "Toolkit for building AI agents and workflows.",
 	"keywords": [
 		"agent",
@@ -24,13 +24,22 @@
 		"directory": "packages/aikit"
 	},
 	"files": [
+		"dist",
 		"src",
 		"README.md"
 	],
 	"type": "module",
-	"module": "src/index.ts",
+	"module": "./dist/pack/index.mjs",
+	"types": "./dist/pack/index.d.mts",
 	"exports": {
-		".": "./src/index.ts"
+		".": {
+			"types": "./dist/pack/index.d.mts",
+			"import": "./dist/pack/index.mjs"
+		},
+		"./codemode/drivers": {
+			"types": "./dist/pack/agent/codemode/drivers/drivers.d.mts",
+			"import": "./dist/pack/agent/codemode/drivers/drivers.mjs"
+		}
 	},
 	"publishConfig": {
 		"access": "public"
@@ -47,7 +56,9 @@
 		"@sinclair/typebox": "^0.34.48",
 		"ajv": "^8.18.0",
 		"ajv-formats": "^3.0.1",
+		"esbuild": "^0.27.3",
 		"partial-json": "^0.1.7",
+		"quickjs-wasi": "^2.2.0",
 		"remeda": "^2.33.6",
 		"uuidv7": "^1.2.1"
 	},

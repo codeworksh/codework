@@ -278,11 +278,15 @@ describe("Loop.run", () => {
 		const calculatorParams = Type.Object({
 			expression: Type.String(),
 		});
-		const calculatorTool: Agent.AgentTool<typeof calculatorParams, { progress: number }, { value: number }> = {
+		const calculatorOutput = Type.Object({
+			value: Type.Number(),
+		});
+		const calculatorTool: Agent.AgentTool<typeof calculatorParams, typeof calculatorOutput, { progress: number }> = {
 			name: "calculator",
 			label: "Calculator",
 			description: "Evaluates arithmetic expressions",
 			parameters: calculatorParams,
+			outputSchema: calculatorOutput,
 			async execute(_callID, params, _signal, onUpdate) {
 				await onUpdate?.({
 					status: "running",
@@ -502,11 +506,15 @@ describe("Loop.run", () => {
 		const calculatorParams = Type.Object({
 			expression: Type.String(),
 		});
-		const calculatorTool: Agent.AgentTool<typeof calculatorParams, { progress: number }, { value: number }> = {
+		const calculatorOutput = Type.Object({
+			value: Type.Number(),
+		});
+		const calculatorTool: Agent.AgentTool<typeof calculatorParams, typeof calculatorOutput, { progress: number }> = {
 			name: "calculator",
 			label: "Calculator",
 			description: "Evaluates arithmetic expressions",
 			parameters: calculatorParams,
+			outputSchema: calculatorOutput,
 			async execute(_callID, params, _signal, onUpdate) {
 				await onUpdate?.({
 					status: "running",

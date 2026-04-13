@@ -1,3 +1,4 @@
+import "./utils/env";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { Type } from "@sinclair/typebox";
 import { Agent } from "../src/agent/agent";

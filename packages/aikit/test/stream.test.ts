@@ -1,3 +1,4 @@
+import "./utils/env";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { Agent } from "../src/agent/agent";
 import { llm } from "../src/llm";
