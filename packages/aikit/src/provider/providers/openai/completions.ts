@@ -46,7 +46,7 @@ function buildSyntheticToolResult(
 ): ChatCompletionToolMessageParam {
 	const message: ChatCompletionToolMessageParam = {
 		role: "tool",
-		content: "No Result Provided",
+		content: ["<result>", "No Result Provided", "</result>"].join("\n"),
 		tool_call_id: block.callID,
 	};
 	if (compat.requiresToolResultName) {
@@ -161,6 +161,8 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 				const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
 				if (!choice) continue;
 
+				// fallback: some providers (e.g., Moonshot) return usage
+				// in choice.usage instead of the standard chunk.usage
 				const choiceWithUsage = choice as unknown as {
 					usage?: Parameters<typeof parseChunkUsage>[0];
 				};
@@ -208,6 +210,10 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 					}
 				}
 
+				// some endpoints return reasoning in reasoning_content (llama.cpp),
+				// or reasoning (other openai compatible endpoints)
+				// Use the first non-empty reasoning field to avoid duplication
+				// (e.g., chutes.ai returns both reasoning_content and reasoning with same content)
 				const reasoningFields = ["reasoning_content", "reasoning", "reasoning_text"] as const;
 				let foundReasoningField: (typeof reasoningFields)[number] | null = null;
 				for (const field of reasoningFields) {

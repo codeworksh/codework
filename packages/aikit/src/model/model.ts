@@ -63,7 +63,7 @@ export namespace Model {
 		),
 		openRouterRouting: Type.Optional(Provider.OpenRouterRoutingSchema),
 		vercelGatewayRouting: Type.Optional(Provider.VercelGatewayRoutingSchema),
-    zaiToolStream: Type.Optional(Type.Boolean()),
+		zaiToolStream: Type.Optional(Type.Boolean()),
 		supportsStrictMode: Type.Optional(Type.Boolean()),
 	});
 	export type OpenAICompletionsCompat = Static<typeof OpenAICompletionsCompatSchema>;
@@ -132,6 +132,8 @@ export namespace Model {
 				return KnownProtocolEnum.anthropicMessages;
 			case Provider.KnownProviderEnum.openai:
 				return KnownProtocolEnum.openaiResponses;
+			default:
+				return KnownProtocolEnum.openaiCompletions;
 		}
 	}
 
