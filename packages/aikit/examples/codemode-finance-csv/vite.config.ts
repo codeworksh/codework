@@ -22,6 +22,7 @@ export default defineConfig({
 		sourcemap: true,
 		clean: true,
 		dts: false,
+		tsconfig: "tsconfig.pack.json",
 		outDir: "dist",
 	},
 });

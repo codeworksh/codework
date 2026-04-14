@@ -33,10 +33,12 @@
 	"types": "./dist/pack/index.d.mts",
 	"exports": {
 		".": {
+			"source": "./src/index.ts",
 			"types": "./dist/pack/index.d.mts",
 			"import": "./dist/pack/index.mjs"
 		},
 		"./codemode/drivers": {
+			"source": "./src/agent/codemode/drivers/drivers.ts",
 			"types": "./dist/pack/agent/codemode/drivers/drivers.d.mts",
 			"import": "./dist/pack/agent/codemode/drivers/drivers.mjs"
 		}

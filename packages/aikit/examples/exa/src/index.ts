@@ -242,16 +242,16 @@ async function createAgent(): Promise<Agent.Instance> {
 	requireEnv("OPENAI_API_KEY");
 	requireEnv("EXA_API_KEY");
 
-	const model = await llm("openai", "gpt-5-nano");
+	const model = await llm("openai", "gpt-5-nano", { protocol: "openai-completions" });
 	if (!model)
 		throw new Agent.ModelNotFoundErr({
 			message: "model not found or not configured yet",
 			provider: "openai",
 			model: "gpt-5-nano",
 		});
+	console.log(model);
 	const agent = await Agent.create({
 		name: "exa-sales-agent",
-		provider: "openai",
 		model,
 		getApiKey: async () => process.env.OPENAI_API_KEY,
 		initialState: {

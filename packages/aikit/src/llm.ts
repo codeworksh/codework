@@ -5,6 +5,7 @@ type LLM = {
 	<TProvider extends Provider.KnownProvider, TModel extends Model.Info["id"]>(
 		provider: TProvider,
 		model: TModel,
+		overrides?: Partial<Model.Info>,
 	): Promise<Model.Info | undefined>;
 	model: typeof Model.getModel;
 	models: typeof Model.getModels;
@@ -17,7 +18,7 @@ type LLM = {
 const llmImpl = async <TProvider extends Provider.KnownProvider, TModel extends Model.Info["id"]>(
 	provider: TProvider,
 	model: TModel,
-	overrides?: Model.Info,
+	overrides?: Partial<Model.Info>,
 ): Promise<Model.Info | undefined> => Model.getModel(provider, model, overrides);
 
 export const llm = Object.assign(llmImpl, {
