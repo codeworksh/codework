@@ -8,7 +8,10 @@ import {
 	streamOpenAICompletions,
 	streamSimpleOpenAICompletions,
 } from "../../src/provider/providers/openai/completions";
+import { validateToolArguments } from "../../src/utils/validation";
 import "../utils/env";
+import { expectAssistantToolUseMessage } from "../utils/message";
+import { calculatorTool } from "../utils/tools";
 
 type MockChunk = null | {
 	id?: string;
@@ -257,6 +260,44 @@ function assistantMessage(
 		},
 		parts,
 	});
+}
+
+function getText(message: Message.AssistantMessage): string {
+	return message.parts
+		.filter((part): part is Message.TextContent => part.type === "text")
+		.map((part) => part.text)
+		.join("");
+}
+
+function toToolExecution(toolCall: Message.ToolCall) {
+	return {
+		callID: toolCall.callID,
+		name: toolCall.name,
+		rawArgs: toolCall.arguments,
+	};
+}
+
+function completePendingToolCalls(
+	message: Message.AssistantMessage,
+	resultContent: Message.ToolCallCompletedPart["result"]["content"],
+): Message.AssistantMessage {
+	return {
+		...structuredClone(message),
+		parts: message.parts.map((part) => {
+			if (part.type !== "toolCall" || part.status !== "pending") {
+				return structuredClone(part);
+			}
+
+			return {
+				...structuredClone(part),
+				status: "completed" as const,
+				result: {
+					content: structuredClone(resultContent),
+					isError: false as const,
+				},
+			};
+		}),
+	};
 }
 
 function completedToolCall(
@@ -902,6 +943,96 @@ describe("openai completions payload and stream behavior", () => {
 const describeIfOpenAI = process.env.OPENAI_API_KEY ? describe : describe.skip;
 
 describeIfOpenAI("openai completions live integration", () => {
+	it("handles a real tool-calling roundtrip with a completed tool result", async () => {
+		mockState.useReal = true;
+
+		const model = createModel({
+			id: "gpt-4o-mini",
+			name: "gpt-4o-mini",
+			providerId: Provider.KnownProviderEnum.openai,
+			baseUrl: "https://api.openai.com/v1",
+			input: ["text"],
+			reasoning: false,
+		});
+		const context: Message.Context = {
+			systemPrompt: "You are a helpful assistant. Always use the calculator tool for arithmetic requests.",
+			messages: [userMessage("Please calculate 25 * 18 using the calculator tool.")],
+			tools: [calculatorTool],
+		};
+
+		const firstResponse = await streamSimpleOpenAICompletions(model, context, {
+			apiKey: process.env.OPENAI_API_KEY,
+		}).result();
+
+		const toolCalls = expectAssistantToolUseMessage(firstResponse);
+		const args = validateToolArguments(calculatorTool, toToolExecution(toolCalls[0]!));
+
+		expect(args.expression).toContain("25");
+		expect(args.expression).toContain("18");
+
+		const completedToolMessage = completePendingToolCalls(firstResponse, [{ type: "text", text: "450" }]);
+		const finalResponse = await streamSimpleOpenAICompletions(
+			model,
+			{
+				...context,
+				messages: [
+					context.messages[0]!,
+					completedToolMessage,
+					userMessage("Now provide the final answer using the tool result only."),
+				],
+			},
+			{
+				apiKey: process.env.OPENAI_API_KEY,
+			},
+		).result();
+
+		expect(finalResponse.stopReason).toBe("stop");
+		expect(finalResponse.errorMessage).toBeUndefined();
+		expect(getText(finalResponse)).toContain("450");
+	}, 30000);
+
+	it("filters real orphaned tool calls without a corresponding tool result", async () => {
+		mockState.useReal = true;
+
+		const model = createModel({
+			id: "gpt-4o-mini",
+			name: "gpt-4o-mini",
+			providerId: Provider.KnownProviderEnum.openai,
+			baseUrl: "https://api.openai.com/v1",
+			input: ["text"],
+			reasoning: false,
+		});
+		const context: Message.Context = {
+			systemPrompt: "You are a helpful assistant. Use the calculator tool when asked to perform calculations.",
+			messages: [userMessage("Please calculate 25 * 18 using the calculator tool.")],
+			tools: [calculatorTool],
+		};
+
+		const firstResponse = await streamSimpleOpenAICompletions(model, context, {
+			apiKey: process.env.OPENAI_API_KEY,
+		}).result();
+
+		expectAssistantToolUseMessage(firstResponse);
+
+		const secondResponse = await streamSimpleOpenAICompletions(
+			model,
+			{
+				...context,
+				messages: [context.messages[0]!, firstResponse, userMessage("Never mind, just tell me what is 2+2?")],
+			},
+			{
+				apiKey: process.env.OPENAI_API_KEY,
+			},
+		).result();
+
+		expect(secondResponse.stopReason).not.toBe("error");
+		expect(secondResponse.parts.length).toBeGreaterThan(0);
+		expect(
+			getText(secondResponse).length || secondResponse.parts.filter((part) => part.type === "toolCall").length,
+		).toBeGreaterThan(0);
+		expect(["stop", "toolUse"]).toContain(secondResponse.stopReason);
+	}, 30000);
+
 	it("emits text stream events in order for a real OpenAI completions request", async () => {
 		mockState.useReal = true;
 
