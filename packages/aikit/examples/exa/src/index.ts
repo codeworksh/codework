@@ -126,12 +126,29 @@ function getFinalAssistantText(agent: Agent.Instance): string {
 		return "No assistant response was produced.";
 	}
 
+	if (finalMessage.errorMessage && finalMessage.errorMessage.trim().length > 0) {
+		return `Error: ${finalMessage.errorMessage}`;
+	}
+
 	const textParts = finalMessage.parts
 		.filter((part: Message.AssistantMessage["parts"][number]): part is Message.TextContent => part.type === "text")
 		.map((part: Message.TextContent) => part.text.trim())
 		.filter(Boolean);
 
-	return textParts.join("\n\n") || "The assistant finished without a text response.";
+	if (textParts.length > 0) {
+		return textParts.join("\n\n");
+	}
+
+	if (finalMessage.stopReason === "toolUse") {
+		const toolNames = finalMessage.parts
+			.filter((part): part is Message.ToolCall => part.type === "toolCall")
+			.map((part) => part.name)
+			.filter(Boolean);
+		const tools = toolNames.length > 0 ? ` (${toolNames.join(", ")})` : "";
+		return `The model stopped for tool execution${tools} without producing final text.`;
+	}
+
+	return `The assistant finished with stopReason=${finalMessage.stopReason} and no text response.`;
 }
 
 function last<T>(items: T[]): T | undefined {
@@ -249,7 +266,6 @@ async function createAgent(): Promise<Agent.Instance> {
 			provider: "openai",
 			model: "gpt-5-nano",
 		});
-	console.log(model);
 	const agent = await Agent.create({
 		name: "exa-sales-agent",
 		model,
@@ -385,8 +401,14 @@ function createEventRenderer() {
 			}
 		},
 		finish(agent: Agent.Instance): void {
+			const finalText = getFinalAssistantText(agent);
 			if (!printedAssistantHeader) {
-				console.log(`\n${colors.blue}${colors.bold}Agent:${colors.reset} ${getFinalAssistantText(agent)}\n`);
+				console.log(`\n${colors.blue}${colors.bold}Agent:${colors.reset} ${finalText}\n`);
+				return;
+			}
+
+			if (!printedBody) {
+				process.stdout.write(`${finalText}\n\n`);
 				return;
 			}
 

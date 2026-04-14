@@ -32,6 +32,18 @@ function resetModelRegistry(): void {
 	Model.registry.reset();
 }
 
+function expectedBaseUrl(
+	providerId: string,
+	provider: ModelCatalogNamespace.ModelsDevProvider,
+	model: ModelCatalogNamespace.ModelsDevModel,
+): string | undefined {
+	if (model.baseUrl) return model.baseUrl;
+	if (provider.baseUrl) return provider.baseUrl;
+	if (provider.api) return provider.api;
+	if (providerId === "openai") return "https://api.openai.com/v1";
+	return undefined;
+}
+
 describe("Model", () => {
 	const originalModelsPath = process.env.CODEWORK_AIKIT_MODELS_PATH;
 	const originalFetch = globalThis.fetch;
@@ -83,7 +95,7 @@ describe("Model", () => {
 		expect(normalized?.provider.id).toBe("anthropic");
 		expect(normalized?.provider.name).toBe(rawProvider.name);
 		expect(normalized?.provider.env).toEqual(rawProvider.env);
-		expect(normalized?.baseUrl).toBe(rawModel.baseUrl ?? rawProvider.baseUrl ?? rawProvider.api);
+		expect(normalized?.baseUrl).toBe(expectedBaseUrl("anthropic", rawProvider, rawModel));
 		expect(normalized?.reasoning).toBe(Boolean(rawModel.reasoning));
 		expect(normalized?.input).toEqual(["text", "image"]);
 		expect(normalized?.cost).toEqual({
@@ -240,6 +252,12 @@ describe("Model", () => {
 
 		const missing = await Model.getModel("anthropic", "does-not-exist" as string);
 		expect(missing).toBeUndefined();
+	});
+
+	it("falls back to the canonical OpenAI base URL when the catalog omits it", async () => {
+		const model = await Model.getModel("openai", "gpt-5-nano");
+		expect(model).toBeDefined();
+		expect(model?.baseUrl).toBe("https://api.openai.com/v1");
 	});
 
 	it("supportsXhigh() and modelsAreEqual() use normalized model identity correctly", async () => {

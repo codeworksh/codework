@@ -161,12 +161,21 @@ export namespace Model {
 		};
 	}
 
+	function defaultBaseUrl(providerId: Provider.KnownProvider): string | undefined {
+		switch (providerId) {
+			case Provider.KnownProviderEnum.openai:
+				return "https://api.openai.com/v1";
+			default:
+				return undefined;
+		}
+	}
+
 	function toModelValue(
 		providerId: Provider.KnownProvider,
 		provider: ModelCatalog.ModelsDevProvider,
 		model: ModelCatalog.ModelsDevModel,
 	): Info {
-		const baseUrl = model.baseUrl ?? provider.baseUrl ?? provider.api;
+		const baseUrl = model.baseUrl ?? provider.baseUrl ?? provider.api ?? defaultBaseUrl(providerId);
 		const normalized: Info = {
 			id: model.id,
 			name: model.name,

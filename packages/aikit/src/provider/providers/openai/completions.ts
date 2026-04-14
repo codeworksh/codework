@@ -60,6 +60,12 @@ export interface OpenAICompletionsOptions extends Stream.Options {
 	reasoningEffort?: OpenAIReasoningEffort;
 }
 
+// TODO @sanchitrk:
+// fetch directly from data model
+function resolveBaseUrl(model: Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions>): string {
+	return model.baseUrl || (model.provider.id === Provider.KnownProviderEnum.openai ? "https://api.openai.com/v1" : "");
+}
+
 export const streamOpenAICompletions: Stream.StreamFunction<
 	typeof Model.KnownProtocolEnum.openaiCompletions,
 	OpenAICompletionsOptions
@@ -399,6 +405,7 @@ function buildParams(
 	const compat = getCompat(model);
 	const messages = convertMessages(model, context, compat);
 	maybeAddOpenRouterAnthropicCacheControl(model, messages);
+	const baseUrl = resolveBaseUrl(model);
 
 	const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 		model: model.id,
@@ -463,11 +470,11 @@ function buildParams(
 		);
 	}
 
-	if (model.baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
+	if (baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
 		(params as typeof params & { provider?: Provider.OpenRouterRouting }).provider = model.compat.openRouterRouting;
 	}
 
-	if (model.baseUrl.includes("ai-gateway.vercel.sh") && model.compat?.vercelGatewayRouting) {
+	if (baseUrl.includes("ai-gateway.vercel.sh") && model.compat?.vercelGatewayRouting) {
 		const routing = model.compat.vercelGatewayRouting;
 		if (routing.only || routing.order) {
 			const gatewayOptions: Record<string, string[]> = {};
@@ -490,6 +497,7 @@ function createClient(
 	apiKey?: string,
 	optsHeaders?: Record<string, string>,
 ) {
+	const baseUrl = resolveBaseUrl(model);
 	if (!apiKey) {
 		if (!process.env.OPENAI_API_KEY) {
 			throw new Error(
@@ -515,7 +523,7 @@ function createClient(
 
 	return new OpenAI({
 		apiKey,
-		baseURL: model.baseUrl,
+		baseURL: baseUrl,
 		dangerouslyAllowBrowser: true,
 		defaultHeaders: headers,
 	});
@@ -850,7 +858,7 @@ function detectCompat(
 	model: Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions>,
 ): Required<Model.OpenAICompletionsCompat> {
 	const provider = model.provider.id;
-	const baseUrl = model.baseUrl;
+	const baseUrl = resolveBaseUrl(model);
 
 	const isZai = provider === "zai" || baseUrl.includes("api.z.ai");
 	const isNonStandard =
