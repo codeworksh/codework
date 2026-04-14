@@ -22,6 +22,7 @@ type OpenAIReasoningEffort = keyof Provider.StrictReasoningEffortMap;
 type StreamingToolCallBlock = Message.ToolCall & {
 	index?: number;
 	partialArgs?: string;
+	streamIndex?: number;
 };
 
 type StreamingBlock =
@@ -103,47 +104,55 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 			const openaiStream = await client.chat.completions.create(params, { signal: options?.signal });
 			stream.push({ type: "start", partial: output });
 
-			let currentBlock: StreamingBlock | null = null;
+			let currentBlock: Exclude<StreamingBlock, StreamingToolCallBlock> | null = null;
 			const blocks = output.parts as StreamingBlock[];
-			const partIndex = () => blocks.length - 1;
+			const activeToolCalls = new Map<number, StreamingToolCallBlock>();
 			const finishCurrentBlock = (block?: StreamingBlock | null) => {
-				if (!block) return;
+				if (block) {
+					const partIndex = block.index ?? blocks.indexOf(block);
+					delete block.index;
 
-				delete block.index;
-
-				if (block.type === "text") {
-					stream.push({
-						type: "text.end",
-						partIndex: partIndex(),
-						content: block.text,
-						partial: output,
-					});
-					return;
+					if (block.type === "text") {
+						stream.push({
+							type: "text.end",
+							partIndex,
+							content: block.text,
+							partial: output,
+						});
+					} else if (block.type === "thinking") {
+						stream.push({
+							type: "thinking.end",
+							partIndex,
+							content: block.thinking,
+							partial: output,
+						});
+					} else if (block.type === "toolCall") {
+						if (block.streamIndex !== undefined) {
+							activeToolCalls.delete(block.streamIndex);
+						}
+						block.arguments = parseStreamingJson<Record<string, unknown>>(block.partialArgs);
+						delete block.partialArgs;
+						delete block.streamIndex;
+						stream.push({
+							type: "toolcall.end",
+							partIndex,
+							toolCall: block,
+							partial: output,
+						});
+					}
 				}
-
-				if (block.type === "thinking") {
-					stream.push({
-						type: "thinking.end",
-						partIndex: partIndex(),
-						content: block.thinking,
-						partial: output,
-					});
-					return;
+			};
+			const flushActiveToolCalls = () => {
+				for (const toolBlock of [...activeToolCalls.values()].sort((a, b) => (a.index ?? 0) - (b.index ?? 0))) {
+					finishCurrentBlock(toolBlock);
 				}
-
-				block.arguments = parseStreamingJson<Record<string, unknown>>(block.partialArgs);
-				delete block.partialArgs;
-				stream.push({
-					type: "toolcall.end",
-					partIndex: partIndex(),
-					toolCall: block,
-					partial: output,
-				});
 			};
 
 			for await (const chunk of openaiStream) {
 				if (!chunk || typeof chunk !== "object") continue;
 
+				// OpenAI documents ChatCompletionChunk.id as the unique chat completion identifier,
+				// and each chunk in a streamed completion carries the same id.
 				output.responseId ||= chunk.id;
 				if (chunk.usage) {
 					output.usage = parseChunkUsage(chunk.usage, model);
@@ -174,13 +183,16 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 					choice.delta.content !== undefined &&
 					choice.delta.content.length > 0
 				) {
+					if (activeToolCalls.size > 0) {
+						flushActiveToolCalls();
+					}
 					if (!currentBlock || currentBlock.type !== "text") {
 						finishCurrentBlock(currentBlock);
-						currentBlock = { type: "text", text: "" };
+						currentBlock = { type: "text", text: "", index: output.parts.length };
 						output.parts.push(currentBlock);
 						stream.push({
 							type: "text.start",
-							partIndex: partIndex(),
+							partIndex: currentBlock.index!,
 							partial: output,
 						});
 					}
@@ -189,7 +201,7 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 						currentBlock.text += choice.delta.content;
 						stream.push({
 							type: "text.delta",
-							partIndex: partIndex(),
+							partIndex: currentBlock.index!,
 							delta: choice.delta.content,
 							partial: output,
 						});
@@ -207,17 +219,21 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 				}
 
 				if (foundReasoningField) {
+					if (activeToolCalls.size > 0) {
+						flushActiveToolCalls();
+					}
 					if (!currentBlock || currentBlock.type !== "thinking") {
 						finishCurrentBlock(currentBlock);
 						currentBlock = {
 							type: "thinking",
 							thinking: "",
 							thinkingSignature: foundReasoningField,
+							index: output.parts.length,
 						};
 						output.parts.push(currentBlock);
 						stream.push({
 							type: "thinking.start",
-							partIndex: partIndex(),
+							partIndex: currentBlock.index!,
 							partial: output,
 						});
 					}
@@ -228,7 +244,7 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 							currentBlock.thinking += delta;
 							stream.push({
 								type: "thinking.delta",
-								partIndex: partIndex(),
+								partIndex: currentBlock.index!,
 								delta,
 								partial: output,
 							});
@@ -237,52 +253,55 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 				}
 
 				if (choice.delta.tool_calls) {
+					if (currentBlock) {
+						finishCurrentBlock(currentBlock);
+						currentBlock = null;
+					}
+
 					for (const toolCall of choice.delta.tool_calls) {
-						if (
-							!currentBlock ||
-							currentBlock.type !== "toolCall" ||
-							(toolCall.id && currentBlock.callID !== toolCall.id)
-						) {
-							finishCurrentBlock(currentBlock);
-							currentBlock = {
+						const streamIndex = toolCall.index ?? activeToolCalls.size;
+						let toolBlock = activeToolCalls.get(streamIndex);
+						if (!toolBlock) {
+							toolBlock = {
 								type: "toolCall",
 								callID: toolCall.id || "",
 								name: toolCall.function?.name || "",
 								arguments: {},
 								partialArgs: "",
+								index: output.parts.length,
+								streamIndex,
 								status: "pending",
 								time: {
 									start: Date.now(),
 									end: Date.now(),
 								},
 							};
-							output.parts.push(currentBlock);
+							activeToolCalls.set(streamIndex, toolBlock);
+							output.parts.push(toolBlock);
 							stream.push({
 								type: "toolcall.start",
-								partIndex: partIndex(),
+								partIndex: toolBlock.index!,
 								partial: output,
 							});
 						}
 
-						if (currentBlock.type === "toolCall") {
-							if (toolCall.id) currentBlock.callID = toolCall.id;
-							if (toolCall.function?.name) currentBlock.name = toolCall.function.name;
+						if (toolCall.id) toolBlock.callID = toolCall.id;
+						if (toolCall.function?.name) toolBlock.name = toolCall.function.name;
 
-							let delta = "";
-							if (toolCall.function?.arguments) {
-								delta = toolCall.function.arguments;
-								currentBlock.partialArgs = (currentBlock.partialArgs || "") + delta;
-								currentBlock.arguments = parseStreamingJson<Record<string, unknown>>(currentBlock.partialArgs);
-							}
-
-							currentBlock.time.end = Date.now();
-							stream.push({
-								type: "toolcall.delta",
-								partIndex: partIndex(),
-								delta,
-								partial: output,
-							});
+						let delta = "";
+						if (toolCall.function?.arguments) {
+							delta = toolCall.function.arguments;
+							toolBlock.partialArgs = (toolBlock.partialArgs || "") + delta;
+							toolBlock.arguments = parseStreamingJson<Record<string, unknown>>(toolBlock.partialArgs);
 						}
+
+						toolBlock.time.end = Date.now();
+						stream.push({
+							type: "toolcall.delta",
+							partIndex: toolBlock.index!,
+							delta,
+							partial: output,
+						});
 					}
 				}
 
@@ -307,6 +326,7 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 			}
 
 			finishCurrentBlock(currentBlock);
+			flushActiveToolCalls();
 			if (options?.signal?.aborted) {
 				throw new Error("Request was aborted");
 			}
@@ -324,6 +344,7 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 			for (const block of output.parts) {
 				delete (block as StreamingBlock).index;
 				delete (block as StreamingToolCallBlock).partialArgs;
+				delete (block as StreamingToolCallBlock).streamIndex;
 			}
 			output.time.completed = Date.now();
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
