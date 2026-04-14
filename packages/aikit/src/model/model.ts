@@ -38,6 +38,10 @@ export namespace Model {
 		headers: HeadersSchema,
 	});
 
+	/**
+	 * Compatibility settings for OpenAI-compatible completions APIs.
+	 * Use this to override URL-based auto-detection for custom providers.
+	 */
 	export const OpenAICompletionsCompatSchema = Type.Object({
 		supportsStore: Type.Optional(Type.Boolean()),
 		supportsDeveloperRole: Type.Optional(Type.Boolean()),
@@ -59,10 +63,12 @@ export namespace Model {
 		),
 		openRouterRouting: Type.Optional(Provider.OpenRouterRoutingSchema),
 		vercelGatewayRouting: Type.Optional(Provider.VercelGatewayRoutingSchema),
+    zaiToolStream: Type.Optional(Type.Boolean()),
 		supportsStrictMode: Type.Optional(Type.Boolean()),
 	});
 	export type OpenAICompletionsCompat = Static<typeof OpenAICompletionsCompatSchema>;
 
+	/** Compatibility settings for OpenAI Responses APIs. */
 	export const OpenAIResponsesCompatSchema = Type.Object({});
 	export type OpenAIResponsesCompat = Static<typeof OpenAIResponsesCompatSchema>;
 

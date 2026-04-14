@@ -19,7 +19,7 @@ importers:
         version: 5.9.3
       vite-plus:
         specifier: 0.1.16
-        version: 0.1.16(@types/node@24.12.2)(typescript@5.9.3)(vite@8.0.7(@types/node@24.12.2))
+        version: 0.1.16(@types/node@24.12.2)(esbuild@0.27.7)(typescript@5.9.3)(vite@8.0.7(@types/node@24.12.2)(esbuild@0.27.7))
 
   packages/aikit:
     dependencies:
@@ -41,6 +41,9 @@ importers:
       esbuild:
         specifier: ^0.27.3
         version: 0.27.7
+      openai:
+        specifier: ^6.34.0
+        version: 6.34.0(ws@8.20.0)
       partial-json:
         specifier: ^0.1.7
         version: 0.1.7
@@ -899,6 +902,18 @@ packages:
   obug@2.1.1:
     resolution: {integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==}
 
+  openai@6.34.0:
+    resolution: {integrity: sha512-yEr2jdGf4tVFYG6ohmr3pF6VJuveP0EA/sS8TBx+4Eq5NT10alu5zg2dmxMXMgqpihRDQlFGpRt2XwsGj+Fyxw==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
+
   oxfmt@0.43.0:
     resolution: {integrity: sha512-KTYNG5ISfHSdmeZ25Xzb3qgz9EmQvkaGAxgBY/p38+ZiAet3uZeu7FnMwcSQJg152Qwl0wnYAxDc+Z/H6cvrwA==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -1381,7 +1396,7 @@ snapshots:
     dependencies:
       undici-types: 7.16.0
 
-  '@voidzero-dev/vite-plus-core@0.1.16(@types/node@24.12.2)(typescript@5.9.3)':
+  '@voidzero-dev/vite-plus-core@0.1.16(@types/node@24.12.2)(esbuild@0.27.7)(typescript@5.9.3)':
     dependencies:
       '@oxc-project/runtime': 0.123.0
       '@oxc-project/types': 0.123.0
@@ -1389,6 +1404,7 @@ snapshots:
       postcss: 8.5.8
     optionalDependencies:
       '@types/node': 24.12.2
+      esbuild: 0.27.7
       fsevents: 2.3.3
       typescript: 5.9.3
 
@@ -1410,11 +1426,11 @@ snapshots:
   '@voidzero-dev/vite-plus-linux-x64-musl@0.1.16':
     optional: true
 
-  '@voidzero-dev/vite-plus-test@0.1.16(@types/node@24.12.2)(typescript@5.9.3)(vite@8.0.7(@types/node@24.12.2))':
+  '@voidzero-dev/vite-plus-test@0.1.16(@types/node@24.12.2)(esbuild@0.27.7)(typescript@5.9.3)(vite@8.0.7(@types/node@24.12.2)(esbuild@0.27.7))':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/chai': 5.2.3
-      '@voidzero-dev/vite-plus-core': 0.1.16(@types/node@24.12.2)(typescript@5.9.3)
+      '@voidzero-dev/vite-plus-core': 0.1.16(@types/node@24.12.2)(esbuild@0.27.7)(typescript@5.9.3)
       es-module-lexer: 1.7.0
       obug: 2.1.1
       pixelmatch: 7.1.0
@@ -1424,7 +1440,7 @@ snapshots:
       tinybench: 2.9.0
       tinyexec: 1.1.1
       tinyglobby: 0.2.15
-      vite: 8.0.7(@types/node@24.12.2)
+      vite: 8.0.7(@types/node@24.12.2)(esbuild@0.27.7)
       ws: 8.20.0
     optionalDependencies:
       '@types/node': 24.12.2
@@ -1574,6 +1590,10 @@ snapshots:
 
   obug@2.1.1: {}
 
+  openai@6.34.0(ws@8.20.0):
+    optionalDependencies:
+      ws: 8.20.0
+
   oxfmt@0.43.0:
     dependencies:
       tinypool: 2.1.0
@@ -1709,11 +1729,11 @@ snapshots:
 
   uuidv7@1.2.1: {}
 
-  vite-plus@0.1.16(@types/node@24.12.2)(typescript@5.9.3)(vite@8.0.7(@types/node@24.12.2)):
+  vite-plus@0.1.16(@types/node@24.12.2)(esbuild@0.27.7)(typescript@5.9.3)(vite@8.0.7(@types/node@24.12.2)(esbuild@0.27.7)):
     dependencies:
       '@oxc-project/types': 0.123.0
-      '@voidzero-dev/vite-plus-core': 0.1.16(@types/node@24.12.2)(typescript@5.9.3)
-      '@voidzero-dev/vite-plus-test': 0.1.16(@types/node@24.12.2)(typescript@5.9.3)(vite@8.0.7(@types/node@24.12.2))
+      '@voidzero-dev/vite-plus-core': 0.1.16(@types/node@24.12.2)(esbuild@0.27.7)(typescript@5.9.3)
+      '@voidzero-dev/vite-plus-test': 0.1.16(@types/node@24.12.2)(esbuild@0.27.7)(typescript@5.9.3)(vite@8.0.7(@types/node@24.12.2)(esbuild@0.27.7))
       oxfmt: 0.43.0
       oxlint: 1.58.0(oxlint-tsgolint@0.20.0)
       oxlint-tsgolint: 0.20.0
@@ -1754,7 +1774,7 @@ snapshots:
       - vite
       - yaml
 
-  vite@8.0.7(@types/node@24.12.2):
+  vite@8.0.7(@types/node@24.12.2)(esbuild@0.27.7):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
@@ -1763,6 +1783,7 @@ snapshots:
       tinyglobby: 0.2.15
     optionalDependencies:
       '@types/node': 24.12.2
+      esbuild: 0.27.7
       fsevents: 2.3.3
 
   ws@8.20.0: {}

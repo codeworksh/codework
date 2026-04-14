@@ -9,8 +9,8 @@ import { Model } from "../../../model/model";
 import { AssistantMessageEventStream } from "../../../utils/eventstream";
 import { parseStreamingJson } from "../../../utils/jsonparse";
 import { sanitizeSurrogates } from "../../../utils/sanitize";
-import type { Provider } from "../../provider";
 import { Stream } from "../../stream";
+import { getEnvApiKey } from "../utils";
 
 export interface AnthropicOptions extends Stream.Options {
 	thinkingEnabled?: boolean;
@@ -18,10 +18,6 @@ export interface AnthropicOptions extends Stream.Options {
 	interleavedThinking?: boolean;
 	toolChoice?: "auto" | "any" | "none" | { type: "tool"; name: string };
 	client?: Anthropic;
-}
-
-function getEnvApiKey(_provider: Provider.Info): string | undefined {
-	return undefined;
 }
 
 function resolveCacheRetention(cacheRetention?: Stream.CacheRetention): Stream.CacheRetention {

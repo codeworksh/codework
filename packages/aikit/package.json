@@ -57,6 +57,7 @@
 		"ajv": "^8.18.0",
 		"ajv-formats": "^3.0.1",
 		"esbuild": "^0.27.3",
+		"openai": "^6.34.0",
 		"partial-json": "^0.1.7",
 		"quickjs-wasi": "^2.2.0",
 		"remeda": "^2.33.6",
