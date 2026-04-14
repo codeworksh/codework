@@ -4,6 +4,7 @@ import { Message } from "../src/message/message";
 import { Model } from "../src/model/model";
 import { Provider } from "../src/provider/provider";
 import { streamAnthropic } from "../src/provider/providers/anthropic/index";
+import { stream } from "../src/stream";
 import { calculatorTool } from "./utils/tools";
 
 function createAnthropicModel(): Model.TModel<typeof Model.KnownProtocolEnum.anthropicMessages> {
@@ -40,6 +41,69 @@ function createAsyncIterable<T>(events: T[]): AsyncIterable<T> {
 	};
 }
 
+function createFakeAnthropicClient(): Anthropic {
+	return {
+		messages: {
+			stream: () =>
+				createAsyncIterable<any>([
+					{
+						type: "message_start",
+						message: {
+							id: "msg_123",
+							usage: {
+								input_tokens: 7,
+								output_tokens: 0,
+								cache_read_input_tokens: 3,
+								cache_creation_input_tokens: 2,
+							},
+						},
+					},
+					{ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+					{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hello" } },
+					{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: " world" } },
+					{ type: "content_block_stop", index: 0 },
+					{
+						type: "content_block_start",
+						index: 1,
+						content_block: { type: "thinking", thinking: "" },
+					},
+					{
+						type: "content_block_delta",
+						index: 1,
+						delta: { type: "thinking_delta", thinking: "Need calculator" },
+					},
+					{
+						type: "content_block_delta",
+						index: 1,
+						delta: { type: "signature_delta", signature: "sig_1" },
+					},
+					{ type: "content_block_stop", index: 1 },
+					{
+						type: "content_block_start",
+						index: 2,
+						content_block: { type: "tool_use", id: "tool_1", name: "calculator", input: {} },
+					},
+					{
+						type: "content_block_delta",
+						index: 2,
+						delta: { type: "input_json_delta", partial_json: '{"expression":"25 * 18"}' },
+					},
+					{ type: "content_block_stop", index: 2 },
+					{
+						type: "message_delta",
+						delta: { stop_reason: "tool_use" },
+						usage: {
+							input_tokens: 7,
+							output_tokens: 11,
+							cache_read_input_tokens: 3,
+							cache_creation_input_tokens: 2,
+						},
+					},
+				]),
+		},
+	} as unknown as Anthropic;
+}
+
 describe("streamAnthropic", () => {
 	it("maps Anthropics streaming events into assistant parts and final toolUse message", async () => {
 		const model = createAnthropicModel();
@@ -55,66 +119,7 @@ describe("streamAnthropic", () => {
 			tools: [calculatorTool],
 		};
 
-		const fakeClient = {
-			messages: {
-				stream: () =>
-					createAsyncIterable<any>([
-						{
-							type: "message_start",
-							message: {
-								id: "msg_123",
-								usage: {
-									input_tokens: 7,
-									output_tokens: 0,
-									cache_read_input_tokens: 3,
-									cache_creation_input_tokens: 2,
-								},
-							},
-						},
-						{ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-						{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hello" } },
-						{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: " world" } },
-						{ type: "content_block_stop", index: 0 },
-						{
-							type: "content_block_start",
-							index: 1,
-							content_block: { type: "thinking", thinking: "" },
-						},
-						{
-							type: "content_block_delta",
-							index: 1,
-							delta: { type: "thinking_delta", thinking: "Need calculator" },
-						},
-						{
-							type: "content_block_delta",
-							index: 1,
-							delta: { type: "signature_delta", signature: "sig_1" },
-						},
-						{ type: "content_block_stop", index: 1 },
-						{
-							type: "content_block_start",
-							index: 2,
-							content_block: { type: "tool_use", id: "tool_1", name: "calculator", input: {} },
-						},
-						{
-							type: "content_block_delta",
-							index: 2,
-							delta: { type: "input_json_delta", partial_json: '{"expression":"25 * 18"}' },
-						},
-						{ type: "content_block_stop", index: 2 },
-						{
-							type: "message_delta",
-							delta: { stop_reason: "tool_use" },
-							usage: {
-								input_tokens: 7,
-								output_tokens: 11,
-								cache_read_input_tokens: 3,
-								cache_creation_input_tokens: 2,
-							},
-						},
-					]),
-			},
-		} as unknown as Anthropic;
+		const fakeClient = createFakeAnthropicClient();
 
 		const stream = streamAnthropic(model, context, {
 			apiKey: "test-key",
@@ -201,6 +206,60 @@ describe("streamAnthropic", () => {
 			callID: "tool_1",
 			name: "calculator",
 			arguments: { expression: "25 * 18" },
+		});
+	});
+});
+
+describe("anthropic registered stream behavior", () => {
+	it("routes streaming events through the registered facade", async () => {
+		const model = createAnthropicModel();
+		const context: Message.Context = {
+			systemPrompt: "Use tools when helpful.",
+			messages: [
+				Message.createUserMessage({
+					role: "user",
+					time: { created: 1 },
+					parts: [{ type: "text", text: "Calculate 25 * 18" }],
+				}),
+			],
+			tools: [calculatorTool],
+		};
+		const s = stream(model, context, {
+			apiKey: "test-key",
+			client: createFakeAnthropicClient(),
+		} as Parameters<typeof stream>[2]);
+
+		const eventTypes: string[] = [];
+
+		for await (const event of s) {
+			eventTypes.push(event.type);
+		}
+
+		const message = await s.result();
+
+		expect(eventTypes).toEqual([
+			"start",
+			"text.start",
+			"text.delta",
+			"text.delta",
+			"text.end",
+			"thinking.start",
+			"thinking.delta",
+			"thinking.end",
+			"toolcall.start",
+			"toolcall.delta",
+			"toolcall.end",
+			"done",
+		]);
+		expect(message.responseId).toBe("msg_123");
+		expect(message.stopReason).toBe("toolUse");
+		expect(message.parts[0]).toEqual({ type: "text", text: "Hello world" });
+		expect(message.parts[2]).toMatchObject({
+			type: "toolCall",
+			callID: "tool_1",
+			name: "calculator",
+			arguments: { expression: "25 * 18" },
+			status: "pending",
 		});
 	});
 });

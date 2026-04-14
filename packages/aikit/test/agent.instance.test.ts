@@ -1,6 +1,5 @@
-import "./utils/env";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { Type } from "@sinclair/typebox";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { Agent } from "../src/agent/agent";
 import type { Event } from "../src/event/event";
 import { Message } from "../src/message/message";
@@ -8,9 +7,10 @@ import { ModelCatalog } from "../src/model/catalog";
 import { Model } from "../src/model/model";
 import { Provider } from "../src/provider/provider";
 import { AssistantMessageEventStream } from "../src/utils/eventstream";
+import "./utils/env";
 import { ROOT_MODELS_PATH } from "./utils/paths";
 
-function createModel(): Model.Value {
+function createModel(): Model.Info {
 	return {
 		id: "test-model",
 		name: "Test Model",
@@ -57,7 +57,7 @@ function textContent(text: string): Message.TextContent {
 }
 
 function createAssistantMessage(
-	model: Model.Value,
+	model: Model.Info,
 	stopReason: Message.AssistantMessage["stopReason"] = "stop",
 ): Message.AssistantMessage {
 	return Message.createAssistantMessage({
@@ -88,7 +88,7 @@ function createAssistantMessage(
 	});
 }
 
-function createTextResponseStream(model: Model.Value, text: string): AssistantMessageEventStream {
+function createTextResponseStream(model: Model.Info, text: string): AssistantMessageEventStream {
 	const stream = new AssistantMessageEventStream();
 
 	queueMicrotask(() => {
@@ -112,7 +112,7 @@ function createTextResponseStream(model: Model.Value, text: string): AssistantMe
 	return stream;
 }
 
-function createToolUseResponseStream(model: Model.Value): AssistantMessageEventStream {
+function createToolUseResponseStream(model: Model.Info): AssistantMessageEventStream {
 	const stream = new AssistantMessageEventStream();
 
 	queueMicrotask(() => {

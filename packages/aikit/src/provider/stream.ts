@@ -91,7 +91,7 @@ export namespace Stream {
 		TOptions extends Options = Options,
 	> = (model: Model.TModel<TProtocol>, context: Message.Context, options?: TOptions) => AssistantMessageEventStream;
 
-	export function buildBaseOptions(model: Model.Value, options?: SimpleOptions, apiKey?: string): Options {
+	export function buildBaseOptions(model: Model.Info, options?: SimpleOptions, apiKey?: string): Options {
 		return {
 			temperature: options?.temperature,
 			maxTokens: options?.maxTokens || Math.min(model.maxTokens, 32000),
@@ -137,13 +137,13 @@ export namespace Stream {
 	}
 
 	export type ProtocolStreamFunction = (
-		model: Model.Value,
+		model: Model.Info,
 		context: Message.Context,
 		options?: Options,
 	) => AssistantMessageEventStream;
 
 	export type ProtocolStreamSimpleFunction = (
-		model: Model.Value,
+		model: Model.Info,
 		context: Message.Context,
 		options?: SimpleOptions,
 	) => AssistantMessageEventStream;
@@ -214,7 +214,7 @@ export namespace Stream {
 		return protocolProviderRegistry.get(protocol)?.provider;
 	}
 
-	export function resolveProtocolProvider(model: Model.Value): ProtocolProvider<Model.KnownProtocol, Options> {
+	export function resolveProtocolProvider(model: Model.Info): ProtocolProvider<Model.KnownProtocol, Options> {
 		const provider = getProtocolProvider(model.protocol);
 		if (!provider) {
 			throw new ProtocolProviderNotFoundError({
@@ -224,17 +224,13 @@ export namespace Stream {
 		return provider;
 	}
 
-	export function stream(
-		model: Model.Value,
-		context: Message.Context,
-		options?: Options,
-	): AssistantMessageEventStream {
+	export function stream(model: Model.Info, context: Message.Context, options?: Options): AssistantMessageEventStream {
 		const provider = resolveProtocolProvider(model);
 		return provider.stream(model, context, options);
 	}
 
 	export async function complete(
-		model: Model.Value,
+		model: Model.Info,
 		context: Message.Context,
 		options?: Options,
 	): Promise<Message.AssistantMessage> {
@@ -243,7 +239,7 @@ export namespace Stream {
 	}
 
 	export function streamSimple(
-		model: Model.Value,
+		model: Model.Info,
 		context: Message.Context,
 		options?: SimpleOptions,
 	): AssistantMessageEventStream {
@@ -252,7 +248,7 @@ export namespace Stream {
 	}
 
 	export async function completeSimple(
-		model: Model.Value,
+		model: Model.Info,
 		context: Message.Context,
 		options?: SimpleOptions,
 	): Promise<Message.AssistantMessage> {

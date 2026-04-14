@@ -1,17 +1,18 @@
 import { Type } from "@sinclair/typebox";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { Message } from "../../src/message/message";
-import { Model } from "../../src/model/model";
-import { Provider } from "../../src/provider/provider";
+import { Message } from "../src/message/message";
+import { Model } from "../src/model/model";
+import { Provider } from "../src/provider/provider";
 import {
 	convertMessages,
 	streamOpenAICompletions,
 	streamSimpleOpenAICompletions,
-} from "../../src/provider/providers/openai/completions";
-import { validateToolArguments } from "../../src/utils/validation";
-import "../utils/env";
-import { expectAssistantToolUseMessage } from "../utils/message";
-import { calculatorTool } from "../utils/tools";
+} from "../src/provider/providers/openai/completions";
+import { stream } from "../src/stream";
+import { validateToolArguments } from "../src/utils/validation";
+import "./utils/env";
+import { expectAssistantToolUseMessage } from "./utils/message";
+import { calculatorTool } from "./utils/tools";
 
 type MockChunk = null | {
 	id?: string;
@@ -243,7 +244,7 @@ function userMessage(text: string): Message.UserMessage {
 }
 
 function assistantMessage(
-	model: Model.Value,
+	model: Model.Info,
 	parts: Message.AssistantMessage["parts"],
 	stopReason: Message.AssistantMessage["stopReason"] = "stop",
 ): Message.AssistantMessage {
@@ -937,6 +938,124 @@ describe("openai completions payload and stream behavior", () => {
 		expect(response.usage.cacheRead).toBe(20);
 		expect(response.usage.cacheWrite).toBe(30);
 		expect(response.usage.totalTokens).toBe(105);
+	});
+});
+
+describe("openai completions registered stream behavior", () => {
+	it("routes completion requests through the registered stream facade", async () => {
+		mockState.chunks = [
+			{
+				id: "chatcmpl-registered",
+				choices: [{ delta: { content: "OK" }, finish_reason: null }],
+			},
+			{
+				id: "chatcmpl-registered",
+				choices: [{ delta: {}, finish_reason: "stop" }],
+				usage: {
+					prompt_tokens: 3,
+					completion_tokens: 1,
+					prompt_tokens_details: { cached_tokens: 0 },
+					completion_tokens_details: { reasoning_tokens: 0 },
+				},
+			},
+		];
+
+		const response = await stream.complete(
+			createModel(),
+			{
+				messages: [userMessage("Reply with exactly OK")],
+			},
+			{ apiKey: "test" },
+		);
+
+		expect(response.stopReason).toBe("stop");
+		expect(response.errorMessage).toBeUndefined();
+		expect(response.responseId).toBe("chatcmpl-registered");
+		expect(response.parts).toEqual([{ type: "text", text: "OK" }]);
+	});
+
+	it("routes tool-call streaming through the registered stream facade", async () => {
+		mockState.chunks = [
+			{
+				id: "chatcmpl-registered-tool",
+				choices: [{ delta: { content: "Hello" }, finish_reason: null }],
+			},
+			{
+				id: "chatcmpl-registered-tool",
+				choices: [{ delta: { reasoning_content: "Need calculator" }, finish_reason: null }],
+			},
+			{
+				id: "chatcmpl-registered-tool",
+				choices: [
+					{
+						delta: {
+							tool_calls: [
+								{
+									index: 0,
+									id: "tool_1",
+									function: {
+										name: "calculator",
+										arguments: '{"expression":"25 * 18"}',
+									},
+								},
+							],
+						},
+						finish_reason: null,
+					},
+				],
+			},
+			{
+				id: "chatcmpl-registered-tool",
+				choices: [{ delta: {}, finish_reason: "tool_calls" }],
+				usage: {
+					prompt_tokens: 5,
+					completion_tokens: 4,
+					prompt_tokens_details: { cached_tokens: 0 },
+					completion_tokens_details: { reasoning_tokens: 1 },
+				},
+			},
+		];
+
+		const s = stream(
+			createModel(),
+			{
+				messages: [userMessage("Calculate 25 * 18")],
+				tools: [calculatorTool],
+			},
+			{ apiKey: "test" },
+		);
+
+		const eventTypes: string[] = [];
+
+		for await (const event of s) {
+			eventTypes.push(event.type);
+		}
+
+		const response = await s.result();
+
+		expect(eventTypes).toEqual([
+			"start",
+			"text.start",
+			"text.delta",
+			"text.end",
+			"thinking.start",
+			"thinking.delta",
+			"thinking.end",
+			"toolcall.start",
+			"toolcall.delta",
+			"toolcall.end",
+			"done",
+		]);
+		expect(response.responseId).toBe("chatcmpl-registered-tool");
+		expect(response.stopReason).toBe("toolUse");
+		expect(response.parts[0]).toEqual({ type: "text", text: "Hello" });
+		expect(response.parts[2]).toMatchObject({
+			type: "toolCall",
+			callID: "tool_1",
+			name: "calculator",
+			arguments: { expression: "25 * 18" },
+			status: "pending",
+		});
 	});
 });
 

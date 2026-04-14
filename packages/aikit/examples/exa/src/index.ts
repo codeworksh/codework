@@ -1,4 +1,4 @@
-import { Agent, Message } from "@codeworksh/aikit";
+import { Agent, Message, llm } from "@codeworksh/aikit";
 import { type Static, Type } from "@sinclair/typebox";
 import { Exa } from "exa-js";
 import process from "node:process";
@@ -239,15 +239,21 @@ const exaSearchTool = Agent.defineTool<typeof exaSearchParameters>({
 });
 
 async function createAgent(): Promise<Agent.Instance> {
-	const model = process.env.AIKIT_MODEL ?? "claude-haiku-4-5-20251001";
-	requireEnv("ANTHROPIC_API_KEY");
+	requireEnv("OPENAI_API_KEY");
 	requireEnv("EXA_API_KEY");
 
+	const model = await llm("openai", "gpt-5-nano");
+	if (!model)
+		throw new Agent.ModelNotFoundErr({
+			message: "model not found or not configured yet",
+			provider: "openai",
+			model: "gpt-5-nano",
+		});
 	const agent = await Agent.create({
 		name: "exa-sales-agent",
-		provider: "anthropic",
+		provider: "openai",
 		model,
-		getApiKey: async () => process.env.ANTHROPIC_API_KEY,
+		getApiKey: async () => process.env.OPENAI_API_KEY,
 		initialState: {
 			tools: [exaSearchTool],
 		},

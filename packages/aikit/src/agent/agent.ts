@@ -74,7 +74,7 @@ export namespace Agent {
 	export interface State {
 		name: string;
 		systemPrompt: string;
-		model: Model.Value;
+		model: Model.Info;
 		thinkingLevel: Stream.ThinkingLevel;
 		tools: AnyAgentTool[];
 		messages: Message.Message[];
@@ -238,7 +238,7 @@ export namespace Agent {
 			signal?: AbortSignal,
 		) => Promise<Agent.ToolTerminalResult<unknown> | undefined>;
 
-		constructor(name: string, model: Model.Value, opts: AgentOptions = {}) {
+		constructor(name: string, model: Model.Info, opts: AgentOptions = {}) {
 			this._state = {
 				systemPrompt: "",
 				thinkingLevel: "off",
@@ -380,7 +380,7 @@ export namespace Agent {
 		setSystemPrompt(v: string) {
 			this._state.systemPrompt = v;
 		}
-		setModel(m: Model.Value) {
+		setModel(m: Model.Info) {
 			this._state.model = m;
 		}
 		setThinkingLevel(l: Stream.ThinkingLevel) {
@@ -753,24 +753,24 @@ export namespace Agent {
 		}
 	}
 
-	export async function create<TProvider extends Provider.KnownProvider, TModel extends Model.Value["id"]>(
+	export async function create<TProvider extends Provider.KnownProvider, TModel extends Model.Info["id"]>(
 		options: AgentOptions & {
 			provider: TProvider;
 			model: TModel;
 			name?: string;
 		},
 	): Promise<Instance>;
-	export async function create(options: AgentOptions & { model: Model.Value; name?: string }): Promise<Instance>;
+	export async function create(options: AgentOptions & { model: Model.Info; name?: string }): Promise<Instance>;
 	export async function create(
 		options:
-			| (AgentOptions & { model: Model.Value; name?: string })
+			| (AgentOptions & { model: Model.Info; name?: string })
 			| (AgentOptions & {
 					provider: Provider.KnownProvider;
-					model: Model.Value["id"];
+					model: Model.Info["id"];
 					name?: string;
 			  }),
 	): Promise<Instance> {
-		let resolvedModel: Model.Value;
+		let resolvedModel: Model.Info;
 		if ("provider" in options) {
 			const result = await Model.getModel(options.provider, options.model);
 			if (!result) {

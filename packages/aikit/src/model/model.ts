@@ -96,13 +96,13 @@ export namespace Model {
 		}),
 	]);
 
-	export const Schema = Type.Union([AnthropicSchema, OpenAICompletionsSchema, OpenAIResponsesSchema]);
-	export type Value = Static<typeof Schema>;
-	export type TModel<TProtocol extends KnownProtocol> = Extract<Value, { protocol: TProtocol }>;
+	export const Info = Type.Union([AnthropicSchema, OpenAICompletionsSchema, OpenAIResponsesSchema]);
+	export type Info = Static<typeof Info>;
+	export type TModel<TProtocol extends KnownProtocol> = Extract<Info, { protocol: TProtocol }>;
 	const BUILTINS = keys(Provider.KnownProviderEnum) as Provider.KnownProvider[];
 
 	export function calculateCost(
-		model: Value,
+		model: Info,
 		usage: {
 			input: number;
 			output: number;
@@ -124,7 +124,7 @@ export namespace Model {
 		usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 	}
 
-	export type BuiltInModels = Partial<Record<Provider.KnownProvider, Record<string, Value>>>;
+	export type BuiltInModels = Partial<Record<Provider.KnownProvider, Record<string, Info>>>;
 
 	function resolveProtocol(providerId: Provider.KnownProvider): KnownProtocol {
 		switch (providerId) {
@@ -165,9 +165,9 @@ export namespace Model {
 		providerId: Provider.KnownProvider,
 		provider: ModelCatalog.ModelsDevProvider,
 		model: ModelCatalog.ModelsDevModel,
-	): Value {
+	): Info {
 		const baseUrl = model.baseUrl ?? provider.baseUrl ?? provider.api;
-		const normalized: Value = {
+		const normalized: Info = {
 			id: model.id,
 			name: model.name,
 			provider: toProviderInfo(providerId, provider),
@@ -200,12 +200,10 @@ export namespace Model {
 	}
 
 	export const registry = lazy(async () => {
-		const registry: Map<Provider.KnownProvider, Map<string, Value>> = new Map();
+		const registry: Map<Provider.KnownProvider, Map<string, Info>> = new Map();
 		const models = await getBuiltInModels();
-		for (const [provider, value] of Object.entries(models) as Array<
-			[Provider.KnownProvider, Record<string, Value>]
-		>) {
-			const providerModels = new Map<string, Value>();
+		for (const [provider, value] of Object.entries(models) as Array<[Provider.KnownProvider, Record<string, Info>]>) {
+			const providerModels = new Map<string, Info>();
 			for (const [id, model] of Object.entries(value)) {
 				providerModels.set(id, model);
 			}
@@ -214,13 +212,18 @@ export namespace Model {
 		return registry;
 	});
 
-	export async function getModel<TProvider extends Provider.KnownProvider, TModel extends Value["id"]>(
+	export async function getModel<TProvider extends Provider.KnownProvider, TModel extends Info["id"]>(
 		provider: TProvider,
 		model: TModel,
+		overrides?: Partial<Info>,
 	) {
 		const data = await registry();
 		const providerModels = data.get(provider);
-		return providerModels?.get(model);
+		const result = providerModels?.get(model);
+		if (result && overrides) {
+			return { ...result, ...overrides };
+		}
+		return result;
 	}
 
 	export async function getProviders(): Promise<Provider.KnownProvider[]> {
@@ -228,7 +231,7 @@ export namespace Model {
 		return Array.from(data.keys());
 	}
 
-	export async function getModels<TProvider extends Provider.KnownProvider>(provider: TProvider): Promise<Value[]> {
+	export async function getModels<TProvider extends Provider.KnownProvider>(provider: TProvider): Promise<Info[]> {
 		const data = await registry();
 		const models = data.get(provider);
 		return models ? Array.from(models.values()) : [];
@@ -246,7 +249,7 @@ export namespace Model {
 	 * Check if a model supports xhigh thinking level.
 	 * Currently only certain OpenAI Codex models support this.
 	 */
-	export function supportsXhigh(model: Value): boolean {
+	export function supportsXhigh(model: Info): boolean {
 		return isGpt5OrLater(model.id);
 	}
 
@@ -254,7 +257,7 @@ export namespace Model {
 	 * Check if two models are equal by comparing both their id and provider id.
 	 * Returns false if either model is null or undefined.
 	 */
-	export function modelsAreEqual(a: Value | null | undefined, b: Value | null | undefined): boolean {
+	export function modelsAreEqual(a: Info | null | undefined, b: Info | null | undefined): boolean {
 		if (!a || !b) return false;
 		return a.id === b.id && a.provider.id === b.provider.id;
 	}

@@ -67,7 +67,7 @@ export namespace Loop {
 
 	/** Configuration for the agent loop. */
 	export interface Config extends Stream.SimpleOptions {
-		model: Model.Value;
+		model: Model.Info;
 		convertToLlm: (messages: Message.Message[]) => Message.Message[] | Promise<Message.Message[]>;
 		/**
 		 * Optional transform applied to the context before `convertToLlm`.

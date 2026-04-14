@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { ModelCatalog as ModelCatalogNamespace } from "../../src/model/catalog.ts";
 import { ROOT_MODELS_PATH } from "../utils/paths";
 
@@ -13,12 +13,16 @@ globalThis.fetch = (async () =>
 	}) as Response) as unknown as typeof fetch;
 const { Model } = await import("../../src/model/model.ts");
 const { ModelCatalog } = await import("../../src/model/catalog.ts");
+const { Provider } = await import("../../src/provider/provider.ts");
 globalThis.fetch = importFetch;
 
 const ROOT_MODELS = JSON.parse(readFileSync(ROOT_MODELS_PATH, "utf8")) as Record<
 	string,
 	ModelCatalogNamespace.ModelsDevProvider
 >;
+const EXPECTED_BUILT_IN_PROVIDERS = Object.keys(Provider.KnownProviderEnum)
+	.filter((providerId) => providerId in ROOT_MODELS)
+	.sort();
 
 function resetCatalogCache(): void {
 	ModelCatalog.modelsDevData.reset();
@@ -56,7 +60,7 @@ describe("Model", () => {
 	it("returns only built-in providers normalized to Model.Value records", async () => {
 		const builtIns = await Model.getBuiltInModels();
 
-		expect(Object.keys(builtIns).sort()).toEqual(["anthropic", "openai"]);
+		expect(Object.keys(builtIns).sort()).toEqual(EXPECTED_BUILT_IN_PROVIDERS);
 		expect("evroc" in builtIns).toBe(false);
 	});
 
@@ -217,7 +221,7 @@ describe("Model", () => {
 
 	it("getProviders() returns the built-in providers from the registry", async () => {
 		const providers = await Model.getProviders();
-		expect(providers.sort()).toEqual(["anthropic", "openai"]);
+		expect(providers.sort()).toEqual(EXPECTED_BUILT_IN_PROVIDERS);
 	});
 
 	it("getModels() returns provider-scoped models from the registry", async () => {

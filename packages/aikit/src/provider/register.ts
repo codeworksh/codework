@@ -1,8 +1,6 @@
 import anthropicProvider from "./providers/anthropic/index";
+import openAICompletionsProvider from "./providers/openai/completions";
 import { Stream } from "./stream";
 
-const providerModules = [["providers/anthropic/index.ts", anthropicProvider]] as const;
-
-for (const [path, provider] of providerModules) {
-	Stream.registerProtocolProvider(provider, path);
-}
+Stream.registerProtocolProvider(anthropicProvider, "providers/anthropic/index.ts");
+Stream.registerProtocolProvider(openAICompletionsProvider, "providers/openai/completions.ts");
