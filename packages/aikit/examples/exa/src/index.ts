@@ -58,6 +58,11 @@ type ToolExecutionEndEvent = {
 	callID: string;
 	name: string;
 	status: "completed" | "error";
+	result: {
+		content: Array<{ type: string } & Record<string, unknown>>;
+		details?: unknown;
+		isError: boolean;
+	};
 };
 type TurnEndEvent = {
 	type: "turn.end";
@@ -175,21 +180,21 @@ function readTextPreview(content: unknown[] | undefined): string | undefined {
 function formatResult(result: Record<string, unknown>, index: number): string {
 	const title = readStringField(result, "title") ?? "Untitled";
 	const url = readStringField(result, "url") ?? "No URL";
-	const summary = readStringField(result, "summary") ?? readStringField(result, "text");
-	const highlights = readStringArrayField(result, "highlights");
-	const publishedDate = readStringField(result, "publishedDate");
+	// const summary = readStringField(result, "summary") ?? readStringField(result, "text");
+	// const highlights = readStringArrayField(result, "highlights");
+	// const publishedDate = readStringField(result, "publishedDate");
 
 	const lines = [`${index + 1}. ${title}`, `URL: ${url}`];
 
-	if (publishedDate) {
-		lines.push(`Published: ${publishedDate}`);
-	}
+	// if (publishedDate) {
+	// 	lines.push(`Published: ${publishedDate}`);
+	// }
 
-	if (highlights.length > 0) {
-		lines.push(`Highlights: ${highlights.join(" ")}`);
-	} else if (summary) {
-		lines.push(`Summary: ${summary}`);
-	}
+	// if (highlights.length > 0) {
+	// 	lines.push(`Highlights: ${highlights.join(" ")}`);
+	// } else if (summary) {
+	// 	lines.push(`Summary: ${summary}`);
+	// }
 
 	return lines.join("\n");
 }
@@ -259,7 +264,10 @@ async function createAgent(): Promise<Agent.Instance> {
 	requireEnv("OPENAI_API_KEY");
 	requireEnv("EXA_API_KEY");
 
-	const model = await llm("openai", "gpt-5-nano", { protocol: "openai-completions" });
+	const model = await llm("openai", "gpt-5-nano", {
+		protocol: "openai-completions",
+		baseUrl: "http://localhost:1234/v1",
+	});
 	if (!model)
 		throw new Agent.ModelNotFoundErr({
 			message: "model not found or not configured yet",
@@ -276,12 +284,10 @@ async function createAgent(): Promise<Agent.Instance> {
 	});
 
 	agent.setSystemPrompt(
-		`
-You are a concise technical recruitment agent. Helping developers look for jobs.
-
-Use the exa_search tool whenever you need fresh company or people discovery.
-Prefer company search for account targeting and people search for individual prospecting.
-Return practical findings for hiring outreach and include the URLs you used.
+		`You are a technical recruitment agent helping developers find relevant job opportunities.
+Use exa_search for up-to-date company and people discovery (companies for targeting, people for outreach).
+Return actionable findings with role context, relevance, outreach angle, and source URLs.
+Be concise, and avoid generic advice.
 `.trim(),
 	);
 
@@ -389,6 +395,8 @@ function createEventRenderer() {
 			}
 
 			if (isToolExecutionEndEvent(event)) {
+				const results = event.result.content;
+				// console.log("DEBUG:", results);
 				const suffix = event.status === "completed" ? "done" : "error";
 				writeToolLine(`↳ ${event.name}: ${suffix}`);
 				return;
