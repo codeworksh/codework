@@ -3,6 +3,7 @@ import { type Static, Type } from "@sinclair/typebox";
 import { keys, mapValues, pick, pipe } from "remeda";
 import { Provider } from "../provider/provider";
 import { ModelCatalog } from "./catalog";
+import { applyModification } from "./transform";
 
 export namespace Model {
 	export const KnownProtocolEnum = {
@@ -25,6 +26,14 @@ export namespace Model {
 		cacheWrite: Type.Number(),
 	});
 	const HeadersSchema = Type.Optional(Type.Record(Type.String(), Type.String()));
+
+	export const SupportedProtocolsSchema = Type.Object({
+		anthropicMessages: Type.Optional(Type.Literal(KnownProtocolEnum.anthropicMessages)),
+		openaiCompletions: Type.Optional(Type.Literal(KnownProtocolEnum.openaiCompletions)),
+		openaiResponses: Type.Optional(Type.Literal(KnownProtocolEnum.openaiResponses)),
+	});
+	//
+	// reprsents common base schema for a model
 	export const BaseSchema = Type.Object({
 		id: Type.String(),
 		name: Type.String(),
@@ -36,6 +45,7 @@ export namespace Model {
 		contextWindow: Type.Number(),
 		maxTokens: Type.Number(),
 		headers: HeadersSchema,
+		supportedProtocols: Type.Optional(Type.Partial(SupportedProtocolsSchema)), // optionally supported protocols
 	});
 
 	/**
@@ -126,18 +136,7 @@ export namespace Model {
 
 	export type BuiltInModels = Partial<Record<Provider.KnownProvider, Record<string, Info>>>;
 
-	function resolveProtocol(providerId: Provider.KnownProvider): KnownProtocol {
-		switch (providerId) {
-			case Provider.KnownProviderEnum.anthropic:
-				return KnownProtocolEnum.anthropicMessages;
-			case Provider.KnownProviderEnum.openai:
-				return KnownProtocolEnum.openaiResponses;
-			default:
-				return KnownProtocolEnum.openaiCompletions;
-		}
-	}
-
-	function normalizeInput(input?: string[]): Array<"text" | "image"> {
+	export function normalizeInput(input?: string[]): Array<"text" | "image"> {
 		const normalized = new Set<"text" | "image">();
 		for (const modality of input ?? ["text"]) {
 			if (modality === "text" || modality === "image") {
@@ -148,7 +147,7 @@ export namespace Model {
 		return [...normalized];
 	}
 
-	function toProviderInfo(
+	export function toProviderInfo(
 		providerId: Provider.KnownProvider,
 		provider: ModelCatalog.ModelsDevProvider,
 	): Provider.Info {
@@ -161,40 +160,12 @@ export namespace Model {
 		};
 	}
 
-	function defaultBaseUrl(providerId: Provider.KnownProvider): string | undefined {
-		switch (providerId) {
-			case Provider.KnownProviderEnum.openai:
-				return "https://api.openai.com/v1";
-			default:
-				return undefined;
-		}
-	}
-
 	function toModelValue(
 		providerId: Provider.KnownProvider,
 		provider: ModelCatalog.ModelsDevProvider,
 		model: ModelCatalog.ModelsDevModel,
 	): Info {
-		const baseUrl = model.baseUrl ?? provider.baseUrl ?? provider.api ?? defaultBaseUrl(providerId);
-		const normalized: Info = {
-			id: model.id,
-			name: model.name,
-			provider: toProviderInfo(providerId, provider),
-			baseUrl,
-			reasoning: Boolean(model.reasoning),
-			input: normalizeInput(model.modalities.input),
-			cost: {
-				input: model.cost?.input ?? 0,
-				output: model.cost?.output ?? 0,
-				cacheRead: model.cost?.cache_read ?? 0,
-				cacheWrite: model.cost?.cache_write ?? 0,
-			},
-			contextWindow: model.limit?.context ?? 0,
-			maxTokens: model.limit?.output ?? 0,
-			headers: model.headers ?? provider.headers,
-			protocol: resolveProtocol(providerId),
-		};
-		return normalized;
+		return applyModification(providerId, provider, model);
 	}
 
 	export async function getBuiltInModels(): Promise<BuiltInModels> {

@@ -60,8 +60,6 @@ export interface OpenAICompletionsOptions extends Stream.Options {
 	reasoningEffort?: OpenAIReasoningEffort;
 }
 
-// TODO @sanchitrk:
-// fetch directly from data model
 function resolveBaseUrl(model: Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions>): string {
 	return model.baseUrl || (model.provider.id === Provider.KnownProviderEnum.openai ? "https://api.openai.com/v1" : "");
 }
@@ -405,6 +403,9 @@ function buildParams(
 	const compat = getCompat(model);
 	const messages = convertMessages(model, context, compat);
 	maybeAddOpenRouterAnthropicCacheControl(model, messages);
+	//
+	// resolve URL
+	// ideally this is last resort
 	const baseUrl = resolveBaseUrl(model);
 
 	const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
@@ -542,6 +543,8 @@ function maybeAddOpenRouterAnthropicCacheControl(
 ): void {
 	if (model.provider.id !== Provider.KnownProviderEnum.openrouter || !model.id.startsWith("anthropic/")) return;
 
+	// Anthropic-style caching requires cache_control on a text part. Add a breakpoint
+	// on the last user/assistant message (walking backwards until we find text content).
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const msg = messages[i];
 		if (!msg) continue;

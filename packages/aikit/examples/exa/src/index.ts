@@ -293,7 +293,7 @@ function printBanner(): void {
 		`${colors.cyan}${colors.bold}╔══════════════════════════════════════════════════════════════╗
 ║                    aikit Exa Recruitment Agent              ║
 ║           Interactive company and people research           ║
-╚══════════════════════════════════════════════════════════════╝${colors.reset}
+╚═════════════════════════════════════════════════════════════╝${colors.reset}
 `,
 	);
 	console.log(`${colors.dim}Type a prompt and press Enter. Type 'exit' or 'quit' to stop.${colors.reset}`);
