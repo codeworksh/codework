@@ -165,12 +165,12 @@ function readStringField(record: Record<string, unknown>, key: string): string |
 	return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
-function readStringArrayField(record: Record<string, unknown>, key: string): string[] {
-	const value = record[key];
-	return Array.isArray(value)
-		? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-		: [];
-}
+// function readStringArrayField(record: Record<string, unknown>, key: string): string[] {
+// 	const value = record[key];
+// 	return Array.isArray(value)
+// 		? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+// 		: [];
+// }
 
 function readTextPreview(content: unknown[] | undefined): string | undefined {
 	const preview = last(content ?? []);
@@ -266,7 +266,6 @@ async function createAgent(): Promise<Agent.Instance> {
 
 	const model = await llm("openai", "gpt-5-nano", {
 		protocol: "openai-completions",
-		baseUrl: "http://localhost:1234/v1",
 	});
 	if (!model)
 		throw new Agent.ModelNotFoundErr({
@@ -395,7 +394,9 @@ function createEventRenderer() {
 			}
 
 			if (isToolExecutionEndEvent(event)) {
-				const results = event.result.content;
+				//
+				// uncomment for debugging:
+				// const results = event.result.content;
 				// console.log("DEBUG:", results);
 				const suffix = event.status === "completed" ? "done" : "error";
 				writeToolLine(`↳ ${event.name}: ${suffix}`);
