@@ -11,6 +11,23 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.3.1]
+
+### Added
+
+- Added OpenAI Completions API support to `@codeworksh/aikit`, including streaming responses, tool-call handling, and compatibility switches for OpenAI-compatible providers.
+
+### Changed
+
+- Extended the model and provider registry to support runtime protocol overrides and custom model transforms for future provider-specific expansion.
+- Updated the `exa` example to run against the OpenAI completions flow and simplified example result rendering to reduce response noise.
+
+### Fixed
+
+- Fixed TypeScript issues around the new OpenAI completions integration.
+- Fixed base URL handling for OpenAI-compatible completions providers, including canonical fallback behavior when the catalog omits an explicit OpenAI base URL.
+
+
 ## [@codeworksh/aikit@0.3.0]
 
 ### Added
