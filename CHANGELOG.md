@@ -27,7 +27,6 @@ This file is the canonical source for unreleased changes and published release n
 - Fixed TypeScript issues around the new OpenAI completions integration.
 - Fixed base URL handling for OpenAI-compatible completions providers, including canonical fallback behavior when the catalog omits an explicit OpenAI base URL.
 
-
 ## [@codeworksh/aikit@0.3.0]
 
 ### Added
@@ -112,4 +111,4 @@ This file is the canonical source for unreleased changes and published release n
 
 ### Internal
 
-- Pinned the root `vite-plus` version and tightened the publish pipeline for package releases.
+- Pinned the root `vite-plus` version and tightened the publishing pipeline for package releases.

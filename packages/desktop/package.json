@@ -4,7 +4,6 @@
 	"private": true,
 	"type": "module",
 	"main": "dist/electron/main.cjs",
-	"productName": "Codework Desktop",
 	"scripts": {
 		"dev": "node scripts/dev.mjs",
 		"dev:bundle": "vp pack --watch",
@@ -20,9 +19,9 @@
 	},
 	"devDependencies": {
 		"@types/node": "^24.6.1"
-
 	},
 	"engines": {
 		"node": ">=24.14.1"
-	}
+	},
+	"productName": "Codework Desktop"
 }

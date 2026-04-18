@@ -19,7 +19,7 @@ function createWindow(): void {
 	void window.loadFile(join(__dirname, "../index.html"));
 }
 
-app.whenReady().then(() => {
+void app.whenReady().then(() => {
 	createWindow();
 
 	app.on("activate", () => {
@@ -29,7 +29,7 @@ app.whenReady().then(() => {
 	});
 });
 
-app.on("window-all-closed", () => {
+void app.on("window-all-closed", () => {
 	if (process.platform !== "darwin") {
 		app.quit();
 	}
