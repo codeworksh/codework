@@ -24,6 +24,8 @@
 		"test:packages": "vp run -r test",
 		"build": "vp build",
 		"build:packages": "vp run -r build",
+		"desktop:build": "pnpm --filter @codeworksh/desktop build",
+		"desktop:start": "pnpm --filter @codeworksh/desktop start",
 		"publish:package": "node scripts/publish.js",
 		"publish:aikit": "node scripts/publish.js aikit",
 		"publish:aikit:dry": "node scripts/publish.js aikit --dry-run",
@@ -34,7 +36,7 @@
 		"@sinclair/typebox": "^0.34.48",
 		"@types/node": "^24.6.1",
 		"typescript": "^5.8.3",
-		"vite-plus": "0.1.16"
+		"vite-plus": "0.1.17"
 	},
 	"packageManager": "pnpm@10.25.0"
 }

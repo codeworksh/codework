@@ -1,0 +1,28 @@
+{
+	"name": "@codeworksh/desktop",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "dist/electron/main.cjs",
+	"productName": "Codework Desktop",
+	"scripts": {
+		"dev": "node scripts/dev.mjs",
+		"dev:bundle": "vp pack --watch",
+		"dev:electron": "node scripts/reload.mjs",
+		"build": "vp pack",
+		"lint": "vp lint",
+		"start": "node scripts/start.mjs",
+		"check": "vp check",
+		"smoke-test": "node scripts/smoke.mjs"
+	},
+	"dependencies": {
+		"electron": "^40.6.0"
+	},
+	"devDependencies": {
+		"@types/node": "^24.6.1"
+
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	}
+}
