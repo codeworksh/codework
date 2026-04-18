@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { isElectron } from "../platform.ts";
+import { isElectron } from "../env";
 
 type AppInfo = {
 	name: string;
