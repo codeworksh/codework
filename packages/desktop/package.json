@@ -23,5 +23,5 @@
 	"engines": {
 		"node": ">=24.14.1"
 	},
-	"productName": "Codework Desktop"
+	"productName": "Codework"
 }

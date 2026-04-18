@@ -16,7 +16,7 @@ function createWindow(): void {
 		},
 	});
 
-	void window.loadFile(join(__dirname, "../index.html"));
+	void window.loadFile(join(__dirname, "../../index.html"));
 }
 
 void app.whenReady().then(() => {
