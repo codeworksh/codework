@@ -3,6 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
+const isDevelopment = Boolean(devServerUrl);
 
 function createWindow(): void {
 	const window = new BrowserWindow({
@@ -16,7 +18,13 @@ function createWindow(): void {
 		},
 	});
 
-	void window.loadFile(join(__dirname, "../../index.html"));
+	if (isDevelopment) {
+		void window.loadURL(devServerUrl as string);
+		window.webContents.openDevTools({ mode: "detach" });
+		return;
+	}
+
+	void window.loadFile(join(__dirname, "../renderer/index.html"));
 }
 
 void app.whenReady().then(() => {

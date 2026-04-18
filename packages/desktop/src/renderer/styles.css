@@ -1,0 +1,101 @@
+:root {
+	color-scheme: light;
+	font-family: "Avenir Next", "Segoe UI", sans-serif;
+	background:
+		radial-gradient(circle at top, rgba(255, 214, 153, 0.9), transparent 32%),
+		linear-gradient(160deg, #fff8ef 0%, #e7f0ff 52%, #dce9e2 100%);
+	color: #132238;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+	margin: 0;
+	min-height: 100%;
+}
+
+body {
+	min-height: 100vh;
+}
+
+.shell {
+	min-height: 100vh;
+	display: grid;
+	place-items: center;
+	padding: 32px;
+}
+
+.hero {
+	width: min(720px, 100%);
+	padding: 40px;
+	border: 1px solid rgba(19, 34, 56, 0.08);
+	border-radius: 28px;
+	background: rgba(255, 255, 255, 0.72);
+	box-shadow: 0 28px 80px rgba(19, 34, 56, 0.14);
+	backdrop-filter: blur(16px);
+}
+
+.eyebrow {
+	margin: 0 0 12px;
+	font-size: 0.78rem;
+	font-weight: 700;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	color: #815d1a;
+}
+
+h1 {
+	margin: 0;
+	font-size: clamp(3rem, 8vw, 5.5rem);
+	line-height: 0.95;
+	letter-spacing: -0.05em;
+}
+
+.copy {
+	max-width: 48ch;
+	margin: 20px 0 0;
+	font-size: 1.05rem;
+	line-height: 1.7;
+	color: rgba(19, 34, 56, 0.84);
+}
+
+.cards {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 16px;
+	margin-top: 28px;
+}
+
+.card {
+	padding: 18px;
+	border-radius: 20px;
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(241, 246, 255, 0.92));
+	border: 1px solid rgba(19, 34, 56, 0.08);
+}
+
+.cardLabel {
+	display: block;
+	margin-bottom: 10px;
+	font-size: 0.78rem;
+	text-transform: uppercase;
+	letter-spacing: 0.12em;
+	color: rgba(19, 34, 56, 0.56);
+}
+
+.card strong {
+	font-size: 1.05rem;
+}
+
+@media (max-width: 720px) {
+	.hero {
+		padding: 28px;
+	}
+
+	.cards {
+		grid-template-columns: 1fr;
+	}
+}

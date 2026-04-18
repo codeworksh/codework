@@ -1,12 +1,15 @@
 import { spawn } from "node:child_process";
 
+const rendererHost = process.env.DESKTOP_RENDERER_HOST?.trim() || "127.0.0.1";
+const rendererPort = process.env.DESKTOP_RENDERER_PORT?.trim() || "5733";
+const rendererUrl = `http://${rendererHost}:${rendererPort}`;
 const children = [];
 let shuttingDown = false;
 
-function start(command, args) {
+function start(command, args, env = process.env) {
 	const child = spawn(command, args, {
 		stdio: "inherit",
-		env: process.env,
+		env,
 	});
 
 	children.push(child);
@@ -45,8 +48,15 @@ function shutdown(signal) {
 	}
 }
 
-start("pnpm", ["run", "dev:bundle"]);
-start("pnpm", ["run", "dev:electron"]);
+start("pnpm", ["run", "dev:bundle"], {
+	...process.env,
+	VITE_DEV_SERVER_URL: rendererUrl,
+});
+start("pnpm", ["run", "dev:renderer", "--host", rendererHost, "--port", rendererPort]);
+start("pnpm", ["run", "dev:electron"], {
+	...process.env,
+	VITE_DEV_SERVER_URL: rendererUrl,
+});
 
 process.once("SIGINT", () => shutdown("SIGINT"));
 process.once("SIGTERM", () => shutdown("SIGTERM"));
