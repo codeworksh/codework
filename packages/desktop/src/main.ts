@@ -10,11 +10,11 @@ function createWindow(): void {
 	const window = new BrowserWindow({
 		width: 960,
 		height: 640,
-		title: "Codework Desktop",
+		title: "Codework",
 		webPreferences: {
 			contextIsolation: true,
 			nodeIntegration: false,
-			preload: join(__dirname, "preload.cjs"),
+			preload: join(__dirname, "preload.mjs"),
 		},
 	});
 

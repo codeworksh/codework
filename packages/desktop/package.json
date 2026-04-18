@@ -3,7 +3,7 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"main": "dist/electron/main.cjs",
+	"main": "dist/electron/main.mjs",
 	"scripts": {
 		"dev": "node scripts/dev.mjs",
 		"dev:bundle": "vp pack --watch",
