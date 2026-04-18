@@ -1,6 +1,11 @@
-import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
+import { type QueryClient } from "@tanstack/react-query";
+import { Link, Outlet, createRootRouteWithContext } from "@tanstack/react-router";
+import { type AppStoreApi } from "../store.ts";
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{
+	queryClient: QueryClient;
+	appStore: AppStoreApi;
+}>()({
 	component: RootLayout,
 });
 
