@@ -4,10 +4,9 @@
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
 		"target": "ES2022",
-		"lib": ["ES2022", "DOM"],
-		"jsx": "react-jsx",
+		"lib": ["ES2022"],
 		"types": ["node", "electron"],
 		"noEmit": true
 	},
-	"include": ["index.html", "src", "vite.config.ts", "vite.renderer.config.ts"]
+	"include": ["src", "vite.config.ts"]
 }

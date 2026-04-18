@@ -1,5 +1,11 @@
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
+
+const getAppInfoChannel = "desktop:get-app-info";
 
 contextBridge.exposeInMainWorld("desktop", {
-	version: "0.0.0",
+	getAppInfo: () => ipcRenderer.invoke(getAppInfoChannel) as Promise<{
+		name: string;
+		version: string;
+		platform: NodeJS.Platform;
+	}>,
 });

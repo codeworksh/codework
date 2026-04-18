@@ -52,7 +52,7 @@ start("pnpm", ["run", "dev:bundle"], {
 	...process.env,
 	VITE_DEV_SERVER_URL: rendererUrl,
 });
-start("pnpm", ["run", "dev:renderer", "--host", rendererHost, "--port", rendererPort]);
+start("pnpm", ["--filter", "@codeworksh/webui", "dev", "--host", rendererHost, "--port", rendererPort]);
 start("pnpm", ["run", "dev:electron"], {
 	...process.env,
 	VITE_DEV_SERVER_URL: rendererUrl,
