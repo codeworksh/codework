@@ -1,27 +1,67 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
 import { join } from "node:path";
+import type { DesktopAppBranding } from "@codeworksh/bridge";
+import { resolveDesktopAppBranding} from "./branding.ts";
+import { resolveDesktopRuntimeInfo} from "./arch.ts";
+
+// channel
+const GET_APP_BRANDING_CHANNEL = "desktop:get-app-branding";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
 const isDevelopment = Boolean(devServerUrl);
-const getAppInfoChannel = "desktop:get-app-info";
 const rendererIndexPath = join(__dirname, "..", "renderer", "index.html");
 
-function registerDesktopIpc(): void {
-	ipcMain.handle(getAppInfoChannel, () => ({
-		name: app.getName(),
-		version: app.getVersion(),
-		platform: process.platform,
-	}));
+const desktopAppBranding: DesktopAppBranding = resolveDesktopAppBranding({
+	isDevelopment,
+	appVersion: app.getVersion(),
+});
+const APP_DISPLAY_NAME = desktopAppBranding.displayName;
+
+
+const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
+	platform: process.platform,
+	processArch: process.arch,
+	runningUnderArm64Translation: app.runningUnderARM64Translation,
+});
+
+function registerIpcHandlers(): void {
+	ipcMain.removeAllListeners(GET_APP_BRANDING_CHANNEL);
+
+	ipcMain.on(GET_APP_BRANDING_CHANNEL, (event) => {
+		event.returnValue = desktopAppBranding;
+	});
 }
 
-function createWindow(): void {
+function getInitialWindowBackgroundColor(): string {
+	return nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#ffffff";
+}
+
+function syncWindowAppearance(window: BrowserWindow): void {
+	if (window.isDestroyed()) {
+		return;
+	}
+
+	window.setBackgroundColor(getInitialWindowBackgroundColor());
+}
+
+function syncAllWindowAppearance(): void {
+	for (const window of BrowserWindow.getAllWindows()) {
+		syncWindowAppearance(window);
+	}
+}
+
+nativeTheme.on("updated", syncAllWindowAppearance);
+
+function createWindow(): BrowserWindow {
 	const window = new BrowserWindow({
-		width: 1280,
-		height: 840,
-		minWidth: 1080,
-		minHeight: 720,
-		title: "Codework",
-		backgroundColor: "#171412",
+		width: 1100,
+		height: 780,
+		minWidth: 840,
+		minHeight: 620,
+		show: false,
+		autoHideMenuBar: true,
+		backgroundColor: getInitialWindowBackgroundColor(),
+		title: APP_DISPLAY_NAME,
 		webPreferences: {
 			contextIsolation: true,
 			nodeIntegration: false,
@@ -34,17 +74,31 @@ function createWindow(): void {
 		return { action: "deny" };
 	});
 
+	window.on("page-title-updated", (event) => {
+		event.preventDefault();
+		window.setTitle(APP_DISPLAY_NAME);
+	});
+
+	window.once("ready-to-show", () => {
+		window.show();
+	});
+
+	window.webContents.on("did-finish-load", () => {
+		window.setTitle(APP_DISPLAY_NAME);
+	});
+
 	if (isDevelopment) {
 		void window.loadURL(devServerUrl as string);
 		window.webContents.openDevTools({ mode: "detach" });
-		return;
+		return window;
 	}
 
 	void window.loadFile(rendererIndexPath);
+	return window;
 }
 
 void app.whenReady().then(() => {
-	registerDesktopIpc();
+	registerIpcHandlers();
 	createWindow();
 
 	app.on("activate", () => {
