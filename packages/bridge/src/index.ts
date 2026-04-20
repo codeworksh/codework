@@ -1,3 +1,1 @@
-export function fn() {
-  return "Hello, tsdown!";
-}
+export * from "./ipc.ts";

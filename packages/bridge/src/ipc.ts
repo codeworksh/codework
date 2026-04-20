@@ -5,3 +5,10 @@ export interface DesktopAppBranding {
 	stageLabel: DesktopAppStageLabel;
 	displayName: string;
 }
+
+
+export interface DesktopBridge {
+	getAppBranding: () => DesktopAppBranding | null;
+}
+
+export interface LocalApi {}

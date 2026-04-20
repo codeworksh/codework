@@ -1,19 +1,18 @@
 /// <reference types="vite/client" />
 
-interface DesktopAppInfo {
-	name: string;
-	version: string;
-	platform: NodeJS.Platform;
+import type {DesktopBridge, LocalApi} from "@codeworksh/bridge";
+
+interface ImportMetaEnv {
+    readonly APP_VERSION: string;
 }
 
-interface DesktopApi {
-	getAppInfo(): Promise<DesktopAppInfo>;
+interface ImportMeta {
+    readonly env: ImportMetaEnv;
 }
 
 declare global {
-	interface Window {
-		desktop?: DesktopApi;
-	}
+    interface Window {
+        nativeApi?: LocalApi;
+        desktopBridge?: DesktopBridge;
+    }
 }
-
-export {};
