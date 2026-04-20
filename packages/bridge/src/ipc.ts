@@ -7,6 +7,7 @@ export interface DesktopAppBranding {
 }
 
 export type DesktopServerExposureMode = "local-only" | "network-accessible";
+export type DesktopTheme = "light" | "dark" | "system";
 
 export type DesktopRuntimeArch = "arm64" | "x64" | "other";
 export type DesktopUpdateStatus =
@@ -64,9 +65,20 @@ export interface DesktopLocalEnvironmentBootstrap {
 	advertisedHost: string | null;
 }
 
+export interface DesktopServerExposureState {
+	mode: DesktopServerExposureMode;
+	endpointUrl: string | null;
+	advertisedHost: string | null;
+}
+
 export interface DesktopBridge {
 	getAppBranding: () => DesktopAppBranding | null;
 	getLocalEnvironmentBootstrap: () => DesktopLocalEnvironmentBootstrap | null;
+	getServerExposureState: () => Promise<DesktopServerExposureState>;
+	setServerExposureMode: (mode: DesktopServerExposureMode) => Promise<DesktopServerExposureState>;
+	openExternal: (url: string) => Promise<boolean>;
+	confirm: (message: string) => Promise<boolean>;
+	setTheme: (theme: DesktopTheme) => Promise<DesktopTheme>;
 	getUpdateState: () => Promise<DesktopUpdateState>;
 	setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<DesktopUpdateState>;
 	checkForUpdate: () => Promise<DesktopUpdateCheckResult>;

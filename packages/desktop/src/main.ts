@@ -2,16 +2,22 @@ import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
 import { join } from "node:path";
 import type {
 	DesktopAppBranding,
+	DesktopServerExposureState,
+	DesktopTheme,
 	DesktopUpdateActionResult,
 	DesktopUpdateChannel,
 	DesktopUpdateCheckResult,
 	DesktopUpdateState,
 } from "@codeworksh/bridge";
+import { configureDesktopAppIdentity } from "./app/identity.ts";
 import { resolveDesktopAppBranding } from "./branding.ts";
+import { showDesktopConfirmDialog } from "./dialog/confirm.ts";
 import { resolveDesktopRuntimeInfo } from "./arch.ts";
 import { resolveDesktopLocalEnvironmentBootstrap } from "./environment/bootstrap.ts";
+import { syncShellEnvironment } from "./shell/environment.ts";
 import {
 	readDesktopSettings,
+	setDesktopServerExposurePreference,
 	setDesktopUpdateChannelPreference,
 	writeDesktopSettings,
 } from "./settings/desktop.ts";
@@ -24,8 +30,15 @@ import {
 import { resolveDefaultDesktopUpdateChannel } from "./update/channel.ts";
 import { getAutoUpdateDisabledReason } from "./update/state.ts";
 
+syncShellEnvironment();
+
 const GET_APP_BRANDING_CHANNEL = "desktop:get-app-branding";
 const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = "desktop:get-local-environment-bootstrap";
+const GET_SERVER_EXPOSURE_STATE_CHANNEL = "desktop:get-server-exposure-state";
+const SET_SERVER_EXPOSURE_MODE_CHANNEL = "desktop:set-server-exposure-mode";
+const OPEN_EXTERNAL_CHANNEL = "desktop:open-external";
+const CONFIRM_CHANNEL = "desktop:confirm";
+const SET_THEME_CHANNEL = "desktop:set-theme";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_SET_CHANNEL_CHANNEL = "desktop:update-set-channel";
@@ -53,6 +66,26 @@ const updateFeedConfigured = false;
 let desktopSettings = readDesktopSettings(desktopSettingsPath, app.getVersion());
 let updateState = createBaseUpdateState(desktopSettings.updateChannel);
 
+function getSafeTheme(rawTheme: unknown): DesktopTheme | null {
+	if (rawTheme === "light" || rawTheme === "dark" || rawTheme === "system") {
+		return rawTheme;
+	}
+
+	return null;
+}
+
+function getDesktopServerExposureState(): DesktopServerExposureState {
+	const bootstrap = resolveDesktopLocalEnvironmentBootstrap({
+		serverExposureMode: desktopSettings.serverExposureMode,
+	});
+
+	return {
+		mode: bootstrap.serverExposureMode,
+		endpointUrl: bootstrap.endpointUrl,
+		advertisedHost: bootstrap.advertisedHost,
+	};
+}
+
 function registerIpcHandlers(): void {
 	ipcMain.removeAllListeners(GET_APP_BRANDING_CHANNEL);
 
@@ -65,6 +98,52 @@ function registerIpcHandlers(): void {
 		event.returnValue = resolveDesktopLocalEnvironmentBootstrap({
 			serverExposureMode: desktopSettings.serverExposureMode,
 		});
+	});
+
+	ipcMain.removeHandler(GET_SERVER_EXPOSURE_STATE_CHANNEL);
+	ipcMain.handle(GET_SERVER_EXPOSURE_STATE_CHANNEL, async () => getDesktopServerExposureState());
+
+	ipcMain.removeHandler(SET_SERVER_EXPOSURE_MODE_CHANNEL);
+	ipcMain.handle(SET_SERVER_EXPOSURE_MODE_CHANNEL, async (_event, rawMode: unknown) => {
+		if (rawMode !== "local-only" && rawMode !== "network-accessible") {
+			throw new Error("Invalid desktop server exposure mode input.");
+		}
+
+		desktopSettings = setDesktopServerExposurePreference(desktopSettings, rawMode);
+		writeDesktopSettings(desktopSettingsPath, desktopSettings);
+		return getDesktopServerExposureState();
+	});
+
+	ipcMain.removeHandler(OPEN_EXTERNAL_CHANNEL);
+	ipcMain.handle(OPEN_EXTERNAL_CHANNEL, async (_event, rawUrl: unknown) => {
+		const safeUrl = getSafeExternalUrl(rawUrl);
+		if (!safeUrl) {
+			return false;
+		}
+
+		await shell.openExternal(safeUrl);
+		return true;
+	});
+
+	ipcMain.removeHandler(CONFIRM_CHANNEL);
+	ipcMain.handle(CONFIRM_CHANNEL, async (event, rawMessage: unknown) => {
+		if (typeof rawMessage !== "string") {
+			return false;
+		}
+
+		return await showDesktopConfirmDialog(rawMessage, BrowserWindow.fromWebContents(event.sender));
+	});
+
+	ipcMain.removeHandler(SET_THEME_CHANNEL);
+	ipcMain.handle(SET_THEME_CHANNEL, async (_event, rawTheme: unknown) => {
+		const theme = getSafeTheme(rawTheme);
+		if (!theme) {
+			throw new Error("Invalid desktop theme input.");
+		}
+
+		nativeTheme.themeSource = theme;
+		syncAllWindowAppearance();
+		return nativeTheme.themeSource as DesktopTheme;
 	});
 
 	ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
@@ -183,7 +262,11 @@ function emitUpdateState(): void {
 	}
 }
 
-function getSafeExternalUrl(rawUrl: string): string | null {
+function getSafeExternalUrl(rawUrl: unknown): string | null {
+	if (typeof rawUrl !== "string" || rawUrl.length === 0) {
+		return null;
+	}
+
 	try {
 		const parsedUrl = new URL(rawUrl);
 		if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
@@ -265,6 +348,10 @@ function createWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(() => {
+	configureDesktopAppIdentity({
+		isDevelopment,
+		branding: desktopAppBranding,
+	});
 	registerIpcHandlers();
 	createWindow();
 
