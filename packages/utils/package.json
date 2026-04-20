@@ -26,20 +26,17 @@
 		"README.md"
 	],
 	"type": "module",
-	"module": "./dist/pack/index.mjs",
 	"types": "./dist/pack/index.d.mts",
 	"exports": {
-		".": {
-			"source": "./src/index.ts",
-			"types": "./dist/pack/index.d.mts",
-			"import": "./dist/pack/index.mjs"
-		}
+		".": "./dist/pack/index.mjs",
+		"./package.json": "./package.json"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
 	"scripts": {
 		"build": "vp pack",
+		"bump": "bumpp",
 		"check": "vp check",
 		"lint": "vp lint"
 	},
@@ -48,6 +45,9 @@
 	},
 	"peerDependencies": {
 		"typescript": "^5"
+	},
+	"devDependencies": {
+		"bumpp": "^11.0.1"
 	},
 	"engines": {
 		"node": ">=24.14.1"
