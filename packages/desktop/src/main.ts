@@ -26,9 +26,9 @@ import {
 	reduceDesktopUpdateStateOnCheckFailure,
 	reduceDesktopUpdateStateOnCheckStart,
 	reduceDesktopUpdateStateOnDownloadFailure,
-} from "./app/machine.ts";
-import { resolveDefaultDesktopUpdateChannel } from "./app/channel.ts";
-import { getAutoUpdateDisabledReason } from "./app/state.ts";
+} from "./update/machine.ts";
+import { resolveDefaultDesktopUpdateChannel } from "./update/channel.ts";
+import { getAutoUpdateDisabledReason } from "./update/state.ts";
 
 syncShellEnvironment();
 
