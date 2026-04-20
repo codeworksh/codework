@@ -1,6 +1,6 @@
 import type { DesktopRuntimeInfo, DesktopUpdateChannel, DesktopUpdateState } from "@codeworksh/bridge";
 
-import { getCanRetryAfterDownloadFailure, nextStatusAfterDownloadFailure } from "../update/state.ts";
+import { getCanRetryAfterDownloadFailure, nextStatusAfterDownloadFailure } from "./state.ts";
 
 export function createInitialDesktopUpdateState(
 	currentVersion: string,

@@ -1,6 +1,6 @@
 import type { DesktopAppBranding, DesktopAppStageLabel } from "@codeworksh/bridge";
 
-import { isNightlyDesktopVersion } from "./update/channel.ts";
+import { isNightlyDesktopVersion } from "./app/channel.ts";
 
 const APP_BASE_NAME = "CodeWork";
 
