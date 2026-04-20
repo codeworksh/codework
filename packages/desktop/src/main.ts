@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, shell, type BrowserWindowConstructorOptions } from "electron";
 import { join } from "node:path";
 import type {
 	DesktopAppBranding,
@@ -65,6 +65,16 @@ const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
 const updateFeedConfigured = false;
 let desktopSettings = readDesktopSettings(desktopSettingsPath, app.getVersion());
 let updateState = createBaseUpdateState(desktopSettings.updateChannel);
+
+const TITLEBAR_HEIGHT = 40;
+const TITLEBAR_COLOR = "#01000000";
+const TITLEBAR_LIGHT_SYMBOL_COLOR = "#1f2937";
+const TITLEBAR_DARK_SYMBOL_COLOR = "#f8fafc";
+
+type WindowTitleBarOptions = Pick<
+	BrowserWindowConstructorOptions,
+	"titleBarOverlay" | "titleBarStyle" | "trafficLightPosition"
+>;
 
 function getSafeTheme(rawTheme: unknown): DesktopTheme | null {
 	if (rawTheme === "light" || rawTheme === "dark" || rawTheme === "system") {
@@ -279,7 +289,25 @@ function getSafeExternalUrl(rawUrl: unknown): string | null {
 }
 
 function getInitialWindowBackgroundColor(): string {
-	return nativeTheme.shouldUseDarkColors ? "#0a0a0a" : "#ffffff";
+	return nativeTheme.shouldUseDarkColors ? "#161616" : "#ffffff";
+}
+
+function getWindowTitleBarOptions(): WindowTitleBarOptions {
+	if (process.platform === "darwin") {
+		return {
+			titleBarStyle: "hiddenInset",
+			trafficLightPosition: { x: 16, y: 18 },
+		};
+	}
+
+	return {
+		titleBarStyle: "hidden",
+		titleBarOverlay: {
+			color: TITLEBAR_COLOR,
+			height: TITLEBAR_HEIGHT,
+			symbolColor: nativeTheme.shouldUseDarkColors ? TITLEBAR_DARK_SYMBOL_COLOR : TITLEBAR_LIGHT_SYMBOL_COLOR,
+		},
+	};
 }
 
 function syncWindowAppearance(window: BrowserWindow): void {
@@ -288,6 +316,10 @@ function syncWindowAppearance(window: BrowserWindow): void {
 	}
 
 	window.setBackgroundColor(getInitialWindowBackgroundColor());
+	const { titleBarOverlay } = getWindowTitleBarOptions();
+	if (typeof titleBarOverlay === "object") {
+		window.setTitleBarOverlay(titleBarOverlay);
+	}
 }
 
 function syncAllWindowAppearance(): void {
@@ -308,6 +340,7 @@ function createWindow(): BrowserWindow {
 		autoHideMenuBar: true,
 		backgroundColor: getInitialWindowBackgroundColor(),
 		title: APP_DISPLAY_NAME,
+		...getWindowTitleBarOptions(),
 		webPreferences: {
 			contextIsolation: true,
 			nodeIntegration: false,
