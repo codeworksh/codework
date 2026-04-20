@@ -5,7 +5,7 @@ import { desktopDir, resolveElectronPath } from "./launch.mjs";
 const childEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
 
-const child = spawn(resolveElectronPath(), ["dist/electron/main.mjs"], {
+const child = spawn(resolveElectronPath(), ["dist/electron/main.cjs"], {
 	cwd: desktopDir,
 	env: childEnv,
 	stdio: "inherit",

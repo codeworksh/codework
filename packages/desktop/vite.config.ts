@@ -3,7 +3,7 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
 	pack: {
 		entry: ["src/main.ts", "src/preload.ts"],
-		format: ["esm"],
+		format: ["cjs"],
 		outDir: "dist/electron",
 		sourcemap: true,
 		clean: true,

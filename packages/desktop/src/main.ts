@@ -1,8 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from "electron";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
 const isDevelopment = Boolean(devServerUrl);
 const getAppInfoChannel = "desktop:get-app-info";
@@ -27,7 +25,8 @@ function createWindow(): void {
 		webPreferences: {
 			contextIsolation: true,
 			nodeIntegration: false,
-			preload: join(__dirname, "preload.mjs"),
+			sandbox: true,
+			preload: join(__dirname, "preload.cjs"),
 		},
 	});
 	window.webContents.setWindowOpenHandler(({ url }) => {

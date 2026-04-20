@@ -16,8 +16,8 @@ if (!Number.isInteger(devServerPort) || devServerPort <= 0) {
 	throw new Error(`VITE_DEV_SERVER_URL must include an explicit port: ${devServerUrl}`);
 }
 
-const requiredFiles = ["dist/electron/main.mjs", "dist/electron/preload.mjs"];
-const watchedDirectory = { directory: "dist/electron", files: new Set(["main.mjs", "preload.mjs"]) };
+const requiredFiles = ["dist/electron/main.cjs", "dist/electron/preload.cjs"];
+const watchedDirectory = { directory: "dist/electron", files: new Set(["main.cjs", "preload.cjs"]) };
 const forcedShutdownTimeoutMs = 1_500;
 const restartDebounceMs = 120;
 
@@ -42,7 +42,7 @@ function startApp() {
 		return;
 	}
 
-	const app = spawn(resolveElectronPath(), ["dist/electron/main.mjs"], {
+	const app = spawn(resolveElectronPath(), ["dist/electron/main.cjs"], {
 		cwd: desktopDir,
 		env: childEnv,
 		stdio: "inherit",
