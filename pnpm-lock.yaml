@@ -108,6 +108,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.4.0
         version: 1.4.0(@date-fns/tz@1.4.1)(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@codeworksh/bridge':
+        specifier: workspace:*
+        version: link:../bridge
       '@tanstack/react-query':
         specifier: 5.99.1
         version: 5.99.1(react@19.2.5)
