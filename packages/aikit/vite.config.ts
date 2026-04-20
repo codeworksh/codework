@@ -3,11 +3,7 @@ import { defineConfig } from "vite-plus";
 
 const ignoredPaths = ["dist/**", "**/dist/**", "node_modules/**", "**/node_modules/**", ".pnpm-store/**", ".zed/**"];
 const aliases = {
-	"@codeworksh/aikit": fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),
-	"@codeworksh/aikit/codemode/drivers": fileURLToPath(
-		new URL("./packages/aikit/src/agent/codemode/drivers/drivers.ts", import.meta.url),
-	),
-	"@codeworksh/utils": fileURLToPath(new URL("./packages/utils/src/index.ts", import.meta.url)),
+	"@codeworksh/utils": fileURLToPath(new URL("../utils/src/index.ts", import.meta.url)),
 };
 
 export default defineConfig({
@@ -15,7 +11,7 @@ export default defineConfig({
 		alias: aliases,
 	},
 	test: {
-		include: ["packages/**/*.test.ts"],
+		include: ["test/**/*.test.ts", "tests/**/*.test.ts"],
 	},
 	lint: {
 		ignorePatterns: ignoredPaths,
@@ -30,5 +26,13 @@ export default defineConfig({
 		useTabs: true,
 		tabWidth: 3,
 		sortPackageJson: true,
+	},
+	pack: {
+		entry: ["src/index.ts", "src/agent/codemode/drivers/drivers.ts"],
+		format: ["esm"],
+		dts: true,
+		sourcemap: true,
+		clean: true,
+		outDir: "dist/pack",
 	},
 });
