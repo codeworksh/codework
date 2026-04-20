@@ -1,4 +1,12 @@
-import { app, BrowserWindow, ipcMain, nativeTheme, shell, type BrowserWindowConstructorOptions } from "electron";
+import {
+	app,
+	BrowserWindow,
+	ipcMain,
+	nativeTheme,
+	session,
+	shell,
+	type BrowserWindowConstructorOptions,
+} from "electron";
 import { join } from "node:path";
 import type {
 	DesktopAppBranding,
@@ -94,6 +102,61 @@ function getDesktopServerExposureState(): DesktopServerExposureState {
 		endpointUrl: bootstrap.endpointUrl,
 		advertisedHost: bootstrap.advertisedHost,
 	};
+}
+
+function createDesktopDevelopmentContentSecurityPolicy(): string | null {
+	if (!devServerUrl) {
+		return null;
+	}
+
+	try {
+		const devRendererUrl = new URL(devServerUrl);
+		const websocketProtocol = devRendererUrl.protocol === "https:" ? "wss:" : "ws:";
+		const websocketOrigin = `${websocketProtocol}//${devRendererUrl.host}`;
+
+		return [
+			"default-src 'self'",
+			"script-src 'self' 'unsafe-inline'",
+			"style-src 'self' 'unsafe-inline'",
+			"img-src 'self' data: blob:",
+			"font-src 'self' data:",
+			`connect-src 'self' ${devRendererUrl.origin} ${websocketOrigin}`,
+			"object-src 'none'",
+			"base-uri 'self'",
+		].join("; ");
+	} catch {
+		return null;
+	}
+}
+
+function registerDesktopDevelopmentContentSecurityPolicy(): void {
+	if (!isDevelopment) {
+		return;
+	}
+
+	const contentSecurityPolicy = createDesktopDevelopmentContentSecurityPolicy();
+	if (!contentSecurityPolicy) {
+		return;
+	}
+
+	session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+		if (details.resourceType !== "mainFrame") {
+			callback({ responseHeaders: details.responseHeaders });
+			return;
+		}
+
+		if (!devServerUrl || !details.url.startsWith(devServerUrl)) {
+			callback({ responseHeaders: details.responseHeaders });
+			return;
+		}
+
+		callback({
+			responseHeaders: {
+				...details.responseHeaders,
+				"Content-Security-Policy": [contentSecurityPolicy],
+			},
+		});
+	});
 }
 
 function registerIpcHandlers(): void {
@@ -385,6 +448,7 @@ void app.whenReady().then(() => {
 		isDevelopment,
 		branding: desktopAppBranding,
 	});
+	registerDesktopDevelopmentContentSecurityPolicy();
 	registerIpcHandlers();
 	createWindow();
 
