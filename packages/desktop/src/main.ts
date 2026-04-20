@@ -9,6 +9,12 @@ import type {
 } from "@codeworksh/bridge";
 import { resolveDesktopAppBranding } from "./branding.ts";
 import { resolveDesktopRuntimeInfo } from "./arch.ts";
+import { resolveDesktopLocalEnvironmentBootstrap } from "./environment/bootstrap.ts";
+import {
+	readDesktopSettings,
+	setDesktopUpdateChannelPreference,
+	writeDesktopSettings,
+} from "./settings/desktop.ts";
 import {
 	createInitialDesktopUpdateState,
 	reduceDesktopUpdateStateOnCheckFailure,
@@ -19,6 +25,7 @@ import { resolveDefaultDesktopUpdateChannel } from "./update/channel.ts";
 import { getAutoUpdateDisabledReason } from "./update/state.ts";
 
 const GET_APP_BRANDING_CHANNEL = "desktop:get-app-branding";
+const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = "desktop:get-local-environment-bootstrap";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_SET_CHANNEL_CHANNEL = "desktop:update-set-channel";
@@ -29,6 +36,7 @@ const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
 const isDevelopment = Boolean(devServerUrl);
 const rendererIndexPath = join(__dirname, "..", "renderer", "index.html");
+const desktopSettingsPath = join(app.getPath("userData"), "desktop-settings.json");
 
 const desktopAppBranding: DesktopAppBranding = resolveDesktopAppBranding({
 	isDevelopment,
@@ -42,14 +50,21 @@ const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
 	runningUnderArm64Translation: app.runningUnderARM64Translation,
 });
 const updateFeedConfigured = false;
-const initialUpdateChannel = resolveDefaultDesktopUpdateChannel(app.getVersion());
-let updateState = createBaseUpdateState(initialUpdateChannel);
+let desktopSettings = readDesktopSettings(desktopSettingsPath, app.getVersion());
+let updateState = createBaseUpdateState(desktopSettings.updateChannel);
 
 function registerIpcHandlers(): void {
 	ipcMain.removeAllListeners(GET_APP_BRANDING_CHANNEL);
 
 	ipcMain.on(GET_APP_BRANDING_CHANNEL, (event) => {
 		event.returnValue = desktopAppBranding;
+	});
+
+	ipcMain.removeAllListeners(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL);
+	ipcMain.on(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL, (event) => {
+		event.returnValue = resolveDesktopLocalEnvironmentBootstrap({
+			serverExposureMode: desktopSettings.serverExposureMode,
+		});
 	});
 
 	ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
@@ -61,7 +76,9 @@ function registerIpcHandlers(): void {
 			throw new Error("Invalid desktop update channel input.");
 		}
 
-		updateState = createBaseUpdateState(rawChannel);
+		desktopSettings = setDesktopUpdateChannelPreference(desktopSettings, rawChannel);
+		writeDesktopSettings(desktopSettingsPath, desktopSettings);
+		updateState = createBaseUpdateState(desktopSettings.updateChannel);
 		emitUpdateState();
 		return updateState;
 	});
@@ -136,7 +153,15 @@ function createBaseUpdateState(channel: DesktopUpdateChannel): DesktopUpdateStat
 		isPackaged: app.isPackaged,
 		hasUpdateFeedConfig: updateFeedConfigured,
 	});
-	const baseState = createInitialDesktopUpdateState(app.getVersion(), desktopRuntimeInfo, channel);
+	const resolvedChannel =
+		desktopSettings.updateChannelConfiguredByUser === true
+			? desktopSettings.updateChannel
+			: resolveDefaultDesktopUpdateChannel(app.getVersion());
+	const baseState = createInitialDesktopUpdateState(
+		app.getVersion(),
+		desktopRuntimeInfo,
+		channel === resolvedChannel ? channel : resolvedChannel,
+	);
 
 	if (disabledReason) {
 		return {

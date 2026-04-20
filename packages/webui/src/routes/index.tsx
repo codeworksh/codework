@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import type { DesktopUpdateState } from "@codeworksh/bridge";
+import type { DesktopLocalEnvironmentBootstrap, DesktopUpdateState } from "@codeworksh/bridge";
 import { isElectron } from "../env";
 import { APP_DISPLAY_NAME, APP_VERSION } from "../branding";
 
@@ -10,12 +10,16 @@ export const Route = createFileRoute("/")({
 
 function HomeRoute() {
 	const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
+	const [bootstrap, setBootstrap] = useState<DesktopLocalEnvironmentBootstrap | null>(null);
 
 	useEffect(() => {
 		const bridge = window.desktopBridge;
 		if (!bridge) {
 			return;
 		}
+
+		const localBootstrap = bridge.getLocalEnvironmentBootstrap();
+		setBootstrap(localBootstrap);
 
 		void bridge.getUpdateState().then((state) => {
 			setUpdateState(state);
@@ -70,6 +74,18 @@ function HomeRoute() {
 							<dt>Update Status</dt>
 							<dd>{updateState.status}</dd>
 						</div>
+						{bootstrap ? (
+							<>
+								<div>
+									<dt>Backend URL</dt>
+									<dd>{bootstrap.localHttpUrl}</dd>
+								</div>
+								<div>
+									<dt>Exposure</dt>
+									<dd>{bootstrap.serverExposureMode}</dd>
+								</div>
+							</>
+						) : null}
 					</dl>
 				) : (
 					<p className="muted">Waiting for preload bridge…</p>

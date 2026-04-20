@@ -6,6 +6,8 @@ export interface DesktopAppBranding {
 	displayName: string;
 }
 
+export type DesktopServerExposureMode = "local-only" | "network-accessible";
+
 export type DesktopRuntimeArch = "arm64" | "x64" | "other";
 export type DesktopUpdateStatus =
 	| "disabled"
@@ -53,8 +55,18 @@ export interface DesktopUpdateCheckResult {
 	state: DesktopUpdateState;
 }
 
+export interface DesktopLocalEnvironmentBootstrap {
+	serverExposureMode: DesktopServerExposureMode;
+	backendPort: number;
+	localHttpUrl: string;
+	localWsUrl: string;
+	endpointUrl: string | null;
+	advertisedHost: string | null;
+}
+
 export interface DesktopBridge {
 	getAppBranding: () => DesktopAppBranding | null;
+	getLocalEnvironmentBootstrap: () => DesktopLocalEnvironmentBootstrap | null;
 	getUpdateState: () => Promise<DesktopUpdateState>;
 	setUpdateChannel: (channel: DesktopUpdateChannel) => Promise<DesktopUpdateState>;
 	checkForUpdate: () => Promise<DesktopUpdateCheckResult>;

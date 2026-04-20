@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { DesktopBridge } from "@codeworksh/bridge";
 
 const GET_APP_BRANDING_CHANNEL = "desktop:get-app-branding";
+const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = "desktop:get-local-environment-bootstrap";
 const UPDATE_STATE_CHANNEL = "desktop:update-state";
 const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
 const UPDATE_SET_CHANNEL_CHANNEL = "desktop:update-set-channel";
@@ -16,6 +17,13 @@ contextBridge.exposeInMainWorld("desktopBridge", {
 			return null;
 		}
 		return result as ReturnType<DesktopBridge["getAppBranding"]>;
+	},
+	getLocalEnvironmentBootstrap: () => {
+		const result = ipcRenderer.sendSync(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL);
+		if (typeof result !== "object" || result === null) {
+			return null;
+		}
+		return result as ReturnType<DesktopBridge["getLocalEnvironmentBootstrap"]>;
 	},
 	getUpdateState: () => ipcRenderer.invoke(UPDATE_GET_STATE_CHANNEL),
 	setUpdateChannel: (channel: Parameters<DesktopBridge["setUpdateChannel"]>[0]) =>
