@@ -5,24 +5,23 @@ import { createHashHistory, createBrowserHistory } from "@tanstack/react-router"
 
 import "./styles.css";
 
-import {isElectron} from "./env.ts";
-import {getRouter} from "./router.tsx";
-import {APP_DISPLAY_NAME} from "./branding";
-import {syncDocumentWindowControlsOverlayClass} from "./lib/window-controls-overlay.ts";
-
+import { isElectron } from "./env.ts";
+import { getRouter } from "./router.tsx";
+import { APP_DISPLAY_NAME } from "./branding";
+import { syncDocumentWindowControlsOverlayClass } from "./lib/window-controls-overlay.ts";
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
 const history = isElectron ? createHashHistory() : createBrowserHistory();
 const router = getRouter(history);
 
 if (isElectron) {
-    syncDocumentWindowControlsOverlayClass();
+	syncDocumentWindowControlsOverlayClass();
 }
 
-document.title = APP_DISPLAY_NAME
+document.title = APP_DISPLAY_NAME;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-    <React.StrictMode>
-        <RouterProvider router={router}/>
-    </React.StrictMode>,
+	<React.StrictMode>
+		<RouterProvider router={router} />
+	</React.StrictMode>,
 );

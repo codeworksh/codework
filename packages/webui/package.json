@@ -12,8 +12,8 @@
 	"dependencies": {
 		"@base-ui/react": "^1.4.0",
 		"@codeworksh/bridge": "workspace:*",
-		"@fontsource/jetbrains-mono": "^5.2.8",
 		"@fontsource-variable/ibm-plex-sans": "^5.2.8",
+		"@fontsource/jetbrains-mono": "^5.2.8",
 		"@tailwindcss/vite": "^4.2.2",
 		"@tanstack/react-query": "5.99.1",
 		"@tanstack/react-router": "^1.160.2",

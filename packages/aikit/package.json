@@ -58,11 +58,11 @@
 		"remeda": "^2.33.6",
 		"uuidv7": "^1.2.1"
 	},
-	"peerDependencies": {
-		"typescript": "^5"
-	},
 	"devDependencies": {
 		"bumpp": "^11.0.1"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
 	},
 	"engines": {
 		"node": ">=24.14.1"

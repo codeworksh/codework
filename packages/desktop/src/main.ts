@@ -1,11 +1,30 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, shell } from "electron";
 import { join } from "node:path";
-import type { DesktopAppBranding } from "@codeworksh/bridge";
-import { resolveDesktopAppBranding} from "./branding.ts";
-import { resolveDesktopRuntimeInfo} from "./arch.ts";
+import type {
+	DesktopAppBranding,
+	DesktopUpdateActionResult,
+	DesktopUpdateChannel,
+	DesktopUpdateCheckResult,
+	DesktopUpdateState,
+} from "@codeworksh/bridge";
+import { resolveDesktopAppBranding } from "./branding.ts";
+import { resolveDesktopRuntimeInfo } from "./arch.ts";
+import {
+	createInitialDesktopUpdateState,
+	reduceDesktopUpdateStateOnCheckFailure,
+	reduceDesktopUpdateStateOnCheckStart,
+	reduceDesktopUpdateStateOnDownloadFailure,
+} from "./update/machine.ts";
+import { resolveDefaultDesktopUpdateChannel } from "./update/channel.ts";
+import { getAutoUpdateDisabledReason } from "./update/state.ts";
 
-// channel
 const GET_APP_BRANDING_CHANNEL = "desktop:get-app-branding";
+const UPDATE_STATE_CHANNEL = "desktop:update-state";
+const UPDATE_GET_STATE_CHANNEL = "desktop:update-get-state";
+const UPDATE_SET_CHANNEL_CHANNEL = "desktop:update-set-channel";
+const UPDATE_CHECK_CHANNEL = "desktop:update-check";
+const UPDATE_DOWNLOAD_CHANNEL = "desktop:update-download";
+const UPDATE_INSTALL_CHANNEL = "desktop:update-install";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
 const isDevelopment = Boolean(devServerUrl);
@@ -17,12 +36,14 @@ const desktopAppBranding: DesktopAppBranding = resolveDesktopAppBranding({
 });
 const APP_DISPLAY_NAME = desktopAppBranding.displayName;
 
-
 const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
 	platform: process.platform,
 	processArch: process.arch,
 	runningUnderArm64Translation: app.runningUnderARM64Translation,
 });
+const updateFeedConfigured = false;
+const initialUpdateChannel = resolveDefaultDesktopUpdateChannel(app.getVersion());
+let updateState = createBaseUpdateState(initialUpdateChannel);
 
 function registerIpcHandlers(): void {
 	ipcMain.removeAllListeners(GET_APP_BRANDING_CHANNEL);
@@ -30,6 +51,123 @@ function registerIpcHandlers(): void {
 	ipcMain.on(GET_APP_BRANDING_CHANNEL, (event) => {
 		event.returnValue = desktopAppBranding;
 	});
+
+	ipcMain.removeHandler(UPDATE_GET_STATE_CHANNEL);
+	ipcMain.handle(UPDATE_GET_STATE_CHANNEL, async () => updateState);
+
+	ipcMain.removeHandler(UPDATE_SET_CHANNEL_CHANNEL);
+	ipcMain.handle(UPDATE_SET_CHANNEL_CHANNEL, async (_event, rawChannel: unknown) => {
+		if (rawChannel !== "latest" && rawChannel !== "nightly") {
+			throw new Error("Invalid desktop update channel input.");
+		}
+
+		updateState = createBaseUpdateState(rawChannel);
+		emitUpdateState();
+		return updateState;
+	});
+
+	ipcMain.removeHandler(UPDATE_CHECK_CHANNEL);
+	ipcMain.handle(UPDATE_CHECK_CHANNEL, async () => {
+		const checkedAt = new Date().toISOString();
+		updateState = reduceDesktopUpdateStateOnCheckStart(updateState, checkedAt);
+		emitUpdateState();
+
+		const disabledReason = getAutoUpdateDisabledReason({
+			isDevelopment,
+			isPackaged: app.isPackaged,
+			hasUpdateFeedConfig: updateFeedConfigured,
+		});
+
+		updateState = disabledReason
+			? {
+					...createBaseUpdateState(updateState.channel),
+					checkedAt,
+					message: disabledReason,
+				}
+			: reduceDesktopUpdateStateOnCheckFailure(
+					updateState,
+					"Update checks are not implemented for this desktop build yet.",
+					checkedAt,
+				);
+		emitUpdateState();
+
+		return {
+			checked: false,
+			state: updateState,
+		} satisfies DesktopUpdateCheckResult;
+	});
+
+	ipcMain.removeHandler(UPDATE_DOWNLOAD_CHANNEL);
+	ipcMain.handle(UPDATE_DOWNLOAD_CHANNEL, async () => {
+		updateState = reduceDesktopUpdateStateOnDownloadFailure(
+			updateState,
+			"No downloaded update is available for this desktop build yet.",
+		);
+		emitUpdateState();
+
+		return {
+			accepted: false,
+			completed: false,
+			state: updateState,
+		} satisfies DesktopUpdateActionResult;
+	});
+
+	ipcMain.removeHandler(UPDATE_INSTALL_CHANNEL);
+	ipcMain.handle(UPDATE_INSTALL_CHANNEL, async () => {
+		updateState = {
+			...updateState,
+			message: "There is no downloaded update to install yet.",
+			errorContext: "install",
+			canRetry: false,
+		};
+		emitUpdateState();
+
+		return {
+			accepted: false,
+			completed: false,
+			state: updateState,
+		} satisfies DesktopUpdateActionResult;
+	});
+}
+
+function createBaseUpdateState(channel: DesktopUpdateChannel): DesktopUpdateState {
+	const disabledReason = getAutoUpdateDisabledReason({
+		isDevelopment,
+		isPackaged: app.isPackaged,
+		hasUpdateFeedConfig: updateFeedConfigured,
+	});
+	const baseState = createInitialDesktopUpdateState(app.getVersion(), desktopRuntimeInfo, channel);
+
+	if (disabledReason) {
+		return {
+			...baseState,
+			message: disabledReason,
+		};
+	}
+
+	return {
+		...baseState,
+		enabled: true,
+		status: "idle",
+	};
+}
+
+function emitUpdateState(): void {
+	for (const window of BrowserWindow.getAllWindows()) {
+		window.webContents.send(UPDATE_STATE_CHANNEL, updateState);
+	}
+}
+
+function getSafeExternalUrl(rawUrl: string): string | null {
+	try {
+		const parsedUrl = new URL(rawUrl);
+		if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+			return null;
+		}
+		return parsedUrl.toString();
+	} catch {
+		return null;
+	}
 }
 
 function getInitialWindowBackgroundColor(): string {
@@ -70,7 +208,10 @@ function createWindow(): BrowserWindow {
 		},
 	});
 	window.webContents.setWindowOpenHandler(({ url }) => {
-		void shell.openExternal(url);
+		const externalUrl = getSafeExternalUrl(url);
+		if (externalUrl) {
+			void shell.openExternal(externalUrl);
+		}
 		return { action: "deny" };
 	});
 
@@ -85,6 +226,7 @@ function createWindow(): BrowserWindow {
 
 	window.webContents.on("did-finish-load", () => {
 		window.setTitle(APP_DISPLAY_NAME);
+		emitUpdateState();
 	});
 
 	if (isDevelopment) {

@@ -43,11 +43,11 @@
 	"dependencies": {
 		"@sinclair/typebox": "^0.34.48"
 	},
-	"peerDependencies": {
-		"typescript": "^5"
-	},
 	"devDependencies": {
 		"bumpp": "^11.0.1"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
 	},
 	"engines": {
 		"node": ">=24.14.1"

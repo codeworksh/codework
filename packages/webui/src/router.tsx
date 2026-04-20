@@ -12,8 +12,7 @@ export function getRouter(history: RouterHistory) {
 		context: {
 			queryClient,
 		},
-		Wrap: ({children}) =>
-			createElement(QueryClientProvider, {client: queryClient}, children),
+		Wrap: ({ children }) => createElement(QueryClientProvider, { client: queryClient }, children),
 	});
 }
 

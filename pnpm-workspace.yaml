@@ -1,7 +1,7 @@
 packages:
-  - packages/*
+   - packages/*
 
 onlyBuiltDependencies:
-  - electron
-  - esbuild
-  - msw
+   - electron
+   - esbuild
+   - msw

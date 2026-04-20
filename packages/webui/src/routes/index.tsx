@@ -1,27 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import type { DesktopUpdateState } from "@codeworksh/bridge";
 import { isElectron } from "../env";
-
-type AppInfo = {
-	name: string;
-	version: string;
-	platform: string;
-};
+import { APP_DISPLAY_NAME, APP_VERSION } from "../branding";
 
 export const Route = createFileRoute("/")({
 	component: HomeRoute,
 });
 
 function HomeRoute() {
-	const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
+	const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
 
 	useEffect(() => {
-		if (!window.desktop) {
+		const bridge = window.desktopBridge;
+		if (!bridge) {
 			return;
 		}
 
-		void window.desktop.getAppInfo().then((info) => {
-			setAppInfo(info);
+		void bridge.getUpdateState().then((state) => {
+			setUpdateState(state);
+		});
+
+		return bridge.onUpdateState((state) => {
+			setUpdateState(state);
 		});
 	}, []);
 
@@ -31,16 +32,16 @@ function HomeRoute() {
 				<p className="eyebrow">Initial Slice</p>
 				<h2>Web UI lives outside Electron now</h2>
 				<p className="copy">
-					This mirrors the T3Code direction that matters for us: Electron owns the native shell, and the actual
-					app UI is a separate TanStack Router React app loaded inside it.
+					This mirrors the T3Code direction that matters for us: Electron owns the native shell, and the actual app
+					UI is a separate TanStack Router React app loaded inside it.
 				</p>
 			</article>
 
 			<article className="panel">
 				<h3>Renderer Routing</h3>
 				<p className="copy">
-					The app uses TanStack Router file routes. Inside Electron it switches to hash history so deep links
-					work from a file-backed renderer build.
+					The app uses TanStack Router file routes. Inside Electron it switches to hash history so deep links work
+					from a file-backed renderer build.
 				</p>
 				<code className="inline-code">{isElectron ? "createHashHistory()" : "createBrowserHistory()"}</code>
 			</article>
@@ -48,22 +49,26 @@ function HomeRoute() {
 			<article className="panel">
 				<h3>Main ↔ Preload ↔ Renderer</h3>
 				<p className="copy">
-					The renderer only talks to Electron through the preload bridge. That keeps Node APIs out of React and
-					gives us a clean place to add server/auth APIs next.
+					The renderer only talks to Electron through the preload bridge. That keeps Node APIs out of React and now
+					exposes the same desktop branding/update shape we want to keep growing toward T3Code.
 				</p>
-				{appInfo ? (
+				{updateState ? (
 					<dl className="meta-list">
 						<div>
 							<dt>App</dt>
-							<dd>{appInfo.name}</dd>
+							<dd>{APP_DISPLAY_NAME}</dd>
 						</div>
 						<div>
 							<dt>Version</dt>
-							<dd>{appInfo.version}</dd>
+							<dd>{APP_VERSION}</dd>
 						</div>
 						<div>
-							<dt>Platform</dt>
-							<dd>{appInfo.platform}</dd>
+							<dt>Update Channel</dt>
+							<dd>{updateState.channel}</dd>
+						</div>
+						<div>
+							<dt>Update Status</dt>
+							<dd>{updateState.status}</dd>
 						</div>
 					</dl>
 				) : (

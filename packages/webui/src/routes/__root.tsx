@@ -19,11 +19,7 @@ function RootLayout() {
 					<Link to="/" className="nav-link" activeProps={{ className: "nav-link nav-link-active" }}>
 						Overview
 					</Link>
-					<Link
-						to="/concepts"
-						className="nav-link"
-						activeProps={{ className: "nav-link nav-link-active" }}
-					>
+					<Link to="/concepts" className="nav-link" activeProps={{ className: "nav-link nav-link-active" }}>
 						Concepts
 					</Link>
 				</nav>
