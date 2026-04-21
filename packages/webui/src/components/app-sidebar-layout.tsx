@@ -4,6 +4,7 @@ import {
 	ArrowUpDownIcon,
 	ChevronRightIcon,
 	MenuIcon,
+	PanelLeftIcon,
 	PlusIcon,
 	SearchIcon,
 	SettingsIcon,
@@ -35,6 +36,8 @@ import {
 } from "./ui/tooltip";
 
 const SIDEBAR_WIDTH = "17rem";
+const electronTitlebarLeftPadding =
+	"pl-[90px] wco:pl-[max(90px,calc(env(titlebar-area-x)+1em))]";
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
 	return (
@@ -53,9 +56,10 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
 				<div className="flex min-w-0 flex-1 flex-col">
 					<header
 						className={cn(
-							"app-mobile-header flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-3 md:hidden",
-							isElectron &&
-								"drag-region h-[52px] pl-[90px] wco:h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)] wco:pl-[calc(env(titlebar-area-x)+1em)]",
+							"app-mobile-header flex shrink-0 items-center gap-2 border-b border-border bg-background/95 md:hidden",
+							isElectron
+								? `drag-region h-[52px] pr-3 ${electronTitlebarLeftPadding} wco:h-[env(titlebar-area-height)] wco:pr-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x)+1em)]`
+								: "h-12 px-3",
 						)}
 					>
 						<MobileSidebar />
@@ -121,6 +125,9 @@ function SidebarContent() {
 			<div className="size-full h-auto min-h-0 flex-1 overflow-hidden" role="presentation">
 				<div className="h-full overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 					<div className="flex w-full min-w-0 flex-col gap-0" data-sidebar="content" data-slot="sidebar-content">
+						<div className="px-3 pt-1 pb-0.5 sm:px-4">
+							<SidebarWordMarkLink />
+						</div>
 						<SidebarCommandSearch />
 						<SidebarProjects
 							activeThreadId={activeThreadId}
@@ -139,45 +146,52 @@ function SidebarContent() {
 }
 
 function SidebarChromeHeader() {
-	const wordmark = (
-		<div className="flex items-center gap-2">
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<Link
-							aria-label="Go to threads"
-							className="ml-1 flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-md outline-hidden ring-ring transition-colors hover:text-foreground focus-visible:ring-2"
-							to="/"
-						>
-							<CodeWorkMark />
-							<span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
-								Code
-							</span>
-							<span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
-								{APP_STAGE_LABEL}
-							</span>
-						</Link>
-					}
-				/>
-				<TooltipContent side="bottom" sideOffset={2}>
-					Version {APP_VERSION}
-				</TooltipContent>
-			</Tooltip>
-		</div>
-	);
+	if (!isElectron) return null;
 
 	return (
 		<div
 			className={cn(
-				"flex flex-col gap-3 px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-3",
-				isElectron &&
-					"drag-region h-[52px] flex-row items-center gap-2 py-0 pl-[90px] wco:h-[env(titlebar-area-height)] wco:pl-[calc(env(titlebar-area-x)+1em)]",
+				`drag-region flex h-[52px] flex-row items-center gap-2 px-4 py-0 ${electronTitlebarLeftPadding} wco:h-[env(titlebar-area-height)]`,
 			)}
 			data-sidebar="header"
 			data-slot="sidebar-header"
 		>
-			{wordmark}
+			<div className="flex items-center">
+				<Button aria-label="Toggle sidebar" className="size-5 -translate-y-px p-0 text-muted-foreground/70" size="icon" variant="ghost">
+					<PanelLeftIcon className="size-3.5" />
+				</Button>
+			</div>
 		</div>
+	);
+}
+
+
+function SidebarWordMarkLink() {
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<Link
+						aria-label="Go to threads"
+						className="flex min-w-0 w-fit cursor-pointer items-center gap-1 rounded-md outline-hidden ring-ring transition-colors hover:text-foreground focus-visible:ring-2"
+						to="/"
+					>
+						<span className="truncate text-sm font-medium tracking-tight">
+							<span className="text-foreground">C</span>
+							<span className="text-muted-foreground">ode</span>
+							<span className="text-foreground">W</span>
+							<span className="text-muted-foreground">ork</span>
+						</span>
+						<span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
+							{APP_STAGE_LABEL}
+						</span>
+					</Link>
+				}
+			/>
+			<TooltipContent side="bottom" sideOffset={2}>
+				Version {APP_VERSION}
+			</TooltipContent>
+		</Tooltip>
 	);
 }
 
@@ -446,8 +460,11 @@ function ProjectFavicon({ project }: { project: SidebarMockProject }) {
 
 function CodeWorkMark() {
 	return (
-		<span className="inline-flex h-4 w-auto shrink-0 items-center text-[10px] font-semibold tracking-normal text-foreground">
-			CW
+		<span className="inline-flex h-4 w-auto shrink-0 items-center text-[10px] font-semibold tracking-normal">
+			<span className="text-foreground">C</span>
+			<span className="text-muted-foreground">ode</span>
+			<span className="text-foreground">W</span>
+			<span className="text-muted-foreground">ork</span>
 		</span>
 	);
 }
