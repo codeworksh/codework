@@ -55,6 +55,11 @@ const devContentSecurityPolicy = createDevContentSecurityPolicy();
 
 export default defineConfig(({ command }) => ({
 	plugins: [tanstackRouter(), react(), tailwindcss()],
+	resolve: {
+		alias: {
+			"@": fileURLToPath(new URL("./src", import.meta.url)),
+		},
+	},
 	define: {
 		"import.meta.env.VITE_HTTP_URL": JSON.stringify(configuredHttpUrl ?? ""),
 		"import.meta.env.APP_VERSION": JSON.stringify(pkg.version),

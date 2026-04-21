@@ -6,6 +6,13 @@
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
 		"jsx": "react-jsx",
+		"paths": {
+			"@/*": ["./src/*"],
+			"@codeworksh/aikit": ["../aikit/src/index.ts"],
+			"@codeworksh/aikit/codemode/drivers": ["../aikit/src/agent/codemode/drivers/drivers.ts"],
+			"@codeworksh/bridge": ["../bridge/src/index.ts"],
+			"@codeworksh/utils": ["../utils/src/index.ts"]
+		},
 		"types": ["vite/client"],
 		"noEmit": true
 	},

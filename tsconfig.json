@@ -5,6 +5,7 @@
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",
 		"paths": {
+			"@/*": ["./packages/webui/src/*"],
 			"@codeworksh/aikit": ["./packages/aikit/src/index.ts"],
 			"@codeworksh/aikit/codemode/drivers": ["./packages/aikit/src/agent/codemode/drivers/drivers.ts"],
 			"@codeworksh/bridge": ["./packages/bridge/src/index.ts"],
