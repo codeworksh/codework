@@ -5,6 +5,7 @@
 		"target": "ES2022",
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
+		"resolveJsonModule": true,
 		"jsx": "react-jsx",
 		"paths": {
 			"@/*": ["./src/*"],
