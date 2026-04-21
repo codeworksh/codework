@@ -7,7 +7,7 @@ import "./styles.css";
 
 import { isElectron } from "./env.ts";
 import { getRouter } from "./router.tsx";
-import { APP_DISPLAY_NAME } from "./branding";
+import { APP_DISPLAY_NAME } from "./branding.ts";
 import { initializeThemeSync } from "./lib/theme.ts";
 import { syncDocumentWindowControlsOverlayClass } from "./lib/window-controls-overlay.ts";
 

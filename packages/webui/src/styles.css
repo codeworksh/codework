@@ -5,6 +5,7 @@
 @import "@fontsource/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant wco (&:is(.wco, .wco *));
 
 .no-transitions,
 .no-transitions *,
@@ -135,5 +136,19 @@
 	}
 	html {
 		@apply font-sans;
+	}
+}
+
+@layer components {
+	.drag-region {
+		-webkit-app-region: drag;
+	}
+
+	.drag-region button,
+	.drag-region input,
+	.drag-region textarea,
+	.drag-region select,
+	.drag-region a {
+		-webkit-app-region: no-drag;
 	}
 }
