@@ -38,8 +38,13 @@ import {
 const SIDEBAR_WIDTH = "17rem";
 const electronTitlebarLeftPadding =
 	"pl-[90px] wco:pl-[max(90px,calc(env(titlebar-area-x)+1em))]";
+const sidebarChromeHeaderClassName =
+	`drag-region flex h-[52px] flex-row items-center gap-2 px-4 py-0 ${electronTitlebarLeftPadding} wco:h-[env(titlebar-area-height)]`;
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
+	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+	const toggleSidebar = () => setIsSidebarOpen((current) => !current);
+
 	return (
 		<TooltipProvider delay={250}>
 			<div
@@ -47,13 +52,35 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
 				style={{ "--sidebar-width": SIDEBAR_WIDTH } as React.CSSProperties}
 			>
 				<div className="group peer hidden text-sidebar-foreground md:block" data-collapsible="" data-side="left" data-state="expanded" data-variant="sidebar">
-					<div className="relative w-[var(--sidebar-width)] bg-transparent transition-[width] duration-200 ease-linear" data-slot="sidebar-gap" />
-					<aside className="fixed inset-y-0 left-0 z-10 hidden h-svh w-[var(--sidebar-width)] border-r border-border bg-card text-foreground transition-[width] duration-200 ease-linear md:flex" data-slot="sidebar-container">
-						<SidebarSurface />
+					<div
+						className={cn(
+							"relative bg-transparent transition-[width] duration-200 ease-in-out motion-reduce:transition-none",
+							isSidebarOpen ? "w-[var(--sidebar-width)]" : "w-0",
+						)}
+						data-slot="sidebar-gap"
+					/>
+					<aside
+						className={cn(
+							"fixed inset-y-0 left-0 z-10 hidden h-svh w-[var(--sidebar-width)] border-r border-border bg-card text-foreground transition-transform duration-200 ease-in-out will-change-transform motion-reduce:transition-none md:flex",
+							isSidebarOpen ? "translate-x-0" : "-translate-x-full",
+						)}
+						data-slot="sidebar-container"
+					>
+						<SidebarSurface isSidebarOpen={isSidebarOpen} onToggleSidebar={toggleSidebar} showChromeHeader={isElectron} />
 					</aside>
 				</div>
 
 				<div className="flex min-w-0 flex-1 flex-col">
+					{isElectron ? (
+						<div
+							className={cn("fixed top-0 left-0 z-20 hidden md:flex", sidebarChromeHeaderClassName)}
+							data-sidebar="header"
+							data-slot="sidebar-header"
+						>
+							<SidebarTriggerButton isSidebarOpen={isSidebarOpen} onToggleSidebar={toggleSidebar} />
+						</div>
+					) : null}
+
 					<header
 						className={cn(
 							"app-mobile-header flex shrink-0 items-center gap-2 border-b border-border bg-background/95 md:hidden",
@@ -77,10 +104,18 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
 	);
 }
 
-function SidebarSurface() {
+function SidebarSurface({
+	isSidebarOpen,
+	onToggleSidebar,
+	showChromeHeader = false,
+}: {
+	isSidebarOpen?: boolean;
+	onToggleSidebar?: () => void;
+	showChromeHeader?: boolean;
+}) {
 	return (
 		<div className="flex h-full w-full min-w-0 flex-col bg-sidebar" data-sidebar="sidebar" data-slot="sidebar-inner">
-			<SidebarContent />
+			<SidebarContent isSidebarOpen={isSidebarOpen} onToggleSidebar={onToggleSidebar} showChromeHeader={showChromeHeader} />
 			<button
 				aria-label="Resize Sidebar"
 				className="absolute inset-y-0 -right-4 z-20 hidden w-4 -translate-x-1/2 cursor-w-resize transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex"
@@ -94,7 +129,15 @@ function SidebarSurface() {
 	);
 }
 
-function SidebarContent() {
+function SidebarContent({
+	isSidebarOpen,
+	onToggleSidebar,
+	showChromeHeader = false,
+}: {
+	isSidebarOpen?: boolean;
+	onToggleSidebar?: () => void;
+	showChromeHeader?: boolean;
+}) {
 	const [expandedProjectIds, setExpandedProjectIds] = useState(() =>
 		new Set(sidebarMockData.projects.filter((project) => project.expanded).map((project) => project.id)),
 	);
@@ -120,7 +163,7 @@ function SidebarContent() {
 
 	return (
 		<>
-			<SidebarChromeHeader />
+			{showChromeHeader && onToggleSidebar ? <SidebarChromeHeader isSidebarOpen={isSidebarOpen} onToggleSidebar={onToggleSidebar} /> : null}
 
 			<div className="size-full h-auto min-h-0 flex-1 overflow-hidden" role="presentation">
 				<div className="h-full overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -145,22 +188,45 @@ function SidebarContent() {
 	);
 }
 
-function SidebarChromeHeader() {
-	if (!isElectron) return null;
-
+function SidebarChromeHeader({
+	isSidebarOpen: _isSidebarOpen,
+	onToggleSidebar: _onToggleSidebar,
+}: {
+	isSidebarOpen?: boolean;
+	onToggleSidebar: () => void;
+}) {
 	return (
 		<div
-			className={cn(
-				`drag-region flex h-[52px] flex-row items-center gap-2 px-4 py-0 ${electronTitlebarLeftPadding} wco:h-[env(titlebar-area-height)]`,
-			)}
+			className={sidebarChromeHeaderClassName}
 			data-sidebar="header"
 			data-slot="sidebar-header"
-		>
-			<div className="flex items-center">
-				<Button aria-label="Toggle sidebar" className="size-5 -translate-y-px p-0 text-muted-foreground/70" size="icon" variant="ghost">
-					<PanelLeftIcon className="size-3.5" />
-				</Button>
-			</div>
+			aria-hidden="true"
+		/>
+	);
+}
+
+function SidebarTriggerButton({
+	isSidebarOpen = true,
+	onToggleSidebar,
+}: {
+	isSidebarOpen?: boolean;
+	onToggleSidebar: () => void;
+}) {
+	return (
+		<div className="flex items-center">
+			<Button
+				aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+				aria-pressed={!isSidebarOpen}
+				className="size-5 -translate-y-px p-0 text-muted-foreground/70 transition-colors active:not-aria-[haspopup]:-translate-y-px"
+				data-sidebar="trigger"
+				data-slot="sidebar-trigger"
+				onClick={onToggleSidebar}
+				size="icon"
+				type="button"
+				variant="ghost"
+			>
+				<PanelLeftIcon className="size-3.5" />
+			</Button>
 		</div>
 	);
 }
