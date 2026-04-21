@@ -177,10 +177,8 @@ function SidebarWordMarkLink() {
 						to="/"
 					>
 						<span className="truncate text-sm font-medium tracking-tight">
-							<span className="text-foreground">C</span>
-							<span className="text-muted-foreground">ode</span>
-							<span className="text-foreground">W</span>
-							<span className="text-muted-foreground">ork</span>
+							<span className="text-foreground">Code</span>
+							<span className="ml-0.5 text-muted-foreground">Work</span>
 						</span>
 						<span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
 							{APP_STAGE_LABEL}
@@ -461,10 +459,8 @@ function ProjectFavicon({ project }: { project: SidebarMockProject }) {
 function CodeWorkMark() {
 	return (
 		<span className="inline-flex h-4 w-auto shrink-0 items-center text-[10px] font-semibold tracking-normal">
-			<span className="text-foreground">C</span>
-			<span className="text-muted-foreground">ode</span>
-			<span className="text-foreground">W</span>
-			<span className="text-muted-foreground">ork</span>
+			<span className="text-foreground">Code</span>
+			<span className="ml-0.5 text-muted-foreground">Work</span>
 		</span>
 	);
 }
