@@ -4,6 +4,8 @@
 	const THEME_STORAGE_KEY = "codework:theme";
 	const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 
+	document.documentElement.dataset.bootShellStartedAt = String(performance.now());
+
 	try {
 		const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
 		const theme =
