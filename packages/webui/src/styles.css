@@ -6,6 +6,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+.no-transitions,
+.no-transitions *,
+.no-transitions *::before,
+.no-transitions *::after {
+	transition: none !important;
+}
+
 @theme inline {
 	--font-heading: var(--font-sans);
 	--font-sans: "IBM Plex Sans Variable", sans-serif;

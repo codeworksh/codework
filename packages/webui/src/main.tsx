@@ -8,11 +8,14 @@ import "./styles.css";
 import { isElectron } from "./env.ts";
 import { getRouter } from "./router.tsx";
 import { APP_DISPLAY_NAME } from "./branding";
+import { initializeThemeSync } from "./lib/theme.ts";
 import { syncDocumentWindowControlsOverlayClass } from "./lib/window-controls-overlay.ts";
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
 const history = isElectron ? createHashHistory() : createBrowserHistory();
 const router = getRouter(history);
+
+initializeThemeSync();
 
 if (isElectron) {
 	syncDocumentWindowControlsOverlayClass();

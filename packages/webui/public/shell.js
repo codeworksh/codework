@@ -13,10 +13,12 @@
 		const chromeColor = isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND;
 
 		document.documentElement.classList.toggle("dark", isDark);
+		document.documentElement.style.colorScheme = isDark ? "dark" : "light";
 		document.documentElement.style.backgroundColor = chromeColor;
 		themeColorMeta?.setAttribute("content", chromeColor);
 	} catch {
 		document.documentElement.classList.add("dark");
+		document.documentElement.style.colorScheme = "dark";
 		document.documentElement.style.backgroundColor = DARK_BACKGROUND;
 		themeColorMeta?.setAttribute("content", DARK_BACKGROUND);
 	}
