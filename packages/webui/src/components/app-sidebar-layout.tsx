@@ -40,6 +40,8 @@ const electronTitlebarLeftPadding =
 	"pl-[90px] wco:pl-[max(90px,calc(env(titlebar-area-x)+1em))]";
 const sidebarChromeHeaderClassName =
 	`drag-region flex h-[52px] flex-row items-center gap-2 px-4 py-0 ${electronTitlebarLeftPadding} wco:h-[env(titlebar-area-height)]`;
+const mainChromeDragRegionClassName =
+	"drag-region fixed top-0 right-0 z-20 hidden h-[52px] bg-transparent transition-[left] duration-200 ease-in-out motion-reduce:transition-none md:block wco:h-[env(titlebar-area-height)] wco:right-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x))]";
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
 	const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -72,13 +74,23 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
 
 				<div className="flex min-w-0 flex-1 flex-col">
 					{isElectron ? (
-						<div
-							className={cn("fixed top-0 left-0 z-20 hidden md:flex", sidebarChromeHeaderClassName)}
-							data-sidebar="header"
-							data-slot="sidebar-header"
-						>
-							<SidebarTriggerButton isSidebarOpen={isSidebarOpen} onToggleSidebar={toggleSidebar} />
-						</div>
+						<>
+							<div
+								aria-hidden="true"
+								className={cn(
+									mainChromeDragRegionClassName,
+									isSidebarOpen ? "left-[var(--sidebar-width)]" : "left-0",
+								)}
+								data-slot="main-drag-region"
+							/>
+							<div
+								className={cn("fixed top-0 left-0 z-20 hidden md:flex", sidebarChromeHeaderClassName)}
+								data-sidebar="header"
+								data-slot="sidebar-header"
+							>
+								<SidebarTriggerButton isSidebarOpen={isSidebarOpen} onToggleSidebar={toggleSidebar} />
+							</div>
+						</>
 					) : null}
 
 					<header
