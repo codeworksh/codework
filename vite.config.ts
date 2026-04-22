@@ -1,53 +1,21 @@
-import { builtinModules } from "node:module";
-import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
-const repoRoot = fileURLToPath(new URL("./", import.meta.url));
-const workspaceEntries = {
-	aikit: fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),
-	aikitCodeModeDrivers: fileURLToPath(
+const ignoredPaths = ["dist/**", "**/dist/**", "node_modules/**", "**/node_modules/**", ".pnpm-store/**", ".zed/**"];
+const aliases = {
+	"@codeworksh/aikit": fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),
+	"@codeworksh/aikit/codemode/drivers": fileURLToPath(
 		new URL("./packages/aikit/src/agent/codemode/drivers/drivers.ts", import.meta.url),
 	),
-	utils: fileURLToPath(new URL("./packages/utils/src/index.ts", import.meta.url)),
+	"@codeworksh/utils": fileURLToPath(new URL("./packages/utils/src/index.ts", import.meta.url)),
 };
-const workspaceDir = relative(repoRoot, process.cwd()).replaceAll("\\", "/");
-const packEntries =
-	workspaceDir === "packages/aikit"
-		? [workspaceEntries.aikit, workspaceEntries.aikitCodeModeDrivers]
-		: workspaceDir === "packages/utils"
-			? [workspaceEntries.utils]
-			: [workspaceEntries.aikit, workspaceEntries.utils];
-const testIncludes =
-	workspaceDir === "packages/aikit"
-		? ["test/**/*.test.ts"]
-		: workspaceDir === "packages/utils"
-			? ["test/**/*.test.ts"]
-			: ["packages/**/*.test.ts"];
-const ignoredPaths = ["dist/**", "**/dist/**", "node_modules/**", "**/node_modules/**", ".pnpm-store/**", ".zed/**"];
-
-const external = (id: string) =>
-	builtinModules.includes(id) ||
-	builtinModules.some((moduleName) => id === `node:${moduleName}`) ||
-	(!id.startsWith(".") && !id.startsWith("/") && !id.startsWith("\0"));
 
 export default defineConfig({
-	build: {
-		lib: {
-			entry: {
-				aikit: workspaceEntries.aikit,
-				utils: workspaceEntries.utils,
-			},
-			formats: ["es"],
-		},
-		outDir: "dist/build",
-		sourcemap: true,
-		rollupOptions: {
-			external,
-		},
+	resolve: {
+		alias: aliases,
 	},
 	test: {
-		include: testIncludes,
+		include: ["packages/**/*.test.ts"],
 	},
 	lint: {
 		ignorePatterns: ignoredPaths,
@@ -62,13 +30,5 @@ export default defineConfig({
 		useTabs: true,
 		tabWidth: 3,
 		sortPackageJson: true,
-	},
-	pack: {
-		entry: packEntries,
-		format: ["esm"],
-		dts: true,
-		sourcemap: true,
-		clean: true,
-		outDir: "dist/pack",
 	},
 });

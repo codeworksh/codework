@@ -1,0 +1,46 @@
+{
+	"name": "@codeworksh/bridge",
+	"version": "0.0.0",
+	"description": "Bridge toolkit for reusable integration helpers.",
+	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/bridge",
+	"bugs": {
+		"url": "https://github.com/codeworksh/codework/issues"
+	},
+	"license": "MIT",
+	"author": "Sanchit Kudari",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/bridge"
+	},
+	"files": [
+		"dist",
+		"src",
+		"README.md"
+	],
+	"type": "module",
+	"types": "./dist/pack/index.d.mts",
+	"exports": {
+		".": "./dist/pack/index.mjs",
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"bump": "bumpp",
+		"test": "vp test",
+		"check": "vp check",
+		"lint": "vp lint"
+	},
+	"devDependencies": {
+		"bumpp": "^11.0.1"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	}
+}

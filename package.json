@@ -22,20 +22,23 @@
 		"check:packages": "vp run -r check",
 		"test": "vp test",
 		"test:packages": "vp run -r test",
-		"build": "vp build",
+		"build": "vp run -r build",
 		"build:packages": "vp run -r build",
 		"desktop:build": "pnpm --filter @codeworksh/desktop build",
 		"desktop:start": "pnpm --filter @codeworksh/desktop start",
 		"publish:package": "node scripts/publish.js",
 		"publish:aikit": "node scripts/publish.js aikit",
 		"publish:aikit:dry": "node scripts/publish.js aikit --dry-run",
+		"publish:bridge": "node scripts/publish.js bridge",
+		"publish:bridge:dry": "node scripts/publish.js bridge --dry-run",
 		"publish:utils": "node scripts/publish.js utils",
 		"publish:utils:dry": "node scripts/publish.js utils --dry-run"
 	},
 	"devDependencies": {
-		"@sinclair/typebox": "^0.34.48",
-		"@types/node": "^24.6.1",
-		"typescript": "^5.8.3",
+		"@sinclair/typebox": "^0.34.49",
+		"@types/node": "^24.12.2",
+		"@typescript/native-preview": "7.0.0-dev.20260328.1",
+		"typescript": "^5.9.3",
 		"vite-plus": "0.1.17"
 	},
 	"packageManager": "pnpm@10.25.0"
