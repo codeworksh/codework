@@ -5,10 +5,7 @@ function resolveDesktopAppUserModelId(isDevelopment: boolean): string {
 	return isDevelopment ? "com.codeworksh.codework.dev" : "com.codeworksh.codework";
 }
 
-export function configureDesktopAppIdentity(input: {
-	isDevelopment: boolean;
-	branding: DesktopAppBranding;
-}): void {
+export function configureDesktopAppIdentity(input: { isDevelopment: boolean; branding: DesktopAppBranding }): void {
 	app.setName(input.branding.displayName);
 	app.setAboutPanelOptions({
 		applicationName: input.branding.displayName,

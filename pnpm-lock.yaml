@@ -77,6 +77,16 @@ importers:
         specifier: ^11.0.1
         version: 11.0.1
 
+  packages/coding:
+    dependencies:
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+    devDependencies:
+      bumpp:
+        specifier: ^11.0.1
+        version: 11.0.1
+
   packages/desktop:
     dependencies:
       electron:

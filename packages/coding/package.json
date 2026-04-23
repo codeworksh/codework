@@ -1,8 +1,9 @@
 {
-	"name": "@codeworksh/bridge",
+	"name": "@codeworksh/coding",
 	"version": "0.0.0",
 	"private": true,
-	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/bridge",
+	"description": "CodeWork coding agent powered by aikit",
+	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/coding",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
 	},
@@ -11,7 +12,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/codeworksh/codework.git",
-		"directory": "packages/bridge"
+		"directory": "packages/coding"
 	},
 	"files": [
 		"dist",

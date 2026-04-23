@@ -7,16 +7,12 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceMap = new Map([
 	["aikit", "packages/aikit"],
 	["@codeworksh/aikit", "packages/aikit"],
-	["bridge", "packages/bridge"],
-	["@codeworksh/bridge", "packages/bridge"],
 	["utils", "packages/utils"],
 	["@codeworksh/utils", "packages/utils"],
 ]);
 
 function usage() {
-	console.error(
-		"Usage: node scripts/publish.js <aikit|bridge|utils|@codeworksh/name|packages/name> [npm publish args]",
-	);
+	console.error("Usage: node scripts/publish.js <aikit|utils|@codeworksh/aikit|@codeworksh/utils> [npm publish args]");
 	process.exit(1);
 }
 
@@ -30,7 +26,9 @@ async function readJSON(path) {
 
 function resolvePackageDir(target) {
 	const normalized = target.replace(/\/+$/, "");
-	const workspaceDir = workspaceMap.get(normalized) ?? normalized;
+	const workspaceDir = workspaceMap.get(normalized);
+	if (!workspaceDir) usage();
+
 	return resolve(repoRoot, workspaceDir);
 }
 
@@ -214,6 +212,11 @@ if (!manifest.name) {
 
 if (!manifest.name.startsWith("@codeworksh/")) {
 	console.error(`Refusing to publish unscoped package: ${manifest.name}`);
+	process.exit(1);
+}
+
+if (manifest.private) {
+	console.error(`Refusing to publish private package: ${manifest.name}`);
 	process.exit(1);
 }
 

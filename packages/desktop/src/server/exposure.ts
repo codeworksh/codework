@@ -65,10 +65,7 @@ export function resolveDesktopServerExposure(input: {
 		};
 	}
 
-	const advertisedHost = resolveLanAdvertisedHost(
-		input.networkInterfaces,
-		input.advertisedHostOverride,
-	);
+	const advertisedHost = resolveLanAdvertisedHost(input.networkInterfaces, input.advertisedHostOverride);
 
 	return {
 		mode: input.mode,
