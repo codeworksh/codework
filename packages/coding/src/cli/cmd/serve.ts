@@ -1,18 +1,37 @@
-import { Server } from "../../server/server"
-import { cmd } from "./cmd"
-import { withNetworkOptions, resolveNetworkOptions } from "../network"
+const shutdownSignals = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
+function waitForShutdownSignal() {
+	return new Promise<void>((resolve) => {
+		const onSignal = () => {
+			for (const signal of shutdownSignals) {
+				process.off(signal, onSignal);
+			}
+			resolve();
+		};
+
+		for (const signal of shutdownSignals) {
+			process.on(signal, onSignal);
+		}
+	});
+}
+
+import { Server } from "../../server/server.ts";
+import { cmd } from "./cmd.ts";
+import { withNetworkOptions, resolveNetworkOptions } from "../network.ts";
 
 export const ServeCommand = cmd({
-  command: "serve",
-  builder: (yargs) => withNetworkOptions(yargs),
-  describe: "starts a headless codework server",
-  handler: async (args) => {
-    const opts = await resolveNetworkOptions(args)
-    const server = Server.listen(opts)
-    console.log(`opencode server listening on http://${server.hostname}:${server.port}`)
+	command: "serve",
+	builder: (yargs) => withNetworkOptions(yargs),
+	describe: "starts a headless codework server",
+	handler: async (args) => {
+		const opts = await resolveNetworkOptions(args);
+		const server = await Server.listen(opts);
+		console.log(`codework server listening on ${server.url}`);
 
-    await new Promise(() => {})
-    await server.close()
-  },
-})
+		try {
+			await waitForShutdownSignal();
+		} finally {
+			await server.close();
+		}
+	},
+});
