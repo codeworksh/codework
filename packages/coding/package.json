@@ -33,6 +33,7 @@
 		"lint": "vp lint"
 	},
 	"devDependencies": {
+		"@types/yargs": "^17.0.35",
 		"bumpp": "^11.0.1"
 	},
 	"peerDependencies": {
@@ -40,5 +41,11 @@
 	},
 	"engines": {
 		"node": ">=24.14.1"
+	},
+	"dependencies": {
+		"@codeworksh/utils": "workspace:*",
+		"h3": "2.0.1-rc.20",
+		"yargs": "^18.0.0",
+		"zod": "^4.3.6"
 	}
 }
