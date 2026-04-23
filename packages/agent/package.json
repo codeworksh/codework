@@ -1,9 +1,9 @@
 {
-	"name": "@codeworksh/coding",
+	"name": "@codeworksh/agent",
 	"version": "0.0.0",
 	"private": true,
-	"description": "CodeWork coding agent powered by aikit",
-	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/coding",
+	"description": "CodeWork agent powered by aikit",
+	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/agent",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
 	},
@@ -12,7 +12,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/codeworksh/codework.git",
-		"directory": "packages/coding"
+		"directory": "packages/agent"
 	},
 	"bin": {
 		"codework": "./dist/pack/index.mjs"
