@@ -1,12 +1,36 @@
-import { H3, serve } from "h3";
-import { lazy } from "@codeworksh/utils";
+import { H3, type HTTPError, onError, serve } from "h3";
+import { lazy, NamedError } from "@codeworksh/utils";
 
 export namespace Server {
 	const app = new H3();
 	type ServerInstance = ReturnType<typeof serve>;
 	type ListeningServer = ServerInstance & { url: string };
 
-	export const App: () => H3 = lazy(() => app.get("/", (_event) => "⚡️ Tadaa!"));
+	function getErrorCause(error: HTTPError) {
+		return error.cause instanceof Error ? error.cause : error;
+	}
+
+	function getErrorMessage(error: unknown) {
+		if (error instanceof Error) return error.stack || error.message;
+		return String(error);
+	}
+
+	function getErrorResponse(error: HTTPError) {
+		const cause = getErrorCause(error);
+		console.error(cause);
+
+		if (cause instanceof NamedError) {
+			return Response.json(cause.toObject(), { status: 500 });
+		}
+
+		if (!error.unhandled) {
+			return Response.json(error.toJSON(), { headers: error.headers, status: error.status });
+		}
+
+		return Response.json(new NamedError.Unknown({ message: getErrorMessage(cause) }).toObject(), { status: 500 });
+	}
+
+	export const App: () => H3 = lazy(() => app.use(onError(getErrorResponse)).get("/", (_event) => "⚡️ Tadaa!"));
 
 	function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 		return error instanceof Error && "code" in error && error.code === "EADDRINUSE";
