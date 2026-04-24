@@ -24,7 +24,7 @@
 		"test:packages": "vp run -r test",
 		"build": "vp run -r build",
 		"build:packages": "vp run -r build",
-		"server:start": "node --experimental-transform-types packages/agent/src/index.ts serve",
+		"server:start": "node --conditions=development --experimental-transform-types packages/agent/src/index.ts serve",
 		"server:dev": "node scripts/dev/server.mjs",
 		"desktop:build": "pnpm --filter @codeworksh/desktop build",
 		"desktop:start": "pnpm --filter @codeworksh/desktop start",

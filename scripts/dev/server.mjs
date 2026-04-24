@@ -6,7 +6,13 @@ import process from "node:process";
 const cwd = process.cwd();
 const entry = path.join(cwd, "packages/agent/src/index.ts");
 const watchRoot = path.join(cwd, "packages/agent/src");
-const childArgs = ["--experimental-transform-types", entry, "serve", ...process.argv.slice(2)];
+const childArgs = [
+	"--conditions=development",
+	"--experimental-transform-types",
+	entry,
+	"serve",
+	...process.argv.slice(2),
+];
 const pollIntervalMs = 250;
 const restartDebounceMs = 120;
 

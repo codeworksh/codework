@@ -28,7 +28,10 @@
 	"type": "module",
 	"types": "./dist/pack/index.d.mts",
 	"exports": {
-		".": "./dist/pack/index.mjs",
+		".": {
+			"development": "./src/index.ts",
+			"default": "./dist/pack/index.mjs"
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {
