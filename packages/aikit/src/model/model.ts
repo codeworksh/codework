@@ -3,6 +3,7 @@ import { type Static, Type } from "@sinclair/typebox";
 import { keys, mapValues, pick, pipe } from "remeda";
 import { Provider } from "../provider/provider";
 import { ModelCatalog } from "./catalog";
+import { applyModification } from "./transform";
 
 export namespace Model {
 	export const KnownProtocolEnum = {
@@ -25,6 +26,14 @@ export namespace Model {
 		cacheWrite: Type.Number(),
 	});
 	const HeadersSchema = Type.Optional(Type.Record(Type.String(), Type.String()));
+
+	export const SupportedProtocolsSchema = Type.Object({
+		anthropicMessages: Type.Optional(Type.Literal(KnownProtocolEnum.anthropicMessages)),
+		openaiCompletions: Type.Optional(Type.Literal(KnownProtocolEnum.openaiCompletions)),
+		openaiResponses: Type.Optional(Type.Literal(KnownProtocolEnum.openaiResponses)),
+	});
+	//
+	// reprsents common base schema for a model
 	export const BaseSchema = Type.Object({
 		id: Type.String(),
 		name: Type.String(),
@@ -36,6 +45,7 @@ export namespace Model {
 		contextWindow: Type.Number(),
 		maxTokens: Type.Number(),
 		headers: HeadersSchema,
+		supportedProtocols: Type.Optional(Type.Partial(SupportedProtocolsSchema)), // optionally supported protocols
 	});
 
 	/**
@@ -63,7 +73,7 @@ export namespace Model {
 		),
 		openRouterRouting: Type.Optional(Provider.OpenRouterRoutingSchema),
 		vercelGatewayRouting: Type.Optional(Provider.VercelGatewayRoutingSchema),
-    zaiToolStream: Type.Optional(Type.Boolean()),
+		zaiToolStream: Type.Optional(Type.Boolean()),
 		supportsStrictMode: Type.Optional(Type.Boolean()),
 	});
 	export type OpenAICompletionsCompat = Static<typeof OpenAICompletionsCompatSchema>;
@@ -96,13 +106,13 @@ export namespace Model {
 		}),
 	]);
 
-	export const Schema = Type.Union([AnthropicSchema, OpenAICompletionsSchema, OpenAIResponsesSchema]);
-	export type Value = Static<typeof Schema>;
-	export type TModel<TProtocol extends KnownProtocol> = Extract<Value, { protocol: TProtocol }>;
+	export const Info = Type.Union([AnthropicSchema, OpenAICompletionsSchema, OpenAIResponsesSchema]);
+	export type Info = Static<typeof Info>;
+	export type TModel<TProtocol extends KnownProtocol> = Extract<Info, { protocol: TProtocol }>;
 	const BUILTINS = keys(Provider.KnownProviderEnum) as Provider.KnownProvider[];
 
 	export function calculateCost(
-		model: Value,
+		model: Info,
 		usage: {
 			input: number;
 			output: number;
@@ -124,18 +134,9 @@ export namespace Model {
 		usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 	}
 
-	export type BuiltInModels = Partial<Record<Provider.KnownProvider, Record<string, Value>>>;
+	export type BuiltInModels = Partial<Record<Provider.KnownProvider, Record<string, Info>>>;
 
-	function resolveProtocol(providerId: Provider.KnownProvider): KnownProtocol {
-		switch (providerId) {
-			case Provider.KnownProviderEnum.anthropic:
-				return KnownProtocolEnum.anthropicMessages;
-			case Provider.KnownProviderEnum.openai:
-				return KnownProtocolEnum.openaiResponses;
-		}
-	}
-
-	function normalizeInput(input?: string[]): Array<"text" | "image"> {
+	export function normalizeInput(input?: string[]): Array<"text" | "image"> {
 		const normalized = new Set<"text" | "image">();
 		for (const modality of input ?? ["text"]) {
 			if (modality === "text" || modality === "image") {
@@ -146,7 +147,7 @@ export namespace Model {
 		return [...normalized];
 	}
 
-	function toProviderInfo(
+	export function toProviderInfo(
 		providerId: Provider.KnownProvider,
 		provider: ModelCatalog.ModelsDevProvider,
 	): Provider.Info {
@@ -163,27 +164,8 @@ export namespace Model {
 		providerId: Provider.KnownProvider,
 		provider: ModelCatalog.ModelsDevProvider,
 		model: ModelCatalog.ModelsDevModel,
-	): Value {
-		const baseUrl = model.baseUrl ?? provider.baseUrl ?? provider.api;
-		const normalized: Value = {
-			id: model.id,
-			name: model.name,
-			provider: toProviderInfo(providerId, provider),
-			baseUrl,
-			reasoning: Boolean(model.reasoning),
-			input: normalizeInput(model.modalities.input),
-			cost: {
-				input: model.cost?.input ?? 0,
-				output: model.cost?.output ?? 0,
-				cacheRead: model.cost?.cache_read ?? 0,
-				cacheWrite: model.cost?.cache_write ?? 0,
-			},
-			contextWindow: model.limit?.context ?? 0,
-			maxTokens: model.limit?.output ?? 0,
-			headers: model.headers ?? provider.headers,
-			protocol: resolveProtocol(providerId),
-		};
-		return normalized;
+	): Info {
+		return applyModification(providerId, provider, model);
 	}
 
 	export async function getBuiltInModels(): Promise<BuiltInModels> {
@@ -198,12 +180,10 @@ export namespace Model {
 	}
 
 	export const registry = lazy(async () => {
-		const registry: Map<Provider.KnownProvider, Map<string, Value>> = new Map();
+		const registry: Map<Provider.KnownProvider, Map<string, Info>> = new Map();
 		const models = await getBuiltInModels();
-		for (const [provider, value] of Object.entries(models) as Array<
-			[Provider.KnownProvider, Record<string, Value>]
-		>) {
-			const providerModels = new Map<string, Value>();
+		for (const [provider, value] of Object.entries(models) as Array<[Provider.KnownProvider, Record<string, Info>]>) {
+			const providerModels = new Map<string, Info>();
 			for (const [id, model] of Object.entries(value)) {
 				providerModels.set(id, model);
 			}
@@ -212,13 +192,18 @@ export namespace Model {
 		return registry;
 	});
 
-	export async function getModel<TProvider extends Provider.KnownProvider, TModel extends Value["id"]>(
+	export async function getModel<TProvider extends Provider.KnownProvider, TModel extends Info["id"]>(
 		provider: TProvider,
 		model: TModel,
+		overrides?: Partial<Info>,
 	) {
 		const data = await registry();
 		const providerModels = data.get(provider);
-		return providerModels?.get(model);
+		const result = providerModels?.get(model);
+		if (result && overrides) {
+			return { ...result, ...overrides };
+		}
+		return result;
 	}
 
 	export async function getProviders(): Promise<Provider.KnownProvider[]> {
@@ -226,7 +211,7 @@ export namespace Model {
 		return Array.from(data.keys());
 	}
 
-	export async function getModels<TProvider extends Provider.KnownProvider>(provider: TProvider): Promise<Value[]> {
+	export async function getModels<TProvider extends Provider.KnownProvider>(provider: TProvider): Promise<Info[]> {
 		const data = await registry();
 		const models = data.get(provider);
 		return models ? Array.from(models.values()) : [];
@@ -244,7 +229,7 @@ export namespace Model {
 	 * Check if a model supports xhigh thinking level.
 	 * Currently only certain OpenAI Codex models support this.
 	 */
-	export function supportsXhigh(model: Value): boolean {
+	export function supportsXhigh(model: Info): boolean {
 		return isGpt5OrLater(model.id);
 	}
 
@@ -252,7 +237,7 @@ export namespace Model {
 	 * Check if two models are equal by comparing both their id and provider id.
 	 * Returns false if either model is null or undefined.
 	 */
-	export function modelsAreEqual(a: Value | null | undefined, b: Value | null | undefined): boolean {
+	export function modelsAreEqual(a: Info | null | undefined, b: Info | null | undefined): boolean {
 		if (!a || !b) return false;
 		return a.id === b.id && a.provider.id === b.provider.id;
 	}

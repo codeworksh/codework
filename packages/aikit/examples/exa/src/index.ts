@@ -1,4 +1,4 @@
-import { Agent, Message } from "@codeworksh/aikit";
+import { Agent, Message, llm } from "@codeworksh/aikit";
 import { type Static, Type } from "@sinclair/typebox";
 import { Exa } from "exa-js";
 import process from "node:process";
@@ -58,6 +58,11 @@ type ToolExecutionEndEvent = {
 	callID: string;
 	name: string;
 	status: "completed" | "error";
+	result: {
+		content: Array<{ type: string } & Record<string, unknown>>;
+		details?: unknown;
+		isError: boolean;
+	};
 };
 type TurnEndEvent = {
 	type: "turn.end";
@@ -126,12 +131,29 @@ function getFinalAssistantText(agent: Agent.Instance): string {
 		return "No assistant response was produced.";
 	}
 
+	if (finalMessage.errorMessage && finalMessage.errorMessage.trim().length > 0) {
+		return `Error: ${finalMessage.errorMessage}`;
+	}
+
 	const textParts = finalMessage.parts
 		.filter((part: Message.AssistantMessage["parts"][number]): part is Message.TextContent => part.type === "text")
 		.map((part: Message.TextContent) => part.text.trim())
 		.filter(Boolean);
 
-	return textParts.join("\n\n") || "The assistant finished without a text response.";
+	if (textParts.length > 0) {
+		return textParts.join("\n\n");
+	}
+
+	if (finalMessage.stopReason === "toolUse") {
+		const toolNames = finalMessage.parts
+			.filter((part): part is Message.ToolCall => part.type === "toolCall")
+			.map((part) => part.name)
+			.filter(Boolean);
+		const tools = toolNames.length > 0 ? ` (${toolNames.join(", ")})` : "";
+		return `The model stopped for tool execution${tools} without producing final text.`;
+	}
+
+	return `The assistant finished with stopReason=${finalMessage.stopReason} and no text response.`;
 }
 
 function last<T>(items: T[]): T | undefined {
@@ -143,12 +165,12 @@ function readStringField(record: Record<string, unknown>, key: string): string |
 	return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
-function readStringArrayField(record: Record<string, unknown>, key: string): string[] {
-	const value = record[key];
-	return Array.isArray(value)
-		? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-		: [];
-}
+// function readStringArrayField(record: Record<string, unknown>, key: string): string[] {
+// 	const value = record[key];
+// 	return Array.isArray(value)
+// 		? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+// 		: [];
+// }
 
 function readTextPreview(content: unknown[] | undefined): string | undefined {
 	const preview = last(content ?? []);
@@ -158,21 +180,21 @@ function readTextPreview(content: unknown[] | undefined): string | undefined {
 function formatResult(result: Record<string, unknown>, index: number): string {
 	const title = readStringField(result, "title") ?? "Untitled";
 	const url = readStringField(result, "url") ?? "No URL";
-	const summary = readStringField(result, "summary") ?? readStringField(result, "text");
-	const highlights = readStringArrayField(result, "highlights");
-	const publishedDate = readStringField(result, "publishedDate");
+	// const summary = readStringField(result, "summary") ?? readStringField(result, "text");
+	// const highlights = readStringArrayField(result, "highlights");
+	// const publishedDate = readStringField(result, "publishedDate");
 
 	const lines = [`${index + 1}. ${title}`, `URL: ${url}`];
 
-	if (publishedDate) {
-		lines.push(`Published: ${publishedDate}`);
-	}
+	// if (publishedDate) {
+	// 	lines.push(`Published: ${publishedDate}`);
+	// }
 
-	if (highlights.length > 0) {
-		lines.push(`Highlights: ${highlights.join(" ")}`);
-	} else if (summary) {
-		lines.push(`Summary: ${summary}`);
-	}
+	// if (highlights.length > 0) {
+	// 	lines.push(`Highlights: ${highlights.join(" ")}`);
+	// } else if (summary) {
+	// 	lines.push(`Summary: ${summary}`);
+	// }
 
 	return lines.join("\n");
 }
@@ -239,27 +261,32 @@ const exaSearchTool = Agent.defineTool<typeof exaSearchParameters>({
 });
 
 async function createAgent(): Promise<Agent.Instance> {
-	const model = process.env.AIKIT_MODEL ?? "claude-haiku-4-5-20251001";
-	requireEnv("ANTHROPIC_API_KEY");
+	requireEnv("OPENAI_API_KEY");
 	requireEnv("EXA_API_KEY");
 
+	const model = await llm("openai", "gpt-5-nano", {
+		protocol: "openai-completions",
+	});
+	if (!model)
+		throw new Agent.ModelNotFoundErr({
+			message: "model not found or not configured yet",
+			provider: "openai",
+			model: "gpt-5-nano",
+		});
 	const agent = await Agent.create({
 		name: "exa-sales-agent",
-		provider: "anthropic",
 		model,
-		getApiKey: async () => process.env.ANTHROPIC_API_KEY,
+		getApiKey: async () => process.env.OPENAI_API_KEY,
 		initialState: {
 			tools: [exaSearchTool],
 		},
 	});
 
 	agent.setSystemPrompt(
-		`
-You are a concise technical recruitment agent. Helping developers look for jobs.
-
-Use the exa_search tool whenever you need fresh company or people discovery.
-Prefer company search for account targeting and people search for individual prospecting.
-Return practical findings for hiring outreach and include the URLs you used.
+		`You are a technical recruitment agent helping developers find relevant job opportunities.
+Use exa_search for up-to-date company and people discovery (companies for targeting, people for outreach).
+Return actionable findings with role context, relevance, outreach angle, and source URLs.
+Be concise, and avoid generic advice.
 `.trim(),
 	);
 
@@ -271,7 +298,7 @@ function printBanner(): void {
 		`${colors.cyan}${colors.bold}╔══════════════════════════════════════════════════════════════╗
 ║                    aikit Exa Recruitment Agent              ║
 ║           Interactive company and people research           ║
-╚══════════════════════════════════════════════════════════════╝${colors.reset}
+╚═════════════════════════════════════════════════════════════╝${colors.reset}
 `,
 	);
 	console.log(`${colors.dim}Type a prompt and press Enter. Type 'exit' or 'quit' to stop.${colors.reset}`);
@@ -367,6 +394,10 @@ function createEventRenderer() {
 			}
 
 			if (isToolExecutionEndEvent(event)) {
+				//
+				// uncomment for debugging:
+				// const results = event.result.content;
+				// console.log("DEBUG:", results);
 				const suffix = event.status === "completed" ? "done" : "error";
 				writeToolLine(`↳ ${event.name}: ${suffix}`);
 				return;
@@ -379,8 +410,14 @@ function createEventRenderer() {
 			}
 		},
 		finish(agent: Agent.Instance): void {
+			const finalText = getFinalAssistantText(agent);
 			if (!printedAssistantHeader) {
-				console.log(`\n${colors.blue}${colors.bold}Agent:${colors.reset} ${getFinalAssistantText(agent)}\n`);
+				console.log(`\n${colors.blue}${colors.bold}Agent:${colors.reset} ${finalText}\n`);
+				return;
+			}
+
+			if (!printedBody) {
+				process.stdout.write(`${finalText}\n\n`);
 				return;
 			}
 

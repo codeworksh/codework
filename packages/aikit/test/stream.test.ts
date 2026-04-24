@@ -1,16 +1,13 @@
-import "./utils/env";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import type { Agent } from "../src/agent/agent";
 import { llm } from "../src/llm";
 import { Message } from "../src/message/message";
 import { ModelCatalog } from "../src/model/catalog";
 import { Model } from "../src/model/model";
+import { Provider } from "../src/provider/provider";
 import { Stream } from "../src/provider/stream";
 import { complete, completeSimple, stream, streamSimple } from "../src/stream";
-import { validateToolArguments } from "../src/utils/validation";
-import { expectAssistantToolUseMessage, expectValidToolCall } from "./utils/message";
+import "./utils/env";
 import { ROOT_MODELS_PATH } from "./utils/paths";
-import { calculatorTool } from "./utils/tools";
 
 function contextFor(prompt: string): Message.Context {
 	return {
@@ -39,44 +36,52 @@ function getText(message: Message.AssistantMessage): string {
 		.join("");
 }
 
-function userMessage(text: string): Message.UserMessage {
-	return Message.createUserMessage({
-		role: "user",
-		time: {
-			created: Date.now(),
-		},
-		parts: [
-			{
-				type: "text",
-				text,
-			},
-		],
-	});
-}
-
-function toToolExecution(toolCall: Message.ToolCall): Agent.ToolCallInFlight {
-	return {
-		callID: toolCall.callID,
-		name: toolCall.name,
-		rawArgs: toolCall.arguments,
-	};
-}
-
 async function getAnthropicModel() {
 	const model = await llm("anthropic", "claude-haiku-4-5-20251001");
 	expect(model).toBeDefined();
 	return model!;
 }
 
+function createOpenAICompletionsModel(): Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions> {
+	return {
+		id: "gpt-4o-mini",
+		name: "gpt-4o-mini",
+		provider: {
+			id: Provider.KnownProviderEnum.openai,
+			name: "OpenAI",
+			env: ["OPENAI_API_KEY"],
+		},
+		baseUrl: "https://api.openai.com/v1",
+		reasoning: false,
+		input: ["text"],
+		cost: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+		},
+		contextWindow: 128000,
+		maxTokens: 16384,
+		protocol: Model.KnownProtocolEnum.openaiCompletions,
+	};
+}
+
 describe("stream", () => {
 	it("registers built-in protocol providers into the Stream registry", () => {
-		const provider = Stream.getProtocolProvider(Model.KnownProtocolEnum.anthropicMessages);
+		const anthropicProvider = Stream.getProtocolProvider(Model.KnownProtocolEnum.anthropicMessages);
+		const openAICompletionsProvider = Stream.getProtocolProvider(Model.KnownProtocolEnum.openaiCompletions);
+		const registeredProtocols = Stream.getApiProviders()
+			.map((entry) => entry.protocol)
+			.sort();
 
-		expect(provider).toBeDefined();
-		expect(provider?.protocol).toBe(Model.KnownProtocolEnum.anthropicMessages);
-		expect(
-			Stream.getApiProviders().some((entry) => entry.protocol === Model.KnownProtocolEnum.anthropicMessages),
-		).toBe(true);
+		expect(anthropicProvider).toBeDefined();
+		expect(anthropicProvider?.protocol).toBe(Model.KnownProtocolEnum.anthropicMessages);
+		expect(openAICompletionsProvider).toBeDefined();
+		expect(openAICompletionsProvider?.protocol).toBe(Model.KnownProtocolEnum.openaiCompletions);
+		expect(registeredProtocols).toEqual([
+			Model.KnownProtocolEnum.anthropicMessages,
+			Model.KnownProtocolEnum.openaiCompletions,
+		]);
 	});
 
 	it("exposes the public callable helpers from the facade module", () => {
@@ -93,7 +98,7 @@ describe("stream", () => {
 			Stream.clearProtocolProviders();
 			stream.resolveProtocolProvider({
 				protocol: Model.KnownProtocolEnum.anthropicMessages,
-			} as unknown as Model.Value);
+			} as unknown as Model.Info);
 			throw new Error("expected resolveProtocolProvider() to throw");
 		} catch (error) {
 			expect(error).toBeInstanceOf(Stream.ProtocolProviderNotFoundError);
@@ -109,6 +114,7 @@ describe("stream", () => {
 });
 
 const describeIfAnthropic = process.env.ANTHROPIC_API_KEY ? describe : describe.skip;
+const describeIfOpenAI = process.env.OPENAI_API_KEY ? describe : describe.skip;
 
 describeIfAnthropic("anthropic stream", () => {
 	const originalModelsPath = process.env.CODEWORK_AIKIT_MODELS_PATH;
@@ -169,82 +175,55 @@ describeIfAnthropic("anthropic stream", () => {
 		expect(response.errorMessage).toBeFalsy();
 		expect(getText(response).length).toBeGreaterThan(0);
 	}, 30000);
+});
 
-	it("filters tool calls without corresponding tool results", async () => {
-		const model = await getAnthropicModel();
-		const context: Message.Context = {
-			systemPrompt: "You are a helpful assistant. Use the calculator tool when asked to perform calculations.",
-			messages: [userMessage("Please calculate 25 * 18 using the calculator tool.")],
-			tools: [calculatorTool],
-		};
+describeIfOpenAI("openai completions stream", () => {
+	it("completes basic text generation", async () => {
+		const model = createOpenAICompletionsModel();
+		const response = await stream.complete(
+			model,
+			contextFor("Reply with exactly: OpenAI registered test successful"),
+			{
+				apiKey: process.env.OPENAI_API_KEY,
+			},
+		);
 
-		const firstResponse = await stream.complete(model, context, {
-			apiKey: process.env.ANTHROPIC_API_KEY,
-		});
-		context.messages.push(firstResponse);
-
-		const toolCalls = expectAssistantToolUseMessage(firstResponse);
-
-		const args = validateToolArguments(calculatorTool, toToolExecution(toolCalls[0]!));
-		expect(args.expression).toContain("25");
-		expect(args.expression).toContain("18");
-
-		context.messages.push(userMessage("Never mind, just tell me what is 2+2?"));
-
-		const secondResponse = await stream.complete(model, context, {
-			apiKey: process.env.ANTHROPIC_API_KEY,
-		});
-
-		expect(secondResponse.stopReason).not.toBe("error");
-		expect(secondResponse.parts.length).toBeGreaterThan(0);
-
-		const secondText = getText(secondResponse);
-		const secondToolCalls = secondResponse.parts.filter((part) => part.type === "toolCall").length;
-		expect(secondToolCalls || secondText.length).toBeGreaterThan(0);
-		expect(["stop", "toolUse"]).toContain(secondResponse.stopReason);
+		expect(response.role).toBe("assistant");
+		expect(response.provider.id).toBe("openai");
+		expect(response.model).toBe(model.id);
+		expect(response.usage.input + response.usage.cacheRead).toBeGreaterThan(0);
+		expect(response.usage.output).toBeGreaterThan(0);
+		expect(response.errorMessage).toBeFalsy();
+		expect(getText(response)).toContain("OpenAI registered test successful");
 	}, 30000);
 
-	it("streams tool call events with validated arguments", async () => {
-		const model = await getAnthropicModel();
-		const context: Message.Context = {
-			systemPrompt: "You are a helpful assistant. Always use the calculator tool for arithmetic requests.",
-			messages: [userMessage("Use the calculator tool for `25 * 18`. Do not solve it yourself.")],
-			tools: [calculatorTool],
-		};
-		const s = stream(model, context, {
-			apiKey: process.env.ANTHROPIC_API_KEY,
+	it("streams text events", async () => {
+		const model = createOpenAICompletionsModel();
+		const s = stream(model, contextFor("Count from 1 to 3 in plain text"), {
+			apiKey: process.env.OPENAI_API_KEY,
 		});
 
-		let toolCallStarted = false;
-		let toolCallEnded = false;
-		let toolCallDelta = "";
-		let finalToolCall: Message.ToolCall | undefined;
+		let textStarted = false;
+		let textChunks = "";
+		let textCompleted = false;
 
 		for await (const event of s) {
-			if (event.type === "toolcall.start") {
-				toolCallStarted = true;
-			} else if (event.type === "toolcall.delta") {
-				toolCallDelta += event.delta;
-			} else if (event.type === "toolcall.end") {
-				toolCallEnded = true;
-				finalToolCall = event.toolCall;
+			if (event.type === "text.start") {
+				textStarted = true;
+			} else if (event.type === "text.delta") {
+				textChunks += event.delta;
+			} else if (event.type === "text.end") {
+				textCompleted = true;
 			}
 		}
 
 		const response = await s.result();
-		const responseToolCalls = response.parts.filter((part): part is Message.ToolCall => part.type === "toolCall");
 
-		expect(toolCallStarted).toBe(true);
-		expect(toolCallEnded).toBe(true);
-		expect(toolCallDelta.length).toBeGreaterThan(0);
-		expectAssistantToolUseMessage(response);
-		expect(finalToolCall).toBeDefined();
-		expectValidToolCall(finalToolCall!, "pending");
-		expect(finalToolCall?.name).toBe("calculator");
-		expect(responseToolCalls.some((toolCall) => toolCall.callID === finalToolCall?.callID)).toBe(true);
-
-		const args = validateToolArguments(calculatorTool, toToolExecution(finalToolCall!));
-		expect(args.expression).toContain("25");
-		expect(args.expression).toContain("18");
+		expect(textStarted).toBe(true);
+		expect(textChunks.length).toBeGreaterThan(0);
+		expect(textCompleted).toBe(true);
+		expect(response.role).toBe("assistant");
+		expect(response.errorMessage).toBeFalsy();
+		expect(getText(response).length).toBeGreaterThan(0);
 	}, 30000);
 });

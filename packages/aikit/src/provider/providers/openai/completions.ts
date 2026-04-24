@@ -46,7 +46,7 @@ function buildSyntheticToolResult(
 ): ChatCompletionToolMessageParam {
 	const message: ChatCompletionToolMessageParam = {
 		role: "tool",
-		content: "No Result Provided",
+		content: ["<result>", "No Result Provided", "</result>"].join("\n"),
 		tool_call_id: block.callID,
 	};
 	if (compat.requiresToolResultName) {
@@ -58,6 +58,10 @@ function buildSyntheticToolResult(
 export interface OpenAICompletionsOptions extends Stream.Options {
 	toolChoice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
 	reasoningEffort?: OpenAIReasoningEffort;
+}
+
+function resolveBaseUrl(model: Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions>): string {
+	return model.baseUrl || (model.provider.id === Provider.KnownProviderEnum.openai ? "https://api.openai.com/v1" : "");
 }
 
 export const streamOpenAICompletions: Stream.StreamFunction<
@@ -161,6 +165,8 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 				const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
 				if (!choice) continue;
 
+				// fallback: some providers (e.g., Moonshot) return usage
+				// in choice.usage instead of the standard chunk.usage
 				const choiceWithUsage = choice as unknown as {
 					usage?: Parameters<typeof parseChunkUsage>[0];
 				};
@@ -208,6 +214,10 @@ export const streamOpenAICompletions: Stream.StreamFunction<
 					}
 				}
 
+				// some endpoints return reasoning in reasoning_content (llama.cpp),
+				// or reasoning (other openai compatible endpoints)
+				// Use the first non-empty reasoning field to avoid duplication
+				// (e.g., chutes.ai returns both reasoning_content and reasoning with same content)
 				const reasoningFields = ["reasoning_content", "reasoning", "reasoning_text"] as const;
 				let foundReasoningField: (typeof reasoningFields)[number] | null = null;
 				for (const field of reasoningFields) {
@@ -393,6 +403,10 @@ function buildParams(
 	const compat = getCompat(model);
 	const messages = convertMessages(model, context, compat);
 	maybeAddOpenRouterAnthropicCacheControl(model, messages);
+	//
+	// resolve URL
+	// ideally this is last resort
+	const baseUrl = resolveBaseUrl(model);
 
 	const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 		model: model.id,
@@ -457,11 +471,11 @@ function buildParams(
 		);
 	}
 
-	if (model.baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
+	if (baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
 		(params as typeof params & { provider?: Provider.OpenRouterRouting }).provider = model.compat.openRouterRouting;
 	}
 
-	if (model.baseUrl.includes("ai-gateway.vercel.sh") && model.compat?.vercelGatewayRouting) {
+	if (baseUrl.includes("ai-gateway.vercel.sh") && model.compat?.vercelGatewayRouting) {
 		const routing = model.compat.vercelGatewayRouting;
 		if (routing.only || routing.order) {
 			const gatewayOptions: Record<string, string[]> = {};
@@ -484,6 +498,7 @@ function createClient(
 	apiKey?: string,
 	optsHeaders?: Record<string, string>,
 ) {
+	const baseUrl = resolveBaseUrl(model);
 	if (!apiKey) {
 		if (!process.env.OPENAI_API_KEY) {
 			throw new Error(
@@ -509,7 +524,7 @@ function createClient(
 
 	return new OpenAI({
 		apiKey,
-		baseURL: model.baseUrl,
+		baseURL: baseUrl,
 		dangerouslyAllowBrowser: true,
 		defaultHeaders: headers,
 	});
@@ -528,6 +543,8 @@ function maybeAddOpenRouterAnthropicCacheControl(
 ): void {
 	if (model.provider.id !== Provider.KnownProviderEnum.openrouter || !model.id.startsWith("anthropic/")) return;
 
+	// Anthropic-style caching requires cache_control on a text part. Add a breakpoint
+	// on the last user/assistant message (walking backwards until we find text content).
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const msg = messages[i];
 		if (!msg) continue;
@@ -844,7 +861,7 @@ function detectCompat(
 	model: Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions>,
 ): Required<Model.OpenAICompletionsCompat> {
 	const provider = model.provider.id;
-	const baseUrl = model.baseUrl;
+	const baseUrl = resolveBaseUrl(model);
 
 	const isZai = provider === "zai" || baseUrl.includes("api.z.ai");
 	const isNonStandard =

@@ -1,0 +1,30 @@
+{
+	"name": "@codeworksh/desktop",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "dist/electron/main.cjs",
+	"scripts": {
+		"dev": "node scripts/dev.mjs",
+		"dev:bundle": "tsdown --watch",
+		"dev:electron": "node scripts/reload.mjs",
+		"build": "tsdown && pnpm --filter @codeworksh/webui build",
+		"lint": "vp lint",
+		"start": "node scripts/start.mjs",
+		"check": "vp check",
+		"test:smoke": "node scripts/smoke.mjs"
+	},
+	"dependencies": {
+		"electron": "^40.6.0"
+	},
+	"devDependencies": {
+		"@codeworksh/bridge": "workspace:*",
+		"@types/node": "^24.6.1",
+		"tsdown": "^0.21.9",
+		"typescript": "^5.9.3"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	},
+	"productName": "Codework"
+}

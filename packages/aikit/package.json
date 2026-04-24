@@ -1,7 +1,7 @@
 {
 	"name": "@codeworksh/aikit",
-	"version": "0.3.0",
-	"description": "Toolkit for building AI agents and workflows.",
+	"version": "0.3.1",
+	"description": "Toolkit for building AI agents and agent harness.",
 	"keywords": [
 		"agent",
 		"ai",
@@ -29,30 +29,32 @@
 		"README.md"
 	],
 	"type": "module",
-	"module": "./dist/pack/index.mjs",
 	"types": "./dist/pack/index.d.mts",
 	"exports": {
 		".": {
 			"types": "./dist/pack/index.d.mts",
-			"import": "./dist/pack/index.mjs"
+			"import": "./dist/pack/index.mjs",
+			"default": "./dist/pack/index.mjs"
 		},
-		"./codemode/drivers": {
+		"./agent/codemode/drivers/drivers": {
 			"types": "./dist/pack/agent/codemode/drivers/drivers.d.mts",
-			"import": "./dist/pack/agent/codemode/drivers/drivers.mjs"
-		}
+			"import": "./dist/pack/agent/codemode/drivers/drivers.mjs",
+			"default": "./dist/pack/agent/codemode/drivers/drivers.mjs"
+		},
+		"./package.json": "./package.json"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
 	"scripts": {
 		"build": "vp pack",
+		"bump": "bumpp",
 		"check": "vp check",
 		"lint": "vp lint",
 		"test": "vp test"
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.80.0",
-		"@codeworksh/utils": "workspace:*",
 		"@sinclair/typebox": "^0.34.48",
 		"ajv": "^8.18.0",
 		"ajv-formats": "^3.0.1",
@@ -62,6 +64,10 @@
 		"quickjs-wasi": "^2.2.0",
 		"remeda": "^2.33.6",
 		"uuidv7": "^1.2.1"
+	},
+	"devDependencies": {
+		"@codeworksh/utils": "workspace:*",
+		"bumpp": "^11.0.1"
 	},
 	"peerDependencies": {
 		"typescript": "^5"

@@ -1,8 +1,6 @@
 import { Filesystem, lazy } from "@codeworksh/utils";
 
 export namespace ModelCatalog {
-	// Doesn't represent the full spec from models.dev.
-	// Represents the provider entry on a best-effort basis.
 	export interface ModelsDevModel {
 		id: string;
 		name: string;
@@ -32,7 +30,6 @@ export namespace ModelCatalog {
 			output?: number;
 		};
 	}
-
 	export interface ModelsDevProvider {
 		id: string;
 		env: string[];
@@ -45,6 +42,8 @@ export namespace ModelCatalog {
 		headers?: Record<string, string>;
 		models: Record<string, ModelsDevModel>;
 	}
+	// Doesn't represent the full spec from models.dev.
+	// Represents the provider entries on a best-effort basis.
 	export type ModelsDevCatalog = Record<string, ModelsDevProvider>;
 	type LazyModelsDevCatalog = ReturnType<typeof lazy<Promise<ModelsDevCatalog>>>;
 

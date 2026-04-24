@@ -1,19 +1,25 @@
 {
+	"extends": "../../tsconfig.json",
 	"compilerOptions": {
-		"lib": ["ESNext"],
-		"target": "ESNext",
+		"target": "esnext",
+		"lib": ["es2023"],
 		"module": "Preserve",
 		"moduleDetection": "force",
-		"allowJs": true,
+		"resolveJsonModule": true,
 		"types": ["node"],
 		"moduleResolution": "bundler",
+		"declaration": true,
 		"allowImportingTsExtensions": true,
+		"esModuleInterop": true,
+		"isolatedModules": true,
 		"verbatimModuleSyntax": true,
 		"noEmit": true,
 		"strict": true,
+		"noUnusedLocals": true,
 		"skipLibCheck": true,
 		"noFallthroughCasesInSwitch": true,
 		"noUncheckedIndexedAccess": true,
 		"noImplicitOverride": true
-	}
+	},
+	"include": ["src"]
 }

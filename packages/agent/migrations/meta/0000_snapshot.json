@@ -1,0 +1,389 @@
+{
+	"version": "6",
+	"dialect": "sqlite",
+	"id": "3bbab034-f5ad-4be4-9a1c-14d631aa3649",
+	"prevId": "00000000-0000-0000-0000-000000000000",
+	"tables": {
+		"message": {
+			"name": "message",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"session_id": {
+					"name": "session_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"parent_message_id": {
+					"name": "parent_message_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"intent": {
+					"name": "intent",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"data": {
+					"name": "data",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"message_session_idx": {
+					"name": "message_session_idx",
+					"columns": ["session_id"],
+					"isUnique": false
+				},
+				"message_intent_idx": {
+					"name": "message_intent_idx",
+					"columns": ["intent"],
+					"isUnique": false
+				},
+				"message_parent_message_idx": {
+					"name": "message_parent_message_idx",
+					"columns": ["parent_message_id"],
+					"isUnique": false
+				},
+				"message_session_parent_message_idx": {
+					"name": "message_session_parent_message_idx",
+					"columns": ["session_id", "parent_message_id"],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {
+				"message_session_id_session_id_fk": {
+					"name": "message_session_id_session_id_fk",
+					"tableFrom": "message",
+					"tableTo": "session",
+					"columnsFrom": ["session_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "cascade"
+				},
+				"message_parent_message_id_message_id_fk": {
+					"name": "message_parent_message_id_message_id_fk",
+					"tableFrom": "message",
+					"tableTo": "message",
+					"columnsFrom": ["parent_message_id"],
+					"columnsTo": ["id"],
+					"onDelete": "set null",
+					"onUpdate": "cascade"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"part": {
+			"name": "part",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"message_id": {
+					"name": "message_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"session_id": {
+					"name": "session_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"data": {
+					"name": "data",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"part_message_idx": {
+					"name": "part_message_idx",
+					"columns": ["message_id"],
+					"isUnique": false
+				},
+				"part_session_idx": {
+					"name": "part_session_idx",
+					"columns": ["session_id"],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {
+				"part_message_id_message_id_fk": {
+					"name": "part_message_id_message_id_fk",
+					"tableFrom": "part",
+					"tableTo": "message",
+					"columnsFrom": ["message_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "cascade"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"project": {
+			"name": "project",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"worktree": {
+					"name": "worktree",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": "'/'"
+				},
+				"vcs": {
+					"name": "vcs",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"repo": {
+					"name": "repo",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"icon_url": {
+					"name": "icon_url",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"icon_color": {
+					"name": "icon_color",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"initialized_at": {
+					"name": "initialized_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"session": {
+			"name": "session",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"project_id": {
+					"name": "project_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"parent_session_id": {
+					"name": "parent_session_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"active_leaf_message_id": {
+					"name": "active_leaf_message_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"cwd": {
+					"name": "cwd",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"version": {
+					"name": "version",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 1
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"session_project_idx": {
+					"name": "session_project_idx",
+					"columns": ["project_id"],
+					"isUnique": false
+				},
+				"session_parent_session_idx": {
+					"name": "session_parent_session_idx",
+					"columns": ["parent_session_id"],
+					"isUnique": false
+				},
+				"session_active_leaf_message_idx": {
+					"name": "session_active_leaf_message_idx",
+					"columns": ["active_leaf_message_id"],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {
+				"session_project_id_project_id_fk": {
+					"name": "session_project_id_project_id_fk",
+					"tableFrom": "session",
+					"tableTo": "project",
+					"columnsFrom": ["project_id"],
+					"columnsTo": ["id"],
+					"onDelete": "cascade",
+					"onUpdate": "cascade"
+				},
+				"session_parent_session_id_session_id_fk": {
+					"name": "session_parent_session_id_session_id_fk",
+					"tableFrom": "session",
+					"tableTo": "session",
+					"columnsFrom": ["parent_session_id"],
+					"columnsTo": ["id"],
+					"onDelete": "set null",
+					"onUpdate": "cascade"
+				},
+				"session_active_leaf_message_id_message_id_fk": {
+					"name": "session_active_leaf_message_id_message_id_fk",
+					"tableFrom": "session",
+					"tableTo": "message",
+					"columnsFrom": ["active_leaf_message_id"],
+					"columnsTo": ["id"],
+					"onDelete": "set null",
+					"onUpdate": "cascade"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		}
+	},
+	"views": {},
+	"enums": {},
+	"_meta": {
+		"schemas": {},
+		"tables": {},
+		"columns": {}
+	},
+	"internal": {
+		"indexes": {}
+	}
+}

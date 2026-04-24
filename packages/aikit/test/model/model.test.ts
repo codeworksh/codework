@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { ModelCatalog as ModelCatalogNamespace } from "../../src/model/catalog.ts";
 import { ROOT_MODELS_PATH } from "../utils/paths";
 
@@ -13,12 +13,16 @@ globalThis.fetch = (async () =>
 	}) as Response) as unknown as typeof fetch;
 const { Model } = await import("../../src/model/model.ts");
 const { ModelCatalog } = await import("../../src/model/catalog.ts");
+const { Provider } = await import("../../src/provider/provider.ts");
 globalThis.fetch = importFetch;
 
 const ROOT_MODELS = JSON.parse(readFileSync(ROOT_MODELS_PATH, "utf8")) as Record<
 	string,
 	ModelCatalogNamespace.ModelsDevProvider
 >;
+const EXPECTED_BUILT_IN_PROVIDERS = Object.keys(Provider.KnownProviderEnum)
+	.filter((providerId) => providerId in ROOT_MODELS)
+	.sort();
 
 function resetCatalogCache(): void {
 	ModelCatalog.modelsDevData.reset();
@@ -26,6 +30,18 @@ function resetCatalogCache(): void {
 
 function resetModelRegistry(): void {
 	Model.registry.reset();
+}
+
+function expectedBaseUrl(
+	providerId: string,
+	provider: ModelCatalogNamespace.ModelsDevProvider,
+	model: ModelCatalogNamespace.ModelsDevModel,
+): string | undefined {
+	if (model.baseUrl) return model.baseUrl;
+	if (provider.baseUrl) return provider.baseUrl;
+	if (provider.api) return provider.api;
+	if (providerId === "openai") return "https://api.openai.com/v1";
+	return undefined;
 }
 
 describe("Model", () => {
@@ -56,7 +72,7 @@ describe("Model", () => {
 	it("returns only built-in providers normalized to Model.Value records", async () => {
 		const builtIns = await Model.getBuiltInModels();
 
-		expect(Object.keys(builtIns).sort()).toEqual(["anthropic", "openai"]);
+		expect(Object.keys(builtIns).sort()).toEqual(EXPECTED_BUILT_IN_PROVIDERS);
 		expect("evroc" in builtIns).toBe(false);
 	});
 
@@ -79,7 +95,7 @@ describe("Model", () => {
 		expect(normalized?.provider.id).toBe("anthropic");
 		expect(normalized?.provider.name).toBe(rawProvider.name);
 		expect(normalized?.provider.env).toEqual(rawProvider.env);
-		expect(normalized?.baseUrl).toBe(rawModel.baseUrl ?? rawProvider.baseUrl ?? rawProvider.api);
+		expect(normalized?.baseUrl).toBe(expectedBaseUrl("anthropic", rawProvider, rawModel));
 		expect(normalized?.reasoning).toBe(Boolean(rawModel.reasoning));
 		expect(normalized?.input).toEqual(["text", "image"]);
 		expect(normalized?.cost).toEqual({
@@ -217,7 +233,7 @@ describe("Model", () => {
 
 	it("getProviders() returns the built-in providers from the registry", async () => {
 		const providers = await Model.getProviders();
-		expect(providers.sort()).toEqual(["anthropic", "openai"]);
+		expect(providers.sort()).toEqual(EXPECTED_BUILT_IN_PROVIDERS);
 	});
 
 	it("getModels() returns provider-scoped models from the registry", async () => {
@@ -236,6 +252,12 @@ describe("Model", () => {
 
 		const missing = await Model.getModel("anthropic", "does-not-exist" as string);
 		expect(missing).toBeUndefined();
+	});
+
+	it("falls back to the canonical OpenAI base URL when the catalog omits it", async () => {
+		const model = await Model.getModel("openai", "gpt-5-nano");
+		expect(model).toBeDefined();
+		expect(model?.baseUrl).toBe("https://api.openai.com/v1");
 	});
 
 	it("supportsXhigh() and modelsAreEqual() use normalized model identity correctly", async () => {

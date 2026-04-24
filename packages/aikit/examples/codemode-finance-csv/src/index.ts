@@ -1,5 +1,5 @@
 import { Agent, CodeMode, Message } from "@codeworksh/aikit";
-import { createQuickJSWasiDriver } from "@codeworksh/aikit/codemode/drivers";
+import { createQuickJSWasiDriver } from "@codeworksh/aikit/agent/codemode/drivers/drivers";
 import { type Static, Type } from "@sinclair/typebox";
 import { access, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -141,10 +141,9 @@ function getLatestAssistantMessage(agent: Agent.Instance): Message.AssistantMess
 }
 
 function getAssistantMessages(agent: Agent.Instance): Message.AssistantMessage[] {
-	const assistantMessages = agent.state.messages.filter(
+	return agent.state.messages.filter(
 		(message: Message.Message): message is Message.AssistantMessage => message.role === "assistant",
 	);
-	return assistantMessages;
 }
 
 function addUsageTotals(target: Usage, usage: Usage): void {
@@ -372,6 +371,7 @@ function createStatementTool(statementPath: string) {
 }
 
 async function createAgent() {
+	requireEnv("ANTHROPIC_API_KEY");
 	const statementPath = await resolveStatementPath();
 	const statementTool = createStatementTool(statementPath);
 	const codeMode = await CodeMode.create({
@@ -380,7 +380,6 @@ async function createAgent() {
 	});
 
 	const model = "claude-haiku-4-5-20251001";
-	requireEnv("ANTHROPIC_API_KEY");
 
 	const agent = await Agent.create({
 		name: "codemode-finance-csv-agent",

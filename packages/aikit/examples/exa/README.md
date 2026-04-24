@@ -28,7 +28,6 @@ Set these environment variables in `.env`:
 ```env
 ANTHROPIC_API_KEY=YOUR_ANTHROPIC_API_KEY
 EXA_API_KEY=YOUR_EXA_API_KEY
-AIKIT_MODEL=claude-haiku-4-5-20251001
 ```
 
 ## Run

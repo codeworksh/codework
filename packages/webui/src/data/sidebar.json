@@ -1,0 +1,62 @@
+{
+	"projects": [
+		{
+			"id": "codework",
+			"name": "codework",
+			"cwd": "/Users/sanchitrk/Developer/codeworksh/codework",
+			"faviconColor": "#18181b",
+			"expanded": true,
+			"threads": [
+				{
+					"id": "thread-sidebar",
+					"title": "CodeWork sidebar pass",
+					"relativeTime": "now",
+					"active": true
+				},
+				{
+					"id": "thread-shell",
+					"title": "Desktop shell setup",
+					"relativeTime": "1h ago"
+				},
+				{
+					"id": "thread-bridge",
+					"title": "Bridge API notes",
+					"relativeTime": "2d ago"
+				}
+			]
+		},
+		{
+			"id": "aikit",
+			"name": "aikit",
+			"cwd": "/Users/sanchitrk/Developer/codeworksh/codework/packages/aikit",
+			"faviconColor": "#2563eb",
+			"expanded": true,
+			"threads": [
+				{
+					"id": "thread-model-routing",
+					"title": "Model routing cleanup",
+					"relativeTime": "3d ago"
+				},
+				{
+					"id": "thread-streams",
+					"title": "Streaming response behavior",
+					"relativeTime": "5d ago"
+				}
+			]
+		},
+		{
+			"id": "webui",
+			"name": "webui",
+			"cwd": "/Users/sanchitrk/Developer/codeworksh/codework/packages/webui",
+			"faviconColor": "#16a34a",
+			"expanded": false,
+			"threads": [
+				{
+					"id": "thread-routes",
+					"title": "Route layout polish",
+					"relativeTime": "1w ago"
+				}
+			]
+		}
+	]
+}

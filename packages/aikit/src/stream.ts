@@ -33,7 +33,7 @@ import type { AssistantMessageEventStream } from "./utils/eventstream";
  * ```
  */
 type StreamCallable = {
-	(model: Model.Value, context: Message.Context, options?: Stream.Options): AssistantMessageEventStream;
+	(model: Model.Info, context: Message.Context, options?: Stream.Options): AssistantMessageEventStream;
 	complete: typeof Stream.complete;
 	simple: typeof Stream.streamSimple;
 	completeSimple: typeof Stream.completeSimple;
@@ -41,7 +41,7 @@ type StreamCallable = {
 };
 
 const streamImpl = (
-	model: Model.Value,
+	model: Model.Info,
 	context: Message.Context,
 	options?: Stream.Options,
 ): AssistantMessageEventStream => Stream.stream(model, context, options);
