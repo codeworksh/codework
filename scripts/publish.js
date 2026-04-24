@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { access, copyFile, readFile, writeFile } from "node:fs/promises";
+import { access, copyFile, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,11 +33,11 @@ function resolvePackageDir(target) {
 	return resolve(repoRoot, workspaceDir);
 }
 
-function run(command, args, cwd, envOverrides = {}) {
+function run(command, args, cwd, envOverrides = {}, replaceEnv = false) {
 	return new Promise((resolveExit) => {
 		const proc = spawn(command, args, {
 			cwd,
-			env: { ...process.env, ...envOverrides },
+			env: replaceEnv ? envOverrides : { ...process.env, ...envOverrides },
 			stdio: "inherit",
 		});
 
@@ -45,17 +46,24 @@ function run(command, args, cwd, envOverrides = {}) {
 	});
 }
 
-async function createPublishEnv() {
-	const npmUserConfig = resolve(repoRoot, ".npmrc");
+function createSanitizedPublishEnv() {
+	const env = { ...process.env };
 
-	try {
-		await access(npmUserConfig);
-		return {
-			NPM_CONFIG_USERCONFIG: npmUserConfig,
-		};
-	} catch {
-		return {};
+	for (const key of Object.keys(env)) {
+		if (
+			key.startsWith("npm_config_") ||
+			key.startsWith("pnpm_config_") ||
+			key === "npm_command" ||
+			key === "npm_execpath" ||
+			key === "npm_node_execpath" ||
+			key === "npm_package_json" ||
+			key === "PNPM_PACKAGE_NAME"
+		) {
+			delete env[key];
+		}
 	}
+
+	return env;
 }
 
 function compactObject(value) {
@@ -172,15 +180,17 @@ async function createPublishManifest(manifest) {
 }
 
 async function preparePublishDirectory(packageDir, manifest) {
-	const publishDir = resolve(packageDir, "dist/pack");
+	const buildDir = resolve(packageDir, "dist/pack");
 
 	try {
-		await access(publishDir);
+		await access(buildDir);
 	} catch {
-		console.error(`Build output not found: ${publishDir}`);
+		console.error(`Build output not found: ${buildDir}`);
 		process.exit(1);
 	}
 
+	const publishDir = await mkdtemp(resolve(tmpdir(), `${manifest.name.replaceAll("/", "-")}-`));
+	await cp(buildDir, publishDir, { recursive: true });
 	await copyFile(resolve(packageDir, "README.md"), resolve(publishDir, "README.md"));
 	await copyFile(resolve(repoRoot, "LICENSE"), resolve(publishDir, "LICENSE"));
 	await writeFile(
@@ -230,7 +240,7 @@ publishArgs.push(...forwardArgs);
 
 console.error(`Building ${manifest.name} in ${packageDir}`);
 
-const buildExitCode = await run("npm", ["run", "build"], packageDir);
+const buildExitCode = await run("pnpm", ["run", "build"], packageDir);
 if (buildExitCode !== 0) {
 	process.exit(buildExitCode);
 }
@@ -238,6 +248,7 @@ if (buildExitCode !== 0) {
 const publishDir = await preparePublishDirectory(packageDir, manifest);
 console.error(`Publishing ${manifest.name} from ${publishDir}`);
 
-const exitCode = await run("npm", publishArgs, publishDir, await createPublishEnv());
+const exitCode = await run("npm", publishArgs, publishDir, createSanitizedPublishEnv(), true);
+await rm(publishDir, { recursive: true, force: true });
 
 process.exit(exitCode);

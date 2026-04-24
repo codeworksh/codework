@@ -31,8 +31,16 @@
 	"type": "module",
 	"types": "./dist/pack/index.d.mts",
 	"exports": {
-		".": "./dist/pack/index.mjs",
-		"./agent/codemode/drivers/drivers": "./dist/pack/agent/codemode/drivers/drivers.mjs",
+		".": {
+			"types": "./dist/pack/index.d.mts",
+			"import": "./dist/pack/index.mjs",
+			"default": "./dist/pack/index.mjs"
+		},
+		"./agent/codemode/drivers/drivers": {
+			"types": "./dist/pack/agent/codemode/drivers/drivers.d.mts",
+			"import": "./dist/pack/agent/codemode/drivers/drivers.mjs",
+			"default": "./dist/pack/agent/codemode/drivers/drivers.mjs"
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {
@@ -47,7 +55,6 @@
 	},
 	"dependencies": {
 		"@anthropic-ai/sdk": "^0.80.0",
-		"@codeworksh/utils": "workspace:*",
 		"@sinclair/typebox": "^0.34.48",
 		"ajv": "^8.18.0",
 		"ajv-formats": "^3.0.1",
@@ -59,6 +66,7 @@
 		"uuidv7": "^1.2.1"
 	},
 	"devDependencies": {
+		"@codeworksh/utils": "workspace:*",
 		"bumpp": "^11.0.1"
 	},
 	"peerDependencies": {

@@ -7,10 +7,15 @@ export default defineConfig({
 		entry: ["src/index.ts"],
 		format: ["esm"],
 		outDir: "dist/pack",
+		deps: {
+			alwaysBundle: ["@codeworksh/utils"],
+			onlyBundle: ["@sinclair/typebox"],
+		},
 		sourcemap: true,
 		clean: true,
 		dts: {
 			tsgo: true,
+			resolver: "tsc",
 		},
 		exports: true,
 	},

@@ -26,9 +26,6 @@ importers:
 
   packages/agent:
     dependencies:
-      '@codeworksh/utils':
-        specifier: workspace:*
-        version: link:../utils
       h3:
         specifier: 2.0.1-rc.20
         version: 2.0.1-rc.20
@@ -42,6 +39,9 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
+      '@codeworksh/utils':
+        specifier: workspace:*
+        version: link:../utils
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -57,9 +57,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.80.0
         version: 0.80.0(zod@4.3.6)
-      '@codeworksh/utils':
-        specifier: workspace:*
-        version: link:../utils
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.49
@@ -91,6 +88,9 @@ importers:
         specifier: ^1.2.1
         version: 1.2.1
     devDependencies:
+      '@codeworksh/utils':
+        specifier: workspace:*
+        version: link:../utils
       bumpp:
         specifier: ^11.0.1
         version: 11.0.1
@@ -111,6 +111,9 @@ importers:
         specifier: ^40.6.0
         version: 40.9.1
     devDependencies:
+      '@codeworksh/bridge':
+        specifier: workspace:*
+        version: link:../bridge
       '@types/node':
         specifier: ^24.6.1
         version: 24.12.2
@@ -139,9 +142,6 @@ importers:
       '@base-ui/react':
         specifier: ^1.4.0
         version: 1.4.0(@date-fns/tz@1.4.1)(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@codeworksh/bridge':
-        specifier: workspace:*
-        version: link:../bridge
       '@fontsource-variable/ibm-plex-sans':
         specifier: ^5.2.8
         version: 5.2.8
@@ -194,6 +194,9 @@ importers:
         specifier: ^5.0.12
         version: 5.0.12(@types/react@19.2.14)(react@19.2.5)(use-sync-external-store@1.6.0(react@19.2.5))
     devDependencies:
+      '@codeworksh/bridge':
+        specifier: workspace:*
+        version: link:../bridge
       '@tanstack/router-plugin':
         specifier: ^1.161.0
         version: 1.167.22(@tanstack/react-router@1.168.22(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(vite@8.0.7(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
