@@ -3,13 +3,13 @@ import { type Static, Type } from "@sinclair/typebox";
 export namespace Message {
 	const Base = Type.Object({
 		id: Type.String(),
-		sessionID: Type.String(),
-		parentMessageID: Type.Union([Type.String(), Type.Null()]),
+		sessionId: Type.String(),
+		parentMessageId: Type.Union([Type.String(), Type.Null()]),
 	});
 	const PartBase = Type.Object({
-		partID: Type.String(),
-		sessionID: Type.String(),
-		messageID: Type.String(),
+		partId: Type.String(),
+		sessionId: Type.String(),
+		messageId: Type.String(),
 	});
 
 	export const MessageIntent = Type.Union([Type.Literal("followup"), Type.Literal("steer"), Type.Literal("next")], {
