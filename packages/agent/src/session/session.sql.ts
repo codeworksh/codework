@@ -3,8 +3,6 @@ import { ProjectTable } from "../project/project.sql";
 import { Timestamps } from "../storage/schema.sql";
 import type { Message } from "./message";
 
-type InfoData = Omit<Message.Info, "id" | "sessionId" | "parentMessageId">;
-type PartData = Omit<Message.Part, "partId" | "sessionId" | "messageId">;
 
 export const SessionTable = sqliteTable(
 	"session",
@@ -52,7 +50,7 @@ export const MessageTable = sqliteTable(
 		}),
 		intent: text("intent").notNull().$type<Message.MessageIntent>(),
 		...Timestamps,
-		data: text({ mode: "json" }).notNull().$type<InfoData>(),
+		data: text({ mode: "json" }).notNull().$type<Message.MessageData>(),
 	},
 	(table) => [
 		index("message_session_idx").on(table.sessionId),
@@ -74,7 +72,7 @@ export const PartTable = sqliteTable(
 			}),
 		sessionId: text("session_id").notNull(),
 		...Timestamps,
-		data: text({ mode: "json" }).notNull().$type<PartData>(),
+		data: text({ mode: "json" }).notNull().$type<Message.PartData>(),
 	},
 	(table) => [index("part_message_idx").on(table.messageId), index("part_session_idx").on(table.sessionId)],
 );

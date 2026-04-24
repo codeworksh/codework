@@ -36,6 +36,7 @@
 		"lint": "vp lint"
 	},
 	"dependencies": {
+		"@codeworksh/aikit": "workspace:*",
 		"@libsql/client": "^0.17.3",
 		"drizzle-orm": "^0.45.2",
 		"fast-json-stringify": "^6.3.0",

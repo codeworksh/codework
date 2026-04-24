@@ -26,6 +26,9 @@ importers:
 
   packages/agent:
     dependencies:
+      '@codeworksh/aikit':
+        specifier: workspace:*
+        version: link:../aikit
       '@libsql/client':
         specifier: ^0.17.3
         version: 0.17.3

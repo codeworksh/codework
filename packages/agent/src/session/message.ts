@@ -1,4 +1,5 @@
 import { type Static, Type } from "@sinclair/typebox";
+import { Message as AikitMessage } from "@codeworksh/aikit";
 
 export namespace Message {
 	const Base = Type.Object({
@@ -17,101 +18,33 @@ export namespace Message {
 	});
 	export type MessageIntent = Static<typeof MessageIntent>;
 
-	const ToolSuccessResult = Type.Object({
-		details: Type.Optional(Type.Any()),
-		isError: Type.Literal(false),
-		time: Type.Object({
-			start: Type.Number(), // Unix timestamp in milliseconds
-			end: Type.Number(), // Unix timestamp in milliseconds
-		}),
-	});
-	const ToolErrorResult = Type.Object({
-		details: Type.Optional(Type.Any()),
-		isError: Type.Literal(true),
-		time: Type.Object({
-			start: Type.Number(), // Unix timestamp in milliseconds
-			end: Type.Number(), // Unix timestamp in milliseconds
-		}),
-	});
+	export const UserData = Type.Omit(AikitMessage.UserMessageSchema, ["messageId", "parts"]);
+	export type UserData = Static<typeof UserData>;
 
-	export const TextPart = Type.Intersect([PartBase], { $id: "TextPart" });
-	export const ImagePart = Type.Intersect([PartBase], { $id: "ImagePart" });
-	export type TextPart = Static<typeof TextPart>;
-	export type ImagePart = Static<typeof ImagePart>;
+	export const AssistantData = Type.Omit(AikitMessage.AssistantMessageSchema, ["messageId", "parts"]);
+	export type AssistantData = Static<typeof AssistantData>;
 
-	export const ThinkingPart = Type.Intersect([PartBase], {
-		$id: "ThinkingPart",
-	});
-	const ToolCallPartBase = Type.Intersect([
-		PartBase,
-		Type.Object({
-			invokeID: Type.String(),
-		}),
-	]);
-	const ToolCallPendingPart = Type.Intersect([
-		ToolCallPartBase,
-		Type.Object({
-			status: Type.Literal("pending"),
-		}),
-	]);
-	const ToolCallRunningPart = Type.Intersect([
-		ToolCallPartBase,
-		Type.Object({
-			status: Type.Literal("running"),
-		}),
-	]);
-	const ToolCallCompletedPart = Type.Intersect([
-		ToolCallPartBase,
-		Type.Object({
-			status: Type.Literal("completed"),
-			result: ToolSuccessResult,
-		}),
-	]);
-	const ToolCallErrorPart = Type.Intersect([
-		ToolCallPartBase,
-		Type.Object({
-			status: Type.Literal("error"),
-			result: ToolErrorResult,
-		}),
-	]);
-	const ToolCallSkippedPart = Type.Intersect([
-		ToolCallPartBase,
-		Type.Object({
-			status: Type.Literal("skipped"),
-			result: ToolErrorResult,
-		}),
-	]);
-	const ToolCallAbortedPart = Type.Intersect([
-		ToolCallPartBase,
-		Type.Object({
-			status: Type.Literal("aborted"),
-			result: ToolErrorResult,
-		}),
-	]);
-	export const ToolCallPart = Type.Union(
-		[
-			ToolCallPendingPart,
-			ToolCallRunningPart,
-			ToolCallCompletedPart,
-			ToolCallErrorPart,
-			ToolCallSkippedPart,
-			ToolCallAbortedPart,
-		],
-		{
-			$id: "ToolCallPart",
-		},
-	);
-	export type ThinkingPart = Static<typeof ThinkingPart>;
-	export type ToolCallPart = Static<typeof ToolCallPart>;
+	export const MessageData = Type.Union([UserData, AssistantData]);
+	export type MessageData = Static<typeof MessageData>;
+
+	export const TextPartData = AikitMessage.TextContentSchema;
+	export const ImagePartData = AikitMessage.ImageContentSchema;
+	export const ThinkingPartData = AikitMessage.ThinkingContentSchema;
+	export const ToolCallPartData = AikitMessage.ToolCallSchema;
+
+	export type TextPartData = Static<typeof TextPartData>;
+	export type ImagePartData = Static<typeof ImagePartData>;
+	export type ThinkingPartData = Static<typeof ThinkingPartData>;
+	export type ToolCallPartData = Static<typeof ToolCallPartData>;
+
+	export const PartData = Type.Union([TextPartData, ImagePartData, ThinkingPartData, ToolCallPartData]);
+	export type PartData = Static<typeof PartData>;
 
 	export const User = Type.Intersect(
 		[
 			Base,
+			UserData,
 			Type.Object({
-				role: Type.Literal("user"),
-				time: Type.Object({
-					created: Type.Number(),
-				}),
 				intent: MessageIntent,
 			}),
 		],
@@ -119,34 +52,30 @@ export namespace Message {
 	);
 	export type User = Static<typeof User>;
 
-	export const Assistant = Type.Intersect(
-		[
-			Base,
-			Type.Object({
-				role: Type.Literal("assistant"),
-				time: Type.Object({
-					created: Type.Number(),
-					completed: Type.Number(),
-				}),
-				provider: Type.Unsafe<string>({ type: "string" }),
-				model: Type.String(),
-				// usage: UsageSchema,
-				// stopReason: StopReasonSchema,
-				// errorMessage: Type.Optional(Type.String()),
-			}),
-		],
-		{ $id: "AssistantMessage" },
-	);
+	export const Assistant = Type.Intersect([Base, AssistantData], { $id: "AssistantMessage" });
 	export type Assistant = Static<typeof Assistant>;
 
-	export const Info = Type.Union([User, Assistant], { $id: "Message" });
-	export type Info = Static<typeof Info>;
+	export const Message = Type.Union([User, Assistant], { $id: "Message" });
+	export type Message = Static<typeof Message>;
+
+	export const Info = Message;
+	export type Info = Message;
+
+	export const TextPart = Type.Intersect([PartBase, TextPartData], { $id: "TextPart" });
+	export const ImagePart = Type.Intersect([PartBase, ImagePartData], { $id: "ImagePart" });
+	export const ThinkingPart = Type.Intersect([PartBase, ThinkingPartData], { $id: "ThinkingPart" });
+	export const ToolCallPart = Type.Intersect([PartBase, ToolCallPartData], { $id: "ToolCallPart" });
+
+	export type TextPart = Static<typeof TextPart>;
+	export type ImagePart = Static<typeof ImagePart>;
+	export type ThinkingPart = Static<typeof ThinkingPart>;
+	export type ToolCallPart = Static<typeof ToolCallPart>;
 
 	export const Part = Type.Union([TextPart, ImagePart, ThinkingPart, ToolCallPart]);
 	export type Part = Static<typeof Part>;
 
 	export const WithParts = Type.Object({
-		info: Info,
+		message: Message,
 		parts: Type.Array(Part),
 	});
 	export type WithParts = Static<typeof WithParts>;
