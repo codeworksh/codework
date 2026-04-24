@@ -4,7 +4,6 @@ import { WorkspaceContext } from "../workspace/context";
 import { Instance } from "../project/instance";
 import { InstanceBootstrap } from "../project/bootstrap";
 
-
 export namespace Server {
 	const app = new H3();
 	type ServerInstance = ReturnType<typeof serve>;
@@ -54,19 +53,17 @@ export namespace Server {
 					})(),
 				);
 
-				console.log(directory);
-
 				return WorkspaceContext.provide({
 					workspaceId,
-            async fn() {
-              return Instance.provide({
-                directory,
-                init: InstanceBootstrap,
-                async fn() {
-                  return next()
-                },
-              })
-            },
+					async fn() {
+						return Instance.provide({
+							directory,
+							init: InstanceBootstrap,
+							async fn() {
+								return next();
+							},
+						});
+					},
 				});
 			})
 			.get("/", (_event) => "⚡️ Tadaa!"),
