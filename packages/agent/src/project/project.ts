@@ -6,6 +6,7 @@ import path from "path";
 import { Database, eq } from "../storage/db";
 import { git } from "../util/git";
 import { Log } from "../util/log";
+import { Process } from "../util/process";
 import { ProjectTable } from "./project.sql";
 
 export namespace Project {
@@ -70,7 +71,10 @@ export namespace Project {
 				time: { created: Date.now(), updated: Date.now() },
 			};
 
-			const gitBinary = Bun.which("git");
+			const gitBinary = await Process.run(["git", "--version"], { nothrow: true }).then(
+				(result) => result.code === 0,
+				() => false,
+			);
 			if (!gitBinary) return global;
 
 			// Let git confirm this is a real repo and give us the canonical root.
@@ -146,7 +150,7 @@ export namespace Project {
 			};
 		});
 
-		const row = Database.use((db) => db.select().from(ProjectTable).where(eq(ProjectTable.id, data.id)).get());
+		const row = await Database.use((db) => db.select().from(ProjectTable).where(eq(ProjectTable.id, data.id)).get());
 		const existing = row ? fromRow(row) : null;
 
 		if (!existing && data.id !== "global") {
@@ -188,21 +192,21 @@ export namespace Project {
 			repo: result.repo ?? null,
 			updatedAt: result.time.updated,
 		};
-		Database.use((db) =>
+		await Database.use((db) =>
 			db.insert(ProjectTable).values(insert).onConflictDoUpdate({ target: ProjectTable.id, set: updateSet }).run(),
 		);
 		return { project: result, worktree: result.worktree };
 	}
 
 	async function migrateFromGlobal(id: string, worktree: string) {
-		const row = Database.use((db) => db.select().from(ProjectTable).where(eq(ProjectTable.id, "global")).get());
+		const row = await Database.use((db) => db.select().from(ProjectTable).where(eq(ProjectTable.id, "global")).get());
 		if (!row) return;
 		// @sanchitrk: TODO: add support, once we have child nodes
 		log.info("TODO: migrate project global", { id, worktree });
 	}
 
-	export function setInitialized(id: string) {
-		Database.use((db) =>
+	export async function setInitialized(id: string) {
+		await Database.use((db) =>
 			db
 				.update(ProjectTable)
 				.set({

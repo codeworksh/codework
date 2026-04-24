@@ -9,7 +9,7 @@ export default defineConfig({
 		outDir: "dist/pack",
 		deps: {
 			alwaysBundle: ["@codeworksh/utils"],
-			onlyBundle: ["@sinclair/typebox"],
+			onlyBundle: ["@sinclair/typebox", "balanced-match", "brace-expansion", "glob", "minimatch"],
 		},
 		sourcemap: true,
 		clean: true,

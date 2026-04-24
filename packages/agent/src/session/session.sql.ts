@@ -6,8 +6,6 @@ import type { Message } from "./message";
 type InfoData = Omit<Message.Info, "id" | "sessionID" | "parentMessageID">;
 type PartData = Omit<Message.Part, "partID" | "sessionID" | "messageID">;
 
-
-
 export const SessionTable = sqliteTable(
 	"session",
 	{
