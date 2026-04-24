@@ -1,2 +1,2 @@
-export { MessageTable, PartTable, SessionTable } from "../../v2/session/session.sql.ts";
+export { MessageTable, PartTable, SessionTable } from "../session/session.sql";
 export { ProjectTable } from "../project/project.sql";
