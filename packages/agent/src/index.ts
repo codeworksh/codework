@@ -3,6 +3,8 @@ import pkg from "../package.json" with { type: "json" };
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { ServeCommand } from "./cli/cmd/serve.ts";
+import { RunCommand } from "./cli/cmd/run.ts";
+import { UI } from "./cli/ui.ts";
 
 process.on("SIGHUP", () => process.exit());
 
@@ -13,7 +15,9 @@ const cli = yargs(hideBin(process.argv))
 	.alias("help", "h")
 	.version("version", "show version number", pkg.version)
 	.alias("version", "v")
+	.usage("\n" + UI.logo())
 	.command(ServeCommand)
+	.command(RunCommand)
 	.fail((msg, err) => {
 		if (err) throw err;
 		if (msg) throw new Error(msg);

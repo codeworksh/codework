@@ -1,4 +1,4 @@
-import { Process } from "./process";
+import { Process } from "./process.ts";
 
 const GIT_HOSTS = ["github.com", "gitlab.com", "bitbucket.org", "codeberg.org"];
 

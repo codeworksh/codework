@@ -1,3 +1,7 @@
+import { Server } from "../../server/server.ts";
+import { cmd } from "./cmd.ts";
+import { withNetworkOptions, resolveNetworkOptions } from "../network.ts";
+
 const shutdownSignals = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
 function waitForShutdownSignal() {
@@ -14,10 +18,6 @@ function waitForShutdownSignal() {
 		}
 	});
 }
-
-import { Server } from "../../server/server.ts";
-import { cmd } from "./cmd.ts";
-import { withNetworkOptions, resolveNetworkOptions } from "../network.ts";
 
 export const ServeCommand = cmd({
 	command: "serve",

@@ -1,9 +1,9 @@
 import { iife } from "@codeworksh/utils";
-import { Context } from "../util/context";
+import { Context } from "../util/context.ts";
 import { Filesystem } from "@codeworksh/utils";
-import { Log } from "../util/log";
-import { Project } from "./project";
-import { State } from "./state";
+import { Log } from "../util/log.ts";
+import { Project } from "./project.ts";
+import { State } from "./state.ts";
 
 interface IContext {
 	directory: string;

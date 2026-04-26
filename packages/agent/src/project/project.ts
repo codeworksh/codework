@@ -3,11 +3,11 @@ import { Filesystem } from "@codeworksh/utils";
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import path from "path";
-import { Database, eq } from "../storage/db";
-import { git } from "../util/git";
-import { Log } from "../util/log";
-import { Process } from "../util/process";
-import { ProjectTable } from "./project.sql";
+import { Database, eq } from "../storage/db.ts";
+import { git } from "../util/git.ts";
+import { Log } from "../util/log.ts";
+import { Process } from "../util/process.ts";
+import { ProjectTable } from "./project.sql.ts";
 
 export namespace Project {
 	const log = Log.create({ service: "Project" });

@@ -6,14 +6,14 @@ import type { SQLiteTransaction } from "drizzle-orm/sqlite-core";
 
 export * from "drizzle-orm"; // export drizzle-orm exports from here
 
-import { Global } from "../config/global";
+import { Global } from "../config/global.ts";
 import { lazy, NamedError } from "@codeworksh/utils";
 import { Type } from "@sinclair/typebox";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Context } from "../util/context";
-import { Log } from "../util/log";
-import * as schema from "./schema";
+import { Context } from "../util/context.ts";
+import { Log } from "../util/log.ts";
+import * as schema from "./schema.ts";
 
 export const NotFoundError = NamedError.create(
 	"NotFoundError",

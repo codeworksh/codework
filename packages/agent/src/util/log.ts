@@ -1,4 +1,4 @@
-import { Global } from "../config/global";
+import { Global } from "../config/global.ts";
 import { type Static, Type } from "@sinclair/typebox";
 import fastJson from "fast-json-stringify";
 import { createWriteStream } from "fs";

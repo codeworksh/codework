@@ -1,4 +1,4 @@
-import { Log } from "../util/log";
+import { Log } from "../util/log.ts";
 
 export namespace State {
 	interface Entry {

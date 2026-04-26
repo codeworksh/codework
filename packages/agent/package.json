@@ -33,11 +33,13 @@
 		"bump": "bumpp",
 		"test": "vp test",
 		"check": "vp check",
-		"lint": "vp lint"
+		"lint": "vp lint",
+		"cli": "node --conditions=development --experimental-transform-types src/index.ts"
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",
 		"@libsql/client": "^0.17.3",
+		"chalk": "^5.6.2",
 		"drizzle-orm": "^0.45.2",
 		"fast-json-stringify": "^6.3.0",
 		"h3": "2.0.1-rc.20",

@@ -1,8 +1,8 @@
 import { H3, type HTTPError, onError, serve } from "h3";
 import { lazy, NamedError, Filesystem } from "@codeworksh/utils";
-import { WorkspaceContext } from "../workspace/context";
-import { Instance } from "../project/instance";
-import { InstanceBootstrap } from "../project/bootstrap";
+import { WorkspaceContext } from "../workspace/context.ts";
+import { Instance } from "../project/instance.ts";
+import { InstanceBootstrap } from "../project/bootstrap.ts";
 
 export namespace Server {
 	const app = new H3();
