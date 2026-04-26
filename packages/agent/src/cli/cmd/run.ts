@@ -4,6 +4,7 @@ import path from "node:path";
 import { Filesystem } from "@codeworksh/utils";
 import { UI } from "../ui.ts";
 import { pathToFileURL } from "node:url";
+import { Global } from "../../config/global.ts";
 
 interface RunArgs extends ArgumentsCamelCase {
   args: string[];
@@ -83,8 +84,13 @@ export const RunCommand = cmd({
       }
     }
 
+    console.log('********************')
     console.log("messages", messages);
     console.log("dir", directory);
     console.log("files", files);
+    console.log('********************')
+
+    const agentDir = Global.Path.agent;
+    console.log("agentDir", agentDir);
   },
 });
