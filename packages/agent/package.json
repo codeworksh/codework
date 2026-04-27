@@ -34,7 +34,8 @@
 		"test": "vp test",
 		"check": "vp check",
 		"lint": "vp lint",
-		"cli": "node --conditions=development --experimental-transform-types src/index.ts"
+		"cli": "node --conditions=development --experimental-transform-types src/index.ts",
+		"openapi": "node --conditions=development --experimental-transform-types scripts/openapi.ts && vp fmt openapi.json"
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",

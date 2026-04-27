@@ -29,9 +29,9 @@ export const SessionRoutes: () => H3 = lazy(() => {
 			method: "POST",
 			route: "/",
 			path: "/sessions",
-			tags: ["Sessions"],
+			tags: ["Session"],
 			summary: "Create session",
-			description: "Create a new Codework session for interacting with AI assistants and managing conversations.",
+			description: "Create a new CodeWork session for interacting with AI assistants and managing conversations.",
 			operationId: "session.create",
 			requestBody: {
 				required: false,

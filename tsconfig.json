@@ -10,6 +10,7 @@
 			"@codeworksh/aikit/codemode/drivers": ["./packages/aikit/src/agent/codemode/drivers/drivers.ts"],
 			"@codeworksh/bridge": ["./packages/bridge/src/index.ts"],
 			"@codeworksh/agent": ["./packages/agent/src/index.ts"],
+			"@codeworksh/sdk": ["./packages/sdk/src/index.ts"],
 			"@codeworksh/utils": ["./packages/utils/src/index.ts"]
 		},
 		"types": ["node"],

@@ -214,8 +214,8 @@ describe("Server.App OpenAPI", () => {
 		expect(response.status).toBe(200);
 		expect(document.openapi).toBe("3.1.0");
 		expect(document.info).toMatchObject({
-			title: "Codework Agent API",
-			version: "0.1.0",
+			title: "CodeWork Agent API",
+			version: "0.0.0",
 		});
 		expect(document.paths["/sessions"].post).toMatchObject({
 			operationId: "session.create",

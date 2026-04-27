@@ -1,0 +1,98 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "CodeWork Agent API",
+		"version": "0.0.0"
+	},
+	"paths": {
+		"/sessions": {
+			"post": {
+				"tags": ["Session"],
+				"summary": "Create session",
+				"description": "Create a new CodeWork session for interacting with AI assistants and managing conversations.",
+				"operationId": "session.create",
+				"requestBody": {
+					"required": false,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"properties": {
+									"parentSessionId": {
+										"type": "string"
+									},
+									"name": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Successfully created session",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["id", "slug", "projectId", "name", "directory", "time", "version"],
+									"properties": {
+										"id": {
+											"type": "string"
+										},
+										"slug": {
+											"type": "string"
+										},
+										"projectId": {
+											"type": "string"
+										},
+										"workspaceId": {
+											"type": "string"
+										},
+										"parentSessionId": {
+											"type": "string"
+										},
+										"activeLeafMessageId": {
+											"type": "string"
+										},
+										"name": {
+											"type": "string"
+										},
+										"directory": {
+											"type": "string"
+										},
+										"time": {
+											"type": "object",
+											"required": ["created", "updated"],
+											"properties": {
+												"created": {
+													"type": "number"
+												},
+												"updated": {
+													"type": "number"
+												},
+												"compacting": {
+													"type": "number"
+												},
+												"archived": {
+													"type": "number"
+												}
+											}
+										},
+										"version": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid session create request body"
+					}
+				}
+			}
+		}
+	}
+}

@@ -113,7 +113,7 @@ export namespace OpenAPI {
 		return {
 			openapi: "3.1.0",
 			info: {
-				title: "Codework Agent API",
+				title: "CodeWork Agent API",
 				version: pkg.version,
 			},
 			paths,
