@@ -179,7 +179,7 @@ describe("Server.App error handling", () => {
 		servers.add(server);
 
 		const response = await fetch(new URL("/test/unknown-error", server.url));
-		const body = await response.json();
+		const body = (await response.json()) as any;
 
 		expect(response.status).toBe(500);
 		expect(body.name).toBe("UnknownError");
