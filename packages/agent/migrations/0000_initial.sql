@@ -41,12 +41,16 @@ CREATE TABLE `project` (
 --> statement-breakpoint
 CREATE TABLE `session` (
 	`id` text PRIMARY KEY NOT NULL,
+	`slug` text NOT NULL,
+	`workspace_id` text,
 	`project_id` text NOT NULL,
 	`parent_session_id` text,
 	`active_leaf_message_id` text,
-	`cwd` text NOT NULL,
+	`directory` text NOT NULL,
 	`name` text,
-	`version` integer DEFAULT 1 NOT NULL,
+	`version` text DEFAULT '0.0.0' NOT NULL,
+	`time_compacting` integer,
+	`time_archived` integer,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`project_id`) REFERENCES `project`(`id`) ON UPDATE cascade ON DELETE cascade,
@@ -56,4 +60,5 @@ CREATE TABLE `session` (
 --> statement-breakpoint
 CREATE INDEX `session_project_idx` ON `session` (`project_id`);--> statement-breakpoint
 CREATE INDEX `session_parent_session_idx` ON `session` (`parent_session_id`);--> statement-breakpoint
-CREATE INDEX `session_active_leaf_message_idx` ON `session` (`active_leaf_message_id`);
+CREATE INDEX `session_active_leaf_message_idx` ON `session` (`active_leaf_message_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `session_slug_idx` ON `session` (`slug`);

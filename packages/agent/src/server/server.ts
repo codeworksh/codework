@@ -3,6 +3,7 @@ import { lazy, NamedError, Filesystem } from "@codeworksh/utils";
 import { WorkspaceContext } from "../workspace/context.ts";
 import { Instance } from "../project/instance.ts";
 import { InstanceBootstrap } from "../project/bootstrap.ts";
+import { SessionRoutes } from "./routes/session.ts";
 
 export namespace Server {
 	const app = new H3();
@@ -66,6 +67,7 @@ export namespace Server {
 					},
 				});
 			})
+			.mount("/sessions", SessionRoutes())
 			.get("/", (_event) => "⚡️ Tadaa!"),
 	);
 

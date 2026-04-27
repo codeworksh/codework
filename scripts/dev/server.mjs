@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import process from "node:process";
+import process, { loadEnvFile } from "node:process";
 
 const cwd = process.cwd();
 const entry = path.join(cwd, "packages/agent/src/index.ts");
@@ -21,6 +21,12 @@ let restartTimer = null;
 let pollTimer = null;
 let shuttingDown = false;
 let lastSnapshot = "";
+
+try {
+	loadEnvFile();
+} catch (error) {
+	if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+}
 
 async function collectFiles(dir) {
 	const entries = await readdir(dir, { withFileTypes: true });

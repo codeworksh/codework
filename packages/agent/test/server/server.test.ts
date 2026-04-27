@@ -6,9 +6,9 @@ import { Type } from "@sinclair/typebox";
 import { NamedError } from "@codeworksh/utils";
 import { HTTPError } from "h3";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { Instance } from "../src/project/instance.ts";
-import { Server } from "../src/server/server.ts";
-import { WorkspaceContext } from "../src/workspace/context.ts";
+import { Instance } from "../../src/project/instance.ts";
+import { Server } from "../../src/server/server.ts";
+import { WorkspaceContext } from "../../src/workspace/context.ts";
 
 vi.mock("../src/project/project.ts", () => ({
 	Project: {
@@ -46,7 +46,7 @@ Server.App()
 		return {
 			directory: Instance.directory,
 			project: Instance.project.id,
-			workspaceId: WorkspaceContext.workspaceID,
+			workspaceId: WorkspaceContext.workspaceId,
 			worktree: Instance.worktree,
 		};
 	})

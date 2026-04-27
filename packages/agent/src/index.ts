@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { loadEnvFile } from "node:process";
 import pkg from "../package.json" with { type: "json" };
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -8,6 +9,16 @@ import { UI } from "./cli/ui.ts";
 
 process.on("SIGHUP", () => process.exit());
 
+function loadEnvironment() {
+	try {
+		loadEnvFile();
+		console.log("*********** process.env");
+		console.log(process.env.CODEWORK_HOME_DIR);
+	} catch (error) {
+		if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+	}
+}
+
 const cli = yargs(hideBin(process.argv))
 	.scriptName("codework")
 	.wrap(100)
@@ -16,6 +27,7 @@ const cli = yargs(hideBin(process.argv))
 	.version("version", "show version number", pkg.version)
 	.alias("version", "v")
 	.usage("\n" + UI.logo())
+	.middleware(loadEnvironment, true)
 	.command(ServeCommand)
 	.command(RunCommand)
 	.fail((msg, err) => {
