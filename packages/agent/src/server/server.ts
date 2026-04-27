@@ -3,6 +3,7 @@ import { lazy, NamedError, Filesystem } from "@codeworksh/utils";
 import { WorkspaceContext } from "../workspace/context.ts";
 import { Instance } from "../project/instance.ts";
 import { InstanceBootstrap } from "../project/bootstrap.ts";
+import { OpenAPI } from "./openapi.ts";
 import { SessionRoutes } from "./routes/session.ts";
 
 export namespace Server {
@@ -40,7 +41,10 @@ export namespace Server {
 	export const App: () => H3 = lazy(() =>
 		app
 			.use(onError(getErrorResponse))
+			.get("/openapi.json", () => OpenAPI.document())
 			.use(async (event, next) => {
+				if (new URL(event.req.url).pathname === "/openapi.json") return next();
+
 				const workspaceId = event.req.headers.get("x-codework-workspace") || "local";
 				const raw = event.req.headers.get("x-codework-directory") || process.cwd();
 

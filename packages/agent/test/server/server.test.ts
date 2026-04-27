@@ -10,7 +10,7 @@ import { Instance } from "../../src/project/instance.ts";
 import { Server } from "../../src/server/server.ts";
 import { WorkspaceContext } from "../../src/workspace/context.ts";
 
-vi.mock("../src/project/project.ts", () => ({
+vi.mock("../../src/project/project.ts", () => ({
 	Project: {
 		fromDirectory: vi.fn(async (_directory: string) => ({
 			project: {
@@ -203,6 +203,46 @@ describe("Server.App error handling", () => {
 			message: "missing route",
 		});
 		expect(errorSpy).toHaveBeenCalledWith(error);
+	});
+});
+
+describe("Server.App OpenAPI", () => {
+	it("serves the OpenAPI document", async () => {
+		const response = await Server.App().request("/openapi.json");
+		const document = (await response.json()) as any;
+
+		expect(response.status).toBe(200);
+		expect(document.openapi).toBe("3.1.0");
+		expect(document.info).toMatchObject({
+			title: "Codework Agent API",
+			version: "0.1.0",
+		});
+		expect(document.paths["/sessions"].post).toMatchObject({
+			operationId: "session.create",
+			summary: "Create session",
+			responses: {
+				201: {
+					description: "Successfully created session",
+				},
+				400: {
+					description: "Invalid session create request body",
+				},
+			},
+		});
+		expect(document.paths["/sessions"].post.requestBody.content["application/json"].schema).toMatchObject({
+			type: "object",
+			properties: {
+				parentSessionId: { type: "string" },
+				name: { type: "string" },
+			},
+		});
+		expect(document.paths["/sessions"].post.responses[201].content["application/json"].schema).toMatchObject({
+			type: "object",
+			properties: {
+				id: { type: "string" },
+				name: { type: "string" },
+			},
+		});
 	});
 });
 

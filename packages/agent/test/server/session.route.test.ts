@@ -11,7 +11,7 @@ const createSession = Object.assign(vi.fn(), {
 	schema: createSessionSchema,
 });
 
-vi.mock("../src/session/session.ts", () => ({
+vi.mock("../../src/session/session.ts", () => ({
 	Session: {
 		create: createSession,
 	},
@@ -34,7 +34,7 @@ describe("SessionRoutes", () => {
 			method: "POST",
 		});
 
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(201);
 		expect(createSession).toHaveBeenCalledWith({ name: "Test session" });
 		expect(await response.json()).toEqual(session);
 	});
@@ -47,7 +47,7 @@ describe("SessionRoutes", () => {
 			method: "POST",
 		});
 
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(201);
 		expect(createSession).toHaveBeenCalledWith(undefined);
 		expect(await response.json()).toEqual(session);
 	});
