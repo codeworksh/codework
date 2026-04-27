@@ -1,23 +1,27 @@
 import { lazy } from "@codeworksh/utils";
-import z from "zod";
+import { type Static, Type } from "@sinclair/typebox";
+import pkg from "../../package.json" with { type: "json" };
 
 export namespace Config {
-	export const Server = z
-		.object({
-			port: z.number().int().positive().optional().describe("port to listen on"),
-			hostname: z.string().optional().describe("hostname to listen on"),
-			cors: z.array(z.string()).optional().describe("additional domains to allow for CORS"),
-		})
-		.strict()
-		.meta({
-			ref: "ServerConfig",
-		});
+	export const Server = Type.Object(
+		{
+			port: Type.Optional(Type.Integer({ minimum: 1, description: "port to listen on" })),
+			hostname: Type.Optional(Type.String({ description: "hostname to listen on" })),
+			cors: Type.Optional(
+				Type.Array(Type.String(), {
+					description: "additional domains to allow for CORS",
+				}),
+			),
+		},
+		{ $id: "ServerConfig", additionalProperties: false },
+	);
 
-	export const Info = z.object({
-		server: Server.optional().describe("server configuration for codework serve and web commands"),
+	export const Info = Type.Object({
+		server: Type.Optional(Server),
+		pkgVersion: Type.String(),
 	});
 
-	export type Info = z.output<typeof Info>;
+	export type Info = Static<typeof Info>;
 
 	// a thin wrapper for future config, that shall resolve in real
 	// read config from local storage and remote
@@ -27,6 +31,7 @@ export namespace Config {
 				port: 4096,
 				hostname: "127.0.0.1",
 			},
+			pkgVersion: pkg.version,
 		};
 		return Promise.resolve(result);
 	});

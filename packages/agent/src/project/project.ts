@@ -10,7 +10,7 @@ import { Process } from "../util/process.ts";
 import { ProjectTable } from "./project.sql.ts";
 
 export namespace Project {
-	const log = Log.create({ service: "Project" });
+	const log = Log.create({ service: "project" });
 
 	export const Info = Type.Object(
 		{

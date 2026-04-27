@@ -1,4 +1,5 @@
-import { type AnySQLiteColumn, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { type AnySQLiteColumn, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 import { ProjectTable } from "../project/project.sql.ts";
 import { Timestamps } from "../storage/schema.sql.ts";
 import type { Message } from "./message.ts";
@@ -8,6 +9,8 @@ export const SessionTable = sqliteTable(
 	"session",
 	{
 		id: text("id").primaryKey(),
+		slug: text("slug").notNull(),
+		workspaceId: text("workspace_id"),
 		projectId: text("project_id")
 			.notNull()
 			.references(() => ProjectTable.id, {
@@ -22,17 +25,22 @@ export const SessionTable = sqliteTable(
 			onDelete: "set null",
 			onUpdate: "cascade",
 		}),
-		cwd: text("cwd").notNull(),
+		directory: text("directory").notNull(),
 		name: text("name"),
-		version: integer("version").notNull().default(1),
+		version: text("version").notNull().default("0.0.0"),
+		timeCompacting: integer("time_compacting"),
+		timeArchived: integer("time_archived"),
 		...Timestamps,
 	},
 	(table) => [
 		index("session_project_idx").on(table.projectId),
 		index("session_parent_session_idx").on(table.parentSessionId),
 		index("session_active_leaf_message_idx").on(table.activeLeafMessageId),
+		uniqueIndex("session_slug_idx").on(table.slug),
 	],
 );
+export type SelectSession = InferSelectModel<typeof SessionTable>;
+export type InsertSession = InferInsertModel<typeof SessionTable>;
 
 export const MessageTable = sqliteTable(
 	"message",

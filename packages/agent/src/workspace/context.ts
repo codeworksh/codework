@@ -13,7 +13,7 @@ export const WorkspaceContext = {
 		});
 	},
 
-	get workspaceID() {
+	get workspaceId() {
 		try {
 			return context.use().workspaceId;
 		} catch {
