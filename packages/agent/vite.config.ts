@@ -1,14 +1,21 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
 const ignoredPaths = ["dist/**", "**/dist/**", "node_modules/**", "**/node_modules/**", ".pnpm-store/**", ".zed/**"];
+const aliases = {
+	"@codeworksh/sdk": fileURLToPath(new URL("../sdk/src/index.ts", import.meta.url)),
+};
 
 export default defineConfig({
+	resolve: {
+		alias: aliases,
+	},
 	pack: {
 		entry: ["src/index.ts"],
 		format: ["esm"],
 		outDir: "dist/pack",
 		deps: {
-			alwaysBundle: ["@codeworksh/utils"],
+			alwaysBundle: ["@codeworksh/sdk", "@codeworksh/utils"],
 			onlyBundle: ["@sinclair/typebox", "balanced-match", "brace-expansion", "glob", "minimatch"],
 		},
 		sourcemap: true,

@@ -32,6 +32,8 @@
 		"publish:aikit": "node scripts/publish.js aikit",
 		"publish:aikit:dry": "node scripts/publish.js aikit --dry-run",
 		"sdk:generate": "pnpm --filter @codeworksh/agent openapi && pnpm --filter @codeworksh/sdk generate",
+		"publish:sdk": "node scripts/publish.js sdk",
+		"publish:sdk:dry": "node scripts/publish.js sdk --dry-run",
 		"publish:utils": "node scripts/publish.js utils",
 		"publish:utils:dry": "node scripts/publish.js utils --dry-run"
 	},

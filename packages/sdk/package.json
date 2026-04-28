@@ -35,6 +35,7 @@
 	},
 	"scripts": {
 		"build": "vp pack",
+		"bump": "bumpp",
 		"check": "vp check",
 		"generate": "openapi-ts && node --experimental-transform-types scripts/postgenerate.ts && vp fmt",
 		"lint": "vp lint"
