@@ -5,9 +5,9 @@ import { Filesystem } from "@codeworksh/utils";
 import { UI } from "../ui.ts";
 import { pathToFileURL } from "node:url";
 import { Global } from "../../config/global.ts";
-import { createCodeWorkClient, type CodeWorkSdkClient} from "@codeworksh/sdk";
-import { Server} from "../../server/server.ts";
-import { bootstrap} from "../bootstrap.ts";
+import { createCodeWorkClient, type CodeWorkSdkClient } from "@codeworksh/sdk";
+import { Server } from "../../server/server.ts";
+import { bootstrap } from "../bootstrap.ts";
 
 interface RunArgs extends ArgumentsCamelCase {
 	args: string[];
@@ -15,6 +15,7 @@ interface RunArgs extends ArgumentsCamelCase {
 	dir?: string;
 	provider?: string;
 	model?: string;
+	name?: string;
 	"--"?: string[];
 }
 
@@ -40,7 +41,11 @@ export const RunCommand = cmd({
 			.option("model", {
 				type: "string",
 				describe: "model",
-			});
+			})
+			.option("name", {
+				type: "string",
+				describe: "name for the session (uses truncated prompt if no value provided)",
+			})
 	},
 	handler: async (args: RunArgs) => {
 		const allArgs = [...args.args, ...(args["--"] || [])];
@@ -83,6 +88,18 @@ export const RunCommand = cmd({
 			}
 		}
 
+		function name() {
+			if (args.name === undefined) return
+			if (args.name !== "") return args.title
+			const message = messages.length > 0 ? messages[0]!: "";
+			return messages.slice(0, 50) + (message.length > 50 ? "..." : "")
+		}
+
+		async function session(sdk: CodeWorkSdkClient) {
+			const result = await sdk.session.create({ body: { name: name() }})
+			return result.data?.id
+		}
+
 		console.log("********************");
 		console.log("messages", messages);
 		console.log("dir", directory);
@@ -93,16 +110,18 @@ export const RunCommand = cmd({
 		console.log("agentDir", agentDir);
 
 		async function execute(sdk: CodeWorkSdkClient) {
-			console.log('***** sdk ****');
+			console.log("***** sdk ****");
+			const sessionId = await session(sdk)
+			console.log("************** sessionId: ************", sessionId);
 		}
 
 		await bootstrap(process.cwd(), async () => {
-			const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
-				const request = new Request(input, init)
-				return Server.App().fetch(request)
-			}) as typeof globalThis.fetch
-			const sdk = createCodeWorkClient({ baseUrl: "http://codework.internal", fetch: fetchFn })
-			await execute(sdk)
-		})
+			const fetchFn = (async (...fetchArgs: Parameters<typeof globalThis.fetch>) => {
+				const request = new Request(...fetchArgs);
+				return Server.App().fetch(request);
+			}) as typeof globalThis.fetch;
+			const sdk = createCodeWorkClient({ baseUrl: "http://codework.internal", fetch: fetchFn });
+			await execute(sdk);
+		});
 	},
 });
