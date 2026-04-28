@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/sdk",
-	"version": "0.0.0",
+	"version": "0.0.0-dev-20260428",
 	"description": "TypeScript SDK for the CodeWork API.",
 	"keywords": [
 		"api",

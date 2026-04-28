@@ -25,8 +25,65 @@ function hasFlag(args, flag) {
 	return args.some((arg) => arg === flag || arg.startsWith(`${flag}=`));
 }
 
+function optionValue(args, flag) {
+	const index = args.findIndex((arg) => arg === flag || arg.startsWith(`${flag}=`));
+	if (index === -1) return undefined;
+
+	const arg = args[index];
+	if (arg.startsWith(`${flag}=`)) return arg.slice(flag.length + 1);
+
+	return args[index + 1];
+}
+
+function parsePublishOptions(args) {
+	const forwardArgs = [];
+	let dev = false;
+	let publishVersion;
+
+	for (let index = 0; index < args.length; index++) {
+		const arg = args[index];
+
+		if (arg === "--dev") {
+			dev = true;
+			continue;
+		}
+
+		if (arg === "--publish-version") {
+			publishVersion = args[index + 1];
+			if (!publishVersion || publishVersion.startsWith("--")) {
+				console.error("--publish-version requires a value");
+				process.exit(1);
+			}
+
+			index++;
+			continue;
+		}
+
+		if (arg.startsWith("--publish-version=")) {
+			publishVersion = arg.slice("--publish-version=".length);
+			continue;
+		}
+
+		forwardArgs.push(arg);
+	}
+
+	if (publishVersion === "") {
+		console.error("--publish-version requires a value");
+		process.exit(1);
+	}
+
+	return { dev, forwardArgs, publishVersion };
+}
+
 async function readJSON(path) {
 	return JSON.parse(await readFile(path, "utf8"));
+}
+
+async function restoreFile(path, content) {
+	const current = await readFile(path, "utf8");
+	if (current !== content) {
+		await writeFile(path, content);
+	}
 }
 
 function resolvePackageDir(target) {
@@ -72,6 +129,41 @@ function createSanitizedPublishEnv() {
 
 function compactObject(value) {
 	return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
+}
+
+function createDevPrereleaseId() {
+	const runNumber = process.env.GITHUB_RUN_NUMBER;
+	const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
+	const sha = process.env.GITHUB_SHA?.slice(0, 8);
+
+	if (runNumber && runAttempt && sha) {
+		return `${runNumber}.${runAttempt}.${sha}`;
+	}
+
+	const now = new Date();
+	const timestamp = [
+		now.getUTCFullYear(),
+		String(now.getUTCMonth() + 1).padStart(2, "0"),
+		String(now.getUTCDate()).padStart(2, "0"),
+		String(now.getUTCHours()).padStart(2, "0"),
+		String(now.getUTCMinutes()).padStart(2, "0"),
+		String(now.getUTCSeconds()).padStart(2, "0"),
+	].join("");
+
+	return timestamp;
+}
+
+function createDevVersion(version) {
+	const match = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(version);
+	if (!match) {
+		throw new Error(`Cannot create dev version from invalid semver: ${version}`);
+	}
+
+	return `${match[1]}.${match[2]}.${Number(match[3]) + 1}-dev.${createDevPrereleaseId()}`;
+}
+
+function isPrereleaseVersion(version) {
+	return /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+(?:\+[0-9A-Za-z.-]+)?$/.test(version);
 }
 
 function rewritePublishPath(value) {
@@ -149,10 +241,10 @@ async function rewriteDependencyMap(dependencies) {
 	return rewritten;
 }
 
-async function createPublishManifest(manifest) {
+async function createPublishManifest(manifest, version) {
 	return compactObject({
 		name: manifest.name,
-		version: manifest.version,
+		version,
 		description: manifest.description,
 		keywords: manifest.keywords,
 		homepage: manifest.homepage,
@@ -183,7 +275,7 @@ async function createPublishManifest(manifest) {
 	});
 }
 
-async function preparePublishDirectory(packageDir, manifest) {
+async function preparePublishDirectory(packageDir, manifest, version) {
 	const buildDir = resolve(packageDir, "dist/pack");
 
 	try {
@@ -199,14 +291,17 @@ async function preparePublishDirectory(packageDir, manifest) {
 	await copyFile(resolve(repoRoot, "LICENSE"), resolve(publishDir, "LICENSE"));
 	await writeFile(
 		resolve(publishDir, "package.json"),
-		`${JSON.stringify(await createPublishManifest(manifest), null, "\t")}\n`,
+		`${JSON.stringify(await createPublishManifest(manifest, version), null, "\t")}\n`,
 	);
 
 	return publishDir;
 }
 
-const [target, ...forwardArgs] = process.argv.slice(2);
+const [target, ...rawForwardArgs] = process.argv.slice(2);
 if (!target) usage();
+
+const publishOptions = parsePublishOptions(rawForwardArgs);
+const forwardArgs = publishOptions.forwardArgs;
 
 const packageDir = resolvePackageDir(target);
 const manifestPath = resolve(packageDir, "package.json");
@@ -218,7 +313,8 @@ try {
 	process.exit(1);
 }
 
-const manifest = await readJSON(manifestPath);
+const originalManifestText = await readFile(manifestPath, "utf8");
+const manifest = JSON.parse(originalManifestText);
 if (!manifest.name) {
 	console.error(`Package name missing in ${manifestPath}`);
 	process.exit(1);
@@ -235,22 +331,36 @@ if (manifest.private) {
 }
 
 const publishArgs = ["publish"];
+const publishVersion =
+	publishOptions.publishVersion ?? (publishOptions.dev ? createDevVersion(manifest.version) : manifest.version);
 
 if (!hasFlag(forwardArgs, "--access")) {
 	publishArgs.push("--access", manifest.publishConfig?.access ?? "public");
 }
 
+if (publishOptions.dev && !hasFlag(forwardArgs, "--tag")) {
+	publishArgs.push("--tag", "dev");
+}
+
+const publishTag = optionValue([...publishArgs, ...forwardArgs], "--tag");
+if (publishTag === "dev" && !isPrereleaseVersion(publishVersion)) {
+	console.error(`Refusing to publish stable version ${publishVersion} with the dev dist-tag`);
+	process.exit(1);
+}
+
 publishArgs.push(...forwardArgs);
 
-console.error(`Building ${manifest.name} in ${packageDir}`);
+console.error(`Building ${manifest.name}@${manifest.version} in ${packageDir}`);
 
 const buildExitCode = await run("pnpm", ["run", "build"], packageDir);
+await restoreFile(manifestPath, originalManifestText);
+
 if (buildExitCode !== 0) {
 	process.exit(buildExitCode);
 }
 
-const publishDir = await preparePublishDirectory(packageDir, manifest);
-console.error(`Publishing ${manifest.name} from ${publishDir}`);
+const publishDir = await preparePublishDirectory(packageDir, manifest, publishVersion);
+console.error(`Publishing ${manifest.name}@${publishVersion} from ${publishDir}`);
 
 const exitCode = await run("npm", publishArgs, publishDir, createSanitizedPublishEnv(), true);
 await rm(publishDir, { recursive: true, force: true });
