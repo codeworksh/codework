@@ -5,6 +5,9 @@ import { Filesystem } from "@codeworksh/utils";
 import { UI } from "../ui.ts";
 import { pathToFileURL } from "node:url";
 import { Global } from "../../config/global.ts";
+import { createCodeWorkClient, type CodeWorkSdkClient} from "@codeworksh/sdk";
+import { Server} from "../../server/server.ts";
+import { bootstrap} from "../bootstrap.ts";
 
 interface RunArgs extends ArgumentsCamelCase {
 	args: string[];
@@ -88,5 +91,18 @@ export const RunCommand = cmd({
 
 		const agentDir = Global.Path.agent;
 		console.log("agentDir", agentDir);
+
+		async function execute(sdk: CodeWorkSdkClient) {
+			console.log('***** sdk ****');
+		}
+
+		await bootstrap(process.cwd(), async () => {
+			const fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
+				const request = new Request(input, init)
+				return Server.App().fetch(request)
+			}) as typeof globalThis.fetch
+			const sdk = createCodeWorkClient({ baseUrl: "http://codework.internal", fetch: fetchFn })
+			await execute(sdk)
+		})
 	},
 });
