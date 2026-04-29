@@ -1,0 +1,22 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"target": "esnext",
+		"lib": ["es2023", "dom"],
+		"module": "Preserve",
+		"moduleDetection": "force",
+		"resolveJsonModule": true,
+		"types": ["node"],
+		"moduleResolution": "bundler",
+		"declaration": true,
+		"allowImportingTsExtensions": true,
+		"esModuleInterop": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+		"strict": true,
+		"noUnusedLocals": true,
+		"skipLibCheck": true
+	},
+	"include": ["src", "openapi-ts.config.ts"]
+}

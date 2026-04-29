@@ -1,7 +1,7 @@
 {
 	"name": "@codeworksh/bridge",
 	"version": "0.0.0",
-	"description": "Bridge toolkit for reusable integration helpers.",
+	"private": true,
 	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/bridge",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
@@ -23,9 +23,6 @@
 	"exports": {
 		".": "./dist/pack/index.mjs",
 		"./package.json": "./package.json"
-	},
-	"publishConfig": {
-		"access": "public"
 	},
 	"scripts": {
 		"build": "vp pack",

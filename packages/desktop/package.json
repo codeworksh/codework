@@ -18,6 +18,7 @@
 		"electron": "^40.6.0"
 	},
 	"devDependencies": {
+		"@codeworksh/bridge": "workspace:*",
 		"@types/node": "^24.6.1",
 		"tsdown": "^0.21.9",
 		"typescript": "^5.9.3"

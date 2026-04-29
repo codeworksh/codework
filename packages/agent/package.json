@@ -1,0 +1,72 @@
+{
+	"name": "@codeworksh/agent",
+	"version": "0.0.0",
+	"private": true,
+	"description": "CodeWork agent powered by aikit",
+	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/agent",
+	"bugs": {
+		"url": "https://github.com/codeworksh/codework/issues"
+	},
+	"license": "MIT",
+	"author": "Sanchit Kudari",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/agent"
+	},
+	"bin": {
+		"codework": "./dist/pack/index.mjs"
+	},
+	"files": [
+		"dist",
+		"src",
+		"README.md"
+	],
+	"type": "module",
+	"types": "./dist/pack/index.d.mts",
+	"exports": {
+		".": "./dist/pack/index.mjs",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"bump": "bumpp",
+		"test": "vp test",
+		"check": "vp check",
+		"lint": "vp lint",
+		"cli": "node --conditions=development --experimental-transform-types src/index.ts",
+		"openapi": "node --conditions=development --experimental-transform-types scripts/openapi.ts && vp fmt openapi.json"
+	},
+	"dependencies": {
+		"@codeworksh/aikit": "workspace:*",
+		"@codeworksh/sdk": "workspace:*",
+		"@libsql/client": "^0.17.3",
+		"chalk": "^5.6.2",
+		"drizzle-orm": "^0.45.2",
+		"fast-json-stringify": "^6.3.0",
+		"h3": "2.0.1-rc.20",
+		"uuid": "^14.0.0",
+		"yargs": "^18.0.0",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@codeworksh/utils": "workspace:*",
+		"@types/node": "^25.6.0",
+		"@types/yargs": "^17.0.35",
+		"bumpp": "^11.0.1",
+		"drizzle-kit": "^0.31.10"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	},
+	"inlinedDependencies": {
+		"@sinclair/typebox": "0.34.49",
+		"balanced-match": "4.0.4",
+		"brace-expansion": "5.0.5",
+		"glob": "13.0.6",
+		"minimatch": "10.2.5"
+	}
+}

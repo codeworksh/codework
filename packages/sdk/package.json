@@ -1,0 +1,56 @@
+{
+	"name": "@codeworksh/sdk",
+	"version": "0.0.0-dev-20260428",
+	"description": "TypeScript SDK for the CodeWork API.",
+	"keywords": [
+		"api",
+		"codework",
+		"sdk",
+		"typescript"
+	],
+	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/sdk",
+	"bugs": {
+		"url": "https://github.com/codeworksh/codework/issues"
+	},
+	"license": "MIT",
+	"author": "Sanchit Kudari",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/sdk"
+	},
+	"files": [
+		"dist",
+		"src",
+		"README.md"
+	],
+	"type": "module",
+	"types": "./dist/pack/index.d.mts",
+	"exports": {
+		".": "./dist/pack/index.mjs",
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"bump": "bumpp",
+		"check": "vp check",
+		"generate": "openapi-ts && node --experimental-transform-types scripts/postgenerate.ts && vp fmt",
+		"lint": "vp lint"
+	},
+	"dependencies": {
+		"@hey-api/client-fetch": "0.13.1"
+	},
+	"devDependencies": {
+		"@hey-api/openapi-ts": "0.96.1",
+		"bumpp": "^11.0.1"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	}
+}

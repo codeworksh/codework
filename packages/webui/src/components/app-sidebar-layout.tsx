@@ -243,7 +243,6 @@ function SidebarTriggerButton({
 	);
 }
 
-
 function SidebarWordMarkLink() {
 	return (
 		<Tooltip>

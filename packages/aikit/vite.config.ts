@@ -14,10 +14,14 @@ export default defineConfig({
 		entry: ["src/index.ts", "src/agent/codemode/drivers/drivers.ts"],
 		format: ["esm"],
 		outDir: "dist/pack",
+		deps: {
+			alwaysBundle: ["@codeworksh/utils"],
+		},
 		sourcemap: true,
 		clean: true,
 		dts: {
 			tsgo: true,
+			resolver: "tsc",
 		},
 		exports: true,
 	},
