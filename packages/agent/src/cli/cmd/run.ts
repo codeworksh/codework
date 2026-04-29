@@ -16,6 +16,8 @@ interface RunArgs extends ArgumentsCamelCase {
 	provider?: string;
 	model?: string;
 	name?: string;
+	session?: string;
+	continue?: boolean;
 	"--"?: string[];
 }
 
@@ -45,6 +47,16 @@ export const RunCommand = cmd({
 			.option("name", {
 				type: "string",
 				describe: "name for the session (uses truncated prompt if no value provided)",
+			})
+			.option("session", {
+				alias: ["s"],
+				type: "string",
+				describe: "session ID to continue",
+			})
+			.option("continue", {
+				alias: ["c"],
+				describe: "continue the last session",
+				type: "boolean",
 			});
 	},
 	handler: async (args: RunArgs) => {
@@ -96,6 +108,10 @@ export const RunCommand = cmd({
 		}
 
 		async function session(sdk: CodeWorkSdkClient) {
+			const baseId = args.continue
+				? (await sdk.session.list()).data?.find((s) => !s.parentSessionId)?.id
+				: args.session;
+			if (baseId) return baseId;
 			const result = await sdk.session.create({ name: name() });
 			return result.data?.id;
 		}
