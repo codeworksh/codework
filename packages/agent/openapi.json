@@ -6,6 +6,134 @@
 	},
 	"paths": {
 		"/sessions": {
+			"get": {
+				"tags": ["Session"],
+				"summary": "List sessions",
+				"description": "Get a list of all CodeWork sessions, sorted by most recently updated.",
+				"operationId": "session.list",
+				"parameters": [
+					{
+						"name": "directory",
+						"in": "query",
+						"description": "Filter sessions by project directory",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "roots",
+						"in": "query",
+						"description": "Only return root sessions (no parentID)",
+						"required": false,
+						"schema": {
+							"type": "boolean"
+						}
+					},
+					{
+						"name": "workspaceId",
+						"in": "query",
+						"description": "Filter sessions by workspace ID",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "start",
+						"in": "query",
+						"description": "Filter sessions updated on or after this timestamp (milliseconds since epoch)",
+						"required": false,
+						"schema": {
+							"type": "number"
+						}
+					},
+					{
+						"name": "search",
+						"in": "query",
+						"description": "Filter sessions by title (case-insensitive)",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Maximum number of sessions to return",
+						"required": false,
+						"schema": {
+							"type": "number"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "List of sessions",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"required": ["id", "slug", "projectId", "name", "directory", "time", "version"],
+										"properties": {
+											"id": {
+												"type": "string"
+											},
+											"slug": {
+												"type": "string"
+											},
+											"projectId": {
+												"type": "string"
+											},
+											"workspaceId": {
+												"type": "string"
+											},
+											"parentSessionId": {
+												"type": "string"
+											},
+											"activeLeafMessageId": {
+												"type": "string"
+											},
+											"name": {
+												"type": "string"
+											},
+											"directory": {
+												"type": "string"
+											},
+											"time": {
+												"type": "object",
+												"required": ["created", "updated"],
+												"properties": {
+													"created": {
+														"type": "number"
+													},
+													"updated": {
+														"type": "number"
+													},
+													"compacting": {
+														"type": "number"
+													},
+													"archived": {
+														"type": "number"
+													}
+												}
+											},
+											"version": {
+												"type": "string"
+											}
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid session list query"
+					}
+				}
+			},
 			"post": {
 				"tags": ["Session"],
 				"summary": "Create session",

@@ -5,6 +5,70 @@ export type ClientOptions = {
 	baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type SessionListData = {
+	body?: never;
+	path?: never;
+	query?: {
+		/**
+		 * Filter sessions by project directory
+		 */
+		directory?: string;
+		/**
+		 * Only return root sessions (no parentID)
+		 */
+		roots?: boolean;
+		/**
+		 * Filter sessions by workspace ID
+		 */
+		workspaceId?: string;
+		/**
+		 * Filter sessions updated on or after this timestamp (milliseconds since epoch)
+		 */
+		start?: number;
+		/**
+		 * Filter sessions by title (case-insensitive)
+		 */
+		search?: string;
+		/**
+		 * Maximum number of sessions to return
+		 */
+		limit?: number;
+	};
+	url: "/sessions";
+};
+
+export type SessionListErrors = {
+	/**
+	 * Invalid session list query
+	 */
+	400: unknown;
+};
+
+export type SessionListResponses = {
+	/**
+	 * List of sessions
+	 */
+	200: Array<{
+		id: string;
+		slug: string;
+		projectId: string;
+		workspaceId?: string;
+		parentSessionId?: string;
+		activeLeafMessageId?: string;
+		name: string;
+		directory: string;
+		time: {
+			created: number;
+			updated: number;
+			compacting?: number;
+			archived?: number;
+		};
+		version: string;
+	}>;
+};
+
+export type SessionListResponse = SessionListResponses[keyof SessionListResponses];
+
 export type SessionCreateData = {
 	body?: {
 		parentSessionId?: string;

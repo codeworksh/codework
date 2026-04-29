@@ -8,4 +8,8 @@ export type {
 	SessionCreateErrors,
 	SessionCreateResponse,
 	SessionCreateResponses,
+	SessionListData,
+	SessionListErrors,
+	SessionListResponse,
+	SessionListResponses,
 } from "./types.gen.js";

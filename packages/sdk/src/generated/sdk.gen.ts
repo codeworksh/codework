@@ -3,7 +3,12 @@
 
 import { client } from "./client.gen.js";
 import { buildClientParams, type Client, type Options as Options2, type TDataShape } from "./client/index.js";
-import type { SessionCreateErrors, SessionCreateResponses } from "./types.gen.js";
+import type {
+	SessionCreateErrors,
+	SessionCreateResponses,
+	SessionListErrors,
+	SessionListResponses,
+} from "./types.gen.js";
 
 export type Options<
 	TData extends TDataShape = TDataShape,
@@ -50,6 +55,44 @@ class HeyApiRegistry<T> {
 }
 
 export class Session extends HeyApiClient {
+	/**
+	 * List sessions
+	 *
+	 * Get a list of all CodeWork sessions, sorted by most recently updated.
+	 */
+	public list<ThrowOnError extends boolean = false>(
+		parameters?: {
+			directory?: string;
+			roots?: boolean;
+			workspaceId?: string;
+			start?: number;
+			search?: string;
+			limit?: number;
+		},
+		options?: Options<never, ThrowOnError>,
+	) {
+		const params = buildClientParams(
+			[parameters],
+			[
+				{
+					args: [
+						{ in: "query", key: "directory" },
+						{ in: "query", key: "roots" },
+						{ in: "query", key: "workspaceId" },
+						{ in: "query", key: "start" },
+						{ in: "query", key: "search" },
+						{ in: "query", key: "limit" },
+					],
+				},
+			],
+		);
+		return (options?.client ?? this.client).get<SessionListResponses, SessionListErrors, ThrowOnError>({
+			url: "/sessions",
+			...options,
+			...params,
+		});
+	}
+
 	/**
 	 * Create session
 	 *
