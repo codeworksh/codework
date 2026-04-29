@@ -45,7 +45,7 @@ export const RunCommand = cmd({
 			.option("name", {
 				type: "string",
 				describe: "name for the session (uses truncated prompt if no value provided)",
-			})
+			});
 	},
 	handler: async (args: RunArgs) => {
 		const allArgs = [...args.args, ...(args["--"] || [])];
@@ -89,15 +89,15 @@ export const RunCommand = cmd({
 		}
 
 		function name() {
-			if (args.name === undefined) return
-			if (args.name !== "") return args.title
-			const message = messages.length > 0 ? messages[0]!: "";
-			return messages.slice(0, 50) + (message.length > 50 ? "..." : "")
+			if (args.name === undefined) return undefined;
+			if (args.name !== "") return args.name;
+			const message = messages.length > 0 ? messages[0]! : "";
+			return message.slice(0, 50) + (message.length > 50 ? "..." : "");
 		}
 
 		async function session(sdk: CodeWorkSdkClient) {
-			const result = await sdk.session.create({ body: { name: name() }})
-			return result.data?.id
+			const result = await sdk.session.create({ name: name() });
+			return result.data?.id;
 		}
 
 		console.log("********************");
@@ -111,7 +111,7 @@ export const RunCommand = cmd({
 
 		async function execute(sdk: CodeWorkSdkClient) {
 			console.log("***** sdk ****");
-			const sessionId = await session(sdk)
+			const sessionId = await session(sdk);
 			console.log("************** sessionId: ************", sessionId);
 		}
 

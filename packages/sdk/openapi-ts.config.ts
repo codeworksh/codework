@@ -7,6 +7,7 @@ export default defineConfig({
 		"@hey-api/client-fetch",
 		{
 			name: "@hey-api/sdk",
+			paramsStructure: "flat",
 			operations: {
 				strategy: "single",
 				containerName: "CodeWorkSdk",

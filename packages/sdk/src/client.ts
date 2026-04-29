@@ -1,5 +1,5 @@
 import { CodeWorkSdk } from "./generated";
-import { createClient, type Config } from "./generated/client";
+import { createClient, createConfig, type Config } from "./generated/client";
 
 export { type Config as CodeWorkClientConfig, CodeWorkSdk as CodeWorkSdkClient };
 
@@ -21,7 +21,7 @@ export function createCodeWorkClient(config: Config & { directory?: string; work
 	};
 
 	const client = createClient({
-		...clientConfig,
+		...createConfig(clientConfig),
 		fetch: clientConfig.fetch ?? customFetch,
 		headers,
 	});

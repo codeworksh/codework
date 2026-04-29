@@ -48,7 +48,7 @@ export const SessionRoutes: () => H3 = lazy(() => {
 			},
 		},
 		async (event) => {
-			const input = parseCreateInput(event.req.body ? await readBody(event) : undefined);
+			const input = parseCreateInput(await readBody(event));
 			const session = Session.create(input);
 			event.res.status = 201;
 			return session;
