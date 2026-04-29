@@ -33,7 +33,9 @@ function parseEnvironmentDocument(raw: string): Partial<Record<(typeof LOGIN_SHE
 	return parsed;
 }
 
-function readEnvironmentFromLoginShell(shellPath: string): Partial<Record<(typeof LOGIN_SHELL_ENV_NAMES)[number], string>> {
+function readEnvironmentFromLoginShell(
+	shellPath: string,
+): Partial<Record<(typeof LOGIN_SHELL_ENV_NAMES)[number], string>> {
 	const script = `env | egrep '^(${LOGIN_SHELL_ENV_NAMES.join("|")})='`;
 	const raw = execFileSync(shellPath, ["-lc", script], {
 		encoding: "utf8",

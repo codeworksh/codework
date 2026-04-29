@@ -20,26 +20,12 @@ import { useCommandPaletteStore } from "../lib/cmd-palette-store";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
-import {
-	Sheet,
-	SheetContent,
-	SheetDescription,
-	SheetHeader,
-	SheetTitle,
-	SheetTrigger,
-} from "./ui/sheet";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "./ui/tooltip";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 const SIDEBAR_WIDTH = "17rem";
-const electronTitlebarLeftPadding =
-	"pl-[90px] wco:pl-[max(90px,calc(env(titlebar-area-x)+1em))]";
-const sidebarChromeHeaderClassName =
-	`drag-region flex h-[52px] flex-row items-center gap-2 px-4 py-0 ${electronTitlebarLeftPadding} wco:h-[env(titlebar-area-height)]`;
+const electronTitlebarLeftPadding = "pl-[90px] wco:pl-[max(90px,calc(env(titlebar-area-x)+1em))]";
+const sidebarChromeHeaderClassName = `drag-region flex h-[52px] flex-row items-center gap-2 px-4 py-0 ${electronTitlebarLeftPadding} wco:h-[env(titlebar-area-height)]`;
 const mainChromeDragRegionClassName =
 	"drag-region fixed top-0 right-0 z-20 hidden h-[52px] bg-transparent transition-[left] duration-200 ease-in-out motion-reduce:transition-none md:block wco:h-[env(titlebar-area-height)] wco:right-[calc(100vw-env(titlebar-area-width)-env(titlebar-area-x))]";
 
@@ -53,7 +39,13 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
 				className="app-sidebar-layout flex h-screen w-screen overflow-hidden bg-background text-foreground"
 				style={{ "--sidebar-width": SIDEBAR_WIDTH } as React.CSSProperties}
 			>
-				<div className="group peer hidden text-sidebar-foreground md:block" data-collapsible="" data-side="left" data-state="expanded" data-variant="sidebar">
+				<div
+					className="group peer hidden text-sidebar-foreground md:block"
+					data-collapsible=""
+					data-side="left"
+					data-state="expanded"
+					data-variant="sidebar"
+				>
 					<div
 						className={cn(
 							"relative bg-transparent transition-[width] duration-200 ease-in-out motion-reduce:transition-none",
@@ -68,7 +60,11 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
 						)}
 						data-slot="sidebar-container"
 					>
-						<SidebarSurface isSidebarOpen={isSidebarOpen} onToggleSidebar={toggleSidebar} showChromeHeader={isElectron} />
+						<SidebarSurface
+							isSidebarOpen={isSidebarOpen}
+							onToggleSidebar={toggleSidebar}
+							showChromeHeader={isElectron}
+						/>
 					</aside>
 				</div>
 
@@ -127,7 +123,11 @@ function SidebarSurface({
 }) {
 	return (
 		<div className="flex h-full w-full min-w-0 flex-col bg-sidebar" data-sidebar="sidebar" data-slot="sidebar-inner">
-			<SidebarContent isSidebarOpen={isSidebarOpen} onToggleSidebar={onToggleSidebar} showChromeHeader={showChromeHeader} />
+			<SidebarContent
+				isSidebarOpen={isSidebarOpen}
+				onToggleSidebar={onToggleSidebar}
+				showChromeHeader={showChromeHeader}
+			/>
 			<button
 				aria-label="Resize Sidebar"
 				className="absolute inset-y-0 -right-4 z-20 hidden w-4 -translate-x-1/2 cursor-w-resize transition-all ease-linear after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex"
@@ -150,8 +150,8 @@ function SidebarContent({
 	onToggleSidebar?: () => void;
 	showChromeHeader?: boolean;
 }) {
-	const [expandedProjectIds, setExpandedProjectIds] = useState(() =>
-		new Set(sidebarMockData.projects.filter((project) => project.expanded).map((project) => project.id)),
+	const [expandedProjectIds, setExpandedProjectIds] = useState(
+		() => new Set(sidebarMockData.projects.filter((project) => project.expanded).map((project) => project.id)),
 	);
 	const [activeThreadId, setActiveThreadId] = useState(() => {
 		for (const project of sidebarMockData.projects) {
@@ -175,7 +175,9 @@ function SidebarContent({
 
 	return (
 		<>
-			{showChromeHeader && onToggleSidebar ? <SidebarChromeHeader isSidebarOpen={isSidebarOpen} onToggleSidebar={onToggleSidebar} /> : null}
+			{showChromeHeader && onToggleSidebar ? (
+				<SidebarChromeHeader isSidebarOpen={isSidebarOpen} onToggleSidebar={onToggleSidebar} />
+			) : null}
 
 			<div className="size-full h-auto min-h-0 flex-1 overflow-hidden" role="presentation">
 				<div className="h-full overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -274,7 +276,11 @@ function SidebarCommandSearch() {
 	const setOpen = useCommandPaletteStore((store) => store.setOpen);
 
 	return (
-		<div className="relative flex w-full min-w-0 flex-col px-2 pt-2 pb-1" data-sidebar="group" data-slot="sidebar-group">
+		<div
+			className="relative flex w-full min-w-0 flex-col px-2 pt-2 pb-1"
+			data-sidebar="group"
+			data-slot="sidebar-group"
+		>
 			<ul className="flex w-full min-w-0 flex-col gap-1" data-sidebar="menu" data-slot="sidebar-menu">
 				<li className="group/menu-item relative" data-sidebar="menu-item" data-slot="sidebar-menu-item">
 					<button
@@ -309,9 +315,7 @@ function SidebarProjects({
 	return (
 		<div className="relative flex w-full min-w-0 flex-col px-2 py-2" data-sidebar="group" data-slot="sidebar-group">
 			<div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-				<span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-					Projects
-				</span>
+				<span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Projects</span>
 				<div className="flex items-center gap-1">
 					<IconTooltip label="Sort projects">
 						<button
@@ -435,7 +439,12 @@ function SidebarThreadRow({
 	thread: SidebarMockThread;
 }) {
 	return (
-		<li className="group/menu-sub-item relative w-full" data-sidebar="menu-sub-item" data-slot="sidebar-menu-sub-item" data-thread-item="true">
+		<li
+			className="group/menu-sub-item relative w-full"
+			data-sidebar="menu-sub-item"
+			data-slot="sidebar-menu-sub-item"
+			data-thread-item="true"
+		>
 			<button
 				type="button"
 				className={cn(

@@ -2,10 +2,7 @@ import { type BrowserWindow, dialog } from "electron";
 
 const CONFIRM_BUTTON_INDEX = 1;
 
-export async function showDesktopConfirmDialog(
-	message: string,
-	ownerWindow: BrowserWindow | null,
-): Promise<boolean> {
+export async function showDesktopConfirmDialog(message: string, ownerWindow: BrowserWindow | null): Promise<boolean> {
 	const normalizedMessage = message.trim();
 	if (normalizedMessage.length === 0) {
 		return false;

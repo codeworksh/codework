@@ -103,7 +103,7 @@ export namespace Filesystem {
 	}
 
 	export function windowsPath(p: string): string {
-		if (process.platform !== "win32") return p
+		if (process.platform !== "win32") return p;
 		return (
 			p
 				.replace(/^\/([a-zA-Z]):(?:[\\/]|$)/, (_, drive) => `${drive.toUpperCase()}:/`)
@@ -113,7 +113,7 @@ export namespace Filesystem {
 				.replace(/^\/cygdrive\/([a-zA-Z])(?:\/|$)/, (_, drive) => `${drive.toUpperCase()}:/`)
 				// WSL paths are typically /mnt/<drive>/...
 				.replace(/^\/mnt\/([a-zA-Z])(?:\/|$)/, (_, drive) => `${drive.toUpperCase()}:/`)
-		)
+		);
 	}
 
 	export function overlaps(a: string, b: string): boolean {
@@ -157,6 +157,6 @@ export namespace Filesystem {
 
 	// We cannot rely on path.resolve() here because git.exe may come from Git Bash, Cygwin, or MSYS2, so we need to translate these paths at the boundary.
 	export function resolve(p: string): string {
-		return normalizePath(pathResolve(windowsPath(p)))
+		return normalizePath(pathResolve(windowsPath(p)));
 	}
 }
