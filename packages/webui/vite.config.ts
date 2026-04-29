@@ -78,7 +78,7 @@ export default defineConfig(({ command }) => ({
 				: undefined,
 	},
 	build: {
-		outDir: fileURLToPath(new URL("../desktop/dist/renderer", import.meta.url)),
+		outDir: fileURLToPath(new URL("./dist", import.meta.url)),
 		emptyOutDir: true,
 		sourcemap: buildSourcemap,
 	},

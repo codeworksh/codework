@@ -10,9 +10,8 @@ export default defineConfig({
 		sourcemap: true,
 		clean: true,
 		dts: {
-			tsgo: true,
+			resolver: "tsc",
 		},
-		exports: true,
 	},
 	test: {
 		include: ["test/**/*.test.ts", "tests/**/*.test.ts"],

@@ -1,7 +1,15 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
-const ignoredPaths = ["dist/**", "**/dist/**", "node_modules/**", "**/node_modules/**", ".pnpm-store/**", ".zed/**"];
+const ignoredPaths = [
+	"dist/**",
+	"**/dist/**",
+	"node_modules/**",
+	"**/node_modules/**",
+	".pnpm-store/**",
+	".zed/**",
+	"packages/webui/src/routeTree.gen.ts",
+];
 const aliases = {
 	"@codeworksh/aikit": fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),
 	"@codeworksh/aikit/codemode/drivers": fileURLToPath(

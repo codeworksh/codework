@@ -138,6 +138,9 @@ importers:
       '@codeworksh/bridge':
         specifier: workspace:*
         version: link:../bridge
+      '@codeworksh/webui':
+        specifier: workspace:*
+        version: link:../webui
       '@types/node':
         specifier: ^24.6.1
         version: 24.12.2
