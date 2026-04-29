@@ -6,8 +6,8 @@ import { Slug } from "../util/slug.ts";
 import { Config } from "../config/config.ts";
 import { Instance } from "../project/instance.ts";
 import { WorkspaceContext } from "../workspace/context.ts";
-import { SessionTable, type InsertSession } from "./session.sql.ts";
-import { Database } from "../storage/db.ts";
+import { SessionTable, type InsertSession, type SelectSession } from "./session.sql.ts";
+import { Database, eq, isNull, gte, like, and, desc } from "../storage/db.ts";
 
 export namespace Session {
 	const log = Log.create({ service: "session" });
@@ -15,8 +15,8 @@ export namespace Session {
 	const parentNamePrefix = "New - ";
 	const childNamePrefix = "Child - ";
 
-	function createDefaultName(isChild = false) {
-		return (isChild ? childNamePrefix : parentNamePrefix) + new Date().toISOString();
+	function createDefaultName(isChild = false, time = Date.now()) {
+		return (isChild ? childNamePrefix : parentNamePrefix) + new Date(time).toISOString();
 	}
 
 	export function toRow(info: Info): InsertSession {
@@ -34,6 +34,26 @@ export namespace Session {
 			updatedAt: info.time.updated,
 			timeCompacting: info.time.compacting,
 			timeArchived: info.time.archived,
+		};
+	}
+
+	export function fromRow(row: SelectSession): Info {
+		return {
+			id: row.id,
+			slug: row.slug,
+			projectId: row.projectId,
+			workspaceId: row.workspaceId ?? undefined,
+			parentSessionId: row.parentSessionId ?? undefined,
+			activeLeafMessageId: row.activeLeafMessageId ?? undefined,
+			name: row.name ?? createDefaultName(!!row.parentSessionId, row.createdAt),
+			directory: row.directory,
+			time: {
+				created: row.createdAt,
+				updated: row.updatedAt,
+				compacting: row.timeCompacting ?? undefined,
+				archived: row.timeArchived ?? undefined,
+			},
+			version: row.version,
 		};
 	}
 
@@ -73,6 +93,48 @@ export namespace Session {
 			});
 		},
 	);
+
+	export async function* list(input: {
+		directory?: string;
+		workspaceId?: string;
+		roots?: boolean;
+		start?: number;
+		search?: string;
+		limit?: number;
+	}) {
+		const project = Instance.project;
+		const conditions = [eq(SessionTable.projectId, project.id)];
+		const workspaceId = input?.workspaceId ?? WorkspaceContext.workspaceId;
+		if (workspaceId) {
+			conditions.push(eq(SessionTable.workspaceId, workspaceId));
+		}
+		if (input?.directory) {
+			conditions.push(eq(SessionTable.directory, input.directory));
+		}
+		if (input?.roots) {
+			conditions.push(isNull(SessionTable.parentSessionId));
+		}
+		if (input?.start) {
+			conditions.push(gte(SessionTable.updatedAt, input.start));
+		}
+		if (input?.search) {
+			conditions.push(like(SessionTable.name, `%${input.search}%`));
+		}
+
+		const limit = input?.limit ?? 100;
+		const rows = await Database.use((db) =>
+			db
+				.select()
+				.from(SessionTable)
+				.where(and(...conditions))
+				.orderBy(desc(SessionTable.updatedAt))
+				.limit(limit)
+				.all(),
+		);
+		for (const row of rows) {
+			yield fromRow(row);
+		}
+	}
 
 	export async function createNext(input: {
 		id?: string;
