@@ -1,9 +1,14 @@
 import { CodeWorkSdk } from "./generated";
 import { createClient, createConfig, type Config } from "./generated/client";
 
-export { type Config as CodeWorkClientConfig, CodeWorkSdk as CodeWorkSdkClient };
+export { type Config, CodeWorkSdk as CodeWorkSdkClient };
 
-export function createCodeWorkClient(config: Config & { directory?: string; workspaceId?: string } = {}) {
+export interface CodeWorkClientConfig extends Config {
+	directory?: string;
+	workspaceId?: string;
+}
+
+export function createCodeWorkClient(config: CodeWorkClientConfig) {
 	const { directory, workspaceId, ...clientConfig } = config;
 	const headers = new Headers(clientConfig.headers as HeadersInit);
 

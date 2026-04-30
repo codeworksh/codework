@@ -100,6 +100,16 @@ export const RunCommand = cmd({
 			}
 		}
 
+		const hasMessage = () => {
+			if (messages.length === 0) return false;
+			return !(messages.length !== 0 && messages[0]!.trim().length === 0);
+		}
+
+		if (!hasMessage()) {
+			UI.error("You must provide a message")
+			process.exit(1)
+		}
+
 		function name() {
 			if (args.name === undefined) return undefined;
 			if (args.name !== "") return args.name;
@@ -109,10 +119,13 @@ export const RunCommand = cmd({
 
 		async function session(sdk: CodeWorkSdkClient) {
 			const existingSession = async (sessionId: string) => {
+				console.log("*************** existing sessionId", sessionId)
 				try {
 					const result = await sdk.session.get({ sessionId });
 					return result.data?.id;
-				}	 catch (e) { return undefined }
+				}	 catch (e) {
+					console.error(e)
+					return undefined }
 			}
 
 			const baseId = args.continue
