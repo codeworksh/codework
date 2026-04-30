@@ -103,11 +103,11 @@ export const RunCommand = cmd({
 		const hasMessage = () => {
 			if (messages.length === 0) return false;
 			return !(messages.length !== 0 && messages[0]!.trim().length === 0);
-		}
+		};
 
 		if (!hasMessage()) {
-			UI.error("You must provide a message")
-			process.exit(1)
+			UI.error("You must provide a message");
+			process.exit(1);
 		}
 
 		function name() {
@@ -119,18 +119,19 @@ export const RunCommand = cmd({
 
 		async function session(sdk: CodeWorkSdkClient) {
 			const existingSession = async (sessionId: string) => {
-				console.log("*************** existing sessionId", sessionId)
 				try {
 					const result = await sdk.session.get({ sessionId });
 					return result.data?.id;
-				}	 catch (e) {
-					console.error(e)
-					return undefined }
-			}
+				} catch {
+					return undefined;
+				}
+			};
 
 			const baseId = args.continue
 				? (await sdk.session.list()).data?.find((s) => !s.parentSessionId)?.id
-				: (args.session ? await existingSession(args.session) : undefined);
+				: args.session
+					? await existingSession(args.session)
+					: undefined;
 
 			if (baseId) return baseId;
 
