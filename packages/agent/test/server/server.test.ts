@@ -265,6 +265,40 @@ describe("Server.App OpenAPI", () => {
 				name: { type: "string" },
 			},
 		});
+		expect(document.paths["/sessions/{sessionId}"].patch).toMatchObject({
+			operationId: "session.update",
+			summary: "Update session",
+			requestBody: {
+				required: true,
+				content: {
+					"application/json": {
+						schema: {
+							type: "object",
+							properties: {
+								name: { type: "string" },
+								time: {
+									type: "object",
+									properties: {
+										archived: { type: "number" },
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			responses: {
+				200: {
+					description: "Successfully updated session",
+				},
+				400: {
+					description: "Bad request",
+				},
+				404: {
+					description: "Not found",
+				},
+			},
+		});
 	});
 });
 

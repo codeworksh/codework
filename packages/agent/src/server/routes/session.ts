@@ -18,6 +18,16 @@ const ListQuery = Type.Object({
 });
 type ListQuery = Static<typeof ListQuery>;
 
+const UpdateInput = Type.Object({
+	name: Type.Optional(Type.String({ description: "Updated session name" })),
+	time: Type.Optional(
+		Type.Object({
+			archived: Type.Optional(Type.Number({ description: "Archive timestamp in milliseconds since epoch" })),
+		}),
+	),
+});
+type UpdateInput = Static<typeof UpdateInput>;
+
 function parseCreateInput(body: unknown) {
 	const input = body === "" ? undefined : body;
 	if (input === undefined) return undefined;
@@ -30,6 +40,20 @@ function parseCreateInput(body: unknown) {
 		throw HTTPError.status(400, "Bad Request", {
 			cause,
 			message: "Invalid session create request body",
+		});
+	}
+}
+
+function parseUpdateInput(body: unknown): UpdateInput {
+	try {
+		if (!Value.Check(UpdateInput, body)) {
+			throw new Error("body does not match session update schema");
+		}
+		return Value.Parse(UpdateInput, body);
+	} catch (cause) {
+		throw HTTPError.status(400, "Bad Request", {
+			cause,
+			message: "Invalid session update request body",
 		});
 	}
 }
@@ -246,6 +270,58 @@ export const SessionRoutes: () => H3 = lazy(() => {
 				});
 			}
 			const session = await Session.get(sessionID);
+			return session;
+		},
+	);
+
+	OpenAPI.route(
+		app,
+		{
+			method: "PATCH",
+			route: "/:sessionId",
+			path: "/sessions/{sessionId}",
+			tags: ["Session"],
+			summary: "Update session",
+			description: "Update properties of an existing CodeWork session, such as name or other metadata.",
+			operationId: "session.update",
+			parameters: [
+				{
+					name: "sessionId",
+					in: "path",
+					description: "Session ID",
+					required: true,
+					schema: Session.get.schema,
+				},
+			],
+			requestBody: {
+				required: true,
+				schema: UpdateInput,
+			},
+			responses: {
+				200: {
+					description: "Successfully updated session",
+					schema: Session.Info,
+				},
+				...errors(400, 404),
+			},
+		},
+		async (event) => {
+			const sessionId = getRouterParam(event, "sessionId");
+			if (!sessionId) {
+				throw HTTPError.status(400, "Bad Request", {
+					message: "Missing session ID",
+				});
+			}
+			const updates = parseUpdateInput(await readBody(event));
+
+			let session = await Session.get(sessionId);
+			if (updates.name !== undefined) {
+				session = await Session.setName({ sessionId, name: updates.name });
+			}
+			if (updates.time?.archived !== undefined) {
+				session = await Session.setArchived({ sessionId, time: updates.time.archived });
+			}
+
 			return session;
 		},
 	);

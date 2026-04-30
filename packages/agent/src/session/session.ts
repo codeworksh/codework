@@ -170,4 +170,46 @@ export namespace Session {
 		});
 		return result;
 	}
+
+	export const setName = fn(
+		Type.Object({
+			sessionId: Type.String(),
+			name: Type.String(),
+		}),
+		async (input) => {
+			return await Database.use(async (db) => {
+				const row = await db
+					.update(SessionTable)
+					.set({ name: input.name })
+					.where(eq(SessionTable.id, input.sessionId))
+					.returning()
+					.get();
+				if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionId}` });
+				const info = fromRow(row);
+				Database.effect(() => {});
+				return info;
+			});
+		},
+	);
+
+	export const setArchived = fn(
+		Type.Object({
+			sessionId: Type.String(),
+			time: Type.Optional(Type.Number()),
+		}),
+		async (input) => {
+			return await Database.use(async (db) => {
+				const row = await db
+					.update(SessionTable)
+					.set({ timeArchived: input.time })
+					.where(eq(SessionTable.id, input.sessionId))
+					.returning()
+					.get();
+				if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionId}` });
+				const info = fromRow(row);
+				Database.effect(() => {});
+				return info;
+			});
+		},
+	);
 }

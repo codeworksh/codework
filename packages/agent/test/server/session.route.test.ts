@@ -13,11 +13,15 @@ const createSession = Object.assign(vi.fn(), {
 const getSession = Object.assign(vi.fn(), {
 	schema: Type.String(),
 });
+const setSessionName = vi.fn();
+const setSessionArchived = vi.fn();
 
 vi.mock("../../src/session/session.ts", () => ({
 	Session: {
 		create: createSession,
 		get: getSession,
+		setArchived: setSessionArchived,
+		setName: setSessionName,
 	},
 }));
 
@@ -27,6 +31,8 @@ describe("SessionRoutes", () => {
 	beforeEach(() => {
 		createSession.mockReset();
 		getSession.mockReset();
+		setSessionArchived.mockReset();
+		setSessionName.mockReset();
 	});
 
 	it("creates a session from an optional JSON body", async () => {
@@ -79,5 +85,56 @@ describe("SessionRoutes", () => {
 		expect(response.status).toBe(200);
 		expect(getSession).toHaveBeenCalledWith("session-3");
 		expect(await response.json()).toEqual(session);
+	});
+
+	it("updates a session name and archive time", async () => {
+		const session = { id: "session-4", name: "Existing session" };
+		const renamed = { ...session, name: "Renamed session" };
+		const archived = { ...renamed, time: { archived: 123 } };
+		getSession.mockResolvedValueOnce(session);
+		setSessionName.mockResolvedValueOnce(renamed);
+		setSessionArchived.mockResolvedValueOnce(archived);
+
+		const response = await SessionRoutes().request("/session-4", {
+			body: JSON.stringify({ name: "Renamed session", time: { archived: 123 } }),
+			headers: { "content-type": "application/json" },
+			method: "PATCH",
+		});
+
+		expect(response.status).toBe(200);
+		expect(getSession).toHaveBeenCalledWith("session-4");
+		expect(setSessionName).toHaveBeenCalledWith({ sessionId: "session-4", name: "Renamed session" });
+		expect(setSessionArchived).toHaveBeenCalledWith({ sessionId: "session-4", time: 123 });
+		expect(await response.json()).toEqual(archived);
+	});
+
+	it("returns the existing session when update body has no changes", async () => {
+		const session = { id: "session-5", name: "Existing session" };
+		getSession.mockResolvedValueOnce(session);
+
+		const response = await SessionRoutes().request("/session-5", {
+			body: JSON.stringify({}),
+			headers: { "content-type": "application/json" },
+			method: "PATCH",
+		});
+
+		expect(response.status).toBe(200);
+		expect(getSession).toHaveBeenCalledWith("session-5");
+		expect(setSessionName).not.toHaveBeenCalled();
+		expect(setSessionArchived).not.toHaveBeenCalled();
+		expect(await response.json()).toEqual(session);
+	});
+
+	it("rejects invalid update input", async () => {
+		const response = await SessionRoutes().request("/session-6", {
+			body: JSON.stringify({ name: 123 }),
+			headers: { "content-type": "application/json" },
+			method: "PATCH",
+		});
+
+		expect(response.status).toBe(400);
+		expect(getSession).not.toHaveBeenCalled();
+		expect(setSessionName).not.toHaveBeenCalled();
+		expect(setSessionArchived).not.toHaveBeenCalled();
 	});
 });
