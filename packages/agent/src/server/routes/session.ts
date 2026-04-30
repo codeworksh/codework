@@ -1,8 +1,9 @@
 import { lazy } from "@codeworksh/utils";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { getQuery, H3, HTTPError, readBody } from "h3";
+import { getQuery, getRouterParam, H3, HTTPError, readBody } from "h3";
 import { Session } from "../../session/session.ts";
+import { errors } from "../error.ts";
 import { OpenAPI } from "../openapi.ts";
 
 const ListQuery = Type.Object({
@@ -206,6 +207,45 @@ export const SessionRoutes: () => H3 = lazy(() => {
 			const input = parseCreateInput(await readBody(event));
 			const session = Session.create(input);
 			event.res.status = 201;
+			return session;
+		},
+	);
+
+	OpenAPI.route(
+		app,
+		{
+			method: "GET",
+			route: "/:sessionId",
+			path: "/sessions/{sessionId}",
+			tags: ["Session"],
+			summary: "Get session",
+			description: "Retrieve detailed information about a specific CodeWork session.",
+			operationId: "session.get",
+			parameters: [
+				{
+					name: "sessionId",
+					in: "path",
+					description: "Session ID",
+					required: true,
+					schema: Session.get.schema,
+				},
+			],
+			responses: {
+				200: {
+					description: "Get session",
+					schema: Session.Info,
+				},
+				...errors(400, 404),
+			},
+		},
+		async (event) => {
+			const sessionID = getRouterParam(event, "sessionId");
+			if (!sessionID) {
+				throw HTTPError.status(400, "Bad Request", {
+					message: "Missing session ID",
+				});
+			}
+			const session = await Session.get(sessionID);
 			return session;
 		},
 	);

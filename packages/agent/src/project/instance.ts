@@ -101,7 +101,7 @@ export const Instance = {
 		cache.delete(directory);
 		const next = track(directory, boot({ ...input, directory }));
 		// @sanchitrk: send durable stream event?
-		// emit();
+		// emit(directory);
 		return await next;
 	},
 	async dispose() {

@@ -6,6 +6,8 @@ import { buildClientParams, type Client, type Options as Options2, type TDataSha
 import type {
 	SessionCreateErrors,
 	SessionCreateResponses,
+	SessionGetErrors,
+	SessionGetResponses,
 	SessionListErrors,
 	SessionListResponses,
 } from "./types.gen.js";
@@ -125,6 +127,25 @@ export class Session extends HeyApiClient {
 				...options?.headers,
 				...params.headers,
 			},
+		});
+	}
+
+	/**
+	 * Get session
+	 *
+	 * Retrieve detailed information about a specific CodeWork session.
+	 */
+	public get<ThrowOnError extends boolean = false>(
+		parameters: {
+			sessionId: string;
+		},
+		options?: Options<never, ThrowOnError>,
+	) {
+		const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionId" }] }]);
+		return (options?.client ?? this.client).get<SessionGetResponses, SessionGetErrors, ThrowOnError>({
+			url: "/sessions/{sessionId}",
+			...options,
+			...params,
 		});
 	}
 }

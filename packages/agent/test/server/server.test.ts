@@ -8,6 +8,7 @@ import { HTTPError } from "h3";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { Instance } from "../../src/project/instance.ts";
 import { Server } from "../../src/server/server.ts";
+import { NotFoundError } from "../../src/storage/db.ts";
 import { WorkspaceContext } from "../../src/workspace/context.ts";
 
 vi.mock("../../src/project/project.ts", () => ({
@@ -37,6 +38,7 @@ const TestError = NamedError.create(
 	}),
 );
 let namedRouteError: InstanceType<typeof TestError>;
+let notFoundRouteError: InstanceType<typeof NotFoundError>;
 let unknownRouteError: Error;
 let httpRouteError: HTTPError;
 
@@ -52,6 +54,9 @@ Server.App()
 	})
 	.get("/test/named-error", () => {
 		throw namedRouteError;
+	})
+	.get("/test/not-found-error", () => {
+		throw notFoundRouteError;
 	})
 	.get("/test/unknown-error", () => {
 		throw unknownRouteError;
@@ -167,6 +172,23 @@ describe("Server.App error handling", () => {
 		expect(await response.json()).toEqual({
 			name: "TestError",
 			data: { message: "named failure" },
+		});
+		expect(errorSpy).toHaveBeenCalledWith(error);
+	});
+
+	it("serializes not found named errors with a 404 status", async () => {
+		const error = new NotFoundError({ message: "missing session" });
+		notFoundRouteError = error;
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const server = await Server.listen({ hostname: "127.0.0.1", port: 0 });
+		servers.add(server);
+
+		const response = await fetch(new URL("/test/not-found-error", server.url));
+
+		expect(response.status).toBe(404);
+		expect(await response.json()).toEqual({
+			name: "NotFoundError",
+			data: { message: "missing session" },
 		});
 		expect(errorSpy).toHaveBeenCalledWith(error);
 	});

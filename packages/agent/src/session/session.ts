@@ -7,7 +7,7 @@ import { Config } from "../config/config.ts";
 import { Instance } from "../project/instance.ts";
 import { WorkspaceContext } from "../workspace/context.ts";
 import { SessionTable, type InsertSession, type SelectSession } from "./session.sql.ts";
-import { Database, eq, isNull, gte, like, and, desc } from "../storage/db.ts";
+import { Database, eq, isNull, gte, like, and, desc, NotFoundError } from "../storage/db.ts";
 
 export namespace Session {
 	const log = Log.create({ service: "session" });
@@ -135,6 +135,12 @@ export namespace Session {
 			yield fromRow(row);
 		}
 	}
+
+	export const get = fn(Type.String(), async (id) => {
+		const row = await Database.use((db) => db.select().from(SessionTable).where(eq(SessionTable.id, id)).get());
+		if (!row) throw new NotFoundError({ message: `session not found: ${id}` });
+		return fromRow(row);
+	});
 
 	export async function createNext(input: {
 		id?: string;

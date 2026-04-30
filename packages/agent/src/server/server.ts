@@ -3,6 +3,7 @@ import { lazy, NamedError, Filesystem } from "@codeworksh/utils";
 import { WorkspaceContext } from "../workspace/context.ts";
 import { Instance } from "../project/instance.ts";
 import { InstanceBootstrap } from "../project/bootstrap.ts";
+import { namedErrorResponse } from "./error.ts";
 import { OpenAPI } from "./openapi.ts";
 import { SessionRoutes } from "./routes/session.ts";
 
@@ -25,7 +26,7 @@ export namespace Server {
 		console.error(cause);
 
 		if (cause instanceof NamedError) {
-			return Response.json(cause.toObject(), { status: 500 });
+			return namedErrorResponse(cause);
 		}
 
 		if (!error.unhandled) {

@@ -108,12 +108,21 @@ export const RunCommand = cmd({
 		}
 
 		async function session(sdk: CodeWorkSdkClient) {
+			const existingSession = async (sessionId: string) => {
+				try {
+					const result = await sdk.session.get({ sessionId });
+					return result.data?.id;
+				}	 catch (e) { return undefined }
+			}
+
 			const baseId = args.continue
 				? (await sdk.session.list()).data?.find((s) => !s.parentSessionId)?.id
-				: args.session;
+				: (args.session ? await existingSession(args.session) : undefined);
+
 			if (baseId) return baseId;
+
 			const result = await sdk.session.create({ name: name() });
-			return result.data?.id;
+			return result.data?.id as string;
 		}
 
 		console.log("********************");

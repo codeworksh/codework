@@ -10,10 +10,14 @@ const createSessionSchema = Type.Optional(
 const createSession = Object.assign(vi.fn(), {
 	schema: createSessionSchema,
 });
+const getSession = Object.assign(vi.fn(), {
+	schema: Type.String(),
+});
 
 vi.mock("../../src/session/session.ts", () => ({
 	Session: {
 		create: createSession,
+		get: getSession,
 	},
 }));
 
@@ -22,6 +26,7 @@ const { SessionRoutes } = await import("../../src/server/routes/session.ts");
 describe("SessionRoutes", () => {
 	beforeEach(() => {
 		createSession.mockReset();
+		getSession.mockReset();
 	});
 
 	it("creates a session from an optional JSON body", async () => {
@@ -61,5 +66,18 @@ describe("SessionRoutes", () => {
 
 		expect(response.status).toBe(400);
 		expect(createSession).not.toHaveBeenCalled();
+	});
+
+	it("gets a session by route parameter", async () => {
+		const session = { id: "session-3", name: "Existing session" };
+		getSession.mockResolvedValueOnce(session);
+
+		const response = await SessionRoutes().request("/session-3", {
+			method: "GET",
+		});
+
+		expect(response.status).toBe(200);
+		expect(getSession).toHaveBeenCalledWith("session-3");
+		expect(await response.json()).toEqual(session);
 	});
 });

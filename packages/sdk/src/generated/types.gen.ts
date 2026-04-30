@@ -110,3 +110,64 @@ export type SessionCreateResponses = {
 };
 
 export type SessionCreateResponse = SessionCreateResponses[keyof SessionCreateResponses];
+
+export type SessionGetData = {
+	body?: never;
+	path: {
+		/**
+		 * Session ID
+		 */
+		sessionId: string;
+	};
+	query?: never;
+	url: "/sessions/{sessionId}";
+};
+
+export type SessionGetErrors = {
+	/**
+	 * Bad request
+	 */
+	400: {
+		status: number;
+		statusText?: string;
+		unhandled?: boolean;
+		message: string;
+		data?: unknown;
+	};
+	/**
+	 * Not found
+	 */
+	404: {
+		name: "NotFoundError";
+		data: {
+			message: string;
+		};
+	};
+};
+
+export type SessionGetError = SessionGetErrors[keyof SessionGetErrors];
+
+export type SessionGetResponses = {
+	/**
+	 * Get session
+	 */
+	200: {
+		id: string;
+		slug: string;
+		projectId: string;
+		workspaceId?: string;
+		parentSessionId?: string;
+		activeLeafMessageId?: string;
+		name: string;
+		directory: string;
+		time: {
+			created: number;
+			updated: number;
+			compacting?: number;
+			archived?: number;
+		};
+		version: string;
+	};
+};
+
+export type SessionGetResponse = SessionGetResponses[keyof SessionGetResponses];

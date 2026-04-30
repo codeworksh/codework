@@ -221,6 +221,138 @@
 					}
 				}
 			}
+		},
+		"/sessions/{sessionId}": {
+			"get": {
+				"tags": ["Session"],
+				"summary": "Get session",
+				"description": "Retrieve detailed information about a specific CodeWork session.",
+				"operationId": "session.get",
+				"parameters": [
+					{
+						"name": "sessionId",
+						"in": "path",
+						"description": "Session ID",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Get session",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["id", "slug", "projectId", "name", "directory", "time", "version"],
+									"properties": {
+										"id": {
+											"type": "string"
+										},
+										"slug": {
+											"type": "string"
+										},
+										"projectId": {
+											"type": "string"
+										},
+										"workspaceId": {
+											"type": "string"
+										},
+										"parentSessionId": {
+											"type": "string"
+										},
+										"activeLeafMessageId": {
+											"type": "string"
+										},
+										"name": {
+											"type": "string"
+										},
+										"directory": {
+											"type": "string"
+										},
+										"time": {
+											"type": "object",
+											"required": ["created", "updated"],
+											"properties": {
+												"created": {
+													"type": "number"
+												},
+												"updated": {
+													"type": "number"
+												},
+												"compacting": {
+													"type": "number"
+												},
+												"archived": {
+													"type": "number"
+												}
+											}
+										},
+										"version": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Bad request",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": ["status", "message"],
+									"properties": {
+										"status": {
+											"type": "number"
+										},
+										"statusText": {
+											"type": "string"
+										},
+										"unhandled": {
+											"type": "boolean"
+										},
+										"message": {
+											"type": "string"
+										},
+										"data": {}
+									}
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Not found",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$id": "NotFoundError",
+									"type": "object",
+									"required": ["name", "data"],
+									"properties": {
+										"name": {
+											"const": "NotFoundError",
+											"type": "string"
+										},
+										"data": {
+											"type": "object",
+											"required": ["message"],
+											"properties": {
+												"message": {
+													"type": "string"
+												}
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 }
