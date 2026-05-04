@@ -8,15 +8,15 @@ importers:
 
   .:
     devDependencies:
-      '@sinclair/typebox':
-        specifier: ^0.34.49
-        version: 0.34.49
       '@types/node':
         specifier: ^24.12.2
         version: 24.12.2
       '@typescript/native-preview':
         specifier: 7.0.0-dev.20260328.1
         version: 7.0.0-dev.20260328.1
+      typebox:
+        specifier: ^1.1.37
+        version: 1.1.37
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -47,6 +47,9 @@ importers:
       h3:
         specifier: 2.0.1-rc.20
         version: 2.0.1-rc.20
+      typebox:
+        specifier: ^1.1.37
+        version: 1.1.37
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -163,15 +166,15 @@ importers:
 
   packages/utils:
     dependencies:
-      '@sinclair/typebox':
-        specifier: ^0.34.48
-        version: 0.34.49
       glob:
         specifier: ^13.0.6
         version: 13.0.6
       minimatch:
         specifier: ^10.2.5
         version: 10.2.5
+      typebox:
+        specifier: ^1.1.37
+        version: 1.1.37
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -1827,9 +1830,6 @@ packages:
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
-
-  '@sinclair/typebox@0.34.49':
-    resolution: {integrity: sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A==}
 
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
@@ -5637,8 +5637,6 @@ snapshots:
   '@rolldown/pluginutils@1.0.0-rc.7': {}
 
   '@sec-ant/readable-stream@0.4.1': {}
-
-  '@sinclair/typebox@0.34.49': {}
 
   '@sindresorhus/is@4.6.0': {}
 

@@ -45,6 +45,7 @@
 		"drizzle-orm": "^0.45.2",
 		"fast-json-stringify": "^6.3.0",
 		"h3": "2.0.1-rc.20",
+		"typebox": "^1.1.37",
 		"uuid": "^14.0.0",
 		"yargs": "^18.0.0",
 		"zod": "^4.3.6"
@@ -63,7 +64,6 @@
 		"node": ">=24.14.1"
 	},
 	"inlinedDependencies": {
-		"@sinclair/typebox": "0.34.49",
 		"balanced-match": "4.0.4",
 		"brace-expansion": "5.0.5",
 		"glob": "13.0.6",

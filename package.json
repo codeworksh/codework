@@ -40,9 +40,9 @@
 		"publish:utils:dry": "node scripts/publish.js utils --dry-run"
 	},
 	"devDependencies": {
-		"@sinclair/typebox": "^0.34.49",
 		"@types/node": "^24.12.2",
 		"@typescript/native-preview": "7.0.0-dev.20260328.1",
+		"typebox": "^1.1.37",
 		"typescript": "^5.9.3",
 		"vite-plus": "0.1.17"
 	},

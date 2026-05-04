@@ -1,5 +1,5 @@
 import type { NamedError } from "@codeworksh/utils";
-import { Type } from "@sinclair/typebox";
+import Type from "typebox";
 import { NotFoundError } from "../storage/db.ts";
 
 const HTTPErrorSchema = Type.Object({

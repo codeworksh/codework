@@ -8,7 +8,7 @@ export * from "drizzle-orm"; // export drizzle-orm exports from here
 
 import { Global } from "../config/global.ts";
 import { lazy, NamedError } from "@codeworksh/utils";
-import { Type } from "@sinclair/typebox";
+import Type from "typebox";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Context } from "../util/context.ts";

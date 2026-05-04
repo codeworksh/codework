@@ -1,4 +1,4 @@
-import type { TSchema } from "@sinclair/typebox";
+import type { TSchema } from "typebox";
 import type { H3, HTTPHandler } from "h3";
 import pkg from "../../package.json" with { type: "json" };
 

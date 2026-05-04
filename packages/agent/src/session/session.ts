@@ -1,5 +1,5 @@
 import { Log } from "../util/log.ts";
-import { Type, type Static } from "@sinclair/typebox";
+import Type, { type Static } from "typebox";
 import { fn } from "@codeworksh/utils";
 import { v7 as uuidv7 } from "uuid";
 import { Slug } from "../util/slug.ts";

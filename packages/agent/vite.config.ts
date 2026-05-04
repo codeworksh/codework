@@ -16,7 +16,7 @@ export default defineConfig({
 		outDir: "dist/pack",
 		deps: {
 			alwaysBundle: ["@codeworksh/sdk", "@codeworksh/utils"],
-			onlyBundle: ["@sinclair/typebox", "balanced-match", "brace-expansion", "glob", "minimatch"],
+			onlyBundle: ["balanced-match", "brace-expansion", "glob", "minimatch"],
 		},
 		sourcemap: true,
 		clean: true,

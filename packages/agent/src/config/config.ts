@@ -1,5 +1,5 @@
 import { lazy } from "@codeworksh/utils";
-import { type Static, Type } from "@sinclair/typebox";
+import Type, { type Static } from "typebox";
 import pkg from "../../package.json" with { type: "json" };
 
 export namespace Config {

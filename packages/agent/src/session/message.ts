@@ -1,4 +1,4 @@
-import { type Static, Type } from "@sinclair/typebox";
+import Type, { type Static } from "typebox";
 import { Message as AikitMessage } from "@codeworksh/aikit";
 
 export namespace Message {
@@ -40,19 +40,19 @@ export namespace Message {
 	export const PartData = Type.Union([TextPartData, ImagePartData, ThinkingPartData, ToolCallPartData]);
 	export type PartData = Static<typeof PartData>;
 
-	export const User = Type.Intersect(
-		[
+	export const User = Type.Evaluate(
+		Type.Intersect([
 			Base,
 			UserData,
 			Type.Object({
 				intent: MessageIntent,
 			}),
-		],
+		]),
 		{ $id: "UserMessage" },
 	);
 	export type User = Static<typeof User>;
 
-	export const Assistant = Type.Intersect([Base, AssistantData], { $id: "AssistantMessage" });
+	export const Assistant = Type.Evaluate(Type.Intersect([Base, AssistantData]), { $id: "AssistantMessage" });
 	export type Assistant = Static<typeof Assistant>;
 
 	export const Message = Type.Union([User, Assistant], { $id: "Message" });
@@ -61,10 +61,10 @@ export namespace Message {
 	export const Info = Message;
 	export type Info = Message;
 
-	export const TextPart = Type.Intersect([PartBase, TextPartData], { $id: "TextPart" });
-	export const ImagePart = Type.Intersect([PartBase, ImagePartData], { $id: "ImagePart" });
-	export const ThinkingPart = Type.Intersect([PartBase, ThinkingPartData], { $id: "ThinkingPart" });
-	export const ToolCallPart = Type.Intersect([PartBase, ToolCallPartData], { $id: "ToolCallPart" });
+	export const TextPart = Type.Evaluate(Type.Intersect([PartBase, TextPartData]), { $id: "TextPart" });
+	export const ImagePart = Type.Evaluate(Type.Intersect([PartBase, ImagePartData]), { $id: "ImagePart" });
+	export const ThinkingPart = Type.Evaluate(Type.Intersect([PartBase, ThinkingPartData]), { $id: "ThinkingPart" });
+	export const ToolCallPart = Type.Evaluate(Type.Intersect([PartBase, ToolCallPartData]), { $id: "ToolCallPart" });
 
 	export type TextPart = Static<typeof TextPart>;
 	export type ImagePart = Static<typeof ImagePart>;

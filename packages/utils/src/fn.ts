@@ -1,5 +1,5 @@
-import { type TSchema, type Static } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import type { Static, TSchema } from "typebox";
+import Value from "typebox/value";
 
 export function fn<T extends TSchema, Result>(schema: T, cb: (input: Static<T>) => Result) {
 	const result = (input: unknown) => {

@@ -1,5 +1,5 @@
 import { Global } from "../config/global.ts";
-import { type Static, Type } from "@sinclair/typebox";
+import Type from "typebox";
 import fastJson from "fast-json-stringify";
 import { createWriteStream } from "fs";
 import fs from "fs/promises";
@@ -7,16 +7,15 @@ import path from "path";
 import { Glob } from "@codeworksh/utils";
 
 export namespace Log {
-	export const Level = Type.Enum(
-		{
-			DEBUG: "DEBUG",
-			INFO: "INFO",
-			WARN: "WARN",
-			ERROR: "ERROR",
-		},
-		{ title: "LogLevel" },
-	);
-	export type Level = Static<typeof Level>;
+	const LevelEnum = {
+		DEBUG: "DEBUG",
+		INFO: "INFO",
+		WARN: "WARN",
+		ERROR: "ERROR",
+	} as const;
+
+	export const Level = Type.Enum(LevelEnum, { title: "LogLevel" });
+	export type Level = (typeof LevelEnum)[keyof typeof LevelEnum];
 
 	const stringifyExtra = fastJson({
 		type: "object",

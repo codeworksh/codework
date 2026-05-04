@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import Type from "typebox";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const createSessionSchema = Type.Optional(

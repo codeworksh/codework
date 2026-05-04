@@ -1,6 +1,6 @@
 import { lazy } from "@codeworksh/utils";
-import { Type, type Static } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import Type, { type Static } from "typebox";
+import Value from "typebox/value";
 import { getQuery, getRouterParam, H3, HTTPError, readBody } from "h3";
 import { Session } from "../../session/session.ts";
 import { errors } from "../error.ts";

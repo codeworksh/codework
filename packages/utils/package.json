@@ -44,9 +44,9 @@
 		"lint": "vp lint"
 	},
 	"dependencies": {
-		"@sinclair/typebox": "^0.34.48",
 		"glob": "^13.0.6",
-		"minimatch": "^10.2.5"
+		"minimatch": "^10.2.5",
+		"typebox": "^1.1.37"
 	},
 	"devDependencies": {
 		"bumpp": "^11.0.1"

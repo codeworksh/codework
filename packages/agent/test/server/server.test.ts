@@ -2,7 +2,7 @@ import { createServer, type Server as NodeServer } from "node:http";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Type } from "@sinclair/typebox";
+import Type from "typebox";
 import { NamedError } from "@codeworksh/utils";
 import { HTTPError } from "h3";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";

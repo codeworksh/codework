@@ -1,7 +1,7 @@
 import { iife } from "@codeworksh/utils";
 import { Filesystem } from "@codeworksh/utils";
-import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import Type, { type Static } from "typebox";
+import Value from "typebox/value";
 import path from "path";
 import { Database, eq } from "../storage/db.ts";
 import { git } from "../util/git.ts";
@@ -46,7 +46,7 @@ export namespace Project {
 		return {
 			id: row.id,
 			worktree: row.worktree,
-			vcs: row.vcs ? Value.Cast(Project.Info.properties.vcs, row.vcs) : undefined,
+			vcs: row.vcs ? Value.Parse(Project.Info.properties.vcs, row.vcs) : undefined,
 			name: row.name ?? undefined,
 			repo: row.repo ?? undefined,
 			icon,

@@ -1,6 +1,6 @@
 import { EOL } from "os";
 import { NamedError } from "@codeworksh/utils";
-import { Type } from "@sinclair/typebox";
+import Type from "typebox";
 
 const letters = {
 	C: [" ██████ ", "██      ", "██      ", "██      ", "██      ", " ██████ "],
