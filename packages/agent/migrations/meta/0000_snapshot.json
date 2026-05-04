@@ -1,7 +1,7 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "1f8e0613-8bff-4e46-b089-f0f17735413b",
+	"id": "dddc81ab-340c-4858-b7f3-392e7381cc4b",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"tables": {
 		"message": {
@@ -295,13 +295,6 @@
 					"notNull": false,
 					"autoincrement": false
 				},
-				"active_leaf_message_id": {
-					"name": "active_leaf_message_id",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
 				"directory": {
 					"name": "directory",
 					"type": "text",
@@ -364,11 +357,6 @@
 					"columns": ["parent_session_id"],
 					"isUnique": false
 				},
-				"session_active_leaf_message_idx": {
-					"name": "session_active_leaf_message_idx",
-					"columns": ["active_leaf_message_id"],
-					"isUnique": false
-				},
 				"session_slug_idx": {
 					"name": "session_slug_idx",
 					"columns": ["slug"],
@@ -390,15 +378,6 @@
 					"tableFrom": "session",
 					"tableTo": "session",
 					"columnsFrom": ["parent_session_id"],
-					"columnsTo": ["id"],
-					"onDelete": "set null",
-					"onUpdate": "cascade"
-				},
-				"session_active_leaf_message_id_message_id_fk": {
-					"name": "session_active_leaf_message_id_message_id_fk",
-					"tableFrom": "session",
-					"tableTo": "message",
-					"columnsFrom": ["active_leaf_message_id"],
 					"columnsTo": ["id"],
 					"onDelete": "set null",
 					"onUpdate": "cascade"

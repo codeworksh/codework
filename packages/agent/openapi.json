@@ -93,9 +93,6 @@
 											"parentSessionId": {
 												"type": "string"
 											},
-											"activeLeafMessageId": {
-												"type": "string"
-											},
 											"name": {
 												"type": "string"
 											},
@@ -181,9 +178,6 @@
 										"parentSessionId": {
 											"type": "string"
 										},
-										"activeLeafMessageId": {
-											"type": "string"
-										},
 										"name": {
 											"type": "string"
 										},
@@ -263,9 +257,6 @@
 										"parentSessionId": {
 											"type": "string"
 										},
-										"activeLeafMessageId": {
-											"type": "string"
-										},
 										"name": {
 											"type": "string"
 										},
@@ -334,8 +325,7 @@
 									"required": ["name", "data"],
 									"properties": {
 										"name": {
-											"const": "NotFoundError",
-											"type": "string"
+											"const": "NotFoundError"
 										},
 										"data": {
 											"type": "object",
@@ -377,15 +367,15 @@
 								"type": "object",
 								"properties": {
 									"name": {
-										"description": "Updated session name",
-										"type": "string"
+										"type": "string",
+										"description": "Updated session name"
 									},
 									"time": {
 										"type": "object",
 										"properties": {
 											"archived": {
-												"description": "Archive timestamp in milliseconds since epoch",
-												"type": "number"
+												"type": "number",
+												"description": "Archive timestamp in milliseconds since epoch"
 											}
 										}
 									}
@@ -416,9 +406,6 @@
 											"type": "string"
 										},
 										"parentSessionId": {
-											"type": "string"
-										},
-										"activeLeafMessageId": {
 											"type": "string"
 										},
 										"name": {
@@ -489,8 +476,7 @@
 									"required": ["name", "data"],
 									"properties": {
 										"name": {
-											"const": "NotFoundError",
-											"type": "string"
+											"const": "NotFoundError"
 										},
 										"data": {
 											"type": "object",

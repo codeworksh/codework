@@ -17,4 +17,9 @@ export type {
 	SessionListErrors,
 	SessionListResponse,
 	SessionListResponses,
+	SessionUpdateData,
+	SessionUpdateError,
+	SessionUpdateErrors,
+	SessionUpdateResponse,
+	SessionUpdateResponses,
 } from "./types.gen.js";

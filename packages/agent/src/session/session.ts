@@ -25,7 +25,6 @@ export namespace Session {
 			projectId: info.projectId,
 			workspaceId: info.workspaceId,
 			parentSessionId: info.parentSessionId,
-			activeLeafMessageId: info.activeLeafMessageId,
 			slug: info.slug,
 			directory: info.directory,
 			name: info.name,
@@ -44,7 +43,6 @@ export namespace Session {
 			projectId: row.projectId,
 			workspaceId: row.workspaceId ?? undefined,
 			parentSessionId: row.parentSessionId ?? undefined,
-			activeLeafMessageId: row.activeLeafMessageId ?? undefined,
 			name: row.name ?? createDefaultName(!!row.parentSessionId, row.createdAt),
 			directory: row.directory,
 			time: {
@@ -63,7 +61,6 @@ export namespace Session {
 		projectId: Type.String(),
 		workspaceId: Type.Optional(Type.String()),
 		parentSessionId: Type.Optional(Type.String()),
-		activeLeafMessageId: Type.Optional(Type.String()),
 		name: Type.String(),
 		directory: Type.String(),
 		time: Type.Object({

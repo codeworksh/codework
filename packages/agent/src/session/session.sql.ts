@@ -20,10 +20,6 @@ export const SessionTable = sqliteTable(
 			onDelete: "set null",
 			onUpdate: "cascade",
 		}),
-		activeLeafMessageId: text("active_leaf_message_id").references((): AnySQLiteColumn => MessageTable.id, {
-			onDelete: "set null",
-			onUpdate: "cascade",
-		}),
 		directory: text("directory").notNull(),
 		name: text("name"),
 		version: text("version").notNull().default("0.0.0"),
@@ -34,7 +30,6 @@ export const SessionTable = sqliteTable(
 	(table) => [
 		index("session_project_idx").on(table.projectId),
 		index("session_parent_session_idx").on(table.parentSessionId),
-		index("session_active_leaf_message_idx").on(table.activeLeafMessageId),
 		uniqueIndex("session_slug_idx").on(table.slug),
 	],
 );

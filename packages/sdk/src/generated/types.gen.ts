@@ -54,7 +54,6 @@ export type SessionListResponses = {
 		projectId: string;
 		workspaceId?: string;
 		parentSessionId?: string;
-		activeLeafMessageId?: string;
 		name: string;
 		directory: string;
 		time: {
@@ -96,7 +95,6 @@ export type SessionCreateResponses = {
 		projectId: string;
 		workspaceId?: string;
 		parentSessionId?: string;
-		activeLeafMessageId?: string;
 		name: string;
 		directory: string;
 		time: {
@@ -157,7 +155,6 @@ export type SessionGetResponses = {
 		projectId: string;
 		workspaceId?: string;
 		parentSessionId?: string;
-		activeLeafMessageId?: string;
 		name: string;
 		directory: string;
 		time: {
@@ -171,3 +168,74 @@ export type SessionGetResponses = {
 };
 
 export type SessionGetResponse = SessionGetResponses[keyof SessionGetResponses];
+
+export type SessionUpdateData = {
+	body: {
+		/**
+		 * Updated session name
+		 */
+		name?: string;
+		time?: {
+			/**
+			 * Archive timestamp in milliseconds since epoch
+			 */
+			archived?: number;
+		};
+	};
+	path: {
+		/**
+		 * Session ID
+		 */
+		sessionId: string;
+	};
+	query?: never;
+	url: "/sessions/{sessionId}";
+};
+
+export type SessionUpdateErrors = {
+	/**
+	 * Bad request
+	 */
+	400: {
+		status: number;
+		statusText?: string;
+		unhandled?: boolean;
+		message: string;
+		data?: unknown;
+	};
+	/**
+	 * Not found
+	 */
+	404: {
+		name: "NotFoundError";
+		data: {
+			message: string;
+		};
+	};
+};
+
+export type SessionUpdateError = SessionUpdateErrors[keyof SessionUpdateErrors];
+
+export type SessionUpdateResponses = {
+	/**
+	 * Successfully updated session
+	 */
+	200: {
+		id: string;
+		slug: string;
+		projectId: string;
+		workspaceId?: string;
+		parentSessionId?: string;
+		name: string;
+		directory: string;
+		time: {
+			created: number;
+			updated: number;
+			compacting?: number;
+			archived?: number;
+		};
+		version: string;
+	};
+};
+
+export type SessionUpdateResponse = SessionUpdateResponses[keyof SessionUpdateResponses];

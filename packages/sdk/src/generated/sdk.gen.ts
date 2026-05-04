@@ -10,6 +10,8 @@ import type {
 	SessionGetResponses,
 	SessionListErrors,
 	SessionListResponses,
+	SessionUpdateErrors,
+	SessionUpdateResponses,
 } from "./types.gen.js";
 
 export type Options<
@@ -146,6 +148,48 @@ export class Session extends HeyApiClient {
 			url: "/sessions/{sessionId}",
 			...options,
 			...params,
+		});
+	}
+
+	/**
+	 * Update session
+	 *
+	 * Update properties of an existing CodeWork session, such as name or other metadata.
+	 */
+	public update<ThrowOnError extends boolean = false>(
+		parameters: {
+			sessionId: string;
+			name?: string;
+			time?: {
+				/**
+				 * Archive timestamp in milliseconds since epoch
+				 */
+				archived?: number;
+			};
+		},
+		options?: Options<never, ThrowOnError>,
+	) {
+		const params = buildClientParams(
+			[parameters],
+			[
+				{
+					args: [
+						{ in: "path", key: "sessionId" },
+						{ in: "body", key: "name" },
+						{ in: "body", key: "time" },
+					],
+				},
+			],
+		);
+		return (options?.client ?? this.client).patch<SessionUpdateResponses, SessionUpdateErrors, ThrowOnError>({
+			url: "/sessions/{sessionId}",
+			...options,
+			...params,
+			headers: {
+				"Content-Type": "application/json",
+				...options?.headers,
+				...params.headers,
+			},
 		});
 	}
 }
