@@ -1,4 +1,4 @@
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import Type, { type Static, type TSchema } from "typebox";
 import { uuidv7 } from "uuidv7";
 import { Model } from "../model/model";
 import { Provider } from "../provider/provider";
@@ -92,11 +92,11 @@ export namespace Message {
 			status: Type.Literal(ToolStatusEnum.pending),
 		}),
 	]);
-	const ToolCallRunningPart = Type.Composite([ToolCallBaseSchema, ToolRunningSchema]);
-	const ToolCallCompletedPart = Type.Composite([ToolCallBaseSchema, ToolCompletedSchema]);
-	const ToolCallErrorPart = Type.Composite([ToolCallBaseSchema, ToolErrorSchema]);
-	const ToolCallSkippedPart = Type.Composite([ToolCallBaseSchema, ToolSkippedSchema]);
-	const ToolCallAbortedPart = Type.Composite([ToolCallBaseSchema, ToolAbortedSchema]);
+	const ToolCallRunningPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolRunningSchema]));
+	const ToolCallCompletedPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolCompletedSchema]));
+	const ToolCallErrorPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolErrorSchema]));
+	const ToolCallSkippedPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolSkippedSchema]));
+	const ToolCallAbortedPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolAbortedSchema]));
 
 	export const ToolCallSchema = Type.Union([
 		ToolCallPendingPart,
@@ -215,7 +215,7 @@ export namespace Message {
 	export const ToolSchema = Type.Object({
 		name: Type.String(),
 		description: Type.String(),
-		parameters: Type.Unsafe<TSchema>(),
+		parameters: Type.Unsafe<TSchema>({}),
 	});
 	export interface Tool<TParameters extends TSchema = TSchema> {
 		name: string;

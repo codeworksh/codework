@@ -13,7 +13,7 @@
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "link:../..",
-		"@sinclair/typebox": "^0.34.48"
+		"typebox": "^1.1.37"
 	},
 	"devDependencies": {
 		"@types/node": "^24.6.1",

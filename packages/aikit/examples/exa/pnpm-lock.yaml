@@ -11,15 +11,12 @@ importers:
       '@codeworksh/aikit':
         specifier: link:../..
         version: link:../..
-      '@codeworksh/utils':
-        specifier: link:../../../utils
-        version: link:../../../utils
-      '@sinclair/typebox':
-        specifier: ^0.34.48
-        version: 0.34.49
       exa-js:
         specifier: ^2.11.0
         version: 2.11.0(ws@8.20.0)
+      typebox:
+        specifier: ^1.1.37
+        version: 1.1.37
     devDependencies:
       '@types/node':
         specifier: ^24.6.1
@@ -408,9 +405,6 @@ packages:
   '@rolldown/pluginutils@1.0.0-rc.13':
     resolution: {integrity: sha512-3ngTAv6F/Py35BsYbeeLeecvhMKdsKm4AoOETVhAA+Qc8nrA2I0kF7oa93mE9qnIurngOSpMnQ0x2nQY2FPviA==}
 
-  '@sinclair/typebox@0.34.49':
-    resolution: {integrity: sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A==}
-
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
@@ -776,6 +770,9 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  typebox@1.1.37:
+    resolution: {integrity: sha512-jb7jp6KvOvvy5sd+11AfJ0/e0F0AS9RcOXd55oGi2ZnRHIGmFvrTaNF+ZidRmGBmmNTkM5KKl0Z37KzxJ+owEQ==}
+
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
@@ -1071,8 +1068,6 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.0.0-rc.13': {}
-
-  '@sinclair/typebox@0.34.49': {}
 
   '@standard-schema/spec@1.1.0': {}
 
@@ -1382,6 +1377,8 @@ snapshots:
 
   tslib@2.8.1:
     optional: true
+
+  typebox@1.1.37: {}
 
   typescript@5.9.3: {}
 

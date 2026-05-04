@@ -1,5 +1,5 @@
 import { Agent, Message, llm } from "@codeworksh/aikit";
-import { type Static, Type } from "@sinclair/typebox";
+import Type, { type Static } from "typebox";
 import { Exa } from "exa-js";
 import process from "node:process";
 import * as readline from "node:readline";

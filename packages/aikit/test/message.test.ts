@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { Static } from "@sinclair/typebox";
-import Ajv from "ajv";
+import type { Static } from "typebox";
+import Schema from "typebox/schema";
 import type { Agent } from "../src/agent/agent";
 import { Message } from "../src/message/message";
 import { Model } from "../src/model/model";
@@ -8,12 +8,6 @@ import { Provider } from "../src/provider/provider";
 import { validateToolArguments, validateToolCall } from "../src/utils/validation";
 import { expectValidToolCall } from "./utils/message";
 import { searchTool } from "./utils/tools";
-
-const ajv = new Ajv({
-	allErrors: true,
-	strict: false,
-	coerceTypes: true,
-});
 
 function createToolCall(status: Message.ToolCall["status"], arguments_: Record<string, unknown>): Message.ToolCall {
 	const base = {
@@ -168,18 +162,18 @@ describe("Message schema", () => {
 	});
 
 	it("accepts typed tools in the tool and context schemas", () => {
-		const validateToolSchema = ajv.compile(Message.ToolSchema);
-		const validateContextSchema = ajv.compile(Message.ContextSchema);
+		const validateToolSchema = Schema.Compile(Message.ToolSchema);
+		const validateContextSchema = Schema.Compile(Message.ContextSchema);
 		const context = createContext();
 		const completedToolCall = createToolCall("completed", { query: "aikit docs", limit: 5 });
 
-		expect(validateToolSchema(searchTool)).toBe(true);
-		expect(validateContextSchema(context)).toBe(true);
+		expect(validateToolSchema.Check(searchTool)).toBe(true);
+		expect(validateContextSchema.Check(context)).toBe(true);
 		expectValidToolCall(completedToolCall, "completed");
 	});
 
 	it("rejects completed tool calls without a result payload", () => {
-		const validateToolCallSchema = ajv.compile(Message.ToolCallSchema);
+		const validateToolCallSchema = Schema.Compile(Message.ToolCallSchema);
 		const invalidCompletedCall = {
 			type: "toolCall",
 			callID: "call_1",
@@ -192,10 +186,9 @@ describe("Message schema", () => {
 			status: "completed",
 		};
 
-		expect(validateToolCallSchema(invalidCompletedCall)).toBe(false);
-		expect(
-			validateToolCallSchema.errors?.some((error) => error.message?.includes("required property 'result'")),
-		).toBe(true);
+		const [_result, errors] = validateToolCallSchema.Errors(invalidCompletedCall);
+		expect(validateToolCallSchema.Check(invalidCompletedCall)).toBe(false);
+		expect(errors.some((error) => error.message?.includes("required properties result"))).toBe(true);
 	});
 });
 

@@ -1,17 +1,22 @@
-import { type Static, type TObject, type TProperties, type TSchema, Type } from "@sinclair/typebox";
+type SchemaLike = object;
+type StaticData<Data extends SchemaLike> = Data extends { static: infer Value } ? Value : unknown;
 
 export abstract class NamedError extends Error {
-	abstract schema(): TSchema;
+	abstract schema(): SchemaLike;
 	abstract toObject(): { name: string; data: unknown };
 
-	static create<Name extends string, Data extends TObject<TProperties>>(name: Name, data: Data) {
-		const schema = Type.Object(
-			{
-				name: Type.Literal(name),
+	static create<Name extends string, Data extends SchemaLike>(name: Name, data: Data) {
+		const schema = {
+			$id: name,
+			type: "object",
+			required: ["name", "data"],
+			properties: {
+				name: {
+					const: name,
+				},
 				data,
 			},
-			{ $id: name },
-		);
+		} as const;
 
 		const result = class extends NamedError {
 			public static readonly Schema = schema;
@@ -19,7 +24,7 @@ export abstract class NamedError extends Error {
 			public override readonly name = name as Name;
 
 			constructor(
-				public readonly data: Static<Data>,
+				public readonly data: StaticData<Data>,
 				options?: ErrorOptions,
 			) {
 				super(name, options);
@@ -46,10 +51,13 @@ export abstract class NamedError extends Error {
 		return result;
 	}
 
-	public static readonly Unknown = NamedError.create(
-		"UnknownError",
-		Type.Object({
-			message: Type.String(),
-		}),
-	);
+	public static readonly Unknown = NamedError.create("UnknownError", {
+		type: "object",
+		required: ["message"],
+		properties: {
+			message: {
+				type: "string",
+			},
+		},
+	});
 }

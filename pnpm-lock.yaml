@@ -81,15 +81,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.80.0
         version: 0.80.0(zod@4.3.6)
-      '@sinclair/typebox':
-        specifier: ^0.34.48
-        version: 0.34.49
-      ajv:
-        specifier: ^8.18.0
-        version: 8.18.0
-      ajv-formats:
-        specifier: ^3.0.1
-        version: 3.0.1(ajv@8.18.0)
       esbuild:
         specifier: ^0.27.3
         version: 0.27.7
@@ -105,6 +96,9 @@ importers:
       remeda:
         specifier: ^2.33.6
         version: 2.33.7
+      typebox:
+        specifier: ^1.1.37
+        version: 1.1.37
       typescript:
         specifier: ^5
         version: 5.9.3
@@ -4162,6 +4156,9 @@ packages:
     resolution: {integrity: sha512-OZs6gsjF4vMp32qrCbiVSkrFmXtG/AZhY3t0iAMrMBiAZyV9oALtXO8hsrHbMXF9x6L3grlFuwW2oAz7cav+Gw==}
     engines: {node: '>= 0.6'}
 
+  typebox@1.1.37:
+    resolution: {integrity: sha512-jb7jp6KvOvvy5sd+11AfJ0/e0F0AS9RcOXd55oGi2ZnRHIGmFvrTaNF+ZidRmGBmmNTkM5KKl0Z37KzxJ+owEQ==}
+
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
@@ -7865,6 +7862,8 @@ snapshots:
       content-type: 1.0.5
       media-typer: 1.1.0
       mime-types: 3.0.2
+
+  typebox@1.1.37: {}
 
   typescript@5.9.3: {}
 

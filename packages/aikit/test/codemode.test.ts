@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import Type from "typebox";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

@@ -1,5 +1,5 @@
 import { NamedError } from "@codeworksh/utils";
-import { type Static, type TSchema, Type, TypeGuard } from "@sinclair/typebox";
+import Type, { type Static, type TSchema } from "typebox";
 import { transform } from "esbuild";
 import { capitalize } from "remeda";
 import { validateSchema } from "../../utils/validation";
@@ -195,9 +195,9 @@ export namespace CodeMode {
 	}
 
 	function toolToBinding(tool: Agent.AnyAgentTool, prefix: string = ""): ToolBinding {
-		const inputSchema = TypeGuard.IsSchema(tool.parameters) ? tool.parameters : Type.Object({});
-		const outputSchema = TypeGuard.IsSchema(tool.outputSchema) ? tool.outputSchema : undefined;
-		const errorSchema = TypeGuard.IsSchema(tool.errorSchema) ? tool.errorSchema : undefined;
+		const inputSchema = Type.IsSchema(tool.parameters) ? tool.parameters : Type.Object({});
+		const outputSchema = Type.IsSchema(tool.outputSchema) ? tool.outputSchema : undefined;
+		const errorSchema = Type.IsSchema(tool.errorSchema) ? tool.errorSchema : undefined;
 
 		if (!("execute" in tool) || typeof tool.execute !== "function") {
 			throw new ToolDefinitionErr({
@@ -243,52 +243,52 @@ export namespace CodeMode {
 	}
 
 	function schemaToTypeScript(schema: TSchema): string {
-		if (TypeGuard.IsAny(schema)) return "any";
-		if (TypeGuard.IsUnknown(schema)) return "unknown";
-		if (TypeGuard.IsString(schema)) return "string";
-		if (TypeGuard.IsNumber(schema) || TypeGuard.IsInteger(schema)) return "number";
-		if (TypeGuard.IsBoolean(schema)) return "boolean";
-		if (TypeGuard.IsNull(schema)) return "null";
-		if (TypeGuard.IsUndefined(schema) || TypeGuard.IsVoid(schema)) return "undefined";
-		if (TypeGuard.IsLiteral(schema)) return JSON.stringify(schema.const);
+		if (Type.IsAny(schema)) return "any";
+		if (Type.IsUnknown(schema)) return "unknown";
+		if (Type.IsString(schema)) return "string";
+		if (Type.IsNumber(schema) || Type.IsInteger(schema)) return "number";
+		if (Type.IsBoolean(schema)) return "boolean";
+		if (Type.IsNull(schema)) return "null";
+		if (Type.IsUndefined(schema) || Type.IsVoid(schema)) return "undefined";
+		if (Type.IsLiteral(schema)) return JSON.stringify(schema.const);
 
-		if (TypeGuard.IsArray(schema)) {
+		if (Type.IsArray(schema)) {
 			return `Array<${schemaToTypeScript(schema.items)}>`;
 		}
 
-		if (TypeGuard.IsTuple(schema)) {
+		if (Type.IsTuple(schema)) {
 			const items = schema.items ?? [];
 			return `[${items.map((item) => schemaToTypeScript(item)).join(", ")}]`;
 		}
 
-		if (TypeGuard.IsUnion(schema)) {
+		if (Type.IsUnion(schema)) {
 			return schema.anyOf.map((item) => schemaToTypeScript(item)).join(" | ");
 		}
 
-		if (TypeGuard.IsIntersect(schema)) {
+		if (Type.IsIntersect(schema)) {
 			return schema.allOf.map((item) => schemaToTypeScript(item)).join(" & ");
 		}
 
-		if (TypeGuard.IsRecord(schema)) {
+		if (Type.IsRecord(schema)) {
+			const additionalProperties = (schema as { additionalProperties?: unknown }).additionalProperties;
 			const valueSchema =
-				Object.values(schema.patternProperties ?? {}).find(TypeGuard.IsSchema) ??
-				(schema.additionalProperties && TypeGuard.IsSchema(schema.additionalProperties)
-					? schema.additionalProperties
-					: Type.Unknown());
+				Object.values(schema.patternProperties ?? {}).find(Type.IsSchema) ??
+				(additionalProperties && Type.IsSchema(additionalProperties) ? additionalProperties : Type.Unknown());
 			return `Record<string, ${schemaToTypeScript(valueSchema)}>`;
 		}
 
-		if (TypeGuard.IsObject(schema)) {
+		if (Type.IsObject(schema)) {
+			const additionalProperties = (schema as { additionalProperties?: unknown }).additionalProperties;
 			const required = new Set(schema.required ?? []);
 			const properties = Object.entries(schema.properties ?? {}).map(([key, value]) => {
 				const optional = required.has(key) ? "" : "?";
 				return `${toPropertyKey(key)}${optional}: ${schemaToTypeScript(value)};`;
 			});
 
-			if (schema.additionalProperties === true) {
+			if (additionalProperties === true) {
 				properties.push("[key: string]: unknown;");
-			} else if (schema.additionalProperties && TypeGuard.IsSchema(schema.additionalProperties)) {
-				properties.push(`[key: string]: ${schemaToTypeScript(schema.additionalProperties)};`);
+			} else if (additionalProperties && Type.IsSchema(additionalProperties)) {
+				properties.push(`[key: string]: ${schemaToTypeScript(additionalProperties)};`);
 			}
 
 			if (properties.length === 0) return "{}";

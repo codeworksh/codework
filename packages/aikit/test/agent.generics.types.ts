@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import Type from "typebox";
 import { Agent } from "../src/agent/agent";
 
 type Assert<T extends true> = T;

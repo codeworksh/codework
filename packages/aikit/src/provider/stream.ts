@@ -1,5 +1,5 @@
 import { NamedError } from "@codeworksh/utils";
-import { type Static, Type } from "@sinclair/typebox";
+import Type, { type Static } from "typebox";
 import type { Message } from "../message/message";
 import { Model } from "../model/model";
 import type { AssistantMessageEventStream } from "../utils/eventstream";
@@ -58,12 +58,14 @@ export namespace Stream {
 	export const OptionsSchema = Type.Object({
 		temperature: Type.Optional(Type.Number()),
 		maxTokens: Type.Optional(Type.Number()),
-		signal: Type.Optional(Type.Unsafe<AbortSignal>()),
+		signal: Type.Optional(Type.Unsafe<AbortSignal>({})),
 		apiKey: Type.Optional(Type.String()),
 		transport: Type.Optional(TransportSchema),
 		cacheRetention: Type.Optional(CacheRetentionSchema),
 		sessionId: Type.Optional(Type.String()),
-		onPayload: Type.Optional(Type.Unsafe<(payload: unknown, model: Model.TModel<Model.KnownProtocol>) => unknown>()),
+		onPayload: Type.Optional(
+			Type.Unsafe<(payload: unknown, model: Model.TModel<Model.KnownProtocol>) => unknown>({}),
+		),
 		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 		maxRetryDelayMs: Type.Optional(Type.Number()),
 		metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
@@ -71,13 +73,15 @@ export namespace Stream {
 	export type Options = Static<typeof OptionsSchema>;
 	export type ProviderOptions = Options & Record<string, unknown>;
 
-	export const SimpleOptionsSchema = Type.Composite([
-		OptionsSchema,
-		Type.Object({
-			reasoning: Type.Optional(ThinkingLevelSchema),
-			thinkingBudgets: Type.Optional(ThinkingBudgetsSchema),
-		}),
-	]);
+	export const SimpleOptionsSchema = Type.Evaluate(
+		Type.Intersect([
+			OptionsSchema,
+			Type.Object({
+				reasoning: Type.Optional(ThinkingLevelSchema),
+				thinkingBudgets: Type.Optional(ThinkingBudgetsSchema),
+			}),
+		]),
+	);
 	export type SimpleOptions = Static<typeof SimpleOptionsSchema>;
 
 	// Contract:

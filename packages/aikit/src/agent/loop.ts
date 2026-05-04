@@ -1,5 +1,5 @@
 import { NamedError } from "@codeworksh/utils";
-import { type TSchema, Type } from "@sinclair/typebox";
+import Type, { type TSchema } from "typebox";
 import type { Event } from "../event/event";
 import type { Message } from "../message/message";
 import type { Model } from "../model/model";

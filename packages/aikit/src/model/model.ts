@@ -1,5 +1,5 @@
 import { lazy } from "@codeworksh/utils";
-import { type Static, Type } from "@sinclair/typebox";
+import Type, { type Static } from "typebox";
 import { keys, mapValues, pick, pipe } from "remeda";
 import { Provider } from "../provider/provider";
 import { ModelCatalog } from "./catalog";
@@ -84,27 +84,33 @@ export namespace Model {
 
 	export const OpenAICompatSchema = Type.Union([OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema]);
 
-	export const AnthropicSchema = Type.Composite([
-		BaseSchema,
-		Type.Object({
-			protocol: Type.Literal(KnownProtocolEnum.anthropicMessages),
-		}),
-	]);
+	export const AnthropicSchema = Type.Evaluate(
+		Type.Intersect([
+			BaseSchema,
+			Type.Object({
+				protocol: Type.Literal(KnownProtocolEnum.anthropicMessages),
+			}),
+		]),
+	);
 
-	export const OpenAICompletionsSchema = Type.Composite([
-		BaseSchema,
-		Type.Object({
-			protocol: Type.Literal(KnownProtocolEnum.openaiCompletions),
-			compat: Type.Optional(OpenAICompletionsCompatSchema),
-		}),
-	]);
-	export const OpenAIResponsesSchema = Type.Composite([
-		BaseSchema,
-		Type.Object({
-			protocol: Type.Literal(KnownProtocolEnum.openaiResponses),
-			compat: Type.Optional(OpenAIResponsesCompatSchema),
-		}),
-	]);
+	export const OpenAICompletionsSchema = Type.Evaluate(
+		Type.Intersect([
+			BaseSchema,
+			Type.Object({
+				protocol: Type.Literal(KnownProtocolEnum.openaiCompletions),
+				compat: Type.Optional(OpenAICompletionsCompatSchema),
+			}),
+		]),
+	);
+	export const OpenAIResponsesSchema = Type.Evaluate(
+		Type.Intersect([
+			BaseSchema,
+			Type.Object({
+				protocol: Type.Literal(KnownProtocolEnum.openaiResponses),
+				compat: Type.Optional(OpenAIResponsesCompatSchema),
+			}),
+		]),
+	);
 
 	export const Info = Type.Union([AnthropicSchema, OpenAICompletionsSchema, OpenAIResponsesSchema]);
 	export type Info = Static<typeof Info>;

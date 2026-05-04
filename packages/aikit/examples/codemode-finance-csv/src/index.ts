@@ -1,6 +1,6 @@
 import { Agent, CodeMode, Message } from "@codeworksh/aikit";
 import { createQuickJSWasiDriver } from "@codeworksh/aikit/agent/codemode/drivers/drivers";
-import { type Static, Type } from "@sinclair/typebox";
+import Type, { type Static } from "typebox";
 import { access, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import process from "node:process";

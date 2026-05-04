@@ -1,16 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import Ajv from "ajv";
+import Schema from "typebox/schema";
 import { Agent } from "../src/agent/agent";
 import { Event } from "../src/event/event";
 import { Message } from "../src/message/message";
 import { Model } from "../src/model/model";
 import { Provider } from "../src/provider/provider";
-
-const ajv = new Ajv({
-	allErrors: true,
-	strict: false,
-	coerceTypes: true,
-});
 
 function createUserMessage(parts: Message.UserMessage["parts"]): Message.UserMessage {
 	return Message.createUserMessage({
@@ -58,7 +52,7 @@ function createAssistantMessage(
 
 describe("Agent tool result schema", () => {
 	it("accepts valid running, completed, and error tool execution results", () => {
-		const validate = ajv.compile(Agent.ToolResultSchema);
+		const validate = Schema.Compile(Agent.ToolResultSchema);
 
 		const running: Agent.ToolRunningResult<{ progress: number }> = {
 			status: "running",
@@ -82,16 +76,16 @@ describe("Agent tool result schema", () => {
 			},
 		};
 
-		expect(validate(running)).toBe(true);
-		expect(validate(completed)).toBe(true);
-		expect(validate(errored)).toBe(true);
+		expect(validate.Check(running)).toBe(true);
+		expect(validate.Check(completed)).toBe(true);
+		expect(validate.Check(errored)).toBe(true);
 	});
 
 	it("rejects invalid status and payload combinations", () => {
-		const validate = ajv.compile(Agent.ToolResultSchema);
+		const validate = Schema.Compile(Agent.ToolResultSchema);
 
 		expect(
-			validate({
+			validate.Check({
 				status: "completed",
 				partial: {
 					content: [{ type: "text", text: "Still running" }],
@@ -100,7 +94,7 @@ describe("Agent tool result schema", () => {
 		).toBe(false);
 
 		expect(
-			validate({
+			validate.Check({
 				status: "error",
 				result: {
 					content: [{ type: "text", text: "Done" }],
@@ -130,8 +124,8 @@ describe("Agent tool result schema", () => {
 	});
 
 	it("allows running results in Agent.ToolResultSchema but not in Agent.ToolTerminalResultSchema", () => {
-		const validateResult = ajv.compile(Agent.ToolResultSchema);
-		const validateTerminalResult = ajv.compile(Agent.ToolTerminalResultSchema);
+		const validateResult = Schema.Compile(Agent.ToolResultSchema);
+		const validateTerminalResult = Schema.Compile(Agent.ToolTerminalResultSchema);
 		const running: Agent.ToolRunningResult<{ progress: number }> = {
 			status: "running",
 			partial: {
@@ -148,15 +142,15 @@ describe("Agent tool result schema", () => {
 			},
 		};
 
-		expect(validateResult(running)).toBe(true);
-		expect(validateTerminalResult(running)).toBe(false);
-		expect(validateTerminalResult(completed)).toBe(true);
+		expect(validateResult.Check(running)).toBe(true);
+		expect(validateTerminalResult.Check(running)).toBe(false);
+		expect(validateTerminalResult.Check(completed)).toBe(true);
 	});
 });
 
 describe("Agent event schema", () => {
 	it("accepts tool execution events with raw args and optional validated params", () => {
-		const validate = ajv.compile(Event.AgentEventSchema);
+		const validate = Schema.Compile(Event.AgentEventSchema);
 		const runningUpdate: Event.AgentEvent = {
 			type: "tool.execution.update",
 			callID: "call_1",
@@ -180,16 +174,16 @@ describe("Agent event schema", () => {
 			},
 		};
 
-		expect(validate(runningUpdate)).toBe(true);
-		expect(validate(terminalEnd)).toBe(true);
+		expect(validate.Check(runningUpdate)).toBe(true);
+		expect(validate.Check(terminalEnd)).toBe(true);
 	});
 
 	it("rejects terminal updates and non-assistant turn end messages", () => {
-		const validate = ajv.compile(Event.AgentEventSchema);
+		const validate = Schema.Compile(Event.AgentEventSchema);
 		const userMessage = createUserMessage([{ type: "text", text: "hello" }]);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "tool.execution.update",
 				callID: "call_1",
 				name: "search",
@@ -203,7 +197,7 @@ describe("Agent event schema", () => {
 		).toBe(false);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "turn.end",
 				message: userMessage,
 			}),
@@ -211,18 +205,18 @@ describe("Agent event schema", () => {
 	});
 
 	it("accepts assistant message updates and turn end events", () => {
-		const validate = ajv.compile(Event.AgentEventSchema);
+		const validate = Schema.Compile(Event.AgentEventSchema);
 		const assistantMessage = createAssistantMessage("stop", [{ type: "text", text: "hello" }]);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.update",
 				message: assistantMessage,
 			}),
 		).toBe(true);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "turn.end",
 				message: assistantMessage,
 			}),
@@ -230,7 +224,7 @@ describe("Agent event schema", () => {
 	});
 
 	it("requires source on message.part.update and tolerates extra fields on message.update", () => {
-		const validate = ajv.compile(Event.AgentEventSchema);
+		const validate = Schema.Compile(Event.AgentEventSchema);
 		const assistantMessage = createAssistantMessage("toolUse", [
 			{
 				type: "toolCall",
@@ -246,7 +240,7 @@ describe("Agent event schema", () => {
 		]);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.part.update",
 				message: assistantMessage,
 				partIndex: 0,
@@ -255,7 +249,7 @@ describe("Agent event schema", () => {
 		).toBe(false);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.update",
 				message: assistantMessage,
 				source: "tool",
@@ -263,7 +257,7 @@ describe("Agent event schema", () => {
 		).toBe(true);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.part.update",
 				message: assistantMessage,
 				partIndex: 0,
@@ -274,7 +268,7 @@ describe("Agent event schema", () => {
 	});
 
 	it("accepts message part lifecycle events for user and assistant parts", () => {
-		const validate = ajv.compile(Event.AgentEventSchema);
+		const validate = Schema.Compile(Event.AgentEventSchema);
 		const userMessage = createUserMessage([
 			{ type: "text", text: "hello" },
 			{ type: "image", data: "abc", mimeType: "image/png" },
@@ -294,7 +288,7 @@ describe("Agent event schema", () => {
 		]);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.part.start",
 				message: userMessage,
 				partIndex: 1,
@@ -303,7 +297,7 @@ describe("Agent event schema", () => {
 		).toBe(true);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.part.update",
 				message: assistantMessage,
 				partIndex: 0,
@@ -313,7 +307,7 @@ describe("Agent event schema", () => {
 		).toBe(true);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.part.end",
 				message: assistantMessage,
 				partIndex: 0,
@@ -323,12 +317,12 @@ describe("Agent event schema", () => {
 	});
 
 	it("rejects role-incompatible part events", () => {
-		const validate = ajv.compile(Event.AgentEventSchema);
+		const validate = Schema.Compile(Event.AgentEventSchema);
 		const userMessage = createUserMessage([{ type: "text", text: "hello" }]);
 		const assistantMessage = createAssistantMessage("stop", [{ type: "text", text: "hello" }]);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.part.start",
 				message: userMessage,
 				partIndex: 0,
@@ -337,7 +331,7 @@ describe("Agent event schema", () => {
 		).toBe(false);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.part.end",
 				message: assistantMessage,
 				partIndex: 0,
@@ -347,7 +341,7 @@ describe("Agent event schema", () => {
 	});
 
 	it("accepts tool-driven message updates without provider stream events", () => {
-		const validate = ajv.compile(Event.AgentEventSchema);
+		const validate = Schema.Compile(Event.AgentEventSchema);
 		const assistantMessage = createAssistantMessage("toolUse", [
 			{
 				type: "toolCall",
@@ -367,7 +361,7 @@ describe("Agent event schema", () => {
 		]);
 
 		expect(
-			validate({
+			validate.Check({
 				type: "message.update",
 				message: assistantMessage,
 			}),

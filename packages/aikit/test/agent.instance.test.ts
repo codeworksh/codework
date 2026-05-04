@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import Type from "typebox";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { Agent } from "../src/agent/agent";
 import type { Event } from "../src/event/event";

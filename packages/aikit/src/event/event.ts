@@ -1,4 +1,4 @@
-import { type Static, Type } from "@sinclair/typebox";
+import Type, { type Static } from "typebox";
 import { Agent } from "../agent/agent";
 import { Message } from "../message/message";
 
@@ -188,30 +188,36 @@ export namespace Event {
 
 	//
 	// tool exection
-	const ToolExecutionStartSchema = Type.Composite([
-		Agent.ToolCallInFlightSchema,
-		Type.Object({
-			type: Type.Literal(AgentEventType.toolExecutionStart),
-		}),
-	]);
+	const ToolExecutionStartSchema = Type.Evaluate(
+		Type.Intersect([
+			Agent.ToolCallInFlightSchema,
+			Type.Object({
+				type: Type.Literal(AgentEventType.toolExecutionStart),
+			}),
+		]),
+	);
 	export type ToolExecutionStart = Static<typeof ToolExecutionStartSchema>;
 
-	const ToolExecutionUpdateSchema = Type.Composite([
-		Agent.ToolCallInFlightSchema,
-		Type.Object({
-			type: Type.Literal(AgentEventType.toolExecutionUpdate),
-		}),
-		Message.ToolRunningSchema,
-	]);
+	const ToolExecutionUpdateSchema = Type.Evaluate(
+		Type.Intersect([
+			Agent.ToolCallInFlightSchema,
+			Type.Object({
+				type: Type.Literal(AgentEventType.toolExecutionUpdate),
+			}),
+			Message.ToolRunningSchema,
+		]),
+	);
 	export type ToolExecutionUpdate = Static<typeof ToolExecutionUpdateSchema>;
 
-	const ToolExecutionEndSchema = Type.Composite([
-		Agent.ToolCallInFlightSchema,
-		Type.Object({
-			type: Type.Literal(AgentEventType.toolExecutionEnd),
-		}),
-		Type.Union([Message.ToolCompletedSchema, Message.ToolErrorSchema]),
-	]);
+	const ToolExecutionEndSchema = Type.Evaluate(
+		Type.Intersect([
+			Agent.ToolCallInFlightSchema,
+			Type.Object({
+				type: Type.Literal(AgentEventType.toolExecutionEnd),
+			}),
+			Type.Union([Message.ToolCompletedSchema, Message.ToolErrorSchema]),
+		]),
+	);
 	export type ToolExecutionEnd = Static<typeof ToolExecutionEndSchema>;
 
 	/**

@@ -1,21 +1,19 @@
 import { expect } from "vite-plus/test";
-import Ajv from "ajv";
+import Schema from "typebox/schema";
 import { Message } from "../../src/message/message";
 
-const ajv = new Ajv({
-	allErrors: true,
-	strict: false,
-	coerceTypes: true,
-});
-
-const validateToolCallSchema = ajv.compile(Message.ToolCallSchema);
+const validateToolCallSchema = Schema.Compile(Message.ToolCallSchema);
+let latestErrors: unknown[] = [];
 
 function formatErrors(): string {
-	return JSON.stringify(validateToolCallSchema.errors, null, 2);
+	return JSON.stringify(latestErrors, null, 2);
 }
 
 export function expectValidToolCall(toolCall: Message.ToolCall, expectedStatus?: Message.ToolCall["status"]): void {
-	if (!validateToolCallSchema(toolCall)) {
+	const [valid, errors] = validateToolCallSchema.Errors(toolCall);
+	latestErrors = errors;
+
+	if (!valid) {
 		throw new Error(`Invalid Message.ToolCall shape:\n${formatErrors()}`);
 	}
 
