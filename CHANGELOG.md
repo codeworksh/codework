@@ -11,6 +11,30 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.4.0]
+
+### Added
+
+- Added package-local build, lint, format, and test configuration for `@codeworksh/aikit` using `vite-plus`.
+
+### Changed
+
+- Migrated `@codeworksh/aikit` schemas and runtime validation to TypeBox 1.x.
+- Replaced AJV-backed validation with TypeBox's built-in schema compiler and value parser.
+- Updated message, event, model, stream, agent, and Code Mode schemas to use the TypeBox 1.x API shape.
+- Updated the package export map for built ESM output, package metadata access, and local development resolution.
+- Updated tests and examples to match the new TypeBox compiler behavior and dependency layout.
+
+### Fixed
+
+- Improved validation error formatting while preserving the received value in failure messages.
+- Cached compiled validators to avoid recompiling schemas for repeated validation calls.
+
+### Internal
+
+- Removed direct AJV and `@sinclair/typebox` usage from `@codeworksh/aikit` in favor of `typebox`.
+- Refined package metadata and release scripts for the next npm publish.
+
 ## [@codeworksh/aikit@0.3.1]
 
 ### Added

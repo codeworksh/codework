@@ -1,5 +1,7 @@
-type SchemaLike = object;
-type StaticData<Data extends SchemaLike> = Data extends { static: infer Value } ? Value : unknown;
+import type { Static, TSchema } from "typebox";
+
+type SchemaLike = TSchema;
+type StaticData<Data extends SchemaLike> = Static<Data>;
 
 export abstract class NamedError extends Error {
 	abstract schema(): SchemaLike;
