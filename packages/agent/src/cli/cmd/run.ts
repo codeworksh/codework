@@ -157,7 +157,7 @@ export const RunCommand = cmd({
 		await bootstrap(process.cwd(), async () => {
 			const fetchFn = (async (...fetchArgs: Parameters<typeof globalThis.fetch>) => {
 				const request = new Request(...fetchArgs);
-				return Server.App().fetch(request);
+				return Server.LocalApp().fetch(request);
 			}) as typeof globalThis.fetch;
 			const sdk = createCodeWorkClient({ baseUrl: "http://codework.internal", fetch: fetchFn });
 			await execute(sdk);

@@ -65,6 +65,10 @@ Server.App()
 		throw httpRouteError;
 	});
 
+Server.LocalApp().get("/test/local-unknown-error", () => {
+	throw unknownRouteError;
+});
+
 async function closeNodeServer(server: NodeServer) {
 	await new Promise<void>((resolve, reject) => {
 		server.close((error: any) => (error ? reject(error) : resolve()));
@@ -205,7 +209,21 @@ describe("Server.App error handling", () => {
 
 		expect(response.status).toBe(500);
 		expect(body.name).toBe("UnknownError");
-		expect(body.data.message).toContain("unknown failure");
+		expect(body.data.message).toBe("Internal server error");
+		expect(errorSpy).toHaveBeenCalledWith(error);
+	});
+
+	it("includes unknown error details in local app mode", async () => {
+		const error = new Error("unknown local failure");
+		unknownRouteError = error;
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+		const response = await Server.LocalApp().request("/test/local-unknown-error");
+		const body = (await response.json()) as any;
+
+		expect(response.status).toBe(500);
+		expect(body.name).toBe("UnknownError");
+		expect(body.data.message).toContain("unknown local failure");
 		expect(errorSpy).toHaveBeenCalledWith(error);
 	});
 

@@ -1,4 +1,4 @@
-import { H3, type HTTPError, onError, serve } from "h3";
+import { H3, type H3Event, type HTTPError, onError, serve } from "h3";
 import { lazy, NamedError, Filesystem } from "@codeworksh/utils";
 import { WorkspaceContext } from "../workspace/context.ts";
 import { Instance } from "../project/instance.ts";
@@ -8,7 +8,10 @@ import { OpenAPI } from "./openapi.ts";
 import { SessionRoutes } from "./routes/session.ts";
 
 export namespace Server {
-	const app = new H3();
+	interface AppOptions {
+		exposeUnhandledErrorDetails?: boolean;
+	}
+
 	type ServerInstance = ReturnType<typeof serve>;
 	type ListeningServer = ServerInstance & { url: string };
 
@@ -16,12 +19,13 @@ export namespace Server {
 		return error.cause instanceof Error ? error.cause : error;
 	}
 
-	function getErrorMessage(error: unknown) {
+	function getErrorMessage(error: unknown, options: AppOptions) {
+		if (!options.exposeUnhandledErrorDetails) return "Internal server error";
 		if (error instanceof Error) return error.stack || error.message;
 		return String(error);
 	}
 
-	function getErrorResponse(error: HTTPError) {
+	function getErrorResponse(error: HTTPError, _event: H3Event, options: AppOptions) {
 		const cause = getErrorCause(error);
 		console.error(cause);
 
@@ -36,12 +40,14 @@ export namespace Server {
 			});
 		}
 
-		return Response.json(new NamedError.Unknown({ message: getErrorMessage(cause) }).toObject(), { status: 500 });
+		return Response.json(new NamedError.Unknown({ message: getErrorMessage(cause, options) }).toObject(), {
+			status: 500,
+		});
 	}
 
-	export const App: () => H3 = lazy(() =>
-		app
-			.use(onError(getErrorResponse))
+	function createApp(options: AppOptions = {}) {
+		return new H3()
+			.use(onError((error, event) => getErrorResponse(error, event, options)))
 			.get("/openapi.json", () => OpenAPI.document())
 			.use(async (event, next) => {
 				if (new URL(event.req.url).pathname === "/openapi.json") return next();
@@ -73,8 +79,12 @@ export namespace Server {
 				});
 			})
 			.mount("/sessions", SessionRoutes())
-			.get("/", (_event) => "⚡️ Tadaa!"),
-	);
+			.get("/", (_event) => "⚡️ Tadaa!");
+	}
+
+	export const App: () => H3 = lazy(() => createApp());
+
+	export const LocalApp: () => H3 = lazy(() => createApp({ exposeUnhandledErrorDetails: true }));
 
 	function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException {
 		return error instanceof Error && "code" in error && error.code === "EADDRINUSE";
