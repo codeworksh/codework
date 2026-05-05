@@ -159,4 +159,13 @@ export namespace Filesystem {
 	export function resolve(p: string): string {
 		return normalizePath(pathResolve(windowsPath(p)));
 	}
+
+
+	export interface FileStat {
+		isFile: boolean;
+		isDirectory: boolean;
+		isSymbolicLink: boolean;
+		size: number;
+		mtime: Date;
+	}
 }
