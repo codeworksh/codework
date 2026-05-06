@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import os from "os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export const configDir = ".codework";
 export const app = "codework";
@@ -10,27 +10,29 @@ function homeDir() {
 	if (envDir) {
 		if (envDir === "~") return os.homedir();
 		if (envDir.startsWith("~/")) return join(os.homedir(), envDir.slice(2));
-		return envDir;
+		return resolve(envDir);
 	}
 	return join(os.homedir(), configDir);
 }
 
+const home = homeDir();
+
 export namespace Global {
 	export const Path = {
 		get home() {
-			return homeDir();
+			return home;
 		},
 		get cache() {
-			return join(homeDir(), "cache");
+			return join(home, "cache");
 		},
 		get agent() {
-			return join(homeDir(), "agent");
+			return join(home, "agent");
 		},
 		get data() {
-			return join(homeDir(), "data");
+			return join(home, "data");
 		},
 		get log() {
-			return join(homeDir(), "log");
+			return join(home, "log");
 		},
 	} as const;
 }
