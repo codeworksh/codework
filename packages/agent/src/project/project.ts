@@ -1,12 +1,11 @@
 import { iife } from "@codeworksh/utils";
-import { Filesystem } from "@codeworksh/utils";
 import Type, { type Static } from "typebox";
 import Value from "typebox/value";
 import path from "path";
 import { Database, eq } from "../storage/db.ts";
 import { git } from "../util/git.ts";
 import { Log } from "../util/log.ts";
-import { Process } from "../util/process.ts";
+import { WorkspaceContext } from "../workspace/context.ts";
 import { ProjectTable } from "./project.sql.ts";
 
 export namespace Project {
@@ -59,7 +58,9 @@ export namespace Project {
 	}
 
 	export async function fromDirectory(directory: string) {
-		log.info("fromDirectory", { directory });
+		const sandbox = WorkspaceContext.sandbox;
+
+		log.info("fromDirectory", { directory, sandboxId: sandbox.id });
 
 		// Use git as the source of truth for repository detection.
 		// Filesystem .git sniffing is intentionally avoided — git validates the repo internally.
@@ -71,10 +72,7 @@ export namespace Project {
 				time: { created: Date.now(), updated: Date.now() },
 			};
 
-			const gitBinary = await Process.run(["git", "--version"], { nothrow: true }).then(
-				(result) => result.code === 0,
-				() => false,
-			);
+			const gitBinary = await git(["--version"], { cwd: directory }).then((result) => result.code === 0);
 			if (!gitBinary) return global;
 
 			// Let git confirm this is a real repo and give us the canonical root.
@@ -106,7 +104,8 @@ export namespace Project {
 
 			// Read cached project ID from the common git dir.
 			let id = commonGitDir
-				? await Filesystem.readText(path.join(commonGitDir, "codework"))
+				? await sandbox
+						.readFile(path.join(commonGitDir, "codework"))
 						.then((x) => x.trim())
 						.catch(() => undefined)
 				: undefined;
@@ -132,7 +131,7 @@ export namespace Project {
 
 				id = roots[0];
 				if (id && commonGitDir) {
-					await Filesystem.write(path.join(commonGitDir, "codework"), id).catch(() => undefined);
+					await sandbox.writeFile(path.join(commonGitDir, "codework"), id).catch(() => undefined);
 				}
 			}
 
