@@ -69,8 +69,8 @@ describe("built-in sandbox environments", () => {
 		const result = await sandbox.exec("pwd && cat nested/file.txt");
 		const realDirectory = await fs.realpath(directory);
 
-		expect(result.exitCode).toBe(0);
-		expect(result.stdout).toBe(`${realDirectory}\nhello from node sandbox`);
+		expect(result.code).toBe(0);
+		expect(result.stdout.toString()).toBe(`${realDirectory}\nhello from node sandbox`);
 		await expect(fs.readFile(path.join(directory, "nested/file.txt"), "utf8")).resolves.toBe(
 			"hello from node sandbox",
 		);

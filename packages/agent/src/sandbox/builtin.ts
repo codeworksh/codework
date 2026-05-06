@@ -1,12 +1,9 @@
 import { Bash, InMemoryFs, ReadWriteFs, MountableFs } from "just-bash";
 import { Sandbox } from "./sandbox";
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
 import nodeFs from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { Process } from "../util/process.ts";
 
 /**
  * Create an empty in-memory sandbox (default).
@@ -108,23 +105,13 @@ export class LocalNodeEnv implements Sandbox.API {
 		});
 	}
 
-	async exec(command: string, options?: { cwd?: string; env?: Record<string, string>; timeout?: number }) {
+	async exec(command: string, options?: Sandbox.ExecOptions): Promise<Sandbox.ShellResult> {
 		const cwd = this.toHostPath(options?.cwd ?? this.root);
-		try {
-			const result = await execFileAsync("bash", ["-lc", command], {
-				cwd,
-				env: { ...process.env, ...options?.env },
-				timeout: options?.timeout ? options.timeout * 1000 : undefined,
-			});
-			return { stdout: result.stdout, stderr: result.stderr, exitCode: 0 };
-		} catch (error) {
-			const result = error as { stdout?: string; stderr?: string; message?: string; code?: unknown };
-			return {
-				stdout: result.stdout ?? "",
-				stderr: result.stderr ?? result.message ?? "",
-				exitCode: typeof result.code === "number" ? result.code : 1,
-			};
-		}
+		return await Process.run(["bash", "-lc", command], {
+			...options,
+			cwd,
+			nothrow: options?.nothrow ?? true,
+		});
 	}
 }
 

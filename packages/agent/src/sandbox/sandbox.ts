@@ -2,6 +2,7 @@ import Type from "typebox";
 import { Log } from "../util/log";
 import { Filesystem } from "@codeworksh/utils";
 import { NamedError } from "@codeworksh/utils";
+import { Process } from "../util/process.ts";
 
 export namespace Sandbox {
 	const log = Log.create({ service: "sandbox" });
@@ -19,14 +20,18 @@ export namespace Sandbox {
 		execute(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }>;
 	}
 
-	export interface ShellResult {
-		stdout: string;
-		stderr: string;
+	export type ExecOptions = Process.RunOptions;
+
+	export type ShellResult = Process.Result;
+
+	interface BashShellResult {
+		stdout: string | Uint8Array;
+		stderr: string | Uint8Array;
 		exitCode: number;
 	}
 
 	export interface BashLike {
-		exec(command: string, options?: { cwd?: string; env?: Record<string, string> }): Promise<ShellResult>;
+		exec(command: string, options?: { cwd?: string; env?: NodeJS.ProcessEnv | null }): Promise<BashShellResult>;
 
 		getCwd(): string;
 
@@ -68,10 +73,7 @@ export namespace Sandbox {
 
 		rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
 
-		exec(
-			command: string,
-			options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
-		): Promise<ShellResult>;
+		exec(command: string, options?: ExecOptions): Promise<ShellResult>;
 	}
 
 	/**
@@ -84,10 +86,7 @@ export namespace Sandbox {
 		id: string;
 		ephemeral?: boolean;
 
-		exec(
-			command: string,
-			options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
-		): Promise<ShellResult>;
+		exec(command: string, options?: ExecOptions): Promise<ShellResult>;
 
 		/** Create an operation-scoped environment, usually backed by a fresh Bash runtime. */
 		scope?(options?: { commands?: Command[] }): Promise<Env>;
@@ -144,9 +143,8 @@ export namespace Sandbox {
 			id: normalizedCwd,
 			exec: (command, options) =>
 				api.exec(command, {
+					...options,
 					cwd: options?.cwd ? resolvePath(options.cwd) : normalizedCwd,
-					env: options?.env,
-					timeout: options?.timeout,
 				}),
 			readFile: (p) => api.readFile(resolvePath(p)),
 			readFileBuffer: (p) => api.readFileBuffer(resolvePath(p)),
@@ -216,17 +214,25 @@ export namespace Sandbox {
 				const executable = bash as BashLike & {
 					exec(
 						command: string,
-						options?: { cwd?: string; env?: Record<string, string>; signal?: AbortSignal },
-					): Promise<ShellResult>;
+						options?: { cwd?: string; env?: NodeJS.ProcessEnv | null; signal?: AbortSignal },
+					): Promise<BashShellResult>;
 				};
 				const timeout = opts?.timeout;
 				let timeoutSignal: AbortSignal | undefined;
 				let timer: ReturnType<typeof setTimeout> | undefined;
+				let abortListener: (() => void) | undefined;
 
-				if (typeof timeout === "number") {
+				if (typeof timeout === "number" || opts?.abort) {
 					const controller = new AbortController();
 					timeoutSignal = controller.signal;
-					timer = setTimeout(() => controller.abort(), timeout * 1000);
+					if (typeof timeout === "number") {
+						timer = setTimeout(() => controller.abort(), timeout);
+					}
+					if (opts?.abort) {
+						abortListener = () => controller.abort();
+						opts.abort.addEventListener("abort", abortListener, { once: true });
+						if (opts.abort.aborted) controller.abort();
+					}
 				}
 
 				try {
@@ -235,14 +241,23 @@ export namespace Sandbox {
 						opts ? { cwd: opts.cwd, env: opts.env, signal: timeoutSignal } : undefined,
 					);
 					if (timeoutSignal?.aborted) {
+						const converted = toShellResult(result);
 						return {
-							...result,
-							stderr: result.stderr || `[flue] Command timed out after ${timeout} seconds.`,
+							...converted,
+							stderr:
+								converted.stderr.length > 0
+									? converted.stderr
+									: Buffer.from(
+											typeof timeout === "number"
+												? `[codework] Command timed out after ${timeout}ms.`
+												: "[codework] Command aborted.",
+										),
 						};
 					}
-					return result;
+					return toShellResult(result);
 				} finally {
 					if (timer) clearTimeout(timer);
+					if (abortListener) opts?.abort?.removeEventListener("abort", abortListener);
 				}
 			},
 			scope: (options) => createScope(options?.commands ?? []),
@@ -302,6 +317,14 @@ export namespace Sandbox {
 		const normalized = parts.join("/");
 		if (absolute) return `/${normalized}`;
 		return normalized || ".";
+	}
+
+	function toShellResult(result: BashShellResult): ShellResult {
+		return {
+			code: result.exitCode,
+			stdout: Buffer.from(result.stdout),
+			stderr: Buffer.from(result.stderr),
+		};
 	}
 
 	function assertBashLike(value: unknown): asserts value is BashLike {
