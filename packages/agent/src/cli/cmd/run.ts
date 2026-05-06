@@ -3,7 +3,7 @@ import { createInMemoryEphemeralEnv, createLocalNodeEnv } from "../../sandbox/bu
 import type { Sandbox } from "../../sandbox/sandbox.ts";
 import { cmd } from "./cmd.ts";
 import path from "node:path";
-import { Filesystem, iife } from "@codeworksh/utils";
+import { iife } from "@codeworksh/utils";
 import { UI } from "../ui.ts";
 import { pathToFileURL } from "node:url";
 import { Global } from "../../config/global.ts";
@@ -92,6 +92,17 @@ export const RunCommand = cmd({
 		const workspaceId = args.workspace ?? "local";
 		const sandboxId = args.sandbox ?? "local";
 
+		const sandbox: Sandbox.Env = await iife(async () => {
+			switch (sandboxId) {
+				case "local":
+					return await createLocalNodeEnv(cwd);
+				case "empty":
+					return await createInMemoryEphemeralEnv();
+				default:
+					return await createInMemoryEphemeralEnv();
+			}
+		});
+
 		const files: {
 			type: "file";
 			url: string;
@@ -100,13 +111,14 @@ export const RunCommand = cmd({
 		}[] = [];
 		if (fileArgs.length > 0) {
 			for (const fp of fileArgs) {
-				const resolvedPath = path.resolve(cwd, fp);
-				if (!(await Filesystem.exists(resolvedPath))) {
+				const resolvedPath = sandbox.resolvePath(fp);
+				if (!(await sandbox.exists(resolvedPath))) {
 					UI.error(`File not found: ${fp}`);
 					process.exit(1);
 				}
 
-				const mime = (await Filesystem.isDir(resolvedPath)) ? "application/x-directory" : "text/plain";
+				const stat = await sandbox.stat(resolvedPath);
+				const mime = stat.isDirectory ? "application/x-directory" : "text/plain";
 
 				files.push({
 					type: "file",
@@ -155,17 +167,6 @@ export const RunCommand = cmd({
 			const result = await sdk.session.create({ name: name() });
 			return result.data?.id as string;
 		}
-
-		const sandbox: Sandbox.Env = await iife(async () => {
-			switch (sandboxId) {
-				case "local":
-					return await createLocalNodeEnv(cwd);
-				case "empty":
-					return await createInMemoryEphemeralEnv();
-				default:
-					return await createInMemoryEphemeralEnv();
-			}
-		});
 
 		console.log("********************");
 		console.log("messages", messages);
