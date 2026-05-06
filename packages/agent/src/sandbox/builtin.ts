@@ -1,5 +1,5 @@
 import { Bash, InMemoryFs, ReadWriteFs, MountableFs } from "just-bash";
-import { Sandbox } from "./sandbox";
+import { Sandbox } from "./sandbox.ts";
 import { randomUUID } from "node:crypto";
 import nodeFs from "node:fs/promises";
 import path from "node:path";

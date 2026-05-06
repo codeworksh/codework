@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { createCodeWorkClient, type CodeWorkSdkClient } from "@codeworksh/sdk";
 import { Server } from "../../server/server.ts";
 import { bootstrap } from "../bootstrap.ts";
-import { Runtime } from "../../config/runtime";
+import { Runtime } from "../../config/runtime.ts";
 
 interface RunArgs extends ArgumentsCamelCase {
 	args: string[];

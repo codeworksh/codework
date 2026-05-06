@@ -37,7 +37,7 @@
 		"build": "vp pack",
 		"bump": "bumpp",
 		"check": "vp check",
-		"generate": "openapi-ts && node --experimental-transform-types scripts/postgenerate.ts && vp fmt",
+		"generate": "openapi-ts && tsx scripts/postgenerate.ts && vp fmt",
 		"lint": "vp lint"
 	},
 	"dependencies": {

@@ -24,7 +24,7 @@
 		"test:packages": "vp run -r test",
 		"build": "vp run -r build",
 		"build:packages": "vp run -r build",
-		"server:start": "node --conditions=development --experimental-transform-types packages/agent/src/index.ts serve",
+		"server:start": "tsx --conditions=development packages/agent/src/index.ts serve",
 		"server:dev": "node scripts/dev/server.mjs",
 		"desktop:build": "pnpm --filter @codeworksh/desktop build",
 		"desktop:start": "pnpm --filter @codeworksh/desktop start",
@@ -42,7 +42,7 @@
 	"devDependencies": {
 		"@types/node": "^24.12.2",
 		"@typescript/native-preview": "7.0.0-dev.20260328.1",
-		"typebox": "^1.1.37",
+		"tsx": "^4.21.0",
 		"typescript": "^5.9.3",
 		"vite-plus": "0.1.17"
 	},

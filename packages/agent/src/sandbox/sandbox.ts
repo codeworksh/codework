@@ -1,5 +1,5 @@
 import Type from "typebox";
-import { Log } from "../util/log";
+import { Log } from "../util/log.ts";
 import { Filesystem } from "@codeworksh/utils";
 import { NamedError } from "@codeworksh/utils";
 import { Process } from "../util/process.ts";

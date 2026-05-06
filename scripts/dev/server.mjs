@@ -5,14 +5,9 @@ import process, { loadEnvFile } from "node:process";
 
 const cwd = process.cwd();
 const entry = path.join(cwd, "packages/agent/src/index.ts");
+const tsxBin = path.join(cwd, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
 const watchRoot = path.join(cwd, "packages/agent/src");
-const childArgs = [
-	"--conditions=development",
-	"--experimental-transform-types",
-	entry,
-	"serve",
-	...process.argv.slice(2),
-];
+const childArgs = ["--conditions=development", entry, "serve", ...process.argv.slice(2)];
 const pollIntervalMs = 250;
 const restartDebounceMs = 120;
 
@@ -53,7 +48,7 @@ async function snapshotTree() {
 }
 
 function startChild() {
-	child = spawn(process.execPath, childArgs, {
+	child = spawn(tsxBin, childArgs, {
 		cwd,
 		stdio: "inherit",
 	});
