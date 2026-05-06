@@ -6,10 +6,10 @@ import path from "node:path";
 import { iife } from "@codeworksh/utils";
 import { UI } from "../ui.ts";
 import { pathToFileURL } from "node:url";
-import { Global } from "../../config/global.ts";
 import { createCodeWorkClient, type CodeWorkSdkClient } from "@codeworksh/sdk";
 import { Server } from "../../server/server.ts";
 import { bootstrap } from "../bootstrap.ts";
+import { Runtime } from "../../config/runtime";
 
 interface RunArgs extends ArgumentsCamelCase {
 	args: string[];
@@ -174,7 +174,7 @@ export const RunCommand = cmd({
 		console.log("files", files);
 		console.log("********************");
 
-		const agentDir = Global.Path.agent;
+		const agentDir = await Runtime.agentDir();
 		console.log("agentDir", agentDir);
 
 		async function execute(sdk: CodeWorkSdkClient) {
