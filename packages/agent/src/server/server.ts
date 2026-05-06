@@ -7,7 +7,7 @@ import { InstanceBootstrap } from "../project/bootstrap.ts";
 import { namedErrorResponse } from "./error.ts";
 import { OpenAPI } from "./openapi.ts";
 import { SessionRoutes } from "./routes/session.ts";
-import { createLocalEnv, createInMemoryEphemeralEnv } from "../sandbox/builtin.ts";
+import { createLocalNodeEnv, createInMemoryEphemeralEnv } from "../sandbox/builtin.ts";
 
 export namespace Server {
 	interface AppOptions {
@@ -88,7 +88,7 @@ export namespace Server {
 
 						switch (sandboxId) {
 							case "local":
-								return await createLocalEnv(directory);
+								return await createLocalNodeEnv(directory);
 							case "empty":
 								return await createInMemoryEphemeralEnv();
 							default:

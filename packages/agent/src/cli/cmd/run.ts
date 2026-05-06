@@ -1,5 +1,5 @@
 import type { Argv, ArgumentsCamelCase } from "yargs";
-import { createInMemoryEphemeralEnv, createLocalEnv } from "../../sandbox/builtin.ts";
+import { createInMemoryEphemeralEnv, createLocalNodeEnv } from "../../sandbox/builtin.ts";
 import type { Sandbox } from "../../sandbox/sandbox.ts";
 import { cmd } from "./cmd.ts";
 import path from "node:path";
@@ -159,7 +159,7 @@ export const RunCommand = cmd({
 		const sandbox: Sandbox.Env = await iife(async () => {
 			switch (sandboxId) {
 				case "local":
-					return await createLocalEnv(cwd);
+					return await createLocalNodeEnv(cwd);
 				case "empty":
 					return await createInMemoryEphemeralEnv();
 				default:
