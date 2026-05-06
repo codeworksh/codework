@@ -121,10 +121,54 @@ export namespace Sandbox {
 	}
 
 	export interface Factory {
-		createSandboxEnv(options: { id: string; cwd?: string }): Promise<Env>;
+		createSandboxEnv(options: { id: string; cwd: string }): Promise<Env>;
 	}
 
-	export async function bashFactoryToSessionEnv(id: IdGenerator, factory: BashFactory): Promise<Env> {
+	export type SessionEnv = Env;
+
+	/** Wrap a Sandbox API into an Env without an intermediate shell filesystem layer. */
+	export function createSandboxSessionEnv(api: API, cwd: string, cleanup?: () => Promise<void>): SessionEnv {
+		if (!cwd) {
+			throw new SandboxError({ message: "cwd is required to create a sandbox session env." });
+		}
+
+		const normalizedCwd = normalizeSandboxPath(cwd);
+		const resolvePath = (p: string): string => {
+			if (!p) return normalizedCwd;
+			if (p.startsWith("/")) return normalizeSandboxPath(p);
+			if (normalizedCwd === "/") return normalizeSandboxPath(`/${p}`);
+			return normalizeSandboxPath(`${normalizedCwd}/${p}`);
+		};
+
+		return {
+			id: normalizedCwd,
+			exec: (command, options) =>
+				api.exec(command, {
+					cwd: options?.cwd ? resolvePath(options.cwd) : normalizedCwd,
+					env: options?.env,
+					timeout: options?.timeout,
+				}),
+			readFile: (p) => api.readFile(resolvePath(p)),
+			readFileBuffer: (p) => api.readFileBuffer(resolvePath(p)),
+			writeFile: (p, content) => api.writeFile(resolvePath(p), content),
+			stat: (p) => api.stat(resolvePath(p)),
+			readdir: (p) => api.readdir(resolvePath(p)),
+			exists: (p) => api.exists(resolvePath(p)),
+			mkdir: (p, options) => api.mkdir(resolvePath(p), options),
+			rm: (p, options) => api.rm(resolvePath(p), options),
+			cwd: normalizedCwd,
+			resolvePath,
+			cleanup: async () => {
+				await cleanup?.();
+			},
+		};
+	}
+
+	export async function bashFactoryToSandboxEnv(
+		id: IdGenerator,
+		factory: BashFactory,
+		ephemeral?: boolean,
+	): Promise<Env> {
 		log.info("create bash sandbox env");
 		const seen = new WeakSet<object>();
 
@@ -142,20 +186,23 @@ export namespace Sandbox {
 			return bash;
 		}
 
+		// create  Bash Scoped Env
 		async function createBashScopedEnv(commands: Command[]): Promise<Env> {
 			const scoped = await createBash();
 			registerCommands(scoped, commands);
-			return createBashSessionEnv(id, scoped, createBashScopedEnv);
+			return createBashSandboxEnv(id, scoped, createBashScopedEnv, ephemeral);
 		}
 
 		const base = await createBash();
-		return createBashSessionEnv(id, base, createBashScopedEnv);
+		return createBashSandboxEnv(id, base, createBashScopedEnv, ephemeral);
 	}
 
-	async function createBashSessionEnv(
+	// create Bash Sandbox Env
+	async function createBashSandboxEnv(
 		id: IdGenerator,
 		bash: BashLike,
 		createScope: (commands: Command[]) => Promise<Env>,
+		ephemeral?: boolean,
 	): Promise<Env> {
 		const sandboxId = await id();
 		const fs = bash.fs;
@@ -164,6 +211,7 @@ export namespace Sandbox {
 
 		return {
 			id: sandboxId,
+			ephemeral,
 			exec: async (cmd, opts) => {
 				const executable = bash as BashLike & {
 					exec(
@@ -233,6 +281,27 @@ export namespace Sandbox {
 		for (const cmd of commands) {
 			bash.registerCommand({ name: cmd.name, execute: (args: string[]) => cmd.execute(args) });
 		}
+	}
+
+	function normalizeSandboxPath(p: string): string {
+		const absolute = p.startsWith("/");
+		const parts: string[] = [];
+		for (const part of p.split("/")) {
+			if (part === "" || part === ".") continue;
+			if (part === "..") {
+				if (parts.length > 0 && parts[parts.length - 1] !== "..") {
+					parts.pop();
+				} else if (!absolute) {
+					parts.push(part);
+				}
+				continue;
+			}
+			parts.push(part);
+		}
+
+		const normalized = parts.join("/");
+		if (absolute) return `/${normalized}`;
+		return normalized || ".";
 	}
 
 	function assertBashLike(value: unknown): asserts value is BashLike {

@@ -6,6 +6,7 @@ import { Project } from "./project.ts";
 import { State } from "./state.ts";
 
 interface IContext {
+	id: string;
 	directory: string;
 	worktree: string;
 	project: Project.Info;
@@ -17,16 +18,24 @@ const disposal = {
 	all: undefined as Promise<void> | undefined,
 };
 
-function boot(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string }) {
+function boot(input: {
+	key: string;
+	directory: string;
+	init?: () => Promise<any>;
+	project?: Project.Info;
+	worktree?: string;
+}) {
 	return iife(async () => {
 		const ctx =
 			input.project && input.worktree
 				? {
+						id: input.key,
 						directory: input.directory,
 						worktree: input.worktree,
 						project: input.project,
 					}
 				: await Project.fromDirectory(input.directory).then(({ project, worktree }) => ({
+						id: input.key,
 						directory: input.directory,
 						worktree: worktree,
 						project,
@@ -38,33 +47,21 @@ function boot(input: { directory: string; init?: () => Promise<any>; project?: P
 	});
 }
 
-function track(directory: string, next: Promise<IContext>) {
+function track(key: string, next: Promise<IContext>) {
 	const task = next.catch((error) => {
-		if (cache.get(directory) === task) cache.delete(directory);
+		if (cache.get(key) === task) cache.delete(key);
 		throw error;
 	});
-	cache.set(directory, task);
+	cache.set(key, task);
 	return task;
 }
 
 export const Instance = {
-	async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R }): Promise<R> {
-		let existing = cache.get(input.directory);
+	async provide<R>(input: { key: string; directory: string; init?: () => Promise<any>; fn: () => R }): Promise<R> {
+		let existing = cache.get(input.key);
 		if (!existing) {
-			Log.Default.info("creating instance", { directory: input.directory });
-			existing = iife(async () => {
-				const { project, worktree } = await Project.fromDirectory(input.directory);
-				const ctx = {
-					directory: input.directory,
-					worktree,
-					project,
-				};
-				await context.provide(ctx, async () => {
-					await input.init?.();
-				});
-				return ctx;
-			});
-			cache.set(input.directory, existing);
+			Log.Default.info("creating instance", { key: input.key, directory: input.directory });
+			existing = track(input.key, boot(input));
 		}
 		const ctx = await existing;
 		return context.provide(ctx, async () => {
@@ -80,6 +77,9 @@ export const Instance = {
 	get project() {
 		return context.use().project;
 	},
+	get id() {
+		return context.use().id;
+	},
 	/**
 	 * Check if a path is within the project boundary.
 	 * Returns true if path is inside Instance.directory OR Instance.worktree.
@@ -92,22 +92,29 @@ export const Instance = {
 		return Filesystem.contains(Instance.worktree, filepath);
 	},
 	state<S>(init: () => S, dispose?: (state: Awaited<S>) => Promise<void>): () => S {
-		return State.create(() => Instance.directory, init, dispose);
+		return State.create(() => Instance.id, init, dispose);
 	},
-	async reload(input: { directory: string; init?: () => Promise<any>; project?: Project.Info; worktree?: string }) {
+	async reload(input: {
+		key: string;
+		directory: string;
+		init?: () => Promise<any>;
+		project?: Project.Info;
+		worktree?: string;
+	}) {
+		const key = input.key;
 		const directory = Filesystem.resolve(input.directory);
-		Log.Default.info("reloading instance", { directory });
-		await State.dispose(directory);
-		cache.delete(directory);
-		const next = track(directory, boot({ ...input, directory }));
+		Log.Default.info("reloading instance", { key, directory });
+		await State.dispose(key);
+		cache.delete(key);
+		const next = track(key, boot({ ...input, key, directory }));
 		// @sanchitrk: send durable stream event?
 		// emit(directory);
 		return await next;
 	},
 	async dispose() {
-		Log.Default.info("disposing instance", { directory: Instance.directory });
-		await State.dispose(Instance.directory);
-		cache.delete(Instance.directory);
+		Log.Default.info("disposing instance", { key: Instance.id, directory: Instance.directory });
+		await State.dispose(Instance.id);
+		cache.delete(Instance.id);
 		// @sanchitrk: send durable stream event?
 		// GlobalBus.emit("event", {
 		//   directory: Instance.directory,
@@ -133,10 +140,8 @@ export const Instance = {
 					return undefined;
 				});
 
-				// before deleting the failed instance (catch-ed) undefined
-				// do safety check before deleting the failed instance, for this directory in cache
-				// for the directory(key) a value must be the same when iterated.
-				// 'cause of async operation, value might have been changed, for the key
+				// Before deleting a failed instance, make sure this cache key still points
+				// at the same promise; async work may have replaced it while disposal ran.
 				if (!ctx) {
 					if (cache.get(key) === value) cache.delete(key);
 					continue;

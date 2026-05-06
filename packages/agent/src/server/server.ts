@@ -1,15 +1,21 @@
 import { H3, type H3Event, type HTTPError, onError, serve } from "h3";
-import { lazy, NamedError, Filesystem } from "@codeworksh/utils";
+import { lazy, NamedError, Filesystem, iife } from "@codeworksh/utils";
+import { type Sandbox } from "../sandbox/sandbox.ts";
 import { WorkspaceContext } from "../workspace/context.ts";
 import { Instance } from "../project/instance.ts";
 import { InstanceBootstrap } from "../project/bootstrap.ts";
 import { namedErrorResponse } from "./error.ts";
 import { OpenAPI } from "./openapi.ts";
 import { SessionRoutes } from "./routes/session.ts";
+import { createLocalEnv, createInMemoryEphemeralEnv } from "../sandbox/builtin.ts";
 
 export namespace Server {
 	interface AppOptions {
 		exposeUnhandledErrorDetails?: boolean;
+	}
+	export interface CodeWorkInitContext {
+		workspaceId: string;
+		sandbox: Sandbox.Env;
 	}
 
 	type ServerInstance = ReturnType<typeof serve>;
@@ -50,29 +56,63 @@ export namespace Server {
 			.use(onError((error, event) => getErrorResponse(error, event, options)))
 			.get("/openapi.json", () => OpenAPI.document())
 			.use(async (event, next) => {
-				if (new URL(event.req.url).pathname === "/openapi.json") return next();
+				const url = new URL(event.req.url);
+				if (url.pathname === "/openapi.json") return next();
 
-				const workspaceId = event.req.headers.get("x-codework-workspace") || "local";
-				const raw = event.req.headers.get("x-codework-directory") || process.cwd();
+				const initContext = event.context.initContext;
+				const workspaceId =
+					initContext?.workspaceId ??
+					url.searchParams.get("workspace") ??
+					event.req.headers.get("x-codework-workspace") ??
+					"local";
 
-				const directory = Filesystem.resolve(
-					(() => {
-						try {
-							return decodeURIComponent(raw);
-						} catch {
-							return raw;
+				const sandbox: Sandbox.Env =
+					initContext?.sandbox ??
+					(await iife(async () => {
+						const sandboxId =
+							url.searchParams.get("sandbox") || event.req.headers.get("x-codework-sandbox") || "local";
+						const raw =
+							url.searchParams.get("directory") ||
+							event.req.headers.get("x-codework-directory") ||
+							process.cwd();
+
+						const directory = Filesystem.resolve(
+							(() => {
+								try {
+									return decodeURIComponent(raw);
+								} catch {
+									return raw;
+								}
+							})(),
+						);
+
+						switch (sandboxId) {
+							case "local":
+								return await createLocalEnv(directory);
+							case "empty":
+								return await createInMemoryEphemeralEnv();
+							default:
+								return await createInMemoryEphemeralEnv();
 						}
-					})(),
-				);
+					}));
 
 				return WorkspaceContext.provide({
 					workspaceId,
+					sandbox,
 					async fn() {
 						return Instance.provide({
-							directory,
+							key: sandbox.id,
+							directory: sandbox.cwd,
 							init: InstanceBootstrap,
 							async fn() {
-								return next();
+								try {
+									return await next();
+								} finally {
+									if (!initContext && sandbox.ephemeral) {
+										await Instance.dispose();
+										await sandbox.cleanup();
+									}
+								}
 							},
 						});
 					},
@@ -119,5 +159,12 @@ export namespace Server {
 			if (!isAddressInUseError(error)) throw error;
 			return startServer(0);
 		}
+	}
+}
+
+declare module "h3" {
+	// noinspection JSUnusedGlobalSymbols
+	interface H3EventContext {
+		initContext?: Server.CodeWorkInitContext;
 	}
 }

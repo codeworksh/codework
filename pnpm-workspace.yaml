@@ -2,6 +2,8 @@ packages:
    - packages/*
 
 onlyBuiltDependencies:
+   - "@mongodb-js/zstd"
    - electron
    - esbuild
    - msw
+   - node-liblzma

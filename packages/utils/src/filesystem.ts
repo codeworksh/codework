@@ -160,7 +160,6 @@ export namespace Filesystem {
 		return normalizePath(pathResolve(windowsPath(p)));
 	}
 
-
 	export interface FileStat {
 		isFile: boolean;
 		isDirectory: boolean;

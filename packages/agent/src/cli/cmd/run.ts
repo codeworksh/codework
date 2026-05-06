@@ -1,7 +1,9 @@
 import type { Argv, ArgumentsCamelCase } from "yargs";
+import { createInMemoryEphemeralEnv, createLocalEnv } from "../../sandbox/builtin.ts";
+import type { Sandbox } from "../../sandbox/sandbox.ts";
 import { cmd } from "./cmd.ts";
 import path from "node:path";
-import { Filesystem } from "@codeworksh/utils";
+import { Filesystem, iife } from "@codeworksh/utils";
 import { UI } from "../ui.ts";
 import { pathToFileURL } from "node:url";
 import { Global } from "../../config/global.ts";
@@ -18,6 +20,8 @@ interface RunArgs extends ArgumentsCamelCase {
 	name?: string;
 	session?: string;
 	continue?: boolean;
+	workspace?: string;
+	sandbox?: string;
 	"--"?: string[];
 }
 
@@ -57,6 +61,15 @@ export const RunCommand = cmd({
 				alias: ["c"],
 				describe: "continue the last session",
 				type: "boolean",
+			})
+			.option("workspace", {
+				alias: ["w"],
+				type: "string",
+				describe: "workspace scope ID",
+			})
+			.option("sandbox", {
+				type: "string",
+				describe: "sandbox environment",
 			});
 	},
 	handler: async (args: RunArgs) => {
@@ -74,6 +87,10 @@ export const RunCommand = cmd({
 				process.exit(1);
 			}
 		})();
+		const cwd = directory ?? process.cwd();
+
+		const workspaceId = args.workspace ?? "local";
+		const sandboxId = args.sandbox ?? "local";
 
 		const files: {
 			type: "file";
@@ -83,7 +100,7 @@ export const RunCommand = cmd({
 		}[] = [];
 		if (fileArgs.length > 0) {
 			for (const fp of fileArgs) {
-				const resolvedPath = path.resolve(process.cwd(), fp);
+				const resolvedPath = path.resolve(cwd, fp);
 				if (!(await Filesystem.exists(resolvedPath))) {
 					UI.error(`File not found: ${fp}`);
 					process.exit(1);
@@ -139,6 +156,17 @@ export const RunCommand = cmd({
 			return result.data?.id as string;
 		}
 
+		const sandbox: Sandbox.Env = await iife(async () => {
+			switch (sandboxId) {
+				case "local":
+					return await createLocalEnv(cwd);
+				case "empty":
+					return await createInMemoryEphemeralEnv();
+				default:
+					return await createInMemoryEphemeralEnv();
+			}
+		});
+
 		console.log("********************");
 		console.log("messages", messages);
 		console.log("dir", directory);
@@ -154,10 +182,16 @@ export const RunCommand = cmd({
 			console.log("************** sessionId: ************", sessionId);
 		}
 
-		await bootstrap(process.cwd(), async () => {
+		const context: Server.CodeWorkInitContext = {
+			workspaceId,
+			sandbox,
+		};
+		await bootstrap(context, async () => {
 			const fetchFn = (async (...fetchArgs: Parameters<typeof globalThis.fetch>) => {
 				const request = new Request(...fetchArgs);
-				return Server.LocalApp().fetch(request);
+				return Server.LocalApp().request(request, undefined, {
+					initContext: context,
+				});
 			}) as typeof globalThis.fetch;
 			const sdk = createCodeWorkClient({ baseUrl: "http://codework.internal", fetch: fetchFn });
 			await execute(sdk);
