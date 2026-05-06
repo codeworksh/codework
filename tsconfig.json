@@ -2,19 +2,18 @@
 	"compilerOptions": {
 		"lib": ["ESNext"],
 		"target": "ESNext",
-		"module": "NodeNext",
-		"moduleResolution": "NodeNext",
+		"module": "Preserve",
+		"moduleResolution": "bundler",
 		"paths": {
 			"@/*": ["./packages/webui/src/*"],
-			"@codeworksh/aikit": ["./packages/aikit/src/index.ts"],
-			"@codeworksh/aikit/codemode/drivers": ["./packages/aikit/src/agent/codemode/drivers/drivers.ts"],
-			"@codeworksh/bridge": ["./packages/bridge/src/index.ts"],
-			"@codeworksh/agent": ["./packages/agent/src/index.ts"],
-			"@codeworksh/sdk": ["./packages/sdk/src/index.ts"],
-			"@codeworksh/utils": ["./packages/utils/src/index.ts"]
+			"@codeworksh/aikit": ["./packages/aikit/src/index"],
+			"@codeworksh/aikit/codemode/drivers": ["./packages/aikit/src/agent/codemode/drivers/drivers"],
+			"@codeworksh/bridge": ["./packages/bridge/src/index"],
+			"@codeworksh/agent": ["./packages/agent/src/index"],
+			"@codeworksh/sdk": ["./packages/sdk/src/index"],
+			"@codeworksh/utils": ["./packages/utils/src/index"]
 		},
 		"types": ["node"],
-		"allowImportingTsExtensions": true,
 		"verbatimModuleSyntax": true,
 		"noEmit": true,
 		"strict": true,

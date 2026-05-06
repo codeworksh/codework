@@ -1,4 +1,4 @@
-import { Global } from "../config/global.ts";
+import { Global } from "../config/global";
 import Type from "typebox";
 import fastJson from "fast-json-stringify";
 import { createWriteStream } from "fs";

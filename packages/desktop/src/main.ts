@@ -17,26 +17,26 @@ import type {
 	DesktopUpdateCheckResult,
 	DesktopUpdateState,
 } from "@codeworksh/bridge";
-import { configureDesktopAppIdentity } from "./app/identity.ts";
-import { resolveDesktopAppBranding } from "./branding.ts";
-import { showDesktopConfirmDialog } from "./dialog/confirm.ts";
-import { resolveDesktopRuntimeInfo } from "./arch.ts";
-import { resolveDesktopLocalEnvironmentBootstrap } from "./environment/bootstrap.ts";
-import { syncShellEnvironment } from "./shell/environment.ts";
+import { configureDesktopAppIdentity } from "./app/identity";
+import { resolveDesktopAppBranding } from "./branding";
+import { showDesktopConfirmDialog } from "./dialog/confirm";
+import { resolveDesktopRuntimeInfo } from "./arch";
+import { resolveDesktopLocalEnvironmentBootstrap } from "./environment/bootstrap";
+import { syncShellEnvironment } from "./shell/environment";
 import {
 	readDesktopSettings,
 	setDesktopServerExposurePreference,
 	setDesktopUpdateChannelPreference,
 	writeDesktopSettings,
-} from "./settings/desktop.ts";
+} from "./settings/desktop";
 import {
 	createInitialDesktopUpdateState,
 	reduceDesktopUpdateStateOnCheckFailure,
 	reduceDesktopUpdateStateOnCheckStart,
 	reduceDesktopUpdateStateOnDownloadFailure,
-} from "./app/machine.ts";
-import { resolveDefaultDesktopUpdateChannel } from "./app/channel.ts";
-import { getAutoUpdateDisabledReason } from "./app/state.ts";
+} from "./app/machine";
+import { resolveDefaultDesktopUpdateChannel } from "./app/channel";
+import { getAutoUpdateDisabledReason } from "./app/state";
 
 syncShellEnvironment();
 

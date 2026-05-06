@@ -1,1 +1,1 @@
-export * from "./ipc.ts";
+export * from "./ipc";

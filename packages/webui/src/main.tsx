@@ -5,11 +5,11 @@ import { createHashHistory, createBrowserHistory } from "@tanstack/react-router"
 
 import "./styles.css";
 
-import { isElectron } from "./env.ts";
-import { getRouter } from "./router.tsx";
-import { APP_DISPLAY_NAME } from "./branding.ts";
-import { initializeThemeSync } from "./lib/theme.ts";
-import { syncDocumentWindowControlsOverlayClass } from "./lib/window-controls-overlay.ts";
+import { isElectron } from "./env";
+import { getRouter } from "./router";
+import { APP_DISPLAY_NAME } from "./branding";
+import { initializeThemeSync } from "./lib/theme";
+import { syncDocumentWindowControlsOverlayClass } from "./lib/window-controls-overlay";
 
 const MIN_BOOT_SHELL_MS = 700;
 const BOOT_SHELL_FADE_MS = 200;

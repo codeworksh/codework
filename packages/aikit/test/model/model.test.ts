@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import type { ModelCatalog as ModelCatalogNamespace } from "../../src/model/catalog.ts";
+import type { ModelCatalog as ModelCatalogNamespace } from "../../src/model/catalog";
 import { ROOT_MODELS_PATH } from "../utils/paths";
 
 const importFetch = globalThis.fetch;
@@ -11,9 +11,9 @@ globalThis.fetch = (async () =>
 		ok: false,
 		text: async () => "",
 	}) as Response) as unknown as typeof fetch;
-const { Model } = await import("../../src/model/model.ts");
-const { ModelCatalog } = await import("../../src/model/catalog.ts");
-const { Provider } = await import("../../src/provider/provider.ts");
+const { Model } = await import("../../src/model/model");
+const { ModelCatalog } = await import("../../src/model/catalog");
+const { Provider } = await import("../../src/provider/provider");
 globalThis.fetch = importFetch;
 
 const ROOT_MODELS = JSON.parse(readFileSync(ROOT_MODELS_PATH, "utf8")) as Record<

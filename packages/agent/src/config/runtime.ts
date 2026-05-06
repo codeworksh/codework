@@ -1,6 +1,6 @@
 import path from "node:path";
-import { Global } from "./global.ts";
-import { WorkspaceContext } from "../workspace/context.ts";
+import { Global } from "./global";
+import { WorkspaceContext } from "../workspace/context";
 
 export namespace Runtime {
 	function activeSandbox() {

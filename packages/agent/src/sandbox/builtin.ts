@@ -1,9 +1,9 @@
 import { Bash, InMemoryFs, ReadWriteFs, MountableFs } from "just-bash";
-import { Sandbox } from "./sandbox.ts";
+import { Sandbox } from "./sandbox";
 import { randomUUID } from "node:crypto";
 import nodeFs from "node:fs/promises";
 import path from "node:path";
-import { Process } from "../util/process.ts";
+import { Process } from "../util/process";
 
 /**
  * Create an empty in-memory sandbox (default).

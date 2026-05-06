@@ -1,7 +1,7 @@
-import { InstanceBootstrap } from "../project/bootstrap.ts";
-import { Instance } from "../project/instance.ts";
-import { WorkspaceContext } from "../workspace/context.ts";
-import { type Server } from "../server/server.ts";
+import { InstanceBootstrap } from "../project/bootstrap";
+import { Instance } from "../project/instance";
+import { WorkspaceContext } from "../workspace/context";
+import { type Server } from "../server/server";
 
 export async function bootstrap<T>(initContext: Server.CodeWorkInitContext, cb: () => Promise<T>) {
 	return WorkspaceContext.provide({

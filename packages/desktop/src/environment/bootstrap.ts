@@ -1,6 +1,6 @@
 import * as OS from "node:os";
 import type { DesktopLocalEnvironmentBootstrap, DesktopServerExposureMode } from "@codeworksh/bridge";
-import { resolveDesktopServerExposure } from "../server/exposure.ts";
+import { resolveDesktopServerExposure } from "../server/exposure";
 
 export const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
 

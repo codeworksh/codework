@@ -1,13 +1,13 @@
 import { H3, type H3Event, type HTTPError, onError, serve } from "h3";
 import { lazy, NamedError, Filesystem, iife } from "@codeworksh/utils";
-import { type Sandbox } from "../sandbox/sandbox.ts";
-import { WorkspaceContext } from "../workspace/context.ts";
-import { Instance } from "../project/instance.ts";
-import { InstanceBootstrap } from "../project/bootstrap.ts";
-import { namedErrorResponse } from "./error.ts";
-import { OpenAPI } from "./openapi.ts";
-import { SessionRoutes } from "./routes/session.ts";
-import { createLocalNodeEnv, createInMemoryEphemeralEnv } from "../sandbox/builtin.ts";
+import { type Sandbox } from "../sandbox/sandbox";
+import { WorkspaceContext } from "../workspace/context";
+import { Instance } from "../project/instance";
+import { InstanceBootstrap } from "../project/bootstrap";
+import { namedErrorResponse } from "./error";
+import { OpenAPI } from "./openapi";
+import { SessionRoutes } from "./routes/session";
+import { createLocalNodeEnv, createInMemoryEphemeralEnv } from "../sandbox/builtin";
 
 export namespace Server {
 	interface AppOptions {

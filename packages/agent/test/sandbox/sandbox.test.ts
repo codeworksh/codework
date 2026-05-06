@@ -8,8 +8,8 @@ import {
 	createLocalNodeEnv,
 	createLocalNodeFactory,
 	LocalNodeEnv,
-} from "../../src/sandbox/builtin.ts";
-import { Sandbox } from "../../src/sandbox/sandbox.ts";
+} from "../../src/sandbox/builtin";
+import { Sandbox } from "../../src/sandbox/sandbox";
 
 const tempDirectories = new Set<string>();
 

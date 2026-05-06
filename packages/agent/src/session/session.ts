@@ -1,13 +1,13 @@
-import { Log } from "../util/log.ts";
+import { Log } from "../util/log";
 import Type, { type Static } from "typebox";
 import { fn } from "@codeworksh/utils";
 import { v7 as uuidv7 } from "uuid";
-import { Slug } from "../util/slug.ts";
-import { Config } from "../config/config.ts";
-import { Instance } from "../project/instance.ts";
-import { WorkspaceContext } from "../workspace/context.ts";
-import { SessionTable, type InsertSession, type SelectSession } from "./session.sql.ts";
-import { Database, eq, isNull, gte, like, and, desc, NotFoundError } from "../storage/db.ts";
+import { Slug } from "../util/slug";
+import { Config } from "../config/config";
+import { Instance } from "../project/instance";
+import { WorkspaceContext } from "../workspace/context";
+import { SessionTable, type InsertSession, type SelectSession } from "./session.sql";
+import { Database, eq, isNull, gte, like, and, desc, NotFoundError } from "../storage/db";
 
 export namespace Session {
 	const log = Log.create({ service: "session" });

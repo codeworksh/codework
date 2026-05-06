@@ -1,15 +1,15 @@
 import type { Argv, ArgumentsCamelCase } from "yargs";
-import { createInMemoryEphemeralEnv, createLocalNodeEnv } from "../../sandbox/builtin.ts";
-import type { Sandbox } from "../../sandbox/sandbox.ts";
-import { cmd } from "./cmd.ts";
+import { createInMemoryEphemeralEnv, createLocalNodeEnv } from "../../sandbox/builtin";
+import type { Sandbox } from "../../sandbox/sandbox";
+import { cmd } from "./cmd";
 import path from "node:path";
 import { iife } from "@codeworksh/utils";
-import { UI } from "../ui.ts";
+import { UI } from "../ui";
 import { pathToFileURL } from "node:url";
 import { createCodeWorkClient, type CodeWorkSdkClient } from "@codeworksh/sdk";
-import { Server } from "../../server/server.ts";
-import { bootstrap } from "../bootstrap.ts";
-import { Runtime } from "../../config/runtime.ts";
+import { Server } from "../../server/server";
+import { bootstrap } from "../bootstrap";
+import { Runtime } from "../../config/runtime";
 
 interface RunArgs extends ArgumentsCamelCase {
 	args: string[];

@@ -1,6 +1,6 @@
-import { Server } from "../../server/server.ts";
-import { cmd } from "./cmd.ts";
-import { withNetworkOptions, resolveNetworkOptions } from "../network.ts";
+import { Server } from "../../server/server";
+import { cmd } from "./cmd";
+import { withNetworkOptions, resolveNetworkOptions } from "../network";
 
 const shutdownSignals = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 

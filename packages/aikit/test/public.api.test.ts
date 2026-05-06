@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { ROOT_MODELS_PATH } from "./utils/paths.ts";
+import { ROOT_MODELS_PATH } from "./utils/paths";
 
 const importFetch = globalThis.fetch;
 globalThis.fetch = (async () =>
@@ -7,12 +7,12 @@ globalThis.fetch = (async () =>
 		ok: false,
 		text: async () => "",
 	}) as Response) as unknown as typeof fetch;
-const aikit = await import("../src/index.ts");
-const { Agent } = await import("../src/agent/agent.ts");
-const { CodeMode } = await import("../src/agent/codemode/codemode.ts");
+const aikit = await import("../src/index");
+const { Agent } = await import("../src/agent/agent");
+const { CodeMode } = await import("../src/agent/codemode/codemode");
 const { createQuickJSWasiDriver } = await import("../src/agent/codemode/drivers/drivers");
-const { Loop } = await import("../src/agent/loop.ts");
-const { Stream } = await import("../src/provider/stream.ts");
+const { Loop } = await import("../src/agent/loop");
+const { Stream } = await import("../src/provider/stream");
 globalThis.fetch = importFetch;
 
 describe("public api", () => {

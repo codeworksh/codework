@@ -7,9 +7,9 @@ globalThis.fetch = (async () =>
 		ok: false,
 		text: async () => "",
 	}) as Response) as unknown as typeof fetch;
-const { llm } = await import("../src/llm.ts");
-const { Model } = await import("../src/model/model.ts");
-const { ModelCatalog } = await import("../src/model/catalog.ts");
+const { llm } = await import("../src/llm");
+const { Model } = await import("../src/model/model");
+const { ModelCatalog } = await import("../src/model/catalog");
 globalThis.fetch = importFetch;
 
 describe("llm", () => {

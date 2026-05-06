@@ -2,9 +2,9 @@ import { lazy } from "@codeworksh/utils";
 import Type, { type Static } from "typebox";
 import Value from "typebox/value";
 import { getQuery, getRouterParam, H3, HTTPError, readBody } from "h3";
-import { Session } from "../../session/session.ts";
-import { errors } from "../error.ts";
-import { OpenAPI } from "../openapi.ts";
+import { Session } from "../../session/session";
+import { errors } from "../error";
+import { OpenAPI } from "../openapi";
 
 const ListQuery = Type.Object({
 	directory: Type.Optional(Type.String({ description: "Filter sessions by project directory" })),

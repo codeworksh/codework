@@ -2,11 +2,11 @@ import { iife } from "@codeworksh/utils";
 import Type, { type Static } from "typebox";
 import Value from "typebox/value";
 import path from "path";
-import { Database, eq } from "../storage/db.ts";
-import { git } from "../util/git.ts";
-import { Log } from "../util/log.ts";
-import { WorkspaceContext } from "../workspace/context.ts";
-import { ProjectTable } from "./project.sql.ts";
+import { Database, eq } from "../storage/db";
+import { git } from "../util/git";
+import { Log } from "../util/log";
+import { WorkspaceContext } from "../workspace/context";
+import { ProjectTable } from "./project.sql";
 
 export namespace Project {
 	const log = Log.create({ service: "project" });

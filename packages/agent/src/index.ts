@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import "./env.ts";
+import "./env";
 import pkg from "../package.json" with { type: "json" };
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { ServeCommand } from "./cli/cmd/serve.ts";
-import { RunCommand } from "./cli/cmd/run.ts";
-import { UI } from "./cli/ui.ts";
+import { ServeCommand } from "./cli/cmd/serve";
+import { RunCommand } from "./cli/cmd/run";
+import { UI } from "./cli/ui";
 
 process.on("SIGHUP", () => process.exit());
 

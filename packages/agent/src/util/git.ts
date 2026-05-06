@@ -1,5 +1,5 @@
-import { Process } from "./process.ts";
-import { WorkspaceContext } from "../workspace/context.ts";
+import { Process } from "./process";
+import { WorkspaceContext } from "../workspace/context";
 
 const GIT_HOSTS = ["github.com", "gitlab.com", "bitbucket.org", "codeberg.org"];
 

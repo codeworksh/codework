@@ -1,7 +1,7 @@
 import * as FS from "node:fs";
 import * as Path from "node:path";
 import type { DesktopServerExposureMode, DesktopUpdateChannel } from "@codeworksh/bridge";
-import { resolveDefaultDesktopUpdateChannel } from "../app/channel.ts";
+import { resolveDefaultDesktopUpdateChannel } from "../app/channel";
 
 export interface DesktopSettings {
 	serverExposureMode: DesktopServerExposureMode;

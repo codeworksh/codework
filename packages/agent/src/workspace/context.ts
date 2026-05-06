@@ -1,5 +1,5 @@
-import { Context } from "../util/context.ts";
-import { type Sandbox } from "../sandbox/sandbox.ts";
+import { Context } from "../util/context";
+import { type Sandbox } from "../sandbox/sandbox";
 
 interface Context {
 	workspaceId: string;

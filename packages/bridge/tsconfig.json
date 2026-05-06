@@ -9,7 +9,6 @@
 		"types": ["node"],
 		"moduleResolution": "bundler",
 		"declaration": true,
-		"allowImportingTsExtensions": true,
 		"esModuleInterop": true,
 		"isolatedModules": true,
 		"verbatimModuleSyntax": true,

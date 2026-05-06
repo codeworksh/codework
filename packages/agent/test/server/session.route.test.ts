@@ -25,7 +25,7 @@ vi.mock("../../src/session/session.ts", () => ({
 	},
 }));
 
-const { SessionRoutes } = await import("../../src/server/routes/session.ts");
+const { SessionRoutes } = await import("../../src/server/routes/session");
 
 describe("SessionRoutes", () => {
 	beforeEach(() => {

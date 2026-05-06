@@ -1,4 +1,4 @@
-export { agent } from "./agent.ts";
+export { agent } from "./agent";
 export { Agent } from "./agent/agent";
 export { CodeMode } from "./agent/codemode";
 export { llm } from "./llm";

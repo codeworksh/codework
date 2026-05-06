@@ -1,8 +1,8 @@
 import { type AnySQLiteColumn, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { ProjectTable } from "../project/project.sql.ts";
-import { Timestamps } from "../storage/schema.sql.ts";
-import type { Message } from "./message.ts";
+import { ProjectTable } from "../project/project.sql";
+import { Timestamps } from "../storage/schema.sql";
+import type { Message } from "./message";
 
 export const SessionTable = sqliteTable(
 	"session",

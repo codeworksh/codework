@@ -6,10 +6,10 @@ import Type from "typebox";
 import { NamedError } from "@codeworksh/utils";
 import { HTTPError } from "h3";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { Instance } from "../../src/project/instance.ts";
-import { Server } from "../../src/server/server.ts";
-import { NotFoundError } from "../../src/storage/db.ts";
-import { WorkspaceContext } from "../../src/workspace/context.ts";
+import { Instance } from "../../src/project/instance";
+import { Server } from "../../src/server/server";
+import { NotFoundError } from "../../src/storage/db";
+import { WorkspaceContext } from "../../src/workspace/context";
 
 vi.mock("../../src/project/project.ts", () => ({
 	Project: {

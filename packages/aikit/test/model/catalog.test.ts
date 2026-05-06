@@ -16,7 +16,7 @@ globalThis.fetch = (async () =>
 		ok: false,
 		text: async () => "",
 	}) satisfies Partial<Response> as Response) as unknown as typeof fetch;
-const { ModelCatalog } = await import("../../src/model/catalog.ts");
+const { ModelCatalog } = await import("../../src/model/catalog");
 globalThis.fetch = importFetch;
 
 function resetCatalogCache(): void {

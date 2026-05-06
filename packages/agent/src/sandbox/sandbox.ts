@@ -1,8 +1,8 @@
 import Type from "typebox";
-import { Log } from "../util/log.ts";
+import { Log } from "../util/log";
 import { Filesystem } from "@codeworksh/utils";
 import { NamedError } from "@codeworksh/utils";
-import { Process } from "../util/process.ts";
+import { Process } from "../util/process";
 
 export namespace Sandbox {
 	const log = Log.create({ service: "sandbox" });

@@ -5,7 +5,6 @@
 		"module": "Preserve",
 		"moduleResolution": "bundler",
 		"types": ["node"],
-		"allowImportingTsExtensions": true,
 		"verbatimModuleSyntax": true,
 		"noEmit": true,
 		"customConditions": ["source"],
