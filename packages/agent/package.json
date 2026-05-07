@@ -40,6 +40,8 @@
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",
 		"@codeworksh/sdk": "workspace:*",
+		"@durable-streams/client": "^0.2.3",
+		"@durable-streams/server": "^0.3.1",
 		"@libsql/client": "^0.17.3",
 		"chalk": "^5.6.2",
 		"drizzle-orm": "^0.45.2",
@@ -48,8 +50,7 @@
 		"just-bash": "^2.14.4",
 		"typebox": "^1.1.37",
 		"uuid": "^14.0.0",
-		"yargs": "^18.0.0",
-		"zod": "^4.3.6"
+		"yargs": "^18.0.0"
 	},
 	"devDependencies": {
 		"@codeworksh/utils": "workspace:*",

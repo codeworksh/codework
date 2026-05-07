@@ -19,7 +19,7 @@ const disposal = {
 };
 
 function boot(input: {
-	key: string;
+	id: string;
 	directory: string;
 	init?: () => Promise<any>;
 	project?: Project.Info;
@@ -29,13 +29,13 @@ function boot(input: {
 		const ctx =
 			input.project && input.worktree
 				? {
-						id: input.key,
+						id: input.id,
 						directory: input.directory,
 						worktree: input.worktree,
 						project: input.project,
 					}
 				: await Project.fromDirectory(input.directory).then(({ project, worktree }) => ({
-						id: input.key,
+						id: input.id,
 						directory: input.directory,
 						worktree: worktree,
 						project,
@@ -57,11 +57,11 @@ function track(key: string, next: Promise<IContext>) {
 }
 
 export const Instance = {
-	async provide<R>(input: { key: string; directory: string; init?: () => Promise<any>; fn: () => R }): Promise<R> {
-		let existing = cache.get(input.key);
+	async provide<R>(input: { id: string; directory: string; init?: () => Promise<any>; fn: () => R }): Promise<R> {
+		let existing = cache.get(input.id);
 		if (!existing) {
-			Log.Default.info("creating instance", { key: input.key, directory: input.directory });
-			existing = track(input.key, boot(input));
+			Log.Default.info("creating instance", { key: input.id, directory: input.directory });
+			existing = track(input.id, boot(input));
 		}
 		const ctx = await existing;
 		return context.provide(ctx, async () => {
@@ -106,7 +106,7 @@ export const Instance = {
 		Log.Default.info("reloading instance", { key, directory });
 		await State.dispose(key);
 		cache.delete(key);
-		const next = track(key, boot({ ...input, key, directory }));
+		const next = track(key, boot({ ...input, id: key, directory }));
 		// @sanchitrk: send durable stream event?
 		// emit(directory);
 		return await next;

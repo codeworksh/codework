@@ -5,5 +5,7 @@ onlyBuiltDependencies:
    - "@mongodb-js/zstd"
    - electron
    - esbuild
+   - lmdb
+   - msgpackr-extract
    - msw
    - node-liblzma

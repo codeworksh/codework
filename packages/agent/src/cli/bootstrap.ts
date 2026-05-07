@@ -9,7 +9,7 @@ export async function bootstrap<T>(initContext: Server.CodeWorkInitContext, cb: 
 		sandbox: initContext.sandbox,
 		async fn() {
 			return Instance.provide({
-				key: initContext.sandbox.id,
+				id: initContext.sandbox.id,
 				directory: initContext.sandbox.cwd,
 				init: InstanceBootstrap,
 				async fn() {

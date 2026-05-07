@@ -8,6 +8,8 @@ import { Instance } from "../project/instance";
 import { WorkspaceContext } from "../workspace/context";
 import { SessionTable, type InsertSession, type SelectSession } from "./session.sql";
 import { Database, eq, isNull, gte, like, and, desc, NotFoundError } from "../storage/db";
+import { BusEvent } from "../streaming/event";
+import { Bus } from "../streaming/bus";
 
 export namespace Session {
 	const log = Log.create({ service: "session" });
@@ -73,6 +75,21 @@ export namespace Session {
 	});
 
 	export type Info = Static<typeof Info>;
+
+	export const Event = {
+		Created: BusEvent.define(
+			"session.created",
+			Type.Object({
+				info: Info,
+			}),
+		),
+		Updated: BusEvent.define(
+			"session.updated",
+			Type.Object({
+				info: Info,
+			}),
+		),
+	};
 
 	export const create = fn(
 		Type.Optional(
@@ -162,8 +179,10 @@ export namespace Session {
 		log.info("created", result);
 		await Database.use(async (db) => {
 			await db.insert(SessionTable).values(toRow(result)).run();
-			// TODO implement durable stream
-			Database.effect(() => {});
+			Database.effect(async () => {
+				const bus = await Bus.create({ stream: true, producerId: "global", topic: "events" });
+				await bus.publish(Event.Created, { info: result });
+			});
 		});
 		return result;
 	}

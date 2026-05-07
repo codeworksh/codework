@@ -8,8 +8,15 @@ import { namedErrorResponse } from "./error";
 import { OpenAPI } from "./openapi";
 import { SessionRoutes } from "./routes/session";
 import { createLocalNodeEnv, createInMemoryEphemeralEnv } from "../sandbox/builtin";
+import { Bus } from "../streaming/bus";
+import { Log } from "../util/log";
 
 export namespace Server {
+	const log = Log.create({ service: "server" });
+	const streamNextOffsetHeader = "Stream-Next-Offset";
+	const streamClosedHeader = "Stream-Closed";
+	const encoder = new TextEncoder();
+
 	interface AppOptions {
 		exposeUnhandledErrorDetails?: boolean;
 	}
@@ -48,6 +55,120 @@ export namespace Server {
 
 		return Response.json(new NamedError.Unknown({ message: getErrorMessage(cause, options) }).toObject(), {
 			status: 500,
+		});
+	}
+
+	function encodeSSE(payload: unknown) {
+		return encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
+	}
+
+	async function events(event: H3Event) {
+		log.info("event connected");
+		const url = new URL(event.req.url);
+		const handle = await Bus.reader({
+			topic: "events",
+		});
+		const body = new ReadableStream<Uint8Array>({
+			async start(controller) {
+				let offset = url.searchParams.get("offset") ?? "now";
+				let closed = false;
+				let heartbeat: ReturnType<typeof setInterval> | undefined;
+				const dispose = () => {
+					closed = true;
+					if (heartbeat) clearInterval(heartbeat);
+					event.req.signal.removeEventListener("abort", close);
+				};
+				const close = () => {
+					if (closed) return;
+					dispose();
+					try {
+						controller.close();
+					} catch {
+						// The client can cancel before our loop observes it.
+					}
+				};
+				const fail = (error: unknown) => {
+					if (closed) return;
+					dispose();
+					try {
+						controller.error(error);
+					} catch {
+						// The stream may already be canceled by the client.
+					}
+				};
+				const write = (payload: unknown) => {
+					if (closed) return false;
+					try {
+						controller.enqueue(encodeSSE(payload));
+						return true;
+					} catch {
+						dispose();
+						return false;
+					}
+				};
+				event.req.signal.addEventListener("abort", close, { once: true });
+				heartbeat = setInterval(() => {
+					write({
+						type: "server.heartbeat",
+						properties: {},
+					});
+				}, 10_000);
+
+				try {
+					write({
+						type: "server.connected",
+						properties: {},
+					});
+
+					while (!event.req.signal.aborted && !closed) {
+						const streamUrl = new URL(handle.url);
+						streamUrl.searchParams.set("offset", offset);
+						streamUrl.searchParams.set("live", "long-poll");
+
+						const response = await handle.fetch(streamUrl, {
+							signal: event.req.signal,
+						});
+						offset = response.headers.get(streamNextOffsetHeader) ?? offset;
+
+						if (response.status === 204) {
+							if (response.headers.get(streamClosedHeader) === "true") break;
+							continue;
+						}
+						if (!response.ok) {
+							throw new Error(await response.text());
+						}
+
+						const messages = (await response.json()) as unknown[];
+						for (const message of messages) {
+							if (closed) break;
+							if (!write(message)) break;
+							if (
+								typeof message === "object" &&
+								message !== null &&
+								"type" in message &&
+								message.type === Bus.InstanceDisposed.type
+							) {
+								close();
+							}
+						}
+					}
+					if (!closed) close();
+				} catch (error) {
+					if (!event.req.signal.aborted) fail(error);
+				} finally {
+					dispose();
+					log.info("event disconnected");
+				}
+			},
+		});
+
+		return new Response(body, {
+			headers: {
+				"content-type": "text/event-stream",
+				"cache-control": "no-cache",
+				"x-accel-buffering": "no",
+				"x-content-type-options": "nosniff",
+			},
 		});
 	}
 
@@ -101,7 +222,7 @@ export namespace Server {
 					sandbox,
 					async fn() {
 						return Instance.provide({
-							key: sandbox.id,
+							id: sandbox.id,
 							directory: sandbox.cwd,
 							init: InstanceBootstrap,
 							async fn() {
@@ -118,6 +239,7 @@ export namespace Server {
 					},
 				});
 			})
+			.get("/events", events)
 			.mount("/sessions", SessionRoutes())
 			.get("/", (_event) => "⚡️ Tadaa!");
 	}
