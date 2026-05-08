@@ -27,12 +27,13 @@ const { BusEvent } = await import("../../src/streaming/event");
 const { Instance } = await import("../../src/project/instance");
 
 type StreamHandle = Awaited<ReturnType<typeof Stream.create>>;
+type StreamReader = Awaited<ReturnType<typeof Stream.reader>>;
 
 afterEach(async () => {
 	await Instance.disposeAll();
 });
 
-async function readJson<T>(handle: StreamHandle) {
+async function readJson<T>(handle: StreamHandle | StreamReader) {
 	const response = await handle.client.stream<T>({
 		offset: "-1",
 		live: false,
@@ -41,7 +42,7 @@ async function readJson<T>(handle: StreamHandle) {
 	return response.json<T>();
 }
 
-async function waitForJson<T>(handle: StreamHandle, count: number) {
+async function waitForJson<T>(handle: StreamHandle | StreamReader, count: number) {
 	for (let attempt = 0; attempt < 20; attempt++) {
 		const items = await readJson<T>(handle);
 		if (items.length >= count) return items;
@@ -304,5 +305,44 @@ describe("Bus", () => {
 
 		await expect(bus!.publish(Event, { id: "one" })).resolves.toEqual([undefined]);
 		expect(seen).toEqual(["one"]);
+	});
+
+	it("streams instance disposed before detaching the stream producer", async () => {
+		const store = new StreamStore();
+		const seen: string[] = [];
+		let reader: StreamReader;
+
+		await Instance.provide({
+			id: "bus-dispose-test",
+			directory: "/tmp/codework-bus-dispose-test",
+			fn: async () => {
+				const bus = await Bus.create({
+					stream: true,
+					store,
+					topic: "/bus-dispose/events",
+					producerId: "bus-dispose-producer",
+				});
+				reader = await Bus.reader({
+					store,
+					topic: "/bus-dispose/events",
+				});
+				bus.subscribeAll((event) => {
+					seen.push(event.type);
+				});
+
+				await Instance.dispose();
+			},
+		});
+
+		expect(seen).toEqual([Bus.InstanceDisposed.type]);
+		await expect(waitForJson(reader!, 1)).resolves.toEqual([
+			{
+				type: Bus.InstanceDisposed.type,
+				properties: {
+					id: "bus-dispose-test",
+					directory: "/tmp/codework-bus-dispose-test",
+				},
+			},
+		]);
 	});
 });

@@ -60,17 +60,13 @@ export namespace Bus {
 			};
 		},
 		async (entry) => {
-			const wildcard = entry.subscriptions.get("*");
-			if (wildcard) {
-				const event = {
-					type: InstanceDisposed.type,
-					properties: {
-						id: Instance.id,
-						directory: Instance.directory,
-					},
-				};
-				await Promise.all(wildcard.map((sub) => Promise.resolve(sub(event))));
-			}
+			const event = instanceDisposedPayload();
+			await notifySubscribers(entry, event).catch((error) => {
+				log.warn("instance dispose subscriber failed", {
+					error,
+				});
+      });
+			await appendStream(entry, event);
 			await entry.stream?.detach().catch((error) => {
 				log.warn("stream producer detach failed", {
 					error,
@@ -79,9 +75,19 @@ export namespace Bus {
 		},
 	);
 
-	function appendStream(entry: State, payload: BusEvent.Payload) {
+	function instanceDisposedPayload(): BusEvent.Payload<typeof InstanceDisposed> {
+		return {
+			type: InstanceDisposed.type,
+			properties: {
+				id: Instance.id,
+				directory: Instance.directory,
+			},
+		};
+	}
+
+	async function appendStream(entry: State, payload: BusEvent.Payload) {
 		if (!entry.stream) return;
-		void entry.stream.append(payload).catch((error) => {
+		await entry.stream.append(payload).catch((error) => {
 			log.warn("stream publish failed", {
 				error,
 				type: payload.type,
@@ -101,6 +107,17 @@ export namespace Bus {
 			if (next.length === 0) entry.subscriptions.delete(key);
 			else entry.subscriptions.set(key, next);
 		};
+	}
+
+	function notifySubscribers(entry: State, payload: BusEvent.Payload) {
+		const pending: Promise<void>[] = [];
+		for (const key of [payload.type, "*"]) {
+			const match = entry.subscriptions.get(key);
+			for (const sub of match ?? []) {
+				pending.push(Promise.resolve(sub(payload)));
+			}
+		}
+		return Promise.all(pending);
 	}
 
 	async function initializeStream(entry: State, input: Extract<CreateInput, { stream: true }>) {
@@ -173,14 +190,7 @@ export namespace Bus {
 		log.info("publishing", {
 			type: def.type,
 		});
-		appendStream(entry, payload);
-		const pending: Promise<void>[] = [];
-		for (const key of [def.type, "*"]) {
-			const match = entry.subscriptions.get(key);
-			for (const sub of match ?? []) {
-				pending.push(Promise.resolve(sub(payload)));
-			}
-		}
-		return Promise.all(pending);
+		void appendStream(entry, payload);
+		return notifySubscribers(entry, payload);
 	}
 }
