@@ -65,7 +65,7 @@ export namespace Bus {
 				log.warn("instance dispose subscriber failed", {
 					error,
 				});
-      });
+			});
 			await appendStream(entry, event);
 			await entry.stream?.detach().catch((error) => {
 				log.warn("stream producer detach failed", {

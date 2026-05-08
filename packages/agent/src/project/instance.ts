@@ -4,6 +4,9 @@ import { Filesystem } from "@codeworksh/utils";
 import { Log } from "../util/log";
 import { Project } from "./project";
 import { State } from "./state";
+import { Bus } from "../streaming/bus";
+import { BusEvent } from "../streaming/event";
+import Type from "typebox";
 
 interface IContext {
 	id: string;
@@ -17,6 +20,22 @@ const cache = new Map<string, Promise<IContext>>();
 const disposal = {
 	all: undefined as Promise<void> | undefined,
 };
+
+async function emit({ id, directory }: { id: string; directory: string }) {
+	const bus = await Bus.create({
+		stream: true,
+		producerId: "global",
+		topic: "events",
+	});
+	const event = BusEvent.define(
+		"server.instance.disposed",
+		Type.Object({
+			id: Type.String(),
+			directory: Type.String(),
+		}),
+	);
+	await bus.publish(event, { id, directory });
+}
 
 function boot(input: {
 	id: string;
@@ -107,8 +126,7 @@ export const Instance = {
 		await State.dispose(key);
 		cache.delete(key);
 		const next = track(key, boot({ ...input, id: key, directory }));
-		// @sanchitrk: send durable stream event?
-		// emit(directory);
+		await emit({ id: key, directory });
 		return await next;
 	},
 	async dispose() {
