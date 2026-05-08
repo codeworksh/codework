@@ -110,11 +110,11 @@ export namespace Bus {
 	}
 
 	function notifySubscribers(entry: State, payload: BusEvent.Payload) {
-		const pending: Promise<void>[] = [];
+		const pending: (void | Promise<void>)[] = [];
 		for (const key of [payload.type, "*"]) {
 			const match = entry.subscriptions.get(key);
 			for (const sub of match ?? []) {
-				pending.push(Promise.resolve(sub(payload)));
+				pending.push(sub(payload));
 			}
 		}
 		return Promise.all(pending);
