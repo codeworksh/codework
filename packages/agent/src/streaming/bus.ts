@@ -1,34 +1,17 @@
-import Type from "typebox";
 import { Instance } from "../project/instance";
 import { Log } from "../util/log";
 import { BusEvent } from "./event";
-import { Stream } from "./stream";
+import { GlobalBus } from "./global";
 
 export namespace Bus {
 	const log = Log.create({ service: "bus" });
 	type Subscription = (event: BusEvent.Payload) => void | Promise<void>;
 	type State = {
 		subscriptions: Map<string, Subscription[]>;
-		stream?: Stream.Handle;
-		streamConfig?: {
-			producerId: string;
-			topic: string;
-		};
 	};
 
-	export type CreateInput =
-		| {
-				stream?: false;
-		  }
-		| {
-				stream: true;
-				store?: Stream.StoreInput;
-				topic: string;
-				producerId: string;
-		  };
-	export type ReaderInput = {
-		store?: Stream.StoreInput;
-		topic: string;
+	export type CreateInput = {
+		global?: GlobalBus.Handle;
 	};
 
 	export type Handle = {
@@ -43,13 +26,7 @@ export namespace Bus {
 		subscribeAll(sub: Subscription): () => void;
 	};
 
-	export const InstanceDisposed = BusEvent.define(
-		"server.instance.disposed",
-		Type.Object({
-			id: Type.String(),
-			directory: Type.String(),
-		}),
-	);
+	export const InstanceDisposed = GlobalBus.InstanceDisposed;
 
 	const state = Instance.state(
 		(): State => {
@@ -66,12 +43,6 @@ export namespace Bus {
 					error,
 				});
 			});
-			await appendStream(entry, event);
-			await entry.stream?.detach().catch((error) => {
-				log.warn("stream producer detach failed", {
-					error,
-				});
-			});
 		},
 	);
 
@@ -83,16 +54,6 @@ export namespace Bus {
 				directory: Instance.directory,
 			},
 		};
-	}
-
-	async function appendStream(entry: State, payload: BusEvent.Payload) {
-		if (!entry.stream) return;
-		await entry.stream.append(payload).catch((error) => {
-			log.warn("stream publish failed", {
-				error,
-				type: payload.type,
-			});
-		});
 	}
 
 	function addSubscription(entry: State, key: string, sub: Subscription) {
@@ -110,58 +71,21 @@ export namespace Bus {
 	}
 
 	function notifySubscribers(entry: State, payload: BusEvent.Payload) {
-		const pending: (void | Promise<void>)[] = [];
+		const pending: Promise<void>[] = [];
 		for (const key of [payload.type, "*"]) {
 			const match = entry.subscriptions.get(key);
 			for (const sub of match ?? []) {
-				pending.push(sub(payload));
+				pending.push(Promise.resolve(sub(payload)));
 			}
 		}
 		return Promise.all(pending);
 	}
 
-	async function initializeStream(entry: State, input: Extract<CreateInput, { stream: true }>) {
-		if (entry.stream) {
-			if (entry.streamConfig?.topic !== input.topic) {
-				throw new Error(
-					`Bus stream already initialized for topic ${entry.streamConfig?.topic}; cannot initialize ${input.topic}`,
-				);
-			}
-			if (entry.streamConfig.producerId !== input.producerId) {
-				log.warn("bus stream already initialized with a different producer id", {
-					currentProducerId: entry.streamConfig.producerId,
-					requestedProducerId: input.producerId,
-					topic: input.topic,
-				});
-			}
-			return;
-		}
-
-		entry.stream = await Stream.create(input.topic, {
-			store: input.store ?? Stream.memoryStore,
-			producerId: input.producerId,
-			onError(error) {
-				log.warn("stream producer failed", {
-					error,
-					topic: input.topic,
-					producerId: input.producerId,
-				});
-			},
-		});
-		entry.streamConfig = {
-			producerId: input.producerId,
-			topic: input.topic,
-		};
-	}
-
 	export async function create(input: CreateInput = {}): Promise<Handle> {
 		const entry = state();
-		if (input.stream) {
-			await initializeStream(entry, input);
-		}
 		return {
 			publish(def, properties) {
-				return publishWithState(entry, def, properties);
+				return publishWithState(entry, input.global, def, properties);
 			},
 			subscribe(def, sub) {
 				return addSubscription(entry, def.type, sub as Subscription);
@@ -172,14 +96,9 @@ export namespace Bus {
 		};
 	}
 
-	export async function reader(input: ReaderInput): Promise<Stream.ReaderHandle> {
-		return Stream.reader(input.topic, {
-			store: input.store ?? Stream.memoryStore,
-		});
-	}
-
-	function publishWithState<Definition extends BusEvent.Definition>(
+	async function publishWithState<Definition extends BusEvent.Definition>(
 		entry: State,
+		global: GlobalBus.Handle | undefined,
 		def: Definition,
 		properties: BusEvent.Payload<Definition>["properties"],
 	) {
@@ -190,7 +109,8 @@ export namespace Bus {
 		log.info("publishing", {
 			type: def.type,
 		});
-		void appendStream(entry, payload);
-		return notifySubscribers(entry, payload);
+		const result = await notifySubscribers(entry, payload);
+		await global?.publishPayload(payload);
+		return result;
 	}
 }

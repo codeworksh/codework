@@ -4,9 +4,7 @@ import { Filesystem } from "@codeworksh/utils";
 import { Log } from "../util/log";
 import { Project } from "./project";
 import { State } from "./state";
-import { Bus } from "../streaming/bus";
-import { BusEvent } from "../streaming/event";
-import Type from "typebox";
+import { GlobalBus } from "../streaming/global";
 
 interface IContext {
 	id: string;
@@ -22,19 +20,12 @@ const disposal = {
 };
 
 async function emit({ id, directory }: { id: string; directory: string }) {
-	const bus = await Bus.create({
+	const bus = await GlobalBus.create({
 		stream: true,
 		producerId: "global",
 		topic: "events",
 	});
-	const event = BusEvent.define(
-		"server.instance.disposed",
-		Type.Object({
-			id: Type.String(),
-			directory: Type.String(),
-		}),
-	);
-	await bus.publish(event, { id, directory });
+	await bus.publish(GlobalBus.InstanceDisposed, { id, directory });
 }
 
 function boot(input: {
@@ -130,19 +121,12 @@ export const Instance = {
 		return await next;
 	},
 	async dispose() {
-		Log.Default.info("disposing instance", { key: Instance.id, directory: Instance.directory });
-		await State.dispose(Instance.id);
-		cache.delete(Instance.id);
-		// @sanchitrk: send durable stream event?
-		// GlobalBus.emit("event", {
-		//   directory: Instance.directory,
-		//   payload: {
-		//     type: "server.instance.disposed",
-		//     properties: {
-		//       directory: Instance.directory,
-		//     },
-		//   },
-		// });
+		const id = Instance.id;
+		const directory = Instance.directory;
+		Log.Default.info("disposing instance", { key: id, directory });
+		await State.dispose(id);
+		cache.delete(id);
+		await emit({ id, directory });
 	},
 	async disposeAll() {
 		if (disposal.all) return disposal.all;

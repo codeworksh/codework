@@ -8,7 +8,7 @@ import { namedErrorResponse } from "./error";
 import { OpenAPI } from "./openapi";
 import { SessionRoutes } from "./routes/session";
 import { createLocalNodeEnv, createInMemoryEphemeralEnv } from "../sandbox/builtin";
-import { Bus } from "../streaming/bus";
+import { GlobalBus } from "../streaming/global";
 import { Log } from "../util/log";
 
 export namespace Server {
@@ -65,7 +65,7 @@ export namespace Server {
 	async function events(event: H3Event) {
 		log.info("event connected");
 		const url = new URL(event.req.url);
-		const handle = await Bus.reader({
+		const handle = await GlobalBus.reader({
 			topic: "events",
 		});
 		const body = new ReadableStream<Uint8Array>({
@@ -146,7 +146,7 @@ export namespace Server {
 								typeof message === "object" &&
 								message !== null &&
 								"type" in message &&
-								message.type === Bus.InstanceDisposed.type
+								message.type === GlobalBus.InstanceDisposed.type
 							) {
 								close();
 							}

@@ -10,6 +10,7 @@ import { SessionTable, type InsertSession, type SelectSession } from "./session.
 import { Database, eq, isNull, gte, like, and, desc, NotFoundError } from "../storage/db";
 import { BusEvent } from "../streaming/event";
 import { Bus } from "../streaming/bus";
+import { GlobalBus } from "../streaming/global";
 
 export namespace Session {
 	const log = Log.create({ service: "session" });
@@ -180,7 +181,8 @@ export namespace Session {
 		await Database.use(async (db) => {
 			await db.insert(SessionTable).values(toRow(result)).run();
 			Database.effect(async () => {
-				const bus = await Bus.create({ stream: true, producerId: "global", topic: "events" });
+				const global = await GlobalBus.create({ stream: true, producerId: "global", topic: "events" });
+				const bus = await Bus.create({ global });
 				await bus.publish(Event.Created, { info: result });
 			});
 		});
