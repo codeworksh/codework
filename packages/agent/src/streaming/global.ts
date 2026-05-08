@@ -4,7 +4,7 @@ import { BusEvent } from "./event";
 import { Stream } from "./stream";
 
 export namespace GlobalBus {
-	const log = Log.create({ service: "global-bus" });
+	const log = Log.create({ service: "globalbus" });
 	type Subscription = (event: BusEvent.Payload) => void | Promise<void>;
 	type State = {
 		subscriptions: Map<string, Subscription[]>;

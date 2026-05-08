@@ -305,6 +305,50 @@ describe("Bus", () => {
 		expect(seen).toEqual(["one"]);
 	});
 
+	it("waits for injected global durable stream writes before publish resolves", async () => {
+		class DelayedAppendStore extends StreamStore {
+			completed = false;
+
+			override async appendWithProducer(
+				...args: Parameters<StreamStore["appendWithProducer"]>
+			): ReturnType<StreamStore["appendWithProducer"]> {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				const result = await super.appendWithProducer(...args);
+				this.completed = true;
+				return result;
+			}
+		}
+
+		const Event = BusEvent.define(
+			"test.bus.waits-for-global",
+			Type.Object({
+				id: Type.String(),
+			}),
+		);
+		const store = new DelayedAppendStore();
+		let bus: Awaited<ReturnType<typeof Bus.create>>;
+
+		await Instance.provide({
+			id: "bus-waits-for-global-test",
+			directory: "/tmp/codework-bus-waits-for-global-test",
+			fn: async () => {
+				const global = await GlobalBus.create({
+					stream: true,
+					store,
+					topic: "/bus-waits-for-global/events",
+					producerId: "bus-waits-for-global-producer",
+				});
+				bus = await Bus.create({ global });
+			},
+		});
+
+		const publishing = bus!.publish(Event, { id: "one" });
+		expect(store.completed).toBe(false);
+
+		await publishing;
+		expect(store.completed).toBe(true);
+	});
+
 	it("streams instance disposed before detaching the stream producer", async () => {
 		const store = new StreamStore();
 		const seen: string[] = [];
