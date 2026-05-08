@@ -66,12 +66,15 @@ export namespace GlobalBus {
 
 	async function appendStream(entry: State, payload: BusEvent.Payload) {
 		if (!entry.stream) return;
-		await entry.stream.append(payload).catch((error) => {
+		try {
+			await entry.stream.append(payload);
+		} catch (error) {
 			log.warn("stream publish failed", {
 				error,
 				type: payload.type,
 			});
-		});
+			throw error;
+		}
 	}
 
 	function addSubscription(entry: State, key: string, sub: Subscription) {
@@ -179,13 +182,11 @@ export namespace GlobalBus {
 		);
 	}
 
-	function publishPayloadWithState(entry: State, payload: BusEvent.Payload) {
+	async function publishPayloadWithState(entry: State, payload: BusEvent.Payload) {
 		log.info("publishing", {
 			type: payload.type,
 		});
-		return notifySubscribers(entry, payload).then(async (result) => {
-			await appendStream(entry, payload);
-			return result;
-		});
+		await appendStream(entry, payload);
+		return notifySubscribers(entry, payload);
 	}
 }

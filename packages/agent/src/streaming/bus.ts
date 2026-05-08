@@ -110,7 +110,12 @@ export namespace Bus {
 			type: def.type,
 		});
 		const result = await notifySubscribers(entry, payload);
-		await global?.publishPayload(payload);
+		await global?.publishPayload(payload).catch((error) => {
+			log.warn("global bus publish failed", {
+				error,
+				type: payload.type,
+			});
+		});
 		return result;
 	}
 }

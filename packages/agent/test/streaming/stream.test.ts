@@ -216,6 +216,73 @@ describe("Bus", () => {
 		]);
 	});
 
+	it("publishes global bus events to the durable stream before subscribers", async () => {
+		class DelayedAppendStore extends StreamStore {
+			completed = false;
+
+			override async appendWithProducer(
+				...args: Parameters<StreamStore["appendWithProducer"]>
+			): ReturnType<StreamStore["appendWithProducer"]> {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				const result = await super.appendWithProducer(...args);
+				this.completed = true;
+				return result;
+			}
+		}
+
+		const Event = BusEvent.define(
+			"test.globalbus.durable-first",
+			Type.Object({
+				id: Type.String(),
+			}),
+		);
+		const store = new DelayedAppendStore();
+		const seen: string[] = [];
+		const global = await GlobalBus.create({
+			stream: true,
+			store,
+			topic: "/globalbus-durable-first/events",
+			producerId: "globalbus-durable-first-producer",
+		});
+		global.subscribe(Event, () => {
+			seen.push(store.completed ? "durable-first" : "subscriber-first");
+		});
+
+		await expect(global.publish(Event, { id: "one" })).resolves.toEqual([undefined]);
+		expect(seen).toEqual(["durable-first"]);
+	});
+
+	it("does not notify global bus subscribers when durable stream writes fail", async () => {
+		class FailingAppendStore extends StreamStore {
+			override async appendWithProducer(
+				...args: Parameters<StreamStore["appendWithProducer"]>
+			): ReturnType<StreamStore["appendWithProducer"]> {
+				await super.appendWithProducer(...args);
+				throw new Error("stream append failed");
+			}
+		}
+
+		const Event = BusEvent.define(
+			"test.globalbus.failure",
+			Type.Object({
+				id: Type.String(),
+			}),
+		);
+		const seen: string[] = [];
+		const global = await GlobalBus.create({
+			stream: true,
+			store: new FailingAppendStore(),
+			topic: "/globalbus-failure/events",
+			producerId: "globalbus-failure-producer",
+		});
+		global.subscribe(Event, (event) => {
+			seen.push(event.properties.id);
+		});
+
+		await expect(global.publish(Event, { id: "one" })).rejects.toThrow(/stream append failed/);
+		expect(seen).toEqual([]);
+	});
+
 	it("publishes to both in-memory subscribers and the durable stream transport", async () => {
 		const Event = BusEvent.define(
 			"test.bus.combined",
