@@ -204,7 +204,11 @@ export namespace Session {
 					.get();
 				if (!row) throw new NotFoundError({ message: `Session not found: ${input.sessionId}` });
 				const info = fromRow(row);
-				Database.effect(() => {});
+				Database.effect(async () => {
+					const global = await GlobalBus.create({ stream: true, producerId: "global", topic: "events" });
+					const bus = await Bus.create({ global });
+					await bus.publish(Event.Updated, { info });
+				});
 				return info;
 			});
 		},
