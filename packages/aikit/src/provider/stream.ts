@@ -90,6 +90,7 @@ export namespace Stream {
 	//   returned stream, not thrown.
 	// - Error termination must produce an AssistantMessage with stopReason
 	//   "error" or "aborted" and errorMessage, emitted via the stream protocol.
+	// DONE
 	export type StreamFunction<
 		TProtocol extends Model.KnownProtocol = Model.KnownProtocol,
 		TOptions extends Options = Options,
@@ -152,6 +153,7 @@ export namespace Stream {
 		options?: SimpleOptions,
 	) => AssistantMessageEventStream;
 
+	// DONE
 	export interface ProtocolProvider<
 		TProtocol extends Model.KnownProtocol = Model.KnownProtocol,
 		TOptions extends Options = Options,
@@ -168,6 +170,7 @@ export namespace Stream {
 
 	const protocolProviderRegistry = new Map<Model.KnownProtocol, RegisteredProtocolProvider>();
 
+	// Done
 	function wrapStream<TProtocol extends Model.KnownProtocol, TOptions extends Options>(
 		protocol: TProtocol,
 		stream: StreamFunction<TProtocol, TOptions>,
@@ -183,6 +186,7 @@ export namespace Stream {
 		};
 	}
 
+	// Done
 	function wrapStreamSimple<TProtocol extends Model.KnownProtocol>(
 		protocol: TProtocol,
 		streamSimple: StreamFunction<TProtocol, SimpleOptions>,

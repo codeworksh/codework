@@ -5,18 +5,14 @@ import { Provider } from "../provider/provider";
 import { ModelCatalog } from "./catalog";
 import { applyModification } from "./transform";
 
+import * as Known from "../providers/known"
+import type * as TKnown from "../providers/known"
+
 export namespace Model {
-	export const KnownProtocolEnum = {
-		anthropicMessages: "anthropic-messages",
-		openaiCompletions: "openai-completions",
-		openaiResponses: "openai-responses",
-	} as const;
-	export const KnownProtocolSchema = Type.Union([
-		Type.Literal(KnownProtocolEnum.anthropicMessages),
-		Type.Literal(KnownProtocolEnum.openaiCompletions),
-		Type.Literal(KnownProtocolEnum.openaiResponses),
-	]);
-	export type KnownProtocol = Static<typeof KnownProtocolSchema>;
+	// re-export
+	export const KnownProtocolEnum = Known.KnownProtocolEnum
+	export const KnownProtocolSchema = Known.KnownProtocolSchema
+	export type KnownProtocol = TKnown.KnownProtocol
 
 	const InputSchema = Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]));
 	const CostSchema = Type.Object({
@@ -27,12 +23,6 @@ export namespace Model {
 	});
 	const HeadersSchema = Type.Optional(Type.Record(Type.String(), Type.String()));
 
-	export const SupportedProtocolsSchema = Type.Object({
-		anthropicMessages: Type.Optional(Type.Literal(KnownProtocolEnum.anthropicMessages)),
-		openaiCompletions: Type.Optional(Type.Literal(KnownProtocolEnum.openaiCompletions)),
-		openaiResponses: Type.Optional(Type.Literal(KnownProtocolEnum.openaiResponses)),
-	});
-	//
 	// reprsents common base schema for a model
 	export const BaseSchema = Type.Object({
 		id: Type.String(),
@@ -45,7 +35,7 @@ export namespace Model {
 		contextWindow: Type.Number(),
 		maxTokens: Type.Number(),
 		headers: HeadersSchema,
-		supportedProtocols: Type.Optional(Type.Partial(SupportedProtocolsSchema)), // optionally supported protocols
+		supportedProtocols: Type.Optional(Type.Partial(Known.KnownProtocolSchema)), // optionally supported protocols
 	});
 
 	/**

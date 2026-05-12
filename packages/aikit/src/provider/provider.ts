@@ -1,29 +1,13 @@
 import Type, { type Static } from "typebox";
+import * as Known from "../providers/known";
+import type * as TKnown from "../providers/known"
 
+// TODO move provider to model? very thin data model
 export namespace Provider {
-	export const KnownProviderEnum = {
-		anthropic: "anthropic",
-		openai: "openai",
-		githubCopilot: "github-copilot",
-		openrouter: "openrouter",
-		groq: "groq",
-		xai: "xai",
-		cerebras: "cerebras",
-		zai: "zai",
-		opencode: "opencode",
-	} as const;
-	export const KnownProviderSchema = Type.Union([
-		Type.Literal(KnownProviderEnum.anthropic),
-		Type.Literal(KnownProviderEnum.openai),
-		Type.Literal(KnownProviderEnum.githubCopilot),
-		Type.Literal(KnownProviderEnum.openrouter),
-		Type.Literal(KnownProviderEnum.groq),
-		Type.Literal(KnownProviderEnum.xai),
-		Type.Literal(KnownProviderEnum.cerebras),
-		Type.Literal(KnownProviderEnum.zai),
-		Type.Literal(KnownProviderEnum.opencode),
-	]);
-	export type KnownProvider = Static<typeof KnownProviderSchema>;
+	// re-export
+	export const KnownProviderEnum = Known.KnownProviderEnum 
+	export const KnownProviderSchema = Known.KnownProviderSchema
+	export type KnownProvider = TKnown.KnownProvider;
 
 	export const Info = Type.Object({
 		id: KnownProviderSchema,
