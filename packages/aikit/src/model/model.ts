@@ -5,14 +5,14 @@ import { Provider } from "../provider/provider";
 import { ModelCatalog } from "./catalog";
 import { applyModification } from "./transform";
 
-import * as Known from "../providers/known"
-import type * as TKnown from "../providers/known"
+import * as Known from "../providers/known";
+import type * as TKnown from "../providers/known";
 
 export namespace Model {
 	// re-export
-	export const KnownProtocolEnum = Known.KnownProtocolEnum
-	export const KnownProtocolSchema = Known.KnownProtocolSchema
-	export type KnownProtocol = TKnown.KnownProtocol
+	export const KnownProtocolEnum = Known.KnownProtocolEnum;
+	export const KnownProtocolSchema = Known.KnownProtocolSchema;
+	export type KnownProtocol = TKnown.KnownProtocol;
 
 	const InputSchema = Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]));
 	const CostSchema = Type.Object({
