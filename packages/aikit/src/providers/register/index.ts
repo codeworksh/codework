@@ -1,5 +1,5 @@
-import { registerProtocolProvider } from "../protocol";
+import { Protocol } from "../protocol";
 import anthropicMessages from "../protocols/anthropic-messages";
 
 // register
-registerProtocolProvider(anthropicMessages);
+Protocol.registerProtocolProvider(anthropicMessages);

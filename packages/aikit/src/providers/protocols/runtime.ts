@@ -1,5 +1,5 @@
-import type { ThinkingBudgets, ThinkingLevel } from "../schema/options";
-import { ThinkingLevelEnum } from "../schema/options";
+import type { ThinkingBudgets, ReasoningLevel } from "../schema/options";
+import { ReasoningLevelEnum } from "../schema/options";
 
 export function mergeHeaders(...headerSources: (Record<string, string> | undefined)[]): Record<string, string> {
 	const merged: Record<string, string> = {};
@@ -11,14 +11,14 @@ export function mergeHeaders(...headerSources: (Record<string, string> | undefin
 	return merged;
 }
 
-export function clampReasoning(effort: ThinkingLevel | undefined): Exclude<ThinkingLevel, "xhigh"> | undefined {
-	return effort === ThinkingLevelEnum.xhigh ? ThinkingLevelEnum.high : effort;
+export function clampReasoning(effort: ReasoningLevel | undefined): Exclude<ReasoningLevel, "xhigh"> | undefined {
+	return effort === ReasoningLevelEnum.xhigh ? ReasoningLevelEnum.high : effort;
 }
 
 export function adjustMaxTokensForThinking(
 	baseMaxTokens: number,
 	modelMaxTokens: number,
-	reasoningLevel: ThinkingLevel,
+	reasoningLevel: ReasoningLevel,
 	customBudgets?: ThinkingBudgets,
 ): { maxTokens: number; thinkingBudget: number } {
 	const defaultBudgets: ThinkingBudgets = {
