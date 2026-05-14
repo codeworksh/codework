@@ -1,16 +1,15 @@
 import Type, { type Static } from "typebox";
-import * as Known from "../providers/known";
-import type * as TKnown from "../providers/known";
+import { Known } from "../providers/register/known";
 
 // TODO move provider to model? very thin data model
 export namespace Provider {
 	// re-export
-	export const KnownProviderEnum = Known.KnownProviderEnum;
-	export const KnownProviderSchema = Known.KnownProviderSchema;
-	export type KnownProvider = TKnown.KnownProvider;
+	export const KnownProviderEnum = Known.ProviderEnum;
+	export const KnownProviderEnumSchema = Known.ProviderEnumSchema;
+	export type KnownProviderEnum = Known.KnownProviderEnum;
 
 	export const Info = Type.Object({
-		id: KnownProviderSchema,
+		id: KnownProviderEnumSchema,
 		name: Type.String(),
 		env: Type.Array(Type.String()),
 		key: Type.Optional(Type.String()),

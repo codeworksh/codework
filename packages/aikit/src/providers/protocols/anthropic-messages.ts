@@ -7,14 +7,13 @@ import { getEnvApiKey } from "../../provider/providers/utils";
 import { AssistantMessageEventStream } from "../../utils/eventstream";
 import { parseStreamingJson } from "../../utils/jsonparse";
 import { sanitizeSurrogates } from "../../utils/sanitize";
-import * as Known from "../known";
 import * as Protocol from "../protocol";
 import { ProtocolAuthError } from "../schema/errors";
-import { CacheRetention, GenerationOptions, ThinkingBudgetsSchema, ThinkingLevelSchema } from "../schema/options";
+import { CacheRetention, GenerationOptionsDeprecated, ThinkingBudgets, ThinkingLevel } from "../schema/options";
 import { createObjectSchemaBuilder } from "../schema/utils";
 import { adjustMaxTokensForThinking, mergeHeaders } from "./shared";
 
-export const PROTOCOL = Known.KnownProtocolEnum.anthropicMessages;
+export const PROTOCOL = Model.KnownProtocolEnum.anthropicMessages;
 
 // =============================================================================
 // Request Body Schema
@@ -50,7 +49,7 @@ export const AnthropicToolChoiceSchema = Type.Union([
 // =============================================================================
 // Input Options Schema
 // =============================================================================
-const AnthropicOptionsSchema = createObjectSchemaBuilder(GenerationOptions)
+const Options = createObjectSchemaBuilder(GenerationOptionsDeprecated)
 	.withOption("model", Type.String())
 	.withOptions({
 		cacheRetention: Type.Optional(CacheRetention),
@@ -65,21 +64,21 @@ const AnthropicOptionsSchema = createObjectSchemaBuilder(GenerationOptions)
 	.popOption("frequencyPenalty")
 	.popOption("seed")
 	.make();
-export type AnthropicOptions = Static<typeof AnthropicOptionsSchema>;
+export type Options = Static<typeof Options>;
 
-const AnthropicOptionsWithThinkingSchema = createObjectSchemaBuilder(AnthropicOptionsSchema)
-	.withOption("reasoning", ThinkingLevelSchema)
+const OptionsWithThinking = createObjectSchemaBuilder(Options)
+	.withOption("reasoning", ThinkingLevel)
 	.withOption("thinkingEnabled", Type.Boolean())
-	.withOption("thinkingBudgets", ThinkingBudgetsSchema)
+	.withOption("thinkingBudgets", ThinkingBudgets)
 	.withOption("thinkingBudgetTokens", Type.Number())
 	.make();
-export type AnthropicOptionsWithThinking = Static<typeof AnthropicOptionsWithThinkingSchema>;
+export type OptionsWithThinking = Static<typeof OptionsWithThinking>;
 
 function createClient(
 	model: Model.TModel<typeof Model.KnownProtocolEnum.anthropicMessages>,
 	apiKey: string,
 	optionsHeaders?: Record<string, string>,
-): { client: Anthropic; isOAuthToken: boolean } {
+): { client: Anthropic } {
 	const betaFeatures: string[] = ["fine-grained-tool-streaming-2025-05-14"];
 	const defaultHeaders = mergeHeaders(
 		{
@@ -98,7 +97,6 @@ function createClient(
 			dangerouslyAllowBrowser: true,
 			defaultHeaders,
 		}),
-		isOAuthToken: false,
 	};
 }
 
@@ -396,7 +394,7 @@ function mapStopReason(reason: AnthropicStopReason): Message.StopReason {
 function buildParams(
 	model: Model.TModel<typeof Model.KnownProtocolEnum.anthropicMessages>,
 	context: Message.Context,
-	options?: AnthropicOptions | AnthropicOptionsWithThinking,
+	options?: Options | OptionsWithThinking,
 ): MessageCreateParamsStreaming {
 	// configure cache, prioritise cacheControl otherwise cacheRetention property
 	const cacheControl = options?.cacheControl ?? getCacheControl(model.baseUrl, options?.cacheRetention);
@@ -456,10 +454,11 @@ type Block = (Message.ThinkingContent | Message.TextContent | (Message.ToolCall 
 // =============================================================================
 // Stream Functions
 // =============================================================================
-export const stream: Protocol.StreamFunction<
-	typeof Known.KnownProtocolEnum.anthropicMessages,
-	typeof AnthropicOptionsSchema
-> = (model, context, options) => {
+export const stream: Protocol.StreamFunction<typeof Model.KnownProtocolEnum.anthropicMessages, typeof Options> = (
+	model,
+	context,
+	options,
+) => {
 	const stream = new AssistantMessageEventStream();
 
 	void (async () => {
@@ -513,7 +512,6 @@ export const stream: Protocol.StreamFunction<
 			const anthropicStream = client.messages.stream({ ...params, stream: true }, { signal: options?.signal });
 			stream.push({ type: "start", partial: output });
 
-			// mutates
 			const blocks = output.parts as Block[];
 
 			for await (const event of anthropicStream) {
@@ -695,6 +693,10 @@ export const stream: Protocol.StreamFunction<
 			output.time.completed = Date.now();
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+
+			const rawMetadata = (error as { error?: { metadata?: { raw?: string } } })?.error?.metadata?.raw;
+			if (rawMetadata) output.errorMessage += `\n${rawMetadata}`;
+
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
@@ -704,22 +706,25 @@ export const stream: Protocol.StreamFunction<
 };
 
 export const streamWithThinking: Protocol.StreamFunction<
-	typeof Known.KnownProtocolEnum.anthropicMessages,
-	typeof AnthropicOptionsWithThinkingSchema
+	typeof Model.KnownProtocolEnum.anthropicMessages,
+	typeof OptionsWithThinking
 > = (model, context, options) => {
-	const overrides = { ...options, maxTokens: options?.maxTokens ?? Math.min(model.maxTokens, 32000) };
+	const base = {
+		...options,
+		maxTokens: options?.maxTokens ?? Math.min(model.maxTokens, 32000),
+	};
 	if (!options?.reasoning) {
-		return stream(model, context, { ...overrides, thinkingEnabled: false });
+		return stream(model, context, { ...base, thinkingEnabled: false });
 	}
 	const adjusted = adjustMaxTokensForThinking(
-		overrides.maxTokens || 0,
+		base.maxTokens || 0,
 		model.maxTokens,
 		options.reasoning,
 		options.thinkingBudgets,
 	);
 
 	return stream(model, context, {
-		...overrides,
+		...base,
 		maxTokens: adjusted.maxTokens,
 		thinkingEnabled: true,
 		thinkingBudgetTokens: adjusted.thinkingBudget,
@@ -727,13 +732,11 @@ export const streamWithThinking: Protocol.StreamFunction<
 };
 
 const protocol: Protocol.Protocol<
-	typeof Known.KnownProtocolEnum.anthropicMessages,
-	typeof AnthropicOptionsSchema,
-	typeof AnthropicOptionsWithThinkingSchema
+	typeof Model.KnownProtocolEnum.anthropicMessages,
+	typeof Options,
+	typeof OptionsWithThinking
 > = {
 	protocol: PROTOCOL,
-	schema: AnthropicOptionsSchema,
-	schemaWithThinking: AnthropicOptionsWithThinkingSchema,
 	stream: stream,
 	streamSimple: streamWithThinking,
 };

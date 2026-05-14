@@ -4,15 +4,13 @@ import { keys, mapValues, pick, pipe } from "remeda";
 import { Provider } from "../provider/provider";
 import { ModelCatalog } from "./catalog";
 import { applyModification } from "./transform";
-
-import * as Known from "../providers/known";
-import type * as TKnown from "../providers/known";
+import { Known } from "../providers/register/known";
 
 export namespace Model {
 	// re-export
-	export const KnownProtocolEnum = Known.KnownProtocolEnum;
-	export const KnownProtocolSchema = Known.KnownProtocolSchema;
-	export type KnownProtocol = TKnown.KnownProtocol;
+	export const KnownProtocolEnum = Known.ProtocolEnum;
+	export const KnownProtocolEnumSchema = Known.ProtocolEnumSchema;
+	export type KnownProtocolEnum = Known.KnownProtocolEnum;
 
 	const InputSchema = Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]));
 	const CostSchema = Type.Object({
@@ -35,7 +33,7 @@ export namespace Model {
 		contextWindow: Type.Number(),
 		maxTokens: Type.Number(),
 		headers: HeadersSchema,
-		supportedProtocols: Type.Optional(Type.Partial(Known.KnownProtocolSchema)), // optionally supported protocols
+		supportedProtocols: Type.Optional(Type.Partial(Known.ProtocolEnumSchema)), // optionally supported protocols
 	});
 
 	/**
@@ -104,8 +102,8 @@ export namespace Model {
 
 	export const Info = Type.Union([AnthropicSchema, OpenAICompletionsSchema, OpenAIResponsesSchema]);
 	export type Info = Static<typeof Info>;
-	export type TModel<TProtocol extends KnownProtocol> = Extract<Info, { protocol: TProtocol }>;
-	const BUILTINS = keys(Provider.KnownProviderEnum) as Provider.KnownProvider[];
+	export type TModel<TProtocol extends KnownProtocolEnum> = Extract<Info, { protocol: TProtocol }>;
+	const BUILTINS = keys(Provider.KnownProviderEnum) as Provider.KnownProviderEnum[];
 
 	export function calculateCost(
 		model: Info,
@@ -130,7 +128,7 @@ export namespace Model {
 		usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 	}
 
-	export type BuiltInModels = Partial<Record<Provider.KnownProvider, Record<string, Info>>>;
+	export type BuiltInModels = Partial<Record<Provider.KnownProviderEnum, Record<string, Info>>>;
 
 	export function normalizeInput(input?: string[]): Array<"text" | "image"> {
 		const normalized = new Set<"text" | "image">();
@@ -144,7 +142,7 @@ export namespace Model {
 	}
 
 	export function toProviderInfo(
-		providerId: Provider.KnownProvider,
+		providerId: Provider.KnownProviderEnum,
 		provider: ModelCatalog.ModelsDevProvider,
 	): Provider.Info {
 		return {
@@ -157,7 +155,7 @@ export namespace Model {
 	}
 
 	function toModelValue(
-		providerId: Provider.KnownProvider,
+		providerId: Provider.KnownProviderEnum,
 		provider: ModelCatalog.ModelsDevProvider,
 		model: ModelCatalog.ModelsDevModel,
 	): Info {
@@ -170,15 +168,19 @@ export namespace Model {
 			catalog,
 			pick(BUILTINS),
 			mapValues((provider, providerId) =>
-				mapValues(provider.models, (model) => toModelValue(providerId as Provider.KnownProvider, provider, model)),
+				mapValues(provider.models, (model) =>
+					toModelValue(providerId as Provider.KnownProviderEnum, provider, model),
+				),
 			),
 		) as BuiltInModels;
 	}
 
 	export const registry = lazy(async () => {
-		const registry: Map<Provider.KnownProvider, Map<string, Info>> = new Map();
+		const registry: Map<Provider.KnownProviderEnum, Map<string, Info>> = new Map();
 		const models = await getBuiltInModels();
-		for (const [provider, value] of Object.entries(models) as Array<[Provider.KnownProvider, Record<string, Info>]>) {
+		for (const [provider, value] of Object.entries(models) as Array<
+			[Provider.KnownProviderEnum, Record<string, Info>]
+		>) {
 			const providerModels = new Map<string, Info>();
 			for (const [id, model] of Object.entries(value)) {
 				providerModels.set(id, model);
@@ -188,7 +190,7 @@ export namespace Model {
 		return registry;
 	});
 
-	export async function getModel<TProvider extends Provider.KnownProvider, TModel extends Info["id"]>(
+	export async function getModel<TProvider extends Provider.KnownProviderEnum, TModel extends Info["id"]>(
 		provider: TProvider,
 		model: TModel,
 		overrides?: Partial<Info>,
@@ -202,12 +204,12 @@ export namespace Model {
 		return result;
 	}
 
-	export async function getProviders(): Promise<Provider.KnownProvider[]> {
+	export async function getProviders(): Promise<Provider.KnownProviderEnum[]> {
 		const data = await registry();
 		return Array.from(data.keys());
 	}
 
-	export async function getModels<TProvider extends Provider.KnownProvider>(provider: TProvider): Promise<Info[]> {
+	export async function getModels<TProvider extends Provider.KnownProviderEnum>(provider: TProvider): Promise<Info[]> {
 		const data = await registry();
 		const models = data.get(provider);
 		return models ? Array.from(models.values()) : [];

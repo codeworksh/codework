@@ -8,7 +8,7 @@ export namespace Stream {
 	export const ProtocolProviderNotFoundError = NamedError.create(
 		"ProtocolProviderNotFoundError",
 		Type.Object({
-			protocol: Model.KnownProtocolSchema,
+			protocol: Model.KnownProtocolEnumSchema,
 		}),
 	);
 	export type ProtocolProviderNotFoundError = InstanceType<typeof ProtocolProviderNotFoundError>;
@@ -16,8 +16,8 @@ export namespace Stream {
 	export const ProtocolMismatchError = NamedError.create(
 		"ProtocolMismatchError",
 		Type.Object({
-			actual: Model.KnownProtocolSchema,
-			expected: Model.KnownProtocolSchema,
+			actual: Model.KnownProtocolEnumSchema,
+			expected: Model.KnownProtocolEnumSchema,
 		}),
 	);
 	export type ProtocolMismatchError = InstanceType<typeof ProtocolMismatchError>;
@@ -64,7 +64,7 @@ export namespace Stream {
 		cacheRetention: Type.Optional(CacheRetentionSchema),
 		sessionId: Type.Optional(Type.String()),
 		onPayload: Type.Optional(
-			Type.Unsafe<(payload: unknown, model: Model.TModel<Model.KnownProtocol>) => unknown>({}),
+			Type.Unsafe<(payload: unknown, model: Model.TModel<Model.KnownProtocolEnum>) => unknown>({}),
 		),
 		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 		maxRetryDelayMs: Type.Optional(Type.Number()),
@@ -92,7 +92,7 @@ export namespace Stream {
 	//   "error" or "aborted" and errorMessage, emitted via the stream protocol.
 	// DONE
 	export type StreamFunction<
-		TProtocol extends Model.KnownProtocol = Model.KnownProtocol,
+		TProtocol extends Model.KnownProtocolEnum = Model.KnownProtocolEnum,
 		TOptions extends Options = Options,
 	> = (model: Model.TModel<TProtocol>, context: Message.Context, options?: TOptions) => AssistantMessageEventStream;
 
@@ -155,7 +155,7 @@ export namespace Stream {
 
 	// DONE
 	export interface ProtocolProvider<
-		TProtocol extends Model.KnownProtocol = Model.KnownProtocol,
+		TProtocol extends Model.KnownProtocolEnum = Model.KnownProtocolEnum,
 		TOptions extends Options = Options,
 	> {
 		protocol: TProtocol;
@@ -164,14 +164,14 @@ export namespace Stream {
 	}
 
 	type RegisteredProtocolProvider = {
-		provider: ProtocolProvider<Model.KnownProtocol, Options>;
+		provider: ProtocolProvider<Model.KnownProtocolEnum, Options>;
 		sourceId?: string;
 	};
 
-	const protocolProviderRegistry = new Map<Model.KnownProtocol, RegisteredProtocolProvider>();
+	const protocolProviderRegistry = new Map<Model.KnownProtocolEnum, RegisteredProtocolProvider>();
 
 	// Done
-	function wrapStream<TProtocol extends Model.KnownProtocol, TOptions extends Options>(
+	function wrapStream<TProtocol extends Model.KnownProtocolEnum, TOptions extends Options>(
 		protocol: TProtocol,
 		stream: StreamFunction<TProtocol, TOptions>,
 	): ProtocolStreamFunction {
@@ -187,7 +187,7 @@ export namespace Stream {
 	}
 
 	// Done
-	function wrapStreamSimple<TProtocol extends Model.KnownProtocol>(
+	function wrapStreamSimple<TProtocol extends Model.KnownProtocolEnum>(
 		protocol: TProtocol,
 		streamSimple: StreamFunction<TProtocol, SimpleOptions>,
 	): ProtocolStreamSimpleFunction {
@@ -202,7 +202,7 @@ export namespace Stream {
 		};
 	}
 
-	export function registerProtocolProvider<TProtocol extends Model.KnownProtocol, TOptions extends Options>(
+	export function registerProtocolProvider<TProtocol extends Model.KnownProtocolEnum, TOptions extends Options>(
 		provider: ProtocolProvider<TProtocol, TOptions>,
 		sourceId?: string,
 	): void {
@@ -217,12 +217,12 @@ export namespace Stream {
 	}
 
 	export function getProtocolProvider(
-		protocol: Model.KnownProtocol,
-	): ProtocolProvider<Model.KnownProtocol, Options> | undefined {
+		protocol: Model.KnownProtocolEnum,
+	): ProtocolProvider<Model.KnownProtocolEnum, Options> | undefined {
 		return protocolProviderRegistry.get(protocol)?.provider;
 	}
 
-	export function resolveProtocolProvider(model: Model.Info): ProtocolProvider<Model.KnownProtocol, Options> {
+	export function resolveProtocolProvider(model: Model.Info): ProtocolProvider<Model.KnownProtocolEnum, Options> {
 		const provider = getProtocolProvider(model.protocol);
 		if (!provider) {
 			throw new ProtocolProviderNotFoundError({
@@ -264,7 +264,7 @@ export namespace Stream {
 		return s.result();
 	}
 
-	export function getApiProviders(): ProtocolProvider<Model.KnownProtocol, Options>[] {
+	export function getApiProviders(): ProtocolProvider<Model.KnownProtocolEnum, Options>[] {
 		return Array.from(protocolProviderRegistry.values(), (entry) => entry.provider);
 	}
 

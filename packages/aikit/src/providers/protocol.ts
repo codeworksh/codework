@@ -8,7 +8,7 @@ import type { AssistantMessageEventStream } from "../utils/eventstream";
 export const ProviderProtocolNotFoundError = NamedError.create(
 	"ProviderProtocolNotFoundError",
 	Type.Object({
-		protocol: Model.KnownProtocolSchema,
+		protocol: Model.KnownProtocolEnumSchema,
 	}),
 );
 export type ProviderProtocolNotFoundError = InstanceType<typeof ProviderProtocolNotFoundError>;
@@ -16,8 +16,8 @@ export type ProviderProtocolNotFoundError = InstanceType<typeof ProviderProtocol
 export const ProtocolMismatchError = NamedError.create(
 	"ProtocolMismatchError",
 	Type.Object({
-		actual: Model.KnownProtocolSchema,
-		expected: Model.KnownProtocolSchema,
+		actual: Model.KnownProtocolEnumSchema,
+		expected: Model.KnownProtocolEnumSchema,
 	}),
 );
 export type ProtocolMismatchError = InstanceType<typeof ProtocolMismatchError>;
@@ -28,11 +28,10 @@ export type ProtocolMismatchError = InstanceType<typeof ProtocolMismatchError>;
 //   returned stream, not thrown.
 // - Error termination must produce an AssistantMessage with stopReason
 //   "error" or "aborted" and errorMessage, emitted via the stream protocol.
-export type StreamFunction<TProtocol extends Model.KnownProtocol = Model.KnownProtocol, S extends TSchema = TSchema> = (
-	model: Model.TModel<TProtocol>,
-	context: Message.Context,
-	options?: Static<S>,
-) => AssistantMessageEventStream;
+export type StreamFunction<
+	TProtocol extends Model.KnownProtocolEnum = Model.KnownProtocolEnum,
+	S extends TSchema = TSchema,
+> = (model: Model.TModel<TProtocol>, context: Message.Context, options?: Static<S>) => AssistantMessageEventStream;
 
 export type ProtocolStreamFunction<S extends TSchema = TSchema> = (
 	model: Model.Info,
@@ -47,39 +46,35 @@ export type ProtocolStreamThinkingFunction<SThinking extends TSchema = TSchema> 
 ) => AssistantMessageEventStream;
 
 export interface Protocol<
-	TProtocol extends Model.KnownProtocol = Model.KnownProtocol,
+	TProtocol extends Model.KnownProtocolEnum = Model.KnownProtocolEnum,
 	S extends TSchema = TSchema,
 	SThinking extends TSchema = TSchema,
 > {
 	protocol: TProtocol;
-	schema: S;
-	schemaWithThinking: SThinking;
 	stream: StreamFunction<TProtocol, S>;
 	streamSimple: StreamFunction<TProtocol, SThinking>;
 }
 
 export interface RegisteredProtocol<
-	TProtocol extends Model.KnownProtocol = Model.KnownProtocol,
+	TProtocol extends Model.KnownProtocolEnum = Model.KnownProtocolEnum,
 	S extends TSchema = TSchema,
 	SThinking extends TSchema = TSchema,
 > {
 	protocol: TProtocol;
-	schema: S;
-	schemaWithThinking: SThinking;
 	stream: ProtocolStreamFunction<S>;
 	streamSimple: ProtocolStreamThinkingFunction<SThinking>;
 }
 
-type AnyRegisteredProtocol = RegisteredProtocol<Model.KnownProtocol, TSchema, TSchema>;
+type AnyRegisteredProtocol = RegisteredProtocol<Model.KnownProtocolEnum, TSchema, TSchema>;
 
 type RegistryEntry = {
 	provider: AnyRegisteredProtocol;
 	sourceId?: string;
 };
 
-const protocolRegistry = new Map<Model.KnownProtocol, RegistryEntry>();
+const protocolRegistry = new Map<Model.KnownProtocolEnum, RegistryEntry>();
 
-function wrapStream<TProtocol extends Model.KnownProtocol, S extends TSchema = TSchema>(
+function wrapStream<TProtocol extends Model.KnownProtocolEnum, S extends TSchema = TSchema>(
 	protocol: TProtocol,
 	stream: StreamFunction<TProtocol, S>,
 ): ProtocolStreamFunction<S> {
@@ -95,7 +90,7 @@ function wrapStream<TProtocol extends Model.KnownProtocol, S extends TSchema = T
 	};
 }
 
-function wrapStreamThinking<TProtocol extends Model.KnownProtocol, SThinking extends TSchema = TSchema>(
+function wrapStreamThinking<TProtocol extends Model.KnownProtocolEnum, SThinking extends TSchema = TSchema>(
 	protocol: TProtocol,
 	stream: StreamFunction<TProtocol, SThinking>,
 ): ProtocolStreamThinkingFunction<SThinking> {
@@ -112,14 +107,12 @@ function wrapStreamThinking<TProtocol extends Model.KnownProtocol, SThinking ext
 }
 
 export function registerProtocolProvider<
-	TProtocol extends Model.KnownProtocol,
+	TProtocol extends Model.KnownProtocolEnum,
 	S extends TSchema = TSchema,
 	SThinking extends TSchema = TSchema,
 >(provider: Protocol<TProtocol, S, SThinking>, sourceId?: string): void {
 	const registered: RegisteredProtocol<TProtocol, S, SThinking> = {
 		protocol: provider.protocol,
-		schema: provider.schema,
-		schemaWithThinking: provider.schemaWithThinking,
 		stream: wrapStream(provider.protocol, provider.stream),
 		streamSimple: wrapStreamThinking(provider.protocol, provider.streamSimple),
 	};
@@ -130,7 +123,7 @@ export function registerProtocolProvider<
 	});
 }
 
-export function getProtocolProvider(protocol: Model.KnownProtocol): AnyRegisteredProtocol | undefined {
+export function getProtocolProvider(protocol: Model.KnownProtocolEnum): AnyRegisteredProtocol | undefined {
 	return protocolRegistry.get(protocol)?.provider;
 }
 

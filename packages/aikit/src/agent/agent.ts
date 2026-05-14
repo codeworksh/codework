@@ -753,7 +753,7 @@ export namespace Agent {
 		}
 	}
 
-	export async function create<TProvider extends Provider.KnownProvider, TModel extends Model.Info["id"]>(
+	export async function create<TProvider extends Provider.KnownProviderEnum, TModel extends Model.Info["id"]>(
 		options: AgentOptions & {
 			provider: TProvider;
 			model: TModel;
@@ -765,7 +765,7 @@ export namespace Agent {
 		options:
 			| (AgentOptions & { model: Model.Info; name?: string })
 			| (AgentOptions & {
-					provider: Provider.KnownProvider;
+					provider: Provider.KnownProviderEnum;
 					model: Model.Info["id"];
 					name?: string;
 			  }),

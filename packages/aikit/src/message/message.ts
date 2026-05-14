@@ -150,7 +150,7 @@ export namespace Message {
 
 	export const AssistantMessageSchema = Type.Object({
 		role: Type.Literal("assistant"),
-		protocol: Model.KnownProtocolSchema,
+		protocol: Model.KnownProtocolEnumSchema,
 		provider: Provider.Info,
 		model: Type.String(),
 		usage: UsageSchema,
@@ -235,7 +235,7 @@ export namespace Message {
 	});
 	export type Context = Static<typeof ContextSchema>;
 
-	export function transformMessages<TProtocol extends Model.KnownProtocol>(
+	export function transformMessages<TProtocol extends Model.KnownProtocolEnum>(
 		messages: Message[],
 		model: Model.TModel<TProtocol>,
 		normalizeToolCallId?: (id: string, model: Model.TModel<TProtocol>, source: AssistantMessage) => string,

@@ -1,0 +1,183 @@
+import OpenAI from "openai/index.js";
+import Type, { type Static } from "typebox";
+import { Message } from "../../message/message";
+import { Model } from "../../model/model";
+import { getEnvApiKey } from "../../provider/providers/utils";
+import { AssistantMessageEventStream } from "../../utils/eventstream";
+import * as Protocol from "../protocol";
+import { ProtocolAuthError } from "../schema/errors";
+import {
+	GenerationOptions,
+	ThinkingBudgets,
+	ThinkingLevel,
+	ThinkingLevelEnum,
+	ThinkingLevelNoOff,
+} from "../schema/options";
+import { createObjectSchemaBuilder } from "../schema/utils";
+import { clampReasoning, mergeHeaders } from "./shared";
+
+export const PROTOCOL = Model.KnownProtocolEnum.openaiCompletions;
+
+// =============================================================================
+// Request Body Schema
+// =============================================================================
+export const ToolChoice = Type.Union([
+	Type.Literal("auto"),
+	Type.Literal("none"),
+	Type.Literal("required"),
+	Type.Object({ type: Type.Literal("function"), function: Type.Object({ name: Type.String() }) }),
+]);
+
+export const OAICompletions = createObjectSchemaBuilder(GenerationOptions)
+	.withOption("client", Type.Optional(Type.Unsafe<InstanceType<typeof OpenAI>>({})))
+	.withOption("apiKey", Type.Optional(Type.String()))
+	.withOptions({
+		reasoning: Type.Optional(ThinkingLevel),
+		toolChoice: Type.Optional(ToolChoice),
+		reasoningEffort: Type.Optional(ThinkingLevelNoOff),
+	})
+	.make();
+export type OAICompletions = Static<typeof OAICompletions>;
+
+export const OAICompletionsWithThinking = createObjectSchemaBuilder(OAICompletions)
+	.withOption("reasoning", ThinkingLevel)
+	.withOption("thinkingBudgets", ThinkingBudgets)
+	.make();
+export type OAICompletionsWithThinking = Static<typeof OAICompletionsWithThinking>;
+
+type StreamingToolCallBlock = Message.ToolCall & {
+	index?: number;
+	partialArgs?: string;
+	streamIndex?: number;
+};
+
+type StreamingBlock =
+	| (Message.TextContent & { index?: number })
+	| (Message.ThinkingContent & { index?: number })
+	| StreamingToolCallBlock;
+
+function createClient(
+	model: Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions>,
+	apiKey: string,
+	optionsHeaders?: Record<string, string>,
+): { client: OpenAI } {
+	const defaultHeaders = mergeHeaders(model.headers, optionsHeaders);
+
+	return {
+		client: new OpenAI({
+			apiKey,
+			baseURL: model.baseUrl,
+			dangerouslyAllowBrowser: true,
+			defaultHeaders,
+		}),
+	};
+}
+
+function buildParams(
+	model: Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions>,
+	context: Message.Context,
+	options?: OAICompletions | OAICompletionsWithThinking,
+) {}
+
+// =============================================================================
+// Stream Functions
+// =============================================================================
+export const stream: Protocol.StreamFunction<
+	typeof Model.KnownProtocolEnum.openaiCompletions,
+	typeof OAICompletions
+> = (model, context, options) => {
+	const stream = new AssistantMessageEventStream();
+
+	void (async () => {
+		const output = Message.createAssistantMessage({
+			role: "assistant",
+			parts: [],
+			protocol: model.protocol,
+			provider: model.provider,
+			model: model.id,
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "stop",
+			time: {
+				created: Date.now(),
+				completed: Date.now(),
+			},
+		});
+
+		try {
+			//
+			// use or build client
+			let client: OpenAI;
+			if (options?.client) {
+				client = options.client;
+			} else {
+				const apiKey = options?.apiKey ?? getEnvApiKey(model.provider);
+				if (!apiKey) {
+					throw new ProtocolAuthError({
+						protocol: PROTOCOL,
+						message: "protocol auth error; apiKey or auth must be provided",
+					});
+				}
+				const created = createClient(model, apiKey, options?.headers);
+				client = created.client;
+			}
+
+			let params = buildParams(model, context, options);
+			const mutParams = await options?.onPayload?.(params, model);
+			if (mutParams !== undefined) {
+				params = mutParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+			}
+
+			const openaiStream = await client.chat.completions.create(params, { signal: options?.signal });
+			stream.push({ type: "start", partial: output });
+		} catch (error) {
+			for (const block of output.parts) {
+				delete (block as StreamingBlock).index;
+				delete (block as StreamingToolCallBlock).partialArgs;
+				delete (block as StreamingToolCallBlock).streamIndex;
+			}
+			output.time.completed = Date.now();
+			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
+			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+
+			const rawMetadata = (error as { error?: { metadata?: { raw?: string } } })?.error?.metadata?.raw;
+			if (rawMetadata) output.errorMessage += `\n${rawMetadata}`;
+
+			stream.push({ type: "error", reason: output.stopReason, error: output });
+			stream.end();
+		}
+	})();
+	return stream;
+};
+
+export const streamWithThinking: Protocol.StreamFunction<
+	typeof Model.KnownProtocolEnum.openaiCompletions,
+	typeof OAICompletions
+> = (model, context, options) => {
+	const base = { ...options, maxTokens: options?.maxTokens ?? Math.min(model.maxTokens, 32000) };
+	const simpleReasoning = Model.supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
+	const reasoningEffort: ThinkingLevelNoOff | undefined =
+		simpleReasoning && simpleReasoning !== ThinkingLevelEnum.off ? simpleReasoning : undefined;
+
+	return stream(model, context, {
+		...base,
+		toolChoice: options?.toolChoice,
+		reasoningEffort,
+	});
+};
+
+const protocol: Protocol.Protocol<typeof Model.KnownProtocolEnum.openaiCompletions, any, any> = {
+	protocol: PROTOCOL,
+	schema: OAICompletions,
+	schemaWithThinking: OAICompletionsWithThinking,
+	stream: stream,
+	streamSimple: streamWithThinking,
+};
+
+export default protocol;

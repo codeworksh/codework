@@ -2,7 +2,7 @@ import { Provider } from "../provider/provider";
 import type { ModelCatalog } from "./catalog";
 import { Model } from "./model";
 
-function defaultBaseUrl(providerId: Provider.KnownProvider): string | undefined {
+function defaultBaseUrl(providerId: Provider.KnownProviderEnum): string | undefined {
 	switch (providerId) {
 		case Provider.KnownProviderEnum.openai:
 			return "https://api.openai.com/v1";
@@ -11,7 +11,7 @@ function defaultBaseUrl(providerId: Provider.KnownProvider): string | undefined 
 	}
 }
 
-function resolveDefaultProtocol(providerId: Provider.KnownProvider): Model.KnownProtocol {
+function resolveDefaultProtocol(providerId: Provider.KnownProviderEnum): Model.KnownProtocolEnum {
 	switch (providerId) {
 		case Provider.KnownProviderEnum.anthropic:
 			return Model.KnownProtocolEnum.anthropicMessages;
@@ -23,7 +23,7 @@ function resolveDefaultProtocol(providerId: Provider.KnownProvider): Model.Known
 }
 
 export function applyModification(
-	providerId: Provider.KnownProvider,
+	providerId: Provider.KnownProviderEnum,
 	provider: ModelCatalog.ModelsDevProvider,
 	model: ModelCatalog.ModelsDevModel,
 ): Model.Info {
