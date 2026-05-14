@@ -123,7 +123,7 @@ const defaultCompat: Required<Model.OpenAICompletionsCompat> = {
 	supportsStrictMode: true,
 };
 
-function providerName(providerId: Provider.KnownProvider): string {
+function providerName(providerId: Provider.KnownProviderEnum): string {
 	switch (providerId) {
 		case Provider.KnownProviderEnum.openai:
 			return "OpenAI";
@@ -146,7 +146,7 @@ function providerName(providerId: Provider.KnownProvider): string {
 	}
 }
 
-function providerEnv(providerId: Provider.KnownProvider): string[] {
+function providerEnv(providerId: Provider.KnownProviderEnum): string[] {
 	switch (providerId) {
 		case Provider.KnownProviderEnum.openai:
 			return ["OPENAI_API_KEY"];
@@ -169,7 +169,7 @@ function providerEnv(providerId: Provider.KnownProvider): string[] {
 	}
 }
 
-function providerBaseUrl(providerId: Provider.KnownProvider): string {
+function providerBaseUrl(providerId: Provider.KnownProviderEnum): string {
 	switch (providerId) {
 		case Provider.KnownProviderEnum.openrouter:
 			return "https://openrouter.ai/api/v1";
@@ -204,7 +204,7 @@ function createModel({
 }: {
 	id?: string;
 	name?: string;
-	providerId?: Provider.KnownProvider;
+	providerId?: Provider.KnownProviderEnum;
 	baseUrl?: string;
 	reasoning?: boolean;
 	input?: Array<"text" | "image">;
