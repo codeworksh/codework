@@ -10,7 +10,7 @@ export namespace Model {
 	// re-export
 	export const KnownProtocolEnum = Known.ProtocolEnum;
 	export const KnownProtocolEnumSchema = Known.ProtocolEnumSchema;
-	export type KnownProtocolEnum = Known.KnownProtocolEnum;
+	export type KnownProtocolEnum = Known.ProtocolEnum;
 
 	const InputSchema = Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]));
 	const CostSchema = Type.Object({
@@ -19,7 +19,6 @@ export namespace Model {
 		cacheRead: Type.Number(),
 		cacheWrite: Type.Number(),
 	});
-	const HeadersSchema = Type.Optional(Type.Record(Type.String(), Type.String()));
 
 	// reprsents common base schema for a model
 	export const BaseSchema = Type.Object({
@@ -32,7 +31,7 @@ export namespace Model {
 		cost: CostSchema,
 		contextWindow: Type.Number(),
 		maxTokens: Type.Number(),
-		headers: HeadersSchema,
+		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 		supportedProtocols: Type.Optional(Type.Partial(Known.ProtocolEnumSchema)), // optionally supported protocols
 	});
 

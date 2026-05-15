@@ -4,17 +4,16 @@ import { Message } from "../../message/message";
 import { Model } from "../../model/model";
 import { getEnvApiKey } from "../../provider/providers/utils";
 import { AssistantMessageEventStream } from "../../utils/eventstream";
-import * as Protocol from "../protocol";
-import { ProtocolAuthError } from "../schema/errors";
+import { Protocol } from "../protocol";
 import {
-	GenerationOptions,
+	ReasoningLevelEnum,
 	ThinkingBudgets,
-	ThinkingLevel,
-	ThinkingLevelEnum,
-	ThinkingLevelNoOff,
+	ReasoningLevel,
+	ReasoningLevelNoOff,
+	SharedOptions,
 } from "../schema/options";
 import { createObjectSchemaBuilder } from "../schema/utils";
-import { clampReasoning, mergeHeaders } from "./shared";
+import { clampReasoning, mergeHeaders } from "./runtime";
 
 export const PROTOCOL = Model.KnownProtocolEnum.openaiCompletions;
 
@@ -28,19 +27,19 @@ export const ToolChoice = Type.Union([
 	Type.Object({ type: Type.Literal("function"), function: Type.Object({ name: Type.String() }) }),
 ]);
 
-export const OAICompletions = createObjectSchemaBuilder(GenerationOptions)
+export const OAICompletions = createObjectSchemaBuilder(SharedOptions)
 	.withOption("client", Type.Optional(Type.Unsafe<InstanceType<typeof OpenAI>>({})))
 	.withOption("apiKey", Type.Optional(Type.String()))
 	.withOptions({
-		reasoning: Type.Optional(ThinkingLevel),
+		reasoning: Type.Optional(ReasoningLevel),
 		toolChoice: Type.Optional(ToolChoice),
-		reasoningEffort: Type.Optional(ThinkingLevelNoOff),
+		reasoningEffort: Type.Optional(ReasoningLevelNoOff),
 	})
 	.make();
 export type OAICompletions = Static<typeof OAICompletions>;
 
 export const OAICompletionsWithThinking = createObjectSchemaBuilder(OAICompletions)
-	.withOption("reasoning", ThinkingLevel)
+	.withOption("reasoning", ReasoningLevel)
 	.withOption("thinkingBudgets", ThinkingBudgets)
 	.make();
 export type OAICompletionsWithThinking = Static<typeof OAICompletionsWithThinking>;
@@ -77,7 +76,9 @@ function buildParams(
 	model: Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions>,
 	context: Message.Context,
 	options?: OAICompletions | OAICompletionsWithThinking,
-) {}
+) {
+	throw new Error("implementation error")
+}
 
 // =============================================================================
 // Stream Functions
@@ -119,7 +120,7 @@ export const stream: Protocol.StreamFunction<
 			} else {
 				const apiKey = options?.apiKey ?? getEnvApiKey(model.provider);
 				if (!apiKey) {
-					throw new ProtocolAuthError({
+					throw new Protocol.ProtocolAuthError({
 						protocol: PROTOCOL,
 						message: "protocol auth error; apiKey or auth must be provided",
 					});
@@ -162,8 +163,8 @@ export const streamWithThinking: Protocol.StreamFunction<
 > = (model, context, options) => {
 	const base = { ...options, maxTokens: options?.maxTokens ?? Math.min(model.maxTokens, 32000) };
 	const simpleReasoning = Model.supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);
-	const reasoningEffort: ThinkingLevelNoOff | undefined =
-		simpleReasoning && simpleReasoning !== ThinkingLevelEnum.off ? simpleReasoning : undefined;
+	const reasoningEffort: ReasoningLevelNoOff | undefined =
+		simpleReasoning && simpleReasoning !== ReasoningLevelEnum.off ? simpleReasoning : undefined;
 
 	return stream(model, context, {
 		...base,
@@ -174,8 +175,6 @@ export const streamWithThinking: Protocol.StreamFunction<
 
 const protocol: Protocol.Protocol<typeof Model.KnownProtocolEnum.openaiCompletions, any, any> = {
 	protocol: PROTOCOL,
-	schema: OAICompletions,
-	schemaWithThinking: OAICompletionsWithThinking,
 	stream: stream,
 	streamSimple: streamWithThinking,
 };

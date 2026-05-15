@@ -11,7 +11,7 @@ export namespace Known {
 		Type.Literal(ProtocolEnum.openaiCompletions),
 		Type.Literal(ProtocolEnum.openaiResponses),
 	]);
-	export type KnownProtocolEnum = Static<typeof ProtocolEnumSchema>;
+	export type ProtocolEnum = Static<typeof ProtocolEnumSchema>;
 
 	export const ProviderEnum = {
 		anthropic: "anthropic",
