@@ -17,17 +17,17 @@ export namespace Provider {
 	});
 	export type Info = Static<typeof Info>;
 
-	export const ReasoningEffortMapSchema = Type.Object({
-		minimal: Type.Optional(Type.String()),
-		low: Type.Optional(Type.String()),
-		medium: Type.Optional(Type.String()),
-		high: Type.Optional(Type.String()),
-		xhigh: Type.Optional(Type.String()),
-	});
-	export type ReasoningEffortMap = Static<typeof ReasoningEffortMapSchema>;
-	export type StrictReasoningEffortMap = {
-		[K in keyof ReasoningEffortMap]-?: NonNullable<ReasoningEffortMap[K]>;
-	};
+	// export const ReasoningEffortMapSchema = Type.Object({
+	// 	minimal: Type.Optional(Type.String()),
+	// 	low: Type.Optional(Type.String()),
+	// 	medium: Type.Optional(Type.String()),
+	// 	high: Type.Optional(Type.String()),
+	// 	xhigh: Type.Optional(Type.String()),
+	// });
+	// export type ReasoningEffortMap = Static<typeof ReasoningEffortMapSchema>;
+	// export type StrictReasoningEffortMap = {
+	// 	[K in keyof ReasoningEffortMap]-?: NonNullable<ReasoningEffortMap[K]>;
+	// };
 
 	export const OpenRouterRoutingSchema = Type.Object({
 		only: Type.Optional(Type.Array(Type.String())),

@@ -17,32 +17,34 @@ import { clampReasoning, mergeHeaders } from "./runtime";
 
 export const PROTOCOL = Model.KnownProtocolEnum.openaiCompletions;
 
-// =============================================================================
-// Request Body Schema
-// =============================================================================
 export const ToolChoice = Type.Union([
 	Type.Literal("auto"),
 	Type.Literal("none"),
 	Type.Literal("required"),
-	Type.Object({ type: Type.Literal("function"), function: Type.Object({ name: Type.String() }) }),
+	Type.Object({
+		type: Type.Literal("function"),
+		function: Type.Object({ name: Type.String() })
+	}),
 ]);
 
-export const OAICompletions = createObjectSchemaBuilder(SharedOptions)
+// =============================================================================
+// Options Schema
+// =============================================================================
+export const Options = createObjectSchemaBuilder(SharedOptions)
 	.withOption("client", Type.Optional(Type.Unsafe<InstanceType<typeof OpenAI>>({})))
-	.withOption("apiKey", Type.Optional(Type.String()))
 	.withOptions({
 		reasoning: Type.Optional(ReasoningLevel),
 		toolChoice: Type.Optional(ToolChoice),
 		reasoningEffort: Type.Optional(ReasoningLevelNoOff),
 	})
 	.make();
-export type OAICompletions = Static<typeof OAICompletions>;
+export type Options = Static<typeof Options>;
 
-export const OAICompletionsWithThinking = createObjectSchemaBuilder(OAICompletions)
+export const OptionsWithThinking = createObjectSchemaBuilder(Options)
 	.withOption("reasoning", ReasoningLevel)
 	.withOption("thinkingBudgets", ThinkingBudgets)
 	.make();
-export type OAICompletionsWithThinking = Static<typeof OAICompletionsWithThinking>;
+export type OptionsWithThinking = Static<typeof OptionsWithThinking>;
 
 type StreamingToolCallBlock = Message.ToolCall & {
 	index?: number;
@@ -75,7 +77,7 @@ function createClient(
 function buildParams(
 	model: Model.TModel<typeof Model.KnownProtocolEnum.openaiCompletions>,
 	context: Message.Context,
-	options?: OAICompletions | OAICompletionsWithThinking,
+	options?: Options | OptionsWithThinking,
 ) {
 	throw new Error("implementation error")
 }
@@ -85,7 +87,7 @@ function buildParams(
 // =============================================================================
 export const stream: Protocol.StreamFunction<
 	typeof Model.KnownProtocolEnum.openaiCompletions,
-	typeof OAICompletions
+	typeof Options
 > = (model, context, options) => {
 	const stream = new AssistantMessageEventStream();
 
@@ -159,7 +161,7 @@ export const stream: Protocol.StreamFunction<
 
 export const streamWithThinking: Protocol.StreamFunction<
 	typeof Model.KnownProtocolEnum.openaiCompletions,
-	typeof OAICompletions
+	typeof Options
 > = (model, context, options) => {
 	const base = { ...options, maxTokens: options?.maxTokens ?? Math.min(model.maxTokens, 32000) };
 	const simpleReasoning = Model.supportsXhigh(model) ? options?.reasoning : clampReasoning(options?.reasoning);

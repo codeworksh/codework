@@ -8,22 +8,20 @@ import { AssistantMessageEventStream } from "../../utils/eventstream";
 import { parseStreamingJson } from "../../utils/jsonparse";
 import { sanitizeSurrogates } from "../../utils/sanitize";
 import { Protocol } from "../protocol";
-import { CacheRetention, SharedOptions, ThinkingBudgets, ReasoningLevel } from "../schema/options";
+import { SharedOptions, ThinkingBudgets, ReasoningLevel } from "../schema/options";
+import type { CacheRetention } from "../schema/options";
 import { createObjectSchemaBuilder } from "../schema/utils";
 import { adjustMaxTokensForThinking, mergeHeaders } from "./runtime";
 
 export const PROTOCOL = Model.KnownProtocolEnum.anthropicMessages;
 
-// =============================================================================
-// Request Body Schema
-// =============================================================================
 const CacheControl = Type.Object({
 	type: Type.Union([Type.Literal("ephemeral")]),
 	ttl: Type.Optional(Type.Union([Type.Literal("5m"), Type.Literal("1h")])),
 });
 type CacheControl = Static<typeof CacheControl>;
 
-const ToolChoice = Type.Union([
+export const ToolChoice = Type.Union([
 	Type.Literal("auto"),
 	Type.Literal("any"),
 	Type.Literal("none"),
@@ -34,21 +32,22 @@ const ToolChoice = Type.Union([
 ]);
 
 // =============================================================================
-// Input Options Schema
+// Options Schema
 // =============================================================================
 const Options = createObjectSchemaBuilder(SharedOptions)
+	.withOption("client", Type.Optional(Type.Unsafe<InstanceType<typeof Anthropic>>({})))
 	.withOptions({
-		cacheRetention: Type.Optional(CacheRetention),
 		cacheControl: Type.Optional(CacheControl),
 		thinkingEnabled: Type.Optional(Type.Boolean()),
 		thinkingBudgetTokens: Type.Optional(Type.Number()),
 		toolChoice: Type.Optional(ToolChoice),
-		apiKey: Type.Optional(Type.String()),
 	})
-	.withOption("client", Type.Optional(Type.Unsafe<InstanceType<typeof Anthropic>>({})))
 	.make();
 export type Options = Static<typeof Options>;
 
+// =============================================================================
+// Options Schema with Thinking
+// =============================================================================
 const OptionsWithThinking = createObjectSchemaBuilder(Options)
 	/**
 	 * Effort level for adaptive thinking (Opus 4.6+ and Sonnet 4.6).
