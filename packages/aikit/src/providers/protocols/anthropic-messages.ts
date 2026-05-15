@@ -21,7 +21,7 @@ const CacheControl = Type.Object({
 });
 type CacheControl = Static<typeof CacheControl>;
 
-export const ToolChoice = Type.Union([
+const ToolChoice = Type.Union([
 	Type.Literal("auto"),
 	Type.Literal("any"),
 	Type.Literal("none"),
@@ -43,7 +43,7 @@ const Options = createObjectSchemaBuilder(SharedOptions)
 		toolChoice: Type.Optional(ToolChoice),
 	})
 	.make();
-export type Options = Static<typeof Options>;
+type Options = Static<typeof Options>;
 
 // =============================================================================
 // Options Schema with Thinking
@@ -73,7 +73,7 @@ const OptionsWithThinking = createObjectSchemaBuilder(Options)
 	 */
 	.withOption("thinkingBudgetTokens", Type.Number())
 	.make();
-export type OptionsWithThinking = Static<typeof OptionsWithThinking>;
+type OptionsWithThinking = Static<typeof OptionsWithThinking>;
 
 const FINE_GRAINED_TOOL_STREAMING_BETA = "fine-grained-tool-streaming-2025-05-14";
 

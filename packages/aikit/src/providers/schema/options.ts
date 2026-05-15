@@ -55,9 +55,6 @@ export const ReasoningLevel = Type.Union([
 ]);
 export type ReasoningLevel = Static<typeof ReasoningLevel>;
 
-export const ReasoningLevelNoOff = Type.Exclude(ReasoningLevel, Type.Literal(ReasoningLevelEnum.off));
-export type ReasoningLevelNoOff = Static<typeof ReasoningLevelNoOff>;
-
 export const ThinkingBudgets = Type.Object({
 	off: Type.Optional(Type.Number()),
 	minimal: Type.Optional(Type.Number()),
