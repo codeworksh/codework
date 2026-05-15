@@ -41,18 +41,18 @@ export namespace Protocol {
 	export type StreamFunction<
 		TProtocol extends Model.KnownProtocolEnum = Model.KnownProtocolEnum,
 		S extends TSchema = TSchema,
-	> = (model: Model.TModel<TProtocol>, context: Message.Context, options?: Static<S>) => AssistantMessageEventStream;
+	> = (model: Model.TModel<TProtocol>, context: Message.Context, options: Static<S>) => AssistantMessageEventStream;
 
 	export type ProtocolStreamFunction<S extends TSchema = TSchema> = (
 		model: Model.Info,
 		context: Message.Context,
-		options?: Static<S>,
+		options: Static<S>,
 	) => AssistantMessageEventStream;
 
 	export type ProtocolStreamThinkingFunction<SThinking extends TSchema = TSchema> = (
 		model: Model.Info,
 		context: Message.Context,
-		options?: Static<SThinking>,
+		options: Static<SThinking>,
 	) => AssistantMessageEventStream;
 
 	export interface Protocol<

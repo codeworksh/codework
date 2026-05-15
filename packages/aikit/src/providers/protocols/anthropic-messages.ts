@@ -397,17 +397,17 @@ function mapStopReason(reason: AnthropicStopReason): Message.StopReason {
 function buildParams(
 	model: Model.TModel<typeof Model.KnownProtocolEnum.anthropicMessages>,
 	context: Message.Context,
-	options?: Options | OptionsWithThinking,
+	options: Options | OptionsWithThinking,
 ): MessageCreateParamsStreaming {
 	// configure cache, prioritise cacheControl otherwise cacheRetention property
-	const cacheControl = options?.cacheControl ?? getCacheControl(model.baseUrl, options?.cacheRetention);
+	const cacheControl = options.cacheControl ?? getCacheControl(model.baseUrl, options.cacheRetention);
 
 	// build request params
 	const params: MessageCreateParamsStreaming = {
 		model: model.id,
 		messages: convertMessages(context.messages, model, cacheControl),
-		max_tokens: options?.maxTokens || (model.maxTokens / 3) | 0,
-		stream: true, // we always stream
+		max_tokens: options.maxTokens || (model.maxTokens / 3) | 0,
+		stream: true,
 	};
 
 	if (context.systemPrompt) {
@@ -420,7 +420,7 @@ function buildParams(
 		];
 	}
 
-	if (options?.temperature !== undefined && !options?.thinkingEnabled) {
+	if (options.temperature !== undefined && !options.thinkingEnabled) {
 		params.temperature = options.temperature;
 	}
 
@@ -429,21 +429,21 @@ function buildParams(
 	}
 
 	// is thinking enabled; has model has reasoning
-	if (options?.thinkingEnabled && model.reasoning) {
+	if (options.thinkingEnabled && model.reasoning) {
 		params.thinking = {
 			type: "enabled",
-			budget_tokens: options?.thinkingBudgetTokens || 1024,
+			budget_tokens: options.thinkingBudgetTokens || 1024,
 		};
 	}
 
-	if (options?.metadata) {
+	if (options.metadata) {
 		const userId = options.metadata.user_id || options.metadata.userId;
 		if (typeof userId === "string") {
 			params.metadata = { user_id: userId };
 		}
 	}
 
-	if (options?.toolChoice) {
+	if (options.toolChoice) {
 		params.tool_choice = typeof options.toolChoice === "string" ? { type: options.toolChoice } : options.toolChoice;
 	}
 
@@ -490,29 +490,29 @@ export const stream: Protocol.StreamFunction<typeof Model.KnownProtocolEnum.anth
 			//
 			// use or build client
 			let client: Anthropic;
-			if (options?.client) {
+			if (options.client) {
 				client = options.client;
 			} else {
-				const apiKey = options?.apiKey ?? getEnvApiKey(model.provider);
+				const apiKey = options.apiKey ?? getEnvApiKey(model.provider);
 				if (!apiKey) {
 					throw new Protocol.ProtocolAuthError({
 						protocol: PROTOCOL,
 						message: "protocol auth error; apiKey or auth must be provided",
 					});
 				}
-				const created = createClient(model, apiKey, options?.headers);
+				const created = createClient(model, apiKey, options.headers);
 				client = created.client;
 			}
 
 			//
 			// build params for the request
 			let params = buildParams(model, context, options);
-			const mutParams = await options?.onPayload?.(params, model);
+			const mutParams = await options.onPayload?.(params, model);
 			if (mutParams !== undefined) {
 				params = mutParams as MessageCreateParamsStreaming;
 			}
 
-			const anthropicStream = client.messages.stream({ ...params, stream: true }, { signal: options?.signal });
+			const anthropicStream = client.messages.stream({ ...params, stream: true }, { signal: options.signal });
 			stream.push({ type: "start", partial: output });
 
 			const blocks = output.parts as Block[];
@@ -681,7 +681,7 @@ export const stream: Protocol.StreamFunction<typeof Model.KnownProtocolEnum.anth
 				}
 			}
 
-			if (options?.signal?.aborted) {
+			if (options.signal?.aborted) {
 				throw new Error("Request was aborted");
 			}
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
@@ -694,7 +694,7 @@ export const stream: Protocol.StreamFunction<typeof Model.KnownProtocolEnum.anth
 		} catch (error) {
 			for (const block of output.parts) delete (block as { index?: number }).index;
 			output.time.completed = Date.now();
-			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
+			output.stopReason = options.signal?.aborted ? "aborted" : "error";
 			output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
 
 			const rawMetadata = (error as { error?: { metadata?: { raw?: string } } })?.error?.metadata?.raw;
@@ -714,9 +714,10 @@ export const streamWithThinking: Protocol.StreamFunction<
 > = (model, context, options) => {
 	const base = {
 		...options,
-		maxTokens: options?.maxTokens ?? Math.min(model.maxTokens, 32000),
+		maxTokens: options.maxTokens ?? Math.min(model.maxTokens, 32000),
+		stream: true,
 	};
-	if (!options?.reasoning) {
+	if (!options.reasoning) {
 		return stream(model, context, { ...base, thinkingEnabled: false });
 	}
 	const adjusted = adjustMaxTokensForThinking(

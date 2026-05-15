@@ -17,7 +17,8 @@ export const GenerationOptions = Type.Object({
 	topP: Type.Optional(Type.Number()),
 	topK: Type.Optional(Type.Number()),
 	stop: Type.Optional(Type.Array(Type.String())),
-	cacheRetention: Type.Optional(CacheRetention)
+	cacheRetention: Type.Optional(CacheRetention),
+	stream: Type.Boolean(),
 });
 
 // Common reasoning-effort levels used by adapters that expose model reasoning,
@@ -25,34 +26,34 @@ export const GenerationOptions = Type.Object({
 // values to native fields like OpenAI `reasoning_effort`, Anthropic `thinking`,
 // or Gemini `thinkingConfig`.
 export const ReasoningLevelEnum = {
-  // Disable explicit reasoning controls when the provider supports turning them off.
-  off: "off",
+	// Disable explicit reasoning controls when the provider supports turning them off.
+	off: "off",
 
-  // Smallest reasoning budget/effort above off; useful for fastest low-cost responses.
-  minimal: "minimal",
+	// Smallest reasoning budget/effort above off; useful for fastest low-cost responses.
+	minimal: "minimal",
 
-  // Light reasoning for simple tasks that still benefit from some deliberation.
-  low: "low",
+	// Light reasoning for simple tasks that still benefit from some deliberation.
+	low: "low",
 
-  // Balanced default for general tasks.
-  medium: "medium",
+	// Balanced default for general tasks.
+	medium: "medium",
 
-  // Higher reasoning effort for complex coding, analysis, or planning.
-  high: "high",
+	// Higher reasoning effort for complex coding, analysis, or planning.
+	high: "high",
 
-  // Maximum reasoning effort for the hardest tasks where latency/cost tradeoffs are acceptable.
-  xhigh: "xhigh",
-} as const
+	// Maximum reasoning effort for the hardest tasks where latency/cost tradeoffs are acceptable.
+	xhigh: "xhigh",
+} as const;
 
 export const ReasoningLevel = Type.Union([
-  Type.Literal(ReasoningLevelEnum.off),
-  Type.Literal(ReasoningLevelEnum.minimal),
-  Type.Literal(ReasoningLevelEnum.low),
-  Type.Literal(ReasoningLevelEnum.medium),
-  Type.Literal(ReasoningLevelEnum.high),
-  Type.Literal(ReasoningLevelEnum.xhigh),
-])
-export type ReasoningLevel = Static<typeof ReasoningLevel>
+	Type.Literal(ReasoningLevelEnum.off),
+	Type.Literal(ReasoningLevelEnum.minimal),
+	Type.Literal(ReasoningLevelEnum.low),
+	Type.Literal(ReasoningLevelEnum.medium),
+	Type.Literal(ReasoningLevelEnum.high),
+	Type.Literal(ReasoningLevelEnum.xhigh),
+]);
+export type ReasoningLevel = Static<typeof ReasoningLevel>;
 
 export const ReasoningLevelNoOff = Type.Exclude(ReasoningLevel, Type.Literal(ReasoningLevelEnum.off));
 export type ReasoningLevelNoOff = Static<typeof ReasoningLevelNoOff>;
@@ -90,7 +91,7 @@ export const HelperOptions = Type.Object({
 	 * For example, Anthropic uses `user_id` for abuse tracking and rate limiting.
 	 */
 	metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-	apiKey:Type.Optional(Type.String()),
+	apiKey: Type.Optional(Type.String()),
 	/**
 	 * HTTP request timeout in milliseconds for providers/SDKs that support it.
 	 * For example, OpenAI and Anthropic SDK clients default to 10 minutes.

@@ -33,7 +33,6 @@ export const ToolChoice = Type.Union([
 export const Options = createObjectSchemaBuilder(SharedOptions)
 	.withOption("client", Type.Optional(Type.Unsafe<InstanceType<typeof OpenAI>>({})))
 	.withOptions({
-		reasoning: Type.Optional(ReasoningLevel),
 		toolChoice: Type.Optional(ToolChoice),
 		reasoningEffort: Type.Optional(ReasoningLevelNoOff),
 	})
@@ -41,7 +40,6 @@ export const Options = createObjectSchemaBuilder(SharedOptions)
 export type Options = Static<typeof Options>;
 
 export const OptionsWithThinking = createObjectSchemaBuilder(Options)
-	.withOption("reasoning", ReasoningLevel)
 	.withOption("thinkingBudgets", ThinkingBudgets)
 	.make();
 export type OptionsWithThinking = Static<typeof OptionsWithThinking>;
