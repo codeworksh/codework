@@ -20,8 +20,7 @@ export namespace Model {
 		cacheWrite: Type.Number(),
 	});
 
-	// reprsents common base schema for a model
-	export const BaseSchema = Type.Object({
+	export const Schema = Type.Object({
 		id: Type.String(),
 		name: Type.String(),
 		provider: Provider.Info,
@@ -32,76 +31,81 @@ export namespace Model {
 		contextWindow: Type.Number(),
 		maxTokens: Type.Number(),
 		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+		protocol: KnownProtocolEnumSchema,
 		supportedProtocols: Type.Optional(Type.Partial(Known.ProtocolEnumSchema)), // optionally supported protocols
+	});
+
+	export const ExtrasSchema = Type.Object({
+		structuredOutput: Type.Boolean(),
 	});
 
 	/**
 	 * Compatibility settings for OpenAI-compatible completions APIs.
 	 * Use this to override URL-based auto-detection for custom providers.
 	 */
-	export const OpenAICompletionsCompatSchema = Type.Object({
-		supportsStore: Type.Optional(Type.Boolean()),
-		supportsDeveloperRole: Type.Optional(Type.Boolean()),
-		supportsReasoningEffort: Type.Optional(Type.Boolean()),
-		reasoningEffortMap: Type.Optional(Provider.ReasoningEffortMapSchema),
-		supportsUsageInStreaming: Type.Optional(Type.Boolean()),
-		maxTokensField: Type.Optional(Type.Union([Type.Literal("max_completion_tokens"), Type.Literal("max_tokens")])),
-		requiresToolResultName: Type.Optional(Type.Boolean()),
-		requiresAssistantAfterToolResult: Type.Optional(Type.Boolean()),
-		requiresThinkingAsText: Type.Optional(Type.Boolean()),
-		thinkingFormat: Type.Optional(
-			Type.Union([
-				Type.Literal("openai"),
-				Type.Literal("openrouter"),
-				Type.Literal("zai"),
-				Type.Literal("qwen"),
-				Type.Literal("qwen-chat-template"),
-			]),
-		),
-		openRouterRouting: Type.Optional(Provider.OpenRouterRoutingSchema),
-		vercelGatewayRouting: Type.Optional(Provider.VercelGatewayRoutingSchema),
-		zaiToolStream: Type.Optional(Type.Boolean()),
-		supportsStrictMode: Type.Optional(Type.Boolean()),
-	});
-	export type OpenAICompletionsCompat = Static<typeof OpenAICompletionsCompatSchema>;
+	// export const OpenAICompletionsCompatSchema = Type.Object({
+	// 	supportsStore: Type.Optional(Type.Boolean()),
+	// 	supportsDeveloperRole: Type.Optional(Type.Boolean()),
+	// 	supportsReasoningEffort: Type.Optional(Type.Boolean()),
+	// 	reasoningEffortMap: Type.Optional(Provider.ReasoningEffortMapSchema),
+	// 	supportsUsageInStreaming: Type.Optional(Type.Boolean()),
+	// 	maxTokensField: Type.Optional(Type.Union([Type.Literal("max_completion_tokens"), Type.Literal("max_tokens")])),
+	// 	requiresToolResultName: Type.Optional(Type.Boolean()),
+	// 	requiresAssistantAfterToolResult: Type.Optional(Type.Boolean()),
+	// 	requiresThinkingAsText: Type.Optional(Type.Boolean()),
+	// 	thinkingFormat: Type.Optional(
+	// 		Type.Union([
+	// 			Type.Literal("openai"),
+	// 			Type.Literal("openrouter"),
+	// 			Type.Literal("zai"),
+	// 			Type.Literal("qwen"),
+	// 			Type.Literal("qwen-chat-template"),
+	// 		]),
+	// 	),
+	// 	openRouterRouting: Type.Optional(Provider.OpenRouterRoutingSchema),
+	// 	vercelGatewayRouting: Type.Optional(Provider.VercelGatewayRoutingSchema),
+	// 	zaiToolStream: Type.Optional(Type.Boolean()),
+	// 	supportsStrictMode: Type.Optional(Type.Boolean()),
+	// });
+	// export type OpenAICompletionsCompat = Static<typeof OpenAICompletionsCompatSchema>;
 
 	/** Compatibility settings for OpenAI Responses APIs. */
-	export const OpenAIResponsesCompatSchema = Type.Object({});
-	export type OpenAIResponsesCompat = Static<typeof OpenAIResponsesCompatSchema>;
+	// export const OpenAIResponsesCompatSchema = Type.Object({});
+	// export type OpenAIResponsesCompat = Static<typeof OpenAIResponsesCompatSchema>;
 
-	export const OpenAICompatSchema = Type.Union([OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema]);
+	// export const OpenAICompatSchema = Type.Union([OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema]);
 
-	export const AnthropicSchema = Type.Evaluate(
-		Type.Intersect([
-			BaseSchema,
-			Type.Object({
-				protocol: Type.Literal(KnownProtocolEnum.anthropicMessages),
-			}),
-		]),
-	);
+	// export const AnthropicSchema = Type.Evaluate(
+	// 	Type.Intersect([
+	// 		Schema,
+	// 		Type.Object({
+	// 			protocol: Type.Literal(KnownProtocolEnum.anthropicMessages),
+	// 		}),
+	// 	]),
+	// );
 
-	export const OpenAICompletionsSchema = Type.Evaluate(
-		Type.Intersect([
-			BaseSchema,
-			Type.Object({
-				protocol: Type.Literal(KnownProtocolEnum.openaiCompletions),
-				compat: Type.Optional(OpenAICompletionsCompatSchema),
-			}),
-		]),
-	);
-	export const OpenAIResponsesSchema = Type.Evaluate(
-		Type.Intersect([
-			BaseSchema,
-			Type.Object({
-				protocol: Type.Literal(KnownProtocolEnum.openaiResponses),
-				compat: Type.Optional(OpenAIResponsesCompatSchema),
-			}),
-		]),
-	);
+	// export const OpenAICompletionsSchema = Type.Evaluate(
+	// 	Type.Intersect([
+	// 		Schema,
+	// 		Type.Object({
+	// 			protocol: Type.Literal(KnownProtocolEnum.openaiCompletions),
+	// 			compat: Type.Optional(OpenAICompletionsCompatSchema),
+	// 		}),
+	// 	]),
+	// );
+	// export const OpenAIResponsesSchema = Type.Evaluate(
+	// 	Type.Intersect([
+	// 		Schema,
+	// 		Type.Object({
+	// 			protocol: Type.Literal(KnownProtocolEnum.openaiResponses),
+	// 			compat: Type.Optional(OpenAIResponsesCompatSchema),
+	// 		}),
+	// 	]),
+	// );
 
-	export const Info = Type.Union([AnthropicSchema, OpenAICompletionsSchema, OpenAIResponsesSchema]);
+	export const Info = Type.Evaluate(Type.Intersect([Schema, ExtrasSchema]));
 	export type Info = Static<typeof Info>;
-	export type TModel<TProtocol extends KnownProtocolEnum> = Extract<Info, { protocol: TProtocol }>;
+	export type TModel<TProtocol extends KnownProtocolEnum> = Omit<Info, "protocol"> & { protocol: TProtocol };
 	const BUILTINS = keys(Provider.KnownProviderEnum) as Provider.KnownProviderEnum[];
 
 	export function calculateCost(

@@ -24,14 +24,14 @@ const CacheControl = Type.Object({
 type CacheControl = Static<typeof CacheControl>;
 
 const ToolChoice = Type.Union([
-	Type.Literal('auto'),
-	Type.Literal('any'),
-	Type.Literal('none'),
+	Type.Literal("auto"),
+	Type.Literal("any"),
+	Type.Literal("none"),
 	Type.Object({
 		type: Type.Literal("tool"),
 		name: Type.String(),
-	})
-])
+	}),
+]);
 
 // =============================================================================
 // Input Options Schema

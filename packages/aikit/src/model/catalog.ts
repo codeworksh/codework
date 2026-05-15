@@ -29,6 +29,7 @@ export namespace ModelCatalog {
 			context?: number;
 			output?: number;
 		};
+		structured_output?: boolean;
 	}
 	export interface ModelsDevProvider {
 		id: string;

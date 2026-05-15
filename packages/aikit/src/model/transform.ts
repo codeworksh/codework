@@ -45,6 +45,7 @@ export function applyModification(
 		maxTokens: model.limit?.output ?? 0,
 		headers: model.headers ?? provider.headers,
 		protocol: resolveDefaultProtocol(providerId),
+		structuredOutput: model.structured_output ?? false,
 	};
 	//
 	// add support for multiple known protocols
