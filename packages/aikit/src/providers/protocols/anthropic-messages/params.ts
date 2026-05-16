@@ -22,7 +22,7 @@ export const buildParams: BuildParams<typeof Model.KnownProtocolEnum.anthropicMe
 
 	const params: MessageCreateParamsStreaming = {
 		model: model.id,
-		messages: convertMessages(context.messages, model, cacheControl),
+		messages: convertMessages(context, model, cacheControl),
 		max_tokens: options.maxTokens || (model.maxTokens / 3) | 0,
 		stream: true,
 	};

@@ -8,7 +8,6 @@ import { parseStreamingJson } from "../../../utils/jsonparse";
 import { getEnvApiKey } from "../../runtime/env";
 import { Protocol } from "../../protocol";
 import { createClient as createDefaultClient } from "./client";
-import { type Block, mapStopReason } from "./events";
 import { Options, OptionsWithThinking, PROTOCOL } from "./options";
 import { buildParams, buildThinkingParams, type BuildParams } from "./params";
 
@@ -24,6 +23,31 @@ export type AnthropicMessagesStreamConfig<
 	protocol: TProtocol;
 	buildParams: BuildParams<TProtocol, S>;
 	createClient?: AnthropicMessagesCreateClient<TProtocol, S>;
+};
+
+export type AnthropicStopReason = Anthropic.Messages.StopReason | "sensitive";
+
+export function mapStopReason(reason: AnthropicStopReason): Message.StopReason {
+	switch (reason) {
+		case "end_turn":
+			return "stop";
+		case "max_tokens":
+			return "length";
+		case "tool_use":
+			return "toolUse";
+		case "pause_turn":
+		case "stop_sequence":
+			return "stop";
+		case "refusal":
+		case "sensitive":
+			return "error";
+		default:
+			throw new Error("Unhandled Anthropic stop reason");
+	}
+}
+
+export type Block = (Message.ThinkingContent | Message.TextContent | (Message.ToolCall & { partialJson: string })) & {
+	index: number;
 };
 
 export function createAnthropicMessagesStream<TProtocol extends Model.KnownProtocolEnum, S extends TSchema>(

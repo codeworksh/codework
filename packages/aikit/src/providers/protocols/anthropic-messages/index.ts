@@ -4,8 +4,6 @@ import { Options, OptionsWithThinking, PROTOCOL } from "./options";
 import { stream, streamWithThinking } from "./stream";
 
 export { createClient } from "./client";
-export { mapStopReason } from "./events";
-export type { AnthropicStopReason, Block } from "./events";
 export { CacheControl, Options, OptionsWithThinking, PROTOCOL } from "./options";
 export type {
 	CacheControl as CacheControlType,

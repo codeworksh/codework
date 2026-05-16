@@ -18,7 +18,6 @@ export const GenerationOptions = Type.Object({
 	topK: Type.Optional(Type.Number()),
 	stop: Type.Optional(Type.Array(Type.String())),
 	cacheRetention: Type.Optional(CacheRetention),
-	stream: Type.Boolean(),
 });
 
 // Common reasoning-effort levels used by adapters that expose model reasoning,
@@ -28,19 +27,14 @@ export const GenerationOptions = Type.Object({
 export const ReasoningLevelEnum = {
 	// Disable explicit reasoning controls when the provider supports turning them off.
 	off: "off",
-
 	// Smallest reasoning budget/effort above off; useful for fastest low-cost responses.
 	minimal: "minimal",
-
 	// Light reasoning for simple tasks that still benefit from some deliberation.
 	low: "low",
-
 	// Balanced default for general tasks.
 	medium: "medium",
-
 	// Higher reasoning effort for complex coding, analysis, or planning.
 	high: "high",
-
 	// Maximum reasoning effort for the hardest tasks where latency/cost tradeoffs are acceptable.
 	xhigh: "xhigh",
 } as const;

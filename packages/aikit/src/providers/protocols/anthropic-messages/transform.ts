@@ -129,9 +129,9 @@ function assertReplayableAssistant(message: Message.AssistantMessage): void {
 
 export function convertMessages<
 	TProtocol extends Model.KnownProtocolEnum = typeof Model.KnownProtocolEnum.anthropicMessages,
->(messages: Message.Message[], model: Model.TModel<TProtocol>, cacheControl?: CacheControl): MessageParam[] {
+>(context: Message.Context, model: Model.TModel<TProtocol>, cacheControl?: CacheControl): MessageParam[] {
 	const params: MessageParam[] = [];
-	const transformedMessages = Message.transformMessages(messages, model, normalizeToolCallId);
+	const transformedMessages = Message.transformMessages(context.messages, model, normalizeToolCallId);
 
 	for (const msg of transformedMessages) {
 		if (msg.role === "user") {

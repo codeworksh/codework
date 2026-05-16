@@ -1,16 +1,29 @@
 import { lazy } from "@codeworksh/utils";
 import Type, { type Static } from "typebox";
 import { keys, mapValues, pick, pipe } from "remeda";
-import { Provider } from "../provider/provider";
 import { ModelCatalog } from "./catalog";
 import { applyModification } from "./transform";
-import { Known } from "../providers/register/known";
+import type { ModelFlag } from "./flag";
+import { ModelCompat } from "./compat";
 
 export namespace Model {
 	// re-export
-	export const KnownProtocolEnum = Known.ProtocolEnum;
-	export const KnownProtocolEnumSchema = Known.ProtocolEnumSchema;
-	export type KnownProtocolEnum = Known.ProtocolEnum;
+	export const KnownProtocolEnum = ModelCatalog.KnownProtocolEnum;
+	export const KnownProtocolEnumSchema = ModelCatalog.KnownProtocolEnumSchema;
+	export type KnownProtocolEnum = ModelCatalog.KnownProtocolEnum;
+
+	export const KnownProviderEnum = ModelCatalog.KnownProviderEnum;
+	export const KnownProviderEnumSchema = ModelCatalog.KnownProviderEnumSchema;
+	export type KnownProviderEnum = ModelCatalog.KnownProviderEnum;
+
+	export const ProviderInfo = Type.Object({
+		id: KnownProviderEnumSchema,
+		name: Type.String(),
+		env: Type.Array(Type.String()),
+		key: Type.Optional(Type.String()),
+		options: Type.Optional(Type.Record(Type.String(), Type.Any())),
+	});
+	export type ProviderInfo = Static<typeof ProviderInfo>;
 
 	const InputSchema = Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]));
 	const CostSchema = Type.Object({
@@ -19,11 +32,19 @@ export namespace Model {
 		cacheRead: Type.Number(),
 		cacheWrite: Type.Number(),
 	});
+	const SupportedProtocolsSchema = Type.Partial(
+		Type.Object({
+			anthropicMessages: KnownProtocolEnumSchema,
+			openaiCompletions: KnownProtocolEnumSchema,
+			openaiResponses: KnownProtocolEnumSchema,
+		}),
+	);
+	type CompatFlags = ModelFlag.AnthropicMessagesCompat | ModelFlag.OpenAICompletionsCompat | Record<string, never>;
 
 	export const Schema = Type.Object({
 		id: Type.String(),
 		name: Type.String(),
-		provider: Provider.Info,
+		provider: ProviderInfo,
 		baseUrl: Type.String(),
 		reasoning: Type.Boolean(),
 		input: InputSchema,
@@ -32,81 +53,21 @@ export namespace Model {
 		maxTokens: Type.Number(),
 		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 		protocol: KnownProtocolEnumSchema,
-		supportedProtocols: Type.Optional(Type.Partial(Known.ProtocolEnumSchema)), // optionally supported protocols
+		supportedProtocols: Type.Optional(SupportedProtocolsSchema),
 	});
 
 	export const ExtrasSchema = Type.Object({
 		structuredOutput: Type.Boolean(),
 	});
 
-	/**
-	 * Compatibility settings for OpenAI-compatible completions APIs.
-	 * Use this to override URL-based auto-detection for custom providers.
-	 */
-	// export const OpenAICompletionsCompatSchema = Type.Object({
-	// 	supportsStore: Type.Optional(Type.Boolean()),
-	// 	supportsDeveloperRole: Type.Optional(Type.Boolean()),
-	// 	supportsReasoningEffort: Type.Optional(Type.Boolean()),
-	// 	reasoningEffortMap: Type.Optional(Provider.ReasoningEffortMapSchema),
-	// 	supportsUsageInStreaming: Type.Optional(Type.Boolean()),
-	// 	maxTokensField: Type.Optional(Type.Union([Type.Literal("max_completion_tokens"), Type.Literal("max_tokens")])),
-	// 	requiresToolResultName: Type.Optional(Type.Boolean()),
-	// 	requiresAssistantAfterToolResult: Type.Optional(Type.Boolean()),
-	// 	requiresThinkingAsText: Type.Optional(Type.Boolean()),
-	// 	thinkingFormat: Type.Optional(
-	// 		Type.Union([
-	// 			Type.Literal("openai"),
-	// 			Type.Literal("openrouter"),
-	// 			Type.Literal("zai"),
-	// 			Type.Literal("qwen"),
-	// 			Type.Literal("qwen-chat-template"),
-	// 		]),
-	// 	),
-	// 	openRouterRouting: Type.Optional(Provider.OpenRouterRoutingSchema),
-	// 	vercelGatewayRouting: Type.Optional(Provider.VercelGatewayRoutingSchema),
-	// 	zaiToolStream: Type.Optional(Type.Boolean()),
-	// 	supportsStrictMode: Type.Optional(Type.Boolean()),
-	// });
-	// export type OpenAICompletionsCompat = Static<typeof OpenAICompletionsCompatSchema>;
+	export const CompatSchema = Type.Object({
+		compat: Type.Optional(Type.Unsafe<CompatFlags>({})),
+	});
 
-	/** Compatibility settings for OpenAI Responses APIs. */
-	// export const OpenAIResponsesCompatSchema = Type.Object({});
-	// export type OpenAIResponsesCompat = Static<typeof OpenAIResponsesCompatSchema>;
-
-	// export const OpenAICompatSchema = Type.Union([OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema]);
-
-	// export const AnthropicSchema = Type.Evaluate(
-	// 	Type.Intersect([
-	// 		Schema,
-	// 		Type.Object({
-	// 			protocol: Type.Literal(KnownProtocolEnum.anthropicMessages),
-	// 		}),
-	// 	]),
-	// );
-
-	// export const OpenAICompletionsSchema = Type.Evaluate(
-	// 	Type.Intersect([
-	// 		Schema,
-	// 		Type.Object({
-	// 			protocol: Type.Literal(KnownProtocolEnum.openaiCompletions),
-	// 			compat: Type.Optional(OpenAICompletionsCompatSchema),
-	// 		}),
-	// 	]),
-	// );
-	// export const OpenAIResponsesSchema = Type.Evaluate(
-	// 	Type.Intersect([
-	// 		Schema,
-	// 		Type.Object({
-	// 			protocol: Type.Literal(KnownProtocolEnum.openaiResponses),
-	// 			compat: Type.Optional(OpenAIResponsesCompatSchema),
-	// 		}),
-	// 	]),
-	// );
-
-	export const Info = Type.Evaluate(Type.Intersect([Schema, ExtrasSchema]));
+	export const Info = Type.Evaluate(Type.Intersect([Schema, ExtrasSchema, CompatSchema]));
 	export type Info = Static<typeof Info>;
 	export type TModel<TProtocol extends KnownProtocolEnum> = Omit<Info, "protocol"> & { protocol: TProtocol };
-	const BUILTINS = keys(Provider.KnownProviderEnum) as Provider.KnownProviderEnum[];
+	const BUILTINS = keys(KnownProviderEnum) as KnownProviderEnum[];
 
 	export function calculateCost(
 		model: Info,
@@ -131,7 +92,7 @@ export namespace Model {
 		usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 	}
 
-	export type BuiltInModels = Partial<Record<Provider.KnownProviderEnum, Record<string, Info>>>;
+	export type BuiltInModels = Partial<Record<KnownProviderEnum, Record<string, Info>>>;
 
 	export function normalizeInput(input?: string[]): Array<"text" | "image"> {
 		const normalized = new Set<"text" | "image">();
@@ -145,9 +106,9 @@ export namespace Model {
 	}
 
 	export function toProviderInfo(
-		providerId: Provider.KnownProviderEnum,
+		providerId: KnownProviderEnum,
 		provider: ModelCatalog.ModelsDevProvider,
-	): Provider.Info {
+	): ProviderInfo {
 		return {
 			id: providerId,
 			name: provider.name,
@@ -158,7 +119,7 @@ export namespace Model {
 	}
 
 	function toModelValue(
-		providerId: Provider.KnownProviderEnum,
+		providerId: KnownProviderEnum,
 		provider: ModelCatalog.ModelsDevProvider,
 		model: ModelCatalog.ModelsDevModel,
 	): Info {
@@ -171,19 +132,15 @@ export namespace Model {
 			catalog,
 			pick(BUILTINS),
 			mapValues((provider, providerId) =>
-				mapValues(provider.models, (model) =>
-					toModelValue(providerId as Provider.KnownProviderEnum, provider, model),
-				),
+				mapValues(provider.models, (model) => toModelValue(providerId as KnownProviderEnum, provider, model)),
 			),
 		) as BuiltInModels;
 	}
 
 	export const registry = lazy(async () => {
-		const registry: Map<Provider.KnownProviderEnum, Map<string, Info>> = new Map();
+		const registry: Map<KnownProviderEnum, Map<string, Info>> = new Map();
 		const models = await getBuiltInModels();
-		for (const [provider, value] of Object.entries(models) as Array<
-			[Provider.KnownProviderEnum, Record<string, Info>]
-		>) {
+		for (const [provider, value] of Object.entries(models) as Array<[KnownProviderEnum, Record<string, Info>]>) {
 			const providerModels = new Map<string, Info>();
 			for (const [id, model] of Object.entries(value)) {
 				providerModels.set(id, model);
@@ -193,7 +150,7 @@ export namespace Model {
 		return registry;
 	});
 
-	export async function getModel<TProvider extends Provider.KnownProviderEnum, TModel extends Info["id"]>(
+	export async function getModel<TProvider extends KnownProviderEnum, TModel extends Info["id"]>(
 		provider: TProvider,
 		model: TModel,
 		overrides?: Partial<Info>,
@@ -207,12 +164,12 @@ export namespace Model {
 		return result;
 	}
 
-	export async function getProviders(): Promise<Provider.KnownProviderEnum[]> {
+	export async function getProviders(): Promise<KnownProviderEnum[]> {
 		const data = await registry();
 		return Array.from(data.keys());
 	}
 
-	export async function getModels<TProvider extends Provider.KnownProviderEnum>(provider: TProvider): Promise<Info[]> {
+	export async function getModels<TProvider extends KnownProviderEnum>(provider: TProvider): Promise<Info[]> {
 		const data = await registry();
 		const models = data.get(provider);
 		return models ? Array.from(models.values()) : [];
@@ -241,5 +198,27 @@ export namespace Model {
 	export function modelsAreEqual(a: Info | null | undefined, b: Info | null | undefined): boolean {
 		if (!a || !b) return false;
 		return a.id === b.id && a.provider.id === b.provider.id;
+	}
+
+	//
+	// model compat flags mapping based on protocol
+	export interface ProtocolCompatFlagMapping {
+		[KnownProtocolEnum.anthropicMessages]: ModelFlag.AnthropicMessagesCompat;
+		[KnownProtocolEnum.openaiCompletions]: ModelFlag.OpenAICompletionsCompat;
+		[KnownProtocolEnum.openaiResponses]: Record<string, never>;
+	}
+
+	const COMPAT_FLAG_REGISTRY: {
+		[K in keyof ProtocolCompatFlagMapping]: (model: Info) => ProtocolCompatFlagMapping[K];
+	} = {
+		[KnownProtocolEnum.anthropicMessages]: ModelCompat.handleAnthropicMessages,
+		[KnownProtocolEnum.openaiCompletions]: ModelCompat.handleOpenAICompletions,
+		[KnownProtocolEnum.openaiResponses]: () => ({}),
+	};
+
+	export function resolveCompat<TProtocol extends KnownProtocolEnum>(
+		model: TModel<TProtocol>,
+	): ProtocolCompatFlagMapping[TProtocol] {
+		return COMPAT_FLAG_REGISTRY[model.protocol](model);
 	}
 }

@@ -1,21 +1,20 @@
-import { Provider } from "../provider/provider";
 import type { ModelCatalog } from "./catalog";
 import { Model } from "./model";
 
-function defaultBaseUrl(providerId: Provider.KnownProviderEnum): string | undefined {
+function defaultBaseUrl(providerId: Model.KnownProviderEnum): string | undefined {
 	switch (providerId) {
-		case Provider.KnownProviderEnum.openai:
+		case Model.KnownProviderEnum.openai:
 			return "https://api.openai.com/v1";
 		default:
 			return undefined;
 	}
 }
 
-function resolveDefaultProtocol(providerId: Provider.KnownProviderEnum): Model.KnownProtocolEnum {
+function resolveDefaultProtocol(providerId: Model.KnownProviderEnum): Model.KnownProtocolEnum {
 	switch (providerId) {
-		case Provider.KnownProviderEnum.anthropic:
+		case Model.KnownProviderEnum.anthropic:
 			return Model.KnownProtocolEnum.anthropicMessages;
-		case Provider.KnownProviderEnum.openai:
+		case Model.KnownProviderEnum.openai:
 			return Model.KnownProtocolEnum.openaiResponses;
 		default:
 			return Model.KnownProtocolEnum.openaiCompletions;
@@ -23,7 +22,7 @@ function resolveDefaultProtocol(providerId: Provider.KnownProviderEnum): Model.K
 }
 
 export function applyModification(
-	providerId: Provider.KnownProviderEnum,
+	providerId: Model.KnownProviderEnum,
 	provider: ModelCatalog.ModelsDevProvider,
 	model: ModelCatalog.ModelsDevModel,
 ): Model.Info {
@@ -47,9 +46,10 @@ export function applyModification(
 		protocol: resolveDefaultProtocol(providerId),
 		structuredOutput: model.structured_output ?? false,
 	};
+	normalized.compat = Model.resolveCompat(normalized);
 	//
 	// add support for multiple known protocols
-	if (providerId === Provider.KnownProviderEnum.openai) {
+	if (providerId === Model.KnownProviderEnum.openai) {
 		normalized.supportedProtocols = {
 			openaiCompletions: Model.KnownProtocolEnum.openaiCompletions,
 		};
