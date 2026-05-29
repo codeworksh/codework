@@ -686,18 +686,28 @@ export namespace Stream {
 			store: input.store,
 		});
 
+		let appendError: Error | undefined;
 		const producer = new IdempotentProducer(stream.client, input.producerId, {
 			autoClaim: true,
 			fetch: stream.fetch,
-			onError: input.onError,
+			onError(error) {
+				appendError = error;
+				input.onError?.(error);
+			},
 		});
 
 		return {
 			...stream,
 			producer,
-			append(payload) {
+			async append(payload) {
+				appendError = undefined;
 				producer.append(JSON.stringify(payload));
-				return producer.flush();
+				await producer.flush();
+				if (appendError) {
+					const error = appendError;
+					appendError = undefined;
+					throw error;
+				}
 			},
 			flush() {
 				return producer.flush();

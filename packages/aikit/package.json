@@ -23,6 +23,9 @@
 		"url": "git+https://github.com/codeworksh/codework.git",
 		"directory": "packages/aikit"
 	},
+	"bin": {
+		"codework-aikit": "./dist/pack/cli.mjs"
+	},
 	"files": [
 		"dist",
 		"src",
@@ -36,10 +39,10 @@
 			"import": "./dist/pack/index.mjs",
 			"default": "./dist/pack/index.mjs"
 		},
-		"./agent/codemode/drivers/drivers": {
-			"types": "./dist/pack/agent/codemode/drivers/drivers.d.mts",
-			"import": "./dist/pack/agent/codemode/drivers/drivers.mjs",
-			"default": "./dist/pack/agent/codemode/drivers/drivers.mjs"
+		"./oauth/openai-codex": {
+			"types": "./dist/pack/oauth/openai/codex.d.mts",
+			"import": "./dist/pack/oauth/openai/codex.mjs",
+			"default": "./dist/pack/oauth/openai/codex.mjs"
 		},
 		"./package.json": "./package.json"
 	},
@@ -50,25 +53,33 @@
 		"build": "vp pack",
 		"bump": "bumpp",
 		"check": "vp check",
+		"cli": "tsx --conditions=development src/cli.ts",
 		"lint": "vp lint",
 		"test": "vp test"
 	},
 	"dependencies": {
-		"@anthropic-ai/sdk": "^0.80.0",
+		"@ai-sdk/anthropic": "^3.0.79",
+		"@ai-sdk/google": "^3.0.79",
+		"@ai-sdk/google-vertex": "^4.0.137",
+		"@ai-sdk/openai": "^3.0.65",
+		"@ai-sdk/openai-compatible": "^2.0.48",
+		"@ai-sdk/provider": "^3.0.10",
+		"@ai-sdk/xai": "^3.0.92",
+		"@openrouter/ai-sdk-provider": "^2.9.0",
+		"ai": "^6.0.191",
+		"dedent": "^1.7.2",
 		"esbuild": "^0.27.3",
-		"openai": "^6.34.0",
 		"partial-json": "^0.1.7",
 		"quickjs-wasi": "^2.2.0",
 		"remeda": "^2.33.6",
 		"typebox": "^1.1.37",
-		"uuidv7": "^1.2.1"
+		"uuidv7": "^1.2.1",
+		"yargs": "^18.0.0"
 	},
 	"devDependencies": {
 		"@codeworksh/utils": "workspace:*",
+		"@types/yargs": "^17.0.35",
 		"bumpp": "^11.0.1"
-	},
-	"peerDependencies": {
-		"typescript": "^5"
 	},
 	"engines": {
 		"node": ">=24.14.1"

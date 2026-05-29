@@ -1,6 +1,15 @@
 import { defineConfig } from "vite-plus";
 
-const ignoredPaths = ["dist/**", "**/dist/**", "node_modules/**", "**/node_modules/**", ".pnpm-store/**", ".zed/**"];
+const ignoredPaths = [
+	"dist/**",
+	"**/dist/**",
+	"node_modules/**",
+	"**/node_modules/**",
+	".pnpm-store/**",
+	".zed/**",
+	".idea/**",
+	".vscode/**",
+];
 
 export default defineConfig({
 	pack: {

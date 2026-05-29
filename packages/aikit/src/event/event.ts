@@ -1,5 +1,4 @@
 import Type, { type Static } from "typebox";
-import { Agent } from "../agent/agent";
 import { Message } from "../message/message";
 
 // TODO @sanchitrk:
@@ -20,6 +19,7 @@ export namespace Event {
 		toolcallStart: "toolcall.start",
 		toolcallDelta: "toolcall.delta",
 		toolcallEnd: "toolcall.end",
+		toolcallFinal: "toolcall.final",
 
 		done: "done",
 		error: "error",
@@ -86,6 +86,12 @@ export namespace Event {
 		}),
 		Type.Object({
 			type: Type.Literal(LLMMessageEventType.toolcallEnd),
+			partIndex: Type.Number(),
+			toolCall: Message.ToolCallSchema,
+			partial: Message.AssistantMessageSchema,
+		}),
+		Type.Object({
+			type: Type.Literal(LLMMessageEventType.toolcallFinal),
 			partIndex: Type.Number(),
 			toolCall: Message.ToolCallSchema,
 			partial: Message.AssistantMessageSchema,
@@ -190,7 +196,7 @@ export namespace Event {
 	// tool exection
 	const ToolExecutionStartSchema = Type.Evaluate(
 		Type.Intersect([
-			Agent.ToolCallInFlightSchema,
+			Message.ToolCallInFlightSchema,
 			Type.Object({
 				type: Type.Literal(AgentEventType.toolExecutionStart),
 			}),
@@ -200,7 +206,7 @@ export namespace Event {
 
 	const ToolExecutionUpdateSchema = Type.Evaluate(
 		Type.Intersect([
-			Agent.ToolCallInFlightSchema,
+			Message.ToolCallInFlightSchema,
 			Type.Object({
 				type: Type.Literal(AgentEventType.toolExecutionUpdate),
 			}),
@@ -211,7 +217,7 @@ export namespace Event {
 
 	const ToolExecutionEndSchema = Type.Evaluate(
 		Type.Intersect([
-			Agent.ToolCallInFlightSchema,
+			Message.ToolCallInFlightSchema,
 			Type.Object({
 				type: Type.Literal(AgentEventType.toolExecutionEnd),
 			}),

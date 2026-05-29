@@ -12,8 +12,9 @@ const ignoredPaths = [
 ];
 const aliases = {
 	"@codeworksh/aikit": fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),
-	"@codeworksh/aikit/codemode/drivers": fileURLToPath(
-		new URL("./packages/aikit/src/agent/codemode/drivers/drivers.ts", import.meta.url),
+	"@codeworksh/harness": fileURLToPath(new URL("./packages/harness/src/index.ts", import.meta.url)),
+	"@codeworksh/harness/codemode/drivers": fileURLToPath(
+		new URL("./packages/harness/src/harness/codemode/drivers/drivers.ts", import.meta.url),
 	),
 	"@codeworksh/utils": fileURLToPath(new URL("./packages/utils/src/index.ts", import.meta.url)),
 };

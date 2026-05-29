@@ -1,0 +1,70 @@
+{
+	"name": "@codeworksh/harness",
+	"version": "0.0.1",
+	"description": "AI agent harness — agent loop, tools, and code execution sandbox.",
+	"keywords": [
+		"agent",
+		"ai",
+		"coding-agent",
+		"harness",
+		"tool-execution",
+		"typescript"
+	],
+	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/harness",
+	"bugs": {
+		"url": "https://github.com/codeworksh/codework/issues"
+	},
+	"license": "MIT",
+	"author": "Sanchit Kudari",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/harness"
+	},
+	"files": [
+		"dist",
+		"src"
+	],
+	"type": "module",
+	"types": "./dist/pack/index.d.mts",
+	"exports": {
+		".": {
+			"types": "./dist/pack/index.d.mts",
+			"import": "./dist/pack/index.mjs",
+			"default": "./dist/pack/index.mjs"
+		},
+		"./codemode/drivers": {
+			"types": "./dist/pack/harness/codemode/drivers/drivers.d.mts",
+			"import": "./dist/pack/harness/codemode/drivers/drivers.mjs",
+			"default": "./dist/pack/harness/codemode/drivers/drivers.mjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"check": "vp check",
+		"lint": "vp lint",
+		"test": "vp test"
+	},
+	"dependencies": {
+		"@ai-sdk/provider": "^3.0.10",
+		"@codeworksh/aikit": "workspace:*",
+		"@codeworksh/utils": "workspace:*",
+		"dedent": "^1.7.2",
+		"esbuild": "^0.27.3",
+		"partial-json": "^0.1.7",
+		"quickjs-wasi": "^2.2.0",
+		"remeda": "^2.33.6",
+		"typebox": "^1.1.37",
+		"uuidv7": "^1.2.1"
+	},
+	"devDependencies": {
+		"bumpp": "^11.0.1"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	}
+}

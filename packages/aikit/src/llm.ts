@@ -1,8 +1,7 @@
 import { Model } from "./model/model";
-import type { Provider } from "./provider/provider";
 
 type LLM = {
-	<TProvider extends Provider.KnownProvider, TModel extends Model.Info["id"]>(
+	<TProvider extends string, TModel extends Model.Info["id"]>(
 		provider: TProvider,
 		model: TModel,
 		overrides?: Partial<Model.Info>,
@@ -11,11 +10,10 @@ type LLM = {
 	models: typeof Model.getModels;
 	providers: typeof Model.getProviders;
 	registry: typeof Model.registry;
-	supportsXhigh: typeof Model.supportsXhigh;
 	modelsAreEqual: typeof Model.modelsAreEqual;
 };
 
-const llmImpl = async <TProvider extends Provider.KnownProvider, TModel extends Model.Info["id"]>(
+const llmImpl = async <TProvider extends string, TModel extends Model.Info["id"]>(
 	provider: TProvider,
 	model: TModel,
 	overrides?: Partial<Model.Info>,
@@ -26,6 +24,5 @@ export const llm = Object.assign(llmImpl, {
 	models: Model.getModels,
 	providers: Model.getProviders,
 	registry: Model.registry,
-	supportsXhigh: Model.supportsXhigh,
 	modelsAreEqual: Model.modelsAreEqual,
 }) as LLM;

@@ -1,7 +1,16 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
-const ignoredPaths = ["dist/**", "**/dist/**", "node_modules/**", "**/node_modules/**", ".pnpm-store/**", ".zed/**"];
+const ignoredPaths = [
+	"dist/**",
+	"**/dist/**",
+	"node_modules/**",
+	"**/node_modules/**",
+	".pnpm-store/**",
+	".zed/**",
+	".idea/**",
+	".vscode/**",
+];
 const aliases = {
 	"@codeworksh/utils": fileURLToPath(new URL("../utils/src/index.ts", import.meta.url)),
 };
@@ -11,7 +20,7 @@ export default defineConfig({
 		alias: aliases,
 	},
 	pack: {
-		entry: ["src/index.ts", "src/agent/codemode/drivers/drivers.ts"],
+		entry: ["src/index.ts", "src/cli.ts", "src/oauth/openai/codex.ts"],
 		format: ["esm"],
 		outDir: "dist/pack",
 		deps: {

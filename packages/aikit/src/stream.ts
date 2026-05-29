@@ -1,8 +1,8 @@
-import "./provider/register";
+import "./llm/register";
 
 import type { Message } from "./message/message";
 import type { Model } from "./model/model";
-import { Stream } from "./provider/stream";
+import { Protocol } from "./llm/protocol";
 import type { AssistantMessageEventStream } from "./utils/eventstream";
 
 /**
@@ -28,23 +28,23 @@ import type { AssistantMessageEventStream } from "./utils/eventstream";
  *
  * ```ts
  * const message = await stream.complete(model, context, options);
- * const simple = stream.simple(model, context, options);
- * const simpleMessage = await stream.completeSimple(model, context, options);
  * ```
  */
 type StreamCallable = {
-	(model: Model.Info, context: Message.Context, options?: Stream.Options): AssistantMessageEventStream;
-	complete: typeof Stream.complete;
-	simple: typeof Stream.streamSimple;
-	completeSimple: typeof Stream.completeSimple;
-	resolveProtocolProvider: typeof Stream.resolveProtocolProvider;
+	<TProtocol extends Protocol.ProtocolWithOptions>(
+		model: Model.TModel<TProtocol>,
+		context: Message.Context,
+		options?: Protocol.OptionsFor<TProtocol>,
+	): AssistantMessageEventStream;
+	complete: typeof Protocol.complete;
+	resolveProtocolProvider: typeof Protocol.resolveProtocolProvider;
 };
 
-const streamImpl = (
-	model: Model.Info,
+const streamImpl = <TProtocol extends Protocol.ProtocolWithOptions>(
+	model: Model.TModel<TProtocol>,
 	context: Message.Context,
-	options?: Stream.Options,
-): AssistantMessageEventStream => Stream.stream(model, context, options);
+	options?: Protocol.OptionsFor<TProtocol>,
+): AssistantMessageEventStream => Protocol.stream(model, context, options);
 
 /**
  * Start a streaming assistant response for a model/context pair.
@@ -53,20 +53,12 @@ const streamImpl = (
  * Attached helpers:
  *
  * - `stream.complete(...)` resolves the final assistant message without manually iterating events.
- * - `stream.simple(...)` uses `Stream.SimpleOptions` for higher-level reasoning controls.
- * - `stream.completeSimple(...)` is the non-streaming counterpart to `stream.simple(...)`.
  * - `stream.resolveProtocolProvider(...)` exposes protocol resolution for advanced integrations.
  */
 export const stream = Object.assign(streamImpl, {
-	complete: Stream.complete,
-	simple: Stream.streamSimple,
-	completeSimple: Stream.completeSimple,
-	resolveProtocolProvider: Stream.resolveProtocolProvider,
+	complete: Protocol.complete,
+	resolveProtocolProvider: Protocol.resolveProtocolProvider,
 }) as StreamCallable;
 
 /** Resolve a streamed response directly to the final assistant message. */
-export const complete = Stream.complete;
-/** Start a stream using the simplified options surface. */
-export const streamSimple = Stream.streamSimple;
-/** Resolve a simplified stream request directly to the final assistant message. */
-export const completeSimple = Stream.completeSimple;
+export const complete = Protocol.complete;

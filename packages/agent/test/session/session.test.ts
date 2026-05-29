@@ -2,11 +2,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Session as SessionNamespace } from "../../src/session/session";
+import { StreamStore } from "@durable-streams/server";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 process.env.CODEWORK_HOME_DIR = path.join(os.tmpdir(), "codework-agent-session-test");
 
 const { Bus } = await import("../../src/streaming/bus");
+const { GlobalBus } = await import("../../src/streaming/global");
 const { Database } = await import("../../src/storage/db");
 const { Instance } = await import("../../src/project/instance");
 const { createLocalNodeEnv } = await import("../../src/sandbox/builtin");
@@ -15,8 +17,8 @@ const { WorkspaceContext } = await import("../../src/workspace/context");
 
 const tempDirectories = new Set<string>();
 
-async function readEvents<T>() {
-	const reader = await Bus.reader({ topic: "events" });
+async function readEvents<T>(store: StreamStore) {
+	const reader = await GlobalBus.reader({ store, topic: "events" });
 	const response = await reader.client.stream<T>({
 		offset: "-1",
 		live: false,
@@ -25,9 +27,9 @@ async function readEvents<T>() {
 	return response.json<T>();
 }
 
-async function waitForEvents<T>(count: number) {
+async function waitForEvents<T>(store: StreamStore, count: number) {
 	for (let attempt = 0; attempt < 20; attempt++) {
-		const events = await readEvents<T>();
+		const events = await readEvents<T>(store);
 		if (events.length >= count) return events;
 		await new Promise((resolve) => setTimeout(resolve, 5));
 	}
@@ -42,6 +44,7 @@ async function createTempDirectory(name: string) {
 
 afterEach(async () => {
 	await Instance.disposeAll();
+	await GlobalBus.disposeAll();
 	Database.close();
 	await Promise.all(
 		[...tempDirectories].map(async (directory) => {
@@ -55,6 +58,7 @@ describe("Session events", () => {
 	it("emits session.created when a session is created", async () => {
 		const directory = await createTempDirectory("session-event");
 		const sandbox = await createLocalNodeEnv(directory);
+		const store = new StreamStore();
 
 		await WorkspaceContext.provide({
 			workspaceId: "session-event-workspace",
@@ -64,11 +68,13 @@ describe("Session events", () => {
 					id: sandbox.id,
 					directory: sandbox.cwd,
 					fn: async () => {
-						const bus = await Bus.create({
+						const global = await GlobalBus.create({
 							stream: true,
+							store,
 							producerId: "global",
 							topic: "events",
 						});
+						const bus = await Bus.create({ global });
 						const received: SessionNamespace.Info[] = [];
 
 						const unsubscribe = bus.subscribe(Session.Event.Created, (event) => {
@@ -90,7 +96,7 @@ describe("Session events", () => {
 							properties: {
 								info: SessionNamespace.Info;
 							};
-						}>(2);
+						}>(store, 2);
 						const created = durableEvents.filter((event) => event.type === Session.Event.Created.type);
 
 						expect(created.map((event) => event.properties.info.id)).toEqual([first.id, second.id]);

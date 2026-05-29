@@ -6,7 +6,6 @@ import type { Static, TSchema } from "typebox";
 import Schema from "typebox/schema";
 import Value from "typebox/value";
 
-import type { Agent } from "../agent/agent";
 import type { Message } from "../message/message";
 
 const validators = new WeakMap<TSchema, ReturnType<typeof Schema.Compile>>();
@@ -63,7 +62,7 @@ export function validateSchema<T extends TSchema>(schema: T, value: unknown, lab
  */
 export function validateToolCall<T extends Message.Tool>(
 	tools: T[],
-	toolExecution: Agent.ToolCallInFlight,
+	toolExecution: Message.ToolCallInFlight,
 ): Message.ToolArguments<T> {
 	const tool = tools.find((t) => t.name === toolExecution.name);
 	if (!tool) {
@@ -77,7 +76,7 @@ export function validateToolCall<T extends Message.Tool>(
  */
 export function validateToolArguments<T extends Message.Tool>(
 	tool: T,
-	toolExecution: Agent.ToolCallInFlight,
+	toolExecution: Message.ToolCallInFlight,
 ): Message.ToolArguments<T> {
 	return validateSchema(
 		tool.parameters,

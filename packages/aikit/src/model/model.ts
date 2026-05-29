@@ -1,22 +1,72 @@
 import { lazy } from "@codeworksh/utils";
 import Type, { type Static } from "typebox";
-import { keys, mapValues, pick, pipe } from "remeda";
-import { Provider } from "../provider/provider";
 import { ModelCatalog } from "./catalog";
-import { applyModification } from "./transform";
 
 export namespace Model {
-	export const KnownProtocolEnum = {
-		anthropicMessages: "anthropic-messages",
-		openaiCompletions: "openai-completions",
-		openaiResponses: "openai-responses",
+	// re-export
+	export const KnownProviderEnum = ModelCatalog.KnownProviderEnum;
+	export const KnownProviderEnumSchema = ModelCatalog.KnownProviderEnumSchema;
+	export type KnownProviderEnum = ModelCatalog.KnownProviderEnum;
+
+	// Common reasoning-effort levels used by adapters that expose model reasoning,
+	// thinking, or deliberation controls. Protocol-specific layers can map these
+	// values to native fields like OpenAI `reasoning_effort`, Anthropic `thinking`,
+	// or Gemini `thinkingConfig`.
+	export const ThinkingLevelEnum = {
+		// Disable explicit reasoning controls when the provider supports turning them off.
+		off: "off",
+		// Smallest reasoning budget/effort above off; useful for fastest low-cost responses.
+		minimal: "minimal",
+		// Light reasoning for simple tasks that still benefit from some deliberation.
+		low: "low",
+		// Balanced default for general tasks.
+		medium: "medium",
+		// Higher reasoning effort for complex coding, analysis, or planning.
+		high: "high",
+		// Maximum reasoning effort for the hardest tasks where latency/cost tradeoffs are acceptable.
+		xhigh: "xhigh",
 	} as const;
-	export const KnownProtocolSchema = Type.Union([
-		Type.Literal(KnownProtocolEnum.anthropicMessages),
-		Type.Literal(KnownProtocolEnum.openaiCompletions),
-		Type.Literal(KnownProtocolEnum.openaiResponses),
+
+	export const ThinkingLevel = Type.Union([
+		Type.Literal(ThinkingLevelEnum.off),
+		Type.Literal(ThinkingLevelEnum.minimal),
+		Type.Literal(ThinkingLevelEnum.low),
+		Type.Literal(ThinkingLevelEnum.medium),
+		Type.Literal(ThinkingLevelEnum.high),
+		Type.Literal(ThinkingLevelEnum.xhigh),
 	]);
-	export type KnownProtocol = Static<typeof KnownProtocolSchema>;
+	export type ThinkingLevel = Static<typeof ThinkingLevel>;
+
+	export const ActiveThinkingLevel = Type.Union([
+		Type.Literal(ThinkingLevelEnum.minimal),
+		Type.Literal(ThinkingLevelEnum.low),
+		Type.Literal(ThinkingLevelEnum.medium),
+		Type.Literal(ThinkingLevelEnum.high),
+		Type.Literal(ThinkingLevelEnum.xhigh),
+	]);
+	export type ActiveThinkingLevel = Static<typeof ActiveThinkingLevel>;
+
+	const ACTIVE_THINKING_LEVELS = [
+		ThinkingLevelEnum.minimal,
+		ThinkingLevelEnum.low,
+		ThinkingLevelEnum.medium,
+		ThinkingLevelEnum.high,
+		ThinkingLevelEnum.xhigh,
+	] as const satisfies readonly ActiveThinkingLevel[];
+	const MODEL_THINKING_LEVELS = [
+		ThinkingLevelEnum.off,
+		...ACTIVE_THINKING_LEVELS,
+	] as const satisfies readonly ThinkingLevel[];
+
+	export const ProviderInfo = Type.Object({
+		id: Type.String(),
+		name: Type.String(),
+		source: Type.Enum(["env", "config", "custom", "api", "unknown"]),
+		env: Type.Array(Type.String()),
+		key: Type.Optional(Type.String()), // runtime api/oauth key
+		options: Type.Optional(Type.Record(Type.String(), Type.Any())),
+	});
+	export type ProviderInfo = Static<typeof ProviderInfo>;
 
 	const InputSchema = Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]));
 	const CostSchema = Type.Object({
@@ -25,97 +75,78 @@ export namespace Model {
 		cacheRead: Type.Number(),
 		cacheWrite: Type.Number(),
 	});
-	const HeadersSchema = Type.Optional(Type.Record(Type.String(), Type.String()));
+	const SupportedProtocolsSchema = Type.Partial(
+		Type.Object({
+			anthropic: KnownProviderEnumSchema,
+			google: KnownProviderEnumSchema,
+			googleVertex: KnownProviderEnumSchema,
+			googleVertexAnthropic: KnownProviderEnumSchema,
+			openai: KnownProviderEnumSchema,
+			openaiCompatible: KnownProviderEnumSchema,
+			openrouter: KnownProviderEnumSchema,
+			xai: KnownProviderEnumSchema,
+		}),
+	);
 
-	export const SupportedProtocolsSchema = Type.Object({
-		anthropicMessages: Type.Optional(Type.Literal(KnownProtocolEnum.anthropicMessages)),
-		openaiCompletions: Type.Optional(Type.Literal(KnownProtocolEnum.openaiCompletions)),
-		openaiResponses: Type.Optional(Type.Literal(KnownProtocolEnum.openaiResponses)),
+	export const APIMethodEnum = {
+		languageModel: "languageModel",
+		chat: "chat",
+		completion: "completion",
+		completionModel: "completionModel",
+		messages: "messages",
+		responses: "responses",
+	} as const;
+	export const APIMethodEnumSchema = Type.Union([
+		Type.Literal(APIMethodEnum.languageModel),
+		Type.Literal(APIMethodEnum.chat),
+		Type.Literal(APIMethodEnum.completion),
+		Type.Literal(APIMethodEnum.completionModel),
+		Type.Literal(APIMethodEnum.messages),
+		Type.Literal(APIMethodEnum.responses),
+	]);
+	export type APIMethodEnum = Static<typeof APIMethodEnumSchema>;
+
+	export const APIMetadataSchema = Type.Object({
+		id: Type.Optional(Type.String()),
+		url: Type.Optional(Type.String()),
+		method: Type.Optional(APIMethodEnumSchema),
 	});
-	//
-	// reprsents common base schema for a model
-	export const BaseSchema = Type.Object({
+	export type APIMetadata = Static<typeof APIMetadataSchema>;
+
+	export const ThinkingLevelMapSchema = Type.Partial(
+		Type.Record(
+			ThinkingLevel, // Safe key validation
+			Type.Union([Type.String(), Type.Null()]), // Allowed values
+		),
+	);
+	export type ThinkingLevelMap = Static<typeof ThinkingLevelMapSchema>;
+
+	export const Schema = Type.Object({
 		id: Type.String(),
 		name: Type.String(),
-		provider: Provider.Info,
+		provider: ProviderInfo,
 		baseUrl: Type.String(),
 		reasoning: Type.Boolean(),
+		thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
 		input: InputSchema,
 		cost: CostSchema,
 		contextWindow: Type.Number(),
 		maxTokens: Type.Number(),
-		headers: HeadersSchema,
-		supportedProtocols: Type.Optional(Type.Partial(SupportedProtocolsSchema)), // optionally supported protocols
+		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+		npm: Type.Optional(Type.String()),
+		api: Type.Optional(APIMetadataSchema),
+		providerOptionsKey: Type.Optional(Type.String()),
+		options: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+		providerOptions: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+		protocol: KnownProviderEnumSchema, // provider as the underlying protocol
+		supportedProtocols: Type.Optional(SupportedProtocolsSchema), // provider as the underlying supported protocols
 	});
 
-	/**
-	 * Compatibility settings for OpenAI-compatible completions APIs.
-	 * Use this to override URL-based auto-detection for custom providers.
-	 */
-	export const OpenAICompletionsCompatSchema = Type.Object({
-		supportsStore: Type.Optional(Type.Boolean()),
-		supportsDeveloperRole: Type.Optional(Type.Boolean()),
-		supportsReasoningEffort: Type.Optional(Type.Boolean()),
-		reasoningEffortMap: Type.Optional(Provider.ReasoningEffortMapSchema),
-		supportsUsageInStreaming: Type.Optional(Type.Boolean()),
-		maxTokensField: Type.Optional(Type.Union([Type.Literal("max_completion_tokens"), Type.Literal("max_tokens")])),
-		requiresToolResultName: Type.Optional(Type.Boolean()),
-		requiresAssistantAfterToolResult: Type.Optional(Type.Boolean()),
-		requiresThinkingAsText: Type.Optional(Type.Boolean()),
-		thinkingFormat: Type.Optional(
-			Type.Union([
-				Type.Literal("openai"),
-				Type.Literal("openrouter"),
-				Type.Literal("zai"),
-				Type.Literal("qwen"),
-				Type.Literal("qwen-chat-template"),
-			]),
-		),
-		openRouterRouting: Type.Optional(Provider.OpenRouterRoutingSchema),
-		vercelGatewayRouting: Type.Optional(Provider.VercelGatewayRoutingSchema),
-		zaiToolStream: Type.Optional(Type.Boolean()),
-		supportsStrictMode: Type.Optional(Type.Boolean()),
-	});
-	export type OpenAICompletionsCompat = Static<typeof OpenAICompletionsCompatSchema>;
+	export const ExtrasSchema = Type.Object({});
 
-	/** Compatibility settings for OpenAI Responses APIs. */
-	export const OpenAIResponsesCompatSchema = Type.Object({});
-	export type OpenAIResponsesCompat = Static<typeof OpenAIResponsesCompatSchema>;
-
-	export const OpenAICompatSchema = Type.Union([OpenAICompletionsCompatSchema, OpenAIResponsesCompatSchema]);
-
-	export const AnthropicSchema = Type.Evaluate(
-		Type.Intersect([
-			BaseSchema,
-			Type.Object({
-				protocol: Type.Literal(KnownProtocolEnum.anthropicMessages),
-			}),
-		]),
-	);
-
-	export const OpenAICompletionsSchema = Type.Evaluate(
-		Type.Intersect([
-			BaseSchema,
-			Type.Object({
-				protocol: Type.Literal(KnownProtocolEnum.openaiCompletions),
-				compat: Type.Optional(OpenAICompletionsCompatSchema),
-			}),
-		]),
-	);
-	export const OpenAIResponsesSchema = Type.Evaluate(
-		Type.Intersect([
-			BaseSchema,
-			Type.Object({
-				protocol: Type.Literal(KnownProtocolEnum.openaiResponses),
-				compat: Type.Optional(OpenAIResponsesCompatSchema),
-			}),
-		]),
-	);
-
-	export const Info = Type.Union([AnthropicSchema, OpenAICompletionsSchema, OpenAIResponsesSchema]);
+	export const Info = Type.Evaluate(Type.Intersect([Schema, ExtrasSchema]));
 	export type Info = Static<typeof Info>;
-	export type TModel<TProtocol extends KnownProtocol> = Extract<Info, { protocol: TProtocol }>;
-	const BUILTINS = keys(Provider.KnownProviderEnum) as Provider.KnownProvider[];
+	export type TModel<TProtocol extends KnownProviderEnum> = Omit<Info, "protocol"> & { protocol: TProtocol };
 
 	export function calculateCost(
 		model: Info,
@@ -140,7 +171,7 @@ export namespace Model {
 		usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 	}
 
-	export type BuiltInModels = Partial<Record<Provider.KnownProvider, Record<string, Info>>>;
+	export type BuiltInModels = Partial<Record<string, Record<string, Info>>>;
 
 	export function normalizeInput(input?: string[]): Array<"text" | "image"> {
 		const normalized = new Set<"text" | "image">();
@@ -153,42 +184,14 @@ export namespace Model {
 		return [...normalized];
 	}
 
-	export function toProviderInfo(
-		providerId: Provider.KnownProvider,
-		provider: ModelCatalog.ModelsDevProvider,
-	): Provider.Info {
-		return {
-			id: providerId,
-			name: provider.name,
-			env: provider.env,
-			key: provider.key,
-			options: provider.headers,
-		};
-	}
-
-	function toModelValue(
-		providerId: Provider.KnownProvider,
-		provider: ModelCatalog.ModelsDevProvider,
-		model: ModelCatalog.ModelsDevModel,
-	): Info {
-		return applyModification(providerId, provider, model);
-	}
-
 	export async function getBuiltInModels(): Promise<BuiltInModels> {
-		const catalog = await ModelCatalog.get();
-		return pipe(
-			catalog,
-			pick(BUILTINS),
-			mapValues((provider, providerId) =>
-				mapValues(provider.models, (model) => toModelValue(providerId as Provider.KnownProvider, provider, model)),
-			),
-		) as BuiltInModels;
+		return (await ModelCatalog.get()) as BuiltInModels;
 	}
 
 	export const registry = lazy(async () => {
-		const registry: Map<Provider.KnownProvider, Map<string, Info>> = new Map();
+		const registry: Map<string, Map<string, Info>> = new Map();
 		const models = await getBuiltInModels();
-		for (const [provider, value] of Object.entries(models) as Array<[Provider.KnownProvider, Record<string, Info>]>) {
+		for (const [provider, value] of Object.entries(models) as Array<[string, Record<string, Info>]>) {
 			const providerModels = new Map<string, Info>();
 			for (const [id, model] of Object.entries(value)) {
 				providerModels.set(id, model);
@@ -198,7 +201,12 @@ export namespace Model {
 		return registry;
 	});
 
-	export async function getModel<TProvider extends Provider.KnownProvider, TModel extends Info["id"]>(
+	export function supportsProtocol(model: Info, protocol: KnownProviderEnum): boolean {
+		if (model.protocol === protocol) return true;
+		return Object.values(model.supportedProtocols ?? {}).includes(protocol);
+	}
+
+	export async function getModel<TProvider extends string, TModel extends Info["id"]>(
 		provider: TProvider,
 		model: TModel,
 		overrides?: Partial<Info>,
@@ -207,36 +215,26 @@ export namespace Model {
 		const providerModels = data.get(provider);
 		const result = providerModels?.get(model);
 		if (result && overrides) {
-			return { ...result, ...overrides };
+			if (overrides.protocol && !supportsProtocol(result, overrides.protocol)) {
+				return undefined;
+			}
+			return {
+				...result,
+				...overrides,
+			};
 		}
 		return result;
 	}
 
-	export async function getProviders(): Promise<Provider.KnownProvider[]> {
+	export async function getProviders(): Promise<string[]> {
 		const data = await registry();
 		return Array.from(data.keys());
 	}
 
-	export async function getModels<TProvider extends Provider.KnownProvider>(provider: TProvider): Promise<Info[]> {
+	export async function getModels<TProvider extends string>(provider: TProvider): Promise<Info[]> {
 		const data = await registry();
 		const models = data.get(provider);
 		return models ? Array.from(models.values()) : [];
-	}
-
-	function isGpt5OrLater(modelID: string): boolean {
-		const match = /^gpt-(\d+)/.exec(modelID);
-		if (!match) {
-			return false;
-		}
-		return Number(match[1]) >= 5;
-	}
-
-	/**
-	 * Check if a model supports xhigh thinking level.
-	 * Currently only certain OpenAI Codex models support this.
-	 */
-	export function supportsXhigh(model: Info): boolean {
-		return isGpt5OrLater(model.id);
 	}
 
 	/**
@@ -246,5 +244,39 @@ export namespace Model {
 	export function modelsAreEqual(a: Info | null | undefined, b: Info | null | undefined): boolean {
 		if (!a || !b) return false;
 		return a.id === b.id && a.provider.id === b.provider.id;
+	}
+
+	export function getSupportedThinkingLevels<TProtocol extends KnownProviderEnum>(
+		model: TModel<TProtocol>,
+	): ThinkingLevel[] {
+		if (!model.reasoning) return ["off"];
+
+		return MODEL_THINKING_LEVELS.filter((level) => {
+			const mapped = model.thinkingLevelMap?.[level];
+			if (mapped === null) return false;
+			if (level === "xhigh") return mapped !== undefined;
+			return true;
+		});
+	}
+
+	export function clampThinkingLevel<TProtocol extends KnownProviderEnum>(
+		model: TModel<TProtocol>,
+		level: ThinkingLevel,
+	): ThinkingLevel {
+		const availableLevels = getSupportedThinkingLevels(model);
+		if (availableLevels.includes(level)) return level;
+
+		const requestedIndex = MODEL_THINKING_LEVELS.indexOf(level);
+		if (requestedIndex === -1) return availableLevels[0] ?? "off";
+
+		for (let i = requestedIndex; i < MODEL_THINKING_LEVELS.length; i++) {
+			const candidate = MODEL_THINKING_LEVELS[i]!;
+			if (availableLevels.includes(candidate)) return candidate;
+		}
+		for (let i = requestedIndex - 1; i >= 0; i--) {
+			const candidate = MODEL_THINKING_LEVELS[i]!;
+			if (availableLevels.includes(candidate)) return candidate;
+		}
+		return availableLevels[0] ?? "off";
 	}
 }

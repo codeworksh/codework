@@ -1,94 +1,52 @@
 import { Filesystem, lazy } from "@codeworksh/utils";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import Type, { type Static } from "typebox";
 
 export namespace ModelCatalog {
-	export interface ModelsDevModel {
-		id: string;
-		name: string;
-		family: string;
-		attachment: boolean;
-		reasoning?: boolean;
-		tool_call?: boolean;
-		temperature?: boolean;
-		knowledge?: string | boolean;
-		release_date: string;
-		last_updated: string;
-		modalities: {
-			input?: string[];
-			output: string[];
-		};
-		open_weights: boolean;
-		baseUrl?: string;
-		headers?: Record<string, string>;
-		cost?: {
-			input?: number;
-			output?: number;
-			cache_read?: number;
-			cache_write?: number;
-		};
-		limit?: {
-			context?: number;
-			output?: number;
-		};
-	}
-	export interface ModelsDevProvider {
-		id: string;
-		env: string[];
-		npm?: string;
-		api: string;
-		baseUrl?: string;
-		name: string;
-		doc?: string;
-		key?: string;
-		headers?: Record<string, string>;
-		models: Record<string, ModelsDevModel>;
-	}
-	// Doesn't represent the full spec from models.dev.
-	// Represents the provider entries on a best-effort basis.
-	export type ModelsDevCatalog = Record<string, ModelsDevProvider>;
-	type LazyModelsDevCatalog = ReturnType<typeof lazy<Promise<ModelsDevCatalog>>>;
+	// known AI SDK LLM providers
+	// used as the public protocol discriminator for the AI SDK transport layer
+	export const KnownProviderEnum = {
+		anthropic: "anthropic",
+		google: "google",
+		googleVertex: "google-vertex",
+		googleVertexAnthropic: "google-vertex-anthropic",
+		openai: "openai",
+		openaiCompatible: "openai-compatible",
+		openrouter: "openrouter",
+		xai: "xai",
+	} as const;
+	export const KnownProviderEnumSchema = Type.Union([
+		Type.Literal(KnownProviderEnum.anthropic),
+		Type.Literal(KnownProviderEnum.google),
+		Type.Literal(KnownProviderEnum.googleVertex),
+		Type.Literal(KnownProviderEnum.googleVertexAnthropic),
+		Type.Literal(KnownProviderEnum.openai),
+		Type.Literal(KnownProviderEnum.openaiCompatible),
+		Type.Literal(KnownProviderEnum.openrouter),
+		Type.Literal(KnownProviderEnum.xai),
+	]);
+	export type KnownProviderEnum = Static<typeof KnownProviderEnumSchema>;
 
-	function modelsDevURL(): string {
-		return process.env.OPENCODE_MODELS_URL || "https://models.dev";
+	export type GeneratedCatalog = Partial<Record<string, Record<string, unknown>>>;
+	type LazyGeneratedCatalog = ReturnType<typeof lazy<Promise<GeneratedCatalog>>>;
+
+	export function projectRoot(): string {
+		return fileURLToPath(new URL("../../../..", import.meta.url));
 	}
 
-	function modelsDevPath(): string | undefined {
-		return process.env.CODEWORK_AIKIT_MODELS_PATH;
+	export const filename = "models.gen.json";
+	export function path(): string {
+		return resolve(process.env.CODEWORK_MODELGEN_PATH ?? join(projectRoot(), filename));
 	}
 
-	export const modelsDevData: LazyModelsDevCatalog = lazy(async () => {
-		const path = modelsDevPath();
-		if (path) {
-			const result = await Filesystem.readJson<ModelsDevCatalog>(path).catch(() => undefined);
-			if (result) return result;
-		}
-
-		const json = await fetch(`${modelsDevURL()}/api.json`).then((x) => x.text());
-		return JSON.parse(json) as ModelsDevCatalog;
+	export const data: LazyGeneratedCatalog = lazy(async () => {
+		const content = await Filesystem.readText(path()).catch(() => undefined);
+		if (!content?.trim()) return {};
+		return JSON.parse(content) as GeneratedCatalog;
 	});
 
-	export async function get(): Promise<ModelsDevCatalog> {
-		return modelsDevData();
+	export async function get(): Promise<GeneratedCatalog> {
+		return data().catch(() => ({}));
 	}
-
-	export async function refresh(): Promise<void> {
-		const result = await fetch(`${modelsDevURL()}/api.json`, {
-			signal: AbortSignal.timeout(10 * 1000),
-		}).catch(() => undefined);
-		if (!result?.ok) return;
-
-		const json = await result.text();
-		const path = modelsDevPath();
-		if (path) {
-			await Filesystem.write(path, json);
-		}
-		modelsDevData.reset();
-	}
-
-	void ModelCatalog.refresh();
-	setInterval(
-		async () => {
-			await ModelCatalog.refresh();
-		},
-		60 * 1000 * 60,
-	).unref();
 }

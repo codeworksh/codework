@@ -1,8 +1,20 @@
 # @codeworksh/aikit
 
-@codeworksh/aikit is **TypeScript SDK** for building AI agents and agentic harness. Provides a unified API for working with multiple LLM providers and support for tool calling(function calling) required for agentic workflows.
+@codeworksh/aikit is a **TypeScript SDK** for building AI agents and agentic harnesses. It provides a unified API for working with multiple LLM providers, built on top of the Vercel AI SDK, with full support for tool calling (function calling) required for agentic workflows.
 
-@codeworksh/aikit isn't just another SDK. It gives you the basic primitives for streaming LLM responses without the extra bloat, letting you handle the agentic orchestration yourself.
+It gives you the basic primitives for streaming LLM responses without the extra bloat, letting you handle the orchestration yourself.
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Supported Providers](#supported-providers)
+- [Quick Start](#quick-start)
+- [Tools](#tools)
+- [Providers and Models](#providers-and-models)
+- [CLI Tools](#cli-tools)
+  - [Model Generation](#model-generation)
+  - [OAuth Providers](#oauth-providers)
+- [Contribute](#contribute)
 
 ## Installation
 
@@ -12,184 +24,147 @@ npm install @codeworksh/aikit
 
 Node `>=24.14.1` is required.
 
-## API Overview
+## Supported Providers
 
-- `llm(...)` to resolve a model from the built-in registry
-- `stream(...)` and `stream.complete(...)` for provider-normalized LLM streaming
-- `Agent.create(...)` for a stateful agent instance
-- `agent.loop(...)` and `agent.loopContinue(...)` for lower-level turn orchestration
-- `Message` helpers for typed messages and generated `messageId` values
+Built on top of the Vercel AI SDK, `@codeworksh/aikit` supports a wide array of providers natively:
+
+- **Anthropic** (`@ai-sdk/anthropic`)
+- **OpenAI** (`@ai-sdk/openai`)
+- **Google** (`@ai-sdk/google`)
+- **Google Vertex AI** (`@ai-sdk/google-vertex`)
+- **xAI** (`@ai-sdk/xai`)
+- **OpenRouter** (`@openrouter/ai-sdk-provider`)
+- **OpenAI Compatible APIs** (`@ai-sdk/openai-compatible`)
 
 ## Quick Start
 
 ```ts
-import { Agent } from "@codeworksh/aikit";
+import { llm, stream, Message } from "@codeworksh/aikit";
 
-const agent = await Agent.create({
-	provider: "anthropic",
-	model: "claude-haiku-4-5-20251001",
-	getApiKey: async () => process.env.ANTHROPIC_API_KEY,
-});
-
-agent.setSystemPrompt("Be concise.");
-
-await agent.prompt([{ type: "text", text: "Reply with exactly: hello" }]);
-
-const lastMessage = agent.state.messages.at(-1);
-console.log(lastMessage?.messageId);
-console.log(lastMessage?.role);
-```
-
-## Stream Events
-
-Use `stream(...)` when you want token and part-level events.
-
-```ts
-import { Message, llm, stream } from "@codeworksh/aikit";
-
+// Resolve a model from the built-in registry
 const model = await llm("anthropic", "claude-haiku-4-5-20251001");
 if (!model) throw new Error("Model not found");
 
-const s = stream(
-	model,
-	{
-		messages: [
-			Message.createUserMessage({
-				role: "user",
-				time: { created: Date.now() },
-				parts: [{ type: "text", text: "Count from 1 to 3" }],
-			}),
-		],
-	},
-	{ apiKey: process.env.ANTHROPIC_API_KEY },
-);
+// Setup conversation context
+const context: Message.Context = {
+  systemPrompt: "You are a helpful coding assistant.",
+  messages: [
+    Message.createUserMessage({
+      role: "user",
+      time: { created: Date.now() },
+      parts: [{ type: "text", text: "Write a simple loop in TypeScript." }],
+    }),
+  ],
+};
+
+// Option 1: Stream events
+const s = stream(model, context, { apiKey: process.env.ANTHROPIC_API_KEY });
 
 for await (const event of s) {
-	if (event.type === "text.delta") {
-		process.stdout.write(event.delta);
-	}
+  if (event.type === "text.delta") {
+    process.stdout.write(event.delta);
+  }
 }
 
 const finalMessage = await s.result();
-console.log(finalMessage.messageId);
+console.log(`\nMessage ID: ${finalMessage.messageId}`);
+
+// Option 2: Get complete response without streaming
+const message = await stream.complete(model, context, { apiKey: process.env.ANTHROPIC_API_KEY });
+console.log(message.parts);
 ```
 
-## Agent Instance
+## Tools
 
-`Agent.create(...)` is the simplest way to work with a stateful agent.
-
-```ts
-import { Agent } from "@codeworksh/aikit";
-
-const agent = await Agent.create({
-	provider: "anthropic",
-	model: "claude-haiku-4-5-20251001",
-	getApiKey: async () => process.env.ANTHROPIC_API_KEY,
-});
-
-agent.setSystemPrompt("Be concise.");
-
-agent.subscribe((event) => {
-	if (event.type === "message.end") {
-		console.log(event.message.role, event.message.messageId);
-	}
-});
-
-await agent.prompt([{ type: "text", text: "Say hello in one line." }]);
-
-console.log(agent.state.messages);
-```
-
-## With Tools
+Tools enable LLMs to interact with external systems. `@codeworksh/aikit` provides native support for function calling and schema validation using TypeBox.
 
 ```ts
 import { Type } from "@sinclair/typebox";
-import { Agent } from "@codeworksh/aikit";
+import { llm, stream, Message, validateToolArguments } from "@codeworksh/aikit";
 
-const calculatorTool = Agent.defineTool({
-	name: "calculator",
-	label: "Calculator",
-	description: "Evaluate arithmetic expressions",
-	parameters: Type.Object({
-		expression: Type.String(),
-	}),
-	async execute(_callID, params) {
-		return {
-			status: "completed",
-			result: {
-				content: [{ type: "text", text: `result for ${params.expression}` }],
-				isError: false,
-			},
-		};
-	},
-});
+const calculatorTool = {
+  name: "calculator",
+  description: "Evaluate arithmetic expressions",
+  parameters: Type.Object({
+    expression: Type.String(),
+  }),
+};
 
-const instance = await Agent.create({
-	provider: "anthropic",
-	model: "claude-haiku-4-5-20251001",
-	getApiKey: async () => process.env.ANTHROPIC_API_KEY,
-	initialState: {
-		tools: [calculatorTool],
-	},
-});
+const context: Message.Context = {
+  messages: [
+    Message.createUserMessage({
+      role: "user",
+      time: { created: Date.now() },
+      parts: [{ type: "text", text: "What is 25 * 18?" }],
+    }),
+  ],
+  tools: [calculatorTool],
+};
 
-await instance.prompt([{ type: "text", text: "Use the calculator tool for 25 * 18." }]);
+const response = await stream.complete(model, context, { apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Check for tool calls in the response
+for (const part of response.parts) {
+  if (part.type === "toolCall") {
+    console.log(`Executing tool: ${part.name}`);
+    
+    // Validates arguments against TypeBox schema automatically
+    const args = validateToolArguments(calculatorTool.parameters, part.arguments);
+    // Execute your tool logic here...
+  }
+}
 ```
 
-## Lower-Level Loop
+## Providers and Models
 
-Use `agent.loop(...)` when you want loop execution without creating a stateful instance.
+`@codeworksh/aikit` uses a registry to fetch model specifications and metadata. 
 
 ```ts
-import { Message, agent, llm } from "@codeworksh/aikit";
+import { llm } from "@codeworksh/aikit";
 
-const model = await llm("anthropic", "claude-haiku-4-5-20251001");
-if (!model) throw new Error("Model not found");
+// Get all available providers
+const providers = await llm.providers();
+console.log(providers);
 
-const run = agent.loop(
-	{
-		model,
-		apiKey: process.env.ANTHROPIC_API_KEY,
-		convertToLlm: async (messages) => messages,
-	},
-	{
-		systemPrompt: "Be concise.",
-		messages: [],
-		tools: [],
-	},
-	[
-		Message.createUserMessage({
-			role: "user",
-			time: { created: Date.now() },
-			parts: [{ type: "text", text: "Reply with exactly: ok" }],
-		}),
-	],
-);
+// Get all models for a specific provider
+const anthropicModels = await llm.models("anthropic");
 
-const messages = await run.result();
-console.log(messages.at(-1)?.role);
+// Get a specific model directly
+const gpt4 = await llm.model("openai", "gpt-4o");
 ```
 
-## Message IDs
+## CLI Tools
 
-Every user and assistant message has a `messageId`.
+`@codeworksh/aikit` ships with a CLI tool for managing local metadata and authentication.
 
-Use the helpers when constructing messages yourself:
+You can invoke it using `npx aikit` or `pnpm aikit`.
 
-```ts
-import { Message } from "@codeworksh/aikit";
+### Model Generation
 
-const userMessage = Message.createUserMessage({
-	role: "user",
-	time: { created: Date.now() },
-	parts: [{ type: "text", text: "hello" }],
-});
+Generate a `models.gen.json` file fetching the latest metadata about providers and their available models from `models.dev`.
 
-console.log(userMessage.messageId);
+```bash
+pnpm aikit modelgen [path]
 ```
 
-This is useful for persistence layers like SQLite, event reconciliation, and updating stored messages by identity instead of array position.
+### OAuth Providers
+
+Manage OAuth credentials for providers that require it, such as OpenAI Codex.
+
+```bash
+# Start an OAuth login flow in your browser
+pnpm aikit auth --openai-codex
+
+# Check the status of your stored credentials
+pnpm aikit auth --openai-codex --status
+
+# Refresh your current credentials
+pnpm aikit auth --openai-codex --refresh
+
+# Clear stored credentials
+pnpm aikit auth --openai-codex --logout
+```
 
 ## Contribute
 
-@codeworksh/aikit is open to community contribution. Please ensure you submit an issue before submitting a pull request. The @codeworksh/aikit project prefers open community discussion before accepting new features.
+`@codeworksh/aikit` is open to community contribution. Please ensure you submit an issue before submitting a pull request. The project prefers open community discussion before accepting new features.

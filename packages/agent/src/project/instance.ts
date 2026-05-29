@@ -4,6 +4,7 @@ import { Filesystem } from "@codeworksh/utils";
 import { Log } from "../util/log";
 import { Project } from "./project";
 import { State } from "./state";
+import { GlobalBus } from "../streaming/global";
 
 interface IContext {
 	id: string;
@@ -17,6 +18,15 @@ const cache = new Map<string, Promise<IContext>>();
 const disposal = {
 	all: undefined as Promise<void> | undefined,
 };
+
+async function emit({ id, directory }: { id: string; directory: string }) {
+	const bus = await GlobalBus.create({
+		stream: true,
+		producerId: "global",
+		topic: "events",
+	});
+	await bus.publish(GlobalBus.InstanceDisposed, { id, directory });
+}
 
 function boot(input: {
 	id: string;
@@ -107,24 +117,16 @@ export const Instance = {
 		await State.dispose(key);
 		cache.delete(key);
 		const next = track(key, boot({ ...input, id: key, directory }));
-		// @sanchitrk: send durable stream event?
-		// emit(directory);
+		await emit({ id: key, directory });
 		return await next;
 	},
 	async dispose() {
-		Log.Default.info("disposing instance", { key: Instance.id, directory: Instance.directory });
-		await State.dispose(Instance.id);
-		cache.delete(Instance.id);
-		// @sanchitrk: send durable stream event?
-		// GlobalBus.emit("event", {
-		//   directory: Instance.directory,
-		//   payload: {
-		//     type: "server.instance.disposed",
-		//     properties: {
-		//       directory: Instance.directory,
-		//     },
-		//   },
-		// });
+		const id = Instance.id;
+		const directory = Instance.directory;
+		Log.Default.info("disposing instance", { key: id, directory });
+		await State.dispose(id);
+		cache.delete(id);
+		await emit({ id, directory });
 	},
 	async disposeAll() {
 		if (disposal.all) return disposal.all;

@@ -28,6 +28,7 @@ const OVERFLOW_PATTERNS = [
 	/prompt is too long/i, // Anthropic
 	/input is too long for requested model/i, // Amazon Bedrock
 	/exceeds the context window/i, // OpenAI (Completions & Responses API)
+	/maximum context length/i, // OpenAI-compatible APIs
 	/input token count.*exceeds the maximum/i, // Google (Gemini)
 	/maximum prompt length is \d+/i, // xAI (Grok)
 	/reduce the length of the messages/i, // Groq

@@ -1,7 +1,6 @@
 import Type, { type Static, type TSchema } from "typebox";
 import { uuidv7 } from "uuidv7";
 import { Model } from "../model/model";
-import { Provider } from "../provider/provider";
 
 export namespace Message {
 	export const TextContentSchema = Type.Object({
@@ -98,6 +97,14 @@ export namespace Message {
 	const ToolCallSkippedPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolSkippedSchema]));
 	const ToolCallAbortedPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolAbortedSchema]));
 
+	export const ToolCallInFlightSchema = Type.Object({
+		callID: Type.String(),
+		name: Type.String(),
+		rawArgs: Type.Record(Type.String(), Type.Unknown()),
+		args: Type.Optional(Type.Unknown()),
+	});
+	export type ToolCallInFlight = Static<typeof ToolCallInFlightSchema>;
+
 	export const ToolCallSchema = Type.Union([
 		ToolCallPendingPart,
 		ToolCallRunningPart,
@@ -150,8 +157,8 @@ export namespace Message {
 
 	export const AssistantMessageSchema = Type.Object({
 		role: Type.Literal("assistant"),
-		protocol: Model.KnownProtocolSchema,
-		provider: Provider.Info,
+		protocol: Model.KnownProviderEnumSchema,
+		provider: Model.ProviderInfo,
 		model: Type.String(),
 		usage: UsageSchema,
 		stopReason: StopReasonSchema,
@@ -162,6 +169,7 @@ export namespace Message {
 		}),
 		parts: Type.Array(Type.Union([TextContentSchema, ImageContentSchema, ThinkingContentSchema, ToolCallSchema])),
 		responseId: Type.Optional(Type.String()), // Provider-specific response/message identifier when the upstream API exposes one
+		responseModel: Type.Optional(Type.String()), // Concrete routed model identifier when it differs from the requested model
 		messageId: Type.String(),
 	});
 	export type AssistantMessage = Static<typeof AssistantMessageSchema>;
@@ -235,7 +243,34 @@ export namespace Message {
 	});
 	export type Context = Static<typeof ContextSchema>;
 
-	export function transformMessages<TProtocol extends Model.KnownProtocol>(
+	function isUnresolvedToolCall(toolCall: ToolCall): toolCall is ToolCallPendingPart | ToolCallRunningPart {
+		return toolCall.status === ToolStatusEnum.pending || toolCall.status === ToolStatusEnum.running;
+	}
+
+	function syntheticSkippedToolCall(toolCall: ToolCallPendingPart | ToolCallRunningPart): ToolCall {
+		const {
+			status: _status,
+			partial: _partial,
+			...base
+		} = toolCall as (ToolCallPendingPart | ToolCallRunningPart) & {
+			partial?: unknown;
+		};
+
+		return {
+			...base,
+			status: ToolStatusEnum.skipped,
+			result: {
+				content: [{ type: "text", text: "No result provided" }],
+				isError: true,
+			},
+			time: {
+				...toolCall.time,
+				end: Math.max(toolCall.time.end, Date.now()),
+			},
+		};
+	}
+
+	export function transformMessages<TProtocol extends Model.KnownProviderEnum>(
 		messages: Message[],
 		model: Model.TModel<TProtocol>,
 		normalizeToolCallId?: (id: string, model: Model.TModel<TProtocol>, source: AssistantMessage) => string,
@@ -255,7 +290,7 @@ export namespace Message {
 				assistantMsg.protocol === model.protocol &&
 				assistantMsg.model === model.id;
 
-			const parts = assistantMsg.parts.flatMap((block) => {
+			const transformedParts = assistantMsg.parts.flatMap((block) => {
 				if (block.type === "thinking") {
 					if (isSameModel && block.thinkingSignature) return block;
 					if (!block.thinking || block.thinking.trim() === "") return [];
@@ -297,6 +332,12 @@ export namespace Message {
 					return normalizedToolCall;
 				}
 
+				return block;
+			});
+			const parts = transformedParts.map((block) => {
+				if (block.type === "toolCall" && isUnresolvedToolCall(block)) {
+					return syntheticSkippedToolCall(block);
+				}
 				return block;
 			});
 

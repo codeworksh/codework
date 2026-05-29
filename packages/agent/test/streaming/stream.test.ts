@@ -23,6 +23,7 @@ vi.mock("../../src/project/project.ts", () => ({
 
 const { Stream } = await import("../../src/streaming/stream");
 const { Bus } = await import("../../src/streaming/bus");
+const { GlobalBus } = await import("../../src/streaming/global");
 const { BusEvent } = await import("../../src/streaming/event");
 const { Instance } = await import("../../src/project/instance");
 
@@ -31,6 +32,7 @@ type StreamReader = Awaited<ReturnType<typeof Stream.reader>>;
 
 afterEach(async () => {
 	await Instance.disposeAll();
+	await GlobalBus.disposeAll();
 });
 
 async function readJson<T>(handle: StreamHandle | StreamReader) {
@@ -166,7 +168,7 @@ describe("Bus", () => {
 		]);
 	});
 
-	it("publishes bus events to the durable stream transport", async () => {
+	it("publishes global bus events to the durable stream transport", async () => {
 		const Created = BusEvent.define(
 			"test.bus.stream.created",
 			Type.Object({
@@ -181,24 +183,18 @@ describe("Bus", () => {
 			}),
 		);
 		const store = new StreamStore();
-		let bus: Awaited<ReturnType<typeof Bus.create>>;
-		let reader: StreamHandle;
+		let bus: Awaited<ReturnType<typeof GlobalBus.create>>;
+		let reader: StreamReader;
 
-		await Instance.provide({
-			id: "bus-stream-test",
-			directory: "/tmp/codework-bus-stream-test",
-			fn: async () => {
-				reader = await Stream.create("/bus-stream/events", {
-					store,
-					producerId: "bus-stream-reader",
-				});
-				bus = await Bus.create({
-					stream: true,
-					store,
-					topic: "/bus-stream/events",
-					producerId: "bus-stream-producer",
-				});
-			},
+		reader = await GlobalBus.reader({
+			store,
+			topic: "/bus-stream/events",
+		});
+		bus = await GlobalBus.create({
+			stream: true,
+			store,
+			topic: "/bus-stream/events",
+			producerId: "bus-stream-producer",
 		});
 
 		await expect(bus!.publish(Created, { id: "one" })).resolves.toEqual([]);
@@ -220,6 +216,73 @@ describe("Bus", () => {
 		]);
 	});
 
+	it("publishes global bus events to the durable stream before subscribers", async () => {
+		class DelayedAppendStore extends StreamStore {
+			completed = false;
+
+			override async appendWithProducer(
+				...args: Parameters<StreamStore["appendWithProducer"]>
+			): ReturnType<StreamStore["appendWithProducer"]> {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				const result = await super.appendWithProducer(...args);
+				this.completed = true;
+				return result;
+			}
+		}
+
+		const Event = BusEvent.define(
+			"test.globalbus.durable-first",
+			Type.Object({
+				id: Type.String(),
+			}),
+		);
+		const store = new DelayedAppendStore();
+		const seen: string[] = [];
+		const global = await GlobalBus.create({
+			stream: true,
+			store,
+			topic: "/globalbus-durable-first/events",
+			producerId: "globalbus-durable-first-producer",
+		});
+		global.subscribe(Event, () => {
+			seen.push(store.completed ? "durable-first" : "subscriber-first");
+		});
+
+		await expect(global.publish(Event, { id: "one" })).resolves.toEqual([undefined]);
+		expect(seen).toEqual(["durable-first"]);
+	});
+
+	it("does not notify global bus subscribers when durable stream writes fail", async () => {
+		class FailingAppendStore extends StreamStore {
+			override async appendWithProducer(
+				...args: Parameters<StreamStore["appendWithProducer"]>
+			): ReturnType<StreamStore["appendWithProducer"]> {
+				await super.appendWithProducer(...args);
+				throw new Error("stream append failed");
+			}
+		}
+
+		const Event = BusEvent.define(
+			"test.globalbus.failure",
+			Type.Object({
+				id: Type.String(),
+			}),
+		);
+		const seen: string[] = [];
+		const global = await GlobalBus.create({
+			stream: true,
+			store: new FailingAppendStore(),
+			topic: "/globalbus-failure/events",
+			producerId: "globalbus-failure-producer",
+		});
+		global.subscribe(Event, (event) => {
+			seen.push(event.properties.id);
+		});
+
+		await expect(global.publish(Event, { id: "one" })).rejects.toThrow(/stream append failed/);
+		expect(seen).toEqual([]);
+	});
+
 	it("publishes to both in-memory subscribers and the durable stream transport", async () => {
 		const Event = BusEvent.define(
 			"test.bus.combined",
@@ -230,22 +293,23 @@ describe("Bus", () => {
 		const store = new StreamStore();
 		const seen: string[] = [];
 		let bus: Awaited<ReturnType<typeof Bus.create>>;
-		let reader: StreamHandle;
+		let reader: StreamReader;
 
 		await Instance.provide({
 			id: "bus-combined-test",
 			directory: "/tmp/codework-bus-combined-test",
 			fn: async () => {
-				reader = await Stream.create("/bus-combined/events", {
+				reader = await GlobalBus.reader({
 					store,
-					producerId: "bus-combined-reader",
+					topic: "/bus-combined/events",
 				});
-				bus = await Bus.create({
+				const global = await GlobalBus.create({
 					stream: true,
 					store,
 					topic: "/bus-combined/events",
 					producerId: "bus-combined-producer",
 				});
+				bus = await Bus.create({ global });
 				bus.subscribe(Event, async (event) => {
 					await Promise.resolve();
 					seen.push(`exact:${event.properties.id}`);
@@ -291,12 +355,13 @@ describe("Bus", () => {
 			id: "bus-failure-test",
 			directory: "/tmp/codework-bus-failure-test",
 			fn: async () => {
-				bus = await Bus.create({
+				const global = await GlobalBus.create({
 					stream: true,
 					store: new FailingAppendStore(),
 					topic: "/bus-failure/events",
 					producerId: "bus-failure-producer",
 				});
+				bus = await Bus.create({ global });
 				bus.subscribe(Event, (event) => {
 					seen.push(event.properties.id);
 				});
@@ -305,6 +370,50 @@ describe("Bus", () => {
 
 		await expect(bus!.publish(Event, { id: "one" })).resolves.toEqual([undefined]);
 		expect(seen).toEqual(["one"]);
+	});
+
+	it("waits for injected global durable stream writes before publish resolves", async () => {
+		class DelayedAppendStore extends StreamStore {
+			completed = false;
+
+			override async appendWithProducer(
+				...args: Parameters<StreamStore["appendWithProducer"]>
+			): ReturnType<StreamStore["appendWithProducer"]> {
+				await new Promise((resolve) => setTimeout(resolve, 10));
+				const result = await super.appendWithProducer(...args);
+				this.completed = true;
+				return result;
+			}
+		}
+
+		const Event = BusEvent.define(
+			"test.bus.waits-for-global",
+			Type.Object({
+				id: Type.String(),
+			}),
+		);
+		const store = new DelayedAppendStore();
+		let bus: Awaited<ReturnType<typeof Bus.create>>;
+
+		await Instance.provide({
+			id: "bus-waits-for-global-test",
+			directory: "/tmp/codework-bus-waits-for-global-test",
+			fn: async () => {
+				const global = await GlobalBus.create({
+					stream: true,
+					store,
+					topic: "/bus-waits-for-global/events",
+					producerId: "bus-waits-for-global-producer",
+				});
+				bus = await Bus.create({ global });
+			},
+		});
+
+		const publishing = bus!.publish(Event, { id: "one" });
+		expect(store.completed).toBe(false);
+
+		await publishing;
+		expect(store.completed).toBe(true);
 	});
 
 	it("streams instance disposed before detaching the stream producer", async () => {
@@ -316,15 +425,16 @@ describe("Bus", () => {
 			id: "bus-dispose-test",
 			directory: "/tmp/codework-bus-dispose-test",
 			fn: async () => {
-				const bus = await Bus.create({
+				await GlobalBus.create({
 					stream: true,
 					store,
-					topic: "/bus-dispose/events",
-					producerId: "bus-dispose-producer",
+					topic: "events",
+					producerId: "global",
 				});
-				reader = await Bus.reader({
+				const bus = await Bus.create();
+				reader = await GlobalBus.reader({
 					store,
-					topic: "/bus-dispose/events",
+					topic: "events",
 				});
 				bus.subscribeAll((event) => {
 					seen.push(event.type);
@@ -334,10 +444,10 @@ describe("Bus", () => {
 			},
 		});
 
-		expect(seen).toEqual([Bus.InstanceDisposed.type]);
+		expect(seen).toEqual([GlobalBus.InstanceDisposed.type]);
 		await expect(waitForJson(reader!, 1)).resolves.toEqual([
 			{
-				type: Bus.InstanceDisposed.type,
+				type: GlobalBus.InstanceDisposed.type,
 				properties: {
 					id: "bus-dispose-test",
 					directory: "/tmp/codework-bus-dispose-test",

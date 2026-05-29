@@ -1,28 +1,79 @@
 {
-  "languages": {
-    "TypeScript": {
-      "formatter": {
-        "external": {
-          "command": "node",
-          "arguments": [".zed/format-with-vp.mjs", "{buffer_path}"],
-        },
-      },
-      "code_actions_on_format": {
-        "source.organizeImports": true,
-      },
-      "format_on_save": "on",
-    },
-    "TSX": {
-      "formatter": {
-        "external": {
-          "command": "node",
-          "arguments": [".zed/format-with-vp.mjs", "{buffer_path}"],
-        },
-      },
-      "code_actions_on_format": {
-        "source.organizeImports": true,
-      },
-      "format_on_save": "on",
-    },
-  },
+	"tab_size": 3,
+	"hard_tabs": true,
+	"preferred_line_length": 120,
+	"soft_wrap": "prefer_line",
+	"ensure_final_newline_on_save": true,
+	"remove_trailing_whitespace_on_save": true,
+	"lsp": {
+		"typescript-language-server": {
+			"initialization_options": {
+				"preferences": {
+					"includePackageJsonAutoImports": "on",
+					"includeCompletionsForImportStatements": true,
+					"includeCompletionsForModuleExports": true,
+					"quotePreference": "double",
+				},
+			},
+		},
+	},
+	"languages": {
+		"JavaScript": {
+			"tab_size": 3,
+			"hard_tabs": true,
+			"preferred_line_length": 120,
+			"formatter": {
+				"external": {
+					"command": "node",
+					"arguments": [".zed/vp.format.mjs", "{buffer_path}"],
+				},
+			},
+			"code_actions_on_format": {
+				"source.organizeImports": true,
+			},
+			"format_on_save": "on",
+		},
+		"TypeScript": {
+			"tab_size": 3,
+			"hard_tabs": true,
+			"preferred_line_length": 120,
+			"formatter": {
+				"external": {
+					"command": "node",
+					"arguments": [".zed/vp.format.mjs", "{buffer_path}"],
+				},
+			},
+			"code_actions_on_format": {
+				"source.organizeImports": true,
+			},
+			"format_on_save": "on",
+		},
+		"TSX": {
+			"tab_size": 3,
+			"hard_tabs": true,
+			"preferred_line_length": 120,
+			"formatter": {
+				"external": {
+					"command": "node",
+					"arguments": [".zed/vp.format.mjs", "{buffer_path}"],
+				},
+			},
+			"code_actions_on_format": {
+				"source.organizeImports": true,
+			},
+			"format_on_save": "on",
+		},
+		"JSON": {
+			"tab_size": 3,
+			"hard_tabs": true,
+			"preferred_line_length": 120,
+			"format_on_save": "on",
+		},
+		"JSONC": {
+			"tab_size": 3,
+			"hard_tabs": true,
+			"preferred_line_length": 120,
+			"format_on_save": "on",
+		},
+	},
 }
