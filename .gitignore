@@ -59,3 +59,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 notes
 .codework
+
+# zensical build output
+packages/aikit/site

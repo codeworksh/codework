@@ -8,6 +8,8 @@ export { stream } from "./stream";
 export { createAssistantMessageEventStream, EventStream } from "./utils/eventstream";
 export { validateSchema, validateToolArguments, validateToolCall } from "./utils/validation";
 
-export * from "./oauth/openai/codex";
-
 export type { AssistantMessageEventStream } from "./utils/eventstream";
+
+// re-export typebox
+export { Type } from "typebox";
+export type { Static, TSchema } from "typebox";

@@ -144,7 +144,7 @@ export const OAuthCommand: CommandModule<object, AuthArgs> = {
 			})
 			.option("auth-file", {
 				type: "string",
-				describe: "path to auth.json (defaults to CODEWORK_AIKIT_AUTH_FILE or ~/.codework/aikit/auth.json)",
+				describe: "path to auth.json (defaults to CODEWORK_CREDENTIALS or ~/.codework/aikit/auth.json)",
 			})
 			.option("browser", {
 				type: "boolean",

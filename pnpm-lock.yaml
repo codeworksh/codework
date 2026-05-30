@@ -132,9 +132,6 @@ importers:
       typebox:
         specifier: ^1.1.37
         version: 1.1.37
-      typescript:
-        specifier: ^5
-        version: 5.9.3
       uuidv7:
         specifier: ^1.2.1
         version: 1.2.1
@@ -142,12 +139,12 @@ importers:
         specifier: ^18.0.0
         version: 18.0.0
     devDependencies:
-      '@codeworksh/harness':
-        specifier: workspace:*
-        version: link:../harness
       '@codeworksh/utils':
         specifier: workspace:*
         version: link:../utils
+      '@fontsource/iosevka':
+        specifier: ^5.2.5
+        version: 5.2.5
       '@types/yargs':
         specifier: ^17.0.35
         version: 17.0.35
@@ -1101,6 +1098,9 @@ packages:
 
   '@fontsource-variable/ibm-plex-sans@5.2.8':
     resolution: {integrity: sha512-n5PF2iFa0CZT0QYTPzxvZ39opC9LnU0zdoRccoADbs+Dtsd+lbXOZF7RNuIPHcQX1dKjF63sxnRImQIB5eD0Ag==}
+
+  '@fontsource/iosevka@5.2.5':
+    resolution: {integrity: sha512-Zv/UHJodDug1LcnWv2u2+GPp3oWP3U6Xp16cJOsqqZQNsCu8sA/ttT331N0NypxBZ+7c8szlSRlYDcy9liZ8pw==}
 
   '@fontsource/jetbrains-mono@5.2.8':
     resolution: {integrity: sha512-6w8/SG4kqvIMu7xd7wt6x3idn1Qux3p9N62s6G3rfldOUYHpWcc2FKrqf+Vo44jRvqWj2oAtTHrZXEP23oSKwQ==}
@@ -5567,6 +5567,8 @@ snapshots:
   '@floating-ui/utils@0.2.11': {}
 
   '@fontsource-variable/ibm-plex-sans@5.2.8': {}
+
+  '@fontsource/iosevka@5.2.5': {}
 
   '@fontsource/jetbrains-mono@5.2.8': {}
 

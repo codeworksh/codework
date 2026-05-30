@@ -78,6 +78,7 @@
 	},
 	"devDependencies": {
 		"@codeworksh/utils": "workspace:*",
+		"@fontsource/iosevka": "^5.2.5",
 		"@types/yargs": "^17.0.35",
 		"bumpp": "^11.0.1"
 	},

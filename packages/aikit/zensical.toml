@@ -1,0 +1,72 @@
+# AiKit Zensical configuration
+
+[project]
+site_name = "AiKit"
+site_description = "AI agent toolkit for CodeWork"
+site_author = "CodeWork"
+
+docs_dir = "docs"
+site_dir = "site"
+
+extra_css = [
+	"stylesheets/iosevka.css",
+	"stylesheets/extra.css"
+]
+
+extra_javascript = [
+	"javascripts/home-link.js"
+]
+
+repo_url = "https://github.com/codeworksh/codework"
+edit_uri = "edit/main/packages/aikit/docs"
+
+copyright = "<a href=\"https://codework.sh/\">CodeWork</a>"
+
+nav = [
+	{"Home" = "index.md"},
+	{"Using AiKit" = [
+		{"Quickstart" = "quickstart.md"},
+		{"Messages & Context" = "messages.md"},
+		{"Streaming" = "streaming.md"},
+		{"Tool Use" = "tools.md"},
+		{"Image Input" = "image.md"},
+		{"Thinking & Reasoning" = "thinking.md"},
+		{"Stop Reasons" = "stops.md"}
+	]},
+	{"Providers" = [
+		{"Anthropic" = "providers/anthropic.md"},
+		{"OpenAI" = "providers/openai.md"},
+		{"OpenRouter" = "providers/openrouter.md"},
+		{"Custom / Proxies" = "providers/custom.md"}
+	]},
+	{"OpenAI Codex" = [
+		{"OAuth" = "codex/oauth.md"}
+	]}
+]
+
+[project.theme]
+font = false
+
+features = [
+	"content.action.view",
+	"content.action.edit",
+	"content.code.copy",
+	"content.code.select"
+]
+
+[project.theme.icon]
+logo = "material/robot-outline"
+
+[[project.theme.palette]]
+# Light mode
+scheme = "default"
+primary = "grey"
+accent = "grey"
+toggle = { icon = "material/weather-night", name = "Switch to dark mode" }
+
+[[project.theme.palette]]
+# Dark mode
+scheme = "slate"
+primary = "grey"
+accent = "grey"
+toggle = { icon = "material/weather-sunny", name = "Switch to light mode" }

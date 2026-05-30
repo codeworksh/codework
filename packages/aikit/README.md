@@ -79,8 +79,7 @@ console.log(message.parts);
 Tools enable LLMs to interact with external systems. `@codeworksh/aikit` provides native support for function calling and schema validation using TypeBox.
 
 ```ts
-import { Type } from "@sinclair/typebox";
-import { llm, stream, Message, validateToolArguments } from "@codeworksh/aikit";
+import { Type, llm, stream, Message, validateToolArguments } from "@codeworksh/aikit";
 
 const calculatorTool = {
   name: "calculator",
