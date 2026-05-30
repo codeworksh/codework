@@ -2,13 +2,27 @@
 
 Get up and running with AiKit in a few minutes.
 
-## Installation
+### Installation
+
+Install AiKit via npm, yarn, or pnpm.
 
 ```bash
 npm install @codeworksh/aikit
 ```
 
-## First Request
+### Generate Models Catalog
+
+AiKit uses a `models.gen.json` file to store metadata about available models, features, and context limits.
+
+After installation, you need to generate this local models catalog so AiKit knows about all the available models. You can generate this manually using the CLI bundled with the package:
+
+```bash
+npx aikit modelgen
+```
+
+By default, this creates a `models.gen.json` file in your project root. AiKit will automatically read this file at runtime.
+
+### First Request
 
 Here's how to resolve a model, build a conversation context, and get a response.
 

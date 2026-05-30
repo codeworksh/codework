@@ -21,13 +21,16 @@ nav = [
 	{ "Home" = "index.md" },
 	{ "Using AiKit" = [
 		{ "Quickstart" = "quickstart.md" },
-		{ "Messages & Context" = "messages.md" },
+		{ "Concepts" = [
+			{ "Messages & Context" = "messages.md" },
+			{ "Thinking & Reasoning" = "thinking.md" },
+			{ "Stop Reasons" = "stops.md" },
+			{ "Image Input" = "image.md" },
+			{ "Tools" = "tools.md" },
+		] },
 		{ "Streaming" = "streaming.md" },
-		{ "Tool Use" = "tools.md" },
-		{ "Image Input" = "image.md" },
-		{ "Thinking & Reasoning" = "thinking.md" },
-		{ "Stop Reasons" = "stops.md" },
 	] },
+	{ "CLI" = "cli.md" },
 	{ "Providers" = [
 		{ "Anthropic" = "providers/anthropic.md" },
 		{ "OpenAI" = "providers/openai.md" },

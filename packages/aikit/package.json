@@ -24,7 +24,7 @@
 		"directory": "packages/aikit"
 	},
 	"bin": {
-		"codework-aikit": "./dist/pack/cli.mjs"
+		"aikit": "./dist/pack/cli.mjs"
 	},
 	"files": [
 		"dist",
