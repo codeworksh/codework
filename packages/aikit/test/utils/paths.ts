@@ -4,4 +4,4 @@ export function repoRootPath(relativePath = ""): string {
 	return fileURLToPath(new URL(`../../../../${relativePath}`, import.meta.url));
 }
 
-export const CODEWORK_MODELS_DEV = repoRootPath("models.json");
+export const OPENCODE_MODELS_DEV_FILE = repoRootPath("models.json");

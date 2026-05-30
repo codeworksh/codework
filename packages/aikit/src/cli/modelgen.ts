@@ -73,7 +73,7 @@ function modelsDevURL(): string {
 }
 
 function modelsDevPath(): string | undefined {
-	return process.env.CODEWORK_MODELS_DEV;
+	return process.env.OPENCODE_MODELS_DEV_FILE;
 }
 
 const modelsDevData: LazyModelsDevCatalog = lazy(async () => {
@@ -207,7 +207,7 @@ export const ModelgenCommand: CommandModule<object, { path?: string }> = {
 	builder: (yargs) =>
 		yargs.positional("path", {
 			type: "string",
-			describe: "output path (defaults to CODEWORK_MODELGEN_PATH or ./models.gen.json)",
+			describe: "output path (defaults to CODEWORK_MODELS_FILE or ./models.gen.json)",
 		}),
 	handler: async (args) => {
 		const path = await generateModels(args);

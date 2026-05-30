@@ -34,6 +34,9 @@ export default defineConfig({
 	},
 	test: {
 		include: ["test/**/*.test.ts", "tests/**/*.test.ts"],
+		env: {
+			CODEWORK_MODELS_FILE: fileURLToPath(new URL("../../models.gen.json", import.meta.url)),
+		},
 	},
 	lint: {
 		ignorePatterns: ignoredPaths,

@@ -13,7 +13,8 @@ npx aikit modelgen [path]
 ```
 
 **Arguments:**
-- `path`: (Optional) The output path for the generated JSON file. If omitted, it defaults to the `CODEWORK_MODELGEN_PATH` environment variable or `./models.gen.json` in the current directory.
+
+- `path`: (Optional) The output path for the generated JSON file. If omitted, it defaults to the `CODEWORK_MODELS_FILE` environment variable or `./models.gen.json` in the current directory.
 
 ### Example
 
@@ -22,4 +23,4 @@ $ npx aikit modelgen src/models.gen.json
 Generated model catalog at /path/to/project/src/models.gen.json
 ```
 
-**Note:** If you are running your application in a different directory structure, you might need to ensure `models.gen.json` is located in the root of your project or specify the exact location via `CODEWORK_MODELGEN_PATH` during runtime so AiKit can discover it.
+**Note:** If you are running your application in a different directory structure, you might need to ensure `models.gen.json` is located in the root of your project or specify the exact location via `CODEWORK_MODELS_FILE` during runtime so AiKit can discover it.

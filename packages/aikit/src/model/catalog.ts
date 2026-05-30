@@ -1,6 +1,5 @@
 import { Filesystem, lazy } from "@codeworksh/utils";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import Type, { type Static } from "typebox";
 
 export namespace ModelCatalog {
@@ -32,12 +31,12 @@ export namespace ModelCatalog {
 	type LazyGeneratedCatalog = ReturnType<typeof lazy<Promise<GeneratedCatalog>>>;
 
 	export function projectRoot(): string {
-		return fileURLToPath(new URL("../../../..", import.meta.url));
+		return process.cwd();
 	}
 
 	export const filename = "models.gen.json";
 	export function path(): string {
-		return resolve(process.env.CODEWORK_MODELGEN_PATH ?? join(projectRoot(), filename));
+		return resolve(process.env.CODEWORK_MODELS_FILE ?? join(projectRoot(), filename));
 	}
 
 	export const data: LazyGeneratedCatalog = lazy(async () => {
