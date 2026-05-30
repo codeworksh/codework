@@ -256,6 +256,16 @@ async function createPublishManifest(manifest, version) {
 		main: rewritePublishPath(manifest.main ?? manifest.module),
 		module: rewritePublishPath(manifest.module),
 		types: rewritePublishPath(manifest.types),
+		bin: (() => {
+			const rewritten = rewritePublishValue(manifest.bin);
+			if (typeof rewritten === "string" && rewritten.startsWith("./")) return rewritten.slice(2);
+			if (typeof rewritten === "object" && rewritten !== null) {
+				return Object.fromEntries(
+					Object.entries(rewritten).map(([k, v]) => [k, typeof v === "string" && v.startsWith("./") ? v.slice(2) : v])
+				);
+			}
+			return rewritten;
+		})(),
 		exports: rewritePublishValue(manifest.exports) ?? {
 			".": {
 				types: rewritePublishPath(manifest.types),
@@ -361,7 +371,6 @@ if (buildExitCode !== 0) {
 
 const publishDir = await preparePublishDirectory(packageDir, manifest, publishVersion);
 console.error(`Publishing ${manifest.name}@${publishVersion} from ${publishDir}`);
-
 const exitCode = await run("npm", publishArgs, publishDir, createSanitizedPublishEnv(), true);
 await rm(publishDir, { recursive: true, force: true });
 
