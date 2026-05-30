@@ -5,8 +5,10 @@ on:
       - master
       - main
     paths:
+      - '.github/workflows/docs.yml'
       - 'packages/**/docs/**'
       - 'packages/**/zensical.toml'
+  workflow_dispatch:
 jobs:
   deploy:
     runs-on: ubuntu-latest
