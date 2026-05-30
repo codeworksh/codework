@@ -1,0 +1,54 @@
+name: Documentation
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - 'packages/**/docs/**'
+      - 'packages/**/zensical.toml'
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - run: pip install zensical
+      - run: |
+          mkdir -p public_site
+          for pkg in packages/*; do
+            if [ -f "$pkg/zensical.toml" ]; then
+              echo "Building docs for $(basename $pkg)..."
+              cd $pkg
+              zensical build --clean
+              cd -
+              mv "$pkg/site" "public_site/$(basename $pkg)"
+            fi
+          done
+          
+          cat << 'EOF' > public_site/index.html
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta http-equiv="refresh" content="0; url=./aikit/" />
+            </head>
+            <body>
+              <p>Redirecting to <a href="./aikit/">AiKit Docs</a>...</p>
+            </body>
+          </html>
+          EOF
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public_site
+      - uses: actions/deploy-pages@v4
+        id: deployment
