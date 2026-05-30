@@ -7,15 +7,8 @@ on:
     paths:
       - 'packages/**/docs/**'
       - 'packages/**/zensical.toml'
-permissions:
-  contents: read
-  pages: write
-  id-token: write
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/configure-pages@v5
@@ -47,8 +40,10 @@ jobs:
             </body>
           </html>
           EOF
-      - uses: actions/upload-pages-artifact@v3
+      - name: Deploy to codeworksh.github.io
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: public_site
-      - uses: actions/deploy-pages@v4
-        id: deployment
+          personal_token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
+          external_repository: codeworksh/codeworksh.github.io
+          publish_branch: main
+          publish_dir: ./public_site
