@@ -21,35 +21,35 @@ if (!model) throw new Error("Model not found");
 
 // Define tools with TypeBox schemas for type safety and validation
 const getTimeTool = Message.defineTool({
-  name: "get_time",
-  description: "Get the current time",
-  parameters: Type.Object({
-    timezone: Type.Optional(Type.String({ description: "Optional timezone (e.g., Asia/Kolkata)" }))
-  })
+	name: "get_time",
+	description: "Get the current time",
+	parameters: Type.Object({
+		timezone: Type.Optional(Type.String({ description: "Optional timezone (e.g., Asia/Kolkata)" })),
+	}),
 });
 
 // Setup conversation context
 const context: Message.Context = {
-  systemPrompt: "You are a helpful assistant.",
-  messages: [
-    Message.createUserMessage({
-      role: "user",
-      time: { created: Date.now() },
-      parts: [{ type: "text", text: "What time is it in Bengaluru?" }],
-    }),
-  ],
-  tools: [getTimeTool]
+	systemPrompt: "You are a helpful assistant.",
+	messages: [
+		Message.createUserMessage({
+			role: "user",
+			time: { created: Date.now() },
+			parts: [{ type: "text", text: "What time is it in Bengaluru?" }],
+		}),
+	],
+	tools: [getTimeTool],
 };
 
 // Get complete response without streaming
 const response = await stream.complete(model, context);
 
 for (const part of response.parts) {
-  if (part.type === "text") {
-    console.log(part.text);
-  } else if (part.type === "toolCall") {
-    console.log(`Tool: ${part.name}(${JSON.stringify(part.arguments)})`);
-  }
+	if (part.type === "text") {
+		console.log(part.text);
+	} else if (part.type === "toolCall") {
+		console.log(`Tool: ${part.name}(${JSON.stringify(part.arguments)})`);
+	}
 }
 ```
 

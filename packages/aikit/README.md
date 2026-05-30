@@ -12,8 +12,8 @@ It gives you the basic primitives for streaming LLM responses without the extra 
 - [Tools](#tools)
 - [Providers and Models](#providers-and-models)
 - [CLI Tools](#cli-tools)
-  - [Model Generation](#model-generation)
-  - [OAuth Providers](#oauth-providers)
+   - [Model Generation](#model-generation)
+   - [OAuth Providers](#oauth-providers)
 - [Contribute](#contribute)
 
 ## Installation
@@ -47,23 +47,23 @@ if (!model) throw new Error("Model not found");
 
 // Setup conversation context
 const context: Message.Context = {
-  systemPrompt: "You are a helpful coding assistant.",
-  messages: [
-    Message.createUserMessage({
-      role: "user",
-      time: { created: Date.now() },
-      parts: [{ type: "text", text: "Write a simple loop in TypeScript." }],
-    }),
-  ],
+	systemPrompt: "You are a helpful coding assistant.",
+	messages: [
+		Message.createUserMessage({
+			role: "user",
+			time: { created: Date.now() },
+			parts: [{ type: "text", text: "Write a simple loop in TypeScript." }],
+		}),
+	],
 };
 
 // Option 1: Stream events
 const s = stream(model, context, { apiKey: process.env.ANTHROPIC_API_KEY });
 
 for await (const event of s) {
-  if (event.type === "text.delta") {
-    process.stdout.write(event.delta);
-  }
+	if (event.type === "text.delta") {
+		process.stdout.write(event.delta);
+	}
 }
 
 const finalMessage = await s.result();
@@ -82,41 +82,41 @@ Tools enable LLMs to interact with external systems. `@codeworksh/aikit` provide
 import { Type, llm, stream, Message, validateToolArguments } from "@codeworksh/aikit";
 
 const calculatorTool = {
-  name: "calculator",
-  description: "Evaluate arithmetic expressions",
-  parameters: Type.Object({
-    expression: Type.String(),
-  }),
+	name: "calculator",
+	description: "Evaluate arithmetic expressions",
+	parameters: Type.Object({
+		expression: Type.String(),
+	}),
 };
 
 const context: Message.Context = {
-  messages: [
-    Message.createUserMessage({
-      role: "user",
-      time: { created: Date.now() },
-      parts: [{ type: "text", text: "What is 25 * 18?" }],
-    }),
-  ],
-  tools: [calculatorTool],
+	messages: [
+		Message.createUserMessage({
+			role: "user",
+			time: { created: Date.now() },
+			parts: [{ type: "text", text: "What is 25 * 18?" }],
+		}),
+	],
+	tools: [calculatorTool],
 };
 
 const response = await stream.complete(model, context, { apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Check for tool calls in the response
 for (const part of response.parts) {
-  if (part.type === "toolCall") {
-    console.log(`Executing tool: ${part.name}`);
-    
-    // Validates arguments against TypeBox schema automatically
-    const args = validateToolArguments(calculatorTool.parameters, part.arguments);
-    // Execute your tool logic here...
-  }
+	if (part.type === "toolCall") {
+		console.log(`Executing tool: ${part.name}`);
+
+		// Validates arguments against TypeBox schema automatically
+		const args = validateToolArguments(calculatorTool.parameters, part.arguments);
+		// Execute your tool logic here...
+	}
 }
 ```
 
 ## Providers and Models
 
-`@codeworksh/aikit` uses a registry to fetch model specifications and metadata. 
+`@codeworksh/aikit` uses a registry to fetch model specifications and metadata.
 
 ```ts
 import { llm } from "@codeworksh/aikit";

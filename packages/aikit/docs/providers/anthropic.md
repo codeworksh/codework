@@ -12,7 +12,7 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 
 ## Language Models
 
-You can resolve Anthropic models using the `llm()` registry function. 
+You can resolve Anthropic models using the `llm()` registry function.
 
 ```ts
 import { llm, stream, Message } from "@codeworksh/aikit";
@@ -25,20 +25,20 @@ const model = await llm("anthropic", "claude-3-5-sonnet-20241022");
 
 ```ts
 const context: Message.Context = {
-  messages: [
-    Message.createUserMessage({
-      role: "user",
-      time: { created: Date.now() },
-      parts: [{ type: "text", text: "Write a haiku about the ocean." }],
-    }),
-  ],
+	messages: [
+		Message.createUserMessage({
+			role: "user",
+			time: { created: Date.now() },
+			parts: [{ type: "text", text: "Write a haiku about the ocean." }],
+		}),
+	],
 };
 
 const s = stream(model, context);
 for await (const event of s) {
-  if (event.type === "text.delta") {
-    process.stdout.write(event.delta);
-  }
+	if (event.type === "text.delta") {
+		process.stdout.write(event.delta);
+	}
 }
 ```
 
@@ -47,10 +47,10 @@ for await (const event of s) {
 For fine-grained control, you can pass provider-specific options such as thinking/reasoning parameters.
 
 ```ts
-await stream.complete(model, context, { 
-  apiKey: "custom-api-key",
-  // Example: Enable Anthropic's extended thinking (Claude Sonnet 3.5/3.7)
-  thinkingEnabled: true,
-  thinkingBudgetTokens: 8192
+await stream.complete(model, context, {
+	apiKey: "custom-api-key",
+	// Example: Enable Anthropic's extended thinking (Claude Sonnet 3.5/3.7)
+	thinkingEnabled: true,
+	thinkingBudgetTokens: 8192,
 });
 ```

@@ -102,9 +102,6 @@ importers:
       '@ai-sdk/openai-compatible':
         specifier: ^2.0.48
         version: 2.0.48(zod@4.3.6)
-      '@ai-sdk/provider':
-        specifier: ^3.0.10
-        version: 3.0.10
       '@ai-sdk/xai':
         specifier: ^3.0.92
         version: 3.0.92(zod@4.3.6)
@@ -117,15 +114,9 @@ importers:
       dedent:
         specifier: ^1.7.2
         version: 1.7.2
-      esbuild:
-        specifier: ^0.27.3
-        version: 0.27.7
       partial-json:
         specifier: ^0.1.7
         version: 0.1.7
-      quickjs-wasi:
-        specifier: ^2.2.0
-        version: 2.2.0
       remeda:
         specifier: ^2.33.6
         version: 2.33.7
@@ -142,9 +133,6 @@ importers:
       '@codeworksh/utils':
         specifier: workspace:*
         version: link:../utils
-      '@fontsource/iosevka':
-        specifier: ^5.2.5
-        version: 5.2.5
       '@types/yargs':
         specifier: ^17.0.35
         version: 17.0.35
@@ -1098,9 +1086,6 @@ packages:
 
   '@fontsource-variable/ibm-plex-sans@5.2.8':
     resolution: {integrity: sha512-n5PF2iFa0CZT0QYTPzxvZ39opC9LnU0zdoRccoADbs+Dtsd+lbXOZF7RNuIPHcQX1dKjF63sxnRImQIB5eD0Ag==}
-
-  '@fontsource/iosevka@5.2.5':
-    resolution: {integrity: sha512-Zv/UHJodDug1LcnWv2u2+GPp3oWP3U6Xp16cJOsqqZQNsCu8sA/ttT331N0NypxBZ+7c8szlSRlYDcy9liZ8pw==}
 
   '@fontsource/jetbrains-mono@5.2.8':
     resolution: {integrity: sha512-6w8/SG4kqvIMu7xd7wt6x3idn1Qux3p9N62s6G3rfldOUYHpWcc2FKrqf+Vo44jRvqWj2oAtTHrZXEP23oSKwQ==}
@@ -5567,8 +5552,6 @@ snapshots:
   '@floating-ui/utils@0.2.11': {}
 
   '@fontsource-variable/ibm-plex-sans@5.2.8': {}
-
-  '@fontsource/iosevka@5.2.5': {}
 
   '@fontsource/jetbrains-mono@5.2.8': {}
 

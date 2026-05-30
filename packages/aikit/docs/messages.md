@@ -5,22 +5,23 @@ Interacting with LLMs requires managing the context window. AiKit uses a robust 
 ## Context Structure
 
 A `Message.Context` object contains:
+
 - `systemPrompt`: High-level instructions for the model's behavior.
 - `messages`: An array of messages from the user, assistant, or tool executions.
-- `tools` *(optional)*: An array of executable tools the model has access to.
+- `tools` _(optional)_: An array of executable tools the model has access to.
 
 ```ts
 import { Message } from "@codeworksh/aikit";
 
 const context: Message.Context = {
-  systemPrompt: "You are an expert software engineer.",
-  messages: [
-    Message.createUserMessage({
-      role: "user",
-      time: { created: Date.now() },
-      parts: [{ type: "text", text: "Explain how promises work in JS." }],
-    }),
-  ],
+	systemPrompt: "You are an expert software engineer.",
+	messages: [
+		Message.createUserMessage({
+			role: "user",
+			time: { created: Date.now() },
+			parts: [{ type: "text", text: "Explain how promises work in JS." }],
+		}),
+	],
 };
 ```
 
@@ -30,11 +31,11 @@ AiKit uses a multi-part format for messages, allowing you to pass complex payloa
 
 ```ts
 Message.createUserMessage({
-  role: "user",
-  time: { created: Date.now() },
-  parts: [
-    { type: "text", text: "What is in this image?" },
-    // Binary or URL-based parts can be added here
-  ],
-})
+	role: "user",
+	time: { created: Date.now() },
+	parts: [
+		{ type: "text", text: "What is in this image?" },
+		// Binary or URL-based parts can be added here
+	],
+});
 ```

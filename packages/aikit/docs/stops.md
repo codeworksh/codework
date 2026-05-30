@@ -14,10 +14,10 @@ Every completed message in AiKit includes a `stopReason` property that indicates
 const message = await stream.complete(model, context);
 
 if (message.stopReason === "length") {
-  console.warn("The model hit the token limit before finishing.");
+	console.warn("The model hit the token limit before finishing.");
 } else if (message.stopReason === "tool-calls") {
-  console.log("The model invoked tools.");
+	console.log("The model invoked tools.");
 } else {
-  console.log("Finished normally.");
+	console.log("Finished normally.");
 }
 ```

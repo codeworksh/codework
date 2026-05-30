@@ -13,24 +13,24 @@ const imageBuffer = readFileSync("chart.png");
 const base64Image = imageBuffer.toString("base64");
 
 const context: Message.Context = {
-  messages: [
-    Message.createUserMessage({
-      role: "user",
-      time: { created: Date.now() },
-      parts: [
-        { type: "text", text: "What is in this image?" },
-        { type: "image", data: base64Image, mimeType: "image/png" }
-      ]
-    })
-  ]
+	messages: [
+		Message.createUserMessage({
+			role: "user",
+			time: { created: Date.now() },
+			parts: [
+				{ type: "text", text: "What is in this image?" },
+				{ type: "image", data: base64Image, mimeType: "image/png" },
+			],
+		}),
+	],
 };
 
 const response = await stream.complete(model, context);
 
 // Access the response text
 for (const part of response.parts) {
-  if (part.type === "text") {
-    console.log(part.text);
-  }
+	if (part.type === "text") {
+		console.log(part.text);
+	}
 }
 ```

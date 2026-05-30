@@ -1,6 +1,6 @@
 # OpenAI Codex OAuth
 
-*Coming soon.*
+_Coming soon._
 
 AiKit ships with a CLI tool for managing local metadata and authentication, including OAuth flows for providers like OpenAI Codex.
 

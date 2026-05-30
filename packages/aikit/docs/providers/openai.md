@@ -12,7 +12,7 @@ export OPENAI_API_KEY="your-api-key-here"
 
 ## Language Models
 
-You can resolve OpenAI models using the `llm()` registry function. 
+You can resolve OpenAI models using the `llm()` registry function.
 
 ```ts
 import { llm, stream, Message } from "@codeworksh/aikit";
@@ -25,13 +25,13 @@ const model = await llm("openai", "gpt-4o");
 
 ```ts
 const context: Message.Context = {
-  messages: [
-    Message.createUserMessage({
-      role: "user",
-      time: { created: Date.now() },
-      parts: [{ type: "text", text: "Explain recursion briefly." }],
-    }),
-  ],
+	messages: [
+		Message.createUserMessage({
+			role: "user",
+			time: { created: Date.now() },
+			parts: [{ type: "text", text: "Explain recursion briefly." }],
+		}),
+	],
 };
 
 const message = await stream.complete(model, context);
@@ -43,9 +43,9 @@ console.log(message.parts);
 For fine-grained control, you can pass provider-specific options such as reasoning effort for models like `o1` or `o3-mini`.
 
 ```ts
-await stream.complete(model, context, { 
-  apiKey: "custom-openai-key",
-  // Example: Set reasoning effort
-  reasoningEffort: "medium"
+await stream.complete(model, context, {
+	apiKey: "custom-openai-key",
+	// Example: Set reasoning effort
+	reasoningEffort: "medium",
 });
 ```

@@ -63,14 +63,11 @@
 		"@ai-sdk/google-vertex": "^4.0.137",
 		"@ai-sdk/openai": "^3.0.65",
 		"@ai-sdk/openai-compatible": "^2.0.48",
-		"@ai-sdk/provider": "^3.0.10",
 		"@ai-sdk/xai": "^3.0.92",
 		"@openrouter/ai-sdk-provider": "^2.9.0",
 		"ai": "^6.0.191",
 		"dedent": "^1.7.2",
-		"esbuild": "^0.27.3",
 		"partial-json": "^0.1.7",
-		"quickjs-wasi": "^2.2.0",
 		"remeda": "^2.33.6",
 		"typebox": "^1.1.37",
 		"uuidv7": "^1.2.1",
@@ -78,7 +75,6 @@
 	},
 	"devDependencies": {
 		"@codeworksh/utils": "workspace:*",
-		"@fontsource/iosevka": "^5.2.5",
 		"@types/yargs": "^17.0.35",
 		"bumpp": "^11.0.1"
 	},

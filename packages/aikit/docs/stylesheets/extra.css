@@ -11,7 +11,7 @@
 
 /* Typography sizing */
 .md-typeset {
-	font-size: 0.70rem !important;
+	font-size: 0.7rem !important;
 	line-height: 1.65;
 }
 
@@ -20,7 +20,7 @@
 }
 
 .md-nav {
-	font-size: 0.70rem;
+	font-size: 0.7rem;
 }
 
 /* Grayscale palette tweaks (light mode) */
@@ -28,13 +28,13 @@
 	--md-default-bg-color: #fff;
 	--md-default-fg-color: rgba(28, 27, 26, 0.92);
 	--md-default-fg-color--light: rgba(28, 27, 26, 0.65);
-	--md-default-fg-color--lighter: rgba(28, 27, 26, 0.40);
-	--md-default-fg-color--lightest: rgba(28, 27, 26, 0.10);
+	--md-default-fg-color--lighter: rgba(28, 27, 26, 0.4);
+	--md-default-fg-color--lightest: rgba(28, 27, 26, 0.1);
 
 	/* Links / interactive elements */
 	--md-primary-fg-color: rgba(28, 27, 26, 0.86);
 	--md-accent-fg-color: rgba(28, 27, 26, 0.92);
-	--md-accent-fg-color--transparent: rgba(28, 27, 26, 0.10);
+	--md-accent-fg-color--transparent: rgba(28, 27, 26, 0.1);
 
 	/* Main link color (body text links) */
 	--md-typeset-a-color: rgba(28, 27, 26, 0.78);
