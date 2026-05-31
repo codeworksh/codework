@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/aikit",
-	"version": "0.4.0",
+	"version": "0.5.0",
 	"description": "Toolkit for building AI agents and agent harness.",
 	"keywords": [
 		"agent",
@@ -12,7 +12,7 @@
 		"toolkit",
 		"typescript"
 	],
-	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/aikit",
+	"homepage": "https://codeworksh.github.io/aikit/",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
 	},
@@ -39,7 +39,7 @@
 			"import": "./dist/pack/index.mjs",
 			"default": "./dist/pack/index.mjs"
 		},
-		"./oauth/openai-codex": {
+		"./oauth/openai/codex": {
 			"types": "./dist/pack/oauth/openai/codex.d.mts",
 			"import": "./dist/pack/oauth/openai/codex.mjs",
 			"default": "./dist/pack/oauth/openai/codex.mjs"
@@ -79,6 +79,6 @@
 		"bumpp": "^11.0.1"
 	},
 	"engines": {
-		"node": ">=24.14.1"
+		"node": ">=22.0.0"
 	}
 }

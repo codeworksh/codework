@@ -11,6 +11,26 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.5.0]
+
+### Added
+
+- Added [documentation](https://codeworksh.github.io/aikit/) for the toolkit, including updated guides and examples.
+- Replaced the custom LLM protocol with the Vercel AI SDK (`ai`, `@ai-sdk/*`). This serves as the new foundational layer for all model interactions, streaming, and provider routing, unlocking native support for Anthropic, Google, Google Vertex AI, OpenAI, xAI, OpenRouter, and other OpenAI-compatible APIs out of the box.
+
+### Changed
+
+- Standardized stream handling, tool calling, and messaging around the Vercel AI SDK primitives rather than maintaining a bespoke protocol.
+- Improved test coverage across the package to ensure robust behavior with the new Vercel AI SDK integration.
+
+### Fixed
+
+- Addressed various TypeScript type mismatch issues regarding the model signatures and the newly integrated AI SDK objects.
+
+### Breaking Changes
+
+- The stateful `Agent` and higher-level agent wrapper modules have been completely removed to simplify the package's scope. The toolkit now focuses strictly on foundational AI capabilities, relying on the consumers to implement the stateful execution harness and specific agent loops.
+
 ## [@codeworksh/aikit@0.4.0]
 
 ### Added
