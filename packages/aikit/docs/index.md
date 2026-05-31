@@ -1,3 +1,7 @@
+---
+title: CodeWork
+---
+
 # AiKit
 
 An opinionated TypeScript SDK that provides a unified API for working with multiple LLM providers, automatic model discovery,

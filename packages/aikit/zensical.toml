@@ -2,6 +2,7 @@
 
 [project]
 site_name = "AiKit"
+site_author = "CodeWork"
 
 docs_dir = "docs"
 site_dir = "site"
