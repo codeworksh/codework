@@ -2,8 +2,6 @@
 
 [project]
 site_name = "AiKit"
-site_description = "AI agent toolkit for CodeWork"
-site_author = "CodeWork"
 
 docs_dir = "docs"
 site_dir = "site"
