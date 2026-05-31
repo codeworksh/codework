@@ -1,7 +1,6 @@
 # @codeworksh/aikit
 
-@codeworksh/aikit is a **TypeScript SDK** for building AI agents and agentic harnesses. It provides a unified API for working with multiple LLM providers, built on top of the Vercel AI SDK, with full support for tool calling (function calling) required for agentic workflows.
-
+[AiKit](https://codeworksh.github.io/aikit/) is **TypeScript SDK** that provides a unified API for working with multiple LLM providers, automatic model discovery, provider configurations, token and cost tracking, and mid-session hand-off to other models.
 It gives you the basic primitives for streaming LLM responses without the extra bloat, letting you handle the orchestration yourself.
 
 ## Table of Contents
@@ -22,7 +21,7 @@ It gives you the basic primitives for streaming LLM responses without the extra 
 npm install @codeworksh/aikit
 ```
 
-Node `>=24.14.1` is required.
+Node `>=22.0.0` is required.
 
 ## Supported Providers
 
