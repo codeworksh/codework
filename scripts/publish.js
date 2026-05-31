@@ -261,7 +261,10 @@ async function createPublishManifest(manifest, version) {
 			if (typeof rewritten === "string" && rewritten.startsWith("./")) return rewritten.slice(2);
 			if (typeof rewritten === "object" && rewritten !== null) {
 				return Object.fromEntries(
-					Object.entries(rewritten).map(([k, v]) => [k, typeof v === "string" && v.startsWith("./") ? v.slice(2) : v])
+					Object.entries(rewritten).map(([k, v]) => [
+						k,
+						typeof v === "string" && v.startsWith("./") ? v.slice(2) : v,
+					]),
 				);
 			}
 			return rewritten;

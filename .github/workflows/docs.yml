@@ -1,51 +1,51 @@
 name: Documentation
 on:
-  push:
-    branches:
-      - master
-      - main
-    paths:
-      - '.github/workflows/docs.yml'
-      - 'packages/**/docs/**'
-      - 'packages/**/zensical.toml'
-  workflow_dispatch:
+   push:
+      branches:
+         - master
+         - main
+      paths:
+         - ".github/workflows/docs.yml"
+         - "packages/**/docs/**"
+         - "packages/**/zensical.toml"
+   workflow_dispatch:
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/configure-pages@v5
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: 3.x
-      - run: pip install zensical
-      - run: |
-          mkdir -p public_site
-          for pkg in packages/*; do
-            if [ -f "$pkg/zensical.toml" ]; then
-              echo "Building docs for $(basename $pkg)..."
-              cd $pkg
-              zensical build --clean
-              cd -
-              mv "$pkg/site" "public_site/$(basename $pkg)"
-            fi
-          done
-          
-          cat << 'EOF' > public_site/index.html
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <meta http-equiv="refresh" content="0; url=./aikit/" />
-            </head>
-            <body>
-              <p>Redirecting to <a href="./aikit/">AiKit Docs</a>...</p>
-            </body>
-          </html>
-          EOF
-      - name: Deploy to codeworksh.github.io
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
-          external_repository: codeworksh/codeworksh.github.io
-          publish_branch: main
-          publish_dir: ./public_site
+   deploy:
+      runs-on: ubuntu-latest
+      steps:
+         - uses: actions/configure-pages@v5
+         - uses: actions/checkout@v4
+         - uses: actions/setup-python@v5
+           with:
+              python-version: 3.x
+         - run: pip install zensical
+         - run: |
+              mkdir -p public_site
+              for pkg in packages/*; do
+                if [ -f "$pkg/zensical.toml" ]; then
+                  echo "Building docs for $(basename $pkg)..."
+                  cd $pkg
+                  zensical build --clean
+                  cd -
+                  mv "$pkg/site" "public_site/$(basename $pkg)"
+                fi
+              done
+
+              cat << 'EOF' > public_site/index.html
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <meta http-equiv="refresh" content="0; url=./aikit/" />
+                </head>
+                <body>
+                  <p>Redirecting to <a href="./aikit/">AiKit Docs</a>...</p>
+                </body>
+              </html>
+              EOF
+         - name: Deploy to codeworksh.github.io
+           uses: peaceiris/actions-gh-pages@v4
+           with:
+              personal_token: ${{ secrets.DOCS_DEPLOY_TOKEN }}
+              external_repository: codeworksh/codeworksh.github.io
+              publish_branch: main
+              publish_dir: ./public_site

@@ -74,20 +74,3 @@ export type OpenRouterOptions = AISDKOptions<OpenRouterProviderSettings, { openr
 export type XaiOptions = AISDKOptions<XaiProviderSettings, { xai?: XaiLanguageOptions }>;
 
 export type Options = Static<typeof Options>;
-
-declare module "./protocol" {
-	export namespace Protocol {
-		// Used for type inference
-		// eslint-disable-next-line no-unused-vars -- declaration merging registers AI SDK protocol options.
-		interface OptionsByProtocol {
-			[Model.KnownProviderEnum.openai]: OpenAIOptions;
-			[Model.KnownProviderEnum.anthropic]: AnthropicOptions;
-			[Model.KnownProviderEnum.google]: GoogleOptions;
-			[Model.KnownProviderEnum.googleVertex]: GoogleVertexOptions;
-			[Model.KnownProviderEnum.googleVertexAnthropic]: GoogleVertexAnthropicOptions;
-			[Model.KnownProviderEnum.openaiCompatible]: OpenAICompatibleOptions;
-			[Model.KnownProviderEnum.openrouter]: OpenRouterOptions;
-			[Model.KnownProviderEnum.xai]: XaiOptions;
-		}
-	}
-}

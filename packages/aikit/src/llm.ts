@@ -1,11 +1,11 @@
 import { Model } from "./model/model";
 
 type LLM = {
-	<TProvider extends string, TModel extends Model.Info["id"]>(
+	<TProvider extends string, TProtocol extends Model.KnownProviderEnum = Model.ProviderToProtocol<TProvider>>(
 		provider: TProvider,
-		model: TModel,
-		overrides?: Partial<Model.Info>,
-	): Promise<Model.Info | undefined>;
+		model: string,
+		overrides?: Partial<Model.Info> & { protocol?: TProtocol },
+	): Promise<Model.TModel<TProtocol> | undefined>;
 	model: typeof Model.getModel;
 	models: typeof Model.getModels;
 	providers: typeof Model.getProviders;
@@ -13,11 +13,14 @@ type LLM = {
 	modelsAreEqual: typeof Model.modelsAreEqual;
 };
 
-const llmImpl = async <TProvider extends string, TModel extends Model.Info["id"]>(
+const llmImpl = async <
+	TProvider extends string,
+	TProtocol extends Model.KnownProviderEnum = Model.ProviderToProtocol<TProvider>,
+>(
 	provider: TProvider,
-	model: TModel,
-	overrides?: Partial<Model.Info>,
-): Promise<Model.Info | undefined> => Model.getModel(provider, model, overrides);
+	model: string,
+	overrides?: Partial<Model.Info> & { protocol?: TProtocol },
+): Promise<Model.TModel<TProtocol> | undefined> => Model.getModel(provider, model, overrides as any);
 
 export const llm = Object.assign(llmImpl, {
 	model: Model.getModel,

@@ -206,11 +206,18 @@ export namespace Model {
 		return Object.values(model.supportedProtocols ?? {}).includes(protocol);
 	}
 
-	export async function getModel<TProvider extends string, TModel extends Info["id"]>(
+	export type ProviderToProtocol<TProvider extends string> = TProvider extends KnownProviderEnum
+		? TProvider
+		: KnownProviderEnum;
+
+	export async function getModel<
+		TProvider extends string,
+		TProtocol extends KnownProviderEnum = ProviderToProtocol<TProvider>,
+	>(
 		provider: TProvider,
-		model: TModel,
-		overrides?: Partial<Info>,
-	) {
+		model: string,
+		overrides?: Partial<Info> & { protocol?: TProtocol },
+	): Promise<TModel<TProtocol> | undefined> {
 		const data = await registry();
 		const providerModels = data.get(provider);
 		const result = providerModels?.get(model);
@@ -221,9 +228,9 @@ export namespace Model {
 			return {
 				...result,
 				...overrides,
-			};
+			} as TModel<TProtocol>;
 		}
-		return result;
+		return result as TModel<TProtocol> | undefined;
 	}
 
 	export async function getProviders(): Promise<string[]> {

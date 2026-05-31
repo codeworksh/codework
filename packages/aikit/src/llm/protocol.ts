@@ -4,8 +4,17 @@ import Type from "typebox";
 import type { Message } from "../message/message";
 import { Model } from "../model/model";
 import type { AssistantMessageEventStream } from "../utils/eventstream";
+import type {
+	AnthropicOptions,
+	GoogleOptions,
+	GoogleVertexAnthropicOptions,
+	GoogleVertexOptions,
+	OpenAICompatibleOptions,
+	OpenAIOptions,
+	OpenRouterOptions,
+	XaiOptions,
+} from "./options";
 import type { SharedOptions, ThinkingBudgets } from "./shared";
-
 export namespace Protocol {
 	export const ProviderProtocolNotFoundError = NamedError.create(
 		"ProviderProtocolNotFoundError",
@@ -37,7 +46,16 @@ export namespace Protocol {
 		reasoning?: Model.ActiveThinkingLevel;
 		thinkingBudgets?: ThinkingBudgets;
 	};
-	export interface OptionsByProtocol {}
+	export interface OptionsByProtocol {
+		[Model.KnownProviderEnum.openai]: OpenAIOptions;
+		[Model.KnownProviderEnum.anthropic]: AnthropicOptions;
+		[Model.KnownProviderEnum.google]: GoogleOptions;
+		[Model.KnownProviderEnum.googleVertex]: GoogleVertexOptions;
+		[Model.KnownProviderEnum.googleVertexAnthropic]: GoogleVertexAnthropicOptions;
+		[Model.KnownProviderEnum.openaiCompatible]: OpenAICompatibleOptions;
+		[Model.KnownProviderEnum.openrouter]: OpenRouterOptions;
+		[Model.KnownProviderEnum.xai]: XaiOptions;
+	}
 	export type ProtocolWithOptions = keyof OptionsByProtocol & Model.KnownProviderEnum;
 	export type OptionsFor<TProtocol extends ProtocolWithOptions> = OptionsByProtocol[TProtocol];
 

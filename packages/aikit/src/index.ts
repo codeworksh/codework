@@ -8,6 +8,16 @@ export { stream } from "./stream";
 export { createAssistantMessageEventStream, EventStream } from "./utils/eventstream";
 export { validateSchema, validateToolArguments, validateToolCall } from "./utils/validation";
 
+export type {
+	AnthropicOptions,
+	GoogleOptions,
+	GoogleVertexAnthropicOptions,
+	GoogleVertexOptions,
+	OpenAICompatibleOptions,
+	OpenAIOptions,
+	OpenRouterOptions,
+	XaiOptions,
+} from "./llm/options";
 export type { AssistantMessageEventStream } from "./utils/eventstream";
 
 // re-export typebox
