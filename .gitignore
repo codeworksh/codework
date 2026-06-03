@@ -62,3 +62,6 @@ notes
 
 # zensical build output
 packages/aikit/site
+
+# misc
+scratch/
