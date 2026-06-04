@@ -183,6 +183,9 @@ importers:
       '@codeworksh/utils':
         specifier: workspace:*
         version: link:../utils
+      '@effect/platform':
+        specifier: ^0.96.1
+        version: 0.96.1(effect@4.0.0-beta.78)
       '@effect/platform-node':
         specifier: 4.0.0-beta.78
         version: 4.0.0-beta.78(effect@4.0.0-beta.78)(ioredis@5.11.1)
@@ -617,6 +620,11 @@ packages:
     peerDependencies:
       effect: ^4.0.0-beta.78
       ioredis: ^5.7.0
+
+  '@effect/platform@0.96.1':
+    resolution: {integrity: sha512-cjB1QZZYEP8JXCFNGvBLVi0T6YUBQTmOVEUA3SDbiQ6RUO+p6CE3eyD2vMWmrz5nE8yY5QSAuOV9v0boEcUv+A==}
+    peerDependencies:
+      effect: ^3.21.2
 
   '@electron/get@2.0.3':
     resolution: {integrity: sha512-Qkzpg2s9GnVV2I2BjRksUi43U5e6+zaQMcjoJy0C+C5oxaKl+fmckGDQFtRpZpZV0NQekuZZ+tGz7EA9TVnQtQ==}
@@ -5403,6 +5411,13 @@ snapshots:
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
+
+  '@effect/platform@0.96.1(effect@4.0.0-beta.78)':
+    dependencies:
+      effect: 4.0.0-beta.78
+      find-my-way-ts: 0.1.6
+      msgpackr: 1.11.12
+      multipasta: 0.2.7
 
   '@electron/get@2.0.3':
     dependencies:
