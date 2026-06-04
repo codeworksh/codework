@@ -183,9 +183,6 @@ importers:
       '@codeworksh/utils':
         specifier: workspace:*
         version: link:../utils
-      '@effect/platform':
-        specifier: ^0.96.1
-        version: 0.96.1(effect@4.0.0-beta.78)
       '@effect/platform-node':
         specifier: 4.0.0-beta.78
         version: 4.0.0-beta.78(effect@4.0.0-beta.78)(ioredis@5.11.1)
@@ -198,6 +195,15 @@ importers:
       esbuild:
         specifier: ^0.27.3
         version: 0.27.7
+      glob:
+        specifier: ^13.0.6
+        version: 13.0.6
+      mime-types:
+        specifier: ^3.0.2
+        version: 3.0.2
+      minimatch:
+        specifier: ^10.2.5
+        version: 10.2.5
       partial-json:
         specifier: ^0.1.7
         version: 0.1.7
@@ -220,6 +226,9 @@ importers:
       '@effect/language-service':
         specifier: ^0.86.2
         version: 0.86.2
+      '@types/mime-types':
+        specifier: ^3.0.1
+        version: 3.0.1
       bumpp:
         specifier: ^11.0.1
         version: 11.0.1
@@ -620,11 +629,6 @@ packages:
     peerDependencies:
       effect: ^4.0.0-beta.78
       ioredis: ^5.7.0
-
-  '@effect/platform@0.96.1':
-    resolution: {integrity: sha512-cjB1QZZYEP8JXCFNGvBLVi0T6YUBQTmOVEUA3SDbiQ6RUO+p6CE3eyD2vMWmrz5nE8yY5QSAuOV9v0boEcUv+A==}
-    peerDependencies:
-      effect: ^3.21.2
 
   '@electron/get@2.0.3':
     resolution: {integrity: sha512-Qkzpg2s9GnVV2I2BjRksUi43U5e6+zaQMcjoJy0C+C5oxaKl+fmckGDQFtRpZpZV0NQekuZZ+tGz7EA9TVnQtQ==}
@@ -2355,6 +2359,9 @@ packages:
 
   '@types/keyv@3.1.4':
     resolution: {integrity: sha512-BQ5aZNSCpj7D6K2ksrRCTmKRLEpnPvWDiLPfoGyhZ++8YtiK9d/3DBKPJgry359X/P1PfruyYwvnvwFjuEiEIg==}
+
+  '@types/mime-types@3.0.1':
+    resolution: {integrity: sha512-xRMsfuQbnRq1Ef+C+RKaENOxXX87Ygl38W1vDfPHRku02TgQr+Qd8iivLtAMcR0KF5/29xlnFihkTlbqFrGOVQ==}
 
   '@types/node@24.12.2':
     resolution: {integrity: sha512-A1sre26ke7HDIuY/M23nd9gfB+nrmhtYyMINbjI1zHJxYteKR6qSMX56FsmjMcDb3SMcjJg5BiRRgOCC/yBD0g==}
@@ -5412,13 +5419,6 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform@0.96.1(effect@4.0.0-beta.78)':
-    dependencies:
-      effect: 4.0.0-beta.78
-      find-my-way-ts: 0.1.6
-      msgpackr: 1.11.12
-      multipasta: 0.2.7
-
   '@electron/get@2.0.3':
     dependencies:
       debug: 4.4.3
@@ -6694,6 +6694,8 @@ snapshots:
   '@types/keyv@3.1.4':
     dependencies:
       '@types/node': 24.12.2
+
+  '@types/mime-types@3.0.1': {}
 
   '@types/node@24.12.2':
     dependencies:
