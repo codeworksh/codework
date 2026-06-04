@@ -3,7 +3,12 @@
 	"compilerOptions": {
 		"lib": ["es2023"],
 		"declaration": true,
-		"noUnusedLocals": false
+		"noUnusedLocals": false,
+		"plugins": [
+			{
+				"name": "@effect/language-service"
+			}
+		]
 	},
 	"include": ["src"]
 }

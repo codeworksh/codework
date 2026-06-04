@@ -1,11 +1,12 @@
 packages:
-   - packages/*
+  - packages/*
 
 onlyBuiltDependencies:
-   - "@mongodb-js/zstd"
-   - electron
-   - esbuild
-   - lmdb
-   - msgpackr-extract
-   - msw
-   - node-liblzma
+  - '@mongodb-js/zstd'
+  - '@parcel/watcher'
+  - electron
+  - esbuild
+  - lmdb
+  - msgpackr-extract
+  - msw
+  - node-liblzma

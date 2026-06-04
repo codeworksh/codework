@@ -50,7 +50,9 @@
 		"@ai-sdk/provider": "^3.0.10",
 		"@codeworksh/aikit": "workspace:*",
 		"@codeworksh/utils": "workspace:*",
+		"@effect/platform-node": "4.0.0-beta.78",
 		"dedent": "^1.7.2",
+		"effect": "4.0.0-beta.78",
 		"esbuild": "^0.27.3",
 		"partial-json": "^0.1.7",
 		"quickjs-wasi": "^2.2.0",
@@ -59,6 +61,7 @@
 		"uuidv7": "^1.2.1"
 	},
 	"devDependencies": {
+		"@effect/language-service": "^0.86.2",
 		"bumpp": "^11.0.1"
 	},
 	"peerDependencies": {
