@@ -1,10 +1,10 @@
 import { NodeFileSystem } from "@effect/platform-node";
-import { dirname, isAbsolute, join, relative, resolve as pathResolve, sep } from "path";
+import { Context, Effect, FileSystem, Layer, Schema } from "effect";
+import type { PlatformError } from "effect/PlatformError";
 import { realpathSync } from "fs";
 import * as NFS from "fs/promises";
 import { lookup } from "mime-types";
-import { Context, Effect, FileSystem, Layer, Schema } from "effect";
-import type { PlatformError } from "effect/PlatformError";
+import { dirname, isAbsolute, join, resolve as pathResolve, relative, sep } from "path";
 import { Glob } from "../util/glob";
 
 export class FileSystemError extends Schema.TaggedErrorClass<FileSystemError>()("FileSystemError", {

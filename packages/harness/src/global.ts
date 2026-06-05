@@ -1,7 +1,7 @@
-import { Effect, Context, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
+import fs from "node:fs/promises";
 import * as os from "node:os";
 import { join, resolve } from "node:path";
-import fs from "node:fs/promises";
 
 export const configDir = ".codework";
 export const app = "codework";
