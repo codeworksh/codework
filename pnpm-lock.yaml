@@ -186,9 +186,15 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-beta.78
         version: 4.0.0-beta.78(effect@4.0.0-beta.78)(ioredis@5.11.1)
+      '@libsql/client':
+        specifier: ^0.17.3
+        version: 0.17.3
       dedent:
         specifier: ^1.7.2
         version: 1.7.2
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(sql.js@1.14.1)
       effect:
         specifier: 4.0.0-beta.78
         version: 4.0.0-beta.78
@@ -235,6 +241,9 @@ importers:
       bumpp:
         specifier: ^11.0.1
         version: 11.0.1
+      drizzle-kit:
+        specifier: ^0.31.10
+        version: 0.31.10
 
   packages/sdk:
     dependencies:
