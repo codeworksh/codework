@@ -1,11 +1,13 @@
-import { Schema, Effect } from "effect";
+import { Schema, Effect, Context, Layer } from "effect";
 import { withStatics } from "../schema";
 import { AbsolutePath } from "../schema";
+// import { Database } from "../db/db";
+// import { FileSystem } from "../filesystem/filesystem";
 
 export const ID = Schema.String.pipe(
 	Schema.brand("Project.ID"),
 	withStatics((schema) => ({
-		global: schema.make("global"),
+		local: schema.make("local"),
 	})),
 );
 export type ID = typeof ID.Type;
@@ -34,11 +36,21 @@ export interface Interface {
 	readonly directories: (input: DirectoriesInput) => Effect.Effect<Directories>;
 	readonly resolve: (input: AbsolutePath) => Effect.Effect<
 		{
-			previous?: ID;
-			id: ID;
+			previous?: ID; // previous ID before moving
+			id: ID; // current ID
 			directory: AbsolutePath;
 			vcs?: Vcs;
 		},
 		never
 	>;
 }
+
+export class Service extends Context.Service<Service, Interface>()("@codework/project") {}
+
+export const layer = Layer.effect(
+	Service,
+	// Effect.gen(function* () {
+	// 	const { db } = yield* Database.Service;
+	// 	const fs = yield* FileSystem.Service;
+	// }),
+);
