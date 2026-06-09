@@ -1,136 +1,149 @@
 import path from "node:path";
 import { Context, Effect, Layer, Schema } from "effect";
+import { eq } from "../db/db";
+import { Database } from "../db/db";
+import { ProjectDirectoryTable } from "../db/schema.sql";
 import { FileSystem } from "../filesystem/filesystem";
 import { Git } from "../git";
 import { AbsolutePath, withStatics } from "../schema";
 import { Hash } from "../util/hash";
 
 export const ID = Schema.String.pipe(
-  Schema.brand("Project.ID"),
-  withStatics((schema) => ({
-    local: schema.make("local"),
-  })),
+	Schema.brand("Project.ID"),
+	withStatics((schema) => ({
+		local: schema.make("local"),
+	})),
 );
 export type ID = typeof ID.Type;
 
 export const Vcs = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("git"),
-    store: AbsolutePath,
-  }),
+	Schema.Struct({
+		type: Schema.Literal("git"),
+		store: AbsolutePath,
+	}),
 ]);
 export type Vcs = typeof Vcs.Type;
 
 export class Info extends Schema.Class<Info>("Project.Info")({
-  id: ID,
+	id: ID,
 }) {}
 
 export const DirectoriesInput = Schema.Struct({
-  projectID: ID,
+	projectID: ID,
 }).annotate({ identifier: "Project.DirectoriesInput" });
 export type DirectoriesInput = typeof DirectoriesInput.Type;
 
 export const Directories = Schema.Array(AbsolutePath).annotate({
-  identifier: "Project.Directories",
+	identifier: "Project.Directories",
 });
 export type Directories = typeof Directories.Type;
 
 export interface Interface {
-  // readonly directories: (input: DirectoriesInput) => Effect.Effect<Directories>;
-  readonly resolve: (input: AbsolutePath) => Effect.Effect<
-    {
-      previous?: ID; // previous ID before moving
-      id: ID; // current ID
-      directory: AbsolutePath;
-      vcs?: Vcs;
-      name: string;
-    },
-    never
-  >;
+	readonly directories: (input: DirectoriesInput) => Effect.Effect<Directories>;
+	readonly resolve: (input: AbsolutePath) => Effect.Effect<
+		{
+			previous?: ID; // previous ID before moving
+			id: ID; // current ID
+			directory: AbsolutePath;
+			vcs?: Vcs;
+			name: string;
+		},
+		never
+	>;
 }
 
-export class Service extends Context.Service<Service, Interface>()(
-  "@codework/project",
-) {}
+export class Service extends Context.Service<Service, Interface>()("@codework/project") {}
 
 export const layer = Layer.effect(
-  Service,
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.Service;
-    const git = yield* Git.Service;
+	Service,
+	Effect.gen(function* () {
+		const { db } = yield* Database.Service;
+		const fs = yield* FileSystem.Service;
+		const git = yield* Git.Service;
 
-    const cached = Effect.fnUntraced(function* (dir: string) {
-      return yield* fs.readFileString(path.join(dir, "codework")).pipe(
-        Effect.map((value) => value.trim()),
-        Effect.map((value) => (value ? ID.make(value) : undefined)),
-        Effect.catch(() => Effect.void),
-      );
-    });
+		const directories = Effect.fn("Project.directories")(function* (input: DirectoriesInput) {
+			const rows = yield* db
+				.select({ directory: ProjectDirectoryTable.directory })
+				.from(ProjectDirectoryTable)
+				.where(eq(ProjectDirectoryTable.projectId, input.projectID))
+				.all()
+				.pipe(Effect.orDie);
 
-    const remote = Effect.fnUntraced(function* (repo: Git.Repo) {
-      const origin = yield* git.remote(repo);
-      if (!origin) return undefined;
-      const normalized = url(origin);
-      if (!normalized) return undefined;
-      return {
-        id: ID.make(Hash.fast(`git:${normalized}`)),
-        name: path.posix.basename(normalized),
-      };
-    });
+			return rows
+				.toSorted((a, b) => a.directory.localeCompare(b.directory))
+				.map((row) => AbsolutePath.make(row.directory));
+		});
 
-    function url(input: string) {
-      const value = input.trim();
-      if (!value) return undefined;
+		const cached = Effect.fnUntraced(function* (dir: string) {
+			return yield* fs.readFileString(path.join(dir, "codework")).pipe(
+				Effect.map((value) => value.trim()),
+				Effect.map((value) => (value ? ID.make(value) : undefined)),
+				Effect.catch(() => Effect.void),
+			);
+		});
 
-      try {
-        const parsed = new URL(value);
-        if (parsed.protocol === "file:") return undefined;
-        return parts(parsed.hostname, parsed.pathname);
-      } catch {
-        const scp = value.match(/^([^@/:]+@)?([^/:]+):(.+)$/);
-        if (scp) return parts(scp[2]!, scp[3]!);
-        return undefined;
-      }
-    }
+		const remote = Effect.fnUntraced(function* (repo: Git.Repo) {
+			const origin = yield* git.remote(repo);
+			if (!origin) return undefined;
+			const normalized = url(origin);
+			if (!normalized) return undefined;
+			return {
+				id: ID.make(Hash.fast(`git:${normalized}`)),
+				name: path.posix.basename(normalized),
+			};
+		});
 
-    function parts(host: string, name: string) {
-      const pathname = name
-        .replace(/^\/+/, "")
-        .replace(/\.git\/?$/, "")
-        .replace(/\/+$/, "");
-      if (!host || !pathname) return undefined;
-      return `${host.toLowerCase()}/${pathname}`;
-    }
+		function url(input: string) {
+			const value = input.trim();
+			if (!value) return undefined;
 
-    const root = Effect.fnUntraced(function* (repo: Git.Repo) {
-      const root = (yield* git.roots(repo))[0];
-      return root ? ID.make(root) : undefined;
-    });
+			try {
+				const parsed = new URL(value);
+				if (parsed.protocol === "file:") return undefined;
+				return parts(parsed.hostname, parsed.pathname);
+			} catch {
+				const scp = value.match(/^([^@/:]+@)?([^/:]+):(.+)$/);
+				if (scp) return parts(scp[2]!, scp[3]!);
+				return undefined;
+			}
+		}
 
-    const resolve = Effect.fn("Project.resolve")(function* (
-      input: AbsolutePath,
-    ) {
-      const repo = yield* git.find(input);
-      if (!repo) {
-        return {
-          id: ID.local,
-          directory: input,
-          name: path.basename(path.normalize(input)),
-        };
-      }
+		function parts(host: string, name: string) {
+			const pathname = name
+				.replace(/^\/+/, "")
+				.replace(/\.git\/?$/, "")
+				.replace(/\/+$/, "");
+			if (!host || !pathname) return undefined;
+			return `${host.toLowerCase()}/${pathname}`;
+		}
 
-      const previous = yield* cached(repo.store);
-      const origin = yield* remote(repo);
-      const id = origin?.id ?? previous ?? (yield* root(repo));
-      return {
-        id: id ?? ID.local,
-        ...(previous ? { previous } : {}),
-        directory: repo.directory,
-        vcs: { type: "git" as const, store: repo.store },
-        name: origin?.name ?? path.basename(path.normalize(repo.directory)),
-      };
-    });
+		const root = Effect.fnUntraced(function* (repo: Git.Repo) {
+			const root = (yield* git.roots(repo))[0];
+			return root ? ID.make(root) : undefined;
+		});
 
-    return Service.of({ resolve });
-  }),
+		const resolve = Effect.fn("Project.resolve")(function* (input: AbsolutePath) {
+			const repo = yield* git.find(input);
+			if (!repo) {
+				return {
+					id: ID.local,
+					directory: input,
+					name: path.basename(path.normalize(input)),
+				};
+			}
+
+			const previous = yield* cached(repo.store);
+			const origin = yield* remote(repo);
+			const id = origin?.id ?? previous ?? (yield* root(repo));
+			return {
+				id: id ?? ID.local,
+				...(previous ? { previous } : {}),
+				directory: repo.directory,
+				vcs: { type: "git" as const, store: repo.store },
+				name: origin?.name ?? path.basename(path.normalize(repo.directory)),
+			};
+		});
+
+		return Service.of({ directories, resolve });
+	}),
 );
