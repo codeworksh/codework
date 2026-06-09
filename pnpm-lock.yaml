@@ -196,8 +196,8 @@ importers:
         specifier: ^1.7.2
         version: 1.7.2
       drizzle-orm:
-        specifier: 1.0.0-beta.22
-        version: 1.0.0-beta.22(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)
+        specifier: 1.0.0-rc.3
+        version: 1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)
       effect:
         specifier: 4.0.0-beta.78
         version: 4.0.0-beta.78
@@ -245,8 +245,8 @@ importers:
         specifier: ^11.0.1
         version: 11.0.1
       drizzle-kit:
-        specifier: 1.0.0-beta.22
-        version: 1.0.0-beta.22
+        specifier: 1.0.0-rc.3
+        version: 1.0.0-rc.3
 
   packages/sdk:
     dependencies:
@@ -3086,8 +3086,8 @@ packages:
     resolution: {integrity: sha512-7OZcmQUrdGI+DUNNsKBn1aW8qSoKuTH7d0mYgSP8bAzdFzKoovxEFnoGQp2dVs82EOJeYycqRtciopszwUf8bw==}
     hasBin: true
 
-  drizzle-kit@1.0.0-beta.22:
-    resolution: {integrity: sha512-9HTZuQRljQKTgCx4UhiGn8KYYfHGk4+B/bRR1714W67kz0qgJvdrG527i8rQD8uUyET9UTGR1u8syySJD4znGw==}
+  drizzle-kit@1.0.0-rc.3:
+    resolution: {integrity: sha512-lwGIi6GTlEYzrtac1Szecns+zrAxjaOoNysfBCKRQOXQE7nMJ8IU2I2S6ek3FHEm1N30dQb5YrTdqV7zNH6n7A==}
     hasBin: true
 
   drizzle-orm@0.45.2:
@@ -3182,13 +3182,12 @@ packages:
       sqlite3:
         optional: true
 
-  drizzle-orm@1.0.0-beta.22:
-    resolution: {integrity: sha512-F+DZyVIvH0oVKa/w08Cle1xfoH+pc+htIXHG/frnMLG72aby9NYYr9oc+9XvghnoO4umxFItduz0OMmQJMnenw==}
+  drizzle-orm@1.0.0-rc.3:
+    resolution: {integrity: sha512-akZOa5UxapFbdBG8IDkfBRpSZJpMHaOJtGgp7oi1oHaiU8S3KN92waHo2l5aRuv1D9tMGYpv3BQFOsiGcNjLTQ==}
     peerDependencies:
       '@aws-sdk/client-rds-data': '>=3'
       '@cloudflare/workers-types': '>=4'
-      '@effect/sql': ^0.48.5
-      '@effect/sql-pg': ^0.49.7
+      '@effect/sql-pg': '>=4.0.0-beta.58 || >=4.0.0'
       '@electric-sql/pglite': '>=0.2.0'
       '@libsql/client': '>=0.10.0'
       '@libsql/client-wasm': '>=0.10.0'
@@ -3212,8 +3211,8 @@ packages:
       arktype: '>=2.0.0'
       better-sqlite3: '>=9.3.0'
       bun-types: '*'
+      effect: '>=4.0.0-beta.58 || >=4.0.0'
       expo-sqlite: '>=14.0.0'
-      gel: '>=2'
       mssql: ^11.0.1
       mysql2: '>=2'
       pg: '>=8'
@@ -3227,8 +3226,6 @@ packages:
       '@aws-sdk/client-rds-data':
         optional: true
       '@cloudflare/workers-types':
-        optional: true
-      '@effect/sql':
         optional: true
       '@effect/sql-pg':
         optional: true
@@ -3278,9 +3275,9 @@ packages:
         optional: true
       bun-types:
         optional: true
-      expo-sqlite:
+      effect:
         optional: true
-      gel:
+      expo-sqlite:
         optional: true
       mssql:
         optional: true
@@ -7453,7 +7450,7 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.21.0
 
-  drizzle-kit@1.0.0-beta.22:
+  drizzle-kit@1.0.0-rc.3:
     dependencies:
       '@drizzle-team/brocli': 0.11.0
       '@js-temporal/polyfill': 0.5.1
@@ -7467,10 +7464,11 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       sql.js: 1.14.1
 
-  drizzle-orm@1.0.0-beta.22(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6):
+  drizzle-orm@1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6):
     optionalDependencies:
       '@libsql/client': 0.17.3
       '@opentelemetry/api': 1.9.1
+      effect: 4.0.0-beta.78
       sql.js: 1.14.1
       typebox: 1.1.37
       zod: 4.3.6
