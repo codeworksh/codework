@@ -1,10 +1,17 @@
 import { NodeFileSystem } from "@effect/platform-node";
 import { eq } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { Effect, FileSystem, Layer } from "effect";
+import { Effect, FileSystem, Layer, Schema } from "effect";
 import path from "node:path";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../../src/db/db";
+import {
+	Project,
+	ProjectDirectoryInsert,
+	ProjectDirectoryTable,
+	ProjectInsert,
+	ProjectTable,
+} from "../../src/db/schema.sql";
 import { testEffect } from "../utils/effect";
 
 const DemoTable = sqliteTable("demo", {
@@ -14,6 +21,8 @@ const DemoTable = sqliteTable("demo", {
 
 const schema = {
 	DemoTable,
+	ProjectTable,
+	ProjectDirectoryTable,
 };
 
 const layer = Layer.unwrap(
@@ -26,25 +35,204 @@ const layer = Layer.unwrap(
 
 const { effect: it } = testEffect(layer);
 
+const createProjectTables = Effect.fn("DatabaseTest.createProjectTables")(function* (db: Database.DatabaseShape) {
+	yield* db.run(`
+		CREATE TABLE project (
+			id TEXT PRIMARY KEY NOT NULL,
+			name TEXT NOT NULL,
+			vcs TEXT NOT NULL
+		)
+	`);
+	yield* db.run(`
+		CREATE TABLE project_directory (
+			id TEXT PRIMARY KEY NOT NULL,
+			project_id TEXT NOT NULL REFERENCES project(id) ON UPDATE CASCADE ON DELETE CASCADE,
+			directory TEXT NOT NULL,
+			type TEXT NOT NULL,
+			sandbox_id TEXT NOT NULL,
+			CONSTRAINT project_directory_project_directory_idx UNIQUE(project_id, directory)
+		)
+	`);
+});
+
 describe("Database", () => {
-	it(
-		"provides an Effect Drizzle database",
-		Effect.gen(function* () {
-			const { db } = yield* Database.Service;
+	describe("Effect wrapper", () => {
+		it(
+			"provides an Effect Drizzle database",
+			Effect.gen(function* () {
+				const { db } = yield* Database.Service;
 
-			yield* db.run("CREATE TABLE demo (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)");
-			yield* db
-				.insert(DemoTable)
-				.values([{ name: "beta" }, { name: "alpha" }])
-				.run();
+				yield* db.run("CREATE TABLE demo (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)");
+				yield* db
+					.insert(DemoTable)
+					.values([{ name: "beta" }, { name: "alpha" }])
+					.run();
 
-			const rows = yield* db
-				.select({ name: DemoTable.name })
-				.from(DemoTable)
-				.where(eq(DemoTable.name, "alpha"))
-				.all();
+				const rows = yield* db
+					.select({ name: DemoTable.name })
+					.from(DemoTable)
+					.where(eq(DemoTable.name, "alpha"))
+					.all();
 
-			expect(rows).toEqual([{ name: "alpha" }]);
-		}),
-	);
+				expect(rows).toEqual([{ name: "alpha" }]);
+			}),
+		);
+	});
+
+	describe("Project tables", () => {
+		it(
+			"inserts and reads a project with its directories",
+			Effect.gen(function* () {
+				const { db } = yield* Database.Service;
+				yield* createProjectTables(db);
+
+				const project = yield* Schema.decodeUnknownEffect(ProjectInsert)({
+					id: "project-1",
+					name: "codework",
+					vcs: "git",
+				});
+				const mainDirectory = yield* Schema.decodeUnknownEffect(ProjectDirectoryInsert)({
+					id: "directory-1",
+					projectId: project.id,
+					directory: "/workspace/codework",
+					type: "main",
+					sandboxEnvID: "sandbox-1",
+				});
+				const worktreeDirectory = yield* Schema.decodeUnknownEffect(ProjectDirectoryInsert)({
+					id: "directory-2",
+					projectId: project.id,
+					directory: "/workspace/codework-feature",
+					type: "gitworktree",
+					sandboxEnvID: "sandbox-2",
+				});
+
+				yield* db.insert(ProjectTable).values(project).run();
+				yield* db.insert(ProjectDirectoryTable).values([mainDirectory, worktreeDirectory]).run();
+
+				const projectRows = yield* db
+					.select({
+						id: ProjectTable.id,
+						name: ProjectTable.name,
+						vcs: ProjectTable.vcs,
+					})
+					.from(ProjectTable)
+					.where(eq(ProjectTable.id, project.id))
+					.all();
+				const directoryRows = yield* db
+					.select({
+						id: ProjectDirectoryTable.id,
+						directory: ProjectDirectoryTable.directory,
+						type: ProjectDirectoryTable.type,
+						sandboxEnvID: ProjectDirectoryTable.sandboxEnvID,
+					})
+					.from(ProjectDirectoryTable)
+					.where(eq(ProjectDirectoryTable.projectId, project.id))
+					.orderBy(ProjectDirectoryTable.id)
+					.all();
+
+				const result = yield* Schema.decodeUnknownEffect(Project)({
+					...projectRows[0],
+					directories: directoryRows,
+				});
+
+				expect(result).toEqual({
+					id: "project-1",
+					name: "codework",
+					vcs: "git",
+					directories: [
+						{
+							id: "directory-1",
+							directory: "/workspace/codework",
+							type: "main",
+							sandboxEnvID: "sandbox-1",
+						},
+						{
+							id: "directory-2",
+							directory: "/workspace/codework-feature",
+							type: "gitworktree",
+							sandboxEnvID: "sandbox-2",
+						},
+					],
+				});
+			}),
+		);
+
+		it(
+			"enforces foreign keys and unique project directories",
+			Effect.gen(function* () {
+				const { db } = yield* Database.Service;
+				yield* createProjectTables(db);
+
+				const orphanExit = yield* db
+					.insert(ProjectDirectoryTable)
+					.values({
+						id: "orphan",
+						projectId: "missing-project",
+						directory: "/workspace/orphan",
+						type: "root",
+						sandboxEnvID: "sandbox-orphan",
+					})
+					.run()
+					.pipe(Effect.exit);
+
+				expect(orphanExit._tag).toBe("Failure");
+
+				yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework", vcs: "git" }).run();
+				yield* db
+					.insert(ProjectDirectoryTable)
+					.values({
+						id: "directory-1",
+						projectId: "project-1",
+						directory: "/workspace/codework",
+						type: "main",
+						sandboxEnvID: "sandbox-1",
+					})
+					.run();
+
+				const duplicateExit = yield* db
+					.insert(ProjectDirectoryTable)
+					.values({
+						id: "directory-2",
+						projectId: "project-1",
+						directory: "/workspace/codework",
+						type: "root",
+						sandboxEnvID: "sandbox-2",
+					})
+					.run()
+					.pipe(Effect.exit);
+
+				expect(duplicateExit._tag).toBe("Failure");
+			}),
+		);
+
+		it(
+			"deletes project directories when their project is deleted",
+			Effect.gen(function* () {
+				const { db } = yield* Database.Service;
+				yield* createProjectTables(db);
+
+				yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework", vcs: "git" }).run();
+				yield* db
+					.insert(ProjectDirectoryTable)
+					.values({
+						id: "directory-1",
+						projectId: "project-1",
+						directory: "/workspace/codework",
+						type: "main",
+						sandboxEnvID: "sandbox-1",
+					})
+					.run();
+
+				yield* db.delete(ProjectTable).where(eq(ProjectTable.id, "project-1")).run();
+
+				const directories = yield* db
+					.select()
+					.from(ProjectDirectoryTable)
+					.where(eq(ProjectDirectoryTable.projectId, "project-1"))
+					.all();
+
+				expect(directories).toEqual([]);
+			}),
+		);
+	});
 });
