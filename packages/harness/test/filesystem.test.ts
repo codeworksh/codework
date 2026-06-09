@@ -7,6 +7,13 @@ import { FileSystemError, Service, defaultLayer, layer, layerFromVfs } from "../
 import { tmpdir } from "./fixtures/tempdir";
 import { testEffect } from "./utils/effect";
 
+const setupUpFixture = async (root: string) => {
+	await fs.mkdir(path.join(root, "workspace", ".git"), { recursive: true });
+	await fs.mkdir(path.join(root, "workspace", "project", "packages", "app", "src"), { recursive: true });
+	await fs.writeFile(path.join(root, "workspace", "package.json"), "{}");
+	await fs.writeFile(path.join(root, "workspace", "project", "pnpm-workspace.yaml"), "packages: []");
+};
+
 describe("FileSystem", () => {
 	it("reads and writes files using the configured real filesystem root", async () => {
 		await using tmp = await tmpdir();
@@ -20,6 +27,64 @@ describe("FileSystem", () => {
 		);
 
 		expect(await fs.readFile(path.join(tmp.path, "file.txt"), "utf8")).toBe("hello");
+	});
+
+	describe("up with real filesystem", () => {
+		it("finds multiple files and directories while walking upward", async () => {
+			await using tmp = await tmpdir();
+			await setupUpFixture(tmp.path);
+
+			const matches = await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+					return yield* filesystem.up({
+						targets: [".git", "package.json", "pnpm-workspace.yaml"],
+						start: "/workspace/project/packages/app/src",
+					});
+				}).pipe(Effect.provide(defaultLayer(tmp.path))),
+			);
+
+			expect(matches).toEqual([
+				"/workspace/project/pnpm-workspace.yaml",
+				"/workspace/.git",
+				"/workspace/package.json",
+			]);
+		});
+
+		it("includes the stop directory and does not search above it", async () => {
+			await using tmp = await tmpdir();
+			await setupUpFixture(tmp.path);
+
+			const matches = await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+					return yield* filesystem.up({
+						targets: [".git", "package.json", "pnpm-workspace.yaml"],
+						start: "/workspace/project/packages/app/src",
+						stop: "/workspace/project",
+					});
+				}).pipe(Effect.provide(defaultLayer(tmp.path))),
+			);
+
+			expect(matches).toEqual(["/workspace/project/pnpm-workspace.yaml"]);
+		});
+
+		it("stops at the virtual filesystem root when stop is omitted", async () => {
+			await using tmp = await tmpdir();
+			await setupUpFixture(tmp.path);
+
+			const matches = await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+					return yield* filesystem.up({
+						targets: [".git", "missing.txt"],
+						start: "/workspace/project/packages/app/src",
+					});
+				}).pipe(Effect.provide(defaultLayer(tmp.path))),
+			);
+
+			expect(matches).toEqual(["/workspace/.git"]);
+		});
 	});
 
 	describe("injected VFS", () => {
