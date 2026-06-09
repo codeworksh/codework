@@ -25,7 +25,10 @@ describe("FileSystem", () => {
 	describe("injected VFS", () => {
 		const memoryVfs = create(new MemoryProvider());
 		memoryVfs.mkdirSync("/directory");
+		memoryVfs.mkdirSync("/workspace/project/src", { recursive: true });
 		memoryVfs.writeFileSync("/file.txt", "file");
+		memoryVfs.writeFileSync("/workspace/package.json", "{}");
+		memoryVfs.writeFileSync("/workspace/project/package.json", "{}");
 
 		const memoryLayer = layer.pipe(Layer.provide(layerFromVfs(memoryVfs)));
 		const { effect: it } = testEffect(memoryLayer);
@@ -46,6 +49,19 @@ describe("FileSystem", () => {
 				expect(yield* filesystem.isDir("/directory")).toBe(true);
 				expect(yield* filesystem.isDir("/file.txt")).toBe(false);
 				expect(yield* filesystem.isDir("/missing")).toBe(false);
+			}));
+
+		it("finds targets while walking up the VFS", () =>
+			Effect.gen(function* () {
+				const filesystem = yield* Service;
+
+				const matches = yield* filesystem.up({
+					targets: ["package.json"],
+					start: "/workspace/project/src",
+					stop: "/workspace",
+				});
+
+				expect(matches).toEqual(["/workspace/project/package.json", "/workspace/package.json"]);
 			}));
 
 		it("maps VFS failures to FileSystemError", () =>

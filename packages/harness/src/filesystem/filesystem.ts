@@ -1,5 +1,6 @@
 import { create, RealFSProvider, type VirtualFileSystem } from "@platformatic/vfs";
 import { Context, Effect, Layer, Schema } from "effect";
+import { dirname, join } from "path";
 
 export class FileSystemError extends Schema.TaggedErrorClass<FileSystemError>()("FileSystemError", {
 	method: Schema.String,
@@ -10,6 +11,11 @@ export interface Interface {
 	readonly isDir: (path: string) => Effect.Effect<boolean>;
 	readonly readFileString: (path: string, encoding?: string) => Effect.Effect<string, FileSystemError>;
 	readonly writeFileString: (path: string, data: string) => Effect.Effect<void, FileSystemError>;
+	readonly up: (options: {
+		targets: string[];
+		start: string;
+		stop?: string;
+	}) => Effect.Effect<string[], FileSystemError>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codework/filesystem") {}
@@ -44,7 +50,33 @@ export const layer = Layer.effect(
 			return stat?.isDirectory() ?? false;
 		});
 
+		const up = Effect.fn("FileSystem.up")(function* (options: { targets: string[]; start: string; stop?: string }) {
+			const result: string[] = [];
+			let current = options.start;
+
+			while (true) {
+				for (const target of options.targets) {
+					const search = join(current, target);
+					const exists = yield* Effect.tryPromise({
+						try: () => vfs.provider.exists(search),
+						catch: (cause) => new FileSystemError({ method: "up", cause }),
+					});
+
+					if (exists) result.push(search);
+				}
+
+				if (options.stop === current) break;
+
+				const parent = dirname(current);
+				if (parent === current) break;
+				current = parent;
+			}
+
+			return result;
+		});
+
 		return Service.of({
+			up,
 			isDir,
 			readFileString,
 			writeFileString,

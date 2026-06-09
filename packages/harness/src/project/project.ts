@@ -40,6 +40,7 @@ export interface Interface {
 			id: ID; // current ID
 			directory: AbsolutePath;
 			vcs?: Vcs;
+			name: string;
 		},
 		never
 	>;

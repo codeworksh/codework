@@ -2,10 +2,22 @@ import { createInsertSchema, createSelectSchema, createUpdateSchema } from "driz
 import { sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { Schema } from "effect";
 
+import { integer } from "drizzle-orm/sqlite-core";
+
+export const Timestamps = {
+	createdAt: integer("created_at")
+		.notNull()
+		.$default(() => Date.now()),
+	updatedAt: integer("updated_at")
+		.notNull()
+		.$onUpdate(() => Date.now()),
+};
+
 export const ProjectTable = sqliteTable("project", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
 	vcs: text("vcs").notNull(),
+	...Timestamps,
 });
 
 export const ProjectDirectoryTable = sqliteTable(
@@ -20,7 +32,8 @@ export const ProjectDirectoryTable = sqliteTable(
 			}),
 		directory: text("directory").notNull(),
 		type: text("type", { enum: ["main", "root", "gitworktree"] }).notNull(),
-		sandboxEnvID: text("sandbox_id").notNull(),
+		sandboxEnvID: text("sandbox_env_id").notNull(),
+		...Timestamps,
 	},
 	(table) => [uniqueIndex("project_directory_project_directory_idx").on(table.projectId, table.directory)],
 );

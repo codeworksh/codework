@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { AbsolutePath } from "../../schema";
-import { Workspace } from "../workspace";
+import { AbsolutePath } from "../schema";
+import { Workspace } from "../core/workspace";
 
 export const Ref = Schema.Struct({
 	directory: AbsolutePath,
