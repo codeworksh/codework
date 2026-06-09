@@ -52,6 +52,7 @@
 		"@codeworksh/utils": "workspace:*",
 		"@effect/platform-node": "4.0.0-beta.78",
 		"@libsql/client": "^0.17.3",
+		"@platformatic/vfs": "^0.4.0",
 		"dedent": "^1.7.2",
 		"drizzle-orm": "^0.45.2",
 		"effect": "4.0.0-beta.78",

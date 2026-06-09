@@ -1,6 +1,15 @@
 packages:
   - packages/*
 
+allowBuilds:
+  '@mongodb-js/zstd': set this to true or false
+  electron: set this to true or false
+  esbuild: set this to true or false
+  lmdb: set this to true or false
+  msgpackr-extract: set this to true or false
+  msw: set this to true or false
+  node-liblzma: set this to true or false
+
 onlyBuiltDependencies:
   - '@mongodb-js/zstd'
   - '@parcel/watcher'
