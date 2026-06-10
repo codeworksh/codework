@@ -34,6 +34,12 @@ export interface Repo {
   readonly store: AbsolutePath;
 }
 
+export interface Result {
+  readonly exitCode: number;
+  readonly text: string;
+  readonly stderr: string;
+}
+
 export class WorktreeError extends Schema.TaggedErrorClass<WorktreeError>()(
   "Git.WorktreeError",
   {
@@ -144,7 +150,7 @@ export const layer = Layer.effect(
     const find = Effect.fn("Git.find")(function* (input: AbsolutePath) {
       const dotgit = yield* fs.up({ targets: [".git"], start: input }).pipe(
         Effect.map((matches) => matches[0]),
-        Effect.catch(() => Effect.succeed(undefined)),
+        Effect.catch(() => Effect.void),
       );
       if (!dotgit) return undefined;
 
@@ -361,12 +367,6 @@ export const defaultLayer = (rootPath: string) =>
     Layer.provide(FileSystem.defaultLayer(rootPath)),
     Layer.provide(NodeServices.layer),
   );
-
-export interface Result {
-  readonly exitCode: number;
-  readonly text: string;
-  readonly stderr: string;
-}
 
 function resolvePath(cwd: string, value: string) {
   const trimmed = value.replace(/[\r\n]+$/, "");

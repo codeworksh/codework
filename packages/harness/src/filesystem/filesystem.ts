@@ -70,7 +70,7 @@ export const layer = Layer.effect(
       const stat = yield* Effect.tryPromise({
         try: () => vfs.promises.stat(path),
         catch: (cause) => new FileSystemError({ method: "isDir", cause }),
-      }).pipe(Effect.catch(() => Effect.succeed(undefined)));
+      }).pipe(Effect.catch(() => Effect.void));
 
       return stat?.isDirectory() ?? false;
     });
