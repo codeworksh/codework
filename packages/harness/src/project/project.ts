@@ -1,6 +1,6 @@
 import path from "node:path";
 import { Context, Effect, Layer, Schema } from "effect";
-import { eq, inArray } from "../db/db";
+import { eq, inArray, and } from "../db/db";
 import { Database } from "../db/db";
 import {
   ProjectTable,
@@ -12,6 +12,7 @@ import { FileSystem } from "../filesystem/filesystem";
 import { Git } from "../git/git";
 import { AbsolutePath, withStatics } from "../schema";
 import { Hash } from "../util/hash";
+import { Copy } from "./copy";
 
 // Represents the project ID type
 // defaults to local
@@ -95,6 +96,7 @@ export const layer = Layer.effect(
 
     const fs = yield* FileSystem.Service;
     const git = yield* Git.Service;
+    const copy = yield* Copy.Service;
 
     const toProjectDirectory = (row: ProjectDirectoryRow): ProjectDirectory => {
       return {
@@ -222,12 +224,32 @@ export const layer = Layer.effect(
       if (oldID === newID) return; // just the same
     });
 
-    const saveDirectory = Effect.fn("Project.saveDirectory")(function* (
-      projectID: ID,
-      directory: string,
-    ) {
-      if (projectID === ID.local) return;
+    const saveDirectory = Effect.fn("Project.saveDirectory")(function* (input: {
+      projectID: ID;
+      directory: string;
+    }) {
+      if (input.projectID === ID.local) return;
+      const isGitWorktree = yield* copy.isGitWorktree({
+        directory: AbsolutePath.make(input.directory),
+      });
 
+      yield* db.transaction((d) =>
+        Effect.gen(function* () {
+          const hasMain = yield* d
+            .select({ directory: ProjectDirectoryTable.directory })
+            .from(ProjectDirectoryTable)
+            .where(
+              and(
+                eq(ProjectDirectoryTable.id, input.projectID),
+                eq(ProjectDirectoryTable.type, "main"),
+              ),
+            )
+            .get();
+			yield* d.insert(ProjectDirectoryTable).values({
+				directory: input.directory, projectId: input.projectID, type: isGitWorktree ? "gitworktree":( hasMain ? "root": "main"),
+			})
+        }),
+      );
     });
 
     const fromDirectory = Effect.fn("Project.fromDirectory")(function* (
@@ -301,6 +323,7 @@ export const defaultLayer = (path: string) =>
   layer.pipe(
     Layer.provide(FileSystem.defaultLayer(path)),
     Layer.provide(Git.defaultLayer(path)),
+    Layer.provide(Copy.defaultLayer(path)),
     Layer.provide(Database.defaultLayer),
   );
 

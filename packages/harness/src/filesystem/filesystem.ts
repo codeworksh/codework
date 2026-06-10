@@ -51,8 +51,7 @@ export const layer = Layer.effect(
 			return stat?.isDirectory() ?? false;
 		});
 
-
-const exists = Effect.fn("FileSystem.exists")(function* (path: string) {
+		const exists = Effect.fn("FileSystem.exists")(function* (path: string) {
 			const exists = yield* Effect.tryPromise({
 				try: () => vfs.provider.exists(path),
 				catch: (cause) => new FileSystemError({ method: "exists", cause }),
@@ -89,7 +88,7 @@ const exists = Effect.fn("FileSystem.exists")(function* (path: string) {
 		return Service.of({
 			up,
 			isDir,
-      exists,
+			exists,
 			readFileString,
 			writeFileString,
 		});
