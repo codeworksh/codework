@@ -188,9 +188,6 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-beta.78
         version: 4.0.0-beta.78(effect@4.0.0-beta.78)(ioredis@5.11.1)
-      '@libsql/client':
-        specifier: ^0.17.3
-        version: 0.17.3
       '@platformatic/vfs':
         specifier: ^0.4.0
         version: 0.4.0

@@ -1,6 +1,5 @@
 import { NodeFileSystem } from "@effect/platform-node";
 import { eq } from "drizzle-orm";
-import { migrate } from "drizzle-orm/libsql/migrator";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { Effect, FileSystem, Layer, Schema } from "effect";
 import path from "node:path";
@@ -26,24 +25,26 @@ const schema = {
 	ProjectDirectoryTable,
 };
 
-const migrationsFolder = path.join(import.meta.dirname, "../../migrations");
-
 const layer = Layer.unwrap(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const dir = yield* fs.makeTempDirectoryScoped();
 		return Database.layerFromPath(path.join(dir, "test.db"), {
 			schema,
-			migrate: (db) =>
-				Effect.tryPromise({
-					try: () => migrate(db, { migrationsFolder }),
-					catch: (cause) => new Database.DatabaseError({ method: "migrate", cause }),
-				}).pipe(Effect.asVoid),
+			migrate: Database.migrateDefault,
 		});
 	}),
 ).pipe(Layer.provide(NodeFileSystem.layer));
 
 const { effect: it } = testEffect(layer);
+
+// `:memory:` must behave like any other database — node:sqlite keeps a single
+// connection per layer, so the data survives transactions. (The previous
+// libsql client swapped connections inside `transaction()`, which silently
+// replaced an in-memory database with an empty one.)
+const { effect: memoryIt } = testEffect(
+	Database.layerFromPath(":memory:", { schema, migrate: Database.migrateDefault }),
+);
 
 describe("Database", () => {
 	describe("Effect wrapper", () => {
@@ -78,7 +79,6 @@ describe("Database", () => {
 				const project = yield* Schema.decodeUnknownEffect(ProjectInsert)({
 					id: "project-1",
 					name: "codework",
-					vcs: "git",
 				});
 				const mainDirectory = yield* Schema.decodeUnknownEffect(ProjectDirectoryInsert)({
 					id: "directory-1",
@@ -119,7 +119,6 @@ describe("Database", () => {
 				expect(result).toEqual({
 					id: "project-1",
 					name: "codework",
-					vcs: "git",
 					createdAt: expect.any(Number),
 					updatedAt: expect.any(Number),
 					directories: [
@@ -159,7 +158,7 @@ describe("Database", () => {
 
 				expect(orphanExit._tag).toBe("Failure");
 
-				yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework", vcs: "git" }).run();
+				yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework" }).run();
 				yield* db
 					.insert(ProjectDirectoryTable)
 					.values({
@@ -192,7 +191,7 @@ describe("Database", () => {
 			Effect.gen(function* () {
 				const { db } = yield* Database.Service;
 
-				yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework", vcs: "git" }).run();
+				yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework" }).run();
 				yield* db
 					.insert(ProjectDirectoryTable)
 					.values({
@@ -213,6 +212,51 @@ describe("Database", () => {
 					.all();
 
 				expect(directories).toEqual([]);
+			}),
+		);
+	});
+
+	describe(":memory:", () => {
+		memoryIt(
+			"keeps an in-memory database intact across transactions",
+			Effect.gen(function* () {
+				const { db } = yield* Database.Service;
+
+				yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework" }).run();
+
+				yield* db.transaction(
+					(tx) =>
+						Effect.gen(function* () {
+							yield* tx.insert(ProjectTable).values({ id: "project-2", name: "widget" }).run();
+						}),
+					{ behavior: "immediate" },
+				);
+
+				const rows = yield* db.select().from(ProjectTable).all();
+				expect(rows.map((row) => row.id).sort()).toEqual(["project-1", "project-2"]);
+			}),
+		);
+
+		memoryIt(
+			"rolls back a failed transaction without losing the database",
+			Effect.gen(function* () {
+				const { db } = yield* Database.Service;
+
+				yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework" }).run();
+
+				const exit = yield* db
+					.transaction((tx) =>
+						Effect.gen(function* () {
+							yield* tx.insert(ProjectTable).values({ id: "project-2", name: "widget" }).run();
+							// duplicate primary key forces the transaction to fail
+							yield* tx.insert(ProjectTable).values({ id: "project-1", name: "dupe" }).run();
+						}),
+					)
+					.pipe(Effect.exit);
+				expect(exit._tag).toBe("Failure");
+
+				const rows = yield* db.select().from(ProjectTable).all();
+				expect(rows.map((row) => row.id)).toEqual(["project-1"]);
 			}),
 		);
 	});

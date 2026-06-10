@@ -167,28 +167,36 @@ export const layer = Layer.effect(
 			return root ? ID.make(root) : undefined;
 		});
 
+		type Resolved = {
+			previous?: ID;
+			id: ID;
+			directory: AbsolutePath;
+			vcs?: Vcs;
+			name: string;
+		};
+
 		const resolve = Effect.fn("Project.resolve")(function* (input: AbsolutePath) {
 			const repo = yield* git.find(input);
 			if (!repo) {
-				return {
-					previous: undefined,
+				const local: Resolved = {
 					id: ID.local,
 					directory: input,
 					name: path.basename(path.normalize(input)),
-					vcs: undefined,
 				};
+				return local;
 			}
 
 			const previous = yield* cached(repo.store);
 			const origin = yield* remote(repo);
 			const id = origin?.id ?? previous ?? (yield* root(repo));
-			return {
+			const resolved: Resolved = {
 				id: id ?? ID.local,
-				previous: previous ?? undefined,
+				...(previous ? { previous } : {}),
 				directory: repo.directory,
-				vcs: { type: "git" as const, store: repo.store },
+				vcs: { type: "git", store: repo.store },
 				name: origin?.name ?? path.basename(path.normalize(repo.directory)),
 			};
+			return resolved;
 		});
 
 		// TODO: requires implementation

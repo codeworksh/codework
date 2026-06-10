@@ -23,6 +23,7 @@
 	},
 	"files": [
 		"dist",
+		"migrations",
 		"src"
 	],
 	"type": "module",
@@ -51,7 +52,6 @@
 		"@codeworksh/aikit": "workspace:*",
 		"@codeworksh/utils": "workspace:*",
 		"@effect/platform-node": "4.0.0-beta.78",
-		"@libsql/client": "^0.17.3",
 		"@platformatic/vfs": "^0.4.0",
 		"dedent": "^1.7.2",
 		"drizzle-orm": "1.0.0-rc.3",

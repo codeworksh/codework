@@ -1,12 +1,13 @@
-import { createClient, type Client as LibsqlClient, type Config as LibsqlConfig, type ResultSet } from "@libsql/client";
 import type { InferInsertModel, InferSelectModel, SQL } from "drizzle-orm";
-import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
+import { drizzle, type NodeSQLiteDatabase } from "drizzle-orm/node-sqlite";
+import { migrate } from "drizzle-orm/node-sqlite/migrator";
 import type { SelectResultFields } from "drizzle-orm/query-builders/select.types";
 import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { SelectedFields, SelectedFieldsFlat } from "drizzle-orm/sqlite-core/query-builders/select.types";
 import { Context, Effect, Layer, Schema } from "effect";
 import * as fs from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
+import { DatabaseSync, type DatabaseSyncOptions, type StatementResultingChanges } from "node:sqlite";
 import { Global } from "../global";
 
 export * from "drizzle-orm";
@@ -17,13 +18,14 @@ export class DatabaseError extends Schema.TaggedErrorClass<DatabaseError>()("Dat
 }) {}
 
 export type SchemaShape = Record<string, unknown>;
-export type RawDatabaseShape<TSchema extends SchemaShape = Record<string, never>> = LibSQLDatabase<TSchema>;
+export type RawDatabaseShape<TSchema extends SchemaShape = Record<string, never>> = NodeSQLiteDatabase<TSchema>;
+export type RunResult = StatementResultingChanges;
 
 // Terminal methods shared by every builder once it is executable.
 export interface ExecuteShape<TResult> {
 	readonly all: () => Effect.Effect<TResult[], DatabaseError>;
 	readonly get: () => Effect.Effect<TResult | undefined, DatabaseError>;
-	readonly run: () => Effect.Effect<ResultSet, DatabaseError>;
+	readonly run: () => Effect.Effect<RunResult, DatabaseError>;
 	readonly execute: () => Effect.Effect<TResult[], DatabaseError>;
 }
 
@@ -54,7 +56,7 @@ export interface ReturningShape<TTable extends SQLiteTable> {
 }
 
 export interface InsertQueryShape<TTable extends SQLiteTable> extends ReturningShape<TTable> {
-	readonly run: () => Effect.Effect<ResultSet, DatabaseError>;
+	readonly run: () => Effect.Effect<RunResult, DatabaseError>;
 	readonly onConflictDoNothing: (config?: unknown) => InsertQueryShape<TTable>;
 	readonly onConflictDoUpdate: (config: unknown) => InsertQueryShape<TTable>;
 }
@@ -71,7 +73,7 @@ export type UpdateSetSource<TTable extends SQLiteTable> = {
 
 export interface UpdateQueryShape<TTable extends SQLiteTable> extends ReturningShape<TTable> {
 	readonly where: (where: SQL | undefined) => UpdateQueryShape<TTable>;
-	readonly run: () => Effect.Effect<ResultSet, DatabaseError>;
+	readonly run: () => Effect.Effect<RunResult, DatabaseError>;
 }
 
 export interface UpdateShape<TTable extends SQLiteTable> {
@@ -80,7 +82,7 @@ export interface UpdateShape<TTable extends SQLiteTable> {
 
 export interface DeleteQueryShape<TTable extends SQLiteTable> extends ReturningShape<TTable> {
 	readonly where: (where: SQL | undefined) => DeleteQueryShape<TTable>;
-	readonly run: () => Effect.Effect<ResultSet, DatabaseError>;
+	readonly run: () => Effect.Effect<RunResult, DatabaseError>;
 }
 
 export interface DatabaseShape {
@@ -95,7 +97,7 @@ export interface DatabaseShape {
 	readonly insert: <TTable extends SQLiteTable>(table: TTable) => InsertShape<TTable>;
 	readonly update: <TTable extends SQLiteTable>(table: TTable) => UpdateShape<TTable>;
 	readonly delete: <TTable extends SQLiteTable>(table: TTable) => DeleteQueryShape<TTable>;
-	readonly run: (query: unknown) => Effect.Effect<ResultSet, DatabaseError>;
+	readonly run: (query: unknown) => Effect.Effect<RunResult, DatabaseError>;
 	readonly all: <TResult = unknown>(query: unknown) => Effect.Effect<TResult[], DatabaseError>;
 	readonly get: <TResult = unknown>(query: unknown) => Effect.Effect<TResult | undefined, DatabaseError>;
 	readonly values: <TResult extends unknown[] = unknown[]>(query: unknown) => Effect.Effect<TResult[], DatabaseError>;
@@ -108,10 +110,9 @@ export interface DatabaseShape {
 
 export interface Interface {
 	readonly db: DatabaseShape;
-	readonly client: LibsqlClient;
 }
 
-export class Libsql extends Context.Service<Libsql, LibsqlClient>()("@codework/db/Libsql") {}
+export class Sqlite extends Context.Service<Sqlite, DatabaseSync>()("@codework/db/Sqlite") {}
 export class Service extends Context.Service<Service, Interface>()("@codework/db/Database") {}
 
 export interface LayerOptions<TSchema extends SchemaShape = Record<string, never>> {
@@ -156,24 +157,40 @@ function wrap<T extends object>(input: T, cache = new WeakMap<object, unknown>()
 			return (...args: unknown[]) => {
 				const method = String(property);
 
-				if (method === "transaction") {
-					const [callback, ...rest] = args;
-					const result = value.call(
-						target,
-						(tx: object) => {
-							const txResult = (callback as (tx: unknown) => unknown)(wrap(tx, cache));
-							return Effect.isEffect(txResult)
-								? Effect.runPromise(txResult as Effect.Effect<unknown, unknown, never>)
-								: txResult;
-						},
-						...rest,
+				if (terminalMethods.has(method)) {
+					// node:sqlite executes synchronously, so terminal methods are
+					// deferred into an Effect and run on subscription. A promise
+					// result is still tolerated for forward compatibility.
+					const invoke =
+						method === "transaction"
+							? () => {
+									const [callback, ...rest] = args;
+									return value.call(
+										target,
+										(tx: object) => {
+											const txResult = (callback as (tx: unknown) => unknown)(wrap(tx, cache));
+											// node:sqlite transactions are synchronous: an Effect
+											// callback must not cross an async boundary.
+											return Effect.isEffect(txResult)
+												? Effect.runSync(txResult as Effect.Effect<unknown, unknown, never>)
+												: txResult;
+										},
+										...rest,
+									);
+								}
+							: () => value.apply(target, args);
+
+					return Effect.try({
+						try: invoke,
+						catch: (cause) => toDatabaseError(method, cause),
+					}).pipe(
+						Effect.flatMap((result) =>
+							isPromiseLike(result) ? effectify(result, method) : Effect.succeed(result),
+						),
 					);
-					return isPromiseLike(result) ? effectify(result, method) : wrapResult(result, cache);
 				}
 
-				const result = value.apply(target, args);
-				if (terminalMethods.has(method) && isPromiseLike(result)) return effectify(result, method);
-				return wrapResult(result, cache);
+				return wrapResult(value.apply(target, args), cache);
 			};
 		},
 	});
@@ -191,7 +208,7 @@ export const makeDatabase = <TSchema extends SchemaShape = Record<string, never>
 	options: LayerOptions<TSchema> = {},
 ) =>
 	Effect.gen(function* () {
-		const client = yield* Libsql;
+		const client = yield* Sqlite;
 		const raw = drizzle({ client, schema: options.schema });
 		return {
 			raw,
@@ -213,25 +230,27 @@ export const layerWith = <TSchema extends SchemaShape = Record<string, never>>(o
 			yield* db.run("PRAGMA wal_checkpoint(PASSIVE)");
 			if (options.migrate) yield* options.migrate(raw);
 
-			const client = yield* Libsql;
-			return Service.of({ db, client });
+			return Service.of({ db });
 		}).pipe(Effect.orDie),
 	);
 
 export const layer = layerWith();
 
-export function sqliteLayer(config: LibsqlConfig | string) {
+// node:sqlite holds a single connection for the lifetime of the layer, so a
+// `:memory:` database stays intact across transactions — important for
+// serverless deployments where no writable disk is available.
+export function sqliteLayer(location: string, options?: DatabaseSyncOptions) {
 	return Layer.effect(
-		Libsql,
+		Sqlite,
 		Effect.acquireRelease(
 			Effect.tryPromise({
 				try: async () => {
-					if (typeof config === "string" && config !== ":memory:" && config.startsWith("file:")) {
-						await fs.mkdir(dirname(config.slice("file:".length)), { recursive: true });
+					if (location !== ":memory:") {
+						await fs.mkdir(dirname(location), { recursive: true });
 					}
-					return createClient(typeof config === "string" ? { url: config } : config);
+					return new DatabaseSync(location, options ?? {});
 				},
-				catch: (cause) => toDatabaseError("createClient", cause),
+				catch: (cause) => toDatabaseError("open", cause),
 			}),
 			(client) => Effect.sync(() => client.close()),
 		),
@@ -242,8 +261,7 @@ export function layerFromPath<TSchema extends SchemaShape = Record<string, never
 	filename: string,
 	options: LayerOptions<TSchema> = {},
 ) {
-	const url = filename === ":memory:" ? "file::memory:" : `file:${filename}`;
-	return layerWith(options).pipe(Layer.provide(sqliteLayer(url)));
+	return layerWith(options).pipe(Layer.provide(sqliteLayer(filename)));
 }
 
 export function path() {
@@ -255,7 +273,15 @@ export function path() {
 	return join(Global.Path.data, "codework.db");
 }
 
-export const defaultLayer = Layer.unwrap(Effect.sync(() => layerFromPath(path()))).pipe(
+const migrationsFolder = join(import.meta.dirname, "../../migrations");
+
+export const migrateDefault = <TSchema extends SchemaShape = Record<string, never>>(db: RawDatabaseShape<TSchema>) =>
+	Effect.try({
+		try: () => void migrate(db, { migrationsFolder }),
+		catch: (cause) => toDatabaseError("migrate", cause),
+	});
+
+export const defaultLayer = Layer.unwrap(Effect.sync(() => layerFromPath(path(), { migrate: migrateDefault }))).pipe(
 	Layer.provide(Global.defaultLayer),
 );
 

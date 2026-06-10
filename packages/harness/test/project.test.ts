@@ -5,9 +5,11 @@ import { promisify } from "node:util";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
+import { ProjectDirectoryTable, ProjectTable } from "../src/db/schema.sql";
 import { FileSystem } from "../src/filesystem/filesystem";
-import { Git } from "../src/git";
-import { defaultLayer, ID, Service, layer } from "../src/project/project";
+import { Git } from "../src/git/git";
+import { Copy } from "../src/project/copy";
+import { defaultLayer, ID, Service, layer, type ProjectDirectory } from "../src/project/project";
 import { AbsolutePath } from "../src/schema";
 import { Hash } from "../src/util/hash";
 import { tmpdir } from "./fixtures/tempdir";
@@ -24,28 +26,18 @@ const directory = AbsolutePath.make("/app/codeworksh/codework");
 const store = AbsolutePath.make(path.join(directory, ".git"));
 const repo = { directory, store } satisfies Git.Repo;
 
-const databaseLayer = (rows: Array<{ directory: string }> = []) => {
-	const query = {
-		from: () => query,
-		where: () => query,
-		all: () => Effect.succeed(rows),
-	};
-
-	return Layer.succeed(
-		Database.Service,
-		Database.Service.of({
-			db: {
-				select: () => query,
-			},
-		} as unknown as Database.Interface),
-	);
-};
+// A real migrated in-memory database, so the tests exercise the actual SQL
+// issued by the service (upserts, deletes, txns).
+const databaseLayer = () => Database.layerFromPath(":memory:", { migrate: Database.migrateDefault });
 
 interface ProjectOptions {
-	rows?: Array<{ directory: string }>;
 	// Contents of the `codework` marker file read from the repo store. When
 	// undefined the filesystem reports the file as missing.
 	cached?: string;
+	// Paths reported as missing on disk by the filesystem stub.
+	missing?: string[];
+	// What the Copy service reports for isGitWorktree.
+	worktree?: boolean;
 }
 
 const projectLayer = (git: Partial<Git.Interface>, options: ProjectOptions = {}) => {
@@ -60,21 +52,50 @@ const projectLayer = (git: Partial<Git.Interface>, options: ProjectOptions = {})
 					)
 			: () => Effect.succeed(options.cached!);
 
+	const exists = (target: string) => Effect.succeed(!(options.missing ?? []).includes(target));
+
 	return layer.pipe(
-		Layer.provide(
+		Layer.provideMerge(
 			Layer.mergeAll(
-				databaseLayer(options.rows),
+				databaseLayer(),
 				Layer.succeed(
 					FileSystem.Service,
 					FileSystem.Service.of({
 						readFileString,
+						exists,
 					} as unknown as FileSystem.Interface),
 				),
 				Layer.succeed(Git.Service, Git.Service.of(git as Git.Interface)),
+				Layer.succeed(
+					Copy.Service,
+					Copy.Service.of({
+						isGitWorktree: () => Effect.succeed(options.worktree ?? false),
+					}),
+				),
 			),
 		),
 	);
 };
+
+// Seed the project tables directly; `directories`/`fromDirectory` assertions
+// then go through the service like production code would.
+const seedDirectories = (rows: Array<{ directory: string; type: ProjectDirectory["type"] }>) =>
+	Effect.gen(function* () {
+		const { db } = yield* Database.Service;
+		yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework" }).run();
+		for (const [index, row] of rows.entries()) {
+			yield* db
+				.insert(ProjectDirectoryTable)
+				.values({
+					id: `directory-${index + 1}`,
+					projectId: "project-1",
+					directory: row.directory,
+					type: row.type,
+					sandboxEnvID: "sandbox-1",
+				})
+				.run();
+		}
+	});
 
 // A repo whose origin/roots/cache can be tweaked per test. Defaults model the
 // common "no remote, no cache, no root commits" shape so each test only states
@@ -302,35 +323,144 @@ describe("Project", () => {
 	});
 
 	describe("directories", () => {
-		const { effect: directoriesIt } = testEffect(
-			projectLayer(
-				{},
-				{
-					rows: [
-						{ directory: "/workspace/codework-z" },
-						{ directory: "/workspace/codework" },
-						{ directory: "/workspace/codework-a" },
-					],
-				},
-			),
-		);
+		const { effect: directoriesIt } = testEffect(projectLayer({}));
 
 		directoriesIt("returns project directories in lexical order", () =>
 			Effect.gen(function* () {
+				yield* seedDirectories([
+					{ directory: "/workspace/codework-z", type: "root" },
+					{ directory: "/workspace/codework", type: "main" },
+					{ directory: "/workspace/codework-a", type: "gitworktree" },
+				]);
+
 				const project = yield* Service;
 				const result = yield* project.directories({ projectID: ID.make("project-1") });
 
-				expect(result).toEqual(["/workspace/codework", "/workspace/codework-a", "/workspace/codework-z"]);
+				expect(result).toEqual([
+					{ directory: "/workspace/codework", sandboxEnvID: "sandbox-1", type: "main" },
+					{ directory: "/workspace/codework-a", sandboxEnvID: "sandbox-1", type: "gitworktree" },
+					{ directory: "/workspace/codework-z", sandboxEnvID: "sandbox-1", type: "root" },
+				]);
 			}),
 		);
 
-		const { effect: emptyDirectoriesIt } = testEffect(projectLayer({}, { rows: [] }));
-
-		emptyDirectoriesIt("returns an empty list when the project has no directories", () =>
+		directoriesIt("returns an empty list when the project has no directories", () =>
 			Effect.gen(function* () {
 				const project = yield* Service;
 				const result = yield* project.directories({ projectID: ID.make("project-1") });
 
+				expect(result).toEqual([]);
+			}),
+		);
+
+		// Directories missing on disk are dropped from the result and their rows
+		// deleted, so the next read no longer pays for the existence check.
+		const { effect: staleIt } = testEffect(projectLayer({}, { missing: ["/workspace/gone"] }));
+
+		staleIt("drops and deletes directories that no longer exist on disk", () =>
+			Effect.gen(function* () {
+				yield* seedDirectories([
+					{ directory: "/workspace/codework", type: "main" },
+					{ directory: "/workspace/gone", type: "root" },
+				]);
+
+				const project = yield* Service;
+				const result = yield* project.directories({ projectID: ID.make("project-1") });
+				expect(result).toEqual([{ directory: "/workspace/codework", sandboxEnvID: "sandbox-1", type: "main" }]);
+
+				const { db } = yield* Database.Service;
+				const remaining = yield* db.select().from(ProjectDirectoryTable).all();
+				expect(remaining).toHaveLength(1);
+				expect(remaining[0]?.directory).toBe("/workspace/codework");
+			}),
+		);
+	});
+
+	describe("fromDirectory", () => {
+		// `find` echoes the opened directory back so one layer can register
+		// several distinct directories under the same remote-derived project id.
+		const trackingGit = (): Partial<Git.Interface> => ({
+			find: (input) => Effect.succeed({ directory: input, store }),
+			remote: () => Effect.succeed("https://github.com/codeworksh/codework.git"),
+			roots: () => Effect.succeed([]),
+		});
+
+		const projectID = ID.make(Hash.fast("git:github.com/codeworksh/codework"));
+
+		const { effect: fromDirectoryIt } = testEffect(projectLayer(trackingGit()));
+
+		fromDirectoryIt("persists the project and registers its directory as main", () =>
+			Effect.gen(function* () {
+				const project = yield* Service;
+				const info = yield* project.fromDirectory(directory);
+
+				expect(info).toEqual({
+					id: projectID,
+					name: "codework",
+					vcs: { type: "git", store },
+					directory,
+				});
+
+				const result = yield* project.directories({ projectID: info.id });
+				expect(result).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "main" }]);
+			}),
+		);
+
+		fromDirectoryIt("registers later directories as root once a main exists", () =>
+			Effect.gen(function* () {
+				const project = yield* Service;
+				const second = AbsolutePath.make("/app/codeworksh/codework-b");
+
+				const first = yield* project.fromDirectory(directory);
+				const result = yield* project.fromDirectory(second);
+				expect(result.id).toEqual(first.id);
+
+				const directories = yield* project.directories({ projectID: result.id });
+				expect(directories).toEqual([
+					{ directory, sandboxEnvID: "@codework/envDefault", type: "main" },
+					{ directory: second, sandboxEnvID: "@codework/envDefault", type: "root" },
+				]);
+			}),
+		);
+
+		fromDirectoryIt("registers the same directory only once", () =>
+			Effect.gen(function* () {
+				const project = yield* Service;
+				yield* project.fromDirectory(directory);
+				yield* project.fromDirectory(directory);
+
+				const result = yield* project.directories({ projectID: projectID });
+				expect(result).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "main" }]);
+			}),
+		);
+
+		const { effect: worktreeIt } = testEffect(projectLayer(trackingGit(), { worktree: true }));
+
+		worktreeIt("registers worktree directories with the gitworktree type", () =>
+			Effect.gen(function* () {
+				const project = yield* Service;
+				const info = yield* project.fromDirectory(directory);
+
+				const result = yield* project.directories({ projectID: info.id });
+				expect(result).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "gitworktree" }]);
+			}),
+		);
+
+		const { effect: localIt } = testEffect(projectLayer({ find: () => Effect.succeed(undefined) }));
+
+		localIt("skips directory persistence for local projects", () =>
+			Effect.gen(function* () {
+				const project = yield* Service;
+				const info = yield* project.fromDirectory(directory);
+
+				expect(info).toEqual({
+					id: ID.local,
+					name: "codework",
+					vcs: undefined,
+					directory,
+				});
+
+				const result = yield* project.directories({ projectID: ID.local });
 				expect(result).toEqual([]);
 			}),
 		);
@@ -422,5 +552,51 @@ describe("Project", () => {
 				name: "69th",
 			});
 		}, 120_000);
+
+		// fromDirectory end-to-end through the full defaultLayer stack: a real
+		// repository plus a real linked worktree against the real migrated
+		// database wired by Database.defaultLayer (in-memory via CODEWORK_DB).
+		it("persists a repository and its linked worktree through fromDirectory", async () => {
+			await using tmp = await tmpdir();
+			const repoDirectory = path.join(tmp.path, "widget");
+			await fs.mkdir(repoDirectory);
+			await git(repoDirectory, "init", "-q");
+			await git(repoDirectory, "config", "user.email", "test@codework.sh");
+			await git(repoDirectory, "config", "user.name", "Codework Test");
+			await git(repoDirectory, "remote", "add", "origin", "https://github.com/codeworksh/widget.git");
+			await fs.writeFile(path.join(repoDirectory, "README.md"), "hello");
+			await git(repoDirectory, "add", ".");
+			await git(repoDirectory, "commit", "-q", "-m", "init");
+			const worktreeDirectory = path.join(tmp.path, "widget-feature");
+			await git(repoDirectory, "worktree", "add", "--detach", worktreeDirectory);
+
+			const { info, worktreeInfo, directories } = await Effect.runPromise(
+				Effect.gen(function* () {
+					const project = yield* Service;
+					const info = yield* project.fromDirectory(AbsolutePath.make(repoDirectory));
+					const worktreeInfo = yield* project.fromDirectory(AbsolutePath.make(worktreeDirectory));
+					// repeating a directory must not duplicate its row
+					yield* project.fromDirectory(AbsolutePath.make(repoDirectory));
+					const directories = yield* project.directories({ projectID: info.id });
+					return { info, worktreeInfo, directories };
+				}).pipe(Effect.provide(defaultLayer("/"))),
+			);
+
+			const realRepo = AbsolutePath.make(await fs.realpath(repoDirectory));
+			const realWorktree = AbsolutePath.make(await fs.realpath(worktreeDirectory));
+
+			expect(info).toEqual({
+				id: ID.make(Hash.fast("git:github.com/codeworksh/widget")),
+				name: "widget",
+				vcs: { type: "git", store: AbsolutePath.make(path.join(realRepo, ".git")) },
+				directory: realRepo,
+			});
+			expect(worktreeInfo.id).toEqual(info.id);
+			expect(worktreeInfo.directory).toBe(realWorktree);
+			expect(directories).toEqual([
+				{ directory: realRepo, sandboxEnvID: "@codework/envDefault", type: "main" },
+				{ directory: realWorktree, sandboxEnvID: "@codework/envDefault", type: "gitworktree" },
+			]);
+		}, 30_000);
 	});
 });
