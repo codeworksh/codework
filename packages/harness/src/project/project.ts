@@ -1,6 +1,6 @@
 import path from "node:path";
 import { Context, Effect, Layer, Schema } from "effect";
-import { eq } from "../db/db";
+import { eq, inArray } from "../db/db";
 import { Database } from "../db/db";
 import {
   ProjectTable,
@@ -9,7 +9,7 @@ import {
   type ProjectDirectory as ProjectDirectoryRow,
 } from "../db/schema.sql";
 import { FileSystem } from "../filesystem/filesystem";
-import { Git } from "../git";
+import { Git } from "../git/git";
 import { AbsolutePath, withStatics } from "../schema";
 import { Hash } from "../util/hash";
 
@@ -64,8 +64,7 @@ export class Info extends Schema.Class<Info>("Project.Info")({
   id: ID,
   vcs: Schema.optional(Vcs),
   name: Schema.String,
-  directory: ProjectDirectory,
-  directories: Schema.Array(ProjectDirectory),
+  directory: AbsolutePath,
 }) {}
 
 export interface Interface {
@@ -79,6 +78,9 @@ export interface Interface {
     },
     never
   >;
+  readonly directories: (
+    input: DirectoriesInput,
+  ) => Effect.Effect<ProjectDirectory[]>;
   // readonly fromDirectory: (input: AbsolutePath) => Effect.Effect<Info>;
 }
 
@@ -112,7 +114,26 @@ export const layer = Layer.effect(
         .all()
         .pipe(Effect.orDie);
 
-      return rows
+      const validRows = yield* Effect.filter(
+        rows,
+        (row) => fs.exists(row.directory),
+        { concurrency: "unbounded" },
+      );
+
+      // clean up rows whose directory no longer exists on disk
+      const valid = new Set(validRows);
+      const staleIDs = rows
+        .filter((row) => !valid.has(row))
+        .map((row) => row.id);
+      if (staleIDs.length > 0) {
+        yield* db
+          .delete(ProjectDirectoryTable)
+          .where(inArray(ProjectDirectoryTable.id, staleIDs))
+          .run()
+          .pipe(Effect.orDie);
+      }
+
+      return validRows
         .toSorted((a, b) => a.directory.localeCompare(b.directory))
         .map((row) => toProjectDirectory(row));
     });
@@ -191,6 +212,7 @@ export const layer = Layer.effect(
       };
     });
 
+    // TODO: requires implementation
     const migrateProjectId = Effect.fn("Project.migrateProjectID")(function* (
       oldID: ID | undefined,
       newID: ID,
@@ -198,7 +220,14 @@ export const layer = Layer.effect(
       if (!oldID) return; // nothing to migrate from
       if (oldID === ID.local) return; // local project copy are ignored
       if (oldID === newID) return; // just the same
-      // TODO: run a database query to migrate old ID to new one for the ProjectTable
+    });
+
+    const saveDirectory = Effect.fn("Project.saveDirectory")(function* (
+      projectID: ID,
+      directory: string,
+    ) {
+      if (projectID === ID.local) return;
+
     });
 
     const fromDirectory = Effect.fn("Project.fromDirectory")(function* (
@@ -224,27 +253,47 @@ export const layer = Layer.effect(
         ? {
             id: row.id,
             name: row.name,
-            updatedAt: row.updatedAt,
             createdAt: row.createdAt,
           }
         : {
             id: projectID,
             name: data.name,
             createdAt: Date.now(),
-            updatedAt: Date.now(),
           };
 
-      const updates = {
+      const upsert = {
         ...existing,
         updatedAt: Date.now(),
-        createdAt: existing.createdAt,
       };
 
-      const linkedDirectories = yield* directories({ projectID });
-      const validDirectories = yield* Effect.forEach(linkedDirectories, (i) => fs.exists(i.directory).pipe(Effect.orDie, Effect.map((exists) => (exists ? i: undefined))).pipe(Effect.map((arr) => arr.filter((x): x is string => x !== undefined)))
+      yield* db
+        .insert(ProjectTable)
+        .values({
+          id: upsert.id,
+          name: upsert.name,
+          createdAt: upsert.createdAt,
+          updatedAt: upsert.updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: ProjectTable.id,
+          set: { updatedAt: upsert.updatedAt },
+        })
+        .run()
+        .pipe(Effect.orDie);
+
+      yield* saveDirectory(projectID, data.directory);
+
+      const result: Info = {
+        id: ID.make(upsert.id),
+        name: upsert.name,
+        vcs: data.vcs ?? undefined,
+        directory: data.directory,
+      };
+
+      return result;
     });
 
-    return Service.of({ resolve });
+    return Service.of({ resolve, directories });
   }),
 );
 

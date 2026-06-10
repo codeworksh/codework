@@ -12,7 +12,6 @@ CREATE TABLE `project_directory` (
 CREATE TABLE `project` (
 	`id` text PRIMARY KEY,
 	`name` text NOT NULL,
-	`vcs` text NOT NULL,
 	`created_at` integer NOT NULL,
 	`updated_at` integer NOT NULL
 );

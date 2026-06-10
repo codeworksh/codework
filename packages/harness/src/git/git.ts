@@ -1,8 +1,8 @@
 import path from "path";
 import { NodeServices } from "@effect/platform-node";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
-import { FileSystem } from "./filesystem/filesystem";
-import { AbsolutePath } from "./schema";
+import { FileSystem } from "../filesystem/filesystem";
+import { AbsolutePath } from "../schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 export class AppProcessError extends Schema.TaggedErrorClass<AppProcessError>()("AppProcessError", {
