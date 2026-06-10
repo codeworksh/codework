@@ -16,7 +16,6 @@ export const Timestamps = {
 export const ProjectTable = sqliteTable("project", {
 	id: text("id").primaryKey(),
 	name: text("name").notNull(),
-	vcs: text("vcs").notNull(),
 	...Timestamps,
 });
 

@@ -9,6 +9,7 @@ export class FileSystemError extends Schema.TaggedErrorClass<FileSystemError>()(
 
 export interface Interface {
 	readonly isDir: (path: string) => Effect.Effect<boolean>;
+	readonly exists: (path: string) => Effect.Effect<boolean>;
 	readonly readFileString: (path: string, encoding?: string) => Effect.Effect<string, FileSystemError>;
 	readonly writeFileString: (path: string, data: string) => Effect.Effect<void, FileSystemError>;
 	readonly up: (options: {
@@ -50,6 +51,16 @@ export const layer = Layer.effect(
 			return stat?.isDirectory() ?? false;
 		});
 
+
+const exists = Effect.fn("FileSystem.exists")(function* (path: string) {
+			const exists = yield* Effect.tryPromise({
+				try: () => vfs.provider.exists(path),
+				catch: (cause) => new FileSystemError({ method: "exists", cause }),
+			}).pipe(Effect.catch(() => Effect.void));
+
+			return exists ?? false;
+		});
+
 		const up = Effect.fn("FileSystem.up")(function* (options: { targets: string[]; start: string; stop?: string }) {
 			const result: string[] = [];
 			let current = options.start;
@@ -78,6 +89,7 @@ export const layer = Layer.effect(
 		return Service.of({
 			up,
 			isDir,
+      exists,
 			readFileString,
 			writeFileString,
 		});
