@@ -162,4 +162,3 @@ export const defaultLayer = (path: string) =>
   );
 
 export * as Project from "./project";
-
