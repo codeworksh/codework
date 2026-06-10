@@ -1,5 +1,6 @@
 import { NodeFileSystem } from "@effect/platform-node";
 import { eq } from "drizzle-orm";
+import { migrate } from "drizzle-orm/libsql/migrator";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { Effect, FileSystem, Layer, Schema } from "effect";
 import path from "node:path";
@@ -25,35 +26,24 @@ const schema = {
 	ProjectDirectoryTable,
 };
 
+const migrationsFolder = path.join(import.meta.dirname, "../../migrations");
+
 const layer = Layer.unwrap(
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const dir = yield* fs.makeTempDirectoryScoped();
-		return Database.layerFromPath(path.join(dir, "test.db"), { schema });
+		return Database.layerFromPath(path.join(dir, "test.db"), {
+			schema,
+			migrate: (db) =>
+				Effect.tryPromise({
+					try: () => migrate(db, { migrationsFolder }),
+					catch: (cause) => new Database.DatabaseError({ method: "migrate", cause }),
+				}).pipe(Effect.asVoid),
+		});
 	}),
 ).pipe(Layer.provide(NodeFileSystem.layer));
 
 const { effect: it } = testEffect(layer);
-
-const createProjectTables = Effect.fn("DatabaseTest.createProjectTables")(function* (db: Database.DatabaseShape) {
-	yield* db.run(`
-		CREATE TABLE project (
-			id TEXT PRIMARY KEY NOT NULL,
-			name TEXT NOT NULL,
-			vcs TEXT NOT NULL
-		)
-	`);
-	yield* db.run(`
-		CREATE TABLE project_directory (
-			id TEXT PRIMARY KEY NOT NULL,
-			project_id TEXT NOT NULL REFERENCES project(id) ON UPDATE CASCADE ON DELETE CASCADE,
-			directory TEXT NOT NULL,
-			type TEXT NOT NULL,
-			sandbox_id TEXT NOT NULL,
-			CONSTRAINT project_directory_project_directory_idx UNIQUE(project_id, directory)
-		)
-	`);
-});
 
 describe("Database", () => {
 	describe("Effect wrapper", () => {
@@ -84,7 +74,6 @@ describe("Database", () => {
 			"inserts and reads a project with its directories",
 			Effect.gen(function* () {
 				const { db } = yield* Database.Service;
-				yield* createProjectTables(db);
 
 				const project = yield* Schema.decodeUnknownEffect(ProjectInsert)({
 					id: "project-1",
@@ -109,15 +98,7 @@ describe("Database", () => {
 				yield* db.insert(ProjectTable).values(project).run();
 				yield* db.insert(ProjectDirectoryTable).values([mainDirectory, worktreeDirectory]).run();
 
-				const projectRows = yield* db
-					.select({
-						id: ProjectTable.id,
-						name: ProjectTable.name,
-						vcs: ProjectTable.vcs,
-					})
-					.from(ProjectTable)
-					.where(eq(ProjectTable.id, project.id))
-					.all();
+				const projectRows = yield* db.select().from(ProjectTable).where(eq(ProjectTable.id, project.id)).all();
 				const directoryRows = yield* db
 					.select({
 						id: ProjectDirectoryTable.id,
@@ -139,6 +120,8 @@ describe("Database", () => {
 					id: "project-1",
 					name: "codework",
 					vcs: "git",
+					createdAt: expect.any(Number),
+					updatedAt: expect.any(Number),
 					directories: [
 						{
 							id: "directory-1",
@@ -161,7 +144,6 @@ describe("Database", () => {
 			"enforces foreign keys and unique project directories",
 			Effect.gen(function* () {
 				const { db } = yield* Database.Service;
-				yield* createProjectTables(db);
 
 				const orphanExit = yield* db
 					.insert(ProjectDirectoryTable)
@@ -209,7 +191,6 @@ describe("Database", () => {
 			"deletes project directories when their project is deleted",
 			Effect.gen(function* () {
 				const { db } = yield* Database.Service;
-				yield* createProjectTables(db);
 
 				yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework", vcs: "git" }).run();
 				yield* db

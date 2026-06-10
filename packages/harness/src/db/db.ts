@@ -1,6 +1,8 @@
 import { createClient, type Client as LibsqlClient, type Config as LibsqlConfig, type ResultSet } from "@libsql/client";
+import type { InferInsertModel, InferSelectModel, SQL } from "drizzle-orm";
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 import type { SelectResultFields } from "drizzle-orm/query-builders/select.types";
+import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { SelectedFields, SelectedFieldsFlat } from "drizzle-orm/sqlite-core/query-builders/select.types";
 import { Context, Effect, Layer, Schema } from "effect";
 import * as fs from "node:fs/promises";
@@ -17,37 +19,82 @@ export class DatabaseError extends Schema.TaggedErrorClass<DatabaseError>()("Dat
 export type SchemaShape = Record<string, unknown>;
 export type RawDatabaseShape<TSchema extends SchemaShape = Record<string, never>> = LibSQLDatabase<TSchema>;
 
-export interface QueryShape<TResult = unknown> {
-	readonly all: (...args: ReadonlyArray<unknown>) => Effect.Effect<TResult[], DatabaseError>;
-	readonly get: (...args: ReadonlyArray<unknown>) => Effect.Effect<TResult | undefined, DatabaseError>;
-	readonly run: (...args: ReadonlyArray<unknown>) => Effect.Effect<ResultSet, DatabaseError>;
-	readonly execute: (...args: ReadonlyArray<unknown>) => Effect.Effect<TResult, DatabaseError>;
-	readonly values: (...args: ReadonlyArray<unknown>) => QueryShape<TResult>;
-	readonly from: (...args: ReadonlyArray<unknown>) => QueryShape<TResult>;
-	readonly where: (...args: ReadonlyArray<unknown>) => QueryShape<TResult>;
-	readonly orderBy: (...args: ReadonlyArray<unknown>) => QueryShape<TResult>;
-	readonly limit: (...args: ReadonlyArray<unknown>) => QueryShape<TResult>;
-	readonly offset: (...args: ReadonlyArray<unknown>) => QueryShape<TResult>;
+// Terminal methods shared by every builder once it is executable.
+export interface ExecuteShape<TResult> {
+	readonly all: () => Effect.Effect<TResult[], DatabaseError>;
+	readonly get: () => Effect.Effect<TResult | undefined, DatabaseError>;
+	readonly run: () => Effect.Effect<ResultSet, DatabaseError>;
+	readonly execute: () => Effect.Effect<TResult[], DatabaseError>;
+}
+
+export type OrderByTerm = SQLiteColumn | SQL | SQL.Aliased;
+
+export interface SelectQueryShape<TResult> extends ExecuteShape<TResult> {
+	readonly where: (where: SQL | undefined) => SelectQueryShape<TResult>;
+	readonly orderBy: (...columns: ReadonlyArray<OrderByTerm>) => SelectQueryShape<TResult>;
+	readonly groupBy: (...columns: ReadonlyArray<OrderByTerm>) => SelectQueryShape<TResult>;
+	readonly having: (having: SQL | undefined) => SelectQueryShape<TResult>;
+	readonly limit: (limit: number) => SelectQueryShape<TResult>;
+	readonly offset: (offset: number) => SelectQueryShape<TResult>;
+}
+
+// `TSelection` is `undefined` for a bare `select()`, in which case the row
+// type is inferred from the table passed to `from`.
+export interface SelectFromShape<TSelection> {
+	readonly from: <TFrom extends SQLiteTable>(
+		source: TFrom,
+	) => SelectQueryShape<[TSelection] extends [undefined] ? InferSelectModel<TFrom> : TSelection>;
+}
+
+export interface ReturningShape<TTable extends SQLiteTable> {
 	readonly returning: {
-		(): QueryShape<TResult>;
-		<TSelection extends SelectedFieldsFlat>(fields: TSelection): QueryShape<SelectResultFields<TSelection>>;
+		(): ExecuteShape<InferSelectModel<TTable>>;
+		<TSelection extends SelectedFieldsFlat>(fields: TSelection): ExecuteShape<SelectResultFields<TSelection>>;
 	};
-	readonly set: (...args: ReadonlyArray<unknown>) => QueryShape<TResult>;
-	readonly [key: string]: unknown;
+}
+
+export interface InsertQueryShape<TTable extends SQLiteTable> extends ReturningShape<TTable> {
+	readonly run: () => Effect.Effect<ResultSet, DatabaseError>;
+	readonly onConflictDoNothing: (config?: unknown) => InsertQueryShape<TTable>;
+	readonly onConflictDoUpdate: (config: unknown) => InsertQueryShape<TTable>;
+}
+
+export interface InsertShape<TTable extends SQLiteTable> {
+	readonly values: (
+		values: InferInsertModel<TTable> | ReadonlyArray<InferInsertModel<TTable>>,
+	) => InsertQueryShape<TTable>;
+}
+
+export type UpdateSetSource<TTable extends SQLiteTable> = {
+	readonly [K in keyof InferInsertModel<TTable>]?: InferInsertModel<TTable>[K] | SQL;
+};
+
+export interface UpdateQueryShape<TTable extends SQLiteTable> extends ReturningShape<TTable> {
+	readonly where: (where: SQL | undefined) => UpdateQueryShape<TTable>;
+	readonly run: () => Effect.Effect<ResultSet, DatabaseError>;
+}
+
+export interface UpdateShape<TTable extends SQLiteTable> {
+	readonly set: (values: UpdateSetSource<TTable>) => UpdateQueryShape<TTable>;
+}
+
+export interface DeleteQueryShape<TTable extends SQLiteTable> extends ReturningShape<TTable> {
+	readonly where: (where: SQL | undefined) => DeleteQueryShape<TTable>;
+	readonly run: () => Effect.Effect<ResultSet, DatabaseError>;
 }
 
 export interface DatabaseShape {
 	readonly select: {
-		(): QueryShape<unknown>;
-		<TSelection extends SelectedFields>(fields: TSelection): QueryShape<SelectResultFields<TSelection>>;
+		(): SelectFromShape<undefined>;
+		<TSelection extends SelectedFields>(fields: TSelection): SelectFromShape<SelectResultFields<TSelection>>;
 	};
 	readonly selectDistinct: {
-		(): QueryShape<unknown>;
-		<TSelection extends SelectedFields>(fields: TSelection): QueryShape<SelectResultFields<TSelection>>;
+		(): SelectFromShape<undefined>;
+		<TSelection extends SelectedFields>(fields: TSelection): SelectFromShape<SelectResultFields<TSelection>>;
 	};
-	readonly insert: (...args: ReadonlyArray<unknown>) => QueryShape;
-	readonly update: (...args: ReadonlyArray<unknown>) => QueryShape;
-	readonly delete: (...args: ReadonlyArray<unknown>) => QueryShape;
+	readonly insert: <TTable extends SQLiteTable>(table: TTable) => InsertShape<TTable>;
+	readonly update: <TTable extends SQLiteTable>(table: TTable) => UpdateShape<TTable>;
+	readonly delete: <TTable extends SQLiteTable>(table: TTable) => DeleteQueryShape<TTable>;
 	readonly run: (query: unknown) => Effect.Effect<ResultSet, DatabaseError>;
 	readonly all: <TResult = unknown>(query: unknown) => Effect.Effect<TResult[], DatabaseError>;
 	readonly get: <TResult = unknown>(query: unknown) => Effect.Effect<TResult | undefined, DatabaseError>;

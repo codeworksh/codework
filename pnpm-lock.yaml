@@ -4,6 +4,8 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+packageExtensionsChecksum: sha256-gyO1VN745X+GjwWZIFKpigVAKqVtBVzpRgkN3liiA70=
+
 importers:
 
   .:
@@ -246,7 +248,7 @@ importers:
         version: 11.0.1
       drizzle-kit:
         specifier: 1.0.0-rc.3
-        version: 1.0.0-rc.3
+        version: 1.0.0-rc.3(drizzle-orm@1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6))
 
   packages/sdk:
     dependencies:
@@ -3089,6 +3091,8 @@ packages:
   drizzle-kit@1.0.0-rc.3:
     resolution: {integrity: sha512-lwGIi6GTlEYzrtac1Szecns+zrAxjaOoNysfBCKRQOXQE7nMJ8IU2I2S6ek3FHEm1N30dQb5YrTdqV7zNH6n7A==}
     hasBin: true
+    peerDependencies:
+      drizzle-orm: '*'
 
   drizzle-orm@0.45.2:
     resolution: {integrity: sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==}
@@ -7450,10 +7454,11 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.21.0
 
-  drizzle-kit@1.0.0-rc.3:
+  drizzle-kit@1.0.0-rc.3(drizzle-orm@1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)):
     dependencies:
       '@drizzle-team/brocli': 0.11.0
       '@js-temporal/polyfill': 0.5.1
+      drizzle-orm: 1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)
       esbuild: 0.25.12
       get-tsconfig: 4.14.0
       jiti: 2.6.1
