@@ -1,8 +1,7 @@
-import path from "node:path";
 import { Context, Effect, Layer, Schema } from "effect";
-import { eq, inArray, and } from "../db/db";
-import { Database } from "../db/db";
-import { ProjectTable, ProjectDirectoryTable, type ProjectDirectory as ProjectDirectoryRow } from "../db/schema.sql";
+import path from "node:path";
+import { and, Database, eq, inArray } from "../db/db";
+import { ProjectDirectoryTable, ProjectTable, type ProjectDirectory as ProjectDirectoryRow } from "../db/schema.sql";
 import { FileSystem } from "../filesystem/filesystem";
 import { Git } from "../git/git";
 import { Sandbox } from "../sandbox/sandbox";
@@ -200,12 +199,57 @@ export const layer = Layer.effect(
 			return resolved;
 		});
 
-		// TODO: requires implementation
 		const migrateProjectId = Effect.fn("Project.migrateProjectID")(function* (oldID: ID | undefined, newID: ID) {
 			if (!oldID) return; // nothing to migrate from
 			if (oldID === ID.local) return; // local project copy are ignored
 			if (oldID === newID) return; // just the same
-			yield* Effect.void;
+
+			yield* db
+				.transaction(
+					(d) =>
+						Effect.gen(function* () {
+							const oldProject = yield* d.select().from(ProjectTable).where(eq(ProjectTable.id, oldID)).get();
+							if (!oldProject) return;
+
+							const newProject = yield* d.select().from(ProjectTable).where(eq(ProjectTable.id, newID)).get();
+							if (!newProject) {
+								yield* d
+									.insert(ProjectTable)
+									.values({
+										...oldProject,
+										id: newID,
+										updatedAt: Date.now(),
+									})
+									.run();
+							}
+
+							// directories cascade-delete with the old project row, so
+							// re-home them under the new id (with re-derived row ids)
+							// before the delete; directories the new project already
+							// registered win the conflict
+							const directories = yield* d
+								.select()
+								.from(ProjectDirectoryTable)
+								.where(eq(ProjectDirectoryTable.projectId, oldID))
+								.all();
+							for (const row of directories) {
+								yield* d
+									.insert(ProjectDirectoryTable)
+									.values({
+										...row,
+										id: Hash.fast(`${newID}:${row.directory}`),
+										projectId: newID,
+										updatedAt: Date.now(),
+									})
+									.onConflictDoNothing()
+									.run();
+							}
+
+							yield* d.delete(ProjectTable).where(eq(ProjectTable.id, oldID)).run();
+						}),
+					{ behavior: "immediate" },
+				)
+				.pipe(Effect.orDie);
 		});
 
 		const saveDirectory = Effect.fn("Project.saveDirectory")(function* (input: { projectID: ID; directory: string }) {

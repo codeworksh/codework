@@ -4,7 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { Database } from "../src/db/db";
+import { Database, eq } from "../src/db/db";
 import { ProjectDirectoryTable, ProjectTable } from "../src/db/schema.sql";
 import { FileSystem } from "../src/filesystem/filesystem";
 import { Git } from "../src/git/git";
@@ -464,6 +464,157 @@ describe("Project", () => {
 				expect(result).toEqual([]);
 			}),
 		);
+
+		// A cached `codework` marker that differs from the resolved id triggers a
+		// migration: the project row and its directories move to the new id.
+		describe("migration", () => {
+			const remoteGit = () =>
+				gitRepo({ remote: () => Effect.succeed("https://github.com/codeworksh/codework.git") });
+
+			const { effect: migrateIt } = testEffect(projectLayer(remoteGit(), { cached: "old-project-id\n" }));
+
+			migrateIt("moves the project row and its directories to the resolved id", () =>
+				Effect.gen(function* () {
+					const { db } = yield* Database.Service;
+					yield* db
+						.insert(ProjectTable)
+						.values({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 })
+						.run();
+					yield* db
+						.insert(ProjectDirectoryTable)
+						.values({
+							id: Hash.fast("old-project-id:/workspace/legacy"),
+							projectId: "old-project-id",
+							directory: "/workspace/legacy",
+							type: "main",
+							sandboxEnvID: "sandbox-1",
+						})
+						.run();
+
+					const project = yield* Service;
+					const info = yield* project.fromDirectory(directory);
+
+					// the migrated row keeps its name and creation time under the new id
+					expect(info.id).toEqual(projectID);
+					expect(info.name).toBe("legacy");
+
+					const projects = yield* db.select().from(ProjectTable).all();
+					expect(projects).toHaveLength(1);
+					expect(projects[0]).toMatchObject({ id: projectID, name: "legacy", createdAt: 1111 });
+
+					// the opened directory registers as root because the migrated
+					// main already occupies the project
+					const directories = yield* project.directories({ projectID });
+					expect(directories).toEqual([
+						{ directory, sandboxEnvID: "@codework/envDefault", type: "root" },
+						{ directory: "/workspace/legacy", sandboxEnvID: "sandbox-1", type: "main" },
+					]);
+
+					// migrated rows are re-keyed off the new project id
+					const rows = yield* db.select().from(ProjectDirectoryTable).all();
+					expect(rows.every((row) => row.projectId === projectID)).toBe(true);
+					const legacy = rows.find((row) => row.directory === "/workspace/legacy");
+					expect(legacy?.id).toBe(Hash.fast(`${projectID}:/workspace/legacy`));
+				}),
+			);
+
+			const { effect: mergeIt } = testEffect(projectLayer(remoteGit(), { cached: "old-project-id\n" }));
+
+			mergeIt("merges into an existing project under the new id", () =>
+				Effect.gen(function* () {
+					const { db } = yield* Database.Service;
+					yield* db
+						.insert(ProjectTable)
+						.values({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 })
+						.run();
+					yield* db
+						.insert(ProjectTable)
+						.values({ id: projectID, name: "current", createdAt: 2222, updatedAt: 2222 })
+						.run();
+					// one directory unique to the old project, one already known to the new
+					yield* db
+						.insert(ProjectDirectoryTable)
+						.values({
+							id: "old-unique",
+							projectId: "old-project-id",
+							directory: "/workspace/legacy",
+							type: "root",
+							sandboxEnvID: "sandbox-1",
+						})
+						.run();
+					yield* db
+						.insert(ProjectDirectoryTable)
+						.values({
+							id: "old-shared",
+							projectId: "old-project-id",
+							directory: "/workspace/shared",
+							type: "root",
+							sandboxEnvID: "sandbox-1",
+						})
+						.run();
+					yield* db
+						.insert(ProjectDirectoryTable)
+						.values({
+							id: Hash.fast(`${projectID}:/workspace/shared`),
+							projectId: projectID,
+							directory: "/workspace/shared",
+							type: "main",
+							sandboxEnvID: "sandbox-2",
+						})
+						.run();
+
+					const project = yield* Service;
+					const info = yield* project.fromDirectory(directory);
+
+					// the existing project wins; the old row is gone
+					expect(info.name).toBe("current");
+					const projects = yield* db.select().from(ProjectTable).all();
+					expect(projects).toHaveLength(1);
+					expect(projects[0]).toMatchObject({ id: projectID, name: "current", createdAt: 2222 });
+
+					// the shared directory keeps the new project's registration
+					const directories = yield* project.directories({ projectID });
+					expect(directories).toEqual([
+						{ directory, sandboxEnvID: "@codework/envDefault", type: "root" },
+						{ directory: "/workspace/legacy", sandboxEnvID: "sandbox-1", type: "root" },
+						{ directory: "/workspace/shared", sandboxEnvID: "sandbox-2", type: "main" },
+					]);
+				}),
+			);
+
+			const { effect: missingOldIt } = testEffect(projectLayer(remoteGit(), { cached: "old-project-id\n" }));
+
+			missingOldIt("creates a fresh project when the cached id has no row to migrate", () =>
+				Effect.gen(function* () {
+					const project = yield* Service;
+					const info = yield* project.fromDirectory(directory);
+
+					expect(info.id).toEqual(projectID);
+					expect(info.name).toBe("codework");
+
+					const { db } = yield* Database.Service;
+					const projects = yield* db.select().from(ProjectTable).all();
+					expect(projects).toHaveLength(1);
+					expect(projects[0]?.id).toBe(projectID);
+				}),
+			);
+
+			const { effect: localCacheIt } = testEffect(projectLayer(remoteGit(), { cached: "local\n" }));
+
+			localCacheIt("never migrates the local project id", () =>
+				Effect.gen(function* () {
+					const { db } = yield* Database.Service;
+					yield* db.insert(ProjectTable).values({ id: "local", name: "local", createdAt: 1, updatedAt: 1 }).run();
+
+					const project = yield* Service;
+					const info = yield* project.fromDirectory(directory);
+					expect(info.id).toEqual(projectID);
+
+					const local = yield* db.select().from(ProjectTable).where(eq(ProjectTable.id, "local")).get();
+					expect(local).toBeDefined();
+				}),
+			);
+		});
 	});
 
 	describe("Project.defaultLayer", () => {
