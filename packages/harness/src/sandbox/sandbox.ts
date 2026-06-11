@@ -4,6 +4,7 @@ import { EnvDefault } from "./default";
 
 // re-export from sandbox
 export { EnvDefault } from "./default";
+export { EnvInMemory } from "./inmemory";
 export { EnvSqldb } from "./sqldb";
 
 /**

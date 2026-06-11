@@ -35,9 +35,14 @@ export const layer = Layer.effect(
 			});
 		});
 
+		// virtual providers create missing parents implicitly while the real
+		// filesystem rejects them; mkdir first so every backend behaves the same
 		const writeFileString = Effect.fn("FileSystem.writeFileString")(function* (path: string, data: string) {
 			return yield* Effect.tryPromise({
-				try: () => vfs.promises.writeFile(path, data),
+				try: async () => {
+					await vfs.promises.mkdir(dirname(path), { recursive: true });
+					await vfs.promises.writeFile(path, data);
+				},
 				catch: (cause) => new FileSystemError({ method: "writeFileString", cause }),
 			});
 		});
