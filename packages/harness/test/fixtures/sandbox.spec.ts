@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect";
+import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vite-plus/test";
 import { FileSystemError, layer as filesystemLayer, Service, Vfs } from "../../src/filesystem/filesystem";
 import type { Sandbox } from "../../src/sandbox/sandbox";
@@ -289,6 +290,93 @@ export const filesystemSpec = (make: MakeSandbox) => {
 			);
 
 			expect(matches).toEqual([]);
+		});
+	});
+
+	describe("VFS provider primitives", () => {
+		it("round-trips binary content", async () => {
+			await run(
+				Effect.gen(function* () {
+					const vfs = yield* Vfs;
+					const content = Buffer.from([0, 1, 2, 127, 128, 255]);
+
+					yield* Effect.promise(() => vfs.promises.writeFile("/binary.dat", content));
+					const result = yield* Effect.promise(() => vfs.promises.readFile("/binary.dat"));
+
+					expect(result).toEqual(content);
+				}),
+			);
+		});
+
+		it("copies, renames, and removes files", async () => {
+			await run(
+				Effect.gen(function* () {
+					const vfs = yield* Vfs;
+
+					yield* Effect.promise(async () => {
+						await vfs.promises.copyFile("/workspace/package.json", "/copy.json");
+						await vfs.promises.rename("/copy.json", "/renamed.json");
+					});
+
+					expect(yield* Effect.promise(() => vfs.promises.readFile("/renamed.json", "utf8"))).toBe("{}");
+					expect(vfs.existsSync("/copy.json")).toBe(false);
+
+					yield* Effect.promise(() => vfs.promises.unlink("/renamed.json"));
+					expect(vfs.existsSync("/renamed.json")).toBe(false);
+				}),
+			);
+		});
+
+		it("reports directory entries and removes empty directories", async () => {
+			await run(
+				Effect.gen(function* () {
+					const vfs = yield* Vfs;
+
+					yield* Effect.promise(() => vfs.promises.mkdir("/entries/child", { recursive: true }));
+					yield* Effect.promise(() => vfs.promises.writeFile("/entries/file.txt", "data"));
+					const entries = yield* Effect.promise(() => vfs.promises.readdir("/entries", { withFileTypes: true }));
+
+					expect(
+						entries.map((entry) => ({
+							name: entry.name,
+							isDirectory: entry.isDirectory(),
+							isFile: entry.isFile(),
+						})),
+					).toEqual([
+						{ name: "child", isDirectory: true, isFile: false },
+						{ name: "file.txt", isDirectory: false, isFile: true },
+					]);
+
+					yield* Effect.promise(async () => {
+						await vfs.promises.rmdir("/entries/child");
+						await vfs.promises.unlink("/entries/file.txt");
+						await vfs.promises.rmdir("/entries");
+					});
+					expect(vfs.existsSync("/entries")).toBe(false);
+				}),
+			);
+		});
+
+		it("supports safe symbolic links", async () => {
+			await run(
+				Effect.gen(function* () {
+					const vfs = yield* Vfs;
+
+					yield* Effect.promise(() => vfs.promises.symlink("/workspace/package.json", "/package-link.json"));
+
+					const link = yield* Effect.promise(() => vfs.promises.lstat("/package-link.json"));
+					const target = yield* Effect.promise(() => vfs.promises.stat("/package-link.json"));
+					expect(link.isSymbolicLink()).toBe(true);
+					expect(target.isFile()).toBe(true);
+					expect(yield* Effect.promise(() => vfs.promises.readlink("/package-link.json"))).toBe(
+						"/workspace/package.json",
+					);
+					expect(yield* Effect.promise(() => vfs.promises.realpath("/package-link.json"))).toBe(
+						"/workspace/package.json",
+					);
+					expect(yield* Effect.promise(() => vfs.promises.readFile("/package-link.json", "utf8"))).toBe("{}");
+				}),
+			);
 		});
 	});
 };

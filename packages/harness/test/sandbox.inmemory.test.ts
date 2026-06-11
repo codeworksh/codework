@@ -1,9 +1,12 @@
 import { Cause, Effect, Exit } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { FileSystemError, Service } from "../src/filesystem/filesystem";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { filesystemSpec } from "./fixtures/sandbox.spec";
+import { tmpdir } from "./fixtures/tempdir";
 
 describe("Sandbox.EnvInMemory", () => {
 	filesystemSpec(async () => ({
@@ -57,6 +60,26 @@ describe("Sandbox.EnvInMemory", () => {
 		);
 
 		expect(exitCode).toBe(0);
+	});
+
+	it("allows host filesystem access when hostProcess is enabled", async () => {
+		await using tmp = await tmpdir();
+		const hostFile = path.join(tmp.path, "host.txt");
+		await fs.writeFile(hostFile, "host-data");
+
+		const output = await Effect.runPromise(
+			Effect.gen(function* () {
+				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+				const command = ChildProcess.make(
+					process.execPath,
+					["-e", "process.stdout.write(require('node:fs').readFileSync(process.argv[1], 'utf8'))", hostFile],
+					{ stdin: "ignore" },
+				);
+				return yield* spawner.string(command);
+			}).pipe(Effect.provide(Sandbox.EnvInMemory.layer({ hostProcess: true }))),
+		);
+
+		expect(output).toBe("host-data");
 	});
 
 	describe("read-only", () => {

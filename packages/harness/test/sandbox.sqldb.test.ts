@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -45,6 +45,20 @@ describe("Sandbox.EnvSqldb", () => {
 
 			expect(content).toBe("persisted");
 		});
+	});
+
+	it("refuses process execution by default", async () => {
+		const exit = await Effect.runPromiseExit(
+			Effect.gen(function* () {
+				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+				return yield* Effect.scoped(spawner.spawn(ChildProcess.make("git", ["status"])));
+			}).pipe(Effect.provide(Sandbox.EnvSqldb.layer())),
+		);
+
+		expect(Exit.isFailure(exit)).toBe(true);
+		if (Exit.isFailure(exit)) {
+			expect(Cause.pretty(exit.cause)).toContain("process execution is not supported by this sandbox");
+		}
 	});
 
 	// hostProcess opts out of the refusal: the filesystem stays virtual but

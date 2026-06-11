@@ -30,13 +30,39 @@ export class Shell extends Context.Service<Shell, Interface>()("@codework/sandbo
 // commands and FileSystem.Service operate on the very same tree — there is
 // exactly one filesystem.
 //
-// Best-effort gaps where vfs has no equivalent: chmod and utimes are no-ops
-// (mode/mtime metadata is not updated, but `chmod`/`touch` in scripts keep
-// working); hard links fail loudly.
+// VFS has no chmod/utimes primitives, so bash-visible mode and mtime changes
+// are kept in a shell-local metadata overlay. Hard links fail loudly because
+// their shared-inode semantics cannot be represented by the VFS API.
 export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
+	const metadata = new Map<string, { mode?: number; mtime?: Date }>();
+	const key = (path: string) => posix.resolve("/", path);
+
 	const encodingOf = (options?: { encoding?: string | null } | string) => {
 		const encoding = typeof options === "string" ? options : options?.encoding;
 		return (encoding ?? "utf8") as BufferEncoding;
+	};
+
+	const assertWritable = (method: string, path: string) => {
+		if (!vfs.readonly) return;
+		const error = new Error(`EROFS: read-only file system, ${method} '${path}'`) as NodeJS.ErrnoException;
+		error.code = "EROFS";
+		throw error;
+	};
+
+	const removeMetadata = (path: string) => {
+		const target = key(path);
+		for (const item of metadata.keys()) {
+			if (item === target || item.startsWith(`${target}/`)) metadata.delete(item);
+		}
+	};
+
+	const moveMetadata = (src: string, dest: string) => {
+		const source = key(src);
+		const target = key(dest);
+		const moved = [...metadata.entries()].filter(([path]) => path === source || path.startsWith(`${source}/`));
+		removeMetadata(dest);
+		removeMetadata(src);
+		for (const [path, value] of moved) metadata.set(`${target}${path.slice(source.length)}`, value);
 	};
 
 	const rm: IFileSystem["rm"] = async (path, options) => {
@@ -56,6 +82,7 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 		} else {
 			await vfs.promises.unlink(path);
 		}
+		removeMetadata(path);
 	};
 
 	const cp: IFileSystem["cp"] = async (src, dest, options) => {
@@ -71,21 +98,27 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 		}
 	};
 
-	const toStat = (stats: {
-		isFile(): boolean;
-		isDirectory(): boolean;
-		isSymbolicLink(): boolean;
-		mode: number;
-		size: number;
-		mtime: Date;
-	}) => ({
-		isFile: stats.isFile(),
-		isDirectory: stats.isDirectory(),
-		isSymbolicLink: stats.isSymbolicLink(),
-		mode: stats.mode,
-		size: stats.size,
-		mtime: stats.mtime,
-	});
+	const toStat = (
+		path: string,
+		stats: {
+			isFile(): boolean;
+			isDirectory(): boolean;
+			isSymbolicLink(): boolean;
+			mode: number;
+			size: number;
+			mtime: Date;
+		},
+	) => {
+		const override = metadata.get(key(path));
+		return {
+			isFile: stats.isFile(),
+			isDirectory: stats.isDirectory(),
+			isSymbolicLink: stats.isSymbolicLink(),
+			mode: override?.mode === undefined ? stats.mode : (stats.mode & ~0o7777) | override.mode,
+			size: stats.size,
+			mtime: override?.mtime ?? stats.mtime,
+		};
+	};
 
 	return {
 		readFile: async (path, options) => {
@@ -106,8 +139,11 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 				encodingOf(options),
 			),
 		exists: (path) => Promise.resolve(vfs.existsSync(path)),
-		stat: async (path) => toStat(await vfs.promises.stat(path)),
-		lstat: async (path) => toStat(await vfs.promises.lstat(path)),
+		stat: async (path) => {
+			const stats = await vfs.promises.stat(path);
+			return toStat(await vfs.promises.realpath(path), stats);
+		},
+		lstat: async (path) => toStat(path, await vfs.promises.lstat(path)),
 		mkdir: async (path, options) => {
 			await vfs.promises.mkdir(path, options);
 		},
@@ -123,7 +159,10 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 		},
 		rm,
 		cp,
-		mv: (src, dest) => vfs.promises.rename(src, dest),
+		mv: async (src, dest) => {
+			await vfs.promises.rename(src, dest);
+			moveMetadata(src, dest);
+		},
 		resolvePath: (base, path) => posix.resolve(base, path),
 		getAllPaths: () => {
 			const paths: string[] = [];
@@ -143,12 +182,22 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 			walk("/");
 			return paths;
 		},
-		chmod: () => Promise.resolve(),
+		chmod: async (path, mode) => {
+			assertWritable("chmod", path);
+			await vfs.promises.stat(path);
+			const target = key(await vfs.promises.realpath(path));
+			metadata.set(target, { ...metadata.get(target), mode });
+		},
 		symlink: (target, linkPath) => vfs.promises.symlink(target, linkPath),
 		link: () => Promise.reject(new Error("hard links are not supported by this sandbox")),
 		readlink: (path) => vfs.promises.readlink(path),
 		realpath: (path) => vfs.promises.realpath(path),
-		utimes: () => Promise.resolve(),
+		utimes: async (path, _atime, mtime) => {
+			assertWritable("utimes", path);
+			await vfs.promises.stat(path);
+			const target = key(await vfs.promises.realpath(path));
+			metadata.set(target, { ...metadata.get(target), mtime });
+		},
 	};
 };
 
