@@ -1,4 +1,5 @@
 import { Layer } from "effect";
+import type { ChildProcessSpawner } from "effect/unstable/process";
 import { FileSystem } from "../filesystem/filesystem";
 import { EnvDefault } from "./default";
 
@@ -6,13 +7,14 @@ import { EnvDefault } from "./default";
 export { EnvDefault } from "./default";
 export { EnvInMemory } from "./inmemory";
 export { EnvSqldb } from "./sqldb";
+export { Process } from "./process";
 
 /**
- * The OS-primitive capabilities every sandbox must provide. Currently the
- * filesystem backend; networking, process execution, etc. join this union
+ * The OS-primitive capabilities every sandbox must provide: the filesystem
+ * backend and process execution. Networking, logging, etc. join this union
  * as they become sandboxed.
  */
-export type Provides = FileSystem.Vfs;
+export type Provides = FileSystem.Vfs | ChildProcessSpawner.ChildProcessSpawner;
 
 /**
  * A sandbox is any Layer providing the OS primitives — this type is the
@@ -21,10 +23,13 @@ export type Provides = FileSystem.Vfs;
  */
 export type Sandbox<E = never, RIn = never> = Layer.Layer<Provides, E, RIn>;
 
-/** App-facing filesystem service backed by the given sandbox. */
-export const filesystem = <E, RIn>(sandbox: Sandbox<E, RIn>) => FileSystem.layer.pipe(Layer.provide(sandbox));
+/**
+ * App-facing services backed by the given sandbox: the FileSystem service
+ * plus the sandbox's own capabilities (process spawner, ...).
+ */
+export const services = <E, RIn>(sandbox: Sandbox<E, RIn>) => Layer.provideMerge(FileSystem.layer, sandbox);
 
-/** Default sandbox: the real OS filesystem rooted at `rootPath`. */
-export const defaultLayer = (rootPath: string) => filesystem(EnvDefault.layer(rootPath));
+/** Default sandbox: the real OS filesystem and processes rooted at `rootPath`. */
+export const defaultLayer = (rootPath: string) => services(EnvDefault.layer(rootPath));
 
 export * as Sandbox from "./sandbox";

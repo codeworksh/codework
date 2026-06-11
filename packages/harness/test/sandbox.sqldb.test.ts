@@ -32,14 +32,14 @@ describe("Sandbox.EnvSqldb", () => {
 				Effect.gen(function* () {
 					const filesystem = yield* Service;
 					yield* filesystem.writeFileString("/file.txt", "persisted");
-				}).pipe(Effect.provide(Sandbox.filesystem(Sandbox.EnvSqldb.layer(database)))),
+				}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvSqldb.layer(database)))),
 			);
 
 			const content = await Effect.runPromise(
 				Effect.gen(function* () {
 					const filesystem = yield* Service;
 					return yield* filesystem.readFileString("/file.txt");
-				}).pipe(Effect.provide(Sandbox.filesystem(Sandbox.EnvSqldb.layer(database)))),
+				}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvSqldb.layer(database)))),
 			);
 
 			expect(content).toBe("persisted");
@@ -53,14 +53,14 @@ describe("Sandbox.EnvSqldb", () => {
 			Effect.gen(function* () {
 				const filesystem = yield* Service;
 				yield* filesystem.writeFileString("/file.txt", "first");
-			}).pipe(Effect.provide(Sandbox.filesystem(Sandbox.EnvSqldb.layer()))),
+			}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvSqldb.layer()))),
 		);
 
 		const exists = await Effect.runPromise(
 			Effect.gen(function* () {
 				const filesystem = yield* Service;
 				return yield* filesystem.exists("/file.txt");
-			}).pipe(Effect.provide(Sandbox.filesystem(Sandbox.EnvSqldb.layer()))),
+			}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvSqldb.layer()))),
 		);
 
 		expect(exists).toBe(false);

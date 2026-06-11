@@ -1,10 +1,11 @@
 import { create, SqliteProvider } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
 import { FileSystem } from "../filesystem/filesystem";
+import { Process } from "./process";
 
 // SqliteProvider holds a single node:sqlite connection for the lifetime of
 // the layer; omitting `location` keeps the whole filesystem in `:memory:`.
-export const layer = (location?: string) =>
+const vfsLayer = (location?: string) =>
 	Layer.effect(
 		FileSystem.Vfs,
 		Effect.acquireRelease(
@@ -16,5 +17,7 @@ export const layer = (location?: string) =>
 			({ provider }) => Effect.sync(() => provider.close()),
 		).pipe(Effect.map(({ vfs }) => vfs)),
 	);
+
+export const layer = (location?: string) => Layer.merge(vfsLayer(location), Process.unsupported);
 
 export * as EnvSqldb from "./sqldb";

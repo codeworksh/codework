@@ -1,4 +1,3 @@
-import { NodeServices } from "@effect/platform-node";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import path from "path";
@@ -288,8 +287,7 @@ export const layer = Layer.effect(
 	}),
 );
 
-export const defaultLayer = (rootPath: string) =>
-	layer.pipe(Layer.provide(Sandbox.defaultLayer(rootPath)), Layer.provide(NodeServices.layer));
+export const defaultLayer = (rootPath: string) => layer.pipe(Layer.provide(Sandbox.defaultLayer(rootPath)));
 
 function resolvePath(cwd: string, value: string) {
 	const trimmed = value.replace(/[\r\n]+$/, "");

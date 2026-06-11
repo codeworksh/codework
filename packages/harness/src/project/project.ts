@@ -1,5 +1,4 @@
 import path from "node:path";
-import { NodeServices } from "@effect/platform-node";
 import { Context, Effect, Layer, Schema } from "effect";
 import { eq, inArray, and } from "../db/db";
 import { Database } from "../db/db";
@@ -322,8 +321,7 @@ export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(
 		Layer.provide(Git.layer),
 		Layer.provide(Copy.layer),
-		Layer.provide(Sandbox.filesystem(sandbox)),
-		Layer.provide(NodeServices.layer),
+		Layer.provide(Sandbox.services(sandbox)),
 		Layer.provide(Database.defaultLayer),
 	);
 

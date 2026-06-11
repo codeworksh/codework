@@ -25,7 +25,7 @@ describe("Sandbox.EnvDefault", () => {
 			Effect.gen(function* () {
 				const filesystem = yield* Service;
 				yield* filesystem.writeFileString("/file.txt", "hello");
-			}).pipe(Effect.provide(Sandbox.filesystem(Sandbox.EnvDefault.layer(tmp.path)))),
+			}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvDefault.layer(tmp.path)))),
 		);
 
 		expect(await fs.readFile(path.join(tmp.path, "file.txt"), "utf8")).toBe("hello");
@@ -39,7 +39,7 @@ describe("Sandbox.EnvDefault", () => {
 			Effect.gen(function* () {
 				const filesystem = yield* Service;
 				return yield* filesystem.readFileString("/host.txt");
-			}).pipe(Effect.provide(Sandbox.filesystem(Sandbox.EnvDefault.layer(tmp.path)))),
+			}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvDefault.layer(tmp.path)))),
 		);
 
 		expect(content).toBe("from host");
