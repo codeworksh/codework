@@ -6,6 +6,11 @@ import { Process } from "./process";
 export interface Options {
 	/** Freeze the provider to prevent writes. Defaults to false. */
 	readonly readOnly?: boolean;
+	/**
+	 * Spawn child processes on the host OS even though the filesystem is
+	 * virtual. Defaults to false: process execution is refused.
+	 */
+	readonly hostProcess?: boolean;
 }
 
 // A purely in-memory filesystem with no backing resource to release; every
@@ -18,7 +23,7 @@ export const layer = (options?: Options) =>
 			if (options?.readOnly) provider.setReadOnly();
 			return create(provider, { moduleHooks: false });
 		}),
-		Process.unsupported,
+		options?.hostProcess ? Process.host : Process.unsupported,
 	);
 
 export * as EnvInMemory from "./inmemory";

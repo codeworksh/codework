@@ -1,7 +1,7 @@
-import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { create, RealFSProvider } from "@platformatic/vfs";
 import { Layer } from "effect";
 import { FileSystem } from "../filesystem/filesystem";
+import { Process } from "./process";
 
 export const layer = (rootPath: string) =>
 	Layer.merge(
@@ -10,7 +10,7 @@ export const layer = (rootPath: string) =>
 				moduleHooks: false,
 			}),
 		),
-		NodeChildProcessSpawner.layer.pipe(Layer.provide([NodeFileSystem.layer, NodePath.layer])),
+		Process.host,
 	);
 
 export * as EnvDefault from "./default";

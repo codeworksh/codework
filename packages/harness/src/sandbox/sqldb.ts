@@ -18,6 +18,15 @@ const vfsLayer = (location?: string) =>
 		).pipe(Effect.map(({ vfs }) => vfs)),
 	);
 
-export const layer = (location?: string) => Layer.merge(vfsLayer(location), Process.unsupported);
+export interface Options {
+	/**
+	 * Spawn child processes on the host OS even though the filesystem is
+	 * virtual. Defaults to false: process execution is refused.
+	 */
+	readonly hostProcess?: boolean;
+}
+
+export const layer = (location?: string, options?: Options) =>
+	Layer.merge(vfsLayer(location), options?.hostProcess ? Process.host : Process.unsupported);
 
 export * as EnvSqldb from "./sqldb";

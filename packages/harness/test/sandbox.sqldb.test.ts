@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Service } from "../src/filesystem/filesystem";
@@ -44,6 +45,19 @@ describe("Sandbox.EnvSqldb", () => {
 
 			expect(content).toBe("persisted");
 		});
+	});
+
+	// hostProcess opts out of the refusal: the filesystem stays virtual but
+	// child processes run on the host OS
+	it("spawns processes on the host when hostProcess is enabled", async () => {
+		const exitCode = await Effect.runPromise(
+			Effect.gen(function* () {
+				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+				return yield* spawner.exitCode(ChildProcess.make("echo", ["hello"]));
+			}).pipe(Effect.provide(Sandbox.EnvSqldb.layer(undefined, { hostProcess: true }))),
+		);
+
+		expect(exitCode).toBe(0);
 	});
 
 	// each in-memory sandbox owns its own database: nothing leaks between

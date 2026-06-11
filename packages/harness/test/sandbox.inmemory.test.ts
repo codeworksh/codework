@@ -46,6 +46,19 @@ describe("Sandbox.EnvInMemory", () => {
 		}
 	});
 
+	// hostProcess opts out of the refusal: the filesystem stays virtual but
+	// child processes run on the host OS
+	it("spawns processes on the host when hostProcess is enabled", async () => {
+		const exitCode = await Effect.runPromise(
+			Effect.gen(function* () {
+				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+				return yield* spawner.exitCode(ChildProcess.make("echo", ["hello"]));
+			}).pipe(Effect.provide(Sandbox.EnvInMemory.layer({ hostProcess: true }))),
+		);
+
+		expect(exitCode).toBe(0);
+	});
+
 	describe("read-only", () => {
 		it("rejects writes when created with readOnly", async () => {
 			const error = await Effect.runPromise(
