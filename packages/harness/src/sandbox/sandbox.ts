@@ -4,10 +4,11 @@ import { FileSystem } from "../filesystem/filesystem";
 import { EnvDefault } from "./default";
 
 // re-export from sandbox
+export { EnvBash } from "./bash";
 export { EnvDefault } from "./default";
 export { EnvInMemory } from "./inmemory";
-export { EnvSqldb } from "./sqldb";
 export { Process } from "./process";
+export { EnvSqldb } from "./sqldb";
 
 /**
  * The OS-primitive capabilities every sandbox must provide: the filesystem
@@ -25,7 +26,8 @@ export type Sandbox<E = never, RIn = never> = Layer.Layer<Provides, E, RIn>;
 
 /**
  * App-facing services backed by the given sandbox: the FileSystem service
- * plus the sandbox's own capabilities (process spawner, ...).
+ * plus the sandbox's own capabilities (process spawner, ...). For
+ * bash-wrapped sandboxes use `EnvBash.services`, which keeps the Shell type.
  */
 export const services = <E, RIn>(sandbox: Sandbox<E, RIn>) => Layer.provideMerge(FileSystem.layer, sandbox);
 
