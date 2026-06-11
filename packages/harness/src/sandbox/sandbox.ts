@@ -4,6 +4,7 @@ import { EnvDefault } from "./default";
 
 // re-export from sandbox
 export { EnvDefault } from "./default";
+export { EnvSqldb } from "./sqldb";
 
 /**
  * The OS-primitive capabilities every sandbox must provide. Currently the
