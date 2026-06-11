@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { FileSystem } from "../filesystem/filesystem";
+import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";
 
 export const IsGitWorktreeInput = Schema.Struct({
@@ -40,6 +41,6 @@ export const layer = Layer.effect(
 	}),
 );
 
-export const defaultLayer = (path: string) => layer.pipe(Layer.provide(FileSystem.defaultLayer(path)));
+export const defaultLayer = (path: string) => layer.pipe(Layer.provide(Sandbox.defaultLayer(path)));
 
 export * as Copy from "./copy";

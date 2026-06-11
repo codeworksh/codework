@@ -70,6 +70,7 @@
 	"devDependencies": {
 		"@effect/language-service": "^0.86.2",
 		"@types/mime-types": "^3.0.1",
+		"@types/node": "^25.9.2",
 		"bumpp": "^11.0.1",
 		"drizzle-kit": "1.0.0-rc.3"
 	},

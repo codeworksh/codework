@@ -1,10 +1,12 @@
 import path from "node:path";
+import { NodeServices } from "@effect/platform-node";
 import { Context, Effect, Layer, Schema } from "effect";
 import { eq, inArray, and } from "../db/db";
 import { Database } from "../db/db";
 import { ProjectTable, ProjectDirectoryTable, type ProjectDirectory as ProjectDirectoryRow } from "../db/schema.sql";
 import { FileSystem } from "../filesystem/filesystem";
 import { Git } from "../git/git";
+import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath, withStatics } from "../schema";
 import { Hash } from "../util/hash";
 import { Copy } from "./copy";
@@ -316,12 +318,15 @@ export const layer = Layer.effect(
 	}),
 );
 
-export const defaultLayer = (path: string) =>
+export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(
-		Layer.provide(FileSystem.defaultLayer(path)),
-		Layer.provide(Git.defaultLayer(path)),
-		Layer.provide(Copy.defaultLayer(path)),
+		Layer.provide(Git.layer),
+		Layer.provide(Copy.layer),
+		Layer.provide(Sandbox.filesystem(sandbox)),
+		Layer.provide(NodeServices.layer),
 		Layer.provide(Database.defaultLayer),
 	);
+
+export const defaultLayer = (path: string) => layerWith(Sandbox.EnvDefault.layer(path));
 
 export * as Project from "./project";

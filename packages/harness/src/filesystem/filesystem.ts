@@ -1,4 +1,4 @@
-import { create, RealFSProvider, type VirtualFileSystem } from "@platformatic/vfs";
+import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Context, Effect, Layer, Schema } from "effect";
 import { dirname, join } from "path";
 
@@ -96,17 +96,6 @@ export const layer = Layer.effect(
 );
 
 export const layerFromVfs = (vfs: VirtualFileSystem) => Layer.succeed(Vfs, vfs);
-
-export const NodeFileSystem = {
-	layer: (rootPath: string) =>
-		layerFromVfs(
-			create(new RealFSProvider(rootPath), {
-				moduleHooks: false,
-			}),
-		),
-} as const;
-
-export const defaultLayer = (rootPath: string) => layer.pipe(Layer.provide(NodeFileSystem.layer(rootPath)));
 
 export function windowsPath(p: string): string {
 	if (process.platform !== "win32") return p;

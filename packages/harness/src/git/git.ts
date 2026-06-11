@@ -1,9 +1,10 @@
-import path from "path";
 import { NodeServices } from "@effect/platform-node";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
-import { FileSystem } from "../filesystem/filesystem";
-import { AbsolutePath } from "../schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import path from "path";
+import { FileSystem } from "../filesystem/filesystem";
+import { Sandbox } from "../sandbox/sandbox";
+import { AbsolutePath } from "../schema";
 
 export class AppProcessError extends Schema.TaggedErrorClass<AppProcessError>()("AppProcessError", {
 	command: Schema.String,
@@ -288,7 +289,7 @@ export const layer = Layer.effect(
 );
 
 export const defaultLayer = (rootPath: string) =>
-	layer.pipe(Layer.provide(FileSystem.defaultLayer(rootPath)), Layer.provide(NodeServices.layer));
+	layer.pipe(Layer.provide(Sandbox.defaultLayer(rootPath)), Layer.provide(NodeServices.layer));
 
 function resolvePath(cwd: string, value: string) {
 	const trimmed = value.replace(/[\r\n]+$/, "");

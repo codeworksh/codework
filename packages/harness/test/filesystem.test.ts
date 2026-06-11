@@ -3,9 +3,12 @@ import { Effect, Layer } from "effect";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { FileSystemError, Service, defaultLayer, layer, layerFromVfs } from "../src/filesystem/filesystem";
+import { FileSystemError, layer, layerFromVfs, Service } from "../src/filesystem/filesystem";
+import { Sandbox } from "../src/sandbox/sandbox";
 import { tmpdir } from "./fixtures/tempdir";
 import { testEffect } from "./utils/effect";
+
+const defaultLayer = Sandbox.defaultLayer;
 
 const setupUpFixture = async (root: string) => {
 	await fs.mkdir(path.join(root, "workspace", ".git"), { recursive: true });
