@@ -1,15 +1,15 @@
+import { Effect, Layer } from "effect";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Database, eq } from "../src/db/db";
 import { ProjectDirectoryTable, ProjectTable } from "../src/db/schema.sql";
 import { FileSystem } from "../src/filesystem/filesystem";
 import { Git } from "../src/git/git";
-import { Copy } from "../src/project/copy";
-import { defaultLayer, ID, Service, layer, type ProjectDirectory } from "../src/project/project";
+import { ProjectCopy } from "../src/project/copy";
+import { defaultLayer, ID, layer, Service, type ProjectDirectory } from "../src/project/project";
 import { AbsolutePath } from "../src/schema";
 import { Hash } from "../src/util/hash";
 import { tmpdir } from "./fixtures/tempdir";
@@ -67,8 +67,8 @@ const projectLayer = (git: Partial<Git.Interface>, options: ProjectOptions = {})
 				),
 				Layer.succeed(Git.Service, Git.Service.of(git as Git.Interface)),
 				Layer.succeed(
-					Copy.Service,
-					Copy.Service.of({
+					ProjectCopy.Service,
+					ProjectCopy.Service.of({
 						isGitWorktree: () => Effect.succeed(options.worktree ?? false),
 					}),
 				),

@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Service } from "../src/filesystem/filesystem";
-import { bridge, EnvBash } from "../src/sandbox/bash";
+import { bridge, EnvBash } from "../src/sandbox/justbashexe";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { filesystemSpec } from "./fixtures/sandbox.spec";
 import { tmpdir } from "./fixtures/tempdir";
@@ -165,6 +165,20 @@ describe("Sandbox.EnvBash", () => {
 			expect(result.stdout).toBe("executable\n");
 		});
 
+		it("tracks executable mode across copies", async () => {
+			const result = await Effect.runPromise(
+				Effect.gen(function* () {
+					const shell = yield* EnvBash.Shell;
+					return yield* shell.exec(
+						'printf "#!/bin/sh\\necho executable\\n" > /script && chmod +x /script && cp /script /copy && /copy',
+					);
+				}).pipe(Effect.provide(sandbox())),
+			);
+
+			expect(result.exitCode).toBe(0);
+			expect(result.stdout).toBe("executable\n");
+		});
+
 		it("fails hard links explicitly", async () => {
 			const result = await Effect.runPromise(
 				Effect.gen(function* () {
@@ -206,6 +220,66 @@ describe("Sandbox.EnvBash", () => {
 			expect((await filesystem.lstat("/link.txt")).isSymbolicLink).toBe(true);
 		});
 
+		it("preserves overlay metadata when copying files", async () => {
+			const vfs = create(new MemoryProvider(), { moduleHooks: false });
+			await vfs.promises.writeFile("/script", "#!/bin/sh\necho hi\n");
+			const filesystem = bridge(vfs);
+			const mtime = new Date("2020-01-02T03:04:05.000Z");
+
+			await filesystem.chmod("/script", 0o755);
+			await filesystem.utimes("/script", mtime, mtime);
+			await filesystem.cp("/script", "/copy");
+			const stat = await filesystem.stat("/copy");
+
+			expect(stat.mode & 0o777).toBe(0o755);
+			expect(stat.mtime).toEqual(mtime);
+		});
+
+		it("preserves the source mtime when copying files without an overlay", async () => {
+			const vfs = create(new MemoryProvider(), { moduleHooks: false });
+			await vfs.promises.writeFile("/src.txt", "data");
+			const filesystem = bridge(vfs);
+
+			const source = await filesystem.stat("/src.txt");
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			await filesystem.cp("/src.txt", "/dest.txt");
+
+			expect((await filesystem.stat("/dest.txt")).mtime).toEqual(source.mtime);
+		});
+
+		it("carries file metadata through recursive directory copies", async () => {
+			const vfs = create(new MemoryProvider(), { moduleHooks: false });
+			await vfs.promises.mkdir("/dir");
+			await vfs.promises.writeFile("/dir/file.txt", "data");
+			const filesystem = bridge(vfs);
+
+			await filesystem.chmod("/dir/file.txt", 0o700);
+			await filesystem.cp("/dir", "/copy", { recursive: true });
+
+			expect((await filesystem.stat("/copy/file.txt")).mode & 0o777).toBe(0o700);
+		});
+
+		it("refreshes an overlaid mtime when the file is written again", async () => {
+			const vfs = create(new MemoryProvider(), { moduleHooks: false });
+			await vfs.promises.writeFile("/file.txt", "data");
+			const filesystem = bridge(vfs);
+			const past = new Date("2020-01-02T03:04:05.000Z");
+			await filesystem.chmod("/file.txt", 0o755);
+
+			await filesystem.utimes("/file.txt", past, past);
+			await filesystem.writeFile("/file.txt", "rewritten");
+			const written = await filesystem.stat("/file.txt");
+
+			await filesystem.utimes("/file.txt", past, past);
+			await filesystem.appendFile("/file.txt", " more");
+			const appended = await filesystem.stat("/file.txt");
+
+			expect(written.mtime.getTime()).toBeGreaterThan(past.getTime());
+			expect(appended.mtime.getTime()).toBeGreaterThan(past.getTime());
+			// the mode override is untouched by writes
+			expect(appended.mode & 0o777).toBe(0o755);
+		});
+
 		it("rejects metadata changes for missing paths", async () => {
 			const filesystem = bridge(create(new MemoryProvider(), { moduleHooks: false }));
 
@@ -238,6 +312,28 @@ describe("Sandbox.EnvBash", () => {
 
 			expect(chmod.exitCode).not.toBe(0);
 			expect(touch.exitCode).not.toBe(0);
+		});
+	});
+
+	describe("bridge rm", () => {
+		it("ignores only missing paths under force", async () => {
+			const filesystem = bridge(create(new MemoryProvider(), { moduleHooks: false }));
+
+			await expect(filesystem.rm("/missing.txt", { force: true })).resolves.toBeUndefined();
+			await expect(filesystem.rm("/missing.txt")).rejects.toMatchObject({ code: "ENOENT" });
+		});
+
+		it("propagates provider failures despite force", async () => {
+			const vfs = create(new MemoryProvider(), { moduleHooks: false });
+			await vfs.promises.writeFile("/file.txt", "data");
+			const denied = Object.assign(new Error("EACCES: permission denied, lstat '/file.txt'"), {
+				code: "EACCES",
+			});
+			const failing = Object.create(vfs, {
+				promises: { value: { ...vfs.promises, lstat: () => Promise.reject(denied) } },
+			}) as typeof vfs;
+
+			await expect(bridge(failing).rm("/file.txt", { force: true })).rejects.toMatchObject({ code: "EACCES" });
 		});
 	});
 

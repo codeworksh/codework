@@ -31,8 +31,11 @@ export class Shell extends Context.Service<Shell, Interface>()("@codework/sandbo
 // exactly one filesystem.
 //
 // VFS has no chmod/utimes primitives, so bash-visible mode and mtime changes
-// are kept in a shell-local metadata overlay. Hard links fail loudly because
-// their shared-inode semantics cannot be represented by the VFS API.
+// are kept in a shell-local metadata overlay. The overlay only observes
+// operations made through this bridge: mutating the raw VFS directly (for
+// example deleting and recreating a path) can leave a stale overlay entry
+// behind. Hard links fail loudly because their shared-inode semantics cannot
+// be represented by the VFS API.
 export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 	const metadata = new Map<string, { mode?: number; mtime?: Date }>();
 	const key = (path: string) => posix.resolve("/", path);
@@ -65,12 +68,24 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 		for (const [path, value] of moved) metadata.set(`${target}${path.slice(source.length)}`, value);
 	};
 
+	// a write refreshes the VFS's own mtime, so an overlaid mtime from an
+	// earlier touch would be stale — drop it and let the provider's show
+	const dropOverlaidMtime = async (path: string) => {
+		const target = key(await vfs.promises.realpath(path));
+		const existing = metadata.get(target);
+		if (existing?.mtime === undefined) return;
+		if (existing.mode === undefined) metadata.delete(target);
+		else metadata.set(target, { mode: existing.mode });
+	};
+
 	const rm: IFileSystem["rm"] = async (path, options) => {
 		let stats: Awaited<ReturnType<typeof vfs.promises.lstat>>;
 		try {
 			stats = await vfs.promises.lstat(path);
 		} catch (error) {
-			if (options?.force) return;
+			// force only pardons missing paths; permission or provider failures
+			// must not masquerade as successful cleanup
+			if (options?.force && (error as NodeJS.ErrnoException).code === "ENOENT") return;
 			throw error;
 		}
 		if (stats.isDirectory()) {
@@ -95,6 +110,14 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 			}
 		} else {
 			await vfs.promises.copyFile(src, dest);
+			// just-bash's native filesystem carries mode and mtime over to the
+			// copy, but VFS copyFile stamps a fresh mtime — pin the source's
+			// bash-visible metadata onto the destination
+			const override = metadata.get(key(await vfs.promises.realpath(src)));
+			metadata.set(key(await vfs.promises.realpath(dest)), {
+				...override,
+				mtime: override?.mtime ?? stats.mtime,
+			});
 		}
 	};
 
@@ -126,18 +149,22 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 			return content as string;
 		},
 		readFileBuffer: async (path) => (await vfs.promises.readFile(path)) as Buffer,
-		writeFile: (path, content, options) =>
-			vfs.promises.writeFile(
+		writeFile: async (path, content, options) => {
+			await vfs.promises.writeFile(
 				path,
 				typeof content === "string" ? content : Buffer.from(content),
 				encodingOf(options),
-			),
-		appendFile: (path, content, options) =>
-			vfs.promises.appendFile(
+			);
+			await dropOverlaidMtime(path);
+		},
+		appendFile: async (path, content, options) => {
+			await vfs.promises.appendFile(
 				path,
 				typeof content === "string" ? content : Buffer.from(content),
 				encodingOf(options),
-			),
+			);
+			await dropOverlaidMtime(path);
+		},
 		exists: (path) => Promise.resolve(vfs.existsSync(path)),
 		stat: async (path) => {
 			const stats = await vfs.promises.stat(path);
