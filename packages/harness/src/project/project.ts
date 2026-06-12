@@ -7,7 +7,7 @@ import { Git } from "../git/git";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath, withStatics } from "../schema";
 import { Hash } from "../util/hash";
-import { Copy } from "./copy";
+import { ProjectCopy } from "./copy";
 
 // Represents the project ID type
 // defaults to local
@@ -83,7 +83,7 @@ export const layer = Layer.effect(
 
 		const fs = yield* FileSystem.Service;
 		const git = yield* Git.Service;
-		const copy = yield* Copy.Service;
+		const copy = yield* ProjectCopy.Service;
 
 		const toProjectDirectory = (row: ProjectDirectoryRow): ProjectDirectory => {
 			return {
@@ -364,7 +364,7 @@ export const layer = Layer.effect(
 export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(
 		Layer.provide(Git.layer),
-		Layer.provide(Copy.layer),
+		Layer.provide(ProjectCopy.layer),
 		Layer.provide(Sandbox.services(sandbox)),
 		Layer.provide(Database.defaultLayer),
 	);

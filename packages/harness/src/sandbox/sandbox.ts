@@ -4,9 +4,9 @@ import { FileSystem } from "../filesystem/filesystem";
 import { EnvDefault } from "./default";
 
 // re-export from sandbox
-export { EnvBash } from "./bash";
 export { EnvDefault } from "./default";
 export { EnvInMemory } from "./inmemory";
+export { EnvBash } from "./justbashexe";
 export { Process } from "./process";
 export { EnvSqldb } from "./sqldb";
 

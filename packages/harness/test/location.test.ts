@@ -9,7 +9,7 @@ import { ProjectTable } from "../src/db/schema.sql";
 import { FileSystem } from "../src/filesystem/filesystem";
 import { Git } from "../src/git/git";
 import { Location } from "../src/location/location";
-import { Copy } from "../src/project/copy";
+import { ProjectCopy } from "../src/project/copy";
 import { Project } from "../src/project/project";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { AbsolutePath } from "../src/schema";
@@ -60,8 +60,8 @@ const locationLayer = (ref: Location.Ref, git: Partial<Git.Interface>) =>
 				),
 				Layer.succeed(Git.Service, Git.Service.of(git as Git.Interface)),
 				Layer.succeed(
-					Copy.Service,
-					Copy.Service.of({
+					ProjectCopy.Service,
+					ProjectCopy.Service.of({
 						isGitWorktree: () => Effect.succeed(false),
 					}),
 				),

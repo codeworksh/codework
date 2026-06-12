@@ -43,4 +43,4 @@ export const layer = Layer.effect(
 
 export const defaultLayer = (path: string) => layer.pipe(Layer.provide(Sandbox.defaultLayer(path)));
 
-export * as Copy from "./copy";
+export * as ProjectCopy from "./copy";

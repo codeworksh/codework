@@ -235,4 +235,4 @@ export const services = <E, RIn>(
 	inner: Layer.Layer<Provides, E, RIn>,
 ): Layer.Layer<FileSystem.Service | Shell | Provides, E, RIn> => Layer.provideMerge(FileSystem.layer, layer(inner));
 
-export * as EnvBash from "./bash";
+export * as EnvBash from "./justbashexe";
