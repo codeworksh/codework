@@ -5,7 +5,7 @@
     "": {
       "name": "aikit-openai-codex",
       "dependencies": {
-        "@codeworksh/aikit": "^0.6.0-dev.20260613095948",
+        "@codeworksh/aikit": "^0.6.0",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -34,7 +34,7 @@
 
     "@ai-sdk/xai": ["@ai-sdk/xai@3.0.95", "", { "dependencies": { "@ai-sdk/openai-compatible": "2.0.50", "@ai-sdk/provider": "3.0.10", "@ai-sdk/provider-utils": "4.0.29" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-8pN/bekiBy4Nf0h9G934mpNg+izj+sAgKjqd3GcoGZKhj2I7d40khQlFxgzoA2xOQNzMfcKKNAUQb22EulB8OQ=="],
 
-    "@codeworksh/aikit": ["@codeworksh/aikit@0.6.0-dev.20260613095948", "", { "dependencies": { "@ai-sdk/anthropic": "^3.0.79", "@ai-sdk/google": "^3.0.79", "@ai-sdk/google-vertex": "^4.0.137", "@ai-sdk/openai": "^3.0.65", "@ai-sdk/openai-compatible": "^2.0.48", "@ai-sdk/provider": "^3.0.10", "@ai-sdk/xai": "^3.0.92", "@openrouter/ai-sdk-provider": "^2.9.0", "ai": "^6.0.191", "dedent": "^1.7.2", "partial-json": "^0.1.7", "remeda": "^2.33.6", "typebox": "^1.1.37", "uuidv7": "^1.2.1", "yargs": "^18.0.0" }, "bin": { "aikit": "cli.mjs" } }, "sha512-3bY9tceDWeatlIWOacbOCSmGsn1Xu0MjTeaa2Xezu7WO35jpprBPCR2VAEDqyA+8gAD9Sa2AJYL0NAUEK+UC1Q=="],
+    "@codeworksh/aikit": ["@codeworksh/aikit@0.6.0", "", { "dependencies": { "@ai-sdk/anthropic": "^3.0.79", "@ai-sdk/google": "^3.0.79", "@ai-sdk/google-vertex": "^4.0.137", "@ai-sdk/openai": "^3.0.65", "@ai-sdk/openai-compatible": "^2.0.48", "@ai-sdk/provider": "^3.0.10", "@ai-sdk/xai": "^3.0.92", "@openrouter/ai-sdk-provider": "^2.9.0", "ai": "^6.0.191", "dedent": "^1.7.2", "partial-json": "^0.1.7", "remeda": "^2.33.6", "typebox": "^1.1.37", "uuidv7": "^1.2.1", "yargs": "^18.0.0" }, "bin": { "aikit": "cli.mjs" } }, "sha512-NnFAMIwm5l4CqSCZymO0tb0JRxdhASrS0MaJ6RYFznyY3pg5rDf2jrLC1t08ZHbXnfrkOE2aGUrEdY+/raS26w=="],
 
     "@openrouter/ai-sdk-provider": ["@openrouter/ai-sdk-provider@2.9.1", "", { "peerDependencies": { "ai": "^6.0.0", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-okgq07Vdkro4CB5INbfhwa0e6VR1HS7sidNcfHN/MeXLJvX1JmQCff/vem6tcxwT9r1avyFrXSlfv9B28D/Pag=="],
 
