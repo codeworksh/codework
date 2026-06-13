@@ -1,7 +1,7 @@
 import type { LanguageModel } from "ai";
 import { Model } from "../model/model";
 
-export const DEFAULT_AI_SDK_PACKAGE = "@ai-sdk/openai-compatible";
+export const DEFAULT_AI_SDK_FALLBACK = "@ai-sdk/openai-compatible";
 
 export const AI_SDK_PACKAGE_TO_PROTOCOL = {
 	"@ai-sdk/anthropic": Model.KnownProviderEnum.anthropic,
@@ -10,6 +10,7 @@ export const AI_SDK_PACKAGE_TO_PROTOCOL = {
 	"@ai-sdk/google-vertex/anthropic": Model.KnownProviderEnum.googleVertexAnthropic,
 	"@ai-sdk/openai": Model.KnownProviderEnum.openai,
 	"@ai-sdk/openai-compatible": Model.KnownProviderEnum.openaiCompatible,
+	"@codeworksh/ai-sdk-openai-codex": Model.KnownProviderEnum.openaiCodex, // custom provider npm ID
 	"@openrouter/ai-sdk-provider": Model.KnownProviderEnum.openrouter,
 	"@ai-sdk/xai": Model.KnownProviderEnum.xai,
 } as const;
@@ -31,6 +32,10 @@ const PROVIDER_LOADERS: Record<AISDKPackage, () => Promise<ProviderFactory>> = {
 	"@openrouter/ai-sdk-provider": () =>
 		import("@openrouter/ai-sdk-provider").then((m) => m.createOpenRouter as ProviderFactory),
 	"@ai-sdk/xai": () => import("@ai-sdk/xai").then((m) => m.createXai as ProviderFactory),
+	// Local provider for OpenAI Codex subscriptions (ChatGPT OAuth); the package
+	// name is virtual and resolves to src/providers/openai-codex.
+	"@codeworksh/ai-sdk-openai-codex": () =>
+		import("../providers/openai-codex").then((m) => m.createOpenAICodex as ProviderFactory),
 };
 
 export function isAISDKPackage(value: string): value is AISDKPackage {
@@ -38,12 +43,12 @@ export function isAISDKPackage(value: string): value is AISDKPackage {
 }
 
 export function packageForModel(model: Model.Info): AISDKPackage {
-	const npm = model.npm ?? DEFAULT_AI_SDK_PACKAGE;
-	return isAISDKPackage(npm) ? npm : DEFAULT_AI_SDK_PACKAGE;
+	const npm = model.npm ?? DEFAULT_AI_SDK_FALLBACK;
+	return isAISDKPackage(npm) ? npm : DEFAULT_AI_SDK_FALLBACK;
 }
 
 export function protocolForPackage(npm: string | undefined): AISDKProtocol {
-	const resolved = npm && isAISDKPackage(npm) ? npm : DEFAULT_AI_SDK_PACKAGE;
+	const resolved = npm && isAISDKPackage(npm) ? npm : DEFAULT_AI_SDK_FALLBACK;
 	return AI_SDK_PACKAGE_TO_PROTOCOL[resolved];
 }
 
@@ -63,7 +68,11 @@ type ProviderWithMethods = {
 };
 
 function defaultMethodForModel(model: Model.Info): Model.APIMethodEnum {
-	if (model.protocol === Model.KnownProviderEnum.openai || model.protocol === Model.KnownProviderEnum.xai) {
+	if (
+		model.protocol === Model.KnownProviderEnum.openai ||
+		model.protocol === Model.KnownProviderEnum.openaiCodex ||
+		model.protocol === Model.KnownProviderEnum.xai
+	) {
 		return Model.APIMethodEnum.responses;
 	}
 	return Model.APIMethodEnum.languageModel;

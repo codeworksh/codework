@@ -9,22 +9,28 @@
  * - Anthropic: Computed as input + output + cacheRead + cacheWrite
  * - OpenRouter: Computed as input + output + cacheRead + cacheWrite
  */
-import "./utils/env";
-
 import { describe, expect, it } from "vite-plus/test";
-import { llm } from "../src/llm";
-import type { AnthropicOptions, OpenAIOptions, OpenRouterOptions } from "../src/llm/options";
-import { Protocol } from "../src/llm/protocol";
-import { Message } from "../src/message/message";
-import { Model } from "../src/model/model";
-import { complete } from "../src/stream";
+import { Protocol } from "../../src/llm/protocol";
+import { Message } from "../../src/message/message";
+import { complete } from "../../src/stream";
+import {
+	anthropicOptions,
+	describeIfAnthropic,
+	describeIfOpenAI,
+	describeIfOpenAICodex,
+	describeIfOpenRouter,
+	getAnthropicModel,
+	getOpenAICodexModel,
+	getOpenAIModel,
+	getOpenRouterModel,
+	openaiCodexOptions,
+	openaiOptions,
+	openrouterOptions,
+	type StreamableModel,
+} from "../utils/llm";
 
 type Usage = Message.AssistantMessage["usage"];
 type StreamOptionsWithExtras = Protocol.CommonOptions & Record<string, unknown>;
-
-const describeIfOpenAI = process.env.OPENAI_API_KEY ? describe : describe.skip;
-const describeIfAnthropic = process.env.ANTHROPIC_API_KEY ? describe : describe.skip;
-const describeIfOpenRouter = process.env.OPENROUTER_API_KEY ? describe : describe.skip;
 
 // Generate a long system prompt to trigger caching (>2k bytes for most providers)
 const LONG_SYSTEM_PROMPT = `You are a helpful assistant. Be concise in your responses.
@@ -55,7 +61,7 @@ function createTextMessage(text: string): Message.UserMessage {
 }
 
 async function testTotalTokensWithCache(
-	model: Model.Info,
+	model: StreamableModel,
 	options: StreamOptionsWithExtras = {},
 ): Promise<{ first: Usage; second: Usage }> {
 	// First request - no cache
@@ -93,57 +99,6 @@ function assertTotalTokensEqualsComponents(usage: Usage) {
 	expect(usage.totalTokens).toBe(computed);
 }
 
-function assertAnthropicModel(
-	model: Model.Info | undefined,
-): asserts model is Model.TModel<typeof Model.KnownProviderEnum.anthropic> {
-	if (!model) {
-		throw new Error("Expected Anthropic model to be defined");
-	}
-	if (model.protocol !== Model.KnownProviderEnum.anthropic) {
-		throw new Error(`Expected anthropic protocol, received ${model.protocol}`);
-	}
-}
-
-function assertOpenAIModel(
-	model: Model.Info | undefined,
-): asserts model is Model.TModel<typeof Model.KnownProviderEnum.openai> {
-	if (!model) {
-		throw new Error("Expected OpenAI model to be defined");
-	}
-	if (model.protocol !== Model.KnownProviderEnum.openai) {
-		throw new Error(`Expected openai protocol, received ${model.protocol}`);
-	}
-}
-
-function assertOpenRouterModel(
-	model: Model.Info | undefined,
-): asserts model is Model.TModel<typeof Model.KnownProviderEnum.openrouter> {
-	if (!model) {
-		throw new Error("Expected OpenRouter model to be defined");
-	}
-	if (model.protocol !== Model.KnownProviderEnum.openrouter) {
-		throw new Error(`Expected openrouter protocol, received ${model.protocol}`);
-	}
-}
-
-async function getAnthropicModel(modelId: string): Promise<Model.TModel<typeof Model.KnownProviderEnum.anthropic>> {
-	const model = await llm("anthropic", modelId);
-	assertAnthropicModel(model);
-	return model;
-}
-
-async function getOpenAIModel(modelId: string): Promise<Model.TModel<typeof Model.KnownProviderEnum.openai>> {
-	const model = await llm("openai", modelId);
-	assertOpenAIModel(model);
-	return model;
-}
-
-async function getOpenRouterModel(modelId: string): Promise<Model.TModel<typeof Model.KnownProviderEnum.openrouter>> {
-	const model = await llm("openrouter", modelId);
-	assertOpenRouterModel(model);
-	return model;
-}
-
 describe("totalTokens field", () => {
 	// ── Anthropic ---
 	describeIfAnthropic("Anthropic", () => {
@@ -152,10 +107,7 @@ describe("totalTokens field", () => {
 			{ retry: 3, timeout: 60000 },
 			async () => {
 				const model = await getAnthropicModel("claude-sonnet-4-20250514");
-				const options: AnthropicOptions = {
-					apiKey: process.env.ANTHROPIC_API_KEY,
-					cacheRetention: "short",
-				};
+				const options = anthropicOptions({ cacheRetention: "short" });
 
 				console.log(`\nAnthropic / ${model.id}:`);
 				const { first, second } = await testTotalTokensWithCache(model, options);
@@ -179,10 +131,8 @@ describe("totalTokens field", () => {
 			"gpt-4o-mini - should return totalTokens equal to sum of components",
 			{ retry: 3, timeout: 60000 },
 			async () => {
-				const model = await getOpenAIModel("gpt-4o-mini");
-				const options: OpenAIOptions = {
-					apiKey: process.env.OPENAI_API_KEY,
-				};
+				const model = await getOpenAIModel();
+				const options = openaiOptions();
 
 				console.log(`\nOpenAI / ${model.id}:`);
 				const { first, second } = await testTotalTokensWithCache(model, options);
@@ -196,21 +146,31 @@ describe("totalTokens field", () => {
 		);
 	});
 
+	// --- OpenAI Codex ---
+	describeIfOpenAICodex("OpenAI Codex", () => {
+		it("gpt-5.4 - should return totalTokens equal to sum of components", { retry: 3, timeout: 120000 }, async () => {
+			const model = await getOpenAICodexModel();
+			const options = openaiCodexOptions({ sessionId: `aikit-e2e-${Date.now()}` });
+
+			console.log(`\nOpenAI Codex / ${model.id}:`);
+			const { first, second } = await testTotalTokensWithCache(model, options);
+
+			logUsage("First request", first);
+			logUsage("Second request", second);
+
+			assertTotalTokensEqualsComponents(first);
+			assertTotalTokensEqualsComponents(second);
+		});
+	});
+
 	// --- OpenRouter ---
 	describeIfOpenRouter("OpenRouter", () => {
 		it(
 			"deepseek/deepseek-v4-flash - should return totalTokens equal to sum of components",
 			{ retry: 3, timeout: 60000 },
 			async () => {
-				const model = await getOpenRouterModel("deepseek/deepseek-v4-flash");
-				const options: OpenRouterOptions = {
-					apiKey: process.env.OPENROUTER_API_KEY,
-					headers: {
-						"HTTP-Referer": "https://www.codework.sh",
-						"X-OpenRouter-Title": "CodeWork",
-						"X-OpenRouter-Categories": "cli-agent,personal-agent",
-					},
-				};
+				const model = await getOpenRouterModel();
+				const options = openrouterOptions();
 
 				console.log(`\nOpenRouter / ${model.id}:`);
 				const { first, second } = await testTotalTokensWithCache(model, options);

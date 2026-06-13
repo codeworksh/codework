@@ -8,11 +8,15 @@ export { stream } from "./stream";
 export { createAssistantMessageEventStream, EventStream } from "./utils/eventstream";
 export { validateSchema, validateToolArguments, validateToolCall } from "./utils/validation";
 
+export { createOpenAICodex, openaiCodex } from "./providers/openai-codex";
+export type { OpenAICodexProvider, OpenAICodexProviderSettings } from "./providers/openai-codex";
+
 export type {
 	AnthropicOptions,
 	GoogleOptions,
 	GoogleVertexAnthropicOptions,
 	GoogleVertexOptions,
+	OpenAICodexOptions,
 	OpenAICompatibleOptions,
 	OpenAIOptions,
 	OpenRouterOptions,

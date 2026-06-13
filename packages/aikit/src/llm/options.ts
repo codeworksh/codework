@@ -15,6 +15,7 @@ import type {
 } from "@ai-sdk/openai-compatible";
 import type { XaiLanguageModelChatOptions, XaiLanguageModelResponsesOptions, XaiProviderSettings } from "@ai-sdk/xai";
 import type { OpenRouterProviderOptions, OpenRouterProviderSettings } from "@openrouter/ai-sdk-provider";
+import type { OpenAICodexLanguageModelOptions, OpenAICodexProviderSettings } from "../providers/openai-codex";
 import { Type, type Static } from "typebox";
 import { Model } from "../model/model";
 import type { Protocol } from "./protocol";
@@ -69,6 +70,10 @@ export type GoogleVertexAnthropicOptions = AISDKOptions<GoogleVertexAnthropicPro
 export type OpenAICompatibleOptions = AISDKOptions<
 	OpenAICompatibleProviderSettings,
 	{ "openai-compatible"?: OpenAICompatibleLanguageOptions }
+>;
+export type OpenAICodexOptions = AISDKOptions<
+	OpenAICodexProviderSettings,
+	{ "openai-codex"?: OpenAICodexLanguageModelOptions }
 >;
 export type OpenRouterOptions = AISDKOptions<OpenRouterProviderSettings, { openrouter?: OpenRouterProviderOptions }>;
 export type XaiOptions = AISDKOptions<XaiProviderSettings, { xai?: XaiLanguageOptions }>;

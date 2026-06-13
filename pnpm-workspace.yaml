@@ -9,3 +9,5 @@ onlyBuiltDependencies:
    - msgpackr-extract
    - msw
    - node-liblzma
+
+storeDir: .pnpm-store

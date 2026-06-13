@@ -12,6 +12,7 @@ export namespace ModelCatalog {
 		googleVertexAnthropic: "google-vertex-anthropic",
 		openai: "openai",
 		openaiCompatible: "openai-compatible",
+		openaiCodex: "openai-codex",
 		openrouter: "openrouter",
 		xai: "xai",
 	} as const;
@@ -22,6 +23,7 @@ export namespace ModelCatalog {
 		Type.Literal(KnownProviderEnum.googleVertexAnthropic),
 		Type.Literal(KnownProviderEnum.openai),
 		Type.Literal(KnownProviderEnum.openaiCompatible),
+		Type.Literal(KnownProviderEnum.openaiCodex),
 		Type.Literal(KnownProviderEnum.openrouter),
 		Type.Literal(KnownProviderEnum.xai),
 	]);

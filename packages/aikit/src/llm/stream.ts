@@ -64,6 +64,10 @@ function cacheProviderOptions(model: Model.Info, options: RuntimeOptions): Provi
 		return Object.keys(openai).length > 0 ? { [key]: openai } : {};
 	}
 
+	if (key === "openai-codex" && options.sessionId) {
+		return { [key]: { promptCacheKey: options.sessionId } };
+	}
+
 	if ((key === "anthropic" || key === "google-vertex-anthropic") && retention) {
 		return {
 			[key]: {
@@ -121,7 +125,7 @@ function reasoningProviderOptions(model: Model.Info, options: RuntimeOptions): P
 	const key = providerOptionsKey(model);
 	const budget = resolveThinkingBudget(model, options, level);
 
-	if (key === "openai" || key === "xai") {
+	if (key === "openai" || key === "xai" || key === "openai-codex") {
 		return { [key]: { reasoningEffort: mapped } };
 	}
 
@@ -386,6 +390,9 @@ function resolveMaxOutputTokens(
 	if (maxTokens === undefined) return undefined;
 
 	const key = providerOptionsKey(model);
+	// The ChatGPT Codex backend rejects max_output_tokens, so never send it.
+	if (key === "openai-codex") return undefined;
+
 	if (key === "anthropic" || key === "google-vertex-anthropic") {
 		const thinkingConfig = providerOptions?.[key] as Record<string, unknown> | undefined;
 		const thinking = thinkingConfig?.thinking as { budgetTokens?: number } | undefined;

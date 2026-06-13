@@ -1,18 +1,23 @@
-import "./utils/env";
-
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import { llm } from "../src/llm";
-import type { AnthropicOptions, OpenAIOptions, OpenRouterOptions } from "../src/llm/options";
-import { Message } from "../src/message/message";
-import { Model } from "../src/model/model";
-import { complete } from "../src/stream";
-
-const describeIfAnthropic = process.env.ANTHROPIC_API_KEY ? describe : describe.skip;
-const describeIfOpenAI = process.env.OPENAI_API_KEY ? describe : describe.skip;
-const describeIfOpenRouter = process.env.OPENROUTER_API_KEY ? describe : describe.skip;
+import type { AnthropicOptions, OpenAIOptions } from "../../src/llm/options";
+import { Message } from "../../src/message/message";
+import { Model } from "../../src/model/model";
+import { complete } from "../../src/stream";
+import {
+	anthropicOptions,
+	describeIfAnthropic,
+	describeIfOpenAI,
+	describeIfOpenRouter,
+	getAnthropicModel,
+	getOpenAIModel,
+	getOpenRouterModel,
+	getText,
+	openaiOptions,
+	openrouterOptions,
+} from "../utils/llm";
 
 type SupportedModel =
 	| Model.TModel<typeof Model.KnownProviderEnum.anthropic>
@@ -21,15 +26,8 @@ type SupportedModel =
 type SupportedOptions = AnthropicOptions | OpenAIOptions;
 
 function getImageBase64(): string {
-	const imagePath = fileURLToPath(new URL("./data/red-circle.png", import.meta.url));
+	const imagePath = fileURLToPath(new URL("../data/red-circle.png", import.meta.url));
 	return readFileSync(imagePath).toString("base64");
-}
-
-function getText(message: Message.AssistantMessage): string {
-	return message.parts
-		.filter((part): part is Message.TextContent => part.type === "text")
-		.map((part) => part.text)
-		.join("\n");
 }
 
 function completeToolCall(
@@ -56,14 +54,6 @@ function completeToolCall(
 			} satisfies Message.ToolCallCompletedPart;
 		}),
 	};
-}
-
-function assertProtocol<TProtocol extends Model.KnownProviderEnum>(
-	model: Model.Info | undefined,
-	protocol: TProtocol,
-): asserts model is Model.TModel<TProtocol> {
-	if (!model) throw new Error("Expected model to be defined");
-	if (model.protocol !== protocol) throw new Error(`Expected ${protocol}, received ${model.protocol}`);
 }
 
 async function handleToolWithImageResult(model: SupportedModel, options: SupportedOptions) {
@@ -179,64 +169,43 @@ async function handleToolWithTextAndImageResult(model: SupportedModel, options: 
 
 describe("Tool Results with Images", () => {
 	describeIfOpenAI("OpenAI provider (gpt-4o-mini)", () => {
-		const options: OpenAIOptions = {
-			apiKey: process.env.OPENAI_API_KEY,
-			maxTokens: 256,
-			temperature: 0,
-		};
+		const options = openaiOptions({ maxTokens: 256, temperature: 0 });
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await llm("openai", "gpt-4o-mini");
-			assertProtocol(model, Model.KnownProviderEnum.openai);
+			const model = await getOpenAIModel();
 			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await llm("openai", "gpt-4o-mini");
-			assertProtocol(model, Model.KnownProviderEnum.openai);
+			const model = await getOpenAIModel();
 			await handleToolWithTextAndImageResult(model, options);
 		});
 	});
 
 	describeIfAnthropic("Anthropic provider (claude-haiku-4-5-20251001)", () => {
-		const options: AnthropicOptions = {
-			apiKey: process.env.ANTHROPIC_API_KEY,
-			maxTokens: 256,
-			temperature: 0,
-		};
+		const options = anthropicOptions({ maxTokens: 256, temperature: 0 });
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await llm("anthropic", "claude-haiku-4-5-20251001");
-			assertProtocol(model, Model.KnownProviderEnum.anthropic);
+			const model = await getAnthropicModel();
 			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await llm("anthropic", "claude-haiku-4-5-20251001");
-			assertProtocol(model, Model.KnownProviderEnum.anthropic);
+			const model = await getAnthropicModel();
 			await handleToolWithTextAndImageResult(model, options);
 		});
 	});
 
 	describeIfOpenRouter("OpenRouter provider (z-ai/glm-4.6v)", () => {
-		const options: OpenRouterOptions = {
-			apiKey: process.env.OPENROUTER_API_KEY,
-			headers: {
-				"HTTP-Referer": "https://www.codework.sh",
-				"X-OpenRouter-Title": "CodeWork",
-				"X-OpenRouter-Categories": "cli-agent,personal-agent",
-			},
-		};
+		const options = openrouterOptions();
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await llm("openrouter", "z-ai/glm-4.6v");
-			assertProtocol(model, Model.KnownProviderEnum.openrouter);
-			await handleToolWithTextAndImageResult(model, options);
+			const model = await getOpenRouterModel("z-ai/glm-4.6v");
+			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await llm("openrouter", "z-ai/glm-4.6v");
-			assertProtocol(model, Model.KnownProviderEnum.openrouter);
+			const model = await getOpenRouterModel("z-ai/glm-4.6v");
 			await handleToolWithTextAndImageResult(model, options);
 		});
 	});

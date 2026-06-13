@@ -9,6 +9,7 @@ import type {
 	GoogleOptions,
 	GoogleVertexAnthropicOptions,
 	GoogleVertexOptions,
+	OpenAICodexOptions,
 	OpenAICompatibleOptions,
 	OpenAIOptions,
 	OpenRouterOptions,
@@ -53,6 +54,7 @@ export namespace Protocol {
 		[Model.KnownProviderEnum.googleVertex]: GoogleVertexOptions;
 		[Model.KnownProviderEnum.googleVertexAnthropic]: GoogleVertexAnthropicOptions;
 		[Model.KnownProviderEnum.openaiCompatible]: OpenAICompatibleOptions;
+		[Model.KnownProviderEnum.openaiCodex]: OpenAICodexOptions;
 		[Model.KnownProviderEnum.openrouter]: OpenRouterOptions;
 		[Model.KnownProviderEnum.xai]: XaiOptions;
 	}

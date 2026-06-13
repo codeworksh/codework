@@ -2,7 +2,7 @@ import { Filesystem, lazy } from "@codeworksh/utils";
 import { resolve } from "node:path";
 import { mapValues, pickBy, pipe } from "remeda";
 import type { CommandModule } from "yargs";
-import { DEFAULT_AI_SDK_PACKAGE, isAISDKPackage, protocolForPackage } from "../llm/registry";
+import { DEFAULT_AI_SDK_FALLBACK, isAISDKPackage, protocolForPackage } from "../llm/registry";
 import { ModelCatalog } from "../model/catalog";
 import { Model } from "../model/model";
 
@@ -101,6 +101,9 @@ async function loadBuiltInFromModelsDev() {
 		catalog,
 		pickBy((provider) =>
 			Object.values(provider.models).some(
+				// If `resolveModelNpm` fallbacks to `@ai-sdk/openai-compatible`
+				// isAISDKPakage will be truthy, modify resolveModelNpm for custom logic if needed.
+				// Keep `isAISDKPackage` as readonly for supported implemenatations key check
 				(model) => Boolean(model.tool_call) && isAISDKPackage(resolveModelNpm(provider, model)),
 			),
 		),
@@ -118,7 +121,7 @@ async function loadBuiltInFromModelsDev() {
 type ThinkingLevelMap = NonNullable<Model.Info["thinkingLevelMap"]>;
 
 function resolveModelNpm(provider: ModelsDevProvider, model: ModelsDevModel): string {
-	return model.provider?.npm ?? provider.npm ?? DEFAULT_AI_SDK_PACKAGE;
+	return model.provider?.npm ?? provider.npm ?? DEFAULT_AI_SDK_FALLBACK;
 }
 
 function resolveModelBaseUrl(provider: ModelsDevProvider, model: ModelsDevModel): string {
@@ -192,10 +195,88 @@ function applyThinkingLevelMetadata(model: Model.Info): void {
 	}
 }
 
+//
+// OpenAI Codex (ChatGPT OAuth) models.
+// NOTE: These are not fetched from models.dev; we keep a small, explicit list to avoid aliases.
+// Context window is based on observed server limits (400s above ~272k), not marketing numbers.
+const OPENAI_CODEX_PROVIDER_ID = "openai-codex";
+const OPENAI_CODEX_NPM = "@codeworksh/ai-sdk-openai-codex";
+const OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
+const OPENAI_CODEX_CONTEXT = 272_000;
+const OPENAI_CODEX_SPARK_CONTEXT = 128_000;
+const OPENAI_CODEX_MAX_TOKENS = 128_000;
+
+type OpenAICodexModelSeed = Pick<Model.Info, "id" | "name" | "input" | "cost" | "contextWindow">;
+
+const OPENAI_CODEX_MODELS: OpenAICodexModelSeed[] = [
+	{
+		id: "gpt-5.3-codex-spark",
+		name: "GPT-5.3 Codex Spark",
+		input: ["text"],
+		cost: { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
+		contextWindow: OPENAI_CODEX_SPARK_CONTEXT,
+	},
+	{
+		id: "gpt-5.4",
+		name: "GPT-5.4",
+		input: ["text", "image"],
+		cost: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
+		contextWindow: OPENAI_CODEX_CONTEXT,
+	},
+	{
+		id: "gpt-5.4-mini",
+		name: "GPT-5.4 mini",
+		input: ["text", "image"],
+		cost: { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
+		contextWindow: OPENAI_CODEX_CONTEXT,
+	},
+	{
+		id: "gpt-5.5",
+		name: "GPT-5.5",
+		input: ["text", "image"],
+		cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
+		contextWindow: OPENAI_CODEX_CONTEXT,
+	},
+];
+
+export function openAICodexBuiltInModels(): Record<string, Model.Info> {
+	const models: Record<string, Model.Info> = {};
+	for (const seed of OPENAI_CODEX_MODELS) {
+		const info: Model.Info = {
+			...seed,
+			provider: {
+				id: OPENAI_CODEX_PROVIDER_ID,
+				name: "OpenAI Codex (ChatGPT)",
+				source: "custom",
+				env: ["OPENAI_CODEX_API_KEY"],
+			},
+			baseUrl: OPENAI_CODEX_BASE_URL,
+			reasoning: true,
+			// Codex models always reason; the off level cannot be requested.
+			thinkingLevelMap: { off: null },
+			maxTokens: OPENAI_CODEX_MAX_TOKENS,
+			npm: OPENAI_CODEX_NPM,
+			api: {
+				id: seed.id,
+				url: OPENAI_CODEX_BASE_URL,
+				method: Model.APIMethodEnum.responses,
+			},
+			providerOptionsKey: OPENAI_CODEX_PROVIDER_ID,
+			protocol: Model.KnownProviderEnum.openaiCodex,
+		};
+		applyThinkingLevelMetadata(info);
+		models[seed.id] = info;
+	}
+	return models;
+}
+
 export async function generateModels(args: { path?: string } = {}): Promise<string> {
 	const path = resolve(args.path ?? ModelCatalog.path());
-	const models = await loadBuiltInFromModelsDev();
-	await Filesystem.writeJson(path, models);
+	const modelsDev = await loadBuiltInFromModelsDev();
+	const customCodexModels = openAICodexBuiltInModels();
+
+	const allModels = { ...modelsDev, [OPENAI_CODEX_PROVIDER_ID]: customCodexModels };
+	await Filesystem.writeJson(path, allModels);
 	return path;
 }
 
