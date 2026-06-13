@@ -38,7 +38,10 @@
 		"bump": "bumpp",
 		"check": "vp check",
 		"generate": "openapi-ts && tsx scripts/postgenerate.ts && vp fmt",
-		"lint": "vp lint"
+		"lint": "vp lint",
+		"release": "node ../../scripts/publish.js sdk",
+		"release:dev": "node ../../scripts/publish.js sdk --dev",
+		"release:dry": "node ../../scripts/publish.js sdk --dry-run"
 	},
 	"dependencies": {
 		"@hey-api/client-fetch": "0.13.1"

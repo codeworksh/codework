@@ -1,7 +1,7 @@
 {
 	"name": "@codeworksh/aikit",
 	"version": "0.6.0",
-	"description": "Toolkit for building AI agents and agent harness.",
+	"description": "TypeScript SDK that provides a unified API for working with multiple LLM providers, automatic model discovery, and more.",
 	"keywords": [
 		"agent",
 		"ai",
@@ -55,6 +55,9 @@
 		"check": "vp check",
 		"cli": "tsx --conditions=development src/cli.ts",
 		"lint": "vp lint",
+		"release": "node ../../scripts/publish.js aikit",
+		"release:dev": "node ../../scripts/publish.js aikit --dev",
+		"release:dry": "node ../../scripts/publish.js aikit --dry-run",
 		"test": "vp test --exclude \"test/e2e/**\"",
 		"test:e2e": "vp test"
 	},
