@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/aikit",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "TypeScript SDK that provides a unified API for working with multiple LLM providers, automatic model discovery, and more.",
 	"keywords": [
 		"agent",
