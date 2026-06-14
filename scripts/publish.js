@@ -10,13 +10,11 @@ const workspaceMap = new Map([
 	["@codeworksh/aikit", "packages/aikit"],
 	["sdk", "packages/sdk"],
 	["@codeworksh/sdk", "packages/sdk"],
-	["utils", "packages/utils"],
-	["@codeworksh/utils", "packages/utils"],
 ]);
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.js <aikit|sdk|utils|@codeworksh/aikit|@codeworksh/sdk|@codeworksh/utils> [npm publish args]",
+		"Usage: node scripts/publish.js <aikit|sdk|@codeworksh/aikit|@codeworksh/sdk> [npm publish args]",
 	);
 	process.exit(1);
 }
@@ -159,7 +157,9 @@ function createDevVersion(version) {
 		throw new Error(`Cannot create dev version from invalid semver: ${version}`);
 	}
 
-	return `${match[1]}.${match[2]}.${Number(match[3]) + 1}-dev.${createDevPrereleaseId()}`;
+	// Dev builds are prereleases of the current target version (e.g. 0.6.0 -> 0.6.0-dev.<id>),
+	// so they sort just below the eventual stable 0.6.0 release.
+	return `${match[1]}.${match[2]}.${match[3]}-dev.${createDevPrereleaseId()}`;
 }
 
 function isPrereleaseVersion(version) {

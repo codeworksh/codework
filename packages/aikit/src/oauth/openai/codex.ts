@@ -1,9 +1,19 @@
 /**
- * OpenAI Codex OAuth helpers.
+ * OpenAI Codex OAuth.
  *
- * This flow is intended for Node.js CLI/server environments. The low-level
- * authorization helpers are storage-free so they can also be used from an
- * existing HTTP server callback route.
+ * Public interface, by use case:
+ *
+ * 1. Server OAuth integration (storage-free, bring your own routes):
+ *    `createOpenAICodexAuthorizationFlow`, `exchangeOpenAICodexAuthorizationCode`,
+ *    `parseOpenAICodexAuthorizationInput`, `refreshOpenAICodexToken`, `getOpenAICodexAccountId`.
+ * 2. CLI / interactive login (localhost callback server, persisted credentials):
+ *    `OpenAICodexOAuthClient`, `JsonOpenAICodexAuthStorage`, `OpenAICodexAuthStorage`.
+ * 3. Application credential access (get key, auto-refresh, request headers):
+ *    `getOpenAICodexApiKey`, `OpenAICodexOAuthClient.getCredentials/getApiKey/getHeaders`,
+ *    `openAICodexHeaders`, `OPENAI_CODEX_API_KEY_ENV`.
+ *
+ * Everything else in this module is an implementation detail and intentionally
+ * not exported.
  */
 
 import dedent from "dedent";
@@ -57,7 +67,7 @@ export type OpenAICodexAuthorizationOptions = {
 	scope?: string;
 };
 
-export type OpenAICodexPrompt = {
+export type OpenAICodexLoginPrompt = {
 	message: string;
 	placeholder?: string;
 	allowEmpty?: boolean;
@@ -65,7 +75,7 @@ export type OpenAICodexPrompt = {
 
 export type OpenAICodexLoginOptions = OpenAICodexAuthorizationOptions & {
 	onAuth: (info: { url: string; instructions?: string }) => void;
-	onPrompt: (prompt: OpenAICodexPrompt) => Promise<string>;
+	onPrompt: (prompt: OpenAICodexLoginPrompt) => Promise<string>;
 	onProgress?: (message: string) => void;
 	onManualCodeInput?: () => Promise<string>;
 };
@@ -125,7 +135,8 @@ function codeworkHomeDirectory(): string {
 	return joinPath(homeDirectory(), ".codework");
 }
 
-export function defaultOpenAICodexAuthFilePath(): string {
+// Internal: the resolved location is exposed as `JsonOpenAICodexAuthStorage#path`.
+function defaultOpenAICodexAuthFilePath(): string {
 	const authFile = readEnv(CODEWORK_CREDENTIALS);
 	if (authFile) return expandHome(authFile);
 
@@ -506,7 +517,10 @@ async function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
 	});
 }
 
-export async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promise<OpenAICodexOAuthCredentials> {
+// Internal: the public login entry point is `OpenAICodexOAuthClient#login`,
+// which persists the credentials. Server integrations should use the
+// storage-free authorization helpers instead of this localhost-callback flow.
+async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promise<OpenAICodexOAuthCredentials> {
 	const flow = await createOpenAICodexAuthorizationFlow(options);
 	const server = await startLocalOAuthServer(flow.state);
 
@@ -728,24 +742,19 @@ export class OpenAICodexOAuthClient {
 	}
 }
 
-export const openAICodexOAuthProvider = {
-	id: DEFAULT_PROVIDER_ID,
-	name: "ChatGPT Plus/Pro (OpenAI Codex)",
-	usesCallbackServer: true,
+export const OPENAI_CODEX_API_KEY_ENV = "OPENAI_CODEX_API_KEY";
 
-	async login(options: OpenAICodexLoginOptions): Promise<OpenAICodexOAuthCredentials> {
-		return loginOpenAICodex(options);
-	},
+/**
+ * Resolve the OpenAI Codex API key the same way other provider API keys are
+ * resolved: prefer the OPENAI_CODEX_API_KEY environment variable, then fall
+ * back to stored OAuth credentials (refreshing them when close to expiry).
+ *
+ * The result can be passed directly as `apiKey` to the runtime options or to
+ * `createOpenAICodex`. Returns undefined when no key is available.
+ */
+export async function getOpenAICodexApiKey(options: OpenAICodexOAuthClientOptions = {}): Promise<string | undefined> {
+	const envKey = readEnv(OPENAI_CODEX_API_KEY_ENV);
+	if (envKey) return envKey;
 
-	async refreshToken(credentials: OpenAICodexOAuthCredentials): Promise<OpenAICodexOAuthCredentials> {
-		return refreshOpenAICodexToken(credentials.refresh);
-	},
-
-	getApiKey(credentials: OpenAICodexOAuthCredentials): string {
-		return credentials.access;
-	},
-
-	getHeaders(credentials: OpenAICodexOAuthCredentials): Record<string, string> {
-		return openAICodexHeaders(credentials);
-	},
-} as const;
+	return new OpenAICodexOAuthClient(options).getApiKey();
+}

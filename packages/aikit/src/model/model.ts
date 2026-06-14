@@ -83,6 +83,7 @@ export namespace Model {
 			googleVertexAnthropic: KnownProviderEnumSchema,
 			openai: KnownProviderEnumSchema,
 			openaiCompatible: KnownProviderEnumSchema,
+			openaiCodex: KnownProviderEnumSchema,
 			openrouter: KnownProviderEnumSchema,
 			xai: KnownProviderEnumSchema,
 		}),

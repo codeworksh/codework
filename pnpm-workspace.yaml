@@ -20,11 +20,12 @@ allowBuilds:
   node-liblzma: true
 
 onlyBuiltDependencies:
-  - '@mongodb-js/zstd'
-  - '@parcel/watcher'
-  - electron
-  - esbuild
-  - lmdb
-  - msgpackr-extract
-  - msw
-  - node-liblzma
+   - "@mongodb-js/zstd"
+   - electron
+   - esbuild
+   - lmdb
+   - msgpackr-extract
+   - msw
+   - node-liblzma
+
+storeDir: .pnpm-store

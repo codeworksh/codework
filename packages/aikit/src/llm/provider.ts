@@ -44,6 +44,11 @@ export async function resolveAISDKLanguageModel(model: Model.Info, options: Opti
 		factoryOptions.includeUsage ??= true;
 	}
 
+	if (npm === "@codeworksh/ai-sdk-openai-codex" && options.sessionId) {
+		// Codex uses the session id for the session-id header and prompt cache key.
+		factoryOptions.sessionId ??= options.sessionId;
+	}
+
 	const provider = createProvider(factoryOptions);
 	return resolveLanguageModel(provider, model, options.method);
 }

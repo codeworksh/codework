@@ -33,6 +33,10 @@ export default defineConfig({
 		},
 	},
 	test: {
+		// Unit tests live in test/; live-provider suites live in test/e2e/.
+		// `pnpm test` excludes test/e2e (see package.json) so the default run is
+		// deterministic and free; `pnpm test:e2e` runs both since the API suites
+		// call paid providers.
 		include: ["test/**/*.test.ts", "tests/**/*.test.ts"],
 		env: {
 			CODEWORK_MODELS_FILE: fileURLToPath(new URL("../../models.gen.json", import.meta.url)),

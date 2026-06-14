@@ -11,6 +11,19 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.6.0]
+
+### Added
+
+- Added **OpenAI Codex** support: authenticate with a ChatGPT Plus/Pro subscription via OAuth (no API key required) and stream responses, tool calls, and reasoning through a dedicated provider. Adds the `openai-codex` protocol to the model catalog.
+- Added the `aikit auth --openai-codex` CLI for managing Codex OAuth credentials, including `--status`, `--refresh`, and `--logout`.
+- Added the `@codeworksh/aikit/oauth/openai/codex` subpath export exposing the OAuth client, credential storage, and authorization-flow helpers so the Codex login can be embedded in your own app or server callback route.
+
+### Internal
+
+- Reorganized the test suite into deterministic unit tests (`test/`) and opt-in live-provider end-to-end suites (`test/e2e/`, run via `pnpm test:e2e`), so the default `pnpm test` no longer calls paid provider APIs.
+- Added offline unit coverage for streaming-JSON repair, Unicode surrogate sanitization, the event stream, context-overflow detection, usage and cost mapping, multi-model message transforms, model thinking-level resolution, and the Codex OAuth helpers.
+
 ## [@codeworksh/aikit@0.5.0]
 
 ### Added

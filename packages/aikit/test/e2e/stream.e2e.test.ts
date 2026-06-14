@@ -1,66 +1,31 @@
-import "./utils/env";
-
-import { readFileSync } from "fs";
-import { dirname, join } from "path";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import Type from "typebox";
-import { fileURLToPath } from "url";
 import { describe, expect, it } from "vite-plus/test";
-import { llm } from "../src/llm";
-import type { AnthropicOptions, OpenAIOptions, OpenRouterOptions } from "../src/llm/options";
-import { Protocol } from "../src/llm/protocol";
-import { Message } from "../src/message/message";
-import { Model } from "../src/model/model";
-import { stream } from "../src/stream";
-import { StringEnum } from "../src/utils/helpers";
+import { Protocol } from "../../src/llm/protocol";
+import { Message } from "../../src/message/message";
+import { Model } from "../../src/model/model";
+import { stream } from "../../src/stream";
+import { StringEnum } from "../../src/utils/helpers";
+import {
+	anthropicOptions,
+	describeIfAnthropic,
+	describeIfOpenAI,
+	describeIfOpenAICodex,
+	describeIfOpenRouter,
+	getAnthropicModel,
+	getOpenAICodexModel,
+	getOpenAIModel,
+	getOpenRouterModel,
+	getText,
+	openaiCodexOptions,
+	openaiOptions,
+	openrouterOptions,
+	type StreamableModel,
+} from "../utils/llm";
+import { expectAssistantToolUseMessage, expectValidToolCall } from "../utils/message";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const describeIfAnthropic = process.env.ANTHROPIC_API_KEY ? describe : describe.skip;
-const describeIfOpenAI = process.env.OPENAI_API_KEY ? describe : describe.skip;
-const describeIfOpenRouter = process.env.OPENROUTER_API_KEY ? describe : describe.skip;
-
-function getText(message: Message.AssistantMessage): string {
-	return message.parts
-		.filter((part): part is Message.TextContent => part.type === "text")
-		.map((part) => part.text)
-		.join("");
-}
-
-function assertAnthropicModel(
-	model: Model.Info | undefined,
-): asserts model is Model.TModel<typeof Model.KnownProviderEnum.anthropic> {
-	if (!model) {
-		throw new Error("Expected Anthropic model to be defined");
-	}
-	if (model.protocol !== Model.KnownProviderEnum.anthropic) {
-		throw new Error(`Expected anthropic protocol, received ${model.protocol}`);
-	}
-}
-
-function assertOpenAIModel(
-	model: Model.Info | undefined,
-): asserts model is Model.TModel<typeof Model.KnownProviderEnum.openai> {
-	if (!model) {
-		throw new Error("Expected OpenAI model to be defined");
-	}
-	if (model.protocol !== Model.KnownProviderEnum.openai) {
-		throw new Error(`Expected openai protocol, received ${model.protocol}`);
-	}
-}
-
-function assertOpenRouterModel(
-	model: Model.Info | undefined,
-): asserts model is Model.TModel<typeof Model.KnownProviderEnum.openrouter> {
-	if (!model) {
-		throw new Error("Expected OpenRouter model to be defined");
-	}
-	if (model.protocol !== Model.KnownProviderEnum.openrouter) {
-		throw new Error(`Expected openai protocol, received ${model.protocol}`);
-	}
-}
-
-async function basicTextGeneration<TOptions extends Protocol.CommonOptions>(model: Model.Info, options: TOptions) {
+async function basicTextGeneration<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	const context = {
 		systemPrompt: "You are a helpful assistant. Be concise.",
 		messages: [
@@ -107,7 +72,7 @@ const calculatorTool = Message.defineTool({
 	parameters: calculatorSchema,
 });
 
-async function handleToolCall<TOptions extends Protocol.CommonOptions>(model: Model.Info, options: TOptions) {
+async function handleToolCall<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	const context: Message.Context = {
 		systemPrompt: "You are helpful assistant that uses tools when asked",
 		messages: [
@@ -172,7 +137,7 @@ async function handleToolCall<TOptions extends Protocol.CommonOptions>(model: Mo
 			expect(toolCall.type).toBe("toolCall");
 			if (toolCall.type === "toolCall") {
 				expect(toolCall.name).toBe("math_operation");
-				if (accumulatedToolArgs) JSON.parse(accumulatedToolArgs);
+				if (accumulatedToolArgs) expect(() => JSON.parse(accumulatedToolArgs)).not.toThrow();
 				expect(toolCall.arguments).not.toBeUndefined();
 				expect((toolCall.arguments as any).a).toBe(15);
 				expect((toolCall.arguments as any).b).toBe(27);
@@ -182,9 +147,8 @@ async function handleToolCall<TOptions extends Protocol.CommonOptions>(model: Mo
 		if (event.type === "toolcall.final") {
 			hasToolFinal = true;
 			const toolCall = event.toolCall;
-			expect(toolCall.type).toBe("toolCall");
+			expectValidToolCall(toolCall);
 			expect(toolCall.name).toBe("math_operation");
-			expect(toolCall.callID).toBeTruthy();
 			if (callId) expect(toolCall.callID).toBe(callId);
 			expect((toolCall.arguments as any).a).toBe(15);
 			expect((toolCall.arguments as any).b).toBe(27);
@@ -200,18 +164,11 @@ async function handleToolCall<TOptions extends Protocol.CommonOptions>(model: Mo
 	}
 
 	const response = await s.result();
-	expect(response.stopReason).toBe("toolUse");
-	expect(response.parts.some((b) => b.type === "toolCall")).toBeTruthy();
-	const toolCall = response.parts.find((b) => b.type === "toolCall");
-	if (toolCall && toolCall.type === "toolCall") {
-		expect(toolCall.name).toBe("math_operation");
-		expect(toolCall.callID).toBeTruthy();
-	} else {
-		throw new Error("No tool call found in response");
-	}
+	const toolCalls = expectAssistantToolUseMessage(response);
+	expect(toolCalls.some((toolCall) => toolCall.name === "math_operation")).toBe(true);
 }
 
-async function handleThinking<TOptions extends Protocol.CommonOptions>(model: Model.Info, options: TOptions) {
+async function handleThinking<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	let thinkingStarted = false;
 	let thinkingChunks = "";
 	let thinkingCompleted = false;
@@ -259,7 +216,7 @@ async function handleThinking<TOptions extends Protocol.CommonOptions>(model: Mo
 	expect(thinkingBlocks.length).toBeGreaterThan(0);
 }
 
-async function handleStreaming<TOptions extends Protocol.CommonOptions>(model: Model.Info, options: TOptions) {
+async function handleStreaming<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	let textStarted = false;
 	let textChunks = "";
 	let textCompleted = false;
@@ -302,7 +259,7 @@ async function handleStreaming<TOptions extends Protocol.CommonOptions>(model: M
 	expect(response.parts.some((b) => b.type === "text")).toBeTruthy();
 }
 
-async function handleMultiTurn<TOptions extends Protocol.CommonOptions>(model: Model.Info, options: TOptions) {
+async function handleMultiTurn<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	const context: Message.Context = {
 		systemPrompt: "You are a helpful assistant that can use tools to answer questions.",
 		messages: [
@@ -397,22 +354,10 @@ async function handleMultiTurn<TOptions extends Protocol.CommonOptions>(model: M
 	expect(allTextContent.includes("887")).toBe(true);
 }
 
-async function handleImage<TOptions extends Protocol.CommonOptions>(model: Model.Info, options: TOptions) {
-	if (!model.input.includes("image")) {
-		console.log(`skipping image test model: ${model.id} does not support it!`);
-		return;
-	}
-
+async function handleImage<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	// Read the test image
-	const imagePath = join(__dirname, "data", "red-circle.png");
-	const imageBuffer = readFileSync(imagePath);
-	const base64Image = imageBuffer.toString("base64");
-
-	const imageContent: Message.ImageContent = {
-		type: "image",
-		data: base64Image,
-		mimeType: "image/png",
-	};
+	const imagePath = fileURLToPath(new URL("../data/red-circle.png", import.meta.url));
+	const base64Image = readFileSync(imagePath).toString("base64");
 
 	const context: Message.Context = {
 		systemPrompt: "You are helpful assistant that uses tools when asked",
@@ -429,8 +374,8 @@ async function handleImage<TOptions extends Protocol.CommonOptions>(model: Model
 					},
 					{
 						type: "image",
-						data: imageContent.data,
-						mimeType: imageContent.mimeType,
+						data: base64Image,
+						mimeType: "image/png",
 					},
 				],
 			}),
@@ -450,44 +395,16 @@ async function handleImage<TOptions extends Protocol.CommonOptions>(model: Model
 	}
 }
 
-// ─── Model helpers ──────────────────────────────────────────────────────────
-
-async function getAnthropicModel(): Promise<Model.TModel<typeof Model.KnownProviderEnum.anthropic>> {
-	const model = await llm("anthropic", "claude-haiku-4-5-20251001");
-	assertAnthropicModel(model);
-	return model;
-}
-
-async function getOpenAIModel(): Promise<Model.TModel<typeof Model.KnownProviderEnum.openai>> {
-	const model = await llm("openai", "gpt-4o-mini");
-	assertOpenAIModel(model);
-	return model;
-}
-
-async function getOpenAIReasoningModel(): Promise<Model.TModel<typeof Model.KnownProviderEnum.openai>> {
-	const model = await llm("openai", "gpt-5.4");
-	assertOpenAIModel(model);
-	return model;
-}
-
-async function getOpenRouterModel(): Promise<Model.TModel<typeof Model.KnownProviderEnum.openrouter>> {
-	const model = await llm("openrouter", "deepseek/deepseek-v4-flash");
-	assertOpenRouterModel(model);
-	return model;
-}
-
 describe("Generate E2E Tests", () => {
 	// ── Anthropic E2E tests ──
 
 	describeIfAnthropic("Anthropic provider (claude-haiku-4-5-20251001)", () => {
+		const options = anthropicOptions();
+
 		it("should resolve appropriate protocol", async () => {
 			const model = await getAnthropicModel();
 			expect(model.protocol).toBe(Model.KnownProviderEnum.anthropic);
 		});
-
-		const options: AnthropicOptions = {
-			apiKey: process.env.ANTHROPIC_API_KEY,
-		};
 
 		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
 			const model = await getAnthropicModel();
@@ -515,8 +432,9 @@ describe("Generate E2E Tests", () => {
 			await handleMultiTurn(model, { ...options, reasoning: "high" });
 		});
 
-		it("should handle image input", { retry: 3, timeout: 30000 }, async () => {
+		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
 			const model = await getAnthropicModel();
+			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});
 	});
@@ -524,14 +442,12 @@ describe("Generate E2E Tests", () => {
 	// ── OpenAI E2E tests (gpt-4o-mini, non-reasoning) ──
 
 	describeIfOpenAI("OpenAI provider (gpt-4o-mini)", () => {
+		const options = openaiOptions();
+
 		it("should resolve appropriate protocol", async () => {
 			const model = await getOpenAIModel();
 			expect(model.protocol).toBe(Model.KnownProviderEnum.openai);
 		});
-
-		const options: OpenAIOptions = {
-			apiKey: process.env.OPENAI_API_KEY,
-		};
 
 		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
 			const model = await getOpenAIModel();
@@ -548,8 +464,9 @@ describe("Generate E2E Tests", () => {
 			await handleStreaming(model, options);
 		});
 
-		it("should handle image input", { retry: 3, timeout: 30000 }, async () => {
+		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
 			const model = await getOpenAIModel();
+			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});
 	});
@@ -557,32 +474,73 @@ describe("Generate E2E Tests", () => {
 	// ── OpenAI reasoning model E2E tests (gpt-5.4) ──
 
 	describeIfOpenAI("OpenAI reasoning provider (gpt-5.4)", () => {
+		const options = openaiOptions();
+
 		it("should resolve appropriate protocol", async () => {
-			const model = await getOpenAIReasoningModel();
+			const model = await getOpenAIModel("gpt-5.4");
 			expect(model.protocol).toBe(Model.KnownProviderEnum.openai);
 		});
 
-		const options: OpenAIOptions = {
-			apiKey: process.env.OPENAI_API_KEY,
-		};
-
 		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIReasoningModel();
+			const model = await getOpenAIModel("gpt-5.4");
 			await basicTextGeneration(model, options);
 		});
 
 		it("should handle tool calling", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIReasoningModel();
+			const model = await getOpenAIModel("gpt-5.4");
 			await handleToolCall(model, options);
 		});
 
 		it("should handle streaming", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIReasoningModel();
+			const model = await getOpenAIModel("gpt-5.4");
 			await handleStreaming(model, options);
 		});
 
-		it("should handle image input", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIReasoningModel();
+		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
+			const model = await getOpenAIModel("gpt-5.4");
+			if (!model.input.includes("image")) ctx.skip();
+			await handleImage(model, options);
+		});
+	});
+
+	// ── OpenAI Codex E2E tests (ChatGPT OAuth, gpt-5.4) ──
+
+	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.4)", () => {
+		const options = openaiCodexOptions();
+
+		it("should resolve appropriate protocol", async () => {
+			const model = await getOpenAICodexModel();
+			expect(model.protocol).toBe(Model.KnownProviderEnum.openaiCodex);
+		});
+
+		it("should complete basic text generation", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenAICodexModel();
+			await basicTextGeneration(model, options);
+		});
+
+		it("should handle tool calling", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenAICodexModel();
+			await handleToolCall(model, options);
+		});
+
+		it("should handle streaming", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenAICodexModel();
+			await handleStreaming(model, options);
+		});
+
+		it("should handle thinking", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenAICodexModel();
+			await handleThinking(model, { ...options, reasoning: "high" });
+		});
+
+		it("should handle multi-turn with thinking and tools", { retry: 3, timeout: 120000 }, async () => {
+			const model = await getOpenAICodexModel();
+			await handleMultiTurn(model, { ...options, reasoning: "medium" });
+		});
+
+		it("should handle image input", { retry: 3, timeout: 60000 }, async (ctx) => {
+			const model = await getOpenAICodexModel();
+			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});
 	});
@@ -590,19 +548,12 @@ describe("Generate E2E Tests", () => {
 	// ── OpenRouter E2E ──
 
 	describeIfOpenRouter("OpenRouter provider (deepseek/deepseek-v4-flash)", () => {
+		const options = openrouterOptions();
+
 		it("should resolve appropriate protocol", async () => {
 			const model = await getOpenRouterModel();
 			expect(model.protocol).toBe(Model.KnownProviderEnum.openrouter);
 		});
-
-		const options: OpenRouterOptions = {
-			apiKey: process.env.OPENROUTER_API_KEY,
-			headers: {
-				"HTTP-Referer": "https://www.codework.sh",
-				"X-OpenRouter-Title": "CodeWork",
-				"X-OpenRouter-Categories": "cli-agent,personal-agent",
-			},
-		};
 
 		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
 			const model = await getOpenRouterModel();
@@ -619,8 +570,9 @@ describe("Generate E2E Tests", () => {
 			await handleStreaming(model, options);
 		});
 
-		it("should handle image input", { retry: 3, timeout: 30000 }, async () => {
+		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
 			const model = await getOpenRouterModel();
+			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});
 	});
