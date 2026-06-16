@@ -57,8 +57,8 @@ export const layer = Layer.effect(
 		});
 
 		const exists = Effect.fn("FileSystem.exists")(function* (path: string) {
-			const exists = yield* Effect.tryPromise({
-				try: () => vfs.provider.exists(path),
+			const exists = yield* Effect.try({
+				try: () => vfs.existsSync(path),
 				catch: (cause) => new FileSystemError({ method: "exists", cause }),
 			}).pipe(Effect.catch(() => Effect.void));
 
@@ -72,8 +72,8 @@ export const layer = Layer.effect(
 			while (true) {
 				for (const target of options.targets) {
 					const search = join(current, target);
-					const exists = yield* Effect.tryPromise({
-						try: () => vfs.provider.exists(search),
+					const exists = yield* Effect.try({
+						try: () => vfs.existsSync(search),
 						catch: (cause) => new FileSystemError({ method: "up", cause }),
 					});
 

@@ -15,7 +15,7 @@ describe("Sandbox.EnvInMemory", () => {
 
 	// each layer build owns a fresh memory tree: nothing leaks between
 	// independent sandboxes
-	it("isolates separate in-memory sandboxes", async () => {
+	it("should isolate in-memory sandboxes with no leakage", async () => {
 		await Effect.runPromise(
 			Effect.gen(function* () {
 				const filesystem = yield* Service;
@@ -35,7 +35,7 @@ describe("Sandbox.EnvInMemory", () => {
 
 	// virtual sandboxes have no OS behind them: attempting to spawn a process
 	// is a wiring mistake and dies with a defect instead of escaping the sandbox
-	it("refuses process execution", async () => {
+	it("should refuse host process execution when `hostProcess` is disabled", async () => {
 		const exit = await Effect.runPromiseExit(
 			Effect.gen(function* () {
 				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -51,7 +51,7 @@ describe("Sandbox.EnvInMemory", () => {
 
 	// hostProcess opts out of the refusal: the filesystem stays virtual but
 	// child processes run on the host OS
-	it("spawns processes on the host when hostProcess is enabled", async () => {
+	it("should spawn host processes when `hostProcess` is enabled", async () => {
 		const exitCode = await Effect.runPromise(
 			Effect.gen(function* () {
 				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -62,7 +62,7 @@ describe("Sandbox.EnvInMemory", () => {
 		expect(exitCode).toBe(0);
 	});
 
-	it("allows host filesystem access when hostProcess is enabled", async () => {
+	it("should allow host filesystem access when `hostProcess` is enabled", async () => {
 		await using tmp = await tmpdir();
 		const hostFile = path.join(tmp.path, "host.txt");
 		await fs.writeFile(hostFile, "host-data");
@@ -82,8 +82,167 @@ describe("Sandbox.EnvInMemory", () => {
 		expect(output).toBe("host-data");
 	});
 
-	describe("read-only", () => {
-		it("rejects writes when created with readOnly", async () => {
+	describe("with seed", () => {
+		it("should write inline seed files before the sandbox is used", async () => {
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+
+					expect(yield* filesystem.readFileString("/repo/package.json")).toBe("{}");
+					expect(yield* filesystem.readFileString("/repo/src/index.ts")).toBe("export const value = 1;\n");
+				}).pipe(
+					Effect.provide(
+						Sandbox.services(
+							Sandbox.EnvInMemory.layer({
+								seed: {
+									"/repo/package.json": "{}",
+									"/repo/src/index.ts": "export const value = 1;\n",
+								},
+							}),
+						),
+					),
+				),
+			);
+		});
+
+		it("should resolve relative seed paths against cwd", async () => {
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+
+					expect(yield* filesystem.readFileString("package.json")).toBe("{}");
+					expect(yield* filesystem.readFileString("/repo/package.json")).toBe("{}");
+					expect(yield* filesystem.exists("/package.json")).toBe(false);
+				}).pipe(
+					Effect.provide(
+						Sandbox.services(
+							Sandbox.EnvInMemory.layer({
+								cwd: "/repo",
+								seed: {
+									"package.json": "{}",
+								},
+							}),
+						),
+					),
+				),
+			);
+		});
+
+		it("should copy host directory into the requested target", async () => {
+			await using tmp = await tmpdir();
+			const fixture = path.join(tmp.path, "basic-project");
+			await fs.mkdir(path.join(fixture, "src"), { recursive: true });
+			await fs.writeFile(path.join(fixture, "package.json"), "{}");
+			await fs.writeFile(path.join(fixture, "src", "index.ts"), "export const value = 1;\n");
+
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+
+					expect(yield* filesystem.readFileString("/repo/package.json")).toBe("{}");
+					expect(yield* filesystem.readFileString("/repo/src/index.ts")).toBe("export const value = 1;\n");
+				}).pipe(
+					Effect.provide(
+						Sandbox.services(
+							Sandbox.EnvInMemory.layer({
+								seedFromDirectory: {
+									path: fixture,
+									target: "/repo",
+								},
+							}),
+						),
+					),
+				),
+			);
+		});
+
+		it("should copy a host directory into cwd when target is omitted", async () => {
+			await using tmp = await tmpdir();
+			const fixture = path.join(tmp.path, "basic-project");
+			await fs.mkdir(path.join(fixture, "src"), { recursive: true });
+			await fs.writeFile(path.join(fixture, "package.json"), "{}");
+			await fs.writeFile(path.join(fixture, "src", "index.ts"), "export const value = 1;\n");
+
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+
+					expect(yield* filesystem.readFileString("package.json")).toBe("{}");
+					expect(yield* filesystem.readFileString("/repo/src/index.ts")).toBe("export const value = 1;\n");
+					expect(yield* filesystem.exists("/package.json")).toBe(false);
+				}).pipe(
+					Effect.provide(
+						Sandbox.services(
+							Sandbox.EnvInMemory.layer({
+								cwd: "/repo",
+								seedFromDirectory: {
+									path: fixture,
+								},
+							}),
+						),
+					),
+				),
+			);
+		});
+
+		it("should freeze seeded files when readOnly is enabled", async () => {
+			const error = await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+
+					expect(yield* filesystem.readFileString("/repo/package.json")).toBe("{}");
+					return yield* filesystem.writeFileString("/repo/other.txt", "nope").pipe(Effect.flip);
+				}).pipe(
+					Effect.provide(
+						Sandbox.services(
+							Sandbox.EnvInMemory.layer({
+								seed: {
+									"/repo/package.json": "{}",
+								},
+								readOnly: true,
+							}),
+						),
+					),
+				),
+			);
+
+			expect(error).toBeInstanceOf(FileSystemError);
+		});
+	});
+
+	describe("with cwd", () => {
+		it("should resolve relative file operations against cwd", async () => {
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+
+					yield* filesystem.writeFileString("src/index.ts", "export const value = 1;\n");
+
+					expect(yield* filesystem.readFileString("src/index.ts")).toBe("export const value = 1;\n");
+					expect(yield* filesystem.readFileString("/repo/src/index.ts")).toBe("export const value = 1;\n");
+					expect(yield* filesystem.exists("src/index.ts")).toBe(true);
+					expect(yield* filesystem.exists("/src/index.ts")).toBe(false);
+					expect(yield* filesystem.isDir("src")).toBe(true);
+				}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvInMemory.layer({ cwd: "/repo" })))),
+			);
+		});
+
+		it("should keep absolute file operations rooted at the sandbox root", async () => {
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+
+					yield* filesystem.writeFileString("/absolute.txt", "absolute");
+
+					expect(yield* filesystem.readFileString("/absolute.txt")).toBe("absolute");
+					expect(yield* filesystem.exists("absolute.txt")).toBe(false);
+				}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvInMemory.layer({ cwd: "/repo" })))),
+			);
+		});
+	});
+
+	describe("with read only", () => {
+		it("should reject writes when created with readOnly", async () => {
 			const error = await Effect.runPromise(
 				Effect.gen(function* () {
 					const filesystem = yield* Service;
@@ -96,7 +255,7 @@ describe("Sandbox.EnvInMemory", () => {
 			expect(error.cause).toBeDefined();
 		});
 
-		it("still serves reads when read-only", async () => {
+		it("should still serves reads when read-only", async () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const filesystem = yield* Service;
@@ -108,7 +267,7 @@ describe("Sandbox.EnvInMemory", () => {
 			);
 		});
 
-		it("allows writes by default", async () => {
+		it("should allow writes by default", async () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const filesystem = yield* Service;
