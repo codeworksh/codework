@@ -348,14 +348,14 @@ describe("Sandbox.EnvBash", () => {
 				const shell = yield* EnvBash.Shell;
 				const result = yield* shell.exec('echo "persisted by bash" > /file.txt');
 				expect(result.exitCode).toBe(0);
-			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvSqldb.layer(database)))),
+			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvSqldb.layer({ location: database })))),
 		);
 
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const shell = yield* EnvBash.Shell;
 				return yield* shell.exec("cat /file.txt");
-			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvSqldb.layer(database)))),
+			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvSqldb.layer({ location: database })))),
 		);
 
 		expect(result.stdout).toBe("persisted by bash\n");
