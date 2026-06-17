@@ -56,13 +56,17 @@ export const layer = Layer.effect(
 			return stat?.isDirectory() ?? false;
 		});
 
-		const exists = Effect.fn("FileSystem.exists")(function* (path: string) {
-			const exists = yield* Effect.try({
-				try: () => vfs.existsSync(path),
-				catch: (cause) => new FileSystemError({ method: "exists", cause }),
-			}).pipe(Effect.catch(() => Effect.void));
+		// existence via the async stat, so backends with no synchronous primitives
+		// (a remote provider whose `existsSync` throws) report correctly instead
+		// of always answering false
+		const pathExists = (path: string) =>
+			Effect.tryPromise({
+				try: () => vfs.promises.stat(path),
+				catch: () => false as const,
+			}).pipe(Effect.match({ onFailure: () => false, onSuccess: () => true }));
 
-			return exists ?? false;
+		const exists = Effect.fn("FileSystem.exists")(function* (path: string) {
+			return yield* pathExists(path);
 		});
 
 		const up = Effect.fn("FileSystem.up")(function* (options: { targets: string[]; start: string; stop?: string }) {
@@ -72,12 +76,7 @@ export const layer = Layer.effect(
 			while (true) {
 				for (const target of options.targets) {
 					const search = join(current, target);
-					const exists = yield* Effect.try({
-						try: () => vfs.existsSync(search),
-						catch: (cause) => new FileSystemError({ method: "up", cause }),
-					});
-
-					if (exists) result.push(search);
+					if (yield* pathExists(search)) result.push(search);
 				}
 
 				if (options.stop === current) break;

@@ -1,30 +1,17 @@
 import { RealFSProvider, type VirtualFileSystem } from "@platformatic/vfs";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Effect, Layer } from "effect";
 import { Bash, type IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
 import { FileSystem } from "../filesystem/filesystem";
+import { type ExecResult, type ISandboxExe, Shell, ShellError } from "./adapter";
 import type { Provides } from "./sandbox";
 
-export class ShellError extends Schema.TaggedErrorClass<ShellError>()("ShellError", {
-	command: Schema.String,
-	cause: Schema.optional(Schema.Defect()),
-}) {}
-
-export interface ExecResult {
-	readonly stdout: string;
-	readonly stderr: string;
-	readonly exitCode: number;
-}
-
-export interface Interface {
-	readonly exec: (
-		command: string,
-		options?: { env?: Record<string, string> },
-	) => Effect.Effect<ExecResult, ShellError>;
-}
-
-export class Shell extends Context.Service<Shell, Interface>()("@codework/sandbox/shell") {}
+// The shared exec contract lives in `adapter.ts`; re-export the pieces this
+// module used to own so existing `EnvBash.Shell` / `EnvBash.ShellError`
+// consumers keep working.
+export { Shell, ShellError };
+export type { ExecResult, ISandboxExe as Interface };
 
 // just-bash's IFileSystem implemented on top of the sandbox's vfs, so shell
 // commands and FileSystem.Service operate on the very same tree — there is
@@ -166,7 +153,16 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 			);
 			await dropOverlaidMtime(path);
 		},
-		exists: (path) => Promise.resolve(vfs.existsSync(path)),
+		// async existence via stat, so the bridge also serves providers whose
+		// synchronous primitives are unavailable (a remote backend)
+		exists: async (path) => {
+			try {
+				await vfs.promises.stat(path);
+				return true;
+			} catch {
+				return false;
+			}
+		},
 		stat: async (path) => {
 			const stats = await vfs.promises.stat(path);
 			return toStat(await vfs.promises.realpath(path), stats);
@@ -229,6 +225,10 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 	};
 };
 
+// just-bash only needs the async IFileSystem surface (the lone synchronous
+// touchpoint, getAllPaths for glob expansion, degrades to an empty list), so a
+// single Bash over the bridged vfs serves every backend — including a remote
+// vfs whose synchronous primitives throw.
 const shell = Layer.effect(
 	Shell,
 	Effect.gen(function* () {
@@ -248,8 +248,8 @@ const shell = Layer.effect(
 
 /**
  * Wraps any sandbox with a just-bash shell that executes against the
- * sandbox's own vfs: pick the filesystem backend (default, inmemory, sqldb)
- * and gain a Shell service on top of it.
+ * sandbox's own vfs: pick the filesystem backend (default, inmemory, sqldb,
+ * daytona) and gain a Shell service on top of it.
  */
 export const layer = <E, RIn>(inner: Layer.Layer<Provides, E, RIn>): Layer.Layer<Shell | Provides, E, RIn> =>
 	Layer.provideMerge(shell, inner);

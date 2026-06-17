@@ -4,9 +4,11 @@ import { FileSystem } from "../filesystem/filesystem";
 import { EnvDefault } from "./default";
 
 // re-export from sandbox
+export { Adapter } from "./adapter";
 export { EnvDefault } from "./default";
 export { EnvInMemory } from "./inmemory";
 export { EnvBash } from "./justbashexe";
+export { EnvDaytona } from "./providers/daytona";
 export { EnvSqldb } from "./sqldb";
 export { Process } from "./utils/process";
 
