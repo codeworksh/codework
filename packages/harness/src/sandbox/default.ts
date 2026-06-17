@@ -1,6 +1,6 @@
 import { create, RealFSProvider } from "@platformatic/vfs";
 import { Layer } from "effect";
-import { FileSystem } from "../filesystem/filesystem";
+import { Virtual } from "./filesystem/virtual";
 import { Process } from "./utils/process";
 
 export interface Options {
@@ -19,7 +19,7 @@ export const layer = (input: string | Options) => {
 
 	vfs.chdir(options.cwd);
 
-	return Layer.merge(FileSystem.layerFromVfs(vfs), Process.host);
+	return Layer.merge(Layer.succeed(Virtual.Vfs, vfs), Process.host);
 };
 
 export * as EnvDefault from "./default";

@@ -1,8 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { Service } from "../src/filesystem/filesystem";
-import { Shell } from "../src/sandbox/adapter";
-import { EnvBash } from "../src/sandbox/justbashexe";
+import { Shell } from "../src/sandbox/shell";
+import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { EnvDaytona } from "../src/sandbox/providers/daytona";
 import "./utils/env";
 
@@ -13,25 +12,28 @@ const PROVISION_TIMEOUT = 180_000;
 
 suite("Sandbox.EnvDaytona", () => {
 	it(
-		"FileSytem.Service with remote filesystem tree and shell within Daytona",
+		"SandboxFileSystem.Service and Shell share the remote Daytona sandbox",
 		async () => {
-			const dir = `/tmp/cw-${Date.now()}-remote`;
+			const dir = `cw-${Date.now()}-remote`;
 			const result = await Effect.runPromise(
 				Effect.gen(function* () {
-					const filesystem = yield* Service;
+					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* Shell;
 
-					// shell sees what the service wrote
-					yield* filesystem.writeFileString(`${dir}/from-service.txt`, "from service");
+					yield* Effect.promise(() => filesystem.writeFile(`${dir}/from-service.txt`, "from service"));
 					const cat = yield* shell.exec(`cat ${dir}/from-service.txt`);
 
-					// service sees what the shell wrote
 					const wrote = yield* shell.exec(`echo "from shell" > ${dir}/from-shell.txt`);
-					const back = yield* filesystem.readFileString(`${dir}/from-shell.txt`);
+					const back = yield* Effect.promise(() => filesystem.readFile(`${dir}/from-shell.txt`));
 
-					// the remote shell runs the sandbox's real binaries
 					const uname = yield* shell.exec("uname -s");
 					const node = yield* shell.exec("node --version");
+
+					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/package.json`, "{}"));
+					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/.git/config`, ""));
+					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/project/package.json`, "{}"));
+					const workspace = yield* Effect.promise(() => filesystem.readdir(`${dir}/workspace`));
+					const project = yield* Effect.promise(() => filesystem.readdir(`${dir}/workspace/project`));
 
 					return {
 						cat,
@@ -39,9 +41,11 @@ suite("Sandbox.EnvDaytona", () => {
 						back,
 						uname,
 						node,
-						exists: yield* filesystem.exists(`${dir}/from-service.txt`),
-						isDir: yield* filesystem.isDir(dir),
-						missing: yield* filesystem.exists(`${dir}/nope.txt`),
+						exists: yield* Effect.promise(() => filesystem.exists(`${dir}/from-service.txt`)),
+						isDir: yield* Effect.promise(async () => (await filesystem.stat(dir)).isDirectory),
+						missing: yield* Effect.promise(() => filesystem.exists(`${dir}/nope.txt`)),
+						workspace,
+						project,
 					};
 				}).pipe(Effect.provide(EnvDaytona.services({ apiKey }))),
 			);
@@ -56,40 +60,10 @@ suite("Sandbox.EnvDaytona", () => {
 			expect(result.exists).toBe(true);
 			expect(result.isDir).toBe(true);
 			expect(result.missing).toBe(false);
-		},
-		PROVISION_TIMEOUT,
-	);
-
-	// Daytona VFS is used as underlying filesystem with just-bash as in-process emulated shell
-	// just-bash has limited support exec commands like no: git, binaries, etc.
-	it(
-		"in-process just-bash with remote filesystem within the Daytona vfs (coreutils only)",
-		async () => {
-			const dir = `/tmp/cw-${Date.now()}-justbash`;
-			const result = await Effect.runPromise(
-				Effect.gen(function* () {
-					const filesystem = yield* Service;
-					const shell = yield* Shell;
-
-					yield* filesystem.writeFileString(`${dir}/jb.txt`, "from service");
-					const cat = yield* shell.exec(`cat ${dir}/jb.txt`);
-					const piped = yield* shell.exec("printf 'a\\nb\\na\\n' | sort | uniq | wc -l");
-					const wrote = yield* shell.exec(`echo hi > ${dir}/jb-out.txt`);
-					const back = yield* filesystem.readFileString(`${dir}/jb-out.txt`);
-
-					// just-bash emulated shell does not have git, so fails
-					const git = yield* shell.exec("git --version");
-
-					return { cat, piped, wrote, back, git };
-				}).pipe(Effect.provide(EnvBash.services(EnvDaytona.vfs({ apiKey })))),
-			);
-
-			expect(result.cat.exitCode).toBe(0);
-			expect(result.cat.stdout.trim()).toBe("from service");
-			expect(result.piped.stdout.trim()).toBe("2");
-			expect(result.wrote.exitCode).toBe(0);
-			expect(result.back.trim()).toBe("hi");
-			expect(result.git.exitCode).not.toBe(0);
+			expect(result.workspace).toContain(".git");
+			expect(result.workspace).toContain("package.json");
+			expect(result.workspace).toContain("project");
+			expect(result.project).toContain("package.json");
 		},
 		PROVISION_TIMEOUT,
 	);

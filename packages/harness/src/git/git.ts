@@ -287,7 +287,8 @@ export const layer = Layer.effect(
 	}),
 );
 
-export const defaultLayer = (rootPath: string) => layer.pipe(Layer.provide(Sandbox.defaultLayer(rootPath)));
+export const defaultLayer = (rootPath: string) =>
+	layer.pipe(Layer.provide(FileSystem.defaultLayer), Layer.provide(Sandbox.defaultLayer(rootPath)));
 
 function resolvePath(cwd: string, value: string) {
 	const trimmed = value.replace(/[\r\n]+$/, "");

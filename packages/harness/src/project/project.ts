@@ -101,7 +101,9 @@ export const layer = Layer.effect(
 				.all()
 				.pipe(Effect.orDie);
 
-			const validRows = yield* Effect.filter(rows, (row) => fs.exists(row.directory), { concurrency: "unbounded" });
+			const validRows = yield* Effect.filter(rows, (row) => fs.exists(row.directory), {
+				concurrency: "unbounded",
+			});
 
 			// clean up rows whose directory no longer exists on disk
 			const valid = new Set(validRows);
@@ -365,6 +367,7 @@ export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(
 		Layer.provide(Git.layer),
 		Layer.provide(ProjectCopy.layer),
+		Layer.provide(FileSystem.defaultLayer),
 		Layer.provide(Sandbox.services(sandbox)),
 		Layer.provide(Database.defaultLayer),
 	);

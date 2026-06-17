@@ -1,11 +1,10 @@
 import { Context, type Effect, Schema } from "effect";
 
 /**
- * The pluggable execution contract. A sandbox's filesystem is its
- * `FileSystem.Vfs` provider (real, in-memory, sqlite, daytona, ...); its
- * command execution is this {@link Shell}. just-bash supplies a Shell over any
- * vfs; a remote backend like Daytona supplies its own native Shell. Either way
- * the rest of the harness depends only on the service tag.
+ * The pluggable execution contract. Local sandboxes usually get a Shell through
+ * just-bash over the local `Virtual.Vfs`; remote sandboxes provide their own
+ * native Shell. Either way the rest of the harness depends only on this service
+ * tag.
  */
 
 export class ShellError extends Schema.TaggedErrorClass<ShellError>()("ShellError", {
@@ -33,5 +32,3 @@ export interface ISandboxExe {
 
 /** Execution service — the live {@link ISandboxExe} for the active sandbox. */
 export class Shell extends Context.Service<Shell, ISandboxExe>()("@codework/sandbox/shell") {}
-
-export * as Adapter from "./adapter";

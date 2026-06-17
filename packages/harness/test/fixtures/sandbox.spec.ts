@@ -1,7 +1,8 @@
 import { Effect, Layer } from "effect";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vite-plus/test";
-import { FileSystemError, layer as filesystemLayer, Service, Vfs } from "../../src/filesystem/filesystem";
+import { SandboxFileSystem } from "../../src/sandbox/filesystem/filesystem";
+import { Virtual } from "../../src/sandbox/filesystem/virtual";
 import type { Sandbox } from "../../src/sandbox/sandbox";
 
 export interface SandboxEnv {
@@ -11,372 +12,198 @@ export interface SandboxEnv {
 
 export type MakeSandbox = () => Promise<SandboxEnv>;
 
-// Seed a directory tree through the sandbox's own vfs, so the fixture works
-// for any backend:
-//
-//   /workspace/.git/
-//   /workspace/package.json
-//   /workspace/project/package.json
-//   /workspace/project/pnpm-workspace.yaml
-//   /workspace/project/packages/app/src/
-const seed = Effect.gen(function* () {
-	const vfs = yield* Vfs;
-	yield* Effect.promise(async () => {
-		await vfs.promises.mkdir("/workspace/.git", { recursive: true });
-		await vfs.promises.mkdir("/workspace/project/packages/app/src", { recursive: true });
-		await vfs.promises.writeFile("/workspace/package.json", "{}");
-		await vfs.promises.writeFile("/workspace/project/package.json", "{}");
-		await vfs.promises.writeFile("/workspace/project/pnpm-workspace.yaml", "packages: []");
-	});
-});
+/**
+ * Build the sandbox, hand the live `SandboxFileSystem.Service` to a plain async
+ * body, and dispose afterwards. The service surface is Promise-based, so tests
+ * read like ordinary `async`/`await` against `fs`.
+ */
+export const withService = async <A>(
+	make: MakeSandbox,
+	body: (fs: SandboxFileSystem.Interface) => Promise<A>,
+): Promise<A> => {
+	const env = await make();
+	try {
+		return await Effect.runPromise(
+			Effect.gen(function* () {
+				const fs = yield* SandboxFileSystem.Service;
+				return yield* Effect.promise(() => body(fs));
+			}).pipe(Effect.scoped, Effect.provide(Layer.provideMerge(Virtual.layer, env.sandbox))),
+		);
+	} finally {
+		await env.dispose?.();
+	}
+};
 
 /**
- * Behavioral spec every sandbox-provided filesystem must satisfy, covering
- * the full FileSystem.Service surface — success and failure paths of every
- * method. Each test builds a fresh sandbox via `make` and consumes the
- * service exactly as application code does.
+ * Behavioral spec every local sandbox filesystem must satisfy, covering the
+ * full `SandboxFileSystem` surface — success and failure paths of every method.
+ * Each test builds a fresh sandbox via `make` and consumes the service exactly
+ * as the runtime does.
  */
 export const filesystemSpec = (make: MakeSandbox) => {
-	const run = async <A, E>(body: Effect.Effect<A, E, Service | Vfs>) => {
-		const env = await make();
-		try {
-			return await Effect.runPromise(
-				seed.pipe(Effect.andThen(body), Effect.provide(Layer.provideMerge(filesystemLayer, env.sandbox))),
-			);
-		} finally {
-			await env.dispose?.();
-		}
-	};
+	const run = <A>(body: (fs: SandboxFileSystem.Interface) => Promise<A>) => withService(make, body);
 
-	describe("readFileString", () => {
-		it("reads existing file content", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-
-					expect(yield* fs.readFileString("/workspace/package.json")).toBe("{}");
-					expect(yield* fs.readFileString("/workspace/package.json", "utf8")).toBe("{}");
-				}),
-			);
-		});
-
-		it("round-trips multi-line and non-ascii content", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-					const content = "héllo\nwörld\n🚀";
-
-					yield* fs.writeFileString("/notes.txt", content);
-
-					expect(yield* fs.readFileString("/notes.txt")).toBe(content);
-				}),
-			);
-		});
-
-		it("fails with FileSystemError for a missing file", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-					const error = yield* fs.readFileString("/missing.txt").pipe(Effect.flip);
-
-					expect(error).toBeInstanceOf(FileSystemError);
-					expect(error.method).toBe("readFileString");
-					expect(error.cause).toBeDefined();
-				}),
-			);
-		});
-
-		it("fails with FileSystemError when reading a directory", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-					const error = yield* fs.readFileString("/workspace").pipe(Effect.flip);
-
-					expect(error).toBeInstanceOf(FileSystemError);
-					expect(error.method).toBe("readFileString");
-				}),
-			);
-		});
-	});
-
-	describe("writeFileString", () => {
-		it("creates a new file", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-
-					yield* fs.writeFileString("/file.txt", "hello");
-
-					expect(yield* fs.readFileString("/file.txt")).toBe("hello");
-					expect(yield* fs.exists("/file.txt")).toBe(true);
-				}),
-			);
+	describe("readFile / writeFile", () => {
+		it("round-trips utf-8 content", async () => {
+			await run(async (fs) => {
+				await fs.writeFile("/file.txt", "héllo\nwörld\n🚀");
+				expect(await fs.readFile("/file.txt")).toBe("héllo\nwörld\n🚀");
+			});
 		});
 
 		it("overwrites existing content", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-
-					yield* fs.writeFileString("/file.txt", "first");
-					yield* fs.writeFileString("/file.txt", "second");
-
-					expect(yield* fs.readFileString("/file.txt")).toBe("second");
-				}),
-			);
+			await run(async (fs) => {
+				await fs.writeFile("/file.txt", "first");
+				await fs.writeFile("/file.txt", "second");
+				expect(await fs.readFile("/file.txt")).toBe("second");
+			});
 		});
 
-		it("creates missing parent directories", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-
-					yield* fs.writeFileString("/deeply/nested/dir/file.txt", "data");
-
-					expect(yield* fs.readFileString("/deeply/nested/dir/file.txt")).toBe("data");
-					expect(yield* fs.isDir("/deeply/nested/dir")).toBe(true);
-				}),
-			);
+		it("creates missing parent directories on write", async () => {
+			await run(async (fs) => {
+				await fs.writeFile("/deeply/nested/dir/file.txt", "data");
+				expect(await fs.readFile("/deeply/nested/dir/file.txt")).toBe("data");
+				expect((await fs.stat("/deeply/nested/dir")).isDirectory).toBe(true);
+			});
 		});
 
-		it("fails with FileSystemError when writing over a directory", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-					const error = yield* fs.writeFileString("/workspace", "data").pipe(Effect.flip);
+		it("rejects reading a missing file", async () => {
+			await run(async (fs) => {
+				await expect(fs.readFile("/missing.txt")).rejects.toBeDefined();
+			});
+		});
 
-					expect(error).toBeInstanceOf(FileSystemError);
-					expect(error.method).toBe("writeFileString");
-					expect(error.cause).toBeDefined();
-				}),
-			);
+		it("rejects reading a directory", async () => {
+			await run(async (fs) => {
+				await fs.mkdir("/dir", { recursive: true });
+				await expect(fs.readFile("/dir")).rejects.toBeDefined();
+			});
+		});
+	});
+
+	describe("readFileBuffer", () => {
+		it("round-trips raw bytes as a Uint8Array", async () => {
+			await run(async (fs) => {
+				const bytes = new Uint8Array([0, 1, 2, 127, 128, 255]);
+				await fs.writeFile("/binary.dat", bytes);
+
+				const read = await fs.readFileBuffer("/binary.dat");
+				expect(read).toBeInstanceOf(Uint8Array);
+				expect(Buffer.from(read).equals(Buffer.from(bytes))).toBe(true);
+			});
+		});
+	});
+
+	describe("stat", () => {
+		it("identifies files and directories", async () => {
+			await run(async (fs) => {
+				await fs.writeFile("/file.txt", "data");
+				await fs.mkdir("/dir", { recursive: true });
+
+				const file = await fs.stat("/file.txt");
+				expect(file.isFile).toBe(true);
+				expect(file.isDirectory).toBe(false);
+				expect(file.size).toBe(4);
+
+				const dir = await fs.stat("/dir");
+				expect(dir.isDirectory).toBe(true);
+				expect(dir.isFile).toBe(false);
+			});
+		});
+
+		it("rejects a missing path", async () => {
+			await run(async (fs) => {
+				await expect(fs.stat("/missing")).rejects.toBeDefined();
+			});
+		});
+	});
+
+	describe("readdir", () => {
+		it("lists entry names, not paths", async () => {
+			await run(async (fs) => {
+				await fs.writeFile("/dir/a.txt", "a");
+				await fs.writeFile("/dir/b.txt", "b");
+				await fs.mkdir("/dir/sub", { recursive: true });
+
+				expect((await fs.readdir("/dir")).sort()).toEqual(["a.txt", "b.txt", "sub"]);
+			});
+		});
+
+		it("rejects a missing directory", async () => {
+			await run(async (fs) => {
+				await expect(fs.readdir("/missing")).rejects.toBeDefined();
+			});
 		});
 	});
 
 	describe("exists", () => {
 		it("reports files, directories, and the root", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-
-					expect(yield* fs.exists("/")).toBe(true);
-					expect(yield* fs.exists("/workspace")).toBe(true);
-					expect(yield* fs.exists("/workspace/package.json")).toBe(true);
-				}),
-			);
+			await run(async (fs) => {
+				await fs.writeFile("/file.txt", "data");
+				expect(await fs.exists("/")).toBe(true);
+				expect(await fs.exists("/file.txt")).toBe(true);
+			});
 		});
 
-		it("returns false instead of failing for missing paths", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-
-					expect(yield* fs.exists("/missing.txt")).toBe(false);
-					expect(yield* fs.exists("/missing/deeply/nested")).toBe(false);
-					expect(yield* fs.exists("/workspace/package.json/below-a-file")).toBe(false);
-				}),
-			);
+		it("returns false for missing paths instead of throwing", async () => {
+			await run(async (fs) => {
+				expect(await fs.exists("/missing.txt")).toBe(false);
+				expect(await fs.exists("/missing/deeply/nested")).toBe(false);
+			});
 		});
 	});
 
-	describe("isDir", () => {
-		it("identifies directories including the root", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-
-					expect(yield* fs.isDir("/")).toBe(true);
-					expect(yield* fs.isDir("/workspace")).toBe(true);
-					expect(yield* fs.isDir("/workspace/.git")).toBe(true);
-				}),
-			);
+	describe("mkdir", () => {
+		it("creates a directory", async () => {
+			await run(async (fs) => {
+				await fs.mkdir("/dir", { recursive: true });
+				expect((await fs.stat("/dir")).isDirectory).toBe(true);
+			});
 		});
 
-		it("returns false for files", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-
-					expect(yield* fs.isDir("/workspace/package.json")).toBe(false);
-				}),
-			);
+		it("creates parents when recursive", async () => {
+			await run(async (fs) => {
+				await fs.mkdir("/a/b/c", { recursive: true });
+				expect((await fs.stat("/a/b/c")).isDirectory).toBe(true);
+			});
 		});
 
-		it("returns false instead of failing for missing paths", async () => {
-			await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-
-					expect(yield* fs.isDir("/missing")).toBe(false);
-					expect(yield* fs.isDir("/missing/deeply/nested")).toBe(false);
-				}),
-			);
+		it("rejects a missing parent when not recursive", async () => {
+			await run(async (fs) => {
+				await expect(fs.mkdir("/a/b/c")).rejects.toBeDefined();
+			});
 		});
 	});
 
-	describe("up", () => {
-		it("finds multiple files and directories while walking upward", async () => {
-			const matches = await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-					return yield* fs.up({
-						targets: [".git", "package.json", "pnpm-workspace.yaml"],
-						start: "/workspace/project/packages/app/src",
-					});
-				}),
-			);
-
-			expect(matches).toEqual([
-				"/workspace/project/package.json",
-				"/workspace/project/pnpm-workspace.yaml",
-				"/workspace/.git",
-				"/workspace/package.json",
-			]);
+	describe("rm", () => {
+		it("removes a file", async () => {
+			await run(async (fs) => {
+				await fs.writeFile("/file.txt", "data");
+				await fs.rm("/file.txt");
+				expect(await fs.exists("/file.txt")).toBe(false);
+			});
 		});
 
-		it("collects the same target at multiple levels", async () => {
-			const matches = await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-					return yield* fs.up({
-						targets: ["package.json"],
-						start: "/workspace/project/packages/app/src",
-						stop: "/workspace",
-					});
-				}),
-			);
-
-			expect(matches).toEqual(["/workspace/project/package.json", "/workspace/package.json"]);
+		it("removes a directory tree recursively", async () => {
+			await run(async (fs) => {
+				await fs.writeFile("/dir/nested/file.txt", "data");
+				await fs.rm("/dir", { recursive: true });
+				expect(await fs.exists("/dir")).toBe(false);
+			});
 		});
 
-		it("includes the stop directory and does not search above it", async () => {
-			const matches = await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-					return yield* fs.up({
-						targets: [".git", "pnpm-workspace.yaml"],
-						start: "/workspace/project/packages/app/src",
-						stop: "/workspace/project",
-					});
-				}),
-			);
-
-			expect(matches).toEqual(["/workspace/project/pnpm-workspace.yaml"]);
+		it("rejects removing a non-empty directory without recursive", async () => {
+			await run(async (fs) => {
+				await fs.writeFile("/dir/file.txt", "data");
+				await expect(fs.rm("/dir")).rejects.toBeDefined();
+			});
 		});
 
-		it("stops at the filesystem root when stop is omitted", async () => {
-			const matches = await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-					return yield* fs.up({
-						targets: [".git", "missing.txt"],
-						start: "/workspace/project/packages/app/src",
-					});
-				}),
-			);
-
-			expect(matches).toEqual(["/workspace/.git"]);
-		});
-
-		it("returns an empty list when nothing matches", async () => {
-			const matches = await run(
-				Effect.gen(function* () {
-					const fs = yield* Service;
-					return yield* fs.up({
-						targets: ["missing.txt"],
-						start: "/workspace/project/packages/app/src",
-					});
-				}),
-			);
-
-			expect(matches).toEqual([]);
-		});
-	});
-
-	describe("VFS provider primitives", () => {
-		it("round-trips binary content", async () => {
-			await run(
-				Effect.gen(function* () {
-					const vfs = yield* Vfs;
-					const content = Buffer.from([0, 1, 2, 127, 128, 255]);
-
-					yield* Effect.promise(() => vfs.promises.writeFile("/binary.dat", content));
-					const result = yield* Effect.promise(() => vfs.promises.readFile("/binary.dat"));
-
-					expect(result).toEqual(content);
-				}),
-			);
-		});
-
-		it("copies, renames, and removes files", async () => {
-			await run(
-				Effect.gen(function* () {
-					const vfs = yield* Vfs;
-
-					yield* Effect.promise(async () => {
-						await vfs.promises.copyFile("/workspace/package.json", "/copy.json");
-						await vfs.promises.rename("/copy.json", "/renamed.json");
-					});
-
-					expect(yield* Effect.promise(() => vfs.promises.readFile("/renamed.json", "utf8"))).toBe("{}");
-					expect(vfs.existsSync("/copy.json")).toBe(false);
-
-					yield* Effect.promise(() => vfs.promises.unlink("/renamed.json"));
-					expect(vfs.existsSync("/renamed.json")).toBe(false);
-				}),
-			);
-		});
-
-		it("reports directory entries and removes empty directories", async () => {
-			await run(
-				Effect.gen(function* () {
-					const vfs = yield* Vfs;
-
-					yield* Effect.promise(() => vfs.promises.mkdir("/entries/child", { recursive: true }));
-					yield* Effect.promise(() => vfs.promises.writeFile("/entries/file.txt", "data"));
-					const entries = yield* Effect.promise(() => vfs.promises.readdir("/entries", { withFileTypes: true }));
-
-					expect(
-						entries.map((entry) => ({
-							name: entry.name,
-							isDirectory: entry.isDirectory(),
-							isFile: entry.isFile(),
-						})),
-					).toEqual([
-						{ name: "child", isDirectory: true, isFile: false },
-						{ name: "file.txt", isDirectory: false, isFile: true },
-					]);
-
-					yield* Effect.promise(async () => {
-						await vfs.promises.rmdir("/entries/child");
-						await vfs.promises.unlink("/entries/file.txt");
-						await vfs.promises.rmdir("/entries");
-					});
-					expect(vfs.existsSync("/entries")).toBe(false);
-				}),
-			);
-		});
-
-		it("supports safe symbolic links", async () => {
-			await run(
-				Effect.gen(function* () {
-					const vfs = yield* Vfs;
-
-					yield* Effect.promise(() => vfs.promises.symlink("/workspace/package.json", "/package-link.json"));
-
-					const link = yield* Effect.promise(() => vfs.promises.lstat("/package-link.json"));
-					const target = yield* Effect.promise(() => vfs.promises.stat("/package-link.json"));
-					expect(link.isSymbolicLink()).toBe(true);
-					expect(target.isFile()).toBe(true);
-					expect(yield* Effect.promise(() => vfs.promises.readlink("/package-link.json"))).toBe(
-						"/workspace/package.json",
-					);
-					expect(yield* Effect.promise(() => vfs.promises.realpath("/package-link.json"))).toBe(
-						"/workspace/package.json",
-					);
-					expect(yield* Effect.promise(() => vfs.promises.readFile("/package-link.json", "utf8"))).toBe("{}");
-				}),
-			);
+		it("rejects a missing path, but pardons it under force", async () => {
+			await run(async (fs) => {
+				await expect(fs.rm("/missing.txt")).rejects.toBeDefined();
+				await expect(fs.rm("/missing.txt", { force: true })).resolves.toBeUndefined();
+			});
 		});
 	});
 };

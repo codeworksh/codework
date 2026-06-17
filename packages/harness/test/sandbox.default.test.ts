@@ -3,27 +3,26 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { Service, Vfs } from "../src/filesystem/filesystem";
+import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
+import { Virtual } from "../src/sandbox/filesystem/virtual";
 import { Sandbox } from "../src/sandbox/sandbox";
+import { withService } from "./fixtures/sandbox.spec";
 import { tmpdir } from "./fixtures/tempdir";
 
 describe("Sandbox.EnvDefault", () => {
 	it("should resolve relative file operations against cwd", async () => {
 		await using tmp = await tmpdir();
 
-		await Effect.runPromise(
-			Effect.gen(function* () {
-				const filesystem = yield* Service;
+		await withService(
+			async () => ({ sandbox: Sandbox.EnvDefault.layer({ cwd: tmp.path }) }),
+			async (filesystem) => {
+				await filesystem.writeFile("src/index.ts", "export const value = 1;\n");
 
-				yield* filesystem.writeFileString("src/index.ts", "export const value = 1;\n");
-
-				expect(yield* filesystem.readFileString("src/index.ts")).toBe("export const value = 1;\n");
-				expect(yield* filesystem.readFileString(path.join(tmp.path, "src", "index.ts"))).toBe(
-					"export const value = 1;\n",
-				);
-				expect(yield* filesystem.exists("src/index.ts")).toBe(true);
-				expect(yield* filesystem.isDir("src")).toBe(true);
-			}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvDefault.layer({ cwd: tmp.path })))),
+				expect(await filesystem.readFile("src/index.ts")).toBe("export const value = 1;\n");
+				expect(await filesystem.readFile(path.join(tmp.path, "src", "index.ts"))).toBe("export const value = 1;\n");
+				expect(await filesystem.exists("src/index.ts")).toBe(true);
+				expect((await filesystem.stat("src")).isDirectory).toBe(true);
+			},
 		);
 
 		expect(await fs.readFile(path.join(tmp.path, "src", "index.ts"), "utf8")).toBe("export const value = 1;\n");
@@ -33,11 +32,9 @@ describe("Sandbox.EnvDefault", () => {
 		await using tmp = await tmpdir();
 		await fs.writeFile(path.join(tmp.path, "host.txt"), "from host");
 
-		const content = await Effect.runPromise(
-			Effect.gen(function* () {
-				const filesystem = yield* Service;
-				return yield* filesystem.readFileString("host.txt");
-			}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvDefault.layer({ cwd: tmp.path })))),
+		const content = await withService(
+			async () => ({ sandbox: Sandbox.EnvDefault.layer({ cwd: tmp.path }) }),
+			(filesystem) => filesystem.readFile("host.txt"),
 		);
 
 		expect(content).toBe("from host");
@@ -49,15 +46,14 @@ describe("Sandbox.EnvDefault", () => {
 		const absoluteFile = path.join(tmp.path, "absolute.txt");
 		await fs.mkdir(cwd);
 
-		await Effect.runPromise(
-			Effect.gen(function* () {
-				const filesystem = yield* Service;
+		await withService(
+			async () => ({ sandbox: Sandbox.EnvDefault.layer({ cwd }) }),
+			async (filesystem) => {
+				await filesystem.writeFile(absoluteFile, "absolute");
 
-				yield* filesystem.writeFileString(absoluteFile, "absolute");
-
-				expect(yield* filesystem.readFileString(absoluteFile)).toBe("absolute");
-				expect(yield* filesystem.exists("absolute.txt")).toBe(false);
-			}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvDefault.layer({ cwd })))),
+				expect(await filesystem.readFile(absoluteFile)).toBe("absolute");
+				expect(await filesystem.exists("absolute.txt")).toBe(false);
+			},
 		);
 
 		expect(await fs.readFile(absoluteFile, "utf8")).toBe("absolute");
@@ -72,12 +68,12 @@ describe("Sandbox.EnvDefault", () => {
 		await fs.writeFile(outside, "outside-secret");
 		await fs.symlink(outside, path.join(cwd, "leak.txt"));
 
-		const content = await Effect.runPromise(
-			Effect.gen(function* () {
-				const filesystem = yield* Service;
-				yield* filesystem.writeFileString("leak.txt", "changed");
-				return yield* filesystem.readFileString("leak.txt");
-			}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvDefault.layer({ cwd })))),
+		const content = await withService(
+			async () => ({ sandbox: Sandbox.EnvDefault.layer({ cwd }) }),
+			async (filesystem) => {
+				await filesystem.writeFile("leak.txt", "changed");
+				return filesystem.readFile("leak.txt");
+			},
 		);
 
 		expect(content).toBe("changed");
@@ -89,7 +85,7 @@ describe("Sandbox.EnvDefault", () => {
 
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
-				const vfs = yield* Vfs;
+				const vfs = yield* Virtual.Vfs;
 				yield* Effect.promise(async () => {
 					await vfs.promises.writeFile("target.txt", "inside");
 					await vfs.promises.symlink("target.txt", "link.txt");
@@ -113,10 +109,10 @@ describe("Sandbox.EnvDefault", () => {
 
 		const output = await Effect.runPromise(
 			Effect.gen(function* () {
-				const filesystem = yield* Service;
+				const filesystem = yield* SandboxFileSystem.Service;
 				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
-				yield* filesystem.writeFileString(marker, "sandbox-data");
+				yield* Effect.promise(() => filesystem.writeFile(marker, "sandbox-data"));
 
 				const command = ChildProcess.make(
 					process.execPath,

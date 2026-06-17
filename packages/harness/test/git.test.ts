@@ -1,9 +1,9 @@
+import { Effect } from "effect";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { Effect } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { AppProcessError, type Interface, Service, WorktreeError, defaultLayer } from "../src/git/git";
 import { AbsolutePath } from "../src/schema";
