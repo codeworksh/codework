@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { Shell } from "../src/sandbox/shell";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { EnvDaytona } from "../src/sandbox/providers/daytona";
+import { Shell } from "../src/sandbox/shell";
 import "./utils/env";
 
 const apiKey = process.env.DAYTONA_API_KEY;
