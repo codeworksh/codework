@@ -232,7 +232,7 @@ const shell = Layer.effect(
 	Shell,
 	Effect.gen(function* () {
 		const vfs = yield* FileSystem.Vfs;
-		const bash = new Bash({ fs: bridge(vfs), cwd: "/" });
+		const bash = new Bash({ fs: bridge(vfs), cwd: vfs.virtualCwdEnabled ? vfs.cwd() : "/" });
 
 		const exec = Effect.fn("Shell.exec")(function* (command: string, options?: { env?: Record<string, string> }) {
 			return yield* Effect.tryPromise({

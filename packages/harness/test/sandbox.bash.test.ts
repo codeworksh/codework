@@ -370,33 +370,30 @@ describe("Sandbox.EnvBash", () => {
 				const filesystem = yield* Service;
 				const shell = yield* EnvBash.Shell;
 
-				const result = yield* shell.exec('echo "real disk" > /file.txt');
+				const result = yield* shell.exec('echo "real disk" > file.txt');
 				expect(result.exitCode).toBe(0);
 
-				return yield* filesystem.readFileString("/file.txt");
-			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvDefault.layer(tmp.path)))),
+				return yield* filesystem.readFileString("file.txt");
+			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvDefault.layer({ cwd: tmp.path })))),
 		);
 
 		expect(content).toBe("real disk\n");
+		expect(await fs.readFile(path.join(tmp.path, "file.txt"), "utf8")).toBe("real disk\n");
 	});
 
-	it("cannot escape the default backend through an absolute symlink", async () => {
+	it("follows host symlinks outside cwd over the default backend", async () => {
 		await using tmp = await tmpdir();
-		const outside = path.join(path.dirname(tmp.path), `${path.basename(tmp.path)}-secret.txt`);
+		const outside = path.join(tmp.path, "outside.txt");
 		await fs.writeFile(outside, "outside-secret");
 
-		try {
-			const result = await Effect.runPromise(
-				Effect.gen(function* () {
-					const shell = yield* EnvBash.Shell;
-					return yield* shell.exec(`ln -s ${outside} /leak && cat /leak`);
-				}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvDefault.layer(tmp.path)))),
-			);
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const shell = yield* EnvBash.Shell;
+				return yield* shell.exec(`ln -s ${outside} leak && cat leak`);
+			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvDefault.layer({ cwd: tmp.path })))),
+		);
 
-			expect(result.exitCode).not.toBe(0);
-			expect(result.stdout).not.toContain("outside-secret");
-		} finally {
-			await fs.rm(outside, { force: true });
-		}
+		expect(result.exitCode).toBe(0);
+		expect(result.stdout).toBe("outside-secret");
 	});
 });

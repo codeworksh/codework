@@ -290,7 +290,9 @@ describe("Sandbox.EnvSQLiteFS", () => {
 				Effect.gen(function* () {
 					const filesystem = yield* Service;
 					return yield* filesystem.writeFileString("/file.txt", "nope").pipe(Effect.flip);
-				}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } })))),
+				}).pipe(
+					Effect.provide(Sandbox.services(Sandbox.EnvSqldb.layer({ options: { cwd: "/repo", readOnly: true } }))),
+				),
 			);
 
 			expect(error).toBeInstanceOf(FileSystemError);
@@ -306,7 +308,9 @@ describe("Sandbox.EnvSQLiteFS", () => {
 					expect(yield* filesystem.isDir("/")).toBe(true);
 					expect(yield* filesystem.exists("/")).toBe(true);
 					expect(yield* filesystem.exists("/missing.txt")).toBe(false);
-				}).pipe(Effect.provide(Sandbox.services(Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } })))),
+				}).pipe(
+					Effect.provide(Sandbox.services(Sandbox.EnvSqldb.layer({ options: { cwd: "/repo", readOnly: true } }))),
+				),
 			);
 		});
 

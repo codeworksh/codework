@@ -31,7 +31,7 @@ export type Sandbox<E = never, RIn = never> = Layer.Layer<Provides, E, RIn>;
  */
 export const services = <E, RIn>(sandbox: Sandbox<E, RIn>) => Layer.provideMerge(FileSystem.layer, sandbox);
 
-/** Default sandbox: the real OS filesystem and processes rooted at `rootPath`. */
-export const defaultLayer = (rootPath: string) => services(EnvDefault.layer(rootPath));
+/** Default sandbox: the real OS filesystem and processes with relative paths resolved from `cwd`. */
+export const defaultLayer = (cwd: string) => services(EnvDefault.layer({ cwd }));
 
 export * as Sandbox from "./sandbox";

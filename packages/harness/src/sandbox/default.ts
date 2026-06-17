@@ -1,17 +1,25 @@
-import { create } from "@platformatic/vfs";
+import { create, RealFSProvider } from "@platformatic/vfs";
 import { Layer } from "effect";
 import { FileSystem } from "../filesystem/filesystem";
 import { Process } from "./utils/process";
-import { ConfinedRealFSProvider } from "./utils/realfs";
 
-export const layer = (rootPath: string) =>
-	Layer.merge(
-		FileSystem.layerFromVfs(
-			create(new ConfinedRealFSProvider(rootPath), {
-				moduleHooks: false,
-			}),
-		),
-		Process.host,
-	);
+export interface Options {
+	/** Host working directory used to resolve relative filesystem paths. */
+	readonly cwd: string;
+}
+
+const optionsFrom = (input: string | Options): Options => (typeof input === "string" ? { cwd: input } : input);
+
+export const layer = (input: string | Options) => {
+	const options = optionsFrom(input);
+	const vfs = create(new RealFSProvider("/"), {
+		moduleHooks: false,
+		virtualCwd: true,
+	});
+
+	vfs.chdir(options.cwd);
+
+	return Layer.merge(FileSystem.layerFromVfs(vfs), Process.host);
+};
 
 export * as EnvDefault from "./default";
