@@ -1,4 +1,4 @@
-import { create, MemoryProvider } from "@platformatic/vfs";
+import { create, MemoryProvider, RealFSProvider } from "@platformatic/vfs";
 import { Effect } from "effect";
 import { Bash } from "just-bash";
 import fs from "node:fs/promises";
@@ -192,6 +192,67 @@ describe("Sandbox.EnvBash", () => {
 		});
 	});
 
+	describe("with cwd-backed VFS", () => {
+		it("resolves relative shell paths against an in-memory cwd", async () => {
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+					const shell = yield* EnvBash.Shell;
+
+					yield* filesystem.writeFileString("service.txt", "from service");
+					const cat = yield* shell.exec("cat service.txt");
+					const write = yield* shell.exec('echo "from shell" > shell.txt');
+
+					expect(cat).toMatchObject({ exitCode: 0, stdout: "from service" });
+					expect(write.exitCode).toBe(0);
+					expect(yield* filesystem.readFileString("shell.txt")).toBe("from shell\n");
+					expect(yield* filesystem.readFileString("/repo/shell.txt")).toBe("from shell\n");
+					expect(yield* filesystem.exists("/shell.txt")).toBe(false);
+				}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer({ cwd: "/repo" })))),
+			);
+		});
+
+		it("resolves relative shell paths against a sqlite cwd", async () => {
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+					const shell = yield* EnvBash.Shell;
+
+					yield* filesystem.writeFileString("service.txt", "from service");
+					const cat = yield* shell.exec("cat service.txt");
+					const write = yield* shell.exec('echo "from shell" > shell.txt');
+
+					expect(cat).toMatchObject({ exitCode: 0, stdout: "from service" });
+					expect(write.exitCode).toBe(0);
+					expect(yield* filesystem.readFileString("shell.txt")).toBe("from shell\n");
+					expect(yield* filesystem.readFileString("/repo/shell.txt")).toBe("from shell\n");
+					expect(yield* filesystem.exists("/shell.txt")).toBe(false);
+				}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } })))),
+			);
+		});
+
+		it("resolves relative shell paths against the default host cwd", async () => {
+			await using tmp = await tmpdir();
+
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const filesystem = yield* Service;
+					const shell = yield* EnvBash.Shell;
+
+					yield* filesystem.writeFileString("service.txt", "from service");
+					const cat = yield* shell.exec("cat service.txt");
+					const write = yield* shell.exec('echo "from shell" > shell.txt');
+
+					expect(cat).toMatchObject({ exitCode: 0, stdout: "from service" });
+					expect(write.exitCode).toBe(0);
+					expect(yield* filesystem.readFileString("shell.txt")).toBe("from shell\n");
+				}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvDefault.layer({ cwd: tmp.path })))),
+			);
+
+			expect(await fs.readFile(path.join(tmp.path, "shell.txt"), "utf8")).toBe("from shell\n");
+		});
+	});
+
 	describe("bridge metadata", () => {
 		it("applies chmod and utimes through a shell-local metadata overlay", async () => {
 			const vfs = create(new MemoryProvider(), { moduleHooks: false });
@@ -205,6 +266,19 @@ describe("Sandbox.EnvBash", () => {
 
 			expect(stat.mode & 0o777).toBe(0o751);
 			expect(stat.mtime).toEqual(mtime);
+		});
+
+		it("keys metadata by the VFS-resolved cwd path", async () => {
+			const vfs = create(new MemoryProvider(), { moduleHooks: false, virtualCwd: true });
+			await vfs.promises.mkdir("/repo");
+			vfs.chdir("/repo");
+			const filesystem = bridge(vfs);
+
+			await filesystem.writeFile("file.txt", "data");
+			await filesystem.chmod("file.txt", 0o751);
+
+			expect((await filesystem.stat("file.txt")).mode & 0o777).toBe(0o751);
+			expect((await filesystem.stat("/repo/file.txt")).mode & 0o777).toBe(0o751);
 		});
 
 		it("applies metadata changes through symbolic links to their target", async () => {
@@ -334,6 +408,21 @@ describe("Sandbox.EnvBash", () => {
 			}) as typeof vfs;
 
 			await expect(bridge(failing).rm("/file.txt", { force: true })).rejects.toMatchObject({ code: "EACCES" });
+		});
+	});
+
+	describe("bridge path enumeration", () => {
+		it("walks only cwd for the default real filesystem provider", async () => {
+			await using tmp = await tmpdir();
+			await fs.writeFile(path.join(tmp.path, "a.txt"), "a");
+
+			const vfs = create(new RealFSProvider("/"), { moduleHooks: false, virtualCwd: true });
+			vfs.chdir(tmp.path);
+
+			const paths = bridge(vfs).getAllPaths();
+
+			expect(paths).toContain(path.join(tmp.path, "a.txt"));
+			expect(paths.every((item) => item === tmp.path || item.startsWith(`${tmp.path}/`))).toBe(true);
 		});
 	});
 

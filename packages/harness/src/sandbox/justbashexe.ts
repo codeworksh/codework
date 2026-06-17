@@ -1,4 +1,4 @@
-import type { VirtualFileSystem } from "@platformatic/vfs";
+import { RealFSProvider, type VirtualFileSystem } from "@platformatic/vfs";
 import { Context, Effect, Layer, Schema } from "effect";
 import { Bash, type IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
@@ -38,7 +38,8 @@ export class Shell extends Context.Service<Shell, Interface>()("@codework/sandbo
 // be represented by the VFS API.
 export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 	const metadata = new Map<string, { mode?: number; mtime?: Date }>();
-	const key = (path: string) => posix.resolve("/", path);
+	const key = (path: string) => vfs.resolvePath(path);
+	const walkRoot = () => (vfs.provider instanceof RealFSProvider && vfs.virtualCwdEnabled ? vfs.cwd() : "/");
 
 	const encodingOf = (options?: { encoding?: string | null } | string) => {
 		const encoding = typeof options === "string" ? options : options?.encoding;
@@ -206,7 +207,7 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 					if (entry.isDirectory()) walk(full);
 				}
 			};
-			walk("/");
+			walk(walkRoot());
 			return paths;
 		},
 		chmod: async (path, mode) => {
