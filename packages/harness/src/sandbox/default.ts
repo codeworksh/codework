@@ -1,8 +1,8 @@
 import { create } from "@platformatic/vfs";
 import { Layer } from "effect";
 import { FileSystem } from "../filesystem/filesystem";
-import { Process } from "./process";
-import { ConfinedRealFSProvider } from "./realfs";
+import { Process } from "./utils/process";
+import { ConfinedRealFSProvider } from "./utils/realfs";
 
 export const layer = (rootPath: string) =>
 	Layer.merge(

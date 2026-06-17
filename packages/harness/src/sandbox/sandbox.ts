@@ -7,8 +7,8 @@ import { EnvDefault } from "./default";
 export { EnvDefault } from "./default";
 export { EnvInMemory } from "./inmemory";
 export { EnvBash } from "./justbashexe";
-export { Process } from "./process";
 export { EnvSqldb } from "./sqldb";
+export { Process } from "./utils/process";
 
 /**
  * The OS-primitive capabilities every sandbox must provide: the filesystem

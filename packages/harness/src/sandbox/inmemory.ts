@@ -1,8 +1,8 @@
 import { create, MemoryProvider } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
 import { FileSystem } from "../filesystem/filesystem";
-import { Process } from "./process";
-import { Seed, type SeedOptions } from "./seed";
+import { Process } from "./utils/process";
+import { Seed, type SeedOptions } from "./utils/seed";
 
 export interface Options extends SeedOptions {
 	/** Freeze the provider to prevent writes. Defaults to false. */

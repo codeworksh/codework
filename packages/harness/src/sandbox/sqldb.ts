@@ -1,8 +1,8 @@
 import { create, SqliteProvider } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
 import { FileSystem } from "../filesystem/filesystem";
-import { Process } from "./process";
-import { Seed, type SeedOptions } from "./seed";
+import { Process } from "./utils/process";
+import { Seed, type SeedOptions } from "./utils/seed";
 
 // SqliteProvider holds a single node:sqlite connection for the lifetime of
 // the layer; omitting `location` keeps the whole filesystem in `:memory:`.
