@@ -8,10 +8,12 @@ import { Sandbox } from "../src/sandbox/sandbox";
 import { filesystemSpec } from "./fixtures/sandbox.spec";
 import { tmpdir } from "./fixtures/tempdir";
 
-describe("Sandbox.EnvInMemory", () => {
-	filesystemSpec(async () => ({
-		sandbox: Sandbox.EnvInMemory.layer(),
-	}));
+describe("Sandbox.EnvInMemoryFS", () => {
+	describe("with in-memory filesystem spec", () => {
+		filesystemSpec(async () => ({
+			sandbox: Sandbox.EnvInMemory.layer(),
+		}));
+	});
 
 	// each layer build owns a fresh memory tree: nothing leaks between
 	// independent sandboxes
