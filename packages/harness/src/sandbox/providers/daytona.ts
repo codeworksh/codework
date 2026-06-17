@@ -362,21 +362,21 @@ const shellLayer = (options: Options) =>
  * Just the remote sandbox's filesystem as a `FileSystem.Vfs` (with no host
  * process execution), so it composes like any other sandbox — drive it with
  * `EnvBash.layer` for in-process just-bash, or use `layer` below for the
- * sandbox's own native shell.
+ * sandbox's own remote shell.
  */
 export const vfs = (options: Options = {}): Layer.Layer<Provides, DaytonaError> =>
 	Layer.merge(vfsLayer, Process.unsupported).pipe(Layer.provide(remote(options)));
 
 /**
  * A Daytona sandbox: its remote filesystem (`FileSystem.Vfs`) plus its own
- * native `Shell`. The sandbox is created on layer build and deleted on
+ * remote `Shell`. The sandbox is created on layer build and deleted on
  * teardown unless reused (`sandboxId`) or `persist` is set.
  */
 export const layer = (options: Options = {}): Layer.Layer<FileSystem.Vfs | Shell, DaytonaError> =>
 	Layer.merge(vfsLayer, shellLayer(options)).pipe(Layer.provide(remote(options)));
 
 /**
- * App-facing services for a Daytona sandbox: FileSystem service, the native
+ * App-facing services for a Daytona sandbox: FileSystem service, the remote
  * Shell, and the Vfs. The remote counterpart of `EnvBash.services`.
  */
 export const services = (

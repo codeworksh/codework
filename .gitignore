@@ -68,3 +68,7 @@ packages/aikit/site
 # misc
 scratch/
 repos/
+
+# Agents
+.claude
+.agents

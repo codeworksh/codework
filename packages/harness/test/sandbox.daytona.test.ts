@@ -6,23 +6,16 @@ import { EnvBash } from "../src/sandbox/justbashexe";
 import { EnvDaytona } from "../src/sandbox/providers/daytona";
 import "./utils/env";
 
-// Daytona is a real remote sandbox: these tests provision a cloud box, so they
-// only run when DAYTONA_API_KEY is present (loaded from .env.local)
-// sandbox. The provider has no synchronous I/O / cwd, so paths are absolute
-// (under /tmp, always writable).
 const apiKey = process.env.DAYTONA_API_KEY;
 const suite = apiKey ? describe : describe.skip;
 
 const PROVISION_TIMEOUT = 180_000;
 
 suite("Sandbox.EnvDaytona", () => {
-	// Daytona as a vfs provider + its own native shell: FileSystem.Service and
-	// the Shell operate on the same remote tree, and the shell runs real
-	// binaries (here, the sandbox's node) — not emulated coreutils.
 	it(
-		"FileSystem.Service and the native shell share the remote tree",
+		"FileSytem.Service with remote filesystem tree and shell within Daytona",
 		async () => {
-			const dir = `/tmp/cw-${Date.now()}-native`;
+			const dir = `/tmp/cw-${Date.now()}-remote`;
 			const result = await Effect.runPromise(
 				Effect.gen(function* () {
 					const filesystem = yield* Service;
@@ -36,7 +29,7 @@ suite("Sandbox.EnvDaytona", () => {
 					const wrote = yield* shell.exec(`echo "from shell" > ${dir}/from-shell.txt`);
 					const back = yield* filesystem.readFileString(`${dir}/from-shell.txt`);
 
-					// the native shell runs the sandbox's real binaries
+					// the remote shell runs the sandbox's real binaries
 					const uname = yield* shell.exec("uname -s");
 					const node = yield* shell.exec("node --version");
 
@@ -67,11 +60,10 @@ suite("Sandbox.EnvDaytona", () => {
 		PROVISION_TIMEOUT,
 	);
 
-	// The very same Daytona vfs, driven by in-process just-bash instead of the
-	// native shell: emulated coreutils read/write the remote tree, but real
-	// binaries (git) are not built in.
+	// Daytona VFS is used as underlying filesystem with just-bash as in-process emulated shell
+	// just-bash has limited support exec commands like no: git, binaries, etc.
 	it(
-		"runs in-process just-bash over the Daytona vfs (coreutils only)",
+		"in-process just-bash with remote filesystem within the Daytona vfs (coreutils only)",
 		async () => {
 			const dir = `/tmp/cw-${Date.now()}-justbash`;
 			const result = await Effect.runPromise(
@@ -85,7 +77,7 @@ suite("Sandbox.EnvDaytona", () => {
 					const wrote = yield* shell.exec(`echo hi > ${dir}/jb-out.txt`);
 					const back = yield* filesystem.readFileString(`${dir}/jb-out.txt`);
 
-					// git is not a just-bash built-in — for real binaries use the native shell
+					// just-bash emulated shell does not have git, so fails
 					const git = yield* shell.exec("git --version");
 
 					return { cat, piped, wrote, back, git };
