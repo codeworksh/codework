@@ -1,11 +1,14 @@
 import { posix } from "node:path";
 import { SandboxFileSystem } from "./filesystem";
 
-// The provider contract and FileStat live in `filesystem.ts` (the single source
-// of truth, VFS-free). A remote provider implements this Interface; `make` wraps
+// The provider contract and FileStat live in `filesystem.ts` (the single source of truth, VFS-free).
+// A remote provider implements this Interface; `make` wraps
 // it into the same runtime surface the local vfs backend exposes.
 export type FileStat = SandboxFileSystem.FileStat;
-export type Interface = SandboxFileSystem.Interface;
+
+// extend Interface; for extending
+// allowing for future expansion
+export interface Interface extends SandboxFileSystem.Interface {}
 
 export interface Options {
 	/**

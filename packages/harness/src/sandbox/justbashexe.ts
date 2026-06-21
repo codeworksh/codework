@@ -4,7 +4,7 @@ import { Bash, type IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
 import { SandboxFileSystem } from "./filesystem/filesystem";
-import { Virtual } from "./filesystem/virtual";
+import { Virtual } from "./filesystem/local";
 import type { Provides } from "./sandbox";
 import { type ExecResult, type ISandboxExe, Shell, ShellError } from "./shell";
 

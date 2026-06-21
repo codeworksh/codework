@@ -18,7 +18,7 @@ allowBuilds:
   msgpackr-extract: true
   msw: true
   node-liblzma: true
-  protobufjs: set this to true or false
+  protobufjs: true
 
 onlyBuiltDependencies:
   - "@mongodb-js/zstd"

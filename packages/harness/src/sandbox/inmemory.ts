@@ -1,6 +1,6 @@
 import { create, MemoryProvider } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
-import { Virtual } from "./filesystem/virtual";
+import { Virtual } from "./filesystem/local";
 import { Process } from "./utils/process";
 import { Seed, type SeedOptions } from "./utils/seed";
 

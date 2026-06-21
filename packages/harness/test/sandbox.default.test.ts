@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
-import { Virtual } from "../src/sandbox/filesystem/virtual";
+import { Virtual } from "../src/sandbox/filesystem/local";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { withService } from "./fixtures/sandbox.spec";
 import { tmpdir } from "./fixtures/tempdir";

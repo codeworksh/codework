@@ -1,7 +1,7 @@
 import { Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { EnvDefault } from "./default";
-import { Virtual } from "./filesystem/virtual";
+import { Virtual } from "./filesystem/local";
 
 // re-export from sandbox
 export { EnvDefault } from "./default";

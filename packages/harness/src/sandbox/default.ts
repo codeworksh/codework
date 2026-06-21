@@ -1,6 +1,6 @@
 import { create, RealFSProvider } from "@platformatic/vfs";
 import { Layer } from "effect";
-import { Virtual } from "./filesystem/virtual";
+import { Virtual } from "./filesystem/local";
 import { Process } from "./utils/process";
 
 export interface Options {

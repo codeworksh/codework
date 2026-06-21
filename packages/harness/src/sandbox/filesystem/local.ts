@@ -18,6 +18,10 @@ const toFileStat = (stats: VirtualStats): SandboxFileSystem.FileStat => ({
 	mtime: stats.mtime,
 });
 
+// extend Interface; for extending
+// allowing for future expansion
+export interface Interface extends SandboxFileSystem.Interface {}
+
 const isNotFound = (cause: unknown) => {
 	const code = (cause as NodeJS.ErrnoException | undefined)?.code;
 	return code === "ENOENT" || code === "ENOTDIR";
@@ -26,7 +30,12 @@ const isNotFound = (cause: unknown) => {
 const bytes = (content: string | Uint8Array) =>
 	typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content);
 
-const make = (vfs: VirtualFileSystem): SandboxFileSystem.Interface => {
+/**
+ * Provider factory method that implements the SandboxFileSytem
+ * @param vfs VirtualFileSytem instance
+ * @returns SandboxFileSytem provider instance
+ */
+const make = (vfs: VirtualFileSystem): Interface => {
 	const writeFile = async (path: string, content: string | Uint8Array) => {
 		const data = bytes(content);
 		const write = () => vfs.promises.writeFile(path, data);
@@ -93,4 +102,4 @@ export const layer = Layer.effect(
 	}),
 );
 
-export * as Virtual from "./virtual";
+export * as Virtual from "./local";

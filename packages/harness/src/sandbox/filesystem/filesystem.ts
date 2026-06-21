@@ -1,13 +1,17 @@
 import { Context, Schema } from "effect";
 
 /**
- * The runtime filesystem contract, independent of any backend. Local sandboxes
- * implement it over a VFS (`./virtual`); remote sandboxes implement it over a
- * provider (`./remote`). VFS is a local-only concern, so it lives in `virtual.ts`
- * and never leaks here — remote providers depend only on this module.
+ * The runtime filesystem contract, independent of any backend.
+ * Implementations:
+ * - Local:
+ * implement it over a VFS (`./local`);
+ * local filesystem use OS primitives; hence have broader filesytem capabilities.
  *
- * Inspired by flueframework's sandbox fs surface: isFile/isDirectory are
- * required booleans; size, mtime, and isSymbolicLink are omitted when the
+ * - Remote:
+ * implement it over a provider (`./remote`).
+ * remote filesytems depends on the interface provided by the remote provider; hence can have limited filesytem capabilities.
+ *
+ * `isFile`/`isDirectory` are required booleans; size, mtime, and isSymbolicLink are omitted when the
  * backend cannot report them — never fabricated.
  */
 
