@@ -372,6 +372,6 @@ export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 		Layer.provide(Database.defaultLayer),
 	);
 
-export const defaultLayer = (path: string) => layerWith(Sandbox.EnvDefault.layer(path));
+export const defaultLayer = (path: string) => layerWith(Sandbox.EnvNodeJSDefault.layer(path));
 
 export * as Project from "./project";

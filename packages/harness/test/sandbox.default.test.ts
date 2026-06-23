@@ -14,7 +14,7 @@ describe("Sandbox.EnvDefault", () => {
 		await using tmp = await tmpdir();
 
 		await withService(
-			async () => ({ sandbox: Sandbox.EnvDefault.layer({ cwd: tmp.path }) }),
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }) }),
 			async (filesystem) => {
 				await filesystem.writeFile("src/index.ts", "export const value = 1;\n");
 
@@ -33,7 +33,7 @@ describe("Sandbox.EnvDefault", () => {
 		await fs.writeFile(path.join(tmp.path, "host.txt"), "from host");
 
 		const content = await withService(
-			async () => ({ sandbox: Sandbox.EnvDefault.layer({ cwd: tmp.path }) }),
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }) }),
 			(filesystem) => filesystem.readFile("host.txt"),
 		);
 
@@ -47,7 +47,7 @@ describe("Sandbox.EnvDefault", () => {
 		await fs.mkdir(cwd);
 
 		await withService(
-			async () => ({ sandbox: Sandbox.EnvDefault.layer({ cwd }) }),
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd }) }),
 			async (filesystem) => {
 				await filesystem.writeFile(absoluteFile, "absolute");
 
@@ -69,7 +69,7 @@ describe("Sandbox.EnvDefault", () => {
 		await fs.symlink(outside, path.join(cwd, "leak.txt"));
 
 		const content = await withService(
-			async () => ({ sandbox: Sandbox.EnvDefault.layer({ cwd }) }),
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd }) }),
 			async (filesystem) => {
 				await filesystem.writeFile("leak.txt", "changed");
 				return filesystem.readFile("leak.txt");
@@ -95,7 +95,7 @@ describe("Sandbox.EnvDefault", () => {
 					content: yield* Effect.promise(() => vfs.promises.readFile("link.txt", "utf8")),
 					target: yield* Effect.promise(() => vfs.promises.readlink("link.txt")),
 				};
-			}).pipe(Effect.provide(Sandbox.EnvDefault.layer({ cwd: tmp.path }))),
+			}).pipe(Effect.provide(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }))),
 		);
 
 		expect(result).toEqual({ content: "inside", target: "target.txt" });

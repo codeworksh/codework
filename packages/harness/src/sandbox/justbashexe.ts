@@ -247,8 +247,7 @@ const shell = Layer.effect(
 
 /**
  * Wraps any local VFS-backed sandbox with a just-bash shell that executes
- * against the sandbox's own vfs: pick the filesystem backend (default,
- * inmemory, sqldb) and gain a Shell service on top of it.
+ * against the sandbox's own vfs: pick the filesystem backend (default, inmemory, sqldb) and gain a Shell service on top of it.
  */
 export const layer = <E, RIn>(inner: Layer.Layer<Provides, E, RIn>): Layer.Layer<Shell | Provides, E, RIn> =>
 	Layer.provideMerge(shell, inner);

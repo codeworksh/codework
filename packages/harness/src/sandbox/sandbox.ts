@@ -1,12 +1,12 @@
 import { Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
-import { EnvDefault } from "./default";
 import { Virtual } from "./filesystem/local";
+import { EnvNodeJSDefault } from "./nodejs";
 
 // re-export from sandbox
-export { EnvDefault } from "./default";
 export { EnvInMemory } from "./inmemory";
 export { EnvBash } from "./justbashexe";
+export { EnvNodeJSDefault } from "./nodejs";
 export { EnvSqldb } from "./sqldb";
 export { Process } from "./utils/process";
 
@@ -35,6 +35,6 @@ export type Sandbox<E = never, RIn = never> = Layer.Layer<Provides, E, RIn>;
 export const services = <E, RIn>(sandbox: Sandbox<E, RIn>) => Layer.provideMerge(Virtual.layer, sandbox);
 
 /** Default sandbox: the real OS filesystem and processes with relative paths resolved from `cwd`. */
-export const defaultLayer = (cwd: string) => services(EnvDefault.layer({ cwd }));
+export const defaultLayer = (cwd: string) => services(EnvNodeJSDefault.layer({ cwd }));
 
 export * as Sandbox from "./sandbox";

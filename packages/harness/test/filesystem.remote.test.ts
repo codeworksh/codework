@@ -66,7 +66,8 @@ const makeProvider = () => {
 		provider: {
 			readFile: async (path: string) =>
 				Buffer.from(await stat(path).then(() => files.get(normalize(path))!)).toString("utf8"),
-			readFileBuffer: async (path: string) => new Uint8Array(await stat(path).then(() => files.get(normalize(path))!)),
+			readFileBuffer: async (path: string) =>
+				new Uint8Array(await stat(path).then(() => files.get(normalize(path))!)),
 			writeFile: async (path: string, content: string | Uint8Array) => {
 				const target = normalize(path);
 				if (!directories.has(posix.dirname(target))) throw enoent(posix.dirname(target));

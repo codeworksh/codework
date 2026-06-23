@@ -22,4 +22,4 @@ export const layer = (input: string | Options) => {
 	return Layer.merge(Layer.succeed(Virtual.Vfs, vfs), Process.host);
 };
 
-export * as EnvDefault from "./default";
+export * as EnvNodeJSDefault from "./nodejs";

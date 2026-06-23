@@ -246,7 +246,7 @@ describe("Sandbox.EnvBash", () => {
 					expect(cat).toMatchObject({ exitCode: 0, stdout: "from service" });
 					expect(write.exitCode).toBe(0);
 					expect(yield* Effect.promise(() => filesystem.readFile("shell.txt"))).toBe("from shell\n");
-				}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvDefault.layer({ cwd: tmp.path })))),
+				}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path })))),
 			);
 
 			expect(await fs.readFile(path.join(tmp.path, "shell.txt"), "utf8")).toBe("from shell\n");
@@ -463,7 +463,7 @@ describe("Sandbox.EnvBash", () => {
 				expect(result.exitCode).toBe(0);
 
 				return yield* Effect.promise(() => filesystem.readFile("file.txt"));
-			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvDefault.layer({ cwd: tmp.path })))),
+			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path })))),
 		);
 
 		expect(content).toBe("real disk\n");
@@ -479,7 +479,7 @@ describe("Sandbox.EnvBash", () => {
 			Effect.gen(function* () {
 				const shell = yield* EnvBash.Shell;
 				return yield* shell.exec(`ln -s ${outside} leak && cat leak`);
-			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvDefault.layer({ cwd: tmp.path })))),
+			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path })))),
 		);
 
 		expect(result.exitCode).toBe(0);
