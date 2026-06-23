@@ -12,6 +12,7 @@ const enoent = (path: string) => {
 const makeProvider = () => {
 	const files = new Map<string, Buffer>();
 	const directories = new Set(["/"]);
+	const symlinks = new Set<string>();
 
 	const normalize = (path: string) => posix.normalize(path);
 	const mkdirp = (path: string) => {
@@ -25,9 +26,16 @@ const makeProvider = () => {
 	const stat = async (path: string): Promise<RemoteFileSystem.FileStat> => {
 		const target = normalize(path);
 		if (directories.has(target)) return { isFile: false, isDirectory: true };
+		if (symlinks.has(target)) return { isFile: true, isDirectory: false, isSymbolicLink: false };
 		const content = files.get(target);
 		if (content !== undefined) return { size: content.byteLength, isFile: true, isDirectory: false };
 		throw enoent(target);
+	};
+
+	const lstat = async (path: string): Promise<RemoteFileSystem.FileStat> => {
+		const target = normalize(path);
+		if (symlinks.has(target)) return { isFile: false, isDirectory: false, isSymbolicLink: true };
+		return stat(target);
 	};
 
 	const readdir = async (path: string) => {
@@ -63,6 +71,7 @@ const makeProvider = () => {
 	return {
 		files,
 		directories,
+		symlinks,
 		provider: {
 			readFile: async (path: string) =>
 				Buffer.from(await stat(path).then(() => files.get(normalize(path))!)).toString("utf8"),
@@ -74,6 +83,7 @@ const makeProvider = () => {
 				files.set(target, typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content));
 			},
 			stat,
+			lstat,
 			readdir,
 			exists: async (path: string) => {
 				try {
@@ -112,6 +122,20 @@ describe("RemoteFileSystem", () => {
 		expect((await filesystem.stat("src/index.ts")).isFile).toBe(true);
 		expect(await filesystem.readdir("src")).toEqual(["index.ts"]);
 		expect(remote.files.has("/workspace/src/index.ts")).toBe(true);
+	});
+
+	it("resolves explicit remote lstat paths against cwd when the provider supports it", async () => {
+		const remote = makeProvider();
+		remote.directories.add("/workspace");
+		remote.symlinks.add("/workspace/link.txt");
+		const filesystem = RemoteFileSystem.make(remote.provider, { cwd: "/workspace" });
+
+		expect(filesystem.lstat).toBeDefined();
+		const stat = await filesystem.stat("link.txt");
+		const lstat = await filesystem.lstat!("link.txt");
+
+		expect(stat.isSymbolicLink).toBe(false);
+		expect(lstat.isSymbolicLink).toBe(true);
 	});
 
 	it("passes relative paths through when no cwd is configured", async () => {

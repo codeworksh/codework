@@ -8,6 +8,8 @@ const ignoredPaths = [
 	"**/node_modules/**",
 	".pnpm-store/**",
 	".zed/**",
+	".vercel/**",
+	"**/.vercel/**",
 	"packages/webui/src/routeTree.gen.ts",
 ];
 const aliases = {

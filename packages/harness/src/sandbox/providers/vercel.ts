@@ -126,7 +126,7 @@ export const statsFrom = (stats: Stats): RemoteFileSystem.FileStat => {
 
 type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
-	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "readdir" | "exists" | "mkdir" | "rm"
+	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm"
 >;
 
 // The Vercel `fs` surface is `node:fs/promises`-compatible, so the provider
@@ -139,6 +139,10 @@ const providerFrom = (sandbox: RemoteSandbox): RemoteFilesystemProvider => {
 		writeFile: (path: string, content: string | Uint8Array) =>
 			sandbox.fs.writeFile(path, typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content)),
 		stat: async (path: string) => statsFrom(await sandbox.fs.stat(path)),
+		// Keep symlink identity explicit: Vercel's `stat` follows symlinks
+		// (`stat -L`), so remote-aware callers must ask for `lstat` when they
+		// need the entry itself instead of the target's metadata.
+		lstat: async (path: string) => statsFrom(await sandbox.fs.lstat(path)),
 		// `withFileTypes` lists via `find`, which includes dotfiles (`.git` …);
 		// the bare `readdir` shells out to `ls -1` and would drop them.
 		readdir: async (path: string) => (await sandbox.fs.readdir(path, { withFileTypes: true })).map((e) => e.name),

@@ -10,6 +10,8 @@ const ignoredPaths = [
 	".zed/**",
 	".idea/**",
 	".vscode/**",
+	".vercel/**",
+	"**/.vercel/**",
 ];
 const aliases = {
 	"@codeworksh/utils": fileURLToPath(new URL("../utils/src/index.ts", import.meta.url)),

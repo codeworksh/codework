@@ -120,7 +120,7 @@ export const statsFrom = (info: FileInfo): RemoteFileSystem.FileStat => {
 
 type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
-	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "readdir" | "exists" | "mkdir" | "rm"
+	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm"
 >;
 
 const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
@@ -130,6 +130,10 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 		writeFile: (path: string, content: string | Uint8Array) =>
 			sandbox.fs.uploadFile(typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content), path),
 		stat: async (path: string) => statsFrom(await sandbox.fs.getFileDetails(path)),
+		// Daytona's toolbox exposes a single file-details endpoint that reports
+		// the entry mode when available. Expose it as remote `lstat` too so
+		// symlink-aware callers can ask for that intent explicitly.
+		lstat: async (path: string) => statsFrom(await sandbox.fs.getFileDetails(path)),
 		readdir: async (path: string) => (await sandbox.fs.listFiles(path)).map((entry) => entry.name),
 		exists: async (path: string) => {
 			try {

@@ -2,6 +2,7 @@ import type { Stats } from "node:fs";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
+import { RemoteFileSystem } from "../src/sandbox/filesystem/remote";
 import { EnvVercel, statsFrom } from "../src/sandbox/providers/vercel";
 import { Shell } from "../src/sandbox/shell";
 import "./utils/env";
@@ -69,6 +70,12 @@ suite("Sandbox.EnvVercel", () => {
 					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/project/package.json`, "{}"));
 					const workspace = yield* Effect.promise(() => filesystem.readdir(`${dir}/workspace`));
 					const project = yield* Effect.promise(() => filesystem.readdir(`${dir}/workspace/project`));
+					yield* Effect.promise(() => filesystem.writeFile(`${dir}/target.txt`, "target"));
+					const linked = yield* shell.exec(`ln -s "$(pwd)/${dir}/target.txt" ${dir}/link.txt`);
+					const linkStat = yield* Effect.promise(() => filesystem.stat(`${dir}/link.txt`));
+					const linkLstat = yield* Effect.promise(() =>
+						(filesystem as RemoteFileSystem.Interface).lstat!(`${dir}/link.txt`),
+					);
 
 					return {
 						cat,
@@ -81,6 +88,9 @@ suite("Sandbox.EnvVercel", () => {
 						missing: yield* Effect.promise(() => filesystem.exists(`${dir}/nope.txt`)),
 						workspace,
 						project,
+						linked,
+						linkStat,
+						linkLstat,
 					};
 				}).pipe(Effect.provide(EnvVercel.services({ persist: false }))),
 			);
@@ -99,6 +109,10 @@ suite("Sandbox.EnvVercel", () => {
 			expect(result.workspace).toContain("package.json");
 			expect(result.workspace).toContain("project");
 			expect(result.project).toContain("package.json");
+			expect(result.linked.exitCode).toBe(0);
+			expect(result.linkStat.isFile).toBe(true);
+			expect(result.linkStat.isSymbolicLink).toBe(false);
+			expect(result.linkLstat.isSymbolicLink).toBe(true);
 		},
 		PROVISION_TIMEOUT,
 	);
