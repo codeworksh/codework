@@ -10,7 +10,9 @@ export { EnvNodeJSDefault } from "./nodejs";
 export { EnvSqldb } from "./sqldb";
 export { Process } from "./utils/process";
 
+// remote
 export { EnvDaytona } from "./providers/daytona";
+export { EnvVercel } from "./providers/vercel";
 
 /**
  * Local OS-primitive capabilities: a VFS-backed filesystem plus process

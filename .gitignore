@@ -66,8 +66,9 @@ scratch
 packages/aikit/site
 
 # misc
-scratch/
-repos/
+scratch
+repos
+.vercel
 
 # Agents
 .claude
