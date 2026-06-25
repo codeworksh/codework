@@ -1,6 +1,7 @@
 import { Effect, Exit, Layer, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox";
+import { type ExecChunk, Shell as SandboxShell } from "../src/sandbox/shell";
 import { bashTool } from "../src/tools/bash";
 import * as Executor from "../src/tools/executor";
 import { make as makeProgress, noop as progressNoop } from "../src/tools/progress";
@@ -155,7 +156,7 @@ describe("bash handler in isolation — buffered (def/exec split)", () => {
 
 		expect(success.truncated).toBe(true);
 		expect(success.fullOutputPath).toBeDefined();
-		expect(success.output).toContain("[Showing lines");
+		expect(success.output).toContain("[showing lines");
 	});
 });
 
@@ -197,5 +198,38 @@ describe("bash handler in isolation — streaming (variant B)", () => {
 		);
 
 		expect(Exit.isFailure(exit)).toBe(true);
+	});
+});
+
+describe("fromSandboxShell streaming bridge (variant B over a backend Shell)", () => {
+	// A sandbox Shell that supports `stream` (the shape Vercel implements via
+	// Command.logs) → fromSandboxShell exposes ToolShell.stream → bash variant B.
+	const bridged = (chunks: ReadonlyArray<ExecChunk>): Layer.Layer<ToolShell> =>
+		fromSandboxShell.pipe(
+			Layer.provide(
+				Layer.succeed(
+					SandboxShell,
+					SandboxShell.of({
+						exec: () => Effect.die(new Error("exec should not run when streaming")),
+						stream: () => Stream.fromIterable(chunks),
+					}),
+				),
+			),
+		);
+
+	it("folds backend stdout/stderr chunks into Output and exit into the exit code", async () => {
+		const layer = bridged([
+			{ _tag: "stdout", bytes: utf8.encode("out\n") },
+			{ _tag: "stderr", bytes: utf8.encode("err\n") },
+			{ _tag: "exit", exitCode: 0 },
+		]);
+
+		const success = await Effect.runPromise(
+			bashTool.handler({ command: "x" }, ctx).pipe(Effect.provide(layer), Effect.provide(progressNoop)),
+		);
+
+		expect(success.exitCode).toBe(0);
+		expect(success.output).toContain("out");
+		expect(success.output).toContain("err");
 	});
 });

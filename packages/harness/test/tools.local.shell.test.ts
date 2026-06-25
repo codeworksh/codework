@@ -1,4 +1,4 @@
-import { Duration, Effect, Layer } from "effect";
+import { Duration, Effect, Layer, Stream } from "effect";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -74,6 +74,36 @@ describe("ToolShell.local (real OS shell)", () => {
 
 		expect(error).toBeInstanceOf(ToolShellTimeout);
 		expect(error._tag).toBe("ToolShellTimeout");
+	});
+
+	it("streams many lines incrementally, in order, then a terminal exit", async () => {
+		// The per-line sleep forces the OS to deliver output across several reads,
+		// so this exercises real incremental streaming (not one buffered chunk) and
+		// that line order is preserved across chunk boundaries.
+		const events = await Effect.runPromise(
+			Effect.gen(function* () {
+				const shell = yield* ToolShell;
+				if (shell.stream === undefined) throw new Error("ToolShell.local should support stream");
+				return yield* shell.stream("for i in 1 2 3 4 5; do echo line$i; sleep 0.05; done").pipe(Stream.runCollect);
+			}).pipe(Effect.provide(localShell())),
+		);
+
+		const decoder = new TextDecoder();
+		let text = "";
+		let exitCode: number | undefined;
+		let outputChunks = 0;
+		for (const event of events) {
+			if (event._tag === "Exit") exitCode = event.exitCode;
+			else {
+				outputChunks++;
+				text += decoder.decode(event.bytes);
+			}
+		}
+		const lines = text.split("\n").filter((line) => line.length > 0);
+
+		expect(lines).toEqual(["line1", "line2", "line3", "line4", "line5"]);
+		expect(exitCode).toBe(0);
+		expect(outputChunks).toBeGreaterThan(1);
 	});
 
 	it("force-kills a command that ignores SIGTERM on timeout", async () => {

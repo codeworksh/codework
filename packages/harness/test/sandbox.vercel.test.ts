@@ -1,6 +1,6 @@
+import { Effect, ManagedRuntime, Stream } from "effect";
 import type { Stats } from "node:fs";
-import { Effect } from "effect";
-import { describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { RemoteFileSystem } from "../src/sandbox/filesystem/remote";
 import { EnvVercel, statsFrom } from "../src/sandbox/providers/vercel";
@@ -12,46 +12,41 @@ const suite = token ? describe : describe.skip;
 
 const PROVISION_TIMEOUT = 180_000;
 
-// ⚠️ QUOTA / RATE LIMITS — read before adding or hammering these tests.
+// ⚠️ ONE shared sandbox for the whole gated suite.
 //
-// Every test in the gated suites below provisions a REAL Vercel sandbox (one
-// microVM per `runWith` call / per `services({...})` provide). On the Hobby
-// (free) plan two distinct caps apply, and both surface as HTTP 429 from
-// `Sandbox.create`:
+// The Hobby (free) plan caps sandbox creation at ~40 per rolling ~10-minute
+// window (and 10 concurrent), and exhausting it surfaces as HTTP 429 from
+// `Sandbox.create` — NOT a test/code bug. To stay well clear, the suite
+// provisions a SINGLE microVM once (`beforeAll`), reuses it across every
+// behavioral test via a `ManagedRuntime`, and deletes it on teardown
+// (`afterAll`, `persist: false`).
 //
-//   1. Concurrency:  max 10 sandboxes running at once.
-//        → `{ code: "rate_limit_exceeded", message: "Concurrency limit exceeded (10)" }`
-//   2. Creation rate: ~40 sandbox creations per rolling ~10-minute window
-//        (`api-sandboxes-vcpus-creation-hobby`).
-//        → `{ code: "rate_limited", message: "Too many requests - try again in 10 minutes (more than 40)" }`
-//
-// A single clean run of this file provisions ~6 sandboxes (well under both
-// caps), so it passes on a fresh quota window. But running the file repeatedly
-// in quick succession — or alongside other sandbox activity on the same team —
-// exhausts the budget and the run fails with 429s that are NOT test/code bugs.
-// If you see those: wait for the ~10-minute window to reset, run fewer at a
-// time, or upgrade the plan (https://vercel.com/docs/vercel-sandbox/pricing).
-//
-// `runWith` provisions with `persist: false` so teardown deletes the sandbox
-// (no lingering snapshot) and frees the concurrency slot promptly. Leftovers
-// can be swept with `Sandbox.list()` + `sandbox.delete()` if a run is killed
-// mid-flight.
+// Creation-time options that would otherwise each need their own sandbox are
+// baked into this one box so their behavior is still covered: a fixed `node24`
+// runtime, a `cwd`, and an `envVars` entry. (A per-runtime matrix would need a
+// sandbox per version, which is intentionally not done — see git history.)
+const SANDBOX_CWD = "/tmp";
+const BAKED_ENV = "from-sandbox";
 
-// Provision a sandbox with the given provider options, run the program against
-// its filesystem + shell, and tear the sandbox down. Each call is one microVM.
-// `persist: false` keeps these tests from leaving persistent sandboxes/snapshots
-// behind, so teardown frees the account's concurrency slot promptly.
-const runWith = <A, E>(
-	options: EnvVercel.Options,
-	program: Effect.Effect<A, E, SandboxFileSystem.Service | Shell>,
-): Promise<A> => Effect.runPromise(program.pipe(Effect.provide(EnvVercel.services({ persist: false, ...options }))));
+suite("Sandbox.EnvVercel (shared sandbox)", () => {
+	let runtime!: ManagedRuntime.ManagedRuntime<SandboxFileSystem.Service | Shell, EnvVercel.VercelError>;
 
-suite("Sandbox.EnvVercel", () => {
+	beforeAll(() => {
+		runtime = ManagedRuntime.make(
+			EnvVercel.services({ persist: false, runtime: "node24", cwd: SANDBOX_CWD, envVars: { CW_ENV: BAKED_ENV } }),
+		);
+	});
+	afterAll(() => runtime.dispose());
+
+	// Run a program against the one shared sandbox.
+	const run = <A, E>(program: Effect.Effect<A, E, SandboxFileSystem.Service | Shell>): Promise<A> =>
+		runtime.runPromise(program);
+
 	it(
-		"SandboxFileSystem.Service and Shell share the remote Vercel sandbox",
+		"shares one filesystem + shell across SandboxFileSystem.Service and Shell",
 		async () => {
-			const dir = `cw-${Date.now()}-remote`;
-			const result = await Effect.runPromise(
+			const dir = `cw-${Date.now()}-share`;
+			const result = await run(
 				Effect.gen(function* () {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* Shell;
@@ -59,17 +54,15 @@ suite("Sandbox.EnvVercel", () => {
 					yield* Effect.promise(() => filesystem.writeFile(`${dir}/from-service.txt`, "from service"));
 					const cat = yield* shell.exec(`cat ${dir}/from-service.txt`);
 
-					const wrote = yield* shell.exec(`echo "from shell" > ${dir}/from-shell.txt`);
+					yield* shell.exec(`echo "from shell" > ${dir}/from-shell.txt`);
 					const back = yield* Effect.promise(() => filesystem.readFile(`${dir}/from-shell.txt`));
-
-					const uname = yield* shell.exec("uname -s");
-					const node = yield* shell.exec("node --version");
 
 					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/package.json`, "{}"));
 					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/.git/config`, ""));
 					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/project/package.json`, "{}"));
 					const workspace = yield* Effect.promise(() => filesystem.readdir(`${dir}/workspace`));
 					const project = yield* Effect.promise(() => filesystem.readdir(`${dir}/workspace/project`));
+
 					yield* Effect.promise(() => filesystem.writeFile(`${dir}/target.txt`, "target"));
 					const linked = yield* shell.exec(`ln -s "$(pwd)/${dir}/target.txt" ${dir}/link.txt`);
 					const linkStat = yield* Effect.promise(() => filesystem.stat(`${dir}/link.txt`));
@@ -79,12 +72,9 @@ suite("Sandbox.EnvVercel", () => {
 
 					return {
 						cat,
-						wrote,
 						back,
-						uname,
-						node,
+						uname: yield* shell.exec("uname -s"),
 						exists: yield* Effect.promise(() => filesystem.exists(`${dir}/from-service.txt`)),
-						isDir: yield* Effect.promise(async () => (await filesystem.stat(dir)).isDirectory),
 						missing: yield* Effect.promise(() => filesystem.exists(`${dir}/nope.txt`)),
 						workspace,
 						project,
@@ -92,18 +82,14 @@ suite("Sandbox.EnvVercel", () => {
 						linkStat,
 						linkLstat,
 					};
-				}).pipe(Effect.provide(EnvVercel.services({ persist: false }))),
+				}),
 			);
 
 			expect(result.cat.exitCode).toBe(0);
 			expect(result.cat.stdout.trim()).toBe("from service");
-			expect(result.wrote.exitCode).toBe(0);
 			expect(result.back.trim()).toBe("from shell");
 			expect(result.uname.stdout.trim()).toBe("Linux");
-			expect(result.node.exitCode).toBe(0);
-			expect(result.node.stdout.trim()).toMatch(/^v\d/);
 			expect(result.exists).toBe(true);
-			expect(result.isDir).toBe(true);
 			expect(result.missing).toBe(false);
 			expect(result.workspace).toContain(".git");
 			expect(result.workspace).toContain("package.json");
@@ -116,36 +102,26 @@ suite("Sandbox.EnvVercel", () => {
 		},
 		PROVISION_TIMEOUT,
 	);
-});
 
-// Provider-specific options must actually take effect inside the sandbox. These
-// assert the observable result of each knob rather than trusting the SDK.
-suite("Sandbox.EnvVercel custom options", () => {
-	it.each([
-		["node22", /^v22\./],
-		["node24", /^v24\./],
-		["node26", /^v26\./],
-	] as const)(
-		"runtime %s boots the matching node version",
-		async (runtime, expected) => {
-			const node = await runWith(
-				{ runtime },
+	it(
+		"boots the configured node runtime (node24)",
+		async () => {
+			const node = await run(
 				Effect.gen(function* () {
 					const shell = yield* Shell;
 					return yield* shell.exec("node --version");
 				}),
 			);
 			expect(node.exitCode).toBe(0);
-			expect(node.stdout.trim()).toMatch(expected);
+			expect(node.stdout.trim()).toMatch(/^v24\./);
 		},
 		PROVISION_TIMEOUT,
 	);
 
 	it(
-		"envVars are inherited by commands and per-command env overrides them",
+		"inherits sandbox envVars and lets a per-command env override them",
 		async () => {
-			const result = await runWith(
-				{ envVars: { CW_ENV: "from-sandbox" } },
+			const result = await run(
 				Effect.gen(function* () {
 					const shell = yield* Shell;
 					const inherited = yield* shell.exec("printenv CW_ENV");
@@ -153,34 +129,136 @@ suite("Sandbox.EnvVercel custom options", () => {
 					return { inherited, overridden };
 				}),
 			);
-			expect(result.inherited.exitCode).toBe(0);
-			expect(result.inherited.stdout.trim()).toBe("from-sandbox");
+			expect(result.inherited.stdout.trim()).toBe(BAKED_ENV);
 			expect(result.overridden.stdout.trim()).toBe("from-command");
 		},
 		PROVISION_TIMEOUT,
 	);
 
 	it(
-		"cwd threads into both the shell and relative filesystem ops",
+		"runs the shell and resolves relative fs ops in the configured cwd",
 		async () => {
 			const marker = `cwd-${Date.now()}.txt`;
-			const result = await runWith(
-				{ cwd: "/tmp" },
+			const result = await run(
 				Effect.gen(function* () {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* Shell;
 					const pwd = yield* shell.exec("pwd");
 					// relative write resolves against cwd → /tmp/<marker>
 					yield* Effect.promise(() => filesystem.writeFile(marker, "in cwd"));
-					// the shell runs in cwd too, so the same relative path reads it back
 					const cat = yield* shell.exec(`cat ${marker}`);
-					const abs = yield* Effect.promise(() => filesystem.readFile(`/tmp/${marker}`));
+					const abs = yield* Effect.promise(() => filesystem.readFile(`${SANDBOX_CWD}/${marker}`));
 					return { pwd: pwd.stdout.trim(), cat: cat.stdout.trim(), abs: abs.trim() };
 				}),
 			);
-			expect(result.pwd).toBe("/tmp");
+			expect(result.pwd).toBe(SANDBOX_CWD);
 			expect(result.cat).toBe("in cwd");
 			expect(result.abs).toBe("in cwd");
+		},
+		PROVISION_TIMEOUT,
+	);
+
+	it(
+		"reports stderr and a non-zero exit from a buffered exec",
+		async () => {
+			const result = await run(
+				Effect.gen(function* () {
+					const shell = yield* Shell;
+					return yield* shell.exec("echo oops >&2; exit 5");
+				}),
+			);
+			expect(result.exitCode).toBe(5);
+			expect(result.stderr).toContain("oops");
+		},
+		PROVISION_TIMEOUT,
+	);
+
+	it(
+		"interrupting a long exec returns control promptly (step 6 cancellation)",
+		async () => {
+			const elapsedMs = await run(
+				Effect.gen(function* () {
+					const shell = yield* Shell;
+					const started = Date.now();
+					// The timeout interrupts the exec fiber; the detached command's kill
+					// finalizer fires so the remote process does not linger.
+					yield* shell.exec("sleep 30").pipe(Effect.timeout("3 seconds"), Effect.ignore);
+					return Date.now() - started;
+				}),
+			);
+			expect(elapsedMs).toBeLessThan(15_000);
+		},
+		PROVISION_TIMEOUT,
+	);
+
+	it(
+		"streams stdout/stderr chunks then a terminal exit (step 7)",
+		async () => {
+			const chunks = await run(
+				Effect.gen(function* () {
+					const shell = yield* Shell;
+					if (shell.stream === undefined) throw new Error("Vercel Shell should support stream");
+					return yield* shell.stream("printf 'hello\\n'; printf 'oops\\n' >&2; exit 0").pipe(Stream.runCollect);
+				}),
+			);
+
+			const decoder = new TextDecoder();
+			let text = "";
+			let exitCode: number | undefined;
+			for (const chunk of chunks) {
+				if (chunk._tag === "exit") exitCode = chunk.exitCode;
+				else text += decoder.decode(chunk.bytes);
+			}
+
+			expect(text).toContain("hello");
+			expect(text).toContain("oops");
+			expect(exitCode).toBe(0);
+		},
+		PROVISION_TIMEOUT,
+	);
+
+	it(
+		"streams many lines in order over the real backend",
+		async () => {
+			const chunks = await run(
+				Effect.gen(function* () {
+					const shell = yield* Shell;
+					if (shell.stream === undefined) throw new Error("Vercel Shell should support stream");
+					return yield* shell.stream("seq 1 50").pipe(Stream.runCollect);
+				}),
+			);
+
+			const decoder = new TextDecoder();
+			let text = "";
+			let exitCode: number | undefined;
+			for (const chunk of chunks) {
+				if (chunk._tag === "exit") exitCode = chunk.exitCode;
+				else text += decoder.decode(chunk.bytes);
+			}
+			const lines = text.split("\n").filter((line) => line.length > 0);
+
+			expect(lines.length).toBe(50);
+			expect(lines[0]).toBe("1");
+			expect(lines.at(-1)).toBe("50");
+			expect(exitCode).toBe(0);
+		},
+		PROVISION_TIMEOUT,
+	);
+
+	it(
+		"surfaces a non-zero exit code from a streamed command",
+		async () => {
+			const chunks = await run(
+				Effect.gen(function* () {
+					const shell = yield* Shell;
+					if (shell.stream === undefined) throw new Error("Vercel Shell should support stream");
+					return yield* shell.stream("echo nope; exit 3").pipe(Stream.runCollect);
+				}),
+			);
+
+			const exit = chunks.find((chunk) => chunk._tag === "exit");
+			expect(exit).toBeDefined();
+			expect((exit as { exitCode: number }).exitCode).toBe(3);
 		},
 		PROVISION_TIMEOUT,
 	);

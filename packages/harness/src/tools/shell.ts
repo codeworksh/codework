@@ -88,11 +88,13 @@ export class ToolShell extends Context.Service<ToolShell, IToolShell>()("@codewo
  * Bridge the existing `sandbox/Shell` into a `ToolShell`. Used for just-bash
  * (in-process) and remote providers.
  *
- * Caveats of the bridge: `sandbox/Shell.exec` is buffered (no `stream`) and
- * takes only `{ env }`, so `cwd` is ignored — the backing sandbox owns its
- * working directory. The `timeout` is enforced here with `Effect.timeoutOption`:
- * interruption always returns control, but the underlying command is only truly
- * killed mid-flight on signal-aware backends (handled in the provider layer).
+ * Caveats of the bridge: `sandbox/Shell` takes only `{ env }`, so `cwd` is
+ * ignored — the backing sandbox owns its working directory. The buffered `exec`
+ * timeout is enforced here with `Effect.timeoutOption` (interruption always
+ * returns control; the underlying command is only truly killed mid-flight on
+ * signal-aware backends, handled in the provider layer). When the backend exposes
+ * `stream` (e.g. Vercel `Command.logs`), it is bridged to {@link IToolShell.stream}
+ * so the bash tool streams over it too.
  */
 export const fromSandboxShell: Layer.Layer<ToolShell, never, Shell> = Layer.effect(
 	ToolShell,
@@ -119,7 +121,24 @@ export const fromSandboxShell: Layer.Layer<ToolShell, never, Shell> = Layer.effe
 			);
 		};
 
-		return ToolShell.of({ exec });
+		// Bridge the backend's optional streaming (e.g. Vercel `Command.logs`) into
+		// `ToolShell.stream`: stdout/stderr chunks fold into `Output`, `exit` into
+		// `Exit`. The deadline for the streaming path is the consumer's (the bash tool).
+		const sandboxStream = shell.stream;
+		const stream: IToolShell["stream"] = sandboxStream
+			? (command, options) =>
+					sandboxStream(command, options?.env ? { env: options.env } : undefined).pipe(
+						Stream.map(
+							(chunk): ToolShellEvent =>
+								chunk._tag === "exit"
+									? { _tag: "Exit", exitCode: chunk.exitCode }
+									: { _tag: "Output", bytes: chunk.bytes },
+						),
+						Stream.mapError((cause) => new ToolShellError({ command, cause })),
+					)
+			: undefined;
+
+		return ToolShell.of(stream ? { exec, stream } : { exec });
 	}),
 );
 

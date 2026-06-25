@@ -1,10 +1,12 @@
-import { type CommandFinished, Sandbox as RemoteSandbox } from "@vercel/sandbox";
-import { Context, Effect, Layer, Schema } from "effect";
+import { type Command, Sandbox as RemoteSandbox } from "@vercel/sandbox";
+import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
 import type { Stats } from "node:fs";
 import { SandboxFileSystem } from "../filesystem/filesystem";
 import { RemoteFileSystem } from "../filesystem/remote";
-import { type ExecResult, type ISandboxExe, Shell, ShellError } from "../shell";
+import { type ExecChunk, type ExecResult, type ISandboxExe, Shell, ShellError } from "../shell";
+
+const utf8 = new TextEncoder();
 
 export class VercelError extends Schema.TaggedErrorClass<VercelError>()("VercelError", {
 	cause: Schema.optional(Schema.Defect()),
@@ -159,26 +161,75 @@ const providerFrom = (sandbox: RemoteSandbox): RemoteFilesystemProvider => {
 	return filesystem;
 };
 
+// Arbitrary command strings run through `sh -c` to match the single-string
+// contract the rest of the harness expects. Commands run **detached** so the
+// returned `Command` exposes `kill`/`logs`/`wait`: a `cwd`/`env` is threaded in,
+// and the per-command `execTimeout` is a server-side SIGKILL deadline.
+const spawn = (
+	sandbox: RemoteSandbox,
+	options: Options,
+	command: string,
+	env?: Record<string, string>,
+): Promise<Command> =>
+	sandbox.runCommand({
+		cmd: "sh",
+		args: ["-c", command],
+		cwd: options.cwd,
+		env,
+		detached: true,
+		...(options.execTimeout === undefined ? {} : { timeoutMs: options.execTimeout }),
+	});
+
+// Acquire a detached command and register its kill as a scope finalizer, so an
+// interrupt / timeout from the consumer actually terminates the remote process
+// (best-effort SIGKILL) instead of leaving it running server-side.
+const acquireCommand = (sandbox: RemoteSandbox, options: Options, command: string, env?: Record<string, string>) =>
+	Effect.acquireRelease(
+		Effect.tryPromise({
+			try: () => spawn(sandbox, options, command, env),
+			catch: (cause) => new ShellError({ command, cause }),
+		}),
+		(cmd) => Effect.promise(() => cmd.kill("SIGKILL").catch(() => {})),
+	);
+
 // Vercel reports stdout and stderr separately with a distinct exit code, so the
-// shell surfaces both streams faithfully. Arbitrary command strings run through
-// `sh -c` to match the single-string contract the rest of the harness expects.
+// shell surfaces both streams faithfully.
 const exec =
 	(sandbox: RemoteSandbox, options: Options): ISandboxExe["exec"] =>
 	(command, opts) =>
-		Effect.tryPromise({
-			try: async (): Promise<ExecResult> => {
-				const result: CommandFinished = await sandbox.runCommand({
-					cmd: "sh",
-					args: ["-c", command],
-					cwd: options.cwd,
-					env: opts?.env,
-					...(options.execTimeout === undefined ? {} : { timeoutMs: options.execTimeout }),
-				});
-				const [stdout, stderr] = await Promise.all([result.stdout(), result.stderr()]);
-				return { stdout, stderr, exitCode: result.exitCode };
-			},
-			catch: (cause) => new ShellError({ command, cause }),
-		});
+		acquireCommand(sandbox, options, command, opts?.env).pipe(
+			Effect.flatMap((cmd) =>
+				Effect.tryPromise({
+					try: async (): Promise<ExecResult> => {
+						const result = await cmd.wait();
+						const [stdout, stderr] = await Promise.all([result.stdout(), result.stderr()]);
+						return { stdout, stderr, exitCode: result.exitCode };
+					},
+					catch: (cause) => new ShellError({ command, cause }),
+				}),
+			),
+			Effect.scoped,
+		);
+
+// Streaming output via `Command.logs` (an async generator of stdout/stderr
+// entries), followed by the exit code from `wait`. The kill finalizer fires when
+// the consuming scope closes (interrupt / timeout).
+const stream =
+	(sandbox: RemoteSandbox, options: Options): NonNullable<ISandboxExe["stream"]> =>
+	(command, opts) =>
+		Stream.unwrap(
+			acquireCommand(sandbox, options, command, opts?.env).pipe(
+				Effect.map((cmd) => {
+					const logs = Stream.fromAsyncIterable(cmd.logs(), (cause) => new ShellError({ command, cause })).pipe(
+						Stream.map((log): ExecChunk => ({ _tag: log.stream, bytes: utf8.encode(log.data) })),
+					);
+					const exit = Stream.fromEffect(
+						Effect.tryPromise({ try: () => cmd.wait(), catch: (cause) => new ShellError({ command, cause }) }),
+					).pipe(Stream.map((finished): ExecChunk => ({ _tag: "exit", exitCode: finished.exitCode })));
+					return Stream.concat(logs, exit);
+				}),
+			),
+		);
 
 const filesystemLayer = (options: Options) =>
 	Layer.effect(
@@ -189,7 +240,7 @@ const filesystemLayer = (options: Options) =>
 const shellLayer = (options: Options) =>
 	Layer.effect(
 		Shell,
-		Effect.map(Remote, ({ sandbox }) => Shell.of({ exec: exec(sandbox, options) })),
+		Effect.map(Remote, ({ sandbox }) => Shell.of({ exec: exec(sandbox, options), stream: stream(sandbox, options) })),
 	);
 
 /**
