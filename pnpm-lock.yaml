@@ -193,7 +193,7 @@ importers:
         version: 0.187.0(ws@8.20.0)
       '@effect/platform-node':
         specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78(effect@4.0.0-beta.78)(ioredis@5.11.1)
+        version: 4.0.0-beta.78(effect@4.0.0-beta.86)(ioredis@5.11.1)
       '@platformatic/vfs':
         specifier: ^0.4.0
         version: 0.4.0
@@ -205,10 +205,10 @@ importers:
         version: 1.7.2
       drizzle-orm:
         specifier: 1.0.0-rc.3
-        version: 1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)
+        version: 1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.86)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.0-beta.86
+        version: 4.0.0-beta.86
       esbuild:
         specifier: ^0.27.3
         version: 0.27.7
@@ -260,7 +260,7 @@ importers:
         version: 11.0.1
       drizzle-kit:
         specifier: 1.0.0-rc.3
-        version: 1.0.0-rc.3(drizzle-orm@1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6))
+        version: 1.0.0-rc.3(drizzle-orm@1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.86)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6))
 
   packages/sdk:
     dependencies:
@@ -3799,8 +3799,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@4.0.0-beta.78:
-    resolution: {integrity: sha512-j79Rl9QpHwMz/ZJWLNpZoiVj9N7zHqiLKN5EcYd/A8J1oqejILWQLfc4HPlvqHqKC8SK55LJ+X4gy4ONJ+JpfQ==}
+  effect@4.0.0-beta.86:
+    resolution: {integrity: sha512-+Y16hy3LhAju/FM3dz3Xp+aGi8dw9AtEzswcvwxREpeEPq+rL8TFS1PgWAO1+/3kKKH4bq9NdBGtfhHzM2K7Ow==}
 
   electron-to-chromium@1.5.340:
     resolution: {integrity: sha512-908qahOGocRMinT2nM3ajCEM99H4iPdv84eagPP3FfZy/1ZGeOy2CZYzjhms81ckOPCXPlW7LkY4XpxD8r1DrA==}
@@ -6524,19 +6524,19 @@ snapshots:
 
   '@effect/language-service@0.86.2': {}
 
-  '@effect/platform-node-shared@4.0.0-beta.78(effect@4.0.0-beta.78)':
+  '@effect/platform-node-shared@4.0.0-beta.78(effect@4.0.0-beta.86)':
     dependencies:
       '@types/ws': 8.18.1
-      effect: 4.0.0-beta.78
+      effect: 4.0.0-beta.86
       ws: 8.20.0
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@effect/platform-node@4.0.0-beta.78(effect@4.0.0-beta.78)(ioredis@5.11.1)':
+  '@effect/platform-node@4.0.0-beta.78(effect@4.0.0-beta.86)(ioredis@5.11.1)':
     dependencies:
-      '@effect/platform-node-shared': 4.0.0-beta.78(effect@4.0.0-beta.78)
-      effect: 4.0.0-beta.78
+      '@effect/platform-node-shared': 4.0.0-beta.78(effect@4.0.0-beta.86)
+      effect: 4.0.0-beta.86
       ioredis: 5.11.1
       mime: 4.1.0
       undici: 8.3.0
@@ -8814,11 +8814,11 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.21.0
 
-  drizzle-kit@1.0.0-rc.3(drizzle-orm@1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)):
+  drizzle-kit@1.0.0-rc.3(drizzle-orm@1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.86)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)):
     dependencies:
       '@drizzle-team/brocli': 0.11.0
       '@js-temporal/polyfill': 0.5.1
-      drizzle-orm: 1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)
+      drizzle-orm: 1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.86)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6)
       esbuild: 0.25.12
       get-tsconfig: 4.14.0
       jiti: 2.6.1
@@ -8829,11 +8829,11 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       sql.js: 1.14.1
 
-  drizzle-orm@1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.78)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6):
+  drizzle-orm@1.0.0-rc.3(@libsql/client@0.17.3)(@opentelemetry/api@1.9.1)(effect@4.0.0-beta.86)(sql.js@1.14.1)(typebox@1.1.37)(zod@4.3.6):
     optionalDependencies:
       '@libsql/client': 0.17.3
       '@opentelemetry/api': 1.9.1
-      effect: 4.0.0-beta.78
+      effect: 4.0.0-beta.86
       sql.js: 1.14.1
       typebox: 1.1.37
       zod: 4.3.6
@@ -8859,7 +8859,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@4.0.0-beta.78:
+  effect@4.0.0-beta.86:
     dependencies:
       '@standard-schema/spec': 1.1.0
       fast-check: 4.8.0
