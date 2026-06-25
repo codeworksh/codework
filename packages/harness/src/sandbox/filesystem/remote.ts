@@ -6,9 +6,14 @@ import { SandboxFileSystem } from "./filesystem";
 // it into the same runtime surface the local vfs backend exposes.
 export type FileStat = SandboxFileSystem.FileStat;
 
-// extend Interface; for extending
-// allowing for future expansion
-export interface Interface extends SandboxFileSystem.Interface {}
+// Remote-aware callers can opt into metadata that is not part of the generic
+// SandboxFileSystem surface. In particular, `stat` keeps the familiar
+// provider-level meaning, while `lstat` explicitly asks for the directory entry
+// itself so symlink identity is not inferred from a method with mixed provider
+// semantics.
+export interface Interface extends SandboxFileSystem.Interface {
+	readonly lstat?: (path: string) => Promise<FileStat>;
+}
 
 export interface Options {
 	/**
@@ -46,6 +51,7 @@ export const make = (provider: Interface, options?: Options): Interface => {
 			}
 		},
 		stat: (path) => provider.stat(resolve(path)),
+		...(provider.lstat === undefined ? {} : { lstat: (path: string) => provider.lstat!(resolve(path)) }),
 		readdir: (path) => provider.readdir(resolve(path)),
 		exists: (path) => provider.exists(resolve(path)),
 		mkdir: (path, mkdirOptions) => provider.mkdir(resolve(path), mkdirOptions),
