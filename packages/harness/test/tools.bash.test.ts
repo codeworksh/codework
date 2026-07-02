@@ -5,6 +5,7 @@ import { type ExecChunk, Shell as SandboxShell } from "../src/sandbox/shell";
 import { bashTool } from "../src/tools/bash";
 import * as Executor from "../src/tools/executor";
 import { make as makeProgress, noop as progressNoop } from "../src/tools/progress";
+import * as Tool from "../src/tools/tool";
 import {
 	fromSandboxShell,
 	type IToolShell,
@@ -39,13 +40,13 @@ const ctx = { callID: "call-1", toolName: "bash", rawArgs: {} as Record<string, 
 
 const call = (rawArgs: Record<string, unknown>) => ({ callID: "call-1", name: "bash", rawArgs });
 
-describe("bash tool via Executor (just-bash backend)", () => {
-	const executor = Executor.make([bashTool]);
+// bash registered with a specific ToolShell backend (provided at registration, per the erasure
+// model) → a RegisteredTool the executor runs with no residual tool `R`.
+const bashExec = (shell: Layer.Layer<ToolShell>) => Executor.make([Tool.provide(bashTool, shell)]);
 
+describe("bash tool via Executor (just-bash backend)", () => {
 	it("runs a command and returns a completed outcome", async () => {
-		const outcome = await Effect.runPromise(
-			executor.handle(call({ command: "echo hello" })).pipe(Effect.provide(justBashToolShell)),
-		);
+		const outcome = await Effect.runPromise(bashExec(justBashToolShell).handle(call({ command: "echo hello" })));
 
 		expect(outcome.status).toBe("completed");
 		expect(outcome.result.isError).toBe(false);
@@ -55,7 +56,7 @@ describe("bash tool via Executor (just-bash backend)", () => {
 
 	it("reports a non-zero exit as an error outcome carrying the output", async () => {
 		const outcome = await Effect.runPromise(
-			executor.handle(call({ command: "cat /missing.txt" })).pipe(Effect.provide(justBashToolShell)),
+			bashExec(justBashToolShell).handle(call({ command: "cat /missing.txt" })),
 		);
 
 		expect(outcome.status).toBe("error");
@@ -66,7 +67,7 @@ describe("bash tool via Executor (just-bash backend)", () => {
 	});
 
 	it("rejects invalid arguments with an error outcome (model passed bad args)", async () => {
-		const outcome = await Effect.runPromise(executor.handle(call({})).pipe(Effect.provide(justBashToolShell)));
+		const outcome = await Effect.runPromise(bashExec(justBashToolShell).handle(call({})));
 
 		expect(outcome.status).toBe("error");
 		expect(outcome.result.details).toMatchObject({ error: "invalid_arguments", name: "bash" });
@@ -77,7 +78,7 @@ describe("bash tool via Executor (just-bash backend)", () => {
 			const layer = stubToolShell(() => Effect.die(new Error("shell should not run for invalid timeout")));
 
 			const outcome = await Effect.runPromise(
-				executor.handle(call({ command: "echo should-not-run", timeout })).pipe(Effect.provide(layer)),
+				bashExec(layer).handle(call({ command: "echo should-not-run", timeout })),
 			);
 
 			expect(outcome.status).toBe("error");
@@ -89,7 +90,7 @@ describe("bash tool via Executor (just-bash backend)", () => {
 		const huge = "x\n".repeat(5_000);
 		const layer = stubToolShell(() => Effect.succeed({ stdout: huge, stderr: "", exitCode: 1 }));
 
-		const outcome = await Effect.runPromise(executor.handle(call({ command: "x" })).pipe(Effect.provide(layer)));
+		const outcome = await Effect.runPromise(bashExec(layer).handle(call({ command: "x" })));
 
 		expect(outcome.status).toBe("error");
 		const details = outcome.result.details as { _tag: string; truncated: boolean; fullOutputPath?: string };
@@ -100,14 +101,10 @@ describe("bash tool via Executor (just-bash backend)", () => {
 });
 
 describe("bash tool error reconciliation (stub backend)", () => {
-	const executor = Executor.make([bashTool]);
-
 	it("maps a ToolShell timeout to a declared BashTimedOut", async () => {
 		const layer = stubToolShell((command) => Effect.fail(new ToolShellTimeout({ command, timeoutMillis: 5_000 })));
 
-		const outcome = await Effect.runPromise(
-			executor.handle(call({ command: "sleep 100", timeout: 5 })).pipe(Effect.provide(layer)),
-		);
+		const outcome = await Effect.runPromise(bashExec(layer).handle(call({ command: "sleep 100", timeout: 5 })));
 
 		expect(outcome.status).toBe("error");
 		expect((outcome.result.details as { _tag: string })._tag).toBe("BashTimedOut");
@@ -116,9 +113,7 @@ describe("bash tool error reconciliation (stub backend)", () => {
 	it("uses the ToolShellTimeout duration when encoding BashTimedOut details", async () => {
 		const layer = stubToolShell((command) => Effect.fail(new ToolShellTimeout({ command, timeoutMillis: 12_500 })));
 
-		const outcome = await Effect.runPromise(
-			executor.handle(call({ command: "sleep 100", timeout: 5 })).pipe(Effect.provide(layer)),
-		);
+		const outcome = await Effect.runPromise(bashExec(layer).handle(call({ command: "sleep 100", timeout: 5 })));
 
 		expect(outcome.status).toBe("error");
 		expect(outcome.result.details).toMatchObject({ _tag: "BashTimedOut", timeoutSeconds: 12.5 });

@@ -116,10 +116,7 @@ export const layer = Layer.effect(
 			execute(cwd)(args).pipe(Effect.catch(() => Effect.succeed({ exitCode: 1, text: "", stderr: "" })));
 
 		const find = Effect.fn("Git.find")(function* (input: AbsolutePath) {
-			const dotgit = yield* fs.up({ targets: [".git"], start: input }).pipe(
-				Effect.map((matches) => matches[0]),
-				Effect.catch(() => Effect.void),
-			);
+			const dotgit = yield* fs.up({ targets: [".git"], start: input }).pipe(Effect.map((matches) => matches[0]));
 			if (!dotgit) return undefined;
 
 			const cwd = path.dirname(dotgit);

@@ -10,6 +10,7 @@
  */
 
 export * as Executor from "./executor";
+export * as Registry from "./registry";
 export * as Tool from "./tool";
 export * as Truncate from "./truncate";
 

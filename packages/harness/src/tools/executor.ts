@@ -1,8 +1,8 @@
 import { Message } from "@codeworksh/aikit";
-import { Cause, Effect, Exit, Option, Ref, Result, Schema } from "effect";
+import { Cause, Duration, Effect, Exit, Option, Queue, Ref, Result, Schedule, Schema, Scope } from "effect";
 import type { Static } from "typebox";
 import { ToolProgress, type ToolProgressPartial } from "./progress";
-import { type AnyToolDef, type AnyToolImpl, type ModelContent, toAikitTool, type ToolCallContext } from "./tool";
+import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, type ToolCallContext } from "./tool";
 
 /**
  * `ToolExecutor` — the uniform pipeline run for every tool call:
@@ -23,16 +23,56 @@ export type ToolOutcome =
 	| Static<typeof Message.ToolErrorSchema>
 	| Static<typeof Message.ToolAbortedSchema>;
 
-export interface Executor<R> {
+/** One progress emission handed to an observer: the partial plus the call it belongs to. */
+export interface ProgressEvent {
+	readonly partial: ToolProgressPartial;
+	readonly ctx: ToolCallContext;
+}
+
+/**
+ * Per-call execution options (owned here; the registry only forwards them). Progress is
+ * best-effort UI telemetry — see the `handle` progress path in {@link make}.
+ */
+export interface HandleOptions<RProgress = never> {
+	/** Sliding-queue capacity for best-effort progress. Bounded default (64); tunable. */
+	readonly progressBuffer?: number;
+	/**
+	 * On NORMAL completion, how long to let the sink flush the queue backlog before the scope
+	 * closes and the drain fiber stops (default 3s). Ignored on interruption — abort stays snappy.
+	 */
+	readonly progressDrainGrace?: Duration.Input;
+	/**
+	 * Best-effort progress observer, drained on a scoped background fiber — never in the tool
+	 * hot path. It MAY fail and MAY require services (`RProgress`): failures are logged/dropped,
+	 * and intermediate updates may be dropped under load. Not part of tool correctness.
+	 */
+	readonly onProgress?: (event: ProgressEvent) => Effect.Effect<void, unknown, RProgress>;
+}
+
+export interface Executor {
 	/** aikit wire view of the tool set, for the loop context (`convertTools`). */
 	readonly wire: Message.Tool[];
 	/**
 	 * Run one tool call to a terminal outcome. Most failures become a terminal
 	 * `ToolOutcome`; a `failureMode: "error"` tool propagates its declared failure
 	 * through the error channel, and undeclared failures/defects propagate as defects.
+	 *
+	 * Tools enter as {@link RegisteredTool}s (capability `R` already discharged at
+	 * registration), so the only requirement left in the result is a progress sink's own
+	 * `RProgress`. `options.onProgress` observes live progress off the hot path.
 	 */
-	readonly handle: (call: Message.ToolCallInFlight) => Effect.Effect<ToolOutcome, unknown, R>;
+	readonly handle: <RProgress = never>(
+		call: Message.ToolCallInFlight,
+		options?: HandleOptions<RProgress>,
+	) => Effect.Effect<ToolOutcome, unknown, RProgress>;
 }
+
+/** Default sliding-queue capacity for best-effort progress. */
+const DEFAULT_PROGRESS_BUFFER = 64;
+/** How long, on normal completion, to let a progress sink flush the backlog before teardown. */
+const DEFAULT_DRAIN_GRACE: Duration.Input = Duration.seconds(3);
+/** Poll interval while waiting for the progress queue to drain. */
+const DRAIN_POLL: Duration.Input = Duration.millis(20);
 
 // Erase a schema's services to `never` for decode/encode. Sound for tool schemas
 // (none require services) and keeps the executor's `R` clean of schema services.
@@ -97,12 +137,12 @@ const encodeOutcome = (
 	});
 
 /**
- * Build an executor over a set of tool implementations. `R` is the union of the
- * handlers' capability requirements (e.g. `ToolShell`), satisfied where the
- * runtime is assembled.
+ * Build an executor over a set of {@link RegisteredTool}s — tools whose capability `R` was
+ * already discharged at registration (`Tool.provide`). The executor therefore needs no tool
+ * `R`; only a progress sink's `RProgress` (if any) surfaces from `handle`.
  */
-export const make = <R>(tools: ReadonlyArray<AnyToolImpl<R | ToolProgress>>): Executor<R> => {
-	const impls = new Map<string, AnyToolImpl<R | ToolProgress>>();
+export const make = (tools: ReadonlyArray<RegisteredTool>): Executor => {
+	const impls = new Map<string, RegisteredTool>();
 	for (const tool of tools) {
 		const name = tool.definition.name;
 		// Fail fast: a duplicate name would expose two tools on the wire but only
@@ -115,7 +155,10 @@ export const make = <R>(tools: ReadonlyArray<AnyToolImpl<R | ToolProgress>>): Ex
 
 	const wire = tools.map((tool) => toAikitTool(tool.definition));
 
-	const handle = (call: Message.ToolCallInFlight): Effect.Effect<ToolOutcome, unknown, R> =>
+	const handle = <RProgress = never>(
+		call: Message.ToolCallInFlight,
+		options?: HandleOptions<RProgress>,
+	): Effect.Effect<ToolOutcome, unknown, RProgress> =>
 		Effect.gen(function* () {
 			const impl = impls.get(call.name);
 			if (impl === undefined) {
@@ -133,17 +176,71 @@ export const make = <R>(tools: ReadonlyArray<AnyToolImpl<R | ToolProgress>>): Ex
 
 			const ctx: ToolCallContext = { callID: call.callID, toolName: call.name, rawArgs: call.rawArgs };
 
-			// Call-scoped progress: capture the latest partial so an aborted call can
-			// still report the output produced so far. (This is also the seam a live
-			// event sink plugs into later.)
+			// Latest partial: captured for aborted-call output regardless of any sink.
 			const latest = yield* Ref.make(Option.none<ToolProgressPartial>());
-			const progress = ToolProgress.of({ report: (partial) => Ref.set(latest, Option.some(partial)) });
+			// True while an onProgress write is in flight, so "drained" means the queue is empty
+			// AND the last sink write finished — not merely dequeued.
+			const activeProgress = yield* Ref.make(false);
 
+			const onProgress = options?.onProgress;
+			const progressQueue = onProgress
+				? yield* Queue.sliding<ProgressEvent>(options?.progressBuffer ?? DEFAULT_PROGRESS_BUFFER)
+				: undefined;
+
+			// Best-effort delivery off the hot path: swallow (log-drop) sink failures, never fail the
+			// tool. This is the only place onProgress runs, so its RProgress/error live here. Typed
+			// explicitly so `RProgress` is pinned through `Effect.gen`'s requirement inference.
+			const forkDrain: Effect.Effect<void, never, RProgress | Scope.Scope> =
+				progressQueue && onProgress
+					? Queue.take(progressQueue).pipe(
+							Effect.flatMap((event) =>
+								Ref.set(activeProgress, true).pipe(
+									Effect.andThen(onProgress(event).pipe(Effect.ignore)),
+									Effect.ensuring(Ref.set(activeProgress, false)),
+								),
+							),
+							Effect.forever,
+							Effect.forkScoped,
+							Effect.asVoid,
+						)
+					: Effect.void;
+			yield* forkDrain;
+
+			// report is fast + infallible: set latest, then a non-blocking offer (sliding drops the
+			// oldest when full). No sink latency reaches the tool.
+			const progress = ToolProgress.of({
+				report: (partial) =>
+					Ref.set(latest, Option.some(partial)).pipe(
+						Effect.andThen(
+							progressQueue ? Queue.offer(progressQueue, { partial, ctx }).pipe(Effect.asVoid) : Effect.void,
+						),
+					),
+			});
+
+			// The handler keeps its OWN inner scope, so its resources release the moment it finishes
+			// — not after the drain grace (which is bounded by the outer `Effect.scoped` below).
 			const exit = yield* impl
 				.handler(decoded.success, ctx)
 				.pipe(Effect.scoped, Effect.provideService(ToolProgress, progress), Effect.exit);
+
+			// Graceful bounded drain on NORMAL completion: wait until the queue is empty AND no sink
+			// write is in flight, bounded by progressDrainGrace. Skipped on interruption (snappy abort).
+			const interrupted = Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause);
+			if (progressQueue && !interrupted) {
+				const drained = Effect.gen(function* () {
+					const size = yield* Queue.size(progressQueue);
+					const active = yield* Ref.get(activeProgress);
+					return size === 0 && !active;
+				});
+				yield* drained.pipe(
+					Effect.repeat({ schedule: Schedule.spaced(DRAIN_POLL), until: (done) => done }),
+					Effect.timeout(options?.progressDrainGrace ?? DEFAULT_DRAIN_GRACE),
+					Effect.ignore,
+				);
+			}
+
 			return yield* encodeOutcome(def, exit, latest);
-		});
+		}).pipe(Effect.scoped);
 
 	return { wire, handle };
 };

@@ -1,22 +1,43 @@
-# dependencies (bun install)
+# Node.js Dependencies
 node_modules
 .pnpm-store
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.yarn/npm-state.gz
 
-# output
+# Package Manager Debug Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build Outputs
 out
 dist
+build
+lib
+.next
+.nuxt
+.svelte-kit
+.turbo
+.nx
 *.tgz
 
-# code coverage
+# Code Coverage
 coverage
+.nyc_output
 *.lcov
 
-# logs
+# Logs
 logs
+*.log
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
-# dotenv environment variable files
+# Dotenv Environment Variable Files
 .env
 .env.development.local
 .env.test.local
@@ -24,13 +45,27 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .env.local
 .npmrc
 
-# caches
+# Caches
 .eslintcache
 .cache
+.parcel-cache
+.rollup.cache
+.rpt2_cache
 .tanstack
 *.tsbuildinfo
 
-# IntelliJ-based IDEs
+# Test Outputs
+playwright-report
+test-results
+cypress/videos
+cypress/screenshots
+
+# Temporary Files
+tmp
+temp
+*.tmp
+
+# IntelliJ-Based IDEs
 .idea/*
 !.idea/codeStyles/
 !.idea/codeStyles/**
@@ -52,24 +87,22 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .idea/**/dbnavigator.xml
 .idea/**/httpRequests/
 .idea/**/contentModel.xml
-.zed
 
-# Finder (MacOS) folder config
+# Finder (macOS) Folder Config
 .DS_Store
 
-# misc
-notes
-scratch
-.codework
-
-# zensical build output
+# Zensical Build Output
 packages/aikit/site
 
-# misc
-scratch
-repos
+# Vercel
 .vercel
 
 # Agents
 .claude
 .agents
+
+# Misc
+notes
+scratch
+repos
+.codework

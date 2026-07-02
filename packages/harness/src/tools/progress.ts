@@ -8,7 +8,7 @@ import type { ModelContent } from "./tool";
  * Most tools never call `report` and keep a clean `Effect<Success, Failure>`
  * signature. Throttling / coalescing lives in the Layer (the live one routes to
  * the run's event PubSub, tagged with the active callID); the handler just
- * reports. See `notes/agent-tools-arch.md`.
+ * reports.
  */
 
 /** Mirror of aikit's `Message.ToolRunningPartial` (kept structural to stay decoupled). */

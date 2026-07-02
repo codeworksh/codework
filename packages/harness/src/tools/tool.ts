@@ -1,9 +1,10 @@
 import type { Message } from "@codeworksh/aikit";
-import { type Effect, Schema } from "effect";
+import { Effect, type Layer, Schema } from "effect";
 import type { TSchema } from "typebox";
+import type { ToolProgress } from "./progress";
 
 /**
- * The tool definition + handler model (see `notes/agent-tools-arch.md`).
+ * The tool definition + handler model.
  *
  * A tool definition is pure, serializable data: name, description, and Effect
  * Schema for parameters / success / failure. Execution is a separate `Handler`
@@ -25,6 +26,12 @@ export type ModelContent = ReadonlyArray<Message.TextContent | Message.ImageCont
  * Expected failures become a tool-error result fed back to the model ("return");
  * "error" lets them hit the calling effect's error channel. Defaults to
  * "return" in {@link define}.
+ *
+ * "return" — almost always, for agent tools.
+ * 	A bash non-zero exit, a file-not-found, a bad-patch — the model should see these and adapt.
+ *
+ * "error" — the rare "this failure is fatal to the run"
+ * 	case: e.g. an unrecoverable auth/quota error where letting the model keep looping is pointless.
  */
 export type FailureMode = "return" | "error";
 
@@ -149,6 +156,42 @@ export const make = <
 	const { handler, ...rest } = input;
 	return { definition: define(rest), handler };
 };
+
+/**
+ * A tool ready to register: its capability requirements have been discharged, leaving only
+ * the executor-provided {@link ToolProgress}. The registry and executor hold `RegisteredTool`s
+ * and are non-generic (only `handle` is generic, over a progress sink's `RProgress`), so any
+ * number of tools — built-in or
+ * third-party/plugin — compose without a shared capability union
+ */
+export type RegisteredTool = AnyToolImpl<ToolProgress>;
+
+/**
+ * Discharge a tool's capability requirements into a {@link RegisteredTool}, erasing its `R`
+ * (the executor still provides `ToolProgress`). This is the registration boundary: a
+ * plugin/third-party tool provides its own fully-resolved capability Layer here, so the
+ * registry never has to unify anyone's `R`.
+ */
+export const provide = <
+	Name extends string,
+	Params extends Schema.Top,
+	Success extends Schema.Top,
+	Failure extends Schema.Top,
+	R,
+>(
+	impl: ToolImpl<Name, Params, Success, Failure, R | ToolProgress>,
+	layer: Layer.Layer<R>,
+): RegisteredTool => ({
+	definition: impl.definition,
+	// `Effect.provide` discharges `R`, leaving `ToolProgress`. TS can't simplify
+	// `Exclude<ToolProgress, R>` for a generic `R`, so localize the cast to the erased result.
+	handler: (params, ctx) =>
+		impl.handler(params, ctx).pipe(Effect.provide(layer)) as Effect.Effect<
+			Success["Type"],
+			Failure["Type"],
+			ToolProgress
+		>,
+});
 
 /**
  * Derive a provider-safe JSON Schema object from an Effect Schema. This is the
