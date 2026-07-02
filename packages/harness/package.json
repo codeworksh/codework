@@ -68,7 +68,8 @@
 		"remeda": "^2.33.6",
 		"typebox": "^1.1.37",
 		"uuid": "^14.0.0",
-		"uuidv7": "^1.2.1"
+		"uuidv7": "^1.2.1",
+		"vercel": "^54.18.7"
 	},
 	"devDependencies": {
 		"@effect/language-service": "^0.86.2",

@@ -3,8 +3,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { Shell } from "../sandbox/shell";
 
 /**
- * `ToolShell` — the tool-owned, cancellable command-execution capability the
- * bash tool depends on (see `notes/agent-tools-arch.md`).
+ * `ToolShell` — the tool-owned, cancellable command-execution capability the bash tool depends on.
  *
  * It deliberately does **not** reuse `sandbox/Shell` directly: the local OS path
  * provides no `Shell` at all, and `sandbox/Shell` models neither cancellation
@@ -179,8 +178,8 @@ export interface LocalConfig {
  * so a command that traps/ignores SIGTERM (its children inherit that `SIG_IGN`)
  * would hang the cleanup — and the timeout would not be a hard bound.
  *
- * So we add an explicit escalation finalizer: on scope close (timeout or
- * interrupt) it SIGTERMs the group and, if the process has not exited within
+ * So we add an explicit escalation finalizer: on scope close (timeout or interrupt) it
+ * SIGTERMs the group and, if the process has not exited within
  * `forceKillAfter`, SIGKILLs it (SIGKILL cannot be trapped). It is registered
  * after the spawn, so it runs *before* the spawner's own release — which then
  * sees an exited process and returns at once. No manual `killProcessTree`, no

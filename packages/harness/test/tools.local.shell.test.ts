@@ -7,6 +7,7 @@ import { bashTool } from "../src/tools/bash";
 import * as Executor from "../src/tools/executor";
 import { noop as progressNoop } from "../src/tools/progress";
 import { local, ToolShell, ToolShellTimeout } from "../src/tools/shell";
+import * as Tool from "../src/tools/tool";
 import { tmpdir } from "./fixtures/tempdir";
 
 // The real OS shell backend: ToolShell.local provided with the host spawner.
@@ -142,12 +143,11 @@ describe("ToolShell.local (real OS shell)", () => {
 
 describe("bash tool over ToolShell.local (pluggability)", () => {
 	it("runs the same bash tool on the real OS shell by swapping only the backend", async () => {
-		const executor = Executor.make([bashTool]);
+		// ToolShell provided at registration (the erasure model), then run with no residual R.
+		const executor = Executor.make([Tool.provide(bashTool, localShell())]);
 
 		const outcome = await Effect.runPromise(
-			executor
-				.handle({ callID: "c1", name: "bash", rawArgs: { command: "echo via-local" } })
-				.pipe(Effect.provide(localShell())),
+			executor.handle({ callID: "c1", name: "bash", rawArgs: { command: "echo via-local" } }),
 		);
 
 		expect(outcome.status).toBe("completed");

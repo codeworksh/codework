@@ -23,9 +23,9 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateTail, type Tr
  *     and is reported live via {@link ToolProgress}; on timeout the partial output
  *     produced so far is preserved.
  *
- * Success and failure carry the *same* structured shape (`output`, `exitCode`,
- * `truncated`, `fullOutputPath`) — a non-zero exit is just `exitCode !== 0`, not a
- * different kind of result. See `notes/agent-tools-arch.md`.
+ * Success and failure carry the *same* structured shape
+ * (`output`, `exitCode`, `truncated`, `fullOutputPath`)
+ * — a non-zero exit is just `exitCode !== 0`, not a different kind of result.
  */
 
 const BashParams = Schema.Struct({
