@@ -1,20 +1,7 @@
-# Node.js Dependencies
 node_modules
+.npmrc
 .pnpm-store
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.yarn/install-state.gz
-.yarn/npm-state.gz
 
-# Package Manager Debug Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# Build Outputs
 out
 dist
 build
@@ -26,26 +13,21 @@ lib
 .nx
 *.tgz
 
-# Code Coverage
 coverage
 .nyc_output
 *.lcov
 
-# Logs
 logs
 *.log
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
-# Dotenv Environment Variable Files
 .env
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
-.npmrc
 
-# Caches
 .eslintcache
 .cache
 .parcel-cache
@@ -54,18 +36,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .tanstack
 *.tsbuildinfo
 
-# Test Outputs
-playwright-report
-test-results
-cypress/videos
-cypress/screenshots
-
-# Temporary Files
 tmp
 temp
 *.tmp
 
-# IntelliJ-Based IDEs
 .idea/*
 !.idea/codeStyles/
 !.idea/codeStyles/**
@@ -88,21 +62,17 @@ temp
 .idea/**/httpRequests/
 .idea/**/contentModel.xml
 
-# Finder (macOS) Folder Config
 .DS_Store
 
 # Zensical Build Output
 packages/aikit/site
 
-# Vercel
 .vercel
 
-# Agents
 .claude
 .agents
 
-# Misc
-notes
-scratch
-repos
+.notes
+.scratch
+.repos
 .codework
