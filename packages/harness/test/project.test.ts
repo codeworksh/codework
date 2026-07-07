@@ -1,11 +1,11 @@
 import { Effect, Layer } from "effect";
+import { SqlClient } from "effect/unstable/sql";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
-import { Database, eq } from "../src/db/db";
-import { ProjectDirectoryTable, ProjectTable } from "../src/db/schema.sql";
+import { Database } from "../src/db/db";
 import { FileSystem } from "../src/filesystem/filesystem";
 import { Git } from "../src/git/git";
 import { ProjectCopy } from "../src/project/copy";
@@ -28,7 +28,7 @@ const repo = { directory, store } satisfies Git.Repo;
 
 // A real migrated in-memory database, so the tests exercise the actual SQL
 // issued by the service (upserts, deletes, txns).
-const databaseLayer = () => Database.layerFromPath(":memory:", { migrate: Database.migrateDefault });
+const databaseLayer = () => Database.layer(":memory:");
 
 interface ProjectOptions {
 	// Contents of the `codework` marker file read from the repo store. When
@@ -78,22 +78,37 @@ const projectLayer = (git: Partial<Git.Interface>, options: ProjectOptions = {})
 };
 
 // Seed the project tables directly; `directories`/`fromDirectory` assertions
-// then go through the service like production code would.
+// then go through the service like production code would. Raw inserts use
+// camelCase keys — the client maps them to snake_case columns.
+const seedProject = (project: { id: string; name: string; createdAt?: number; updatedAt?: number }) =>
+	Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`INSERT INTO project ${sql.insert({ createdAt: 0, updatedAt: 0, ...project })}`;
+	});
+
+const seedDirectory = (row: {
+	id: string;
+	projectId: string;
+	directory: string;
+	type: ProjectDirectory["type"];
+	sandboxEnvId: string;
+}) =>
+	Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`INSERT INTO project_directory ${sql.insert({ createdAt: 0, updatedAt: 0, ...row })}`;
+	});
+
 const seedDirectories = (rows: Array<{ directory: string; type: ProjectDirectory["type"] }>) =>
 	Effect.gen(function* () {
-		const { db } = yield* Database.Service;
-		yield* db.insert(ProjectTable).values({ id: "project-1", name: "codework" }).run();
+		yield* seedProject({ id: "project-1", name: "codework" });
 		for (const [index, row] of rows.entries()) {
-			yield* db
-				.insert(ProjectDirectoryTable)
-				.values({
-					id: `directory-${index + 1}`,
-					projectId: "project-1",
-					directory: row.directory,
-					type: row.type,
-					sandboxEnvID: "sandbox-1",
-				})
-				.run();
+			yield* seedDirectory({
+				id: `directory-${index + 1}`,
+				projectId: "project-1",
+				directory: row.directory,
+				type: row.type,
+				sandboxEnvId: "sandbox-1",
+			});
 		}
 	});
 
@@ -368,8 +383,8 @@ describe("Project", () => {
 				const result = yield* project.directories({ projectID: ID.make("project-1") });
 				expect(result).toEqual([{ directory: "/workspace/codework", sandboxEnvID: "sandbox-1", type: "main" }]);
 
-				const { db } = yield* Database.Service;
-				const remaining = yield* db.select().from(ProjectDirectoryTable).all();
+				const sql = yield* SqlClient.SqlClient;
+				const remaining = yield* sql`SELECT * FROM project_directory`;
 				expect(remaining).toHaveLength(1);
 				expect(remaining[0]?.directory).toBe("/workspace/codework");
 			}),
@@ -475,21 +490,15 @@ describe("Project", () => {
 
 			migrateIt("moves the project row and its directories to the resolved id", () =>
 				Effect.gen(function* () {
-					const { db } = yield* Database.Service;
-					yield* db
-						.insert(ProjectTable)
-						.values({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 })
-						.run();
-					yield* db
-						.insert(ProjectDirectoryTable)
-						.values({
-							id: Hash.fast("old-project-id:/workspace/legacy"),
-							projectId: "old-project-id",
-							directory: "/workspace/legacy",
-							type: "main",
-							sandboxEnvID: "sandbox-1",
-						})
-						.run();
+					const sql = yield* SqlClient.SqlClient;
+					yield* seedProject({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 });
+					yield* seedDirectory({
+						id: Hash.fast("old-project-id:/workspace/legacy"),
+						projectId: "old-project-id",
+						directory: "/workspace/legacy",
+						type: "main",
+						sandboxEnvId: "sandbox-1",
+					});
 
 					const project = yield* Service;
 					const info = yield* project.fromDirectory(directory);
@@ -498,7 +507,7 @@ describe("Project", () => {
 					expect(info.id).toEqual(projectID);
 					expect(info.name).toBe("legacy");
 
-					const projects = yield* db.select().from(ProjectTable).all();
+					const projects = yield* sql`SELECT * FROM project`;
 					expect(projects).toHaveLength(1);
 					expect(projects[0]).toMatchObject({ id: projectID, name: "legacy", createdAt: 1111 });
 
@@ -511,7 +520,7 @@ describe("Project", () => {
 					]);
 
 					// migrated rows are re-keyed off the new project id
-					const rows = yield* db.select().from(ProjectDirectoryTable).all();
+					const rows = yield* sql`SELECT * FROM project_directory`;
 					expect(rows.every((row) => row.projectId === projectID)).toBe(true);
 					const legacy = rows.find((row) => row.directory === "/workspace/legacy");
 					expect(legacy?.id).toBe(Hash.fast(`${projectID}:/workspace/legacy`));
@@ -522,53 +531,38 @@ describe("Project", () => {
 
 			mergeIt("merges into an existing project under the new id", () =>
 				Effect.gen(function* () {
-					const { db } = yield* Database.Service;
-					yield* db
-						.insert(ProjectTable)
-						.values({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 })
-						.run();
-					yield* db
-						.insert(ProjectTable)
-						.values({ id: projectID, name: "current", createdAt: 2222, updatedAt: 2222 })
-						.run();
+					const sql = yield* SqlClient.SqlClient;
+					yield* seedProject({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 });
+					yield* seedProject({ id: projectID, name: "current", createdAt: 2222, updatedAt: 2222 });
 					// one directory unique to the old project, one already known to the new
-					yield* db
-						.insert(ProjectDirectoryTable)
-						.values({
-							id: "old-unique",
-							projectId: "old-project-id",
-							directory: "/workspace/legacy",
-							type: "root",
-							sandboxEnvID: "sandbox-1",
-						})
-						.run();
-					yield* db
-						.insert(ProjectDirectoryTable)
-						.values({
-							id: "old-shared",
-							projectId: "old-project-id",
-							directory: "/workspace/shared",
-							type: "root",
-							sandboxEnvID: "sandbox-1",
-						})
-						.run();
-					yield* db
-						.insert(ProjectDirectoryTable)
-						.values({
-							id: Hash.fast(`${projectID}:/workspace/shared`),
-							projectId: projectID,
-							directory: "/workspace/shared",
-							type: "main",
-							sandboxEnvID: "sandbox-2",
-						})
-						.run();
+					yield* seedDirectory({
+						id: "old-unique",
+						projectId: "old-project-id",
+						directory: "/workspace/legacy",
+						type: "root",
+						sandboxEnvId: "sandbox-1",
+					});
+					yield* seedDirectory({
+						id: "old-shared",
+						projectId: "old-project-id",
+						directory: "/workspace/shared",
+						type: "root",
+						sandboxEnvId: "sandbox-1",
+					});
+					yield* seedDirectory({
+						id: Hash.fast(`${projectID}:/workspace/shared`),
+						projectId: projectID,
+						directory: "/workspace/shared",
+						type: "main",
+						sandboxEnvId: "sandbox-2",
+					});
 
 					const project = yield* Service;
 					const info = yield* project.fromDirectory(directory);
 
 					// the existing project wins; the old row is gone
 					expect(info.name).toBe("current");
-					const projects = yield* db.select().from(ProjectTable).all();
+					const projects = yield* sql`SELECT * FROM project`;
 					expect(projects).toHaveLength(1);
 					expect(projects[0]).toMatchObject({ id: projectID, name: "current", createdAt: 2222 });
 
@@ -592,8 +586,8 @@ describe("Project", () => {
 					expect(info.id).toEqual(projectID);
 					expect(info.name).toBe("codework");
 
-					const { db } = yield* Database.Service;
-					const projects = yield* db.select().from(ProjectTable).all();
+					const sql = yield* SqlClient.SqlClient;
+					const projects = yield* sql`SELECT * FROM project`;
 					expect(projects).toHaveLength(1);
 					expect(projects[0]?.id).toBe(projectID);
 				}),
@@ -603,15 +597,15 @@ describe("Project", () => {
 
 			localCacheIt("never migrates the local project id", () =>
 				Effect.gen(function* () {
-					const { db } = yield* Database.Service;
-					yield* db.insert(ProjectTable).values({ id: "local", name: "local", createdAt: 1, updatedAt: 1 }).run();
+					const sql = yield* SqlClient.SqlClient;
+					yield* seedProject({ id: "local", name: "local", createdAt: 1, updatedAt: 1 });
 
 					const project = yield* Service;
 					const info = yield* project.fromDirectory(directory);
 					expect(info.id).toEqual(projectID);
 
-					const local = yield* db.select().from(ProjectTable).where(eq(ProjectTable.id, "local")).get();
-					expect(local).toBeDefined();
+					const local = yield* sql`SELECT * FROM project WHERE id = 'local'`;
+					expect(local).toHaveLength(1);
 				}),
 			);
 		});

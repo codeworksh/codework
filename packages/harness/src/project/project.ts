@@ -1,7 +1,9 @@
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Model } from "effect/unstable/schema";
+import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import path from "node:path";
-import { and, Database, eq, inArray } from "../db/db";
-import { ProjectDirectoryTable, ProjectTable, type ProjectDirectory as ProjectDirectoryRow } from "../db/schema.sql";
+import { Database } from "../db/db";
+import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql";
 import { FileSystem } from "../filesystem/filesystem";
 import { Git } from "../git/git";
 import { Sandbox } from "../sandbox/sandbox";
@@ -79,27 +81,54 @@ export class Service extends Context.Service<Service, Interface>()("@codework/pr
 export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
-		const { db } = yield* Database.Service;
+		const sql = yield* SqlClient.SqlClient;
 
 		const fs = yield* FileSystem.Service;
 		const git = yield* Git.Service;
 		const copy = yield* ProjectCopy.Service;
 
+		const selectDirectories = SqlSchema.findAll({
+			Request: Schema.String,
+			Result: ProjectDirectoryRow,
+			execute: (projectId) => sql`SELECT * FROM project_directory WHERE project_id = ${projectId}`,
+		});
+
+		const findProject = SqlSchema.findOneOption({
+			Request: Schema.String,
+			Result: ProjectRow,
+			execute: (id) => sql`SELECT * FROM project WHERE id = ${id}`,
+		});
+
+		const insertProject = SqlSchema.void({
+			Request: ProjectRow.insert,
+			execute: (row) => sql`INSERT INTO project ${sql.insert(row)}`,
+		});
+
+		// the conflict target is the primary key; only the update timestamp moves
+		const upsertProject = SqlSchema.void({
+			Request: ProjectRow.insert,
+			execute: (row) => sql`
+				INSERT INTO project ${sql.insert(row)}
+				ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at
+			`,
+		});
+
+		// tolerates both id and (project_id, directory) conflicts
+		const insertDirectory = SqlSchema.void({
+			Request: ProjectDirectoryRow.insert,
+			execute: (row) => sql`INSERT OR IGNORE INTO project_directory ${sql.insert(row)}`,
+		});
+
 		const toProjectDirectory = (row: ProjectDirectoryRow): ProjectDirectory => {
 			return {
 				directory: AbsolutePath.make(row.directory),
-				sandboxEnvID: row.sandboxEnvID,
+				sandboxEnvID: row.sandboxEnvId,
 				type: row.type,
 			};
 		};
 
 		const directories = Effect.fn("Project.directories")(function* (input: DirectoriesInput) {
-			const rows = yield* db
-				.select()
-				.from(ProjectDirectoryTable)
-				.where(eq(ProjectDirectoryTable.projectId, input.projectID))
-				.all()
-				.pipe(Effect.orDie);
+			const rows = yield* selectDirectories(input.projectID).pipe(Effect.orDie);
 
 			const validRows = yield* Effect.filter(rows, (row) => fs.exists(row.directory), {
 				concurrency: "unbounded",
@@ -109,11 +138,7 @@ export const layer = Layer.effect(
 			const valid = new Set(validRows);
 			const staleIDs = rows.filter((row) => !valid.has(row)).map((row) => row.id);
 			if (staleIDs.length > 0) {
-				yield* db
-					.delete(ProjectDirectoryTable)
-					.where(inArray(ProjectDirectoryTable.id, staleIDs))
-					.run()
-					.pipe(Effect.orDie);
+				yield* sql`DELETE FROM project_directory WHERE ${sql.in("id", staleIDs)}`.pipe(Effect.orDie);
 			}
 
 			return validRows
@@ -206,50 +231,41 @@ export const layer = Layer.effect(
 			if (oldID === ID.local) return; // local project copy are ignored
 			if (oldID === newID) return; // just the same
 
-			yield* db
-				.transaction(
-					(d) =>
-						Effect.gen(function* () {
-							const oldProject = yield* d.select().from(ProjectTable).where(eq(ProjectTable.id, oldID)).get();
-							if (!oldProject) return;
+			yield* sql
+				.withTransaction(
+					Effect.gen(function* () {
+						const oldProject = yield* findProject(oldID);
+						if (Option.isNone(oldProject)) return;
 
-							const newProject = yield* d.select().from(ProjectTable).where(eq(ProjectTable.id, newID)).get();
-							if (!newProject) {
-								yield* d
-									.insert(ProjectTable)
-									.values({
-										...oldProject,
-										id: newID,
-										updatedAt: Date.now(),
-									})
-									.run();
-							}
+						const newProject = yield* findProject(newID);
+						if (Option.isNone(newProject)) {
+							const row = yield* ProjectRow.insert.makeEffect({
+								id: newID,
+								name: oldProject.value.name,
+								createdAt: Model.Override(oldProject.value.createdAt),
+							});
+							yield* insertProject(row);
+						}
 
-							// directories cascade-delete with the old project row, so
-							// re-home them under the new id (with re-derived row ids)
-							// before the delete; directories the new project already
-							// registered win the conflict
-							const directories = yield* d
-								.select()
-								.from(ProjectDirectoryTable)
-								.where(eq(ProjectDirectoryTable.projectId, oldID))
-								.all();
-							for (const row of directories) {
-								yield* d
-									.insert(ProjectDirectoryTable)
-									.values({
-										...row,
-										id: Hash.fast(`${newID}:${row.directory}`),
-										projectId: newID,
-										updatedAt: Date.now(),
-									})
-									.onConflictDoNothing()
-									.run();
-							}
+						// directories cascade-delete with the old project row, so
+						// re-home them under the new id (with re-derived row ids)
+						// before the delete; directories the new project already
+						// registered win the conflict
+						const directories = yield* selectDirectories(oldID);
+						for (const row of directories) {
+							const rehomed = yield* ProjectDirectoryRow.insert.makeEffect({
+								id: Hash.fast(`${newID}:${row.directory}`),
+								projectId: newID,
+								directory: row.directory,
+								type: row.type,
+								sandboxEnvId: row.sandboxEnvId,
+								createdAt: Model.Override(row.createdAt),
+							});
+							yield* insertDirectory(rehomed);
+						}
 
-							yield* d.delete(ProjectTable).where(eq(ProjectTable.id, oldID)).run();
-						}),
-					{ behavior: "immediate" },
+						yield* sql`DELETE FROM project WHERE id = ${oldID}`;
+					}),
 				)
 				.pipe(Effect.orDie);
 		});
@@ -260,34 +276,24 @@ export const layer = Layer.effect(
 				directory: AbsolutePath.make(input.directory),
 			});
 
-			yield* db
-				.transaction(
-					(d) =>
-						Effect.gen(function* () {
-							const hasMain = yield* d
-								.select({ directory: ProjectDirectoryTable.directory })
-								.from(ProjectDirectoryTable)
-								.where(
-									and(
-										eq(ProjectDirectoryTable.projectId, input.projectID),
-										eq(ProjectDirectoryTable.type, "main"),
-									),
-								)
-								.get();
+			yield* sql
+				.withTransaction(
+					Effect.gen(function* () {
+						const hasMain = yield* sql`
+							SELECT directory FROM project_directory
+							WHERE project_id = ${input.projectID} AND type = 'main'
+							LIMIT 1
+						`;
 
-							yield* d
-								.insert(ProjectDirectoryTable)
-								.values({
-									id: Hash.fast(`${input.projectID}:${input.directory}`),
-									projectId: input.projectID,
-									directory: input.directory,
-									type: isGitWorktree ? "gitworktree" : hasMain ? "root" : "main",
-									sandboxEnvID: "@codework/envDefault",
-								})
-								.onConflictDoNothing()
-								.run();
-						}),
-					{ behavior: "immediate" },
+						const row = yield* ProjectDirectoryRow.insert.makeEffect({
+							id: Hash.fast(`${input.projectID}:${input.directory}`),
+							projectId: input.projectID,
+							directory: input.directory,
+							type: isGitWorktree ? "gitworktree" : hasMain.length > 0 ? "root" : "main",
+							sandboxEnvId: "@codework/envDefault",
+						});
+						yield* insertDirectory(row);
+					}),
 				)
 				.pipe(
 					Effect.catchCause((cause) =>
@@ -308,50 +314,22 @@ export const layer = Layer.effect(
 			// conditionally migrates previous cached projectID to new one
 			yield* migrateProjectId(data.previous ? ID.make(data.previous) : undefined, projectID);
 
-			const row = yield* db
-				.select()
-				.from(ProjectTable)
-				.where(eq(ProjectTable.id, projectID))
-				.get()
-				.pipe(Effect.orDie);
+			const existing = yield* findProject(projectID).pipe(Effect.orDie);
+			const name = Option.match(existing, {
+				onNone: () => data.name,
+				onSome: (row) => row.name,
+			});
 
-			const existing = row
-				? {
-						id: row.id,
-						name: row.name,
-						createdAt: row.createdAt,
-					}
-				: {
-						id: projectID,
-						name: data.name,
-						createdAt: Date.now(),
-					};
-
-			const upsert = {
-				...existing,
-				updatedAt: Date.now(),
-			};
-
-			yield* db
-				.insert(ProjectTable)
-				.values({
-					id: upsert.id,
-					name: upsert.name,
-					createdAt: upsert.createdAt,
-					updatedAt: upsert.updatedAt,
-				})
-				.onConflictDoUpdate({
-					target: ProjectTable.id,
-					set: { updatedAt: upsert.updatedAt },
-				})
-				.run()
-				.pipe(Effect.orDie);
+			// on conflict only the update timestamp moves; the stored name and
+			// creation time stay as they are
+			const row = yield* ProjectRow.insert.makeEffect({ id: projectID, name }).pipe(Effect.orDie);
+			yield* upsertProject(row).pipe(Effect.orDie);
 
 			yield* saveDirectory({ projectID, directory: data.directory });
 
 			const result: Info = {
-				id: ID.make(upsert.id),
-				name: upsert.name,
+				id: projectID,
+				name,
 				vcs: data.vcs ?? undefined,
 				directory: data.directory,
 			};
