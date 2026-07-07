@@ -38,5 +38,23 @@ export const migrations = {
 			CREATE UNIQUE INDEX project_directory_project_directory_idx
 			ON project_directory (project_id, directory)
 		`;
+
+		yield* sql`
+			CREATE TABLE session (
+				id TEXT PRIMARY KEY,
+				project_id TEXT NOT NULL REFERENCES project(id) ON UPDATE CASCADE ON DELETE CASCADE,
+				parent_id TEXT REFERENCES session(id) ON UPDATE CASCADE ON DELETE SET NULL,
+				slug TEXT NOT NULL,
+				directory TEXT NOT NULL,
+				title TEXT NOT NULL,
+				tag TEXT NOT NULL,
+				metadata TEXT,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)
+		`;
+
+		yield* sql`CREATE UNIQUE INDEX session_slug_idx ON session (slug)`;
+		yield* sql`CREATE INDEX session_tag_idx ON session (tag)`;
 	}),
 };
