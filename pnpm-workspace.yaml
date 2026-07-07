@@ -1,17 +1,9 @@
 packages:
    - packages/*
 
-# drizzle-kit 1.x resolves drizzle-orm at runtime without declaring it as a
-# dependency, so pnpm must link the package-local version next to it —
-# otherwise its CLI picks up whichever drizzle-orm pnpm hoisted (0.45.x from
-# the agent package) and crashes on version-mismatched subpath imports.
-packageExtensions:
-   drizzle-kit@>=1.0.0-rc.0:
-      peerDependencies:
-         drizzle-orm: "*"
-
 allowBuilds:
    "@mongodb-js/zstd": true
+   better-sqlite3: true
    electron: true
    esbuild: true
    lmdb: true
@@ -22,6 +14,7 @@ allowBuilds:
 
 onlyBuiltDependencies:
    - "@mongodb-js/zstd"
+   - better-sqlite3
    - electron
    - esbuild
    - lmdb

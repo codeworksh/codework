@@ -1,11 +1,11 @@
 import { Effect, Layer } from "effect";
+import { SqlClient } from "effect/unstable/sql";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { ProjectTable } from "../src/db/schema.sql";
 import { FileSystem } from "../src/filesystem/filesystem";
 import { Git } from "../src/git/git";
 import { Location } from "../src/location/location";
@@ -32,7 +32,7 @@ const repo = { directory, store } satisfies Git.Repo;
 const workspaceID = Workspace.ID.ascending("wrk_location_test");
 const projectID = Project.ID.make(Hash.fast("git:github.com/codeworksh/codework"));
 
-const databaseLayer = () => Database.layerFromPath(":memory:", { migrate: Database.migrateDefault });
+const databaseLayer = () => Database.layer(":memory:");
 
 // Location is an outer layer over Project: these tests stub only Project's
 // leaf dependencies (Git/FileSystem/Copy) and run the real Project service
@@ -103,8 +103,8 @@ describe("Location", () => {
 			const location = yield* Location.Service;
 
 			// the project row was persisted ...
-			const { db } = yield* Database.Service;
-			const rows = yield* db.select().from(ProjectTable).all();
+			const sql = yield* SqlClient.SqlClient;
+			const rows = yield* sql`SELECT * FROM project`;
 			expect(rows).toHaveLength(1);
 			expect(rows[0]).toMatchObject({ id: projectID, name: "codework" });
 

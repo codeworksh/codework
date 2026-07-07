@@ -1,27 +1,33 @@
 # Personal Preference
 
 ## TypeScript
-- Never use `any` unless 100% necessary  or specifically instructed.
+
+- Never use `any` unless 100% necessary or specifically instructed.
 - Use effect only if the project uses effect or specifically instructed, use effect reference repository for latest architecture patterns: `repos/effect`.
 
 ## Commands
+
 - Don't run dev server commands (e.g `bun run dev`) - assume it's already running.
 - Don't run build commands unless specifically told to.
 - Focus on checking commands like `bun run typecheck`, `pnpm run check`, `bun run lint`, etc.
 
 ## Package Managers
+
 - Use `pnpm`, `vp - vite plus` if the project already uses it, otherwise use `pnpm`
 - Never use `npm` or `yarn`
 
 ## Tech Stack Preference
+
 When uncertain, prefer: Effect, Tailwind, TypeScript, React, Clerk, TanStack, Vercel, Vite.
 
 ## Code Style
+
 - Always strive for concise, simple solutions.
 - If a problem can be solved in a simpler way, propose it.
 - No pre-mature optimizations, propose if required.
 
 ## General Preferences
+
 - If asked to do too much work at once, stop and state that clearly.
 - If computer use is helpful for completing or verifying work, shell out to gpt-5.5 with Codex for it
 
@@ -37,6 +43,7 @@ Rankings, higher = better. Cost reflects what I actually pay, not list price. In
 | fable-5   | 2        | 9                | 9         |
 
 How to apply:
+
 - These are defaults, not limits. You have standing permission to override them: if a cheaper model's output doesn't meet the bar, rerun or redo the work with a smarter model without asking. Judge the output, not the price tag. Escalating costs less than shipping mediocre work.
 - Cost is a tie–breaker only; when axes conflict for anything that ships, intelligence > taste > cost.
 - Bulk/mechanical work (clear-spec implementation, data analysis, migrations): gpt-5.5 – it's effectively free.
@@ -47,6 +54,7 @@ How to apply:
 - Claude models (sonnet-5, opus-4.8, fable-5) run via the Agent/Workflow model parameter.
 
 Using gpt-5.5 inside workflows and subagents (the model parameter only takes Claude models, so use a wrapper):
+
 - Spawn a thin Claude wrapper agent with `model: 'sonnet', effort: 'low'` whose prompt instructs it to write a self-contained codex prompt, run `codex exec` via Bash, and return the report (use `schema` on the wrapper to get structured output back).
 - Always label these agents with a `gpt-5.5:` prefix, e.g. `{label: 'gpt-5.5:review-auth'}` – the workflow UI shows the wrapper's Claude model, so the label is the only indication the real worker is gpt-5.5.
 - Codex runs can exceed Bash's 10-minute timeout: pass an explicit timeout, or run in the background and poll for the report file.
@@ -54,13 +62,17 @@ Using gpt-5.5 inside workflows and subagents (the model parameter only takes Cla
 - Workflow token budgets only count Claude tokens; codex work is free and invisible to `budget.spent()`.
 
 ## Vendored Repositories
+
 This project vendors external repositories under `.repos/` as read-only reference material for coding agents.
+
 - Prefer examples and patterns from the vendored source code over generated guesses or web search results.
 - Do not edit files under .repos/ unless explicitly asked.
 - Do not import from `.repos/`; application code must continue importing from normal package dependencies.
 - When writing Effect code, read `.repos/effect-smol/LLMS.md` first and inspect `.repos/effect-smol/` for examples of idiomatic usage, tests, module structure, and API design.
 
 ## Personal Notes & Document Spec
+
 This project uses private design documents under `.notes/` as implementation reference for coding agents. When specified use it for planning, designing and brainstorming. When creating, mention in doc current date for future reference.
+
 - Allow the design docs to be reviewed by subagents when see fit.
 - Propose improvements when see fit.

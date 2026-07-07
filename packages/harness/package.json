@@ -23,7 +23,6 @@
 	},
 	"files": [
 		"dist",
-		"migrations",
 		"src"
 	],
 	"type": "module",
@@ -53,10 +52,10 @@
 		"@codeworksh/utils": "workspace:*",
 		"@daytona/sdk": "^0.187.0",
 		"@effect/platform-node": "4.0.0-beta.78",
+		"@effect/sql-sqlite-node": "4.0.0-beta.86",
 		"@platformatic/vfs": "^0.4.0",
 		"@vercel/sandbox": "^2.2.1",
 		"dedent": "^1.7.2",
-		"drizzle-orm": "1.0.0-rc.3",
 		"effect": "4.0.0-beta.86",
 		"esbuild": "^0.27.3",
 		"glob": "^13.0.6",
@@ -75,8 +74,7 @@
 		"@effect/language-service": "^0.86.2",
 		"@types/mime-types": "^3.0.1",
 		"@types/node": "^25.9.2",
-		"bumpp": "^11.0.1",
-		"drizzle-kit": "1.0.0-rc.3"
+		"bumpp": "^11.0.1"
 	},
 	"peerDependencies": {
 		"typescript": "^5"
