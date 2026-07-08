@@ -57,4 +57,70 @@ export const migrations = {
 		yield* sql`CREATE UNIQUE INDEX session_slug_idx ON session (slug)`;
 		yield* sql`CREATE INDEX session_tag_idx ON session (tag)`;
 	}),
+
+	// Session entry tree + message parts + session cursor/aggregate columns.
+	// Spec: .notes/harness/0-2-Harness-Session-Model.md §4.
+	"202607080001_session_entries": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+
+		// The tree edge is a composite FK (session_id, parent_id) so a parent can
+		// never live in another session — cross-session edges would let path
+		// walks mix contexts. NULL parent_id (roots) skips the FK per SQLite.
+		yield* sql`
+			CREATE TABLE session_entry (
+				id TEXT PRIMARY KEY,
+				session_id TEXT NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE,
+				parent_id TEXT,
+				seq INTEGER NOT NULL,
+				type TEXT NOT NULL,
+				data TEXT NOT NULL,
+				label TEXT,
+				metadata TEXT,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				FOREIGN KEY (session_id, parent_id) REFERENCES session_entry(session_id, id)
+			)
+		`;
+
+		// Parent key for the composite FKs (SQLite requires a UNIQUE covering
+		// the referenced columns).
+		yield* sql`CREATE UNIQUE INDEX session_entry_session_id_idx ON session_entry (session_id, id)`;
+
+		yield* sql`
+			CREATE TABLE session_entry_part (
+				id TEXT PRIMARY KEY,
+				entry_id TEXT NOT NULL,
+				session_id TEXT NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE,
+				part_index INTEGER NOT NULL,
+				type TEXT NOT NULL,
+				status TEXT,
+				call_id TEXT,
+				tool_name TEXT,
+				data TEXT NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				CHECK (type != 'toolCall' OR (status IS NOT NULL AND call_id IS NOT NULL AND tool_name IS NOT NULL)),
+				CHECK (type = 'toolCall' OR (status IS NULL AND call_id IS NULL AND tool_name IS NULL)),
+				FOREIGN KEY (session_id, entry_id) REFERENCES session_entry(session_id, id) ON UPDATE CASCADE ON DELETE CASCADE
+			)
+		`;
+
+		yield* sql`ALTER TABLE session ADD COLUMN leaf_entry_id TEXT REFERENCES session_entry(id)`;
+		yield* sql`ALTER TABLE session ADD COLUMN cost REAL NOT NULL DEFAULT 0`;
+		yield* sql`ALTER TABLE session ADD COLUMN tokens_input INTEGER NOT NULL DEFAULT 0`;
+		yield* sql`ALTER TABLE session ADD COLUMN tokens_output INTEGER NOT NULL DEFAULT 0`;
+		yield* sql`ALTER TABLE session ADD COLUMN tokens_cache_read INTEGER NOT NULL DEFAULT 0`;
+		yield* sql`ALTER TABLE session ADD COLUMN tokens_cache_write INTEGER NOT NULL DEFAULT 0`;
+
+		yield* sql`CREATE UNIQUE INDEX session_entry_session_seq_idx ON session_entry (session_id, seq)`;
+		yield* sql`CREATE INDEX session_entry_parent_idx ON session_entry (session_id, parent_id)`;
+		yield* sql`CREATE INDEX session_entry_type_idx ON session_entry (session_id, type, seq)`;
+		yield* sql`CREATE INDEX session_entry_label_idx ON session_entry (session_id, seq) WHERE label IS NOT NULL`;
+
+		yield* sql`CREATE UNIQUE INDEX session_entry_part_entry_idx ON session_entry_part (entry_id, part_index)`;
+		yield* sql`CREATE INDEX session_entry_part_call_idx ON session_entry_part (session_id, call_id) WHERE call_id IS NOT NULL`;
+		yield* sql`CREATE UNIQUE INDEX session_entry_part_call_uidx ON session_entry_part (entry_id, call_id) WHERE call_id IS NOT NULL`;
+		yield* sql`CREATE INDEX session_entry_part_unsettled_idx ON session_entry_part (session_id, status) WHERE status IN ('pending', 'running')`;
+		yield* sql`CREATE INDEX session_entry_part_session_idx ON session_entry_part (session_id, entry_id, part_index)`;
+	}),
 };
