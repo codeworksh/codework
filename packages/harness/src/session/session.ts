@@ -1,3 +1,4 @@
+import { Message, validateSchema } from "@codeworksh/aikit";
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { uuidv7 } from "uuidv7";
@@ -40,6 +41,12 @@ export class ToolCallNotFoundError extends Schema.TaggedErrorClass<ToolCallNotFo
 	callId: Schema.String,
 }) {}
 
+export class LeafConflictError extends Schema.TaggedErrorClass<LeafConflictError>()("LeafConflictError", {
+	sessionId: Schema.String,
+	expectedLeafEntryId: Schema.NullOr(Schema.String),
+	actualLeafEntryId: Schema.NullOr(Schema.String),
+}) {}
+
 export interface CreateSession {
 	readonly id?: string;
 	readonly projectId: string;
@@ -51,14 +58,8 @@ export interface CreateSession {
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
-// Billed usage of one assistant envelope, mirroring aikit `Usage`.
-export interface Usage {
-	readonly input: number;
-	readonly output: number;
-	readonly cacheRead: number;
-	readonly cacheWrite: number;
-	readonly costTotal: number;
-}
+// Billed usage of one assistant envelope, owned by aikit's wire schema.
+export type Usage = Message.Usage;
 
 export interface AppendPart {
 	readonly id?: string; // uuidv7; generated when omitted
@@ -75,8 +76,9 @@ export interface AppendEntry {
 	readonly type: EntryType;
 	readonly data: string; // JSON: full payload, or message envelope
 	readonly parts?: ReadonlyArray<AppendPart>; // order = partIndex; message types only
-	readonly usage?: Usage; // assistant entries only → session aggregate bump
 	readonly parentId?: string; // explicit branch appends only; default = current leaf
+	/** Guard the first append of a run against a leaf changed after context assembly. */
+	readonly expectedLeafEntryId?: string | null;
 }
 
 export interface SettleToolCall {
@@ -107,7 +109,9 @@ export interface Interface {
 	}) => Effect.Effect<HydratedEntry[]>;
 	/** Unsettled toolCall parts (crash recovery / live status). */
 	readonly unsettled: (sessionId: string) => Effect.Effect<SessionEntryPartRow[]>;
-	readonly append: (input: AppendEntry) => Effect.Effect<SessionEntryRow, SessionNotFoundError | EntryNotFoundError>;
+	readonly append: (
+		input: AppendEntry,
+	) => Effect.Effect<SessionEntryRow, SessionNotFoundError | EntryNotFoundError | LeafConflictError>;
 	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void, ToolCallNotFoundError>;
 	/** Move the leaf cursor; the next append forks a sibling branch. */
 	readonly branch: (input: { sessionId: string; entryId: string }) => Effect.Effect<void, EntryNotFoundError>;
@@ -237,6 +241,11 @@ export const layer = Layer.effect(
 
 		const epochNow = Effect.map(DateTime.now, DateTime.toEpochMillis);
 
+		const usageFromEnvelope = (data: string): Usage => {
+			const envelope = JSON.parse(data) as { readonly usage?: unknown };
+			return validateSchema(Message.UsageSchema, envelope.usage, "assistant message usage");
+		};
+
 		// Zip rule (§7.2): group parts by entry id, attach while walking entries.
 		// entry.type says whether parts are expected; a mismatch is corruption,
 		// not an edge case (§10.4).
@@ -334,6 +343,7 @@ export const layer = Layer.effect(
 		type AppendTxResult =
 			| { readonly _tag: "sessionNotFound" }
 			| { readonly _tag: "parentNotFound" }
+			| { readonly _tag: "leafConflict"; readonly actualLeafEntryId: string | null }
 			| { readonly _tag: "inserted"; readonly entry: SessionEntryRow };
 
 		const append = Effect.fn("Session.append")(function* (input: AppendEntry) {
@@ -341,17 +351,24 @@ export const layer = Layer.effect(
 			if (parts.length > 0 && !messageTypes.has(input.type)) {
 				return yield* Effect.die(new Error(`session append: entry type "${input.type}" must not carry parts`));
 			}
-			// Aggregates are a cache over assistant envelopes (§4.1); usage on any
-			// other type would diverge the cache from entry truth.
-			if (input.usage !== undefined && input.type !== "assistant") {
-				return yield* Effect.die(new Error(`session append: entry type "${input.type}" must not carry usage`));
-			}
 
 			const result: AppendTxResult = yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
 						const session = yield* findSession(input.sessionId);
 						if (Option.isNone(session)) return { _tag: "sessionNotFound" } as const;
+						// The envelope is authoritative; aggregate deltas are never accepted
+						// independently from the data stored by this transaction.
+						const usage =
+							input.type === "assistant" ? yield* Effect.sync(() => usageFromEnvelope(input.data)) : undefined;
+						const currentLeaf = yield* resolveLeaf(session.value);
+
+						if (input.expectedLeafEntryId !== undefined) {
+							const actualLeafEntryId = Option.getOrNull(currentLeaf);
+							if (actualLeafEntryId !== input.expectedLeafEntryId) {
+								return { _tag: "leafConflict", actualLeafEntryId } as const;
+							}
+						}
 
 						// Append anchor: explicit branch target (validated same-session;
 						// the composite FK is the schema backstop), else the current leaf
@@ -365,7 +382,7 @@ export const layer = Layer.effect(
 							if (rows.length === 0) return { _tag: "parentNotFound" } as const;
 							parentId = Option.some(input.parentId);
 						} else {
-							parentId = yield* resolveLeaf(session.value);
+							parentId = currentLeaf;
 						}
 
 						const entryRow = yield* SessionEntryRow.insert.makeEffect({
@@ -397,12 +414,11 @@ export const layer = Layer.effect(
 						// Advance the cursor; assistant appends bump the usage aggregates
 						// in the same statement (envelope usage is final at message.end).
 						const now = yield* epochNow;
-						const usage = input.usage;
 						yield* sql`
 							UPDATE session SET
 								leaf_entry_id = ${input.id},
 								updated_at = ${now},
-								cost = cost + ${usage?.costTotal ?? 0},
+								cost = cost + ${usage?.cost.total ?? 0},
 								tokens_input = tokens_input + ${usage?.input ?? 0},
 								tokens_output = tokens_output + ${usage?.output ?? 0},
 								tokens_cache_read = tokens_cache_read + ${usage?.cacheRead ?? 0},
@@ -425,6 +441,14 @@ export const layer = Layer.effect(
 				case "parentNotFound":
 					return yield* Effect.fail(
 						new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.parentId ?? "" }),
+					);
+				case "leafConflict":
+					return yield* Effect.fail(
+						new LeafConflictError({
+							sessionId: input.sessionId,
+							expectedLeafEntryId: input.expectedLeafEntryId ?? null,
+							actualLeafEntryId: result.actualLeafEntryId,
+						}),
 					);
 				case "inserted":
 					return result.entry;

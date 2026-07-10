@@ -36,6 +36,30 @@ const userEntry = (sessionId: string, id: string, text: string): Session.AppendE
 	parts: [{ type: "text", data: JSON.stringify({ type: "text", text }) }],
 });
 
+const usage = (
+	input: Partial<Pick<Session.Usage, "input" | "output" | "cacheRead" | "cacheWrite">> & {
+		readonly costTotal?: number;
+	} = {},
+): Session.Usage => {
+	const tokens = {
+		input: input.input ?? 0,
+		output: input.output ?? 0,
+		cacheRead: input.cacheRead ?? 0,
+		cacheWrite: input.cacheWrite ?? 0,
+	};
+	return {
+		...tokens,
+		totalTokens: tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite,
+		cost: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			total: input.costTotal ?? 0,
+		},
+	};
+};
+
 const assistantEntry = (
 	sessionId: string,
 	id: string,
@@ -44,7 +68,12 @@ const assistantEntry = (
 	id,
 	sessionId,
 	type: "assistant",
-	data: JSON.stringify({ messageId: id, role: "assistant", stopReason: "stop" }),
+	data: JSON.stringify({
+		messageId: id,
+		role: "assistant",
+		stopReason: "stop",
+		usage: options?.usage ?? usage(),
+	}),
 	parts: [
 		{ type: "text", data: JSON.stringify({ type: "text", text: "ok" }) },
 		...(options?.toolCall
@@ -64,7 +93,6 @@ const assistantEntry = (
 				]
 			: []),
 	],
-	usage: options?.usage,
 });
 
 const countOf = (rows: ReadonlyArray<unknown>) => {
@@ -126,13 +154,13 @@ describe("session", () => {
 			yield* session.append(userEntry(created.id, "e1", "hi"));
 			yield* session.append(
 				assistantEntry(created.id, "e2", {
-					usage: { input: 100, output: 20, cacheRead: 40, cacheWrite: 10, costTotal: 0.5 },
+					usage: usage({ input: 100, output: 20, cacheRead: 40, cacheWrite: 10, costTotal: 0.5 }),
 				}),
 			);
 			yield* session.append(userEntry(created.id, "e3", "again"));
 			yield* session.append(
 				assistantEntry(created.id, "e4", {
-					usage: { input: 150, output: 30, cacheRead: 90, cacheWrite: 0, costTotal: 0.25 },
+					usage: usage({ input: 150, output: 30, cacheRead: 90, cacheWrite: 0, costTotal: 0.25 }),
 				}),
 			);
 
@@ -302,6 +330,33 @@ describe("session", () => {
 		}),
 	);
 
+	it.effect("append rejects a leaf changed after context assembly", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const created = yield* createSession("s-expected-leaf");
+			yield* session.append({ ...userEntry(created.id, "e1", "first"), expectedLeafEntryId: null });
+
+			const accepted = yield* session.append({
+				...assistantEntry(created.id, "e2"),
+				expectedLeafEntryId: "e1",
+			});
+			expect(accepted.id).toBe("e2");
+
+			const result = yield* session
+				.append({ ...userEntry(created.id, "e3", "stale"), expectedLeafEntryId: "e1" })
+				.pipe(Effect.flip);
+			expect(result._tag).toBe("LeafConflictError");
+			if (result._tag === "LeafConflictError") {
+				expect(result.expectedLeafEntryId).toBe("e1");
+				expect(result.actualLeafEntryId).toBe("e2");
+			}
+
+			expect(Option.isNone(yield* session.entry("e3"))).toBe(true);
+			const row = Option.getOrElse(yield* session.get(created.id), () => created);
+			expect(Option.getOrElse(row.leafEntryId, () => "")).toBe("e2");
+		}),
+	);
+
 	it.effect("append falls back to the latest entry when the leaf pointer is lost", () =>
 		Effect.gen(function* () {
 			const sql = yield* SqlClient.SqlClient;
@@ -336,10 +391,7 @@ describe("session", () => {
 
 			const exit = yield* session
 				.append({
-					id: "e1",
-					sessionId: created.id,
-					type: "assistant",
-					data: JSON.stringify({ messageId: "e1", role: "assistant" }),
+					...assistantEntry(created.id, "e1"),
 					parts: [toolPart("call_dup"), toolPart("call_dup")],
 				})
 				.pipe(Effect.exit);
@@ -350,15 +402,15 @@ describe("session", () => {
 		}),
 	);
 
-	it.effect("usage on a non-assistant entry is a defect", () =>
+	it.effect("assistant usage must come from the stored envelope", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
 			const created = yield* createSession("s-usage-guard");
 
 			const exit = yield* session
 				.append({
-					...userEntry(created.id, "e1", "hi"),
-					usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, costTotal: 0.1 },
+					...assistantEntry(created.id, "e1"),
+					data: JSON.stringify({ messageId: "e1", role: "assistant", stopReason: "stop" }),
 				})
 				.pipe(Effect.exit);
 			expect(Exit.isFailure(exit)).toBe(true);
