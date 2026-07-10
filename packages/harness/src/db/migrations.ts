@@ -100,6 +100,8 @@ export const migrations = {
 				data TEXT NOT NULL,
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL,
+				CHECK (type != 'toolCall' OR (status IS NOT NULL AND call_id IS NOT NULL AND tool_name IS NOT NULL)),
+				CHECK (type = 'toolCall' OR (status IS NULL AND call_id IS NULL AND tool_name IS NULL)),
 				FOREIGN KEY (session_id, entry_id) REFERENCES session_entry(session_id, id) ON UPDATE CASCADE ON DELETE CASCADE
 			)
 		`;
