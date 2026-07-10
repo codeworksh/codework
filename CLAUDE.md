@@ -72,7 +72,7 @@ This project vendors external repositories under `.repos/` as read-only refere
 
 ## Personal Notes & Document Spec
 
-This project uses private design documents under `.notes/` as implementation reference for coding agents. When specified use it for planning, designing and brainstorming. When creating, mention in doc current date for future reference.
+This project uses private design documents under `.notes/` as implementation reference for coding agents. When specified use it for planning, designing and brainstorming. When creating, mention in doc current date and git commit ID if available.
 
 - Allow the design docs to be reviewed by subagents when see fit.
 - Propose improvements when see fit.

@@ -49,6 +49,11 @@ export const migrations = {
 				title TEXT NOT NULL,
 				tag TEXT NOT NULL,
 				metadata TEXT,
+				cost REAL NOT NULL DEFAULT 0,
+				tokens_input INTEGER NOT NULL DEFAULT 0,
+				tokens_output INTEGER NOT NULL DEFAULT 0,
+				tokens_cache_read INTEGER NOT NULL DEFAULT 0,
+				tokens_cache_write INTEGER NOT NULL DEFAULT 0,
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL
 			)
@@ -56,16 +61,12 @@ export const migrations = {
 
 		yield* sql`CREATE UNIQUE INDEX session_slug_idx ON session (slug)`;
 		yield* sql`CREATE INDEX session_tag_idx ON session (tag)`;
-	}),
-
-	// Session entry tree + message parts + session cursor/aggregate columns.
-	// Spec: .notes/harness/0-2-Harness-Session-Model.md §4.
-	"202607080001_session_entries": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
 
 		// The tree edge is a composite FK (session_id, parent_id) so a parent can
-		// never live in another session — cross-session edges would let path
-		// walks mix contexts. NULL parent_id (roots) skips the FK per SQLite.
+		// never live in another session — cross-session edges would mess up the context
+		// NULL parent_id (roots) skips the FK per SQLite.
+		// In short: FK (session_id, parent_id); makes sure that a child entry via parent_id must belong
+		// to exact same session_id.
 		yield* sql`
 			CREATE TABLE session_entry (
 				id TEXT PRIMARY KEY,
@@ -99,18 +100,11 @@ export const migrations = {
 				data TEXT NOT NULL,
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL,
-				CHECK (type != 'toolCall' OR (status IS NOT NULL AND call_id IS NOT NULL AND tool_name IS NOT NULL)),
-				CHECK (type = 'toolCall' OR (status IS NULL AND call_id IS NULL AND tool_name IS NULL)),
 				FOREIGN KEY (session_id, entry_id) REFERENCES session_entry(session_id, id) ON UPDATE CASCADE ON DELETE CASCADE
 			)
 		`;
 
 		yield* sql`ALTER TABLE session ADD COLUMN leaf_entry_id TEXT REFERENCES session_entry(id)`;
-		yield* sql`ALTER TABLE session ADD COLUMN cost REAL NOT NULL DEFAULT 0`;
-		yield* sql`ALTER TABLE session ADD COLUMN tokens_input INTEGER NOT NULL DEFAULT 0`;
-		yield* sql`ALTER TABLE session ADD COLUMN tokens_output INTEGER NOT NULL DEFAULT 0`;
-		yield* sql`ALTER TABLE session ADD COLUMN tokens_cache_read INTEGER NOT NULL DEFAULT 0`;
-		yield* sql`ALTER TABLE session ADD COLUMN tokens_cache_write INTEGER NOT NULL DEFAULT 0`;
 
 		yield* sql`CREATE UNIQUE INDEX session_entry_session_seq_idx ON session_entry (session_id, seq)`;
 		yield* sql`CREATE INDEX session_entry_parent_idx ON session_entry (session_id, parent_id)`;

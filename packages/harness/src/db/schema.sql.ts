@@ -12,8 +12,7 @@ export const Timestamps = {
 const Metadata = Schema.Record(Schema.String, Schema.String);
 
 // Session entry discriminant. Frozen once shipped — values live in persisted
-// rows, so a rename is a data migration. Additions are code-only (the column
-// is unconstrained TEXT). See .notes/harness/0-2-Harness-Session-Model.md §5.
+// rows, so a rename is a data migration. Additions are code-only (the column is unconstrained TEXT).
 export const entryTypes = [
 	"user",
 	"assistant",
