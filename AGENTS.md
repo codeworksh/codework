@@ -1,34 +1,76 @@
-# Repository Guidelines
+# Personal Preference
 
-## Project Structure & Module Organization
+## TypeScript
 
-This repository is a `pnpm` workspace with TypeScript packages under `packages/`, including `packages/aikit` (the AI agent toolkit) and `packages/sdk` (the API SDK). `packages/utils` holds shared helpers that are bundled into dependents and marked `private`, so it is not published. Source files live in each package's `src/` directory. `aikit` tests live in `packages/aikit/test/` (`*.test.ts`), with opt-in live-provider suites under `packages/aikit/test/e2e/` (`*.e2e.test.ts`). Shared repo files include `vite.config.ts`, `models.json`, `assets/` for static assets, and `scripts/publish.js` for package publishing.
+- Never use `any` unless 100% necessary or specifically instructed.
+- Use effect only if the project uses effect or specifically instructed, use effect reference repository for latest architecture patterns.
 
-## Build, Test, and Development Commands
+## Commands
 
-Use Node `>=24.14.1` and `pnpm@10`.
+- Don't run dev server commands (e.g `pnpm run dev`) - assume it's already running.
+- Don't run build commands unless specifically told to.
+- Focus on checking commands like `pnpm run typecheck`, `pnpm run check`, `bun run lint`, etc
 
-- `pnpm install`: install workspace dependencies.
-- `pnpm lint`: run `vite-plus` lint checks across the repo.
-- `pnpm check`: run TypeScript and repo validation checks.
-- `pnpm test`: run the workspace test suite.
-- `pnpm build`: build all packages.
-- `pnpm --filter @codeworksh/aikit test`: run only `aikit` tests.
-- `pnpm release:aikit:dry`: dry-run the publish flow for `aikit` (or `pnpm release:dry` inside `packages/aikit`).
+## Package Managers
 
-## Coding Style & Naming Conventions
+- Use `pnpm`, `vp - vite plus` if the project already uses it, otherwise use `pnpm`
+- Never use `npm` or `yarn
 
-The codebase uses ESM TypeScript with strict compiler settings. Follow the formatting configured in `vite.config.ts`: tabs for indentation, tab width `3`, and print width `120`. Prefer named exports, keep modules small, and use clear singular file names such as `agent.ts`, `model.ts`, and `stream.ts`. Test files should end in `.test.ts`. Keep imports explicit and consistent with the existing source, including `.ts` extensions where already used.
+## Tech Stack Preference
 
-## Testing Guidelines
+When uncertain, prefer: Effect, Tailwind, TypeScript, React, Clerk, TanStack, Vercel, Vite
 
-Tests use `vite-plus/test`. Add coverage for every behavior change in the affected package; for `aikit`, place tests in `packages/aikit/test/`. Prefer focused unit tests that mirror the source area being changed, for example `packages/aikit/test/stream.test.ts` for streaming behavior. Run `pnpm test` before opening a PR and use package-scoped test commands while iterating.
+## Code Style
+
+- Always strive for concise, simple solutions.
+- If a problem can be solved in a simpler way, propose it.
+- No pre-mature optimizations, propose if required.
+- Use single word filename whenever possible otherwise split into kabab-case(only if no options).
+
+## General Preferences
+
+- If asked to do too much work at once, stop and state that clearly.
+- If computer use is helpful for completing or verifying work, use it.
+
+## Maintainability
+
+Long term maintainability is a core priority. If you add new functionality, first check if there is shared logic that can be extracted to a separate module. Duplicate logic across multiple files is a code smell and should be avoided. Don't be afraid to change existing code. Don't take shortcuts by just adding local logic to solve a problem.
+
+## Package Roles
+
+- `packages/aikit` - Low level SDK that provides unified LLM API for multiple LLM providers.
+- `packages/harness` - Effect powered main Agent Harness application, uses `packages/aikit` under the hood.
+- `packages/agent` - DEPRECATED.
+- `packages/bridge` - WIP.
+- `packages/desktop` - WIP.
+- `packages/sdk` - WIP.
+- `packages/utils` - DEPRECATED.
+- `packages/webui` - WIP.
+
+## Vendored Repositories
+
+This project vendors external repositories under `.repos/` as read-only reference material for coding agents.
+
+- Prefer examples and patterns from the vendored source code over generated guesses or web search results.
+- Do not edit files under .repos/ unless explicitly asked.
+- Do not import from `.repos/`; application code must continue importing from normal package dependencies.
+- When writing Effect code, read `.repos/effect-smol/LLMS.md` first and inspect `.repos/effect-smol/` for examples of idiomatic usage, tests, module structure, and API design.
+
+## Personal Notes & Document Spec
+
+This project uses private design documents under `.notes/` as implementation reference for coding agents. When specified use it for planning, designing and brainstorming. When creating, mention in doc current date and git commit ID if available.
+
+- Allow the design docs to be reviewed by subagents when see fit.
+- Propose improvements when see fit.
+
+## Task Completion Requirements
+
+- `vp check` and `vp run typecheck` must pass before considering tasks completed, unless otherwise specified.
+- Use `vp test` for the built-in Vite+ test command and `vp run test` when you specifically need the test package script.
 
 ## Commit & Pull Request Guidelines
 
-Recent history follows Conventional Commit style with optional package scopes, for example `feat(aikit): ...`, `fix(aikit): ...`, and `chore: ...`. Keep commit subjects imperative and concise.
-
-PRs should describe the behavior change, list affected packages, and include test evidence such as `pnpm test` or `pnpm --filter ... test` output. Link related issues when applicable. Screenshots are only useful for docs or asset updates; library API changes should include code samples instead.
+Conventional Commit style with optional package scopes, e.g `feat(aikit): ...`, `fix(aikit): ...`, and `chore: ...`. Keep commit subjects imperative and concise.
 
 ## Releasing
 
@@ -40,9 +82,3 @@ Flow (shown for `aikit`; substitute `sdk` as needed):
 2. `pnpm bump:aikit` (or `pnpm run bump` inside `packages/aikit`): pick the bump; it commits and tags `@codeworksh/aikit@<version>` without pushing.
 3. `git push && git push --tag`.
 4. `pnpm release:aikit:dry` to preview the tarball, then `pnpm release:aikit` to publish. Use `pnpm release:aikit:dev` for a prerelease under the `dev` dist-tag.
-
-Inside a package, drop the `:aikit` suffix: `pnpm run bump`, `pnpm run release:dry`, `pnpm run release:dev`, `pnpm run release`.
-
-## Security & Configuration Tips
-
-Do not commit secrets. Provider keys such as `ANTHROPIC_API_KEY` should come from the environment. Treat `models.json` and provider integrations as compatibility-sensitive files and note any downstream impact when changing them.
