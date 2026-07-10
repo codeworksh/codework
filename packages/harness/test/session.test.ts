@@ -1,3 +1,6 @@
+import "./utils/env";
+
+import { llm, Message, type Model, type Protocol, stream, Type, validateSchema } from "@codeworksh/aikit";
 import { Effect, Exit, Layer, Option } from "effect";
 import path from "node:path";
 import { SqlClient } from "effect/unstable/sql";
@@ -11,6 +14,10 @@ import { testEffect } from "./utils/effect";
 // Fresh in-memory database per test: the layer is rebuilt for every it.effect.
 const layer = Session.layer.pipe(Layer.provideMerge(Database.layer(":memory:")));
 const it = testEffect(layer);
+const anthropicKey = process.env.ANTHROPIC_API_KEY;
+const openaiKey = process.env.OPENAI_API_KEY;
+const anthropicLiveIt = anthropicKey ? it.live : it.live.skip;
+const openaiLiveIt = openaiKey ? it.live : it.live.skip;
 
 const createSession = (slug: string) =>
 	Effect.gen(function* () {
@@ -99,6 +106,250 @@ const countOf = (rows: ReadonlyArray<unknown>) => {
 	const row = rows[0] as { count?: number | bigint } | undefined;
 	return Number(row?.count ?? 0);
 };
+
+const appendMessage = (sessionId: string, message: Message.Message, expectedLeafEntryId: string | null) => {
+	const { parts, ...envelope } = message;
+	return {
+		id: message.messageId,
+		sessionId,
+		type: message.role,
+		data: JSON.stringify(envelope),
+		parts: parts.map((part) => ({
+			type: part.type,
+			status: part.type === "toolCall" ? part.status : undefined,
+			callId: part.type === "toolCall" ? part.callID : undefined,
+			toolName: part.type === "toolCall" ? part.name : undefined,
+			data: JSON.stringify(part),
+		})),
+		expectedLeafEntryId,
+	} satisfies Session.AppendEntry;
+};
+
+const messageFromEntry = (hydrated: Session.HydratedEntry): Message.Message => {
+	const message = {
+		...(JSON.parse(hydrated.entry.data) as Record<string, unknown>),
+		parts: hydrated.parts.map((part) => JSON.parse(part.data) as unknown),
+	};
+	return validateSchema(Message.MessageSchema, message, `session entry ${hydrated.entry.id}`);
+};
+
+const assistantText = (message: Message.AssistantMessage) =>
+	message.parts
+		.filter((part): part is Message.TextContent => part.type === "text")
+		.map((part) => part.text)
+		.join("\n");
+
+const usageTotals = (messages: ReadonlyArray<Message.AssistantMessage>) =>
+	messages.reduce(
+		(sum, message) => ({
+			cost: sum.cost + message.usage.cost.total,
+			input: sum.input + message.usage.input,
+			output: sum.output + message.usage.output,
+			cacheRead: sum.cacheRead + message.usage.cacheRead,
+			cacheWrite: sum.cacheWrite + message.usage.cacheWrite,
+		}),
+		{ cost: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	);
+
+const expectUsageTotals = (persisted: Session.SessionRow, totals: ReturnType<typeof usageTotals>) => {
+	expect(persisted.cost).toBeCloseTo(totals.cost, 10);
+	expect(persisted.tokensInput).toBe(totals.input);
+	expect(persisted.tokensOutput).toBe(totals.output);
+	expect(persisted.tokensCacheRead).toBe(totals.cacheRead);
+	expect(persisted.tokensCacheWrite).toBe(totals.cacheWrite);
+};
+
+const weatherTool = Message.defineTool({
+	name: "get_weather",
+	description: "Get the current weather for a location.",
+	parameters: Type.Object({
+		location: Type.String({ description: "City or location to check" }),
+	}),
+});
+
+const liveConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
+	model: Model.TModel<TProtocol>,
+	options: Protocol.OptionsFor<TProtocol>,
+	slug: string,
+) =>
+	Effect.gen(function* () {
+		const session = yield* Session.Service;
+		const created = yield* createSession(slug);
+		const prompts = [
+			"Remember the codeword COBALT-27. Reply with one short sentence confirming that you will remember it.",
+			"What codeword did I ask you to remember? Reply with only the codeword.",
+			"Also remember the second codeword AMBER-91. Reply with one short sentence confirming both codewords.",
+			"Reply with both codewords in the order I gave them, separated by a comma and nothing else.",
+		] as const;
+		const assistantMessages: Message.AssistantMessage[] = [];
+		let expectedLeafEntryId: string | null = null;
+
+		for (const prompt of prompts) {
+			const userMessage = Message.createUserMessage({
+				role: "user",
+				time: { created: Date.now() },
+				parts: [{ type: "text", text: prompt }],
+			});
+			yield* session.append(appendMessage(created.id, userMessage, expectedLeafEntryId));
+			expectedLeafEntryId = userMessage.messageId;
+
+			// The provider receives context reconstructed from SQLite, not the
+			// in-memory messages accumulated by this test.
+			const storedPath = yield* session.path(created.id);
+			const context: Message.Context = {
+				systemPrompt: "You are a concise assistant. Follow the user's requested response format.",
+				messages: storedPath.map(messageFromEntry),
+			};
+			const assistant = yield* Effect.promise(() => stream.complete(model, context, options));
+			expect(assistant.stopReason, assistant.errorMessage).not.toBe("error");
+			expect(assistant.provider.id).toBe(model.provider.id);
+			expect(assistant.model).toBe(model.id);
+			expect(assistant.parts.length).toBeGreaterThan(0);
+			expect(assistant.usage.input + assistant.usage.cacheRead).toBeGreaterThan(0);
+			expect(assistant.usage.output).toBeGreaterThan(0);
+
+			yield* session.append(appendMessage(created.id, assistant, expectedLeafEntryId));
+			expectedLeafEntryId = assistant.messageId;
+			assistantMessages.push(assistant);
+
+			// Aggregates must be correct after every assistant transaction, not only
+			// after the complete conversation is reloaded.
+			const afterRound = Option.getOrElse(yield* session.get(created.id), () => created);
+			expectUsageTotals(afterRound, usageTotals(assistantMessages));
+		}
+
+		const path = yield* session.path(created.id);
+		const entryCount = prompts.length * 2;
+		expect(path).toHaveLength(entryCount);
+		expect(path.map((item) => item.entry.seq)).toEqual(Array.from({ length: entryCount }, (_, index) => index + 1));
+		expect(path.map((item) => item.entry.type)).toEqual(prompts.flatMap(() => ["user", "assistant"] as const));
+		expect(path.map((item) => Option.getOrNull(item.entry.parentId))).toEqual(
+			path.map((_, index) => (index === 0 ? null : path[index - 1]!.entry.id)),
+		);
+
+		const messages = path.map(messageFromEntry);
+		expect(messages.map((message) => message.messageId)).toEqual(path.map((item) => item.entry.id));
+		const finalText = assistantText(messages.at(-1) as Message.AssistantMessage).toUpperCase();
+		expect(finalText).toContain("COBALT-27");
+		expect(finalText).toContain("AMBER-91");
+		for (const item of path) {
+			expect(JSON.parse(item.entry.data)).not.toHaveProperty("parts");
+			expect(item.parts.length).toBeGreaterThan(0);
+			for (const part of item.parts) {
+				expect(JSON.parse(part.data).type).toBe(part.type);
+			}
+		}
+
+		const totals = usageTotals(assistantMessages);
+		const persisted = Option.getOrElse(yield* session.get(created.id), () => created);
+		expectUsageTotals(persisted, totals);
+		expect(Option.getOrNull(persisted.leafEntryId)).toBe(path.at(-1)!.entry.id);
+	});
+
+const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
+	model: Model.TModel<TProtocol>,
+	options: Protocol.OptionsFor<TProtocol>,
+	slug: string,
+) =>
+	Effect.gen(function* () {
+		const session = yield* Session.Service;
+		const created = yield* createSession(slug);
+		const userMessage = Message.createUserMessage({
+			role: "user",
+			time: { created: Date.now() },
+			parts: [
+				{
+					type: "text",
+					text: "Use get_weather exactly once to check Testville, then tell me the temperature and conditions.",
+				},
+			],
+		});
+		yield* session.append(appendMessage(created.id, userMessage, null));
+
+		const toolRequestContext: Message.Context = {
+			systemPrompt: "You are a concise assistant. Use the provided weather tool when asked.",
+			messages: (yield* session.path(created.id)).map(messageFromEntry),
+			tools: [weatherTool],
+		};
+		const toolRequest = yield* Effect.promise(() => stream.complete(model, toolRequestContext, options));
+		expect(toolRequest.stopReason, toolRequest.errorMessage).not.toBe("error");
+		const toolCalls = toolRequest.parts.filter(
+			(part): part is Message.ToolCallPendingPart => part.type === "toolCall" && part.status === "pending",
+		);
+		expect(toolCalls).toHaveLength(1);
+		const toolCall = toolCalls[0]!;
+		expect(toolCall.name).toBe(weatherTool.name);
+		expect(String(toolCall.arguments.location).toLowerCase()).toContain("testville");
+
+		yield* session.append(appendMessage(created.id, toolRequest, userMessage.messageId));
+		const pending = yield* session.unsettled(created.id);
+		expect(pending).toHaveLength(1);
+		expect(Option.getOrNull(pending[0]!.callId)).toBe(toolCall.callID);
+		expect(Option.getOrNull(pending[0]!.toolName)).toBe(weatherTool.name);
+		expectUsageTotals(
+			Option.getOrElse(yield* session.get(created.id), () => created),
+			usageTotals([toolRequest]),
+		);
+
+		const completedToolCall: Message.ToolCallCompletedPart = {
+			...toolCall,
+			status: "completed",
+			result: {
+				content: [{ type: "text", text: "The current weather in Testville is 72 F and sunny." }],
+				isError: false,
+			},
+			time: {
+				start: toolCall.time.start,
+				end: Date.now(),
+			},
+		};
+		yield* session.settleToolCall({
+			entryId: toolRequest.messageId,
+			callId: toolCall.callID,
+			status: "completed",
+			data: JSON.stringify(completedToolCall),
+		});
+		expect(yield* session.unsettled(created.id)).toHaveLength(0);
+
+		const settledEntry = Option.getOrElse(yield* session.entry(toolRequest.messageId), () => {
+			throw new Error("settled assistant entry missing");
+		});
+		const settledMessage = messageFromEntry(settledEntry) as Message.AssistantMessage;
+		const settledPart = settledMessage.parts.find(
+			(part): part is Message.ToolCallCompletedPart => part.type === "toolCall" && part.status === "completed",
+		);
+		expect(settledPart?.callID).toBe(toolCall.callID);
+		expect(settledPart?.result.content[0]).toMatchObject({ type: "text", text: expect.stringContaining("72 F") });
+
+		const finalContext: Message.Context = {
+			systemPrompt: toolRequestContext.systemPrompt,
+			messages: (yield* session.path(created.id)).map(messageFromEntry),
+			tools: [weatherTool],
+		};
+		const finalAssistant = yield* Effect.promise(() => stream.complete(model, finalContext, options));
+		expect(finalAssistant.stopReason, finalAssistant.errorMessage).not.toBe("error");
+		expect(finalAssistant.parts.some((part) => part.type === "toolCall")).toBe(false);
+		const finalText = assistantText(finalAssistant).toLowerCase();
+		expect(finalText).toContain("72");
+		expect(finalText).toContain("sunny");
+		yield* session.append(appendMessage(created.id, finalAssistant, toolRequest.messageId));
+
+		const path = yield* session.path(created.id);
+		expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant", "assistant"]);
+		expect(path.map((item) => item.entry.seq)).toEqual([1, 2, 3]);
+		expect(path.map((item) => Option.getOrNull(item.entry.parentId))).toEqual([
+			null,
+			userMessage.messageId,
+			toolRequest.messageId,
+		]);
+		expect(Option.getOrNull(Option.getOrElse(yield* session.get(created.id), () => created).leafEntryId)).toBe(
+			finalAssistant.messageId,
+		);
+		expectUsageTotals(
+			Option.getOrElse(yield* session.get(created.id), () => created),
+			usageTotals([toolRequest, finalAssistant]),
+		);
+	});
 
 describe("session", () => {
 	it.effect("create + get round-trips the session row", () =>
@@ -610,4 +861,64 @@ describe("session", () => {
 
 		expect(ids).toEqual(["e1", "e2"]);
 	});
+
+	anthropicLiveIt(
+		"persists a real four-round Anthropic conversation",
+		() =>
+			Effect.gen(function* () {
+				const model = yield* Effect.promise(() => llm("anthropic", "claude-haiku-4-5-20251001"));
+				if (!model) return yield* Effect.die(new Error("aikit did not resolve the Anthropic test model"));
+				yield* liveConversation(
+					model,
+					{ apiKey: anthropicKey, maxTokens: 96, temperature: 0, maxRetries: 1 },
+					"s-live-anthropic",
+				);
+			}),
+		{ timeout: 120_000 },
+	);
+
+	openaiLiveIt(
+		"persists a real four-round OpenAI conversation",
+		() =>
+			Effect.gen(function* () {
+				const model = yield* Effect.promise(() => llm("openai", "gpt-4o-mini"));
+				if (!model) return yield* Effect.die(new Error("aikit did not resolve the OpenAI test model"));
+				yield* liveConversation(
+					model,
+					{ apiKey: openaiKey, maxTokens: 96, temperature: 0, maxRetries: 1 },
+					"s-live-openai",
+				);
+			}),
+		{ timeout: 120_000 },
+	);
+
+	anthropicLiveIt(
+		"persists and settles a real Anthropic weather tool call",
+		() =>
+			Effect.gen(function* () {
+				const model = yield* Effect.promise(() => llm("anthropic", "claude-haiku-4-5-20251001"));
+				if (!model) return yield* Effect.die(new Error("aikit did not resolve the Anthropic test model"));
+				yield* liveToolConversation(
+					model,
+					{ apiKey: anthropicKey, maxTokens: 128, temperature: 0, maxRetries: 1 },
+					"s-live-tool-anthropic",
+				);
+			}),
+		{ timeout: 120_000 },
+	);
+
+	openaiLiveIt(
+		"persists and settles a real OpenAI weather tool call",
+		() =>
+			Effect.gen(function* () {
+				const model = yield* Effect.promise(() => llm("openai", "gpt-4o-mini"));
+				if (!model) return yield* Effect.die(new Error("aikit did not resolve the OpenAI test model"));
+				yield* liveToolConversation(
+					model,
+					{ apiKey: openaiKey, maxTokens: 128, temperature: 0, maxRetries: 1 },
+					"s-live-tool-openai",
+				);
+			}),
+		{ timeout: 120_000 },
+	);
 });
