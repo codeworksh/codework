@@ -1,4 +1,3 @@
-import { Message, validateSchema } from "@codeworksh/aikit";
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { uuidv7 } from "uuidv7";
@@ -17,15 +16,21 @@ import {
 	toolStatuses,
 } from "../db/schema.sql";
 import type { AbsolutePath } from "../schema";
+import { AssistantEnvelopeUsage } from "./schema";
 
-export { type EntryType, entryTypes, type MessageEntryType, messageEntryTypes, type PartType, partTypes };
-export { SessionEntryPartRow, SessionEntryRow, SessionRow, type ToolStatus, toolStatuses };
-
-// Spec: .notes/harness/0-2-Harness-Session-Model.md
-//
-// DB-only session data model: the session aggregate root, the append-only
-// entry tree, and normalized message parts. Message reassembly/lowering to
-// aikit shapes and the write-protocol subscriber live above this module.
+export {
+	entryTypes,
+	messageEntryTypes,
+	partTypes,
+	SessionEntryPartRow,
+	SessionEntryRow,
+	SessionRow,
+	toolStatuses,
+	type EntryType,
+	type MessageEntryType,
+	type PartType,
+	type ToolStatus,
+};
 
 export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()("SessionNotFoundError", {
 	sessionId: Schema.String,
@@ -47,6 +52,13 @@ export class LeafConflictError extends Schema.TaggedErrorClass<LeafConflictError
 	actualLeafEntryId: Schema.NullOr(Schema.String),
 }) {}
 
+// Structural rejection — the data-structure layer's "index out of bounds".
+export class InvalidEntryDataError extends Schema.TaggedErrorClass<InvalidEntryDataError>()("InvalidEntryDataError", {
+	entryId: Schema.String,
+	type: Schema.String,
+	reason: Schema.String,
+}) {}
+
 export interface CreateSession {
 	readonly id?: string;
 	readonly projectId: string;
@@ -58,8 +70,8 @@ export interface CreateSession {
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
-// Billed usage of one assistant envelope, owned by aikit's wire schema.
-export type Usage = Message.Usage;
+// Billed usage inside a persisted assistant envelope (harness-owned, ./schema).
+export { AssistantEnvelopeUsage, Usage } from "./schema";
 
 export interface AppendPart {
 	readonly id?: string; // uuidv7; generated when omitted
@@ -111,7 +123,10 @@ export interface Interface {
 	readonly unsettled: (sessionId: string) => Effect.Effect<SessionEntryPartRow[]>;
 	readonly append: (
 		input: AppendEntry,
-	) => Effect.Effect<SessionEntryRow, SessionNotFoundError | EntryNotFoundError | LeafConflictError>;
+	) => Effect.Effect<
+		SessionEntryRow,
+		SessionNotFoundError | EntryNotFoundError | LeafConflictError | InvalidEntryDataError
+	>;
 	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void, ToolCallNotFoundError>;
 	/** Move the leaf cursor; the next append forks a sibling branch. */
 	readonly branch: (input: { sessionId: string; entryId: string }) => Effect.Effect<void, EntryNotFoundError>;
@@ -126,6 +141,10 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()("@codework/session") {}
 
 const messageTypes: ReadonlySet<string> = new Set(messageEntryTypes);
+
+// Structural decode of the persisted envelope's usage; failures surface as
+// InvalidEntryDataError, never a defect — callers (Context Manager, UI) can act.
+const decodeEnvelopeUsage = Schema.decodeUnknownEffect(AssistantEnvelopeUsage);
 
 export const layer = Layer.effect(
 	Service,
@@ -241,11 +260,6 @@ export const layer = Layer.effect(
 
 		const epochNow = Effect.map(DateTime.now, DateTime.toEpochMillis);
 
-		const usageFromEnvelope = (data: string): Usage => {
-			const envelope = JSON.parse(data) as { readonly usage?: unknown };
-			return validateSchema(Message.UsageSchema, envelope.usage, "assistant message usage");
-		};
-
 		// Zip rule (§7.2): group parts by entry id, attach while walking entries.
 		// entry.type says whether parts are expected; a mismatch is corruption,
 		// not an edge case (§10.4).
@@ -349,20 +363,36 @@ export const layer = Layer.effect(
 		const append = Effect.fn("Session.append")(function* (input: AppendEntry) {
 			const parts = input.parts ?? [];
 			if (parts.length > 0 && !messageTypes.has(input.type)) {
-				return yield* Effect.die(new Error(`session append: entry type "${input.type}" must not carry parts`));
+				return yield* new InvalidEntryDataError({
+					entryId: input.id,
+					type: input.type,
+					reason: `entry type "${input.type}" must not carry parts`,
+				});
 			}
+
+			// The envelope is authoritative; aggregate deltas are never accepted
+			// independently of the data persisted by this transaction.
+			const usage =
+				input.type === "assistant"
+					? yield* decodeEnvelopeUsage(input.data).pipe(
+							Effect.map((envelope) => envelope.usage),
+							Effect.mapError(
+								(error) =>
+									new InvalidEntryDataError({ entryId: input.id, type: input.type, reason: error.message }),
+							),
+						)
+					: undefined;
 
 			const result: AppendTxResult = yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
 						const session = yield* findSession(input.sessionId);
 						if (Option.isNone(session)) return { _tag: "sessionNotFound" } as const;
-						// The envelope is authoritative; aggregate deltas are never accepted
-						// independently from the data stored by this transaction.
-						const usage =
-							input.type === "assistant" ? yield* Effect.sync(() => usageFromEnvelope(input.data)) : undefined;
 						const currentLeaf = yield* resolveLeaf(session.value);
-
+						// this might feel a bit redundant; but it's a way for the node
+						// to make sure it appends only on known leaf entry, making sure the
+						// assumption is correct.
+						// Otherwise the assumption is wrong and state has changed.
 						if (input.expectedLeafEntryId !== undefined) {
 							const actualLeafEntryId = Option.getOrNull(currentLeaf);
 							if (actualLeafEntryId !== input.expectedLeafEntryId) {
@@ -370,9 +400,9 @@ export const layer = Layer.effect(
 							}
 						}
 
-						// Append anchor: explicit branch target (validated same-session;
-						// the composite FK is the schema backstop), else the current leaf
-						// resolved with the same fallback reads use (§4.1).
+						// Append anchor: explicit branch target
+						// (validated same-session; the composite FK is the schema backstop),
+						// else the current leaf resolved with the same fallback reads use (§4.1).
 						let parentId: Option.Option<string>;
 						if (input.parentId !== undefined) {
 							const rows = yield* sql`
@@ -437,19 +467,15 @@ export const layer = Layer.effect(
 
 			switch (result._tag) {
 				case "sessionNotFound":
-					return yield* Effect.fail(new SessionNotFoundError({ sessionId: input.sessionId }));
+					return yield* new SessionNotFoundError({ sessionId: input.sessionId });
 				case "parentNotFound":
-					return yield* Effect.fail(
-						new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.parentId ?? "" }),
-					);
+					return yield* new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.parentId ?? "" });
 				case "leafConflict":
-					return yield* Effect.fail(
-						new LeafConflictError({
-							sessionId: input.sessionId,
-							expectedLeafEntryId: input.expectedLeafEntryId ?? null,
-							actualLeafEntryId: result.actualLeafEntryId,
-						}),
-					);
+					return yield* new LeafConflictError({
+						sessionId: input.sessionId,
+						expectedLeafEntryId: input.expectedLeafEntryId ?? null,
+						actualLeafEntryId: result.actualLeafEntryId,
+					});
 				case "inserted":
 					return result.entry;
 			}
@@ -476,7 +502,7 @@ export const layer = Layer.effect(
 				.pipe(Effect.orDie);
 
 			if (!settled) {
-				return yield* Effect.fail(new ToolCallNotFoundError({ entryId: input.entryId, callId: input.callId }));
+				return yield* new ToolCallNotFoundError({ entryId: input.entryId, callId: input.callId });
 			}
 		});
 
@@ -499,7 +525,7 @@ export const layer = Layer.effect(
 				.pipe(Effect.orDie);
 
 			if (!moved) {
-				return yield* Effect.fail(new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.entryId }));
+				return yield* new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.entryId });
 			}
 		});
 
@@ -526,7 +552,7 @@ export const layer = Layer.effect(
 				.pipe(Effect.orDie);
 
 			if (!labeled) {
-				return yield* Effect.fail(new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.entryId }));
+				return yield* new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.entryId });
 			}
 		});
 

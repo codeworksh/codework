@@ -16,15 +16,14 @@ const Metadata = Schema.Record(Schema.String, Schema.String);
 export const entryTypes = [
 	"user",
 	"assistant",
-	"synthetic", // message-shaped, own part rows
+	"synthetic",
 	"compaction",
-	"branchSummary", // context entries, lowered to user text
+	"branchSummary",
 	"custom",
-	"configChange", // non-context entries
+	"configChange",
 ] as const;
 export type EntryType = (typeof entryTypes)[number];
 
-// Entry types whose message parts are normalized into session_entry_part rows.
 export const messageEntryTypes = ["user", "assistant", "synthetic"] as const;
 export type MessageEntryType = (typeof messageEntryTypes)[number];
 
@@ -33,8 +32,8 @@ export type MessageEntryType = (typeof messageEntryTypes)[number];
 export const partTypes = ["text", "image", "thinking", "toolCall"] as const;
 export type PartType = (typeof partTypes)[number];
 
-// aikit ToolStatusEnum, verbatim. "running" is never persisted in v0 (live-UI
-// only) but stays in the vocabulary so persisting live progress later needs no
+// aikit ToolStatusEnum, verbatim. "running" is never persisted in v0 (live-UI only)
+// but stays in the vocabulary so persisting live progress later needs no
 // migration; read-side code treats it like "pending" (unsettled).
 export const toolStatuses = ["pending", "running", "completed", "error", "skipped", "aborted"] as const;
 export type ToolStatus = (typeof toolStatuses)[number];
