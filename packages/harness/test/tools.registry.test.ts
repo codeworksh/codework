@@ -11,6 +11,7 @@ import { ToolProgress } from "../src/tools/progress";
 import * as Registry from "../src/tools/registry";
 import { fromSandboxShell, local, ToolShell, type ToolShellEvent } from "../src/tools/shell";
 import * as Tool from "../src/tools/tool";
+import { pendingCall } from "./tools.fixture";
 
 // A tiny fake tool with no capabilities → already a RegisteredTool. Returns a fixed string
 // so override/ordering can be proven by *executing*, not just reading metadata.
@@ -29,7 +30,6 @@ const outputTextOf = (outcome: Executor.ToolOutcome): string => {
 	return first && first.type === "text" ? first.text : "";
 };
 
-const call = (name: string, rawArgs: Record<string, unknown> = {}) => ({ callID: `call-${name}`, name, rawArgs });
 const registerBash = (shell: Layer.Layer<ToolShell>): Tool.RegisteredTool => Tool.provide(bashTool, shell);
 
 describe("ToolRegistry — catalog & snapshot (pure data)", () => {
@@ -70,7 +70,7 @@ describe("ToolRegistry — catalog & snapshot (pure data)", () => {
 describe("ToolRegistry — execution through the snapshot", () => {
 	it("runs the last-registered implementation for an overridden name", async () => {
 		const resolved = Registry.make([fakeTool("a", "v1"), fakeTool("a", "v2")]).resolve();
-		const outcome = await Effect.runPromise(resolved.handle(call("a")));
+		const outcome = await Effect.runPromise(resolved.handle(pendingCall("a")));
 
 		expect(outcome.status).toBe("completed");
 		expect(outputTextOf(outcome)).toBe("v2"); // not "v1"
@@ -79,13 +79,13 @@ describe("ToolRegistry — execution through the snapshot", () => {
 	it("dispatches by name with first-seen ordering intact", async () => {
 		const resolved = Registry.make([fakeTool("a", "v1"), fakeTool("b", "bOut"), fakeTool("a", "v2")]).resolve();
 
-		expect(outputTextOf(await Effect.runPromise(resolved.handle(call("a"))))).toBe("v2");
-		expect(outputTextOf(await Effect.runPromise(resolved.handle(call("b"))))).toBe("bOut");
+		expect(outputTextOf(await Effect.runPromise(resolved.handle(pendingCall("a"))))).toBe("v2");
+		expect(outputTextOf(await Effect.runPromise(resolved.handle(pendingCall("b"))))).toBe("bOut");
 	});
 
 	it("returns a model-visible error outcome for an unknown tool, not a defect", async () => {
 		const resolved = Registry.make([fakeTool("a", "aOut")]).resolve();
-		const outcome = await Effect.runPromise(resolved.handle(call("ghost")));
+		const outcome = await Effect.runPromise(resolved.handle(pendingCall("ghost")));
 
 		expect(outcome.status).toBe("error");
 		expect(outcome.result.details).toMatchObject({ error: "unknown_tool", name: "ghost" });
@@ -108,7 +108,7 @@ describe("ToolRegistry — execution through the snapshot", () => {
 		});
 		const resolved = Registry.make([abortingTool]).resolve();
 
-		const outcome = await Effect.runPromise(resolved.handle(call("abort")));
+		const outcome = await Effect.runPromise(resolved.handle(pendingCall("abort")));
 
 		expect(outcome.status).toBe("aborted");
 		expect(outputTextOf(outcome)).toBe("partial-out");
@@ -119,7 +119,7 @@ describe("ToolRegistry — Context.Service variant", () => {
 	it("provides the catalog via Layer and resolves + executes through the service", async () => {
 		const program = Effect.gen(function* () {
 			const registry = yield* Registry.ToolRegistry;
-			const outcome = yield* registry.resolve().handle(call("a"));
+			const outcome = yield* registry.resolve().handle(pendingCall("a"));
 			return { names: registry.names, text: outputTextOf(outcome) };
 		});
 
@@ -156,7 +156,9 @@ describe("ToolRegistry — bash backend pluggability", () => {
 	it("runs bash over the real local OS ToolShell backend", async () => {
 		const resolved = Registry.make([registerBash(localOsToolShell)]).resolve();
 
-		const outcome = await Effect.runPromise(resolved.handle(call("bash", { command: "echo via-local-registry" })));
+		const outcome = await Effect.runPromise(
+			resolved.handle(pendingCall("bash", { command: "echo via-local-registry" })),
+		);
 
 		expect(outcome.status).toBe("completed");
 		expect(outputTextOf(outcome)).toBe("via-local-registry\n");
@@ -165,7 +167,7 @@ describe("ToolRegistry — bash backend pluggability", () => {
 	it("runs bash over the local just-bash sandbox backend", async () => {
 		const resolved = Registry.make([registerBash(justBashToolShell)]).resolve();
 
-		const outcome = await Effect.runPromise(resolved.handle(call("bash", { command: "echo via-just-bash" })));
+		const outcome = await Effect.runPromise(resolved.handle(pendingCall("bash", { command: "echo via-just-bash" })));
 
 		expect(outcome.status).toBe("completed");
 		expect(outputTextOf(outcome)).toBe("via-just-bash\n");
@@ -177,7 +179,7 @@ describe("ToolRegistry — bash backend pluggability", () => {
 		);
 		const resolved = Registry.make([registerBash(daytonaLike)]).resolve();
 
-		const outcome = await Effect.runPromise(resolved.handle(call("bash", { command: "ignored by stub" })));
+		const outcome = await Effect.runPromise(resolved.handle(pendingCall("bash", { command: "ignored by stub" })));
 
 		expect(outcome.status).toBe("completed");
 		expect(outputTextOf(outcome)).toBe("via-daytona\n");
@@ -192,7 +194,7 @@ describe("ToolRegistry — bash backend pluggability", () => {
 		]);
 		const resolved = Registry.make([registerBash(vercelLike)]).resolve();
 
-		const outcome = await Effect.runPromise(resolved.handle(call("bash", { command: "ignored by stub" })));
+		const outcome = await Effect.runPromise(resolved.handle(pendingCall("bash", { command: "ignored by stub" })));
 
 		expect(outcome.status).toBe("completed");
 		expect(outputTextOf(outcome)).toBe("via-vercel\nremote-stderr\n");
@@ -267,11 +269,11 @@ describe("ToolRegistry — custom weather tool alongside the built-in bash", () 
 
 		expect(resolved.wire.map((tool) => tool.name)).toEqual(["bash", "weather"]);
 
-		const bashOutcome = await Effect.runPromise(resolved.handle(call("bash", { command: "echo from-bash" })));
+		const bashOutcome = await Effect.runPromise(resolved.handle(pendingCall("bash", { command: "echo from-bash" })));
 		expect(bashOutcome.status).toBe("completed");
 		expect(outputTextOf(bashOutcome)).toBe("from-bash\n");
 
-		const weatherOutcome = await Effect.runPromise(resolved.handle(call("weather", { city: "tokyo" })));
+		const weatherOutcome = await Effect.runPromise(resolved.handle(pendingCall("weather", { city: "tokyo" })));
 		expect(weatherOutcome.status).toBe("completed");
 		expect(outputTextOf(weatherOutcome)).toBe("tokyo: 21°C, clear");
 	});
@@ -280,7 +282,7 @@ describe("ToolRegistry — custom weather tool alongside the built-in bash", () 
 		const resolved = Registry.make([registerWeather()]).resolve();
 
 		const start = Date.now();
-		const outcome = await Effect.runPromise(resolved.handle(call("weather", { city: "tokyo" })));
+		const outcome = await Effect.runPromise(resolved.handle(pendingCall("weather", { city: "tokyo" })));
 		const elapsed = Date.now() - start;
 
 		expect(outcome.status).toBe("completed");
@@ -291,7 +293,7 @@ describe("ToolRegistry — custom weather tool alongside the built-in bash", () 
 	it("returns a declared failure as a model-visible error outcome (failureMode: return)", async () => {
 		const resolved = Registry.make([registerWeather()]).resolve();
 
-		const outcome = await Effect.runPromise(resolved.handle(call("weather", { city: "atlantis" })));
+		const outcome = await Effect.runPromise(resolved.handle(pendingCall("weather", { city: "atlantis" })));
 
 		expect(outcome.status).toBe("error");
 		expect(outcome.result.isError).toBe(true);
@@ -302,7 +304,7 @@ describe("ToolRegistry — custom weather tool alongside the built-in bash", () 
 	it("rejects invalid arguments for the custom tool with an error outcome", async () => {
 		const resolved = Registry.make([registerWeather()]).resolve();
 
-		const outcome = await Effect.runPromise(resolved.handle(call("weather", {}))); // missing `city`
+		const outcome = await Effect.runPromise(resolved.handle(pendingCall("weather", {}))); // missing `city`
 
 		expect(outcome.status).toBe("error");
 		expect(outcome.result.details).toMatchObject({ error: "invalid_arguments", name: "weather" });
@@ -365,7 +367,7 @@ describe("ToolRegistry — best-effort progress via a File IO sink", () => {
 		const resolved = Registry.make([registeredBash]).resolve();
 
 		const outcome = await Effect.runPromise(
-			resolved.handle(call("bash", { command: "echo hi" }), { onProgress }).pipe(
+			resolved.handle(pendingCall("bash", { command: "echo hi" }), { onProgress }).pipe(
 				Effect.provide(fileProgressSink(path)), // only the sink's RProgress remains at run time
 			),
 		);
@@ -386,7 +388,7 @@ describe("ToolRegistry — best-effort progress via a File IO sink", () => {
 
 		const outcome = await Effect.runPromise(
 			resolved
-				.handle(call("bash", { command: "echo hi" }), { onProgress })
+				.handle(pendingCall("bash", { command: "echo hi" }), { onProgress })
 				.pipe(Effect.provide(fileProgressSink(path, { fail: true }))),
 		);
 
@@ -402,7 +404,7 @@ describe("ToolRegistry — best-effort progress via a File IO sink", () => {
 		const start = Date.now();
 		const outcome = await Effect.runPromise(
 			resolved
-				.handle(call("bash", { command: "echo hi" }), { onProgress, progressDrainGrace: grace })
+				.handle(pendingCall("bash", { command: "echo hi" }), { onProgress, progressDrainGrace: grace })
 				.pipe(Effect.provide(fileProgressSink(path, { delay: Duration.seconds(5) }))),
 		);
 		const elapsed = Date.now() - start;
@@ -464,7 +466,7 @@ describe("ToolRegistry — long-running remote bash streams 100+ lines of progre
 		let settled = false;
 		const pending = Effect.runPromise(
 			resolved
-				.handle(call("bash", { command: "simulated long-running remote build" }), {
+				.handle(pendingCall("bash", { command: "simulated long-running remote build" }), {
 					onProgress,
 					// Buffer sized above the event count so the sliding queue drops nothing and the
 					// drain grace flushes every event — makes the by-settlement count deterministic.
@@ -533,7 +535,7 @@ describe("ToolRegistry — long-running remote bash streams 100+ lines of progre
 
 		const outcome = await Effect.runPromise(
 			resolved
-				.handle(call("bash", { command: "simulated remote build" }), { onProgress })
+				.handle(pendingCall("bash", { command: "simulated remote build" }), { onProgress })
 				.pipe(Effect.provide(fileProgressSink(path))),
 		);
 

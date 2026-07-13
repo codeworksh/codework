@@ -194,36 +194,28 @@ export namespace Event {
 
 	//
 	// tool exection
-	const ToolExecutionStartSchema = Type.Evaluate(
-		Type.Intersect([
-			Message.ToolCallInFlightSchema,
-			Type.Object({
-				type: Type.Literal(AgentEventType.toolExecutionStart),
-			}),
-		]),
-	);
+	const ToolExecutionStartSchema = Type.Object({
+		type: Type.Literal(AgentEventType.toolExecutionStart),
+		messageId: Type.String(),
+		partIndex: Type.Number(),
+		toolCall: Message.ToolCallPendingPartSchema,
+	});
 	export type ToolExecutionStart = Static<typeof ToolExecutionStartSchema>;
 
-	const ToolExecutionUpdateSchema = Type.Evaluate(
-		Type.Intersect([
-			Message.ToolCallInFlightSchema,
-			Type.Object({
-				type: Type.Literal(AgentEventType.toolExecutionUpdate),
-			}),
-			Message.ToolRunningSchema,
-		]),
-	);
+	const ToolExecutionUpdateSchema = Type.Object({
+		type: Type.Literal(AgentEventType.toolExecutionUpdate),
+		messageId: Type.String(),
+		partIndex: Type.Number(),
+		toolCall: Message.ToolCallRunningPartSchema,
+	});
 	export type ToolExecutionUpdate = Static<typeof ToolExecutionUpdateSchema>;
 
-	const ToolExecutionEndSchema = Type.Evaluate(
-		Type.Intersect([
-			Message.ToolCallInFlightSchema,
-			Type.Object({
-				type: Type.Literal(AgentEventType.toolExecutionEnd),
-			}),
-			Type.Union([Message.ToolCompletedSchema, Message.ToolErrorSchema]),
-		]),
-	);
+	const ToolExecutionEndSchema = Type.Object({
+		type: Type.Literal(AgentEventType.toolExecutionEnd),
+		messageId: Type.String(),
+		partIndex: Type.Number(),
+		toolCall: Message.ToolCallTerminalPartSchema,
+	});
 	export type ToolExecutionEnd = Static<typeof ToolExecutionEndSchema>;
 
 	/**

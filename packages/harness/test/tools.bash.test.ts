@@ -6,6 +6,7 @@ import { bashTool } from "../src/tools/bash";
 import * as Executor from "../src/tools/executor";
 import { make as makeProgress, noop as progressNoop } from "../src/tools/progress";
 import * as Tool from "../src/tools/tool";
+import { pendingCall } from "./tools.fixture";
 import {
 	fromSandboxShell,
 	type IToolShell,
@@ -38,7 +39,7 @@ const exited = (exitCode: number): ToolShellEvent => ({ _tag: "Exit", exitCode }
 
 const ctx = { callID: "call-1", toolName: "bash", rawArgs: {} as Record<string, unknown> };
 
-const call = (rawArgs: Record<string, unknown>) => ({ callID: "call-1", name: "bash", rawArgs });
+const call = (arguments_: Record<string, unknown>) => pendingCall("bash", arguments_, "call-1");
 
 // bash registered with a specific ToolShell backend (provided at registration, per the erasure
 // model) → a RegisteredTool the executor runs with no residual tool `R`.
