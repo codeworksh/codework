@@ -1,4 +1,4 @@
-import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Option, Result, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { uuidv7 } from "uuidv7";
 import { Database } from "../db/db";
@@ -16,7 +16,7 @@ import {
 	toolStatuses,
 } from "../db/schema.sql";
 import type { AbsolutePath } from "../schema";
-import { AssistantEnvelopeUsage } from "./schema";
+import { AssistantEnvelopeUsage, CompactionData, JsonObject, MessageEnvelopeIdentity } from "./schema";
 
 export {
 	entryTypes,
@@ -71,7 +71,7 @@ export interface CreateSession {
 }
 
 // Billed usage inside a persisted assistant envelope (harness-owned, ./schema).
-export { AssistantEnvelopeUsage, Usage } from "./schema";
+export { AssistantEnvelopeUsage, CompactionData, MessageEnvelopeIdentity, Usage } from "./schema";
 
 export interface AppendPart {
 	readonly id?: string; // uuidv7; generated when omitted
@@ -98,6 +98,19 @@ export interface SettleToolCall {
 	readonly callId: string; // from the loop's tool.execution.end
 	readonly status: Exclude<ToolStatus, "pending" | "running">;
 	readonly data: string; // settled aikit part JSON, verbatim
+}
+
+// Fork copies ONE path (root → fork point) into a new session — never sibling
+// or abandoned branches.
+// Clone = fork at the current leaf.
+export interface ForkInput {
+	readonly sessionId: string; // source session
+	readonly entryId?: string; // fork point; default = current leaf (clone)
+	readonly mode?: "at" | "before"; // default "at"; "before" valid only for user entries
+	readonly id?: string; // new session id; generated when omitted
+	readonly slug: string; // required — slugs are unique
+	readonly title?: string; // default: source title
+	readonly tag?: string; // default: source tag
 }
 
 // Entry row + its part rows, zipped. Message decode happens above this layer.
@@ -128,6 +141,10 @@ export interface Interface {
 		SessionNotFoundError | EntryNotFoundError | LeafConflictError | InvalidEntryDataError
 	>;
 	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void, ToolCallNotFoundError>;
+	/** Copy root→fork-point into a new session (`parentId` = source). Clone = fork at leaf. */
+	readonly fork: (
+		input: ForkInput,
+	) => Effect.Effect<SessionRow, SessionNotFoundError | EntryNotFoundError | InvalidEntryDataError>;
 	/** Move the leaf cursor; the next append forks a sibling branch. */
 	readonly branch: (input: { sessionId: string; entryId: string }) => Effect.Effect<void, EntryNotFoundError>;
 	/** Set or clear (null) the bookmark label on an entry. */
@@ -145,6 +162,9 @@ const messageTypes: ReadonlySet<string> = new Set(messageEntryTypes);
 // Structural decode of the persisted envelope's usage; failures surface as
 // InvalidEntryDataError, never a defect — callers (Context Manager, UI) can act.
 const decodeEnvelopeUsage = Schema.decodeUnknownEffect(AssistantEnvelopeUsage);
+const decodeMessageEnvelopeIdentity = Schema.decodeUnknownEffect(MessageEnvelopeIdentity);
+const decodeCompactionData = Schema.decodeUnknownEffect(CompactionData);
+const decodeJsonObject = Schema.decodeUnknownEffect(JsonObject);
 
 export const layer = Layer.effect(
 	Service,
@@ -357,6 +377,7 @@ export const layer = Layer.effect(
 		type AppendTxResult =
 			| { readonly _tag: "sessionNotFound" }
 			| { readonly _tag: "parentNotFound" }
+			| { readonly _tag: "invalidData"; readonly reason: string }
 			| { readonly _tag: "leafConflict"; readonly actualLeafEntryId: string | null }
 			| { readonly _tag: "inserted"; readonly entry: SessionEntryRow };
 
@@ -369,6 +390,32 @@ export const layer = Layer.effect(
 					reason: `entry type "${input.type}" must not carry parts`,
 				});
 			}
+
+			const envelopeIdentity = messageTypes.has(input.type)
+				? yield* decodeMessageEnvelopeIdentity(input.data).pipe(
+						Effect.mapError(
+							(error) =>
+								new InvalidEntryDataError({ entryId: input.id, type: input.type, reason: error.message }),
+						),
+					)
+				: undefined;
+			if (envelopeIdentity !== undefined && envelopeIdentity.messageId !== input.id) {
+				return yield* new InvalidEntryDataError({
+					entryId: input.id,
+					type: input.type,
+					reason: `messageId "${envelopeIdentity.messageId}" does not match entry id`,
+				});
+			}
+
+			const compaction =
+				input.type === "compaction"
+					? yield* decodeCompactionData(input.data).pipe(
+							Effect.mapError(
+								(error) =>
+									new InvalidEntryDataError({ entryId: input.id, type: input.type, reason: error.message }),
+							),
+						)
+					: undefined;
 
 			// The envelope is authoritative; aggregate deltas are never accepted
 			// independently of the data persisted by this transaction.
@@ -413,6 +460,22 @@ export const layer = Layer.effect(
 							parentId = Option.some(input.parentId);
 						} else {
 							parentId = currentLeaf;
+						}
+
+						if (compaction !== undefined && compaction.firstKeptEntryId !== null) {
+							if (Option.isNone(parentId)) {
+								return {
+									_tag: "invalidData",
+									reason: `firstKeptEntryId "${compaction.firstKeptEntryId}" is not on the compaction path`,
+								} as const;
+							}
+							const compactionPath = yield* selectPath(parentId.value);
+							if (!compactionPath.some((entry) => entry.id === compaction.firstKeptEntryId)) {
+								return {
+									_tag: "invalidData",
+									reason: `firstKeptEntryId "${compaction.firstKeptEntryId}" is not on the compaction path`,
+								} as const;
+							}
 						}
 
 						const entryRow = yield* SessionEntryRow.insert.makeEffect({
@@ -470,6 +533,12 @@ export const layer = Layer.effect(
 					return yield* new SessionNotFoundError({ sessionId: input.sessionId });
 				case "parentNotFound":
 					return yield* new EntryNotFoundError({ sessionId: input.sessionId, entryId: input.parentId ?? "" });
+				case "invalidData":
+					return yield* new InvalidEntryDataError({
+						entryId: input.id,
+						type: input.type,
+						reason: result.reason,
+					});
 				case "leafConflict":
 					return yield* new LeafConflictError({
 						sessionId: input.sessionId,
@@ -503,6 +572,210 @@ export const layer = Layer.effect(
 
 			if (!settled) {
 				return yield* new ToolCallNotFoundError({ entryId: input.entryId, callId: input.callId });
+			}
+		});
+
+		type ForkTxResult =
+			| { readonly _tag: "sessionNotFound" }
+			| { readonly _tag: "entryNotFound"; readonly entryId: string }
+			| { readonly _tag: "invalidMode"; readonly entryId: string; readonly type: string }
+			| { readonly _tag: "invalidData"; readonly entryId: string; readonly type: string; readonly reason: string }
+			| { readonly _tag: "forked"; readonly session: SessionRow };
+
+		// Copied entries get NEW ids (ours are globally unique),
+		// so every entry-id reference on the path is remapped:
+		// parent edges, message envelopes' messageId, and compaction's
+		// `firstKeptEntryId` (when non-null, always on the copied path and mappable).
+		// branchSummary.fromEntryId is NOT remapped — it points at an abandoned
+		// leaf that is deliberately not copied;
+		const rewriteForkedData = Effect.fnUntraced(function* (
+			entry: SessionEntryRow,
+			newId: string,
+			idMap: ReadonlyMap<string, string>,
+		) {
+			if (!messageTypes.has(entry.type) && entry.type !== "compaction") return entry.data;
+			const invalidData = (reason: string) =>
+				new InvalidEntryDataError({ entryId: entry.id, type: entry.type, reason });
+			const payload: Record<string, unknown> = {
+				...(yield* decodeJsonObject(entry.data).pipe(Effect.mapError((error) => invalidData(error.message)))),
+			};
+			if (messageTypes.has(entry.type)) {
+				const identity = yield* decodeMessageEnvelopeIdentity(entry.data).pipe(
+					Effect.mapError((error) => invalidData(error.message)),
+				);
+				if (identity.messageId !== entry.id) {
+					return yield* invalidData(`messageId "${identity.messageId}" does not match entry id`);
+				}
+				payload["messageId"] = newId;
+			}
+			if (entry.type === "compaction") {
+				const compaction = yield* decodeCompactionData(entry.data).pipe(
+					Effect.mapError((error) => invalidData(error.message)),
+				);
+				if (compaction.firstKeptEntryId !== null) {
+					const mapped = idMap.get(compaction.firstKeptEntryId);
+					if (mapped === undefined) {
+						return yield* invalidData(
+							`firstKeptEntryId "${compaction.firstKeptEntryId}" is not on the copied path`,
+						);
+					}
+					payload["firstKeptEntryId"] = mapped;
+				}
+			}
+			return JSON.stringify(payload);
+		});
+
+		const fork = Effect.fn("Session.fork")(function* (input: ForkInput) {
+			const mode = input.mode ?? "at";
+			const newSessionId = input.id ?? uuidv7();
+
+			const result: ForkTxResult = yield* sql
+				.withTransaction(
+					Effect.gen(function* () {
+						const source = yield* findSession(input.sessionId);
+						if (Option.isNone(source)) return { _tag: "sessionNotFound" } as const;
+
+						// Resolve the fork-point entry: explicit (validated in-session)
+						// or the current leaf (clone). None = empty source.
+						let targetEntry: Option.Option<SessionEntryRow>;
+						if (input.entryId !== undefined) {
+							const found = yield* findEntry(input.entryId);
+							if (Option.isNone(found) || found.value.sessionId !== input.sessionId) {
+								return { _tag: "entryNotFound", entryId: input.entryId } as const;
+							}
+							targetEntry = found;
+						} else {
+							const leaf = yield* resolveLeaf(source.value);
+							targetEntry = Option.isNone(leaf) ? Option.none() : yield* findEntry(leaf.value);
+						}
+
+						// mode "before": land just above a user prompt so the caller can
+						// re-edit and resubmit it in the fork. Parent may be none (root prompt) — that yields an empty fork.
+						let targetId: Option.Option<string>;
+						if (Option.isSome(targetEntry) && mode === "before") {
+							if (targetEntry.value.type !== "user") {
+								return {
+									_tag: "invalidMode",
+									entryId: targetEntry.value.id,
+									type: targetEntry.value.type,
+								} as const;
+							}
+							targetId = targetEntry.value.parentId;
+						} else {
+							targetId = Option.map(targetEntry, (entry) => entry.id);
+						}
+
+						const pathEntries = Option.isSome(targetId) ? yield* selectPath(targetId.value) : [];
+						const idMap = new Map(pathEntries.map((entry) => [entry.id, uuidv7()]));
+
+						// Prepare the complete copy before the first write. Returning a tagged
+						// validation error after an insert would otherwise commit a partial fork.
+						const prepared = yield* Effect.result(
+							Effect.forEach(pathEntries, (entry) => {
+								const id = idMap.get(entry.id)!;
+								return rewriteForkedData(entry, id, idMap).pipe(
+									Effect.map((data) => ({ source: entry, id, data })),
+								);
+							}),
+						);
+						if (Result.isFailure(prepared)) {
+							return {
+								_tag: "invalidData",
+								entryId: prepared.failure.entryId,
+								type: prepared.failure.type,
+								reason: prepared.failure.reason,
+							} as const;
+						}
+						const preparedEntries = prepared.success;
+
+						// New session first (prepared entries FK it); leaf set after the copy.
+						// Aggregates start at 0 — spend stays recorded in the source.
+						const sessionRow = yield* SessionRow.insert.makeEffect({
+							id: newSessionId,
+							projectId: source.value.projectId,
+							parentId: Option.some(source.value.id), // fork lineage
+							slug: input.slug,
+							directory: source.value.directory,
+							title: input.title ?? source.value.title,
+							tag: input.tag ?? source.value.tag,
+							metadata: source.value.metadata,
+							leafEntryId: Option.none(),
+						});
+						yield* insertSession(sessionRow);
+
+						// Entries in path order: insertEntry's max(seq)+1 yields dense 1..N.
+						for (const prepared of preparedEntries) {
+							const entryRow = yield* SessionEntryRow.insert.makeEffect({
+								id: prepared.id,
+								sessionId: newSessionId,
+								parentId: Option.map(prepared.source.parentId, (parent) => idMap.get(parent)!),
+								type: prepared.source.type,
+								data: prepared.data,
+								label: prepared.source.label, // annotations ride the copy (§10.12)
+								metadata: prepared.source.metadata,
+							});
+							yield* insertEntry(entryRow);
+						}
+
+						// Parts: new ids, re-keyed entry/session, everything else verbatim —
+						// including pending toolCalls (the fork inherits crash recovery).
+						const messageEntryIds = pathEntries
+							.filter((entry) => messageTypes.has(entry.type))
+							.map((entry) => entry.id);
+						if (messageEntryIds.length > 0) {
+							const parts = yield* selectPartsForEntries(messageEntryIds);
+							for (const part of parts) {
+								const partRow = yield* SessionEntryPartRow.insert.makeEffect({
+									id: uuidv7(),
+									entryId: idMap.get(part.entryId)!,
+									sessionId: newSessionId,
+									partIndex: part.partIndex,
+									type: part.type,
+									status: part.status,
+									callId: part.callId,
+									toolName: part.toolName,
+									data: part.data,
+								});
+								yield* insertPart(partRow);
+							}
+						}
+
+						if (Option.isSome(targetId)) {
+							const now = yield* epochNow;
+							yield* sql`
+								UPDATE session SET leaf_entry_id = ${idMap.get(targetId.value)!}, updated_at = ${now}
+								WHERE id = ${newSessionId}
+							`;
+						}
+
+						const created = yield* findSession(newSessionId);
+						if (Option.isNone(created)) {
+							return yield* Effect.die(new Error("session fork: created session did not persist"));
+						}
+						return { _tag: "forked", session: created.value } as const;
+					}),
+				)
+				.pipe(Effect.orDie);
+
+			switch (result._tag) {
+				case "sessionNotFound":
+					return yield* new SessionNotFoundError({ sessionId: input.sessionId });
+				case "entryNotFound":
+					return yield* new EntryNotFoundError({ sessionId: input.sessionId, entryId: result.entryId });
+				case "invalidMode":
+					return yield* new InvalidEntryDataError({
+						entryId: result.entryId,
+						type: result.type,
+						reason: `fork mode "before" requires a user entry`,
+					});
+				case "invalidData":
+					return yield* new InvalidEntryDataError({
+						entryId: result.entryId,
+						type: result.type,
+						reason: result.reason,
+					});
+				case "forked":
+					return result.session;
 			}
 		});
 
@@ -566,6 +839,7 @@ export const layer = Layer.effect(
 			unsettled,
 			append,
 			settleToolCall,
+			fork,
 			branch,
 			setLabel,
 		});
