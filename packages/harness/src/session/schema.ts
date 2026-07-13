@@ -8,6 +8,27 @@ import { Schema } from "effect";
 const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const NonNegativeCost = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
 
+// Shared persistence-boundary codecs. Append validates before writing; fork
+// decodes again because legacy/imported rows may predate that validation.
+export const JsonObject = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown));
+
+export const MessageEnvelopeIdentity = Schema.fromJsonString(
+	Schema.Struct({
+		messageId: Schema.String,
+	}),
+);
+
+// NOTE: modify this if schema changes
+export const CompactionData = Schema.fromJsonString(
+	Schema.Struct({
+		summary: Schema.String,
+		// null explicitly means the summary replaces all preceding history.
+		firstKeptEntryId: Schema.NullOr(Schema.String),
+		tokensBefore: NonNegativeInt,
+	}),
+);
+export type CompactionData = typeof CompactionData.Type;
+
 export const Usage = Schema.Struct({
 	input: NonNegativeInt,
 	output: NonNegativeInt,

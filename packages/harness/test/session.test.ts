@@ -2,8 +2,8 @@ import "./utils/env";
 
 import { llm, Message, type Model, type Protocol, stream, Type, validateSchema } from "@codeworksh/aikit";
 import { Effect, Exit, Layer, Option } from "effect";
-import path from "node:path";
 import { SqlClient } from "effect/unstable/sql";
+import path from "node:path";
 import { describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db";
 import { AbsolutePath } from "../src/schema";
@@ -673,6 +673,118 @@ describe("session", () => {
 		}),
 	);
 
+	it.effect("append rejects malformed and mismatched message envelopes before writing", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const created = yield* createSession("s-envelope-identity-guard");
+			const invalidEntries: ReadonlyArray<Session.AppendEntry> = [
+				{ id: "bad-json", sessionId: created.id, type: "user", data: "not json" },
+				{ id: "bad-array", sessionId: created.id, type: "user", data: "[]" },
+				{ id: "missing-id", sessionId: created.id, type: "synthetic", data: JSON.stringify({ customType: "x" }) },
+				{
+					...assistantEntry(created.id, "mismatched-id"),
+					data: JSON.stringify({
+						messageId: "different-id",
+						role: "assistant",
+						stopReason: "stop",
+						usage: usage(),
+					}),
+				},
+			];
+
+			for (const input of invalidEntries) {
+				const error = yield* session.append(input).pipe(Effect.flip);
+				expect(error._tag).toBe("InvalidEntryDataError");
+				expect(Option.isNone(yield* session.entry(input.id))).toBe(true);
+			}
+
+			const persisted = Option.getOrElse(yield* session.get(created.id), () => created);
+			expect(Option.isNone(persisted.leafEntryId)).toBe(true);
+			expect(yield* session.timeline({ sessionId: created.id })).toHaveLength(0);
+		}),
+	);
+
+	it.effect("append validates compaction shape and boundary against its actual parent path", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const source = yield* createSession("s-compaction-guard");
+			const other = yield* createSession("s-compaction-guard-other");
+			yield* session.append(userEntry(source.id, "e1", "root"));
+			yield* session.append(assistantEntry(source.id, "e2"));
+			yield* session.branch({ sessionId: source.id, entryId: "e1" });
+			yield* session.append(userEntry(source.id, "e3", "active sibling"));
+			yield* session.append(userEntry(other.id, "other-e1", "foreign"));
+
+			const invalidCompactions: ReadonlyArray<Session.AppendEntry> = [
+				{
+					id: "c-missing-boundary",
+					sessionId: source.id,
+					type: "compaction",
+					data: JSON.stringify({ summary: "missing", tokensBefore: 10 }),
+				},
+				{
+					id: "c-negative-tokens",
+					sessionId: source.id,
+					type: "compaction",
+					data: JSON.stringify({ summary: "negative", firstKeptEntryId: null, tokensBefore: -1 }),
+				},
+				{
+					id: "c-abandoned-boundary",
+					sessionId: source.id,
+					type: "compaction",
+					data: JSON.stringify({ summary: "abandoned", firstKeptEntryId: "e2", tokensBefore: 10 }),
+				},
+				{
+					id: "c-foreign-boundary",
+					sessionId: source.id,
+					type: "compaction",
+					data: JSON.stringify({ summary: "foreign", firstKeptEntryId: "other-e1", tokensBefore: 10 }),
+				},
+			];
+
+			for (const input of invalidCompactions) {
+				const error = yield* session.append(input).pipe(Effect.flip);
+				expect(error._tag).toBe("InvalidEntryDataError");
+				expect(Option.isNone(yield* session.entry(input.id))).toBe(true);
+			}
+			const afterInvalid = Option.getOrElse(yield* session.get(source.id), () => source);
+			expect(Option.getOrElse(afterInvalid.leafEntryId, () => "")).toBe("e3");
+			expect(yield* session.timeline({ sessionId: source.id })).toHaveLength(3);
+
+			// The explicit parent, not the current leaf, defines the compaction path.
+			const anchored = yield* session.append({
+				id: "c-anchored",
+				sessionId: source.id,
+				parentId: "e2",
+				type: "compaction",
+				data: JSON.stringify({ summary: "root work", firstKeptEntryId: "e1", tokensBefore: 10 }),
+			});
+			expect(Option.getOrElse(anchored.parentId, () => "")).toBe("e2");
+
+			const wrongAnchor = yield* session
+				.append({
+					id: "c-wrong-anchor",
+					sessionId: source.id,
+					parentId: "e2",
+					type: "compaction",
+					data: JSON.stringify({ summary: "wrong path", firstKeptEntryId: "e3", tokensBefore: 10 }),
+				})
+				.pipe(Effect.flip);
+			expect(wrongAnchor._tag).toBe("InvalidEntryDataError");
+			expect(Option.isNone(yield* session.entry("c-wrong-anchor"))).toBe(true);
+			const afterWrongAnchor = Option.getOrElse(yield* session.get(source.id), () => source);
+			expect(Option.getOrElse(afterWrongAnchor.leafEntryId, () => "")).toBe("c-anchored");
+
+			const summaryOnly = yield* session.append({
+				id: "c-summary-only",
+				sessionId: source.id,
+				type: "compaction",
+				data: JSON.stringify({ summary: "all prior work", firstKeptEntryId: null, tokensBefore: 10 }),
+			});
+			expect(JSON.parse(summaryOnly.data).firstKeptEntryId).toBeNull();
+		}),
+	);
+
 	it.effect("non-message entries reject parts with a typed error", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
@@ -843,6 +955,219 @@ describe("session", () => {
 			const parts = yield* sql`SELECT count(*) AS count FROM session_entry_part WHERE id = 'p_bad'`;
 			expect(countOf(entries)).toBe(0);
 			expect(countOf(parts)).toBe(0);
+		}),
+	);
+
+	it.effect("clone (fork at leaf) copies the path with fresh identity", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const source = yield* createSession("s-fork-clone-src");
+			yield* session.append(userEntry(source.id, "e1", "hello"));
+			yield* session.append(assistantEntry(source.id, "e2", { toolCall: { callId: "call_1", toolName: "read" } }));
+			yield* session.setLabel({ sessionId: source.id, entryId: "e1", label: "start" });
+
+			const fork = yield* session.fork({ sessionId: source.id, slug: "s-fork-clone" });
+
+			// lineage + fresh session state
+			expect(Option.getOrElse(fork.parentId, () => "")).toBe(source.id);
+			expect(fork.cost).toBe(0);
+			expect(fork.title).toBe(source.title);
+
+			const forkPath = yield* session.path(fork.id);
+			const sourcePath = yield* session.path(source.id);
+			expect(forkPath.map((h) => h.entry.type)).toEqual(sourcePath.map((h) => h.entry.type));
+			// all new entry ids, dense seq, envelope messageId rewritten to the new id
+			for (const [i, hydrated] of forkPath.entries()) {
+				expect(hydrated.entry.id).not.toBe(sourcePath[i]!.entry.id);
+				expect(hydrated.entry.seq).toBe(i + 1);
+				expect(JSON.parse(hydrated.entry.data).messageId).toBe(hydrated.entry.id);
+			}
+			// parts copied verbatim with preserved partIndex; label rode along
+			const forkAssistant = forkPath[1]!;
+			expect(forkAssistant.parts.map((p) => p.partIndex)).toEqual([0, 1]);
+			expect(Option.getOrElse(forkAssistant.parts[1]!.callId, () => "")).toBe("call_1");
+			expect(Option.getOrElse(forkPath[0]!.entry.label, () => "")).toBe("start");
+			// pending toolCall copied as pending → fork inherits recovery
+			expect(yield* session.unsettled(fork.id)).toHaveLength(1);
+
+			// source untouched
+			const sourceAfter = Option.getOrElse(yield* session.get(source.id), () => source);
+			expect(Option.getOrElse(sourceAfter.leafEntryId, () => "")).toBe("e2");
+			expect((yield* session.timeline({ sessionId: source.id })).length).toBe(2);
+		}),
+	);
+
+	it.effect("fork copies only the active path, not abandoned branches", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const source = yield* createSession("s-fork-branches-src");
+			yield* session.append(userEntry(source.id, "e1", "start"));
+			yield* session.append(assistantEntry(source.id, "e2"));
+			yield* session.append(userEntry(source.id, "e3", "approach A"));
+			yield* session.branch({ sessionId: source.id, entryId: "e2" });
+			yield* session.append(userEntry(source.id, "e5", "approach B"));
+
+			const fork = yield* session.fork({ sessionId: source.id, slug: "s-fork-branches" });
+
+			// source has 4 entries; fork has only the active path e1→e2→e5
+			const forkTimeline = yield* session.timeline({ sessionId: fork.id });
+			expect(forkTimeline).toHaveLength(3);
+			const forkPath = yield* session.path(fork.id);
+			expect(forkPath.map((h) => JSON.parse(h.entry.data).messageId ?? h.entry.id)).toEqual(
+				forkPath.map((h) => h.entry.id),
+			);
+			// fork diverges independently of the source
+			yield* session.append(userEntry(fork.id, "f6", "fork continues"));
+			expect((yield* session.timeline({ sessionId: source.id })).length).toBe(4);
+			expect((yield* session.timeline({ sessionId: fork.id })).length).toBe(4);
+		}),
+	);
+
+	it.effect("fork remaps compaction firstKeptEntryId into the new session", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const source = yield* createSession("s-fork-compaction-src");
+			yield* session.append(userEntry(source.id, "e1", "old"));
+			yield* session.append(assistantEntry(source.id, "e2"));
+			yield* session.append({
+				id: "c3",
+				sessionId: source.id,
+				type: "compaction",
+				data: JSON.stringify({ summary: "earlier work", firstKeptEntryId: "e2", tokensBefore: 1000 }),
+			});
+			yield* session.append(userEntry(source.id, "e4", "after compaction"));
+			yield* session.append({
+				id: "c5",
+				sessionId: source.id,
+				type: "compaction",
+				data: JSON.stringify({ summary: "all prior work", firstKeptEntryId: null, tokensBefore: 500 }),
+			});
+
+			const fork = yield* session.fork({ sessionId: source.id, slug: "s-fork-compaction" });
+			const forkPath = yield* session.path(fork.id);
+
+			const forkE2 = forkPath[1]!.entry; // copy of e2
+			const forkCompaction = forkPath[2]!.entry;
+			const forkSummaryOnly = forkPath[4]!.entry;
+			expect(forkCompaction.type).toBe("compaction");
+			const payload = JSON.parse(forkCompaction.data);
+			// window pointer follows the copy — not the old session's id
+			expect(payload.firstKeptEntryId).toBe(forkE2.id);
+			expect(payload.firstKeptEntryId).not.toBe("e2");
+			expect(payload.summary).toBe("earlier work");
+			expect(JSON.parse(forkSummaryOnly.data).firstKeptEntryId).toBeNull();
+		}),
+	);
+
+	it.effect("fork rejects malformed legacy envelopes without committing a partial destination", () =>
+		Effect.gen(function* () {
+			const sql = yield* SqlClient.SqlClient;
+			const session = yield* Session.Service;
+			const source = yield* createSession("s-fork-legacy-envelope-src");
+			yield* session.append(userEntry(source.id, "e1", "valid prefix"));
+			yield* sql`
+				INSERT INTO session_entry (id, session_id, parent_id, seq, type, data, created_at, updated_at)
+				VALUES ('legacy-array', ${source.id}, 'e1', 2, 'user', '[]', 0, 0)
+			`;
+			yield* sql`UPDATE session SET leaf_entry_id = 'legacy-array' WHERE id = ${source.id}`;
+
+			const error = yield* session
+				.fork({
+					sessionId: source.id,
+					id: "s-fork-legacy-envelope-dest",
+					slug: "s-fork-legacy-envelope-dest",
+				})
+				.pipe(Effect.flip);
+			expect(error._tag).toBe("InvalidEntryDataError");
+			expect(Option.isNone(yield* session.get("s-fork-legacy-envelope-dest"))).toBe(true);
+			expect(yield* session.timeline({ sessionId: source.id })).toHaveLength(2);
+		}),
+	);
+
+	it.effect("fork rejects an unmappable legacy compaction boundary atomically", () =>
+		Effect.gen(function* () {
+			const sql = yield* SqlClient.SqlClient;
+			const session = yield* Session.Service;
+			const source = yield* createSession("s-fork-legacy-compaction-src");
+			yield* session.append(userEntry(source.id, "e1", "valid prefix"));
+			const corruptData = JSON.stringify({
+				summary: "corrupt boundary",
+				firstKeptEntryId: "not-on-path",
+				tokensBefore: 10,
+			});
+			yield* sql`
+				INSERT INTO session_entry (id, session_id, parent_id, seq, type, data, created_at, updated_at)
+				VALUES ('legacy-compaction', ${source.id}, 'e1', 2, 'compaction', ${corruptData}, 0, 0)
+			`;
+			yield* sql`UPDATE session SET leaf_entry_id = 'legacy-compaction' WHERE id = ${source.id}`;
+
+			const error = yield* session
+				.fork({
+					sessionId: source.id,
+					id: "s-fork-legacy-compaction-dest",
+					slug: "s-fork-legacy-compaction-dest",
+				})
+				.pipe(Effect.flip);
+			expect(error._tag).toBe("InvalidEntryDataError");
+			if (error._tag === "InvalidEntryDataError") {
+				expect(error.reason).toContain("not on the copied path");
+			}
+			expect(Option.isNone(yield* session.get("s-fork-legacy-compaction-dest"))).toBe(true);
+			expect(yield* session.timeline({ sessionId: source.id })).toHaveLength(2);
+		}),
+	);
+
+	it.effect("forkBefore a user entry lands at its parent; validates entry type", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const source = yield* createSession("s-fork-before-src");
+			yield* session.append(userEntry(source.id, "e1", "keep me"));
+			yield* session.append(assistantEntry(source.id, "e2"));
+			yield* session.append(userEntry(source.id, "e3", "redo this prompt"));
+
+			// before e3 → fork contains e1, e2; leaf = copy of e2
+			const fork = yield* session.fork({
+				sessionId: source.id,
+				entryId: "e3",
+				mode: "before",
+				slug: "s-fork-before",
+			});
+			const forkPath = yield* session.path(fork.id);
+			expect(forkPath).toHaveLength(2);
+			expect(forkPath.map((h) => h.entry.type)).toEqual(["user", "assistant"]);
+
+			// before a non-user entry is a typed structural rejection
+			const invalid = yield* session
+				.fork({ sessionId: source.id, entryId: "e2", mode: "before", slug: "s-fork-before-bad" })
+				.pipe(Effect.flip);
+			expect(invalid._tag).toBe("InvalidEntryDataError");
+
+			// before the root user entry → empty fork
+			const empty = yield* session.fork({
+				sessionId: source.id,
+				entryId: "e1",
+				mode: "before",
+				slug: "s-fork-before-empty",
+			});
+			expect(Option.isNone(empty.leafEntryId)).toBe(true);
+			expect(yield* session.path(empty.id)).toHaveLength(0);
+		}),
+	);
+
+	it.effect("fork validates the fork point against the source session", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const a = yield* createSession("s-fork-val-a");
+			const b = yield* createSession("s-fork-val-b");
+			yield* session.append(userEntry(a.id, "ea1", "in a"));
+
+			const foreign = yield* session
+				.fork({ sessionId: b.id, entryId: "ea1", slug: "s-fork-val-bad" })
+				.pipe(Effect.flip);
+			expect(foreign._tag).toBe("EntryNotFoundError");
+
+			const missing = yield* session.fork({ sessionId: "nope", slug: "s-fork-val-missing" }).pipe(Effect.flip);
+			expect(missing._tag).toBe("SessionNotFoundError");
 		}),
 	);
 
