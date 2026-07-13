@@ -658,18 +658,37 @@ describe("session", () => {
 			const session = yield* Session.Service;
 			const created = yield* createSession("s-usage-guard");
 
-			const exit = yield* session
+			const error = yield* session
 				.append({
 					...assistantEntry(created.id, "e1"),
 					data: JSON.stringify({ messageId: "e1", role: "assistant", stopReason: "stop" }),
 				})
-				.pipe(Effect.exit);
-			expect(Exit.isFailure(exit)).toBe(true);
+				.pipe(Effect.flip);
+			expect(error._tag).toBe("InvalidEntryDataError");
 
 			// nothing was written
 			expect(Option.isNone(yield* session.entry("e1"))).toBe(true);
 			const row = Option.getOrElse(yield* session.get(created.id), () => created);
 			expect(row.cost).toBe(0);
+		}),
+	);
+
+	it.effect("non-message entries reject parts with a typed error", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const created = yield* createSession("s-parts-guard");
+
+			const error = yield* session
+				.append({
+					id: "e1",
+					sessionId: created.id,
+					type: "compaction",
+					data: JSON.stringify({ summary: "s", firstKeptEntryId: null, tokensBefore: 10 }),
+					parts: [{ type: "text", data: JSON.stringify({ type: "text", text: "x" }) }],
+				})
+				.pipe(Effect.flip);
+			expect(error._tag).toBe("InvalidEntryDataError");
+			expect(Option.isNone(yield* session.entry("e1"))).toBe(true);
 		}),
 	);
 
