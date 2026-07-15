@@ -119,4 +119,35 @@ export const migrations = {
 		yield* sql`CREATE INDEX session_entry_part_unsettled_idx ON session_entry_part (session_id, status) WHERE status IN ('pending', 'running')`;
 		yield* sql`CREATE INDEX session_entry_part_session_idx ON session_entry_part (session_id, entry_id, part_index)`;
 	}),
+	"202607150001_session_input": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+
+		yield* sql`
+			CREATE TABLE session_input (
+				id TEXT PRIMARY KEY,
+				session_id TEXT NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE,
+				prompt TEXT NOT NULL,
+				delivery TEXT NOT NULL,
+				admitted_seq INTEGER NOT NULL,
+				promoted_seq INTEGER,
+				created_at INTEGER NOT NULL
+			)
+		`;
+
+		// Pending lanes are selected by session and delivery, then drained in
+		// admission order. SQLite indexes NULL values, so promoted_seq IS NULL
+		// uses this index for pending-input queries.
+		yield* sql`
+			CREATE INDEX session_input_pending_idx
+			ON session_input (session_id, promoted_seq, delivery, admitted_seq)
+		`;
+		yield* sql`
+			CREATE UNIQUE INDEX session_input_admitted_seq_idx
+			ON session_input (session_id, admitted_seq)
+		`;
+		yield* sql`
+			CREATE UNIQUE INDEX session_input_promoted_seq_idx
+			ON session_input (session_id, promoted_seq)
+		`;
+	}),
 };

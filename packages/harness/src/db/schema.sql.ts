@@ -38,6 +38,11 @@ export type PartType = (typeof partTypes)[number];
 export const toolStatuses = ["pending", "running", "completed", "error", "skipped", "aborted"] as const;
 export type ToolStatus = (typeof toolStatuses)[number];
 
+// Controller-owned input lanes. A SessionInput is queued I/O, not a pending
+// session entry; the Loop creates the eventual user message independently.
+export const inputDeliveries = ["steer", "followUp"] as const;
+export type InputDelivery = (typeof inputDeliveries)[number];
+
 // Column names derive from field names via the client's camelToSnake
 // transform, so `sandboxEnvId` (not `sandboxEnvID`) maps to `sandbox_env_id`.
 export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
@@ -75,6 +80,19 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	tokensCacheRead: Model.GeneratedByDb(Schema.Int),
 	tokensCacheWrite: Model.GeneratedByDb(Schema.Int),
 	...Timestamps,
+}) {}
+
+// Durable input-queue record. admittedSeq is arrival order; promotedSeq is
+// nullable until Control delivers the input to the Loop, then records delivery
+// order. Neither sequence is related to session_entry.seq.
+export class SessionInputRow extends Model.Class<SessionInputRow>("SessionInputRow")({
+	id: Schema.String,
+	sessionId: Schema.String,
+	prompt: Schema.String, // normalized Prompt encoded as JSON
+	delivery: Schema.Literals(inputDeliveries),
+	admittedSeq: Schema.Int,
+	promotedSeq: Model.FieldOption(Schema.Int),
+	createdAt: Model.DateTimeInsertFromNumber,
 }) {}
 
 // One timeline/tree node. Identity and `data` are immutable after insert;
