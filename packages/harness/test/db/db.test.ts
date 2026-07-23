@@ -5,6 +5,7 @@ import path from "node:path";
 import { describe, expect } from "vite-plus/test";
 import { Database, SqlSchema } from "../../src/db/db";
 import { ProjectDirectoryRow, ProjectRow } from "../../src/db/schema.sql";
+import { AbsolutePath } from "../../src/schema";
 import { testEffect } from "../utils/effect";
 
 const layer = Layer.unwrap(
@@ -77,7 +78,7 @@ describe("Database", () => {
 					yield* ProjectDirectoryRow.insert.makeEffect({
 						id: "directory-1",
 						projectId: "project-1",
-						directory: "/workspace/codework",
+						directory: AbsolutePath.make("/workspace/codework"),
 						type: "main",
 						sandboxEnvId: "sandbox-1",
 					}),
@@ -86,7 +87,7 @@ describe("Database", () => {
 					yield* ProjectDirectoryRow.insert.makeEffect({
 						id: "directory-2",
 						projectId: "project-1",
-						directory: "/workspace/codework-feature",
+						directory: AbsolutePath.make("/workspace/codework-feature"),
 						type: "gitworktree",
 						sandboxEnvId: "sandbox-2",
 					}),
@@ -103,13 +104,13 @@ describe("Database", () => {
 				).toEqual([
 					{
 						id: "directory-1",
-						directory: "/workspace/codework",
+						directory: AbsolutePath.make("/workspace/codework"),
 						type: "main",
 						sandboxEnvId: "sandbox-1",
 					},
 					{
 						id: "directory-2",
-						directory: "/workspace/codework-feature",
+						directory: AbsolutePath.make("/workspace/codework-feature"),
 						type: "gitworktree",
 						sandboxEnvId: "sandbox-2",
 					},
@@ -126,7 +127,7 @@ describe("Database", () => {
 				const orphan = yield* ProjectDirectoryRow.insert.makeEffect({
 					id: "orphan",
 					projectId: "missing-project",
-					directory: "/workspace/orphan",
+					directory: AbsolutePath.make("/workspace/orphan"),
 					type: "root",
 					sandboxEnvId: "sandbox-orphan",
 				});
@@ -138,7 +139,7 @@ describe("Database", () => {
 					yield* ProjectDirectoryRow.insert.makeEffect({
 						id: "directory-1",
 						projectId: "project-1",
-						directory: "/workspace/codework",
+						directory: AbsolutePath.make("/workspace/codework"),
 						type: "main",
 						sandboxEnvId: "sandbox-1",
 					}),
@@ -147,7 +148,7 @@ describe("Database", () => {
 				const duplicate = yield* ProjectDirectoryRow.insert.makeEffect({
 					id: "directory-2",
 					projectId: "project-1",
-					directory: "/workspace/codework",
+					directory: AbsolutePath.make("/workspace/codework"),
 					type: "root",
 					sandboxEnvId: "sandbox-2",
 				});
@@ -167,7 +168,7 @@ describe("Database", () => {
 					yield* ProjectDirectoryRow.insert.makeEffect({
 						id: "directory-1",
 						projectId: "project-1",
-						directory: "/workspace/codework",
+						directory: AbsolutePath.make("/workspace/codework"),
 						type: "main",
 						sandboxEnvId: "sandbox-1",
 					}),

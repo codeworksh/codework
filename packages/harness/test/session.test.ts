@@ -8,6 +8,7 @@ import { describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db";
 import { AbsolutePath } from "../src/schema";
 import { Session } from "../src/session/session";
+import { SessionSchema } from "../src/session/schema";
 import { tmpdir } from "./fixtures/tempdir";
 import { testEffect } from "./utils/effect";
 
@@ -18,6 +19,9 @@ const anthropicKey = process.env.ANTHROPIC_API_KEY;
 const openaiKey = process.env.OPENAI_API_KEY;
 const anthropicLiveIt = anthropicKey ? it.live : it.live.skip;
 const openaiLiveIt = openaiKey ? it.live : it.live.skip;
+
+// Fixture IDs stay readable; `ID.make` enforces the `ses` prefix.
+const sid = (name: string) => SessionSchema.ID.make(`ses_${name}`);
 
 const createSession = (slug: string) =>
 	Effect.gen(function* () {
@@ -32,10 +36,11 @@ const createSession = (slug: string) =>
 			directory: AbsolutePath.make("/repo"),
 			title: "Test session",
 			tag: "test",
+			sandboxEnvId: "test-env",
 		});
 	});
 
-const userEntry = (sessionId: string, id: string, text: string): Session.AppendEntry => ({
+const userEntry = (sessionId: SessionSchema.ID, id: string, text: string): Session.AppendEntry => ({
 	id,
 	sessionId,
 	type: "user",
@@ -44,10 +49,10 @@ const userEntry = (sessionId: string, id: string, text: string): Session.AppendE
 });
 
 const usage = (
-	input: Partial<Pick<Session.Usage, "input" | "output" | "cacheRead" | "cacheWrite">> & {
+	input: Partial<Pick<SessionSchema.Usage, "input" | "output" | "cacheRead" | "cacheWrite">> & {
 		readonly costTotal?: number;
 	} = {},
-): Session.Usage => {
+): SessionSchema.Usage => {
 	const tokens = {
 		input: input.input ?? 0,
 		output: input.output ?? 0,
@@ -68,9 +73,9 @@ const usage = (
 };
 
 const assistantEntry = (
-	sessionId: string,
+	sessionId: SessionSchema.ID,
 	id: string,
-	options?: { usage?: Session.Usage; toolCall?: { callId: string; toolName: string } },
+	options?: { usage?: SessionSchema.Usage; toolCall?: { callId: string; toolName: string } },
 ): Session.AppendEntry => ({
 	id,
 	sessionId,
@@ -107,7 +112,7 @@ const countOf = (rows: ReadonlyArray<unknown>) => {
 	return Number(row?.count ?? 0);
 };
 
-const appendMessage = (sessionId: string, message: Message.Message, expectedLeafEntryId: string | null) => {
+const appendMessage = (sessionId: SessionSchema.ID, message: Message.Message, expectedLeafEntryId: string | null) => {
 	const { parts, ...envelope } = message;
 	return {
 		id: message.messageId,
@@ -392,7 +397,7 @@ describe("session", () => {
 	it.effect("append to a missing session fails typed", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const result = yield* session.append(userEntry("nope", "e1", "hi")).pipe(Effect.flip);
+			const result = yield* session.append(userEntry(sid("nope"), "e1", "hi")).pipe(Effect.flip);
 			expect(result._tag).toBe("SessionNotFoundError");
 		}),
 	);
@@ -1074,12 +1079,12 @@ describe("session", () => {
 			const error = yield* session
 				.fork({
 					sessionId: source.id,
-					id: "s-fork-legacy-envelope-dest",
+					id: sid("s-fork-legacy-envelope-dest"),
 					slug: "s-fork-legacy-envelope-dest",
 				})
 				.pipe(Effect.flip);
 			expect(error._tag).toBe("InvalidEntryDataError");
-			expect(Option.isNone(yield* session.get("s-fork-legacy-envelope-dest"))).toBe(true);
+			expect(Option.isNone(yield* session.get(sid("s-fork-legacy-envelope-dest")))).toBe(true);
 			expect(yield* session.timeline({ sessionId: source.id })).toHaveLength(2);
 		}),
 	);
@@ -1104,7 +1109,7 @@ describe("session", () => {
 			const error = yield* session
 				.fork({
 					sessionId: source.id,
-					id: "s-fork-legacy-compaction-dest",
+					id: sid("s-fork-legacy-compaction-dest"),
 					slug: "s-fork-legacy-compaction-dest",
 				})
 				.pipe(Effect.flip);
@@ -1112,7 +1117,7 @@ describe("session", () => {
 			if (error._tag === "InvalidEntryDataError") {
 				expect(error.reason).toContain("not on the copied path");
 			}
-			expect(Option.isNone(yield* session.get("s-fork-legacy-compaction-dest"))).toBe(true);
+			expect(Option.isNone(yield* session.get(sid("s-fork-legacy-compaction-dest")))).toBe(true);
 			expect(yield* session.timeline({ sessionId: source.id })).toHaveLength(2);
 		}),
 	);
@@ -1166,7 +1171,7 @@ describe("session", () => {
 				.pipe(Effect.flip);
 			expect(foreign._tag).toBe("EntryNotFoundError");
 
-			const missing = yield* session.fork({ sessionId: "nope", slug: "s-fork-val-missing" }).pipe(Effect.flip);
+			const missing = yield* session.fork({ sessionId: sid("nope"), slug: "s-fork-val-missing" }).pipe(Effect.flip);
 			expect(missing._tag).toBe("SessionNotFoundError");
 		}),
 	);
@@ -1183,22 +1188,23 @@ describe("session", () => {
 
 				const session = yield* Session.Service;
 				yield* session.create({
-					id: "persisted-session",
+					id: sid("persisted-session"),
 					projectId: "local",
 					slug: "s-file-reload",
 					directory: AbsolutePath.make("/repo"),
 					title: "Persisted session",
 					tag: "test",
+					sandboxEnvId: "test-env",
 				});
-				yield* session.append(userEntry("persisted-session", "e1", "hello"));
-				yield* session.append(assistantEntry("persisted-session", "e2"));
+				yield* session.append(userEntry(sid("persisted-session"), "e1", "hello"));
+				yield* session.append(assistantEntry(sid("persisted-session"), "e2"));
 			}).pipe(Effect.scoped, Effect.provide(fileLayer)),
 		);
 
 		const ids = await Effect.runPromise(
 			Effect.gen(function* () {
 				const session = yield* Session.Service;
-				const path = yield* session.path("persisted-session");
+				const path = yield* session.path(sid("persisted-session"));
 				return path.map((entry) => entry.entry.id);
 			}).pipe(Effect.scoped, Effect.provide(fileLayer)),
 		);

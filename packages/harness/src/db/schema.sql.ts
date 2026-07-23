@@ -1,6 +1,9 @@
 import { Schema } from "effect";
 import { Model } from "effect/unstable/schema";
 import { AbsolutePath } from "../schema";
+import { SessionSchema } from "../session/schema";
+
+// Column names derive from field names via the client's camelToSnake
 
 // DateTime fields encoded as millisecond integers; filled with the current
 // time on insert (createdAt) and on every insert/update (updatedAt).
@@ -43,8 +46,6 @@ export type ToolStatus = (typeof toolStatuses)[number];
 export const inputDeliveries = ["steer", "followUp"] as const;
 export type InputDelivery = (typeof inputDeliveries)[number];
 
-// Column names derive from field names via the client's camelToSnake
-// transform, so `sandboxEnvId` (not `sandboxEnvID`) maps to `sandbox_env_id`.
 export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
 	id: Schema.String,
 	name: Schema.String,
@@ -54,21 +55,22 @@ export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
 export class ProjectDirectoryRow extends Model.Class<ProjectDirectoryRow>("ProjectDirectoryRow")({
 	id: Schema.String,
 	projectId: Schema.String,
-	directory: Schema.String,
+	directory: AbsolutePath,
 	type: Schema.Literals(["main", "root", "gitworktree"]),
 	sandboxEnvId: Schema.String,
 	...Timestamps,
 }) {}
 
 export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
-	id: Schema.String,
+	id: SessionSchema.IDFromDb,
 	projectId: Schema.String,
-	parentId: Model.FieldOption(Schema.String),
+	parentId: Model.FieldOption(SessionSchema.IDFromDb),
 	slug: Schema.String,
 	directory: AbsolutePath,
 	title: Schema.String,
-	tag: Schema.String,
+	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
+	sandboxEnvId: Schema.String,
 	// Durable leaf cursor: read anchor (path walks leaf→root) and append anchor
 	// (new entries attach here). Moved inside every append/branch transaction.
 	leafEntryId: Model.FieldOption(Schema.String),
@@ -87,7 +89,7 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 // order. Neither sequence is related to session_entry.seq.
 export class SessionInputRow extends Model.Class<SessionInputRow>("SessionInputRow")({
 	id: Schema.String,
-	sessionId: Schema.String,
+	sessionId: SessionSchema.IDFromDb,
 	prompt: Schema.String, // normalized Prompt encoded as JSON
 	delivery: Schema.Literals(inputDeliveries),
 	admittedSeq: Schema.Int,
@@ -101,7 +103,7 @@ export class SessionInputRow extends Model.Class<SessionInputRow>("SessionInputR
 // (everything except `parts`); parts live in SessionEntryPartRow.
 export class SessionEntryRow extends Model.Class<SessionEntryRow>("SessionEntryRow")({
 	id: Schema.String,
-	sessionId: Schema.String,
+	sessionId: SessionSchema.IDFromDb,
 	parentId: Model.FieldOption(Schema.String), // tree edge; NULL = root
 	seq: Model.GeneratedByDb(Schema.Int), // per-session append order, computed in the INSERT
 	type: Schema.Literals(entryTypes),
@@ -118,7 +120,7 @@ export class SessionEntryRow extends Model.Class<SessionEntryRow>("SessionEntryR
 export class SessionEntryPartRow extends Model.Class<SessionEntryPartRow>("SessionEntryPartRow")({
 	id: Schema.String,
 	entryId: Schema.String,
-	sessionId: Schema.String, // denormalized for session-scoped queries
+	sessionId: SessionSchema.IDFromDb, // denormalized for session-scoped queries
 	partIndex: Schema.Int, // dense 0..n-1 within the entry; the loop's addressing unit
 	type: Schema.Literals(partTypes),
 	status: Model.FieldOption(Schema.Literals(toolStatuses)), // toolCall only

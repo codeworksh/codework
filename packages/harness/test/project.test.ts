@@ -9,7 +9,8 @@ import { Database } from "../src/db/db";
 import { FileSystem } from "../src/filesystem/filesystem";
 import { Git } from "../src/git/git";
 import { ProjectCopy } from "../src/project/copy";
-import { defaultLayer, ID, layer, Service, type ProjectDirectory } from "../src/project/project";
+import { defaultLayer, layer, Service } from "../src/project/project";
+import { ID, type ProjectDirectory } from "../src/project/schema";
 import { AbsolutePath } from "../src/schema";
 import { Hash } from "../src/util/hash";
 import { tmpdir } from "./fixtures/tempdir";
@@ -349,7 +350,7 @@ describe("Project", () => {
 				]);
 
 				const project = yield* Service;
-				const result = yield* project.directories({ projectID: ID.make("project-1") });
+				const result = yield* project.directories({ projectId: ID.make("project-1") });
 
 				expect(result).toEqual([
 					{ directory: "/workspace/codework", sandboxEnvID: "sandbox-1", type: "main" },
@@ -362,7 +363,7 @@ describe("Project", () => {
 		directoriesIt("returns an empty list when the project has no directories", () =>
 			Effect.gen(function* () {
 				const project = yield* Service;
-				const result = yield* project.directories({ projectID: ID.make("project-1") });
+				const result = yield* project.directories({ projectId: ID.make("project-1") });
 
 				expect(result).toEqual([]);
 			}),
@@ -380,7 +381,7 @@ describe("Project", () => {
 				]);
 
 				const project = yield* Service;
-				const result = yield* project.directories({ projectID: ID.make("project-1") });
+				const result = yield* project.directories({ projectId: ID.make("project-1") });
 				expect(result).toEqual([{ directory: "/workspace/codework", sandboxEnvID: "sandbox-1", type: "main" }]);
 
 				const sql = yield* SqlClient.SqlClient;
@@ -416,7 +417,7 @@ describe("Project", () => {
 					directory,
 				});
 
-				const result = yield* project.directories({ projectID: info.id });
+				const result = yield* project.directories({ projectId: info.id });
 				expect(result).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "main" }]);
 			}),
 		);
@@ -430,7 +431,7 @@ describe("Project", () => {
 				const result = yield* project.fromDirectory(second);
 				expect(result.id).toEqual(first.id);
 
-				const directories = yield* project.directories({ projectID: result.id });
+				const directories = yield* project.directories({ projectId: result.id });
 				expect(directories).toEqual([
 					{ directory, sandboxEnvID: "@codework/envDefault", type: "main" },
 					{ directory: second, sandboxEnvID: "@codework/envDefault", type: "root" },
@@ -444,7 +445,7 @@ describe("Project", () => {
 				yield* project.fromDirectory(directory);
 				yield* project.fromDirectory(directory);
 
-				const result = yield* project.directories({ projectID: projectID });
+				const result = yield* project.directories({ projectId: projectID });
 				expect(result).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "main" }]);
 			}),
 		);
@@ -456,7 +457,7 @@ describe("Project", () => {
 				const project = yield* Service;
 				const info = yield* project.fromDirectory(directory);
 
-				const result = yield* project.directories({ projectID: info.id });
+				const result = yield* project.directories({ projectId: info.id });
 				expect(result).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "gitworktree" }]);
 			}),
 		);
@@ -475,7 +476,7 @@ describe("Project", () => {
 					directory,
 				});
 
-				const result = yield* project.directories({ projectID: ID.local });
+				const result = yield* project.directories({ projectId: ID.local });
 				expect(result).toEqual([]);
 			}),
 		);
@@ -513,7 +514,7 @@ describe("Project", () => {
 
 					// the opened directory registers as root because the migrated
 					// main already occupies the project
-					const directories = yield* project.directories({ projectID });
+					const directories = yield* project.directories({ projectId: projectID });
 					expect(directories).toEqual([
 						{ directory, sandboxEnvID: "@codework/envDefault", type: "root" },
 						{ directory: "/workspace/legacy", sandboxEnvID: "sandbox-1", type: "main" },
@@ -567,7 +568,7 @@ describe("Project", () => {
 					expect(projects[0]).toMatchObject({ id: projectID, name: "current", createdAt: 2222 });
 
 					// the shared directory keeps the new project's registration
-					const directories = yield* project.directories({ projectID });
+					const directories = yield* project.directories({ projectId: projectID });
 					expect(directories).toEqual([
 						{ directory, sandboxEnvID: "@codework/envDefault", type: "root" },
 						{ directory: "/workspace/legacy", sandboxEnvID: "sandbox-1", type: "root" },
@@ -722,7 +723,7 @@ describe("Project", () => {
 					const worktreeInfo = yield* project.fromDirectory(AbsolutePath.make(worktreeDirectory));
 					// repeating a directory must not duplicate its row
 					yield* project.fromDirectory(AbsolutePath.make(repoDirectory));
-					const directories = yield* project.directories({ projectID: info.id });
+					const directories = yield* project.directories({ projectId: info.id });
 					return { info, worktreeInfo, directories };
 				}).pipe(Effect.provide(defaultLayer("/"))),
 			);

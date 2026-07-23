@@ -16,7 +16,7 @@ import {
 	toolStatuses,
 } from "../db/schema.sql";
 import type { AbsolutePath } from "../schema";
-import { AssistantEnvelopeUsage, CompactionData, JsonObject, MessageEnvelopeIdentity } from "./schema";
+import { SessionSchema } from "./schema";
 
 export {
 	entryTypes,
@@ -60,18 +60,19 @@ export class InvalidEntryDataError extends Schema.TaggedErrorClass<InvalidEntryD
 }) {}
 
 export interface CreateSession {
-	readonly id?: string;
+	readonly id?: SessionSchema.ID;
 	readonly projectId: string;
-	readonly parentId?: string; // session hierarchy (subagents) or fork lineage
+	readonly parentId?: SessionSchema.ID; // session hierarchy (subagents) or fork lineage
 	readonly slug: string;
 	readonly directory: AbsolutePath;
 	readonly title: string;
-	readonly tag: string;
+	readonly tag?: string;
+	readonly sandboxEnvId: string;
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
 // Billed usage inside a persisted assistant envelope (harness-owned, ./schema).
-export { AssistantEnvelopeUsage, CompactionData, MessageEnvelopeIdentity, Usage } from "./schema";
+// export { AssistantEnvelopeUsage, CompactionData, MessageEnvelopeIdentity, Usage } from "./schema";
 
 export interface AppendPart {
 	readonly id?: string; // uuidv7; generated when omitted
@@ -84,7 +85,7 @@ export interface AppendPart {
 
 export interface AppendEntry {
 	readonly id: string; // uuidv7; == aikit messageId for message types
-	readonly sessionId: string;
+	readonly sessionId: SessionSchema.ID;
 	readonly type: EntryType;
 	readonly data: string; // JSON: full payload, or message envelope
 	readonly parts?: ReadonlyArray<AppendPart>; // order = partIndex; message types only
@@ -104,10 +105,10 @@ export interface SettleToolCall {
 // or abandoned branches.
 // Clone = fork at the current leaf.
 export interface ForkInput {
-	readonly sessionId: string; // source session
+	readonly sessionId: SessionSchema.ID; // source session
 	readonly entryId?: string; // fork point; default = current leaf (clone)
 	readonly mode?: "at" | "before"; // default "at"; "before" valid only for user entries
-	readonly id?: string; // new session id; generated when omitted
+	readonly id?: SessionSchema.ID; // new session id; generated when omitted
 	readonly slug: string; // required — slugs are unique
 	readonly title?: string; // default: source title
 	readonly tag?: string; // default: source tag
@@ -121,19 +122,19 @@ export interface HydratedEntry {
 
 export interface Interface {
 	readonly create: (input: CreateSession) => Effect.Effect<SessionRow>;
-	readonly get: (sessionId: string) => Effect.Effect<Option.Option<SessionRow>>;
+	readonly get: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SessionRow>>;
 	readonly list: (input: { projectId: string }) => Effect.Effect<SessionRow[]>;
 	readonly entry: (entryId: string) => Effect.Effect<Option.Option<HydratedEntry>>;
 	/** Active root→leaf path with parts attached. */
-	readonly path: (sessionId: string) => Effect.Effect<HydratedEntry[]>;
+	readonly path: (sessionId: SessionSchema.ID) => Effect.Effect<HydratedEntry[]>;
 	/** All branches, newest-first, paged by entry seq. */
 	readonly timeline: (input: {
-		sessionId: string;
+		sessionId: SessionSchema.ID;
 		cursorSeq?: number;
 		limit?: number;
 	}) => Effect.Effect<HydratedEntry[]>;
 	/** Unsettled toolCall parts (crash recovery / live status). */
-	readonly unsettled: (sessionId: string) => Effect.Effect<SessionEntryPartRow[]>;
+	readonly unsettled: (sessionId: SessionSchema.ID) => Effect.Effect<SessionEntryPartRow[]>;
 	readonly append: (
 		input: AppendEntry,
 	) => Effect.Effect<
@@ -146,10 +147,13 @@ export interface Interface {
 		input: ForkInput,
 	) => Effect.Effect<SessionRow, SessionNotFoundError | EntryNotFoundError | InvalidEntryDataError>;
 	/** Move the leaf cursor; the next append forks a sibling branch. */
-	readonly branch: (input: { sessionId: string; entryId: string }) => Effect.Effect<void, EntryNotFoundError>;
+	readonly branch: (input: {
+		sessionId: SessionSchema.ID;
+		entryId: string;
+	}) => Effect.Effect<void, EntryNotFoundError>;
 	/** Set or clear (null) the bookmark label on an entry. */
 	readonly setLabel: (input: {
-		sessionId: string;
+		sessionId: SessionSchema.ID;
 		entryId: string;
 		label: string | null;
 	}) => Effect.Effect<void, EntryNotFoundError>;
@@ -161,10 +165,10 @@ const messageTypes: ReadonlySet<string> = new Set(messageEntryTypes);
 
 // Structural decode of the persisted envelope's usage; failures surface as
 // InvalidEntryDataError, never a defect — callers (Context Manager, UI) can act.
-const decodeEnvelopeUsage = Schema.decodeUnknownEffect(AssistantEnvelopeUsage);
-const decodeMessageEnvelopeIdentity = Schema.decodeUnknownEffect(MessageEnvelopeIdentity);
-const decodeCompactionData = Schema.decodeUnknownEffect(CompactionData);
-const decodeJsonObject = Schema.decodeUnknownEffect(JsonObject);
+const decodeEnvelopeUsage = Schema.decodeUnknownEffect(SessionSchema.AssistantEnvelopeUsage);
+const decodeMessageEnvelopeIdentity = Schema.decodeUnknownEffect(SessionSchema.MessageEnvelopeIdentity);
+const decodeCompactionData = Schema.decodeUnknownEffect(SessionSchema.CompactionData);
+const decodeJsonObject = Schema.decodeUnknownEffect(SessionSchema.JsonObject);
 
 export const layer = Layer.effect(
 	Service,
@@ -303,7 +307,7 @@ export const layer = Layer.effect(
 		});
 
 		const create = Effect.fn("Session.create")(function* (input: CreateSession) {
-			const id = input.id ?? uuidv7();
+			const id = input.id ?? SessionSchema.ID.create();
 			const row = yield* SessionRow.insert
 				.makeEffect({
 					id,
@@ -312,7 +316,8 @@ export const layer = Layer.effect(
 					slug: input.slug,
 					directory: input.directory,
 					title: input.title,
-					tag: input.tag,
+					tag: Option.fromUndefinedOr(input.tag),
+					sandboxEnvId: input.sandboxEnvId,
 					metadata: Option.fromUndefinedOr(input.metadata as Record<string, string> | undefined),
 					leafEntryId: Option.none(),
 				})
@@ -627,7 +632,7 @@ export const layer = Layer.effect(
 
 		const fork = Effect.fn("Session.fork")(function* (input: ForkInput) {
 			const mode = input.mode ?? "at";
-			const newSessionId = input.id ?? uuidv7();
+			const newSessionId = input.id ?? SessionSchema.ID.create();
 
 			const result: ForkTxResult = yield* sql
 				.withTransaction(
@@ -697,7 +702,9 @@ export const layer = Layer.effect(
 							slug: input.slug,
 							directory: source.value.directory,
 							title: input.title ?? source.value.title,
-							tag: input.tag ?? source.value.tag,
+							tag: input.tag === undefined ? source.value.tag : Option.some(input.tag),
+							// Same directory as the source, so the same sandbox env.
+							sandboxEnvId: source.value.sandboxEnvId,
 							metadata: source.value.metadata,
 							leafEntryId: Option.none(),
 						});

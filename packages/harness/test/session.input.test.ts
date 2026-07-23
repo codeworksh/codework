@@ -3,6 +3,7 @@ import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database, SqlSchema } from "../src/db/db";
 import { inputDeliveries, SessionInputRow } from "../src/db/schema.sql";
+import { SessionSchema } from "../src/session/schema";
 import { testEffect } from "./utils/effect";
 
 const { effect: it } = testEffect(Database.layer(":memory:"));
@@ -46,8 +47,8 @@ const createSession = Effect.fn("SessionInputTest.createSession")(function* (id:
 	const sql = yield* SqlClient.SqlClient;
 	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local', 'local', 0, 0)`;
 	yield* sql`
-		INSERT INTO session (id, project_id, slug, directory, title, tag, created_at, updated_at)
-		VALUES (${id}, 'local', ${id}, '/repo', 'Test session', 'test', 0, 0)
+		INSERT INTO session (id, project_id, slug, directory, title, tag, sandbox_env_id, created_at, updated_at)
+		VALUES (${id}, 'local', ${id}, '/repo', 'Test session', 'test', 'test-env', 0, 0)
 	`;
 });
 
@@ -59,6 +60,8 @@ const makeInput = (input: {
 }) =>
 	SessionInputRow.insert.makeEffect({
 		...input,
+		// Fixture rows are seeded by raw SQL, so brand without the prefix check.
+		sessionId: SessionSchema.IDFromDb.make(input.sessionId),
 		prompt: JSON.stringify({ parts: [{ type: "text", text: input.id }] }),
 		promotedSeq: Option.none(),
 	});

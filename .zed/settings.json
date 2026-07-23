@@ -76,4 +76,5 @@
 			"format_on_save": "on",
 		},
 	},
+	// "file_scan_exclusions": [".repos"],
 }
