@@ -378,6 +378,7 @@ export namespace Loop {
 		signal?: AbortSignal,
 	): Promise<void> {
 		for (const toolCall of toolCalls) {
+			const { partIndex, ...pendingPart } = toolCall;
 			const toolCallInFlight: Agent.ToolCallInFlight = {
 				callID: toolCall.callID,
 				name: toolCall.name,
@@ -385,7 +386,9 @@ export namespace Loop {
 			};
 			await emitEvent(emit, {
 				type: "tool.execution.start",
-				...toolCallInFlight,
+				messageId: message.messageId,
+				partIndex,
+				toolCall: pendingPart,
 			});
 			//
 			// Prepares the tool call for execution.
@@ -450,6 +453,7 @@ export namespace Loop {
 		const runnables: ToolCallRunnable[] = [];
 
 		for (const toolCall of toolCalls) {
+			const { partIndex, ...pendingPart } = toolCall;
 			const toolCallInFlight: Agent.ToolCallInFlight = {
 				callID: toolCall.callID,
 				name: toolCall.name,
@@ -457,7 +461,9 @@ export namespace Loop {
 			};
 			await emitEvent(emit, {
 				type: "tool.execution.start",
-				...toolCallInFlight,
+				messageId: message.messageId,
+				partIndex,
+				toolCall: pendingPart,
 			});
 			//
 			// Prepares the tool call for execution.
@@ -592,17 +598,18 @@ export namespace Loop {
 					status: "running",
 					partial: result.partial,
 				};
-				const toolExecutionUpdate: Event.ToolExecutionUpdate = {
-					type: "tool.execution.update",
-					...runnable,
-					...runningResult,
-				};
-				await emitEvent(emit, { ...toolExecutionUpdate });
-
 				const runningPart: Message.ToolCallRunningPart = {
 					...pendingPart,
 					...runningResult,
+					time: { ...pendingPart.time, end: Math.max(pendingPart.time.end, Date.now()) },
 				};
+				const toolExecutionUpdate: Event.ToolExecutionUpdate = {
+					type: "tool.execution.update",
+					messageId: message.messageId,
+					partIndex,
+					toolCall: runningPart,
+				};
+				await emitEvent(emit, toolExecutionUpdate);
 
 				message.parts[partIndex] = runningPart; // in-place mutate; add error part
 
@@ -636,13 +643,6 @@ export namespace Loop {
 	): Promise<void> {
 		const { partIndex, ...pendingPart } = toolCall;
 		const { time } = pendingPart;
-		const toolExecutionEnd: Event.ToolExecutionEnd = {
-			type: "tool.execution.end",
-			...runnable,
-			...result,
-		};
-		await emitEvent(emit, { ...toolExecutionEnd });
-
 		const part: Message.ToolCallErrorPart | Message.ToolCallCompletedPart = {
 			...pendingPart,
 			...result,
@@ -651,6 +651,13 @@ export namespace Loop {
 				end: Date.now(),
 			},
 		};
+		const toolExecutionEnd: Event.ToolExecutionEnd = {
+			type: "tool.execution.end",
+			messageId: message.messageId,
+			partIndex,
+			toolCall: part,
+		};
+		await emitEvent(emit, toolExecutionEnd);
 
 		message.parts[partIndex] = part; // in-place mutate; add error part
 

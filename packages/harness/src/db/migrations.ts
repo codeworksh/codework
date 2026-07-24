@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
 // Migrations ship as code (Migrator.fromRecord) rather than .sql files on
@@ -9,9 +9,78 @@ import { SqlClient } from "effect/unstable/sql";
 // it. Only the numeric prefix orders migrations, and it must be strictly
 // greater than every id already applied — the migrator runs by high-water
 // mark, so an id dated before an applied one is silently skipped.
+//
+// Nothing has shipped, so there is exactly one migration and it defines the
+// whole schema. That is a one-time privilege: once a database that must be
+// retained has applied a migration, editing an existing one is silently skipped
+// and the application fails with missing tables. From the first shipped database
+// onward, every schema change is a new forward migration.
 export const migrations = {
 	"202607070001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const now = yield* DateTime.now.pipe(Effect.map(DateTime.toEpochMillis));
+
+		// A durable filesystem namespace. Created before project_directory and
+		// session because both reference it. Reference counts are deliberately
+		// absent: they live in Controller memory, since a persisted count cannot
+		// tell whether the process that took it is still running.
+		yield* sql`
+			CREATE TABLE sandbox_instance (
+				id TEXT PRIMARY KEY,
+				driver TEXT NOT NULL,
+				kind TEXT NOT NULL CHECK (kind IN ('local', 'virtual', 'remote')),
+				provider_resource_id TEXT,
+				runtime_config TEXT,
+				ownership TEXT NOT NULL CHECK (ownership IN ('managed', 'external')),
+				status TEXT NOT NULL,
+				provider_status TEXT,
+				state_observed_at INTEGER NOT NULL,
+				metadata TEXT,
+				last_error TEXT,
+				last_acquired_at INTEGER,
+				last_released_at INTEGER,
+				last_used_at INTEGER,
+				removed_at INTEGER,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)
+		`;
+
+		// One live instance per driver resource: two application identities for
+		// one namespace would alias, which is the thing instance IDs exist to
+		// prevent. Tombstones are excluded so a removed row never blocks a
+		// genuinely new resource that reuses the locator.
+		yield* sql`
+			CREATE UNIQUE INDEX sandbox_instance_resource_idx
+			ON sandbox_instance (driver, provider_resource_id)
+			WHERE provider_resource_id IS NOT NULL AND status != 'removed'
+		`;
+
+		// The configured host, seeded so Project/Session foreign keys resolve
+		// before any Controller exists. Migrations have no injected Clock — the
+		// one documented exception — and the Controller's bootstrap upsert
+		// idempotently corrects the row on first construction.
+		yield* sql`
+			INSERT INTO sandbox_instance ${sql.insert({
+				id: "local",
+				driver: "local",
+				kind: "local",
+				provider_resource_id: null,
+				runtime_config: "{}",
+				ownership: "external",
+				status: "online",
+				provider_status: null,
+				state_observed_at: now,
+				metadata: null,
+				last_error: null,
+				last_acquired_at: null,
+				last_released_at: null,
+				last_used_at: null,
+				removed_at: null,
+				created_at: now,
+				updated_at: now,
+			})}
+		`;
 
 		yield* sql`
 			CREATE TABLE project (
@@ -22,13 +91,16 @@ export const migrations = {
 			)
 		`;
 
+		// RESTRICT, not CASCADE: destroying infrastructure tombstones the sandbox
+		// row rather than deleting it, so history keeps a valid reference.
 		yield* sql`
 			CREATE TABLE project_directory (
 				id TEXT PRIMARY KEY,
 				project_id TEXT NOT NULL REFERENCES project(id) ON UPDATE CASCADE ON DELETE CASCADE,
 				directory TEXT NOT NULL,
 				type TEXT NOT NULL,
-				sandbox_env_id TEXT NOT NULL,
+				sandbox_instance_id TEXT NOT NULL
+					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT,
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL
 			)
@@ -36,7 +108,7 @@ export const migrations = {
 
 		yield* sql`
 			CREATE UNIQUE INDEX project_directory_project_directory_idx
-			ON project_directory (project_id, directory)
+			ON project_directory (project_id, sandbox_instance_id, directory)
 		`;
 
 		yield* sql`
@@ -47,8 +119,10 @@ export const migrations = {
 				slug TEXT NOT NULL,
 				directory TEXT NOT NULL,
 				title TEXT NOT NULL,
-				tag TEXT NOT NULL,
+				tag TEXT,
 				metadata TEXT,
+				sandbox_instance_id TEXT NOT NULL
+					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT,
 				cost REAL NOT NULL DEFAULT 0,
 				tokens_input INTEGER NOT NULL DEFAULT 0,
 				tokens_output INTEGER NOT NULL DEFAULT 0,
@@ -118,5 +192,33 @@ export const migrations = {
 		yield* sql`CREATE UNIQUE INDEX session_entry_part_call_uidx ON session_entry_part (entry_id, call_id) WHERE call_id IS NOT NULL`;
 		yield* sql`CREATE INDEX session_entry_part_unsettled_idx ON session_entry_part (session_id, status) WHERE status IN ('pending', 'running')`;
 		yield* sql`CREATE INDEX session_entry_part_session_idx ON session_entry_part (session_id, entry_id, part_index)`;
+
+		yield* sql`
+			CREATE TABLE session_input (
+				id TEXT PRIMARY KEY,
+				session_id TEXT NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE,
+				prompt TEXT NOT NULL,
+				delivery TEXT NOT NULL,
+				admitted_seq INTEGER NOT NULL,
+				promoted_seq INTEGER,
+				created_at INTEGER NOT NULL
+			)
+		`;
+
+		// Pending lanes are selected by session and delivery, then drained in
+		// admission order. SQLite indexes NULL values, so promoted_seq IS NULL
+		// uses this index for pending-input queries.
+		yield* sql`
+			CREATE INDEX session_input_pending_idx
+			ON session_input (session_id, promoted_seq, delivery, admitted_seq)
+		`;
+		yield* sql`
+			CREATE UNIQUE INDEX session_input_admitted_seq_idx
+			ON session_input (session_id, admitted_seq)
+		`;
+		yield* sql`
+			CREATE UNIQUE INDEX session_input_promoted_seq_idx
+			ON session_input (session_id, promoted_seq)
+		`;
 	}),
 };

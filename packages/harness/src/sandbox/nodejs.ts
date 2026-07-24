@@ -1,6 +1,6 @@
 import { create, RealFSProvider } from "@platformatic/vfs";
 import { Layer } from "effect";
-import { Virtual } from "./filesystem/local";
+import { Local } from "./filesystem/local";
 import { Process } from "./utils/process";
 
 export interface Options {
@@ -19,7 +19,7 @@ export const layer = (input: string | Options) => {
 
 	vfs.chdir(options.cwd);
 
-	return Layer.merge(Layer.succeed(Virtual.Vfs, vfs), Process.host);
+	return Layer.merge(Layer.succeed(Local.Vfs, vfs), Process.host);
 };
 
 export * as EnvNodeJSDefault from "./nodejs";

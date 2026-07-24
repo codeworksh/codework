@@ -31,6 +31,7 @@ When uncertain, prefer: Effect, Tailwind, TypeScript, React, Clerk, TanStack, Ve
 
 - If asked to do too much work at once, stop and state that clearly.
 - If computer use is helpful for completing or verifying work, use it.
+- Avoid defensive future-facing design. This leads to pre-mature assumptions which are never true.
 
 ## Maintainability
 

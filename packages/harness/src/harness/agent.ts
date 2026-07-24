@@ -670,13 +670,13 @@ export namespace Agent {
 					break;
 				case "tool.execution.start": {
 					const pendingToolCalls = new Set(this._state.pendingToolCalls);
-					pendingToolCalls.add(event.callID);
+					pendingToolCalls.add(event.toolCall.callID);
 					this._state.pendingToolCalls = pendingToolCalls;
 					break;
 				}
 				case "tool.execution.end": {
 					const pendingToolCalls = new Set(this._state.pendingToolCalls);
-					pendingToolCalls.delete(event.callID);
+					pendingToolCalls.delete(event.toolCall.callID);
 					this._state.pendingToolCalls = pendingToolCalls;
 					break;
 				}

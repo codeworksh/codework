@@ -11,6 +11,11 @@ export const PositiveInt = Schema.Int.check(Schema.isGreaterThan(0));
 export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
 /**
+ * Cost greater than or equal with finite value
+ */
+export const NonNegativeCost = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
+
+/**
  * Relative file path (e.g., `src/components/Button.tsx`).
  */
 export const RelativePath = Schema.String.pipe(Schema.brand("RelativePath"));

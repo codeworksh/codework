@@ -2,9 +2,10 @@ import { type Command, Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
 import type { Stats } from "node:fs";
+import { SandboxEnv } from "../env";
 import { SandboxFileSystem } from "../filesystem/filesystem";
 import { RemoteFileSystem } from "../filesystem/remote";
-import { type ExecChunk, type ExecResult, type ISandboxExe, Shell, ShellError } from "../shell";
+import { type ExecChunk, type ExecResult, type ISandboxExe, quoteArgv, resolveCwd, Shell, ShellError } from "../shell";
 
 const utf8 = new TextEncoder();
 
@@ -148,7 +149,15 @@ const providerFrom = (sandbox: RemoteSandbox): RemoteFilesystemProvider => {
 		// `withFileTypes` lists via `find`, which includes dotfiles (`.git` …);
 		// the bare `readdir` shells out to `ls -1` and would drop them.
 		readdir: async (path: string) => (await sandbox.fs.readdir(path, { withFileTypes: true })).map((e) => e.name),
-		exists: (path: string) => sandbox.fs.exists(path),
+		exists: async (path: string) => {
+			try {
+				await sandbox.fs.stat(path);
+				return true;
+			} catch (cause) {
+				if (SandboxFileSystem.isNotFoundError(cause)) return false;
+				throw cause;
+			}
+		},
 		mkdir: async (path: string, mkdirOptions?: { recursive?: boolean }) => {
 			await sandbox.fs.mkdir(path, { recursive: mkdirOptions?.recursive });
 		},
@@ -170,11 +179,21 @@ const spawn = (
 	options: Options,
 	command: string,
 	env?: Record<string, string>,
+): Promise<Command> => spawnArgv(sandbox, options, ["sh", "-c", command], env);
+
+// Vercel spawns a program with a real argument vector, so `execArgv` needs no
+// quoting at all — the args never pass through a shell.
+const spawnArgv = (
+	sandbox: RemoteSandbox,
+	options: Options,
+	argv: ReadonlyArray<string>,
+	env?: Record<string, string>,
+	cwd?: string,
 ): Promise<Command> =>
 	sandbox.runCommand({
-		cmd: "sh",
-		args: ["-c", command],
-		cwd: options.cwd,
+		cmd: argv[0]!,
+		args: argv.slice(1),
+		cwd: resolveCwd(options.cwd, cwd),
 		env,
 		detached: true,
 		...(options.execTimeout === undefined ? {} : { timeoutMs: options.execTimeout }),
@@ -183,33 +202,43 @@ const spawn = (
 // Acquire a detached command and register its kill as a scope finalizer, so an
 // interrupt / timeout from the consumer actually terminates the remote process
 // (best-effort SIGKILL) instead of leaving it running server-side.
-const acquireCommand = (sandbox: RemoteSandbox, options: Options, command: string, env?: Record<string, string>) =>
-	Effect.acquireRelease(
-		Effect.tryPromise({
-			try: () => spawn(sandbox, options, command, env),
-			catch: (cause) => new ShellError({ command, cause }),
-		}),
-		(cmd) => Effect.promise(() => cmd.kill("SIGKILL").catch(() => {})),
+// `command` labels failures only; the spawn itself is supplied by the caller so
+// string and argv execution share one kill finalizer.
+const acquireWith = (command: string, run: () => Promise<Command>) =>
+	Effect.acquireRelease(Effect.tryPromise({ try: run, catch: (cause) => new ShellError({ command, cause }) }), (cmd) =>
+		Effect.promise(() => cmd.kill("SIGKILL").catch(() => {})),
 	);
 
 // Vercel reports stdout and stderr separately with a distinct exit code, so the
 // shell surfaces both streams faithfully.
+const collect = (command: string) => (cmd: Command) =>
+	Effect.tryPromise({
+		try: async (): Promise<ExecResult> => {
+			const result = await cmd.wait();
+			const [stdout, stderr] = await Promise.all([result.stdout(), result.stderr()]);
+			return { stdout, stderr, exitCode: result.exitCode };
+		},
+		catch: (cause) => new ShellError({ command, cause }),
+	});
+
+const acquireCommand = (sandbox: RemoteSandbox, options: Options, command: string, env?: Record<string, string>) =>
+	acquireWith(command, () => spawn(sandbox, options, command, env));
+
 const exec =
 	(sandbox: RemoteSandbox, options: Options): ISandboxExe["exec"] =>
 	(command, opts) =>
-		acquireCommand(sandbox, options, command, opts?.env).pipe(
-			Effect.flatMap((cmd) =>
-				Effect.tryPromise({
-					try: async (): Promise<ExecResult> => {
-						const result = await cmd.wait();
-						const [stdout, stderr] = await Promise.all([result.stdout(), result.stderr()]);
-						return { stdout, stderr, exitCode: result.exitCode };
-					},
-					catch: (cause) => new ShellError({ command, cause }),
-				}),
-			),
+		acquireCommand(sandbox, options, command, opts?.env).pipe(Effect.flatMap(collect(command)), Effect.scoped);
+
+const execArgv =
+	(sandbox: RemoteSandbox, options: Options): ISandboxExe["execArgv"] =>
+	(argv, opts) => {
+		// quoted for the error label only — the spawn passes argv through untouched
+		const command = quoteArgv(argv);
+		return acquireWith(command, () => spawnArgv(sandbox, options, argv, opts?.env, opts?.cwd)).pipe(
+			Effect.flatMap(collect(command)),
 			Effect.scoped,
 		);
+	};
 
 // Streaming output via `Command.logs` (an async generator of stdout/stderr
 // entries), followed by the exit code from `wait`. The kill finalizer fires when
@@ -234,13 +263,21 @@ const stream =
 const filesystemLayer = (options: Options) =>
 	Layer.effect(
 		SandboxFileSystem.Service,
-		Effect.map(Remote, ({ sandbox }) => RemoteFileSystem.make(providerFrom(sandbox), { cwd: options.cwd })),
+		Effect.map(Remote, ({ sandbox }) =>
+			SandboxFileSystem.fromProvider(RemoteFileSystem.make(providerFrom(sandbox), { cwd: options.cwd })),
+		),
 	);
 
 const shellLayer = (options: Options) =>
 	Layer.effect(
 		Shell,
-		Effect.map(Remote, ({ sandbox }) => Shell.of({ exec: exec(sandbox, options), stream: stream(sandbox, options) })),
+		Effect.map(Remote, ({ sandbox }) =>
+			Shell.of({
+				exec: exec(sandbox, options),
+				execArgv: execArgv(sandbox, options),
+				stream: stream(sandbox, options),
+			}),
+		),
 	);
 
 /**
@@ -248,8 +285,18 @@ const shellLayer = (options: Options) =>
  * sandbox's native remote shell. It intentionally does not provide VFS: remote
  * filesystems have no synchronous filesystem surface.
  */
-export const layer = (options: Options = {}): Layer.Layer<SandboxFileSystem.Service | Shell, VercelError> =>
-	Layer.merge(filesystemLayer(options), shellLayer(options)).pipe(Layer.provide(remote(options)));
+// Identity is per remote sandbox, not per provider: two Vercel sandboxes both
+// using /vercel/sandbox must not share persisted directory records.
+const envLayer = () =>
+	Layer.effect(
+		SandboxEnv.EnvId,
+		Effect.map(Remote, ({ sandbox }) => SandboxEnv.format({ kind: "vercel", instance: sandbox.name })),
+	);
+
+export const layer = (
+	options: Options = {},
+): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxEnv.EnvId, VercelError> =>
+	Layer.mergeAll(filesystemLayer(options), shellLayer(options), envLayer()).pipe(Layer.provide(remote(options)));
 
 export const services = layer;
 

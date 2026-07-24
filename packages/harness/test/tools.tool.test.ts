@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { bashDef } from "../src/tools/bash";
 import * as Executor from "../src/tools/executor";
 import * as Tool from "../src/tools/tool";
+import { pendingCall } from "./tools.fixture";
 
 class ExpectedFailure extends Schema.TaggedErrorClass<ExpectedFailure>()("ExpectedFailure", {
 	message: Schema.String,
@@ -11,11 +12,7 @@ class ExpectedFailure extends Schema.TaggedErrorClass<ExpectedFailure>()("Expect
 const EmptyParams = Schema.Struct({});
 const EmptySuccess = Schema.Struct({});
 
-const call = (name: string) => ({
-	callID: "call-1",
-	name,
-	rawArgs: {},
-});
+const call = (name: string) => pendingCall(name, {}, "call-1");
 
 describe("Tool definition", () => {
 	it("is pure, serializable data", () => {
@@ -144,5 +141,34 @@ describe("Executor", () => {
 		expect(outcome.status).toBe("error");
 		expect(outcome.result.isError).toBe(true);
 		expect(outcome.result.details).toMatchObject({ _tag: "ExpectedFailure", message: "boom" });
+	});
+
+	it("preserves the complete pending part when producing a terminal result", async () => {
+		const tool = Tool.make({
+			name: "metadata",
+			description: "returns successfully",
+			parameters: EmptyParams,
+			success: EmptySuccess,
+			handler: () => Effect.succeed({}),
+		});
+		const executor = Executor.make([tool]);
+		const pending = {
+			...pendingCall("metadata", {}, "provider-call-1"),
+			thoughtSignature: "opaque-provider-signature",
+			time: { start: 100, end: 120 },
+		};
+
+		const outcome = await Effect.runPromise(executor.handle(pending));
+
+		expect(outcome).toMatchObject({
+			type: "toolCall",
+			callID: "provider-call-1",
+			name: "metadata",
+			arguments: {},
+			thoughtSignature: "opaque-provider-signature",
+			status: "completed",
+			time: { start: 100 },
+		});
+		expect(outcome.time.end).toBeGreaterThanOrEqual(120);
 	});
 });
