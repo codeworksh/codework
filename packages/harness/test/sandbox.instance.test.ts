@@ -1,0 +1,346 @@
+import { DateTime, Effect, Option } from "effect";
+import * as TestClock from "effect/testing/TestClock";
+import { SqlClient } from "effect/unstable/sql";
+import { describe, expect } from "vite-plus/test";
+import { Database } from "../src/db/db";
+import { SandboxInstance } from "../src/sandbox/instance";
+import { SandboxStore } from "../src/sandbox/store";
+import { testEffect } from "./utils/effect";
+
+const { effect: it } = testEffect(Database.layer(":memory:"));
+
+const id = (value: string) => SandboxInstance.ID.make(value);
+
+const sandboxStore = SandboxStore.make;
+
+const seedProject = Effect.gen(function* () {
+	const sql = yield* SqlClient.SqlClient;
+	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('p', 'p', 0, 0)`;
+});
+
+describe("SandboxInstance", () => {
+	describe("model", () => {
+		it(
+			"brands ids and exposes the deterministic local identity",
+			Effect.sync(() => {
+				expect(SandboxInstance.ID.local).toBe("local");
+				expect(id("anything")).toBe("anything");
+			}),
+		);
+
+		// The acquirable set is the predicate every conditional write depends on,
+		// so it is asserted exactly rather than sampled.
+		it(
+			"treats online, offline and faulted as acquirable and nothing else",
+			Effect.sync(() => {
+				expect([...SandboxInstance.acquirable].sort()).toEqual(["faulted", "offline", "online"]);
+
+				// offline qualifies because acquisition wakes; faulted qualifies
+				// because a fault is a usability condition, not an identity one.
+				expect(SandboxInstance.isAcquirable("offline")).toBe(true);
+				expect(SandboxInstance.isAcquirable("faulted")).toBe(true);
+
+				for (const status of [
+					"provisioning",
+					"resuming",
+					"suspending",
+					"removing",
+					"removed",
+					"unavail",
+				] as const) {
+					expect(SandboxInstance.isAcquirable(status)).toBe(false);
+				}
+			}),
+		);
+
+		// `removed` is ours, `unavail` is the driver's claim. Collapsing them would
+		// let a misclassified 404 look like a destruction we performed.
+		it(
+			"keeps removed and unavail distinct",
+			Effect.sync(() => {
+				expect(SandboxInstance.Status.literals).toContain("removed");
+				expect(SandboxInstance.Status.literals).toContain("unavail");
+			}),
+		);
+	});
+
+	describe("schema", () => {
+		it(
+			"seeds the local instance so foreign keys resolve before any Controller exists",
+			Effect.gen(function* () {
+				const store = yield* sandboxStore;
+				const local = yield* store.find(SandboxInstance.ID.local);
+
+				expect(Option.isSome(local)).toBe(true);
+				const row = Option.getOrThrow(local);
+				expect(row.driver).toBe("local");
+				expect(row.kind).toBe("local");
+				expect(row.ownership).toBe("external");
+				expect(row.status).toBe("online");
+				// an acquirable row must carry a codec-valid runtime config, never NULL
+				expect(Option.getOrThrow(row.runtimeConfig)).toBe("{}");
+			}),
+		);
+
+		it(
+			"rejects a project directory or session in an unregistered namespace",
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				yield* seedProject;
+
+				const directory = (rowId: string, instanceId: string) => sql`
+					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
+					VALUES (${rowId}, 'p', ${`/workspace/${rowId}`}, 'main', ${instanceId}, 0, 0)
+				`;
+				const session = (rowId: string, instanceId: string) => sql`
+					INSERT INTO session (id, project_id, slug, directory, title, sandbox_instance_id, created_at, updated_at)
+					VALUES (${rowId}, 'p', ${rowId}, '/workspace', 't', ${instanceId}, 0, 0)
+				`;
+
+				// positive controls: the same statements must succeed against a
+				// registered namespace, so the rejections below cannot be passing
+				// for some unrelated reason.
+				yield* directory("ok", "local");
+				yield* session("ok", "local");
+
+				expect(Option.isSome(yield* Effect.option(directory("bad", "never-registered")))).toBe(false);
+				expect(Option.isSome(yield* Effect.option(session("bad", "never-registered")))).toBe(false);
+			}),
+		);
+
+		// Destroying infrastructure tombstones the row; it never deletes it, so
+		// history keeps a valid reference. RESTRICT is what enforces that.
+		it(
+			"restricts deleting an instance that Project history still references",
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				yield* seedProject;
+				yield* sql`
+					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
+					VALUES ('d', 'p', '/workspace', 'main', 'local', 0, 0)
+				`;
+
+				const deletion = sql`DELETE FROM sandbox_instance WHERE id = 'local'`;
+				expect(Option.isSome(yield* Effect.option(deletion))).toBe(false);
+			}),
+		);
+
+		it(
+			"scopes project directory uniqueness by instance, so one path can exist in two namespaces",
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				const store = yield* sandboxStore;
+				yield* seedProject;
+				yield* store.register({ id: id("other"), driver: "memory", kind: "virtual", ownership: "managed" });
+
+				const insert = (rowId: string, instanceId: string) => sql`
+					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
+					VALUES (${rowId}, 'p', '/workspace', 'main', ${instanceId}, 0, 0)
+				`;
+
+				yield* insert("d1", "local");
+				yield* insert("d2", "other");
+
+				// same (project, instance, directory) is still rejected
+				expect(Option.isSome(yield* Effect.option(insert("d3", "local")))).toBe(false);
+
+				const rows = yield* sql`SELECT * FROM project_directory`;
+				expect(rows).toHaveLength(2);
+			}),
+		);
+
+		// Two application identities for one driver resource would alias — the exact
+		// thing instance IDs exist to prevent.
+		it(
+			"rejects two live instances sharing one driver resource, but not after removal",
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				const store = yield* sandboxStore;
+
+				yield* store.register({
+					id: id("a"),
+					driver: "sqldb",
+					kind: "virtual",
+					ownership: "managed",
+					providerResourceId: "/var/fs.db",
+				});
+
+				const alias = sql`
+					INSERT INTO sandbox_instance
+						(id, driver, kind, provider_resource_id, ownership, status, state_observed_at, created_at, updated_at)
+					VALUES ('b', 'sqldb', 'virtual', '/var/fs.db', 'managed', 'online', 0, 0, 0)
+				`;
+				expect(Option.isSome(yield* Effect.option(alias))).toBe(false);
+
+				// the index excludes tombstones, so a genuinely new resource may
+				// reuse a locator once the old one is gone
+				yield* store.transition({ id: id("a"), from: ["online"], to: "removed" });
+				yield* alias;
+
+				expect(yield* store.list).toHaveLength(3); // local + a + b
+			}),
+		);
+	});
+
+	describe("store", () => {
+		it(
+			"registers idempotently and leaves an existing row untouched",
+			Effect.gen(function* () {
+				const store = yield* sandboxStore;
+				const first = yield* store.register({
+					id: id("m"),
+					driver: "memory",
+					kind: "virtual",
+					ownership: "managed",
+				});
+				const second = yield* store.register({
+					id: id("m"),
+					driver: "memory",
+					kind: "virtual",
+					ownership: "managed",
+					status: "faulted",
+				});
+
+				expect(second.status).toBe(first.status);
+				expect(second.status).toBe("online");
+			}),
+		);
+
+		it(
+			"moves the lifecycle state only from an expected status",
+			Effect.gen(function* () {
+				const store = yield* sandboxStore;
+				yield* store.register({ id: id("m"), driver: "memory", kind: "virtual", ownership: "managed" });
+
+				expect(yield* store.transition({ id: id("m"), from: ["online"], to: "suspending" })).toBe(true);
+
+				// the row has moved on; a competing claim must lose rather than
+				// silently overwrite
+				expect(yield* store.transition({ id: id("m"), from: ["online"], to: "removing" })).toBe(false);
+
+				const row = Option.getOrThrow(yield* store.find(id("m")));
+				expect(row.status).toBe("suspending");
+			}),
+		);
+
+		it(
+			"reports a missing instance as absent rather than failing",
+			Effect.gen(function* () {
+				const store = yield* sandboxStore;
+				expect(Option.isNone(yield* store.find(id("absent")))).toBe(true);
+				expect(yield* store.transition({ id: id("absent"), from: ["online"], to: "removed" })).toBe(false);
+			}),
+		);
+
+		// The insert ignores exactly the idempotency conflict. A *new* id aliasing
+		// an existing (driver, provider_resource_id) must fail loudly, not vanish.
+		it(
+			"fails loudly when a new id aliases an existing driver resource",
+			Effect.gen(function* () {
+				const store = yield* sandboxStore;
+				yield* store.register({
+					id: id("a"),
+					driver: "sqldb",
+					kind: "virtual",
+					ownership: "managed",
+					providerResourceId: "/var/fs.db",
+				});
+
+				const exit = yield* store
+					.register({
+						id: id("b"),
+						driver: "sqldb",
+						kind: "virtual",
+						ownership: "managed",
+						providerResourceId: "/var/fs.db",
+					})
+					.pipe(Effect.exit);
+
+				expect(exit._tag).toBe("Failure");
+				expect(Option.isNone(yield* store.find(id("b")))).toBe(true);
+			}),
+		);
+
+		// The migration seeds local with its own wall clock — the one documented
+		// exception to injected time. Bootstrap is the upsert that corrects it.
+		it(
+			"bootstrapLocal corrects the seeded row from the injected clock",
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				const store = yield* sandboxStore;
+
+				// fabricate drift: a wall-clock observation and a status local can
+				// never legitimately hold, since stop and destroy are unsupported
+				yield* sql`UPDATE sandbox_instance SET status = 'faulted', state_observed_at = 999, updated_at = 999 WHERE id = 'local'`;
+				yield* TestClock.adjust("5 seconds");
+
+				const row = yield* store.bootstrapLocal;
+				expect(row.status).toBe("online");
+				expect(Option.getOrThrow(row.runtimeConfig)).toBe("{}");
+				// the injected TestClock, not the migration's wall clock
+				expect(DateTime.toEpochMillis(row.stateObservedAt)).toBe(5000);
+			}),
+		);
+	});
+
+	// §13.1: the durable reference graph, not the in-memory refCount, is what
+	// makes collection safe. Every term is exercised against fabricated rows —
+	// with no collector attached — because a term evaluated in a SELECT but
+	// dropped from the eventual conditional UPDATE is a race.
+	describe("collectable", () => {
+		it(
+			"selects managed, reclaimable, unreferenced, idle instances and nothing else",
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				const store = yield* sandboxStore;
+				yield* seedProject;
+
+				const managed = (value: string) =>
+					store.register({ id: id(value), driver: "memory", kind: "virtual", ownership: "managed" });
+				const offline = (value: string) => store.transition({ id: id(value), from: ["online"], to: "offline" });
+
+				// collectable: one per reclaimable status
+				yield* managed("reclaim-offline");
+				yield* offline("reclaim-offline");
+				yield* managed("reclaim-faulted");
+				yield* store.transition({ id: id("reclaim-faulted"), from: ["online"], to: "faulted" });
+				yield* managed("reclaim-unavail");
+				yield* store.transition({ id: id("reclaim-unavail"), from: ["online"], to: "unavail" });
+
+				// excluded: still online
+				yield* managed("still-online");
+
+				// excluded: external ownership, even when stopped
+				yield* store.register({ id: id("external"), driver: "daytona", kind: "remote", ownership: "external" });
+				yield* offline("external");
+
+				// excluded: rooted by a session
+				yield* managed("rooted-session");
+				yield* offline("rooted-session");
+				yield* sql`
+					INSERT INTO session (id, project_id, slug, directory, title, sandbox_instance_id, created_at, updated_at)
+					VALUES ('s', 'p', 's', '/workspace', 't', 'rooted-session', 0, 0)
+				`;
+
+				// excluded: rooted by a project directory
+				yield* managed("rooted-directory");
+				yield* offline("rooted-directory");
+				yield* sql`
+					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
+					VALUES ('d', 'p', '/workspace', 'main', 'rooted-directory', 0, 0)
+				`;
+
+				// excluded: used after the cutoff
+				const cutoff = (yield* DateTime.now.pipe(Effect.map(DateTime.toEpochMillis))) + 60_000;
+				yield* managed("fresh");
+				yield* offline("fresh");
+				yield* sql`UPDATE sandbox_instance SET last_used_at = ${cutoff + 1} WHERE id = 'fresh'`;
+
+				const rows = yield* store.collectable({ idleBefore: cutoff });
+				// the seeded local row is also absent: external, online, and pinned
+				// by construction long before any ownership check could catch it
+				expect(rows.map((row) => row.id).sort()).toEqual(["reclaim-faulted", "reclaim-offline", "reclaim-unavail"]);
+			}),
+		);
+	});
+});

@@ -11,6 +11,21 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.7.0]
+
+### Added
+
+- Exported concrete pending, running, completed, error, skipped, aborted, and terminal tool-call part schemas and their corresponding TypeScript types.
+- Added `skipped` and `aborted` support to the terminal `tool.execution.end` event contract.
+
+### Changed
+
+- Made tool execution lifecycle events self-contained: start, update, and end events now carry `messageId`, `partIndex`, and a complete pending, running, or terminal `toolCall` part.
+
+### Breaking Changes
+
+- Replaced the flattened `ToolCallInFlight` fields on `tool.execution.start`, `tool.execution.update`, and `tool.execution.end` with the complete tool-call part under `event.toolCall`. Consumers must read call identity and lifecycle data from `event.toolCall`.
+
 ## [@codeworksh/aikit@0.6.0]
 
 ### Added

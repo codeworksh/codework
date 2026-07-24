@@ -17,7 +17,7 @@ describe("Sandbox.EnvBash", () => {
 	}));
 
 	describe("shell and FileSystem.Service share one filesystem", () => {
-		const sandbox = () => Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer());
+		const sandbox = () => Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer(), Sandbox.SandboxEnv.mint("memory"));
 
 		it("shell reads what the service wrote", async () => {
 			const result = await Effect.runPromise(
@@ -25,7 +25,7 @@ describe("Sandbox.EnvBash", () => {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* EnvBash.Shell;
 
-					yield* Effect.promise(() => filesystem.writeFile("/file.txt", "from service"));
+					yield* filesystem.writeFile("/file.txt", "from service");
 
 					return yield* shell.exec("cat /file.txt");
 				}).pipe(Effect.provide(sandbox())),
@@ -44,7 +44,7 @@ describe("Sandbox.EnvBash", () => {
 					const result = yield* shell.exec('mkdir -p /workspace && echo "from shell" > /workspace/file.txt');
 					expect(result.exitCode).toBe(0);
 
-					return yield* Effect.promise(() => filesystem.readFile("/workspace/file.txt"));
+					return yield* filesystem.readFile("/workspace/file.txt");
 				}).pipe(Effect.provide(sandbox())),
 			);
 
@@ -57,7 +57,7 @@ describe("Sandbox.EnvBash", () => {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* EnvBash.Shell;
 
-					yield* Effect.promise(() => filesystem.writeFile("/data.txt", "alpha\nbeta\ngamma\nbeta\n"));
+					yield* filesystem.writeFile("/data.txt", "alpha\nbeta\ngamma\nbeta\n");
 
 					return yield* shell.exec("cat /data.txt | grep beta | wc -l");
 				}).pipe(Effect.provide(sandbox())),
@@ -101,15 +101,15 @@ describe("Sandbox.EnvBash", () => {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* EnvBash.Shell;
 
-					yield* Effect.promise(() => filesystem.writeFile("/source/nested/file.txt", "data"));
+					yield* filesystem.writeFile("/source/nested/file.txt", "data");
 					const exec = yield* shell.exec(
 						"cp -r /source /copy && mv /copy/nested/file.txt /copy/moved.txt && rm -r /source",
 					);
 
 					return {
 						exec,
-						content: yield* Effect.promise(() => filesystem.readFile("/copy/moved.txt")),
-						sourceExists: yield* Effect.promise(() => filesystem.exists("/source")),
+						content: yield* filesystem.readFile("/copy/moved.txt"),
+						sourceExists: yield* filesystem.exists("/source"),
 					};
 				}).pipe(Effect.provide(sandbox())),
 			);
@@ -124,7 +124,7 @@ describe("Sandbox.EnvBash", () => {
 				Effect.gen(function* () {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* EnvBash.Shell;
-					yield* Effect.promise(() => filesystem.writeFile("/target.txt", "linked"));
+					yield* filesystem.writeFile("/target.txt", "linked");
 
 					return yield* shell.exec("ln -s /target.txt /link.txt && readlink /link.txt && cat /link.txt");
 				}).pipe(Effect.provide(sandbox())),
@@ -139,9 +139,9 @@ describe("Sandbox.EnvBash", () => {
 				Effect.gen(function* () {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* EnvBash.Shell;
-					yield* Effect.promise(() => filesystem.writeFile("/workspace/a.txt", "a"));
-					yield* Effect.promise(() => filesystem.writeFile("/workspace/b.txt", "b"));
-					yield* Effect.promise(() => filesystem.writeFile("/workspace/c.json", "c"));
+					yield* filesystem.writeFile("/workspace/a.txt", "a");
+					yield* filesystem.writeFile("/workspace/b.txt", "b");
+					yield* filesystem.writeFile("/workspace/c.json", "c");
 
 					return yield* shell.exec("ls /workspace/*.txt");
 				}).pipe(Effect.provide(sandbox())),
@@ -199,16 +199,23 @@ describe("Sandbox.EnvBash", () => {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* EnvBash.Shell;
 
-					yield* Effect.promise(() => filesystem.writeFile("service.txt", "from service"));
+					yield* filesystem.writeFile("service.txt", "from service");
 					const cat = yield* shell.exec("cat service.txt");
 					const write = yield* shell.exec('echo "from shell" > shell.txt');
 
 					expect(cat).toMatchObject({ exitCode: 0, stdout: "from service" });
 					expect(write.exitCode).toBe(0);
-					expect(yield* Effect.promise(() => filesystem.readFile("shell.txt"))).toBe("from shell\n");
-					expect(yield* Effect.promise(() => filesystem.readFile("/repo/shell.txt"))).toBe("from shell\n");
-					expect(yield* Effect.promise(() => filesystem.exists("/shell.txt"))).toBe(false);
-				}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer({ cwd: "/repo" })))),
+					expect(yield* filesystem.readFile("shell.txt")).toBe("from shell\n");
+					expect(yield* filesystem.readFile("/repo/shell.txt")).toBe("from shell\n");
+					expect(yield* filesystem.exists("/shell.txt")).toBe(false);
+				}).pipe(
+					Effect.provide(
+						Sandbox.EnvBash.services(
+							Sandbox.EnvInMemory.layer({ cwd: "/repo" }),
+							Sandbox.SandboxEnv.mint("memory"),
+						),
+					),
+				),
 			);
 		});
 
@@ -218,16 +225,23 @@ describe("Sandbox.EnvBash", () => {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* EnvBash.Shell;
 
-					yield* Effect.promise(() => filesystem.writeFile("service.txt", "from service"));
+					yield* filesystem.writeFile("service.txt", "from service");
 					const cat = yield* shell.exec("cat service.txt");
 					const write = yield* shell.exec('echo "from shell" > shell.txt');
 
 					expect(cat).toMatchObject({ exitCode: 0, stdout: "from service" });
 					expect(write.exitCode).toBe(0);
-					expect(yield* Effect.promise(() => filesystem.readFile("shell.txt"))).toBe("from shell\n");
-					expect(yield* Effect.promise(() => filesystem.readFile("/repo/shell.txt"))).toBe("from shell\n");
-					expect(yield* Effect.promise(() => filesystem.exists("/shell.txt"))).toBe(false);
-				}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } })))),
+					expect(yield* filesystem.readFile("shell.txt")).toBe("from shell\n");
+					expect(yield* filesystem.readFile("/repo/shell.txt")).toBe("from shell\n");
+					expect(yield* filesystem.exists("/shell.txt")).toBe(false);
+				}).pipe(
+					Effect.provide(
+						Sandbox.EnvBash.services(
+							Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } }),
+							Sandbox.SandboxEnv.mint("sqldb"),
+						),
+					),
+				),
 			);
 		});
 
@@ -239,14 +253,21 @@ describe("Sandbox.EnvBash", () => {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* EnvBash.Shell;
 
-					yield* Effect.promise(() => filesystem.writeFile("service.txt", "from service"));
+					yield* filesystem.writeFile("service.txt", "from service");
 					const cat = yield* shell.exec("cat service.txt");
 					const write = yield* shell.exec('echo "from shell" > shell.txt');
 
 					expect(cat).toMatchObject({ exitCode: 0, stdout: "from service" });
 					expect(write.exitCode).toBe(0);
-					expect(yield* Effect.promise(() => filesystem.readFile("shell.txt"))).toBe("from shell\n");
-				}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path })))),
+					expect(yield* filesystem.readFile("shell.txt")).toBe("from shell\n");
+				}).pipe(
+					Effect.provide(
+						Sandbox.EnvBash.services(
+							Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }),
+							Sandbox.SandboxEnv.DEFAULT,
+						),
+					),
+				),
 			);
 
 			expect(await fs.readFile(path.join(tmp.path, "shell.txt"), "utf8")).toBe("from shell\n");
@@ -437,14 +458,28 @@ describe("Sandbox.EnvBash", () => {
 				const shell = yield* EnvBash.Shell;
 				const result = yield* shell.exec('echo "persisted by bash" > /file.txt');
 				expect(result.exitCode).toBe(0);
-			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvSqldb.layer({ location: database })))),
+			}).pipe(
+				Effect.provide(
+					Sandbox.EnvBash.services(
+						Sandbox.EnvSqldb.layer({ location: database }),
+						Sandbox.SandboxEnv.format({ kind: "sqldb", instance: database }),
+					),
+				),
+			),
 		);
 
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
 				const shell = yield* EnvBash.Shell;
 				return yield* shell.exec("cat /file.txt");
-			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvSqldb.layer({ location: database })))),
+			}).pipe(
+				Effect.provide(
+					Sandbox.EnvBash.services(
+						Sandbox.EnvSqldb.layer({ location: database }),
+						Sandbox.SandboxEnv.format({ kind: "sqldb", instance: database }),
+					),
+				),
+			),
 		);
 
 		expect(result.stdout).toBe("persisted by bash\n");
@@ -462,8 +497,12 @@ describe("Sandbox.EnvBash", () => {
 				const result = yield* shell.exec('echo "real disk" > file.txt');
 				expect(result.exitCode).toBe(0);
 
-				return yield* Effect.promise(() => filesystem.readFile("file.txt"));
-			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path })))),
+				return yield* filesystem.readFile("file.txt");
+			}).pipe(
+				Effect.provide(
+					Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }), Sandbox.SandboxEnv.DEFAULT),
+				),
+			),
 		);
 
 		expect(content).toBe("real disk\n");
@@ -479,7 +518,11 @@ describe("Sandbox.EnvBash", () => {
 			Effect.gen(function* () {
 				const shell = yield* EnvBash.Shell;
 				return yield* shell.exec(`ln -s ${outside} leak && cat leak`);
-			}).pipe(Effect.provide(Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path })))),
+			}).pipe(
+				Effect.provide(
+					Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }), Sandbox.SandboxEnv.DEFAULT),
+				),
+			),
 		);
 
 		expect(result.exitCode).toBe(0);

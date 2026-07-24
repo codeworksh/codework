@@ -3,10 +3,11 @@ import { Effect, Layer } from "effect";
 import { Bash, type IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
+import { SandboxEnv } from "./env";
 import { SandboxFileSystem } from "./filesystem/filesystem";
-import { Virtual } from "./filesystem/local";
-import type { Provides } from "./sandbox";
-import { type ExecResult, type ISandboxExe, Shell, ShellError } from "./shell";
+import { Local } from "./filesystem/local";
+import type { LocalPrimitives } from "./sandbox";
+import { type ExecResult, fromExec, type ISandboxExe, Shell, ShellError } from "./shell";
 
 // The shared exec contract lives in `shell.ts`; re-export the pieces this
 // module used to own so existing `EnvBash.Shell` / `EnvBash.ShellError`
@@ -231,7 +232,7 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 const shell = Layer.effect(
 	Shell,
 	Effect.gen(function* () {
-		const vfs = yield* Virtual.Vfs;
+		const vfs = yield* Local.Vfs;
 		const bash = new Bash({ fs: bridge(vfs), cwd: vfs.virtualCwdEnabled ? vfs.cwd() : "/" });
 
 		const exec = Effect.fn("Shell.exec")(function* (command: string, options?: { env?: Record<string, string> }) {
@@ -241,7 +242,9 @@ const shell = Layer.effect(
 			});
 		});
 
-		return Shell.of({ exec });
+		// just-bash parses a command string, so `execArgv` goes through the shared
+		// quoting fallback rather than spawning a vector directly.
+		return Shell.of(fromExec({ exec }));
 	}),
 );
 
@@ -249,8 +252,9 @@ const shell = Layer.effect(
  * Wraps any local VFS-backed sandbox with a just-bash shell that executes
  * against the sandbox's own vfs: pick the filesystem backend (default, inmemory, sqldb) and gain a Shell service on top of it.
  */
-export const layer = <E, RIn>(inner: Layer.Layer<Provides, E, RIn>): Layer.Layer<Shell | Provides, E, RIn> =>
-	Layer.provideMerge(shell, inner);
+export const layer = <E, RIn>(
+	inner: Layer.Layer<LocalPrimitives, E, RIn>,
+): Layer.Layer<Shell | LocalPrimitives, E, RIn> => Layer.provideMerge(shell, inner);
 
 /**
  * Runtime services for a bash-wrapped sandbox: sandbox filesystem service,
@@ -258,7 +262,9 @@ export const layer = <E, RIn>(inner: Layer.Layer<Provides, E, RIn>): Layer.Layer
  * `Sandbox.services`.
  */
 export const services = <E, RIn>(
-	inner: Layer.Layer<Provides, E, RIn>,
-): Layer.Layer<SandboxFileSystem.Service | Shell | Provides, E, RIn> => Layer.provideMerge(Virtual.layer, layer(inner));
+	inner: Layer.Layer<LocalPrimitives, E, RIn>,
+	envId: string,
+): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxEnv.EnvId | LocalPrimitives, E, RIn> =>
+	Layer.provideMerge(Layer.merge(Local.layer, SandboxEnv.layer(envId)), layer(inner));
 
 export * as EnvBash from "./justbashexe";

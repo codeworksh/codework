@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
-import { Virtual } from "../src/sandbox/filesystem/local";
+import { Local } from "../src/sandbox/filesystem/local";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { withService } from "./fixtures/sandbox.spec";
 import { tmpdir } from "./fixtures/tempdir";
@@ -38,6 +38,25 @@ describe("Sandbox.EnvDefault", () => {
 		);
 
 		expect(content).toBe("from host");
+	});
+
+	it("should reject an indeterminate existence probe instead of reporting absence", async () => {
+		await using tmp = await tmpdir();
+		const locked = path.join(tmp.path, "locked");
+		await fs.mkdir(locked);
+		await fs.writeFile(path.join(locked, "file.txt"), "present");
+		await fs.chmod(locked, 0o000);
+
+		try {
+			await expect(
+				withService(
+					async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }) }),
+					(filesystem) => filesystem.exists("locked/file.txt"),
+				),
+			).rejects.toMatchObject({ _tag: "SandboxFileSystemError", method: "exists" });
+		} finally {
+			await fs.chmod(locked, 0o700);
+		}
 	});
 
 	it("should keep absolute file operations rooted at the host filesystem", async () => {
@@ -85,7 +104,7 @@ describe("Sandbox.EnvDefault", () => {
 
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
-				const vfs = yield* Virtual.Vfs;
+				const vfs = yield* Local.Vfs;
 				yield* Effect.promise(async () => {
 					await vfs.promises.writeFile("target.txt", "inside");
 					await vfs.promises.symlink("target.txt", "link.txt");
@@ -112,7 +131,7 @@ describe("Sandbox.EnvDefault", () => {
 				const filesystem = yield* SandboxFileSystem.Service;
 				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
-				yield* Effect.promise(() => filesystem.writeFile(marker, "sandbox-data"));
+				yield* filesystem.writeFile(marker, "sandbox-data");
 
 				const command = ChildProcess.make(
 					process.execPath,

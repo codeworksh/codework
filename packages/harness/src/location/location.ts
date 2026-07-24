@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { Project } from "../project/project";
+import { ProjectSchema } from "../project/schema";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";
 import { Workspace } from "../workspace/workspace";
@@ -14,9 +15,9 @@ export class Info extends Schema.Class<Info>("Location.Info")({
 	directory: AbsolutePath,
 	workspaceID: Schema.optional(Workspace.ID),
 	project: Schema.Struct({
-		id: Project.ID,
+		id: ProjectSchema.ID,
 		name: Schema.String,
-		vcs: Schema.optional(Project.Vcs),
+		vcs: Schema.optional(ProjectSchema.Vcs),
 		directory: AbsolutePath,
 	}),
 }) {}

@@ -1,7 +1,15 @@
-import { Context, Schema } from "effect";
+import { Context, Effect, Schema } from "effect";
 
 /**
  * The runtime filesystem contract, independent of any backend.
+ *
+ * Two surfaces, deliberately:
+ * - {@link Provider} is what a backend implements — plain promises that reject,
+ *   matching every SDK we wrap.
+ * - {@link Interface} is what the harness consumes — Effect with a typed error
+ *   channel and tracing spans. {@link fromProvider} bridges the two exactly
+ *   once, so no consumer ever writes `Effect.tryPromise` against a filesystem.
+ *
  * Implementations:
  * - Local:
  * implement it over a VFS (`./local`);
@@ -13,6 +21,13 @@ import { Context, Schema } from "effect";
  *
  * `isFile`/`isDirectory` are required booleans; size, mtime, and isSymbolicLink are omitted when the
  * backend cannot report them — never fabricated.
+ *
+ * **Paths are POSIX, and the harness is Unix-only.** Every path uses `/`
+ * separators on both the host and inside a sandbox — Windows is not supported,
+ * so no translation layer exists. Consumers must use `node:path`'s `posix`
+ * variant, never the platform default, or a host running the harness would
+ * impose its own flavour on a remote sandbox's paths. Relative paths resolve
+ * against the backend's configured `cwd`.
  */
 
 export class OperationUnsupportedError extends Schema.TaggedErrorClass<OperationUnsupportedError>()(
@@ -23,6 +38,13 @@ export class OperationUnsupportedError extends Schema.TaggedErrorClass<Operation
 	},
 ) {}
 
+/** A backend operation failed. `cause` carries the provider's own rejection. */
+export class FileSystemError extends Schema.TaggedErrorClass<FileSystemError>()("SandboxFileSystemError", {
+	method: Schema.String,
+	path: Schema.String,
+	cause: Schema.optional(Schema.Defect()),
+}) {}
+
 export interface FileStat {
 	readonly isFile: boolean;
 	readonly isDirectory: boolean;
@@ -31,7 +53,22 @@ export interface FileStat {
 	readonly mtime?: Date;
 }
 
-export interface Interface {
+export interface RmOptions {
+	readonly recursive?: boolean;
+	readonly force?: boolean;
+}
+
+/** Whether a provider failure means the path itself is definitively absent. */
+export const isNotFoundError = (cause: unknown) => {
+	const code = (cause as NodeJS.ErrnoException | undefined)?.code;
+	return code === "ENOENT" || code === "ENOTDIR";
+};
+
+/**
+ * The backend-facing contract. Backends author plain promises and let them
+ * reject; {@link fromProvider} turns rejections into typed failures.
+ */
+export interface Provider {
 	readonly readFile: (path: string) => Promise<string>;
 	readonly readFileBuffer: (path: string) => Promise<Uint8Array>;
 	readonly writeFile: (path: string, content: string | Uint8Array) => Promise<void>;
@@ -39,7 +76,32 @@ export interface Interface {
 	readonly readdir: (path: string) => Promise<string[]>;
 	readonly exists: (path: string) => Promise<boolean>;
 	readonly mkdir: (path: string, options?: { recursive?: boolean }) => Promise<void>;
-	readonly rm: (path: string, options?: { recursive?: boolean; force?: boolean }) => Promise<void>;
+	readonly rm: (path: string, options?: RmOptions) => Promise<void>;
+	/**
+	 * Metadata for the directory entry itself rather than a symlink's target.
+	 * Optional: a backend whose `stat` has mixed symlink semantics implements it
+	 * so symlink identity is asked for explicitly, never inferred.
+	 */
+	readonly lstat?: (path: string) => Promise<FileStat>;
+}
+
+/**
+ * The consumer-facing contract. `exists` distinguishes "absent" from "could not
+ * tell": a backend failure is a typed failure, not `false`, so a caller acting
+ * on absence never acts on a network blip. Use `SandboxFs.existsOrFalse` where
+ * a best-effort answer really is wanted. `lstat` is present only when the
+ * backend supports it; check before calling.
+ */
+export interface Interface {
+	readonly lstat?: (path: string) => Effect.Effect<FileStat, FileSystemError>;
+	readonly readFile: (path: string) => Effect.Effect<string, FileSystemError>;
+	readonly readFileBuffer: (path: string) => Effect.Effect<Uint8Array, FileSystemError>;
+	readonly writeFile: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>;
+	readonly stat: (path: string) => Effect.Effect<FileStat, FileSystemError>;
+	readonly readdir: (path: string) => Effect.Effect<string[], FileSystemError>;
+	readonly exists: (path: string) => Effect.Effect<boolean, FileSystemError>;
+	readonly mkdir: (path: string, options?: { recursive?: boolean }) => Effect.Effect<void, FileSystemError>;
+	readonly rm: (path: string, options?: RmOptions) => Effect.Effect<void, FileSystemError | OperationUnsupportedError>;
 }
 
 /** The runtime filesystem service — the live {@link Interface} for the active sandbox. */
@@ -50,11 +112,62 @@ export class Service extends Context.Service<Service, Interface>()("@codework/sa
  * `recursive` and `force` are part of the contract; anything else is refused
  * loudly rather than silently ignored.
  */
-export const assertRmOptions = (options: { recursive?: boolean; force?: boolean } | undefined, operation = "rm") => {
-	for (const option of Object.keys((options ?? {}) as Record<string, unknown>)) {
-		if (option === "recursive" || option === "force") continue;
-		throw new OperationUnsupportedError({ operation, message: `Unsupported rm option: ${option}` });
-	}
+export const validateRmOptions = (
+	options: RmOptions | undefined,
+	operation = "rm",
+): Effect.Effect<void, OperationUnsupportedError> =>
+	Effect.suspend(() => {
+		for (const option of Object.keys((options ?? {}) as Record<string, unknown>)) {
+			if (option === "recursive" || option === "force") continue;
+			return Effect.fail(new OperationUnsupportedError({ operation, message: `Unsupported rm option: ${option}` }));
+		}
+		return Effect.void;
+	});
+
+/**
+ * Lift a {@link Provider} into the runtime {@link Interface}: one place that
+ * converts rejections into {@link FileSystemError}, validates `rm` options, and
+ * names a tracing span per operation.
+ */
+export const fromProvider = (provider: Provider): Interface => {
+	const attempt = <A>(method: string, path: string, run: () => Promise<A>) =>
+		Effect.tryPromise({ try: run, catch: (cause) => new FileSystemError({ method, path, cause }) });
+
+	return {
+		readFile: Effect.fn("SandboxFileSystem.readFile")((path: string) =>
+			attempt("readFile", path, () => provider.readFile(path)),
+		),
+		readFileBuffer: Effect.fn("SandboxFileSystem.readFileBuffer")((path: string) =>
+			attempt("readFileBuffer", path, () => provider.readFileBuffer(path)),
+		),
+		writeFile: Effect.fn("SandboxFileSystem.writeFile")((path: string, content: string | Uint8Array) =>
+			attempt("writeFile", path, () => provider.writeFile(path, content)),
+		),
+		stat: Effect.fn("SandboxFileSystem.stat")((path: string) => attempt("stat", path, () => provider.stat(path))),
+		// carried through only when the backend actually implements it
+		...(provider.lstat === undefined
+			? {}
+			: {
+					lstat: Effect.fn("SandboxFileSystem.lstat")((path: string) =>
+						attempt("lstat", path, () => provider.lstat!(path)),
+					),
+				}),
+		readdir: Effect.fn("SandboxFileSystem.readdir")((path: string) =>
+			attempt("readdir", path, () => provider.readdir(path)),
+		),
+		// A backend that cannot answer fails; it does not report "absent". A
+		// caller acting on absence — deleting a record, say — must not be told
+		// the path is gone because a token expired or a request timed out.
+		exists: Effect.fn("SandboxFileSystem.exists")((path: string) =>
+			attempt("exists", path, () => provider.exists(path)),
+		),
+		mkdir: Effect.fn("SandboxFileSystem.mkdir")((path: string, options?: { recursive?: boolean }) =>
+			attempt("mkdir", path, () => provider.mkdir(path, options)),
+		),
+		rm: Effect.fn("SandboxFileSystem.rm")((path: string, options?: RmOptions) =>
+			validateRmOptions(options).pipe(Effect.andThen(attempt("rm", path, () => provider.rm(path, options)))),
+		),
+	};
 };
 
 export * as SandboxFileSystem from "./filesystem";

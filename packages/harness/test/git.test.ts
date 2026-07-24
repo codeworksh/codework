@@ -287,6 +287,31 @@ describe("Git", () => {
 	});
 
 	describe("synchronisation", () => {
+		it("pushes and deletes an explicit remote ref", async () => {
+			const bare = await isolatedRemote("push");
+			const publisher = await cloneOf(bare, "push-publisher");
+			const branch = `sandbox-${randomUUID()}`;
+
+			await runGit(publisher, "switch", "-c", branch);
+			const published = await commitFile(publisher, "pushed.txt", "pushed\n", "test: push");
+
+			const pushed = await withGit((git) =>
+				git.push({
+					directory: publisher,
+					refspec: `HEAD:refs/heads/${branch}`,
+					env: { CW_PUSH_TEST: "1" },
+				}),
+			);
+			expect(pushed.exitCode, pushed.stderr).toBe(0);
+			expect(await runGit(root, "--git-dir", bare, "rev-parse", `refs/heads/${branch}`)).toBe(published);
+
+			const removed = await withGit((git) => git.push({ directory: publisher, refspec: `:refs/heads/${branch}` }));
+			expect(removed.exitCode, removed.stderr).toBe(0);
+			expect(
+				await runGit(root, "--git-dir", bare, "for-each-ref", "--format=%(refname)", `refs/heads/${branch}`),
+			).toBe("");
+		});
+
 		it("fetches all remotes and prunes", async () => {
 			const bare = await isolatedRemote("fetch");
 			const consumer = await cloneOf(bare, "fetch-consumer");

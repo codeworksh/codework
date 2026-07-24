@@ -11,7 +11,7 @@ export type FileStat = SandboxFileSystem.FileStat;
 // provider-level meaning, while `lstat` explicitly asks for the directory entry
 // itself so symlink identity is not inferred from a method with mixed provider
 // semantics.
-export interface Interface extends SandboxFileSystem.Interface {
+export interface Interface extends SandboxFileSystem.Provider {
 	readonly lstat?: (path: string) => Promise<FileStat>;
 }
 
@@ -55,12 +55,8 @@ export const make = (provider: Interface, options?: Options): Interface => {
 		readdir: (path) => provider.readdir(resolve(path)),
 		exists: (path) => provider.exists(resolve(path)),
 		mkdir: (path, mkdirOptions) => provider.mkdir(resolve(path), mkdirOptions),
-		// validate before delegating so every provider rejects unsupported flags
-		// identically, before any mutation
-		rm: (path, rmOptions) => {
-			SandboxFileSystem.assertRmOptions(rmOptions);
-			return provider.rm(resolve(path), rmOptions);
-		},
+		// option validation happens in `fromProvider`, before any mutation
+		rm: (path, rmOptions) => provider.rm(resolve(path), rmOptions),
 	};
 };
 

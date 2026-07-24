@@ -85,17 +85,23 @@ export namespace Message {
 		result: ToolErrorResult,
 	});
 
-	const ToolCallPendingPart = Type.Intersect([
+	export const ToolCallPendingPartSchema = Type.Intersect([
 		ToolCallBaseSchema,
 		Type.Object({
 			status: Type.Literal(ToolStatusEnum.pending),
 		}),
 	]);
-	const ToolCallRunningPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolRunningSchema]));
-	const ToolCallCompletedPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolCompletedSchema]));
-	const ToolCallErrorPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolErrorSchema]));
-	const ToolCallSkippedPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolSkippedSchema]));
-	const ToolCallAbortedPart = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolAbortedSchema]));
+	export const ToolCallRunningPartSchema = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolRunningSchema]));
+	export const ToolCallCompletedPartSchema = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolCompletedSchema]));
+	export const ToolCallErrorPartSchema = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolErrorSchema]));
+	export const ToolCallSkippedPartSchema = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolSkippedSchema]));
+	export const ToolCallAbortedPartSchema = Type.Evaluate(Type.Intersect([ToolCallBaseSchema, ToolAbortedSchema]));
+	export const ToolCallTerminalPartSchema = Type.Union([
+		ToolCallCompletedPartSchema,
+		ToolCallErrorPartSchema,
+		ToolCallSkippedPartSchema,
+		ToolCallAbortedPartSchema,
+	]);
 
 	export const ToolCallInFlightSchema = Type.Object({
 		callID: Type.String(),
@@ -106,19 +112,19 @@ export namespace Message {
 	export type ToolCallInFlight = Static<typeof ToolCallInFlightSchema>;
 
 	export const ToolCallSchema = Type.Union([
-		ToolCallPendingPart,
-		ToolCallRunningPart,
-		ToolCallCompletedPart,
-		ToolCallErrorPart,
-		ToolCallSkippedPart,
-		ToolCallAbortedPart,
+		ToolCallPendingPartSchema,
+		ToolCallRunningPartSchema,
+		ToolCallTerminalPartSchema,
 	]);
 
 	export type ToolCall = Static<typeof ToolCallSchema>;
-	export type ToolCallPendingPart = Static<typeof ToolCallPendingPart>;
-	export type ToolCallRunningPart = Static<typeof ToolCallRunningPart>;
-	export type ToolCallCompletedPart = Static<typeof ToolCallCompletedPart>;
-	export type ToolCallErrorPart = Static<typeof ToolCallErrorPart>;
+	export type ToolCallPendingPart = Static<typeof ToolCallPendingPartSchema>;
+	export type ToolCallRunningPart = Static<typeof ToolCallRunningPartSchema>;
+	export type ToolCallCompletedPart = Static<typeof ToolCallCompletedPartSchema>;
+	export type ToolCallErrorPart = Static<typeof ToolCallErrorPartSchema>;
+	export type ToolCallSkippedPart = Static<typeof ToolCallSkippedPartSchema>;
+	export type ToolCallAbortedPart = Static<typeof ToolCallAbortedPartSchema>;
+	export type ToolCallTerminalPart = Static<typeof ToolCallTerminalPartSchema>;
 
 	export const UsageSchema = Type.Object({
 		input: Type.Number(),
