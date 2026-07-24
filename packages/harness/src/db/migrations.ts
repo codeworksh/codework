@@ -36,7 +36,7 @@ export const migrations = {
 
 		yield* sql`
 			CREATE UNIQUE INDEX project_directory_project_directory_idx
-			ON project_directory (project_id, directory)
+			ON project_directory (project_id, sandbox_env_id, directory)
 		`;
 
 		yield* sql`

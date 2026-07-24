@@ -1,7 +1,7 @@
 import { Effect, Exit, Layer, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox";
-import { type ExecChunk, Shell as SandboxShell } from "../src/sandbox/shell";
+import { type ExecChunk, fromExec, Shell as SandboxShell } from "../src/sandbox/shell";
 import { bashTool } from "../src/tools/bash";
 import * as Executor from "../src/tools/executor";
 import { make as makeProgress, noop as progressNoop } from "../src/tools/progress";
@@ -17,7 +17,7 @@ import {
 
 // ToolShell backed by the in-process just-bash sandbox — the bootstrap backend
 // (buffered exec, no `stream` → the tool takes variant A).
-const justBashToolShell = fromSandboxShell.pipe(Layer.provide(Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer())));
+const justBashToolShell = fromSandboxShell.pipe(Layer.provide(Sandbox.memory()));
 
 // A hand-made buffered ToolShell Layer with canned behaviour — for the def/exec split.
 const stubToolShell = (exec: IToolShell["exec"]): Layer.Layer<ToolShell> =>
@@ -205,10 +205,12 @@ describe("fromSandboxShell streaming bridge (variant B over a backend Shell)", (
 			Layer.provide(
 				Layer.succeed(
 					SandboxShell,
-					SandboxShell.of({
-						exec: () => Effect.die(new Error("exec should not run when streaming")),
-						stream: () => Stream.fromIterable(chunks),
-					}),
+					SandboxShell.of(
+						fromExec({
+							exec: () => Effect.die(new Error("exec should not run when streaming")),
+							stream: () => Stream.fromIterable(chunks),
+						}),
+					),
 				),
 			),
 		);

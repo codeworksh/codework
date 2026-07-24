@@ -6,7 +6,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { FileSystem } from "../src/filesystem/filesystem";
+import { SandboxEnv } from "../src/sandbox/env";
+import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { Git } from "../src/git/git";
 import { Location } from "../src/location/location";
 import { ProjectCopy } from "../src/project/copy";
@@ -46,18 +47,20 @@ const locationLayer = (ref: Location.Ref, git: Partial<Git.Interface>) =>
 		Layer.provideMerge(
 			Layer.mergeAll(
 				databaseLayer(),
+				SandboxEnv.defaultLayer,
 				Layer.succeed(
-					FileSystem.Service,
-					FileSystem.Service.of({
-						readFileString: () =>
+					SandboxFileSystem.Service,
+					SandboxFileSystem.Service.of({
+						readFile: (path: string) =>
 							Effect.fail(
-								new FileSystem.FileSystemError({
-									method: "readFileString",
+								new SandboxFileSystem.FileSystemError({
+									method: "readFile",
+									path,
 									cause: "not found",
 								}),
 							),
 						exists: () => Effect.succeed(true),
-					} as unknown as FileSystem.Interface),
+					} as unknown as SandboxFileSystem.Interface),
 				),
 				Layer.succeed(Git.Service, Git.Service.of(git as Git.Interface)),
 				Layer.succeed(
@@ -112,7 +115,7 @@ describe("Location", () => {
 			// ... and the directory registered as main, queryable through Project
 			const project = yield* Project.Service;
 			const directories = yield* project.directories({ projectId: location.project.id });
-			expect(directories).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "main" }]);
+			expect(directories).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
 		}),
 	);
 
@@ -142,7 +145,7 @@ describe("Location", () => {
 			// the project registers the repository root, not the opened subdirectory
 			const project = yield* Project.Service;
 			const directories = yield* project.directories({ projectId: location.project.id });
-			expect(directories).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "main" }]);
+			expect(directories).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
 		}),
 	);
 
@@ -173,15 +176,16 @@ describe("Location", () => {
 	);
 
 	describe("Location.layerWith", () => {
-		// layerWith is the seam for swapping the sandbox: a purely in-memory
-		// filesystem (no host fs, no process execution) still builds a Location,
-		// resolving the directory to a local project since the empty tree holds
-		// no repository.
+		// layerWith is the seam for swapping the sandbox: an in-memory filesystem
+		// paired with the in-process shell (no host fs, no host process) still
+		// builds a Location, resolving the directory to a local project since the
+		// empty tree holds no repository — the walk for `.git` finds nothing, so
+		// git never runs a command.
 		const ref: Location.Ref = {
 			directory: AbsolutePath.make("/workspace/scratch"),
 			workspaceID: workspaceId,
 		};
-		const { effect: inMemoryIt } = testEffect(Location.layerWith(ref, Sandbox.EnvInMemory.layer()));
+		const { effect: inMemoryIt } = testEffect(Location.layerWith(ref, Sandbox.memory()));
 
 		inMemoryIt("builds a location over an in-memory sandbox", () =>
 			Effect.gen(function* () {
@@ -242,9 +246,7 @@ describe("Location", () => {
 					directory: realDirectory,
 				},
 			});
-			expect(directories).toEqual([
-				{ directory: realDirectory, sandboxEnvID: "@codework/envDefault", type: "main" },
-			]);
+			expect(directories).toEqual([{ directory: realDirectory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
 		}, 30_000);
 
 		// The convenience wiring itself: defaultLayer needs nothing but the ref

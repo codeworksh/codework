@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox";
-import { type ExecChunk, type ISandboxExe, Shell as SandboxShell } from "../src/sandbox/shell";
+import { type ExecChunk, fromExec, type ISandboxExe, Shell as SandboxShell } from "../src/sandbox/shell";
 import { bashTool } from "../src/tools/bash";
 import * as Executor from "../src/tools/executor";
 import { ToolProgress } from "../src/tools/progress";
@@ -134,20 +134,22 @@ describe("ToolRegistry — Context.Service variant", () => {
 
 const localOsToolShell = local().pipe(Layer.provide(Sandbox.Process.host));
 
-const justBashToolShell = fromSandboxShell.pipe(Layer.provide(Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer())));
+const justBashToolShell = fromSandboxShell.pipe(Layer.provide(Sandbox.memory()));
 
 const sandboxExecToolShell = (exec: ISandboxExe["exec"]): Layer.Layer<ToolShell> =>
-	fromSandboxShell.pipe(Layer.provide(Layer.succeed(SandboxShell, SandboxShell.of({ exec }))));
+	fromSandboxShell.pipe(Layer.provide(Layer.succeed(SandboxShell, SandboxShell.of(fromExec({ exec })))));
 
 const sandboxStreamingToolShell = (chunks: ReadonlyArray<ExecChunk>): Layer.Layer<ToolShell> =>
 	fromSandboxShell.pipe(
 		Layer.provide(
 			Layer.succeed(
 				SandboxShell,
-				SandboxShell.of({
-					exec: () => Effect.die(new Error("exec should not run for a streaming sandbox shell")),
-					stream: () => Stream.fromIterable(chunks),
-				}),
+				SandboxShell.of(
+					fromExec({
+						exec: () => Effect.die(new Error("exec should not run for a streaming sandbox shell")),
+						stream: () => Stream.fromIterable(chunks),
+					}),
+				),
 			),
 		),
 	);
@@ -436,16 +438,18 @@ const longRunningVercelBackend: Layer.Layer<ToolShell> = fromSandboxShell.pipe(
 	Layer.provide(
 		Layer.succeed(
 			SandboxShell,
-			SandboxShell.of({
-				exec: () => Effect.die(new Error("exec should not run for a streaming sandbox shell")),
-				stream: () =>
-					Stream.fromIterable([
-						...Array.from({ length: PROGRESS_LINES }, (_, i): ExecChunk => {
-							return { _tag: "stdout", bytes: utf8.encode(`${progressLine(i + 1)}\n`) };
-						}),
-						{ _tag: "exit", exitCode: 0 } as ExecChunk,
-					]).pipe(Stream.schedule(Schedule.spaced(CHUNK_SPACING))),
-			}),
+			SandboxShell.of(
+				fromExec({
+					exec: () => Effect.die(new Error("exec should not run for a streaming sandbox shell")),
+					stream: () =>
+						Stream.fromIterable([
+							...Array.from({ length: PROGRESS_LINES }, (_, i): ExecChunk => {
+								return { _tag: "stdout", bytes: utf8.encode(`${progressLine(i + 1)}\n`) };
+							}),
+							{ _tag: "exit", exitCode: 0 } as ExecChunk,
+						]).pipe(Stream.schedule(Schedule.spaced(CHUNK_SPACING))),
+				}),
+			),
 		),
 	),
 );

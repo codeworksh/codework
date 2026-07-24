@@ -145,12 +145,25 @@ describe("Database", () => {
 					}),
 				);
 
-				const duplicate = yield* ProjectDirectoryRow.insert.makeEffect({
+				// The same path in a different sandbox is a different place, so it
+				// registers independently rather than colliding.
+				const otherEnv = yield* ProjectDirectoryRow.insert.makeEffect({
 					id: "directory-2",
 					projectId: "project-1",
 					directory: AbsolutePath.make("/workspace/codework"),
 					type: "root",
 					sandboxEnvId: "sandbox-2",
+				});
+				const otherEnvExit = yield* db.insertDirectory(otherEnv).pipe(Effect.exit);
+				expect(otherEnvExit._tag).toBe("Success");
+
+				// The same path in the same sandbox is a genuine duplicate.
+				const duplicate = yield* ProjectDirectoryRow.insert.makeEffect({
+					id: "directory-3",
+					projectId: "project-1",
+					directory: AbsolutePath.make("/workspace/codework"),
+					type: "root",
+					sandboxEnvId: "sandbox-1",
 				});
 				const duplicateExit = yield* db.insertDirectory(duplicate).pipe(Effect.exit);
 				expect(duplicateExit._tag).toBe("Failure");

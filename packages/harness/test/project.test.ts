@@ -6,7 +6,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { FileSystem } from "../src/filesystem/filesystem";
+import { SandboxEnv } from "../src/sandbox/env";
+import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { Git } from "../src/git/git";
 import { ProjectCopy } from "../src/project/copy";
 import { defaultLayer, layer, Service } from "../src/project/project";
@@ -42,12 +43,13 @@ interface ProjectOptions {
 }
 
 const projectLayer = (git: Partial<Git.Interface>, options: ProjectOptions = {}) => {
-	const readFileString =
+	const readFile =
 		options.cached === undefined
-			? () =>
+			? (path: string) =>
 					Effect.fail(
-						new FileSystem.FileSystemError({
-							method: "readFileString",
+						new SandboxFileSystem.FileSystemError({
+							method: "readFile",
+							path,
 							cause: "not found",
 						}),
 					)
@@ -59,12 +61,13 @@ const projectLayer = (git: Partial<Git.Interface>, options: ProjectOptions = {})
 		Layer.provideMerge(
 			Layer.mergeAll(
 				databaseLayer(),
+				SandboxEnv.defaultLayer,
 				Layer.succeed(
-					FileSystem.Service,
-					FileSystem.Service.of({
-						readFileString,
+					SandboxFileSystem.Service,
+					SandboxFileSystem.Service.of({
+						readFile,
 						exists,
-					} as unknown as FileSystem.Interface),
+					} as unknown as SandboxFileSystem.Interface),
 				),
 				Layer.succeed(Git.Service, Git.Service.of(git as Git.Interface)),
 				Layer.succeed(
@@ -99,6 +102,9 @@ const seedDirectory = (row: {
 		yield* sql`INSERT INTO project_directory ${sql.insert({ createdAt: 0, updatedAt: 0, ...row })}`;
 	});
 
+// Seeds land in the environment the service under test is running in —
+// `projectLayer` provides `SandboxEnv.defaultLayer` — since reads are scoped by
+// environment and rows from another one are deliberately invisible.
 const seedDirectories = (rows: Array<{ directory: string; type: ProjectDirectory["type"] }>) =>
 	Effect.gen(function* () {
 		yield* seedProject({ id: "project-1", name: "codework" });
@@ -108,7 +114,7 @@ const seedDirectories = (rows: Array<{ directory: string; type: ProjectDirectory
 				projectId: "project-1",
 				directory: row.directory,
 				type: row.type,
-				sandboxEnvId: "sandbox-1",
+				sandboxEnvId: SandboxEnv.DEFAULT,
 			});
 		}
 	});
@@ -353,9 +359,9 @@ describe("Project", () => {
 				const result = yield* project.directories({ projectId: ID.make("project-1") });
 
 				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxEnvID: "sandbox-1", type: "main" },
-					{ directory: "/workspace/codework-a", sandboxEnvID: "sandbox-1", type: "gitworktree" },
-					{ directory: "/workspace/codework-z", sandboxEnvID: "sandbox-1", type: "root" },
+					{ directory: "/workspace/codework", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
+					{ directory: "/workspace/codework-a", sandboxEnvID: SandboxEnv.DEFAULT, type: "gitworktree" },
+					{ directory: "/workspace/codework-z", sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
 				]);
 			}),
 		);
@@ -382,12 +388,104 @@ describe("Project", () => {
 
 				const project = yield* Service;
 				const result = yield* project.directories({ projectId: ID.make("project-1") });
-				expect(result).toEqual([{ directory: "/workspace/codework", sandboxEnvID: "sandbox-1", type: "main" }]);
+				expect(result).toEqual([
+					{ directory: "/workspace/codework", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
+				]);
 
 				const sql = yield* SqlClient.SqlClient;
 				const remaining = yield* sql`SELECT * FROM project_directory`;
 				expect(remaining).toHaveLength(1);
 				expect(remaining[0]?.directory).toBe("/workspace/codework");
+			}),
+		);
+
+		// Paths are only meaningful within their own sandbox: /workspace exists in
+		// many environments and means something different in each. A read must not
+		// see another environment's rows — and must never delete them for being
+		// absent from a filesystem they were never on.
+		const { effect: otherEnvIt } = testEffect(projectLayer({}, { missing: ["/workspace/elsewhere"] }));
+
+		otherEnvIt("ignores directories registered in a different sandbox", () =>
+			Effect.gen(function* () {
+				yield* seedDirectories([{ directory: "/workspace/codework", type: "main" }]);
+				yield* seedDirectory({
+					id: "foreign-directory",
+					projectId: "project-1",
+					directory: "/workspace/elsewhere",
+					type: "main",
+					sandboxEnvId: "@codework/some-remote",
+				});
+
+				const project = yield* Service;
+				const result = yield* project.directories({ projectId: ID.make("project-1") });
+
+				expect(result).toEqual([
+					{ directory: "/workspace/codework", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
+				]);
+
+				// still on disk: invisible is not the same as stale
+				const sql = yield* SqlClient.SqlClient;
+				const foreign = yield* sql`SELECT * FROM project_directory WHERE id = 'foreign-directory'`;
+				expect(foreign).toHaveLength(1);
+			}),
+		);
+
+		// A backend that cannot answer must not be read as "absent" — an expired
+		// token or a timeout would otherwise delete a registration permanently.
+		const unreachable = (target: string) =>
+			layer.pipe(
+				Layer.provideMerge(
+					Layer.mergeAll(
+						databaseLayer(),
+						SandboxEnv.defaultLayer,
+						Layer.succeed(
+							SandboxFileSystem.Service,
+							SandboxFileSystem.Service.of({
+								readFile: (path: string) =>
+									Effect.fail(new SandboxFileSystem.FileSystemError({ method: "readFile", path, cause: "x" })),
+								exists: (path: string) =>
+									path === target
+										? Effect.fail(
+												new SandboxFileSystem.FileSystemError({
+													method: "exists",
+													path,
+													cause: "connection reset",
+												}),
+											)
+										: Effect.succeed(true),
+							} as unknown as SandboxFileSystem.Interface),
+						),
+						Layer.succeed(Git.Service, Git.Service.of({} as Git.Interface)),
+						Layer.succeed(
+							ProjectCopy.Service,
+							ProjectCopy.Service.of({ isGitWorktree: () => Effect.succeed(false) }),
+						),
+					),
+				),
+			);
+
+		const { effect: unreachableIt } = testEffect(unreachable("/workspace/unreachable"));
+
+		unreachableIt("keeps a directory whose existence could not be determined", () =>
+			Effect.gen(function* () {
+				yield* seedDirectories([
+					{ directory: "/workspace/codework", type: "main" },
+					{ directory: "/workspace/unreachable", type: "root" },
+				]);
+
+				const project = yield* Service;
+				const result = yield* project.directories({ projectId: ID.make("project-1") });
+
+				// reported as present rather than silently dropped
+				expect(result.map((entry) => entry.directory).sort()).toEqual([
+					"/workspace/codework",
+					"/workspace/unreachable",
+				]);
+
+				// and, critically, still in the database
+				const sql = yield* SqlClient.SqlClient;
+				const remaining = yield* sql`SELECT * FROM project_directory`;
+				expect(remaining).toHaveLength(2);
 			}),
 		);
 	});
@@ -418,7 +516,7 @@ describe("Project", () => {
 				});
 
 				const result = yield* project.directories({ projectId: info.id });
-				expect(result).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "main" }]);
+				expect(result).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
 			}),
 		);
 
@@ -433,8 +531,8 @@ describe("Project", () => {
 
 				const directories = yield* project.directories({ projectId: result.id });
 				expect(directories).toEqual([
-					{ directory, sandboxEnvID: "@codework/envDefault", type: "main" },
-					{ directory: second, sandboxEnvID: "@codework/envDefault", type: "root" },
+					{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
+					{ directory: second, sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
 				]);
 			}),
 		);
@@ -446,7 +544,7 @@ describe("Project", () => {
 				yield* project.fromDirectory(directory);
 
 				const result = yield* project.directories({ projectId: projectID });
-				expect(result).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "main" }]);
+				expect(result).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
 			}),
 		);
 
@@ -458,7 +556,7 @@ describe("Project", () => {
 				const info = yield* project.fromDirectory(directory);
 
 				const result = yield* project.directories({ projectId: info.id });
-				expect(result).toEqual([{ directory, sandboxEnvID: "@codework/envDefault", type: "gitworktree" }]);
+				expect(result).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "gitworktree" }]);
 			}),
 		);
 
@@ -494,11 +592,11 @@ describe("Project", () => {
 					const sql = yield* SqlClient.SqlClient;
 					yield* seedProject({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 });
 					yield* seedDirectory({
-						id: Hash.fast("old-project-id:/workspace/legacy"),
+						id: Hash.fast(JSON.stringify(["old-project-id", SandboxEnv.DEFAULT, "/workspace/legacy"])),
 						projectId: "old-project-id",
 						directory: "/workspace/legacy",
 						type: "main",
-						sandboxEnvId: "sandbox-1",
+						sandboxEnvId: SandboxEnv.DEFAULT,
 					});
 
 					const project = yield* Service;
@@ -516,15 +614,15 @@ describe("Project", () => {
 					// main already occupies the project
 					const directories = yield* project.directories({ projectId: projectID });
 					expect(directories).toEqual([
-						{ directory, sandboxEnvID: "@codework/envDefault", type: "root" },
-						{ directory: "/workspace/legacy", sandboxEnvID: "sandbox-1", type: "main" },
+						{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
+						{ directory: "/workspace/legacy", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
 					]);
 
 					// migrated rows are re-keyed off the new project id
 					const rows = yield* sql`SELECT * FROM project_directory`;
 					expect(rows.every((row) => row.projectId === projectID)).toBe(true);
 					const legacy = rows.find((row) => row.directory === "/workspace/legacy");
-					expect(legacy?.id).toBe(Hash.fast(`${projectID}:/workspace/legacy`));
+					expect(legacy?.id).toBe(Hash.fast(JSON.stringify([projectID, SandboxEnv.DEFAULT, "/workspace/legacy"])));
 				}),
 			);
 
@@ -541,21 +639,21 @@ describe("Project", () => {
 						projectId: "old-project-id",
 						directory: "/workspace/legacy",
 						type: "root",
-						sandboxEnvId: "sandbox-1",
+						sandboxEnvId: SandboxEnv.DEFAULT,
 					});
 					yield* seedDirectory({
 						id: "old-shared",
 						projectId: "old-project-id",
 						directory: "/workspace/shared",
 						type: "root",
-						sandboxEnvId: "sandbox-1",
+						sandboxEnvId: SandboxEnv.DEFAULT,
 					});
 					yield* seedDirectory({
-						id: Hash.fast(`${projectID}:/workspace/shared`),
+						id: Hash.fast(JSON.stringify([projectID, SandboxEnv.DEFAULT, "/workspace/shared"])),
 						projectId: projectID,
 						directory: "/workspace/shared",
 						type: "main",
-						sandboxEnvId: "sandbox-2",
+						sandboxEnvId: SandboxEnv.DEFAULT,
 					});
 
 					const project = yield* Service;
@@ -570,9 +668,9 @@ describe("Project", () => {
 					// the shared directory keeps the new project's registration
 					const directories = yield* project.directories({ projectId: projectID });
 					expect(directories).toEqual([
-						{ directory, sandboxEnvID: "@codework/envDefault", type: "root" },
-						{ directory: "/workspace/legacy", sandboxEnvID: "sandbox-1", type: "root" },
-						{ directory: "/workspace/shared", sandboxEnvID: "sandbox-2", type: "main" },
+						{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
+						{ directory: "/workspace/legacy", sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
+						{ directory: "/workspace/shared", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
 					]);
 				}),
 			);
@@ -740,8 +838,8 @@ describe("Project", () => {
 			expect(worktreeInfo.id).toEqual(info.id);
 			expect(worktreeInfo.directory).toBe(realWorktree);
 			expect(directories).toEqual([
-				{ directory: realRepo, sandboxEnvID: "@codework/envDefault", type: "main" },
-				{ directory: realWorktree, sandboxEnvID: "@codework/envDefault", type: "gitworktree" },
+				{ directory: realRepo, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
+				{ directory: realWorktree, sandboxEnvID: SandboxEnv.DEFAULT, type: "gitworktree" },
 			]);
 		}, 30_000);
 	});
