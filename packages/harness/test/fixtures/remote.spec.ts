@@ -7,6 +7,8 @@ import { Git } from "../../src/git/git";
 import { ProjectCopy } from "../../src/project/copy";
 import { Project } from "../../src/project/project";
 import { SandboxEnv } from "../../src/sandbox/env";
+import { SandboxInstance } from "../../src/sandbox/instance";
+import { SandboxStore } from "../../src/sandbox/store";
 import { SandboxFileSystem } from "../../src/sandbox/filesystem/filesystem";
 import { Sandbox } from "../../src/sandbox/sandbox";
 import { type ISandboxExe, Shell } from "../../src/sandbox/shell";
@@ -252,11 +254,26 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 								Layer.provide(ProjectCopy.layer),
 								Layer.provide(sandbox),
 							);
+							// provideMerge, not provide: the block below registers the
+							// sandbox instance directly and needs SqlClient itself.
 							const application = Layer.merge(project, Session.layer).pipe(
-								Layer.provide(Database.layer(":memory:")),
+								Layer.provideMerge(Database.layer(":memory:")),
 							);
 
 							const persisted = yield* Effect.gen(function* () {
+								// Project directories and sessions are foreign-keyed to
+								// sandbox_instance, so the remote namespace has to be
+								// registered before anything claims to live in it.
+								const instanceId = SandboxInstance.ID.make(mappedEnvId);
+								yield* Effect.flatMap(SandboxStore.make, (store) =>
+									store.register({
+										id: instanceId,
+										driver: options.kind,
+										kind: "remote",
+										ownership: "external",
+									}),
+								);
+
 								const projects = yield* Project.Service;
 								const sessions = yield* Session.Service;
 								const info = yield* projects.fromDirectory(AbsolutePath.make(repo));
@@ -266,14 +283,14 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 									slug: `${options.kind}-${Date.now()}`,
 									directory: AbsolutePath.make(repo),
 									title: `${options.kind} integration`,
-									sandboxEnvId: mappedEnvId,
+									sandboxInstanceId: instanceId,
 								});
 								const reloaded = yield* sessions.get(created.id);
 								return {
 									directories,
 									projectId: info.id,
 									projectName: info.name,
-									sessionEnvId: Option.getOrThrow(reloaded).sandboxEnvId,
+									sessionEnvId: Option.getOrThrow(reloaded).sandboxInstanceId,
 								};
 							}).pipe(Effect.provide(application));
 
@@ -304,7 +321,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 				expect(mapped.git.subject.stdout.trim()).toBe(`test: ${options.kind} sandbox IO`);
 				expect(mapped.projectId).toBe(Hash.fast("git:github.com/codeworksh/69th"));
 				expect(mapped.projectName).toBe("69th");
-				expect(mapped.directories).toEqual([{ directory: mapped.repo, sandboxEnvID: envId, type: "main" }]);
+				expect(mapped.directories).toEqual([{ directory: mapped.repo, sandboxInstanceId: envId, type: "main" }]);
 				expect(mapped.sessionEnvId).toBe(envId);
 			},
 			options.timeout,

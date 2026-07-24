@@ -15,6 +15,7 @@ import {
 	type ToolStatus,
 	toolStatuses,
 } from "../db/schema.sql";
+import type { SandboxInstance } from "../sandbox/instance";
 import type { AbsolutePath } from "../schema";
 import { SessionSchema } from "./schema";
 
@@ -67,7 +68,8 @@ export interface CreateSession {
 	readonly directory: AbsolutePath;
 	readonly title: string;
 	readonly tag?: string;
-	readonly sandboxEnvId: string;
+	/** The namespace this session's directory lives in. Must already exist. */
+	readonly sandboxInstanceId: SandboxInstance.ID;
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
@@ -317,7 +319,7 @@ export const layer = Layer.effect(
 					directory: input.directory,
 					title: input.title,
 					tag: Option.fromUndefinedOr(input.tag),
-					sandboxEnvId: input.sandboxEnvId,
+					sandboxInstanceId: input.sandboxInstanceId,
 					metadata: Option.fromUndefinedOr(input.metadata as Record<string, string> | undefined),
 					leafEntryId: Option.none(),
 				})
@@ -704,7 +706,7 @@ export const layer = Layer.effect(
 							title: input.title ?? source.value.title,
 							tag: input.tag === undefined ? source.value.tag : Option.some(input.tag),
 							// Same directory as the source, so the same sandbox env.
-							sandboxEnvId: source.value.sandboxEnvId,
+							sandboxInstanceId: source.value.sandboxInstanceId,
 							metadata: source.value.metadata,
 							leafEntryId: Option.none(),
 						});

@@ -5,6 +5,8 @@ import path from "node:path";
 import { describe, expect } from "vite-plus/test";
 import { Database, SqlSchema } from "../../src/db/db";
 import { ProjectDirectoryRow, ProjectRow } from "../../src/db/schema.sql";
+import { SandboxInstance } from "../../src/sandbox/instance";
+import { SandboxStore } from "../../src/sandbox/store";
 import { AbsolutePath } from "../../src/schema";
 import { testEffect } from "../utils/effect";
 
@@ -47,6 +49,19 @@ const queries = (sql: SqlClient.SqlClient) => ({
 	}),
 });
 
+// Directories and sessions are foreign-keyed to sandbox_instance, so a namespace
+// has to exist before anything can claim to live in it. Registering here keeps
+// these tests about the schema rather than about the Controller.
+const instance = (id: string) => SandboxInstance.ID.make(id);
+
+const registerInstances = (...ids: ReadonlyArray<string>) =>
+	Effect.gen(function* () {
+		const store = yield* SandboxStore.make;
+		yield* Effect.forEach(ids, (id) =>
+			store.register({ id: instance(id), driver: "memory", kind: "virtual", ownership: "managed" }),
+		);
+	});
+
 describe("Database", () => {
 	describe("models", () => {
 		it(
@@ -54,6 +69,7 @@ describe("Database", () => {
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const db = queries(sql);
+				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
 				const project = yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" });
 				yield* db.insertProject(project);
@@ -72,6 +88,7 @@ describe("Database", () => {
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const db = queries(sql);
+				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
 				yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" }));
 				yield* db.insertDirectory(
@@ -80,7 +97,7 @@ describe("Database", () => {
 						projectId: "project-1",
 						directory: AbsolutePath.make("/workspace/codework"),
 						type: "main",
-						sandboxEnvId: "sandbox-1",
+						sandboxInstanceId: instance("sandbox-1"),
 					}),
 				);
 				yield* db.insertDirectory(
@@ -89,7 +106,7 @@ describe("Database", () => {
 						projectId: "project-1",
 						directory: AbsolutePath.make("/workspace/codework-feature"),
 						type: "gitworktree",
-						sandboxEnvId: "sandbox-2",
+						sandboxInstanceId: instance("sandbox-2"),
 					}),
 				);
 
@@ -99,20 +116,20 @@ describe("Database", () => {
 						id: row.id,
 						directory: row.directory,
 						type: row.type,
-						sandboxEnvId: row.sandboxEnvId,
+						sandboxInstanceId: row.sandboxInstanceId,
 					})),
 				).toEqual([
 					{
 						id: "directory-1",
 						directory: AbsolutePath.make("/workspace/codework"),
 						type: "main",
-						sandboxEnvId: "sandbox-1",
+						sandboxInstanceId: instance("sandbox-1"),
 					},
 					{
 						id: "directory-2",
 						directory: AbsolutePath.make("/workspace/codework-feature"),
 						type: "gitworktree",
-						sandboxEnvId: "sandbox-2",
+						sandboxInstanceId: instance("sandbox-2"),
 					},
 				]);
 			}),
@@ -123,13 +140,14 @@ describe("Database", () => {
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const db = queries(sql);
+				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
 				const orphan = yield* ProjectDirectoryRow.insert.makeEffect({
 					id: "orphan",
 					projectId: "missing-project",
 					directory: AbsolutePath.make("/workspace/orphan"),
 					type: "root",
-					sandboxEnvId: "sandbox-orphan",
+					sandboxInstanceId: instance("sandbox-orphan"),
 				});
 				const orphanExit = yield* db.insertDirectory(orphan).pipe(Effect.exit);
 				expect(orphanExit._tag).toBe("Failure");
@@ -141,7 +159,7 @@ describe("Database", () => {
 						projectId: "project-1",
 						directory: AbsolutePath.make("/workspace/codework"),
 						type: "main",
-						sandboxEnvId: "sandbox-1",
+						sandboxInstanceId: instance("sandbox-1"),
 					}),
 				);
 
@@ -152,7 +170,7 @@ describe("Database", () => {
 					projectId: "project-1",
 					directory: AbsolutePath.make("/workspace/codework"),
 					type: "root",
-					sandboxEnvId: "sandbox-2",
+					sandboxInstanceId: instance("sandbox-2"),
 				});
 				const otherEnvExit = yield* db.insertDirectory(otherEnv).pipe(Effect.exit);
 				expect(otherEnvExit._tag).toBe("Success");
@@ -163,7 +181,7 @@ describe("Database", () => {
 					projectId: "project-1",
 					directory: AbsolutePath.make("/workspace/codework"),
 					type: "root",
-					sandboxEnvId: "sandbox-1",
+					sandboxInstanceId: instance("sandbox-1"),
 				});
 				const duplicateExit = yield* db.insertDirectory(duplicate).pipe(Effect.exit);
 				expect(duplicateExit._tag).toBe("Failure");
@@ -175,6 +193,7 @@ describe("Database", () => {
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const db = queries(sql);
+				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
 				yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" }));
 				yield* db.insertDirectory(
@@ -183,7 +202,7 @@ describe("Database", () => {
 						projectId: "project-1",
 						directory: AbsolutePath.make("/workspace/codework"),
 						type: "main",
-						sandboxEnvId: "sandbox-1",
+						sandboxInstanceId: instance("sandbox-1"),
 					}),
 				);
 
@@ -201,6 +220,7 @@ describe("Database", () => {
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const db = queries(sql);
+				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
 				yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" }));
 
@@ -224,6 +244,7 @@ describe("Database", () => {
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const db = queries(sql);
+				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
 				yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" }));
 

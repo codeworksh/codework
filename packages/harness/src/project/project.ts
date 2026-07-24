@@ -5,6 +5,7 @@ import { posix as path } from "node:path";
 import { Database } from "../db/db";
 import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql";
 import { SandboxEnv } from "../sandbox/env";
+import { SandboxInstance } from "../sandbox/instance";
 import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
 import { Git } from "../git/git";
 import { Sandbox } from "../sandbox/sandbox";
@@ -18,8 +19,8 @@ import { ProjectSchema } from "./schema";
  * the path: `/workspace` in two different sandboxes is two different places,
  * and hashing the path alone would collapse them into one row.
  */
-const directoryId = (projectId: string, sandboxEnvId: string, directory: string) =>
-	Hash.fast(JSON.stringify([projectId, sandboxEnvId, directory]));
+const directoryId = (projectId: string, sandboxInstanceId: string, directory: string) =>
+	Hash.fast(JSON.stringify([projectId, sandboxInstanceId, directory]));
 
 export interface Resolved {
 	previous?: ProjectSchema.ID; // previous ID before moving
@@ -45,16 +46,21 @@ export const layer = Layer.effect(
 		const fs = yield* SandboxFileSystem.Service;
 		const git = yield* Git.Service;
 		const copy = yield* ProjectCopy.Service;
-		// Which sandbox these directories live in. Rows belonging to another
-		// environment are invisible here: their paths mean nothing to this
+		// Which sandbox instance these directories live in. Rows belonging to
+		// another namespace are invisible here: their paths mean nothing to this
 		// filesystem, so probing them would report absence and delete them.
-		const envId = yield* SandboxEnv.EnvId;
+		//
+		// Transitional: the value still arrives as a raw `SandboxEnv.EnvId` and is
+		// branded at this boundary. Phase 6 replaces the source with
+		// `SandboxInstance.Service`, at which point the brand comes for free and
+		// this cast goes away with the `SandboxEnv` import.
+		const instanceId = SandboxInstance.ID.make(yield* SandboxEnv.EnvId);
 
 		const selectDirectories = SqlSchema.findAll({
-			Request: Schema.Struct({ projectId: Schema.String, sandboxEnvId: Schema.String }),
+			Request: Schema.Struct({ projectId: Schema.String, sandboxInstanceId: Schema.String }),
 			Result: ProjectDirectoryRow,
-			execute: ({ projectId, sandboxEnvId }) =>
-				sql`SELECT * FROM project_directory WHERE project_id = ${projectId} AND sandbox_env_id = ${sandboxEnvId}`,
+			execute: ({ projectId, sandboxInstanceId }) =>
+				sql`SELECT * FROM project_directory WHERE project_id = ${projectId} AND sandbox_instance_id = ${sandboxInstanceId}`,
 		});
 
 		// Every environment's rows. Only for re-homing during an id migration,
@@ -95,13 +101,15 @@ export const layer = Layer.effect(
 		const toProjectDirectory = (row: ProjectDirectoryRow): ProjectSchema.ProjectDirectory => {
 			return {
 				directory: AbsolutePath.make(row.directory),
-				sandboxEnvID: row.sandboxEnvId,
+				sandboxInstanceId: row.sandboxInstanceId,
 				type: row.type,
 			};
 		};
 
 		const directories = Effect.fn("Project.directories")(function* (input: ProjectSchema.DirectoriesInput) {
-			const rows = yield* selectDirectories({ projectId: input.projectId, sandboxEnvId: envId }).pipe(Effect.orDie);
+			const rows = yield* selectDirectories({ projectId: input.projectId, sandboxInstanceId: instanceId }).pipe(
+				Effect.orDie,
+			);
 
 			// Three-way, not two: a row is kept, dropped, or unknown. Only a
 			// definitive "absent" prunes — a backend that could not answer (expired
@@ -231,11 +239,11 @@ export const layer = Layer.effect(
 						const directories = yield* selectAllDirectories(oldID);
 						for (const row of directories) {
 							const rehomed = yield* ProjectDirectoryRow.insert.makeEffect({
-								id: directoryId(newID, row.sandboxEnvId, row.directory),
+								id: directoryId(newID, row.sandboxInstanceId, row.directory),
 								projectId: newID,
 								directory: row.directory,
 								type: row.type,
-								sandboxEnvId: row.sandboxEnvId,
+								sandboxInstanceId: row.sandboxInstanceId,
 								createdAt: Model.Override(row.createdAt),
 							});
 							yield* insertDirectory(rehomed);
@@ -264,17 +272,17 @@ export const layer = Layer.effect(
 						const hasMain = yield* sql`
 							SELECT directory FROM project_directory
 							WHERE project_id = ${input.projectId}
-								AND sandbox_env_id = ${envId}
+								AND sandbox_instance_id = ${instanceId}
 								AND type = 'main'
 							LIMIT 1
 						`;
 
 						const row = yield* ProjectDirectoryRow.insert.makeEffect({
-							id: directoryId(input.projectId, envId, input.directory),
+							id: directoryId(input.projectId, instanceId, input.directory),
 							projectId: input.projectId,
 							directory: AbsolutePath.make(input.directory),
 							type: isGitWorktree ? "gitworktree" : hasMain.length > 0 ? "root" : "main",
-							sandboxEnvId: envId,
+							sandboxInstanceId: instanceId,
 						});
 						yield* insertDirectory(row);
 					}),

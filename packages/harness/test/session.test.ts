@@ -7,6 +7,7 @@ import path from "node:path";
 import { describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db";
 import { AbsolutePath } from "../src/schema";
+import { SandboxInstance } from "../src/sandbox/instance";
 import { Session } from "../src/session/session";
 import { SessionSchema } from "../src/session/schema";
 import { tmpdir } from "./fixtures/tempdir";
@@ -36,7 +37,7 @@ const createSession = (slug: string) =>
 			directory: AbsolutePath.make("/repo"),
 			title: "Test session",
 			tag: "test",
-			sandboxEnvId: "test-env",
+			sandboxInstanceId: SandboxInstance.ID.local,
 		});
 	});
 
@@ -1194,7 +1195,7 @@ describe("session", () => {
 					directory: AbsolutePath.make("/repo"),
 					title: "Persisted session",
 					tag: "test",
-					sandboxEnvId: "test-env",
+					sandboxInstanceId: SandboxInstance.ID.local,
 				});
 				yield* session.append(userEntry(sid("persisted-session"), "e1", "hello"));
 				yield* session.append(assistantEntry(sid("persisted-session"), "e2"));

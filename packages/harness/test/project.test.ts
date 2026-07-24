@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
 import { SandboxEnv } from "../src/sandbox/env";
+import { SandboxInstance } from "../src/sandbox/instance";
+import { SandboxStore } from "../src/sandbox/store";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { Git } from "../src/git/git";
 import { ProjectCopy } from "../src/project/copy";
@@ -95,7 +97,7 @@ const seedDirectory = (row: {
 	projectId: string;
 	directory: string;
 	type: ProjectDirectory["type"];
-	sandboxEnvId: string;
+	sandboxInstanceId: string;
 }) =>
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
@@ -114,7 +116,7 @@ const seedDirectories = (rows: Array<{ directory: string; type: ProjectDirectory
 				projectId: "project-1",
 				directory: row.directory,
 				type: row.type,
-				sandboxEnvId: SandboxEnv.DEFAULT,
+				sandboxInstanceId: SandboxEnv.DEFAULT,
 			});
 		}
 	});
@@ -359,9 +361,9 @@ describe("Project", () => {
 				const result = yield* project.directories({ projectId: ID.make("project-1") });
 
 				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
-					{ directory: "/workspace/codework-a", sandboxEnvID: SandboxEnv.DEFAULT, type: "gitworktree" },
-					{ directory: "/workspace/codework-z", sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
+					{ directory: "/workspace/codework", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
+					{ directory: "/workspace/codework-a", sandboxInstanceId: SandboxEnv.DEFAULT, type: "gitworktree" },
+					{ directory: "/workspace/codework-z", sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
 				]);
 			}),
 		);
@@ -389,7 +391,7 @@ describe("Project", () => {
 				const project = yield* Service;
 				const result = yield* project.directories({ projectId: ID.make("project-1") });
 				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
+					{ directory: "/workspace/codework", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
 				]);
 
 				const sql = yield* SqlClient.SqlClient;
@@ -408,19 +410,27 @@ describe("Project", () => {
 		otherEnvIt("ignores directories registered in a different sandbox", () =>
 			Effect.gen(function* () {
 				yield* seedDirectories([{ directory: "/workspace/codework", type: "main" }]);
+
+				// The foreign namespace has to exist before a directory can claim to
+				// live in it — project_directory.sandbox_instance_id is a foreign key.
+				const foreignId = SandboxInstance.ID.make("@codework/some-remote");
+				yield* Effect.flatMap(SandboxStore.make, (store) =>
+					store.register({ id: foreignId, driver: "vercel", kind: "remote", ownership: "external" }),
+				);
+
 				yield* seedDirectory({
 					id: "foreign-directory",
 					projectId: "project-1",
 					directory: "/workspace/elsewhere",
 					type: "main",
-					sandboxEnvId: "@codework/some-remote",
+					sandboxInstanceId: foreignId,
 				});
 
 				const project = yield* Service;
 				const result = yield* project.directories({ projectId: ID.make("project-1") });
 
 				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
+					{ directory: "/workspace/codework", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
 				]);
 
 				// still on disk: invisible is not the same as stale
@@ -516,7 +526,7 @@ describe("Project", () => {
 				});
 
 				const result = yield* project.directories({ projectId: info.id });
-				expect(result).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
+				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" }]);
 			}),
 		);
 
@@ -531,8 +541,8 @@ describe("Project", () => {
 
 				const directories = yield* project.directories({ projectId: result.id });
 				expect(directories).toEqual([
-					{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
-					{ directory: second, sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
+					{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
+					{ directory: second, sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
 				]);
 			}),
 		);
@@ -544,7 +554,7 @@ describe("Project", () => {
 				yield* project.fromDirectory(directory);
 
 				const result = yield* project.directories({ projectId: projectID });
-				expect(result).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
+				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" }]);
 			}),
 		);
 
@@ -556,7 +566,7 @@ describe("Project", () => {
 				const info = yield* project.fromDirectory(directory);
 
 				const result = yield* project.directories({ projectId: info.id });
-				expect(result).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "gitworktree" }]);
+				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "gitworktree" }]);
 			}),
 		);
 
@@ -596,7 +606,7 @@ describe("Project", () => {
 						projectId: "old-project-id",
 						directory: "/workspace/legacy",
 						type: "main",
-						sandboxEnvId: SandboxEnv.DEFAULT,
+						sandboxInstanceId: SandboxEnv.DEFAULT,
 					});
 
 					const project = yield* Service;
@@ -614,8 +624,8 @@ describe("Project", () => {
 					// main already occupies the project
 					const directories = yield* project.directories({ projectId: projectID });
 					expect(directories).toEqual([
-						{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
-						{ directory: "/workspace/legacy", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
+						{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
+						{ directory: "/workspace/legacy", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
 					]);
 
 					// migrated rows are re-keyed off the new project id
@@ -639,21 +649,21 @@ describe("Project", () => {
 						projectId: "old-project-id",
 						directory: "/workspace/legacy",
 						type: "root",
-						sandboxEnvId: SandboxEnv.DEFAULT,
+						sandboxInstanceId: SandboxEnv.DEFAULT,
 					});
 					yield* seedDirectory({
 						id: "old-shared",
 						projectId: "old-project-id",
 						directory: "/workspace/shared",
 						type: "root",
-						sandboxEnvId: SandboxEnv.DEFAULT,
+						sandboxInstanceId: SandboxEnv.DEFAULT,
 					});
 					yield* seedDirectory({
 						id: Hash.fast(JSON.stringify([projectID, SandboxEnv.DEFAULT, "/workspace/shared"])),
 						projectId: projectID,
 						directory: "/workspace/shared",
 						type: "main",
-						sandboxEnvId: SandboxEnv.DEFAULT,
+						sandboxInstanceId: SandboxEnv.DEFAULT,
 					});
 
 					const project = yield* Service;
@@ -668,9 +678,9 @@ describe("Project", () => {
 					// the shared directory keeps the new project's registration
 					const directories = yield* project.directories({ projectId: projectID });
 					expect(directories).toEqual([
-						{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
-						{ directory: "/workspace/legacy", sandboxEnvID: SandboxEnv.DEFAULT, type: "root" },
-						{ directory: "/workspace/shared", sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
+						{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
+						{ directory: "/workspace/legacy", sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
+						{ directory: "/workspace/shared", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
 					]);
 				}),
 			);
@@ -838,8 +848,8 @@ describe("Project", () => {
 			expect(worktreeInfo.id).toEqual(info.id);
 			expect(worktreeInfo.directory).toBe(realWorktree);
 			expect(directories).toEqual([
-				{ directory: realRepo, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" },
-				{ directory: realWorktree, sandboxEnvID: SandboxEnv.DEFAULT, type: "gitworktree" },
+				{ directory: realRepo, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
+				{ directory: realWorktree, sandboxInstanceId: SandboxEnv.DEFAULT, type: "gitworktree" },
 			]);
 		}, 30_000);
 	});

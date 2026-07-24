@@ -115,7 +115,7 @@ describe("Location", () => {
 			// ... and the directory registered as main, queryable through Project
 			const project = yield* Project.Service;
 			const directories = yield* project.directories({ projectId: location.project.id });
-			expect(directories).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
+			expect(directories).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" }]);
 		}),
 	);
 
@@ -145,7 +145,7 @@ describe("Location", () => {
 			// the project registers the repository root, not the opened subdirectory
 			const project = yield* Project.Service;
 			const directories = yield* project.directories({ projectId: location.project.id });
-			expect(directories).toEqual([{ directory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
+			expect(directories).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" }]);
 		}),
 	);
 
@@ -246,7 +246,9 @@ describe("Location", () => {
 					directory: realDirectory,
 				},
 			});
-			expect(directories).toEqual([{ directory: realDirectory, sandboxEnvID: SandboxEnv.DEFAULT, type: "main" }]);
+			expect(directories).toEqual([
+				{ directory: realDirectory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
+			]);
 		}, 30_000);
 
 		// The convenience wiring itself: defaultLayer needs nothing but the ref

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { Model } from "effect/unstable/schema";
+import { SandboxInstance } from "../sandbox/instance";
 import { AbsolutePath } from "../schema";
 import { SessionSchema } from "../session/schema";
 
@@ -52,12 +53,41 @@ export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
 	...Timestamps,
 }) {}
 
+/**
+ * A durable filesystem namespace. The row is the whole durable model — reference
+ * counts live in Controller memory, never here, because a persisted count cannot
+ * tell whether the process that took it is still alive.
+ *
+ * Holds no credentials, no SDK objects, and no secrets: those come from the
+ * registered driver Layer. `runtimeConfig` is the driver-coded, non-secret data
+ * needed to reattach later, stored opaque here and decoded by the driver's own
+ * codec.
+ */
+export class SandboxInstanceRow extends Model.Class<SandboxInstanceRow>("SandboxInstanceRow")({
+	id: SandboxInstance.ID,
+	driver: Schema.String,
+	kind: SandboxInstance.Kind,
+	providerResourceId: Model.FieldOption(Schema.String),
+	runtimeConfig: Model.FieldOption(Schema.String),
+	ownership: SandboxInstance.Ownership,
+	status: SandboxInstance.Status,
+	providerStatus: Model.FieldOption(Schema.String),
+	stateObservedAt: Model.DateTimeFromNumberWithNow,
+	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
+	lastError: Model.FieldOption(Model.JsonFromString(SandboxInstance.PersistedError)),
+	lastAcquiredAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	lastReleasedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	lastUsedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	removedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	...Timestamps,
+}) {}
+
 export class ProjectDirectoryRow extends Model.Class<ProjectDirectoryRow>("ProjectDirectoryRow")({
 	id: Schema.String,
 	projectId: Schema.String,
 	directory: AbsolutePath,
 	type: Schema.Literals(["main", "root", "gitworktree"]),
-	sandboxEnvId: Schema.String,
+	sandboxInstanceId: SandboxInstance.ID,
 	...Timestamps,
 }) {}
 
@@ -70,7 +100,7 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	title: Schema.String,
 	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
-	sandboxEnvId: Schema.String,
+	sandboxInstanceId: SandboxInstance.ID,
 	// Durable leaf cursor: read anchor (path walks leaf→root) and append anchor
 	// (new entries attach here). Moved inside every append/branch transaction.
 	leafEntryId: Model.FieldOption(Schema.String),

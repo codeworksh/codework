@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { SandboxInstance } from "../sandbox/instance";
 import { AbsolutePath, withStatics } from "../schema";
 
 // Represents the project ID type
@@ -39,7 +40,7 @@ export type Directories = typeof Directories.Type;
 
 export const ProjectDirectory = Schema.Struct({
 	directory: AbsolutePath,
-	sandboxEnvID: Schema.String,
+	sandboxInstanceId: SandboxInstance.ID,
 	type: Schema.Union([Schema.Literal("main"), Schema.Literal("root"), Schema.Literal("gitworktree")]),
 });
 export type ProjectDirectory = typeof ProjectDirectory.Type;
