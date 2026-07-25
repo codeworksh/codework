@@ -7,6 +7,7 @@ import { SandboxRegistry } from "../src/sandbox/map";
 import { EnvVercel, statsFrom } from "../src/sandbox/providers/vercel";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
+import { cancellationSpec } from "./fixtures/cancellation.spec";
 import { remoteSandboxSpec } from "./fixtures/remote.spec";
 import "./utils/env";
 
@@ -68,6 +69,16 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 		timeout: PROVISION_TIMEOUT,
 		githubPat,
 	});
+
+	// Vercel spawns detached commands and registers `kill("SIGKILL")` as a scope
+	// finalizer, so an interrupt should terminate the remote process rather than
+	// abandon it.
+	cancellationSpec("vercel", () => ({
+		run: (program) => run(program),
+		witness: `${SANDBOX_CWD}/cancel-progress`,
+		cancels: true,
+		settleMillis: 5000,
+	}));
 
 	it(
 		"shares one filesystem + shell across SandboxFileSystem.Service and Shell",

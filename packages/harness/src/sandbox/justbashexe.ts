@@ -237,7 +237,12 @@ const shell = Layer.effect(
 
 		const exec = Effect.fn("Shell.exec")(function* (command: string, options?: { env?: Record<string, string> }) {
 			return yield* Effect.tryPromise({
-				try: () => bash.exec(command, options),
+				// `tryPromise` aborts this signal when the fiber is interrupted, and
+				// just-bash stops at its next statement boundary. Without threading it
+				// through, an interrupted command keeps running in-process to
+				// completion: the fiber unwinds promptly and the work leaks behind it,
+				// still writing to the sandbox filesystem long after its caller is gone.
+				try: (signal) => bash.exec(command, { ...options, signal }),
 				catch: (cause) => new ShellError({ command, cause }),
 			});
 		});
