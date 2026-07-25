@@ -22,7 +22,7 @@ import { Context, Effect, Schema } from "effect";
  * `isFile`/`isDirectory` are required booleans; size, mtime, and isSymbolicLink are omitted when the
  * backend cannot report them — never fabricated.
  *
- * **Paths are POSIX, and the harness is Unix-only.** Every path uses `/`
+ * **Paths are POSIX, and the harness is Unix-only (for now!).** Every path uses `/`
  * separators on both the host and inside a sandbox — Windows is not supported,
  * so no translation layer exists. Consumers must use `node:path`'s `posix`
  * variant, never the platform default, or a host running the harness would
@@ -89,11 +89,9 @@ export interface Provider {
  * The consumer-facing contract. `exists` distinguishes "absent" from "could not
  * tell": a backend failure is a typed failure, not `false`, so a caller acting
  * on absence never acts on a network blip. Use `SandboxFs.existsOrFalse` where
- * a best-effort answer really is wanted. `lstat` is present only when the
- * backend supports it; check before calling.
+ * a best-effort answer really is wanted.
  */
 export interface Interface {
-	readonly lstat?: (path: string) => Effect.Effect<FileStat, FileSystemError>;
 	readonly readFile: (path: string) => Effect.Effect<string, FileSystemError>;
 	readonly readFileBuffer: (path: string) => Effect.Effect<Uint8Array, FileSystemError>;
 	readonly writeFile: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>;
@@ -102,6 +100,8 @@ export interface Interface {
 	readonly exists: (path: string) => Effect.Effect<boolean, FileSystemError>;
 	readonly mkdir: (path: string, options?: { recursive?: boolean }) => Effect.Effect<void, FileSystemError>;
 	readonly rm: (path: string, options?: RmOptions) => Effect.Effect<void, FileSystemError | OperationUnsupportedError>;
+	// `lstat` is present only when the backend supports it; check before calling.
+	readonly lstat?: (path: string) => Effect.Effect<FileStat, FileSystemError>;
 }
 
 /** The runtime filesystem service — the live {@link Interface} for the active sandbox. */

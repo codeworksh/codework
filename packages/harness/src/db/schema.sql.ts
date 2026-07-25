@@ -57,11 +57,6 @@ export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
  * A durable filesystem namespace. The row is the whole durable model — reference
  * counts live in Controller memory, never here, because a persisted count cannot
  * tell whether the process that took it is still alive.
- *
- * Holds no credentials, no SDK objects, and no secrets: those come from the
- * registered driver Layer. `runtimeConfig` is the driver-coded, non-secret data
- * needed to reattach later, stored opaque here and decoded by the driver's own
- * codec.
  */
 export class SandboxInstanceRow extends Model.Class<SandboxInstanceRow>("SandboxInstanceRow")({
 	id: SandboxInstance.ID,
