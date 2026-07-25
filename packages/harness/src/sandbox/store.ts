@@ -49,15 +49,6 @@ export interface Interface {
 	 * neither assumes the migration ran in this process nor inherits its clock.
 	 */
 	readonly bootstrapLocal: Effect.Effect<SandboxInstanceRow>;
-	/**
-	 * The §13.1 collectable predicate: managed, in a reclaimable status,
-	 * referenced by no session or project directory, and idle since before
-	 * `idleBefore` (epoch millis). Defined and tested now, with no collector
-	 * attached, because the durable reference graph — not the in-memory
-	 * refCount, which is invisible across processes — is what makes collection
-	 * safe, and this predicate is where the subtle bugs live.
-	 */
-	readonly collectable: (input: { readonly idleBefore: number }) => Effect.Effect<ReadonlyArray<SandboxInstanceRow>>;
 }
 
 export const make = Effect.gen(function* () {
@@ -157,26 +148,7 @@ export const make = Effect.gen(function* () {
 		return stored.value;
 	});
 
-	const collectableRows = SqlSchema.findAll({
-		Request: Schema.Number,
-		Result: SandboxInstanceRow,
-		// The NOT EXISTS terms are the durable root set (§7.3): sessions and
-		// project directories, visible to every process. A never-acquired
-		// instance has no last_used_at, so idleness falls back to creation time.
-		execute: (idleBefore) => sql`
-			SELECT * FROM sandbox_instance
-			WHERE ownership = 'managed'
-				AND status IN ('offline', 'faulted', 'unavail')
-				AND NOT EXISTS (SELECT 1 FROM session WHERE session.sandbox_instance_id = sandbox_instance.id)
-				AND NOT EXISTS (SELECT 1 FROM project_directory WHERE project_directory.sandbox_instance_id = sandbox_instance.id)
-				AND COALESCE(last_used_at, created_at) < ${idleBefore}
-			ORDER BY created_at
-		`,
-	});
-
-	const collectable = (input: { readonly idleBefore: number }) => collectableRows(input.idleBefore).pipe(Effect.orDie);
-
-	return { find, list, register, transition, bootstrapLocal, collectable } satisfies Interface;
+	return { find, list, register, transition, bootstrapLocal } satisfies Interface;
 });
 
 export * as SandboxStore from "./store";
