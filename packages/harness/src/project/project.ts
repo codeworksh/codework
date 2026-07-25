@@ -4,10 +4,10 @@ import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { posix as path } from "node:path";
 import { Database } from "../db/db";
 import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql";
-import { SandboxEnv } from "../sandbox/env";
-import { SandboxInstance } from "../sandbox/instance";
-import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
 import { Git } from "../git/git";
+import { SandboxEnv } from "../sandbox/env";
+import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
+import { SandboxInstance } from "../sandbox/instance";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";
 import { Hash } from "../util/hash";
@@ -51,9 +51,7 @@ export const layer = Layer.effect(
 		// filesystem, so probing them would report absence and delete them.
 		//
 		// Transitional: the value still arrives as a raw `SandboxEnv.EnvId` and is
-		// branded at this boundary. Phase 6 replaces the source with
-		// `SandboxInstance.Service`, at which point the brand comes for free and
-		// this cast goes away with the `SandboxEnv` import.
+		// branded at this boundary.
 		const instanceId = SandboxInstance.ID.make(yield* SandboxEnv.EnvId);
 
 		const selectDirectories = SqlSchema.findAll({

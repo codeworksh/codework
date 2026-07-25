@@ -42,7 +42,6 @@ export const layer = Layer.effect(
 	}),
 );
 
-/** Inspect the working tree inside the given sandbox — local, remote, or virtual. */
 export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) => layer.pipe(Layer.provide(sandbox));
 
 export const defaultLayer = (path: string) => layerWith(Sandbox.defaultLayer(path));

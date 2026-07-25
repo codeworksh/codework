@@ -9,12 +9,6 @@ import { SqlClient } from "effect/unstable/sql";
 // it. Only the numeric prefix orders migrations, and it must be strictly
 // greater than every id already applied — the migrator runs by high-water
 // mark, so an id dated before an applied one is silently skipped.
-//
-// Nothing has shipped, so there is exactly one migration and it defines the
-// whole schema. That is a one-time privilege: once a database that must be
-// retained has applied a migration, editing an existing one is silently skipped
-// and the application fails with missing tables. From the first shipped database
-// onward, every schema change is a new forward migration.
 export const migrations = {
 	"202607070001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;

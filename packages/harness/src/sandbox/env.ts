@@ -40,7 +40,7 @@ export type Address =
 			readonly instance: string;
 	  };
 
-export class EnvId extends Context.Service<EnvId, string>()("@codework/sandbox/env-id") {}
+export class EnvId extends Context.Service<EnvId, string>()("@codework/sandbox/envId") {}
 
 /** The implicit environment: the developer's own machine. */
 export const DEFAULT = "local";
