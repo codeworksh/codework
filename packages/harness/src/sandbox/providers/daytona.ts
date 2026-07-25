@@ -1,6 +1,7 @@
 import {
 	type CodeLanguage,
 	Daytona,
+	DaytonaNotFoundError,
 	type FileInfo,
 	type Image,
 	type Sandbox as RemoteSandbox,
@@ -8,9 +9,10 @@ import {
 } from "@daytona/sdk";
 import { Context, Effect, Layer, Schema } from "effect";
 import { Buffer } from "node:buffer";
+import { SandboxEnv } from "../env";
 import { SandboxFileSystem } from "../filesystem/filesystem";
 import { RemoteFileSystem } from "../filesystem/remote";
-import { type ISandboxExe, Shell, ShellError } from "../shell";
+import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../shell";
 
 export class DaytonaError extends Schema.TaggedErrorClass<DaytonaError>()("DaytonaError", {
 	cause: Schema.optional(Schema.Defect()),
@@ -58,8 +60,6 @@ interface RemoteState {
 }
 
 class Remote extends Context.Service<Remote, RemoteState>()("@codework/sandbox/daytona/remote") {}
-
-const quote = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
 
 const assertCommandSucceeded = (command: string, result: { exitCode: number; result?: string }) => {
 	if (result.exitCode !== 0) throw new Error(result.result || `command failed (${result.exitCode}): ${command}`);
@@ -130,17 +130,30 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 		writeFile: (path: string, content: string | Uint8Array) =>
 			sandbox.fs.uploadFile(typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content), path),
 		stat: async (path: string) => statsFrom(await sandbox.fs.getFileDetails(path)),
-		// Daytona's toolbox exposes a single file-details endpoint that reports
-		// the entry mode when available. Expose it as remote `lstat` too so
-		// symlink-aware callers can ask for that intent explicitly.
-		lstat: async (path: string) => statsFrom(await sandbox.fs.getFileDetails(path)),
+		// The toolbox file-details endpoint follows symlinks. Detect the entry
+		// with the sandbox shell first so lstat never reports target metadata as
+		// if it described the link itself.
+		lstat: async (path: string) => {
+			const command = `test -L ${quote(path)}`;
+			const result = await sandbox.process.executeCommand(command, options.cwd, undefined, options.execTimeout);
+			if (result.exitCode === 0) {
+				return { isFile: false, isDirectory: false, isSymbolicLink: true };
+			}
+			if (result.exitCode === 1) return statsFrom(await sandbox.fs.getFileDetails(path));
+			assertCommandSucceeded(command, result);
+			throw new Error(`unreachable lstat result for ${path}`);
+		},
 		readdir: async (path: string) => (await sandbox.fs.listFiles(path)).map((entry) => entry.name),
+		// Only a genuine 404 means "absent". Auth, rate-limit, and transport
+		// failures propagate: a caller that deletes records on absence must not
+		// be told a path is gone because the API was briefly unreachable.
 		exists: async (path: string) => {
 			try {
 				await sandbox.fs.getFileDetails(path);
 				return true;
-			} catch {
-				return false;
+			} catch (cause) {
+				if (cause instanceof DaytonaNotFoundError) return false;
+				throw cause;
 			}
 		},
 		mkdir: async (path: string, mkdirOptions?: { recursive?: boolean }) => {
@@ -170,24 +183,45 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 // Daytona's execute API folds stderr into `result` and reports a single exit
 // code, so the shell surfaces the combined output as stdout and leaves stderr
 // empty rather than inventing a split.
+const runCommand = (
+	sandbox: RemoteSandbox,
+	options: Options,
+	command: string,
+	opts?: { env?: Record<string, string>; cwd?: string },
+) =>
+	Effect.tryPromise({
+		try: () =>
+			sandbox.process.executeCommand(command, resolveCwd(options.cwd, opts?.cwd), opts?.env, options.execTimeout),
+		catch: (cause) => new ShellError({ command, cause }),
+	}).pipe(Effect.map((response) => ({ stdout: response.result ?? "", stderr: "", exitCode: response.exitCode })));
+
 const exec =
 	(sandbox: RemoteSandbox, options: Options): ISandboxExe["exec"] =>
 	(command, opts) =>
-		Effect.tryPromise({
-			try: () => sandbox.process.executeCommand(command, options.cwd, opts?.env, options.execTimeout),
-			catch: (cause) => new ShellError({ command, cause }),
-		}).pipe(Effect.map((response) => ({ stdout: response.result ?? "", stderr: "", exitCode: response.exitCode })));
+		runCommand(sandbox, options, command, opts);
+
+// `executeCommand` takes a single string, so the vector is quoted here rather
+// than spawned; the per-call cwd rides the toolbox's own cwd argument instead
+// of a `cd` prefix.
+const execArgv =
+	(sandbox: RemoteSandbox, options: Options): ISandboxExe["execArgv"] =>
+	(argv, opts) =>
+		runCommand(sandbox, options, quoteArgv(argv), opts);
 
 const filesystemLayer = (options: Options) =>
 	Layer.effect(
 		SandboxFileSystem.Service,
-		Effect.map(Remote, ({ sandbox }) => RemoteFileSystem.make(providerFrom(sandbox, options), { cwd: options.cwd })),
+		Effect.map(Remote, ({ sandbox }) =>
+			SandboxFileSystem.fromProvider(RemoteFileSystem.make(providerFrom(sandbox, options), { cwd: options.cwd })),
+		),
 	);
 
 const shellLayer = (options: Options) =>
 	Layer.effect(
 		Shell,
-		Effect.map(Remote, ({ sandbox }) => Shell.of({ exec: exec(sandbox, options) })),
+		Effect.map(Remote, ({ sandbox }) =>
+			Shell.of({ exec: exec(sandbox, options), execArgv: execArgv(sandbox, options) }),
+		),
 	);
 
 /**
@@ -195,8 +229,18 @@ const shellLayer = (options: Options) =>
  * the sandbox's native remote shell. It intentionally does not provide VFS:
  * remote filesystems have no synchronous filesystem surface.
  */
-export const layer = (options: Options = {}): Layer.Layer<SandboxFileSystem.Service | Shell, DaytonaError> =>
-	Layer.merge(filesystemLayer(options), shellLayer(options)).pipe(Layer.provide(remote(options)));
+// Identity is per remote sandbox, not per provider: two Daytona sandboxes both
+// using /workspace must not share persisted directory records.
+const envLayer = () =>
+	Layer.effect(
+		SandboxEnv.EnvId,
+		Effect.map(Remote, ({ sandbox }) => SandboxEnv.format({ kind: "daytona", instance: sandbox.id })),
+	);
+
+export const layer = (
+	options: Options = {},
+): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxEnv.EnvId, DaytonaError> =>
+	Layer.mergeAll(filesystemLayer(options), shellLayer(options), envLayer()).pipe(Layer.provide(remote(options)));
 
 export const services = layer;
 

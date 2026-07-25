@@ -1,6 +1,6 @@
 import { create, MemoryProvider } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
-import { Virtual } from "./filesystem/local";
+import { Local } from "./filesystem/local";
 import { Process } from "./utils/process";
 import { Seed, type SeedOptions } from "./utils/seed";
 
@@ -19,7 +19,7 @@ export interface Options extends SeedOptions {
 export const layer = (options?: Options) =>
 	Layer.merge(
 		Layer.effect(
-			Virtual.Vfs,
+			Local.Vfs,
 			Effect.promise(async () => {
 				const provider = new MemoryProvider();
 				const vfs = create(provider, { moduleHooks: false, virtualCwd: true });

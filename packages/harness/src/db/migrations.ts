@@ -13,6 +13,48 @@ export const migrations = {
 	"202607070001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 
+		// A durable filesystem namespace. Created before project_directory and
+		// session because both reference it. Reference counts are deliberately
+		// absent: they live in Controller memory, since a persisted count cannot
+		// tell whether the process that took it is still running.
+		yield* sql`
+			CREATE TABLE sandbox_instance (
+				id TEXT PRIMARY KEY,
+				driver TEXT NOT NULL,
+				kind TEXT NOT NULL CHECK (kind IN ('local', 'virtual', 'remote')),
+				provider_resource_id TEXT,
+				runtime_config TEXT,
+				ownership TEXT NOT NULL CHECK (ownership IN ('managed', 'external')),
+				status TEXT NOT NULL,
+				provider_status TEXT,
+				state_observed_at INTEGER NOT NULL,
+				metadata TEXT,
+				last_error TEXT,
+				last_acquired_at INTEGER,
+				last_released_at INTEGER,
+				last_used_at INTEGER,
+				removed_at INTEGER,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			)
+		`;
+
+		// One live instance per driver resource: two application identities for
+		// one namespace would alias, which is the thing instance IDs exist to
+		// prevent. Tombstones are excluded so a removed row never blocks a
+		// genuinely new resource that reuses the locator.
+		yield* sql`
+			CREATE UNIQUE INDEX sandbox_instance_resource_idx
+			ON sandbox_instance (driver, provider_resource_id)
+			WHERE provider_resource_id IS NOT NULL AND status != 'removed'
+		`;
+
+		// The `local` row is not seeded here. Migrations are DDL: what the host
+		// namespace *is* belongs to the sandbox domain, seeding it would need a
+		// wall clock the rest of the codebase does not use, and the migrator's
+		// high-water mark means a seeded row deleted once never comes back.
+		// `SandboxStore.withFixtures` re-asserts it on every runtime build.
+
 		yield* sql`
 			CREATE TABLE project (
 				id TEXT PRIMARY KEY,
@@ -22,13 +64,16 @@ export const migrations = {
 			)
 		`;
 
+		// RESTRICT, not CASCADE: destroying infrastructure tombstones the sandbox
+		// row rather than deleting it, so history keeps a valid reference.
 		yield* sql`
 			CREATE TABLE project_directory (
 				id TEXT PRIMARY KEY,
 				project_id TEXT NOT NULL REFERENCES project(id) ON UPDATE CASCADE ON DELETE CASCADE,
 				directory TEXT NOT NULL,
 				type TEXT NOT NULL,
-				sandbox_env_id TEXT NOT NULL,
+				sandbox_instance_id TEXT NOT NULL
+					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT,
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL
 			)
@@ -36,7 +81,7 @@ export const migrations = {
 
 		yield* sql`
 			CREATE UNIQUE INDEX project_directory_project_directory_idx
-			ON project_directory (project_id, directory)
+			ON project_directory (project_id, sandbox_instance_id, directory)
 		`;
 
 		yield* sql`
@@ -47,8 +92,15 @@ export const migrations = {
 				slug TEXT NOT NULL,
 				directory TEXT NOT NULL,
 				title TEXT NOT NULL,
-				tag TEXT NOT NULL,
+				tag TEXT,
 				metadata TEXT,
+				sandbox_instance_id TEXT NOT NULL
+					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+				cost REAL NOT NULL DEFAULT 0,
+				tokens_input INTEGER NOT NULL DEFAULT 0,
+				tokens_output INTEGER NOT NULL DEFAULT 0,
+				tokens_cache_read INTEGER NOT NULL DEFAULT 0,
+				tokens_cache_write INTEGER NOT NULL DEFAULT 0,
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL
 			)
@@ -56,5 +108,90 @@ export const migrations = {
 
 		yield* sql`CREATE UNIQUE INDEX session_slug_idx ON session (slug)`;
 		yield* sql`CREATE INDEX session_tag_idx ON session (tag)`;
+
+		// The tree edge is a composite FK (session_id, parent_id) so a parent can
+		// never live in another session — cross-session edges would mess up the context
+		// NULL parent_id (roots) skips the FK per SQLite.
+		// In short: FK (session_id, parent_id); makes sure that a child entry via parent_id must belong
+		// to exact same session_id.
+		yield* sql`
+			CREATE TABLE session_entry (
+				id TEXT PRIMARY KEY,
+				session_id TEXT NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE,
+				parent_id TEXT,
+				seq INTEGER NOT NULL,
+				type TEXT NOT NULL,
+				data TEXT NOT NULL,
+				label TEXT,
+				metadata TEXT,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				FOREIGN KEY (session_id, parent_id) REFERENCES session_entry(session_id, id)
+			)
+		`;
+
+		// Parent key for the composite FKs (SQLite requires a UNIQUE covering
+		// the referenced columns).
+		yield* sql`CREATE UNIQUE INDEX session_entry_session_id_idx ON session_entry (session_id, id)`;
+
+		yield* sql`
+			CREATE TABLE session_entry_part (
+				id TEXT PRIMARY KEY,
+				entry_id TEXT NOT NULL,
+				session_id TEXT NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE,
+				part_index INTEGER NOT NULL,
+				type TEXT NOT NULL,
+				status TEXT,
+				call_id TEXT,
+				tool_name TEXT,
+				data TEXT NOT NULL,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				CHECK (type != 'toolCall' OR (status IS NOT NULL AND call_id IS NOT NULL AND tool_name IS NOT NULL)),
+				CHECK (type = 'toolCall' OR (status IS NULL AND call_id IS NULL AND tool_name IS NULL)),
+				FOREIGN KEY (session_id, entry_id) REFERENCES session_entry(session_id, id) ON UPDATE CASCADE ON DELETE CASCADE
+			)
+		`;
+
+		yield* sql`ALTER TABLE session ADD COLUMN leaf_entry_id TEXT REFERENCES session_entry(id)`;
+
+		yield* sql`CREATE UNIQUE INDEX session_entry_session_seq_idx ON session_entry (session_id, seq)`;
+		yield* sql`CREATE INDEX session_entry_parent_idx ON session_entry (session_id, parent_id)`;
+		yield* sql`CREATE INDEX session_entry_type_idx ON session_entry (session_id, type, seq)`;
+		yield* sql`CREATE INDEX session_entry_label_idx ON session_entry (session_id, seq) WHERE label IS NOT NULL`;
+
+		yield* sql`CREATE UNIQUE INDEX session_entry_part_entry_idx ON session_entry_part (entry_id, part_index)`;
+		yield* sql`CREATE INDEX session_entry_part_call_idx ON session_entry_part (session_id, call_id) WHERE call_id IS NOT NULL`;
+		yield* sql`CREATE UNIQUE INDEX session_entry_part_call_uidx ON session_entry_part (entry_id, call_id) WHERE call_id IS NOT NULL`;
+		yield* sql`CREATE INDEX session_entry_part_unsettled_idx ON session_entry_part (session_id, status) WHERE status IN ('pending', 'running')`;
+		yield* sql`CREATE INDEX session_entry_part_session_idx ON session_entry_part (session_id, entry_id, part_index)`;
+
+		yield* sql`
+			CREATE TABLE session_input (
+				id TEXT PRIMARY KEY,
+				session_id TEXT NOT NULL REFERENCES session(id) ON UPDATE CASCADE ON DELETE CASCADE,
+				prompt TEXT NOT NULL,
+				delivery TEXT NOT NULL,
+				admitted_seq INTEGER NOT NULL,
+				promoted_seq INTEGER,
+				created_at INTEGER NOT NULL
+			)
+		`;
+
+		// Pending lanes are selected by session and delivery, then drained in
+		// admission order. SQLite indexes NULL values, so promoted_seq IS NULL
+		// uses this index for pending-input queries.
+		yield* sql`
+			CREATE INDEX session_input_pending_idx
+			ON session_input (session_id, promoted_seq, delivery, admitted_seq)
+		`;
+		yield* sql`
+			CREATE UNIQUE INDEX session_input_admitted_seq_idx
+			ON session_input (session_id, admitted_seq)
+		`;
+		yield* sql`
+			CREATE UNIQUE INDEX session_input_promoted_seq_idx
+			ON session_input (session_id, promoted_seq)
+		`;
 	}),
 };

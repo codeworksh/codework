@@ -1,13 +1,17 @@
 import { Effect, ManagedRuntime, Stream } from "effect";
 import type { Stats } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { SandboxEnv } from "../src/sandbox/env";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
-import { RemoteFileSystem } from "../src/sandbox/filesystem/remote";
+import { SandboxRegistry } from "../src/sandbox/map";
 import { EnvVercel, statsFrom } from "../src/sandbox/providers/vercel";
+import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
+import { remoteSandboxSpec } from "./fixtures/remote.spec";
 import "./utils/env";
 
 const token = process.env.VERCEL_OIDC_TOKEN;
+const githubPat = process.env.GITHUB_PAT;
 const suite = token ? describe : describe.skip;
 
 const PROVISION_TIMEOUT = 180_000;
@@ -29,7 +33,10 @@ const SANDBOX_CWD = "/tmp";
 const BAKED_ENV = "from-sandbox";
 
 suite("Sandbox.EnvVercel (shared sandbox)", () => {
-	let runtime!: ManagedRuntime.ManagedRuntime<SandboxFileSystem.Service | Shell, EnvVercel.VercelError>;
+	let runtime!: ManagedRuntime.ManagedRuntime<
+		SandboxFileSystem.Service | Shell | SandboxEnv.EnvId,
+		EnvVercel.VercelError
+	>;
 
 	beforeAll(() => {
 		runtime = ManagedRuntime.make(
@@ -39,8 +46,28 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 	afterAll(() => runtime.dispose());
 
 	// Run a program against the one shared sandbox.
-	const run = <A, E>(program: Effect.Effect<A, E, SandboxFileSystem.Service | Shell>): Promise<A> =>
-		runtime.runPromise(program);
+	const run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> => runtime.runPromise(program);
+
+	// Resolve the provider-issued EnvId exactly as the application will after
+	// loading it from a project/session row.
+	const resolve = <A, E>(envId: string, program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> =>
+		Effect.runPromise(
+			program.pipe(
+				Effect.scoped,
+				Effect.provide(SandboxRegistry.SandboxMap.get(envId)),
+				Effect.provide(SandboxRegistry.layer({ vercel: { cwd: SANDBOX_CWD } })),
+			),
+		);
+
+	remoteSandboxSpec({
+		kind: "vercel",
+		cwd: SANDBOX_CWD,
+		inheritedEnv: { key: "CW_ENV", value: BAKED_ENV },
+		run,
+		resolve,
+		timeout: PROVISION_TIMEOUT,
+		githubPat,
+	});
 
 	it(
 		"shares one filesystem + shell across SandboxFileSystem.Service and Shell",
@@ -50,37 +77,37 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 				Effect.gen(function* () {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* Shell;
+					const envId = yield* SandboxEnv.EnvId;
 
-					yield* Effect.promise(() => filesystem.writeFile(`${dir}/from-service.txt`, "from service"));
+					yield* filesystem.writeFile(`${dir}/from-service.txt`, "from service");
 					const cat = yield* shell.exec(`cat ${dir}/from-service.txt`);
 
 					yield* shell.exec(`echo "from shell" > ${dir}/from-shell.txt`);
-					const back = yield* Effect.promise(() => filesystem.readFile(`${dir}/from-shell.txt`));
+					const back = yield* filesystem.readFile(`${dir}/from-shell.txt`);
 
-					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/package.json`, "{}"));
-					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/.git/config`, ""));
-					yield* Effect.promise(() => filesystem.writeFile(`${dir}/workspace/project/package.json`, "{}"));
-					const workspace = yield* Effect.promise(() => filesystem.readdir(`${dir}/workspace`));
-					const project = yield* Effect.promise(() => filesystem.readdir(`${dir}/workspace/project`));
+					yield* filesystem.writeFile(`${dir}/workspace/package.json`, "{}");
+					yield* filesystem.writeFile(`${dir}/workspace/.git/config`, "");
+					yield* filesystem.writeFile(`${dir}/workspace/project/package.json`, "{}");
+					const workspace = yield* filesystem.readdir(`${dir}/workspace`);
+					const project = yield* filesystem.readdir(`${dir}/workspace/project`);
 
-					yield* Effect.promise(() => filesystem.writeFile(`${dir}/target.txt`, "target"));
+					yield* filesystem.writeFile(`${dir}/target.txt`, "target");
 					const linked = yield* shell.exec(`ln -s "$(pwd)/${dir}/target.txt" ${dir}/link.txt`);
-					const linkStat = yield* Effect.promise(() => filesystem.stat(`${dir}/link.txt`));
-					const linkLstat = yield* Effect.promise(() =>
-						(filesystem as RemoteFileSystem.Interface).lstat!(`${dir}/link.txt`),
-					);
+					const linkStat = yield* filesystem.stat(`${dir}/link.txt`);
+					const linkLstat = yield* filesystem.lstat!(`${dir}/link.txt`);
 
 					return {
 						cat,
 						back,
 						uname: yield* shell.exec("uname -s"),
-						exists: yield* Effect.promise(() => filesystem.exists(`${dir}/from-service.txt`)),
-						missing: yield* Effect.promise(() => filesystem.exists(`${dir}/nope.txt`)),
+						exists: yield* filesystem.exists(`${dir}/from-service.txt`),
+						missing: yield* filesystem.exists(`${dir}/nope.txt`),
 						workspace,
 						project,
 						linked,
 						linkStat,
 						linkLstat,
+						envId,
 					};
 				}),
 			);
@@ -99,6 +126,7 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 			expect(result.linkStat.isFile).toBe(true);
 			expect(result.linkStat.isSymbolicLink).toBe(false);
 			expect(result.linkLstat.isSymbolicLink).toBe(true);
+			expect(SandboxEnv.parse(result.envId)?.kind).toBe("vercel");
 		},
 		PROVISION_TIMEOUT,
 	);
@@ -145,9 +173,9 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 					const shell = yield* Shell;
 					const pwd = yield* shell.exec("pwd");
 					// relative write resolves against cwd → /tmp/<marker>
-					yield* Effect.promise(() => filesystem.writeFile(marker, "in cwd"));
+					yield* filesystem.writeFile(marker, "in cwd");
 					const cat = yield* shell.exec(`cat ${marker}`);
-					const abs = yield* Effect.promise(() => filesystem.readFile(`${SANDBOX_CWD}/${marker}`));
+					const abs = yield* filesystem.readFile(`${SANDBOX_CWD}/${marker}`);
 					return { pwd: pwd.stdout.trim(), cat: cat.stdout.trim(), abs: abs.trim() };
 				}),
 			);
@@ -169,6 +197,29 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 			);
 			expect(result.exitCode).toBe(5);
 			expect(result.stderr).toContain("oops");
+		},
+		PROVISION_TIMEOUT,
+	);
+
+	it(
+		"spawns execArgv as a real argument vector, so nothing is shell-interpreted",
+		async () => {
+			const result = await run(
+				Effect.gen(function* () {
+					const shell = yield* Shell;
+					// Vercel takes cmd + args natively, so these never reach a parser:
+					// a space stays one argument and `$(…)` stays literal text.
+					const spaced = yield* shell.execArgv(["echo", "two words"]);
+					const substitution = yield* shell.execArgv(["echo", "$(echo pwned)"]);
+					const semicolon = yield* shell.execArgv(["echo", "a; echo pwned"]);
+					return { spaced, substitution, semicolon };
+				}),
+			);
+
+			expect(result.spaced.exitCode).toBe(0);
+			expect(result.spaced.stdout.trim()).toBe("two words");
+			expect(result.substitution.stdout.trim()).toBe("$(echo pwned)");
+			expect(result.semicolon.stdout.trim()).toBe("a; echo pwned");
 		},
 		PROVISION_TIMEOUT,
 	);

@@ -1,11 +1,12 @@
 import { Effect, Exit, Layer, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox";
-import { type ExecChunk, Shell as SandboxShell } from "../src/sandbox/shell";
+import { type ExecChunk, fromExec, Shell as SandboxShell } from "../src/sandbox/shell";
 import { bashTool } from "../src/tools/bash";
 import * as Executor from "../src/tools/executor";
 import { make as makeProgress, noop as progressNoop } from "../src/tools/progress";
 import * as Tool from "../src/tools/tool";
+import { pendingCall } from "./tools.fixture";
 import {
 	fromSandboxShell,
 	type IToolShell,
@@ -16,7 +17,7 @@ import {
 
 // ToolShell backed by the in-process just-bash sandbox — the bootstrap backend
 // (buffered exec, no `stream` → the tool takes variant A).
-const justBashToolShell = fromSandboxShell.pipe(Layer.provide(Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer())));
+const justBashToolShell = fromSandboxShell.pipe(Layer.provide(Sandbox.memory()));
 
 // A hand-made buffered ToolShell Layer with canned behaviour — for the def/exec split.
 const stubToolShell = (exec: IToolShell["exec"]): Layer.Layer<ToolShell> =>
@@ -38,7 +39,7 @@ const exited = (exitCode: number): ToolShellEvent => ({ _tag: "Exit", exitCode }
 
 const ctx = { callID: "call-1", toolName: "bash", rawArgs: {} as Record<string, unknown> };
 
-const call = (rawArgs: Record<string, unknown>) => ({ callID: "call-1", name: "bash", rawArgs });
+const call = (arguments_: Record<string, unknown>) => pendingCall("bash", arguments_, "call-1");
 
 // bash registered with a specific ToolShell backend (provided at registration, per the erasure
 // model) → a RegisteredTool the executor runs with no residual tool `R`.
@@ -204,10 +205,12 @@ describe("fromSandboxShell streaming bridge (variant B over a backend Shell)", (
 			Layer.provide(
 				Layer.succeed(
 					SandboxShell,
-					SandboxShell.of({
-						exec: () => Effect.die(new Error("exec should not run when streaming")),
-						stream: () => Stream.fromIterable(chunks),
-					}),
+					SandboxShell.of(
+						fromExec({
+							exec: () => Effect.die(new Error("exec should not run when streaming")),
+							stream: () => Stream.fromIterable(chunks),
+						}),
+					),
 				),
 			),
 		);

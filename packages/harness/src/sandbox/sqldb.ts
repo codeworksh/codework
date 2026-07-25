@@ -1,6 +1,6 @@
 import { create, SqliteProvider } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
-import { Virtual } from "./filesystem/local";
+import { Local } from "./filesystem/local";
 import { Process } from "./utils/process";
 import { Seed, type SeedOptions } from "./utils/seed";
 
@@ -8,7 +8,7 @@ import { Seed, type SeedOptions } from "./utils/seed";
 // the layer; omitting `location` keeps the whole filesystem in `:memory:`.
 const vfsLayer = (location?: string, options?: Options) =>
 	Layer.effect(
-		Virtual.Vfs,
+		Local.Vfs,
 		Effect.acquireRelease(
 			Effect.promise(async () => {
 				const provider = new SqliteProvider(location);

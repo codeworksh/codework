@@ -2,12 +2,5 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/repos/Arbor" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/repos/ai" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/repos/effect" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/repos/eve" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/repos/flue" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/repos/pi" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/repos/vfs" vcs="Git" />
   </component>
 </project>

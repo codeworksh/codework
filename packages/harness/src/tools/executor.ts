@@ -1,6 +1,5 @@
 import { Message } from "@codeworksh/aikit";
 import { Cause, Duration, Effect, Exit, Option, Queue, Ref, Result, Schedule, Schema, Scope } from "effect";
-import type { Static } from "typebox";
 import { ToolProgress, type ToolProgressPartial } from "./progress";
 import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, type ToolCallContext } from "./tool";
 
@@ -8,24 +7,23 @@ import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, t
  * `ToolExecutor` — the uniform pipeline run for every tool call:
  *
  *   resolve def → decode args (Effect Schema) → run handler (scoped, exit) →
- *   encode typed Success/Failure into aikit's message protocol → outcome.
+ *   encode typed Success/Failure into aikit's message protocol → complete terminal part.
  *
- * Tools never touch event plumbing or aikit message shapes. Result mapping:
+ * Tool handlers never touch event plumbing or aikit message shapes. The executor owns
+ * the whole pending → terminal value transition. Result mapping:
  *   - success            → completed   (content + encoded details)
  *   - declared failure   → error       (content + encoded details), fed to the model
  *   - interruption       → aborted
  *   - undeclared / defect → run error  (re-raised as a defect)
  */
 
-/** A terminal tool outcome in aikit's status-tagged shape. */
-export type ToolOutcome =
-	| Static<typeof Message.ToolCompletedSchema>
-	| Static<typeof Message.ToolErrorSchema>
-	| Static<typeof Message.ToolAbortedSchema>;
+/** A complete terminal tool-call part, ready for persistence and event publication. */
+export type ToolOutcome = Message.ToolCallTerminalPart;
 
-/** One progress emission handed to an observer: the partial plus the call it belongs to. */
+/** One progress emission handed to an observer, including the complete running part. */
 export interface ProgressEvent {
 	readonly partial: ToolProgressPartial;
+	readonly toolCall: Message.ToolCallRunningPart;
 	readonly ctx: ToolCallContext;
 }
 
@@ -53,7 +51,8 @@ export interface Executor {
 	/** aikit wire view of the tool set, for the loop context (`convertTools`). */
 	readonly wire: Message.Tool[];
 	/**
-	 * Run one tool call to a terminal outcome. Most failures become a terminal
+	 * Atomically transform one complete pending tool-call part into a complete terminal
+	 * part. Most failures become a terminal
 	 * `ToolOutcome`; a `failureMode: "error"` tool propagates its declared failure
 	 * through the error channel, and undeclared failures/defects propagate as defects.
 	 *
@@ -62,7 +61,7 @@ export interface Executor {
 	 * `RProgress`. `options.onProgress` observes live progress off the hot path.
 	 */
 	readonly handle: <RProgress = never>(
-		call: Message.ToolCallInFlight,
+		call: Message.ToolCallPendingPart,
 		options?: HandleOptions<RProgress>,
 	) => Effect.Effect<ToolOutcome, unknown, RProgress>;
 }
@@ -82,21 +81,38 @@ const asCodec = (schema: AnyToolDef["parameters"]): Schema.Codec<unknown, unknow
 const text = (value: string): Message.TextContent => ({ type: "text", text: value });
 const jsonText = (value: unknown): Message.TextContent => ({ type: "text", text: JSON.stringify(value) });
 
-const completed = (content: ModelContent, details: unknown): ToolOutcome => ({
+const completed = (call: Message.ToolCallPendingPart, content: ModelContent, details: unknown): ToolOutcome => ({
+	...call,
 	status: "completed",
 	result: { content: [...content], details, isError: false },
+	time: { ...call.time, end: Math.max(call.time.end, Date.now()) },
 });
-const errored = (content: ModelContent, details: unknown): ToolOutcome => ({
+const errored = (call: Message.ToolCallPendingPart, content: ModelContent, details: unknown): ToolOutcome => ({
+	...call,
 	status: "error",
 	result: { content: [...content], details, isError: true },
+	time: { ...call.time, end: Math.max(call.time.end, Date.now()) },
 });
-const aborted = (content: ModelContent, details?: unknown): ToolOutcome => ({
+const aborted = (call: Message.ToolCallPendingPart, content: ModelContent, details?: unknown): ToolOutcome => ({
+	...call,
 	status: "aborted",
 	result: { content: [...content], details, isError: true },
+	time: { ...call.time, end: Math.max(call.time.end, Date.now()) },
+});
+
+const running = (call: Message.ToolCallPendingPart, partial: ToolProgressPartial): Message.ToolCallRunningPart => ({
+	...call,
+	status: "running",
+	partial: {
+		content: partial.content === undefined ? undefined : [...partial.content],
+		details: partial.details,
+	},
+	time: { ...call.time, end: Math.max(call.time.end, Date.now()) },
 });
 
 const encodeOutcome = (
 	def: AnyToolDef,
+	call: Message.ToolCallPendingPart,
 	exit: Exit.Exit<unknown, unknown>,
 	latest: Ref.Ref<Option.Option<ToolProgressPartial>>,
 ): Effect.Effect<ToolOutcome, unknown> =>
@@ -104,7 +120,7 @@ const encodeOutcome = (
 		if (Exit.isSuccess(exit)) {
 			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.success))(exit.value).pipe(Effect.orDie);
 			const content = def.encodeContent ? def.encodeContent(exit.value) : [jsonText(encoded)];
-			return completed(content, encoded);
+			return completed(call, content, encoded);
 		}
 
 		const cause = exit.cause;
@@ -113,9 +129,9 @@ const encodeOutcome = (
 			// streaming command still shows the output it produced before the interrupt.
 			const last = yield* Ref.get(latest);
 			if (Option.isSome(last) && last.value.content !== undefined && last.value.content.length > 0) {
-				return aborted([...last.value.content], last.value.details);
+				return aborted(call, [...last.value.content], last.value.details);
 			}
-			return aborted([text("Tool Call Aborted.")]);
+			return aborted(call, [text("Tool Call Aborted.")]);
 		}
 
 		const failure = Cause.findErrorOption(cause);
@@ -129,7 +145,7 @@ const encodeOutcome = (
 			const value = failure.value;
 			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.failure))(value).pipe(Effect.orDie);
 			const content = def.encodeFailureContent ? def.encodeFailureContent(value) : [jsonText(encoded)];
-			return errored(content, encoded);
+			return errored(call, content, encoded);
 		}
 
 		// Undeclared failure or genuine defect → the loop is broken, not the tool.
@@ -156,25 +172,25 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Executor => {
 	const wire = tools.map((tool) => toAikitTool(tool.definition));
 
 	const handle = <RProgress = never>(
-		call: Message.ToolCallInFlight,
+		call: Message.ToolCallPendingPart,
 		options?: HandleOptions<RProgress>,
 	): Effect.Effect<ToolOutcome, unknown, RProgress> =>
 		Effect.gen(function* () {
 			const impl = impls.get(call.name);
 			if (impl === undefined) {
-				return errored([text(`Unknown tool: ${call.name}`)], { error: "unknown_tool", name: call.name });
+				return errored(call, [text(`Unknown tool: ${call.name}`)], { error: "unknown_tool", name: call.name });
 			}
 			const def = impl.definition;
 
-			const decoded = yield* Effect.result(Schema.decodeUnknownEffect(asCodec(def.parameters))(call.rawArgs));
+			const decoded = yield* Effect.result(Schema.decodeUnknownEffect(asCodec(def.parameters))(call.arguments));
 			if (Result.isFailure(decoded)) {
-				return errored([text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)], {
+				return errored(call, [text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)], {
 					error: "invalid_arguments",
 					name: call.name,
 				});
 			}
 
-			const ctx: ToolCallContext = { callID: call.callID, toolName: call.name, rawArgs: call.rawArgs };
+			const ctx: ToolCallContext = { callID: call.callID, toolName: call.name, rawArgs: call.arguments };
 
 			// Latest partial: captured for aborted-call output regardless of any sink.
 			const latest = yield* Ref.make(Option.none<ToolProgressPartial>());
@@ -212,7 +228,11 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Executor => {
 				report: (partial) =>
 					Ref.set(latest, Option.some(partial)).pipe(
 						Effect.andThen(
-							progressQueue ? Queue.offer(progressQueue, { partial, ctx }).pipe(Effect.asVoid) : Effect.void,
+							progressQueue
+								? Queue.offer(progressQueue, { partial, toolCall: running(call, partial), ctx }).pipe(
+										Effect.asVoid,
+									)
+								: Effect.void,
 						),
 					),
 			});
@@ -239,7 +259,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Executor => {
 				);
 			}
 
-			return yield* encodeOutcome(def, exit, latest);
+			return yield* encodeOutcome(def, call, exit, latest);
 		}).pipe(Effect.scoped);
 
 	return { wire, handle };

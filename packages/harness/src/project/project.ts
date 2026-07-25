@@ -1,79 +1,40 @@
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { Model } from "effect/unstable/schema";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
-import path from "node:path";
+import { posix as path } from "node:path";
 import { Database } from "../db/db";
 import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql";
-import { FileSystem } from "../filesystem/filesystem";
 import { Git } from "../git/git";
+import { SandboxEnv } from "../sandbox/env";
+import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
+import { SandboxInstance } from "../sandbox/instance";
+import { SandboxStore } from "../sandbox/store";
 import { Sandbox } from "../sandbox/sandbox";
-import { AbsolutePath, withStatics } from "../schema";
+import { AbsolutePath } from "../schema";
 import { Hash } from "../util/hash";
 import { ProjectCopy } from "./copy";
+import { ProjectSchema } from "./schema";
 
-// Represents the project ID type
-// defaults to local
-export const ID = Schema.String.pipe(
-	Schema.brand("Project.ID"),
-	withStatics((schema) => ({
-		local: schema.make("local"),
-	})),
-);
-export type ID = typeof ID.Type;
+/**
+ * Row identity for a registered directory. Keyed on the environment as well as
+ * the path: `/workspace` in two different sandboxes is two different places,
+ * and hashing the path alone would collapse them into one row.
+ */
+const directoryId = (projectId: string, sandboxInstanceId: string, directory: string) =>
+	Hash.fast(JSON.stringify([projectId, sandboxInstanceId, directory]));
 
-// Represents identified vcs type and path
-// Example:
-// ```
-// {
-//  store: "/app/code/.git",
-//  type: "git"
-// }
-// ```
-export const Vcs = Schema.Union([
-	Schema.Struct({
-		type: Schema.Literal("git"),
-		store: AbsolutePath,
-	}),
-]);
-export type Vcs = typeof Vcs.Type;
-
-export const DirectoriesInput = Schema.Struct({
-	projectID: ID,
-}).annotate({ identifier: "Project.DirectoriesInput" });
-export type DirectoriesInput = typeof DirectoriesInput.Type;
-
-export const Directories = Schema.Array(AbsolutePath).annotate({
-	identifier: "Project.Directories",
-});
-export type Directories = typeof Directories.Type;
-
-export const ProjectDirectory = Schema.Struct({
-	directory: AbsolutePath,
-	sandboxEnvID: Schema.String,
-	type: Schema.Union([Schema.Literal("main"), Schema.Literal("root"), Schema.Literal("gitworktree")]),
-});
-export type ProjectDirectory = typeof ProjectDirectory.Type;
-
-export class Info extends Schema.Class<Info>("Project.Info")({
-	id: ID,
-	vcs: Schema.optional(Vcs),
-	name: Schema.String,
-	directory: AbsolutePath,
-}) {}
+export interface Resolved {
+	previous?: ProjectSchema.ID; // previous ID before moving
+	id: ProjectSchema.ID; // current ID
+	directory: AbsolutePath;
+	vcs?: ProjectSchema.Vcs;
+	name: string;
+}
 
 export interface Interface {
-	readonly resolve: (input: AbsolutePath) => Effect.Effect<
-		{
-			previous?: ID; // previous ID before moving
-			id: ID; // current ID
-			directory: AbsolutePath;
-			vcs?: Vcs;
-			name: string;
-		},
-		never
-	>;
-	readonly directories: (input: DirectoriesInput) => Effect.Effect<ProjectDirectory[]>;
-	readonly fromDirectory: (input: AbsolutePath) => Effect.Effect<Info>;
+	readonly resolve: (input: AbsolutePath) => Effect.Effect<Resolved>;
+	readonly directories: (input: ProjectSchema.DirectoriesInput) => Effect.Effect<ProjectSchema.ProjectDirectory[]>;
+	readonly fromDirectory: (input: AbsolutePath) => Effect.Effect<ProjectSchema.Info>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codework/project") {}
@@ -83,11 +44,28 @@ export const layer = Layer.effect(
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 
-		const fs = yield* FileSystem.Service;
+		const fs = yield* SandboxFileSystem.Service;
 		const git = yield* Git.Service;
 		const copy = yield* ProjectCopy.Service;
+		// Which sandbox instance these directories live in. Rows belonging to
+		// another namespace are invisible here: their paths mean nothing to this
+		// filesystem, so probing them would report absence and delete them.
+		//
+		// Transitional: the value still arrives as a raw `SandboxEnv.EnvId` and is
+		// branded at this boundary.
+		const instanceId = SandboxInstance.ID.make(yield* SandboxEnv.EnvId);
 
 		const selectDirectories = SqlSchema.findAll({
+			Request: Schema.Struct({ projectId: Schema.String, sandboxInstanceId: Schema.String }),
+			Result: ProjectDirectoryRow,
+			execute: ({ projectId, sandboxInstanceId }) =>
+				sql`SELECT * FROM project_directory WHERE project_id = ${projectId} AND sandbox_instance_id = ${sandboxInstanceId}`,
+		});
+
+		// Every environment's rows. Only for re-homing during an id migration,
+		// where rows would otherwise cascade-delete with the old project — reads
+		// must stay scoped to the current environment.
+		const selectAllDirectories = SqlSchema.findAll({
 			Request: Schema.String,
 			Result: ProjectDirectoryRow,
 			execute: (projectId) => sql`SELECT * FROM project_directory WHERE project_id = ${projectId}`,
@@ -119,24 +97,35 @@ export const layer = Layer.effect(
 			execute: (row) => sql`INSERT OR IGNORE INTO project_directory ${sql.insert(row)}`,
 		});
 
-		const toProjectDirectory = (row: ProjectDirectoryRow): ProjectDirectory => {
+		const toProjectDirectory = (row: ProjectDirectoryRow): ProjectSchema.ProjectDirectory => {
 			return {
 				directory: AbsolutePath.make(row.directory),
-				sandboxEnvID: row.sandboxEnvId,
+				sandboxInstanceId: row.sandboxInstanceId,
 				type: row.type,
 			};
 		};
 
-		const directories = Effect.fn("Project.directories")(function* (input: DirectoriesInput) {
-			const rows = yield* selectDirectories(input.projectID).pipe(Effect.orDie);
+		const directories = Effect.fn("Project.directories")(function* (input: ProjectSchema.DirectoriesInput) {
+			const rows = yield* selectDirectories({ projectId: input.projectId, sandboxInstanceId: instanceId }).pipe(
+				Effect.orDie,
+			);
 
-			const validRows = yield* Effect.filter(rows, (row) => fs.exists(row.directory), {
-				concurrency: "unbounded",
-			});
+			// Three-way, not two: a row is kept, dropped, or unknown. Only a
+			// definitive "absent" prunes — a backend that could not answer (expired
+			// token, timeout) leaves the row alone rather than destroying a record
+			// we may not be able to rebuild.
+			const probed = yield* Effect.forEach(
+				rows,
+				(row) =>
+					fs.exists(row.directory).pipe(
+						Effect.map((exists) => ({ row, stale: !exists })),
+						Effect.orElseSucceed(() => ({ row, stale: false })),
+					),
+				{ concurrency: "unbounded" },
+			);
 
-			// clean up rows whose directory no longer exists on disk
-			const valid = new Set(validRows);
-			const staleIDs = rows.filter((row) => !valid.has(row)).map((row) => row.id);
+			const validRows = probed.filter((entry) => !entry.stale).map((entry) => entry.row);
+			const staleIDs = probed.filter((entry) => entry.stale).map((entry) => entry.row.id);
 			if (staleIDs.length > 0) {
 				yield* sql`DELETE FROM project_directory WHERE ${sql.in("id", staleIDs)}`.pipe(Effect.orDie);
 			}
@@ -147,9 +136,9 @@ export const layer = Layer.effect(
 		});
 
 		const cached = Effect.fnUntraced(function* (dir: string) {
-			return yield* fs.readFileString(path.join(dir, "codework")).pipe(
+			return yield* fs.readFile(path.join(dir, "codework")).pipe(
 				Effect.map((value) => value.trim()),
-				Effect.map((value) => (value ? ID.make(value) : undefined)),
+				Effect.map((value) => (value ? ProjectSchema.ID.make(value) : undefined)),
 				Effect.catch(() => Effect.void),
 			);
 		});
@@ -160,8 +149,8 @@ export const layer = Layer.effect(
 			const normalized = url(origin);
 			if (!normalized) return undefined;
 			return {
-				id: ID.make(Hash.fast(`git:${normalized}`)),
-				name: path.posix.basename(normalized),
+				id: ProjectSchema.ID.make(Hash.fast(`git:${normalized}`)),
+				name: path.basename(normalized),
 			};
 		});
 
@@ -191,22 +180,14 @@ export const layer = Layer.effect(
 
 		const root = Effect.fnUntraced(function* (repo: Git.Repo) {
 			const root = (yield* git.roots(repo))[0];
-			return root ? ID.make(root) : undefined;
+			return root ? ProjectSchema.ID.make(root) : undefined;
 		});
-
-		type Resolved = {
-			previous?: ID;
-			id: ID;
-			directory: AbsolutePath;
-			vcs?: Vcs;
-			name: string;
-		};
 
 		const resolve = Effect.fn("Project.resolve")(function* (input: AbsolutePath) {
 			const repo = yield* git.find(input);
 			if (!repo) {
 				const local: Resolved = {
-					id: ID.local,
+					id: ProjectSchema.ID.local,
 					directory: input,
 					name: path.basename(path.normalize(input)),
 				};
@@ -217,7 +198,7 @@ export const layer = Layer.effect(
 			const origin = yield* remote(repo);
 			const id = origin?.id ?? previous ?? (yield* root(repo));
 			const resolved: Resolved = {
-				id: id ?? ID.local,
+				id: id ?? ProjectSchema.ID.local,
 				...(previous ? { previous } : {}),
 				directory: repo.directory,
 				vcs: { type: "git", store: repo.store },
@@ -226,9 +207,12 @@ export const layer = Layer.effect(
 			return resolved;
 		});
 
-		const migrateProjectId = Effect.fn("Project.migrateProjectID")(function* (oldID: ID | undefined, newID: ID) {
+		const migrateProjectId = Effect.fn("Project.migrateProjectID")(function* (
+			oldID: ProjectSchema.ID | undefined,
+			newID: ProjectSchema.ID,
+		) {
 			if (!oldID) return; // nothing to migrate from
-			if (oldID === ID.local) return; // local project copy are ignored
+			if (oldID === ProjectSchema.ID.local) return; // local project copy are ignored
 			if (oldID === newID) return; // just the same
 
 			yield* sql
@@ -251,14 +235,14 @@ export const layer = Layer.effect(
 						// re-home them under the new id (with re-derived row ids)
 						// before the delete; directories the new project already
 						// registered win the conflict
-						const directories = yield* selectDirectories(oldID);
+						const directories = yield* selectAllDirectories(oldID);
 						for (const row of directories) {
 							const rehomed = yield* ProjectDirectoryRow.insert.makeEffect({
-								id: Hash.fast(`${newID}:${row.directory}`),
+								id: directoryId(newID, row.sandboxInstanceId, row.directory),
 								projectId: newID,
 								directory: row.directory,
 								type: row.type,
-								sandboxEnvId: row.sandboxEnvId,
+								sandboxInstanceId: row.sandboxInstanceId,
 								createdAt: Model.Override(row.createdAt),
 							});
 							yield* insertDirectory(rehomed);
@@ -270,8 +254,11 @@ export const layer = Layer.effect(
 				.pipe(Effect.orDie);
 		});
 
-		const saveDirectory = Effect.fn("Project.saveDirectory")(function* (input: { projectID: ID; directory: string }) {
-			if (input.projectID === ID.local) return;
+		const saveDirectory = Effect.fn("Project.saveDirectory")(function* (input: {
+			projectId: ProjectSchema.ID;
+			directory: string;
+		}) {
+			if (input.projectId === ProjectSchema.ID.local) return;
 			const isGitWorktree = yield* copy.isGitWorktree({
 				directory: AbsolutePath.make(input.directory),
 			});
@@ -279,18 +266,22 @@ export const layer = Layer.effect(
 			yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
+						// "main" is per environment: each sandbox has its own primary
+						// checkout, so a main elsewhere must not demote this one to root.
 						const hasMain = yield* sql`
 							SELECT directory FROM project_directory
-							WHERE project_id = ${input.projectID} AND type = 'main'
+							WHERE project_id = ${input.projectId}
+								AND sandbox_instance_id = ${instanceId}
+								AND type = 'main'
 							LIMIT 1
 						`;
 
 						const row = yield* ProjectDirectoryRow.insert.makeEffect({
-							id: Hash.fast(`${input.projectID}:${input.directory}`),
-							projectId: input.projectID,
-							directory: input.directory,
+							id: directoryId(input.projectId, instanceId, input.directory),
+							projectId: input.projectId,
+							directory: AbsolutePath.make(input.directory),
 							type: isGitWorktree ? "gitworktree" : hasMain.length > 0 ? "root" : "main",
-							sandboxEnvId: "@codework/envDefault",
+							sandboxInstanceId: instanceId,
 						});
 						yield* insertDirectory(row);
 					}),
@@ -299,7 +290,7 @@ export const layer = Layer.effect(
 					Effect.catchCause((cause) =>
 						Effect.sync(() =>
 							console.warn("project directory persistence failed", {
-								projectID: input.projectID,
+								projectId: input.projectId,
 								cause,
 							}),
 						),
@@ -309,12 +300,12 @@ export const layer = Layer.effect(
 
 		const fromDirectory = Effect.fn("Project.fromDirectory")(function* (directory: string) {
 			const data = yield* resolve(AbsolutePath.make(directory));
-			const projectID = ID.make(data.id);
+			const projectId = ProjectSchema.ID.make(data.id);
 
-			// conditionally migrates previous cached projectID to new one
-			yield* migrateProjectId(data.previous ? ID.make(data.previous) : undefined, projectID);
+			// conditionally migrates previous cached projectId to new one
+			yield* migrateProjectId(data.previous ? ProjectSchema.ID.make(data.previous) : undefined, projectId);
 
-			const existing = yield* findProject(projectID).pipe(Effect.orDie);
+			const existing = yield* findProject(projectId).pipe(Effect.orDie);
 			const name = Option.match(existing, {
 				onNone: () => data.name,
 				onSome: (row) => row.name,
@@ -322,13 +313,13 @@ export const layer = Layer.effect(
 
 			// on conflict only the update timestamp moves; the stored name and
 			// creation time stay as they are
-			const row = yield* ProjectRow.insert.makeEffect({ id: projectID, name }).pipe(Effect.orDie);
+			const row = yield* ProjectRow.insert.makeEffect({ id: projectId, name }).pipe(Effect.orDie);
 			yield* upsertProject(row).pipe(Effect.orDie);
 
-			yield* saveDirectory({ projectID, directory: data.directory });
+			yield* saveDirectory({ projectId: projectId, directory: data.directory });
 
-			const result: Info = {
-				id: projectID,
+			const result: ProjectSchema.Info = {
+				id: projectId,
 				name,
 				vcs: data.vcs ?? undefined,
 				directory: data.directory,
@@ -341,15 +332,18 @@ export const layer = Layer.effect(
 	}),
 );
 
+/** Takes an assembled sandbox — local or remote — not a local backend. */
 export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(
 		Layer.provide(Git.layer),
 		Layer.provide(ProjectCopy.layer),
-		Layer.provide(FileSystem.defaultLayer),
-		Layer.provide(Sandbox.services(sandbox)),
-		Layer.provide(Database.defaultLayer),
+		Layer.provide(sandbox),
+		// Directory rows foreign-key to sandbox_instance, so the host row has to
+		// exist before one can be written. Any namespace other than the host is
+		// registered by whoever created it.
+		Layer.provide(SandboxStore.withFixtures(Database.defaultLayer)),
 	);
 
-export const defaultLayer = (path: string) => layerWith(Sandbox.EnvNodeJSDefault.layer(path));
+export const defaultLayer = (path: string) => layerWith(Sandbox.defaultLayer(path));
 
 export * as Project from "./project";
