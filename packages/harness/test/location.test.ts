@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
+import { SandboxStore } from "../src/sandbox/store";
 import { SandboxEnv } from "../src/sandbox/env";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { Git } from "../src/git/git";
@@ -34,7 +35,7 @@ const repo = { directory, store } satisfies Git.Repo;
 const workspaceId = Workspace.ID.ascending("wrk_location_test");
 const projectId = ProjectSchema.ID.make(Hash.fast("git:github.com/codeworksh/codework"));
 
-const databaseLayer = () => Database.layer(":memory:");
+const databaseLayer = () => SandboxStore.withFixtures(Database.layer(":memory:"));
 
 // Location is an outer layer over Project: these tests stub only Project's
 // leaf dependencies (Git/FileSystem/Copy) and run the real Project service

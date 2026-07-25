@@ -7,7 +7,9 @@ import { SandboxInstance } from "../src/sandbox/instance";
 import { SandboxStore } from "../src/sandbox/store";
 import { testEffect } from "./utils/effect";
 
-const { effect: it } = testEffect(Database.layer(":memory:"));
+// The host fixture is present, as it is for any real runtime: Project and
+// Session compose their database through `SandboxStore.withFixtures`.
+const { effect: it } = testEffect(SandboxStore.withFixtures(Database.layer(":memory:")));
 
 const id = (value: string) => SandboxInstance.ID.make(value);
 
@@ -66,7 +68,7 @@ describe("SandboxInstance", () => {
 
 	describe("schema", () => {
 		it(
-			"seeds the local instance so foreign keys resolve before any Controller exists",
+			"exposes the host namespace with a codec-valid runtime config",
 			Effect.gen(function* () {
 				const store = yield* sandboxStore;
 				const local = yield* store.find(SandboxInstance.ID.local);
@@ -261,24 +263,83 @@ describe("SandboxInstance", () => {
 			}),
 		);
 
-		// The migration seeds local with its own wall clock — the one documented
-		// exception to injected time. Bootstrap is the upsert that corrects it.
+		// A fixture's row holds only facts re-derivable from configuration, so
+		// re-asserting them repairs the row rather than overwriting anything.
 		it(
-			"bootstrapLocal corrects the seeded row from the injected clock",
+			"ensure repairs a drifted host row without rewriting its history",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const store = yield* sandboxStore;
 
-				// fabricate drift: a wall-clock observation and a status local can
-				// never legitimately hold, since stop and destroy are unsupported
-				yield* sql`UPDATE sandbox_instance SET status = 'faulted', state_observed_at = 999, updated_at = 999 WHERE id = 'local'`;
+				const before = Option.getOrThrow(yield* store.find(SandboxInstance.ID.local));
+
+				// fabricate drift: a status local can never legitimately hold, since
+				// stop and destroy are unsupported
+				yield* sql`
+					UPDATE sandbox_instance
+					SET status = 'faulted', state_observed_at = 999, last_used_at = 4242
+					WHERE id = 'local'
+				`;
 				yield* TestClock.adjust("5 seconds");
 
-				const row = yield* store.bootstrapLocal;
+				const row = yield* store.ensure(SandboxInstance.localFixture);
 				expect(row.status).toBe("online");
-				expect(Option.getOrThrow(row.runtimeConfig)).toBe("{}");
-				// the injected TestClock, not the migration's wall clock
+				// observation moves to the injected clock
 				expect(DateTime.toEpochMillis(row.stateObservedAt)).toBe(5000);
+				// history does not: creation and usage are facts, not fixture values
+				expect(DateTime.toEpochMillis(row.createdAt)).toBe(DateTime.toEpochMillis(before.createdAt));
+				expect(Option.getOrThrow(row.lastUsedAt).pipe(DateTime.toEpochMillis)).toBe(4242);
+			}),
+		);
+	});
+
+	// Migrations are DDL. The host row is a fixture the sandbox domain owns, so a
+	// bare database has the schema and nothing in it.
+	describe("fixtures", () => {
+		const { effect: bareIt } = testEffect(Database.layer(":memory:"));
+
+		bareIt(
+			"migrates to an empty instance table",
+			Effect.gen(function* () {
+				expect(yield* (yield* sandboxStore).list).toEqual([]);
+			}),
+		);
+
+		// The self-healing property: the migrator runs by high-water mark, so a
+		// row seeded by a migration and later deleted would never return.
+		bareIt(
+			"ensure restores the host row on a database that has none",
+			Effect.gen(function* () {
+				const store = yield* sandboxStore;
+				expect(Option.isNone(yield* store.find(SandboxInstance.ID.local))).toBe(true);
+
+				const row = yield* store.ensure(SandboxInstance.localFixture);
+				expect(row.id).toBe(SandboxInstance.ID.local);
+				expect(row.kind).toBe("local");
+				expect(row.ownership).toBe("external");
+				expect(row.status).toBe("online");
+
+				// idempotent: a second call is a no-op, not a duplicate or a failure
+				yield* store.ensure(SandboxInstance.localFixture);
+				expect(yield* store.list).toHaveLength(1);
+			}),
+		);
+
+		bareIt(
+			"withFixtures makes the host row available to foreign keys",
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				yield* seedProject;
+
+				// without the fixture the FK rejects the insert
+				const insert = sql`
+					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
+					VALUES ('d', 'p', '/workspace', 'main', 'local', 0, 0)
+				`;
+				expect(Option.isSome(yield* Effect.option(insert))).toBe(false);
+
+				yield* (yield* sandboxStore).ensure(SandboxInstance.localFixture);
+				yield* insert;
 			}),
 		);
 	});

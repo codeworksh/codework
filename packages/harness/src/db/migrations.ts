@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import { Effect } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
 // Migrations ship as code (Migrator.fromRecord) rather than .sql files on
@@ -12,7 +12,6 @@ import { SqlClient } from "effect/unstable/sql";
 export const migrations = {
 	"202607070001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
-		const now = yield* DateTime.now.pipe(Effect.map(DateTime.toEpochMillis));
 
 		// A durable filesystem namespace. Created before project_directory and
 		// session because both reference it. Reference counts are deliberately
@@ -50,31 +49,11 @@ export const migrations = {
 			WHERE provider_resource_id IS NOT NULL AND status != 'removed'
 		`;
 
-		// The configured host, seeded so Project/Session foreign keys resolve
-		// before any Controller exists. Migrations have no injected Clock — the
-		// one documented exception — and the Controller's bootstrap upsert
-		// idempotently corrects the row on first construction.
-		yield* sql`
-			INSERT INTO sandbox_instance ${sql.insert({
-				id: "local",
-				driver: "local",
-				kind: "local",
-				provider_resource_id: null,
-				runtime_config: "{}",
-				ownership: "external",
-				status: "online",
-				provider_status: null,
-				state_observed_at: now,
-				metadata: null,
-				last_error: null,
-				last_acquired_at: null,
-				last_released_at: null,
-				last_used_at: null,
-				removed_at: null,
-				created_at: now,
-				updated_at: now,
-			})}
-		`;
+		// The `local` row is not seeded here. Migrations are DDL: what the host
+		// namespace *is* belongs to the sandbox domain, seeding it would need a
+		// wall clock the rest of the codebase does not use, and the migrator's
+		// high-water mark means a seeded row deleted once never comes back.
+		// `SandboxStore.withFixtures` re-asserts it on every runtime build.
 
 		yield* sql`
 			CREATE TABLE project (
