@@ -4,6 +4,7 @@ import { SandboxRegistry } from "../src/sandbox/map";
 import { EnvDaytona } from "../src/sandbox/providers/daytona";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
+import { cancellationSpec } from "./fixtures/cancellation.spec";
 import { remoteSandboxSpec } from "./fixtures/remote.spec";
 import "./utils/env";
 
@@ -52,6 +53,28 @@ suite("Sandbox.EnvDaytona (shared sandbox)", () => {
 		timeout: PROVISION_TIMEOUT,
 		githubPat,
 	});
+
+	// `executeCommand(command, cwd?, env?, timeout?)` takes no abort signal — not
+	// in the installed 0.187.0 and not in 0.200.1 either, where `AbortSignal`
+	// appears only in `FileSystem`. (Daytona's docs show a `{ signal }` options
+	// object, hedged with "if supported by your SDK version"; no published TS SDK
+	// supports it.) So interrupting the fiber abandons a process that keeps
+	// running remotely.
+	//
+	// The session API (`createSession` → `executeSessionCommand` → `deleteSession`)
+	// *can* cancel, but `SessionExecuteRequest` carries no cwd and no env in any
+	// SDK version, so routing commands through it would mean rendering per-command
+	// env into the command string — putting Git credentials on the remote process
+	// command line. That trade is refused; see §16.5 of the Sandbox IO spec.
+	//
+	// So this stays declared until Daytona adds `signal` to `executeCommand` or
+	// cwd/env to sessions, and this suite fails the day either lands.
+	cancellationSpec("daytona", () => ({
+		run: (program) => run(program),
+		witness: `${SANDBOX_CWD}/cancel-progress`,
+		cancels: false,
+		settleMillis: 5000,
+	}));
 
 	it(
 		"boots the default snapshot with Node.js available",
