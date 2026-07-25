@@ -8,6 +8,7 @@ import * as Executor from "../src/tools/executor";
 import { noop as progressNoop } from "../src/tools/progress";
 import { local, ToolShell, ToolShellTimeout } from "../src/tools/shell";
 import * as Tool from "../src/tools/tool";
+import { pendingCall } from "./tools.fixture";
 import { tmpdir } from "./fixtures/tempdir";
 
 // The real OS shell backend: ToolShell.local provided with the host spawner.
@@ -147,7 +148,7 @@ describe("bash tool over ToolShell.local (pluggability)", () => {
 		const executor = Executor.make([Tool.provide(bashTool, localShell())]);
 
 		const outcome = await Effect.runPromise(
-			executor.handle({ callID: "c1", name: "bash", rawArgs: { command: "echo via-local" } }),
+			executor.handle(pendingCall("bash", { command: "echo via-local" }, "c1")),
 		);
 
 		expect(outcome.status).toBe("completed");

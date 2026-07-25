@@ -2,32 +2,48 @@ import { Effect, Layer } from "effect";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../../src/sandbox/filesystem/filesystem";
-import { Virtual } from "../../src/sandbox/filesystem/local";
+import { Local } from "../../src/sandbox/filesystem/local";
 import type { Sandbox } from "../../src/sandbox/sandbox";
 
 export interface SandboxEnv {
-	readonly sandbox: Sandbox.Sandbox;
+	/** The raw local primitives; `withService` builds the filesystem over them. */
+	readonly sandbox: Sandbox.LocalBackend;
 	readonly dispose?: () => Promise<void>;
 }
 
 export type MakeSandbox = () => Promise<SandboxEnv>;
 
 /**
- * Build the sandbox, hand the live `SandboxFileSystem.Service` to a plain async
- * body, and dispose afterwards. The service surface is Promise-based, so tests
- * read like ordinary `async`/`await` against `fs`.
+ * Promise view of the Effect service, so the behavioural spec below reads as
+ * ordinary `async`/`await` and a typed failure surfaces as a rejection. That is
+ * exactly the backend-facing `Provider` shape. Test ergonomics only — runtime
+ * code consumes the Effect surface directly.
  */
-export const withService = async <A>(
-	make: MakeSandbox,
-	body: (fs: SandboxFileSystem.Interface) => Promise<A>,
-): Promise<A> => {
+export type PromiseFileSystem = SandboxFileSystem.Provider;
+
+const toPromise = (fs: SandboxFileSystem.Interface): PromiseFileSystem => ({
+	readFile: (path) => Effect.runPromise(fs.readFile(path)),
+	readFileBuffer: (path) => Effect.runPromise(fs.readFileBuffer(path)),
+	writeFile: (path, content) => Effect.runPromise(fs.writeFile(path, content)),
+	stat: (path) => Effect.runPromise(fs.stat(path)),
+	readdir: (path) => Effect.runPromise(fs.readdir(path)),
+	exists: (path) => Effect.runPromise(fs.exists(path)),
+	mkdir: (path, options) => Effect.runPromise(fs.mkdir(path, options)),
+	rm: (path, options) => Effect.runPromise(fs.rm(path, options)),
+});
+
+/**
+ * Build the sandbox, hand a Promise view of the live `SandboxFileSystem.Service`
+ * to a plain async body, and dispose afterwards.
+ */
+export const withService = async <A>(make: MakeSandbox, body: (fs: PromiseFileSystem) => Promise<A>): Promise<A> => {
 	const env = await make();
 	try {
 		return await Effect.runPromise(
 			Effect.gen(function* () {
 				const fs = yield* SandboxFileSystem.Service;
-				return yield* Effect.promise(() => body(fs));
-			}).pipe(Effect.scoped, Effect.provide(Layer.provideMerge(Virtual.layer, env.sandbox))),
+				return yield* Effect.promise(() => body(toPromise(fs)));
+			}).pipe(Effect.scoped, Effect.provide(Layer.provideMerge(Local.layer, env.sandbox))),
 		);
 	} finally {
 		await env.dispose?.();
@@ -41,7 +57,7 @@ export const withService = async <A>(
  * as the runtime does.
  */
 export const filesystemSpec = (make: MakeSandbox) => {
-	const run = <A>(body: (fs: SandboxFileSystem.Interface) => Promise<A>) => withService(make, body);
+	const run = <A>(body: (fs: PromiseFileSystem) => Promise<A>) => withService(make, body);
 
 	describe("readFile / writeFile", () => {
 		it("round-trips utf-8 content", async () => {

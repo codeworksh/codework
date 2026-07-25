@@ -1,8 +1,9 @@
-import { Context, Effect, Layer, Schema, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import path from "path";
-import { FileSystem } from "../filesystem/filesystem";
+import { Context, Effect, Layer, Schema } from "effect";
+import { posix as path } from "node:path";
+import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
+import { SandboxFs } from "../sandbox/filesystem/util";
 import { Sandbox } from "../sandbox/sandbox";
+import { Shell } from "../sandbox/shell";
 import { AbsolutePath } from "../schema";
 
 export class AppProcessError extends Schema.TaggedErrorClass<AppProcessError>()("AppProcessError", {
@@ -63,6 +64,12 @@ export interface Interface {
 	readonly fetchBranch: (directory: string, branch: string) => Effect.Effect<Result, AppProcessError>;
 	readonly checkout: (directory: string, branch: string) => Effect.Effect<Result, AppProcessError>;
 	readonly reset: (directory: string, target: string) => Effect.Effect<Result, AppProcessError>;
+	readonly push: (input: {
+		readonly directory: string;
+		readonly refspec: string;
+		readonly remote?: string;
+		readonly env?: Record<string, string>;
+	}) => Effect.Effect<Result, AppProcessError>;
 	readonly worktreeCreate: (input: { repo: Repo; directory: AbsolutePath }) => Effect.Effect<void, WorktreeError>;
 	readonly worktreeRemove: (input: { repo: Repo; directory: AbsolutePath }) => Effect.Effect<void, WorktreeError>;
 	readonly worktreeList: (repo: Repo) => Effect.Effect<AbsolutePath[], WorktreeError>;
@@ -73,50 +80,31 @@ export class Service extends Context.Service<Service, Interface>()("@codework/gi
 export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
-		const fs = yield* FileSystem.Service;
-		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+		const fs = yield* SandboxFileSystem.Service;
+		const shell = yield* Shell;
 
-		const execute = (cwd: string) => (args: string[]) => {
-			const command = ChildProcess.make("git", args, {
-				cwd,
-				extendEnv: true,
-				stdin: "ignore",
-			});
-
-			return Effect.scoped(
-				Effect.gen(function* () {
-					const handle = yield* spawner.spawn(command);
-					const result = yield* Effect.all(
-						{
-							exitCode: handle.exitCode,
-							text: handle.stdout.pipe(Stream.decodeText(), Stream.mkString),
-							stderr: handle.stderr.pipe(Stream.decodeText(), Stream.mkString),
-						},
-						{ concurrency: "unbounded" },
-					);
-
-					return {
-						exitCode: result.exitCode,
-						text: result.text,
-						stderr: result.stderr,
-					} satisfies Result;
-				}),
-			).pipe(
-				Effect.mapError(
-					(cause) =>
-						new AppProcessError({
-							command: ["git", ...args].join(" "),
-							cause,
-						}),
+		// Arguments go through `execArgv`, never a command string: branch names and
+		// paths are caller-supplied, and a space or `$(…)` in one must stay data.
+		const execute = (cwd: string) => (args: string[], options?: { readonly env?: Record<string, string> }) =>
+			shell.execArgv(["git", ...args], { cwd, env: options?.env }).pipe(
+				Effect.map(
+					(result) =>
+						({
+							exitCode: result.exitCode,
+							text: result.stdout,
+							stderr: result.stderr,
+						}) satisfies Result,
 				),
+				Effect.mapError((cause) => new AppProcessError({ command: ["git", ...args].join(" "), cause })),
 			);
-		};
 
 		const run = (cwd: string) => (args: string[]) =>
 			execute(cwd)(args).pipe(Effect.catch(() => Effect.succeed({ exitCode: 1, text: "", stderr: "" })));
 
 		const find = Effect.fn("Git.find")(function* (input: AbsolutePath) {
-			const dotgit = yield* fs.up({ targets: [".git"], start: input }).pipe(Effect.map((matches) => matches[0]));
+			const dotgit = yield* SandboxFs.up(fs, { targets: [".git"], start: input }).pipe(
+				Effect.map((matches) => matches[0]),
+			);
 			if (!dotgit) return undefined;
 
 			const cwd = path.dirname(dotgit);
@@ -205,6 +193,15 @@ export const layer = Layer.effect(
 			execute(directory)(["reset", "--hard", target]),
 		);
 
+		const push = Effect.fn("Git.push")(
+			(input: {
+				readonly directory: string;
+				readonly refspec: string;
+				readonly remote?: string;
+				readonly env?: Record<string, string>;
+			}) => execute(input.directory)(["push", "--", input.remote ?? "origin", input.refspec], { env: input.env }),
+		);
+
 		const worktree = Effect.fnUntraced(function* (
 			operation: "create" | "remove" | "list",
 			repo: Repo,
@@ -277,6 +274,7 @@ export const layer = Layer.effect(
 			fetchBranch,
 			checkout,
 			reset,
+			push,
 			worktreeCreate,
 			worktreeRemove,
 			worktreeList,
@@ -284,15 +282,24 @@ export const layer = Layer.effect(
 	}),
 );
 
-export const defaultLayer = (rootPath: string) =>
-	layer.pipe(Layer.provide(FileSystem.defaultLayer), Layer.provide(Sandbox.defaultLayer(rootPath)));
+/**
+ * Run git inside the given sandbox — local, remote, or virtual. The sandbox
+ * supplies both halves: repository discovery walks its filesystem and commands
+ * run through its shell, so git can never read files in one place and execute
+ * in another.
+ *
+ * The sandbox must have a real `git` binary. A VFS-backed shell (`EnvBash`) has
+ * builtins only, so commands there exit 127 and `find` reports no repository.
+ */
+export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) => layer.pipe(Layer.provide(sandbox));
+
+export const defaultLayer = (rootPath: string) => layerWith(Sandbox.defaultLayer(rootPath));
 
 function resolvePath(cwd: string, value: string) {
 	const trimmed = value.replace(/[\r\n]+$/, "");
-	const normalized = FileSystem.windowsPath(trimmed);
 	if (!trimmed) return cwd;
-	if (path.isAbsolute(normalized)) return path.normalize(normalized);
-	return path.resolve(cwd, normalized);
+	if (path.isAbsolute(trimmed)) return path.normalize(trimmed);
+	return path.resolve(cwd, trimmed);
 }
 
 export * as Git from "./git";

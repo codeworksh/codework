@@ -10,6 +10,7 @@ import type * as Executor from "../src/tools/executor";
 import * as Registry from "../src/tools/registry";
 import { fromSandboxShell, ToolShell } from "../src/tools/shell";
 import * as Tool from "../src/tools/tool";
+import { pendingCall } from "./tools.fixture";
 import "./utils/env";
 
 // Real-backend registry tests: the bash tool registered over an ACTUAL remote sandbox
@@ -96,7 +97,7 @@ vercelSuite("ToolRegistry × real Vercel sandbox — long-running streaming bash
 			let settled = false;
 			const pending = Effect.runPromise(
 				resolved.handle(
-					{ callID: "vercel-bash", name: "bash", rawArgs: { command: STREAMING_COMMAND } },
+					pendingCall("bash", { command: STREAMING_COMMAND }, "vercel-bash"),
 					// Buffer above any plausible chunk count so the sliding queue drops nothing.
 					{ onProgress: fileSink(path), progressBuffer: LINES * 2 },
 				),
@@ -172,10 +173,9 @@ daytonaSuite("ToolRegistry × real Daytona sandbox — buffered bash (no streami
 			const path = await tempSinkFile();
 
 			const outcome = await Effect.runPromise(
-				resolved.handle(
-					{ callID: "daytona-bash", name: "bash", rawArgs: { command: BUFFERED_COMMAND } },
-					{ onProgress: fileSink(path) },
-				),
+				resolved.handle(pendingCall("bash", { command: BUFFERED_COMMAND }, "daytona-bash"), {
+					onProgress: fileSink(path),
+				}),
 			);
 
 			// Full output still arrives — but only at completion; the sink is never invoked.

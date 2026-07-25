@@ -1,7 +1,7 @@
 import type { VirtualFileSystem, VirtualStats } from "@platformatic/vfs";
 import { Context, Effect, Layer } from "effect";
 import { Buffer } from "node:buffer";
-import { dirname, join } from "node:path";
+import { posix } from "node:path";
 import { SandboxFileSystem } from "./filesystem";
 
 // The local backend: a `SandboxFileSystem.Service` over a `@platformatic/vfs`
@@ -18,14 +18,9 @@ const toFileStat = (stats: VirtualStats): SandboxFileSystem.FileStat => ({
 	mtime: stats.mtime,
 });
 
-// extend Interface; for extending
-// allowing for future expansion
-export interface Interface extends SandboxFileSystem.Interface {}
-
-const isNotFound = (cause: unknown) => {
-	const code = (cause as NodeJS.ErrnoException | undefined)?.code;
-	return code === "ENOENT" || code === "ENOTDIR";
-};
+// The VFS backend authors the Promise-based provider surface; `fromProvider`
+// lifts it into the Effect service the harness consumes.
+export interface Interface extends SandboxFileSystem.Provider {}
 
 const bytes = (content: string | Uint8Array) =>
 	typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content);
@@ -43,28 +38,27 @@ const make = (vfs: VirtualFileSystem): Interface => {
 		try {
 			await write();
 		} catch {
-			await vfs.promises.mkdir(dirname(path), { recursive: true });
+			await vfs.promises.mkdir(posix.dirname(path), { recursive: true });
 			await write();
 		}
 	};
 
 	const readdir = async (path: string) => vfs.promises.readdir(path);
 
-	const rm = async (path: string, options?: { recursive?: boolean; force?: boolean }) => {
-		SandboxFileSystem.assertRmOptions(options);
-
+	// Option validation lives in `fromProvider`, ahead of any mutation.
+	const rm = async (path: string, options?: SandboxFileSystem.RmOptions) => {
 		let stats: VirtualStats;
 		try {
 			stats = await vfs.promises.lstat(path);
 		} catch (cause) {
-			if (options?.force && isNotFound(cause)) return;
+			if (options?.force && SandboxFileSystem.isNotFoundError(cause)) return;
 			throw cause;
 		}
 
 		if (stats.isDirectory()) {
 			if (!options?.recursive) throw new Error(`rm: ${path}: is a directory`);
 			for (const entry of await readdir(path)) {
-				await rm(join(path, entry), { recursive: true, force: options.force });
+				await rm(posix.join(path, entry), { recursive: true, force: options.force });
 			}
 			await vfs.promises.rmdir(path);
 			return;
@@ -73,7 +67,7 @@ const make = (vfs: VirtualFileSystem): Interface => {
 		await vfs.promises.unlink(path);
 	};
 
-	return SandboxFileSystem.Service.of({
+	return {
 		readFile: (path) => vfs.promises.readFile(path, "utf8"),
 		readFileBuffer: async (path) => new Uint8Array(await vfs.promises.readFile(path)),
 		writeFile,
@@ -83,23 +77,24 @@ const make = (vfs: VirtualFileSystem): Interface => {
 			try {
 				await vfs.promises.stat(path);
 				return true;
-			} catch {
-				return false;
+			} catch (cause) {
+				if (SandboxFileSystem.isNotFoundError(cause)) return false;
+				throw cause;
 			}
 		},
 		mkdir: async (path, options) => {
 			await vfs.promises.mkdir(path, options);
 		},
 		rm,
-	});
+	};
 };
 
 /** The `SandboxFileSystem.Service` backed by the local {@link Vfs}. */
 export const layer = Layer.effect(
 	SandboxFileSystem.Service,
 	Effect.gen(function* () {
-		return make(yield* Vfs);
+		return SandboxFileSystem.fromProvider(make(yield* Vfs));
 	}),
 );
 
-export * as Virtual from "./local";
+export * as Local from "./local";
