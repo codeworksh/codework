@@ -8,6 +8,7 @@ import { Git } from "../git/git";
 import { SandboxEnv } from "../sandbox/env";
 import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
 import { SandboxInstance } from "../sandbox/instance";
+import { SandboxStore } from "../sandbox/store";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";
 import { Hash } from "../util/hash";
@@ -337,7 +338,10 @@ export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 		Layer.provide(Git.layer),
 		Layer.provide(ProjectCopy.layer),
 		Layer.provide(sandbox),
-		Layer.provide(Database.defaultLayer),
+		// Directory rows foreign-key to sandbox_instance, so the host row has to
+		// exist before one can be written. Any namespace other than the host is
+		// registered by whoever created it.
+		Layer.provide(SandboxStore.withFixtures(Database.defaultLayer)),
 	);
 
 export const defaultLayer = (path: string) => layerWith(Sandbox.defaultLayer(path));

@@ -16,6 +16,7 @@ import {
 	toolStatuses,
 } from "../db/schema.sql";
 import type { SandboxInstance } from "../sandbox/instance";
+import { SandboxStore } from "../sandbox/store";
 import type { AbsolutePath } from "../schema";
 import { SessionSchema } from "./schema";
 
@@ -855,6 +856,8 @@ export const layer = Layer.effect(
 	}),
 );
 
-export const defaultLayer = layer.pipe(Layer.provide(Database.defaultLayer));
+// Sessions foreign-key to sandbox_instance, so the host row has to exist before
+// a session can record which namespace it runs in.
+export const defaultLayer = layer.pipe(Layer.provide(SandboxStore.withFixtures(Database.defaultLayer)));
 
 export * as Session from "./session";

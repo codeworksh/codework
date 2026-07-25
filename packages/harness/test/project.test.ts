@@ -32,7 +32,7 @@ const repo = { directory, store } satisfies Git.Repo;
 
 // A real migrated in-memory database, so the tests exercise the actual SQL
 // issued by the service (upserts, deletes, txns).
-const databaseLayer = () => Database.layer(":memory:");
+const databaseLayer = () => SandboxStore.withFixtures(Database.layer(":memory:"));
 
 interface ProjectOptions {
 	// Contents of the `codework` marker file read from the repo store. When

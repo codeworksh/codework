@@ -95,6 +95,43 @@ export const PersistedError = Schema.Struct({
 export type PersistedError = typeof PersistedError.Type;
 
 /**
+ * A reconstructible namespace's canonical row.
+ *
+ * The row for such a namespace is a **cache**, not durable truth. The host
+ * filesystem exists whether or not a row describes it, so the row can be
+ * re-asserted from configuration at any time — and must be, because nothing else
+ * remembers it. Contrast a remote instance, whose row is the *only* record that
+ * provider-side infrastructure exists at all; losing that row orphans billable
+ * compute, which is why only remote creation needs labels and compensating
+ * destruction.
+ *
+ * Reconstructible is exactly `kind !== "remote"`, so this needs no extra column.
+ */
+export interface Fixture {
+	readonly id: ID;
+	readonly driver: string;
+	readonly kind: Kind;
+	readonly ownership: Ownership;
+	readonly status: Status;
+	readonly runtimeConfig: string;
+}
+
+/**
+ * The configured host. `external` because the host is not ours to destroy, and
+ * `online` because it is always reachable — local has no stop or destroy, so its
+ * lifecycle never legitimately moves and re-asserting the status is a repair
+ * rather than an overwrite.
+ */
+export const localFixture: Fixture = {
+	id: ID.local,
+	driver: "local",
+	kind: "local",
+	ownership: "external",
+	status: "online",
+	runtimeConfig: "{}",
+};
+
+/**
  * What an acquired scope sees: immutable identity, plus the cwd resolved for this
  * acquisition. Nothing mutable belongs here — `status`, `usage`, and reference
  * counts all change while a scope is open, so an acquire-time snapshot of them
