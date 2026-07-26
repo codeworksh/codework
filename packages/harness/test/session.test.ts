@@ -6,7 +6,6 @@ import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
 import { describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { SandboxStore } from "../src/sandbox/store";
 import { AbsolutePath } from "../src/schema";
 import { SandboxInstance } from "../src/sandbox/instance";
 import { Session } from "../src/session/session";
@@ -15,7 +14,7 @@ import { tmpdir } from "./fixtures/tempdir";
 import { testEffect } from "./utils/effect";
 
 // Fresh in-memory database per test: the layer is rebuilt for every it.effect.
-const layer = Session.layer.pipe(Layer.provideMerge(SandboxStore.withFixtures(Database.layer(":memory:"))));
+const layer = Session.layer.pipe(Layer.provideMerge(Database.layer(":memory:")));
 const it = testEffect(layer);
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
 const openaiKey = process.env.OPENAI_API_KEY;
@@ -1181,7 +1180,7 @@ describe("session", () => {
 	vitestIt("persists session entries across a file database reload", async () => {
 		await using tmp = await tmpdir();
 		const database = path.join(tmp.path, "session.db");
-		const fileLayer = Session.layer.pipe(Layer.provideMerge(SandboxStore.withFixtures(Database.layer(database))));
+		const fileLayer = Session.layer.pipe(Layer.provideMerge(Database.layer(database)));
 
 		await Effect.runPromise(
 			Effect.gen(function* () {

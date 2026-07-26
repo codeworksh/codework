@@ -17,7 +17,8 @@ describe("Sandbox.EnvBash", () => {
 	}));
 
 	describe("shell and FileSystem.Service share one filesystem", () => {
-		const sandbox = () => Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer(), Sandbox.SandboxEnv.mint("memory"));
+		const sandbox = () =>
+			Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer(), Sandbox.SandboxInstance.virtual({ driver: "memory" }));
 
 		it("shell reads what the service wrote", async () => {
 			const result = await Effect.runPromise(
@@ -212,7 +213,7 @@ describe("Sandbox.EnvBash", () => {
 					Effect.provide(
 						Sandbox.EnvBash.services(
 							Sandbox.EnvInMemory.layer({ cwd: "/repo" }),
-							Sandbox.SandboxEnv.mint("memory"),
+							Sandbox.SandboxInstance.virtual({ driver: "memory" }),
 						),
 					),
 				),
@@ -238,7 +239,7 @@ describe("Sandbox.EnvBash", () => {
 					Effect.provide(
 						Sandbox.EnvBash.services(
 							Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } }),
-							Sandbox.SandboxEnv.mint("sqldb"),
+							Sandbox.SandboxInstance.virtual({ driver: "sqldb" }),
 						),
 					),
 				),
@@ -264,7 +265,7 @@ describe("Sandbox.EnvBash", () => {
 					Effect.provide(
 						Sandbox.EnvBash.services(
 							Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }),
-							Sandbox.SandboxEnv.DEFAULT,
+							Sandbox.SandboxInstance.host(tmp.path),
 						),
 					),
 				),
@@ -452,6 +453,9 @@ describe("Sandbox.EnvBash", () => {
 	it("works over the sqldb backend with persistence", async () => {
 		await using tmp = await tmpdir();
 		const database = path.join(tmp.path, "fs.db");
+		// One backing file is one namespace, so both builds carry one identity —
+		// minting a second would give the same tree two names.
+		const instanceId = Sandbox.SandboxInstance.ID.create();
 
 		await Effect.runPromise(
 			Effect.gen(function* () {
@@ -462,7 +466,7 @@ describe("Sandbox.EnvBash", () => {
 				Effect.provide(
 					Sandbox.EnvBash.services(
 						Sandbox.EnvSqldb.layer({ location: database }),
-						Sandbox.SandboxEnv.format({ kind: "sqldb", instance: database }),
+						Sandbox.SandboxInstance.virtual({ driver: "sqldb", id: instanceId }),
 					),
 				),
 			),
@@ -476,7 +480,7 @@ describe("Sandbox.EnvBash", () => {
 				Effect.provide(
 					Sandbox.EnvBash.services(
 						Sandbox.EnvSqldb.layer({ location: database }),
-						Sandbox.SandboxEnv.format({ kind: "sqldb", instance: database }),
+						Sandbox.SandboxInstance.virtual({ driver: "sqldb", id: instanceId }),
 					),
 				),
 			),
@@ -500,7 +504,10 @@ describe("Sandbox.EnvBash", () => {
 				return yield* filesystem.readFile("file.txt");
 			}).pipe(
 				Effect.provide(
-					Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }), Sandbox.SandboxEnv.DEFAULT),
+					Sandbox.EnvBash.services(
+						Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }),
+						Sandbox.SandboxInstance.host(tmp.path),
+					),
 				),
 			),
 		);
@@ -520,7 +527,10 @@ describe("Sandbox.EnvBash", () => {
 				return yield* shell.exec(`ln -s ${outside} leak && cat leak`);
 			}).pipe(
 				Effect.provide(
-					Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }), Sandbox.SandboxEnv.DEFAULT),
+					Sandbox.EnvBash.services(
+						Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }),
+						Sandbox.SandboxInstance.host(tmp.path),
+					),
 				),
 			),
 		);

@@ -6,8 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { SandboxStore } from "../src/sandbox/store";
-import { SandboxEnv } from "../src/sandbox/env";
+import { SandboxInstance } from "../src/sandbox/instance";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { Git } from "../src/git/git";
 import { Location } from "../src/location/location";
@@ -17,7 +16,6 @@ import { ProjectSchema } from "../src/project/schema";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { AbsolutePath } from "../src/schema";
 import { Hash } from "../src/util/hash";
-import { Workspace } from "../src/workspace/workspace";
 import { tmpdir } from "./fixtures/tempdir";
 import { testEffect } from "./utils/effect";
 
@@ -32,10 +30,9 @@ const directory = AbsolutePath.make("/app/codeworksh/codework");
 const store = AbsolutePath.make(path.join(directory, ".git"));
 const repo = { directory, store } satisfies Git.Repo;
 
-const workspaceId = Workspace.ID.ascending("wrk_location_test");
 const projectId = ProjectSchema.ID.make(Hash.fast("git:github.com/codeworksh/codework"));
 
-const databaseLayer = () => SandboxStore.withFixtures(Database.layer(":memory:"));
+const databaseLayer = () => Database.layer(":memory:");
 
 // Location is an outer layer over Project: these tests stub only Project's
 // leaf dependencies (Git/FileSystem/Copy) and run the real Project service
@@ -48,7 +45,7 @@ const locationLayer = (ref: Location.Ref, git: Partial<Git.Interface>) =>
 		Layer.provideMerge(
 			Layer.mergeAll(
 				databaseLayer(),
-				SandboxEnv.defaultLayer,
+				SandboxInstance.hostLayer(),
 				Layer.succeed(
 					SandboxFileSystem.Service,
 					SandboxFileSystem.Service.of({
@@ -84,7 +81,7 @@ const remoteGit = (overrides: Partial<Git.Interface> = {}): Partial<Git.Interfac
 });
 
 describe("Location", () => {
-	const { effect: locationIt } = testEffect(locationLayer({ directory, workspaceID: workspaceId }, remoteGit()));
+	const { effect: locationIt } = testEffect(locationLayer({ directory }, remoteGit()));
 
 	locationIt("resolves the project for the location directory", () =>
 		Effect.gen(function* () {
@@ -92,7 +89,7 @@ describe("Location", () => {
 
 			expect(location).toEqual({
 				directory,
-				workspaceID: workspaceId,
+				sandboxInstanceId: SandboxInstance.ID.local,
 				project: {
 					id: projectId,
 					name: "codework",
@@ -116,25 +113,52 @@ describe("Location", () => {
 			// ... and the directory registered as main, queryable through Project
 			const project = yield* Project.Service;
 			const directories = yield* project.directories({ projectId: location.project.id });
-			expect(directories).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" }]);
+			expect(directories).toEqual([{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" }]);
 		}),
 	);
 
-	const { effect: noWorkspaceIt } = testEffect(locationLayer({ directory }, remoteGit()));
+	// The namespace is half the key, so it survives onto the resolved Info: a
+	// consumer holding a Location knows both which path and which filesystem.
+	const { effect: namespaceIt } = testEffect(locationLayer({ directory: directory }, remoteGit()));
 
-	noWorkspaceIt("omits the workspaceID when the ref carries none", () =>
+	namespaceIt("carries the namespace the ref names", () =>
 		Effect.gen(function* () {
 			const location = yield* Location.Service;
 
-			expect(location.workspaceID).toBeUndefined();
+			expect(location.sandboxInstanceId).toBe(SandboxInstance.ID.local);
 			expect(location.project.id).toEqual(projectId);
+		}),
+	);
+
+	// The property everything above is for: the (namespace, path) pair is the
+	// key, so everyone who opens the same pair lands on the same project and the
+	// same registered directory. Building the Location twice stands in for two
+	// sessions doing so.
+	const { effect: sharedIt } = testEffect(locationLayer({ directory: directory }, remoteGit()));
+
+	sharedIt("shares one project and one directory row between locations on the same key", () =>
+		Effect.gen(function* () {
+			const first = yield* Location.Service;
+
+			// a second resolution of the same pair, through the same database
+			const project = yield* Project.Service;
+			const second = yield* project.fromDirectory(directory);
+
+			expect(second.id).toBe(first.project.id);
+
+			const sql = yield* SqlClient.SqlClient;
+			expect(yield* sql`SELECT * FROM project`).toHaveLength(1);
+			expect(yield* sql`SELECT * FROM project_directory`).toHaveLength(1);
+
+			const directories = yield* project.directories({ projectId: first.project.id });
+			expect(directories).toEqual([{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" }]);
 		}),
 	);
 
 	// The ref may point inside the repository; the location keeps the opened
 	// directory while the project reports the repository root.
 	const opened = AbsolutePath.make(path.join(directory, "packages", "web"));
-	const { effect: nestedIt } = testEffect(locationLayer({ directory: opened, workspaceID: workspaceId }, remoteGit()));
+	const { effect: nestedIt } = testEffect(locationLayer({ directory: opened }, remoteGit()));
 
 	nestedIt("keeps the opened directory distinct from the resolved project root", () =>
 		Effect.gen(function* () {
@@ -146,13 +170,11 @@ describe("Location", () => {
 			// the project registers the repository root, not the opened subdirectory
 			const project = yield* Project.Service;
 			const directories = yield* project.directories({ projectId: location.project.id });
-			expect(directories).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" }]);
+			expect(directories).toEqual([{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" }]);
 		}),
 	);
 
-	const { effect: localIt } = testEffect(
-		locationLayer({ directory, workspaceID: workspaceId }, { find: () => Effect.succeed(undefined) }),
-	);
+	const { effect: localIt } = testEffect(locationLayer({ directory }, { find: () => Effect.succeed(undefined) }));
 
 	localIt("falls back to the local project outside a Git repository", () =>
 		Effect.gen(function* () {
@@ -160,7 +182,7 @@ describe("Location", () => {
 
 			expect(location).toEqual({
 				directory,
-				workspaceID: workspaceId,
+				sandboxInstanceId: SandboxInstance.ID.local,
 				project: {
 					id: ProjectSchema.ID.local,
 					name: "codework",
@@ -182,11 +204,14 @@ describe("Location", () => {
 		// builds a Location, resolving the directory to a local project since the
 		// empty tree holds no repository — the walk for `.git` finds nothing, so
 		// git never runs a command.
-		const ref: Location.Ref = {
-			directory: AbsolutePath.make("/workspace/scratch"),
-			workspaceID: workspaceId,
-		};
-		const { effect: inMemoryIt } = testEffect(Location.layerWith(ref, Sandbox.memory()));
+		// The namespace is the in-memory VFS, not the host: same path, different
+		// filesystem. The ref and the sandbox are given the same instance id
+		// because they must name one namespace between them.
+		const instanceId = SandboxInstance.ID.create();
+		// The ref names only the directory; the namespace comes from the mount, so
+		// the two cannot name different places.
+		const ref: Location.Ref = { directory: AbsolutePath.make("/workspace/scratch") };
+		const { effect: inMemoryIt } = testEffect(Location.layerWith(ref, Sandbox.memory({ instanceId })));
 
 		inMemoryIt("builds a location over an in-memory sandbox", () =>
 			Effect.gen(function* () {
@@ -194,7 +219,7 @@ describe("Location", () => {
 
 				expect(location).toEqual({
 					directory: ref.directory,
-					workspaceID: workspaceId,
+					sandboxInstanceId: instanceId,
 					project: {
 						id: ProjectSchema.ID.local,
 						name: "scratch",
@@ -222,10 +247,7 @@ describe("Location", () => {
 			await gitCli(repoDirectory, "add", ".");
 			await gitCli(repoDirectory, "commit", "-q", "-m", "init");
 
-			const ref: Location.Ref = {
-				directory: AbsolutePath.make(repoDirectory),
-				workspaceID: workspaceId,
-			};
+			const ref: Location.Ref = { directory: AbsolutePath.make(repoDirectory) };
 
 			const { location, directories } = await Effect.runPromise(
 				Effect.gen(function* () {
@@ -233,13 +255,20 @@ describe("Location", () => {
 					const project = yield* Project.Service;
 					const directories = yield* project.directories({ projectId: location.project.id });
 					return { location, directories };
-				}).pipe(Effect.provide(Location.layer(ref).pipe(Layer.provideMerge(Project.defaultLayer("/"))))),
+				}).pipe(
+					Effect.provide(
+						Location.layer(ref).pipe(
+							Layer.provideMerge(Project.defaultLayer("/")),
+							Layer.provide(SandboxInstance.hostLayer()),
+						),
+					),
+				),
 			);
 
 			const realDirectory = AbsolutePath.make(await fs.realpath(repoDirectory));
 			expect(location).toEqual({
 				directory: ref.directory,
-				workspaceID: workspaceId,
+				sandboxInstanceId: SandboxInstance.ID.local,
 				project: {
 					id: ProjectSchema.ID.make(Hash.fast("git:github.com/codeworksh/widget")),
 					name: "widget",
@@ -248,7 +277,7 @@ describe("Location", () => {
 				},
 			});
 			expect(directories).toEqual([
-				{ directory: realDirectory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
+				{ directory: realDirectory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
 			]);
 		}, 30_000);
 
@@ -259,7 +288,7 @@ describe("Location", () => {
 			const plain = path.join(tmp.path, "scratch");
 			await fs.mkdir(plain);
 
-			const ref: Location.Ref = { directory: AbsolutePath.make(plain) };
+			const ref = { directory: AbsolutePath.make(plain) };
 
 			const location = await Effect.runPromise(
 				Effect.gen(function* () {
@@ -269,7 +298,7 @@ describe("Location", () => {
 
 			expect(location).toEqual({
 				directory: ref.directory,
-				workspaceID: undefined,
+				sandboxInstanceId: SandboxInstance.ID.local,
 				project: {
 					id: ProjectSchema.ID.local,
 					name: "scratch",

@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { SandboxInstanceRow } from "../db/schema.sql";
 import { SandboxInstance } from "./instance";
@@ -8,6 +8,10 @@ import { SandboxInstance } from "./instance";
  * reads instance rows and knows nothing about drivers, provisioning, reference
  * counts, or lifecycle rules. `Sandbox.Controller` is added on top of this and
  * owns all of that.
+ *
+ * The host is not in this table at all — `local` is reserved and `NULL` is its
+ * only storage form (see `SandboxInstance.toColumn`), so nothing here has to
+ * seed, ensure, or repair a row for a host-based session to exist.
  *
  * State transitions are single conditional statements verified by affected-row
  * count, never a read-then-write transaction: `SqlClient` begins DEFERRED, and
@@ -40,19 +44,6 @@ export interface Interface {
 		readonly from: ReadonlyArray<SandboxInstance.Status>;
 		readonly to: SandboxInstance.Status;
 	}) => Effect.Effect<boolean>;
-	/**
-	 * Re-assert a reconstructible namespace's row from its canonical definition.
-	 *
-	 * Unlike {@link register}, this upserts: a fixture's row holds only facts we
-	 * can re-derive from configuration, so writing them again is a repair, not an
-	 * overwrite. Clear the database and the next `ensure` restores the row — which
-	 * is the point, since Project and Session foreign-key to it.
-	 *
-	 * Only for `kind !== "remote"`. A remote row is the sole record that provider
-	 * infrastructure exists; nothing can re-derive it, and re-asserting a status
-	 * would discard a real observation.
-	 */
-	readonly ensure: (fixture: SandboxInstance.Fixture) => Effect.Effect<SandboxInstanceRow>;
 }
 
 export const make = Effect.gen(function* () {
@@ -97,8 +88,8 @@ export const make = Effect.gen(function* () {
 				// stateObservedAt defaults to the injected Clock's now
 				metadata: Option.fromUndefinedOr(input.metadata as Record<string, string> | undefined),
 				lastError: Option.none(),
-				lastAcquiredAt: Option.none(),
-				lastReleasedAt: Option.none(),
+				lastMountedAt: Option.none(),
+				lastUnmountedAt: Option.none(),
 				lastUsedAt: Option.none(),
 				removedAt: Option.none(),
 			})
@@ -130,54 +121,7 @@ export const make = Effect.gen(function* () {
 		return moved.length > 0;
 	});
 
-	const ensure = Effect.fn("SandboxStore.ensure")(function* (fixture: SandboxInstance.Fixture) {
-		const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-		// One statement, so concurrent callers cannot race — §7.2's rule. The
-		// conflict clause restores identity and the observation only: created_at
-		// and the usage timestamps are history, and a repair must not rewrite them.
-		yield* sql`
-			INSERT INTO sandbox_instance
-				(id, driver, kind, ownership, status, runtime_config, state_observed_at, created_at, updated_at)
-			VALUES (
-				${fixture.id}, ${fixture.driver}, ${fixture.kind}, ${fixture.ownership},
-				${fixture.status}, ${fixture.runtimeConfig}, ${now}, ${now}, ${now}
-			)
-			ON CONFLICT(id) DO UPDATE SET
-				driver = excluded.driver,
-				kind = excluded.kind,
-				ownership = excluded.ownership,
-				status = excluded.status,
-				runtime_config = excluded.runtime_config,
-				state_observed_at = excluded.state_observed_at,
-				updated_at = excluded.updated_at
-		`.pipe(Effect.orDie);
-
-		const stored = yield* find(fixture.id);
-		if (Option.isNone(stored))
-			return yield* Effect.die(new Error(`sandbox instance fixture did not persist: ${fixture.id}`));
-		return stored.value;
-	});
-
-	return { find, list, register, transition, ensure } satisfies Interface;
+	return { find, list, register, transition } satisfies Interface;
 });
-
-/**
- * A database plus the namespace fixtures its own foreign keys depend on.
- *
- * `project_directory` and `session` reference `sandbox_instance`, so the host row
- * has to exist before either can record where it lives. That row is not schema —
- * what `local` *is* belongs to the sandbox domain, and a migration cannot seed it
- * without both mixing DML into DDL and reaching for a wall clock the rest of the
- * codebase does not use. It is also not one-shot: the migrator runs by high-water
- * mark, so a migration-seeded row is gone for good once deleted, whereas this
- * re-asserts on every runtime build.
- *
- * The dependency points this way — sandbox wraps database, not the reverse — so
- * `db/` stays generic infrastructure with no domain imports.
- */
-export const withFixtures = <E, R>(database: Layer.Layer<SqlClient.SqlClient, E, R>) =>
-	Layer.effectDiscard(Effect.flatMap(make, (store) => store.ensure(SandboxInstance.localFixture))).pipe(
-		Layer.provideMerge(database),
-	);
 
 export * as SandboxStore from "./store";

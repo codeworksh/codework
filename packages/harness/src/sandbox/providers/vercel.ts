@@ -5,6 +5,7 @@ import type { Stats } from "node:fs";
 import { SandboxEnv } from "../env";
 import { SandboxFileSystem } from "../filesystem/filesystem";
 import { RemoteFileSystem } from "../filesystem/remote";
+import { SandboxInstance } from "../instance";
 import { type ExecChunk, type ExecResult, type ISandboxExe, quoteArgv, resolveCwd, Shell, ShellError } from "../shell";
 
 const utf8 = new TextEncoder();
@@ -33,6 +34,8 @@ export interface Options {
 	readonly projectId?: string;
 	/** Reuse an existing sandbox by name instead of creating one. */
 	readonly sandboxName?: string;
+	/** Durable instance identity for this namespace. Supplied by the Controller. */
+	readonly instanceId?: SandboxInstance.ID;
 	/** Snapshot id to create the sandbox from. */
 	readonly snapshot?: string;
 	/** Source to seed the sandbox filesystem from (git or tarball). */
@@ -287,16 +290,32 @@ const shellLayer = (options: Options) =>
  */
 // Identity is per remote sandbox, not per provider: two Vercel sandboxes both
 // using /vercel/sandbox must not share persisted directory records.
-const envLayer = () =>
+//
+// Transitional: absent an `instanceId` from the caller, the durable ID is
+// derived from the sandbox name. That is the one thing §5.1 forbids — a driver
+// locator wearing an application identity — and it holds only until the
+// Controller mints and records IDs of its own. Nothing but the address-keyed
+// `SandboxMap` relies on it.
+const identityLayer = (options: Options) =>
 	Layer.effect(
-		SandboxEnv.EnvId,
-		Effect.map(Remote, ({ sandbox }) => SandboxEnv.format({ kind: "vercel", instance: sandbox.name })),
+		SandboxInstance.Service,
+		Effect.map(Remote, ({ sandbox }) =>
+			SandboxInstance.remote({
+				driver: "vercel",
+				id:
+					options.instanceId ??
+					SandboxInstance.ID.make(SandboxEnv.format({ kind: "vercel", instance: sandbox.name })),
+				cwd: options.cwd,
+			}),
+		),
 	);
 
 export const layer = (
 	options: Options = {},
-): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxEnv.EnvId, VercelError> =>
-	Layer.mergeAll(filesystemLayer(options), shellLayer(options), envLayer()).pipe(Layer.provide(remote(options)));
+): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxInstance.Service, VercelError> =>
+	Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options)).pipe(
+		Layer.provide(remote(options)),
+	);
 
 export const services = layer;
 

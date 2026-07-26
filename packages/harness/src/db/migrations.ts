@@ -15,11 +15,15 @@ export const migrations = {
 
 		// A durable filesystem namespace. Created before project_directory and
 		// session because both reference it. Reference counts are deliberately
-		// absent: they live in Controller memory, since a persisted count cannot
+		// absent: they live in control-plane memory, since a persisted count cannot
 		// tell whether the process that took it is still running.
+		//
+		// The host is never a row. `local` is a reserved id that exists at runtime
+		// and never reaches a column; NULL is its only storage form, so nothing has
+		// to be seeded or repaired for a session to exist.
 		yield* sql`
 			CREATE TABLE sandbox_instance (
-				id TEXT PRIMARY KEY,
+				id TEXT PRIMARY KEY CHECK (id <> 'local'),
 				driver TEXT NOT NULL,
 				kind TEXT NOT NULL CHECK (kind IN ('local', 'virtual', 'remote')),
 				provider_resource_id TEXT,
@@ -30,8 +34,8 @@ export const migrations = {
 				state_observed_at INTEGER NOT NULL,
 				metadata TEXT,
 				last_error TEXT,
-				last_acquired_at INTEGER,
-				last_released_at INTEGER,
+				last_mounted_at INTEGER,
+				last_unmounted_at INTEGER,
 				last_used_at INTEGER,
 				removed_at INTEGER,
 				created_at INTEGER NOT NULL,
@@ -49,12 +53,6 @@ export const migrations = {
 			WHERE provider_resource_id IS NOT NULL AND status != 'removed'
 		`;
 
-		// The `local` row is not seeded here. Migrations are DDL: what the host
-		// namespace *is* belongs to the sandbox domain, seeding it would need a
-		// wall clock the rest of the codebase does not use, and the migrator's
-		// high-water mark means a seeded row deleted once never comes back.
-		// `SandboxStore.withFixtures` re-asserts it on every runtime build.
-
 		yield* sql`
 			CREATE TABLE project (
 				id TEXT PRIMARY KEY,
@@ -64,24 +62,30 @@ export const migrations = {
 			)
 		`;
 
-		// RESTRICT, not CASCADE: destroying infrastructure tombstones the sandbox
-		// row rather than deleting it, so history keeps a valid reference.
+		// Nullable, NULL = the host. RESTRICT, not CASCADE: destroying
+		// infrastructure tombstones the sandbox row rather than deleting it, so
+		// history keeps a valid reference. The FK is skipped on NULL, so a host
+		// directory can be written before any namespace is registered.
 		yield* sql`
 			CREATE TABLE project_directory (
 				id TEXT PRIMARY KEY,
 				project_id TEXT NOT NULL REFERENCES project(id) ON UPDATE CASCADE ON DELETE CASCADE,
 				directory TEXT NOT NULL,
 				type TEXT NOT NULL,
-				sandbox_instance_id TEXT NOT NULL
-					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+				sandbox_instance_id TEXT
+					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT
+					CHECK (sandbox_instance_id IS NULL OR sandbox_instance_id <> 'local'),
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL
 			)
 		`;
 
+		// SQLite treats NULLs as distinct in a unique index, so (project, NULL,
+		// '/repo') would insert twice. Coalescing to the reserved id makes the
+		// index read as what it means.
 		yield* sql`
 			CREATE UNIQUE INDEX project_directory_project_directory_idx
-			ON project_directory (project_id, sandbox_instance_id, directory)
+			ON project_directory (project_id, COALESCE(sandbox_instance_id, 'local'), directory)
 		`;
 
 		yield* sql`
@@ -94,8 +98,9 @@ export const migrations = {
 				title TEXT NOT NULL,
 				tag TEXT,
 				metadata TEXT,
-				sandbox_instance_id TEXT NOT NULL
-					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+				sandbox_instance_id TEXT
+					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT
+					CHECK (sandbox_instance_id IS NULL OR sandbox_instance_id <> 'local'),
 				cost REAL NOT NULL DEFAULT 0,
 				tokens_input INTEGER NOT NULL DEFAULT 0,
 				tokens_output INTEGER NOT NULL DEFAULT 0,

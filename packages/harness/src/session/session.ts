@@ -15,8 +15,7 @@ import {
 	type ToolStatus,
 	toolStatuses,
 } from "../db/schema.sql";
-import type { SandboxInstance } from "../sandbox/instance";
-import { SandboxStore } from "../sandbox/store";
+import { SandboxInstance } from "../sandbox/instance";
 import type { AbsolutePath } from "../schema";
 import { SessionSchema } from "./schema";
 
@@ -69,8 +68,11 @@ export interface CreateSession {
 	readonly directory: AbsolutePath;
 	readonly title: string;
 	readonly tag?: string;
-	/** The namespace this session's directory lives in. Must already exist. */
-	readonly sandboxInstanceId: SandboxInstance.ID;
+	/**
+	 * The namespace this session's directory lives in. Defaults to the host,
+	 * which needs no row; any other namespace must already be registered.
+	 */
+	readonly sandboxInstanceId?: SandboxInstance.ID;
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
@@ -320,7 +322,7 @@ export const layer = Layer.effect(
 					directory: input.directory,
 					title: input.title,
 					tag: Option.fromUndefinedOr(input.tag),
-					sandboxInstanceId: input.sandboxInstanceId,
+					sandboxInstanceId: SandboxInstance.toField(input.sandboxInstanceId ?? SandboxInstance.ID.local),
 					metadata: Option.fromUndefinedOr(input.metadata as Record<string, string> | undefined),
 					leafEntryId: Option.none(),
 				})
@@ -858,6 +860,8 @@ export const layer = Layer.effect(
 
 // Sessions foreign-key to sandbox_instance, so the host row has to exist before
 // a session can record which namespace it runs in.
-export const defaultLayer = layer.pipe(Layer.provide(SandboxStore.withFixtures(Database.defaultLayer)));
+// Plain database: the host has no row and the namespace foreign key is skipped
+// on NULL, so a session needs no sandbox setup to exist.
+export const defaultLayer = layer.pipe(Layer.provide(Database.defaultLayer));
 
 export * as Session from "./session";

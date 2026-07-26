@@ -55,8 +55,11 @@ export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
 
 /**
  * A durable filesystem namespace. The row is the whole durable model — reference
- * counts live in Controller memory, never here, because a persisted count cannot
- * tell whether the process that took it is still alive.
+ * counts live in control-plane memory, never here, because a persisted count
+ * cannot tell whether the process that took it is still alive.
+ *
+ * The host has no row: `local` is reserved and `NULL` is its storage form, so
+ * this table only ever holds namespaces something had to provision.
  */
 export class SandboxInstanceRow extends Model.Class<SandboxInstanceRow>("SandboxInstanceRow")({
 	id: SandboxInstance.ID,
@@ -70,8 +73,8 @@ export class SandboxInstanceRow extends Model.Class<SandboxInstanceRow>("Sandbox
 	stateObservedAt: Model.DateTimeFromNumberWithNow,
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
 	lastError: Model.FieldOption(Model.JsonFromString(SandboxInstance.PersistedError)),
-	lastAcquiredAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
-	lastReleasedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	lastMountedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
+	lastUnmountedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
 	lastUsedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
 	removedAt: Model.FieldOption(Schema.DateTimeUtcFromMillis),
 	...Timestamps,
@@ -82,7 +85,9 @@ export class ProjectDirectoryRow extends Model.Class<ProjectDirectoryRow>("Proje
 	projectId: Schema.String,
 	directory: AbsolutePath,
 	type: Schema.Literals(["main", "root", "gitworktree"]),
-	sandboxInstanceId: SandboxInstance.ID,
+	// Nullable: NULL is the host (§4). Service-level code sees a plain ID through
+	// SandboxInstance.toColumn/fromColumn and never branches on the host.
+	sandboxInstanceId: Model.FieldOption(SandboxInstance.ID),
 	...Timestamps,
 }) {}
 
@@ -95,7 +100,9 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	title: Schema.String,
 	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
-	sandboxInstanceId: SandboxInstance.ID,
+	// Nullable: NULL is the host (§4), so a session can be written before any
+	// namespace is registered — the foreign key is skipped on NULL.
+	sandboxInstanceId: Model.FieldOption(SandboxInstance.ID),
 	// Durable leaf cursor: read anchor (path walks leaf→root) and append anchor
 	// (new entries attach here). Moved inside every append/branch transaction.
 	leafEntryId: Model.FieldOption(Schema.String),

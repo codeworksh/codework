@@ -1,5 +1,4 @@
-import { DateTime, Effect, Option } from "effect";
-import * as TestClock from "effect/testing/TestClock";
+import { Effect, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db";
@@ -7,9 +6,9 @@ import { SandboxInstance } from "../src/sandbox/instance";
 import { SandboxStore } from "../src/sandbox/store";
 import { testEffect } from "./utils/effect";
 
-// The host fixture is present, as it is for any real runtime: Project and
-// Session compose their database through `SandboxStore.withFixtures`.
-const { effect: it } = testEffect(SandboxStore.withFixtures(Database.layer(":memory:")));
+// A plain database, exactly as Project and Session compose it. Nothing is
+// seeded: the host is never a row, so there is nothing to ensure or repair.
+const { effect: it } = testEffect(Database.layer(":memory:"));
 
 const id = (value: string) => SandboxInstance.ID.make(value);
 
@@ -23,35 +22,41 @@ const seedProject = Effect.gen(function* () {
 describe("SandboxInstance", () => {
 	describe("model", () => {
 		it(
-			"brands ids and exposes the deterministic local identity",
+			"brands ids and reserves the host identity",
 			Effect.sync(() => {
 				expect(SandboxInstance.ID.local).toBe("local");
 				expect(id("anything")).toBe("anything");
+				expect(SandboxInstance.ID.create()).toMatch(/^sbx_/);
 			}),
 		);
 
-		// The acquirable set is the predicate every conditional write depends on,
-		// so it is asserted exactly rather than sampled.
+		// The mountable set is the predicate every conditional write depends on, so
+		// it is asserted exactly rather than sampled.
 		it(
-			"treats online, offline and faulted as acquirable and nothing else",
+			"treats online, offline and faulted as mountable and nothing else",
 			Effect.sync(() => {
-				expect([...SandboxInstance.acquirable].sort()).toEqual(["faulted", "offline", "online"]);
+				expect([...SandboxInstance.mountable].sort()).toEqual(["faulted", "offline", "online"]);
 
-				// offline qualifies because acquisition wakes; faulted qualifies
-				// because a fault is a usability condition, not an identity one.
-				expect(SandboxInstance.isAcquirable("offline")).toBe(true);
-				expect(SandboxInstance.isAcquirable("faulted")).toBe(true);
+				// offline qualifies because mounting wakes; faulted qualifies because
+				// a fault is a usability condition, not an identity one.
+				expect(SandboxInstance.isMountable("offline")).toBe(true);
+				expect(SandboxInstance.isMountable("faulted")).toBe(true);
 
-				for (const status of [
-					"provisioning",
-					"resuming",
-					"suspending",
-					"removing",
-					"removed",
-					"unavail",
-				] as const) {
-					expect(SandboxInstance.isAcquirable(status)).toBe(false);
+				for (const status of ["provisioning", "suspending", "removing", "removed", "unavail"] as const) {
+					expect(SandboxInstance.isMountable(status)).toBe(false);
 				}
+			}),
+		);
+
+		// `resuming` would exist to be observed by nothing: mounting wakes, offline
+		// is already mountable, and waking needs no claim because it is not
+		// destructive. `suspending`/`removing` stay because they *are* claims.
+		it(
+			"has no resuming status",
+			Effect.sync(() => {
+				expect(SandboxInstance.Status.literals).not.toContain("resuming");
+				expect(SandboxInstance.Status.literals).toContain("suspending");
+				expect(SandboxInstance.Status.literals).toContain("removing");
 			}),
 		);
 
@@ -64,23 +69,45 @@ describe("SandboxInstance", () => {
 				expect(SandboxInstance.Status.literals).toContain("unavail");
 			}),
 		);
+
+		// One mapping, both directions, for both carrier shapes. Runtime code always
+		// holds a concrete id and never branches on the host.
+		it(
+			"maps the host to NULL at the storage boundary and back",
+			Effect.sync(() => {
+				expect(SandboxInstance.toColumn(SandboxInstance.ID.local)).toBe(null);
+				expect(SandboxInstance.fromColumn(null)).toBe(SandboxInstance.ID.local);
+
+				expect(SandboxInstance.toColumn(id("sbx_1"))).toBe("sbx_1");
+				expect(SandboxInstance.fromColumn("sbx_1")).toBe("sbx_1");
+
+				expect(Option.isNone(SandboxInstance.toField(SandboxInstance.ID.local))).toBe(true);
+				expect(SandboxInstance.fromField(Option.none())).toBe(SandboxInstance.ID.local);
+				expect(SandboxInstance.fromField(Option.some(id("sbx_1")))).toBe("sbx_1");
+			}),
+		);
 	});
 
 	describe("schema", () => {
 		it(
-			"exposes the host namespace with a codec-valid runtime config",
+			"migrates to an empty instance table",
 			Effect.gen(function* () {
-				const store = yield* sandboxStore;
-				const local = yield* store.find(SandboxInstance.ID.local);
+				expect(yield* (yield* sandboxStore).list).toEqual([]);
+			}),
+		);
 
-				expect(Option.isSome(local)).toBe(true);
-				const row = Option.getOrThrow(local);
-				expect(row.driver).toBe("local");
-				expect(row.kind).toBe("local");
-				expect(row.ownership).toBe("external");
-				expect(row.status).toBe("online");
-				// an acquirable row must carry a codec-valid runtime config, never NULL
-				expect(Option.getOrThrow(row.runtimeConfig)).toBe("{}");
+		// The reserved id must have exactly one storage form. A row spelling it
+		// would be a second one, silently competing with NULL.
+		it(
+			"refuses to store the reserved host id",
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				const insert = sql`
+					INSERT INTO sandbox_instance
+						(id, driver, kind, ownership, status, state_observed_at, created_at, updated_at)
+					VALUES ('local', 'local', 'local', 'external', 'online', 0, 0, 0)
+				`;
+				expect(Option.isSome(yield* Effect.option(insert))).toBe(false);
 			}),
 		);
 
@@ -90,20 +117,19 @@ describe("SandboxInstance", () => {
 				const sql = yield* SqlClient.SqlClient;
 				yield* seedProject;
 
-				const directory = (rowId: string, instanceId: string) => sql`
+				const directory = (rowId: string, instanceId: string | null) => sql`
 					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
 					VALUES (${rowId}, 'p', ${`/workspace/${rowId}`}, 'main', ${instanceId}, 0, 0)
 				`;
-				const session = (rowId: string, instanceId: string) => sql`
+				const session = (rowId: string, instanceId: string | null) => sql`
 					INSERT INTO session (id, project_id, slug, directory, title, sandbox_instance_id, created_at, updated_at)
 					VALUES (${rowId}, 'p', ${rowId}, '/workspace', 't', ${instanceId}, 0, 0)
 				`;
 
-				// positive controls: the same statements must succeed against a
-				// registered namespace, so the rejections below cannot be passing
-				// for some unrelated reason.
-				yield* directory("ok", "local");
-				yield* session("ok", "local");
+				// positive controls: NULL is the host and needs no registration at
+				// all, so the rejections below cannot be passing for another reason.
+				yield* directory("ok", null);
+				yield* session("ok", null);
 
 				expect(Option.isSome(yield* Effect.option(directory("bad", "never-registered")))).toBe(false);
 				expect(Option.isSome(yield* Effect.option(session("bad", "never-registered")))).toBe(false);
@@ -116,35 +142,41 @@ describe("SandboxInstance", () => {
 			"restricts deleting an instance that Project history still references",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
+				const store = yield* sandboxStore;
 				yield* seedProject;
+				yield* store.register({ id: id("sbx_a"), driver: "memory", kind: "virtual", ownership: "managed" });
 				yield* sql`
 					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
-					VALUES ('d', 'p', '/workspace', 'main', 'local', 0, 0)
+					VALUES ('d', 'p', '/workspace', 'main', 'sbx_a', 0, 0)
 				`;
 
-				const deletion = sql`DELETE FROM sandbox_instance WHERE id = 'local'`;
+				const deletion = sql`DELETE FROM sandbox_instance WHERE id = 'sbx_a'`;
 				expect(Option.isSome(yield* Effect.option(deletion))).toBe(false);
 			}),
 		);
 
+		// SQLite treats NULLs as distinct in a unique index, so without COALESCE the
+		// host could register one path twice. This is the test that catches it.
 		it(
-			"scopes project directory uniqueness by instance, so one path can exist in two namespaces",
+			"scopes directory uniqueness by instance, including for the NULL host",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const store = yield* sandboxStore;
 				yield* seedProject;
-				yield* store.register({ id: id("other"), driver: "memory", kind: "virtual", ownership: "managed" });
+				yield* store.register({ id: id("sbx_a"), driver: "memory", kind: "virtual", ownership: "managed" });
 
-				const insert = (rowId: string, instanceId: string) => sql`
+				const insert = (rowId: string, instanceId: string | null) => sql`
 					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
 					VALUES (${rowId}, 'p', '/workspace', 'main', ${instanceId}, 0, 0)
 				`;
 
-				yield* insert("d1", "local");
-				yield* insert("d2", "other");
+				// one path, two namespaces — the host and a registered one
+				yield* insert("d1", null);
+				yield* insert("d2", "sbx_a");
 
-				// same (project, instance, directory) is still rejected
-				expect(Option.isSome(yield* Effect.option(insert("d3", "local")))).toBe(false);
+				// the same pair is rejected in both, NULL included
+				expect(Option.isSome(yield* Effect.option(insert("d3", null)))).toBe(false);
+				expect(Option.isSome(yield* Effect.option(insert("d4", "sbx_a")))).toBe(false);
 
 				const rows = yield* sql`SELECT * FROM project_directory`;
 				expect(rows).toHaveLength(2);
@@ -160,7 +192,7 @@ describe("SandboxInstance", () => {
 				const store = yield* sandboxStore;
 
 				yield* store.register({
-					id: id("a"),
+					id: id("sbx_a"),
 					driver: "sqldb",
 					kind: "virtual",
 					ownership: "managed",
@@ -170,16 +202,16 @@ describe("SandboxInstance", () => {
 				const alias = sql`
 					INSERT INTO sandbox_instance
 						(id, driver, kind, provider_resource_id, ownership, status, state_observed_at, created_at, updated_at)
-					VALUES ('b', 'sqldb', 'virtual', '/var/fs.db', 'managed', 'online', 0, 0, 0)
+					VALUES ('sbx_b', 'sqldb', 'virtual', '/var/fs.db', 'managed', 'online', 0, 0, 0)
 				`;
 				expect(Option.isSome(yield* Effect.option(alias))).toBe(false);
 
 				// the index excludes tombstones, so a genuinely new resource may
 				// reuse a locator once the old one is gone
-				yield* store.transition({ id: id("a"), from: ["online"], to: "removed" });
+				yield* store.transition({ id: id("sbx_a"), from: ["online"], to: "removed" });
 				yield* alias;
 
-				expect(yield* store.list).toHaveLength(3); // local + a + b
+				expect(yield* store.list).toHaveLength(2);
 			}),
 		);
 	});
@@ -190,13 +222,13 @@ describe("SandboxInstance", () => {
 			Effect.gen(function* () {
 				const store = yield* sandboxStore;
 				const first = yield* store.register({
-					id: id("m"),
+					id: id("sbx_m"),
 					driver: "memory",
 					kind: "virtual",
 					ownership: "managed",
 				});
 				const second = yield* store.register({
-					id: id("m"),
+					id: id("sbx_m"),
 					driver: "memory",
 					kind: "virtual",
 					ownership: "managed",
@@ -212,15 +244,15 @@ describe("SandboxInstance", () => {
 			"moves the lifecycle state only from an expected status",
 			Effect.gen(function* () {
 				const store = yield* sandboxStore;
-				yield* store.register({ id: id("m"), driver: "memory", kind: "virtual", ownership: "managed" });
+				yield* store.register({ id: id("sbx_m"), driver: "memory", kind: "virtual", ownership: "managed" });
 
-				expect(yield* store.transition({ id: id("m"), from: ["online"], to: "suspending" })).toBe(true);
+				expect(yield* store.transition({ id: id("sbx_m"), from: ["online"], to: "suspending" })).toBe(true);
 
 				// the row has moved on; a competing claim must lose rather than
 				// silently overwrite
-				expect(yield* store.transition({ id: id("m"), from: ["online"], to: "removing" })).toBe(false);
+				expect(yield* store.transition({ id: id("sbx_m"), from: ["online"], to: "removing" })).toBe(false);
 
-				const row = Option.getOrThrow(yield* store.find(id("m")));
+				const row = Option.getOrThrow(yield* store.find(id("sbx_m")));
 				expect(row.status).toBe("suspending");
 			}),
 		);
@@ -241,7 +273,7 @@ describe("SandboxInstance", () => {
 			Effect.gen(function* () {
 				const store = yield* sandboxStore;
 				yield* store.register({
-					id: id("a"),
+					id: id("sbx_a"),
 					driver: "sqldb",
 					kind: "virtual",
 					ownership: "managed",
@@ -250,7 +282,7 @@ describe("SandboxInstance", () => {
 
 				const exit = yield* store
 					.register({
-						id: id("b"),
+						id: id("sbx_b"),
 						driver: "sqldb",
 						kind: "virtual",
 						ownership: "managed",
@@ -259,87 +291,7 @@ describe("SandboxInstance", () => {
 					.pipe(Effect.exit);
 
 				expect(exit._tag).toBe("Failure");
-				expect(Option.isNone(yield* store.find(id("b")))).toBe(true);
-			}),
-		);
-
-		// A fixture's row holds only facts re-derivable from configuration, so
-		// re-asserting them repairs the row rather than overwriting anything.
-		it(
-			"ensure repairs a drifted host row without rewriting its history",
-			Effect.gen(function* () {
-				const sql = yield* SqlClient.SqlClient;
-				const store = yield* sandboxStore;
-
-				const before = Option.getOrThrow(yield* store.find(SandboxInstance.ID.local));
-
-				// fabricate drift: a status local can never legitimately hold, since
-				// stop and destroy are unsupported
-				yield* sql`
-					UPDATE sandbox_instance
-					SET status = 'faulted', state_observed_at = 999, last_used_at = 4242
-					WHERE id = 'local'
-				`;
-				yield* TestClock.adjust("5 seconds");
-
-				const row = yield* store.ensure(SandboxInstance.localFixture);
-				expect(row.status).toBe("online");
-				// observation moves to the injected clock
-				expect(DateTime.toEpochMillis(row.stateObservedAt)).toBe(5000);
-				// history does not: creation and usage are facts, not fixture values
-				expect(DateTime.toEpochMillis(row.createdAt)).toBe(DateTime.toEpochMillis(before.createdAt));
-				expect(Option.getOrThrow(row.lastUsedAt).pipe(DateTime.toEpochMillis)).toBe(4242);
-			}),
-		);
-	});
-
-	// Migrations are DDL. The host row is a fixture the sandbox domain owns, so a
-	// bare database has the schema and nothing in it.
-	describe("fixtures", () => {
-		const { effect: bareIt } = testEffect(Database.layer(":memory:"));
-
-		bareIt(
-			"migrates to an empty instance table",
-			Effect.gen(function* () {
-				expect(yield* (yield* sandboxStore).list).toEqual([]);
-			}),
-		);
-
-		// The self-healing property: the migrator runs by high-water mark, so a
-		// row seeded by a migration and later deleted would never return.
-		bareIt(
-			"ensure restores the host row on a database that has none",
-			Effect.gen(function* () {
-				const store = yield* sandboxStore;
-				expect(Option.isNone(yield* store.find(SandboxInstance.ID.local))).toBe(true);
-
-				const row = yield* store.ensure(SandboxInstance.localFixture);
-				expect(row.id).toBe(SandboxInstance.ID.local);
-				expect(row.kind).toBe("local");
-				expect(row.ownership).toBe("external");
-				expect(row.status).toBe("online");
-
-				// idempotent: a second call is a no-op, not a duplicate or a failure
-				yield* store.ensure(SandboxInstance.localFixture);
-				expect(yield* store.list).toHaveLength(1);
-			}),
-		);
-
-		bareIt(
-			"withFixtures makes the host row available to foreign keys",
-			Effect.gen(function* () {
-				const sql = yield* SqlClient.SqlClient;
-				yield* seedProject;
-
-				// without the fixture the FK rejects the insert
-				const insert = sql`
-					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
-					VALUES ('d', 'p', '/workspace', 'main', 'local', 0, 0)
-				`;
-				expect(Option.isSome(yield* Effect.option(insert))).toBe(false);
-
-				yield* (yield* sandboxStore).ensure(SandboxInstance.localFixture);
-				yield* insert;
+				expect(Option.isNone(yield* store.find(id("sbx_b")))).toBe(true);
 			}),
 		);
 	});

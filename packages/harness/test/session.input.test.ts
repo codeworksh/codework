@@ -3,11 +3,10 @@ import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database, SqlSchema } from "../src/db/db";
 import { inputDeliveries, SessionInputRow } from "../src/db/schema.sql";
-import { SandboxStore } from "../src/sandbox/store";
 import { SessionSchema } from "../src/session/schema";
 import { testEffect } from "./utils/effect";
 
-const { effect: it } = testEffect(SandboxStore.withFixtures(Database.layer(":memory:")));
+const { effect: it } = testEffect(Database.layer(":memory:"));
 
 const PendingInput = Schema.Struct({
 	sessionId: Schema.String,
@@ -47,11 +46,11 @@ const queries = (sql: SqlClient.SqlClient) => ({
 const createSession = Effect.fn("SessionInputTest.createSession")(function* (id: string) {
 	const sql = yield* SqlClient.SqlClient;
 	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local', 'local', 0, 0)`;
-	// 'local' is the host fixture; session.sandbox_instance_id is foreign-keyed,
-	// so an invented namespace would be rejected here.
+	// NULL is the host, and the foreign key is skipped on NULL — so a session
+	// needs no sandbox registered at all. An invented namespace would be rejected.
 	yield* sql`
 		INSERT INTO session (id, project_id, slug, directory, title, tag, sandbox_instance_id, created_at, updated_at)
-		VALUES (${id}, 'local', ${id}, '/repo', 'Test session', 'test', 'local', 0, 0)
+		VALUES (${id}, 'local', ${id}, '/repo', 'Test session', 'test', NULL, 0, 0)
 	`;
 });
 

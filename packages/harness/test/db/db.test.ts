@@ -52,13 +52,15 @@ const queries = (sql: SqlClient.SqlClient) => ({
 // Directories and sessions are foreign-keyed to sandbox_instance, so a namespace
 // has to exist before anything can claim to live in it. Registering here keeps
 // these tests about the schema rather than about the Controller.
-const instance = (id: string) => SandboxInstance.ID.make(id);
+const instanceId = (id: string) => SandboxInstance.ID.make(id);
+// Row models carry the namespace as an Option, since NULL is the host.
+const instance = (id: string) => SandboxInstance.toField(instanceId(id));
 
 const registerInstances = (...ids: ReadonlyArray<string>) =>
 	Effect.gen(function* () {
 		const store = yield* SandboxStore.make;
 		yield* Effect.forEach(ids, (id) =>
-			store.register({ id: instance(id), driver: "memory", kind: "virtual", ownership: "managed" }),
+			store.register({ id: instanceId(id), driver: "memory", kind: "virtual", ownership: "managed" }),
 		);
 	});
 
