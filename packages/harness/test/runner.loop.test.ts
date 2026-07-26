@@ -10,7 +10,6 @@ import { tmpdir as osTmpdir } from "node:os";
 import { SandboxInstance } from "../src/sandbox/instance";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
-import { SandboxStore } from "../src/sandbox/store";
 import { AbsolutePath } from "../src/schema";
 import { SessionSchema } from "../src/session/schema";
 import { Session } from "../src/session/session";
@@ -32,7 +31,7 @@ const runtime = (sandbox: Layer.Layer<Sandbox.Provides>, options?: Loop.Options)
 		// assert what the loop's shell work actually does.
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Session.layer),
-		Layer.provideMerge(SandboxStore.withFixtures(Database.layer(":memory:"))),
+		Layer.provideMerge(Database.layer(":memory:")),
 	);
 
 const insertInput = (sql: SqlClient.SqlClient) =>

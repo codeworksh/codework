@@ -5,10 +5,8 @@ import { posix as path } from "node:path";
 import { Database } from "../db/db";
 import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql";
 import { Git } from "../git/git";
-import { SandboxEnv } from "../sandbox/env";
 import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
 import { SandboxInstance } from "../sandbox/instance";
-import { SandboxStore } from "../sandbox/store";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";
 import { Hash } from "../util/hash";
@@ -50,16 +48,17 @@ export const layer = Layer.effect(
 		// Which sandbox instance these directories live in. Rows belonging to
 		// another namespace are invisible here: their paths mean nothing to this
 		// filesystem, so probing them would report absence and delete them.
-		//
-		// Transitional: the value still arrives as a raw `SandboxEnv.EnvId` and is
-		// branded at this boundary.
-		const instanceId = SandboxInstance.ID.make(yield* SandboxEnv.EnvId);
+		const { id: instanceId } = yield* SandboxInstance.Service;
+		// The storage form of the namespace, resolved once: NULL for the host.
+		const instanceColumn = SandboxInstance.toColumn(instanceId);
 
+		// `IS`, not `=`: SQLite's `= NULL` never matches, and NULL is the host. One
+		// query serves both cases with no branch here.
 		const selectDirectories = SqlSchema.findAll({
-			Request: Schema.Struct({ projectId: Schema.String, sandboxInstanceId: Schema.String }),
+			Request: Schema.Struct({ projectId: Schema.String, sandboxInstanceId: Schema.NullOr(Schema.String) }),
 			Result: ProjectDirectoryRow,
 			execute: ({ projectId, sandboxInstanceId }) =>
-				sql`SELECT * FROM project_directory WHERE project_id = ${projectId} AND sandbox_instance_id = ${sandboxInstanceId}`,
+				sql`SELECT * FROM project_directory WHERE project_id = ${projectId} AND sandbox_instance_id IS ${sandboxInstanceId}`,
 		});
 
 		// Every environment's rows. Only for re-homing during an id migration,
@@ -100,13 +99,14 @@ export const layer = Layer.effect(
 		const toProjectDirectory = (row: ProjectDirectoryRow): ProjectSchema.ProjectDirectory => {
 			return {
 				directory: AbsolutePath.make(row.directory),
-				sandboxInstanceId: row.sandboxInstanceId,
+				// Public results carry a concrete id; NULL is resolved back to the host.
+				sandboxInstanceId: SandboxInstance.fromField(row.sandboxInstanceId),
 				type: row.type,
 			};
 		};
 
 		const directories = Effect.fn("Project.directories")(function* (input: ProjectSchema.DirectoriesInput) {
-			const rows = yield* selectDirectories({ projectId: input.projectId, sandboxInstanceId: instanceId }).pipe(
+			const rows = yield* selectDirectories({ projectId: input.projectId, sandboxInstanceId: instanceColumn }).pipe(
 				Effect.orDie,
 			);
 
@@ -238,7 +238,7 @@ export const layer = Layer.effect(
 						const directories = yield* selectAllDirectories(oldID);
 						for (const row of directories) {
 							const rehomed = yield* ProjectDirectoryRow.insert.makeEffect({
-								id: directoryId(newID, row.sandboxInstanceId, row.directory),
+								id: directoryId(newID, SandboxInstance.fromField(row.sandboxInstanceId), row.directory),
 								projectId: newID,
 								directory: row.directory,
 								type: row.type,
@@ -271,7 +271,7 @@ export const layer = Layer.effect(
 						const hasMain = yield* sql`
 							SELECT directory FROM project_directory
 							WHERE project_id = ${input.projectId}
-								AND sandbox_instance_id = ${instanceId}
+								AND sandbox_instance_id IS ${instanceColumn}
 								AND type = 'main'
 							LIMIT 1
 						`;
@@ -281,7 +281,7 @@ export const layer = Layer.effect(
 							projectId: input.projectId,
 							directory: AbsolutePath.make(input.directory),
 							type: isGitWorktree ? "gitworktree" : hasMain.length > 0 ? "root" : "main",
-							sandboxInstanceId: instanceId,
+							sandboxInstanceId: SandboxInstance.toField(instanceId),
 						});
 						yield* insertDirectory(row);
 					}),
@@ -338,10 +338,10 @@ export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 		Layer.provide(Git.layer),
 		Layer.provide(ProjectCopy.layer),
 		Layer.provide(sandbox),
-		// Directory rows foreign-key to sandbox_instance, so the host row has to
-		// exist before one can be written. Any namespace other than the host is
-		// registered by whoever created it.
-		Layer.provide(SandboxStore.withFixtures(Database.defaultLayer)),
+		// Plain database: the host needs no row, and the foreign key is skipped on
+		// NULL, so nothing has to exist before a host directory can be written.
+		// Any other namespace is registered by whoever created it.
+		Layer.provide(Database.defaultLayer),
 	);
 
 export const defaultLayer = (path: string) => layerWith(Sandbox.defaultLayer(path));

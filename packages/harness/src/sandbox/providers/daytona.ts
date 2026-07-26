@@ -12,6 +12,7 @@ import { Buffer } from "node:buffer";
 import { SandboxEnv } from "../env";
 import { SandboxFileSystem } from "../filesystem/filesystem";
 import { RemoteFileSystem } from "../filesystem/remote";
+import { SandboxInstance } from "../instance";
 import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../shell";
 
 export class DaytonaError extends Schema.TaggedErrorClass<DaytonaError>()("DaytonaError", {
@@ -27,6 +28,8 @@ export interface Options {
 	readonly target?: string;
 	/** Reuse an existing sandbox by id or name instead of creating one. */
 	readonly sandboxId?: string;
+	/** Durable instance identity for this namespace. Supplied by the Controller. */
+	readonly instanceId?: SandboxInstance.ID;
 	/** Snapshot to create the sandbox from. */
 	readonly snapshot?: string;
 	/** Image (registry reference or declarative `Image`) to create the sandbox from. */
@@ -231,16 +234,30 @@ const shellLayer = (options: Options) =>
  */
 // Identity is per remote sandbox, not per provider: two Daytona sandboxes both
 // using /workspace must not share persisted directory records.
-const envLayer = () =>
+//
+// Transitional: see the same note on the Vercel driver. Deriving the durable ID
+// from the provider's own id is what §5.1 forbids, and it survives only until
+// the Controller mints IDs; the address-keyed `SandboxMap` is its one consumer.
+const identityLayer = (options: Options) =>
 	Layer.effect(
-		SandboxEnv.EnvId,
-		Effect.map(Remote, ({ sandbox }) => SandboxEnv.format({ kind: "daytona", instance: sandbox.id })),
+		SandboxInstance.Service,
+		Effect.map(Remote, ({ sandbox }) =>
+			SandboxInstance.remote({
+				driver: "daytona",
+				id:
+					options.instanceId ??
+					SandboxInstance.ID.make(SandboxEnv.format({ kind: "daytona", instance: sandbox.id })),
+				cwd: options.cwd,
+			}),
+		),
 	);
 
 export const layer = (
 	options: Options = {},
-): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxEnv.EnvId, DaytonaError> =>
-	Layer.mergeAll(filesystemLayer(options), shellLayer(options), envLayer()).pipe(Layer.provide(remote(options)));
+): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxInstance.Service, DaytonaError> =>
+	Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options)).pipe(
+		Layer.provide(remote(options)),
+	);
 
 export const services = layer;
 

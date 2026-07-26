@@ -3,9 +3,9 @@ import { Effect, Layer } from "effect";
 import { Bash, type IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
-import { SandboxEnv } from "./env";
 import { SandboxFileSystem } from "./filesystem/filesystem";
 import { Local } from "./filesystem/local";
+import { SandboxInstance } from "./instance";
 import type { LocalPrimitives } from "./sandbox";
 import { type ExecResult, fromExec, type ISandboxExe, Shell, ShellError } from "./shell";
 
@@ -268,8 +268,8 @@ export const layer = <E, RIn>(
  */
 export const services = <E, RIn>(
 	inner: Layer.Layer<LocalPrimitives, E, RIn>,
-	envId: string,
-): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxEnv.EnvId | LocalPrimitives, E, RIn> =>
-	Layer.provideMerge(Layer.merge(Local.layer, SandboxEnv.layer(envId)), layer(inner));
+	identity: SandboxInstance.RuntimeIdentity,
+): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxInstance.Service | LocalPrimitives, E, RIn> =>
+	Layer.provideMerge(Layer.merge(Local.layer, SandboxInstance.layer(identity)), layer(inner));
 
 export * as EnvBash from "./justbashexe";

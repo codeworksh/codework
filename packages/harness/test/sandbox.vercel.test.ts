@@ -2,6 +2,7 @@ import { Effect, ManagedRuntime, Stream } from "effect";
 import type { Stats } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { SandboxEnv } from "../src/sandbox/env";
+import { SandboxInstance } from "../src/sandbox/instance";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { SandboxRegistry } from "../src/sandbox/map";
 import { EnvVercel, statsFrom } from "../src/sandbox/providers/vercel";
@@ -35,7 +36,7 @@ const BAKED_ENV = "from-sandbox";
 
 suite("Sandbox.EnvVercel (shared sandbox)", () => {
 	let runtime!: ManagedRuntime.ManagedRuntime<
-		SandboxFileSystem.Service | Shell | SandboxEnv.EnvId,
+		SandboxFileSystem.Service | Shell | SandboxInstance.Service,
 		EnvVercel.VercelError
 	>;
 
@@ -88,7 +89,7 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 				Effect.gen(function* () {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* Shell;
-					const envId = yield* SandboxEnv.EnvId;
+					const envId = (yield* SandboxInstance.Service).id;
 
 					yield* filesystem.writeFile(`${dir}/from-service.txt`, "from service");
 					const cat = yield* shell.exec(`cat ${dir}/from-service.txt`);

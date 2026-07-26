@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, LayerMap, Schema } from "effect";
 import { SandboxEnv } from "./env";
+import { SandboxInstance } from "./instance";
 import { EnvDaytona } from "./providers/daytona";
 import { EnvVercel } from "./providers/vercel";
 import { Sandbox } from "./sandbox";
@@ -58,15 +59,20 @@ const build = (envId: string, options: Options): Resolved => {
 		);
 	}
 
+	// The address is handed down as the instance identity so the key and the
+	// injected `SandboxInstance.Service` agree. That equivalence is this module's
+	// alone, and it retires with this module once the Controller mints IDs.
+	const instanceId = SandboxInstance.ID.make(envId);
+
 	switch (address.kind) {
 		case "local":
 			return Sandbox.local(options.cwd ?? process.cwd());
 		case "sqldb":
-			return Sandbox.sqldb({ location: address.instance });
+			return Sandbox.sqldb({ location: address.instance, instanceId });
 		case "vercel":
-			return EnvVercel.layer({ ...options.vercel, sandboxName: address.instance });
+			return EnvVercel.layer({ ...options.vercel, sandboxName: address.instance, instanceId });
 		case "daytona":
-			return EnvDaytona.layer({ ...options.daytona, sandboxId: address.instance });
+			return EnvDaytona.layer({ ...options.daytona, sandboxId: address.instance, instanceId });
 		// `memory` is never reattachable, so it is rejected above.
 		case "memory":
 			return unavailable(envId, `Environment "${envId}" is ephemeral`);

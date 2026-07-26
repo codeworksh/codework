@@ -6,7 +6,6 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { SandboxEnv } from "../src/sandbox/env";
 import { SandboxInstance } from "../src/sandbox/instance";
 import { SandboxStore } from "../src/sandbox/store";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
@@ -32,7 +31,7 @@ const repo = { directory, store } satisfies Git.Repo;
 
 // A real migrated in-memory database, so the tests exercise the actual SQL
 // issued by the service (upserts, deletes, txns).
-const databaseLayer = () => SandboxStore.withFixtures(Database.layer(":memory:"));
+const databaseLayer = () => Database.layer(":memory:");
 
 interface ProjectOptions {
 	// Contents of the `codework` marker file read from the repo store. When
@@ -63,7 +62,7 @@ const projectLayer = (git: Partial<Git.Interface>, options: ProjectOptions = {})
 		Layer.provideMerge(
 			Layer.mergeAll(
 				databaseLayer(),
-				SandboxEnv.defaultLayer,
+				SandboxInstance.hostLayer(),
 				Layer.succeed(
 					SandboxFileSystem.Service,
 					SandboxFileSystem.Service.of({
@@ -97,7 +96,7 @@ const seedDirectory = (row: {
 	projectId: string;
 	directory: string;
 	type: ProjectDirectory["type"];
-	sandboxInstanceId: string;
+	sandboxInstanceId: string | null;
 }) =>
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
@@ -105,7 +104,7 @@ const seedDirectory = (row: {
 	});
 
 // Seeds land in the environment the service under test is running in —
-// `projectLayer` provides `SandboxEnv.defaultLayer` — since reads are scoped by
+// `projectLayer` provides `SandboxInstance.hostLayer()` — since reads are scoped by
 // environment and rows from another one are deliberately invisible.
 const seedDirectories = (rows: Array<{ directory: string; type: ProjectDirectory["type"] }>) =>
 	Effect.gen(function* () {
@@ -116,7 +115,7 @@ const seedDirectories = (rows: Array<{ directory: string; type: ProjectDirectory
 				projectId: "project-1",
 				directory: row.directory,
 				type: row.type,
-				sandboxInstanceId: SandboxEnv.DEFAULT,
+				sandboxInstanceId: null, // NULL is the host
 			});
 		}
 	});
@@ -361,9 +360,9 @@ describe("Project", () => {
 				const result = yield* project.directories({ projectId: ID.make("project-1") });
 
 				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
-					{ directory: "/workspace/codework-a", sandboxInstanceId: SandboxEnv.DEFAULT, type: "gitworktree" },
-					{ directory: "/workspace/codework-z", sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
+					{ directory: "/workspace/codework", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
+					{ directory: "/workspace/codework-a", sandboxInstanceId: SandboxInstance.ID.local, type: "gitworktree" },
+					{ directory: "/workspace/codework-z", sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
 				]);
 			}),
 		);
@@ -391,7 +390,7 @@ describe("Project", () => {
 				const project = yield* Service;
 				const result = yield* project.directories({ projectId: ID.make("project-1") });
 				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
+					{ directory: "/workspace/codework", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
 				]);
 
 				const sql = yield* SqlClient.SqlClient;
@@ -430,7 +429,7 @@ describe("Project", () => {
 				const result = yield* project.directories({ projectId: ID.make("project-1") });
 
 				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
+					{ directory: "/workspace/codework", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
 				]);
 
 				// still on disk: invisible is not the same as stale
@@ -447,7 +446,7 @@ describe("Project", () => {
 				Layer.provideMerge(
 					Layer.mergeAll(
 						databaseLayer(),
-						SandboxEnv.defaultLayer,
+						SandboxInstance.hostLayer(),
 						Layer.succeed(
 							SandboxFileSystem.Service,
 							SandboxFileSystem.Service.of({
@@ -526,7 +525,7 @@ describe("Project", () => {
 				});
 
 				const result = yield* project.directories({ projectId: info.id });
-				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" }]);
+				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" }]);
 			}),
 		);
 
@@ -541,8 +540,8 @@ describe("Project", () => {
 
 				const directories = yield* project.directories({ projectId: result.id });
 				expect(directories).toEqual([
-					{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
-					{ directory: second, sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
+					{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
+					{ directory: second, sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
 				]);
 			}),
 		);
@@ -554,7 +553,7 @@ describe("Project", () => {
 				yield* project.fromDirectory(directory);
 
 				const result = yield* project.directories({ projectId: projectID });
-				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" }]);
+				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" }]);
 			}),
 		);
 
@@ -566,7 +565,7 @@ describe("Project", () => {
 				const info = yield* project.fromDirectory(directory);
 
 				const result = yield* project.directories({ projectId: info.id });
-				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "gitworktree" }]);
+				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "gitworktree" }]);
 			}),
 		);
 
@@ -602,11 +601,11 @@ describe("Project", () => {
 					const sql = yield* SqlClient.SqlClient;
 					yield* seedProject({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 });
 					yield* seedDirectory({
-						id: Hash.fast(JSON.stringify(["old-project-id", SandboxEnv.DEFAULT, "/workspace/legacy"])),
+						id: Hash.fast(JSON.stringify(["old-project-id", SandboxInstance.ID.local, "/workspace/legacy"])),
 						projectId: "old-project-id",
 						directory: "/workspace/legacy",
 						type: "main",
-						sandboxInstanceId: SandboxEnv.DEFAULT,
+						sandboxInstanceId: null, // NULL is the host
 					});
 
 					const project = yield* Service;
@@ -624,15 +623,17 @@ describe("Project", () => {
 					// main already occupies the project
 					const directories = yield* project.directories({ projectId: projectID });
 					expect(directories).toEqual([
-						{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
-						{ directory: "/workspace/legacy", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
+						{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
+						{ directory: "/workspace/legacy", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
 					]);
 
 					// migrated rows are re-keyed off the new project id
 					const rows = yield* sql`SELECT * FROM project_directory`;
 					expect(rows.every((row) => row.projectId === projectID)).toBe(true);
 					const legacy = rows.find((row) => row.directory === "/workspace/legacy");
-					expect(legacy?.id).toBe(Hash.fast(JSON.stringify([projectID, SandboxEnv.DEFAULT, "/workspace/legacy"])));
+					expect(legacy?.id).toBe(
+						Hash.fast(JSON.stringify([projectID, SandboxInstance.ID.local, "/workspace/legacy"])),
+					);
 				}),
 			);
 
@@ -649,21 +650,21 @@ describe("Project", () => {
 						projectId: "old-project-id",
 						directory: "/workspace/legacy",
 						type: "root",
-						sandboxInstanceId: SandboxEnv.DEFAULT,
+						sandboxInstanceId: null, // NULL is the host
 					});
 					yield* seedDirectory({
 						id: "old-shared",
 						projectId: "old-project-id",
 						directory: "/workspace/shared",
 						type: "root",
-						sandboxInstanceId: SandboxEnv.DEFAULT,
+						sandboxInstanceId: null, // NULL is the host
 					});
 					yield* seedDirectory({
-						id: Hash.fast(JSON.stringify([projectID, SandboxEnv.DEFAULT, "/workspace/shared"])),
+						id: Hash.fast(JSON.stringify([projectID, SandboxInstance.ID.local, "/workspace/shared"])),
 						projectId: projectID,
 						directory: "/workspace/shared",
 						type: "main",
-						sandboxInstanceId: SandboxEnv.DEFAULT,
+						sandboxInstanceId: null, // NULL is the host
 					});
 
 					const project = yield* Service;
@@ -678,9 +679,9 @@ describe("Project", () => {
 					// the shared directory keeps the new project's registration
 					const directories = yield* project.directories({ projectId: projectID });
 					expect(directories).toEqual([
-						{ directory, sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
-						{ directory: "/workspace/legacy", sandboxInstanceId: SandboxEnv.DEFAULT, type: "root" },
-						{ directory: "/workspace/shared", sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
+						{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
+						{ directory: "/workspace/legacy", sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
+						{ directory: "/workspace/shared", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
 					]);
 				}),
 			);
@@ -848,8 +849,8 @@ describe("Project", () => {
 			expect(worktreeInfo.id).toEqual(info.id);
 			expect(worktreeInfo.directory).toBe(realWorktree);
 			expect(directories).toEqual([
-				{ directory: realRepo, sandboxInstanceId: SandboxEnv.DEFAULT, type: "main" },
-				{ directory: realWorktree, sandboxInstanceId: SandboxEnv.DEFAULT, type: "gitworktree" },
+				{ directory: realRepo, sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
+				{ directory: realWorktree, sandboxInstanceId: SandboxInstance.ID.local, type: "gitworktree" },
 			]);
 		}, 30_000);
 	});

@@ -215,10 +215,13 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 					Effect.gen(function* () {
 						const fs = yield* SandboxFileSystem.Service;
 						yield* fs.writeFile(marker, "reattached");
-						return yield* SandboxEnv.EnvId;
+						return (yield* SandboxInstance.Service).id;
 					}),
 				);
 
+				// Transitional: the provider still derives its instance id from the
+				// resource locator, which is what makes an id resolvable through the
+				// address-keyed map. The Controller replaces both halves.
 				const address = SandboxEnv.parse(envId);
 				expect(address?.kind).toBe(options.kind);
 				expect(address && SandboxEnv.format(address)).toBe(envId);
@@ -228,7 +231,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 					Effect.gen(function* () {
 						const fs = yield* SandboxFileSystem.Service;
 						const shell = yield* Shell;
-						const mappedEnvId = yield* SandboxEnv.EnvId;
+						const mappedEnvId = (yield* SandboxInstance.Service).id;
 						const repo = path.join(options.cwd, name(options.kind, "project"));
 
 						const cleanup = fs
@@ -247,7 +250,9 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 							const sandbox = Layer.mergeAll(
 								Layer.succeed(SandboxFileSystem.Service, fs),
 								Layer.succeed(Shell, shell),
-								SandboxEnv.layer(mappedEnvId),
+								SandboxInstance.layer(
+									SandboxInstance.remote({ driver: options.kind, id: mappedEnvId, cwd: options.cwd }),
+								),
 							);
 							const project = Project.layer.pipe(
 								Layer.provide(Git.layer),
@@ -264,7 +269,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 								// Project directories and sessions are foreign-keyed to
 								// sandbox_instance, so the remote namespace has to be
 								// registered before anything claims to live in it.
-								const instanceId = SandboxInstance.ID.make(mappedEnvId);
+								const instanceId = mappedEnvId;
 								yield* Effect.flatMap(SandboxStore.make, (store) =>
 									store.register({
 										id: instanceId,
@@ -290,7 +295,8 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 									directories,
 									projectId: info.id,
 									projectName: info.name,
-									sessionEnvId: Option.getOrThrow(reloaded).sandboxInstanceId,
+									// A remote namespace is a real row, so the column is never NULL here.
+									sessionEnvId: SandboxInstance.fromField(Option.getOrThrow(reloaded).sandboxInstanceId),
 								};
 							}).pipe(Effect.provide(application));
 
@@ -343,7 +349,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 					Effect.gen(function* () {
 						const fs = yield* SandboxFileSystem.Service;
 						const shell = yield* Shell;
-						const envId = yield* SandboxEnv.EnvId;
+						const envId = (yield* SandboxInstance.Service).id;
 
 						const push = (refspec: string) =>
 							Effect.gen(function* () {
