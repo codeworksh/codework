@@ -2,13 +2,17 @@ import { type Command, Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
 import type { Stats } from "node:fs";
-import { SandboxEnv } from "../env";
 import { SandboxFileSystem } from "../filesystem/filesystem";
 import { RemoteFileSystem } from "../filesystem/remote";
 import { SandboxInstance } from "../instance";
+import { SandboxIO } from "../io";
+import { SandboxResource } from "../resource";
 import { type ExecChunk, type ExecResult, type ISandboxExe, quoteArgv, resolveCwd, Shell, ShellError } from "../shell";
 
 const utf8 = new TextEncoder();
+
+/** Vercel's namespace-intrinsic working directory. */
+export const DEFAULT_CWD = "/vercel/sandbox";
 
 export class VercelError extends Schema.TaggedErrorClass<VercelError>()("VercelError", {
 	cause: Schema.optional(Schema.Defect()),
@@ -50,7 +54,10 @@ export interface Options {
 	readonly envVars?: Record<string, string>;
 	/** vCPU allocation (memory scales at 2048 MB per vCPU). */
 	readonly vcpus?: number;
-	/** Remote working directory for relative filesystem and shell operations. */
+	/**
+	 * Mount working directory. Relative values resolve against `/vercel/sandbox`;
+	 * omitted values use that namespace default.
+	 */
 	readonly cwd?: string;
 	/** Milliseconds before the sandbox auto-terminates. */
 	readonly timeout?: number;
@@ -182,7 +189,8 @@ const spawn = (
 	options: Options,
 	command: string,
 	env?: Record<string, string>,
-): Promise<Command> => spawnArgv(sandbox, options, ["sh", "-c", command], env);
+	cwd?: string,
+): Promise<Command> => spawnArgv(sandbox, options, ["sh", "-c", command], env, cwd);
 
 // Vercel spawns a program with a real argument vector, so `execArgv` needs no
 // quoting at all — the args never pass through a shell.
@@ -224,13 +232,21 @@ const collect = (command: string) => (cmd: Command) =>
 		catch: (cause) => new ShellError({ command, cause }),
 	});
 
-const acquireCommand = (sandbox: RemoteSandbox, options: Options, command: string, env?: Record<string, string>) =>
-	acquireWith(command, () => spawn(sandbox, options, command, env));
+const acquireCommand = (
+	sandbox: RemoteSandbox,
+	options: Options,
+	command: string,
+	env?: Record<string, string>,
+	cwd?: string,
+) => acquireWith(command, () => spawn(sandbox, options, command, env, cwd));
 
 const exec =
 	(sandbox: RemoteSandbox, options: Options): ISandboxExe["exec"] =>
 	(command, opts) =>
-		acquireCommand(sandbox, options, command, opts?.env).pipe(Effect.flatMap(collect(command)), Effect.scoped);
+		acquireCommand(sandbox, options, command, opts?.env, opts?.cwd).pipe(
+			Effect.flatMap(collect(command)),
+			Effect.scoped,
+		);
 
 const execArgv =
 	(sandbox: RemoteSandbox, options: Options): ISandboxExe["execArgv"] =>
@@ -250,7 +266,7 @@ const stream =
 	(sandbox: RemoteSandbox, options: Options): NonNullable<ISandboxExe["stream"]> =>
 	(command, opts) =>
 		Stream.unwrap(
-			acquireCommand(sandbox, options, command, opts?.env).pipe(
+			acquireCommand(sandbox, options, command, opts?.env, opts?.cwd).pipe(
 				Effect.map((cmd) => {
 					const logs = Stream.fromAsyncIterable(cmd.logs(), (cause) => new ShellError({ command, cause })).pipe(
 						Stream.map((log): ExecChunk => ({ _tag: log.stream, bytes: utf8.encode(log.data) })),
@@ -283,39 +299,46 @@ const shellLayer = (options: Options) =>
 		),
 	);
 
-/**
- * A Vercel sandbox provides the runtime filesystem service directly plus the
- * sandbox's native remote shell. It intentionally does not provide VFS: remote
- * filesystems have no synchronous filesystem surface.
- */
-// Identity is per remote sandbox, not per provider: two Vercel sandboxes both
-// using /vercel/sandbox must not share persisted directory records.
+// Vercel's locator is the sandbox name. See `SandboxResource` for why this is a
+// shared tag rather than a Vercel-specific one.
+const resourceLayer = Layer.effect(
+	SandboxResource.Service,
+	Effect.map(Remote, ({ sandbox }) => ({ providerResourceId: sandbox.name })),
+);
+
+// Identity is per remote sandbox, not per provider: two sandboxes both rooted at
+// the same directory must not share persisted directory records.
 //
-// Transitional: absent an `instanceId` from the caller, the durable ID is
-// derived from the sandbox name. That is the one thing §5.1 forbids — a driver
-// locator wearing an application identity — and it holds only until the
-// Controller mints and records IDs of its own. Nothing but the address-keyed
-// `SandboxMap` relies on it.
+// The id is minted here only when the caller names none. A durable id is the
+// control plane's to mint and record — deriving one from the provider's own
+// locator is what §6.1 forbids — so a caller that needs the namespace to survive
+// a restart passes `instanceId` rather than relying on this.
 const identityLayer = (options: Options) =>
 	Layer.effect(
-		SandboxInstance.Service,
-		Effect.map(Remote, ({ sandbox }) =>
-			SandboxInstance.remote({
+		SandboxIO.Current,
+		Effect.map(Remote, () =>
+			SandboxIO.remote({
 				driver: "vercel",
-				id:
-					options.instanceId ??
-					SandboxInstance.ID.make(SandboxEnv.format({ kind: "vercel", instance: sandbox.name })),
+				id: options.instanceId ?? SandboxInstance.ID.create(),
+				defaultCwd: DEFAULT_CWD,
 				cwd: options.cwd,
 			}),
 		),
 	);
 
+/**
+ * A Vercel sandbox provides the runtime filesystem service directly plus the
+ * sandbox's native remote shell. It intentionally does not provide VFS: remote
+ * filesystems have no synchronous filesystem surface.
+ */
 export const layer = (
 	options: Options = {},
-): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxInstance.Service, VercelError> =>
-	Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options)).pipe(
-		Layer.provide(remote(options)),
+): Layer.Layer<SandboxIO.Provides | SandboxResource.Service, VercelError> => {
+	const mounted = { ...options, cwd: SandboxIO.resolveMountCwd(DEFAULT_CWD, options.cwd) };
+	return Layer.mergeAll(filesystemLayer(mounted), shellLayer(mounted), identityLayer(mounted), resourceLayer).pipe(
+		Layer.provide(remote(mounted)),
 	);
+};
 
 export const services = layer;
 

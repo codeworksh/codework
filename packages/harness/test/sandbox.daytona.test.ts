@@ -1,7 +1,9 @@
 import { Effect, ManagedRuntime } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { SandboxRegistry } from "../src/sandbox/map";
+import { SandboxInstance } from "../src/sandbox/instance";
+import { SandboxIO } from "../src/sandbox/io";
 import { EnvDaytona } from "../src/sandbox/providers/daytona";
+import { SandboxResource } from "../src/sandbox/resource";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
 import { cancellationSpec } from "./fixtures/cancellation.spec";
@@ -16,10 +18,11 @@ const PROVISION_TIMEOUT = 180_000;
 const SANDBOX_CWD = "/tmp";
 const BAKED_ENV = "from-sandbox";
 
-// One real sandbox serves the complete provider contract. Reattaching through
-// SandboxMap does not transfer ownership, so only this runtime deletes it.
+// One real sandbox serves the complete provider contract. Reattaching by the
+// provider's own locator does not transfer ownership, so only this runtime
+// deletes it.
 suite("Sandbox.EnvDaytona (shared sandbox)", () => {
-	let runtime!: ManagedRuntime.ManagedRuntime<Sandbox.Provides, EnvDaytona.DaytonaError>;
+	let runtime!: ManagedRuntime.ManagedRuntime<Sandbox.Provides | SandboxResource.Service, EnvDaytona.DaytonaError>;
 
 	beforeAll(() => {
 		runtime = ManagedRuntime.make(
@@ -35,12 +38,23 @@ suite("Sandbox.EnvDaytona (shared sandbox)", () => {
 
 	const run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> => runtime.runPromise(program);
 
-	const resolve = <A, E>(envId: string, program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> =>
+	const resourceId = () => runtime.runPromise(Effect.map(SandboxResource.Service, (r) => r.providerResourceId));
+
+	const reattach = <A, E>(
+		input: { readonly providerResourceId: string; readonly instanceId: SandboxInstance.ID },
+		program: Effect.Effect<A, E, Sandbox.Provides>,
+	): Promise<A> =>
 		Effect.runPromise(
 			program.pipe(
 				Effect.scoped,
-				Effect.provide(SandboxRegistry.SandboxMap.get(envId)),
-				Effect.provide(SandboxRegistry.layer({ daytona: { apiKey, cwd: SANDBOX_CWD } })),
+				Effect.provide(
+					EnvDaytona.services({
+						apiKey,
+						sandboxId: input.providerResourceId,
+						instanceId: input.instanceId,
+						cwd: SANDBOX_CWD,
+					}),
+				),
 			),
 		);
 
@@ -49,7 +63,11 @@ suite("Sandbox.EnvDaytona (shared sandbox)", () => {
 		cwd: SANDBOX_CWD,
 		inheritedEnv: { key: "CW_ENV", value: BAKED_ENV },
 		run,
-		resolve,
+		reattach,
+		resourceId,
+		// `executeCommand` returns a single `result` string; the adapter keeps it as
+		// stdout rather than inventing a split. See §16.5 of the Sandbox IO spec.
+		combinesOutput: true,
 		timeout: PROVISION_TIMEOUT,
 		githubPat,
 	});
@@ -88,6 +106,34 @@ suite("Sandbox.EnvDaytona (shared sandbox)", () => {
 
 			expect(node.exitCode).toBe(0);
 			expect(node.stdout.trim()).toMatch(/^v\d/);
+		},
+		PROVISION_TIMEOUT,
+	);
+
+	it(
+		"uses the namespace default when cwd is omitted",
+		async () => {
+			const providerResourceId = await resourceId();
+			const result = await Effect.runPromise(
+				Effect.gen(function* () {
+					const current = yield* SandboxIO.Current;
+					const shell = yield* Shell;
+					return { cwd: current.cwd, pwd: (yield* shell.exec("pwd")).stdout.trim() };
+				}).pipe(
+					Effect.scoped,
+					Effect.provide(
+						EnvDaytona.services({
+							apiKey,
+							sandboxId: providerResourceId,
+							instanceId: SandboxInstance.ID.create(),
+						}),
+					),
+				),
+			);
+
+			expect(result.cwd.startsWith("/")).toBe(true);
+			expect(result.cwd).not.toBe(SANDBOX_CWD);
+			expect(result.pwd).toBe(result.cwd);
 		},
 		PROVISION_TIMEOUT,
 	);

@@ -87,8 +87,8 @@ export class ToolShell extends Context.Service<ToolShell, IToolShell>()("@codewo
  * Bridge the existing `sandbox/Shell` into a `ToolShell`. Used for just-bash
  * (in-process) and remote providers.
  *
- * Caveats of the bridge: `sandbox/Shell` takes only `{ env }`, so `cwd` is
- * ignored — the backing sandbox owns its working directory. The buffered `exec`
+ * `cwd` and `env` both pass through to the backing `sandbox/Shell`, which
+ * resolves a relative `cwd` against its mount. The buffered `exec`
  * timeout is enforced here with `Effect.timeoutOption` (interruption always
  * returns control; the underlying command is only truly killed mid-flight on
  * signal-aware backends, handled in the provider layer). When the backend exposes
@@ -102,7 +102,10 @@ export const fromSandboxShell: Layer.Layer<ToolShell, never, Shell> = Layer.effe
 
 		const exec: IToolShell["exec"] = (command, options) => {
 			const run = shell
-				.exec(command, options?.env ? { env: options.env } : undefined)
+				.exec(command, {
+					...(options?.env ? { env: options.env } : {}),
+					...(options?.cwd ? { cwd: options.cwd } : {}),
+				})
 				.pipe(Effect.mapError((cause) => new ToolShellError({ command, cause })));
 
 			if (options?.timeout === undefined) return widenExecError(run);
@@ -126,7 +129,10 @@ export const fromSandboxShell: Layer.Layer<ToolShell, never, Shell> = Layer.effe
 		const sandboxStream = shell.stream;
 		const stream: IToolShell["stream"] = sandboxStream
 			? (command, options) =>
-					sandboxStream(command, options?.env ? { env: options.env } : undefined).pipe(
+					sandboxStream(command, {
+						...(options?.env ? { env: options.env } : {}),
+						...(options?.cwd ? { cwd: options.cwd } : {}),
+					}).pipe(
 						Stream.map(
 							(chunk): ToolShellEvent =>
 								chunk._tag === "exit"

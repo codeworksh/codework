@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { realpath } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
+import { SandboxIO } from "../src/sandbox/io";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
 import { tmpdir } from "./fixtures/tempdir";
@@ -11,6 +12,22 @@ import { tmpdir } from "./fixtures/tempdir";
 // paired VFS, commands ran in the harness's own checkout while writes landed in
 // the sandbox — so a command could read or mutate the wrong tree entirely.
 describe("Sandbox.defaultLayer — shell and filesystem share a cwd", () => {
+	it("defaults the host adapter to process.cwd()", async () => {
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const current = yield* SandboxIO.Current;
+				const shell = yield* Shell;
+				return {
+					cwd: current.cwd,
+					pwd: (yield* shell.exec("pwd")).stdout.trim(),
+				};
+			}).pipe(Effect.scoped, Effect.provide(Sandbox.local())),
+		);
+
+		expect(result.cwd).toBe(process.cwd());
+		expect(result.pwd).toBe(await realpath(process.cwd()));
+	});
+
 	it("runs commands in the sandbox cwd, not the harness process cwd", async () => {
 		await using tmp = await tmpdir();
 		// macOS resolves /var through a symlink, which `pwd` reports resolved.

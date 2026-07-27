@@ -1,6 +1,8 @@
+import { Effect } from "effect";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
+import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { RemoteFileSystem } from "../src/sandbox/filesystem/remote";
 
 const enoent = (path: string) => {
@@ -109,6 +111,9 @@ describe("RemoteFileSystem", () => {
 	it("resolves relative paths against a remote cwd", async () => {
 		const remote = makeProvider();
 		remote.directories.add("/workspace");
+		// This wrapper resolves paths and nothing else — parent creation belongs to
+		// `fromProvider` (asserted below), so the target directory exists up front.
+		remote.directories.add("/workspace/src");
 		const filesystem = RemoteFileSystem.make(remote.provider, { cwd: "/workspace" });
 
 		await filesystem.writeFile("src/index.ts", "export const value = 1;\n");
@@ -140,6 +145,7 @@ describe("RemoteFileSystem", () => {
 
 	it("passes relative paths through when no cwd is configured", async () => {
 		const remote = makeProvider();
+		remote.directories.add("src");
 		const filesystem = RemoteFileSystem.make(remote.provider);
 
 		await filesystem.writeFile("src/index.ts", "data");
@@ -150,6 +156,7 @@ describe("RemoteFileSystem", () => {
 
 	it("removes files and directories through the provider", async () => {
 		const remote = makeProvider();
+		remote.directories.add("dir");
 		const filesystem = RemoteFileSystem.make(remote.provider);
 
 		await filesystem.writeFile("dir/file.txt", "data");
@@ -158,5 +165,43 @@ describe("RemoteFileSystem", () => {
 		expect(await filesystem.exists("dir/file.txt")).toBe(false);
 		expect(await filesystem.exists("dir")).toBe(false);
 		await expect(filesystem.rm("missing", { force: true })).resolves.toBeUndefined();
+	});
+
+	// Parent creation is the runtime's guarantee and lives one layer up, so it is
+	// asserted over the composition every remote provider actually builds rather
+	// than over the resolver alone.
+	it("creates missing parents on write, composed with fromProvider", async () => {
+		const remote = makeProvider();
+		remote.directories.add("/workspace");
+		const filesystem = SandboxFileSystem.fromProvider(RemoteFileSystem.make(remote.provider, { cwd: "/workspace" }));
+
+		await Effect.runPromise(filesystem.writeFile("deeply/nested/file.txt", "data"));
+
+		expect(remote.files.has("/workspace/deeply/nested/file.txt")).toBe(true);
+		expect(remote.directories.has("/workspace/deeply/nested")).toBe(true);
+	});
+
+	// A write that fails for a reason mkdir cannot fix must surface its own error,
+	// not the mkdir's — otherwise every permission fault reads as a path fault.
+	it("reports the write's error, not the retry's, when parents are not the problem", async () => {
+		const remote = makeProvider();
+		remote.directories.add("/workspace");
+		const provider = {
+			...remote.provider,
+			writeFile: async () => {
+				const error = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+				error.code = "EACCES";
+				throw error;
+			},
+			mkdir: async () => {
+				throw new Error("mkdir exploded");
+			},
+		};
+		const filesystem = SandboxFileSystem.fromProvider(RemoteFileSystem.make(provider, { cwd: "/workspace" }));
+
+		const error = await Effect.runPromise(Effect.flip(filesystem.writeFile("a/b.txt", "data")));
+
+		expect(error.method).toBe("writeFile");
+		expect((error.cause as NodeJS.ErrnoException).code).toBe("EACCES");
 	});
 });

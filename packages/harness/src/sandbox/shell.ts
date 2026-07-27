@@ -20,6 +20,17 @@ export interface ExecResult {
 }
 
 /**
+ * One options shape for every entry point. `cwd` is the operation-level
+ * override: it wins over the mount's working directory, and a relative value
+ * resolves against it. Neither mutates shared state, so concurrent commands in
+ * one mount can run in different directories.
+ */
+export interface ShellOptions {
+	readonly env?: Record<string, string>;
+	readonly cwd?: string;
+}
+
+/**
  * A streamed chunk of command output, terminated by a single `exit` carrying the
  * exit code. (A backend-level mirror of the tool layer's event; kept here so
  * `sandbox/` does not depend on `tools/`.)
@@ -35,10 +46,7 @@ export type ExecChunk =
  * shell. The {@link Shell} service tag carries this interface.
  */
 export interface ISandboxExe {
-	readonly exec: (
-		command: string,
-		options?: { env?: Record<string, string> },
-	) => Effect.Effect<ExecResult, ShellError>;
+	readonly exec: (command: string, options?: ShellOptions) => Effect.Effect<ExecResult, ShellError>;
 	/**
 	 * Run a program with an explicit argument vector, bypassing shell word
 	 * splitting. Callers that build commands from untrusted values — branch
@@ -48,19 +56,13 @@ export interface ISandboxExe {
 	 * Backends whose transport only accepts a string quote the vector with
 	 * {@link quote}; backends that spawn directly pass it through untouched.
 	 */
-	readonly execArgv: (
-		argv: ReadonlyArray<string>,
-		options?: { env?: Record<string, string>; cwd?: string },
-	) => Effect.Effect<ExecResult, ShellError>;
+	readonly execArgv: (argv: ReadonlyArray<string>, options?: ShellOptions) => Effect.Effect<ExecResult, ShellError>;
 	/**
 	 * Optional streaming output: stdout/stderr chunks then a terminal `exit`.
 	 * Backends that can stream (e.g. Vercel) implement it; `ToolShell.fromSandboxShell`
 	 * bridges it to `ToolShell.stream` so the bash tool streams over them too.
 	 */
-	readonly stream?: (
-		command: string,
-		options?: { env?: Record<string, string> },
-	) => Stream.Stream<ExecChunk, ShellError>;
+	readonly stream?: (command: string, options?: ShellOptions) => Stream.Stream<ExecChunk, ShellError>;
 }
 
 /**
@@ -85,17 +87,36 @@ export const resolveCwd = (base: string | undefined, cwd: string | undefined) =>
 
 /**
  * Complete a string-only backend: `execArgv` quotes the vector and runs it
- * through `exec`, with `cwd` applied as a leading `cd`. Backends that spawn a
- * real argument vector (Vercel) implement `execArgv` themselves instead, so the
- * args never meet a shell parser at all.
+ * through `exec`. Backends that spawn a real argument vector (Vercel) implement
+ * `execArgv` themselves instead, so the args never meet a shell parser at all.
+ *
+ * `cwd` rides the options rather than a `cd <dir> && …` prefix. Every backend
+ * we wrap takes a working directory natively, and the prefix form cannot tell a
+ * failed `cd` from a failed command — both arrive as one exit code.
  */
 export const fromExec = (backend: Omit<ISandboxExe, "execArgv">): ISandboxExe => ({
 	...backend,
-	execArgv: (argv, options) => {
-		const command = quoteArgv(argv);
-		return backend.exec(options?.cwd === undefined ? command : `cd ${quote(options.cwd)} && ${command}`, options);
-	},
+	execArgv: (argv, options) => backend.exec(quoteArgv(argv), options),
 });
+
+/**
+ * Bind a cwd-neutral backend to one mount's working directory.
+ *
+ * The transport is shared between mounts and must stay rooted at the namespace
+ * root, so the directory cannot live inside it: two mounts at different
+ * directories would otherwise see each other's. This wrapper is per mount, and
+ * an operation-level `cwd` still wins — resolved against the mount's, so a
+ * relative one means what it reads like.
+ */
+export const withCwd = (backend: ISandboxExe, cwd: string): ISandboxExe => {
+	const at = (options?: ShellOptions): ShellOptions => ({ ...options, cwd: resolveCwd(cwd, options?.cwd) });
+	const stream = backend.stream;
+	return {
+		exec: (command, options) => backend.exec(command, at(options)),
+		execArgv: (argv, options) => backend.execArgv(argv, at(options)),
+		...(stream === undefined ? {} : { stream: (command, options) => stream(command, at(options)) }),
+	};
+};
 
 /** Execution service — the live {@link ISandboxExe} for the active sandbox. */
 export class Shell extends Context.Service<Shell, ISandboxExe>()("@codework/sandbox/shell") {}

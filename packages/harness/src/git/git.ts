@@ -1,9 +1,8 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { posix as path } from "node:path";
-import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
 import { SandboxFs } from "../sandbox/filesystem/util";
+import { SandboxIO } from "../sandbox/io";
 import { Sandbox } from "../sandbox/sandbox";
-import { Shell } from "../sandbox/shell";
 import { AbsolutePath } from "../schema";
 
 export class AppProcessError extends Schema.TaggedErrorClass<AppProcessError>()("AppProcessError", {
@@ -80,8 +79,8 @@ export class Service extends Context.Service<Service, Interface>()("@codework/gi
 export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
-		const fs = yield* SandboxFileSystem.Service;
-		const shell = yield* Shell;
+		const fs = yield* SandboxIO.FileSystem;
+		const shell = yield* SandboxIO.Shell;
 
 		// Arguments go through `execArgv`, never a command string: branch names and
 		// paths are caller-supplied, and a space or `$(…)` in one must stay data.

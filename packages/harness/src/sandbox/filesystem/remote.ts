@@ -31,9 +31,10 @@ const resolvePath = (path: string, options?: Options) => {
 
 /**
  * Wrap a remote provider into the runtime filesystem surface: resolve relative
- * paths against `cwd`, and guarantee `writeFile` creates missing parents (the
- * runtime's job, not the provider's). `exists` and `rm` delegate to the
- * provider — only the parent-creation and option validation are added here.
+ * paths against `cwd`, and nothing else. Parent creation and `rm` option
+ * validation are the runtime's job and live in `SandboxFileSystem.fromProvider`,
+ * which every backend passes through — putting them here would cover only the
+ * backends that happen to use this wrapper.
  */
 export const make = (provider: Interface, options?: Options): Interface => {
 	const resolve = (path: string) => resolvePath(path, options);
@@ -41,15 +42,7 @@ export const make = (provider: Interface, options?: Options): Interface => {
 	return {
 		readFile: (path) => provider.readFile(resolve(path)),
 		readFileBuffer: (path) => provider.readFileBuffer(resolve(path)),
-		writeFile: async (path, content) => {
-			const target = resolve(path);
-			try {
-				await provider.writeFile(target, content);
-			} catch {
-				await provider.mkdir(posix.dirname(target), { recursive: true });
-				await provider.writeFile(target, content);
-			}
-		},
+		writeFile: (path, content) => provider.writeFile(resolve(path), content),
 		stat: (path) => provider.stat(resolve(path)),
 		...(provider.lstat === undefined ? {} : { lstat: (path: string) => provider.lstat!(resolve(path)) }),
 		readdir: (path) => provider.readdir(resolve(path)),

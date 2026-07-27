@@ -1,11 +1,11 @@
 import { Effect, ManagedRuntime, Stream } from "effect";
 import type { Stats } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { SandboxEnv } from "../src/sandbox/env";
 import { SandboxInstance } from "../src/sandbox/instance";
+import { SandboxIO } from "../src/sandbox/io";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
-import { SandboxRegistry } from "../src/sandbox/map";
 import { EnvVercel, statsFrom } from "../src/sandbox/providers/vercel";
+import { SandboxResource } from "../src/sandbox/resource";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
 import { cancellationSpec } from "./fixtures/cancellation.spec";
@@ -35,10 +35,7 @@ const SANDBOX_CWD = "/tmp";
 const BAKED_ENV = "from-sandbox";
 
 suite("Sandbox.EnvVercel (shared sandbox)", () => {
-	let runtime!: ManagedRuntime.ManagedRuntime<
-		SandboxFileSystem.Service | Shell | SandboxInstance.Service,
-		EnvVercel.VercelError
-	>;
+	let runtime!: ManagedRuntime.ManagedRuntime<Sandbox.Provides | SandboxResource.Service, EnvVercel.VercelError>;
 
 	beforeAll(() => {
 		runtime = ManagedRuntime.make(
@@ -50,14 +47,25 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 	// Run a program against the one shared sandbox.
 	const run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> => runtime.runPromise(program);
 
-	// Resolve the provider-issued EnvId exactly as the application will after
-	// loading it from a project/session row.
-	const resolve = <A, E>(envId: string, program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> =>
+	// The locator for the shared sandbox — what the control plane records as
+	// `provider_resource_id` and reattaches through.
+	const resourceId = () => runtime.runPromise(Effect.map(SandboxResource.Service, (r) => r.providerResourceId));
+
+	// A second, independent mount of the same underlying resource.
+	const reattach = <A, E>(
+		input: { readonly providerResourceId: string; readonly instanceId: SandboxInstance.ID },
+		program: Effect.Effect<A, E, Sandbox.Provides>,
+	): Promise<A> =>
 		Effect.runPromise(
 			program.pipe(
 				Effect.scoped,
-				Effect.provide(SandboxRegistry.SandboxMap.get(envId)),
-				Effect.provide(SandboxRegistry.layer({ vercel: { cwd: SANDBOX_CWD } })),
+				Effect.provide(
+					EnvVercel.services({
+						sandboxName: input.providerResourceId,
+						instanceId: input.instanceId,
+						cwd: SANDBOX_CWD,
+					}),
+				),
 			),
 		);
 
@@ -66,7 +74,8 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 		cwd: SANDBOX_CWD,
 		inheritedEnv: { key: "CW_ENV", value: BAKED_ENV },
 		run,
-		resolve,
+		reattach,
+		resourceId,
 		timeout: PROVISION_TIMEOUT,
 		githubPat,
 	});
@@ -89,7 +98,7 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 				Effect.gen(function* () {
 					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* Shell;
-					const envId = (yield* SandboxInstance.Service).id;
+					const envId = (yield* SandboxIO.Current).id;
 
 					yield* filesystem.writeFile(`${dir}/from-service.txt`, "from service");
 					const cat = yield* shell.exec(`cat ${dir}/from-service.txt`);
@@ -138,7 +147,8 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 			expect(result.linkStat.isFile).toBe(true);
 			expect(result.linkStat.isSymbolicLink).toBe(false);
 			expect(result.linkLstat.isSymbolicLink).toBe(true);
-			expect(SandboxEnv.parse(result.envId)?.kind).toBe("vercel");
+			// The id is minted, not derived from the provider locator (§6.1).
+			expect(result.envId).toMatch(/^sbx_/);
 		},
 		PROVISION_TIMEOUT,
 	);
@@ -194,6 +204,32 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 			expect(result.pwd).toBe(SANDBOX_CWD);
 			expect(result.cat).toBe("in cwd");
 			expect(result.abs).toBe("in cwd");
+		},
+		PROVISION_TIMEOUT,
+	);
+
+	it(
+		"uses the namespace default when cwd is omitted",
+		async () => {
+			const providerResourceId = await resourceId();
+			const result = await Effect.runPromise(
+				Effect.gen(function* () {
+					const current = yield* SandboxIO.Current;
+					const shell = yield* Shell;
+					return { cwd: current.cwd, pwd: (yield* shell.exec("pwd")).stdout.trim() };
+				}).pipe(
+					Effect.scoped,
+					Effect.provide(
+						EnvVercel.services({
+							sandboxName: providerResourceId,
+							instanceId: SandboxInstance.ID.create(),
+						}),
+					),
+				),
+			);
+
+			expect(result.cwd).toBe(EnvVercel.DEFAULT_CWD);
+			expect(result.pwd).toBe(EnvVercel.DEFAULT_CWD);
 		},
 		PROVISION_TIMEOUT,
 	);
@@ -257,22 +293,32 @@ suite("Sandbox.EnvVercel (shared sandbox)", () => {
 	it(
 		"streams stdout/stderr chunks then a terminal exit (step 7)",
 		async () => {
-			const chunks = await run(
+			const result = await run(
 				Effect.gen(function* () {
+					const filesystem = yield* SandboxFileSystem.Service;
 					const shell = yield* Shell;
 					if (shell.stream === undefined) throw new Error("Vercel Shell should support stream");
-					return yield* shell.stream("printf 'hello\\n'; printf 'oops\\n' >&2; exit 0").pipe(Stream.runCollect);
+					const cwd = `stream-${Date.now()}`;
+					yield* filesystem.mkdir(cwd);
+					const chunks = yield* shell
+						.stream("pwd; printf 'hello\\n'; printf 'oops\\n' >&2; exit 0", { cwd })
+						.pipe(
+							Stream.runCollect,
+							Effect.ensuring(filesystem.rm(cwd, { recursive: true, force: true }).pipe(Effect.ignore)),
+						);
+					return { chunks, cwd: `${SANDBOX_CWD}/${cwd}` };
 				}),
 			);
 
 			const decoder = new TextDecoder();
 			let text = "";
 			let exitCode: number | undefined;
-			for (const chunk of chunks) {
+			for (const chunk of result.chunks) {
 				if (chunk._tag === "exit") exitCode = chunk.exitCode;
 				else text += decoder.decode(chunk.bytes);
 			}
 
+			expect(text).toContain(result.cwd);
 			expect(text).toContain("hello");
 			expect(text).toContain("oops");
 			expect(exitCode).toBe(0);

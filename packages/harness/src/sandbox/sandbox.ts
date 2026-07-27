@@ -5,13 +5,15 @@ import { Local } from "./filesystem/local";
 import { HostExe } from "./hostexe";
 import { EnvInMemory } from "./inmemory";
 import { SandboxInstance } from "./instance";
+import { SandboxIO } from "./io";
 import { EnvBash } from "./justbashexe";
 import { EnvSqldb } from "./sqldb";
 import { EnvNodeJSDefault } from "./nodejs";
 
 // re-export from sandbox
-export { SandboxEnv } from "./env";
 export { SandboxInstance } from "./instance";
+export { SandboxIO } from "./io";
+export { SandboxResource } from "./resource";
 export { EnvInMemory } from "./inmemory";
 export { EnvBash } from "./justbashexe";
 export { HostExe } from "./hostexe";
@@ -33,7 +35,7 @@ export { EnvVercel } from "./providers/vercel";
  * sandbox has to be scoped to it — paths repeat across namespaces, so
  * `/workspace` alone never names a place.
  */
-export type Provides = SandboxInstance.Provides;
+export type Provides = SandboxIO.Provides;
 
 /** A sandbox is any Layer providing the runtime services above. */
 export type Sandbox<E = never, RIn = never> = Layer.Layer<Provides, E, RIn>;
@@ -55,25 +57,38 @@ export type LocalBackend<E = never, RIn = never> = Layer.Layer<LocalPrimitives, 
  * managers). For a sandbox whose shell should stay inside the VFS, use
  * `EnvBash.services` instead, which wires just-bash over the same tree.
  */
-export const services = <E, RIn>(backend: LocalBackend<E, RIn>, identity: SandboxInstance.RuntimeIdentity) =>
-	Layer.provideMerge(Layer.mergeAll(Local.layer, HostExe.layer(), SandboxInstance.layer(identity)), backend);
+export const services = <E, RIn>(backend: LocalBackend<E, RIn>, identity: SandboxIO.Identity) =>
+	Layer.provideMerge(
+		SandboxIO.mount(identity),
+		Layer.provideMerge(Layer.merge(Local.layer, HostExe.layer()), backend),
+	);
 
-/** Default sandbox: the real OS filesystem and processes, rooted at `cwd`. */
-export const defaultLayer = (cwd: string) => services(EnvNodeJSDefault.layer({ cwd }), SandboxInstance.host(cwd));
+/** Default sandbox: the real OS filesystem and processes, mounted at `cwd`. */
+export const defaultLayer = (cwd?: string) => services(EnvNodeJSDefault.layer(), SandboxIO.host(cwd));
 
 // Named constructors choose backend and identity together. Low-level assemblers
 // require an explicit id because a custom backend's namespace cannot be inferred.
 
-/** The host machine: real filesystem, real processes. Identity is always `local`. */
-export const local = (cwd: string) => defaultLayer(cwd);
+/**
+ * The host machine: real filesystem, real processes. Identity is always `local`;
+ * cwd defaults to the host process directory, matching Flue's local adapter.
+ */
+export const local = (cwd?: string) => defaultLayer(cwd);
 
 /**
  * An in-process VFS with just-bash over it — no host disk, no host processes.
  * Each call is a distinct namespace and says so, and none of them survive the
  * process.
  */
-export const memory = (options?: { readonly instanceId?: SandboxInstance.ID }) =>
-	EnvBash.services(EnvInMemory.layer(), SandboxInstance.virtual({ driver: "memory", id: options?.instanceId }));
+export const memory = (options?: { readonly instanceId?: SandboxInstance.ID; readonly cwd?: string }) => {
+	const identity = SandboxIO.virtual({
+		driver: "memory",
+		id: options?.instanceId,
+		defaultCwd: "/",
+		cwd: options?.cwd,
+	});
+	return EnvBash.services(EnvInMemory.layer({ cwd: identity.cwd }), identity);
+};
 
 /**
  * A sqlite-backed VFS with just-bash over it. With a `location` the file is the
@@ -81,12 +96,19 @@ export const memory = (options?: { readonly instanceId?: SandboxInstance.ID }) =
  * dies with it. Either way the identity is minted unless the caller names one —
  * a backing file can be re-opened, but only its registrar knows under which ID.
  */
-export const sqldb = (options?: { readonly location?: string; readonly instanceId?: SandboxInstance.ID }) => {
+export const sqldb = (options?: {
+	readonly location?: string;
+	readonly instanceId?: SandboxInstance.ID;
+	readonly cwd?: string;
+}) => {
 	const location = options?.location === undefined ? undefined : path.resolve(options.location);
-	return EnvBash.services(
-		EnvSqldb.layer({ location }),
-		SandboxInstance.virtual({ driver: "sqldb", id: options?.instanceId }),
-	);
+	const identity = SandboxIO.virtual({
+		driver: "sqldb",
+		id: options?.instanceId,
+		defaultCwd: "/",
+		cwd: options?.cwd,
+	});
+	return EnvBash.services(EnvSqldb.layer({ location, options: { cwd: identity.cwd } }), identity);
 };
 
 export * as Sandbox from "./sandbox";

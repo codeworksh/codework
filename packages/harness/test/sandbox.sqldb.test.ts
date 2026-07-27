@@ -109,6 +109,7 @@ describe("Sandbox.EnvSQLiteFS", () => {
 			await withService(
 				async () => ({
 					sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo", seed: { "package.json": "{}" } } }),
+					cwd: "/repo",
 				}),
 				async (filesystem) => {
 					expect(await filesystem.readFile("package.json")).toBe("{}");
@@ -134,7 +135,7 @@ describe("Sandbox.EnvSQLiteFS", () => {
 	describe("with cwd", () => {
 		it("should resolve relative file operations against cwd", async () => {
 			await withService(
-				async () => ({ sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } }) }),
+				async () => ({ sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } }), cwd: "/repo" }),
 				async (filesystem) => {
 					await filesystem.writeFile("src/index.ts", "export const value = 1;\n");
 
@@ -151,7 +152,10 @@ describe("Sandbox.EnvSQLiteFS", () => {
 	describe("with read only", () => {
 		it("should reject writes when created with readOnly", async () => {
 			await withService(
-				async () => ({ sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo", readOnly: true } }) }),
+				async () => ({
+					sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo", readOnly: true } }),
+					cwd: "/repo",
+				}),
 				async (filesystem) => {
 					await expect(filesystem.writeFile("/file.txt", "nope")).rejects.toBeDefined();
 				},
@@ -160,7 +164,10 @@ describe("Sandbox.EnvSQLiteFS", () => {
 
 		it("should still serve reads when read-only", async () => {
 			await withService(
-				async () => ({ sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo", readOnly: true } }) }),
+				async () => ({
+					sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo", readOnly: true } }),
+					cwd: "/repo",
+				}),
 				async (filesystem) => {
 					expect((await filesystem.stat("/")).isDirectory).toBe(true);
 					expect(await filesystem.exists("/")).toBe(true);

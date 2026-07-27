@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
 import { SandboxInstance } from "../src/sandbox/instance";
+import { SandboxIO } from "../src/sandbox/io";
 import { SandboxStore } from "../src/sandbox/store";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { Git } from "../src/git/git";
@@ -62,7 +63,7 @@ const projectLayer = (git: Partial<Git.Interface>, options: ProjectOptions = {})
 		Layer.provideMerge(
 			Layer.mergeAll(
 				databaseLayer(),
-				SandboxInstance.hostLayer(),
+				SandboxIO.hostLayer(),
 				Layer.succeed(
 					SandboxFileSystem.Service,
 					SandboxFileSystem.Service.of({
@@ -104,7 +105,7 @@ const seedDirectory = (row: {
 	});
 
 // Seeds land in the environment the service under test is running in —
-// `projectLayer` provides `SandboxInstance.hostLayer()` — since reads are scoped by
+// `projectLayer` provides `SandboxIO.hostLayer()` — since reads are scoped by
 // environment and rows from another one are deliberately invisible.
 const seedDirectories = (rows: Array<{ directory: string; type: ProjectDirectory["type"] }>) =>
 	Effect.gen(function* () {
@@ -446,7 +447,7 @@ describe("Project", () => {
 				Layer.provideMerge(
 					Layer.mergeAll(
 						databaseLayer(),
-						SandboxInstance.hostLayer(),
+						SandboxIO.hostLayer(),
 						Layer.succeed(
 							SandboxFileSystem.Service,
 							SandboxFileSystem.Service.of({

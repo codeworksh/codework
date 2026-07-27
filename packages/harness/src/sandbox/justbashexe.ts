@@ -3,11 +3,10 @@ import { Effect, Layer } from "effect";
 import { Bash, type IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
-import { SandboxFileSystem } from "./filesystem/filesystem";
 import { Local } from "./filesystem/local";
-import { SandboxInstance } from "./instance";
+import { SandboxIO } from "./io";
 import type { LocalPrimitives } from "./sandbox";
-import { type ExecResult, fromExec, type ISandboxExe, Shell, ShellError } from "./shell";
+import { type ExecResult, fromExec, type ISandboxExe, Shell, ShellError, type ShellOptions } from "./shell";
 
 // The shared exec contract lives in `shell.ts`; re-export the pieces this
 // module used to own so existing `EnvBash.Shell` / `EnvBash.ShellError`
@@ -25,10 +24,13 @@ export type { ExecResult, ISandboxExe as Interface };
 // example deleting and recreating a path) can leave a stale overlay entry
 // behind. Hard links fail loudly because their shared-inode semantics cannot
 // be represented by the VFS API.
-export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
+export const bridge = (vfs: VirtualFileSystem, cwd: string): IFileSystem => {
 	const metadata = new Map<string, { mode?: number; mtime?: Date }>();
 	const key = (path: string) => vfs.resolvePath(path);
-	const walkRoot = () => (vfs.provider instanceof RealFSProvider && vfs.virtualCwdEnabled ? vfs.cwd() : "/");
+	// Glob expansion enumerates from here. On the host that must be the mount's
+	// directory: the VFS is rooted at `/` and never chdirs now, so reading its
+	// cwd would enumerate the entire machine for every `*`.
+	const walkRoot = () => (vfs.provider instanceof RealFSProvider ? cwd : "/");
 
 	const encodingOf = (options?: { encoding?: string | null } | string) => {
 		const encoding = typeof options === "string" ? options : options?.encoding;
@@ -229,47 +231,57 @@ export const bridge = (vfs: VirtualFileSystem): IFileSystem => {
 
 // just-bash only needs the async IFileSystem surface. The lone synchronous
 // touchpoint, getAllPaths for glob expansion, degrades to an empty list.
-const shell = Layer.effect(
-	Shell,
-	Effect.gen(function* () {
-		const vfs = yield* Local.Vfs;
-		const bash = new Bash({ fs: bridge(vfs), cwd: vfs.virtualCwdEnabled ? vfs.cwd() : "/" });
+const shell = (cwd: string) =>
+	Layer.effect(
+		Shell,
+		Effect.gen(function* () {
+			const vfs = yield* Local.Vfs;
+			// The interpreter belongs to the mount, not to the transport underneath
+			// it: the VFS is shared and stays rooted at `/`, while this carries one
+			// mount's directory. Every call still takes an explicit `cwd` on top.
+			const bash = new Bash({ fs: bridge(vfs, cwd), cwd });
 
-		const exec = Effect.fn("Shell.exec")(function* (command: string, options?: { env?: Record<string, string> }) {
-			return yield* Effect.tryPromise({
-				// `tryPromise` aborts this signal when the fiber is interrupted, and
-				// just-bash stops at its next statement boundary. Without threading it
-				// through, an interrupted command keeps running in-process to
-				// completion: the fiber unwinds promptly and the work leaks behind it,
-				// still writing to the sandbox filesystem long after its caller is gone.
-				try: (signal) => bash.exec(command, { ...options, signal }),
-				catch: (cause) => new ShellError({ command, cause }),
+			const exec = Effect.fn("Shell.exec")(function* (command: string, options?: ShellOptions) {
+				return yield* Effect.tryPromise({
+					// `tryPromise` aborts this signal when the fiber is interrupted, and
+					// just-bash stops at its next statement boundary. Without threading it
+					// through, an interrupted command keeps running in-process to
+					// completion: the fiber unwinds promptly and the work leaks behind it,
+					// still writing to the sandbox filesystem long after its caller is gone.
+					try: (signal) => bash.exec(command, { ...options, signal }),
+					catch: (cause) => new ShellError({ command, cause }),
+				});
 			});
-		});
 
-		// just-bash parses a command string, so `execArgv` goes through the shared
-		// quoting fallback rather than spawning a vector directly.
-		return Shell.of(fromExec({ exec }));
-	}),
-);
+			// just-bash parses a command string, so `execArgv` goes through the shared
+			// quoting fallback rather than spawning a vector directly.
+			return Shell.of(fromExec({ exec }));
+		}),
+	);
 
 /**
  * Wraps any local VFS-backed sandbox with a just-bash shell that executes
  * against the sandbox's own vfs: pick the filesystem backend (default, inmemory, sqldb) and gain a Shell service on top of it.
  */
+// `cwd` is required rather than defaulted. A default of `/` is harmless over a
+// VFS and catastrophic over the host: `walkRoot` would enumerate the entire
+// machine, synchronously, on the first glob. A caller that has to name the
+// directory cannot fall into that by omission.
 export const layer = <E, RIn>(
 	inner: Layer.Layer<LocalPrimitives, E, RIn>,
-): Layer.Layer<Shell | LocalPrimitives, E, RIn> => Layer.provideMerge(shell, inner);
+	cwd: string,
+): Layer.Layer<Shell | LocalPrimitives, E, RIn> =>
+	Layer.provideMerge(shell(SandboxIO.resolveMountCwd("/", cwd)), inner);
 
 /**
- * Runtime services for a bash-wrapped sandbox: sandbox filesystem service,
- * Shell, and the sandbox's own capabilities. The Shell-typed counterpart of
- * `Sandbox.services`.
+ * A mount over a bash-wrapped sandbox: `SandboxIO.Current`, the sandbox
+ * filesystem, the just-bash Shell, and the backend's own primitives. The
+ * Shell-typed counterpart of `Sandbox.services`.
  */
 export const services = <E, RIn>(
 	inner: Layer.Layer<LocalPrimitives, E, RIn>,
-	identity: SandboxInstance.RuntimeIdentity,
-): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxInstance.Service | LocalPrimitives, E, RIn> =>
-	Layer.provideMerge(Layer.merge(Local.layer, SandboxInstance.layer(identity)), layer(inner));
+	identity: SandboxIO.Identity,
+): Layer.Layer<SandboxIO.Provides | LocalPrimitives, E, RIn> =>
+	Layer.provideMerge(SandboxIO.mount(identity), Layer.provideMerge(Local.layer, layer(inner, identity.cwd)));
 
 export * as EnvBash from "./justbashexe";

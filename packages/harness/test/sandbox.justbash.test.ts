@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
+import { SandboxIO } from "../src/sandbox/io";
 import { bridge, EnvBash } from "../src/sandbox/justbashexe";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { filesystemSpec } from "./fixtures/sandbox.spec";
@@ -13,12 +14,12 @@ import { tmpdir } from "./fixtures/tempdir";
 describe("Sandbox.EnvBash", () => {
 	// wrapping a sandbox must not change its filesystem semantics
 	filesystemSpec(async () => ({
-		sandbox: Sandbox.EnvBash.layer(Sandbox.EnvInMemory.layer()),
+		sandbox: Sandbox.EnvBash.layer(Sandbox.EnvInMemory.layer(), "/"),
 	}));
 
 	describe("shell and FileSystem.Service share one filesystem", () => {
 		const sandbox = () =>
-			Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer(), Sandbox.SandboxInstance.virtual({ driver: "memory" }));
+			Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer(), Sandbox.SandboxIO.virtual({ driver: "memory" }));
 
 		it("shell reads what the service wrote", async () => {
 			const result = await Effect.runPromise(
@@ -193,6 +194,42 @@ describe("Sandbox.EnvBash", () => {
 		});
 	});
 
+	it.each([
+		["memory", () => Sandbox.memory()],
+		["sqldb", () => Sandbox.sqldb()],
+	] as const)("uses / as the %s namespace default", async (_name, make) => {
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const current = yield* SandboxIO.Current;
+				const shell = yield* EnvBash.Shell;
+				return { cwd: current.cwd, pwd: (yield* shell.exec("pwd")).stdout.trim() };
+			}).pipe(Effect.provide(make())),
+		);
+
+		expect(result).toEqual({ cwd: "/", pwd: "/" });
+	});
+
+	it.each([
+		["memory", () => Sandbox.memory({ cwd: "repo" })],
+		["sqldb", () => Sandbox.sqldb({ cwd: "repo" })],
+	] as const)("resolves and creates a relative %s mount cwd", async (_name, make) => {
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const current = yield* SandboxIO.Current;
+				const filesystem = yield* SandboxFileSystem.Service;
+				const shell = yield* EnvBash.Shell;
+				yield* filesystem.writeFile("marker.txt", "mounted");
+				return {
+					cwd: current.cwd,
+					pwd: (yield* shell.exec("pwd")).stdout.trim(),
+					marker: yield* filesystem.readFile("/repo/marker.txt"),
+				};
+			}).pipe(Effect.provide(make())),
+		);
+
+		expect(result).toEqual({ cwd: "/repo", pwd: "/repo", marker: "mounted" });
+	});
+
 	describe("with cwd-backed VFS", () => {
 		it("resolves relative shell paths against an in-memory cwd", async () => {
 			await Effect.runPromise(
@@ -213,7 +250,7 @@ describe("Sandbox.EnvBash", () => {
 					Effect.provide(
 						Sandbox.EnvBash.services(
 							Sandbox.EnvInMemory.layer({ cwd: "/repo" }),
-							Sandbox.SandboxInstance.virtual({ driver: "memory" }),
+							Sandbox.SandboxIO.virtual({ driver: "memory", cwd: "/repo" }),
 						),
 					),
 				),
@@ -239,7 +276,7 @@ describe("Sandbox.EnvBash", () => {
 					Effect.provide(
 						Sandbox.EnvBash.services(
 							Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } }),
-							Sandbox.SandboxInstance.virtual({ driver: "sqldb" }),
+							Sandbox.SandboxIO.virtual({ driver: "sqldb", cwd: "/repo" }),
 						),
 					),
 				),
@@ -263,10 +300,7 @@ describe("Sandbox.EnvBash", () => {
 					expect(yield* filesystem.readFile("shell.txt")).toBe("from shell\n");
 				}).pipe(
 					Effect.provide(
-						Sandbox.EnvBash.services(
-							Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }),
-							Sandbox.SandboxInstance.host(tmp.path),
-						),
+						Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer(), Sandbox.SandboxIO.host(tmp.path)),
 					),
 				),
 			);
@@ -279,7 +313,7 @@ describe("Sandbox.EnvBash", () => {
 		it("applies chmod and utimes through a shell-local metadata overlay", async () => {
 			const vfs = create(new MemoryProvider(), { moduleHooks: false });
 			await vfs.promises.writeFile("/file.txt", "data");
-			const filesystem = bridge(vfs);
+			const filesystem = bridge(vfs, "/");
 			const mtime = new Date("2020-01-02T03:04:05.000Z");
 
 			await filesystem.chmod("/file.txt", 0o751);
@@ -294,7 +328,7 @@ describe("Sandbox.EnvBash", () => {
 			const vfs = create(new MemoryProvider(), { moduleHooks: false, virtualCwd: true });
 			await vfs.promises.mkdir("/repo");
 			vfs.chdir("/repo");
-			const filesystem = bridge(vfs);
+			const filesystem = bridge(vfs, "/");
 
 			await filesystem.writeFile("file.txt", "data");
 			await filesystem.chmod("file.txt", 0o751);
@@ -307,7 +341,7 @@ describe("Sandbox.EnvBash", () => {
 			const vfs = create(new MemoryProvider(), { moduleHooks: false });
 			await vfs.promises.writeFile("/target.txt", "data");
 			await vfs.promises.symlink("/target.txt", "/link.txt");
-			const filesystem = bridge(vfs);
+			const filesystem = bridge(vfs, "/");
 
 			await filesystem.chmod("/link.txt", 0o750);
 
@@ -319,7 +353,7 @@ describe("Sandbox.EnvBash", () => {
 		it("preserves overlay metadata when copying files", async () => {
 			const vfs = create(new MemoryProvider(), { moduleHooks: false });
 			await vfs.promises.writeFile("/script", "#!/bin/sh\necho hi\n");
-			const filesystem = bridge(vfs);
+			const filesystem = bridge(vfs, "/");
 			const mtime = new Date("2020-01-02T03:04:05.000Z");
 
 			await filesystem.chmod("/script", 0o755);
@@ -334,7 +368,7 @@ describe("Sandbox.EnvBash", () => {
 		it("preserves the source mtime when copying files without an overlay", async () => {
 			const vfs = create(new MemoryProvider(), { moduleHooks: false });
 			await vfs.promises.writeFile("/src.txt", "data");
-			const filesystem = bridge(vfs);
+			const filesystem = bridge(vfs, "/");
 
 			const source = await filesystem.stat("/src.txt");
 			await new Promise((resolve) => setTimeout(resolve, 5));
@@ -347,7 +381,7 @@ describe("Sandbox.EnvBash", () => {
 			const vfs = create(new MemoryProvider(), { moduleHooks: false });
 			await vfs.promises.mkdir("/dir");
 			await vfs.promises.writeFile("/dir/file.txt", "data");
-			const filesystem = bridge(vfs);
+			const filesystem = bridge(vfs, "/");
 
 			await filesystem.chmod("/dir/file.txt", 0o700);
 			await filesystem.cp("/dir", "/copy", { recursive: true });
@@ -358,7 +392,7 @@ describe("Sandbox.EnvBash", () => {
 		it("refreshes an overlaid mtime when the file is written again", async () => {
 			const vfs = create(new MemoryProvider(), { moduleHooks: false });
 			await vfs.promises.writeFile("/file.txt", "data");
-			const filesystem = bridge(vfs);
+			const filesystem = bridge(vfs, "/");
 			const past = new Date("2020-01-02T03:04:05.000Z");
 			await filesystem.chmod("/file.txt", 0o755);
 
@@ -377,7 +411,7 @@ describe("Sandbox.EnvBash", () => {
 		});
 
 		it("rejects metadata changes for missing paths", async () => {
-			const filesystem = bridge(create(new MemoryProvider(), { moduleHooks: false }));
+			const filesystem = bridge(create(new MemoryProvider(), { moduleHooks: false }), "/");
 
 			await expect(filesystem.chmod("/missing.txt", 0o755)).rejects.toMatchObject({ code: "ENOENT" });
 			await expect(filesystem.utimes("/missing.txt", new Date(), new Date())).rejects.toMatchObject({
@@ -390,7 +424,7 @@ describe("Sandbox.EnvBash", () => {
 			const vfs = create(provider, { moduleHooks: false });
 			await vfs.promises.writeFile("/file.txt", "data");
 			provider.setReadOnly();
-			const filesystem = bridge(vfs);
+			const filesystem = bridge(vfs, "/");
 
 			await expect(filesystem.chmod("/file.txt", 0o755)).rejects.toMatchObject({ code: "EROFS" });
 			await expect(filesystem.utimes("/file.txt", new Date(), new Date())).rejects.toMatchObject({ code: "EROFS" });
@@ -401,7 +435,7 @@ describe("Sandbox.EnvBash", () => {
 			const vfs = create(provider, { moduleHooks: false });
 			await vfs.promises.writeFile("/file.txt", "data");
 			provider.setReadOnly();
-			const bash = new Bash({ fs: bridge(vfs), cwd: "/" });
+			const bash = new Bash({ fs: bridge(vfs, "/"), cwd: "/" });
 
 			const chmod = await bash.exec("chmod 755 /file.txt");
 			const touch = await bash.exec("touch /file.txt");
@@ -413,7 +447,7 @@ describe("Sandbox.EnvBash", () => {
 
 	describe("bridge rm", () => {
 		it("ignores only missing paths under force", async () => {
-			const filesystem = bridge(create(new MemoryProvider(), { moduleHooks: false }));
+			const filesystem = bridge(create(new MemoryProvider(), { moduleHooks: false }), "/");
 
 			await expect(filesystem.rm("/missing.txt", { force: true })).resolves.toBeUndefined();
 			await expect(filesystem.rm("/missing.txt")).rejects.toMatchObject({ code: "ENOENT" });
@@ -429,19 +463,21 @@ describe("Sandbox.EnvBash", () => {
 				promises: { value: { ...vfs.promises, lstat: () => Promise.reject(denied) } },
 			}) as typeof vfs;
 
-			await expect(bridge(failing).rm("/file.txt", { force: true })).rejects.toMatchObject({ code: "EACCES" });
+			await expect(bridge(failing, "/").rm("/file.txt", { force: true })).rejects.toMatchObject({ code: "EACCES" });
 		});
 	});
 
 	describe("bridge path enumeration", () => {
-		it("walks only cwd for the default real filesystem provider", async () => {
+		it("walks only the mount directory for the real filesystem provider", async () => {
 			await using tmp = await tmpdir();
 			await fs.writeFile(path.join(tmp.path, "a.txt"), "a");
 
+			// The bridge takes the directory explicitly: the VFS is the shared
+			// transport and stays rooted at `/`, so enumerating from its own cwd
+			// would walk the entire machine for every `*`.
 			const vfs = create(new RealFSProvider("/"), { moduleHooks: false, virtualCwd: true });
-			vfs.chdir(tmp.path);
 
-			const paths = bridge(vfs).getAllPaths();
+			const paths = bridge(vfs, tmp.path).getAllPaths();
 
 			expect(paths).toContain(path.join(tmp.path, "a.txt"));
 			expect(paths.every((item) => item === tmp.path || item.startsWith(`${tmp.path}/`))).toBe(true);
@@ -466,7 +502,7 @@ describe("Sandbox.EnvBash", () => {
 				Effect.provide(
 					Sandbox.EnvBash.services(
 						Sandbox.EnvSqldb.layer({ location: database }),
-						Sandbox.SandboxInstance.virtual({ driver: "sqldb", id: instanceId }),
+						Sandbox.SandboxIO.virtual({ driver: "sqldb", id: instanceId }),
 					),
 				),
 			),
@@ -480,7 +516,7 @@ describe("Sandbox.EnvBash", () => {
 				Effect.provide(
 					Sandbox.EnvBash.services(
 						Sandbox.EnvSqldb.layer({ location: database }),
-						Sandbox.SandboxInstance.virtual({ driver: "sqldb", id: instanceId }),
+						Sandbox.SandboxIO.virtual({ driver: "sqldb", id: instanceId }),
 					),
 				),
 			),
@@ -504,10 +540,7 @@ describe("Sandbox.EnvBash", () => {
 				return yield* filesystem.readFile("file.txt");
 			}).pipe(
 				Effect.provide(
-					Sandbox.EnvBash.services(
-						Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }),
-						Sandbox.SandboxInstance.host(tmp.path),
-					),
+					Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer(), Sandbox.SandboxIO.host(tmp.path)),
 				),
 			),
 		);
@@ -527,10 +560,7 @@ describe("Sandbox.EnvBash", () => {
 				return yield* shell.exec(`ln -s ${outside} leak && cat leak`);
 			}).pipe(
 				Effect.provide(
-					Sandbox.EnvBash.services(
-						Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }),
-						Sandbox.SandboxInstance.host(tmp.path),
-					),
+					Sandbox.EnvBash.services(Sandbox.EnvNodeJSDefault.layer(), Sandbox.SandboxIO.host(tmp.path)),
 				),
 			),
 		);

@@ -1,4 +1,5 @@
 import { Context, Effect, Schema } from "effect";
+import { posix } from "node:path";
 
 /**
  * The runtime filesystem contract, independent of any backend.
@@ -71,6 +72,10 @@ export const isNotFoundError = (cause: unknown) => {
 export interface Provider {
 	readonly readFile: (path: string) => Promise<string>;
 	readonly readFileBuffer: (path: string) => Promise<Uint8Array>;
+	/**
+	 * Write the file. Parents may be missing — do not create them here;
+	 * {@link fromProvider} owns that guarantee for every backend.
+	 */
 	readonly writeFile: (path: string, content: string | Uint8Array) => Promise<void>;
 	readonly stat: (path: string) => Promise<FileStat>;
 	readonly readdir: (path: string) => Promise<string[]>;
@@ -94,6 +99,7 @@ export interface Provider {
 export interface Interface {
 	readonly readFile: (path: string) => Effect.Effect<string, FileSystemError>;
 	readonly readFileBuffer: (path: string) => Effect.Effect<Uint8Array, FileSystemError>;
+	/** Creates missing parent directories, on every backend. */
 	readonly writeFile: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>;
 	readonly stat: (path: string) => Effect.Effect<FileStat, FileSystemError>;
 	readonly readdir: (path: string) => Effect.Effect<string[], FileSystemError>;
@@ -126,12 +132,36 @@ export const validateRmOptions = (
 
 /**
  * Lift a {@link Provider} into the runtime {@link Interface}: one place that
- * converts rejections into {@link FileSystemError}, validates `rm` options, and
- * names a tracing span per operation.
+ * converts rejections into {@link FileSystemError}, validates `rm` options,
+ * creates missing parents on write, and names a tracing span per operation.
  */
 export const fromProvider = (provider: Provider): Interface => {
 	const attempt = <A>(method: string, path: string, run: () => Promise<A>) =>
 		Effect.tryPromise({ try: run, catch: (cause) => new FileSystemError({ method, path, cause }) });
+
+	// The parent-creation guarantee, installed once for every backend instead of
+	// re-implemented per provider: anything that reaches `Interface` reaches it
+	// through here, so a backend cannot forget it.
+	//
+	// Lazy by design — try the write first, so the happy path stays a single call
+	// and no remote backend pays a round-trip per write. A failure is usually a
+	// missing parent, so create it and retry once. The mkdir's own error is
+	// dropped on purpose: when the write failed for some other reason (EACCES,
+	// EROFS, a dropped connection), the retry reproduces it, and *that* is the
+	// failure the caller must see rather than a misleading mkdir error standing
+	// in for it.
+	const writeCreatingParents = (path: string, content: string | Uint8Array) => {
+		const write = attempt("writeFile", path, () => provider.writeFile(path, content));
+		const parent = posix.dirname(path);
+		return write.pipe(
+			Effect.catch(() =>
+				attempt("mkdir", parent, () => provider.mkdir(parent, { recursive: true })).pipe(
+					Effect.ignore,
+					Effect.andThen(write),
+				),
+			),
+		);
+	};
 
 	return {
 		readFile: Effect.fn("SandboxFileSystem.readFile")((path: string) =>
@@ -140,9 +170,7 @@ export const fromProvider = (provider: Provider): Interface => {
 		readFileBuffer: Effect.fn("SandboxFileSystem.readFileBuffer")((path: string) =>
 			attempt("readFileBuffer", path, () => provider.readFileBuffer(path)),
 		),
-		writeFile: Effect.fn("SandboxFileSystem.writeFile")((path: string, content: string | Uint8Array) =>
-			attempt("writeFile", path, () => provider.writeFile(path, content)),
-		),
+		writeFile: Effect.fn("SandboxFileSystem.writeFile")(writeCreatingParents),
 		stat: Effect.fn("SandboxFileSystem.stat")((path: string) => attempt("stat", path, () => provider.stat(path))),
 		// carried through only when the backend actually implements it
 		...(provider.lstat === undefined
@@ -167,6 +195,31 @@ export const fromProvider = (provider: Provider): Interface => {
 		rm: Effect.fn("SandboxFileSystem.rm")((path: string, options?: RmOptions) =>
 			validateRmOptions(options).pipe(Effect.andThen(attempt("rm", path, () => provider.rm(path, options)))),
 		),
+	};
+};
+
+/**
+ * Bind a cwd-neutral filesystem to one mount's working directory.
+ *
+ * The counterpart of `Shell.withCwd`, and the reason relative paths mean the
+ * same thing to both: a shared transport stays rooted at the namespace root, so
+ * resolution happens here, per mount, rather than inside a VFS whose `chdir` is
+ * global state two mounts would fight over.
+ */
+export const withCwd = (fs: Interface, cwd: string): Interface => {
+	const at = (path: string) => posix.resolve(cwd, path);
+	return {
+		readFile: (path) => fs.readFile(at(path)),
+		readFileBuffer: (path) => fs.readFileBuffer(at(path)),
+		writeFile: (path, content) => fs.writeFile(at(path), content),
+		stat: (path) => fs.stat(at(path)),
+		readdir: (path) => fs.readdir(at(path)),
+		exists: (path) => fs.exists(at(path)),
+		mkdir: (path, options) => fs.mkdir(at(path), options),
+		rm: (path, options) => fs.rm(at(path), options),
+		// carried through only when the backend implements it, so a caller can
+		// still detect absence by checking the property
+		...(fs.lstat === undefined ? {} : { lstat: (path: string) => fs.lstat!(at(path)) }),
 	};
 };
 

@@ -6,15 +6,27 @@ import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { Local } from "../src/sandbox/filesystem/local";
 import { Sandbox } from "../src/sandbox/sandbox";
-import { withService } from "./fixtures/sandbox.spec";
+import { filesystemSpec, withService } from "./fixtures/sandbox.spec";
 import { tmpdir } from "./fixtures/tempdir";
 
 describe("Sandbox.EnvDefault", () => {
+	// The host runs the same cross-backend contract as the virtual backends —
+	// possible only now that the spec addresses the mount, since every path it
+	// touches lands inside this temp directory instead of at the real root.
+	filesystemSpec(async () => {
+		const tmp = await tmpdir();
+		return {
+			sandbox: Sandbox.EnvNodeJSDefault.layer(),
+			cwd: tmp.path,
+			dispose: () => tmp[Symbol.asyncDispose](),
+		};
+	});
+
 	it("should resolve relative file operations against cwd", async () => {
 		await using tmp = await tmpdir();
 
 		await withService(
-			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }) }),
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer(), cwd: tmp.path }),
 			async (filesystem) => {
 				await filesystem.writeFile("src/index.ts", "export const value = 1;\n");
 
@@ -28,12 +40,53 @@ describe("Sandbox.EnvDefault", () => {
 		expect(await fs.readFile(path.join(tmp.path, "src", "index.ts"), "utf8")).toBe("export const value = 1;\n");
 	});
 
+	// The host is the backend production runs on and the one the shared
+	// `filesystemSpec` cannot cover, because that spec writes to absolute `/…`
+	// paths — safe inside a VFS, the real root here. So the two cross-backend
+	// guarantees are pinned directly against a temp directory instead.
+	it("should create missing parent directories on write", async () => {
+		await using tmp = await tmpdir();
+
+		await withService(
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer(), cwd: tmp.path }),
+			async (filesystem) => {
+				await filesystem.writeFile("deeply/nested/dir/file.txt", "data");
+
+				expect(await filesystem.readFile("deeply/nested/dir/file.txt")).toBe("data");
+				expect((await filesystem.stat("deeply/nested/dir")).isDirectory).toBe(true);
+			},
+		);
+
+		expect(await fs.readFile(path.join(tmp.path, "deeply", "nested", "dir", "file.txt"), "utf8")).toBe("data");
+	});
+
+	it("should report symlink identity through lstat, never through stat", async () => {
+		await using tmp = await tmpdir();
+		await fs.writeFile(path.join(tmp.path, "target.txt"), "data");
+		await fs.symlink("target.txt", path.join(tmp.path, "link.txt"));
+
+		await withService(
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer(), cwd: tmp.path }),
+			async (filesystem) => {
+				// `stat` follows the link, so it describes the target — a regular file
+				const target = await filesystem.stat("link.txt");
+				expect(target.isFile).toBe(true);
+				expect(target.isSymbolicLink).toBe(false);
+
+				// `lstat` describes the entry itself, matching the remote backends
+				expect(filesystem.lstat).toBeDefined();
+				const entry = await filesystem.lstat!("link.txt");
+				expect(entry.isSymbolicLink).toBe(true);
+			},
+		);
+	});
+
 	it("should see files created by the host under cwd", async () => {
 		await using tmp = await tmpdir();
 		await fs.writeFile(path.join(tmp.path, "host.txt"), "from host");
 
 		const content = await withService(
-			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }) }),
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer(), cwd: tmp.path }),
 			(filesystem) => filesystem.readFile("host.txt"),
 		);
 
@@ -50,7 +103,7 @@ describe("Sandbox.EnvDefault", () => {
 		try {
 			await expect(
 				withService(
-					async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }) }),
+					async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer(), cwd: tmp.path }),
 					(filesystem) => filesystem.exists("locked/file.txt"),
 				),
 			).rejects.toMatchObject({ _tag: "SandboxFileSystemError", method: "exists" });
@@ -66,7 +119,7 @@ describe("Sandbox.EnvDefault", () => {
 		await fs.mkdir(cwd);
 
 		await withService(
-			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd }) }),
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer(), cwd }),
 			async (filesystem) => {
 				await filesystem.writeFile(absoluteFile, "absolute");
 
@@ -88,7 +141,7 @@ describe("Sandbox.EnvDefault", () => {
 		await fs.symlink(outside, path.join(cwd, "leak.txt"));
 
 		const content = await withService(
-			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer({ cwd }) }),
+			async () => ({ sandbox: Sandbox.EnvNodeJSDefault.layer(), cwd }),
 			async (filesystem) => {
 				await filesystem.writeFile("leak.txt", "changed");
 				return filesystem.readFile("leak.txt");
@@ -104,17 +157,22 @@ describe("Sandbox.EnvDefault", () => {
 
 		const result = await Effect.runPromise(
 			Effect.gen(function* () {
+				// The raw VFS is the cwd-neutral transport, rooted at `/` — relative
+				// paths here would resolve against the *process*, not the mount. Only
+				// code above a mount may use them.
 				const vfs = yield* Local.Vfs;
+				const target = path.join(tmp.path, "target.txt");
+				const link = path.join(tmp.path, "link.txt");
 				yield* Effect.promise(async () => {
-					await vfs.promises.writeFile("target.txt", "inside");
-					await vfs.promises.symlink("target.txt", "link.txt");
+					await vfs.promises.writeFile(target, "inside");
+					await vfs.promises.symlink("target.txt", link);
 				});
 
 				return {
-					content: yield* Effect.promise(() => vfs.promises.readFile("link.txt", "utf8")),
-					target: yield* Effect.promise(() => vfs.promises.readlink("link.txt")),
+					content: yield* Effect.promise(() => vfs.promises.readFile(link, "utf8")),
+					target: yield* Effect.promise(() => vfs.promises.readlink(link)),
 				};
-			}).pipe(Effect.provide(Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }))),
+			}).pipe(Effect.provide(Sandbox.EnvNodeJSDefault.layer())),
 		);
 
 		expect(result).toEqual({ content: "inside", target: "target.txt" });
