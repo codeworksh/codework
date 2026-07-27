@@ -9,11 +9,36 @@ import {
 } from "@daytona/sdk";
 import { Context, Effect, Layer, Schema } from "effect";
 import { Buffer } from "node:buffer";
-import { SandboxEnv } from "../env";
+import { posix } from "node:path";
 import { SandboxFileSystem } from "../filesystem/filesystem";
 import { RemoteFileSystem } from "../filesystem/remote";
 import { SandboxInstance } from "../instance";
+import { SandboxIO } from "../io";
+import { SandboxResource } from "../resource";
 import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../shell";
+
+/** Fallback when Daytona cannot report a snapshot/image-specific work directory. */
+export const DEFAULT_CWD = "/home/daytona";
+
+/**
+ * The mount cwd for a Daytona namespace.
+ *
+ * An absolute override replaces the namespace default outright, so the
+ * `getWorkDir()` round-trip is skipped: it would discover a value we then throw
+ * away. Otherwise the sandbox's own work directory is the default, and
+ * {@link DEFAULT_CWD} covers a snapshot or image that reports none.
+ *
+ * Taken as a thunk rather than read off the sandbox so all three branches are
+ * testable without provisioning one — this decides where every Daytona mount
+ * roots, and §8.1 makes a wrong answer here resolve silently rather than fail.
+ */
+export const mountCwd = async (
+	cwd: string | undefined,
+	getWorkDir: () => Promise<string | undefined>,
+): Promise<string> => {
+	const defaultCwd = posix.isAbsolute(cwd ?? "") ? DEFAULT_CWD : ((await getWorkDir()) ?? DEFAULT_CWD);
+	return SandboxIO.resolveMountCwd(defaultCwd, cwd);
+};
 
 export class DaytonaError extends Schema.TaggedErrorClass<DaytonaError>()("DaytonaError", {
 	cause: Schema.optional(Schema.Defect()),
@@ -42,7 +67,10 @@ export interface Options {
 	readonly resources?: Resources;
 	/** OS user to run as inside the sandbox. */
 	readonly user?: string;
-	/** Remote working directory for relative filesystem and shell operations. */
+	/**
+	 * Mount working directory. Relative values resolve against `getWorkDir()`;
+	 * omitted values use it, with `/home/daytona` as the provider fallback.
+	 */
 	readonly cwd?: string;
 	/** Idle minutes before the sandbox auto-stops. */
 	readonly autoStopInterval?: number;
@@ -60,6 +88,7 @@ interface RemoteState {
 	readonly daytona: Daytona;
 	readonly sandbox: RemoteSandbox;
 	readonly created: boolean;
+	readonly cwd: string;
 }
 
 class Remote extends Context.Service<Remote, RemoteState>()("@codework/sandbox/daytona/remote") {}
@@ -96,7 +125,20 @@ const remote = (options: Options) =>
 					const sandbox = options.sandboxId
 						? await daytona.get(options.sandboxId)
 						: await createSandbox(daytona, options);
-					return { daytona, sandbox, created: options.sandboxId === undefined };
+					const created = options.sandboxId === undefined;
+					try {
+						return {
+							daytona,
+							sandbox,
+							created,
+							cwd: await mountCwd(options.cwd, () => sandbox.getWorkDir()),
+						};
+					} catch (cause) {
+						if (created && !options.persist) {
+							await daytona.delete(sandbox).catch(() => {});
+						}
+						throw cause;
+					}
 				},
 				catch: (cause) => new DaytonaError({ cause }),
 			}),
@@ -214,16 +256,44 @@ const execArgv =
 const filesystemLayer = (options: Options) =>
 	Layer.effect(
 		SandboxFileSystem.Service,
-		Effect.map(Remote, ({ sandbox }) =>
-			SandboxFileSystem.fromProvider(RemoteFileSystem.make(providerFrom(sandbox, options), { cwd: options.cwd })),
-		),
+		Effect.map(Remote, ({ sandbox, cwd }) => {
+			const mounted = { ...options, cwd };
+			return SandboxFileSystem.fromProvider(RemoteFileSystem.make(providerFrom(sandbox, mounted), { cwd }));
+		}),
 	);
 
 const shellLayer = (options: Options) =>
 	Layer.effect(
 		Shell,
-		Effect.map(Remote, ({ sandbox }) =>
-			Shell.of({ exec: exec(sandbox, options), execArgv: execArgv(sandbox, options) }),
+		Effect.map(Remote, ({ sandbox, cwd }) => {
+			const mounted = { ...options, cwd };
+			return Shell.of({ exec: exec(sandbox, mounted), execArgv: execArgv(sandbox, mounted) });
+		}),
+	);
+
+// Daytona's locator is the sandbox id. See `SandboxResource` for why this is a
+// shared tag rather than a Daytona-specific one.
+const resourceLayer = Layer.effect(
+	SandboxResource.Service,
+	Effect.map(Remote, ({ sandbox }) => ({ providerResourceId: sandbox.id })),
+);
+
+// Identity is per remote sandbox, not per provider: two sandboxes both rooted at
+// the same directory must not share persisted directory records.
+//
+// The id is minted here only when the caller names none. A durable id is the
+// control plane's to mint and record — deriving one from the provider's own
+// locator is what §6.1 forbids — so a caller that needs the namespace to survive
+// a restart passes `instanceId` rather than relying on this.
+const identityLayer = (options: Options) =>
+	Layer.effect(
+		SandboxIO.Current,
+		Effect.map(Remote, ({ cwd }) =>
+			SandboxIO.remote({
+				driver: "daytona",
+				id: options.instanceId ?? SandboxInstance.ID.create(),
+				defaultCwd: cwd,
+			}),
 		),
 	);
 
@@ -232,30 +302,8 @@ const shellLayer = (options: Options) =>
  * the sandbox's native remote shell. It intentionally does not provide VFS:
  * remote filesystems have no synchronous filesystem surface.
  */
-// Identity is per remote sandbox, not per provider: two Daytona sandboxes both
-// using /workspace must not share persisted directory records.
-//
-// Transitional: see the same note on the Vercel driver. Deriving the durable ID
-// from the provider's own id is what §5.1 forbids, and it survives only until
-// the Controller mints IDs; the address-keyed `SandboxMap` is its one consumer.
-const identityLayer = (options: Options) =>
-	Layer.effect(
-		SandboxInstance.Service,
-		Effect.map(Remote, ({ sandbox }) =>
-			SandboxInstance.remote({
-				driver: "daytona",
-				id:
-					options.instanceId ??
-					SandboxInstance.ID.make(SandboxEnv.format({ kind: "daytona", instance: sandbox.id })),
-				cwd: options.cwd,
-			}),
-		),
-	);
-
-export const layer = (
-	options: Options = {},
-): Layer.Layer<SandboxFileSystem.Service | Shell | SandboxInstance.Service, DaytonaError> =>
-	Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options)).pipe(
+export const layer = (options: Options = {}): Layer.Layer<SandboxIO.Provides | SandboxResource.Service, DaytonaError> =>
+	Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options), resourceLayer).pipe(
 		Layer.provide(remote(options)),
 	);
 

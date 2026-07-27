@@ -101,6 +101,7 @@ describe("Sandbox.EnvInMemoryFS", () => {
 			await withService(
 				async () => ({
 					sandbox: Sandbox.EnvInMemory.layer({ cwd: "/repo", seed: { "package.json": "{}" } }),
+					cwd: "/repo",
 				}),
 				async (filesystem) => {
 					expect(await filesystem.readFile("package.json")).toBe("{}");
@@ -144,7 +145,7 @@ describe("Sandbox.EnvInMemoryFS", () => {
 	describe("with cwd", () => {
 		it("should resolve relative file operations against cwd", async () => {
 			await withService(
-				async () => ({ sandbox: Sandbox.EnvInMemory.layer({ cwd: "/repo" }) }),
+				async () => ({ sandbox: Sandbox.EnvInMemory.layer({ cwd: "/repo" }), cwd: "/repo" }),
 				async (filesystem) => {
 					await filesystem.writeFile("src/index.ts", "export const value = 1;\n");
 
@@ -159,7 +160,7 @@ describe("Sandbox.EnvInMemoryFS", () => {
 
 		it("should keep absolute file operations rooted at the sandbox root", async () => {
 			await withService(
-				async () => ({ sandbox: Sandbox.EnvInMemory.layer({ cwd: "/repo" }) }),
+				async () => ({ sandbox: Sandbox.EnvInMemory.layer({ cwd: "/repo" }), cwd: "/repo" }),
 				async (filesystem) => {
 					await filesystem.writeFile("/absolute.txt", "absolute");
 

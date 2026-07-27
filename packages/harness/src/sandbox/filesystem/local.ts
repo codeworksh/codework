@@ -31,16 +31,9 @@ const bytes = (content: string | Uint8Array) =>
  * @returns SandboxFileSytem provider instance
  */
 const make = (vfs: VirtualFileSystem): Interface => {
+	// Parents are `fromProvider`'s guarantee, not a backend's — a plain write here.
 	const writeFile = async (path: string, content: string | Uint8Array) => {
-		const data = bytes(content);
-		const write = () => vfs.promises.writeFile(path, data);
-
-		try {
-			await write();
-		} catch {
-			await vfs.promises.mkdir(posix.dirname(path), { recursive: true });
-			await write();
-		}
+		await vfs.promises.writeFile(path, bytes(content));
 	};
 
 	const readdir = async (path: string) => vfs.promises.readdir(path);
@@ -72,6 +65,11 @@ const make = (vfs: VirtualFileSystem): Interface => {
 		readFileBuffer: async (path) => new Uint8Array(await vfs.promises.readFile(path)),
 		writeFile,
 		stat: async (path) => toFileStat(await vfs.promises.stat(path)),
+		// `stat` follows symlinks, so its `isSymbolicLink` describes the target and
+		// is always false for a link. Symlink identity is asked for explicitly here
+		// instead — the same split the remote backends expose, so a consumer cannot
+		// tell local from remote by whether it can see a link at all.
+		lstat: async (path) => toFileStat(await vfs.promises.lstat(path)),
 		readdir,
 		exists: async (path) => {
 			try {

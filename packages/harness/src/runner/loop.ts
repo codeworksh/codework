@@ -16,10 +16,8 @@
 import { Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { SessionInputRow } from "../db/schema.sql";
-// These two tags become `SandboxIO.FileSystem` and `SandboxIO.Shell` once the
-// mount boundary lands; the dependency itself does not change.
-import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
-import { quote, Shell } from "../sandbox/shell";
+import { SandboxIO } from "../sandbox/io";
+import { quote } from "../sandbox/shell";
 import type { SessionSchema } from "../session/schema";
 import { Session } from "../session/session";
 import { Runner } from "./run";
@@ -97,8 +95,8 @@ export const layer = (options: Options = {}) =>
 		Effect.gen(function* () {
 			const sql = yield* SqlClient.SqlClient;
 			const sessions = yield* Session.Service;
-			const shell = yield* Shell;
-			const fs = yield* SandboxFileSystem.Service;
+			const shell = yield* SandboxIO.Shell;
+			const fs = yield* SandboxIO.FileSystem;
 			const intervalSeconds = options.intervalSeconds ?? defaults.intervalSeconds;
 
 			// Eligible work: admitted, not yet delivered, oldest first. Covered by

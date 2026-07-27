@@ -75,10 +75,10 @@ describe("shell quoting helpers", () => {
 // quoting itself rather than trusting the caller.
 describe("Shell.fromExec", () => {
 	it("quotes the vector before handing it to the string backend", async () => {
-		const seen: string[] = [];
+		const seen: Array<{ command: string; cwd?: string }> = [];
 		const shell = fromExec({
-			exec: (command) => {
-				seen.push(command);
+			exec: (command, options) => {
+				seen.push({ command, cwd: options?.cwd });
 				return Effect.succeed({ stdout: "", stderr: "", exitCode: 0 });
 			},
 		});
@@ -86,7 +86,9 @@ describe("Shell.fromExec", () => {
 		await Effect.runPromise(shell.execArgv(["git", "checkout", "a b"]));
 		await Effect.runPromise(shell.execArgv(["ls"], { cwd: "/w s" }));
 
-		expect(seen[0]).toBe(`'git' 'checkout' 'a b'`);
-		expect(seen[1]).toBe(`cd '/w s' && 'ls'`);
+		expect(seen[0]).toEqual({ command: `'git' 'checkout' 'a b'`, cwd: undefined });
+		// cwd rides the options rather than a `cd <dir> &&` prefix, which could not
+		// tell a failed cd from a failed command — both arrive as one exit code.
+		expect(seen[1]).toEqual({ command: `'ls'`, cwd: "/w s" });
 	});
 });

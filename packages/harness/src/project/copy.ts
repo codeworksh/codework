@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
 import { SandboxFs } from "../sandbox/filesystem/util";
+import { SandboxIO } from "../sandbox/io";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";
 
@@ -18,7 +18,7 @@ export class Service extends Context.Service<Service, Interface>()("@codework/pr
 export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
-		const fs = yield* SandboxFileSystem.Service;
+		const fs = yield* SandboxIO.FileSystem;
 
 		const isGitWorktree = Effect.fn("Copy.isGitWorktree")(function* (input: IsGitWorktreeInput) {
 			const found = yield* SandboxFs.up(fs, { targets: [".git"], start: input.directory });

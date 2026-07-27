@@ -5,8 +5,8 @@ import { posix as path } from "node:path";
 import { Database } from "../db/db";
 import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql";
 import { Git } from "../git/git";
-import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
 import { SandboxInstance } from "../sandbox/instance";
+import { SandboxIO } from "../sandbox/io";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";
 import { Hash } from "../util/hash";
@@ -42,13 +42,13 @@ export const layer = Layer.effect(
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 
-		const fs = yield* SandboxFileSystem.Service;
+		const fs = yield* SandboxIO.FileSystem;
 		const git = yield* Git.Service;
 		const copy = yield* ProjectCopy.Service;
 		// Which sandbox instance these directories live in. Rows belonging to
 		// another namespace are invisible here: their paths mean nothing to this
 		// filesystem, so probing them would report absence and delete them.
-		const { id: instanceId } = yield* SandboxInstance.Service;
+		const { id: instanceId } = yield* SandboxIO.Current;
 		// The storage form of the namespace, resolved once: NULL for the host.
 		const instanceColumn = SandboxInstance.toColumn(instanceId);
 

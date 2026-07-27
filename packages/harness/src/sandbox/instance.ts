@@ -1,8 +1,6 @@
-import { Context, type Layer as EffectLayer, Layer, Option, Schema } from "effect";
+import { Option, Schema } from "effect";
 import { uuidv7 } from "uuidv7";
 import { withStatics } from "../schema";
-import type { SandboxFileSystem } from "./filesystem/filesystem";
-import type { Shell } from "./shell";
 
 /**
  * A Sandbox instance is a **durable filesystem namespace** plus whatever compute
@@ -132,21 +130,7 @@ export const PersistedError = Schema.Struct({
 });
 export type PersistedError = typeof PersistedError.Type;
 
-/**
- * What a mount sees: immutable identity, plus the cwd resolved for this mount.
- * Nothing mutable belongs here — `status`, `usage`, and reference counts all
- * change while a mount is open, so a mount-time snapshot of them would be wrong
- * by construction. Runtime code that needs live management state asks the
- * control plane.
- */
-export interface RuntimeIdentity {
-	readonly id: ID;
-	readonly driver: string;
-	readonly kind: Kind;
-	readonly cwd: string;
-}
-
-/** Durable metadata, safe to return and persist. Assembled by the Controller. */
+/** Durable metadata, safe to return and persist. Assembled by the control plane. */
 export interface Info {
 	readonly id: ID;
 	readonly driver: string;
@@ -168,67 +152,5 @@ export interface Info {
 	readonly lastUsedAt: Option.Option<Date>;
 	readonly removedAt: Option.Option<Date>;
 }
-
-/** Identity of the instance the current runtime services act on. */
-export class Service extends Context.Service<Service, RuntimeIdentity>()("@codework/sandbox/instance") {}
-
-export const layer = (identity: RuntimeIdentity) => Layer.succeed(Service, identity);
-
-/**
- * The host namespace, rooted at `cwd`. Always {@link ID.local}: `cwd` selects
- * where relative paths resolve, it does not make a second host filesystem — two
- * mounts rooted at different directories still agree on absolute paths.
- *
- * The default is the namespace root, never `process.cwd()`. A default has to be a
- * fact about the namespace rather than about the process: `/` exists in every
- * namespace, while a host path used in a remote one is a coordinate from another
- * coordinate system, and it fails silently rather than loudly. Callers wanting
- * the process directory read it at the edge, where the namespace *is* the host,
- * and pass it in.
- */
-export const host = (cwd = "/"): RuntimeIdentity => ({ id: ID.local, driver: "local", kind: "local", cwd });
-
-/** The host identity as a Layer, for consumers assembled without a full mount. */
-export const hostLayer = (cwd = "/") => layer(host(cwd));
-
-/**
- * A VFS-backed namespace. `id` is minted per build unless the caller names one,
- * because building one of these builds a fresh VFS: N unnamed calls are N
- * distinct namespaces, and none of them outlives the process that made it. A
- * file-backed store is the exception — its file is the state, so whoever knows
- * the file supplies the ID it was registered under.
- */
-export const virtual = (input: {
-	readonly driver: string;
-	readonly id?: ID;
-	readonly cwd?: string;
-}): RuntimeIdentity => ({
-	id: input.id ?? ID.create(),
-	driver: input.driver,
-	kind: "virtual",
-	cwd: input.cwd ?? "/",
-});
-
-/**
- * A provider-hosted namespace. The ID is always supplied: a remote resource's
- * durable identity is minted and recorded by whoever provisioned it, never
- * derived here from the provider's own locator.
- */
-export const remote = (input: {
-	readonly driver: string;
-	readonly id: ID;
-	readonly cwd?: string;
-}): RuntimeIdentity => ({
-	id: input.id,
-	driver: input.driver,
-	kind: "remote",
-	cwd: input.cwd ?? "/",
-});
-
-/** Everything an acquired runtime provides. */
-export type Provides = Service | SandboxFileSystem.Service | Shell;
-
-/** A built runtime: identity plus the pluggable IO boundary. */
-export type RuntimeLayer<E = never, RIn = never> = EffectLayer.Layer<Provides, E, RIn>;
 
 export * as SandboxInstance from "./instance";

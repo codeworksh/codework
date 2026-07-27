@@ -82,7 +82,7 @@ describe("SandboxFs.up", () => {
 				const filesystem = yield* SandboxFileSystem.Service;
 				return yield* SandboxFs.up(filesystem, { targets: [".git", "package.json"], start, stop: workspace });
 			}),
-			Sandbox.EnvNodeJSDefault.layer({ cwd: tmp.path }),
+			Sandbox.EnvNodeJSDefault.layer(),
 		);
 
 		expect(matches).toEqual([

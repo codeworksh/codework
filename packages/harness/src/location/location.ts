@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Schema } from "effect";
 import { Project } from "../project/project";
 import { ProjectSchema } from "../project/schema";
 import { SandboxInstance } from "../sandbox/instance";
+import { SandboxIO } from "../sandbox/io";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";
 
@@ -46,14 +47,14 @@ export interface Interface extends Info {}
 
 export class Service extends Context.Service<Service, Interface>()("@codework/location") {}
 
-// `SandboxInstance.Service` in the requirements is what makes "mount first" a
+// `SandboxIO.Current` in the requirements is what makes "mount first" a
 // type-level fact rather than a convention: this Layer cannot be built outside a
 // mount, so there is never a Location without one underneath.
 export const layer = (ref: Ref = {}) =>
 	Layer.effect(
 		Service,
 		Effect.gen(function* () {
-			const instance = yield* SandboxInstance.Service;
+			const instance = yield* SandboxIO.Current;
 			const directory = AbsolutePath.make(ref.directory ?? instance.cwd);
 			const project = yield* Project.Service;
 			const resolved = yield* project.fromDirectory(directory);
@@ -75,7 +76,10 @@ export const layer = (ref: Ref = {}) =>
 export const layerWith = <E, RIn>(ref: Ref, sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer(ref).pipe(Layer.provideMerge(Project.layerWith(sandbox)), Layer.provide(sandbox));
 
-export const defaultLayer = (ref: Ref, path: string) =>
-	layer(ref).pipe(Layer.provideMerge(Project.defaultLayer(path)), Layer.provide(SandboxInstance.hostLayer(path)));
+// One sandbox value, not two constructions of the same one. Building the mount
+// here and letting `Project` build its own would put `Current` and the
+// filesystem Project actually probes on separate footings — the drift this
+// module's own doc calls unrepresentable.
+export const defaultLayer = (ref: Ref, path: string) => layerWith(ref, Sandbox.defaultLayer(path));
 
 export * as Location from "./location";

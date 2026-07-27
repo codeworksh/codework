@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
 import { SandboxInstance } from "../src/sandbox/instance";
+import { SandboxIO } from "../src/sandbox/io";
 import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
 import { Git } from "../src/git/git";
 import { Location } from "../src/location/location";
@@ -45,7 +46,7 @@ const locationLayer = (ref: Location.Ref, git: Partial<Git.Interface>) =>
 		Layer.provideMerge(
 			Layer.mergeAll(
 				databaseLayer(),
-				SandboxInstance.hostLayer(),
+				SandboxIO.hostLayer(),
 				Layer.succeed(
 					SandboxFileSystem.Service,
 					SandboxFileSystem.Service.of({
@@ -259,7 +260,7 @@ describe("Location", () => {
 					Effect.provide(
 						Location.layer(ref).pipe(
 							Layer.provideMerge(Project.defaultLayer("/")),
-							Layer.provide(SandboxInstance.hostLayer()),
+							Layer.provide(SandboxIO.hostLayer()),
 						),
 					),
 				),

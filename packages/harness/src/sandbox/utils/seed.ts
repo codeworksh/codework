@@ -45,17 +45,22 @@ const copyDirectory = async (
 
 export const initialize = async (vfs: VirtualFileSystem, options?: SeedOptions): Promise<void> => {
 	const cwd = options?.cwd ?? "/";
+	if (!path.posix.isAbsolute(cwd)) {
+		throw new TypeError(`Virtual filesystem default cwd must be absolute: ${cwd}`);
+	}
+	const resolve = (value: string) =>
+		path.posix.isAbsolute(value) ? path.posix.normalize(value) : path.posix.resolve(cwd, value);
 
 	await vfs.promises.mkdir(cwd, { recursive: true });
-	vfs.chdir(cwd);
 
 	if (options?.seedFromDirectory) {
-		await copyDirectory(vfs, options.seedFromDirectory.path, options.seedFromDirectory.target ?? cwd);
+		await copyDirectory(vfs, options.seedFromDirectory.path, resolve(options.seedFromDirectory.target ?? cwd));
 	}
 
 	for (const [filePath, data] of Object.entries(options?.seed ?? {})) {
-		await vfs.promises.mkdir(path.posix.dirname(filePath), { recursive: true });
-		await vfs.promises.writeFile(filePath, typeof data === "string" ? data : Buffer.from(data));
+		const target = resolve(filePath);
+		await vfs.promises.mkdir(path.posix.dirname(target), { recursive: true });
+		await vfs.promises.writeFile(target, typeof data === "string" ? data : Buffer.from(data));
 	}
 };
 
