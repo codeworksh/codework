@@ -76,10 +76,6 @@ export const layer = (ref: Ref = {}) =>
 export const layerWith = <E, RIn>(ref: Ref, sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer(ref).pipe(Layer.provideMerge(Project.layerWith(sandbox)), Layer.provide(sandbox));
 
-// One sandbox value, not two constructions of the same one. Building the mount
-// here and letting `Project` build its own would put `Current` and the
-// filesystem Project actually probes on separate footings — the drift this
-// module's own doc calls unrepresentable.
 export const defaultLayer = (ref: Ref, path: string) => layerWith(ref, Sandbox.defaultLayer(path));
 
 export * as Location from "./location";
