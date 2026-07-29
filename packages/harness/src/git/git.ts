@@ -5,6 +5,7 @@ import { SandboxIO } from "../sandbox/io";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";
 
+// TODO: shouldn't it be called GitError or something
 export class AppProcessError extends Schema.TaggedErrorClass<AppProcessError>()("AppProcessError", {
 	command: Schema.String,
 	exitCode: Schema.optional(Schema.Number),

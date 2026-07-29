@@ -85,7 +85,7 @@ export class ProjectDirectoryRow extends Model.Class<ProjectDirectoryRow>("Proje
 	projectId: Schema.String,
 	directory: AbsolutePath,
 	type: Schema.Literals(["main", "root", "gitworktree"]),
-	// Nullable: NULL is the host (§4). Service-level code sees a plain ID through
+	// Nullable: NULL is the host. Service-level code sees a plain ID through
 	// SandboxInstance.toColumn/fromColumn and never branches on the host.
 	sandboxInstanceId: Model.FieldOption(SandboxInstance.ID),
 	...Timestamps,

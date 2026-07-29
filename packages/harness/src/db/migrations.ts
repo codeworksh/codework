@@ -80,8 +80,8 @@ export const migrations = {
 			)
 		`;
 
-		// SQLite treats NULLs as distinct in a unique index, so (project, NULL,
-		// '/repo') would insert twice. Coalescing to the reserved id makes the
+		// SQLite treats NULLs as distinct in a unique index, so (project, NULL, '/repo')
+		// would insert twice. Coalescing to the reserved id makes the
 		// index read as what it means.
 		yield* sql`
 			CREATE UNIQUE INDEX project_directory_project_directory_idx
