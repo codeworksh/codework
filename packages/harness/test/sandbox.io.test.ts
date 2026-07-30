@@ -180,11 +180,13 @@ describe("SandboxIO.mount", () => {
 // thing that lets two mounts of one namespace disagree about where they are.
 describe("SandboxIO.mount over a shared virtual filesystem", () => {
 	it("keeps two mounts of one VFS at different working directories independent", async () => {
-		// One in-memory VFS and one just-bash interpreter, two mounts over them.
+		// One in-memory VFS and one mountable shell transport, two mounts over
+		// them. Each mount constructs its own just-bash interpreter, matching
+		// Flue's BashFactory-per-session ownership.
 		// `Sandbox.memory()` builds a fresh VFS per call, which is the case that
-		// cannot show anything. The interpreter is constructed at `/` and never
-		// moves — each mount supplies its directory per call instead.
-		const transport = Layer.provideMerge(Local.layer, EnvBash.layer(EnvInMemory.layer({ cwd: "/alpha" }), "/"));
+		// cannot show anything.
+		const primitives = EnvInMemory.layer({ cwd: "/alpha" });
+		const transport = Layer.provideMerge(Layer.merge(Local.layer, EnvBash.transport(primitives)), primitives);
 
 		const work = Effect.gen(function* () {
 			const filesystem = yield* SandboxFileSystem.Service;
@@ -216,6 +218,56 @@ describe("SandboxIO.mount over a shared virtual filesystem", () => {
 		// one relative path, two files, neither mount having moved the other
 		expect(result.alpha).toBe("/alpha");
 		expect(result.beta).toBe("/beta");
+	});
+
+	it("keeps stateful just-bash internals local to each mount", async () => {
+		const primitives = EnvInMemory.layer({ cwd: "/alpha" });
+		const transport = Layer.provideMerge(Layer.merge(Local.layer, EnvBash.transport(primitives)), primitives);
+		const marker = "mount_alpha_only";
+
+		const at = <A, E>(cwd: string, program: Effect.Effect<A, E, Shell>) =>
+			Effect.provide(program, SandboxIO.mount(SandboxIO.virtual({ driver: "memory", defaultCwd: "/", cwd })));
+
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const filesystem = yield* SandboxFileSystem.Service;
+				yield* filesystem.mkdir("/beta", { recursive: true });
+
+				const alpha = yield* at(
+					"/alpha",
+					Effect.gen(function* () {
+						const shell = yield* Shell;
+						yield* shell.exec(`hash -p /bin/echo ${marker}`);
+						return yield* shell.exec(`hash -t ${marker}`);
+					}),
+				);
+				const beta = yield* at(
+					"/beta",
+					Effect.flatMap(Shell, (shell) => shell.exec(`hash -t ${marker}`)),
+				);
+				return { alpha, beta };
+			}).pipe(Effect.provide(transport)),
+		);
+
+		expect(result.alpha).toMatchObject({ exitCode: 0, stdout: "/bin/echo\n" });
+		expect(result.beta.exitCode).not.toBe(0);
+		expect(result.beta.stdout).toBe("");
+	});
+
+	it("retains interpreter state when the transport is used without a mount", async () => {
+		const primitives = EnvInMemory.layer({ cwd: "/" });
+		const transport = Layer.provideMerge(Layer.merge(Local.layer, EnvBash.transport(primitives)), primitives);
+		const marker = "transport_root";
+
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const shell = yield* Shell;
+				yield* shell.exec(`hash -p /bin/echo ${marker}`);
+				return yield* shell.exec(`hash -t ${marker}`);
+			}).pipe(Effect.provide(transport)),
+		);
+
+		expect(result).toMatchObject({ exitCode: 0, stdout: "/bin/echo\n" });
 	});
 });
 

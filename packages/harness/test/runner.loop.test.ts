@@ -7,8 +7,12 @@ import { RunnerExecute } from "../src/runner/execute";
 import { RunnerExecution } from "../src/runner/execution";
 import { Loop } from "../src/runner/loop";
 import { tmpdir as osTmpdir } from "node:os";
+import { Sandbox as SandboxControl } from "../src/sandbox/control";
+import { SandboxDriver } from "../src/sandbox/driver";
+import { MemorySandboxDriver } from "../src/sandbox/drivers/memory";
+import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb";
+import type { SandboxCreateError } from "../src/sandbox/errors";
 import { SandboxInstance } from "../src/sandbox/instance";
-import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
 import { AbsolutePath } from "../src/schema";
 import { SessionSchema } from "../src/session/schema";
@@ -24,15 +28,77 @@ import { testEffect } from "./utils/effect";
  * shell itself. The wall-clock behaviour the interval exists for is asserted
  * separately, in the soak suite at the bottom.
  */
-const runtime = (sandbox: Layer.Layer<Sandbox.Provides>, options?: Loop.Options) =>
-	RunnerExecute.layer.pipe(
-		Layer.provide(Loop.layer(options)),
-		// provideMerge, not provide: the specs below drive the sandbox directly to
-		// assert what the loop's shell work actually does.
-		Layer.provideMerge(sandbox),
-		Layer.provideMerge(Session.layer),
-		Layer.provideMerge(Database.layer(":memory:")),
+interface LoopBackend {
+	readonly drivers: ReadonlyArray<SandboxDriver.Registration>;
+	readonly target: Effect.Effect<
+		{
+			readonly instanceId: SandboxInstance.ID;
+			readonly directory: AbsolutePath;
+		},
+		SandboxCreateError,
+		SandboxControl.Controller
+	>;
+}
+
+const managedBackend = <CreateConfig, RuntimeConfig extends SandboxDriver.RuntimeConfigBase>(
+	driver: SandboxDriver.Driver<CreateConfig, RuntimeConfig> & SandboxDriver.Registration,
+	config: CreateConfig,
+	directory: AbsolutePath,
+): LoopBackend => ({
+	drivers: [driver],
+	target: Effect.gen(function* () {
+		const controller = yield* SandboxControl.Controller;
+		const instance = yield* controller.create({ driver, config });
+		return { instanceId: instance.id, directory };
+	}),
+});
+
+const memoryBackend = (): LoopBackend => {
+	const memory = MemorySandboxDriver.make();
+	const directory = SandboxDriver.AbsolutePath.make("/workspace");
+	return managedBackend(
+		memory.driver,
+		{
+			defaultCwd: directory,
+			initializeCwd: directory,
+		},
+		AbsolutePath.make(directory),
 	);
+};
+
+const sqldbBackend = (): LoopBackend => {
+	const sqldb = SqldbSandboxDriver.make();
+	const directory = SandboxDriver.AbsolutePath.make("/workspace");
+	return managedBackend(
+		sqldb.driver,
+		{
+			defaultCwd: directory,
+			initializeCwd: directory,
+		},
+		AbsolutePath.make(directory),
+	);
+};
+
+const localBackend = (): LoopBackend => ({
+	drivers: [],
+	target: Effect.succeed({
+		instanceId: SandboxInstance.ID.local,
+		directory: AbsolutePath.make(osTmpdir()),
+	}),
+});
+
+const runtime = (backend: LoopBackend, options?: Loop.Options) => {
+	const database = Database.layer(":memory:");
+	const infrastructure = Layer.provideMerge(
+		SandboxControl.layer().pipe(Layer.provide(SandboxDriver.layer(...backend.drivers))),
+		database,
+	);
+	return RunnerExecute.layer.pipe(
+		Layer.provide(Loop.layer(options)),
+		Layer.provideMerge(Session.layer),
+		Layer.provideMerge(infrastructure),
+	);
+};
 
 const insertInput = (sql: SqlClient.SqlClient) =>
 	SqlSchema.void({
@@ -56,16 +122,17 @@ const delivered = Effect.fnUntraced(function* (sessionId: string) {
 	return rows.map((row) => ({ id: row.id, promotedSeq: Option.getOrNull(row.promotedSeq) }));
 });
 
-const seedSession = Effect.fnUntraced(function* (directory = "/workspace") {
+const seedSession = Effect.fnUntraced(function* (backend: LoopBackend) {
 	const sql = yield* SqlClient.SqlClient;
 	const sessions = yield* Session.Service;
+	const target = yield* backend.target;
 	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('p', 'p', 0, 0)`;
 	const session = yield* sessions.create({
 		projectId: "p",
 		slug: `run-${Date.now()}-${Math.random()}`,
-		directory: AbsolutePath.make(directory),
+		directory: target.directory,
 		title: "runner loop",
-		sandboxInstanceId: SandboxInstance.ID.local,
+		sandboxInstanceId: target.instanceId,
 	});
 	return session.id;
 });
@@ -96,16 +163,16 @@ const enqueue = Effect.fnUntraced(function* (input: {
 });
 
 /** The drain spec every sandbox backend must satisfy. */
-const loopSpec = (name: string, sandbox: () => Layer.Layer<Sandbox.Provides>) => {
+const loopSpec = (name: string, backend: LoopBackend) => {
 	const options: Loop.Options = { intervalSeconds: 0, minLines: 2, maxLines: 7 };
-	const { effect: it } = testEffect(runtime(sandbox(), options));
+	const { effect: it } = testEffect(runtime(backend, options));
 
 	describe(`runner loop — ${name}`, () => {
 		it(
 			"drains queued inputs in admission order and marks them delivered",
 			Effect.gen(function* () {
 				const execution = yield* RunnerExecution.Service;
-				const sessionId = yield* seedSession();
+				const sessionId = yield* seedSession(backend);
 
 				yield* enqueue({ id: "a", sessionId, admittedSeq: 1, delivery: "followUp" });
 				yield* enqueue({ id: "b", sessionId, admittedSeq: 2, delivery: "steer" });
@@ -123,7 +190,7 @@ const loopSpec = (name: string, sandbox: () => Layer.Layer<Sandbox.Provides>) =>
 			"a second drain re-delivers nothing and renumbers nothing",
 			Effect.gen(function* () {
 				const execution = yield* RunnerExecution.Service;
-				const sessionId = yield* seedSession();
+				const sessionId = yield* seedSession(backend);
 
 				yield* enqueue({ id: "only", sessionId, admittedSeq: 1, delivery: "steer" });
 				yield* execution.resume(sessionId);
@@ -137,8 +204,8 @@ const loopSpec = (name: string, sandbox: () => Layer.Layer<Sandbox.Provides>) =>
 			"promotion is scoped per session",
 			Effect.gen(function* () {
 				const execution = yield* RunnerExecution.Service;
-				const first = yield* seedSession();
-				const second = yield* seedSession();
+				const first = yield* seedSession(backend);
+				const second = yield* seedSession(backend);
 
 				yield* enqueue({ id: "first-1", sessionId: first, admittedSeq: 1, delivery: "steer" });
 				yield* enqueue({ id: "second-1", sessionId: second, admittedSeq: 1, delivery: "steer" });
@@ -155,7 +222,7 @@ const loopSpec = (name: string, sandbox: () => Layer.Layer<Sandbox.Provides>) =>
 			"wake with nothing eligible idles; an explicit resume still takes a turn",
 			Effect.gen(function* () {
 				const execution = yield* RunnerExecution.Service;
-				const sessionId = yield* seedSession();
+				const sessionId = yield* seedSession(backend);
 
 				yield* execution.wake(sessionId); // force = false -> idle
 				yield* execution.resume(sessionId); // force = true  -> one turn anyway
@@ -177,11 +244,15 @@ const loopSpec = (name: string, sandbox: () => Layer.Layer<Sandbox.Provides>) =>
 		it(
 			"quotes prompt text so shell metacharacters stay literal",
 			Effect.gen(function* () {
-				const shell = yield* Shell;
 				// Everything an unquoted command would act on rather than print.
 				const hostile = `a ' b $(echo pwned) c \`id\` d ; e && f | g > h`;
+				const target = yield* backend.target;
+				const controller = yield* SandboxControl.Controller;
 
-				const result = yield* shell.exec(Loop.script(hostile, 1, 0));
+				const result = yield* Effect.flatMap(Shell, (shell) => shell.exec(Loop.script(hostile, 1, 0))).pipe(
+					Effect.provide(controller.mount(target.instanceId, { cwd: target.directory })),
+					Effect.scoped,
+				);
 
 				expect(result.exitCode).toBe(0);
 				// Exact equality is the assertion: had the substitution run, the
@@ -194,7 +265,7 @@ const loopSpec = (name: string, sandbox: () => Layer.Layer<Sandbox.Provides>) =>
 			"drains a batch of prompts, quoting and truncating each without breaking the shell",
 			Effect.gen(function* () {
 				const execution = yield* RunnerExecution.Service;
-				const sessionId = yield* seedSession();
+				const sessionId = yield* seedSession(backend);
 
 				// Prompts carrying the metacharacters an unquoted command would trip on.
 				const hostile = [
@@ -223,21 +294,20 @@ const loopSpec = (name: string, sandbox: () => Layer.Layer<Sandbox.Provides>) =>
 	});
 };
 
-loopSpec("memory (just-bash)", () => Sandbox.memory());
-loopSpec("sqldb (just-bash over sqlite)", () => Sandbox.sqldb());
-// The loop only reads `pwd` and echoes to stdout, so any existing directory
-// serves as the host cwd and nothing needs cleaning up afterwards.
-loopSpec("local host", () => Sandbox.local(osTmpdir()));
+loopSpec("memory (just-bash)", memoryBackend());
+loopSpec("sqldb (just-bash over sqlite)", sqldbBackend());
+loopSpec("local host", localBackend());
 
 describe("runner loop — interruption", () => {
+	const backend = memoryBackend();
 	// A turn slow enough to be caught mid-flight, on a real clock.
-	const { live: itSlow } = testEffect(runtime(Sandbox.memory(), { intervalSeconds: 1, minLines: 30, maxLines: 30 }));
+	const { live: itSlow } = testEffect(runtime(backend, { intervalSeconds: 1, minLines: 30, maxLines: 30 }));
 
 	itSlow(
 		"an interrupted turn leaves its input eligible for the next drain",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
-			const sessionId = yield* seedSession();
+			const sessionId = yield* seedSession(backend);
 			yield* enqueue({ id: "pending", sessionId, admittedSeq: 1, delivery: "steer" });
 
 			const fiber = yield* Effect.forkChild(execution.resume(sessionId));
@@ -271,15 +341,16 @@ describe("runner loop — interruption", () => {
 const soak = process.env.CODEWORK_LOOP_SOAK === "1" ? describe : describe.skip;
 
 soak("runner loop — soak", () => {
+	const backend = memoryBackend();
 	const options: Loop.Options = { intervalSeconds: 1, minLines: 2, maxLines: 7 };
 	const count = Number(process.env.CODEWORK_LOOP_SOAK_INPUTS ?? 50);
-	const { live: itSoak } = testEffect(runtime(Sandbox.memory(), options));
+	const { live: itSoak } = testEffect(runtime(backend, options));
 
 	itSoak(
 		`drains ${count} prompts of 2–7 seconds each`,
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
-			const sessionId = yield* seedSession();
+			const sessionId = yield* seedSession(backend);
 
 			for (let index = 0; index < count; index++) {
 				yield* enqueue({

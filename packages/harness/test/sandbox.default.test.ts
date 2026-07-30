@@ -202,4 +202,27 @@ describe("Sandbox.EnvDefault", () => {
 
 		expect(output).toBe("sandbox-data");
 	});
+
+	it("should expose the VFS that backs the mounted filesystem", async () => {
+		await using tmp = await tmpdir();
+		const marker = path.join(tmp.path, "transport-marker.txt");
+		await fs.writeFile(marker, "from disk");
+
+		const content = await Effect.runPromise(
+			Effect.gen(function* () {
+				const vfs = yield* Local.Vfs;
+				const filesystem = yield* SandboxFileSystem.Service;
+				const provider = vfs.provider;
+				const readFile = provider.readFile.bind(provider);
+				provider.readFile = (filePath, options) =>
+					filePath === marker ? Promise.resolve("from exposed VFS") : readFile(filePath, options);
+
+				return yield* filesystem
+					.readFile("transport-marker.txt")
+					.pipe(Effect.ensuring(Effect.sync(() => (provider.readFile = readFile))));
+			}).pipe(Effect.provide(Sandbox.defaultLayer(tmp.path))),
+		);
+
+		expect(content).toBe("from exposed VFS");
+	});
 });

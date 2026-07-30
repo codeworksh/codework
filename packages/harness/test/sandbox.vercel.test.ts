@@ -1,3 +1,4 @@
+import { Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Effect, ManagedRuntime, Stream } from "effect";
 import type { Stats } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
@@ -10,11 +11,13 @@ import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
 import { cancellationSpec } from "./fixtures/cancellation.spec";
 import { remoteSandboxSpec } from "./fixtures/remote.spec";
+import { labels, makeRemoteOwner } from "./fixtures/remote-owner";
+import { hasLiveOidc } from "./fixtures/vercel";
 import "./utils/env";
 
 const token = process.env.VERCEL_OIDC_TOKEN;
 const githubPat = process.env.GITHUB_PAT;
-const suite = token ? describe : describe.skip;
+const suite = hasLiveOidc(token) ? describe : describe.skip;
 
 const PROVISION_TIMEOUT = 180_000;
 
@@ -23,9 +26,9 @@ const PROVISION_TIMEOUT = 180_000;
 // The Hobby (free) plan caps sandbox creation at ~40 per rolling ~10-minute
 // window (and 10 concurrent), and exhausting it surfaces as HTTP 429 from
 // `Sandbox.create` — NOT a test/code bug. To stay well clear, the suite
-// provisions a SINGLE microVM once (`beforeAll`), reuses it across every
-// behavioral test via a `ManagedRuntime`, and deletes it on teardown
-// (`afterAll`, `persist: false`).
+// provisions a SINGLE microVM once (`beforeAll`), captures its locator before
+// attaching a `ManagedRuntime`, reuses it across every behavioral test, and
+// deletes it explicitly on teardown.
 //
 // Creation-time options that would otherwise each need their own sandbox are
 // baked into this one box so their behavior is still covered: a fixed `node24`
@@ -36,13 +39,35 @@ const BAKED_ENV = "from-sandbox";
 
 suite("Sandbox.EnvVercel (shared sandbox)", () => {
 	let runtime!: ManagedRuntime.ManagedRuntime<Sandbox.Provides | SandboxResource.Service, EnvVercel.VercelError>;
+	const owner = makeRemoteOwner("sandbox.vercel");
 
-	beforeAll(() => {
+	beforeAll(async () => {
+		const instanceId = SandboxInstance.ID.create();
+		const sandbox = await EnvVercel.createSandbox({
+			runtime: "node24",
+			envVars: { CW_ENV: BAKED_ENV },
+			tags: labels(instanceId),
+		});
+		owner.capture(sandbox.name);
 		runtime = ManagedRuntime.make(
-			EnvVercel.services({ persist: false, runtime: "node24", cwd: SANDBOX_CWD, envVars: { CW_ENV: BAKED_ENV } }),
+			EnvVercel.services({
+				sandboxName: sandbox.name,
+				instanceId,
+				cwd: SANDBOX_CWD,
+			}),
 		);
-	});
-	afterAll(() => runtime.dispose());
+	}, PROVISION_TIMEOUT);
+	afterAll(
+		() =>
+			owner.cleanup({
+				destroy: async (name) => {
+					const sandbox = await RemoteSandbox.get({ name, resume: false });
+					await sandbox.delete();
+				},
+				dispose: () => runtime.dispose(),
+			}),
+		PROVISION_TIMEOUT,
+	);
 
 	// Run a program against the one shared sandbox.
 	const run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> => runtime.runPromise(program);

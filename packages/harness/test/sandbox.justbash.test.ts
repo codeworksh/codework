@@ -324,6 +324,21 @@ describe("Sandbox.EnvBash", () => {
 			expect(stat.mtime).toEqual(mtime);
 		});
 
+		it("shares chmod and utimes metadata between bridges over one VFS", async () => {
+			const vfs = create(new MemoryProvider(), { moduleHooks: false });
+			await vfs.promises.writeFile("/file.txt", "data");
+			const first = bridge(vfs, "/alpha");
+			const second = bridge(vfs, "/beta");
+			const mtime = new Date("2020-01-02T03:04:05.000Z");
+
+			await first.chmod("/file.txt", 0o751);
+			await first.utimes("/file.txt", mtime, mtime);
+			const stat = await second.stat("/file.txt");
+
+			expect(stat.mode & 0o777).toBe(0o751);
+			expect(stat.mtime).toEqual(mtime);
+		});
+
 		it("keys metadata by the VFS-resolved cwd path", async () => {
 			const vfs = create(new MemoryProvider(), { moduleHooks: false, virtualCwd: true });
 			await vfs.promises.mkdir("/repo");

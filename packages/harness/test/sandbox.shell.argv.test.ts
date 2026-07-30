@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox";
-import { fromExec, type ISandboxExe, quote, quoteArgv, Shell } from "../src/sandbox/shell";
+import { fromExec, type ISandboxExe, perMount, quote, quoteArgv, Shell, withCwd } from "../src/sandbox/shell";
 
 // `execArgv` exists so values the harness does not control — branch names, file
 // paths — never reach a shell parser as bare text. These cases all break, or
@@ -90,5 +90,20 @@ describe("Shell.fromExec", () => {
 		// cwd rides the options rather than a `cd <dir> &&` prefix, which could not
 		// tell a failed cd from a failed command — both arrive as one exit code.
 		expect(seen[1]).toEqual({ command: `'ls'`, cwd: "/w s" });
+	});
+
+	it("preserves a per-mount factory when wrapping a tagged backend", async () => {
+		const result = (stdout: string) => Effect.succeed({ stdout, stderr: "", exitCode: 0 });
+		const root = fromExec({ exec: () => result("root") });
+		const tagged = perMount(root, (cwd) =>
+			fromExec({
+				exec: (command) => result(`${cwd}:${command}`),
+			}),
+		);
+
+		const wrapped = fromExec(tagged);
+		const mounted = withCwd(wrapped, "/workspace");
+
+		expect((await Effect.runPromise(mounted.execArgv(["echo", "hello"]))).stdout).toBe("/workspace:'echo' 'hello'");
 	});
 });

@@ -13,16 +13,14 @@ export { SqlClient, SqlSchema } from "effect/unstable/sql";
 // apply to every query and a `:memory:` database stays intact across
 // transactions — important for serverless deployments and transient sessions
 // where no writable disk is available. (WAL is enabled by the client itself.)
-const setup = Layer.effectDiscard(
-	Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`PRAGMA synchronous = NORMAL`;
-		yield* sql`PRAGMA busy_timeout = 5000`;
-		yield* sql`PRAGMA cache_size = -64000`;
-		yield* sql`PRAGMA foreign_keys = ON`;
-		yield* SqliteMigrator.run({ loader: Migrator.fromRecord(migrations) });
-	}),
-);
+const setup = Effect.gen(function* () {
+	const sql = yield* SqlClient.SqlClient;
+	yield* sql`PRAGMA synchronous = NORMAL`;
+	yield* sql`PRAGMA busy_timeout = 5000`;
+	yield* sql`PRAGMA cache_size = -64000`;
+	yield* sql`PRAGMA foreign_keys = ON`;
+	yield* SqliteMigrator.run({ loader: Migrator.fromRecord(migrations) });
+});
 
 // Provides `SqlClient` (and `SqliteClient`) for the database at `location`,
 // with column-name transforms so camelCase fields map to snake_case columns.
@@ -39,7 +37,10 @@ export function layer(location: string) {
 			});
 		}),
 	);
-	return setup.pipe(Layer.provideMerge(client), Layer.orDie);
+	return client.pipe(
+		Layer.tap((context) => setup.pipe(Effect.provide(context))),
+		Layer.orDie,
+	);
 }
 
 export function path() {

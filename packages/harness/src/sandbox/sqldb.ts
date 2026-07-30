@@ -6,25 +6,35 @@ import { Seed, type SeedOptions } from "./utils/seed";
 
 // SqliteProvider holds a single node:sqlite connection for the lifetime of
 // the layer; omitting `location` keeps the whole filesystem in `:memory:`.
+export interface Namespace {
+	readonly provider: SqliteProvider;
+	readonly vfs: ReturnType<typeof create>;
+}
+
+export const make = (location?: string, options?: Options) =>
+	Effect.tryPromise({
+		try: async (): Promise<Namespace> => {
+			const provider = new SqliteProvider(location);
+			try {
+				const vfs = create(provider, { moduleHooks: false, virtualCwd: true });
+
+				await Seed.initialize(vfs, options);
+				if (options?.readOnly) provider.setReadOnly();
+
+				return { provider, vfs };
+			} catch (error) {
+				provider.close();
+				throw error;
+			}
+		},
+		catch: (cause) => cause,
+	});
+
 const vfsLayer = (location?: string, options?: Options) =>
 	Layer.effect(
 		Local.Vfs,
-		Effect.acquireRelease(
-			Effect.promise(async () => {
-				const provider = new SqliteProvider(location);
-				try {
-					const vfs = create(provider, { moduleHooks: false, virtualCwd: true });
-
-					await Seed.initialize(vfs, options);
-					if (options?.readOnly) provider.setReadOnly();
-
-					return { provider, vfs };
-				} catch (error) {
-					provider.close();
-					throw error;
-				}
-			}),
-			({ provider }) => Effect.sync(() => provider.close()),
+		Effect.acquireRelease(make(location, options).pipe(Effect.orDie), ({ provider }) =>
+			Effect.sync(() => provider.close()),
 		).pipe(Effect.map(({ vfs }) => vfs)),
 	);
 

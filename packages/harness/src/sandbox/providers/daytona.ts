@@ -10,6 +10,7 @@ import {
 import { Context, Effect, Layer, Schema } from "effect";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
+import { sanitizeError } from "../errors";
 import { SandboxFileSystem } from "../filesystem/filesystem";
 import { RemoteFileSystem } from "../filesystem/remote";
 import { SandboxInstance } from "../instance";
@@ -41,7 +42,7 @@ export const mountCwd = async (
 };
 
 export class DaytonaError extends Schema.TaggedErrorClass<DaytonaError>()("DaytonaError", {
-	cause: Schema.optional(Schema.Defect()),
+	sanitized: SandboxInstance.PersistedError,
 }) {}
 
 export interface Options {
@@ -76,18 +77,10 @@ export interface Options {
 	readonly autoStopInterval?: number;
 	/** Per-command timeout in seconds. 0 means no timeout. */
 	readonly execTimeout?: number;
-	/**
-	 * Keep the sandbox alive when the layer is torn down instead of deleting it.
-	 * Always true for a reused sandbox (`sandboxId`): a box we did not create is
-	 * never deleted.
-	 */
-	readonly persist?: boolean;
 }
 
 interface RemoteState {
-	readonly daytona: Daytona;
 	readonly sandbox: RemoteSandbox;
-	readonly created: boolean;
 	readonly cwd: string;
 }
 
@@ -103,12 +96,13 @@ const dateFrom = (value: string | undefined) => {
 	return Number.isNaN(ms) ? undefined : new Date(ms);
 };
 
-const createSandbox = (daytona: Daytona, options: Options) => {
+export const createSandbox = (daytona: Daytona, options: Options) => {
 	const base = {
 		language: options.language ?? "typescript",
 		envVars: options.envVars,
 		user: options.user,
 		autoStopInterval: options.autoStopInterval,
+		autoDeleteInterval: -1,
 	};
 	return options.image !== undefined
 		? daytona.create({ ...base, image: options.image, resources: options.resources })
@@ -118,35 +112,19 @@ const createSandbox = (daytona: Daytona, options: Options) => {
 const remote = (options: Options) =>
 	Layer.effect(
 		Remote,
-		Effect.acquireRelease(
-			Effect.tryPromise({
-				try: async (): Promise<RemoteState> => {
-					const daytona = new Daytona({ apiKey: options.apiKey, apiUrl: options.apiUrl, target: options.target });
-					const sandbox = options.sandboxId
-						? await daytona.get(options.sandboxId)
-						: await createSandbox(daytona, options);
-					const created = options.sandboxId === undefined;
-					try {
-						return {
-							daytona,
-							sandbox,
-							created,
-							cwd: await mountCwd(options.cwd, () => sandbox.getWorkDir()),
-						};
-					} catch (cause) {
-						if (created && !options.persist) {
-							await daytona.delete(sandbox).catch(() => {});
-						}
-						throw cause;
-					}
-				},
-				catch: (cause) => new DaytonaError({ cause }),
-			}),
-			({ daytona, sandbox, created }) =>
-				Effect.promise(() => (created && !options.persist ? daytona.delete(sandbox) : Promise.resolve())).pipe(
-					Effect.ignore,
-				),
-		),
+		Effect.tryPromise({
+			try: async (): Promise<RemoteState> => {
+				const daytona = new Daytona({ apiKey: options.apiKey, apiUrl: options.apiUrl, target: options.target });
+				const sandbox = options.sandboxId
+					? await daytona.get(options.sandboxId)
+					: await createSandbox(daytona, options);
+				return {
+					sandbox,
+					cwd: await mountCwd(options.cwd, () => sandbox.getWorkDir()),
+				};
+			},
+			catch: (cause) => new DaytonaError({ sanitized: sanitizeError(cause) }),
+		}),
 	);
 
 export const statsFrom = (info: FileInfo): RemoteFileSystem.FileStat => {
@@ -269,6 +247,32 @@ const shellLayer = (options: Options) =>
 			const mounted = { ...options, cwd };
 			return Shell.of({ exec: exec(sandbox, mounted), execArgv: execArgv(sandbox, mounted) });
 		}),
+	);
+
+/**
+ * Cwd-neutral IO attachment for a lifecycle driver.
+ *
+ * Mount wrappers supply an absolute cwd to every public operation. Internal
+ * filesystem helper commands already receive absolute paths, so the transport
+ * itself keeps no mutable working-directory state and owns no resource
+ * finalizer.
+ */
+export const transport = (
+	sandbox: RemoteSandbox,
+	options: Pick<Options, "execTimeout"> = {},
+): Layer.Layer<SandboxFileSystem.Service | Shell> =>
+	Layer.merge(
+		Layer.succeed(
+			SandboxFileSystem.Service,
+			SandboxFileSystem.fromProvider(RemoteFileSystem.make(providerFrom(sandbox, options))),
+		),
+		Layer.succeed(
+			Shell,
+			Shell.of({
+				exec: exec(sandbox, options),
+				execArgv: execArgv(sandbox, options),
+			}),
+		),
 	);
 
 // Daytona's locator is the sandbox id. See `SandboxResource` for why this is a

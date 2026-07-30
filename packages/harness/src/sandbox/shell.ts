@@ -65,6 +65,25 @@ export interface ISandboxExe {
 	readonly stream?: (command: string, options?: ShellOptions) => Stream.Stream<ExecChunk, ShellError>;
 }
 
+type MountFactory = (cwd: string) => ISandboxExe;
+
+/**
+ * Mount-local shell factories are attached out-of-band so the public Shell
+ * contract stays about command execution only.
+ *
+ * Most transports are safely shared and need only the cwd wrapper below.
+ * Stateful in-process interpreters use this hook to construct one interpreter
+ * per mount while retaining the underlying filesystem transport. This tag must
+ * remain on the outermost wrapper consumed by {@link withCwd}; wrapper helpers
+ * such as {@link fromExec} must propagate it when they return a new object.
+ */
+const mountFactories = new WeakMap<object, MountFactory>();
+
+export const perMount = (transport: ISandboxExe, make: MountFactory): ISandboxExe => {
+	mountFactories.set(transport, make);
+	return transport;
+};
+
 /**
  * POSIX single-quote escaping: wrap in `'…'` and rewrite each embedded quote as
  * `'\''`. Everything inside single quotes is literal to the shell, so this is
@@ -94,10 +113,14 @@ export const resolveCwd = (base: string | undefined, cwd: string | undefined) =>
  * we wrap takes a working directory natively, and the prefix form cannot tell a
  * failed `cd` from a failed command — both arrive as one exit code.
  */
-export const fromExec = (backend: Omit<ISandboxExe, "execArgv">): ISandboxExe => ({
-	...backend,
-	execArgv: (argv, options) => backend.exec(quoteArgv(argv), options),
-});
+export const fromExec = (backend: Omit<ISandboxExe, "execArgv">): ISandboxExe => {
+	const wrapped: ISandboxExe = {
+		...backend,
+		execArgv: (argv, options) => backend.exec(quoteArgv(argv), options),
+	};
+	const mountFactory = mountFactories.get(backend);
+	return mountFactory === undefined ? wrapped : perMount(wrapped, (cwd) => fromExec(mountFactory(cwd)));
+};
 
 /**
  * Bind a cwd-neutral backend to one mount's working directory.
@@ -109,11 +132,12 @@ export const fromExec = (backend: Omit<ISandboxExe, "execArgv">): ISandboxExe =>
  * relative one means what it reads like.
  */
 export const withCwd = (backend: ISandboxExe, cwd: string): ISandboxExe => {
+	const mounted = mountFactories.get(backend)?.(cwd) ?? backend;
 	const at = (options?: ShellOptions): ShellOptions => ({ ...options, cwd: resolveCwd(cwd, options?.cwd) });
-	const stream = backend.stream;
+	const stream = mounted.stream;
 	return {
-		exec: (command, options) => backend.exec(command, at(options)),
-		execArgv: (argv, options) => backend.execArgv(argv, at(options)),
+		exec: (command, options) => mounted.exec(command, at(options)),
+		execArgv: (argv, options) => mounted.execArgv(argv, at(options)),
 		...(stream === undefined ? {} : { stream: (command, options) => stream(command, at(options)) }),
 	};
 };

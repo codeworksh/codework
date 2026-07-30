@@ -22,6 +22,7 @@
 		"check:packages": "vp run -r check",
 		"test": "vp test",
 		"test:packages": "vp run -r test",
+		"typecheck": "vp check --no-fmt",
 		"build": "vp run -r build",
 		"build:packages": "vp run -r build",
 		"server:start": "tsx --conditions=development packages/agent/src/index.ts serve",

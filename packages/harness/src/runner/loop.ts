@@ -95,8 +95,6 @@ export const layer = (options: Options = {}) =>
 		Effect.gen(function* () {
 			const sql = yield* SqlClient.SqlClient;
 			const sessions = yield* Session.Service;
-			const shell = yield* SandboxIO.Shell;
-			const fs = yield* SandboxIO.FileSystem;
 			const intervalSeconds = options.intervalSeconds ?? defaults.intervalSeconds;
 
 			// Eligible work: admitted, not yet delivered, oldest first. Covered by
@@ -132,6 +130,8 @@ export const layer = (options: Options = {}) =>
 			 * worth proving before the real loop depends on it.
 			 */
 			const probe = Effect.fnUntraced(function* () {
+				const shell = yield* SandboxIO.Shell;
+				const fs = yield* SandboxIO.FileSystem;
 				const pwd = yield* shell.exec("pwd").pipe(
 					Effect.map((result) => result.stdout.trim()),
 					Effect.orElseSucceed(() => "<shell unavailable>"),
@@ -148,6 +148,7 @@ export const layer = (options: Options = {}) =>
 			 * capture, cwd, and (where a backend supports it) cancellation.
 			 */
 			const turn = Effect.fnUntraced(function* (label: string, text: string, lines: number) {
+				const shell = yield* SandboxIO.Shell;
 				yield* Effect.logInfo("loop: turn start").pipe(Effect.annotateLogs({ label, lines, intervalSeconds }));
 				const result = yield* shell
 					.exec(script(text, lines, intervalSeconds))

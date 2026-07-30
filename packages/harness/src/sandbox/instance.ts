@@ -133,7 +133,7 @@ export type PersistedError = typeof PersistedError.Type;
 /** Durable metadata, safe to return and persist. Assembled by the control plane. */
 export interface Info {
 	readonly id: ID;
-	readonly driver: string;
+	readonly driver: import("./driver").Name;
 	readonly kind: Kind;
 	readonly providerResourceId: Option.Option<string>;
 	readonly ownership: Ownership;
