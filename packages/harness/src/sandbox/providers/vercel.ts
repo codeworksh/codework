@@ -2,9 +2,10 @@ import { type Command, Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
 import type { Stats } from "node:fs";
+import { SandboxInstance } from "../instance";
+import { sanitizeError } from "../errors";
 import { SandboxFileSystem } from "../filesystem/filesystem";
 import { RemoteFileSystem } from "../filesystem/remote";
-import { SandboxInstance } from "../instance";
 import { SandboxIO } from "../io";
 import { SandboxResource } from "../resource";
 import { type ExecChunk, type ExecResult, type ISandboxExe, quoteArgv, resolveCwd, Shell, ShellError } from "../shell";
@@ -15,7 +16,7 @@ const utf8 = new TextEncoder();
 export const DEFAULT_CWD = "/vercel/sandbox";
 
 export class VercelError extends Schema.TaggedErrorClass<VercelError>()("VercelError", {
-	cause: Schema.optional(Schema.Defect()),
+	sanitized: SandboxInstance.PersistedError,
 }) {}
 
 /**
@@ -23,7 +24,7 @@ export class VercelError extends Schema.TaggedErrorClass<VercelError>()("VercelE
  * when omitted, the SDK resolves them from the `VERCEL_OIDC_TOKEN` env var
  * (the token's payload carries the project and team ids).
  */
-interface Credentials {
+export interface Credentials {
 	readonly token: string;
 	readonly teamId: string;
 	readonly projectId: string;
@@ -38,6 +39,10 @@ export interface Options {
 	readonly projectId?: string;
 	/** Reuse an existing sandbox by name instead of creating one. */
 	readonly sandboxName?: string;
+	/** Explicit name for a newly created sandbox. */
+	readonly name?: string;
+	/** Provider-side diagnostic labels (maximum five). */
+	readonly tags?: Record<string, string>;
 	/** Durable instance identity for this namespace. Supplied by the Controller. */
 	readonly instanceId?: SandboxInstance.ID;
 	/** Snapshot id to create the sandbox from. */
@@ -63,36 +68,30 @@ export interface Options {
 	readonly timeout?: number;
 	/** Per-command timeout in milliseconds. Omit for no timeout. */
 	readonly execTimeout?: number;
-	/**
-	 * Keep the sandbox alive when the layer is torn down instead of deleting it.
-	 * Always true for a reused sandbox (`sandboxName`): a box we did not create is
-	 * never deleted.
-	 */
-	readonly persist?: boolean;
 }
 
 interface RemoteState {
 	readonly sandbox: RemoteSandbox;
-	readonly created: boolean;
 }
 
 class Remote extends Context.Service<Remote, RemoteState>()("@codework/sandbox/vercel/remote") {}
 
 // Vercel requires all three credential fields together or none — partial
 // credentials are rejected by the SDK — so only forward them when complete.
-const credentialsFrom = (options: Options): Credentials | undefined =>
+export const credentialsFrom = (options: Options): Credentials | undefined =>
 	options.token !== undefined && options.teamId !== undefined && options.projectId !== undefined
 		? { token: options.token, teamId: options.teamId, projectId: options.projectId }
 		: undefined;
 
-const createSandbox = (options: Options, creds: Credentials | undefined) => {
+export const createSandbox = (options: Options, creds: Credentials | undefined = credentialsFrom(options)) => {
 	const withCreds = <T extends object>(params: T) => (creds ? { ...params, ...creds } : params);
 	const base = {
+		name: options.name,
+		tags: options.tags,
 		env: options.envVars,
 		ports: options.ports,
 		timeout: options.timeout,
 		...(options.vcpus === undefined ? {} : { resources: { vcpus: options.vcpus } }),
-		...(options.persist === undefined ? {} : { persistent: options.persist }),
 	};
 	return options.snapshot !== undefined
 		? RemoteSandbox.create(
@@ -104,24 +103,18 @@ const createSandbox = (options: Options, creds: Credentials | undefined) => {
 const remote = (options: Options) =>
 	Layer.effect(
 		Remote,
-		Effect.acquireRelease(
-			Effect.tryPromise({
-				try: async (): Promise<RemoteState> => {
-					const creds = credentialsFrom(options);
-					const sandbox = options.sandboxName
-						? await RemoteSandbox.get(
-								creds ? { ...creds, name: options.sandboxName } : { name: options.sandboxName },
-							)
-						: await createSandbox(options, creds);
-					return { sandbox, created: options.sandboxName === undefined };
-				},
-				catch: (cause) => new VercelError({ cause }),
-			}),
-			({ sandbox, created }) =>
-				Effect.promise(() => (created && !options.persist ? sandbox.delete() : Promise.resolve())).pipe(
-					Effect.ignore,
-				),
-		),
+		Effect.tryPromise({
+			try: async (): Promise<RemoteState> => {
+				const creds = credentialsFrom(options);
+				const sandbox = options.sandboxName
+					? await RemoteSandbox.get(
+							creds ? { ...creds, name: options.sandboxName } : { name: options.sandboxName },
+						)
+					: await createSandbox(options, creds);
+				return { sandbox };
+			},
+			catch: (cause) => new VercelError({ sanitized: sanitizeError(cause) }),
+		}),
 	);
 
 export const statsFrom = (stats: Stats): RemoteFileSystem.FileStat => {
@@ -291,6 +284,32 @@ const shellLayer = (options: Options) =>
 	Layer.effect(
 		Shell,
 		Effect.map(Remote, ({ sandbox }) =>
+			Shell.of({
+				exec: exec(sandbox, options),
+				execArgv: execArgv(sandbox, options),
+				stream: stream(sandbox, options),
+			}),
+		),
+	);
+
+/**
+ * Cwd-neutral IO attachment for a lifecycle driver.
+ *
+ * The controller binds a cwd per mount, so neither filesystem nor shell stores
+ * one here. The returned layer owns no provider resource and has no deletion
+ * finalizer.
+ */
+export const transport = (
+	sandbox: RemoteSandbox,
+	options: Pick<Options, "execTimeout"> = {},
+): Layer.Layer<SandboxFileSystem.Service | Shell> =>
+	Layer.merge(
+		Layer.succeed(
+			SandboxFileSystem.Service,
+			SandboxFileSystem.fromProvider(RemoteFileSystem.make(providerFrom(sandbox))),
+		),
+		Layer.succeed(
+			Shell,
 			Shell.of({
 				exec: exec(sandbox, options),
 				execArgv: execArgv(sandbox, options),

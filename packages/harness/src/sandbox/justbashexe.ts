@@ -6,7 +6,7 @@ import { posix } from "node:path";
 import { Local } from "./filesystem/local";
 import { SandboxIO } from "./io";
 import type { LocalPrimitives } from "./sandbox";
-import { type ExecResult, fromExec, type ISandboxExe, Shell, ShellError, type ShellOptions } from "./shell";
+import { type ExecResult, fromExec, type ISandboxExe, perMount, Shell, ShellError, type ShellOptions } from "./shell";
 
 // The shared exec contract lives in `shell.ts`; re-export the pieces this
 // module used to own so existing `EnvBash.Shell` / `EnvBash.ShellError`
@@ -18,14 +18,29 @@ export type { ExecResult, ISandboxExe as Interface };
 // commands and SandboxFileSystem.Service operate on the very same tree — there is
 // exactly one filesystem.
 //
+interface Metadata {
+	readonly mode?: number;
+	readonly mtime?: Date;
+}
+
+const metadataByVfs = new WeakMap<VirtualFileSystem, Map<string, Metadata>>();
+
+const metadataFor = (vfs: VirtualFileSystem): Map<string, Metadata> => {
+	const existing = metadataByVfs.get(vfs);
+	if (existing !== undefined) return existing;
+	const metadata = new Map<string, Metadata>();
+	metadataByVfs.set(vfs, metadata);
+	return metadata;
+};
+
 // VFS has no chmod/utimes primitives, so bash-visible mode and mtime changes
-// are kept in a shell-local metadata overlay. The overlay only observes
-// operations made through this bridge: mutating the raw VFS directly (for
-// example deleting and recreating a path) can leave a stale overlay entry
-// behind. Hard links fail loudly because their shared-inode semantics cannot
-// be represented by the VFS API.
+// are kept in an overlay shared by every bridge over the same VFS. The overlay
+// only observes operations made through this bridge: mutating the raw VFS
+// directly (for example deleting and recreating a path) can leave a stale
+// overlay entry behind. Hard links fail loudly because their shared-inode
+// semantics cannot be represented by the VFS API.
 export const bridge = (vfs: VirtualFileSystem, cwd: string): IFileSystem => {
-	const metadata = new Map<string, { mode?: number; mtime?: Date }>();
+	const metadata = metadataFor(vfs);
 	const key = (path: string) => vfs.resolvePath(path);
 	// Glob expansion enumerates from here. On the host that must be the mount's
 	// directory: the VFS is rooted at `/` and never chdirs now, so reading its
@@ -229,34 +244,51 @@ export const bridge = (vfs: VirtualFileSystem, cwd: string): IFileSystem => {
 	};
 };
 
+const fromBash = (bash: Bash): ISandboxExe => {
+	const exec = Effect.fn("Shell.exec")(function* (command: string, options?: ShellOptions) {
+		return yield* Effect.tryPromise({
+			// `tryPromise` aborts this signal when the fiber is interrupted, and
+			// just-bash stops at its next statement boundary. Without threading it
+			// through, an interrupted command keeps running in-process to
+			// completion: the fiber unwinds promptly and the work leaks behind it,
+			// still writing to the sandbox filesystem long after its caller is gone.
+			try: (signal) => bash.exec(command, { ...options, signal }),
+			catch: (cause) => new ShellError({ command, cause }),
+		});
+	});
+
+	// just-bash parses a command string, so `execArgv` goes through the shared
+	// quoting fallback rather than spawning a vector directly.
+	return Shell.of(fromExec({ exec }));
+};
+
+const make = (vfs: VirtualFileSystem, cwd: string): ISandboxExe => fromBash(new Bash({ fs: bridge(vfs, cwd), cwd }));
+
 // just-bash only needs the async IFileSystem surface. The lone synchronous
 // touchpoint, getAllPaths for glob expansion, degrades to an empty list.
 const shell = (cwd: string) =>
 	Layer.effect(
 		Shell,
-		Effect.gen(function* () {
-			const vfs = yield* Local.Vfs;
-			// The interpreter belongs to the mount, not to the transport underneath
-			// it: the VFS is shared and stays rooted at `/`, while this carries one
-			// mount's directory. Every call still takes an explicit `cwd` on top.
-			const bash = new Bash({ fs: bridge(vfs, cwd), cwd });
+		Effect.map(Local.Vfs, (vfs) => make(vfs, cwd)),
+	);
 
-			const exec = Effect.fn("Shell.exec")(function* (command: string, options?: ShellOptions) {
-				return yield* Effect.tryPromise({
-					// `tryPromise` aborts this signal when the fiber is interrupted, and
-					// just-bash stops at its next statement boundary. Without threading it
-					// through, an interrupted command keeps running in-process to
-					// completion: the fiber unwinds promptly and the work leaks behind it,
-					// still writing to the sandbox filesystem long after its caller is gone.
-					try: (signal) => bash.exec(command, { ...options, signal }),
-					catch: (cause) => new ShellError({ command, cause }),
-				});
-			});
-
-			// just-bash parses a command string, so `execArgv` goes through the shared
-			// quoting fallback rather than spawning a vector directly.
-			return Shell.of(fromExec({ exec }));
-		}),
+/**
+ * A cached virtual transport whose Bash interpreter is constructed only when a
+ * mount binds its cwd. This matches Flue's BashFactory ownership: mounts share
+ * the VFS, but shell state (functions, options, command hashes) is mount-local.
+ */
+export const transport = <E, RIn>(
+	inner: Layer.Layer<LocalPrimitives, E, RIn>,
+): Layer.Layer<Shell | LocalPrimitives, E, RIn> =>
+	Layer.provideMerge(
+		Layer.effect(
+			Shell,
+			Effect.map(Local.Vfs, (vfs) => {
+				const root = make(vfs, "/");
+				return perMount(root, (cwd) => make(vfs, cwd));
+			}),
+		),
+		inner,
 	);
 
 /**

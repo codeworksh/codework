@@ -14,21 +14,25 @@ export interface Options extends SeedOptions {
 	readonly hostProcess?: boolean;
 }
 
+/** Build one namespace. Drivers keep this value beyond transport-cache eviction. */
+export const make = (options?: Options) =>
+	Effect.tryPromise({
+		try: async () => {
+			const provider = new MemoryProvider();
+			const vfs = create(provider, { moduleHooks: false, virtualCwd: true });
+
+			await Seed.initialize(vfs, options);
+			if (options?.readOnly) provider.setReadOnly();
+			return vfs;
+		},
+		catch: (cause) => cause,
+	});
+
 // A purely in-memory filesystem with no backing resource to release; every
 // layer build gets its own fresh, isolated tree.
 export const layer = (options?: Options) =>
 	Layer.merge(
-		Layer.effect(
-			Local.Vfs,
-			Effect.promise(async () => {
-				const provider = new MemoryProvider();
-				const vfs = create(provider, { moduleHooks: false, virtualCwd: true });
-
-				await Seed.initialize(vfs, options);
-				if (options?.readOnly) provider.setReadOnly();
-				return vfs;
-			}),
-		),
+		Layer.effect(Local.Vfs, make(options).pipe(Effect.orDie)),
 		options?.hostProcess ? Process.host : Process.unsupported,
 	);
 

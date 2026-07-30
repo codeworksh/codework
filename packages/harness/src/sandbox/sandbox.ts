@@ -1,18 +1,23 @@
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { posix as path } from "node:path";
+import { Database } from "../db/db";
+import { Sandbox as SandboxControl } from "./control";
+import { SandboxDriver } from "./driver";
+import { MemorySandboxDriver } from "./drivers/memory";
+import { SqldbSandboxDriver } from "./drivers/sqldb";
 import { Local } from "./filesystem/local";
 import { HostExe } from "./hostexe";
-import { EnvInMemory } from "./inmemory";
 import { SandboxInstance } from "./instance";
 import { SandboxIO } from "./io";
-import { EnvBash } from "./justbashexe";
-import { EnvSqldb } from "./sqldb";
 import { EnvNodeJSDefault } from "./nodejs";
 
 // re-export from sandbox
 export { SandboxInstance } from "./instance";
 export { SandboxIO } from "./io";
+export { SandboxDriver } from "./driver";
+export { SandboxError } from "./errors";
+export { Sandbox as SandboxController } from "./control";
 export { SandboxResource } from "./resource";
 export { EnvInMemory } from "./inmemory";
 export { EnvBash } from "./justbashexe";
@@ -20,10 +25,10 @@ export { HostExe } from "./hostexe";
 export { EnvNodeJSDefault } from "./nodejs";
 export { EnvSqldb } from "./sqldb";
 export { Process } from "./utils/process";
-
-// remote
-export { EnvDaytona } from "./providers/daytona";
-export { EnvVercel } from "./providers/vercel";
+export { MemorySandboxDriver } from "./drivers/memory";
+export { SqldbSandboxDriver } from "./drivers/sqldb";
+export { VercelSandboxDriver } from "./drivers/vercel";
+export { DaytonaSandboxDriver } from "./drivers/daytona";
 
 /**
  * What every sandbox provides, wherever it runs: a filesystem, a way to execute
@@ -63,6 +68,11 @@ export const services = <E, RIn>(backend: LocalBackend<E, RIn>, identity: Sandbo
 		Layer.provideMerge(Layer.merge(Local.layer, HostExe.layer()), backend),
 	);
 
+const controllerLayer = (...drivers: ReadonlyArray<SandboxDriver.Registration>) => {
+	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(...drivers));
+	return Layer.provide(SandboxControl.layer(), dependencies);
+};
+
 /** Default sandbox: the real OS filesystem and processes, mounted at `cwd`. */
 export const defaultLayer = (cwd?: string) => services(EnvNodeJSDefault.layer(), SandboxIO.host(cwd));
 
@@ -81,13 +91,23 @@ export const local = (cwd?: string) => defaultLayer(cwd);
  * process.
  */
 export const memory = (options?: { readonly instanceId?: SandboxInstance.ID; readonly cwd?: string }) => {
-	const identity = SandboxIO.virtual({
-		driver: "memory",
-		id: options?.instanceId,
-		defaultCwd: "/",
-		cwd: options?.cwd,
-	});
-	return EnvBash.services(EnvInMemory.layer({ cwd: identity.cwd }), identity);
+	const memory = MemorySandboxDriver.make();
+	const mountCwd = SandboxIO.resolveMountCwd("/", options?.cwd);
+	return Layer.unwrap(
+		Effect.map(SandboxControl.Controller, (controller) =>
+			controller.createAndMount(
+				{
+					driver: memory.driver,
+					config: {
+						defaultCwd: SandboxDriver.AbsolutePath.make("/"),
+						initializeCwd: SandboxDriver.AbsolutePath.make(mountCwd),
+					},
+					instanceId: options?.instanceId,
+				},
+				{ cwd: mountCwd },
+			),
+		),
+	).pipe(Layer.provide(controllerLayer(memory.driver)), Layer.orDie);
 };
 
 /**
@@ -102,13 +122,24 @@ export const sqldb = (options?: {
 	readonly cwd?: string;
 }) => {
 	const location = options?.location === undefined ? undefined : path.resolve(options.location);
-	const identity = SandboxIO.virtual({
-		driver: "sqldb",
-		id: options?.instanceId,
-		defaultCwd: "/",
-		cwd: options?.cwd,
-	});
-	return EnvBash.services(EnvSqldb.layer({ location, options: { cwd: identity.cwd } }), identity);
+	const sqldb = SqldbSandboxDriver.make();
+	const mountCwd = SandboxIO.resolveMountCwd("/", options?.cwd);
+	return Layer.unwrap(
+		Effect.map(SandboxControl.Controller, (controller) =>
+			controller.createAndMount(
+				{
+					driver: sqldb.driver,
+					config: {
+						defaultCwd: SandboxDriver.AbsolutePath.make("/"),
+						initializeCwd: SandboxDriver.AbsolutePath.make(mountCwd),
+						...(location === undefined ? {} : { location }),
+					},
+					instanceId: options?.instanceId,
+				},
+				{ cwd: mountCwd },
+			),
+		),
+	).pipe(Layer.provide(controllerLayer(sqldb.driver)), Layer.orDie);
 };
 
 export * as Sandbox from "./sandbox";

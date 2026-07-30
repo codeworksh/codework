@@ -1,3 +1,5 @@
+import { Daytona } from "@daytona/sdk";
+import { Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { appendFile, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -5,11 +7,14 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { EnvDaytona } from "../src/sandbox/providers/daytona";
 import { EnvVercel } from "../src/sandbox/providers/vercel";
+import { SandboxInstance } from "../src/sandbox/instance";
 import { bashTool } from "../src/tools/bash";
 import type * as Executor from "../src/tools/executor";
 import * as Registry from "../src/tools/registry";
 import { fromSandboxShell, ToolShell } from "../src/tools/shell";
 import * as Tool from "../src/tools/tool";
+import { labels, makeRemoteOwner } from "./fixtures/remote-owner";
+import { hasLiveOidc } from "./fixtures/vercel";
 import { pendingCall } from "./tools.fixture";
 import "./utils/env";
 
@@ -19,12 +24,12 @@ import "./utils/env";
 // `.env.local` (see ./utils/env) — each suite skips when its key is absent.
 //
 // ⚠️ COST / RATE LIMITS — these provision REAL sandboxes. As in sandbox.vercel.test.ts, each
-// suite provisions ONE shared sandbox via a ManagedRuntime (Vercel Hobby caps ~40 creations
-// per 10-minute window, 10 concurrent) and tears it down in afterAll.
+// suite provisions ONE owned resource before attaching its ManagedRuntime (Vercel Hobby caps
+// ~40 creations per 10-minute window, 10 concurrent) and tears it down in afterAll.
 
 const vercelToken = process.env.VERCEL_OIDC_TOKEN;
 const daytonaKey = process.env.DAYTONA_API_KEY;
-const vercelSuite = vercelToken ? describe : describe.skip;
+const vercelSuite = hasLiveOidc(vercelToken) ? describe : describe.skip;
 const daytonaSuite = daytonaKey ? describe : describe.skip;
 
 const PROVISION_TIMEOUT = 180_000;
@@ -74,15 +79,31 @@ const acquireToolShell = <E>(runtime: ManagedRuntime.ManagedRuntime<ToolShell, E
 
 // ── Vercel: real remote sandbox, streaming path ──────────────────────────────────────────────
 
-const makeVercelRuntime = () =>
-	ManagedRuntime.make(fromSandboxShell.pipe(Layer.provide(EnvVercel.services({ persist: false, runtime: "node24" }))));
+const makeVercelRuntime = (sandboxName: string, instanceId: SandboxInstance.ID) =>
+	ManagedRuntime.make(Layer.provideMerge(fromSandboxShell, EnvVercel.services({ sandboxName, instanceId })));
 
 vercelSuite("ToolRegistry × real Vercel sandbox — long-running streaming bash + File IO progress", () => {
 	let runtime!: ReturnType<typeof makeVercelRuntime>;
-	beforeAll(() => {
-		runtime = makeVercelRuntime();
-	});
-	afterAll(() => runtime.dispose());
+	const owner = makeRemoteOwner("tools.registry.vercel");
+	beforeAll(async () => {
+		const instanceId = SandboxInstance.ID.create();
+		const sandbox = await EnvVercel.createSandbox({
+			runtime: "node24",
+			tags: labels(instanceId),
+		});
+		owner.capture(sandbox.name);
+		runtime = makeVercelRuntime(sandbox.name, instanceId);
+	}, PROVISION_TIMEOUT);
+	afterAll(
+		() =>
+			owner.cleanup({
+				destroy: async (name) => {
+					await (await RemoteSandbox.get({ name, resume: false })).delete();
+				},
+				dispose: () => runtime.dispose(),
+			}),
+		PROVISION_TIMEOUT,
+	);
 
 	it(
 		"streams 100+ lines of live progress from the remote sandbox into the temp-file sink",
@@ -154,15 +175,36 @@ vercelSuite("ToolRegistry × real Vercel sandbox — long-running streaming bash
 
 // ── Daytona: real remote sandbox, buffered exec path ─────────────────────────────────────────
 
-const makeDaytonaRuntime = () =>
-	ManagedRuntime.make(fromSandboxShell.pipe(Layer.provide(EnvDaytona.services({ apiKey: daytonaKey }))));
+const makeDaytonaRuntime = (sandboxId: string, instanceId: SandboxInstance.ID) =>
+	ManagedRuntime.make(
+		Layer.provideMerge(fromSandboxShell, EnvDaytona.services({ apiKey: daytonaKey, sandboxId, instanceId })),
+	);
 
 daytonaSuite("ToolRegistry × real Daytona sandbox — buffered bash (no streaming, by design)", () => {
 	let runtime!: ReturnType<typeof makeDaytonaRuntime>;
-	beforeAll(() => {
-		runtime = makeDaytonaRuntime();
-	});
-	afterAll(() => runtime.dispose());
+	const owner = makeRemoteOwner("tools.registry.daytona");
+	beforeAll(async () => {
+		const instanceId = SandboxInstance.ID.create();
+		const sdk = new Daytona({ apiKey: daytonaKey });
+		const sandbox = await sdk.create({
+			language: "typescript",
+			autoDeleteInterval: -1,
+			labels: labels(instanceId),
+		});
+		owner.capture(sandbox.id);
+		runtime = makeDaytonaRuntime(sandbox.id, instanceId);
+	}, PROVISION_TIMEOUT);
+	afterAll(
+		() =>
+			owner.cleanup({
+				destroy: async (id) => {
+					const sdk = new Daytona({ apiKey: daytonaKey });
+					await sdk.delete(await sdk.get(id));
+				},
+				dispose: () => runtime.dispose(),
+			}),
+		PROVISION_TIMEOUT,
+	);
 
 	it(
 		"returns the full 120-line output in the terminal outcome with no progress events",

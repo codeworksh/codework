@@ -1,3 +1,4 @@
+import { Daytona } from "@daytona/sdk";
 import { Effect, ManagedRuntime } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { SandboxInstance } from "../src/sandbox/instance";
@@ -8,6 +9,7 @@ import { Sandbox } from "../src/sandbox/sandbox";
 import { Shell } from "../src/sandbox/shell";
 import { cancellationSpec } from "./fixtures/cancellation.spec";
 import { remoteSandboxSpec } from "./fixtures/remote.spec";
+import { labels, makeRemoteOwner } from "./fixtures/remote-owner";
 import "./utils/env";
 
 const apiKey = process.env.DAYTONA_API_KEY;
@@ -19,22 +21,41 @@ const SANDBOX_CWD = "/tmp";
 const BAKED_ENV = "from-sandbox";
 
 // One real sandbox serves the complete provider contract. Reattaching by the
-// provider's own locator does not transfer ownership, so only this runtime
-// deletes it.
+// provider's own locator does not transfer ownership; cleanup is explicit.
 suite("Sandbox.EnvDaytona (shared sandbox)", () => {
 	let runtime!: ManagedRuntime.ManagedRuntime<Sandbox.Provides | SandboxResource.Service, EnvDaytona.DaytonaError>;
+	const owner = makeRemoteOwner("sandbox.daytona");
 
-	beforeAll(() => {
+	beforeAll(async () => {
+		const instanceId = SandboxInstance.ID.create();
+		const sdk = new Daytona({ apiKey });
+		const sandbox = await sdk.create({
+			language: "typescript",
+			envVars: { CW_ENV: BAKED_ENV },
+			autoDeleteInterval: -1,
+			labels: labels(instanceId),
+		});
+		owner.capture(sandbox.id);
 		runtime = ManagedRuntime.make(
 			EnvDaytona.services({
 				apiKey,
-				persist: false,
+				sandboxId: sandbox.id,
+				instanceId,
 				cwd: SANDBOX_CWD,
-				envVars: { CW_ENV: BAKED_ENV },
 			}),
 		);
-	});
-	afterAll(() => runtime.dispose());
+	}, PROVISION_TIMEOUT);
+	afterAll(
+		() =>
+			owner.cleanup({
+				destroy: async (id) => {
+					const sdk = new Daytona({ apiKey });
+					await sdk.delete(await sdk.get(id));
+				},
+				dispose: () => runtime.dispose(),
+			}),
+		PROVISION_TIMEOUT,
+	);
 
 	const run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> => runtime.runPromise(program);
 

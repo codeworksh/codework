@@ -45,7 +45,7 @@ export type Shell = ShellTag;
  */
 export interface Identity {
 	readonly id: SandboxInstance.ID;
-	readonly driver: string;
+	readonly driver: import("./driver").Name;
 	readonly kind: SandboxInstance.Kind;
 	/** Absolute, and always a path in *this* namespace. */
 	readonly cwd: string;
@@ -135,7 +135,7 @@ export const hostLayer = (cwd?: string) => identityLayer(host(cwd));
  */
 export const host = (cwd?: string): Identity => ({
 	id: SandboxInstance.ID.local,
-	driver: "local",
+	driver: "local" as import("./driver").Name,
 	kind: "local",
 	cwd: resolveMountCwd(process.cwd(), cwd),
 });
@@ -154,7 +154,7 @@ export const virtual = (input: {
 	readonly cwd?: string;
 }): Identity => ({
 	id: input.id ?? SandboxInstance.ID.create(),
-	driver: input.driver,
+	driver: input.driver as import("./driver").Name,
 	kind: "virtual",
 	cwd: resolveMountCwd(input.defaultCwd ?? "/", input.cwd),
 });
@@ -172,7 +172,7 @@ export const remote = (input: {
 	readonly cwd?: string;
 }): Identity => ({
 	id: input.id,
-	driver: input.driver,
+	driver: input.driver as import("./driver").Name,
 	kind: "remote",
 	cwd: resolveMountCwd(input.defaultCwd, input.cwd),
 });

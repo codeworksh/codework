@@ -4,6 +4,11 @@
  */
 
 import { Context, Effect, Schema } from "effect";
+import { Location } from "../location/location";
+import { type SandboxMountError } from "../sandbox/errors";
+import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
+import { SandboxInstance } from "../sandbox/instance";
+import { SandboxIO } from "../sandbox/io";
 import type { ID as SessionId } from "../session/schema";
 
 export class ShellWorkError extends Schema.TaggedErrorClass<ShellWorkError>()("Runner.ShellWorkError", {
@@ -11,11 +16,27 @@ export class ShellWorkError extends Schema.TaggedErrorClass<ShellWorkError>()("R
 	cause: Schema.Defect(),
 }) {}
 
-export type RunError = ShellWorkError;
+export class SandboxDirectoryNotFoundError extends Schema.TaggedErrorClass<SandboxDirectoryNotFoundError>()(
+	"Runner.SandboxDirectoryNotFoundError",
+	{
+		sessionId: Schema.String,
+		sandboxInstanceId: SandboxInstance.ID,
+		directory: Schema.String,
+	},
+) {}
+
+export type RunError =
+	| ShellWorkError
+	| SandboxDirectoryNotFoundError
+	| SandboxMountError
+	| SandboxFileSystem.FileSystemError;
 
 export interface Interface {
 	/** Drains eligible durable work. Explicit runs perform one provider attempt even when no work is eligible. */
-	readonly run: (input: { readonly sessionId: SessionId; readonly force: boolean }) => Effect.Effect<void, RunError>;
+	readonly run: (input: {
+		readonly sessionId: SessionId;
+		readonly force: boolean;
+	}) => Effect.Effect<void, RunError, SandboxIO.Provides | Location.Service>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codework/runner/run") {}
