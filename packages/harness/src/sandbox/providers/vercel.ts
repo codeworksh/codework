@@ -2,13 +2,21 @@ import { type Command, Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
 import type { Stats } from "node:fs";
-import { SandboxInstance } from "../instance";
 import { sanitizeError } from "../errors";
-import { SandboxFileSystem } from "../filesystem/filesystem";
-import { RemoteFileSystem } from "../filesystem/remote";
+import { SandboxFileSystem } from "../fs/filesystem";
+import { RemoteFileSystem } from "../fs/remote";
+import { SandboxInstance } from "../instance";
 import { SandboxIO } from "../io";
 import { SandboxResource } from "../resource";
-import { type ExecChunk, type ExecResult, type ISandboxExe, quoteArgv, resolveCwd, Shell, ShellError } from "../shell";
+import {
+	type ExecChunk,
+	type ExecResult,
+	type ISandboxExe,
+	quoteArgv,
+	resolveCwd,
+	Shell,
+	ShellError,
+} from "../shell/shell";
 
 const utf8 = new TextEncoder();
 

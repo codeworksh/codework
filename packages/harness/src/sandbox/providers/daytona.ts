@@ -11,12 +11,12 @@ import { Context, Effect, Layer, Schema } from "effect";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
 import { sanitizeError } from "../errors";
-import { SandboxFileSystem } from "../filesystem/filesystem";
-import { RemoteFileSystem } from "../filesystem/remote";
+import { SandboxFileSystem } from "../fs/filesystem";
+import { RemoteFileSystem } from "../fs/remote";
 import { SandboxInstance } from "../instance";
 import { SandboxIO } from "../io";
 import { SandboxResource } from "../resource";
-import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../shell";
+import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../shell/shell";
 
 /** Fallback when Daytona cannot report a snapshot/image-specific work directory. */
 export const DEFAULT_CWD = "/home/daytona";

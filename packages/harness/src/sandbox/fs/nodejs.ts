@@ -1,7 +1,7 @@
 import { create, RealFSProvider } from "@platformatic/vfs";
 import { Layer } from "effect";
-import { Local } from "./filesystem/local";
-import { Process } from "./utils/process";
+import { Process } from "../utils/process";
+import { Local } from "./vfs";
 
 /**
  * The host VFS: provider-rooted at `/`, and never `chdir`ed.

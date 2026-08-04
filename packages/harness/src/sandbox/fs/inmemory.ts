@@ -1,8 +1,13 @@
 import { create, MemoryProvider } from "@platformatic/vfs";
-import { Effect, Layer } from "effect";
-import { Local } from "./filesystem/local";
-import { Process } from "./utils/process";
-import { Seed, type SeedOptions } from "./utils/seed";
+import { Effect, Layer, Schema } from "effect";
+import { Process } from "../utils/process";
+import { Seed, type SeedOptions } from "../utils/seed";
+import { Local } from "./vfs";
+
+export class InMemoryError extends Schema.TaggedErrorClass<InMemoryError>()("InMemoryError", {
+	message: Schema.String,
+	cause: Schema.Defect(),
+}) {}
 
 export interface Options extends SeedOptions {
 	/** Freeze the provider to prevent writes. Defaults to false. */
@@ -25,15 +30,16 @@ export const make = (options?: Options) =>
 			if (options?.readOnly) provider.setReadOnly();
 			return vfs;
 		},
-		catch: (cause) => cause,
+		catch: (cause) =>
+			new InMemoryError({
+				message: "Failed to initialize the in-memory filesystem",
+				cause,
+			}),
 	});
 
 // A purely in-memory filesystem with no backing resource to release; every
 // layer build gets its own fresh, isolated tree.
 export const layer = (options?: Options) =>
-	Layer.merge(
-		Layer.effect(Local.Vfs, make(options).pipe(Effect.orDie)),
-		options?.hostProcess ? Process.host : Process.unsupported,
-	);
+	Layer.merge(Layer.effect(Local.Vfs, make(options)), options?.hostProcess ? Process.host : Process.unsupported);
 
 export * as EnvInMemory from "./inmemory";

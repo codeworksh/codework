@@ -1,37 +1,38 @@
-import { Cause, Context, DateTime, Effect, Layer, LayerMap, Option, Semaphore } from "effect";
+import { Cause, Context, DateTime, type Duration, Effect, Layer, LayerMap, Option, Semaphore } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { SandboxInstanceRow } from "../db/schema.sql";
-import { Local } from "./filesystem/local";
 import { SandboxDriver } from "./driver";
 import {
 	providerError,
 	providerErrorIsNotFound,
-	sanitizeError,
 	SandboxBusyError,
 	type SandboxCreateError,
 	type SandboxDestroyError,
+	type SandboxDriverNotRegisteredError,
 	SandboxDriverRegistrationError,
 	type SandboxMountError,
 	SandboxMustBeStoppedError,
 	SandboxNotFoundError,
+	SandboxProviderError,
 	type SandboxReadError,
 	type SandboxRefreshError,
-	SandboxRemovedError,
 	type SandboxRegisterError,
+	SandboxRemovedError,
 	type SandboxStopError,
 	SandboxTransitionConflictError,
 	SandboxUnavailError,
 	SandboxUnsupportedError,
 	type SandboxWakeError,
-	SandboxProviderError,
+	sanitizeError,
 } from "./errors";
-import { HostExe } from "./hostexe";
+import { SandboxFileSystem } from "./fs/filesystem";
+import { Local } from "./fs/vfs";
+import { HostExe } from "./shell/host";
 import { SandboxInstance } from "./instance";
 import { SandboxIO } from "./io";
-import { EnvNodeJSDefault } from "./nodejs";
-import { withCwd as shellWithCwd } from "./shell";
+import { EnvNodeJSDefault } from "./fs/nodejs";
+import { withCwd as shellWithCwd } from "./shell/shell";
 import { SandboxStore } from "./store";
-import { SandboxFileSystem } from "./filesystem/filesystem";
 
 export interface CreateInput<CreateConfig, RuntimeConfig extends SandboxDriver.RuntimeConfigBase> {
 	readonly driver: SandboxDriver.Definition<CreateConfig, RuntimeConfig>;
@@ -49,7 +50,7 @@ export interface RegisterInput<CreateConfig, RuntimeConfig extends SandboxDriver
 }
 
 export interface MountOptions {
-	/** Absolute, or relative to runtime_config.defaultCwd. */
+	/** Absolute, or relative to RuntimeConfig.defaultCwd. */
 	readonly cwd?: string;
 }
 
@@ -92,7 +93,7 @@ export interface Interface {
 export class Controller extends Context.Service<Controller, Interface>()("@codework/sandbox/controller") {}
 
 export interface Options {
-	readonly transportIdleTimeToLive?: import("effect").Duration.Input;
+	readonly transportIdleTimeToLive?: Duration.Input;
 	readonly provisioningTimeoutMs?: number;
 }
 
@@ -291,10 +292,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		return yield* error;
 	});
 
-	type TransportError =
-		| SandboxNotFoundError
-		| import("./errors").SandboxDriverNotRegisteredError
-		| SandboxProviderError;
+	type TransportError = SandboxNotFoundError | SandboxDriverNotRegisteredError | SandboxProviderError;
 
 	const transportLayer = (
 		id: SandboxInstance.ID,
@@ -825,4 +823,4 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 
 export const layer = (options?: Options) => Layer.effect(Controller, make(options));
 
-export * as Sandbox from "./control";
+export * as SandboxController from "./control";

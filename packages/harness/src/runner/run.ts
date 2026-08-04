@@ -6,7 +6,7 @@
 import { Context, Effect, Schema } from "effect";
 import { Location } from "../location/location";
 import { type SandboxMountError } from "../sandbox/errors";
-import { SandboxFileSystem } from "../sandbox/filesystem/filesystem";
+import { SandboxFileSystem } from "../sandbox/fs/filesystem";
 import { SandboxInstance } from "../sandbox/instance";
 import { SandboxIO } from "../sandbox/io";
 import type { ID as SessionId } from "../session/schema";

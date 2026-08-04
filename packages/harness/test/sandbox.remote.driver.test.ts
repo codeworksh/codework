@@ -2,7 +2,7 @@ import { Effect, Layer, ManagedRuntime, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { Sandbox } from "../src/sandbox/control";
+import { SandboxController } from "../src/sandbox/control";
 import { SandboxDriver } from "../src/sandbox/driver";
 import { DaytonaSandboxDriver } from "../src/sandbox/drivers/daytona";
 import { VercelSandboxDriver } from "../src/sandbox/drivers/vercel";
@@ -16,7 +16,7 @@ const oidcToken = process.env.VERCEL_OIDC_TOKEN;
 const daytonaSuite = apiKey ? describe : describe.skip;
 const vercelSuite = hasLiveOidc(oidcToken) ? describe : describe.skip;
 
-const cleanup = (controller: Sandbox.Controller["Service"], id: SandboxInstance.ID) =>
+const cleanup = (controller: SandboxController.Controller["Service"], id: SandboxInstance.ID) =>
 	Effect.gen(function* () {
 		const found = yield* controller.get(id);
 		if (Option.isNone(found) || found.value.status === "removed") return;
@@ -34,7 +34,7 @@ const lifecycle = async <CreateConfig, RuntimeConfig extends SandboxDriver.Runti
 	readonly expectedCancels: boolean;
 }) => {
 	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(input.remote));
-	const application = Sandbox.layer({ transportIdleTimeToLive: "1 hour" }).pipe(
+	const application = SandboxController.layer({ transportIdleTimeToLive: "1 hour" }).pipe(
 		Layer.provideMerge(dependencies),
 		Layer.orDie,
 	);
@@ -43,7 +43,7 @@ const lifecycle = async <CreateConfig, RuntimeConfig extends SandboxDriver.Runti
 	try {
 		await runtime.runPromise(
 			Effect.gen(function* () {
-				const controller = yield* Sandbox.Controller;
+				const controller = yield* SandboxController.Controller;
 				const sql = yield* SqlClient.SqlClient;
 				const created = yield* controller.create({
 					driver: input.remote,

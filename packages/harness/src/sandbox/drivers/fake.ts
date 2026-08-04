@@ -1,11 +1,12 @@
 import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer, Option, Schema } from "effect";
-import { SandboxFileSystem } from "../filesystem/filesystem";
 import { SandboxDriver } from "../driver";
 import { providerError, type SandboxProviderError } from "../errors";
-import { EnvInMemory } from "../inmemory";
-import { Shell } from "../shell";
-import { transport } from "./virtual";
+import { EnvInMemory } from "../fs/inmemory";
+import { SandboxFileSystem } from "../fs/filesystem";
+import type { SandboxInstance } from "../instance";
+import { Shell } from "../shell/shell";
+import { transport } from "../virtual";
 
 export interface CreateConfig {
 	readonly defaultCwd?: SandboxDriver.AbsolutePath;
@@ -29,19 +30,19 @@ export const RuntimeConfig = Schema.Struct({
 export type Operation = "create" | "runtimeConfigFor" | "attach" | "inspect" | "wake" | "stop" | "destroy";
 
 export interface Resource {
-	readonly id: import("../instance").ID;
+	readonly id: SandboxInstance.ID;
 	readonly providerResourceId: string;
 	readonly vfs: VirtualFileSystem;
 	readonly runtimeConfig: RuntimeConfig;
-	status: import("../instance").Status;
+	status: SandboxInstance.Status;
 }
 
 export interface State {
-	readonly resources: Map<import("../instance").ID, Resource>;
-	readonly calls: Record<Operation, Array<import("../instance").ID | string>>;
+	readonly resources: Map<SandboxInstance.ID, Resource>;
+	readonly calls: Record<Operation, Array<SandboxInstance.ID | string>>;
 	readonly failNext: (operation: Operation, cause: unknown) => void;
 	readonly blockNext: (operation: Operation, blocker: Effect.Effect<void>) => void;
-	readonly remove: (id: import("../instance").ID) => void;
+	readonly remove: (id: SandboxInstance.ID) => void;
 }
 
 /**
@@ -57,7 +58,7 @@ export const make = (
 	readonly driver: SandboxDriver.Driver<CreateConfig, RuntimeConfig> & SandboxDriver.Registration;
 	readonly state: State;
 } => {
-	const resources = new Map<import("../instance").ID, Resource>();
+	const resources = new Map<SandboxInstance.ID, Resource>();
 	const failures = new Map<Operation, unknown>();
 	const blockers = new Map<Operation, Effect.Effect<void>>();
 	const calls: State["calls"] = {
@@ -80,7 +81,7 @@ export const make = (
 
 	const attempted = <A>(
 		operation: Operation,
-		identity: import("../instance").ID | string,
+		identity: SandboxInstance.ID | string,
 		run: () => Effect.Effect<A, SandboxProviderError>,
 	) => {
 		calls[operation].push(identity);

@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -28,6 +28,19 @@ describe("Sandbox.EnvInMemoryFS", () => {
 		);
 
 		expect(exists).toBe(false);
+	});
+
+	it("should expose initialization failures in the typed error channel", async () => {
+		const error = await Effect.runPromise(
+			Layer.build(Sandbox.EnvInMemory.layer({ cwd: "relative" })).pipe(Effect.scoped, Effect.flip),
+		);
+
+		expect(error).toBeInstanceOf(Sandbox.EnvInMemory.InMemoryError);
+		expect(error).toMatchObject({
+			_tag: "InMemoryError",
+			message: "Failed to initialize the in-memory filesystem",
+		});
+		expect(error.cause).toBeInstanceOf(TypeError);
 	});
 
 	// virtual sandboxes have no OS behind them: attempting to spawn a process

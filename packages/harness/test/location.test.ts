@@ -8,7 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db";
 import { SandboxInstance } from "../src/sandbox/instance";
 import { SandboxIO } from "../src/sandbox/io";
-import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
 import { Git } from "../src/git/git";
 import { Location } from "../src/location/location";
 import { ProjectCopy } from "../src/project/copy";

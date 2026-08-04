@@ -6,7 +6,7 @@ import { SandboxIO } from "../src/sandbox/io";
 import { EnvDaytona } from "../src/sandbox/providers/daytona";
 import { SandboxResource } from "../src/sandbox/resource";
 import { Sandbox } from "../src/sandbox/sandbox";
-import { Shell } from "../src/sandbox/shell";
+import { Shell } from "../src/sandbox/shell/shell";
 import { cancellationSpec } from "./fixtures/cancellation.spec";
 import { remoteSandboxSpec } from "./fixtures/remote.spec";
 import { labels, makeRemoteOwner } from "./fixtures/remote-owner";

@@ -13,13 +13,10 @@ export const AbsolutePath = Schema.String.check(Schema.isStartsWith("/")).pipe(
 );
 export type AbsolutePath = typeof AbsolutePath.Type;
 
-export interface RuntimeConfigBase {
-	readonly defaultCwd: AbsolutePath;
-}
-
 export const RuntimeConfigBase = Schema.Struct({
 	defaultCwd: AbsolutePath,
 });
+export interface RuntimeConfigBase extends Schema.Schema.Type<typeof RuntimeConfigBase> {}
 
 export interface Capabilities {
 	readonly reattach: boolean;
@@ -164,6 +161,10 @@ export interface Registration {
 	readonly registered: Registered;
 }
 
+/**
+ * Creates in-memory driver registry map and throws for invalid state operations.
+ * Exposes registry services methods to work with.
+ */
 export const makeRegistry = (
 	drivers: ReadonlyArray<Registration>,
 ): Effect.Effect<RegistryService, SandboxDriverRegistrationError> =>
@@ -194,6 +195,8 @@ export const makeRegistry = (
 			entries.set(driver.name, erase(driver));
 		}
 
+		// `find` safely returns undefined if nothing
+		// `get` throws
 		const find = (name: Name) => Option.fromUndefinedOr(entries.get(name));
 		const get = (name: Name) =>
 			Effect.fromOption(find(name)).pipe(

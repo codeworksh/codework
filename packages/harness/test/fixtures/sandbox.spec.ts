@@ -1,21 +1,21 @@
 import { Effect, Layer } from "effect";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../../src/sandbox/filesystem/filesystem";
-import { Local } from "../../src/sandbox/filesystem/local";
-import { HostExe } from "../../src/sandbox/hostexe";
+import { SandboxFileSystem } from "../../src/sandbox/fs/filesystem";
+import { Local } from "../../src/sandbox/fs/vfs";
+import { HostExe } from "../../src/sandbox/shell/host";
 import { SandboxIO } from "../../src/sandbox/io";
 import type { Sandbox } from "../../src/sandbox/sandbox";
 
-export interface SandboxEnv {
+export interface SandboxEnv<E = never> {
 	/** The raw local primitives; `withService` builds the filesystem over them. */
-	readonly sandbox: Sandbox.LocalBackend;
+	readonly sandbox: Sandbox.LocalBackend<E>;
 	/** Where relative paths resolve. Supplied by the mount, never by the VFS. */
 	readonly cwd?: string;
 	readonly dispose?: () => Promise<void>;
 }
 
-export type MakeSandbox = () => Promise<SandboxEnv>;
+export type MakeSandbox<E = never> = () => Promise<SandboxEnv<E>>;
 
 /**
  * Promise view of the Effect service, so the behavioural spec below reads as
@@ -41,7 +41,10 @@ const toPromise = (fs: SandboxFileSystem.Interface): PromiseFileSystem => ({
  * Build the sandbox, hand a Promise view of the live `SandboxFileSystem.Service`
  * to a plain async body, and dispose afterwards.
  */
-export const withService = async <A>(make: MakeSandbox, body: (fs: PromiseFileSystem) => Promise<A>): Promise<A> => {
+export const withService = async <A, E>(
+	make: MakeSandbox<E>,
+	body: (fs: PromiseFileSystem) => Promise<A>,
+): Promise<A> => {
 	const env = await make();
 	try {
 		return await Effect.runPromise(
@@ -78,7 +81,7 @@ export const withService = async <A>(make: MakeSandbox, body: (fs: PromiseFileSy
  * also means every backend proves its mount resolution here rather than only
  * its raw path handling.
  */
-export const filesystemSpec = (make: MakeSandbox) => {
+export const filesystemSpec = <E>(make: MakeSandbox<E>) => {
 	const run = <A>(body: (fs: PromiseFileSystem) => Promise<A>) => withService(make, body);
 
 	describe("readFile / writeFile", () => {

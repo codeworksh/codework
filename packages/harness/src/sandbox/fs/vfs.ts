@@ -95,4 +95,4 @@ export const layer = Layer.effect(
 	}),
 );
 
-export * as Local from "./local";
+export * as Local from "./vfs";

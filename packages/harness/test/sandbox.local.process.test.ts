@@ -1,7 +1,7 @@
 import { Effect, Exit, Layer, Option } from "effect";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { Sandbox } from "../src/sandbox/control";
+import { SandboxController } from "../src/sandbox/control";
 import { SandboxDriver } from "../src/sandbox/driver";
 import { MemorySandboxDriver } from "../src/sandbox/drivers/memory";
 import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb";
@@ -17,14 +17,14 @@ const processLocalLifecycle = <CreateConfig, RuntimeConfig extends SandboxDriver
 	},
 ) => {
 	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(fixture.driver));
-	const runtime = Layer.provideMerge(Sandbox.layer({ transportIdleTimeToLive: "1 hour" }), dependencies);
+	const runtime = Layer.provideMerge(SandboxController.layer({ transportIdleTimeToLive: "1 hour" }), dependencies);
 	const { effect: it } = testEffect(runtime);
 
 	describe(name, () => {
 		it(
 			"retains namespace state across stop and deletes it only on destroy",
 			Effect.gen(function* () {
-				const controller = yield* Sandbox.Controller;
+				const controller = yield* SandboxController.Controller;
 				const created = yield* controller.create({
 					driver: fixture.driver,
 					config: fixture.config,

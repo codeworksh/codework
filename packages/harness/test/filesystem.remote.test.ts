@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
-import { RemoteFileSystem } from "../src/sandbox/filesystem/remote";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
+import { RemoteFileSystem } from "../src/sandbox/fs/remote";
 
 const enoent = (path: string) => {
 	const error = new Error(`ENOENT: no such file or directory, '${path}'`) as NodeJS.ErrnoException;
