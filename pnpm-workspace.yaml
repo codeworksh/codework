@@ -3,8 +3,6 @@ packages:
 
 allowBuilds:
    "@mongodb-js/zstd": true
-   better-sqlite3: true
-   electron: true
    esbuild: true
    lmdb: true
    msgpackr-extract: true
@@ -14,8 +12,6 @@ allowBuilds:
 
 onlyBuiltDependencies:
    - "@mongodb-js/zstd"
-   - better-sqlite3
-   - electron
    - esbuild
    - lmdb
    - msgpackr-extract

@@ -13,10 +13,7 @@
 			"@codeworksh/aikit": ["./packages/aikit/src/index"],
 			"@codeworksh/harness/codemode/drivers": ["./packages/harness/src/harness/codemode/drivers/drivers"],
 			"@codeworksh/harness": ["./packages/harness/src/index"],
-			"@codeworksh/bridge": ["./packages/bridge/src/index"],
-			"@codeworksh/agent": ["./packages/agent/src/index"],
-			"@codeworksh/sdk": ["./packages/sdk/src/index"],
-			"@codeworksh/utils": ["./packages/utils/src/index"],
+			"@codeworksh/utils": ["./packages/utils/src/index"]
 		},
 		"types": ["node"],
 		"verbatimModuleSyntax": true,
@@ -25,7 +22,7 @@
 		"skipLibCheck": true,
 		"noFallthroughCasesInSwitch": true,
 		"noUncheckedIndexedAccess": true,
-		"noImplicitOverride": true,
+		"noImplicitOverride": true
 	},
-	"include": ["vite.config.ts"],
+	"include": ["vite.config.ts"]
 }

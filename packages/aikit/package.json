@@ -81,7 +81,8 @@
 	"devDependencies": {
 		"@codeworksh/utils": "workspace:*",
 		"@types/yargs": "^17.0.35",
-		"bumpp": "^11.0.1"
+		"bumpp": "^11.0.1",
+		"tsx": "^4.23.5"
 	},
 	"engines": {
 		"node": ">=22.0.0"

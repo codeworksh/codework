@@ -20,8 +20,8 @@ const layer = Layer.unwrap(
 
 const { effect: it } = testEffect(layer);
 
-// `:memory:` must behave like any other database — better-sqlite3 keeps a
-// single connection per layer, so the data survives transactions. (The
+// `:memory:` must behave like any other database — the node:sqlite client keeps
+// a single connection per layer, so the data survives transactions. (The
 // previous libsql client swapped connections inside `transaction()`, which
 // silently replaced an in-memory database with an empty one.)
 const { effect: memoryIt } = testEffect(Database.layer(":memory:"));

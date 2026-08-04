@@ -25,26 +25,15 @@
 		"typecheck": "vp check --no-fmt",
 		"build": "vp run -r build",
 		"build:packages": "vp run -r build",
-		"server:start": "tsx --conditions=development packages/agent/src/index.ts serve",
-		"server:dev": "node scripts/dev/server.mjs",
-		"desktop:build": "pnpm --filter @codeworksh/desktop build",
-		"desktop:start": "pnpm --filter @codeworksh/desktop start",
-		"sdk:generate": "pnpm --filter @codeworksh/agent openapi && pnpm --filter @codeworksh/sdk generate && pnpm --filter @codeworksh/sdk build",
 		"bump:aikit": "pnpm --filter @codeworksh/aikit run bump",
-		"bump:sdk": "pnpm --filter @codeworksh/sdk run bump",
 		"release:aikit": "pnpm --filter @codeworksh/aikit run release",
 		"release:aikit:dev": "pnpm --filter @codeworksh/aikit run release:dev",
-		"release:aikit:dry": "pnpm --filter @codeworksh/aikit run release:dry",
-		"release:sdk": "pnpm --filter @codeworksh/sdk run release",
-		"release:sdk:dev": "pnpm --filter @codeworksh/sdk run release:dev",
-		"release:sdk:dry": "pnpm --filter @codeworksh/sdk run release:dry"
+		"release:aikit:dry": "pnpm --filter @codeworksh/aikit run release:dry"
 	},
 	"devDependencies": {
-		"@types/node": "^24.12.2",
-		"@typescript/native-preview": "7.0.0-dev.20260328.1",
-		"tsx": "^4.21.0",
-		"typescript": "^5.9.3",
-		"vite-plus": "0.1.17"
+		"@types/node": "^26.1.2",
+		"typescript": "^7.0.2",
+		"vite-plus": "0.2.7"
 	},
-	"packageManager": "pnpm@11.5.2+sha512.71c631e382066efc25625d5cf029075de07b61b37f6e27350fbd84b1bda5864c8c1967adc280776b45c30a715c0359a3be08fef42d5bb09e2b99029979692916"
+	"packageManager": "pnpm@11.5.2"
 }

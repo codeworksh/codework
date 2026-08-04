@@ -8,8 +8,8 @@ import { migrations } from "./migrations";
 
 export { SqlClient, SqlSchema } from "effect/unstable/sql";
 
-// PRAGMAs and migrations run once during layer construction; better-sqlite3
-// holds a single connection for the lifetime of the layer, so the settings
+// PRAGMAs and migrations run once during layer construction; the node:sqlite
+// client holds a single connection for the lifetime of the layer, so the settings
 // apply to every query and a `:memory:` database stays intact across
 // transactions — important for serverless deployments and transient sessions
 // where no writable disk is available. (WAL is enabled by the client itself.)

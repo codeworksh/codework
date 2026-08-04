@@ -8,12 +8,10 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceMap = new Map([
 	["aikit", "packages/aikit"],
 	["@codeworksh/aikit", "packages/aikit"],
-	["sdk", "packages/sdk"],
-	["@codeworksh/sdk", "packages/sdk"],
 ]);
 
 function usage() {
-	console.error("Usage: node scripts/publish.js <aikit|sdk|@codeworksh/aikit|@codeworksh/sdk> [npm publish args]");
+	console.error("Usage: node scripts/publish.js <aikit|@codeworksh/aikit> [npm publish args]");
 	process.exit(1);
 }
 

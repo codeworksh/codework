@@ -10,7 +10,6 @@ const ignoredPaths = [
 	".zed/**",
 	".vercel/**",
 	"**/.vercel/**",
-	"packages/webui/src/routeTree.gen.ts",
 ];
 const aliases = {
 	"@codeworksh/aikit": fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),

@@ -167,7 +167,10 @@ export const make = (
 							notFound: true,
 						}),
 					);
-				return Effect.succeed({ ...resource.runtimeConfig, ...overrides });
+				return Effect.succeed({
+					defaultCwd: overrides?.defaultCwd ?? resource.runtimeConfig.defaultCwd,
+					generation: overrides?.generation ?? resource.runtimeConfig.generation,
+				});
 			}),
 		attach: (input) =>
 			Layer.unwrap(

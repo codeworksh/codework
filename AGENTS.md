@@ -41,12 +41,8 @@ Long term maintainability is a core priority. If you add new functionality, firs
 
 - `packages/aikit` - Low level SDK that provides unified LLM API for multiple LLM providers.
 - `packages/harness` - Effect powered main Agent Harness application, uses `packages/aikit` under the hood.
-- `packages/agent` - DEPRECATED.
-- `packages/bridge` - WIP.
-- `packages/desktop` - WIP.
-- `packages/sdk` - WIP.
-- `packages/utils` - DEPRECATED.
-- `packages/webui` - WIP.
+- `packages/utils` - Shared support utilities used by `packages/aikit` and `packages/harness`.
+- `.scratch/packages` - Local, ignored reference archive for packages that are no longer developed.
 
 ## Vendored Repositories
 
@@ -75,9 +71,9 @@ Conventional Commit style with optional package scopes, e.g `feat(aikit): ...`, 
 
 ## Releasing
 
-Publishable packages (`@codeworksh/aikit`, `@codeworksh/sdk`) each own their release scripts; the root exposes `*:aikit` / `*:sdk` aliases so every command works from the repo root or from inside the package. Versioning uses `bumpp`, configured per package in `bump.config.ts` (tags follow `@codeworksh/<pkg>@<version>` and pushing is disabled). Build + publish run through `scripts/publish.js`, which builds, rewrites the manifest, and publishes from a temp dir. Pushing and publishing stay manual.
+The publishable package `@codeworksh/aikit` owns its release scripts; the root exposes `*:aikit` aliases so every command works from the repo root or from inside the package. Versioning uses `bumpp`, configured in `packages/aikit/bump.config.ts` (tags follow `@codeworksh/aikit@<version>` and pushing is disabled). Build + publish run through `scripts/publish.js`, which builds, rewrites the manifest, and publishes from a temp dir. Pushing and publishing stay manual.
 
-Flow (shown for `aikit`; substitute `sdk` as needed):
+Flow:
 
 1. Update `CHANGELOG.md` — move the entry from `[Unreleased]` into a versioned section.
 2. `pnpm bump:aikit` (or `pnpm run bump` inside `packages/aikit`): pick the bump; it commits and tags `@codeworksh/aikit@<version>` without pushing.
