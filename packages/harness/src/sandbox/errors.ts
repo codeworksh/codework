@@ -78,8 +78,8 @@ export class SandboxProviderError extends Schema.TaggedErrorClass<SandboxProvide
 	sanitized: SandboxInstance.PersistedError,
 }) {}
 
-const rawCause = Symbol("@codework/sandbox/provider-error/raw-cause");
-const missingResource = Symbol("@codework/sandbox/provider-error/missing-resource");
+const rawCause = Symbol("@codework/sandbox/provider/error/raw/cause");
+const missingResource = Symbol("@codework/sandbox/provider/error/missing/resource");
 
 export const providerErrorCause = (error: SandboxProviderError): unknown =>
 	(error as SandboxProviderError & { readonly [rawCause]?: unknown })[rawCause];
@@ -94,9 +94,13 @@ const REDACTED = "<redacted>";
 /**
  * Conservative text redaction shared by every driver sanitizer.
  *
+ * Disclaimer: This can really leak. Its never safe
+ *
  * Configured secrets are removed exactly. Common authorization/header and URL
  * query shapes are masked as a second line of defence for values the caller did
  * not explicitly seed.
+ *
+ * Note: add support for diff regex as needed.
  */
 export const makeRedactor = (secrets: Iterable<string> = []): Redactor => {
 	const configured = [...secrets].filter((secret) => secret.length > 0).sort((a, b) => b.length - a.length);

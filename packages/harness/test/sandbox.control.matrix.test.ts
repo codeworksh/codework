@@ -2,7 +2,7 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { Sandbox } from "../src/sandbox/control";
+import { SandboxController } from "../src/sandbox/control";
 import { SandboxDriver } from "../src/sandbox/driver";
 import { FakeSandboxDriver } from "../src/sandbox/drivers/fake";
 import {
@@ -27,10 +27,13 @@ import { testEffect } from "./utils/effect";
 
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("matrix-fake"));
 const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(fake.driver));
-const controllerLayer = Layer.provideMerge(Sandbox.layer({ transportIdleTimeToLive: "1 hour" }), dependencies);
+const controllerLayer = Layer.provideMerge(
+	SandboxController.layer({ transportIdleTimeToLive: "1 hour" }),
+	dependencies,
+);
 const { effect: it } = testEffect(controllerLayer);
 
-const create = (controller: Sandbox.Controller["Service"], defaultCwd = "/workspace") =>
+const create = (controller: SandboxController.Controller["Service"], defaultCwd = "/workspace") =>
 	controller.create({
 		driver: fake.driver,
 		config: { defaultCwd: SandboxDriver.AbsolutePath.make(defaultCwd) },
@@ -41,7 +44,7 @@ const failure = <E>(exit: Exit.Exit<unknown, E>): E => {
 	return Cause.squash(exit.cause) as E;
 };
 
-const mountExit = (controller: Sandbox.Controller["Service"], id: SandboxInstance.ID) =>
+const mountExit = (controller: SandboxController.Controller["Service"], id: SandboxInstance.ID) =>
 	Effect.flatMap(SandboxIO.Current, Effect.succeed).pipe(
 		Effect.provide(controller.mount(id)),
 		Effect.scoped,
@@ -52,7 +55,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"withMount provides the mount, holds one lease, and releases it after use",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 
 			const observed = yield* controller.withMount(
@@ -85,7 +88,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"withMount surfaces the typed mount error for an unknown instance",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const exit = yield* Effect.exit(controller.withMount(SandboxInstance.ID.create(), Effect.void));
 			expect(failure(exit)).toBeInstanceOf(SandboxNotFoundError);
 		}),
@@ -94,7 +97,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"resolves a relative mount cwd against the driver's default cwd",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 
 			const current = yield* Effect.flatMap(SandboxIO.Current, Effect.succeed).pipe(
@@ -108,7 +111,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"refuses to mount while suspending, removing, or provisioning",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const store = yield* SandboxStore.make;
 			const info = yield* create(controller);
 
@@ -126,7 +129,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"mounts a faulted instance and clears the fault on successful attachment",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const store = yield* SandboxStore.make;
 			const info = yield* create(controller);
 			yield* store.transition({ id: info.id, from: ["online"], to: "faulted" });
@@ -146,7 +149,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"records a mount-time missing resource as unavail without recreating it",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 			fake.state.remove(info.id);
 			const createCalls = fake.state.calls.create.length;
@@ -163,7 +166,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"refuses to stop a mounted instance and short-circuits an already stopped one",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 
 			yield* Effect.gen(function* () {
@@ -181,7 +184,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"keeps a referenced transport attached across wake",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller, "/");
 			const before = fake.state.calls.attach.length;
 
@@ -205,7 +208,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"rejects registering a locator already owned by a managed instance",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 			const locator = Option.getOrThrow(info.providerResourceId);
 
@@ -217,7 +220,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"rejects re-registering an external resource under a different runtime config",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const provisioned = yield* fake.driver.create({
 				instanceId: SandboxInstance.ID.create(),
 				config: { defaultCwd: SandboxDriver.AbsolutePath.make("/external") },
@@ -244,7 +247,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"releases the reserved reference when createAndMount fails to provision",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const instanceId = SandboxInstance.ID.create();
 			fake.state.failNext("create", new Error("quota exceeded"));
 
@@ -267,12 +270,12 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"controller shutdown releases transports without deleting driver resources",
 		Effect.gen(function* () {
-			const ambient = yield* Sandbox.Controller;
+			const ambient = yield* SandboxController.Controller;
 			const destroyCalls = fake.state.calls.destroy.length;
 
 			const instanceId = yield* Effect.scoped(
 				Effect.gen(function* () {
-					const controller = yield* Sandbox.make({ transportIdleTimeToLive: "1 hour" });
+					const controller = yield* SandboxController.make({ transportIdleTimeToLive: "1 hour" });
 					const info = yield* create(controller);
 					yield* Effect.flatMap(SandboxIO.FileSystem, (fs) =>
 						fs.writeFile("/workspace/survivor.txt", "kept"),
@@ -300,7 +303,7 @@ describe("Sandbox.Controller matrix", () => {
 			const { registered: _registered, inspect: _inspect, ...rest } = bare.driver;
 			const noInspect = SandboxDriver.driver(rest);
 
-			const controller = yield* Sandbox.make({ transportIdleTimeToLive: "1 hour" }).pipe(
+			const controller = yield* SandboxController.make({ transportIdleTimeToLive: "1 hour" }).pipe(
 				Effect.provide(SandboxDriver.layer(noInspect)),
 			);
 			const info = yield* controller.create({
@@ -315,7 +318,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"treats the host as pinned: wake is identity, stop and refresh are unsupported",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 
 			const woken = yield* controller.wake(SandboxInstance.ID.local);
 			expect(woken.usage).toBe("pinned");
@@ -333,7 +336,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"filters list by usage and answers unknown ids with none",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 
 			yield* Effect.gen(function* () {
@@ -353,7 +356,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"evicts an idle transport after its time-to-live and reattaches on the next mount",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.make({ transportIdleTimeToLive: "5 seconds" });
+			const controller = yield* SandboxController.make({ transportIdleTimeToLive: "5 seconds" });
 			const info = yield* create(controller);
 			const before = fake.state.calls.attach.length;
 

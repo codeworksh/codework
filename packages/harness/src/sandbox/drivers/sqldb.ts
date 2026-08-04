@@ -5,8 +5,8 @@ import { isAbsolute, resolve } from "node:path";
 import { SandboxDriver } from "../driver";
 import { providerError } from "../errors";
 import { SandboxInstance } from "../instance";
-import { EnvSqldb } from "../sqldb";
-import { transport, transportLayer } from "./virtual";
+import { EnvSqldb } from "../fs/sqldb";
+import { transport, transportLayer } from "../virtual";
 
 export interface CreateConfig {
 	readonly defaultCwd: SandboxDriver.AbsolutePath;
@@ -42,6 +42,16 @@ export const make = () => {
 
 	const runtimeLocation = (input: SandboxDriver.RuntimeInput<RuntimeConfig>) =>
 		input.runtimeConfig.location ?? Option.getOrUndefined(input.providerResourceId);
+	const persistentTransport = (location: string) => {
+		const backend = EnvSqldb.layer({ location });
+		return transportLayer(
+			Layer.effectContext(
+				Layer.build(backend).pipe(
+					Effect.mapError((cause) => providerError({ driver: name, operation: "attach", cause })),
+				),
+			),
+		);
+	};
 
 	const memoryResource = (operation: string, id: SandboxInstance.ID) => {
 		const resource = memory.get(id);
@@ -120,7 +130,7 @@ export const make = () => {
 							}),
 						),
 					)
-				: transportLayer(EnvSqldb.layer({ location }));
+				: persistentTransport(location);
 		},
 		inspect: (input) => {
 			if (input.runtimeConfig.inMemory) {

@@ -1,8 +1,13 @@
 import { create, SqliteProvider } from "@platformatic/vfs";
-import { Effect, Layer } from "effect";
-import { Local } from "./filesystem/local";
-import { Process } from "./utils/process";
-import { Seed, type SeedOptions } from "./utils/seed";
+import { Effect, Layer, Schema } from "effect";
+import { Process } from "../utils/process";
+import { Seed, type SeedOptions } from "../utils/seed";
+import { Local } from "./vfs";
+
+export class SqldbError extends Schema.TaggedErrorClass<SqldbError>()("SqldbError", {
+	message: Schema.String,
+	cause: Schema.Defect(),
+}) {}
 
 // SqliteProvider holds a single node:sqlite connection for the lifetime of
 // the layer; omitting `location` keeps the whole filesystem in `:memory:`.
@@ -27,15 +32,19 @@ export const make = (location?: string, options?: Options) =>
 				throw error;
 			}
 		},
-		catch: (cause) => cause,
+		catch: (cause) =>
+			new SqldbError({
+				message: "Failed to initialize the SQLite filesystem",
+				cause,
+			}),
 	});
 
 const vfsLayer = (location?: string, options?: Options) =>
 	Layer.effect(
 		Local.Vfs,
-		Effect.acquireRelease(make(location, options).pipe(Effect.orDie), ({ provider }) =>
-			Effect.sync(() => provider.close()),
-		).pipe(Effect.map(({ vfs }) => vfs)),
+		Effect.acquireRelease(make(location, options), ({ provider }) => Effect.sync(() => provider.close())).pipe(
+			Effect.map(({ vfs }) => vfs),
+		),
 	);
 
 export interface Options extends SeedOptions {

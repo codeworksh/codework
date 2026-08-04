@@ -20,7 +20,7 @@ type Entry<E> = {
 	// other fiber wants to know when key is finished will await this deferred
 	readonly done: Deferred.Deferred<void, E>;
 	// process owner
-	owner?: Fiber.Fiber<void, never>;
+	owner?: Fiber.Fiber<void, void>;
 	// if called wake() while the fiber is running, flips to true
 	// runs one more time when finished.
 	pendingWake: boolean;

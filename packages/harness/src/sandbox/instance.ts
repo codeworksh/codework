@@ -1,15 +1,16 @@
 import { Option, Schema } from "effect";
 import { uuidv7 } from "uuidv7";
 import { withStatics } from "../schema";
+import type { SandboxDriver } from "./driver";
 
 /**
  * A Sandbox instance is a **durable filesystem namespace** plus whatever compute
  * acts on it — a device in Unix terms, which exists whether or not anything has
- * it mounted. `Sandbox.Controller` (added later) is the only thing that creates,
+ * it mounted. `Sandbox.Controller` is the only thing that creates,
  * stops, or destroys one; this module is just its identity and state model.
  *
  * The application ID is deliberately separate from the driver's own resource
- * locator: callers never parse a Vercel name or a Daytona id, driver formats may
+ * locator: callers never parse a Vercel name or a Daytona ID, driver formats may
  * change, and a destroyed resource must stay identifiable in Project/Session
  * history. A missing resource is never recreated under an existing ID — a new
  * resource is a new namespace and therefore a new ID.
@@ -98,8 +99,8 @@ export type Status = typeof Status.Type;
  * conditional write depends on, so it is enumerated once here rather than
  * restated as prose at each call site.
  *
- * `offline` qualifies because mounting wakes. `faulted` qualifies because a
- * fault is a *usability* condition, not an identity one — see {@link Status}.
+ * `offline` qualifies because mounting wakes.
+ * `faulted` qualifies because a fault is a *usability* condition, not an identity one — see {@link Status}.
  *
  * There is no `resuming`: it would exist to be observed by nothing, since
  * mounting wakes, `offline` is already mountable, and waking is not destructive
@@ -133,7 +134,7 @@ export type PersistedError = typeof PersistedError.Type;
 /** Durable metadata, safe to return and persist. Assembled by the control plane. */
 export interface Info {
 	readonly id: ID;
-	readonly driver: import("./driver").Name;
+	readonly driver: SandboxDriver.Name;
 	readonly kind: Kind;
 	readonly providerResourceId: Option.Option<string>;
 	readonly ownership: Ownership;

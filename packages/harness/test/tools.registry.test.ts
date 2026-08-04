@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox";
-import { type ExecChunk, fromExec, type ISandboxExe, Shell as SandboxShell } from "../src/sandbox/shell";
+import { type ExecChunk, fromExec, type ISandboxExe, Shell as SandboxShell } from "../src/sandbox/shell/shell";
 import { bashTool } from "../src/tools/bash";
 import * as Executor from "../src/tools/executor";
 import { ToolProgress } from "../src/tools/progress";

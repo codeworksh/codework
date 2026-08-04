@@ -2,9 +2,9 @@ import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer, Option, Schema } from "effect";
 import { SandboxDriver } from "../driver";
 import { providerError } from "../errors";
-import { EnvInMemory } from "../inmemory";
+import { EnvInMemory } from "../fs/inmemory";
 import { SandboxInstance } from "../instance";
-import { transport } from "./virtual";
+import { transport } from "../virtual";
 
 export interface CreateConfig {
 	readonly defaultCwd: SandboxDriver.AbsolutePath;

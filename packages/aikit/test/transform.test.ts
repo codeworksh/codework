@@ -88,7 +88,7 @@ describe("mapUsage", () => {
 			} as unknown as LanguageModelUsage,
 			model,
 		);
-		expect(usage.totalTokens).toBe(70 + 30 + 0 + 50);
+		expect(usage.totalTokens).toBe(70 + 30 + 50);
 	});
 
 	it("calculates cost from per-million-token model pricing", () => {

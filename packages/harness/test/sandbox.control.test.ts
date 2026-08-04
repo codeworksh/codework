@@ -2,14 +2,14 @@ import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { Sandbox } from "../src/sandbox/control";
+import { SandboxController } from "../src/sandbox/control";
 import { SandboxDriver } from "../src/sandbox/driver";
 import { FakeSandboxDriver } from "../src/sandbox/drivers/fake";
 import {
 	SandboxBusyError,
+	SandboxDriverNotRegisteredError,
 	SandboxMustBeStoppedError,
 	SandboxProviderError,
-	SandboxDriverNotRegisteredError,
 	SandboxRemovedError,
 	SandboxUnavailError,
 	SandboxUnsupportedError,
@@ -21,10 +21,13 @@ import { testEffect } from "./utils/effect";
 
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("control-fake"));
 const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(fake.driver));
-const controllerLayer = Layer.provideMerge(Sandbox.layer({ transportIdleTimeToLive: "1 hour" }), dependencies);
+const controllerLayer = Layer.provideMerge(
+	SandboxController.layer({ transportIdleTimeToLive: "1 hour" }),
+	dependencies,
+);
 const { effect: it } = testEffect(controllerLayer);
 
-const create = (controller: Sandbox.Controller["Service"], defaultCwd = "/workspace") =>
+const create = (controller: SandboxController.Controller["Service"], defaultCwd = "/workspace") =>
 	controller.create({
 		driver: fake.driver,
 		config: { defaultCwd: SandboxDriver.AbsolutePath.make(defaultCwd) },
@@ -39,7 +42,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"synthesizes and mounts the row-free host",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const host = Option.getOrThrow(yield* controller.get(SandboxInstance.ID.local));
 			expect(host.id).toBe(SandboxInstance.ID.local);
 			expect(host.usage).toBe("pinned");
@@ -61,7 +64,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"creates durable metadata without mounting or inspecting",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const inspectCalls = fake.state.calls.inspect.length;
 			const attachCalls = fake.state.calls.attach.length;
 			const info = yield* create(controller);
@@ -81,7 +84,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"persists a create failure as faulted and returns the sanitized provider error",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			fake.state.failNext("create", new Error("provisioning failed"));
 			const result = yield* Effect.exit(create(controller));
 			expect(failure(result)).toBeInstanceOf(SandboxProviderError);
@@ -97,7 +100,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"reads rows whose driver is unavailable and fails only when mounting",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const store = yield* SandboxStore.make;
 			const id = SandboxInstance.ID.create();
 			yield* store.register({
@@ -123,7 +126,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"shares one cwd-neutral transport across concurrent mounts",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller, "/");
 			const before = fake.state.calls.attach.length;
 
@@ -168,7 +171,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"retries one stale attachment before recording a fault",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 			const before = fake.state.calls.attach.length;
 			fake.state.failNext("attach", new Error("expired session"));
@@ -186,7 +189,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"records an authoritative missing resource as unavail until managed destroy tombstones it",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 			fake.state.remove(info.id);
 
@@ -210,7 +213,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"refreshes through inspect without attaching or waking",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 			fake.state.resources.get(info.id)!.status = "offline";
 			const attachCalls = fake.state.calls.attach.length;
@@ -226,7 +229,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"registers one external identity per driver resource",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const originalId = SandboxInstance.ID.create();
 			const provisioned = yield* fake.driver.create({
 				instanceId: originalId,
@@ -258,7 +261,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"keeps unmount, stop, and destroy as separate guarded operations",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 
 			yield* Effect.gen(function* () {
@@ -288,7 +291,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"persists a destroy failure as offline and allows a retry",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* create(controller);
 			yield* controller.stop(info.id);
 			fake.state.failNext("destroy", new Error("delete failed"));
@@ -306,7 +309,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"never lets force bypass capability or the stopped requirement",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			expect(
 				failure(
 					yield* Effect.exit(
@@ -327,8 +330,8 @@ describe("Sandbox.Controller", () => {
 	it(
 		"reports references as process-local",
 		Effect.gen(function* () {
-			const first = yield* Sandbox.Controller;
-			const second = yield* Sandbox.make({ transportIdleTimeToLive: "1 hour" });
+			const first = yield* SandboxController.Controller;
+			const second = yield* SandboxController.make({ transportIdleTimeToLive: "1 hour" });
 			const info = yield* create(first);
 
 			yield* Effect.gen(function* () {
@@ -341,7 +344,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"createAndMount releases its first reference with the layer scope",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const instanceId = yield* Effect.gen(function* () {
 				const current = yield* SandboxIO.Current;
 				expect(Option.getOrThrow(yield* controller.get(current.id)).usage).toBe("busy");
@@ -363,7 +366,7 @@ describe("Sandbox.Controller", () => {
 	it(
 		"createAndMount reserves its reference before provider creation",
 		Effect.gen(function* () {
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const instanceId = SandboxInstance.ID.create();
 			const started = yield* Deferred.make<void>();
 			const release = yield* Deferred.make<void>();
@@ -413,7 +416,7 @@ describe("Sandbox.Controller", () => {
 			});
 			yield* sql`UPDATE sandbox_instance SET state_observed_at = -1000 WHERE id = ${instanceId}`;
 
-			const restarted = yield* Sandbox.make({ provisioningTimeoutMs: 1 });
+			const restarted = yield* SandboxController.make({ provisioningTimeoutMs: 1 });
 			const swept = Option.getOrThrow(yield* restarted.get(instanceId));
 			expect(swept.status).toBe("faulted");
 			expect(Option.getOrThrow(swept.lastError).name).toBe("SandboxCreationInterrupted");

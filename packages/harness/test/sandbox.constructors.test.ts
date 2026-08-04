@@ -2,7 +2,7 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db";
-import { Sandbox as SandboxControl } from "../src/sandbox/control";
+import { SandboxController } from "../src/sandbox/control";
 import { SandboxDriver } from "../src/sandbox/driver";
 import { MemorySandboxDriver } from "../src/sandbox/drivers/memory";
 import { SandboxInstance } from "../src/sandbox/instance";
@@ -25,7 +25,7 @@ import { testEffect } from "./utils/effect";
 const memory = MemorySandboxDriver.make();
 const database = Database.layer(":memory:");
 const infrastructure = Layer.provideMerge(
-	SandboxControl.layer().pipe(Layer.provide(SandboxDriver.layer(memory.driver))),
+	SandboxController.layer().pipe(Layer.provide(SandboxDriver.layer(memory.driver))),
 	database,
 );
 const runtime = Layer.provideMerge(Session.layer, infrastructure);
@@ -80,7 +80,7 @@ describe("Sandbox convenience constructors vs the application database", () => {
 	it(
 		"accepts the same driver's namespace when created through the shared controller",
 		Effect.gen(function* () {
-			const controller = yield* SandboxControl.Controller;
+			const controller = yield* SandboxController.Controller;
 			const info = yield* controller.create({
 				driver: memory.driver,
 				config: {

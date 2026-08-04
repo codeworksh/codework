@@ -9,7 +9,7 @@ import { Database } from "../src/db/db";
 import { SandboxInstance } from "../src/sandbox/instance";
 import { SandboxIO } from "../src/sandbox/io";
 import { SandboxStore } from "../src/sandbox/store";
-import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
 import { Git } from "../src/git/git";
 import { ProjectCopy } from "../src/project/copy";
 import { defaultLayer, layer, Service } from "../src/project/project";

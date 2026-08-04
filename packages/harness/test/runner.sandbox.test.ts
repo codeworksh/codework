@@ -6,12 +6,12 @@ import { Location } from "../src/location/location";
 import { RunnerExecute } from "../src/runner/execute";
 import { RunnerExecution } from "../src/runner/execution";
 import { Runner } from "../src/runner/run";
-import { AbsolutePath } from "../src/schema";
-import { Sandbox } from "../src/sandbox/control";
+import { SandboxController } from "../src/sandbox/control";
 import { SandboxDriver } from "../src/sandbox/driver";
 import { FakeSandboxDriver } from "../src/sandbox/drivers/fake";
 import { SandboxInstance } from "../src/sandbox/instance";
 import { SandboxIO } from "../src/sandbox/io";
+import { AbsolutePath } from "../src/schema";
 import { SessionSchema } from "../src/session/schema";
 import { Session } from "../src/session/session";
 import { testEffect } from "./utils/effect";
@@ -35,7 +35,7 @@ const gates = new Map<SessionSchema.ID, Gate>();
 const runner = Layer.effect(
 	Runner.Service,
 	Effect.gen(function* () {
-		const controller = yield* Sandbox.Controller;
+		const controller = yield* SandboxController.Controller;
 		return Runner.Service.of({
 			run: Effect.fnUntraced(function* (input) {
 				const current = yield* SandboxIO.Current;
@@ -60,7 +60,7 @@ const runner = Layer.effect(
 
 const database = Database.layer(":memory:");
 const infrastructure = Layer.provideMerge(
-	Sandbox.layer({ transportIdleTimeToLive: "1 hour" }).pipe(Layer.provide(SandboxDriver.layer(fake.driver))),
+	SandboxController.layer({ transportIdleTimeToLive: "1 hour" }).pipe(Layer.provide(SandboxDriver.layer(fake.driver))),
 	database,
 );
 const runtime = RunnerExecute.layer.pipe(
@@ -96,7 +96,7 @@ const createSession = Effect.fnUntraced(function* (input: {
 });
 
 const createInstance = Effect.fnUntraced(function* () {
-	const controller = yield* Sandbox.Controller;
+	const controller = yield* SandboxController.Controller;
 	return yield* controller.create({
 		driver: fake.driver,
 		config: { defaultCwd: SandboxDriver.AbsolutePath.make("/") },
@@ -105,7 +105,7 @@ const createInstance = Effect.fnUntraced(function* () {
 
 const mkdir = (id: SandboxInstance.ID, directory: string) =>
 	Effect.flatMap(SandboxIO.FileSystem, (fs) => fs.mkdir(directory, { recursive: true })).pipe(
-		Effect.provide(Layer.unwrap(Effect.map(Sandbox.Controller, (controller) => controller.mount(id)))),
+		Effect.provide(Layer.unwrap(Effect.map(SandboxController.Controller, (controller) => controller.mount(id)))),
 		Effect.scoped,
 	);
 
@@ -126,7 +126,7 @@ describe("RunnerExecution session sandbox mounts", () => {
 		"mounts once, provides Location from the mount, and unmounts on completion",
 		Effect.gen(function* () {
 			reset();
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const execution = yield* RunnerExecution.Service;
 			const before = fake.state.calls.attach.length;
 			const instance = yield* createInstance();
@@ -149,7 +149,7 @@ describe("RunnerExecution session sandbox mounts", () => {
 		"interrupts the drain and releases its mount exactly once",
 		Effect.gen(function* () {
 			reset();
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const execution = yield* RunnerExecution.Service;
 			const instance = yield* createInstance();
 			yield* mkdir(instance.id, "/blocked");
@@ -173,7 +173,7 @@ describe("RunnerExecution session sandbox mounts", () => {
 		"shares one transport while two sessions hold different cwd mounts",
 		Effect.gen(function* () {
 			reset();
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const execution = yield* RunnerExecution.Service;
 			const before = fake.state.calls.attach.length;
 			const instance = yield* createInstance();
@@ -227,7 +227,7 @@ describe("RunnerExecution session sandbox mounts", () => {
 		"rejects a missing directory before Project or Location can persist it",
 		Effect.gen(function* () {
 			reset();
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const execution = yield* RunnerExecution.Service;
 			const sql = yield* SqlClient.SqlClient;
 			const instance = yield* createInstance();
@@ -250,7 +250,7 @@ describe("RunnerExecution session sandbox mounts", () => {
 		"keeps the control plane and transport alive across consecutive drains",
 		Effect.gen(function* () {
 			reset();
-			const controller = yield* Sandbox.Controller;
+			const controller = yield* SandboxController.Controller;
 			const execution = yield* RunnerExecution.Service;
 			const before = fake.state.calls.attach.length;
 			const instance = yield* createInstance();

@@ -1,19 +1,19 @@
 import { Effect, Fiber, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { tmpdir as osTmpdir } from "node:os";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db";
 import { SessionInputRow } from "../src/db/schema.sql";
 import { RunnerExecute } from "../src/runner/execute";
 import { RunnerExecution } from "../src/runner/execution";
 import { Loop } from "../src/runner/loop";
-import { tmpdir as osTmpdir } from "node:os";
-import { Sandbox as SandboxControl } from "../src/sandbox/control";
+import { SandboxController } from "../src/sandbox/control";
 import { SandboxDriver } from "../src/sandbox/driver";
 import { MemorySandboxDriver } from "../src/sandbox/drivers/memory";
 import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb";
 import type { SandboxCreateError } from "../src/sandbox/errors";
 import { SandboxInstance } from "../src/sandbox/instance";
-import { Shell } from "../src/sandbox/shell";
+import { Shell } from "../src/sandbox/shell/shell";
 import { AbsolutePath } from "../src/schema";
 import { SessionSchema } from "../src/session/schema";
 import { Session } from "../src/session/session";
@@ -36,7 +36,7 @@ interface LoopBackend {
 			readonly directory: AbsolutePath;
 		},
 		SandboxCreateError,
-		SandboxControl.Controller
+		SandboxController.Controller
 	>;
 }
 
@@ -47,7 +47,7 @@ const managedBackend = <CreateConfig, RuntimeConfig extends SandboxDriver.Runtim
 ): LoopBackend => ({
 	drivers: [driver],
 	target: Effect.gen(function* () {
-		const controller = yield* SandboxControl.Controller;
+		const controller = yield* SandboxController.Controller;
 		const instance = yield* controller.create({ driver, config });
 		return { instanceId: instance.id, directory };
 	}),
@@ -90,7 +90,7 @@ const localBackend = (): LoopBackend => ({
 const runtime = (backend: LoopBackend, options?: Loop.Options) => {
 	const database = Database.layer(":memory:");
 	const infrastructure = Layer.provideMerge(
-		SandboxControl.layer().pipe(Layer.provide(SandboxDriver.layer(...backend.drivers))),
+		SandboxController.layer().pipe(Layer.provide(SandboxDriver.layer(...backend.drivers))),
 		database,
 	);
 	return RunnerExecute.layer.pipe(
@@ -247,7 +247,7 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 				// Everything an unquoted command would act on rather than print.
 				const hostile = `a ' b $(echo pwned) c \`id\` d ; e && f | g > h`;
 				const target = yield* backend.target;
-				const controller = yield* SandboxControl.Controller;
+				const controller = yield* SandboxController.Controller;
 
 				const result = yield* Effect.flatMap(Shell, (shell) => shell.exec(Loop.script(hostile, 1, 0))).pipe(
 					Effect.provide(controller.mount(target.instanceId, { cwd: target.directory })),

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { SandboxFs } from "../sandbox/filesystem/util";
+import { SandboxFs } from "../sandbox/fs/util";
 import { SandboxIO } from "../sandbox/io";
 import { Sandbox } from "../sandbox/sandbox";
 import { AbsolutePath } from "../schema";

@@ -80,4 +80,4 @@ export const layer = (options: Options = {}): Layer.Layer<Shell, never, ChildPro
 		}),
 	);
 
-export * as HostExe from "./hostexe";
+export * as HostExe from "./host";

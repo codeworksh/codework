@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -56,6 +56,19 @@ describe("Sandbox.EnvSQLiteFS", () => {
 		);
 
 		expect(exists).toBe(false);
+	});
+
+	it("should expose initialization failures in the typed error channel", async () => {
+		const error = await Effect.runPromise(
+			Layer.build(Sandbox.EnvSqldb.layer({ options: { cwd: "relative" } })).pipe(Effect.scoped, Effect.flip),
+		);
+
+		expect(error).toBeInstanceOf(Sandbox.EnvSqldb.SqldbError);
+		expect(error).toMatchObject({
+			_tag: "SqldbError",
+			message: "Failed to initialize the SQLite filesystem",
+		});
+		expect(error.cause).toBeInstanceOf(TypeError);
 	});
 
 	it("should refuse host process execution when `hostProcess` is disabled", async () => {

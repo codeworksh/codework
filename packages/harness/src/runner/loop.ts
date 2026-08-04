@@ -17,7 +17,7 @@ import { Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { SessionInputRow } from "../db/schema.sql";
 import { SandboxIO } from "../sandbox/io";
-import { quote } from "../sandbox/shell";
+import { quote } from "../sandbox/shell/shell";
 import type { SessionSchema } from "../session/schema";
 import { Session } from "../session/session";
 import { Runner } from "./run";

@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 import { realpath } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
 import { SandboxIO } from "../src/sandbox/io";
 import { Sandbox } from "../src/sandbox/sandbox";
-import { Shell } from "../src/sandbox/shell";
+import { Shell } from "../src/sandbox/shell/shell";
 import { tmpdir } from "./fixtures/tempdir";
 
 // The shell and the filesystem are two halves of one sandbox: a relative path

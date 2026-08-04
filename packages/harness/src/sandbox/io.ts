@@ -1,8 +1,9 @@
 import { Context, Effect, Layer as EffectLayer } from "effect";
 import { posix } from "node:path";
-import { SandboxFileSystem } from "./filesystem/filesystem";
+import type { SandboxDriver } from "./driver";
+import { SandboxFileSystem } from "./fs/filesystem";
 import { SandboxInstance } from "./instance";
-import { type ISandboxExe, Shell as ShellTag, withCwd as shellWithCwd } from "./shell";
+import { type ISandboxExe, Shell as ShellTag, withCwd as shellWithCwd } from "./shell/shell";
 
 /**
  * `SandboxIO` is a **mount**: a filesystem, a shell, and the identity and
@@ -45,7 +46,7 @@ export type Shell = ShellTag;
  */
 export interface Identity {
 	readonly id: SandboxInstance.ID;
-	readonly driver: import("./driver").Name;
+	readonly driver: SandboxDriver.Name;
 	readonly kind: SandboxInstance.Kind;
 	/** Absolute, and always a path in *this* namespace. */
 	readonly cwd: string;
@@ -63,18 +64,15 @@ export type Layer<E = never, RIn = never> = EffectLayer.Layer<Provides, E, RIn>;
 /**
  * Resolve a mount's cwd without consulting ambient process state.
  *
- * The default is supplied by the namespace adapter: provider metadata remotely,
- * `/` for a virtual filesystem, and `process.cwd()` for the host adapter. An
- * explicit absolute cwd replaces it; a relative cwd is resolved inside it. The
+ * The default is supplied by the namespace adapter:
+ * provider metadata remotely, `/` for a virtual filesystem, and `process.cwd()` for the host adapter.
+ * An explicit absolute cwd replaces it; a relative cwd is resolved inside it. The
  * result is therefore always the one concrete absolute path `Current` requires.
  *
  * A non-absolute default throws rather than failing typed. It is the one
- * defect-level guard in this module, and deliberately so: §8.1 makes a bad cwd
- * resolve *silently* — the run proceeds against a well-formed project rooted at
- * a directory that is not there — so an adapter that supplies one has a bug that
- * should surface where it was made. Adapters reading a value from a provider
- * call this inside their own error channel, where the throw becomes their typed
- * failure (see `EnvDaytona.mountCwd`).
+ * defect-level guard in this module, and deliberately so:
+ * Adapters reading a value from a provider call this inside their own error channel,
+ * where the throw becomes their typed failure (see `EnvDaytona.mountCwd`).
  */
 export const resolveMountCwd = (defaultCwd: string, cwd?: string): string => {
 	if (!posix.isAbsolute(defaultCwd)) {
@@ -83,6 +81,7 @@ export const resolveMountCwd = (defaultCwd: string, cwd?: string): string => {
 	// `resolve`, not `normalize`: normalize keeps a trailing slash, and `cwd` is
 	// persisted — `Location.directory` and `project_directory`'s hash would read
 	// `/workspace/` and `/workspace` as two directories and keep a row for each.
+	//
 	// A provider-reported default (`getWorkDir()`) or a config value is free to
 	// carry one, so it is stripped here rather than at every reader.
 	if (cwd === undefined) return posix.resolve(defaultCwd);
@@ -92,7 +91,7 @@ export const resolveMountCwd = (defaultCwd: string, cwd?: string): string => {
 /**
  * Bind a cwd-neutral transport to one mount.
  *
- * This is the wrapper §8.2 requires: the transport underneath is shared between
+ * The transport underneath is shared between
  * mounts and stays rooted at the namespace root, and everything directory-shaped
  * happens here, once per mount. Two mounts of one namespace at different working
  * directories therefore coexist without seeing or moving each other's.
@@ -135,7 +134,7 @@ export const hostLayer = (cwd?: string) => identityLayer(host(cwd));
  */
 export const host = (cwd?: string): Identity => ({
 	id: SandboxInstance.ID.local,
-	driver: "local" as import("./driver").Name,
+	driver: "local" as SandboxDriver.Name,
 	kind: "local",
 	cwd: resolveMountCwd(process.cwd(), cwd),
 });
@@ -154,7 +153,7 @@ export const virtual = (input: {
 	readonly cwd?: string;
 }): Identity => ({
 	id: input.id ?? SandboxInstance.ID.create(),
-	driver: input.driver as import("./driver").Name,
+	driver: input.driver as SandboxDriver.Name,
 	kind: "virtual",
 	cwd: resolveMountCwd(input.defaultCwd ?? "/", input.cwd),
 });
@@ -172,7 +171,7 @@ export const remote = (input: {
 	readonly cwd?: string;
 }): Identity => ({
 	id: input.id,
-	driver: input.driver as import("./driver").Name,
+	driver: input.driver as SandboxDriver.Name,
 	kind: "remote",
 	cwd: resolveMountCwd(input.defaultCwd, input.cwd),
 });

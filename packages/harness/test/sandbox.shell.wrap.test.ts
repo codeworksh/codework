@@ -8,7 +8,7 @@ import {
 	resolveCwd,
 	type ShellOptions,
 	withCwd,
-} from "../src/sandbox/shell";
+} from "../src/sandbox/shell/shell";
 
 /**
  * The cwd wrapper is the contract §8 rests on: `exec`, `execArgv`, and `stream`

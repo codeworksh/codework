@@ -2,16 +2,16 @@ import { Effect, Layer } from "effect";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
-import { Local } from "../src/sandbox/filesystem/local";
-import { SandboxFs } from "../src/sandbox/filesystem/util";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
+import { SandboxFs } from "../src/sandbox/fs/util";
+import { Local } from "../src/sandbox/fs/vfs";
 import { Sandbox } from "../src/sandbox/sandbox";
 import { tmpdir } from "./fixtures/tempdir";
 
 // Derived operations live outside the provider contract precisely so one
 // implementation serves every backend. These run the same assertions over an
 // in-memory VFS and the real host filesystem.
-const run = <A, E>(body: Effect.Effect<A, E, SandboxFileSystem.Service>, backend: Sandbox.LocalBackend) =>
+const run = <A, E, E2>(body: Effect.Effect<A, E, SandboxFileSystem.Service>, backend: Sandbox.LocalBackend<E2>) =>
 	Effect.runPromise(body.pipe(Effect.scoped, Effect.provide(Layer.provideMerge(Local.layer, backend))));
 
 describe("SandboxFs.up", () => {

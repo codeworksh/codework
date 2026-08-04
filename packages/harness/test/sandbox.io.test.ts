@@ -3,15 +3,15 @@ import { realpath } from "node:fs/promises";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../src/sandbox/filesystem/filesystem";
-import { Local } from "../src/sandbox/filesystem/local";
-import { HostExe } from "../src/sandbox/hostexe";
-import { EnvInMemory } from "../src/sandbox/inmemory";
+import { EnvInMemory } from "../src/sandbox/fs/inmemory";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
+import { EnvNodeJSDefault } from "../src/sandbox/fs/nodejs";
+import { Local } from "../src/sandbox/fs/vfs";
 import { SandboxInstance } from "../src/sandbox/instance";
 import { SandboxIO } from "../src/sandbox/io";
-import { EnvBash } from "../src/sandbox/justbashexe";
-import { EnvNodeJSDefault } from "../src/sandbox/nodejs";
-import { Shell } from "../src/sandbox/shell";
+import { HostExe } from "../src/sandbox/shell/host";
+import { EnvBash } from "../src/sandbox/shell/justbash";
+import { Shell } from "../src/sandbox/shell/shell";
 import { tmpdir } from "./fixtures/tempdir";
 
 /**

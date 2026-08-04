@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox";
-import { fromExec, type ISandboxExe, perMount, quote, quoteArgv, Shell, withCwd } from "../src/sandbox/shell";
+import { fromExec, type ISandboxExe, perMount, quote, quoteArgv, Shell, withCwd } from "../src/sandbox/shell/shell";
 
 // `execArgv` exists so values the harness does not control — branch names, file
 // paths — never reach a shell parser as bare text. These cases all break, or

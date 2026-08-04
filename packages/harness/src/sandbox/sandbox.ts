@@ -2,33 +2,33 @@ import { Effect, Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { posix as path } from "node:path";
 import { Database } from "../db/db";
-import { Sandbox as SandboxControl } from "./control";
+import { SandboxController } from "./control";
 import { SandboxDriver } from "./driver";
 import { MemorySandboxDriver } from "./drivers/memory";
 import { SqldbSandboxDriver } from "./drivers/sqldb";
-import { Local } from "./filesystem/local";
-import { HostExe } from "./hostexe";
+import { EnvNodeJSDefault } from "./fs/nodejs";
+import { Local } from "./fs/vfs";
+import { HostExe } from "./shell/host";
 import { SandboxInstance } from "./instance";
 import { SandboxIO } from "./io";
-import { EnvNodeJSDefault } from "./nodejs";
 
 // re-export from sandbox
-export { SandboxInstance } from "./instance";
-export { SandboxIO } from "./io";
+export { SandboxController } from "./control";
 export { SandboxDriver } from "./driver";
-export { SandboxError } from "./errors";
-export { Sandbox as SandboxController } from "./control";
-export { SandboxResource } from "./resource";
-export { EnvInMemory } from "./inmemory";
-export { EnvBash } from "./justbashexe";
-export { HostExe } from "./hostexe";
-export { EnvNodeJSDefault } from "./nodejs";
-export { EnvSqldb } from "./sqldb";
-export { Process } from "./utils/process";
+export { DaytonaSandboxDriver } from "./drivers/daytona";
 export { MemorySandboxDriver } from "./drivers/memory";
 export { SqldbSandboxDriver } from "./drivers/sqldb";
 export { VercelSandboxDriver } from "./drivers/vercel";
-export { DaytonaSandboxDriver } from "./drivers/daytona";
+export { SandboxError } from "./errors";
+export { EnvInMemory } from "./fs/inmemory";
+export { EnvNodeJSDefault } from "./fs/nodejs";
+export { EnvSqldb } from "./fs/sqldb";
+export { HostExe } from "./shell/host";
+export { SandboxInstance } from "./instance";
+export { SandboxIO } from "./io";
+export { EnvBash } from "./shell/justbash";
+export { SandboxResource } from "./resource";
+export { Process } from "./utils/process";
 
 /**
  * What every sandbox provides, wherever it runs: a filesystem, a way to execute
@@ -70,7 +70,7 @@ export const services = <E, RIn>(backend: LocalBackend<E, RIn>, identity: Sandbo
 
 const controllerLayer = (...drivers: ReadonlyArray<SandboxDriver.Registration>) => {
 	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(...drivers));
-	return Layer.provide(SandboxControl.layer(), dependencies);
+	return Layer.provide(SandboxController.layer(), dependencies);
 };
 
 /** Default sandbox: the real OS filesystem and processes, mounted at `cwd`. */
@@ -94,7 +94,7 @@ export const memory = (options?: { readonly instanceId?: SandboxInstance.ID; rea
 	const memory = MemorySandboxDriver.make();
 	const mountCwd = SandboxIO.resolveMountCwd("/", options?.cwd);
 	return Layer.unwrap(
-		Effect.map(SandboxControl.Controller, (controller) =>
+		Effect.map(SandboxController.Controller, (controller) =>
 			controller.createAndMount(
 				{
 					driver: memory.driver,
@@ -125,7 +125,7 @@ export const sqldb = (options?: {
 	const sqldb = SqldbSandboxDriver.make();
 	const mountCwd = SandboxIO.resolveMountCwd("/", options?.cwd);
 	return Layer.unwrap(
-		Effect.map(SandboxControl.Controller, (controller) =>
+		Effect.map(SandboxController.Controller, (controller) =>
 			controller.createAndMount(
 				{
 					driver: sqldb.driver,

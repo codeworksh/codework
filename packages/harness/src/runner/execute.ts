@@ -9,7 +9,7 @@ import { Git } from "../git/git";
 import { Location } from "../location/location";
 import { ProjectCopy } from "../project/copy";
 import { Project } from "../project/project";
-import { Sandbox } from "../sandbox/control";
+import { SandboxController } from "../sandbox/control";
 import { SandboxInstance } from "../sandbox/instance";
 import { SandboxIO } from "../sandbox/io";
 import { RunCoordinator } from "./coordinator";
@@ -24,7 +24,7 @@ export const layer = Layer.effect(
 	RunnerExecution.Service,
 	Effect.gen(function* () {
 		const store = yield* Session.Service;
-		const sandbox = yield* Sandbox.Controller;
+		const sandbox = yield* SandboxController.Controller;
 		const sql = yield* SqlClient.SqlClient;
 		// Captured here, not requested inside `drain`: `RunCoordinator.make`
 		// requires the drain's `R` channel to be `never`, and a `Runner.Service.use`
