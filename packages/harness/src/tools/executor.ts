@@ -104,8 +104,8 @@ const running = (call: Message.ToolCallPendingPart, partial: ToolProgressPartial
 	...call,
 	status: "running",
 	partial: {
-		content: partial.content === undefined ? undefined : [...partial.content],
-		details: partial.details,
+		...(partial.content === undefined ? {} : { content: [...partial.content] }),
+		...(partial.details === undefined ? {} : { details: partial.details }),
 	},
 	time: { ...call.time, end: Math.max(call.time.end, Date.now()) },
 });

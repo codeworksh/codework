@@ -43,8 +43,11 @@
 	"scripts": {
 		"build": "vp pack",
 		"check": "vp check",
+		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
 		"lint": "vp lint",
-		"test": "vp test"
+		"prepare": "effect-tsgo patch --typescript",
+		"test": "vp test",
+		"typecheck": "tsc --build tsconfig.json"
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",
@@ -64,7 +67,7 @@
 		"uuidv7": "^1.2.1"
 	},
 	"devDependencies": {
-		"@effect/language-service": "^0.86.6",
+		"@effect/tsgo": "^0.31.0",
 		"@types/node": "^25.9.5"
 	},
 	"peerDependencies": {

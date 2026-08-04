@@ -24,10 +24,10 @@ export interface RegisterInput {
 	readonly driver: string;
 	readonly kind: SandboxInstance.Kind;
 	readonly ownership: SandboxInstance.Ownership;
-	readonly status?: SandboxInstance.Status;
-	readonly providerResourceId?: string;
-	readonly runtimeConfig?: string;
-	readonly metadata?: Readonly<Record<string, string>>;
+	readonly status?: SandboxInstance.Status | undefined;
+	readonly providerResourceId?: string | undefined;
+	readonly runtimeConfig?: string | undefined;
+	readonly metadata?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface Interface {

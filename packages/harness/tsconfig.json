@@ -1,14 +1,32 @@
 {
+	"$schema": "https://raw.githubusercontent.com/Effect-TS/language-service/refs/heads/main/schema.json",
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
-		"lib": ["es2023"],
+		"composite": true,
+		"incremental": true,
+		"target": "ES2022",
+		"module": "Preserve",
+		"moduleResolution": "Bundler",
+		"moduleDetection": "force",
+		"lib": ["ES2023"],
+		"verbatimModuleSyntax": true,
+		"rewriteRelativeImportExtensions": true,
+		"strict": true,
+		"exactOptionalPropertyTypes": true,
+		"noUnusedLocals": true,
+		"noImplicitOverride": true,
 		"declaration": true,
-		"noUnusedLocals": false,
+		"declarationMap": true,
+		"sourceMap": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"tsBuildInfoFile": "../../.cache/typescript/harness.tsbuildinfo",
 		"plugins": [
 			{
 				"name": "@effect/language-service"
 			}
 		]
 	},
-	"include": ["src"]
+	"include": ["src"],
+	"references": [{ "path": "../aikit" }, { "path": "../utils" }]
 }

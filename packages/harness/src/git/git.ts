@@ -86,17 +86,22 @@ export const layer = Layer.effect(
 		// Arguments go through `execArgv`, never a command string: branch names and
 		// paths are caller-supplied, and a space or `$(…)` in one must stay data.
 		const execute = (cwd: string) => (args: string[], options?: { readonly env?: Record<string, string> }) =>
-			shell.execArgv(["git", ...args], { cwd, env: options?.env }).pipe(
-				Effect.map(
-					(result) =>
-						({
-							exitCode: result.exitCode,
-							text: result.stdout,
-							stderr: result.stderr,
-						}) satisfies Result,
-				),
-				Effect.mapError((cause) => new AppProcessError({ command: ["git", ...args].join(" "), cause })),
-			);
+			shell
+				.execArgv(["git", ...args], {
+					cwd,
+					...(options?.env === undefined ? {} : { env: options.env }),
+				})
+				.pipe(
+					Effect.map(
+						(result) =>
+							({
+								exitCode: result.exitCode,
+								text: result.stdout,
+								stderr: result.stderr,
+							}) satisfies Result,
+					),
+					Effect.mapError((cause) => new AppProcessError({ command: ["git", ...args].join(" "), cause })),
+				);
 
 		const run = (cwd: string) => (args: string[]) =>
 			execute(cwd)(args).pipe(Effect.catch(() => Effect.succeed({ exitCode: 1, text: "", stderr: "" })));
@@ -199,7 +204,11 @@ export const layer = Layer.effect(
 				readonly refspec: string;
 				readonly remote?: string;
 				readonly env?: Record<string, string>;
-			}) => execute(input.directory)(["push", "--", input.remote ?? "origin", input.refspec], { env: input.env }),
+			}) =>
+				execute(input.directory)(
+					["push", "--", input.remote ?? "origin", input.refspec],
+					input.env === undefined ? undefined : { env: input.env },
+				),
 		);
 
 		const worktree = Effect.fnUntraced(function* (

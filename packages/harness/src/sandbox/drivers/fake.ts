@@ -9,8 +9,8 @@ import { Shell } from "../shell/shell";
 import { transport } from "../virtual";
 
 export interface CreateConfig {
-	readonly defaultCwd?: SandboxDriver.AbsolutePath;
-	readonly providerResourceId?: string;
+	readonly defaultCwd?: SandboxDriver.AbsolutePath | undefined;
+	readonly providerResourceId?: string | undefined;
 }
 
 export interface RuntimeConfig extends SandboxDriver.RuntimeConfigBase {

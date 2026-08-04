@@ -28,15 +28,15 @@ export interface Capabilities {
 
 export interface Observed {
 	readonly status: SandboxInstance.Status;
-	readonly providerStatus?: string;
-	readonly metadata?: Readonly<Record<string, string>>;
+	readonly providerStatus?: string | undefined;
+	readonly metadata?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface Provisioned<RuntimeConfig extends RuntimeConfigBase> {
-	readonly providerResourceId?: string;
-	readonly providerStatus?: string;
+	readonly providerResourceId?: string | undefined;
+	readonly providerStatus?: string | undefined;
 	readonly runtimeConfig: RuntimeConfig;
-	readonly metadata?: Readonly<Record<string, string>>;
+	readonly metadata?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface RuntimeInput<RuntimeConfig extends RuntimeConfigBase> {
@@ -59,7 +59,7 @@ export interface Driver<CreateConfig, RuntimeConfig extends RuntimeConfigBase> {
 
 	readonly runtimeConfigFor: (input: {
 		readonly providerResourceId: string;
-		readonly overrides?: Partial<RuntimeConfig>;
+		readonly overrides?: Partial<RuntimeConfig> | undefined;
 	}) => Effect.Effect<RuntimeConfig, SandboxProviderError>;
 
 	readonly attach: (
@@ -94,7 +94,7 @@ export interface Registered {
 	}) => Effect.Effect<Provisioned<RuntimeConfigBase>, SandboxProviderError>;
 	readonly runtimeConfigFor: (input: {
 		readonly providerResourceId: string;
-		readonly overrides?: Readonly<Record<string, unknown>>;
+		readonly overrides?: Readonly<Record<string, unknown>> | undefined;
 	}) => Effect.Effect<RuntimeConfigBase, SandboxProviderError>;
 	readonly attach: (
 		input: RuntimeInput<RuntimeConfigBase>,
@@ -117,7 +117,7 @@ const erase = <CreateConfig, RuntimeConfig extends RuntimeConfigBase>(
 	runtimeConfigFor: (input) =>
 		driver.runtimeConfigFor({
 			providerResourceId: input.providerResourceId,
-			overrides: input.overrides as Partial<RuntimeConfig> | undefined,
+			...(input.overrides === undefined ? {} : { overrides: input.overrides as Partial<RuntimeConfig> }),
 		}),
 	attach: (input) => driver.attach(input as RuntimeInput<RuntimeConfig>),
 	...(driver.inspect === undefined

@@ -118,7 +118,7 @@ export class Accumulator {
 		return {
 			content: truncation.content,
 			truncation,
-			fullOutputPath: this.tempFilePath,
+			...(this.tempFilePath === undefined ? {} : { fullOutputPath: this.tempFilePath }),
 		};
 	}
 

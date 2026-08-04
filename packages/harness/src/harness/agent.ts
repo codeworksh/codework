@@ -77,7 +77,7 @@ export namespace Agent {
 		isStreaming: boolean;
 		streamMessage: Message.Message | null;
 		pendingToolCalls: Set<string>;
-		error?: string;
+		error: string | undefined;
 	}
 
 	// AgentContext is like Message.Context but uses AgentTool
@@ -85,7 +85,7 @@ export namespace Agent {
 	export interface AgentContext {
 		systemPrompt: string;
 		messages: Message.Message[];
-		tools?: AnyAgentTool[];
+		tools?: AnyAgentTool[] | undefined;
 	}
 
 	export const ToolCallInFlightSchema = Message.ToolCallInFlightSchema;
@@ -108,8 +108,8 @@ export namespace Agent {
 	);
 
 	export interface AgentOptions {
-		initialState?: Partial<State>;
-		convertToLlm?: (messages: Message.Message[]) => Message.Message[] | Promise<Message.Message[]>;
+		initialState?: Partial<State> | undefined;
+		convertToLlm?: ((messages: Message.Message[]) => Message.Message[] | Promise<Message.Message[]>) | undefined;
 		/**
 		 * Optional transform applied to the context before `convertToLlm`.
 		 *
@@ -127,50 +127,56 @@ export namespace Agent {
 		 * }
 		 * ```
 		 */
-		transformContext?: (messages: Message.Message[], signal?: AbortSignal) => Promise<Message.Message[]>;
+		transformContext?:
+			| ((messages: Message.Message[], signal?: AbortSignal) => Promise<Message.Message[]>)
+			| undefined;
 		/**
 		 * Steering mode: "all" = send all steering messages at once, "one-at-a-time" = one per turn
 		 */
-		steeringMode?: "all" | "one-at-a-time";
+		steeringMode?: "all" | "one-at-a-time" | undefined;
 
 		/**
 		 * Follow-up mode: "all" = send all follow-up messages at once, "one-at-a-time" = one per turn
 		 */
-		followUpMode?: "all" | "one-at-a-time";
+		followUpMode?: "all" | "one-at-a-time" | undefined;
 		/**
 		 * Custom stream function (for proxy backends, etc.). Default uses stream.
 		 */
-		streamFn?: Loop.StreamFn;
+		streamFn?: Loop.StreamFn | undefined;
 		/**
 		 * Optional session identifier forwarded to LLM providers.
 		 * Used by providers that support session-based caching (e.g., OpenAI Codex).
 		 */
-		sessionId?: string;
+		sessionId?: string | undefined;
 		/**
 		 * Resolves an API key dynamically for each LLM call.
 		 * Useful for expiring tokens (e.g., GitHub Copilot OAuth).
 		 */
-		getApiKey?: (provider: Model.ProviderInfo) => Promise<string | undefined> | string | undefined;
+		getApiKey?: ((provider: Model.ProviderInfo) => Promise<string | undefined> | string | undefined) | undefined;
 		/**
 		 * Inspect or replace provider payloads before they are sent.
 		 */
-		onPayload?: Protocol.CommonOptions["onPayload"];
+		onPayload?: Protocol.CommonOptions["onPayload"] | undefined;
 		/**
 		 * Custom token budgets for thinking levels (token-based providers only).
 		 */
-		thinkingBudgets?: ThinkingBudgets;
+		thinkingBudgets?: ThinkingBudgets | undefined;
 		/** Tool execution mode. Default: "parallel" */
-		toolExecution?: Loop.ToolExecutionMode;
+		toolExecution?: Loop.ToolExecutionMode | undefined;
 		/** Called before a tool is executed, after arguments have been validated. */
-		beforeToolExecution?: (
-			context: Loop.BeforeToolExecutionContext,
-			signal?: AbortSignal,
-		) => Promise<Loop.BeforeToolCallResult | undefined>;
+		beforeToolExecution?:
+			| ((
+					context: Loop.BeforeToolExecutionContext,
+					signal?: AbortSignal,
+			  ) => Promise<Loop.BeforeToolCallResult | undefined>)
+			| undefined;
 		/** Called after a tool finishes executing, before final tool events are emitted. */
-		afterToolExecution?: (
-			context: Loop.AfterToolExecutionContext,
-			signal?: AbortSignal,
-		) => Promise<Agent.ToolTerminalResult<unknown> | undefined>;
+		afterToolExecution?:
+			| ((
+					context: Loop.AfterToolExecutionContext,
+					signal?: AbortSignal,
+			  ) => Promise<Agent.ToolTerminalResult<unknown> | undefined>)
+			| undefined;
 	}
 
 	export const AgentInStreamingErr = NamedError.create(
@@ -185,10 +191,12 @@ export namespace Agent {
 		private _state: State;
 
 		private listeners = new Set<(e: Event.AgentEvent) => void>();
-		private abortController?: AbortController;
+		private abortController: AbortController | undefined;
 
 		private convertToLlm: (messages: Message.Message[]) => Message.Message[] | Promise<Message.Message[]>;
-		private transformContext?: (messages: Message.Message[], signal?: AbortSignal) => Promise<Message.Message[]>;
+		private transformContext:
+			| ((messages: Message.Message[], signal?: AbortSignal) => Promise<Message.Message[]>)
+			| undefined;
 
 		private steeringQueue: Message.UserMessage[] = [];
 		private followUpQueue: Message.UserMessage[] = [];
@@ -197,24 +205,30 @@ export namespace Agent {
 
 		public streamFn: Loop.StreamFn;
 
-		private _sessionId?: string;
-		public getApiKey?: (provider: Model.ProviderInfo) => Promise<string | undefined> | string | undefined;
+		private _sessionId: string | undefined;
+		public getApiKey:
+			| ((provider: Model.ProviderInfo) => Promise<string | undefined> | string | undefined)
+			| undefined;
 
-		private _onPayload?: Protocol.CommonOptions["onPayload"];
+		private _onPayload: Protocol.CommonOptions["onPayload"] | undefined;
 
-		private runningPrompt?: Promise<void>;
-		private resolveRunningPrompt?: () => void;
-		private _thinkingBudgets?: ThinkingBudgets;
+		private runningPrompt: Promise<void> | undefined;
+		private resolveRunningPrompt: (() => void) | undefined;
+		private _thinkingBudgets: ThinkingBudgets | undefined;
 		private _toolExecution: Loop.ToolExecutionMode;
 
-		private _beforeToolExecution?: (
-			context: Loop.BeforeToolExecutionContext,
-			signal?: AbortSignal,
-		) => Promise<Loop.BeforeToolCallResult | undefined>;
-		private _afterToolExecution?: (
-			context: Loop.AfterToolExecutionContext,
-			signal?: AbortSignal,
-		) => Promise<Agent.ToolTerminalResult<unknown> | undefined>;
+		private _beforeToolExecution:
+			| ((
+					context: Loop.BeforeToolExecutionContext,
+					signal?: AbortSignal,
+			  ) => Promise<Loop.BeforeToolCallResult | undefined>)
+			| undefined;
+		private _afterToolExecution:
+			| ((
+					context: Loop.AfterToolExecutionContext,
+					signal?: AbortSignal,
+			  ) => Promise<Agent.ToolTerminalResult<unknown> | undefined>)
+			| undefined;
 
 		constructor(name: string, model: Model.Info, opts: AgentOptions = {}) {
 			this._state = {
@@ -540,10 +554,10 @@ export namespace Agent {
 
 			const config: Loop.Config = {
 				model,
-				reasoning,
-				sessionId: this._sessionId,
-				onPayload: this._onPayload,
-				thinkingBudgets: this._thinkingBudgets,
+				...(reasoning === undefined ? {} : { reasoning }),
+				...(this._sessionId === undefined ? {} : { sessionId: this._sessionId }),
+				...(this._onPayload === undefined ? {} : { onPayload: this._onPayload }),
+				...(this._thinkingBudgets === undefined ? {} : { thinkingBudgets: this._thinkingBudgets }),
 				toolExecution: this._toolExecution,
 				beforeToolExecution: this._beforeToolExecution,
 				afterToolExecution: this._afterToolExecution,

@@ -40,42 +40,47 @@ export interface Credentials {
 
 export interface Options {
 	/** Auth token (OIDC or access token). Falls back to `VERCEL_OIDC_TOKEN`. */
-	readonly token?: string;
+	readonly token?: string | undefined;
 	/** Team id. Derived from the OIDC token when omitted. */
-	readonly teamId?: string;
+	readonly teamId?: string | undefined;
 	/** Project id. Derived from the OIDC token when omitted. */
-	readonly projectId?: string;
+	readonly projectId?: string | undefined;
 	/** Reuse an existing sandbox by name instead of creating one. */
-	readonly sandboxName?: string;
+	readonly sandboxName?: string | undefined;
 	/** Explicit name for a newly created sandbox. */
-	readonly name?: string;
+	readonly name?: string | undefined;
 	/** Provider-side diagnostic labels (maximum five). */
-	readonly tags?: Record<string, string>;
+	readonly tags?: Record<string, string> | undefined;
 	/** Durable instance identity for this namespace. Supplied by the Controller. */
-	readonly instanceId?: SandboxInstance.ID;
+	readonly instanceId?: SandboxInstance.ID | undefined;
 	/** Snapshot id to create the sandbox from. */
-	readonly snapshot?: string;
+	readonly snapshot?: string | undefined;
 	/** Source to seed the sandbox filesystem from (git or tarball). */
 	readonly source?:
-		| { readonly type: "git"; readonly url: string; readonly revision?: string; readonly depth?: number }
+		| {
+				readonly type: "git";
+				readonly url: string;
+				readonly revision?: string | undefined;
+				readonly depth?: number | undefined;
+		  }
 		| { readonly type: "tarball"; readonly url: string };
 	/** Runtime used by the sandbox. Defaults to the SDK default (`node24`). */
-	readonly runtime?: string;
+	readonly runtime?: string | undefined;
 	/** Ports to expose from the sandbox (max 4). */
-	readonly ports?: number[];
+	readonly ports?: number[] | undefined;
 	/** Environment variables baked into the sandbox. */
-	readonly envVars?: Record<string, string>;
+	readonly envVars?: Record<string, string> | undefined;
 	/** vCPU allocation (memory scales at 2048 MB per vCPU). */
-	readonly vcpus?: number;
+	readonly vcpus?: number | undefined;
 	/**
 	 * Mount working directory. Relative values resolve against `/vercel/sandbox`;
 	 * omitted values use that namespace default.
 	 */
-	readonly cwd?: string;
+	readonly cwd?: string | undefined;
 	/** Milliseconds before the sandbox auto-terminates. */
-	readonly timeout?: number;
+	readonly timeout?: number | undefined;
 	/** Per-command timeout in milliseconds. Omit for no timeout. */
-	readonly execTimeout?: number;
+	readonly execTimeout?: number | undefined;
 }
 
 interface RemoteState {
@@ -93,19 +98,34 @@ export const credentialsFrom = (options: Options): Credentials | undefined =>
 
 export const createSandbox = (options: Options, creds: Credentials | undefined = credentialsFrom(options)) => {
 	const withCreds = <T extends object>(params: T) => (creds ? { ...params, ...creds } : params);
+	const source =
+		options.source?.type === "git"
+			? {
+					type: "git" as const,
+					url: options.source.url,
+					...(options.source.revision === undefined ? {} : { revision: options.source.revision }),
+					...(options.source.depth === undefined ? {} : { depth: options.source.depth }),
+				}
+			: options.source;
 	const base = {
-		name: options.name,
-		tags: options.tags,
-		env: options.envVars,
-		ports: options.ports,
-		timeout: options.timeout,
+		...(options.name === undefined ? {} : { name: options.name }),
+		...(options.tags === undefined ? {} : { tags: options.tags }),
+		...(options.envVars === undefined ? {} : { env: options.envVars }),
+		...(options.ports === undefined ? {} : { ports: options.ports }),
+		...(options.timeout === undefined ? {} : { timeout: options.timeout }),
 		...(options.vcpus === undefined ? {} : { resources: { vcpus: options.vcpus } }),
 	};
 	return options.snapshot !== undefined
 		? RemoteSandbox.create(
 				withCreds({ ...base, source: { type: "snapshot" as const, snapshotId: options.snapshot } }),
 			)
-		: RemoteSandbox.create(withCreds({ ...base, runtime: options.runtime, source: options.source }));
+		: RemoteSandbox.create(
+				withCreds({
+					...base,
+					...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+					...(source === undefined ? {} : { source }),
+				}),
+			);
 };
 
 const remote = (options: Options) =>
@@ -170,12 +190,18 @@ const providerFrom = (sandbox: RemoteSandbox): RemoteFilesystemProvider => {
 			}
 		},
 		mkdir: async (path: string, mkdirOptions?: { recursive?: boolean }) => {
-			await sandbox.fs.mkdir(path, { recursive: mkdirOptions?.recursive });
+			await sandbox.fs.mkdir(
+				path,
+				mkdirOptions?.recursive === undefined ? {} : { recursive: mkdirOptions.recursive },
+			);
 		},
 		// `rm -f` is native, so force/recursive delegate straight through; the
 		// wrapper has already rejected any unsupported option before we get here.
 		rm: (path: string, rmOptions?: { recursive?: boolean; force?: boolean }) =>
-			sandbox.fs.rm(path, { recursive: rmOptions?.recursive, force: rmOptions?.force }),
+			sandbox.fs.rm(path, {
+				...(rmOptions?.recursive === undefined ? {} : { recursive: rmOptions.recursive }),
+				...(rmOptions?.force === undefined ? {} : { force: rmOptions.force }),
+			}),
 	};
 
 	return filesystem;
@@ -201,15 +227,17 @@ const spawnArgv = (
 	argv: ReadonlyArray<string>,
 	env?: Record<string, string>,
 	cwd?: string,
-): Promise<Command> =>
-	sandbox.runCommand({
+): Promise<Command> => {
+	const resolvedCwd = resolveCwd(options.cwd, cwd);
+	return sandbox.runCommand({
 		cmd: argv[0]!,
 		args: argv.slice(1),
-		cwd: resolveCwd(options.cwd, cwd),
-		env,
+		...(resolvedCwd === undefined ? {} : { cwd: resolvedCwd }),
+		...(env === undefined ? {} : { env }),
 		detached: true,
 		...(options.execTimeout === undefined ? {} : { timeoutMs: options.execTimeout }),
 	});
+};
 
 // Acquire a detached command and register its kill as a scope finalizer, so an
 // interrupt / timeout from the consumer actually terminates the remote process
@@ -284,7 +312,9 @@ const filesystemLayer = (options: Options) =>
 	Layer.effect(
 		SandboxFileSystem.Service,
 		Effect.map(Remote, ({ sandbox }) =>
-			SandboxFileSystem.fromProvider(RemoteFileSystem.make(providerFrom(sandbox), { cwd: options.cwd })),
+			SandboxFileSystem.fromProvider(
+				RemoteFileSystem.make(providerFrom(sandbox), options.cwd === undefined ? undefined : { cwd: options.cwd }),
+			),
 		),
 	);
 
@@ -348,7 +378,7 @@ const identityLayer = (options: Options) =>
 				driver: "vercel",
 				id: options.instanceId ?? SandboxInstance.ID.create(),
 				defaultCwd: DEFAULT_CWD,
-				cwd: options.cwd,
+				...(options.cwd === undefined ? {} : { cwd: options.cwd }),
 			}),
 		),
 	);

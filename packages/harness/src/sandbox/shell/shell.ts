@@ -133,7 +133,10 @@ export const fromExec = (backend: Omit<ISandboxExe, "execArgv">): ISandboxExe =>
  */
 export const withCwd = (backend: ISandboxExe, cwd: string): ISandboxExe => {
 	const mounted = mountFactories.get(backend)?.(cwd) ?? backend;
-	const at = (options?: ShellOptions): ShellOptions => ({ ...options, cwd: resolveCwd(cwd, options?.cwd) });
+	const at = (options?: ShellOptions): ShellOptions => {
+		const resolvedCwd = resolveCwd(cwd, options?.cwd);
+		return { ...options, ...(resolvedCwd === undefined ? {} : { cwd: resolvedCwd }) };
+	};
 	const stream = mounted.stream;
 	return {
 		exec: (command, options) => mounted.exec(command, at(options)),

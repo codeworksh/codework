@@ -6,9 +6,9 @@ import { SandboxInstance } from "../instance";
 import { EnvDaytona } from "../providers/daytona";
 
 export interface ClientOptions {
-	readonly apiKey?: string;
-	readonly apiUrl?: string;
-	readonly target?: string;
+	readonly apiKey?: string | undefined;
+	readonly apiUrl?: string | undefined;
+	readonly target?: string | undefined;
 }
 
 export const ResourcesConfig = Schema.Struct({
@@ -69,7 +69,12 @@ export const make = (
 	client: ClientOptions = {},
 ): SandboxDriver.Driver<CreateConfig, RuntimeConfig> & SandboxDriver.Registration => {
 	const redact = makeRedactor([client.apiKey ?? ""]);
-	const daytona = () => new Daytona(client);
+	const daytona = () =>
+		new Daytona({
+			...(client.apiKey === undefined ? {} : { apiKey: client.apiKey }),
+			...(client.apiUrl === undefined ? {} : { apiUrl: client.apiUrl }),
+			...(client.target === undefined ? {} : { target: client.target }),
+		});
 
 	const attempt = <A>(operation: string, run: () => Promise<A>): Effect.Effect<A, SandboxProviderError> =>
 		Effect.tryPromise({
@@ -102,7 +107,10 @@ export const make = (
 			? attempt(operation, () => sandbox.start()).pipe(Effect.map(() => sandbox))
 			: Effect.succeed(sandbox);
 
-	const runtime = (defaultCwd: string, input: { readonly user?: string; readonly execTimeout?: number }) => ({
+	const runtime = (
+		defaultCwd: string,
+		input: { readonly user?: string | undefined; readonly execTimeout?: number | undefined },
+	) => ({
 		defaultCwd: SandboxDriver.AbsolutePath.make(defaultCwd),
 		...(input.user === undefined ? {} : { user: input.user }),
 		...(input.execTimeout === undefined ? {} : { execTimeout: input.execTimeout }),
@@ -127,9 +135,9 @@ export const make = (
 				const sdk = daytona();
 				const base = {
 					language: config.language ?? "typescript",
-					envVars: config.envVars,
-					user: config.user,
-					autoStopInterval: config.autoStopInterval,
+					...(config.envVars === undefined ? {} : { envVars: config.envVars }),
+					...(config.user === undefined ? {} : { user: config.user }),
+					...(config.autoStopInterval === undefined ? {} : { autoStopInterval: config.autoStopInterval }),
 					autoDeleteInterval: -1,
 					labels: {
 						"codework-instance": instanceId,
@@ -138,11 +146,11 @@ export const make = (
 				};
 				const sandbox = yield* attempt("create", () =>
 					config.image === undefined
-						? sdk.create({ ...base, snapshot: config.snapshot })
+						? sdk.create({ ...base, ...(config.snapshot === undefined ? {} : { snapshot: config.snapshot }) })
 						: sdk.create({
 								...base,
 								image: config.image,
-								resources: config.resources as Resources | undefined,
+								...(config.resources === undefined ? {} : { resources: config.resources as Resources }),
 							}),
 				);
 				const defaultCwd = yield* attempt("create.cwd", () =>
@@ -182,7 +190,12 @@ export const make = (
 						"attach",
 					);
 					yield* wake(sandbox, "attach.wake");
-					return EnvDaytona.transport(sandbox, { execTimeout: input.runtimeConfig.execTimeout });
+					return EnvDaytona.transport(
+						sandbox,
+						input.runtimeConfig.execTimeout === undefined
+							? undefined
+							: { execTimeout: input.runtimeConfig.execTimeout },
+					);
 				}),
 			),
 		inspect: (input) =>

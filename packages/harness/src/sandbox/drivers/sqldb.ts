@@ -10,12 +10,12 @@ import { transport, transportLayer } from "../virtual";
 
 export interface CreateConfig {
 	readonly defaultCwd: SandboxDriver.AbsolutePath;
-	readonly initializeCwd?: SandboxDriver.AbsolutePath;
-	readonly location?: string;
+	readonly initializeCwd?: SandboxDriver.AbsolutePath | undefined;
+	readonly location?: string | undefined;
 }
 
 export interface RuntimeConfig extends SandboxDriver.RuntimeConfigBase {
-	readonly location?: string;
+	readonly location?: string | undefined;
 	readonly inMemory: boolean;
 }
 

@@ -81,14 +81,16 @@ export namespace Loop {
 		 * }
 		 * ```
 		 */
-		transformContext?: (messages: Message.Message[], signal?: AbortSignal) => Promise<Message.Message[]>;
+		transformContext?:
+			| ((messages: Message.Message[], signal?: AbortSignal) => Promise<Message.Message[]>)
+			| undefined;
 		/**
 		 * Resolves an API key dynamically for each LLM call.
 		 *
 		 * Useful for short-lived OAuth tokens (e.g., GitHub Copilot) that may expire
 		 * during long-running tool execution phases.
 		 */
-		getApiKey?: (provider: Model.ProviderInfo) => Promise<string | undefined> | string | undefined;
+		getApiKey?: ((provider: Model.ProviderInfo) => Promise<string | undefined> | string | undefined) | undefined;
 		/**
 		 * Returns steering messages to inject into the conversation mid-run.
 		 *
@@ -98,7 +100,7 @@ export namespace Loop {
 		 *
 		 * Use this for "steering" the agent while it's working.
 		 */
-		getSteeringMessages?: () => Promise<Message.UserMessage[]>;
+		getSteeringMessages?: (() => Promise<Message.UserMessage[]>) | undefined;
 		/**
 		 * Returns follow-up messages to process after the agent would otherwise stop.
 		 *
@@ -108,7 +110,7 @@ export namespace Loop {
 		 *
 		 * Use this for follow-up messages that should wait until the agent finishes.
 		 */
-		getFollowUpMessages?: () => Promise<Message.UserMessage[]>;
+		getFollowUpMessages?: (() => Promise<Message.UserMessage[]>) | undefined;
 
 		/**
 		 * Tool execution mode.
@@ -117,7 +119,7 @@ export namespace Loop {
 		 *
 		 * Default: "parallel"
 		 */
-		toolExecution?: ToolExecutionMode;
+		toolExecution?: ToolExecutionMode | undefined;
 
 		/**
 		 * Called before a tool is executed, after arguments have been validated.
@@ -125,10 +127,9 @@ export namespace Loop {
 		 * Return `{ block: true }` to prevent execution. The loop emits an error tool result instead.
 		 * The hook receives the agent abort signal and is responsible for honoring it.
 		 */
-		beforeToolExecution?: (
-			context: BeforeToolExecutionContext,
-			signal?: AbortSignal,
-		) => Promise<BeforeToolCallResult | undefined>;
+		beforeToolExecution?:
+			| ((context: BeforeToolExecutionContext, signal?: AbortSignal) => Promise<BeforeToolCallResult | undefined>)
+			| undefined;
 
 		/**
 		 * Called after a tool finishes executing, before final tool events are emitted.
@@ -136,10 +137,12 @@ export namespace Loop {
 		 * Any omitted fields keep their original values. No deep merge is performed.
 		 * The hook receives the agent abort signal and is responsible for honoring it.
 		 */
-		afterToolExecution?: (
-			context: AfterToolExecutionContext,
-			signal?: AbortSignal,
-		) => Promise<Agent.ToolTerminalResult<unknown> | undefined>;
+		afterToolExecution?:
+			| ((
+					context: AfterToolExecutionContext,
+					signal?: AbortSignal,
+			  ) => Promise<Agent.ToolTerminalResult<unknown> | undefined>)
+			| undefined;
 	}
 
 	function createAgentStream(): EventStream<Event.AgentEvent, Message.Message[]> {
@@ -240,10 +243,10 @@ export namespace Loop {
 		const llmMessages = await config.convertToLlm(messages);
 
 		// Build LLM context, subset of Agent.AgentContext
-		const llmContext: Agent.AgentContext = {
+		const llmContext: Parameters<typeof Protocol.stream>[1] = {
 			systemPrompt: context.systemPrompt,
 			messages: llmMessages,
-			tools: context.tools,
+			...(context.tools === undefined ? {} : { tools: context.tools }),
 		};
 		const streamFunction = streamFn || Protocol.stream;
 		// Resolve API key (important for expiring tokens)
@@ -255,8 +258,8 @@ export namespace Loop {
 
 		const events = await streamFunction(config.model, llmContext, {
 			...config,
-			apiKey: resolvedApiKey,
-			signal,
+			...(resolvedApiKey === undefined ? {} : { apiKey: resolvedApiKey }),
+			...(signal === undefined ? {} : { signal }),
 		});
 
 		let partialMessage: Message.AssistantMessage | null = null;
@@ -596,7 +599,7 @@ export namespace Loop {
 			const result = await tool.execute(runnable.callID, runnable.args, signal, async (result) => {
 				const runningResult: Agent.ToolRunningResult<unknown> = {
 					status: "running",
-					partial: result.partial,
+					...(result.partial === undefined ? {} : { partial: result.partial }),
 				};
 				const runningPart: Message.ToolCallRunningPart = {
 					...pendingPart,

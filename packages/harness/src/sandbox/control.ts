@@ -37,16 +37,16 @@ import { SandboxStore } from "./store";
 export interface CreateInput<CreateConfig, RuntimeConfig extends SandboxDriver.RuntimeConfigBase> {
 	readonly driver: SandboxDriver.Definition<CreateConfig, RuntimeConfig>;
 	readonly config: CreateConfig;
-	readonly metadata?: Readonly<Record<string, string>>;
+	readonly metadata?: Readonly<Record<string, string>> | undefined;
 	/** Reserved for isolated test/script constructors that already own an id. */
-	readonly instanceId?: SandboxInstance.ID;
+	readonly instanceId?: SandboxInstance.ID | undefined;
 }
 
 export interface RegisterInput<CreateConfig, RuntimeConfig extends SandboxDriver.RuntimeConfigBase> {
 	readonly driver: SandboxDriver.Definition<CreateConfig, RuntimeConfig>;
 	readonly providerResourceId: string;
-	readonly runtimeConfig?: Partial<RuntimeConfig>;
-	readonly metadata?: Readonly<Record<string, string>>;
+	readonly runtimeConfig?: Partial<RuntimeConfig> | undefined;
+	readonly metadata?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface MountOptions {
@@ -245,10 +245,10 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 	const updateObservation = Effect.fn("Sandbox.Controller.updateObservation")(function* (input: {
 		readonly id: SandboxInstance.ID;
 		readonly status: SandboxInstance.Status;
-		readonly providerStatus?: string;
-		readonly metadata?: Readonly<Record<string, string>>;
-		readonly lastError?: SandboxInstance.PersistedError;
-		readonly clearError?: boolean;
+		readonly providerStatus?: string | undefined;
+		readonly metadata?: Readonly<Record<string, string>> | undefined;
+		readonly lastError?: SandboxInstance.PersistedError | undefined;
+		readonly clearError?: boolean | undefined;
 	}) {
 		const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 		const metadata = input.metadata === undefined ? null : JSON.stringify(input.metadata);

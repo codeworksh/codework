@@ -47,36 +47,36 @@ export class DaytonaError extends Schema.TaggedErrorClass<DaytonaError>()("Dayto
 
 export interface Options {
 	/** API key. Falls back to the `DAYTONA_API_KEY` env var when omitted. */
-	readonly apiKey?: string;
+	readonly apiKey?: string | undefined;
 	/** API URL. Falls back to `DAYTONA_API_URL` / the SDK default. */
-	readonly apiUrl?: string;
+	readonly apiUrl?: string | undefined;
 	/** Target region. Falls back to `DAYTONA_TARGET` / the SDK default. */
-	readonly target?: string;
+	readonly target?: string | undefined;
 	/** Reuse an existing sandbox by id or name instead of creating one. */
-	readonly sandboxId?: string;
+	readonly sandboxId?: string | undefined;
 	/** Durable instance identity for this namespace. Supplied by the Controller. */
-	readonly instanceId?: SandboxInstance.ID;
+	readonly instanceId?: SandboxInstance.ID | undefined;
 	/** Snapshot to create the sandbox from. */
-	readonly snapshot?: string;
+	readonly snapshot?: string | undefined;
 	/** Image (registry reference or declarative `Image`) to create the sandbox from. */
-	readonly image?: string | Image;
+	readonly image?: string | Image | undefined;
 	/** Runtime used for code execution. Defaults to `"typescript"`. */
-	readonly language?: CodeLanguage | string;
+	readonly language?: CodeLanguage | string | undefined;
 	/** Environment variables baked into the sandbox. */
-	readonly envVars?: Record<string, string>;
+	readonly envVars?: Record<string, string> | undefined;
 	/** Resource allocation (cpu / memory / disk). */
-	readonly resources?: Resources;
+	readonly resources?: Resources | undefined;
 	/** OS user to run as inside the sandbox. */
-	readonly user?: string;
+	readonly user?: string | undefined;
 	/**
 	 * Mount working directory. Relative values resolve against `getWorkDir()`;
 	 * omitted values use it, with `/home/daytona` as the provider fallback.
 	 */
-	readonly cwd?: string;
+	readonly cwd?: string | undefined;
 	/** Idle minutes before the sandbox auto-stops. */
-	readonly autoStopInterval?: number;
+	readonly autoStopInterval?: number | undefined;
 	/** Per-command timeout in seconds. 0 means no timeout. */
-	readonly execTimeout?: number;
+	readonly execTimeout?: number | undefined;
 }
 
 interface RemoteState {
@@ -99,14 +99,18 @@ const dateFrom = (value: string | undefined) => {
 export const createSandbox = (daytona: Daytona, options: Options) => {
 	const base = {
 		language: options.language ?? "typescript",
-		envVars: options.envVars,
-		user: options.user,
-		autoStopInterval: options.autoStopInterval,
+		...(options.envVars === undefined ? {} : { envVars: options.envVars }),
+		...(options.user === undefined ? {} : { user: options.user }),
+		...(options.autoStopInterval === undefined ? {} : { autoStopInterval: options.autoStopInterval }),
 		autoDeleteInterval: -1,
 	};
 	return options.image !== undefined
-		? daytona.create({ ...base, image: options.image, resources: options.resources })
-		: daytona.create({ ...base, snapshot: options.snapshot });
+		? daytona.create({
+				...base,
+				image: options.image,
+				...(options.resources === undefined ? {} : { resources: options.resources }),
+			})
+		: daytona.create({ ...base, ...(options.snapshot === undefined ? {} : { snapshot: options.snapshot }) });
 };
 
 const remote = (options: Options) =>
@@ -114,7 +118,11 @@ const remote = (options: Options) =>
 		Remote,
 		Effect.tryPromise({
 			try: async (): Promise<RemoteState> => {
-				const daytona = new Daytona({ apiKey: options.apiKey, apiUrl: options.apiUrl, target: options.target });
+				const daytona = new Daytona({
+					...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
+					...(options.apiUrl === undefined ? {} : { apiUrl: options.apiUrl }),
+					...(options.target === undefined ? {} : { target: options.target }),
+				});
 				const sandbox = options.sandboxId
 					? await daytona.get(options.sandboxId)
 					: await createSandbox(daytona, options);

@@ -39,9 +39,9 @@ export namespace CodeMode {
 
 	export interface NormalizedError {
 		message: string;
-		name?: string;
-		stack?: string;
-		line?: number;
+		name?: string | undefined;
+		stack?: string | undefined;
+		line?: number | undefined;
 	}
 
 	export interface ExecutionResult<T = unknown> {
@@ -58,9 +58,9 @@ export namespace CodeMode {
 
 	export interface DriverContextConfig {
 		bindings: Record<string, ToolBinding>;
-		timeout?: number;
-		memoryLimit?: number;
-		signal?: AbortSignal;
+		timeout?: number | undefined;
+		memoryLimit?: number | undefined;
+		signal?: AbortSignal | undefined;
 	}
 
 	export interface Driver {
@@ -95,8 +95,8 @@ export namespace CodeMode {
 		name: string;
 		description: string;
 		inputSchema: TSchema;
-		outputSchema?: TSchema;
-		errorSchema?: TSchema;
+		outputSchema?: TSchema | undefined;
+		errorSchema?: TSchema | undefined;
 		execute: (callID: string, params: unknown, signal?: AbortSignal) => Promise<unknown>;
 	}
 

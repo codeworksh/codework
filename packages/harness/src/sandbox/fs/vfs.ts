@@ -51,7 +51,10 @@ const make = (vfs: VirtualFileSystem): Interface => {
 		if (stats.isDirectory()) {
 			if (!options?.recursive) throw new Error(`rm: ${path}: is a directory`);
 			for (const entry of await readdir(path)) {
-				await rm(posix.join(path, entry), { recursive: true, force: options.force });
+				await rm(posix.join(path, entry), {
+					recursive: true,
+					...(options.force === undefined ? {} : { force: options.force }),
+				});
 			}
 			await vfs.promises.rmdir(path);
 			return;

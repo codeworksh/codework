@@ -6,9 +6,9 @@ import { SandboxInstance } from "../instance";
 import { EnvVercel } from "../providers/vercel";
 
 export interface ClientOptions {
-	readonly token?: string;
-	readonly teamId?: string;
-	readonly projectId?: string;
+	readonly token?: string | undefined;
+	readonly teamId?: string | undefined;
+	readonly projectId?: string | undefined;
 }
 
 export const Source = Schema.Union([
@@ -130,18 +130,27 @@ export const make = (
 		runtimeConfigCodec: RuntimeConfig,
 		create: ({ instanceId, config }) =>
 			Effect.gen(function* () {
+				const source =
+					config.source?.type === "git"
+						? {
+								type: "git" as const,
+								url: config.source.url,
+								...(config.source.revision === undefined ? {} : { revision: config.source.revision }),
+								...(config.source.depth === undefined ? {} : { depth: config.source.depth }),
+							}
+						: config.source;
 				const sandbox = yield* attempt("create", () =>
 					EnvVercel.createSandbox(
 						{
 							...client,
-							snapshot: config.snapshot,
-							source: config.source,
-							runtime: config.runtime,
-							ports: config.ports === undefined ? undefined : [...config.ports],
-							envVars: config.envVars,
-							vcpus: config.vcpus,
-							timeout: config.timeout,
-							execTimeout: config.execTimeout,
+							...(config.snapshot === undefined ? {} : { snapshot: config.snapshot }),
+							...(source === undefined ? {} : { source }),
+							...(config.runtime === undefined ? {} : { runtime: config.runtime }),
+							...(config.ports === undefined ? {} : { ports: [...config.ports] }),
+							...(config.envVars === undefined ? {} : { envVars: config.envVars }),
+							...(config.vcpus === undefined ? {} : { vcpus: config.vcpus }),
+							...(config.timeout === undefined ? {} : { timeout: config.timeout }),
+							...(config.execTimeout === undefined ? {} : { execTimeout: config.execTimeout }),
 							tags: {
 								"codework-instance": instanceId,
 								"codework-managed": "true",
@@ -176,7 +185,13 @@ export const make = (
 						true,
 						"attach",
 					),
-					(sandbox) => EnvVercel.transport(sandbox, { execTimeout: input.runtimeConfig.execTimeout }),
+					(sandbox) =>
+						EnvVercel.transport(
+							sandbox,
+							input.runtimeConfig.execTimeout === undefined
+								? undefined
+								: { execTimeout: input.runtimeConfig.execTimeout },
+						),
 				),
 			),
 		inspect: (input) =>

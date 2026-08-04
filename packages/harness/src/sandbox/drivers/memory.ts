@@ -8,7 +8,7 @@ import { transport } from "../virtual";
 
 export interface CreateConfig {
 	readonly defaultCwd: SandboxDriver.AbsolutePath;
-	readonly initializeCwd?: SandboxDriver.AbsolutePath;
+	readonly initializeCwd?: SandboxDriver.AbsolutePath | undefined;
 }
 
 export interface RuntimeConfig extends SandboxDriver.RuntimeConfigBase {}

@@ -2,8 +2,17 @@
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
 		"lib": ["es2023"],
+		"composite": true,
+		"incremental": true,
 		"declaration": true,
-		"noUnusedLocals": false
+		"declarationMap": true,
+		"emitDeclarationOnly": true,
+		"noEmit": false,
+		"noUnusedLocals": false,
+		"rootDir": "src",
+		"outDir": "dist/types",
+		"tsBuildInfoFile": "../../.cache/typescript/aikit.tsbuildinfo"
 	},
-	"include": ["src"]
+	"include": ["src"],
+	"references": [{ "path": "../utils" }]
 }
