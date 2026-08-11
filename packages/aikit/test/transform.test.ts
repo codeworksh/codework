@@ -44,9 +44,14 @@ describe("mapUsage", () => {
 		});
 	});
 
-	it("subtracts cached tokens from inputTokens when no breakdown is available", () => {
+	it("subtracts cached tokens from inputTokens when no uncached breakdown is available", () => {
 		const usage = mapUsage(
-			{ inputTokens: 100, outputTokens: 50, totalTokens: 150, cachedInputTokens: 30 } as LanguageModelUsage,
+			{
+				inputTokens: 100,
+				outputTokens: 50,
+				totalTokens: 150,
+				inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 30, cacheWriteTokens: undefined },
+			} as LanguageModelUsage,
 			model,
 		);
 		expect(usage.input).toBe(70);
@@ -72,7 +77,12 @@ describe("mapUsage", () => {
 
 	it("never reports negative input tokens", () => {
 		const usage = mapUsage(
-			{ inputTokens: 10, outputTokens: 0, totalTokens: 10, cachedInputTokens: 50 } as LanguageModelUsage,
+			{
+				inputTokens: 10,
+				outputTokens: 0,
+				totalTokens: 10,
+				inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 50, cacheWriteTokens: undefined },
+			} as LanguageModelUsage,
 			model,
 		);
 		expect(usage.input).toBe(0);
@@ -83,9 +93,9 @@ describe("mapUsage", () => {
 			{
 				inputTokens: 100,
 				outputTokens: 50,
-				cachedInputTokens: 30,
+				inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 30, cacheWriteTokens: undefined },
 				totalTokens: undefined,
-			} as unknown as LanguageModelUsage,
+			} as LanguageModelUsage,
 			model,
 		);
 		expect(usage.totalTokens).toBe(70 + 30 + 50);

@@ -63,27 +63,27 @@
 		"typecheck": "node ../../scripts/tsgo.mjs --noEmit"
 	},
 	"dependencies": {
-		"@ai-sdk/anthropic": "^3.0.79",
-		"@ai-sdk/google": "^3.0.79",
-		"@ai-sdk/google-vertex": "^4.0.137",
-		"@ai-sdk/openai": "^3.0.65",
-		"@ai-sdk/openai-compatible": "^2.0.48",
-		"@ai-sdk/provider": "^3.0.10",
-		"@ai-sdk/xai": "^3.0.92",
-		"@openrouter/ai-sdk-provider": "^2.9.0",
-		"ai": "^6.0.191",
+		"@ai-sdk/anthropic": "^4.0.36",
+		"@ai-sdk/google": "^4.0.39",
+		"@ai-sdk/google-vertex": "^5.0.48",
+		"@ai-sdk/openai": "^4.0.36",
+		"@ai-sdk/openai-compatible": "^3.0.28",
+		"@ai-sdk/provider": "^4.0.7",
+		"@ai-sdk/xai": "^4.0.33",
+		"@openrouter/ai-sdk-provider": "^3.0.0",
+		"ai": "^7.0.58",
 		"dedent": "^1.7.2",
 		"partial-json": "^0.1.7",
-		"remeda": "^2.33.6",
-		"typebox": "^1.1.37",
+		"remeda": "^2.39.0",
+		"typebox": "^1.3.12",
 		"uuidv7": "^1.2.1",
-		"yargs": "^18.0.0"
+		"yargs": "^18.1.0"
 	},
 	"devDependencies": {
 		"@codeworksh/utils": "workspace:*",
 		"@types/yargs": "^17.0.35",
-		"bumpp": "^11.0.1",
-		"tsx": "^4.23.5"
+		"bumpp": "^12.2.0",
+		"tsx": "^4.23.12"
 	},
 	"engines": {
 		"node": ">=22.0.0"

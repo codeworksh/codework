@@ -214,7 +214,7 @@ export function mapFinishReason(reason: FinishReason | undefined): Message.StopR
 }
 
 export function mapUsage(usage: LanguageModelUsage | undefined, model: Model.Info): Message.AssistantMessage["usage"] {
-	const cacheRead = usage?.inputTokenDetails?.cacheReadTokens ?? usage?.cachedInputTokens ?? 0;
+	const cacheRead = usage?.inputTokenDetails.cacheReadTokens ?? 0;
 	const cacheWrite = usage?.inputTokenDetails?.cacheWriteTokens ?? 0;
 	const input =
 		usage?.inputTokenDetails?.noCacheTokens ?? Math.max((usage?.inputTokens ?? 0) - cacheRead - cacheWrite, 0);
