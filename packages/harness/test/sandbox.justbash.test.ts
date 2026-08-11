@@ -4,12 +4,12 @@ import { Bash } from "just-bash";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
-import { SandboxIO } from "../src/sandbox/io";
-import { bridge, EnvBash } from "../src/sandbox/shell/justbash";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { filesystemSpec } from "./fixtures/sandbox.spec";
-import { tmpdir } from "./fixtures/tempdir";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { bridge, EnvBash } from "../src/sandbox/shell/justbash.ts";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { filesystemSpec } from "./fixtures/sandbox.spec.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
 
 describe("Sandbox.EnvBash", () => {
 	// wrapping a sandbox must not change its filesystem semantics

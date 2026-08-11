@@ -1,8 +1,8 @@
 import { create, MemoryProvider } from "@platformatic/vfs";
 import { Effect, Layer, Schema } from "effect";
-import { Process } from "../utils/process";
-import { Seed, type SeedOptions } from "../utils/seed";
-import { Local } from "./vfs";
+import { Process } from "../utils/process.ts";
+import { Seed, type SeedOptions } from "../utils/seed.ts";
+import { Local } from "./vfs.ts";
 
 export class InMemoryError extends Schema.TaggedErrorClass<InMemoryError>()("InMemoryError", {
 	message: Schema.String,
@@ -42,4 +42,4 @@ export const make = (options?: Options) =>
 export const layer = (options?: Options) =>
 	Layer.merge(Layer.effect(Local.Vfs, make(options)), options?.hostProcess ? Process.host : Process.unsupported);
 
-export * as EnvInMemory from "./inmemory";
+export * as EnvInMemory from "./inmemory.ts";

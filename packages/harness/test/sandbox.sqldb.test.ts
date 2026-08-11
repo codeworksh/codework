@@ -2,9 +2,9 @@ import { Cause, Effect, Exit, Layer } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { filesystemSpec, withService } from "./fixtures/sandbox.spec";
-import { tmpdir } from "./fixtures/tempdir";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { filesystemSpec, withService } from "./fixtures/sandbox.spec.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
 
 describe("Sandbox.EnvSQLiteFS", () => {
 	describe("with sqlite in-memory filesystem spec", () => {

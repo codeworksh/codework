@@ -4,8 +4,8 @@
  */
 
 import { Context, Effect, Layer } from "effect";
-import { SessionSchema } from "../session/schema";
-import { Runner } from "./run";
+import { SessionSchema } from "../session/schema.ts";
+import { Runner } from "./run.ts";
 
 export interface Interface {
 	/** Snapshots active execution owned by this process. */
@@ -31,4 +31,4 @@ export const noopLayer = Layer.succeed(
 	}),
 );
 
-export * as RunnerExecution from "./execution";
+export * as RunnerExecution from "./execution.ts";

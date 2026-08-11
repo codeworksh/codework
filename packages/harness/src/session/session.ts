@@ -1,7 +1,7 @@
 import { Context, DateTime, Effect, Layer, Option, Result, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { uuidv7 } from "uuidv7";
-import { Database } from "../db/db";
+import { Database } from "../db/db.ts";
 import {
 	type EntryType,
 	entryTypes,
@@ -14,10 +14,10 @@ import {
 	SessionRow,
 	type ToolStatus,
 	toolStatuses,
-} from "../db/schema.sql";
-import { SandboxInstance } from "../sandbox/instance";
-import type { AbsolutePath } from "../schema";
-import { SessionSchema } from "./schema";
+} from "../db/schema.sql.ts";
+import { SandboxInstance } from "../sandbox/instance.ts";
+import type { AbsolutePath } from "../schema.ts";
+import { SessionSchema } from "./schema.ts";
 
 export {
 	entryTypes,
@@ -77,7 +77,7 @@ export interface CreateSession {
 }
 
 // Billed usage inside a persisted assistant envelope (harness-owned, ./schema).
-// export { AssistantEnvelopeUsage, CompactionData, MessageEnvelopeIdentity, Usage } from "./schema";
+// export { AssistantEnvelopeUsage, CompactionData, MessageEnvelopeIdentity, Usage } from "./schema.ts";
 
 export interface AppendPart {
 	readonly id?: string; // uuidv7; generated when omitted
@@ -864,4 +864,4 @@ export const layer = Layer.effect(
 // on NULL, so a session needs no sandbox setup to exist.
 export const defaultLayer = layer.pipe(Layer.provide(Database.defaultLayer));
 
-export * as Session from "./session";
+export * as Session from "./session.ts";

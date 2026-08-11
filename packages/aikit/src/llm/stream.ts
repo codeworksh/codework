@@ -1,12 +1,13 @@
 import { streamText, type TextStreamPart, type ToolSet } from "ai";
-import { Message } from "../message/message";
-import { Model } from "../model/model";
-import { AssistantMessageEventStream } from "../utils/eventstream";
-import { Options } from "./options";
-import { Protocol } from "./protocol";
-import { resolveAISDKLanguageModel } from "./provider";
-import { formatThrownError } from "./runtime";
-import { applyDefaultMaxTokens } from "./shared";
+import * as Message from "../message/message.ts";
+import * as Model from "../model/model.ts";
+import { AssistantMessageEventStream } from "../utils/eventstream.ts";
+import { compact } from "../utils/helpers.ts";
+import { Options } from "./options.ts";
+import * as Protocol from "./protocol.ts";
+import { resolveAISDKLanguageModel } from "./provider.ts";
+import { formatThrownError } from "./runtime.ts";
+import { applyDefaultMaxTokens } from "./shared.ts";
 import {
 	convertMessages,
 	convertTools,
@@ -16,7 +17,7 @@ import {
 	toolCallFromPart,
 	updateToolCallFromInput,
 	type StreamingToolCallBlock,
-} from "./transform";
+} from "./transform.ts";
 
 type TextBlock = Message.TextContent & { streamId?: string };
 type ThinkingBlock = Message.ThinkingContent & { streamId?: string };
@@ -370,7 +371,7 @@ function handlePart(
 			break;
 		case "abort":
 			output.stopReason = "aborted";
-			output.errorMessage = part.reason;
+			if (part.reason !== undefined) output.errorMessage = part.reason;
 			break;
 		case "error":
 			throw part.error instanceof Error ? part.error : new Error(formatThrownError(part.error));
@@ -420,7 +421,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			>[0]["providerOptions"];
 			const activeTools = runtimeOptions.activeTools?.filter((name) => !tools || name in tools);
 
-			let params: Parameters<typeof streamText<ToolSet>>[0] = {
+			let params: Parameters<typeof streamText<ToolSet>>[0] = compact({
 				model: languageModel,
 				system: context.systemPrompt,
 				messages,
@@ -434,7 +435,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 				timeout: runtimeOptions.timeoutMs,
 				maxRetries: runtimeOptions.maxRetries,
 				headers: runtimeOptions.headers,
-			};
+			});
 
 			const payload = await runtimeOptions.onPayload?.(params, model);
 			if (payload !== undefined) {

@@ -15,12 +15,12 @@
 
 import { Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
-import { SessionInputRow } from "../db/schema.sql";
-import { SandboxIO } from "../sandbox/io";
-import { quote } from "../sandbox/shell/shell";
-import type { SessionSchema } from "../session/schema";
-import { Session } from "../session/session";
-import { Runner } from "./run";
+import { SessionInputRow } from "../db/schema.sql.ts";
+import { SandboxIO } from "../sandbox/io.ts";
+import { quote } from "../sandbox/shell/shell.ts";
+import type { SessionSchema } from "../session/schema.ts";
+import { Session } from "../session/session.ts";
+import { Runner } from "./run.ts";
 
 export interface Options {
 	/**
@@ -221,4 +221,4 @@ export const layer = (options: Options = {}) =>
 		}),
 	);
 
-export * as Loop from "./loop";
+export * as Loop from "./loop.ts";

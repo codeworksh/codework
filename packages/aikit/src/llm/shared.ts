@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { type Model } from "../model/model";
+import type * as Model from "../model/model.ts";
 
 export const CacheRetention = Type.Union([Type.Literal("none"), Type.Literal("short"), Type.Literal("long")]);
 export type CacheRetention = Static<typeof CacheRetention>;

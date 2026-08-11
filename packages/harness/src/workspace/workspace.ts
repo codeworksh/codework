@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { v7 as uuidv7 } from "uuid";
-import { withStatics } from "../schema";
+import { withStatics } from "../schema.ts";
 
 export const ID = Schema.String.check(Schema.isStartsWith("wrk")).pipe(
 	Schema.brand("Workspace.ID"),
@@ -15,4 +15,4 @@ export const ID = Schema.String.check(Schema.isStartsWith("wrk")).pipe(
 );
 export type ID = typeof ID.Type;
 
-export * as Workspace from "./workspace";
+export * as Workspace from "./workspace.ts";

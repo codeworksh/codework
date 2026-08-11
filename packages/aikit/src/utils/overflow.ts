@@ -1,4 +1,4 @@
-import type { Message } from "../message/message";
+import type * as Message from "../message/message.ts";
 
 /**
  * Regex patterns to detect context overflow errors from different providers.

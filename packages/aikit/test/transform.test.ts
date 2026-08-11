@@ -1,15 +1,15 @@
 import type { FinishReason, LanguageModelUsage } from "ai";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import { convertMessages, convertTools, mapFinishReason, mapUsage } from "../src/llm/transform";
-import { Message } from "../src/message/message";
+import { convertMessages, convertTools, mapFinishReason, mapUsage } from "../src/llm/transform.ts";
+import * as Message from "../src/message/message.ts";
 import {
 	makeAssistantMessage,
 	makeCompletedToolCall,
 	makeModel,
 	makePendingToolCall,
 	makeUserMessage,
-} from "./utils/fixtures";
+} from "./utils/fixtures.ts";
 
 describe("mapFinishReason", () => {
 	const cases: Array<[FinishReason | undefined, Message.StopReason]> = [

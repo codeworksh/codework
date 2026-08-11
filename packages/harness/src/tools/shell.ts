@@ -1,6 +1,6 @@
 import { Context, Duration, Effect, Layer, Option, Schema, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { Shell } from "../sandbox/shell/shell";
+import { Shell } from "../sandbox/shell/shell.ts";
 
 /**
  * `ToolShell` — the tool-owned, cancellable command-execution capability the bash tool depends on.

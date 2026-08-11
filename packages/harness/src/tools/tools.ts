@@ -9,10 +9,10 @@
  * `ToolProgress` (progress side-channel).
  */
 
-export * as Executor from "./executor";
-export * as Registry from "./registry";
-export * as Tool from "./tool";
-export * as Truncate from "./truncate";
+export * as Executor from "./executor.ts";
+export * as Registry from "./registry.ts";
+export * as Tool from "./tool.ts";
+export * as Truncate from "./truncate.ts";
 
 export {
 	fromSandboxShell,
@@ -24,7 +24,7 @@ export {
 	type LocalConfig,
 	type ToolShellExecOptions,
 	type ToolShellResult,
-} from "./shell";
+} from "./shell.ts";
 
 export {
 	make as makeToolProgress,
@@ -32,6 +32,6 @@ export {
 	noop as toolProgressNoop,
 	type IToolProgress,
 	type ToolProgressPartial,
-} from "./progress";
+} from "./progress.ts";
 
-export { bashDef, bashTool } from "./bash";
+export { bashDef, bashTool } from "./bash.ts";

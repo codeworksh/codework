@@ -4,19 +4,21 @@ import {
 	OpenAICodexOAuthClient,
 	type OpenAICodexOAuthCredentials,
 	openAICodexHeaders,
-} from "../oauth/openai/codex";
+} from "../oauth/openai/codex.ts";
 
+// `?: T | undefined` rather than plain `?: T`: yargs hands these through as explicit `undefined`,
+// which a bare optional property no longer accepts under `exactOptionalPropertyTypes`.
 type AuthArgs = {
-	openaiCodex?: boolean;
-	authFile?: string;
-	browser?: boolean;
-	manual?: boolean;
-	status?: boolean;
-	refresh?: boolean;
-	logout?: boolean;
-	json?: boolean;
-	printHeaders?: boolean;
-	originator?: string;
+	openaiCodex?: boolean | undefined;
+	authFile?: string | undefined;
+	browser?: boolean | undefined;
+	manual?: boolean | undefined;
+	status?: boolean | undefined;
+	refresh?: boolean | undefined;
+	logout?: boolean | undefined;
+	json?: boolean | undefined;
+	printHeaders?: boolean | undefined;
+	originator?: string | undefined;
 };
 
 async function promptLine(message: string): Promise<string> {
@@ -51,7 +53,7 @@ async function openBrowser(url: string): Promise<void> {
 
 function printCredentials(
 	credentials: OpenAICodexOAuthCredentials,
-	options: { json?: boolean; printHeaders?: boolean },
+	options: { json?: boolean | undefined; printHeaders?: boolean | undefined },
 ) {
 	if (options.json) {
 		console.log(
@@ -80,7 +82,9 @@ function printCredentials(
 }
 
 async function runOpenAICodexAuth(args: AuthArgs): Promise<void> {
-	const storage = new JsonOpenAICodexAuthStorage({ path: args.authFile });
+	const storage = new JsonOpenAICodexAuthStorage({
+		...(args.authFile !== undefined && { path: args.authFile }),
+	});
 	const client = new OpenAICodexOAuthClient({ storage });
 
 	if (args.logout) {
@@ -113,7 +117,11 @@ async function runOpenAICodexAuth(args: AuthArgs): Promise<void> {
 	}
 
 	const credentials = await client.login({
-		originator: args.originator,
+		...(args.originator !== undefined && { originator: args.originator }),
+		...(args.manual && {
+			onManualCodeInput: async () =>
+				promptLine("Paste the redirect URL or authorization code, or wait for browser callback:"),
+		}),
 		onAuth: (info) => {
 			console.log(info.instructions ?? "Complete OpenAI Codex authentication in your browser.");
 			console.log(info.url);
@@ -124,9 +132,6 @@ async function runOpenAICodexAuth(args: AuthArgs): Promise<void> {
 			}
 		},
 		onPrompt: async (prompt) => promptLine(prompt.message),
-		onManualCodeInput: args.manual
-			? async () => promptLine("Paste the redirect URL or authorization code, or wait for browser callback:")
-			: undefined,
 	});
 
 	console.log(`Saved OpenAI Codex credentials to ${storage.path}`);

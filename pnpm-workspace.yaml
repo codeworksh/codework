@@ -1,6 +1,17 @@
 packages:
    - packages/*
 
+# The TypeScript toolchain is a matched set: `typescript` is the TS 6 compiler that `vp pack`
+# uses through its classic API, `@typescript/native` is the TS 7 build that effect-tsgo patches
+# for the Effect language service, and effect-tsgo only ships patch artifacts for specific
+# TypeScript versions. Bump them together.
+catalog:
+   "@effect/tsgo": ^0.36.4
+   "@types/node": ^26.1.2
+   "@typescript/native": npm:typescript@7.0.2
+   typescript: ^6.0.3
+   vite-plus: 0.2.8
+
 allowBuilds:
    "@mongodb-js/zstd": true
    esbuild: true
@@ -23,11 +34,11 @@ storeDir: .pnpm-store
 minimumReleaseAgeExclude:
    - "@vercel/rust@1.4.0"
    - vercel@54.18.7
-   - "@effect/tsgo-darwin-arm64@0.31.0"
-   - "@effect/tsgo-darwin-x64@0.31.0"
-   - "@effect/tsgo-linux-arm64@0.31.0"
-   - "@effect/tsgo-linux-arm@0.31.0"
-   - "@effect/tsgo-linux-x64@0.31.0"
-   - "@effect/tsgo-win32-arm64@0.31.0"
-   - "@effect/tsgo-win32-x64@0.31.0"
-   - "@effect/tsgo@0.31.0"
+   - "@effect/tsgo-darwin-arm64@0.36.4"
+   - "@effect/tsgo-darwin-x64@0.36.4"
+   - "@effect/tsgo-linux-arm64@0.36.4"
+   - "@effect/tsgo-linux-arm@0.36.4"
+   - "@effect/tsgo-linux-x64@0.36.4"
+   - "@effect/tsgo-win32-arm64@0.36.4"
+   - "@effect/tsgo-win32-x64@0.36.4"
+   - "@effect/tsgo@0.36.4"

@@ -1,4 +1,4 @@
-export { createOpenAICodexAPICallError, openAICodexErrorMessage } from "./codex-error";
+export { createOpenAICodexAPICallError, openAICodexErrorMessage } from "./codex-error.ts";
 export {
 	OPENAI_CODEX_DEFAULT_BASE_URL,
 	OpenAICodexLanguageModel,
@@ -7,20 +7,20 @@ export {
 	type OpenAICodexLanguageModelOptions,
 	type OpenAICodexModelId,
 	type OpenAICodexServiceTier,
-} from "./codex-language-model";
+} from "./codex-language-model.ts";
 export {
 	convertToOpenAICodexPrompt,
 	joinToolCallId,
 	splitToolCallId,
 	type OpenAICodexInputItem,
 	type OpenAICodexPrompt,
-} from "./codex-prompt";
+} from "./codex-prompt.ts";
 export {
 	createOpenAICodex,
 	openaiCodex,
 	OPENAI_CODEX_API_KEY_ENV,
 	type OpenAICodexProvider,
 	type OpenAICodexProviderSettings,
-} from "./codex-provider";
-export { prepareOpenAICodexTools, type OpenAICodexTool, type OpenAICodexToolChoice } from "./codex-tools";
-export { convertOpenAICodexUsage, mapOpenAICodexFinishReason, type OpenAICodexUsage } from "./codex-usage";
+} from "./codex-provider.ts";
+export { prepareOpenAICodexTools, type OpenAICodexTool, type OpenAICodexToolChoice } from "./codex-tools.ts";
+export { convertOpenAICodexUsage, mapOpenAICodexFinishReason, type OpenAICodexUsage } from "./codex-usage.ts";

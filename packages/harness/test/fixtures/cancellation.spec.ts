@@ -1,7 +1,7 @@
 import { Effect, Fiber } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../../src/sandbox/fs/filesystem";
-import { Shell } from "../../src/sandbox/shell/shell";
+import { SandboxFileSystem } from "../../src/sandbox/fs/filesystem.ts";
+import { Shell } from "../../src/sandbox/shell/shell.ts";
 
 /**
  * The contract: **when the parent fiber is interrupted, the command underneath

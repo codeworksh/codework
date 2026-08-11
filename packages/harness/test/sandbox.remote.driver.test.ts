@@ -1,15 +1,15 @@
 import { Effect, Layer, ManagedRuntime, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect, it } from "vite-plus/test";
-import { Database } from "../src/db/db";
-import { SandboxController } from "../src/sandbox/control";
-import { SandboxDriver } from "../src/sandbox/driver";
-import { DaytonaSandboxDriver } from "../src/sandbox/drivers/daytona";
-import { VercelSandboxDriver } from "../src/sandbox/drivers/vercel";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { SandboxIO } from "../src/sandbox/io";
-import { hasLiveOidc } from "./fixtures/vercel";
-import "./utils/env";
+import { Database } from "../src/db/db.ts";
+import { SandboxController } from "../src/sandbox/control.ts";
+import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { DaytonaSandboxDriver } from "../src/sandbox/drivers/daytona.ts";
+import { VercelSandboxDriver } from "../src/sandbox/drivers/vercel.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { hasLiveOidc } from "./fixtures/vercel.ts";
+import "./utils/env.ts";
 
 const apiKey = process.env.DAYTONA_API_KEY;
 const oidcToken = process.env.VERCEL_OIDC_TOKEN;

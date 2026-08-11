@@ -2,10 +2,10 @@ import { Effect, type Layer } from "effect";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
-import { Sandbox } from "../src/sandbox/sandbox";
-import type { Shell } from "../src/sandbox/shell/shell";
-import { cancellationSpec } from "./fixtures/cancellation.spec";
+import type { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import type { Shell } from "../src/sandbox/shell/shell.ts";
+import { cancellationSpec } from "./fixtures/cancellation.spec.ts";
 
 /**
  * One contract, every local backend: interrupting the fiber must terminate the

@@ -1,13 +1,13 @@
 import { Effect, Exit, Layer, Option } from "effect";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db";
-import { SandboxController } from "../src/sandbox/control";
-import { SandboxDriver } from "../src/sandbox/driver";
-import { MemorySandboxDriver } from "../src/sandbox/drivers/memory";
-import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { SandboxIO } from "../src/sandbox/io";
-import { testEffect } from "./utils/effect";
+import { Database } from "../src/db/db.ts";
+import { SandboxController } from "../src/sandbox/control.ts";
+import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
+import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { testEffect } from "./utils/effect.ts";
 
 const processLocalLifecycle = <CreateConfig, RuntimeConfig extends SandboxDriver.RuntimeConfigBase>(
 	name: string,

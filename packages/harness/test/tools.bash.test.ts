@@ -1,19 +1,19 @@
 import { Effect, Exit, Layer, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { type ExecChunk, fromExec, Shell as SandboxShell } from "../src/sandbox/shell/shell";
-import { bashTool } from "../src/tools/bash";
-import * as Executor from "../src/tools/executor";
-import { make as makeProgress, noop as progressNoop } from "../src/tools/progress";
-import * as Tool from "../src/tools/tool";
-import { pendingCall } from "./tools.fixture";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { type ExecChunk, fromExec, Shell as SandboxShell } from "../src/sandbox/shell/shell.ts";
+import { bashTool } from "../src/tools/bash.ts";
+import * as Executor from "../src/tools/executor.ts";
+import { make as makeProgress, noop as progressNoop } from "../src/tools/progress.ts";
+import * as Tool from "../src/tools/tool.ts";
+import { pendingCall } from "./tools.fixture.ts";
 import {
 	fromSandboxShell,
 	type IToolShell,
 	ToolShell,
 	type ToolShellEvent,
 	ToolShellTimeout,
-} from "../src/tools/shell";
+} from "../src/tools/shell.ts";
 
 // ToolShell backed by the in-process just-bash sandbox — the bootstrap backend
 // (buffered exec, no `stream` → the tool takes variant A).

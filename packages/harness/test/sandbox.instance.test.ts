@@ -1,10 +1,10 @@
 import { Effect, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { SandboxStore } from "../src/sandbox/store";
-import { testEffect } from "./utils/effect";
+import { Database } from "../src/db/db.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { SandboxStore } from "../src/sandbox/store.ts";
+import { testEffect } from "./utils/effect.ts";
 
 // A plain database, exactly as Project and Session compose it. Nothing is
 // seeded: the host is never a row, so there is nothing to ensure or repair.

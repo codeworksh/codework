@@ -1,7 +1,7 @@
 import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 import { describe, expect } from "vite-plus/test";
-import { RunCoordinator } from "../src/runner/coordinator";
-import { it } from "./utils/effect";
+import { RunCoordinator } from "../src/runner/coordinator.ts";
+import { it } from "./utils/effect.ts";
 
 /**
  * The coordinator drives itself: `runner.loop.test.ts` proves a drain does its

@@ -1,15 +1,15 @@
-export { Event } from "./event/event";
-export { llm } from "./llm";
-export { Protocol } from "./llm/protocol";
-export { ThinkingBudgets } from "./llm/shared";
-export { Message } from "./message/message";
-export { Model } from "./model/model";
-export { stream } from "./stream";
-export { createAssistantMessageEventStream, EventStream } from "./utils/eventstream";
-export { validateSchema, validateToolArguments, validateToolCall } from "./utils/validation";
+export * as Event from "./event/event.ts";
+export { llm } from "./llm.ts";
+export * as Protocol from "./llm/protocol.ts";
+export { ThinkingBudgets } from "./llm/shared.ts";
+export * as Message from "./message/message.ts";
+export * as Model from "./model/model.ts";
+export { stream } from "./stream.ts";
+export { createAssistantMessageEventStream, EventStream } from "./utils/eventstream.ts";
+export { validateSchema, validateToolArguments, validateToolCall } from "./utils/validation.ts";
 
-export { createOpenAICodex, openaiCodex } from "./providers/openai-codex";
-export type { OpenAICodexProvider, OpenAICodexProviderSettings } from "./providers/openai-codex";
+export { createOpenAICodex, openaiCodex } from "./providers/openai-codex/index.ts";
+export type { OpenAICodexProvider, OpenAICodexProviderSettings } from "./providers/openai-codex/index.ts";
 
 export type {
 	AnthropicOptions,
@@ -21,8 +21,8 @@ export type {
 	OpenAIOptions,
 	OpenRouterOptions,
 	XaiOptions,
-} from "./llm/options";
-export type { AssistantMessageEventStream } from "./utils/eventstream";
+} from "./llm/options.ts";
+export type { AssistantMessageEventStream } from "./utils/eventstream.ts";
 
 // re-export typebox
 export { Type } from "typebox";

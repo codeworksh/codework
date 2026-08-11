@@ -23,7 +23,7 @@ export default defineConfig({
 		alias: aliases,
 	},
 	pack: {
-		entry: ["src/index.ts", "src/harness/codemode/drivers/drivers.ts"],
+		entry: ["src/index.ts"],
 		format: ["esm"],
 		outDir: "dist/pack",
 		deps: {

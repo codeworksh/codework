@@ -1,9 +1,9 @@
 import { Daytona, DaytonaNotFoundError, type Sandbox as RemoteSandbox, type Resources } from "@daytona/sdk";
 import { Effect, Layer, Option, Schema } from "effect";
-import { SandboxDriver } from "../driver";
-import { makeRedactor, providerError, type SandboxProviderError } from "../errors";
-import { SandboxInstance } from "../instance";
-import { EnvDaytona } from "../providers/daytona";
+import { SandboxDriver } from "../driver.ts";
+import { makeRedactor, providerError, type SandboxProviderError } from "../errors.ts";
+import { SandboxInstance } from "../instance.ts";
+import { EnvDaytona } from "../providers/daytona.ts";
 
 export interface ClientOptions {
 	readonly apiKey?: string | undefined;
@@ -233,4 +233,4 @@ export const make = (
 	});
 };
 
-export * as DaytonaSandboxDriver from "./daytona";
+export * as DaytonaSandboxDriver from "./daytona.ts";

@@ -11,7 +11,7 @@ import {
 	parseOpenAICodexAuthorizationInput,
 	type OpenAICodexAuthStorage,
 	type OpenAICodexOAuthCredentials,
-} from "../src/oauth/openai/codex";
+} from "../src/oauth/openai/codex.ts";
 
 function makeJwt(payload: Record<string, unknown>): string {
 	const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value)).toString("base64url");

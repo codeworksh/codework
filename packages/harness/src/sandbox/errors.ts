@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { SandboxInstance } from "./instance";
+import { SandboxInstance } from "./instance.ts";
 
 /**
  * Lifecycle errors are confined to the control plane. Once a mount succeeds,
@@ -201,4 +201,4 @@ export type SandboxStopError = SandboxWakeError | SandboxBusyError | SandboxTran
 
 export type SandboxDestroyError = SandboxStopError | SandboxMustBeStoppedError;
 
-export * as SandboxError from "./errors";
+export * as SandboxError from "./errors.ts";

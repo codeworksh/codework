@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { FSUtil, FileSystemError } from "../src/fsutil/fsutil";
-import { tmpdir } from "./fixtures/tempdir";
+import { FSUtil, FileSystemError } from "../src/fsutil/fsutil.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
 
 // Host-side helpers over @effect/platform, for the machine the harness runs on
 // — distinct from the sandbox runtime filesystem, which everything touching a

@@ -1,11 +1,11 @@
 import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
-import { SandboxFileSystem } from "./fs/filesystem";
-import { Local } from "./fs/vfs";
-import { EnvBash } from "./shell/justbash";
-import { Shell } from "./shell/shell";
-import { Process } from "./utils/process";
+import { SandboxFileSystem } from "./fs/filesystem.ts";
+import { Local } from "./fs/vfs.ts";
+import { EnvBash } from "./shell/justbash.ts";
+import { Shell } from "./shell/shell.ts";
+import { Process } from "./utils/process.ts";
 
 type Primitives = Local.Vfs | ChildProcessSpawner.ChildProcessSpawner;
 

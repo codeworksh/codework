@@ -1,7 +1,7 @@
 import { Message } from "@codeworksh/aikit";
 import { Cause, Duration, Effect, Exit, Option, Queue, Ref, Result, Schedule, Schema, Scope } from "effect";
-import { ToolProgress, type ToolProgressPartial } from "./progress";
-import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, type ToolCallContext } from "./tool";
+import { ToolProgress, type ToolProgressPartial } from "./progress.ts";
+import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, type ToolCallContext } from "./tool.ts";
 
 /**
  * `ToolExecutor` — the uniform pipeline run for every tool call:

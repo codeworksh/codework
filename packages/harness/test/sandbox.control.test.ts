@@ -1,10 +1,10 @@
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db";
-import { SandboxController } from "../src/sandbox/control";
-import { SandboxDriver } from "../src/sandbox/driver";
-import { FakeSandboxDriver } from "../src/sandbox/drivers/fake";
+import { Database } from "../src/db/db.ts";
+import { SandboxController } from "../src/sandbox/control.ts";
+import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
 import {
 	SandboxBusyError,
 	SandboxDriverNotRegisteredError,
@@ -13,11 +13,11 @@ import {
 	SandboxRemovedError,
 	SandboxUnavailError,
 	SandboxUnsupportedError,
-} from "../src/sandbox/errors";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { SandboxIO } from "../src/sandbox/io";
-import { SandboxStore } from "../src/sandbox/store";
-import { testEffect } from "./utils/effect";
+} from "../src/sandbox/errors.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { SandboxStore } from "../src/sandbox/store.ts";
+import { testEffect } from "./utils/effect.ts";
 
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("control-fake"));
 const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(fake.driver));

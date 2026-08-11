@@ -6,7 +6,7 @@ import type { Static, TSchema } from "typebox";
 import Schema from "typebox/schema";
 import Value from "typebox/value";
 
-import type { Message } from "../message/message";
+import type * as Message from "../message/message.ts";
 
 const validators = new WeakMap<TSchema, ReturnType<typeof Schema.Compile>>();
 

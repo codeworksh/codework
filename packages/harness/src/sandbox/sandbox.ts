@@ -1,34 +1,34 @@
 import { Effect, Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { posix as path } from "node:path";
-import { Database } from "../db/db";
-import { SandboxController } from "./control";
-import { SandboxDriver } from "./driver";
-import { MemorySandboxDriver } from "./drivers/memory";
-import { SqldbSandboxDriver } from "./drivers/sqldb";
-import { EnvNodeJSDefault } from "./fs/nodejs";
-import { Local } from "./fs/vfs";
-import { HostExe } from "./shell/host";
-import { SandboxInstance } from "./instance";
-import { SandboxIO } from "./io";
+import { Database } from "../db/db.ts";
+import { SandboxController } from "./control.ts";
+import { SandboxDriver } from "./driver.ts";
+import { MemorySandboxDriver } from "./drivers/memory.ts";
+import { SqldbSandboxDriver } from "./drivers/sqldb.ts";
+import { EnvNodeJSDefault } from "./fs/nodejs.ts";
+import { Local } from "./fs/vfs.ts";
+import { HostExe } from "./shell/host.ts";
+import { SandboxInstance } from "./instance.ts";
+import { SandboxIO } from "./io.ts";
 
 // re-export from sandbox
-export { SandboxController } from "./control";
-export { SandboxDriver } from "./driver";
-export { DaytonaSandboxDriver } from "./drivers/daytona";
-export { MemorySandboxDriver } from "./drivers/memory";
-export { SqldbSandboxDriver } from "./drivers/sqldb";
-export { VercelSandboxDriver } from "./drivers/vercel";
-export { SandboxError } from "./errors";
-export { EnvInMemory } from "./fs/inmemory";
-export { EnvNodeJSDefault } from "./fs/nodejs";
-export { EnvSqldb } from "./fs/sqldb";
-export { HostExe } from "./shell/host";
-export { SandboxInstance } from "./instance";
-export { SandboxIO } from "./io";
-export { EnvBash } from "./shell/justbash";
-export { SandboxResource } from "./resource";
-export { Process } from "./utils/process";
+export { SandboxController } from "./control.ts";
+export { SandboxDriver } from "./driver.ts";
+export { DaytonaSandboxDriver } from "./drivers/daytona.ts";
+export { MemorySandboxDriver } from "./drivers/memory.ts";
+export { SqldbSandboxDriver } from "./drivers/sqldb.ts";
+export { VercelSandboxDriver } from "./drivers/vercel.ts";
+export { SandboxError } from "./errors.ts";
+export { EnvInMemory } from "./fs/inmemory.ts";
+export { EnvNodeJSDefault } from "./fs/nodejs.ts";
+export { EnvSqldb } from "./fs/sqldb.ts";
+export { HostExe } from "./shell/host.ts";
+export { SandboxInstance } from "./instance.ts";
+export { SandboxIO } from "./io.ts";
+export { EnvBash } from "./shell/justbash.ts";
+export { SandboxResource } from "./resource.ts";
+export { Process } from "./utils/process.ts";
 
 /**
  * What every sandbox provides, wherever it runs: a filesystem, a way to execute
@@ -142,4 +142,4 @@ export const sqldb = (options?: {
 	).pipe(Layer.provide(controllerLayer(sqldb.driver)), Layer.orDie);
 };
 
-export * as Sandbox from "./sandbox";
+export * as Sandbox from "./sandbox.ts";

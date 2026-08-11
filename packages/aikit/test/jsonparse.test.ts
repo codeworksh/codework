@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { parseStreamingJson } from "../src/utils/jsonparse";
+import { parseStreamingJson } from "../src/utils/jsonparse.ts";
 
 describe("parseStreamingJson", () => {
 	describe("empty input", () => {

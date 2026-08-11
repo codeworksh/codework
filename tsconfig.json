@@ -1,28 +1,34 @@
 {
 	"compilerOptions": {
-		"lib": ["ESNext"],
-		"target": "ESNext",
-		"module": "Preserve",
-		"moduleResolution": "bundler",
+		"lib": ["ES2023"],
+		"target": "ES2022",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
 		"moduleDetection": "force",
 		"resolveJsonModule": true,
 		"isolatedModules": true,
 		"esModuleInterop": true,
-		"noUnusedLocals": true,
+		"verbatimModuleSyntax": true,
+		"erasableSyntaxOnly": true,
+		"allowImportingTsExtensions": true,
+		"rewriteRelativeImportExtensions": true,
 		"paths": {
 			"@codeworksh/aikit": ["./packages/aikit/src/index"],
-			"@codeworksh/harness/codemode/drivers": ["./packages/harness/src/harness/codemode/drivers/drivers"],
 			"@codeworksh/harness": ["./packages/harness/src/index"],
 			"@codeworksh/utils": ["./packages/utils/src/index"]
 		},
 		"types": ["node"],
-		"verbatimModuleSyntax": true,
-		"noEmit": true,
 		"strict": true,
-		"skipLibCheck": true,
+		"exactOptionalPropertyTypes": true,
+		"noUnusedLocals": true,
+		"noImplicitOverride": true,
 		"noFallthroughCasesInSwitch": true,
 		"noUncheckedIndexedAccess": true,
-		"noImplicitOverride": true
+		"sourceMap": true,
+		"skipLibCheck": true,
+		"incremental": true,
+		"noEmit": true,
+		"tsBuildInfoFile": "./.cache/typescript/root.tsbuildinfo"
 	},
 	"include": ["vite.config.ts"]
 }

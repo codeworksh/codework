@@ -10,13 +10,13 @@ import {
 import { Context, Effect, Layer, Schema } from "effect";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
-import { sanitizeError } from "../errors";
-import { SandboxFileSystem } from "../fs/filesystem";
-import { RemoteFileSystem } from "../fs/remote";
-import { SandboxInstance } from "../instance";
-import { SandboxIO } from "../io";
-import { SandboxResource } from "../resource";
-import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../shell/shell";
+import { sanitizeError } from "../errors.ts";
+import { SandboxFileSystem } from "../fs/filesystem.ts";
+import { RemoteFileSystem } from "../fs/remote.ts";
+import { SandboxInstance } from "../instance.ts";
+import { SandboxIO } from "../io.ts";
+import { SandboxResource } from "../resource.ts";
+import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../shell/shell.ts";
 
 /** Fallback when Daytona cannot report a snapshot/image-specific work directory. */
 export const DEFAULT_CWD = "/home/daytona";
@@ -321,4 +321,4 @@ export const layer = (options: Options = {}): Layer.Layer<SandboxIO.Provides | S
 
 export const services = layer;
 
-export * as EnvDaytona from "./daytona";
+export * as EnvDaytona from "./daytona.ts";

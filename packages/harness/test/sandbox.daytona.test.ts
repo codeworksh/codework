@@ -1,16 +1,16 @@
 import { Daytona } from "@daytona/sdk";
 import { Effect, ManagedRuntime } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { SandboxIO } from "../src/sandbox/io";
-import { EnvDaytona } from "../src/sandbox/providers/daytona";
-import { SandboxResource } from "../src/sandbox/resource";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { Shell } from "../src/sandbox/shell/shell";
-import { cancellationSpec } from "./fixtures/cancellation.spec";
-import { remoteSandboxSpec } from "./fixtures/remote.spec";
-import { labels, makeRemoteOwner } from "./fixtures/remote-owner";
-import "./utils/env";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { EnvDaytona } from "../src/sandbox/providers/daytona.ts";
+import { SandboxResource } from "../src/sandbox/resource.ts";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { Shell } from "../src/sandbox/shell/shell.ts";
+import { cancellationSpec } from "./fixtures/cancellation.spec.ts";
+import { remoteSandboxSpec } from "./fixtures/remote.spec.ts";
+import { labels, makeRemoteOwner } from "./fixtures/remote-owner.ts";
+import "./utils/env.ts";
 
 const apiKey = process.env.DAYTONA_API_KEY;
 const githubPat = process.env.GITHUB_PAT;

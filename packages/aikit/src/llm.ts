@@ -1,4 +1,4 @@
-import { Model } from "./model/model";
+import * as Model from "./model/model.ts";
 
 type LLM = {
 	<TProvider extends string, TProtocol extends Model.KnownProviderEnum = Model.ProviderToProtocol<TProvider>>(

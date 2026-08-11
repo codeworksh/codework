@@ -5,20 +5,20 @@
 
 import { Cause, Context, Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { Git } from "../git/git";
-import { Location } from "../location/location";
-import { ProjectCopy } from "../project/copy";
-import { Project } from "../project/project";
-import { SandboxController } from "../sandbox/control";
-import { SandboxInstance } from "../sandbox/instance";
-import { SandboxIO } from "../sandbox/io";
-import { RunCoordinator } from "./coordinator";
-import { RunnerExecution } from "./execution";
-import { Runner } from "./run";
+import { Git } from "../git/git.ts";
+import { Location } from "../location/location.ts";
+import { ProjectCopy } from "../project/copy.ts";
+import { Project } from "../project/project.ts";
+import { SandboxController } from "../sandbox/control.ts";
+import { SandboxInstance } from "../sandbox/instance.ts";
+import { SandboxIO } from "../sandbox/io.ts";
+import { RunCoordinator } from "./coordinator.ts";
+import { RunnerExecution } from "./execution.ts";
+import { Runner } from "./run.ts";
 
 // session
-import type { ID as SessionId } from "../session/schema";
-import { Session } from "../session/session";
+import type { ID as SessionId } from "../session/schema.ts";
+import { Session } from "../session/session.ts";
 
 export const layer = Layer.effect(
 	RunnerExecution.Service,
@@ -92,4 +92,4 @@ export const layer = Layer.effect(
 	}),
 );
 
-export * as RunnerExecute from "./execute";
+export * as RunnerExecute from "./execute.ts";

@@ -1,15 +1,4 @@
-import { Loop } from "./harness/loop";
-
-export { Agent } from "./harness/agent";
-export { CodeMode } from "./harness/codemode";
-export * from "./harness/codemode/drivers/drivers";
-
-type HarnessFacade = {
-	loop: typeof Loop.run;
-	loopContinue: typeof Loop.runContinue;
-};
-
-export const harness = {
-	loop: Loop.run,
-	loopContinue: Loop.runContinue,
-} as HarnessFacade;
+// The pre-Effect harness loop (Agent, CodeMode, the codemode drivers, and the `harness` facade)
+// lived here and has been removed. The Effect-native replacement is not exported yet, so this
+// package currently has no public surface.
+export {};

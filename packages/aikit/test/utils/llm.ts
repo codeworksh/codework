@@ -2,14 +2,14 @@
  * Shared helpers for the live-provider (*.e2e.test.ts) suites: API-key gates,
  * registry model getters, provider options, and message text extraction.
  */
-import "./env";
+import "./env.ts";
 
 import { describe } from "vite-plus/test";
-import { llm } from "../../src/llm";
-import type { AnthropicOptions, OpenAICodexOptions, OpenAIOptions, OpenRouterOptions } from "../../src/llm/options";
-import type { Protocol } from "../../src/llm/protocol";
-import type { Message } from "../../src/message/message";
-import { Model } from "../../src/model/model";
+import { llm } from "../../src/llm.ts";
+import type { AnthropicOptions, OpenAICodexOptions, OpenAIOptions, OpenRouterOptions } from "../../src/llm/options.ts";
+import type * as Protocol from "../../src/llm/protocol.ts";
+import type * as Message from "../../src/message/message.ts";
+import * as Model from "../../src/model/model.ts";
 
 /** A model whose protocol has registered stream support (accepted by stream/complete). */
 export type StreamableModel = Model.TModel<Protocol.ProtocolWithOptions>;

@@ -2,8 +2,8 @@ import { describe, expect, it as test } from "vite-plus/test";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Effect, Layer } from "effect";
-import { Service, Path, defaultLayer, layerWith } from "../src/global";
-import { testEffect } from "./utils/effect";
+import { Service, Path, defaultLayer, layerWith } from "../src/global.ts";
+import { testEffect } from "./utils/effect.ts";
 
 const it = testEffect(Layer.empty);
 

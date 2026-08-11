@@ -9,11 +9,11 @@ import type {
 	LanguageModelV3Usage,
 	SharedV3Warning,
 } from "@ai-sdk/provider";
-import { createOpenAICodexAPICallError } from "./codex-error";
-import { convertToOpenAICodexPrompt, joinToolCallId } from "./codex-prompt";
-import { parseOpenAICodexSSEStream } from "./codex-sse";
-import { prepareOpenAICodexTools } from "./codex-tools";
-import { convertOpenAICodexUsage, mapOpenAICodexFinishReason, type OpenAICodexUsage } from "./codex-usage";
+import { createOpenAICodexAPICallError } from "./codex-error.ts";
+import { convertToOpenAICodexPrompt, joinToolCallId } from "./codex-prompt.ts";
+import { parseOpenAICodexSSEStream } from "./codex-sse.ts";
+import { prepareOpenAICodexTools } from "./codex-tools.ts";
+import { convertOpenAICodexUsage, mapOpenAICodexFinishReason, type OpenAICodexUsage } from "./codex-usage.ts";
 
 export const OPENAI_CODEX_DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
 
@@ -219,8 +219,12 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			),
 			finishReason,
 			usage,
-			request,
-			response: { ...response, id: responseId, modelId: responseModelId },
+			...(request !== undefined && { request }),
+			response: {
+				...response,
+				...(responseId !== undefined && { id: responseId }),
+				...(responseModelId !== undefined && { modelId: responseModelId }),
+			},
 			warnings,
 		};
 	}
@@ -240,7 +244,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			method: "POST",
 			headers,
 			body: JSON.stringify(body),
-			signal: options.abortSignal,
+			...(options.abortSignal !== undefined && { signal: options.abortSignal }),
 		});
 
 		if (!response.ok) {
@@ -341,10 +345,12 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 				switch (type) {
 					case "response.created": {
 						const response = asRecord(event.response);
+						const id = asString(response?.id);
+						const modelId = asString(response?.model);
 						controller.enqueue({
 							type: "response-metadata",
-							id: asString(response?.id),
-							modelId: asString(response?.model),
+							...(id !== undefined && { id }),
+							...(modelId !== undefined && { modelId }),
 						});
 						break;
 					}

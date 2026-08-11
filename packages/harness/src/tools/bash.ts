@@ -3,11 +3,11 @@ import { randomBytes } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Accumulator, type OutputSnapshot } from "./accumulator";
-import { ToolProgress } from "./progress";
-import { type IToolShell, ToolShell } from "./shell";
-import * as Tool from "./tool";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateTail, type TruncationResult } from "./truncate";
+import { Accumulator, type OutputSnapshot } from "./accumulator.ts";
+import { ToolProgress } from "./progress.ts";
+import { type IToolShell, ToolShell } from "./shell.ts";
+import * as Tool from "./tool.ts";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateTail, type TruncationResult } from "./truncate.ts";
 
 /**
  * The bash tool — the worked example of the design. The definition is pure data;

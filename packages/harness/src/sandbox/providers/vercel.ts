@@ -2,12 +2,12 @@ import { type Command, Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
 import type { Stats } from "node:fs";
-import { sanitizeError } from "../errors";
-import { SandboxFileSystem } from "../fs/filesystem";
-import { RemoteFileSystem } from "../fs/remote";
-import { SandboxInstance } from "../instance";
-import { SandboxIO } from "../io";
-import { SandboxResource } from "../resource";
+import { sanitizeError } from "../errors.ts";
+import { SandboxFileSystem } from "../fs/filesystem.ts";
+import { RemoteFileSystem } from "../fs/remote.ts";
+import { SandboxInstance } from "../instance.ts";
+import { SandboxIO } from "../io.ts";
+import { SandboxResource } from "../resource.ts";
 import {
 	type ExecChunk,
 	type ExecResult,
@@ -16,7 +16,7 @@ import {
 	resolveCwd,
 	Shell,
 	ShellError,
-} from "../shell/shell";
+} from "../shell/shell.ts";
 
 const utf8 = new TextEncoder();
 
@@ -399,4 +399,4 @@ export const layer = (
 
 export const services = layer;
 
-export * as EnvVercel from "./vercel";
+export * as EnvVercel from "./vercel.ts";

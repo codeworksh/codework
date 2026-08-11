@@ -77,4 +77,4 @@ export const layerWith = (input: Partial<Interface>) =>
 		Effect.sync(() => Service.of(make(input))),
 	);
 
-export * as Global from "./global";
+export * as Global from "./global.ts";

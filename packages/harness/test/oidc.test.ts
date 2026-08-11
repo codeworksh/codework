@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vite-plus/test";
-import { hasLiveOidc } from "./fixtures/vercel";
+import { hasLiveOidc } from "./fixtures/vercel.ts";
 
 const token = (payload: unknown): string =>
 	`header.${Buffer.from(JSON.stringify(payload), "utf8").toString("base64url")}.signature`;

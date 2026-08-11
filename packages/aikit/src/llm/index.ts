@@ -1,12 +1,12 @@
-import { Model } from "../model/model";
-import { Options } from "./options";
-import { Protocol } from "./protocol";
-import { stream } from "./stream";
+import * as Model from "../model/model.ts";
+import { Options } from "./options.ts";
+import * as Protocol from "./protocol.ts";
+import { stream } from "./stream.ts";
 
-export { Options } from "./options";
-export * from "./registry";
-export { stream } from "./stream";
-export * from "./transform";
+export { Options } from "./options.ts";
+export * from "./registry.ts";
+export { stream } from "./stream.ts";
+export * from "./transform.ts";
 
 export function createAISDKProtocol(
 	protocol: Model.KnownProviderEnum,

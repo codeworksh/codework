@@ -1,6 +1,6 @@
 import { Effect, Layer, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { type ExecResult, Shell, ShellError, type ShellOptions } from "./shell";
+import { type ExecResult, Shell, ShellError, type ShellOptions } from "./shell.ts";
 
 /**
  * A {@link Shell} backed by real host processes.
@@ -80,4 +80,4 @@ export const layer = (options: Options = {}): Layer.Layer<Shell, never, ChildPro
 		}),
 	);
 
-export * as HostExe from "./host";
+export * as HostExe from "./host.ts";

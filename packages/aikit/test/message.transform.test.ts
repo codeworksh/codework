@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Message } from "../src/message/message";
+import * as Message from "../src/message/message.ts";
 import {
 	makeAssistantMessage,
 	makeCompletedToolCall,
 	makeModel,
 	makePendingToolCall,
 	makeUserMessage,
-} from "./utils/fixtures";
+} from "./utils/fixtures.ts";
 
 const sameModel = makeModel();
 const otherModel = makeModel({

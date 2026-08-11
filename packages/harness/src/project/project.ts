@@ -2,16 +2,16 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
 import { Model } from "effect/unstable/schema";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { posix as path } from "node:path";
-import { Database } from "../db/db";
-import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql";
-import { Git } from "../git/git";
-import { SandboxInstance } from "../sandbox/instance";
-import { SandboxIO } from "../sandbox/io";
-import { Sandbox } from "../sandbox/sandbox";
-import { AbsolutePath } from "../schema";
-import { Hash } from "../util/hash";
-import { ProjectCopy } from "./copy";
-import { ProjectSchema } from "./schema";
+import { Database } from "../db/db.ts";
+import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql.ts";
+import { Git } from "../git/git.ts";
+import { SandboxInstance } from "../sandbox/instance.ts";
+import { SandboxIO } from "../sandbox/io.ts";
+import { Sandbox } from "../sandbox/sandbox.ts";
+import { AbsolutePath } from "../schema.ts";
+import { Hash } from "../util/hash.ts";
+import { ProjectCopy } from "./copy.ts";
+import { ProjectSchema } from "./schema.ts";
 
 /**
  * Row identity for a registered directory. Keyed on the environment as well as
@@ -346,4 +346,4 @@ export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 
 export const defaultLayer = (path: string) => layerWith(Sandbox.defaultLayer(path));
 
-export * as Project from "./project";
+export * as Project from "./project.ts";

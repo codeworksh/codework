@@ -25,11 +25,11 @@ export abstract class NamedError extends Error {
 
 			public override readonly name = name as Name;
 
-			constructor(
-				public readonly data: StaticData<Data>,
-				options?: ErrorOptions,
-			) {
+			public readonly data: StaticData<Data>;
+
+			constructor(data: StaticData<Data>, options?: ErrorOptions) {
 				super(name, options);
+				this.data = data;
 				this.name = name;
 			}
 

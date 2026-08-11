@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import { SandboxFileSystem } from "./filesystem";
+import { SandboxFileSystem } from "./filesystem.ts";
 
 // The provider contract and FileStat live in `filesystem.ts` (the single source of truth, VFS-free).
 // A remote provider implements this Interface; `make` wraps
@@ -55,4 +55,4 @@ export const make = (provider: Interface, options?: Options): Interface => {
 
 export const withProvider = make;
 
-export * as RemoteFileSystem from "./remote";
+export * as RemoteFileSystem from "./remote.ts";

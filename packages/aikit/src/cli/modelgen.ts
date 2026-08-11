@@ -1,10 +1,11 @@
-import { Filesystem, lazy } from "@codeworksh/utils";
+import { Filesystem } from "@codeworksh/utils";
+import { lazy } from "@codeworksh/utils";
 import { resolve } from "node:path";
 import { mapValues, pickBy, pipe } from "remeda";
 import type { CommandModule } from "yargs";
-import { DEFAULT_AI_SDK_FALLBACK, isAISDKPackage, protocolForPackage } from "../llm/registry";
-import { ModelCatalog } from "../model/catalog";
-import { Model } from "../model/model";
+import { DEFAULT_AI_SDK_FALLBACK, isAISDKPackage, protocolForPackage } from "../llm/registry.ts";
+import * as ModelCatalog from "../model/catalog.ts";
+import * as Model from "../model/model.ts";
 
 const DEFAULT_PROVIDER_BASE_URLS: Partial<Record<Model.KnownProviderEnum, string>> = {
 	[Model.KnownProviderEnum.anthropic]: "https://api.anthropic.com/v1",
@@ -270,7 +271,7 @@ export function openAICodexBuiltInModels(): Record<string, Model.Info> {
 	return models;
 }
 
-export async function generateModels(args: { path?: string } = {}): Promise<string> {
+export async function generateModels(args: { path?: string | undefined } = {}): Promise<string> {
 	const path = resolve(args.path ?? ModelCatalog.path());
 	const modelsDev = await loadBuiltInFromModelsDev();
 	const customCodexModels = openAICodexBuiltInModels();
@@ -282,7 +283,7 @@ export async function generateModels(args: { path?: string } = {}): Promise<stri
 
 //
 // CLI entry
-export const ModelgenCommand: CommandModule<object, { path?: string }> = {
+export const ModelgenCommand: CommandModule<object, { path?: string | undefined }> = {
 	command: "modelgen [path]",
 	describe: "generate models.gen.json",
 	builder: (yargs) =>

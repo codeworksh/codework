@@ -1,10 +1,10 @@
 import { DateTime, Effect, Exit, Option, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
-import { Database, SqlSchema } from "../src/db/db";
-import { inputDeliveries, SessionInputRow } from "../src/db/schema.sql";
-import { SessionSchema } from "../src/session/schema";
-import { testEffect } from "./utils/effect";
+import { Database, SqlSchema } from "../src/db/db.ts";
+import { inputDeliveries, SessionInputRow } from "../src/db/schema.sql.ts";
+import { SessionSchema } from "../src/session/schema.ts";
+import { testEffect } from "./utils/effect.ts";
 
 const { effect: it } = testEffect(Database.layer(":memory:"));
 

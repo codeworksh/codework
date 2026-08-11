@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { uuidv7 } from "uuidv7";
-import { NonNegativeCost, NonNegativeInt, withStatics } from "../schema";
+import { NonNegativeCost, NonNegativeInt, withStatics } from "../schema.ts";
 
 // Session identity. Branded so a session ID is not interchangeable with an
 // entry, part, or workspace ID at the type level — service signatures take
@@ -71,4 +71,4 @@ export type Usage = typeof Usage.Type;
 // JSON.parse failures land in the same SchemaError channel as shape failures.
 export const AssistantEnvelopeUsage = Schema.fromJsonString(Schema.Struct({ usage: Usage }));
 
-export * as SessionSchema from "./schema";
+export * as SessionSchema from "./schema.ts";

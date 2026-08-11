@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { sanitizeSurrogates } from "../src/utils/sanitize";
+import { sanitizeSurrogates } from "../src/utils/sanitize.ts";
 
 describe("sanitizeSurrogates", () => {
 	it("leaves plain ASCII untouched", () => {

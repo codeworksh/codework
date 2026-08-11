@@ -2,31 +2,44 @@
 	"$schema": "https://raw.githubusercontent.com/Effect-TS/language-service/refs/heads/main/schema.json",
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
-		"composite": true,
-		"incremental": true,
-		"target": "ES2022",
-		"module": "Preserve",
-		"moduleResolution": "Bundler",
-		"moduleDetection": "force",
-		"lib": ["ES2023"],
-		"verbatimModuleSyntax": true,
-		"rewriteRelativeImportExtensions": true,
-		"strict": true,
-		"exactOptionalPropertyTypes": true,
-		"noUnusedLocals": true,
-		"noImplicitOverride": true,
-		"declaration": true,
-		"declarationMap": true,
-		"sourceMap": true,
-		"skipLibCheck": true,
-		"noEmit": true,
 		"tsBuildInfoFile": "../../.cache/typescript/harness.tsbuildinfo",
 		"plugins": [
 			{
-				"name": "@effect/language-service"
+				"name": "@effect/language-service",
+				"diagnostics": true,
+				"refactors": true,
+				"namespaceImportPackages": ["@effect/platform-node", "effect"],
+				"diagnosticSeverity": {
+					"anyUnknownInErrorContext": "error",
+					"unsafeEffectTypeAssertion": "error",
+					"instanceOfSchema": "error",
+					"deterministicKeys": "error",
+					"strictEffectProvide": "off",
+					"missingEffectServiceDependency": "error",
+					"leakingRequirements": "error",
+					"globalErrorInEffectCatch": "error",
+					"globalErrorInEffectFailure": "error",
+					"unknownInEffectCatch": "error",
+					"strictBooleanExpressions": "off",
+					"lazyEffect": "off",
+					"preferSchemaOverJson": "error",
+					"schemaSyncInEffect": "error",
+					"cryptoRandomUUID": "error",
+					"cryptoRandomUUIDInEffect": "error",
+					"nodeBuiltinImport": "error",
+					"globalDate": "error",
+					"globalDateInEffect": "error",
+					"globalConsole": "error",
+					"globalConsoleInEffect": "error",
+					"globalRandom": "error",
+					"globalRandomInEffect": "error",
+					"globalTimers": "error",
+					"globalTimersInEffect": "error",
+					"globalFetch": "error",
+					"globalFetchInEffect": "error"
+				}
 			}
 		]
 	},
-	"include": ["src"],
-	"references": [{ "path": "../aikit" }, { "path": "../utils" }]
+	"include": ["src"]
 }

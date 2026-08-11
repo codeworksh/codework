@@ -1,7 +1,7 @@
 import type { Message } from "@codeworksh/aikit";
 import { Context, Layer } from "effect";
-import * as Executor from "./executor";
-import type { AnyToolDef, RegisteredTool } from "./tool";
+import * as Executor from "./executor.ts";
+import type { AnyToolDef, RegisteredTool } from "./tool.ts";
 
 /**
  * `ToolRegistry` — the loop-facing entry point to the tool catalog

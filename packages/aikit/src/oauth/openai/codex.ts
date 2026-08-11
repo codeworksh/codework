@@ -201,6 +201,13 @@ async function generatePKCE(): Promise<{
 	return { verifier, challenge };
 }
 
+function authorizationInput(code: string | null | undefined, state: string | null | undefined) {
+	return {
+		...(code != null && { code }),
+		...(state != null && { state }),
+	};
+}
+
 export function parseOpenAICodexAuthorizationInput(input: string): {
 	code?: string;
 	state?: string;
@@ -210,25 +217,19 @@ export function parseOpenAICodexAuthorizationInput(input: string): {
 
 	try {
 		const url = new URL(value);
-		return {
-			code: url.searchParams.get("code") ?? undefined,
-			state: url.searchParams.get("state") ?? undefined,
-		};
+		return authorizationInput(url.searchParams.get("code"), url.searchParams.get("state"));
 	} catch {
 		// Not a URL.
 	}
 
 	if (value.includes("#")) {
 		const [code, state] = value.split("#", 2);
-		return { code, state };
+		return authorizationInput(code, state);
 	}
 
 	if (value.includes("code=")) {
 		const params = new URLSearchParams(value);
-		return {
-			code: params.get("code") ?? undefined,
-			state: params.get("state") ?? undefined,
-		};
+		return authorizationInput(params.get("code"), params.get("state"));
 	}
 
 	return { code: value };
@@ -428,7 +429,7 @@ function oauthErrorHtml(message: string, details?: string): string {
 		title: "Authentication failed",
 		heading: "Authentication failed",
 		message,
-		details,
+		...(details !== undefined && { details }),
 	});
 }
 

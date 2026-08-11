@@ -2,22 +2,22 @@ import { Effect, Fiber, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { tmpdir as osTmpdir } from "node:os";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db";
-import { SessionInputRow } from "../src/db/schema.sql";
-import { RunnerExecute } from "../src/runner/execute";
-import { RunnerExecution } from "../src/runner/execution";
-import { Loop } from "../src/runner/loop";
-import { SandboxController } from "../src/sandbox/control";
-import { SandboxDriver } from "../src/sandbox/driver";
-import { MemorySandboxDriver } from "../src/sandbox/drivers/memory";
-import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb";
-import type { SandboxCreateError } from "../src/sandbox/errors";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { Shell } from "../src/sandbox/shell/shell";
-import { AbsolutePath } from "../src/schema";
-import { SessionSchema } from "../src/session/schema";
-import { Session } from "../src/session/session";
-import { testEffect } from "./utils/effect";
+import { Database } from "../src/db/db.ts";
+import { SessionInputRow } from "../src/db/schema.sql.ts";
+import { RunnerExecute } from "../src/runner/execute.ts";
+import { RunnerExecution } from "../src/runner/execution.ts";
+import { Loop } from "../src/runner/loop.ts";
+import { SandboxController } from "../src/sandbox/control.ts";
+import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
+import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb.ts";
+import type { SandboxCreateError } from "../src/sandbox/errors.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { Shell } from "../src/sandbox/shell/shell.ts";
+import { AbsolutePath } from "../src/schema.ts";
+import { SessionSchema } from "../src/session/schema.ts";
+import { Session } from "../src/session/session.ts";
+import { testEffect } from "./utils/effect.ts";
 
 /**
  * The mock loop's work is a real shell command, so running this suite against

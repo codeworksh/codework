@@ -2,11 +2,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import { Protocol } from "../../src/llm/protocol";
-import { Message } from "../../src/message/message";
-import { Model } from "../../src/model/model";
-import { stream } from "../../src/stream";
-import { StringEnum } from "../../src/utils/helpers";
+import * as Protocol from "../../src/llm/protocol.ts";
+import * as Message from "../../src/message/message.ts";
+import * as Model from "../../src/model/model.ts";
+import { stream } from "../../src/stream.ts";
+import { StringEnum } from "../../src/utils/helpers.ts";
 import {
 	anthropicOptions,
 	describeIfAnthropic,
@@ -22,8 +22,8 @@ import {
 	openaiOptions,
 	openrouterOptions,
 	type StreamableModel,
-} from "../utils/llm";
-import { expectAssistantToolUseMessage, expectValidToolCall } from "../utils/message";
+} from "../utils/llm.ts";
+import { expectAssistantToolUseMessage, expectValidToolCall } from "../utils/message.ts";
 
 async function basicTextGeneration<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	const context = {

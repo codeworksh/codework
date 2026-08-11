@@ -2,8 +2,8 @@
  * @description Defines the Generic event stream class for async iteration.
  */
 
-import type { Event } from "../event/event";
-import type { Message } from "../message/message";
+import type * as Event from "../event/event.ts";
+import type * as Message from "../message/message.ts";
 
 // Implements the async iterator pattern
 // LLM output are streams of events for consuming
@@ -15,11 +15,12 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 	private done = false;
 	private readonly finalResultPromise: Promise<R>;
 	private resolveFinalResult!: (result: R) => void;
+	private readonly isComplete: (event: T) => boolean;
+	private readonly extractResult: (event: T) => R;
 
-	constructor(
-		private isComplete: (event: T) => boolean,
-		private extractResult: (event: T) => R,
-	) {
+	constructor(isComplete: (event: T) => boolean, extractResult: (event: T) => R) {
+		this.isComplete = isComplete;
+		this.extractResult = extractResult;
 		this.finalResultPromise = new Promise((resolve) => {
 			this.resolveFinalResult = resolve;
 		});

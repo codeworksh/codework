@@ -1,11 +1,11 @@
 import { LoadAPIKeyError, NoSuchModelError, type LanguageModelV3, type ProviderV3 } from "@ai-sdk/provider";
-import { getOpenAICodexAccountId } from "../../oauth/openai/codex";
+import { getOpenAICodexAccountId } from "../../oauth/openai/codex.ts";
 import {
 	OPENAI_CODEX_DEFAULT_BASE_URL,
 	OpenAICodexLanguageModel,
 	type OpenAICodexModelId,
 	type OpenAICodexServiceTier,
-} from "./codex-language-model";
+} from "./codex-language-model.ts";
 
 export const OPENAI_CODEX_API_KEY_ENV = "OPENAI_CODEX_API_KEY";
 
@@ -107,9 +107,9 @@ export function createOpenAICodex(options: OpenAICodexProviderSettings = {}): Op
 			provider: "openai-codex",
 			baseURL,
 			headers: getHeaders,
-			fetch: options.fetch,
-			sessionId: options.sessionId,
-			serviceTier: options.serviceTier,
+			...(options.fetch !== undefined && { fetch: options.fetch }),
+			...(options.sessionId !== undefined && { sessionId: options.sessionId }),
+			...(options.serviceTier !== undefined && { serviceTier: options.serviceTier }),
 		});
 
 	const provider = function (modelId: OpenAICodexModelId) {

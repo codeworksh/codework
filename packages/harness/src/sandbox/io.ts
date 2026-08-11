@@ -1,9 +1,9 @@
 import { Context, Effect, Layer as EffectLayer } from "effect";
 import { posix } from "node:path";
-import type { SandboxDriver } from "./driver";
-import { SandboxFileSystem } from "./fs/filesystem";
-import { SandboxInstance } from "./instance";
-import { type ISandboxExe, Shell as ShellTag, withCwd as shellWithCwd } from "./shell/shell";
+import type { SandboxDriver } from "./driver.ts";
+import { SandboxFileSystem } from "./fs/filesystem.ts";
+import { SandboxInstance } from "./instance.ts";
+import { type ISandboxExe, Shell as ShellTag, withCwd as shellWithCwd } from "./shell/shell.ts";
 
 /**
  * `SandboxIO` is a **mount**: a filesystem, a shell, and the identity and
@@ -176,4 +176,4 @@ export const remote = (input: {
 	cwd: resolveMountCwd(input.defaultCwd, input.cwd),
 });
 
-export * as SandboxIO from "./io";
+export * as SandboxIO from "./io.ts";

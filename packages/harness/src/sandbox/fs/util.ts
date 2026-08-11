@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { posix } from "node:path";
-import type { SandboxFileSystem } from "./filesystem";
+import type { SandboxFileSystem } from "./filesystem.ts";
 
 /**
  * Operations derived from the {@link SandboxFileSystem.Interface} primitives.
@@ -80,4 +80,4 @@ export const readFileSafe = Effect.fn("SandboxFileSystem.readFileSafe")(function
 	return yield* fs.readFile(path).pipe(Effect.orElseSucceed(() => undefined));
 });
 
-export * as SandboxFs from "./util";
+export * as SandboxFs from "./util.ts";

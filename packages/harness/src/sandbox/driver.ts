@@ -1,7 +1,11 @@
 import { Context, Effect, Layer, Option, Schema } from "effect";
-import { SandboxDriverNotRegisteredError, SandboxDriverRegistrationError, type SandboxProviderError } from "./errors";
-import { SandboxInstance } from "./instance";
-import { SandboxIO } from "./io";
+import {
+	SandboxDriverNotRegisteredError,
+	SandboxDriverRegistrationError,
+	type SandboxProviderError,
+} from "./errors.ts";
+import { SandboxInstance } from "./instance.ts";
+import { SandboxIO } from "./io.ts";
 
 /** Open driver identity. Adding a driver never extends a union in core. */
 export const Name = Schema.String.check(Schema.isNonEmpty()).pipe(Schema.brand("SandboxDriver.Name"));
@@ -258,4 +262,4 @@ export const driver = <CreateConfig, RuntimeConfig extends RuntimeConfigBase>(
 		registered: erase(value),
 	});
 
-export * as SandboxDriver from "./driver";
+export * as SandboxDriver from "./driver.ts";

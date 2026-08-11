@@ -1,9 +1,9 @@
 import { Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Effect, Layer, Option, Schema } from "effect";
-import { SandboxDriver } from "../driver";
-import { makeRedactor, providerError, type SandboxProviderError } from "../errors";
-import { SandboxInstance } from "../instance";
-import { EnvVercel } from "../providers/vercel";
+import { SandboxDriver } from "../driver.ts";
+import { makeRedactor, providerError, type SandboxProviderError } from "../errors.ts";
+import { SandboxInstance } from "../instance.ts";
+import { EnvVercel } from "../providers/vercel.ts";
 
 export interface ClientOptions {
 	readonly token?: string | undefined;
@@ -233,4 +233,4 @@ export const make = (
 	});
 };
 
-export * as VercelSandboxDriver from "./vercel";
+export * as VercelSandboxDriver from "./vercel.ts";

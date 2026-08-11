@@ -1,7 +1,7 @@
 import type { Message } from "@codeworksh/aikit";
 import { Effect, type Layer, Schema } from "effect";
 import type { TSchema } from "typebox";
-import type { ToolProgress } from "./progress";
+import type { ToolProgress } from "./progress.ts";
 
 /**
  * The tool definition + handler model.

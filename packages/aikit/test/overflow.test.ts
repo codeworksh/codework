@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { Message } from "../src/message/message";
-import { getOverflowPatterns, isContextOverflow } from "../src/utils/overflow";
-import { makeAssistantMessage, makeModel, makeUsage } from "./utils/fixtures";
+import type * as Message from "../src/message/message.ts";
+import { getOverflowPatterns, isContextOverflow } from "../src/utils/overflow.ts";
+import { makeAssistantMessage, makeModel, makeUsage } from "./utils/fixtures.ts";
 
 const model = makeModel();
 

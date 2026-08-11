@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
-import { SandboxInstanceRow } from "../db/schema.sql";
-import { SandboxInstance } from "./instance";
+import { SandboxInstanceRow } from "../db/schema.sql.ts";
+import { SandboxInstance } from "./instance.ts";
 
 /**
  * Row-level access to `sandbox_instance`. Deliberately dumb: it persists and
@@ -124,4 +124,4 @@ export const make = Effect.gen(function* () {
 	return { find, list, register, transition } satisfies Interface;
 });
 
-export * as SandboxStore from "./store";
+export * as SandboxStore from "./store.ts";

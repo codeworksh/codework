@@ -1,7 +1,7 @@
 import { create, RealFSProvider } from "@platformatic/vfs";
 import { Layer } from "effect";
-import { Process } from "../utils/process";
-import { Local } from "./vfs";
+import { Process } from "../utils/process.ts";
+import { Local } from "./vfs.ts";
 
 /**
  * The host VFS: provider-rooted at `/`, and never `chdir`ed.
@@ -26,4 +26,4 @@ export const layer = () => {
 	return Layer.merge(Layer.succeed(Local.Vfs, vfs), Process.host);
 };
 
-export * as EnvNodeJSDefault from "./nodejs";
+export * as EnvNodeJSDefault from "./nodejs.ts";

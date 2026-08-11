@@ -3,12 +3,12 @@ import { DateTime, Effect, FileSystem, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
 import { describe, expect } from "vite-plus/test";
-import { Database, SqlSchema } from "../../src/db/db";
-import { ProjectDirectoryRow, ProjectRow } from "../../src/db/schema.sql";
-import { SandboxInstance } from "../../src/sandbox/instance";
-import { SandboxStore } from "../../src/sandbox/store";
-import { AbsolutePath } from "../../src/schema";
-import { testEffect } from "../utils/effect";
+import { Database, SqlSchema } from "../../src/db/db.ts";
+import { ProjectDirectoryRow, ProjectRow } from "../../src/db/schema.sql.ts";
+import { SandboxInstance } from "../../src/sandbox/instance.ts";
+import { SandboxStore } from "../../src/sandbox/store.ts";
+import { AbsolutePath } from "../../src/schema.ts";
+import { testEffect } from "../utils/effect.ts";
 
 const layer = Layer.unwrap(
 	Effect.gen(function* () {

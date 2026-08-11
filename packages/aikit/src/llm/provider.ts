@@ -1,9 +1,9 @@
 import type { LanguageModel } from "ai";
-import { Model } from "../model/model";
-import type { Options } from "./options";
-import { Protocol } from "./protocol";
-import { loadProviderFactory, packageForModel, resolveLanguageModel } from "./registry";
-import { getEnvApiKey, mergeHeaders } from "./runtime";
+import * as Model from "../model/model.ts";
+import type { Options } from "./options.ts";
+import * as Protocol from "./protocol.ts";
+import { loadProviderFactory, packageForModel, resolveLanguageModel } from "./registry.ts";
+import { getEnvApiKey, mergeHeaders } from "./runtime.ts";
 
 function cleanHeaders(headers: Record<string, string | null>): Record<string, string> {
 	const result: Record<string, string> = {};

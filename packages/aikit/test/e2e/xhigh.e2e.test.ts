@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { AnthropicOptions, OpenAICodexOptions, OpenAIOptions } from "../../src/llm/options";
-import { Message } from "../../src/message/message";
-import { Model } from "../../src/model/model";
-import { stream } from "../../src/stream";
+import type { AnthropicOptions, OpenAICodexOptions, OpenAIOptions } from "../../src/llm/options.ts";
+import * as Message from "../../src/message/message.ts";
+import * as Model from "../../src/model/model.ts";
+import { stream } from "../../src/stream.ts";
 import {
 	anthropicOptions,
 	describeIfAnthropic,
@@ -14,7 +14,7 @@ import {
 	getText,
 	openaiCodexOptions,
 	openaiOptions,
-} from "../utils/llm";
+} from "../utils/llm.ts";
 
 function makeContext(): Message.Context {
 	return {

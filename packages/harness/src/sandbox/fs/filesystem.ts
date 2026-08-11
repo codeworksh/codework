@@ -223,4 +223,4 @@ export const withCwd = (fs: Interface, cwd: string): Interface => {
 	};
 };
 
-export * as SandboxFileSystem from "./filesystem";
+export * as SandboxFileSystem from "./filesystem.ts";

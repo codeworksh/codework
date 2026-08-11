@@ -5,9 +5,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { AppProcessError, type Interface, Service, WorktreeError, defaultLayer } from "../src/git/git";
-import { AbsolutePath } from "../src/schema";
-import { tmpdir } from "./fixtures/tempdir";
+import { AppProcessError, type Interface, Service, WorktreeError, defaultLayer } from "../src/git/git.ts";
+import { AbsolutePath } from "../src/schema.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
 
 const execFilePromise = promisify(execFile);
 

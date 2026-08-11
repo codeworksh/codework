@@ -123,4 +123,4 @@ export const make = <Key, E>(options: {
 		return { active: Effect.sync(() => new Set(active.keys())), run, wake, interrupt };
 	});
 
-export * as RunCoordinator from "./coordinator";
+export * as RunCoordinator from "./coordinator.ts";

@@ -17,4 +17,4 @@ export const unsupported = Layer.succeed(
 	ChildProcessSpawner.make(() => Effect.die(new Error("process execution is not supported by this sandbox"))),
 );
 
-export * as Process from "./process";
+export * as Process from "./process.ts";

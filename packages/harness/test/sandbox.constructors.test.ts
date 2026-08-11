@@ -1,16 +1,16 @@
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db";
-import { SandboxController } from "../src/sandbox/control";
-import { SandboxDriver } from "../src/sandbox/driver";
-import { MemorySandboxDriver } from "../src/sandbox/drivers/memory";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { SandboxIO } from "../src/sandbox/io";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { AbsolutePath } from "../src/schema";
-import { Session } from "../src/session/session";
-import { testEffect } from "./utils/effect";
+import { Database } from "../src/db/db.ts";
+import { SandboxController } from "../src/sandbox/control.ts";
+import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { AbsolutePath } from "../src/schema.ts";
+import { Session } from "../src/session/session.ts";
+import { testEffect } from "./utils/effect.ts";
 
 /**
  * `Sandbox.memory()` / `Sandbox.sqldb()` are isolated test/script mounts: each

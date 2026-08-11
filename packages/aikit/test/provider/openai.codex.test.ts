@@ -10,8 +10,8 @@ import {
 	isAISDKPackage,
 	loadProviderFactory,
 	protocolForPackage,
-} from "../../src/llm/registry";
-import { getOpenAICodexApiKey, type OpenAICodexOAuthCredentials } from "../../src/oauth/openai/codex";
+} from "../../src/llm/registry.ts";
+import { getOpenAICodexApiKey, type OpenAICodexOAuthCredentials } from "../../src/oauth/openai/codex.ts";
 import {
 	convertToOpenAICodexPrompt,
 	createOpenAICodex,
@@ -19,7 +19,7 @@ import {
 	OpenAICodexLanguageModel,
 	resolveOpenAICodexUrl,
 	splitToolCallId,
-} from "../../src/providers/openai-codex";
+} from "../../src/providers/openai-codex/index.ts";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

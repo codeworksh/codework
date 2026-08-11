@@ -21,4 +21,4 @@ export class Service extends Context.Service<Service, { readonly providerResourc
 	"@codework/sandbox/resource",
 ) {}
 
-export * as SandboxResource from "./resource";
+export * as SandboxResource from "./resource.ts";

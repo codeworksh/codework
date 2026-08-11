@@ -3,11 +3,11 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
-import { Local } from "../src/sandbox/fs/vfs";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { filesystemSpec, withService } from "./fixtures/sandbox.spec";
-import { tmpdir } from "./fixtures/tempdir";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
+import { Local } from "../src/sandbox/fs/vfs.ts";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { filesystemSpec, withService } from "./fixtures/sandbox.spec.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
 
 describe("Sandbox.EnvDefault", () => {
 	// The host runs the same cross-backend contract as the virtual backends —

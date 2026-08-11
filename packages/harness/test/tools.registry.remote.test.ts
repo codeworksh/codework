@@ -5,18 +5,18 @@ import { appendFile, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { EnvDaytona } from "../src/sandbox/providers/daytona";
-import { EnvVercel } from "../src/sandbox/providers/vercel";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { bashTool } from "../src/tools/bash";
-import type * as Executor from "../src/tools/executor";
-import * as Registry from "../src/tools/registry";
-import { fromSandboxShell, ToolShell } from "../src/tools/shell";
-import * as Tool from "../src/tools/tool";
-import { labels, makeRemoteOwner } from "./fixtures/remote-owner";
-import { hasLiveOidc } from "./fixtures/vercel";
-import { pendingCall } from "./tools.fixture";
-import "./utils/env";
+import { EnvDaytona } from "../src/sandbox/providers/daytona.ts";
+import { EnvVercel } from "../src/sandbox/providers/vercel.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { bashTool } from "../src/tools/bash.ts";
+import type * as Executor from "../src/tools/executor.ts";
+import * as Registry from "../src/tools/registry.ts";
+import { fromSandboxShell, ToolShell } from "../src/tools/shell.ts";
+import * as Tool from "../src/tools/tool.ts";
+import { labels, makeRemoteOwner } from "./fixtures/remote-owner.ts";
+import { hasLiveOidc } from "./fixtures/vercel.ts";
+import { pendingCall } from "./tools.fixture.ts";
+import "./utils/env.ts";
 
 // Real-backend registry tests: the bash tool registered over an ACTUAL remote sandbox
 // (Vercel = streaming, Daytona = buffered exec), executed through `Registry.resolve().handle`

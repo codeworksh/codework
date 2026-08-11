@@ -1,20 +1,20 @@
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
-import { Database } from "../src/db/db";
-import { Location } from "../src/location/location";
-import { RunnerExecute } from "../src/runner/execute";
-import { RunnerExecution } from "../src/runner/execution";
-import { Runner } from "../src/runner/run";
-import { SandboxController } from "../src/sandbox/control";
-import { SandboxDriver } from "../src/sandbox/driver";
-import { FakeSandboxDriver } from "../src/sandbox/drivers/fake";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { SandboxIO } from "../src/sandbox/io";
-import { AbsolutePath } from "../src/schema";
-import { SessionSchema } from "../src/session/schema";
-import { Session } from "../src/session/session";
-import { testEffect } from "./utils/effect";
+import { Database } from "../src/db/db.ts";
+import { Location } from "../src/location/location.ts";
+import { RunnerExecute } from "../src/runner/execute.ts";
+import { RunnerExecution } from "../src/runner/execution.ts";
+import { Runner } from "../src/runner/run.ts";
+import { SandboxController } from "../src/sandbox/control.ts";
+import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { AbsolutePath } from "../src/schema.ts";
+import { SessionSchema } from "../src/session/schema.ts";
+import { Session } from "../src/session/session.ts";
+import { testEffect } from "./utils/effect.ts";
 
 interface Observation {
 	readonly sessionId: SessionSchema.ID;

@@ -59,7 +59,8 @@
 		"release:dev": "node ../../scripts/publish.js aikit --dev",
 		"release:dry": "node ../../scripts/publish.js aikit --dry-run",
 		"test": "vp test --exclude \"test/e2e/**\"",
-		"test:e2e": "vp test"
+		"test:e2e": "vp test",
+		"typecheck": "node ../../scripts/tsgo.mjs --noEmit"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^3.0.79",

@@ -2,7 +2,7 @@ import type { VirtualFileSystem, VirtualStats } from "@platformatic/vfs";
 import { Context, Effect, Layer } from "effect";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
-import { SandboxFileSystem } from "./filesystem";
+import { SandboxFileSystem } from "./filesystem.ts";
 
 // The local backend: a `SandboxFileSystem.Service` over a `@platformatic/vfs`
 // VirtualFileSystem (in-memory, sqlite, or the real host OS). VFS is a
@@ -98,4 +98,4 @@ export const layer = Layer.effect(
 	}),
 );
 
-export * as Local from "./vfs";
+export * as Local from "./vfs.ts";

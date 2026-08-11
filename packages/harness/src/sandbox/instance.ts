@@ -1,7 +1,7 @@
 import { Option, Schema } from "effect";
 import { uuidv7 } from "uuidv7";
-import { withStatics } from "../schema";
-import type { SandboxDriver } from "./driver";
+import { withStatics } from "../schema.ts";
+import type { SandboxDriver } from "./driver.ts";
 
 /**
  * A Sandbox instance is a **durable filesystem namespace** plus whatever compute
@@ -154,4 +154,4 @@ export interface Info {
 	readonly removedAt: Option.Option<Date>;
 }
 
-export * as SandboxInstance from "./instance";
+export * as SandboxInstance from "./instance.ts";

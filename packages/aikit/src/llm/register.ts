@@ -1,3 +1,3 @@
-import { registerAISDKProtocols } from "./index";
+import { registerAISDKProtocols } from "./index.ts";
 
 registerAISDKProtocols();

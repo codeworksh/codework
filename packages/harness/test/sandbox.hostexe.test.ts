@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 import { realpath } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
-import { SandboxIO } from "../src/sandbox/io";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { Shell } from "../src/sandbox/shell/shell";
-import { tmpdir } from "./fixtures/tempdir";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { Shell } from "../src/sandbox/shell/shell.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
 
 // The shell and the filesystem are two halves of one sandbox: a relative path
 // must mean the same thing to both. Before the shell took its cwd from the

@@ -9,10 +9,10 @@ import {
 	type ToolSet,
 	type UserModelMessage,
 } from "ai";
-import { Message } from "../message/message";
-import { Model } from "../model/model";
-import { parseStreamingJson } from "../utils/jsonparse";
-import { sanitizeSurrogates } from "../utils/sanitize";
+import * as Message from "../message/message.ts";
+import * as Model from "../model/model.ts";
+import { parseStreamingJson } from "../utils/jsonparse.ts";
+import { sanitizeSurrogates } from "../utils/sanitize.ts";
 
 type ToolCallPart = Extract<Message.AssistantMessage["parts"][number], { type: "toolCall" }>;
 type TerminalToolCall = Exclude<ToolCallPart, Message.ToolCallPendingPart | Message.ToolCallRunningPart>;

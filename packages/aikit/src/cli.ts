@@ -2,8 +2,8 @@
 import pkg from "../package.json" with { type: "json" };
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { ModelgenCommand } from "./cli/modelgen";
-import { OAuthCommand } from "./cli/oauth";
+import { ModelgenCommand } from "./cli/modelgen.ts";
+import { OAuthCommand } from "./cli/oauth.ts";
 
 const cli = yargs(hideBin(process.argv))
 	.scriptName("aikit")

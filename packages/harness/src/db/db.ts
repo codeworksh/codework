@@ -3,8 +3,8 @@ import { Effect, Layer, String as Str } from "effect";
 import { Migrator, SqlClient } from "effect/unstable/sql";
 import * as fs from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
-import { Global } from "../global";
-import { migrations } from "./migrations";
+import { Global } from "../global.ts";
+import { migrations } from "./migrations.ts";
 
 export { SqlClient, SqlSchema } from "effect/unstable/sql";
 
@@ -55,4 +55,4 @@ export function path() {
 // Deferred so `path()` reads CODEWORK_DB at construction time, not at import.
 export const defaultLayer = Layer.unwrap(Effect.sync(() => layer(path())));
 
-export * as Database from "./db";
+export * as Database from "./db.ts";

@@ -1,9 +1,9 @@
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { bashDef } from "../src/tools/bash";
-import * as Executor from "../src/tools/executor";
-import * as Tool from "../src/tools/tool";
-import { pendingCall } from "./tools.fixture";
+import { bashDef } from "../src/tools/bash.ts";
+import * as Executor from "../src/tools/executor.ts";
+import * as Tool from "../src/tools/tool.ts";
+import { pendingCall } from "./tools.fixture.ts";
 
 class ExpectedFailure extends Schema.TaggedErrorClass<ExpectedFailure>()("ExpectedFailure", {
 	message: Schema.String,

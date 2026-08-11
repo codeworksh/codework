@@ -1,8 +1,8 @@
 import { create, SqliteProvider } from "@platformatic/vfs";
 import { Effect, Layer, Schema } from "effect";
-import { Process } from "../utils/process";
-import { Seed, type SeedOptions } from "../utils/seed";
-import { Local } from "./vfs";
+import { Process } from "../utils/process.ts";
+import { Seed, type SeedOptions } from "../utils/seed.ts";
+import { Local } from "./vfs.ts";
 
 export class SqldbError extends Schema.TaggedErrorClass<SqldbError>()("SqldbError", {
 	message: Schema.String,
@@ -68,4 +68,4 @@ export const layer = (opts?: LayerOptions) =>
 		opts?.options?.hostProcess ? Process.host : Process.unsupported,
 	);
 
-export * as EnvSqldb from "./sqldb";
+export * as EnvSqldb from "./sqldb.ts";

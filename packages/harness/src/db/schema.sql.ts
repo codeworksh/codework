@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 import { Model } from "effect/unstable/schema";
-import { SandboxInstance } from "../sandbox/instance";
-import { AbsolutePath } from "../schema";
-import { SessionSchema } from "../session/schema";
+import { SandboxInstance } from "../sandbox/instance.ts";
+import { AbsolutePath } from "../schema.ts";
+import { SessionSchema } from "../session/schema.ts";
 
 // Column names derive from field names via the client's camelToSnake
 

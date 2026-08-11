@@ -1,17 +1,17 @@
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { describe, expect } from "vite-plus/test";
-import { SandboxDriver } from "../src/sandbox/driver";
-import { FakeSandboxDriver } from "../src/sandbox/drivers/fake";
+import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
 import {
 	makeRedactor,
 	providerError,
 	providerErrorCause,
 	SandboxDriverNotRegisteredError,
 	SandboxDriverRegistrationError,
-} from "../src/sandbox/errors";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { SandboxIO } from "../src/sandbox/io";
-import { it as effectTests, testEffect } from "./utils/effect";
+} from "../src/sandbox/errors.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { it as effectTests, testEffect } from "./utils/effect.ts";
 
 const fake = FakeSandboxDriver.make();
 const { effect: driverIt } = testEffect(SandboxDriver.layer(fake.driver));

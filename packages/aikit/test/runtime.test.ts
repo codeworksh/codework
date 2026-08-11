@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { formatThrownError, getEnvApiKey, mergeHeaders } from "../src/llm/runtime";
+import { formatThrownError, getEnvApiKey, mergeHeaders } from "../src/llm/runtime.ts";
 
 describe("mergeHeaders", () => {
 	it("merges headers with later sources taking precedence", () => {

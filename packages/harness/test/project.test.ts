@@ -5,19 +5,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
-import { Database } from "../src/db/db";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { SandboxIO } from "../src/sandbox/io";
-import { SandboxStore } from "../src/sandbox/store";
-import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
-import { Git } from "../src/git/git";
-import { ProjectCopy } from "../src/project/copy";
-import { defaultLayer, layer, Service } from "../src/project/project";
-import { ID, type ProjectDirectory } from "../src/project/schema";
-import { AbsolutePath } from "../src/schema";
-import { Hash } from "../src/util/hash";
-import { tmpdir } from "./fixtures/tempdir";
-import { testEffect } from "./utils/effect";
+import { Database } from "../src/db/db.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { SandboxStore } from "../src/sandbox/store.ts";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
+import { Git } from "../src/git/git.ts";
+import { ProjectCopy } from "../src/project/copy.ts";
+import { defaultLayer, layer, Service } from "../src/project/project.ts";
+import { ID, type ProjectDirectory } from "../src/project/schema.ts";
+import { AbsolutePath } from "../src/schema.ts";
+import { Hash } from "../src/util/hash.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
+import { testEffect } from "./utils/effect.ts";
 
 // Keep the real Database/Global wiring (exercised through Project.defaultLayer)
 // off the user's disk: any layer built from path() lands in an in-memory db.

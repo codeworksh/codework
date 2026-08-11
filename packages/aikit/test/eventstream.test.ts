@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { Event } from "../src/event/event";
-import { AssistantMessageEventStream, EventStream } from "../src/utils/eventstream";
-import { makeAssistantMessage, makeModel } from "./utils/fixtures";
+import type * as Event from "../src/event/event.ts";
+import { AssistantMessageEventStream, EventStream } from "../src/utils/eventstream.ts";
+import { makeAssistantMessage, makeModel } from "./utils/fixtures.ts";
 
 type TestEvent = { kind: "data" | "final"; value: number };
 

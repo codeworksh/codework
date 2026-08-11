@@ -1,8 +1,8 @@
 import Type, { type TSchema } from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import { Message as PublicMessage } from "../src/index";
-import { Message } from "../src/message/message";
-import { validateToolArguments, validateToolCall } from "../src/utils/validation";
+import { Message as PublicMessage } from "../src/index.ts";
+import * as Message from "../src/message/message.ts";
+import { validateToolArguments, validateToolCall } from "../src/utils/validation.ts";
 
 function createToolCallWithSchema(
 	schema: TSchema,

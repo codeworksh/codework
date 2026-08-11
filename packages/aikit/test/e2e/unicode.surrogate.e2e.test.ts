@@ -1,11 +1,11 @@
 import dedent from "dedent";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import { Protocol } from "../../src/llm/protocol";
-import { Message } from "../../src/message/message";
-import { Model } from "../../src/model/model";
-import { complete } from "../../src/stream";
-import { makeAssistantMessage, makePendingToolCall } from "../utils/fixtures";
+import * as Protocol from "../../src/llm/protocol.ts";
+import * as Message from "../../src/message/message.ts";
+import * as Model from "../../src/model/model.ts";
+import { complete } from "../../src/stream.ts";
+import { makeAssistantMessage, makePendingToolCall } from "../utils/fixtures.ts";
 import {
 	anthropicOptions,
 	describeIfAnthropic,
@@ -17,7 +17,7 @@ import {
 	openaiOptions,
 	openrouterOptions,
 	type StreamableModel,
-} from "../utils/llm";
+} from "../utils/llm.ts";
 
 type StreamOptionsWithExtras = Protocol.CommonOptions & Record<string, unknown>;
 

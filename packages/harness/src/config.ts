@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-// import { AbsolutePath } from "./schema";
-// import { Global } from "./global";
+// import { AbsolutePath } from "./schema.ts";
+// import { Global } from "./global.ts";
 
 export class Info extends Schema.Class<Info>("Config.Info")({
 	$schema: Schema.optional(Schema.String).annotate({

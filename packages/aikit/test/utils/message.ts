@@ -1,6 +1,6 @@
 import { expect } from "vite-plus/test";
 import Schema from "typebox/schema";
-import { Message } from "../../src/message/message";
+import * as Message from "../../src/message/message.ts";
 
 const validateToolCallSchema = Schema.Compile(Message.ToolCallSchema);
 let latestErrors: unknown[] = [];

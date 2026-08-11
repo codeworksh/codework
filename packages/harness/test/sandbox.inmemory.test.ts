@@ -3,9 +3,9 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { filesystemSpec, withService } from "./fixtures/sandbox.spec";
-import { tmpdir } from "./fixtures/tempdir";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { filesystemSpec, withService } from "./fixtures/sandbox.spec.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
 
 describe("Sandbox.EnvInMemoryFS", () => {
 	describe("with in-memory filesystem spec", () => {

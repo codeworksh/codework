@@ -64,4 +64,4 @@ export const initialize = async (vfs: VirtualFileSystem, options?: SeedOptions):
 	}
 };
 
-export * as Seed from "./seed";
+export * as Seed from "./seed.ts";

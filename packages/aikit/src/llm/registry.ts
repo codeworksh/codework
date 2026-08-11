@@ -1,5 +1,5 @@
 import type { LanguageModel } from "ai";
-import { Model } from "../model/model";
+import * as Model from "../model/model.ts";
 
 export const DEFAULT_AI_SDK_FALLBACK = "@ai-sdk/openai-compatible";
 
@@ -35,7 +35,7 @@ const PROVIDER_LOADERS: Record<AISDKPackage, () => Promise<ProviderFactory>> = {
 	// Local provider for OpenAI Codex subscriptions (ChatGPT OAuth); the package
 	// name is virtual and resolves to src/providers/openai-codex.
 	"@codeworksh/ai-sdk-openai-codex": () =>
-		import("../providers/openai-codex").then((m) => m.createOpenAICodex as ProviderFactory),
+		import("../providers/openai-codex/index.ts").then((m) => m.createOpenAICodex as ProviderFactory),
 };
 
 export function isAISDKPackage(value: string): value is AISDKPackage {

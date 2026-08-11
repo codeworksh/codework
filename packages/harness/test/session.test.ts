@@ -1,17 +1,20 @@
-import "./utils/env";
+import "./utils/env.ts";
 
-import { llm, Message, type Model, type Protocol, stream, Type, validateSchema } from "@codeworksh/aikit";
+import { Message } from "@codeworksh/aikit";
+import type { Model } from "@codeworksh/aikit";
+import type { Protocol } from "@codeworksh/aikit";
+import { llm, stream, Type, validateSchema } from "@codeworksh/aikit";
 import { Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
 import { describe, expect, it as vitestIt } from "vite-plus/test";
-import { Database } from "../src/db/db";
-import { AbsolutePath } from "../src/schema";
-import { SandboxInstance } from "../src/sandbox/instance";
-import { Session } from "../src/session/session";
-import { SessionSchema } from "../src/session/schema";
-import { tmpdir } from "./fixtures/tempdir";
-import { testEffect } from "./utils/effect";
+import { Database } from "../src/db/db.ts";
+import { AbsolutePath } from "../src/schema.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { Session } from "../src/session/session.ts";
+import { SessionSchema } from "../src/session/schema.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
+import { testEffect } from "./utils/effect.ts";
 
 // Fresh in-memory database per test: the layer is rebuilt for every it.effect.
 const layer = Session.layer.pipe(Layer.provideMerge(Database.layer(":memory:")));

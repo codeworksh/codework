@@ -1,8 +1,8 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { SandboxFs } from "../sandbox/fs/util";
-import { SandboxIO } from "../sandbox/io";
-import { Sandbox } from "../sandbox/sandbox";
-import { AbsolutePath } from "../schema";
+import { SandboxFs } from "../sandbox/fs/util.ts";
+import { SandboxIO } from "../sandbox/io.ts";
+import { Sandbox } from "../sandbox/sandbox.ts";
+import { AbsolutePath } from "../schema.ts";
 
 export const IsGitWorktreeInput = Schema.Struct({
 	directory: AbsolutePath,
@@ -46,4 +46,4 @@ export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) => layer.pip
 
 export const defaultLayer = (path: string) => layerWith(Sandbox.defaultLayer(path));
 
-export * as ProjectCopy from "./copy";
+export * as ProjectCopy from "./copy.ts";

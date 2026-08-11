@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import type { AnthropicOptions, OpenAIOptions } from "../../src/llm/options";
-import { Message } from "../../src/message/message";
-import { Model } from "../../src/model/model";
-import { complete } from "../../src/stream";
+import type { AnthropicOptions, OpenAIOptions } from "../../src/llm/options.ts";
+import * as Message from "../../src/message/message.ts";
+import * as Model from "../../src/model/model.ts";
+import { complete } from "../../src/stream.ts";
 import {
 	anthropicOptions,
 	describeIfAnthropic,
@@ -17,7 +17,7 @@ import {
 	getText,
 	openaiOptions,
 	openrouterOptions,
-} from "../utils/llm";
+} from "../utils/llm.ts";
 
 type SupportedModel =
 	| Model.TModel<typeof Model.KnownProviderEnum.anthropic>

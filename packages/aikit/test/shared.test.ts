@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { applyDefaultMaxTokens } from "../src/llm/shared";
-import { makeModel } from "./utils/fixtures";
+import { applyDefaultMaxTokens } from "../src/llm/shared.ts";
+import { makeModel } from "./utils/fixtures.ts";
 
 describe("applyDefaultMaxTokens", () => {
 	it("keeps an explicit maxTokens from the caller", () => {

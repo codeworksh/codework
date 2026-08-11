@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Model } from "../src/model/model";
-import { makeModel, makeUsage } from "./utils/fixtures";
+import * as Model from "../src/model/model.ts";
+import { makeModel, makeUsage } from "./utils/fixtures.ts";
 
 describe("Model.calculateCost", () => {
 	it("computes per-component cost from per-million-token pricing", () => {

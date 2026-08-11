@@ -1,10 +1,10 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { Project } from "../project/project";
-import { ProjectSchema } from "../project/schema";
-import { SandboxInstance } from "../sandbox/instance";
-import { SandboxIO } from "../sandbox/io";
-import { Sandbox } from "../sandbox/sandbox";
-import { AbsolutePath } from "../schema";
+import { Project } from "../project/project.ts";
+import { ProjectSchema } from "../project/schema.ts";
+import { SandboxInstance } from "../sandbox/instance.ts";
+import { SandboxIO } from "../sandbox/io.ts";
+import { Sandbox } from "../sandbox/sandbox.ts";
+import { AbsolutePath } from "../schema.ts";
 
 /**
  * Where work happens: a directory, qualified by the namespace it lives in.
@@ -78,4 +78,4 @@ export const layerWith = <E, RIn>(ref: Ref, sandbox: Sandbox.Sandbox<E, RIn>) =>
 
 export const defaultLayer = (ref: Ref, path: string) => layerWith(ref, Sandbox.defaultLayer(path));
 
-export * as Location from "./location";
+export * as Location from "./location.ts";

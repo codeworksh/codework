@@ -1,9 +1,9 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { posix as path } from "node:path";
-import { SandboxFs } from "../sandbox/fs/util";
-import { SandboxIO } from "../sandbox/io";
-import { Sandbox } from "../sandbox/sandbox";
-import { AbsolutePath } from "../schema";
+import { SandboxFs } from "../sandbox/fs/util.ts";
+import { SandboxIO } from "../sandbox/io.ts";
+import { Sandbox } from "../sandbox/sandbox.ts";
+import { AbsolutePath } from "../schema.ts";
 
 // TODO: shouldn't it be called GitError or something
 export class AppProcessError extends Schema.TaggedErrorClass<AppProcessError>()("AppProcessError", {
@@ -311,4 +311,4 @@ function resolvePath(cwd: string, value: string) {
 	return path.resolve(cwd, trimmed);
 }
 
-export * as Git from "./git";
+export * as Git from "./git.ts";

@@ -2,11 +2,11 @@ import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer, Option, Schema } from "effect";
 import * as fs from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
-import { SandboxDriver } from "../driver";
-import { providerError } from "../errors";
-import { SandboxInstance } from "../instance";
-import { EnvSqldb } from "../fs/sqldb";
-import { transport, transportLayer } from "../virtual";
+import { SandboxDriver } from "../driver.ts";
+import { providerError } from "../errors.ts";
+import { SandboxInstance } from "../instance.ts";
+import { EnvSqldb } from "../fs/sqldb.ts";
+import { transport, transportLayer } from "../virtual.ts";
 
 export interface CreateConfig {
 	readonly defaultCwd: SandboxDriver.AbsolutePath;
@@ -194,4 +194,4 @@ export const make = () => {
 	return { driver };
 };
 
-export * as SqldbSandboxDriver from "./sqldb";
+export * as SqldbSandboxDriver from "./sqldb.ts";

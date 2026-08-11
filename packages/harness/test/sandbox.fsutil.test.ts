@@ -2,11 +2,11 @@ import { Effect, Layer } from "effect";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
-import { SandboxFs } from "../src/sandbox/fs/util";
-import { Local } from "../src/sandbox/fs/vfs";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { tmpdir } from "./fixtures/tempdir";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
+import { SandboxFs } from "../src/sandbox/fs/util.ts";
+import { Local } from "../src/sandbox/fs/vfs.ts";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
 
 // Derived operations live outside the provider contract precisely so one
 // implementation serves every backend. These run the same assertions over an

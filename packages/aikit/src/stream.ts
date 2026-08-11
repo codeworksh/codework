@@ -1,9 +1,9 @@
-import "./llm/register";
+import "./llm/register.ts";
 
-import type { Message } from "./message/message";
-import type { Model } from "./model/model";
-import { Protocol } from "./llm/protocol";
-import type { AssistantMessageEventStream } from "./utils/eventstream";
+import type * as Message from "./message/message.ts";
+import type * as Model from "./model/model.ts";
+import * as Protocol from "./llm/protocol.ts";
+import type { AssistantMessageEventStream } from "./utils/eventstream.ts";
 
 /**
  * Stream assistant responses for a model and context.

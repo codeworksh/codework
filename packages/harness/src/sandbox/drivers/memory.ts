@@ -1,10 +1,10 @@
 import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer, Option, Schema } from "effect";
-import { SandboxDriver } from "../driver";
-import { providerError } from "../errors";
-import { EnvInMemory } from "../fs/inmemory";
-import { SandboxInstance } from "../instance";
-import { transport } from "../virtual";
+import { SandboxDriver } from "../driver.ts";
+import { providerError } from "../errors.ts";
+import { EnvInMemory } from "../fs/inmemory.ts";
+import { SandboxInstance } from "../instance.ts";
+import { transport } from "../virtual.ts";
 
 export interface CreateConfig {
 	readonly defaultCwd: SandboxDriver.AbsolutePath;
@@ -110,4 +110,4 @@ export const make = (): MemoryDriver => {
 	return { driver };
 };
 
-export * as MemorySandboxDriver from "./memory";
+export * as MemorySandboxDriver from "./memory.ts";

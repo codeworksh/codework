@@ -1,5 +1,5 @@
-import { Message } from "../../src/message/message";
-import type { Model } from "../../src/model/model";
+import * as Message from "../../src/message/message.ts";
+import type * as Model from "../../src/model/model.ts";
 
 export function makeModel(overrides: Partial<Model.Info> = {}): Model.Info {
 	return {

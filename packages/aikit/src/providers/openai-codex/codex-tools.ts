@@ -40,7 +40,7 @@ export function prepareOpenAICodexTools({
 		codexTools.push({
 			type: "function",
 			name: tool.name,
-			description: tool.description,
+			...(tool.description !== undefined && { description: tool.description }),
 			parameters: tool.inputSchema as Record<string, unknown>,
 			strict: null,
 		});

@@ -4,12 +4,12 @@
  */
 
 import { Context, Effect, Schema } from "effect";
-import { Location } from "../location/location";
-import { type SandboxMountError } from "../sandbox/errors";
-import { SandboxFileSystem } from "../sandbox/fs/filesystem";
-import { SandboxInstance } from "../sandbox/instance";
-import { SandboxIO } from "../sandbox/io";
-import type { ID as SessionId } from "../session/schema";
+import { Location } from "../location/location.ts";
+import { type SandboxMountError } from "../sandbox/errors.ts";
+import { SandboxFileSystem } from "../sandbox/fs/filesystem.ts";
+import { SandboxInstance } from "../sandbox/instance.ts";
+import { SandboxIO } from "../sandbox/io.ts";
+import type { ID as SessionId } from "../session/schema.ts";
 
 export class ShellWorkError extends Schema.TaggedErrorClass<ShellWorkError>()("Runner.ShellWorkError", {
 	command: Schema.String,
@@ -41,4 +41,4 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@codework/runner/run") {}
 
-export * as Runner from "./run";
+export * as Runner from "./run.ts";

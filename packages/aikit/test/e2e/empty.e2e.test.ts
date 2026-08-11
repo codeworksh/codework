@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
-import { Message } from "../../src/message/message";
-import { complete } from "../../src/stream";
-import { makeAssistantMessage, makeUsage } from "../utils/fixtures";
+import * as Message from "../../src/message/message.ts";
+import { complete } from "../../src/stream.ts";
+import { makeAssistantMessage, makeUsage } from "../utils/fixtures.ts";
 import {
 	anthropicOptions,
 	describeIfAnthropic,
@@ -13,7 +13,7 @@ import {
 	openaiOptions,
 	openrouterOptions,
 	type StreamableModel,
-} from "../utils/llm";
+} from "../utils/llm.ts";
 
 type SupportedOptions = Record<string, unknown>;
 

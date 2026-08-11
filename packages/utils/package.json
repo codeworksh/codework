@@ -42,7 +42,8 @@
 		"build": "vp pack",
 		"bump": "bumpp",
 		"check": "vp check",
-		"lint": "vp lint"
+		"lint": "vp lint",
+		"typecheck": "node ../../scripts/tsgo.mjs --noEmit"
 	},
 	"dependencies": {
 		"glob": "^13.0.6",
@@ -53,7 +54,7 @@
 		"bumpp": "^11.0.1"
 	},
 	"peerDependencies": {
-		"typescript": "^5 || ^6 || ^7"
+		"typescript": "^6"
 	},
 	"engines": {
 		"node": ">=24.14.1"

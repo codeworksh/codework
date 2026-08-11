@@ -15,11 +15,11 @@ import type {
 } from "@ai-sdk/openai-compatible";
 import type { XaiLanguageModelChatOptions, XaiLanguageModelResponsesOptions, XaiProviderSettings } from "@ai-sdk/xai";
 import type { OpenRouterProviderOptions, OpenRouterProviderSettings } from "@openrouter/ai-sdk-provider";
-import type { OpenAICodexLanguageModelOptions, OpenAICodexProviderSettings } from "../providers/openai-codex";
+import type { OpenAICodexLanguageModelOptions, OpenAICodexProviderSettings } from "../providers/openai-codex/index.ts";
 import { Type, type Static } from "typebox";
-import { Model } from "../model/model";
-import type { Protocol } from "./protocol";
-import { SharedOptions, ThinkingBudgets } from "./shared";
+import * as Model from "../model/model.ts";
+import type * as Protocol from "./protocol.ts";
+import { SharedOptions, ThinkingBudgets } from "./shared.ts";
 
 export const Options = Type.Evaluate(
 	Type.Intersect([

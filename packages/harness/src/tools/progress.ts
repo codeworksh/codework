@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import type { ModelContent } from "./tool";
+import type { ModelContent } from "./tool.ts";
 
 /**
  * `ToolProgress` — the side-channel a long-running tool (e.g. streaming bash)

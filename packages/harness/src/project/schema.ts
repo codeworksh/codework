@@ -1,6 +1,6 @@
 import { Schema } from "effect";
-import { SandboxInstance } from "../sandbox/instance";
-import { AbsolutePath, withStatics } from "../schema";
+import { SandboxInstance } from "../sandbox/instance.ts";
+import { AbsolutePath, withStatics } from "../schema.ts";
 
 // Represents the project ID type
 // defaults to local
@@ -52,4 +52,4 @@ export class Info extends Schema.Class<Info>("Project.Info")({
 	directory: AbsolutePath,
 }) {}
 
-export * as ProjectSchema from "./schema";
+export * as ProjectSchema from "./schema.ts";

@@ -3,13 +3,13 @@ import fs from "node:fs/promises";
 import { realpath } from "node:fs/promises";
 import { posix as path } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { SandboxFileSystem } from "../src/sandbox/fs/filesystem";
-import { SandboxIO } from "../src/sandbox/io";
-import { Sandbox } from "../src/sandbox/sandbox";
-import { quote, Shell } from "../src/sandbox/shell/shell";
-import { fromSandboxShell, ToolShell, ToolShellTimeout } from "../src/tools/shell";
-import { tmpdir } from "./fixtures/tempdir";
-import "./utils/env";
+import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
+import { quote, Shell } from "../src/sandbox/shell/shell.ts";
+import { fromSandboxShell, ToolShell, ToolShellTimeout } from "../src/tools/shell.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
+import "./utils/env.ts";
 
 /**
  * Behavioral parity with Flue's checked-in filesystem and shell examples.

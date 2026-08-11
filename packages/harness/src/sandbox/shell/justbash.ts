@@ -3,10 +3,18 @@ import { Effect, Layer } from "effect";
 import { Bash, type IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
-import { Local } from "../fs/vfs";
-import { SandboxIO } from "../io";
-import type { LocalPrimitives } from "../sandbox";
-import { type ExecResult, fromExec, type ISandboxExe, perMount, Shell, ShellError, type ShellOptions } from "./shell";
+import { Local } from "../fs/vfs.ts";
+import { SandboxIO } from "../io.ts";
+import type { LocalPrimitives } from "../sandbox.ts";
+import {
+	type ExecResult,
+	fromExec,
+	type ISandboxExe,
+	perMount,
+	Shell,
+	ShellError,
+	type ShellOptions,
+} from "./shell.ts";
 
 // The shared exec contract lives in `shell.ts`; re-export the pieces this
 // module used to own so existing `EnvBash.Shell` / `EnvBash.ShellError`
@@ -316,4 +324,4 @@ export const services = <E, RIn>(
 ): Layer.Layer<SandboxIO.Provides | LocalPrimitives, E, RIn> =>
 	Layer.provideMerge(SandboxIO.mount(identity), Layer.provideMerge(Local.layer, layer(inner, identity.cwd)));
 
-export * as EnvBash from "./justbash";
+export * as EnvBash from "./justbash.ts";

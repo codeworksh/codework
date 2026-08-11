@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { makeRemoteOwner } from "./fixtures/remote-owner";
+import { makeRemoteOwner } from "./fixtures/remote-owner.ts";
 
 describe("remote fixture owner", () => {
 	it("deletes the captured resource before disposing its runtime", async () => {
