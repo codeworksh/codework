@@ -33,6 +33,9 @@ export const ToolCallBaseSchema = Type.Object({
 	name: Type.String(),
 	arguments: Type.Record(Type.String(), Type.Any()),
 	thoughtSignature: Type.Optional(Type.String()), // Google-specific: opaque signature for reusing thought context
+	namespace: Type.Optional(Type.String()), // OpenAI Responses namespace for dynamically loaded tools
+	/** Names from Context.tools that became available after this tool result. */
+	addedToolNames: Type.Optional(Type.Array(Type.String())),
 	time: Type.Object({
 		start: Type.Number(), // Unix timestamp in milliseconds
 		end: Type.Number(), // Unix timestamp in milliseconds, last known lifecycle update
@@ -130,6 +133,7 @@ export const UsageSchema = Type.Object({
 	output: Type.Number(),
 	cacheRead: Type.Number(),
 	cacheWrite: Type.Number(),
+	reasoning: Type.Optional(Type.Number()),
 	totalTokens: Type.Number(),
 	cost: Type.Object({
 		input: Type.Number(),
@@ -210,6 +214,26 @@ export function createAssistantMessage(message: AssistantMessageInit): Assistant
 	};
 }
 
+export const GrammarVariantsSchema = Type.Partial(
+	Type.Object({
+		openai_lark: Type.String(),
+		openai_regex: Type.String(),
+	}),
+);
+export type GrammarVariants = Static<typeof GrammarVariantsSchema>;
+
+export const ConstrainedSamplingSchema = Type.Union([
+	Type.Object({
+		type: Type.Literal("json_schema"),
+		strict: Type.Union([Type.Literal("prefer"), Type.Literal("require")]),
+	}),
+	Type.Object({
+		type: Type.Literal("grammar"),
+		variants: GrammarVariantsSchema,
+	}),
+]);
+export type ConstrainedSampling = Static<typeof ConstrainedSamplingSchema>;
+
 /**
  * Generic tool definition with typed parameter schema.
  * Usage:
@@ -229,11 +253,13 @@ export const ToolSchema = Type.Object({
 	name: Type.String(),
 	description: Type.String(),
 	parameters: Type.Unsafe<TSchema>({}),
+	constrainedSampling: Type.Optional(Type.Union([Type.Literal(false), ConstrainedSamplingSchema])),
 });
 export interface Tool<TParameters extends TSchema = TSchema> {
 	name: string;
 	description: string;
 	parameters: TParameters;
+	constrainedSampling?: false | ConstrainedSampling;
 }
 export type ToolArguments<T extends Tool> = Static<T["parameters"]>;
 

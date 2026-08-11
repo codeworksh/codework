@@ -10,6 +10,12 @@ type OpenAICodexErrorPayload = {
 	};
 };
 
+function isTerminalRateLimitError(body: string): boolean {
+	return /GoUsageLimitError|FreeUsageLimitError|Monthly usage limit reached|available balance|insufficient_quota|out of budget|quota exceeded|billing/i.test(
+		body,
+	);
+}
+
 /**
  * Turn a Codex error payload into a human-friendly message. ChatGPT plan usage
  * limits deserve a clearer message than the raw backend error.
@@ -58,6 +64,10 @@ export async function createOpenAICodexAPICallError(args: {
 		statusCode: response.status,
 		responseHeaders,
 		responseBody,
-		isRetryable: response.status === 408 || response.status === 409 || response.status >= 500,
+		isRetryable:
+			response.status === 408 ||
+			response.status === 409 ||
+			(response.status === 429 && !isTerminalRateLimitError(responseBody)) ||
+			response.status >= 500,
 	});
 }

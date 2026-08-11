@@ -90,6 +90,7 @@ const DEFAULT_THINKING_BUDGET_FRACTIONS: Record<Model.ActiveThinkingLevel, numbe
 	medium: 0.25,
 	high: 0.5,
 	xhigh: 0.8,
+	max: 0.95,
 };
 
 const MIN_THINKING_BUDGET = 1024;
@@ -180,6 +181,14 @@ function partIndex(output: Message.AssistantMessage, block: StreamBlock): number
 	return output.parts.indexOf(block as Message.AssistantMessage["parts"][number]);
 }
 
+function openAICodexMetadata(value: unknown): Record<string, unknown> | undefined {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+	const metadata = (value as Record<string, unknown>)["openai-codex"];
+	return typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
+		? (metadata as Record<string, unknown>)
+		: undefined;
+}
+
 function ensureTextBlock(output: Message.AssistantMessage, id: string, stream: AssistantMessageEventStream): TextBlock {
 	const existing = output.parts.find((part) => part.type === "text" && (part as TextBlock).streamId === id) as
 		| TextBlock
@@ -241,21 +250,33 @@ function ensureToolCallBlock(
 	return block;
 }
 
-function finishTextBlock(output: Message.AssistantMessage, id: string, stream: AssistantMessageEventStream): void {
+function finishTextBlock(
+	output: Message.AssistantMessage,
+	id: string,
+	stream: AssistantMessageEventStream,
+	textSignature?: string,
+): void {
 	const block = output.parts.find((part) => part.type === "text" && (part as TextBlock).streamId === id) as
 		| TextBlock
 		| undefined;
 	if (!block) return;
+	if (textSignature) block.textSignature = textSignature;
 	const index = partIndex(output, block);
 	delete (block as { streamId?: string }).streamId;
 	stream.push({ type: "text.end", partIndex: index, content: block.text, partial: output });
 }
 
-function finishThinkingBlock(output: Message.AssistantMessage, id: string, stream: AssistantMessageEventStream): void {
+function finishThinkingBlock(
+	output: Message.AssistantMessage,
+	id: string,
+	stream: AssistantMessageEventStream,
+	thinkingSignature?: string,
+): void {
 	const block = output.parts.find((part) => part.type === "thinking" && (part as ThinkingBlock).streamId === id) as
 		| ThinkingBlock
 		| undefined;
 	if (!block) return;
+	if (thinkingSignature) block.thinkingSignature = thinkingSignature;
 	const index = partIndex(output, block);
 	delete (block as { streamId?: string }).streamId;
 	stream.push({ type: "thinking.end", partIndex: index, content: block.thinking, partial: output });
@@ -284,6 +305,8 @@ function finalizeToolCall(
 	block.name = part.toolName;
 	block.arguments =
 		typeof part.input === "object" && part.input !== null ? (part.input as Record<string, unknown>) : {};
+	const namespace = openAICodexMetadata(part.providerMetadata)?.namespace;
+	if (typeof namespace === "string") block.namespace = namespace;
 	block.time.end = Date.now();
 	delete block.partialJson;
 
@@ -300,6 +323,7 @@ function handlePart(
 	output: Message.AssistantMessage,
 	model: Model.Info,
 	stream: AssistantMessageEventStream,
+	costMultiplier: number,
 ): void {
 	switch (part.type) {
 		case "text-start":
@@ -311,9 +335,11 @@ function handlePart(
 			stream.push({ type: "text.delta", partIndex: partIndex(output, block), delta: part.text, partial: output });
 			break;
 		}
-		case "text-end":
-			finishTextBlock(output, part.id, stream);
+		case "text-end": {
+			const messageId = openAICodexMetadata(part.providerMetadata)?.messageId;
+			finishTextBlock(output, part.id, stream, typeof messageId === "string" ? messageId : undefined);
 			break;
+		}
 		case "reasoning-start":
 			ensureThinkingBlock(output, part.id, stream);
 			break;
@@ -334,9 +360,11 @@ function handlePart(
 			});
 			break;
 		}
-		case "reasoning-end":
-			finishThinkingBlock(output, part.id, stream);
+		case "reasoning-end": {
+			const reasoningItem = openAICodexMetadata(part.providerMetadata)?.reasoningItem;
+			finishThinkingBlock(output, part.id, stream, typeof reasoningItem === "string" ? reasoningItem : undefined);
 			break;
+		}
 		case "tool-input-start":
 			ensureToolCallBlock(output, part.id, part.toolName, stream, true);
 			break;
@@ -362,11 +390,11 @@ function handlePart(
 			output.responseId ||= part.response.id;
 			if (part.response.modelId && part.response.modelId !== model.id)
 				output.responseModel ||= part.response.modelId;
-			output.usage = mapUsage(part.usage, model);
+			output.usage = mapUsage(part.usage, model, costMultiplier);
 			output.stopReason = mapFinishReason(part.finishReason);
 			break;
 		case "finish":
-			output.usage = mapUsage(part.totalUsage, model);
+			output.usage = mapUsage(part.totalUsage, model, costMultiplier);
 			output.stopReason = mapFinishReason(part.finishReason);
 			break;
 		case "abort":
@@ -376,6 +404,17 @@ function handlePart(
 		case "error":
 			throw part.error instanceof Error ? part.error : new Error(formatThrownError(part.error));
 	}
+}
+
+function resolveCostMultiplier(model: Model.Info, options: RuntimeOptions, providerOptions: ProviderOptionBag): number {
+	if (providerOptionsKey(model) !== "openai-codex") return 1;
+	const providerTier = providerOptions["openai-codex"]?.serviceTier;
+	const factoryTier = options.factoryOptions?.serviceTier;
+	const modelTier = model.options?.serviceTier;
+	const serviceTier = providerTier ?? factoryTier ?? modelTier;
+	if (serviceTier === "flex") return 0.5;
+	if (serviceTier === "priority") return model.id === "gpt-5.5" ? 2.5 : 2;
+	return 1;
 }
 
 /**
@@ -414,11 +453,12 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 		const output = createAssistantMessage(model);
 		try {
 			const languageModel = await resolveAISDKLanguageModel(model, runtimeOptions);
-			const tools = convertTools(context.tools);
+			const tools = convertTools(context.tools, model);
 			const messages = convertMessages(context, model);
 			const providerOptions = resolveProviderOptions(model, runtimeOptions) as Parameters<
 				typeof streamText<ToolSet>
 			>[0]["providerOptions"];
+			const costMultiplier = resolveCostMultiplier(model, runtimeOptions, providerOptions as ProviderOptionBag);
 			const activeTools = runtimeOptions.activeTools?.filter((name) => !tools || name in tools);
 
 			let params: Parameters<typeof streamText<ToolSet>>[0] = compact({
@@ -446,7 +486,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			stream.push({ type: "start", partial: output });
 
 			for await (const part of result.fullStream) {
-				handlePart(part, output, model, stream);
+				handlePart(part, output, model, stream, costMultiplier);
 			}
 
 			if (runtimeOptions.signal?.aborted || output.stopReason === "aborted") {

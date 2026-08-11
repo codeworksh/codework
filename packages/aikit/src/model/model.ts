@@ -22,8 +22,10 @@ export const ThinkingLevelEnum = {
 	medium: "medium",
 	// Higher reasoning effort for complex coding, analysis, or planning.
 	high: "high",
-	// Maximum reasoning effort for the hardest tasks where latency/cost tradeoffs are acceptable.
+	// Extra-high reasoning effort for difficult tasks when supported by the model.
 	xhigh: "xhigh",
+	// Maximum provider-defined effort above xhigh when explicitly supported by the model.
+	max: "max",
 } as const;
 
 export const ThinkingLevel = Type.Union([
@@ -33,6 +35,7 @@ export const ThinkingLevel = Type.Union([
 	Type.Literal(ThinkingLevelEnum.medium),
 	Type.Literal(ThinkingLevelEnum.high),
 	Type.Literal(ThinkingLevelEnum.xhigh),
+	Type.Literal(ThinkingLevelEnum.max),
 ]);
 export type ThinkingLevel = Static<typeof ThinkingLevel>;
 
@@ -42,6 +45,7 @@ export const ActiveThinkingLevel = Type.Union([
 	Type.Literal(ThinkingLevelEnum.medium),
 	Type.Literal(ThinkingLevelEnum.high),
 	Type.Literal(ThinkingLevelEnum.xhigh),
+	Type.Literal(ThinkingLevelEnum.max),
 ]);
 export type ActiveThinkingLevel = Static<typeof ActiveThinkingLevel>;
 
@@ -51,6 +55,7 @@ const ACTIVE_THINKING_LEVELS = [
 	ThinkingLevelEnum.medium,
 	ThinkingLevelEnum.high,
 	ThinkingLevelEnum.xhigh,
+	ThinkingLevelEnum.max,
 ] as const satisfies readonly ActiveThinkingLevel[];
 const MODEL_THINKING_LEVELS = [
 	ThinkingLevelEnum.off,
@@ -68,11 +73,19 @@ export const ProviderInfo = Type.Object({
 export type ProviderInfo = Static<typeof ProviderInfo>;
 
 const InputSchema = Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]));
-const CostSchema = Type.Object({
+const CostRatesSchema = Type.Object({
 	input: Type.Number(),
 	output: Type.Number(),
 	cacheRead: Type.Number(),
 	cacheWrite: Type.Number(),
+});
+const CostTierSchema = Type.Object({
+	...CostRatesSchema.properties,
+	inputTokensAbove: Type.Number(),
+});
+const CostSchema = Type.Object({
+	...CostRatesSchema.properties,
+	tiers: Type.Optional(Type.Array(CostTierSchema)),
 });
 const SupportedProtocolsSchema = Type.Partial(
 	Type.Object({
@@ -121,6 +134,14 @@ export const ThinkingLevelMapSchema = Type.Partial(
 );
 export type ThinkingLevelMap = Static<typeof ThinkingLevelMapSchema>;
 
+export const CompatibilitySchema = Type.Object({
+	supportsToolSearch: Type.Optional(Type.Boolean()),
+	supportsAdditionalTools: Type.Optional(Type.Boolean()),
+	supportsStrictMode: Type.Optional(Type.Boolean()),
+	supportsOpenAIGrammarTools: Type.Optional(Type.Boolean()),
+});
+export type Compatibility = Static<typeof CompatibilitySchema>;
+
 export const Schema = Type.Object({
 	id: Type.String(),
 	name: Type.String(),
@@ -138,6 +159,7 @@ export const Schema = Type.Object({
 	providerOptionsKey: Type.Optional(Type.String()),
 	options: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 	providerOptions: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+	compat: Type.Optional(CompatibilitySchema),
 	protocol: KnownProviderEnumSchema, // provider as the underlying protocol
 	supportedProtocols: Type.Optional(SupportedProtocolsSchema), // provider as the underlying supported protocols
 });
@@ -164,10 +186,20 @@ export function calculateCost(
 		};
 	},
 ): void {
-	usage.cost.input = (usage.input / 1_000_000) * model.cost.input;
-	usage.cost.output = (usage.output / 1_000_000) * model.cost.output;
-	usage.cost.cacheRead = (usage.cacheRead / 1_000_000) * model.cost.cacheRead;
-	usage.cost.cacheWrite = (usage.cacheWrite / 1_000_000) * model.cost.cacheWrite;
+	const inputTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+	let rates = model.cost;
+	let matchedThreshold = -1;
+	for (const tier of model.cost.tiers ?? []) {
+		if (inputTokens > tier.inputTokensAbove && tier.inputTokensAbove > matchedThreshold) {
+			rates = tier;
+			matchedThreshold = tier.inputTokensAbove;
+		}
+	}
+
+	usage.cost.input = (usage.input / 1_000_000) * rates.input;
+	usage.cost.output = (usage.output / 1_000_000) * rates.output;
+	usage.cost.cacheRead = (usage.cacheRead / 1_000_000) * rates.cacheRead;
+	usage.cost.cacheWrite = (usage.cacheWrite / 1_000_000) * rates.cacheWrite;
 	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 }
 
@@ -261,7 +293,7 @@ export function getSupportedThinkingLevels<TProtocol extends KnownProviderEnum>(
 	return MODEL_THINKING_LEVELS.filter((level) => {
 		const mapped = model.thinkingLevelMap?.[level];
 		if (mapped === null) return false;
-		if (level === "xhigh") return mapped !== undefined;
+		if (level === "xhigh" || level === "max") return mapped !== undefined;
 		return true;
 	});
 }

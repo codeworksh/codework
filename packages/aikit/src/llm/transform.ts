@@ -11,6 +11,8 @@ import {
 } from "ai";
 import * as Message from "../message/message.ts";
 import * as Model from "../model/model.ts";
+import { resolveOpenAICodexToolConstraint } from "../providers/openai-codex/codex-tools.ts";
+import { shortHash } from "../utils/hash.ts";
 import { parseStreamingJson } from "../utils/jsonparse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize.ts";
 
@@ -51,7 +53,7 @@ function userContent(parts: Message.UserMessage["parts"], supportsImages: boolea
 			continue;
 		}
 		if (supportsImages) {
-			content.push({ type: "image", image: part.data, mediaType: part.mimeType });
+			content.push({ type: "file", data: part.data, mediaType: part.mimeType });
 		}
 	}
 
@@ -102,15 +104,38 @@ function toolResultOutput(toolCall: TerminalToolCall) {
 		value: [
 			...(text.length > 0 ? [{ type: "text" as const, text }] : []),
 			...images.map((image) => ({
-				type: "image-data" as const,
-				data: image.data,
+				type: "file" as const,
+				data: { type: "data" as const, data: image.data },
 				mediaType: image.mimeType,
 			})),
 		],
 	};
 }
 
-function assistantMessages(message: Message.AssistantMessage): ModelMessage[] {
+function normalizeOpenAICodexIdPart(value: string): string {
+	return value
+		.replace(/[^a-zA-Z0-9_-]/g, "_")
+		.slice(0, 64)
+		.replace(/_+$/, "");
+}
+
+export function normalizeOpenAICodexToolCallId(
+	id: string,
+	model: Model.Info,
+	source: Message.AssistantMessage,
+): string {
+	if (!id.includes("|")) return normalizeOpenAICodexIdPart(id);
+	const [callId, itemId = ""] = id.split("|");
+	const normalizedCallId = normalizeOpenAICodexIdPart(callId ?? "");
+	const isForeignToolCall = source.provider.id !== model.provider.id || source.protocol !== model.protocol;
+	let normalizedItemId = isForeignToolCall ? `fc_${shortHash(itemId)}` : normalizeOpenAICodexIdPart(itemId);
+	if (!normalizedItemId.startsWith("fc_") && !normalizedItemId.startsWith("ctc_")) {
+		normalizedItemId = normalizeOpenAICodexIdPart(`fc_${normalizedItemId}`);
+	}
+	return `${normalizedCallId}|${normalizedItemId}`;
+}
+
+function assistantMessages(message: Message.AssistantMessage, model: Model.Info): ModelMessage[] {
 	if (message.stopReason === "error" || message.stopReason === "aborted") return [];
 
 	const assistantContent: Exclude<AssistantModelMessage["content"], string> = [];
@@ -120,29 +145,51 @@ function assistantMessages(message: Message.AssistantMessage): ModelMessage[] {
 		if (part.type === "text") {
 			const text = sanitizeSurrogates(part.text);
 			if (text.trim().length === 0) continue;
-			assistantContent.push({ type: "text", text });
+			assistantContent.push({
+				type: "text",
+				text,
+				...(part.textSignature && message.protocol === Model.KnownProviderEnum.openaiCodex
+					? { providerOptions: { "openai-codex": { messageId: part.textSignature } } }
+					: {}),
+			});
 			continue;
 		}
 		if (part.type === "thinking") {
 			const thinking = sanitizeSurrogates(part.thinking);
-			if (thinking.trim().length === 0) continue;
+			if (thinking.trim().length === 0 && !part.thinkingSignature) continue;
 			const reasoning: Record<string, unknown> = { type: "reasoning", text: thinking };
 			// Include the provider signature for faithful replay (e.g. Anthropic extended thinking).
 			if (part.thinkingSignature) {
-				reasoning.providerOptions = {
-					anthropic: { signature: part.thinkingSignature },
-				};
+				reasoning.providerOptions =
+					message.protocol === Model.KnownProviderEnum.openaiCodex
+						? { "openai-codex": { reasoningItem: part.thinkingSignature } }
+						: { anthropic: { signature: part.thinkingSignature } };
 			}
 			assistantContent.push(reasoning as (typeof assistantContent)[number]);
 			continue;
 		}
 		if (part.type !== "toolCall") continue;
 
+		const codexToolMetadata: { namespace?: string; omitItemId?: boolean } = {};
+		if (part.namespace && message.protocol === Model.KnownProviderEnum.openaiCodex) {
+			codexToolMetadata.namespace = part.namespace;
+		}
+		if (
+			model.protocol === Model.KnownProviderEnum.openaiCodex &&
+			message.protocol === model.protocol &&
+			message.provider.id === model.provider.id &&
+			message.model !== model.id
+		) {
+			codexToolMetadata.omitItemId = true;
+		}
 		assistantContent.push({
 			type: "tool-call",
 			toolCallId: part.callID,
 			toolName: part.name,
 			input: sanitizeRecord(part.arguments ?? {}),
+			...(Object.keys(codexToolMetadata).length > 0
+				? { providerOptions: { "openai-codex": codexToolMetadata } }
+				: {}),
 		});
 
 		const terminal = part.status === "pending" || part.status === "running" ? undefined : part;
@@ -150,6 +197,9 @@ function assistantMessages(message: Message.AssistantMessage): ModelMessage[] {
 			type: "tool-result",
 			toolCallId: part.callID,
 			toolName: part.name,
+			...(terminal?.addedToolNames?.length
+				? { providerOptions: { "openai-codex": { addedToolNames: terminal.addedToolNames } } }
+				: {}),
 			output: terminal
 				? toolResultOutput(terminal)
 				: {
@@ -171,27 +221,37 @@ function assistantMessages(message: Message.AssistantMessage): ModelMessage[] {
 
 export function convertMessages(context: Message.Context, model: Model.Info): ModelMessage[] {
 	const messages: ModelMessage[] = [];
-	const transformedMessages = Message.transformMessages(context.messages, model);
+	const transformedMessages = Message.transformMessages(
+		context.messages,
+		model,
+		model.protocol === Model.KnownProviderEnum.openaiCodex ? normalizeOpenAICodexToolCallId : undefined,
+	);
 
 	for (const msg of transformedMessages) {
 		if (msg.role === "user") {
 			messages.push(...userContent(msg.parts, model.input.includes("image")));
 			continue;
 		}
-		messages.push(...assistantMessages(msg));
+		messages.push(...assistantMessages(msg, model));
 	}
 
 	return messages;
 }
 
-export function convertTools(tools?: Message.Tool[]): ToolSet | undefined {
+export function convertTools(tools?: Message.Tool[], model?: Model.Info): ToolSet | undefined {
 	if (!tools || tools.length === 0) return;
 
 	const result: ToolSet = {};
 	for (const tool of tools) {
+		const constraint =
+			model?.protocol === Model.KnownProviderEnum.openaiCodex
+				? resolveOpenAICodexToolConstraint(tool, model.compat)
+				: undefined;
 		result[tool.name] = {
 			description: tool.description,
 			inputSchema: jsonSchema(tool.parameters as any),
+			...(constraint?.type === "json_schema" ? { strict: true } : {}),
+			...(constraint?.type === "grammar" ? { providerOptions: { "openai-codex": { grammar: constraint } } } : {}),
 		};
 	}
 	return result;
@@ -213,7 +273,11 @@ export function mapFinishReason(reason: FinishReason | undefined): Message.StopR
 	}
 }
 
-export function mapUsage(usage: LanguageModelUsage | undefined, model: Model.Info): Message.AssistantMessage["usage"] {
+export function mapUsage(
+	usage: LanguageModelUsage | undefined,
+	model: Model.Info,
+	costMultiplier = 1,
+): Message.AssistantMessage["usage"] {
 	const cacheRead = usage?.inputTokenDetails.cacheReadTokens ?? 0;
 	const cacheWrite = usage?.inputTokenDetails?.cacheWriteTokens ?? 0;
 	const input =
@@ -225,10 +289,20 @@ export function mapUsage(usage: LanguageModelUsage | undefined, model: Model.Inf
 		output,
 		cacheRead,
 		cacheWrite,
+		...(usage?.outputTokenDetails?.reasoningTokens !== undefined
+			? { reasoning: usage.outputTokenDetails.reasoningTokens }
+			: {}),
 		totalTokens,
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 	};
 	Model.calculateCost(model, result);
+	if (costMultiplier !== 1) {
+		result.cost.input *= costMultiplier;
+		result.cost.output *= costMultiplier;
+		result.cost.cacheRead *= costMultiplier;
+		result.cost.cacheWrite *= costMultiplier;
+		result.cost.total = result.cost.input + result.cost.output + result.cost.cacheRead + result.cost.cacheWrite;
+	}
 	return result;
 }
 

@@ -161,13 +161,19 @@ const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
 	"gpt-5.5",
 ]);
 
-function supportsOpenAiXhigh(modelId: string): boolean {
+function supportsOpenAiXhigh(model: Model.Info): boolean {
+	const modelId = model.id;
 	return (
 		modelId.includes("gpt-5.2") ||
 		modelId.includes("gpt-5.3") ||
 		modelId.includes("gpt-5.4") ||
-		modelId.includes("gpt-5.5")
+		modelId.includes("gpt-5.5") ||
+		(model.protocol === Model.KnownProviderEnum.openaiCodex && modelId.includes("gpt-5.6"))
 	);
+}
+
+function supportsOpenAiCodexMax(model: Model.Info): boolean {
+	return model.protocol === Model.KnownProviderEnum.openaiCodex && model.id.includes("gpt-5.6");
 }
 
 function mergeThinkingLevelMap(model: Model.Info, map: ThinkingLevelMap): void {
@@ -185,8 +191,11 @@ function applyThinkingLevelMetadata(model: Model.Info): void {
 	) {
 		mergeThinkingLevelMap(model, { off: "none" });
 	}
-	if (supportsOpenAiXhigh(model.id)) {
+	if (supportsOpenAiXhigh(model)) {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
+	}
+	if (supportsOpenAiCodexMax(model)) {
+		mergeThinkingLevelMap(model, { max: "max" });
 	}
 	if (model.id.includes("opus-4-6") || model.id.includes("opus-4.6")) {
 		mergeThinkingLevelMap(model, { xhigh: "max" });
@@ -204,10 +213,45 @@ const OPENAI_CODEX_PROVIDER_ID = "openai-codex";
 const OPENAI_CODEX_NPM = "@codeworksh/ai-sdk-openai-codex";
 const OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const OPENAI_CODEX_CONTEXT = 272_000;
+const OPENAI_CODEX_GPT_56_CONTEXT = 272_000;
 const OPENAI_CODEX_SPARK_CONTEXT = 128_000;
 const OPENAI_CODEX_MAX_TOKENS = 128_000;
+const OPENAI_LONG_CONTEXT_INPUT_THRESHOLD = 272_000;
+const OPENAI_CODEX_TOOL_SEARCH_MODEL_IDS = new Set([
+	"gpt-5.4",
+	"gpt-5.4-mini",
+	"gpt-5.5",
+	"gpt-5.6-luna",
+	"gpt-5.6-sol",
+	"gpt-5.6-terra",
+]);
+const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"]);
 
-type OpenAICodexModelSeed = Pick<Model.Info, "id" | "name" | "input" | "cost" | "contextWindow">;
+type OpenAICodexModelSeed = Pick<Model.Info, "id" | "name" | "input" | "cost" | "contextWindow" | "thinkingLevelMap">;
+
+function roundCost(value: number): number {
+	return Number(value.toFixed(6));
+}
+
+function withOpenAiLongContextPricing(cost: Model.Info["cost"]): Model.Info["cost"] {
+	return {
+		...cost,
+		tiers: [
+			{
+				inputTokensAbove: OPENAI_LONG_CONTEXT_INPUT_THRESHOLD,
+				input: roundCost(cost.input * 2),
+				output: roundCost(cost.output * 1.5),
+				cacheRead: roundCost(cost.cacheRead * 2),
+				cacheWrite: roundCost(cost.cacheWrite * 2),
+			},
+		],
+	};
+}
+
+const OPENAI_CODEX_GPT_56_COSTS = {
+	"gpt-5.6-luna": { input: 0.2, output: 1.2, cacheRead: 0.02, cacheWrite: 0.25 },
+	"gpt-5.6-terra": { input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5 },
+} satisfies Record<string, Model.Info["cost"]>;
 
 const OPENAI_CODEX_MODELS: OpenAICodexModelSeed[] = [
 	{
@@ -221,7 +265,7 @@ const OPENAI_CODEX_MODELS: OpenAICodexModelSeed[] = [
 		id: "gpt-5.4",
 		name: "GPT-5.4",
 		input: ["text", "image"],
-		cost: { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
+		cost: withOpenAiLongContextPricing({ input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 }),
 		contextWindow: OPENAI_CODEX_CONTEXT,
 	},
 	{
@@ -235,14 +279,40 @@ const OPENAI_CODEX_MODELS: OpenAICodexModelSeed[] = [
 		id: "gpt-5.5",
 		name: "GPT-5.5",
 		input: ["text", "image"],
-		cost: { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
+		cost: withOpenAiLongContextPricing({ input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 }),
 		contextWindow: OPENAI_CODEX_CONTEXT,
+	},
+	{
+		id: "gpt-5.6-luna",
+		name: "GPT-5.6 Luna",
+		input: ["text", "image"],
+		cost: withOpenAiLongContextPricing(OPENAI_CODEX_GPT_56_COSTS["gpt-5.6-luna"]),
+		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
+		thinkingLevelMap: { minimal: null },
+	},
+	{
+		id: "gpt-5.6-sol",
+		name: "GPT-5.6 Sol",
+		input: ["text", "image"],
+		cost: withOpenAiLongContextPricing({ input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25 }),
+		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
+		thinkingLevelMap: { minimal: null },
+	},
+	{
+		id: "gpt-5.6-terra",
+		name: "GPT-5.6 Terra",
+		input: ["text", "image"],
+		cost: withOpenAiLongContextPricing(OPENAI_CODEX_GPT_56_COSTS["gpt-5.6-terra"]),
+		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
+		thinkingLevelMap: { minimal: null },
 	},
 ];
 
 export function openAICodexBuiltInModels(): Record<string, Model.Info> {
 	const models: Record<string, Model.Info> = {};
 	for (const seed of OPENAI_CODEX_MODELS) {
+		const supportsToolSearch = OPENAI_CODEX_TOOL_SEARCH_MODEL_IDS.has(seed.id);
+		const supportsAdditionalTools = OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS.has(seed.id);
 		const info: Model.Info = {
 			...seed,
 			provider: {
@@ -254,7 +324,7 @@ export function openAICodexBuiltInModels(): Record<string, Model.Info> {
 			baseUrl: OPENAI_CODEX_BASE_URL,
 			reasoning: true,
 			// Codex models always reason; the off level cannot be requested.
-			thinkingLevelMap: { off: null },
+			thinkingLevelMap: { off: null, ...seed.thinkingLevelMap },
 			maxTokens: OPENAI_CODEX_MAX_TOKENS,
 			npm: OPENAI_CODEX_NPM,
 			api: {
@@ -263,6 +333,11 @@ export function openAICodexBuiltInModels(): Record<string, Model.Info> {
 				method: Model.APIMethodEnum.responses,
 			},
 			providerOptionsKey: OPENAI_CODEX_PROVIDER_ID,
+			compat: {
+				supportsOpenAIGrammarTools: true,
+				...(supportsToolSearch ? { supportsToolSearch: true } : {}),
+				...(supportsAdditionalTools ? { supportsAdditionalTools: true } : {}),
+			},
 			protocol: Model.KnownProviderEnum.openaiCodex,
 		};
 		applyThinkingLevelMetadata(info);
