@@ -85,27 +85,32 @@ const jsonText = (value: unknown): Effect.Effect<Message.TextContent> =>
 	encodeUnknownJson(value).pipe(Effect.orDie, Effect.map(text));
 
 const endTime = (call: Message.ToolCallPendingPart, now: number) => Math.max(call.time.end, now);
+const result = <IsError extends boolean>(content: ModelContent, isError: IsError, details?: unknown) => ({
+	content: [...content],
+	...(details === undefined ? {} : { details }),
+	isError,
+});
 
 const completed = (
 	call: Message.ToolCallPendingPart,
 	content: ModelContent,
-	details: unknown,
 	now: number,
+	details?: unknown,
 ): ToolOutcome => ({
 	...call,
 	status: "completed",
-	result: { content: [...content], details, isError: false },
+	result: result(content, false, details),
 	time: { ...call.time, end: endTime(call, now) },
 });
 const errored = (
 	call: Message.ToolCallPendingPart,
 	content: ModelContent,
-	details: unknown,
 	now: number,
+	details?: unknown,
 ): ToolOutcome => ({
 	...call,
 	status: "error",
-	result: { content: [...content], details, isError: true },
+	result: result(content, true, details),
 	time: { ...call.time, end: endTime(call, now) },
 });
 const aborted = (
@@ -116,7 +121,7 @@ const aborted = (
 ): ToolOutcome => ({
 	...call,
 	status: "aborted",
-	result: { content: [...content], details, isError: true },
+	result: result(content, true, details),
 	time: { ...call.time, end: endTime(call, now) },
 });
 
@@ -145,7 +150,7 @@ const encodeOutcome = (
 			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.success))(exit.value).pipe(Effect.orDie);
 			const content = def.encodeContent ? def.encodeContent(exit.value) : [yield* jsonText(encoded)];
 			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-			return completed(call, content, encoded, now);
+			return completed(call, content, now, encoded);
 		}
 
 		const cause = exit.cause;
@@ -175,7 +180,7 @@ const encodeOutcome = (
 			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.failure))(failure).pipe(Effect.orDie);
 			const content = def.encodeFailureContent ? def.encodeFailureContent(failure) : [yield* jsonText(encoded)];
 			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-			return errored(call, content, encoded, now);
+			return errored(call, content, now, encoded);
 		}
 
 		// Undeclared failure or genuine defect → the loop is broken, not the tool.
@@ -209,22 +214,20 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Executor => {
 			const impl = impls.get(call.name);
 			if (impl === undefined) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-				return errored(call, [text(`Unknown tool: ${call.name}`)], { error: "unknown_tool", name: call.name }, now);
+				return errored(call, [text(`Unknown tool: ${call.name}`)], now, {
+					error: "unknown_tool",
+					name: call.name,
+				});
 			}
 			const def = impl.definition;
 
 			const decoded = yield* Effect.result(Schema.decodeUnknownEffect(asCodec(def.parameters))(call.arguments));
 			if (Result.isFailure(decoded)) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-				return errored(
-					call,
-					[text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)],
-					{
-						error: "invalid_arguments",
-						name: call.name,
-					},
-					now,
-				);
+				return errored(call, [text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)], now, {
+					error: "invalid_arguments",
+					name: call.name,
+				});
 			}
 
 			const ctx: ToolCallContext = { callID: call.callID, toolName: call.name, rawArgs: call.arguments };

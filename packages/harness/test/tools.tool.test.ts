@@ -174,4 +174,22 @@ describe("Executor", () => {
 		});
 		expect(outcome.time.end).toBeGreaterThanOrEqual(120);
 	});
+
+	it("omits optional details from content-only results", async () => {
+		const tool = Tool.make({
+			name: "contentOnly",
+			description: "returns content without structured details",
+			parameters: EmptyParams,
+			success: Schema.Void,
+			encodeContent: () => [{ type: "text", text: "done" }],
+			handler: () => Effect.void,
+		});
+		const executor = Executor.make([Tool.register(tool)]);
+
+		const outcome = await Effect.runPromise(executor.handle(call("contentOnly")));
+
+		expect(outcome.status).toBe("completed");
+		expect(outcome.result.content).toEqual([{ type: "text", text: "done" }]);
+		expect(outcome.result).not.toHaveProperty("details");
+	});
 });
