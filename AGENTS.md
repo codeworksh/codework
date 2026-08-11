@@ -71,7 +71,7 @@ Conventional Commit style with optional package scopes, e.g `feat(aikit): ...`, 
 
 ## Releasing
 
-The publishable package `@codeworksh/aikit` owns its release scripts; the root exposes `*:aikit` aliases so every command works from the repo root or from inside the package. Versioning uses `bumpp`, configured in `packages/aikit/bump.config.ts` (tags follow `@codeworksh/aikit@<version>` and pushing is disabled). Build + publish run through `scripts/publish.js`, which builds, rewrites the manifest, and publishes from a temp dir. Pushing and publishing stay manual.
+The publishable package `@codeworksh/aikit` owns its release scripts; the root exposes `*:aikit` aliases so every command works from the repo root or from inside the package. Versioning uses `bumpp`, configured in `packages/aikit/bump.config.ts` (tags follow `@codeworksh/aikit@<version>` and pushing is disabled). Build + publish run through `scripts/publish.mjs`, which builds, rewrites the manifest, and publishes from a temp dir. Pushing and publishing stay manual.
 
 Flow:
 

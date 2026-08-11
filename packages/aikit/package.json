@@ -55,9 +55,9 @@
 		"check": "vp check",
 		"cli": "tsx --conditions=development src/cli.ts",
 		"lint": "vp lint",
-		"release": "node ../../scripts/publish.js aikit",
-		"release:dev": "node ../../scripts/publish.js aikit --dev",
-		"release:dry": "node ../../scripts/publish.js aikit --dry-run",
+		"release": "node ../../scripts/publish.mjs aikit",
+		"release:dev": "node ../../scripts/publish.mjs aikit --dev",
+		"release:dry": "node ../../scripts/publish.mjs aikit --dry-run",
 		"test": "vp test --exclude \"test/e2e/**\"",
 		"test:e2e": "vp test",
 		"typecheck": "node ../../scripts/tsgo.mjs --noEmit"

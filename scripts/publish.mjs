@@ -11,7 +11,7 @@ const workspaceMap = new Map([
 ]);
 
 function usage() {
-	console.error("Usage: node scripts/publish.js <aikit|@codeworksh/aikit> [npm publish args]");
+	console.error("Usage: node scripts/publish.mjs <aikit|@codeworksh/aikit> [npm publish args]");
 	process.exit(1);
 }
 
