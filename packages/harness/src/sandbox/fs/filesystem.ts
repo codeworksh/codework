@@ -31,7 +31,7 @@ import { posix } from "node:path";
  * against the backend's configured `cwd`.
  */
 
-export class OperationUnsupportedError extends Schema.TaggedErrorClass<OperationUnsupportedError>()(
+export class OperationUnsupportedError extends Schema.TaggedError<OperationUnsupportedError>()(
 	"OperationUnsupportedError",
 	{
 		operation: Schema.String,
@@ -40,7 +40,7 @@ export class OperationUnsupportedError extends Schema.TaggedErrorClass<Operation
 ) {}
 
 /** A backend operation failed. `cause` carries the provider's own rejection. */
-export class FileSystemError extends Schema.TaggedErrorClass<FileSystemError>()("SandboxFileSystemError", {
+export class FileSystemError extends Schema.TaggedError<FileSystemError>()("SandboxFileSystemError", {
 	method: Schema.String,
 	path: Schema.String,
 	cause: Schema.optional(Schema.Defect()),
@@ -111,7 +111,9 @@ export interface Interface {
 }
 
 /** The runtime filesystem service — the live {@link Interface} for the active sandbox. */
-export class Service extends Context.Service<Service, Interface>()("@codework/sandbox/filesystem") {}
+export class Service extends Context.Service<Service, Interface>()(
+	"@codeworksh/harness/sandbox/fs/filesystem/Service",
+) {}
 
 /**
  * Reject `rm` options a provider does not implement, before any mutation. Only

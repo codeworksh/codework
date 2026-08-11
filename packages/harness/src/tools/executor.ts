@@ -1,5 +1,6 @@
 import { Message } from "@codeworksh/aikit";
 import { Cause, Duration, Effect, Exit, Option, Queue, Ref, Result, Schedule, Schema, Scope } from "effect";
+import { ToolExecutionError } from "./error.ts";
 import { ToolProgress, type ToolProgressPartial } from "./progress.ts";
 import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, type ToolCallContext } from "./tool.ts";
 
@@ -31,7 +32,7 @@ export interface ProgressEvent {
  * Per-call execution options (owned here; the registry only forwards them). Progress is
  * best-effort UI telemetry — see the `handle` progress path in {@link make}.
  */
-export interface HandleOptions<RProgress = never> {
+export interface HandleOptions<RProgress = never, EProgress = never> {
 	/** Sliding-queue capacity for best-effort progress. Bounded default (64); tunable. */
 	readonly progressBuffer?: number;
 	/**
@@ -44,7 +45,7 @@ export interface HandleOptions<RProgress = never> {
 	 * hot path. It MAY fail and MAY require services (`RProgress`): failures are logged/dropped,
 	 * and intermediate updates may be dropped under load. Not part of tool correctness.
 	 */
-	readonly onProgress?: (event: ProgressEvent) => Effect.Effect<void, unknown, RProgress>;
+	readonly onProgress?: (event: ProgressEvent) => Effect.Effect<void, EProgress, RProgress>;
 }
 
 export interface Executor {
@@ -53,17 +54,17 @@ export interface Executor {
 	/**
 	 * Atomically transform one complete pending tool-call part into a complete terminal
 	 * part. Most failures become a terminal
-	 * `ToolOutcome`; a `failureMode: "error"` tool propagates its declared failure
-	 * through the error channel, and undeclared failures/defects propagate as defects.
+	 * `ToolOutcome`; a `failureMode: "error"` tool propagates a {@link ToolExecutionError}
+	 * retaining its declared failure as `cause`, and undeclared failures/defects propagate as defects.
 	 *
 	 * Tools enter as {@link RegisteredTool}s (capability `R` already discharged at
 	 * registration), so the only requirement left in the result is a progress sink's own
 	 * `RProgress`. `options.onProgress` observes live progress off the hot path.
 	 */
-	readonly handle: <RProgress = never>(
+	readonly handle: <RProgress = never, EProgress = never>(
 		call: Message.ToolCallPendingPart,
-		options?: HandleOptions<RProgress>,
-	) => Effect.Effect<ToolOutcome, unknown, RProgress>;
+		options?: HandleOptions<RProgress, EProgress>,
+	) => Effect.Effect<ToolOutcome, ToolExecutionError, RProgress>;
 }
 
 /** Default sliding-queue capacity for best-effort progress. */
@@ -79,48 +80,72 @@ const asCodec = (schema: AnyToolDef["parameters"]): Schema.Codec<unknown, unknow
 	schema as unknown as Schema.Codec<unknown, unknown>;
 
 const text = (value: string): Message.TextContent => ({ type: "text", text: value });
-const jsonText = (value: unknown): Message.TextContent => ({ type: "text", text: JSON.stringify(value) });
+const encodeUnknownJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const jsonText = (value: unknown): Effect.Effect<Message.TextContent> =>
+	encodeUnknownJson(value).pipe(Effect.orDie, Effect.map(text));
 
-const completed = (call: Message.ToolCallPendingPart, content: ModelContent, details: unknown): ToolOutcome => ({
+const endTime = (call: Message.ToolCallPendingPart, now: number) => Math.max(call.time.end, now);
+
+const completed = (
+	call: Message.ToolCallPendingPart,
+	content: ModelContent,
+	details: unknown,
+	now: number,
+): ToolOutcome => ({
 	...call,
 	status: "completed",
 	result: { content: [...content], details, isError: false },
-	time: { ...call.time, end: Math.max(call.time.end, Date.now()) },
+	time: { ...call.time, end: endTime(call, now) },
 });
-const errored = (call: Message.ToolCallPendingPart, content: ModelContent, details: unknown): ToolOutcome => ({
+const errored = (
+	call: Message.ToolCallPendingPart,
+	content: ModelContent,
+	details: unknown,
+	now: number,
+): ToolOutcome => ({
 	...call,
 	status: "error",
 	result: { content: [...content], details, isError: true },
-	time: { ...call.time, end: Math.max(call.time.end, Date.now()) },
+	time: { ...call.time, end: endTime(call, now) },
 });
-const aborted = (call: Message.ToolCallPendingPart, content: ModelContent, details?: unknown): ToolOutcome => ({
+const aborted = (
+	call: Message.ToolCallPendingPart,
+	content: ModelContent,
+	now: number,
+	details?: unknown,
+): ToolOutcome => ({
 	...call,
 	status: "aborted",
 	result: { content: [...content], details, isError: true },
-	time: { ...call.time, end: Math.max(call.time.end, Date.now()) },
+	time: { ...call.time, end: endTime(call, now) },
 });
 
-const running = (call: Message.ToolCallPendingPart, partial: ToolProgressPartial): Message.ToolCallRunningPart => ({
+const running = (
+	call: Message.ToolCallPendingPart,
+	partial: ToolProgressPartial,
+	now: number,
+): Message.ToolCallRunningPart => ({
 	...call,
 	status: "running",
 	partial: {
 		...(partial.content === undefined ? {} : { content: [...partial.content] }),
 		...(partial.details === undefined ? {} : { details: partial.details }),
 	},
-	time: { ...call.time, end: Math.max(call.time.end, Date.now()) },
+	time: { ...call.time, end: endTime(call, now) },
 });
 
 const encodeOutcome = (
 	def: AnyToolDef,
 	call: Message.ToolCallPendingPart,
-	exit: Exit.Exit<unknown, unknown>,
+	exit: Exit.Exit<unknown, ToolExecutionError>,
 	latest: Ref.Ref<Option.Option<ToolProgressPartial>>,
-): Effect.Effect<ToolOutcome, unknown> =>
+): Effect.Effect<ToolOutcome, ToolExecutionError> =>
 	Effect.gen(function* () {
 		if (Exit.isSuccess(exit)) {
 			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.success))(exit.value).pipe(Effect.orDie);
-			const content = def.encodeContent ? def.encodeContent(exit.value) : [jsonText(encoded)];
-			return completed(call, content, encoded);
+			const content = def.encodeContent ? def.encodeContent(exit.value) : [yield* jsonText(encoded)];
+			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+			return completed(call, content, encoded, now);
 		}
 
 		const cause = exit.cause;
@@ -128,24 +153,29 @@ const encodeOutcome = (
 			// Surface whatever the tool last reported via ToolProgress, so an aborted
 			// streaming command still shows the output it produced before the interrupt.
 			const last = yield* Ref.get(latest);
+			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 			if (Option.isSome(last) && last.value.content !== undefined && last.value.content.length > 0) {
-				return aborted(call, [...last.value.content], last.value.details);
+				return aborted(call, [...last.value.content], now, last.value.details);
 			}
-			return aborted(call, [text("Tool Call Aborted.")]);
+			return aborted(call, [text("Tool Call Aborted.")], now);
 		}
 
-		const failure = Cause.findErrorOption(cause);
-		if (Option.isSome(failure) && def.failure !== undefined && Schema.is(asCodec(def.failure))(failure.value)) {
-			// A declared, expected failure. "error" opts it into the caller's error
-			// channel (the typed failure is preserved); "return" (default) encodes it
-			// into a model-facing tool error result.
-			if (def.failureMode === "error") {
-				return yield* Effect.failCause(cause);
+		const executionError = Cause.findErrorOption(cause);
+		if (Option.isSome(executionError)) {
+			const failure = executionError.value.cause;
+			if (def.failure === undefined || !Schema.is(asCodec(def.failure))(failure)) {
+				return yield* Effect.die(failure);
 			}
-			const value = failure.value;
-			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.failure))(value).pipe(Effect.orDie);
-			const content = def.encodeFailureContent ? def.encodeFailureContent(value) : [jsonText(encoded)];
-			return errored(call, content, encoded);
+			// A declared, expected failure. "error" opts it into the caller's error
+			// channel as ToolExecutionError; "return" (default) encodes the original
+			// failure into a model-facing tool error result.
+			if (def.failureMode === "error") {
+				return yield* executionError.value;
+			}
+			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.failure))(failure).pipe(Effect.orDie);
+			const content = def.encodeFailureContent ? def.encodeFailureContent(failure) : [yield* jsonText(encoded)];
+			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+			return errored(call, content, encoded, now);
 		}
 
 		// Undeclared failure or genuine defect → the loop is broken, not the tool.
@@ -171,23 +201,30 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Executor => {
 
 	const wire = tools.map((tool) => toAikitTool(tool.definition));
 
-	const handle = <RProgress = never>(
+	const handle = <RProgress = never, EProgress = never>(
 		call: Message.ToolCallPendingPart,
-		options?: HandleOptions<RProgress>,
-	): Effect.Effect<ToolOutcome, unknown, RProgress> =>
+		options?: HandleOptions<RProgress, EProgress>,
+	): Effect.Effect<ToolOutcome, ToolExecutionError, RProgress> =>
 		Effect.gen(function* () {
 			const impl = impls.get(call.name);
 			if (impl === undefined) {
-				return errored(call, [text(`Unknown tool: ${call.name}`)], { error: "unknown_tool", name: call.name });
+				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+				return errored(call, [text(`Unknown tool: ${call.name}`)], { error: "unknown_tool", name: call.name }, now);
 			}
 			const def = impl.definition;
 
 			const decoded = yield* Effect.result(Schema.decodeUnknownEffect(asCodec(def.parameters))(call.arguments));
 			if (Result.isFailure(decoded)) {
-				return errored(call, [text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)], {
-					error: "invalid_arguments",
-					name: call.name,
-				});
+				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+				return errored(
+					call,
+					[text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)],
+					{
+						error: "invalid_arguments",
+						name: call.name,
+					},
+					now,
+				);
 			}
 
 			const ctx: ToolCallContext = { callID: call.callID, toolName: call.name, rawArgs: call.arguments };
@@ -224,18 +261,13 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Executor => {
 
 			// report is fast + infallible: set latest, then a non-blocking offer (sliding drops the
 			// oldest when full). No sink latency reaches the tool.
-			const progress = ToolProgress.of({
-				report: (partial) =>
-					Ref.set(latest, Option.some(partial)).pipe(
-						Effect.andThen(
-							progressQueue
-								? Queue.offer(progressQueue, { partial, toolCall: running(call, partial), ctx }).pipe(
-										Effect.asVoid,
-									)
-								: Effect.void,
-						),
-					),
+			const report = Effect.fn("ToolExecutor.reportProgress")(function* (partial: ToolProgressPartial) {
+				yield* Ref.set(latest, Option.some(partial));
+				if (progressQueue === undefined) return;
+				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+				yield* Queue.offer(progressQueue, { partial, toolCall: running(call, partial, now), ctx });
 			});
+			const progress = ToolProgress.of({ report });
 
 			// The handler keeps its OWN inner scope, so its resources release the moment it finishes
 			// — not after the drain grace (which is bounded by the outer `Effect.scoped` below).

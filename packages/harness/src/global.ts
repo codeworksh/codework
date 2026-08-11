@@ -43,7 +43,7 @@ await Promise.all([
 	fs.mkdir(Path.log, { recursive: true }),
 ]);
 
-export class Service extends Context.Service<Service, Interface>()("@codework/global") {}
+export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/global/Service") {}
 
 export interface Interface {
 	readonly home: string;

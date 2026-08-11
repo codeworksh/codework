@@ -7,7 +7,7 @@ import {
 	type Sandbox as RemoteSandbox,
 	type Resources,
 } from "@daytona/sdk";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { Buffer } from "node:buffer";
 import { posix } from "node:path";
 import { sanitizeError } from "../errors.ts";
@@ -41,7 +41,7 @@ export const mountCwd = async (
 	return SandboxIO.resolveMountCwd(defaultCwd, cwd);
 };
 
-export class DaytonaError extends Schema.TaggedErrorClass<DaytonaError>()("DaytonaError", {
+export class DaytonaError extends Schema.TaggedError<DaytonaError>()("DaytonaError", {
 	sanitized: SandboxInstance.PersistedError,
 }) {}
 
@@ -84,7 +84,7 @@ interface RemoteState {
 	readonly cwd: string;
 }
 
-class Remote extends Context.Service<Remote, RemoteState>()("@codework/sandbox/daytona/remote") {}
+class Remote extends Context.Service<Remote, RemoteState>()("@codeworksh/harness/sandbox/providers/daytona/Remote") {}
 
 const assertCommandSucceeded = (command: string, result: { exitCode: number; result?: string }) => {
 	if (result.exitCode !== 0) throw new Error(result.result || `command failed (${result.exitCode}): ${command}`);
@@ -92,8 +92,7 @@ const assertCommandSucceeded = (command: string, result: { exitCode: number; res
 
 const dateFrom = (value: string | undefined) => {
 	if (value === undefined) return undefined;
-	const ms = Date.parse(value);
-	return Number.isNaN(ms) ? undefined : new Date(ms);
+	return Option.getOrUndefined(DateTime.make(value).pipe(Option.map(DateTime.toDateUtc)));
 };
 
 export const createSandbox = (daytona: Daytona, options: Options) => {

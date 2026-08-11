@@ -12,7 +12,7 @@ import { posix } from "node:path";
  * this service instead would silently pin that work to the harness's own disk.
  */
 
-export class FileSystemError extends Schema.TaggedErrorClass<FileSystemError>()("FileSystemError", {
+export class FileSystemError extends Schema.TaggedError<FileSystemError>()("FileSystemError", {
 	method: Schema.String,
 	cause: Schema.optional(Schema.Defect()),
 }) {}
@@ -24,7 +24,7 @@ export interface Interface {
 	readonly isDir: (path: string) => Effect.Effect<boolean>;
 }
 
-export class Service extends Context.Service<Service, Interface>()("@codework/fsutil") {}
+export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/fsutil/fsutil/Service") {}
 
 export const layer = Layer.effect(
 	Service,

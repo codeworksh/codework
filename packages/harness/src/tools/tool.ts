@@ -1,6 +1,7 @@
 import type { Message } from "@codeworksh/aikit";
 import { Effect, type Layer, Schema } from "effect";
 import type { TSchema } from "typebox";
+import { ToolExecutionError } from "./error.ts";
 import type { ToolProgress } from "./progress.ts";
 
 /**
@@ -164,7 +165,41 @@ export const make = <
  * number of tools — built-in or
  * third-party/plugin — compose without a shared capability union
  */
-export type RegisteredTool = AnyToolImpl<ToolProgress>;
+export interface RegisteredTool {
+	readonly definition: AnyToolDef;
+	readonly handler: (
+		params: unknown,
+		ctx: ToolCallContext,
+	) => Effect.Effect<unknown, ToolExecutionError, ToolProgress>;
+}
+
+const toRegistered = <
+	Name extends string,
+	Params extends Schema.Top,
+	Success extends Schema.Top,
+	Failure extends Schema.Top,
+>(
+	definition: ToolDef<Name, Params, Success, Failure>,
+	handler: Handler<Params, Success, Failure, ToolProgress>,
+): RegisteredTool => ({
+	definition,
+	// The executor decodes with `definition.parameters` before invoking this
+	// erased handler, so restoring the authored parameter type is safe here.
+	handler: (params, ctx) =>
+		handler(params as Params["Type"], ctx).pipe(
+			Effect.mapError((cause) => new ToolExecutionError({ toolName: definition.name, cause })),
+		),
+});
+
+/** Register a tool whose only requirement is the executor-provided progress service. */
+export const register = <
+	Name extends string,
+	Params extends Schema.Top,
+	Success extends Schema.Top,
+	Failure extends Schema.Top,
+>(
+	impl: ToolImpl<Name, Params, Success, Failure, ToolProgress>,
+): RegisteredTool => toRegistered(impl.definition, impl.handler);
 
 /**
  * Discharge a tool's capability requirements into a {@link RegisteredTool}, erasing its `R`
@@ -181,17 +216,16 @@ export const provide = <
 >(
 	impl: ToolImpl<Name, Params, Success, Failure, R | ToolProgress>,
 	layer: Layer.Layer<R>,
-): RegisteredTool => ({
-	definition: impl.definition,
+): RegisteredTool =>
 	// `Effect.provide` discharges `R`, leaving `ToolProgress`. TS can't simplify
-	// `Exclude<ToolProgress, R>` for a generic `R`, so localize the cast to the erased result.
-	handler: (params, ctx) =>
-		impl.handler(params, ctx).pipe(Effect.provide(layer)) as Effect.Effect<
-			Success["Type"],
-			Failure["Type"],
-			ToolProgress
-		>,
-});
+	// `Exclude<ToolProgress, R>` for a generic `R`, so localize the cast before
+	// crossing the registered-tool boundary.
+	toRegistered(impl.definition, ((params, ctx) => impl.handler(params, ctx).pipe(Effect.provide(layer))) as Handler<
+		Params,
+		Success,
+		Failure,
+		ToolProgress
+	>);
 
 /**
  * Derive a provider-safe JSON Schema object from an Effect Schema. This is the

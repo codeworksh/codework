@@ -21,7 +21,9 @@ export interface IToolProgress {
 	readonly report: (partial: ToolProgressPartial) => Effect.Effect<void>;
 }
 
-export class ToolProgress extends Context.Service<ToolProgress, IToolProgress>()("@codework/tool/progress") {}
+export class ToolProgress extends Context.Service<ToolProgress, IToolProgress>()(
+	"@codeworksh/harness/tools/progress/ToolProgress",
+) {}
 
 /** Build a `ToolProgress` Layer from a `report` implementation. */
 export const make = (report: IToolProgress["report"]): Layer.Layer<ToolProgress> =>

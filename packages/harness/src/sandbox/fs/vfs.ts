@@ -8,7 +8,7 @@ import { SandboxFileSystem } from "./filesystem.ts";
 // VirtualFileSystem (in-memory, sqlite, or the real host OS). VFS is a
 // local-only concern — remote providers never import this module.
 
-export class Vfs extends Context.Service<Vfs, VirtualFileSystem>()("@codework/sandbox/filesystem/Vfs") {}
+export class Vfs extends Context.Service<Vfs, VirtualFileSystem>()("@codeworksh/harness/sandbox/fs/vfs") {}
 
 const toFileStat = (stats: VirtualStats): SandboxFileSystem.FileStat => ({
 	isFile: stats.isFile(),

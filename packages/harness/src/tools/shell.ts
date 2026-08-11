@@ -18,13 +18,13 @@ import { Shell } from "../sandbox/shell/shell.ts";
  */
 
 /** Infra/spawn failure — not model-actionable; handlers should treat it as a defect. */
-export class ToolShellError extends Schema.TaggedErrorClass<ToolShellError>()("ToolShellError", {
+export class ToolShellError extends Schema.TaggedError<ToolShellError>()("ToolShellError", {
 	command: Schema.String,
 	cause: Schema.optional(Schema.Defect()),
 }) {}
 
 /** The command exceeded its deadline. Distinct so handlers can map it to a domain timeout. */
-export class ToolShellTimeout extends Schema.TaggedErrorClass<ToolShellTimeout>()("ToolShellTimeout", {
+export class ToolShellTimeout extends Schema.TaggedError<ToolShellTimeout>()("ToolShellTimeout", {
 	command: Schema.String,
 	timeoutMillis: Schema.Number,
 }) {}
@@ -81,7 +81,7 @@ export interface IToolShell {
 	readonly stream?: (command: string, options?: ToolShellExecOptions) => Stream.Stream<ToolShellEvent, ToolShellError>;
 }
 
-export class ToolShell extends Context.Service<ToolShell, IToolShell>()("@codework/tool/shell") {}
+export class ToolShell extends Context.Service<ToolShell, IToolShell>()("@codeworksh/harness/tools/shell/ToolShell") {}
 
 /**
  * Bridge the existing `sandbox/Shell` into a `ToolShell`. Used for just-bash

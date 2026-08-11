@@ -14,6 +14,8 @@ export * as Registry from "./registry.ts";
 export * as Tool from "./tool.ts";
 export * as Truncate from "./truncate.ts";
 
+export { ToolExecutionError } from "./error.ts";
+
 export {
 	fromSandboxShell,
 	local as localToolShell,

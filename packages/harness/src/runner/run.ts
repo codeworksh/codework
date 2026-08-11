@@ -11,12 +11,12 @@ import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import type { ID as SessionId } from "../session/schema.ts";
 
-export class ShellWorkError extends Schema.TaggedErrorClass<ShellWorkError>()("Runner.ShellWorkError", {
+export class ShellWorkError extends Schema.TaggedError<ShellWorkError>()("Runner.ShellWorkError", {
 	command: Schema.String,
 	cause: Schema.Defect(),
 }) {}
 
-export class SandboxDirectoryNotFoundError extends Schema.TaggedErrorClass<SandboxDirectoryNotFoundError>()(
+export class SandboxDirectoryNotFoundError extends Schema.TaggedError<SandboxDirectoryNotFoundError>()(
 	"Runner.SandboxDirectoryNotFoundError",
 	{
 		sessionId: Schema.String,
@@ -39,6 +39,6 @@ export interface Interface {
 	}) => Effect.Effect<void, RunError, SandboxIO.Provides | Location.Service>;
 }
 
-export class Service extends Context.Service<Service, Interface>()("@codework/runner/run") {}
+export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/runner/run/Service") {}
 
 export * as Runner from "./run.ts";

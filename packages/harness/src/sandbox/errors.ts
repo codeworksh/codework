@@ -5,18 +5,18 @@ import { SandboxInstance } from "./instance.ts";
  * Lifecycle errors are confined to the control plane. Once a mount succeeds,
  * consumers continue to see only FileSystemError and ShellError.
  */
-export class SandboxNotFoundError extends Schema.TaggedErrorClass<SandboxNotFoundError>()("SandboxNotFoundError", {
+export class SandboxNotFoundError extends Schema.TaggedError<SandboxNotFoundError>()("SandboxNotFoundError", {
 	id: SandboxInstance.ID,
 }) {}
 
-export class SandboxDriverNotRegisteredError extends Schema.TaggedErrorClass<SandboxDriverNotRegisteredError>()(
+export class SandboxDriverNotRegisteredError extends Schema.TaggedError<SandboxDriverNotRegisteredError>()(
 	"SandboxDriverNotRegisteredError",
 	{
 		driver: Schema.String,
 	},
 ) {}
 
-export class SandboxDriverRegistrationError extends Schema.TaggedErrorClass<SandboxDriverRegistrationError>()(
+export class SandboxDriverRegistrationError extends Schema.TaggedError<SandboxDriverRegistrationError>()(
 	"SandboxDriverRegistrationError",
 	{
 		driver: Schema.String,
@@ -24,12 +24,12 @@ export class SandboxDriverRegistrationError extends Schema.TaggedErrorClass<Sand
 	},
 ) {}
 
-export class SandboxBusyError extends Schema.TaggedErrorClass<SandboxBusyError>()("SandboxBusyError", {
+export class SandboxBusyError extends Schema.TaggedError<SandboxBusyError>()("SandboxBusyError", {
 	id: SandboxInstance.ID,
 	refCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 }) {}
 
-export class SandboxMustBeStoppedError extends Schema.TaggedErrorClass<SandboxMustBeStoppedError>()(
+export class SandboxMustBeStoppedError extends Schema.TaggedError<SandboxMustBeStoppedError>()(
 	"SandboxMustBeStoppedError",
 	{
 		id: SandboxInstance.ID,
@@ -37,26 +37,23 @@ export class SandboxMustBeStoppedError extends Schema.TaggedErrorClass<SandboxMu
 	},
 ) {}
 
-export class SandboxRemovedError extends Schema.TaggedErrorClass<SandboxRemovedError>()("SandboxRemovedError", {
+export class SandboxRemovedError extends Schema.TaggedError<SandboxRemovedError>()("SandboxRemovedError", {
 	id: SandboxInstance.ID,
 	removedAt: Schema.optional(Schema.DateTimeUtc),
 }) {}
 
-export class SandboxUnavailError extends Schema.TaggedErrorClass<SandboxUnavailError>()("SandboxUnavailError", {
+export class SandboxUnavailError extends Schema.TaggedError<SandboxUnavailError>()("SandboxUnavailError", {
 	id: SandboxInstance.ID,
 	reason: Schema.String,
 }) {}
 
-export class SandboxUnsupportedError extends Schema.TaggedErrorClass<SandboxUnsupportedError>()(
-	"SandboxUnsupportedError",
-	{
-		id: SandboxInstance.ID,
-		driver: Schema.String,
-		operation: Schema.String,
-	},
-) {}
+export class SandboxUnsupportedError extends Schema.TaggedError<SandboxUnsupportedError>()("SandboxUnsupportedError", {
+	id: SandboxInstance.ID,
+	driver: Schema.String,
+	operation: Schema.String,
+}) {}
 
-export class SandboxTransitionConflictError extends Schema.TaggedErrorClass<SandboxTransitionConflictError>()(
+export class SandboxTransitionConflictError extends Schema.TaggedError<SandboxTransitionConflictError>()(
 	"SandboxTransitionConflictError",
 	{
 		id: SandboxInstance.ID,
@@ -72,7 +69,7 @@ export class SandboxTransitionConflictError extends Schema.TaggedErrorClass<Sand
  * a non-enumerable symbol by {@link providerError}, so Effect's default
  * formatting and JSON serialization cannot expose credentials nested in it.
  */
-export class SandboxProviderError extends Schema.TaggedErrorClass<SandboxProviderError>()("SandboxProviderError", {
+export class SandboxProviderError extends Schema.TaggedError<SandboxProviderError>()("SandboxProviderError", {
 	driver: Schema.String,
 	operation: Schema.String,
 	sanitized: SandboxInstance.PersistedError,

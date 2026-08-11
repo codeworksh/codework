@@ -8,7 +8,7 @@ import { posix as path } from "node:path";
  * tag.
  */
 
-export class ShellError extends Schema.TaggedErrorClass<ShellError>()("ShellError", {
+export class ShellError extends Schema.TaggedError<ShellError>()("ShellError", {
 	command: Schema.String,
 	cause: Schema.optional(Schema.Defect()),
 }) {}
@@ -146,4 +146,4 @@ export const withCwd = (backend: ISandboxExe, cwd: string): ISandboxExe => {
 };
 
 /** Execution service — the live {@link ISandboxExe} for the active sandbox. */
-export class Shell extends Context.Service<Shell, ISandboxExe>()("@codework/sandbox/shell") {}
+export class Shell extends Context.Service<Shell, ISandboxExe>()("@codeworksh/harness/sandbox/shell/shell") {}

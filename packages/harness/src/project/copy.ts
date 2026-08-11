@@ -13,7 +13,7 @@ export interface Interface {
 	readonly isGitWorktree: (input: IsGitWorktreeInput) => Effect.Effect<boolean>;
 }
 
-export class Service extends Context.Service<Service, Interface>()("@codework/project/copy") {}
+export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/project/copy/Service") {}
 
 export const layer = Layer.effect(
 	Service,

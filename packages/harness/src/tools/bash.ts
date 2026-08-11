@@ -49,13 +49,13 @@ const outputFields = {
 const BashSuccess = Schema.Struct({ ...outputFields, exitCode: Schema.Number });
 
 /** Non-zero exit — expected, model-visible. Carries the same shape as success. */
-class BashFailed extends Schema.TaggedErrorClass<BashFailed>()("BashFailed", {
+class BashFailed extends Schema.TaggedError<BashFailed>()("BashFailed", {
 	...outputFields,
 	exitCode: Schema.Number,
 }) {}
 
 /** Deadline exceeded — expected, model-visible. Carries the partial output produced so far. */
-class BashTimedOut extends Schema.TaggedErrorClass<BashTimedOut>()("BashTimedOut", {
+class BashTimedOut extends Schema.TaggedError<BashTimedOut>()("BashTimedOut", {
 	...outputFields,
 	timeoutSeconds: Schema.Number,
 }) {}

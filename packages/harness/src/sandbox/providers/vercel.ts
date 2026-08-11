@@ -23,7 +23,7 @@ const utf8 = new TextEncoder();
 /** Vercel's namespace-intrinsic working directory. */
 export const DEFAULT_CWD = "/vercel/sandbox";
 
-export class VercelError extends Schema.TaggedErrorClass<VercelError>()("VercelError", {
+export class VercelError extends Schema.TaggedError<VercelError>()("VercelError", {
 	sanitized: SandboxInstance.PersistedError,
 }) {}
 
@@ -87,7 +87,7 @@ interface RemoteState {
 	readonly sandbox: RemoteSandbox;
 }
 
-class Remote extends Context.Service<Remote, RemoteState>()("@codework/sandbox/vercel/remote") {}
+class Remote extends Context.Service<Remote, RemoteState>()("@codeworksh/harness/sandbox/providers/vercel/Remote") {}
 
 // Vercel requires all three credential fields together or none — partial
 // credentials are rejected by the SDK — so only forward them when complete.

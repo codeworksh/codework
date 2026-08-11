@@ -53,7 +53,7 @@ export interface Identity {
 }
 
 /** Identity and working directory of the current mount. */
-export class Current extends Context.Service<Current, Identity>()("@codework/sandbox/io/current") {}
+export class Current extends Context.Service<Current, Identity>()("@codeworksh/harness/sandbox/io/Current") {}
 
 /** Everything a mount provides. */
 export type Provides = Current | SandboxFileSystem.Service | ShellTag;

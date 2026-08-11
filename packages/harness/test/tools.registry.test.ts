@@ -13,17 +13,19 @@ import { fromSandboxShell, local, ToolShell, type ToolShellEvent } from "../src/
 import * as Tool from "../src/tools/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
-// A tiny fake tool with no capabilities → already a RegisteredTool. Returns a fixed string
+// A tiny fake tool with no capabilities. Returns a fixed string
 // so override/ordering can be proven by *executing*, not just reading metadata.
 const fakeTool = (name: string, out: string): Tool.RegisteredTool =>
-	Tool.make({
-		name,
-		description: `returns ${out}`,
-		parameters: Schema.Struct({}),
-		success: Schema.String,
-		encodeContent: (value: string) => [{ type: "text", text: value }],
-		handler: () => Effect.succeed(out),
-	});
+	Tool.register(
+		Tool.make({
+			name,
+			description: `returns ${out}`,
+			parameters: Schema.Struct({}),
+			success: Schema.String,
+			encodeContent: (value: string) => [{ type: "text", text: value }],
+			handler: () => Effect.succeed(out),
+		}),
+	);
 
 const outputTextOf = (outcome: Executor.ToolOutcome): string => {
 	const first = outcome.result.content[0];
@@ -94,18 +96,20 @@ describe("ToolRegistry — execution through the snapshot", () => {
 	it("maps an interrupted handler to an aborted outcome carrying the last reported partial", async () => {
 		// Reports interim output, then interrupts itself — the executor should surface `aborted`
 		// with the last partial (the aborted-call output path), not a defect or a completed result.
-		const abortingTool: Tool.RegisteredTool = Tool.make({
-			name: "abort",
-			description: "reports then interrupts",
-			parameters: Schema.Struct({}),
-			success: Schema.String,
-			handler: () =>
-				Effect.gen(function* () {
-					const progress = yield* ToolProgress;
-					yield* progress.report({ content: [{ type: "text", text: "partial-out" }] });
-					return yield* Effect.interrupt;
-				}),
-		});
+		const abortingTool = Tool.register(
+			Tool.make({
+				name: "abort",
+				description: "reports then interrupts",
+				parameters: Schema.Struct({}),
+				success: Schema.String,
+				handler: () =>
+					Effect.gen(function* () {
+						const progress = yield* ToolProgress;
+						yield* progress.report({ content: [{ type: "text", text: "partial-out" }] });
+						return yield* Effect.interrupt;
+					}),
+			}),
+		);
 		const resolved = Registry.make([abortingTool]).resolve();
 
 		const outcome = await Effect.runPromise(resolved.handle(pendingCall("abort")));
@@ -206,7 +210,7 @@ describe("ToolRegistry — bash backend pluggability", () => {
 // ── Custom tool alongside the built-in: a weather API with real-world latency ────────────────
 
 /** Declared, model-visible failure — the weather analogue of bash's BashFailed. */
-class WeatherUnknownCity extends Schema.TaggedErrorClass<WeatherUnknownCity>()("WeatherUnknownCity", {
+class WeatherUnknownCity extends Schema.TaggedError<WeatherUnknownCity>()("WeatherUnknownCity", {
 	city: Schema.String,
 }) {}
 
@@ -219,7 +223,7 @@ const WeatherReport = Schema.Struct({ city: Schema.String, tempC: Schema.Number,
 class WeatherApi extends Context.Service<
 	WeatherApi,
 	{ readonly current: (city: string) => Effect.Effect<{ tempC: number; sky: string }, WeatherUnknownCity> }
->()("test/WeatherApi") {}
+>()("@codeworksh/harness/test/tools.registry.test/WeatherApi") {}
 
 const weatherDef = Tool.define({
 	name: "weather",
@@ -334,7 +338,7 @@ const streamingToolShell: Layer.Layer<ToolShell> = Layer.succeed(
 class FileProgressSink extends Context.Service<
 	FileProgressSink,
 	{ readonly write: (event: Executor.ProgressEvent) => Effect.Effect<void, Error> }
->()("test/FileProgressSink") {}
+>()("@codeworksh/harness/test/tools.registry.test/FileProgressSink") {}
 
 const fileProgressSink = (path: string, opts?: { readonly delay?: Duration.Input; readonly fail?: boolean }) =>
 	Layer.succeed(

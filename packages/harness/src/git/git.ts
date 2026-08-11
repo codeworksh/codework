@@ -6,7 +6,7 @@ import { Sandbox } from "../sandbox/sandbox.ts";
 import { AbsolutePath } from "../schema.ts";
 
 // TODO: shouldn't it be called GitError or something
-export class AppProcessError extends Schema.TaggedErrorClass<AppProcessError>()("AppProcessError", {
+export class AppProcessError extends Schema.TaggedError<AppProcessError>()("AppProcessError", {
 	command: Schema.String,
 	exitCode: Schema.optional(Schema.Number),
 	stderr: Schema.optional(Schema.String),
@@ -38,7 +38,7 @@ export interface Result {
 	readonly stderr: string;
 }
 
-export class WorktreeError extends Schema.TaggedErrorClass<WorktreeError>()("Git.WorktreeError", {
+export class WorktreeError extends Schema.TaggedError<WorktreeError>()("Git.WorktreeError", {
 	operation: Schema.Literals(["create", "remove", "list"]),
 	message: Schema.String,
 	directory: Schema.optional(AbsolutePath),
@@ -75,7 +75,7 @@ export interface Interface {
 	readonly worktreeList: (repo: Repo) => Effect.Effect<AbsolutePath[], WorktreeError>;
 }
 
-export class Service extends Context.Service<Service, Interface>()("@codework/git") {}
+export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/git/git/Service") {}
 
 export const layer = Layer.effect(
 	Service,

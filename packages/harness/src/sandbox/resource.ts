@@ -18,7 +18,7 @@ import { Context } from "effect";
  * a bug waiting for the third driver.
  */
 export class Service extends Context.Service<Service, { readonly providerResourceId: string }>()(
-	"@codework/sandbox/resource",
+	"@codeworksh/harness/sandbox/resource/Service",
 ) {}
 
 export * as SandboxResource from "./resource.ts";

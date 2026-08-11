@@ -35,7 +35,7 @@ export interface Interface {
 	readonly fromDirectory: (input: AbsolutePath) => Effect.Effect<ProjectSchema.Info>;
 }
 
-export class Service extends Context.Service<Service, Interface>()("@codework/project") {}
+export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/project/project/Service") {}
 
 export const layer = Layer.effect(
 	Service,
@@ -288,12 +288,10 @@ export const layer = Layer.effect(
 				)
 				.pipe(
 					Effect.catchCause((cause) =>
-						Effect.sync(() =>
-							console.warn("project directory persistence failed", {
-								projectId: input.projectId,
-								cause,
-							}),
-						),
+						Effect.logWarning("project directory persistence failed", {
+							projectId: input.projectId,
+							cause,
+						}),
 					),
 				);
 		});

@@ -40,7 +40,7 @@ export class Info extends Schema.Class<Info>("Config.Info")({
 // 	readonly get: () => Effect.Effect<Loaded[]>;
 // }
 
-// export class Service extends Context.Service<Service, Interface>()("@codework/config") {}
+// export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/config/Service") {}
 
 // export const layer = Layer.effect(
 // 	Service,

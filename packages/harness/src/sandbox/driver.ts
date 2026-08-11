@@ -156,7 +156,9 @@ export interface RegistryService {
 	) => Effect.Effect<unknown, SandboxDriverNotRegisteredError | SandboxDriverRegistrationError>;
 }
 
-export class Registry extends Context.Service<Registry, RegistryService>()("@codework/sandbox/driver/registry") {}
+export class Registry extends Context.Service<Registry, RegistryService>()(
+	"@codeworksh/harness/sandbox/driver/Registry",
+) {}
 
 const codecFailure = (driver: Name, reason: unknown) =>
 	new SandboxDriverRegistrationError({ driver, reason: String(reason) });

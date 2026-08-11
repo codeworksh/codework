@@ -4,7 +4,7 @@ import { Process } from "../utils/process.ts";
 import { Seed, type SeedOptions } from "../utils/seed.ts";
 import { Local } from "./vfs.ts";
 
-export class InMemoryError extends Schema.TaggedErrorClass<InMemoryError>()("InMemoryError", {
+export class InMemoryError extends Schema.TaggedError<InMemoryError>()("InMemoryError", {
 	message: Schema.String,
 	cause: Schema.Defect(),
 }) {}

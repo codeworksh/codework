@@ -1,4 +1,4 @@
-import { Cause, Context, DateTime, type Duration, Effect, Layer, LayerMap, Option, Semaphore } from "effect";
+import { Cause, Context, DateTime, type Duration, Effect, Layer, LayerMap, Option, Schema, Semaphore } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
 import { SandboxDriver } from "./driver.ts";
@@ -90,7 +90,9 @@ export interface Interface {
 	readonly destroy: (id: SandboxInstance.ID, options?: DestroyOptions) => Effect.Effect<void, SandboxDestroyError>;
 }
 
-export class Controller extends Context.Service<Controller, Interface>()("@codework/sandbox/controller") {}
+export class Controller extends Context.Service<Controller, Interface>()(
+	"@codeworksh/harness/sandbox/control/Controller",
+) {}
 
 export interface Options {
 	readonly transportIdleTimeToLive?: Duration.Input;
@@ -101,12 +103,19 @@ const hostTransport = Layer.provide(Layer.merge(Local.layer, HostExe.layer()), E
 
 const asDate = DateTime.toDateUtc;
 const optionalDate = Option.map(DateTime.toDateUtc);
+const MetadataJson = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String));
+const PersistedErrorJson = Schema.fromJsonString(SandboxInstance.PersistedError);
+const UnknownJson = Schema.fromJsonString(Schema.Unknown);
+const decodeUnknownJson = Schema.decodeEffect(UnknownJson);
+const encodeUnknownJson = Schema.encodeEffect(UnknownJson);
+const encodeMetadataJson = Schema.encodeEffect(MetadataJson);
+const encodePersistedErrorJson = Schema.encodeEffect(PersistedErrorJson);
+
+/** Schema-aware runtime check; `instanceof` does not survive schema decoding. */
+const isSandboxProviderError = Schema.is(SandboxProviderError);
 
 const parseJson = (driver: SandboxDriver.Name, operation: string, value: string) =>
-	Effect.try({
-		try: () => JSON.parse(value) as unknown,
-		catch: (cause) => providerError({ driver, operation, cause }),
-	});
+	decodeUnknownJson(value).pipe(Effect.mapError((cause) => providerError({ driver, operation, cause })));
 
 export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Options = {}) {
 	const sql = yield* SqlClient.SqlClient;
@@ -251,9 +260,14 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		readonly clearError?: boolean | undefined;
 	}) {
 		const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-		const metadata = input.metadata === undefined ? null : JSON.stringify(input.metadata);
+		const metadata =
+			input.metadata === undefined ? null : yield* encodeMetadataJson(input.metadata).pipe(Effect.orDie);
 		const lastError =
-			input.clearError === true ? null : input.lastError === undefined ? undefined : JSON.stringify(input.lastError);
+			input.clearError === true
+				? null
+				: input.lastError === undefined
+					? undefined
+					: yield* encodePersistedErrorJson(input.lastError).pipe(Effect.orDie);
 		yield* sql`
 			UPDATE sandbox_instance
 			SET
@@ -325,14 +339,15 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 
 	const startupNow = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 	const provisioningCutoff = startupNow - (options.provisioningTimeoutMs ?? 300_000);
+	const creationInterrupted = yield* encodePersistedErrorJson({
+		name: "SandboxCreationInterrupted",
+		message: "sandbox creation was interrupted before provisioning completed",
+	}).pipe(Effect.orDie);
 	yield* sql`
-		UPDATE sandbox_instance
-		SET
-			status = 'faulted',
-			last_error = ${JSON.stringify({
-				name: "SandboxCreationInterrupted",
-				message: "sandbox creation was interrupted before provisioning completed",
-			})},
+			UPDATE sandbox_instance
+			SET
+				status = 'faulted',
+				last_error = ${creationInterrupted},
 			updated_at = ${startupNow}
 		WHERE status = 'provisioning' AND state_observed_at < ${provisioningCutoff}
 	`.pipe(Effect.orDie);
@@ -376,8 +391,12 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			.pipe(Effect.catch((error) => persistProviderFailure(id, "faulted", error)));
 		const finalize = Effect.gen(function* () {
 			const encoded = yield* registry.encodeRuntimeConfig(driver.name, provisioned.runtimeConfig);
-			const runtimeConfig = JSON.stringify(encoded);
+			const runtimeConfig = yield* encodeUnknownJson(encoded).pipe(
+				Effect.mapError((cause) => providerError({ driver: driver.name, operation: "create", cause })),
+			);
 			const metadata = { ...input.metadata, ...provisioned.metadata };
+			const persistedMetadata =
+				Object.keys(metadata).length === 0 ? null : yield* encodeMetadataJson(metadata).pipe(Effect.orDie);
 			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 			yield* sql`
 				UPDATE sandbox_instance
@@ -387,7 +406,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 					status = 'online',
 					provider_status = ${provisioned.providerStatus ?? null},
 					state_observed_at = ${now},
-					metadata = ${Object.keys(metadata).length === 0 ? null : JSON.stringify(metadata)},
+					metadata = ${persistedMetadata},
 					last_error = NULL,
 					updated_at = ${now}
 				WHERE id = ${id} AND status = 'provisioning'
@@ -440,7 +459,9 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			overrides: input.runtimeConfig as Readonly<Record<string, unknown>> | undefined,
 		});
 		const encoded = yield* registry.encodeRuntimeConfig(driver.name, runtimeConfig);
-		const persisted = JSON.stringify(encoded);
+		const persisted = yield* encodeUnknownJson(encoded).pipe(
+			Effect.mapError((cause) => providerError({ driver: driver.name, operation: "register", cause })),
+		);
 
 		if (existing !== undefined) {
 			if (existing.ownership !== "external" || existing.kind !== driver.kind) {
@@ -541,19 +562,19 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 				}
 
 				const handleTransportError = (error: TransportError): Effect.Effect<never, SandboxMountError> => {
-					if (error instanceof SandboxProviderError && providerErrorIsNotFound(error)) {
+					if (isSandboxProviderError(error) && providerErrorIsNotFound(error)) {
 						return markUnavailable(id, error);
 					}
-					if (error instanceof SandboxProviderError) return persistProviderFailure(id, "faulted", error);
+					if (isSandboxProviderError(error)) return persistProviderFailure(id, "faulted", error);
 					return Effect.fail(error);
 				};
 
 				const context = yield* transports.contextEffect(id).pipe(
 					Effect.catch((error) => {
-						if (error instanceof SandboxProviderError && providerErrorIsNotFound(error)) {
+						if (isSandboxProviderError(error) && providerErrorIsNotFound(error)) {
 							return markUnavailable(id, error);
 						}
-						if (error instanceof SandboxProviderError) {
+						if (isSandboxProviderError(error)) {
 							// A persisted `online` status can outlive a provider session
 							// URL. Drop the failed entry and attach once more before
 							// recording a fault; never create a replacement namespace.

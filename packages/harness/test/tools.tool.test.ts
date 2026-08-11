@@ -1,11 +1,12 @@
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { bashDef } from "../src/tools/bash.ts";
+import { ToolExecutionError } from "../src/tools/error.ts";
 import * as Executor from "../src/tools/executor.ts";
 import * as Tool from "../src/tools/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
-class ExpectedFailure extends Schema.TaggedErrorClass<ExpectedFailure>()("ExpectedFailure", {
+class ExpectedFailure extends Schema.TaggedError<ExpectedFailure>()("ExpectedFailure", {
 	message: Schema.String,
 }) {}
 
@@ -97,7 +98,7 @@ describe("Executor", () => {
 			handler: () => Effect.succeed({}),
 		});
 
-		expect(() => Executor.make([first, second])).toThrow(/duplicate/i);
+		expect(() => Executor.make([Tool.register(first), Tool.register(second)])).toThrow(/duplicate/i);
 	});
 
 	it('propagates declared failures when failureMode is "error"', async () => {
@@ -110,7 +111,7 @@ describe("Executor", () => {
 			failureMode: "error",
 			handler: () => Effect.fail(new ExpectedFailure({ message: "boom" })),
 		});
-		const executor = Executor.make([tool]);
+		const executor = Executor.make([Tool.register(tool)]);
 
 		const exit = await Effect.runPromiseExit(executor.handle(call("expectedFailure")));
 
@@ -119,7 +120,9 @@ describe("Executor", () => {
 			const failure = Cause.findErrorOption(exit.cause);
 			expect(Option.isSome(failure)).toBe(true);
 			if (Option.isSome(failure)) {
-				expect(failure.value).toBeInstanceOf(ExpectedFailure);
+				expect(failure.value).toBeInstanceOf(ToolExecutionError);
+				expect(failure.value.toolName).toBe("expectedFailure");
+				expect(failure.value.cause).toBeInstanceOf(ExpectedFailure);
 			}
 		}
 	});
@@ -134,7 +137,7 @@ describe("Executor", () => {
 			failureMode: "return",
 			handler: () => Effect.fail(new ExpectedFailure({ message: "boom" })),
 		});
-		const executor = Executor.make([tool]);
+		const executor = Executor.make([Tool.register(tool)]);
 
 		const outcome = await Effect.runPromise(executor.handle(call("returnedFailure")));
 
@@ -151,7 +154,7 @@ describe("Executor", () => {
 			success: EmptySuccess,
 			handler: () => Effect.succeed({}),
 		});
-		const executor = Executor.make([tool]);
+		const executor = Executor.make([Tool.register(tool)]);
 		const pending = {
 			...pendingCall("metadata", {}, "provider-call-1"),
 			thoughtSignature: "opaque-provider-signature",

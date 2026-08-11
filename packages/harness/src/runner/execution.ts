@@ -18,7 +18,7 @@ export interface Interface {
 	readonly interrupt: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
 }
 
-export class Service extends Context.Service<Service, Interface>()("@codework/runner/execution") {}
+export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/runner/execution/Service") {}
 
 // Low-level compatibility layer for callers that only need durable session.
 export const noopLayer = Layer.succeed(

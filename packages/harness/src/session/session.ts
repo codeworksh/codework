@@ -33,28 +33,28 @@ export {
 	type ToolStatus,
 };
 
-export class SessionNotFoundError extends Schema.TaggedErrorClass<SessionNotFoundError>()("SessionNotFoundError", {
+export class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundError>()("SessionNotFoundError", {
 	sessionId: Schema.String,
 }) {}
 
-export class EntryNotFoundError extends Schema.TaggedErrorClass<EntryNotFoundError>()("EntryNotFoundError", {
+export class EntryNotFoundError extends Schema.TaggedError<EntryNotFoundError>()("EntryNotFoundError", {
 	sessionId: Schema.String,
 	entryId: Schema.String,
 }) {}
 
-export class ToolCallNotFoundError extends Schema.TaggedErrorClass<ToolCallNotFoundError>()("ToolCallNotFoundError", {
+export class ToolCallNotFoundError extends Schema.TaggedError<ToolCallNotFoundError>()("ToolCallNotFoundError", {
 	entryId: Schema.String,
 	callId: Schema.String,
 }) {}
 
-export class LeafConflictError extends Schema.TaggedErrorClass<LeafConflictError>()("LeafConflictError", {
+export class LeafConflictError extends Schema.TaggedError<LeafConflictError>()("LeafConflictError", {
 	sessionId: Schema.String,
 	expectedLeafEntryId: Schema.NullOr(Schema.String),
 	actualLeafEntryId: Schema.NullOr(Schema.String),
 }) {}
 
 // Structural rejection — the data-structure layer's "index out of bounds".
-export class InvalidEntryDataError extends Schema.TaggedErrorClass<InvalidEntryDataError>()("InvalidEntryDataError", {
+export class InvalidEntryDataError extends Schema.TaggedError<InvalidEntryDataError>()("InvalidEntryDataError", {
 	entryId: Schema.String,
 	type: Schema.String,
 	reason: Schema.String,
@@ -164,7 +164,7 @@ export interface Interface {
 	}) => Effect.Effect<void, EntryNotFoundError>;
 }
 
-export class Service extends Context.Service<Service, Interface>()("@codework/session") {}
+export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/session/session/Service") {}
 
 const messageTypes: ReadonlySet<string> = new Set(messageEntryTypes);
 
@@ -174,6 +174,7 @@ const decodeEnvelopeUsage = Schema.decodeUnknownEffect(SessionSchema.AssistantEn
 const decodeMessageEnvelopeIdentity = Schema.decodeUnknownEffect(SessionSchema.MessageEnvelopeIdentity);
 const decodeCompactionData = Schema.decodeUnknownEffect(SessionSchema.CompactionData);
 const decodeJsonObject = Schema.decodeUnknownEffect(SessionSchema.JsonObject);
+const encodeJsonObject = Schema.encodeEffect(SessionSchema.JsonObject);
 
 export const layer = Layer.effect(
 	Service,
@@ -632,7 +633,7 @@ export const layer = Layer.effect(
 					payload["firstKeptEntryId"] = mapped;
 				}
 			}
-			return JSON.stringify(payload);
+			return yield* encodeJsonObject(payload).pipe(Effect.mapError((error) => invalidData(error.message)));
 		});
 
 		const fork = Effect.fn("Session.fork")(function* (input: ForkInput) {

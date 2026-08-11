@@ -86,7 +86,9 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Registry => {
  * that does `yield* ToolRegistry`. The service value is the non-generic {@link Registry} (tool
  * `R` is discharged at registration), so there is no capability union to fix here.
  */
-export class ToolRegistry extends Context.Service<ToolRegistry, Registry>()("@codework/tool/registry") {}
+export class ToolRegistry extends Context.Service<ToolRegistry, Registry>()(
+	"@codeworksh/harness/tools/registry/ToolRegistry",
+) {}
 
 /** Provide a catalog of registered tools as the {@link ToolRegistry} service. */
 export const layer = (tools: ReadonlyArray<RegisteredTool>): Layer.Layer<ToolRegistry> =>

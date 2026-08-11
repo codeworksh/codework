@@ -45,7 +45,7 @@ export class Info extends Schema.Class<Info>("Location.Info")({
 
 export interface Interface extends Info {}
 
-export class Service extends Context.Service<Service, Interface>()("@codework/location") {}
+export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/location/location/Service") {}
 
 // `SandboxIO.Current` in the requirements is what makes "mount first" a
 // type-level fact rather than a convention: this Layer cannot be built outside a
