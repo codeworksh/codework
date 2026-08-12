@@ -1,5 +1,6 @@
 {
 	"js/ts.tsdk.path": "./node_modules/@typescript/native/lib",
 	"js/ts.tsdk.promptToUseWorkspaceVersion": true,
-	"js/ts.experimental.useTsgo": true
+	"js/ts.experimental.useTsgo": true,
+	"python.languageServer": "None"
 }

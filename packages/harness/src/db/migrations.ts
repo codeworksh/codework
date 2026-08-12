@@ -12,6 +12,31 @@ import { SqlClient } from "effect/unstable/sql";
 export const migrations = {
 	"202607070001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		
+		// Tracks head of the inbox event sequence for a given aggregate.
+		yield* sql`
+			CREATE TABLE event_sequence (
+				aggregate_id TEXT PRIMARY KEY,
+				seq INTEGER NOT NULL,
+				owner_id TEXT
+			)
+		`;
+
+		// A durable inbox event store. An event is then picked and processed.
+		// Stores countigous sequence of events for a given aggregate.
+		yield* sql`
+			CREATE TABLE event (
+				id TEXT PRIMARY KEY,
+				aggregate_id TEXT NOT NULL
+					REFERENCES event_sequence(aggregate_id) ON DELETE CASCADE,
+				seq INTEGER NOT NULL,
+				type TEXT NOT NULL,
+				data TEXT NOT NULL
+			)
+		`;
+
+		yield* sql`CREATE UNIQUE INDEX event_aggregate_id_seq_idx ON event (aggregate_id, seq)`;
+		yield* sql`CREATE INDEX event_aggregate_id_type_seq_idx ON event (aggregate_id, type, seq)`;
 
 		// A durable filesystem namespace. Created before project_directory and
 		// session because both reference it. Reference counts are deliberately

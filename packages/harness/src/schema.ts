@@ -1,4 +1,4 @@
-import { Option, Schema, SchemaGetter } from "effect";
+import { Option, Schema, SchemaGetter, DateTime } from "effect";
 
 /**
  * Integer greater than zero.
@@ -31,7 +31,7 @@ export type AbsolutePath = Schema.Schema.Type<typeof AbsolutePath>;
  * Optional public JSON field that can hold explicit `undefined` on the type
  * side but encodes it as an omitted key, matching legacy `JSON.stringify`.
  */
-export const optionalOmitUndefined = <S extends Schema.Top>(schema: S) =>
+export const optional = <S extends Schema.Top>(schema: S) =>
 	Schema.optionalKey(schema).pipe(
 		Schema.decodeTo(Schema.optional(schema), {
 			decode: SchemaGetter.passthrough({ strict: false }),
@@ -121,3 +121,11 @@ export function Newtype<Self>() {
 			};
 	};
 }
+
+
+export const DateTimeUtcFromMillis = Schema.Finite.pipe(
+	Schema.decodeTo(Schema.DateTimeUtc, {
+	  decode: SchemaGetter.transform((value) => DateTime.makeUnsafe(value)),
+	  encode: SchemaGetter.transform((value) => DateTime.toEpochMillis(value)),
+	}),
+  )

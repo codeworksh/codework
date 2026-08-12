@@ -1,9 +1,9 @@
 import { Schema } from "effect";
 import { Model } from "effect/unstable/schema";
+import { EventSchema } from "../event/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { AbsolutePath } from "../schema.ts";
 import { SessionSchema } from "../session/schema.ts";
-import { EventSchema } from "../event/schema.ts";
 
 // Column names derive from field names via the client's camelToSnake
 
@@ -48,26 +48,23 @@ export type ToolStatus = (typeof toolStatuses)[number];
 export const inputDeliveries = ["steer", "followUp"] as const;
 export type InputDelivery = (typeof inputDeliveries)[number];
 
-
 const EventData = Schema.Record(Schema.String, Schema.Unknown);
 
 // Head of the event sequence
 export class EventSequenceRow extends Model.Class<EventSequenceRow>("EventSequenceRow")({
 	aggregateId: Schema.String,
 	seq: Schema.Natural,
-	ownerId: Model.FieldOption(Schema.String), 
-}){}
+	ownerId: Model.FieldOption(Schema.String),
+}) {}
 
 // Event with contigous sequence
-export class EventRow extends Model.Class<EventSequenceRow>("EventRow")({
+export class EventRow extends Model.Class<EventRow>("EventRow")({
 	id: EventSchema.ID,
 	aggregateId: Schema.String,
 	seq: Schema.Natural,
 	type: Schema.String,
 	data: Model.JsonFromString(EventData),
-	...Timestamps,
-}){}
-
+}) {}
 
 export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
 	id: Schema.String,
