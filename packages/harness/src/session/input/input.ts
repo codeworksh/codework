@@ -93,13 +93,19 @@ export interface Interface {
   readonly hasPending: (sessionId: SessionSchema.ID, delivery: Delivery) => Effect.Effect<boolean>;
   /**
    * Promotes every pending steer admitted at or before `cutoff`, in admission
-   * order, and returns how many were promoted. The cutoff keeps a steer that
-   * lands mid-promotion out of a request that is already being assembled.
+   * order. The cutoff keeps a steer that lands mid-promotion out of a request
+   * that is already being assembled.
+   *
+   * Counts promotions *this* caller won. A row another drainer promoted first
+   * is not counted: callers treat a positive count as new work to answer, and
+   * counting a promotion someone else committed would have two workers answer
+   * one prompt.
    */
   readonly promoteSteers: (sessionId: SessionSchema.ID, cutoff: number) => Effect.Effect<number>;
   /**
    * Promotes the single oldest pending follow-up, if any. One per run, unlike
    * steers, which is what makes the follow-up lane strictly turn-at-a-time.
+   * False when there was none, or when another caller promoted it first.
    */
   readonly promoteFollowUp: (sessionId: SessionSchema.ID) => Effect.Effect<boolean>;
 }
@@ -295,9 +301,10 @@ export const make = Effect.gen(function* () {
     sessionId: SessionSchema.ID,
     rows: ReadonlyArray<SessionInputRow>,
   ) {
+    let promoted = 0;
     for (const row of rows) {
       const id = SessionMessageSchema.ID.make(row.id);
-      yield* events
+      const won = yield* events
         .publish(EventList.Prompted, {
           sessionId,
           timestamp: row.createdAt,
@@ -306,22 +313,25 @@ export const make = Effect.gen(function* () {
           delivery: row.delivery,
         })
         .pipe(
-          // Someone else promoted this row first. That is the intended outcome,
-          // so long as it really is promoted now.
+          Effect.as(true),
+          // Someone else promoted this row first. That is the intended outcome
+          // so long as it really is promoted now -- but it is their promotion,
+          // not ours, so it does not count as work for this caller.
           Effect.catchDefect((defect) =>
             isLifecycleConflict(defect)
               ? find(id).pipe(
                   Effect.flatMap((stored) =>
                     Option.isSome(stored) && stored.value.promotedSeq !== undefined
-                      ? Effect.void
+                      ? Effect.succeed(false)
                       : Effect.die(defect),
                   ),
                 )
               : Effect.die(defect),
           ),
         );
+      if (won) promoted += 1;
     }
-    return rows.length;
+    return promoted;
   });
 
   const hasPending = Effect.fn("SessionInput.hasPending")(function* (
@@ -345,8 +355,7 @@ export const make = Effect.gen(function* () {
   ) {
     const rows = yield* selectPendingFollowUp(sessionId).pipe(Effect.orDie);
     if (rows.length === 0) return false;
-    yield* publishPrompted(sessionId, rows);
-    return true;
+    return (yield* publishPrompted(sessionId, rows)) > 0;
   });
 
   return {

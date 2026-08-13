@@ -141,7 +141,7 @@ describe("Session.prompt", () => {
 			const inputs = yield* SessionInput.make;
 			const admitted = yield* sessions.prompt({ sessionId, id: messageId, prompt: prompt("Promote once") });
 
-			yield* Effect.all(
+			const counts = yield* Effect.all(
 				[
 					inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER),
 					inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER),
@@ -149,6 +149,9 @@ describe("Session.prompt", () => {
 				{ concurrency: "unbounded" },
 			);
 
+			// Exactly one caller won it. A count is "work this caller promoted", so
+			// the loser reporting 1 would have both of them answer the same prompt.
+			expect(counts[0] + counts[1]).toBe(1);
 			expect(yield* eventCount("session.next.prompt.promoted.1")).toBe(1);
 			const promoted = some(yield* inputs.find(admitted.id));
 			expect(promoted.promotedSeq).toBeDefined();
@@ -159,6 +162,22 @@ describe("Session.prompt", () => {
 			expect(path.map((h) => h.entry.id)).toEqual([messageId]);
 			expect(path[0]!.entry.seq).toBe(promoted.promotedSeq);
 			expect(JSON.parse(path[0]!.parts[0]!.data)).toMatchObject({ type: "text", text: "Promote once" });
+		}));
+
+	it("reports the follow-up to whichever caller won it", () =>
+		Effect.gen(function* () {
+			const { sessions, sessionId } = yield* setup;
+			const inputs = yield* SessionInput.make;
+			yield* sessions.prompt({ sessionId, prompt: prompt("Later"), delivery: "followUp" });
+
+			const won = yield* Effect.all(
+				[inputs.promoteFollowUp(sessionId), inputs.promoteFollowUp(sessionId)],
+				{ concurrency: "unbounded" },
+			);
+
+			expect(won.filter(Boolean).length).toBe(1);
+			expect(yield* eventCount("session.next.prompt.promoted.1")).toBe(1);
+			expect(yield* inputs.hasPending(sessionId, "followUp")).toBe(false);
 		}));
 
 	it("promotes steers only through the captured cutoff", () =>

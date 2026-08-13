@@ -69,16 +69,27 @@ const drain = (
 ) =>
 	Effect.gen(function* () {
 		const passes: number[] = [];
+		let lane: "steer" | "followUp" | undefined = (yield* inputs.hasPending(sessionId, "steer"))
+			? "steer"
+			: "followUp";
 		for (;;) {
 			const cutoff = yield* events.latestSequence(sessionId);
-			let promoted = yield* inputs.promoteSteers(sessionId, cutoff);
-			if (promoted === 0 && (yield* inputs.hasPending(sessionId, "followUp"))) {
-				promoted += Number(yield* inputs.promoteFollowUp(sessionId));
-			}
+			// Follow-up first within a follow-up pass, then any steer that arrived
+			// since — the order a queue turn uses, so the one prompt this pass owes
+			// an answer to is ahead of anything that landed while it started.
+			let promoted = 0;
+			if (lane === "followUp") promoted += Number(yield* inputs.promoteFollowUp(sessionId));
+			promoted += yield* inputs.promoteSteers(sessionId, cutoff);
 			if (promoted === 0) break;
 			passes.push(promoted);
 			// Stands in for the turn a real loop would run here.
 			yield* Effect.yieldNow;
+			if (yield* inputs.hasPending(sessionId, "steer")) {
+				lane = "steer";
+				continue;
+			}
+			lane = (yield* inputs.hasPending(sessionId, "followUp")) ? "followUp" : undefined;
+			if (lane === undefined) break;
 		}
 		return passes;
 	});

@@ -219,6 +219,42 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 			}),
 		);
 
+		/**
+		 * The delivery order the whole design turns on, and the one thing that must
+		 * not drift when the real loop replaces this mock: steers drain as a batch
+		 * while the lane keeps producing, and only once it is quiet does a single
+		 * follow-up go, one per pass. Interleaved admission does not reorder them.
+		 */
+		it(
+			"delivers all pending steers before follow-ups, one follow-up per pass",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const sessions = yield* Session.Service;
+				const sessionId = yield* seedSession(backend);
+
+				// Admitted interleaved, so lane precedence — not arrival — decides.
+				yield* enqueue({ id: "msg_s1", sessionId, delivery: "steer" });
+				yield* enqueue({ id: "msg_f1", sessionId, delivery: "followUp" });
+				yield* enqueue({ id: "msg_s2", sessionId, delivery: "steer" });
+				yield* enqueue({ id: "msg_f2", sessionId, delivery: "followUp" });
+				yield* enqueue({ id: "msg_s3", sessionId, delivery: "steer" });
+
+				yield* execution.resume(sessionId);
+
+				// Steers in admission order, then follow-ups in admission order.
+				const path = yield* sessions.path(sessionId);
+				expect(path.map((h) => h.entry.id)).toEqual(["msg_s1", "msg_s2", "msg_s3", "msg_f1", "msg_f2"]);
+
+				// Conversation order is delivery order: the entry positions ascend in
+				// exactly the sequence the inbox recorded them as promoted.
+				const rows = yield* delivered(sessionId);
+				const byPromotion = [...rows]
+					.filter((row) => row.promotedSeq !== null)
+					.sort((a, b) => a.promotedSeq! - b.promotedSeq!);
+				expect(byPromotion.map((row) => row.id)).toEqual(path.map((h) => h.entry.id));
+			}),
+		);
+
 		it(
 			"wake with nothing eligible idles; an explicit resume still takes a turn",
 			Effect.gen(function* () {
