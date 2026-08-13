@@ -551,6 +551,11 @@ export const layer = Layer.effect(
 							metadata: Option.none(),
 						});
 						const inserted = yield* insertEntry(entryRow);
+						// Keep the aggregate head above what was just written. An entry
+						// that arrived without an event still occupies its position, and
+						// the next event must land above it or hit the guard below
+						// forever.
+						yield* events.advance(input.sessionId, input.seq);
 						if (inserted.length === 0) {
 							return {
 								_tag: "invalidData",
@@ -841,7 +846,7 @@ export const layer = Layer.effect(
 								(highest, prepared) => Math.max(highest, prepared.source.seq),
 								0,
 							);
-							yield* events.seed(newSessionId, baseSeq);
+							yield* events.advance(newSessionId, baseSeq);
 							// Lands at baseSeq + 1, so the seeded range is recorded by the
 							// log itself rather than inferable only from `parentId`.
 							yield* events.publish(EventList.SessionForked, {

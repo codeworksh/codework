@@ -93,15 +93,17 @@ export interface Interface {
    */
   readonly project: <D extends Definition>(definition: D, projector: Subscriber<D>) => Effect.Effect<void>;
   /**
-   * Starts an aggregate at `seq` rather than at 0, reserving [0..seq] for state
-   * that arrived without events -- a fork's copied entries. The next published
-   * event lands at `seq + 1`.
+   * Moves an aggregate's head to at least `seq`, so the next published event
+   * lands above it. Two callers need this: a fork, reserving [0..seq] for
+   * copied entries, and any write that takes a position without going through
+   * an event -- otherwise the head still points below state that already
+   * exists, and the next event collides with it.
    *
    * A sequence is a version position, not a row count, so declaring an
-   * aggregate "already at version N" is legal. No-op when the aggregate already
-   * exists: seeding must never rewind a live log.
+   * aggregate "already at version N" is legal. Never rewinds: a lower `seq`
+   * than the current head is a no-op.
    */
-  readonly seed: (aggregateId: string, seq: number) => Effect.Effect<void>;
+  readonly advance: (aggregateId: string, seq: number) => Effect.Effect<void>;
 }
 
 export class Service extends Context.Service<Service, Interface>()(
@@ -332,18 +334,18 @@ export const layer = Layer.effect(
       } as Payload<D>);
     });
 
-    // DO NOTHING, not DO UPDATE: an aggregate with a live log owns its position,
-    // and lowering it would hand out sequences that already exist.
-    const seedSequence = SqlSchema.void({
+    // MAX, so this only ever moves the head forward. Lowering it would hand out
+    // sequences that already exist.
+    const advanceSequence = SqlSchema.void({
       Request: Schema.Struct({ aggregateId: Schema.String, seq: Schema.Int }),
       execute: ({ aggregateId, seq }) => sql`
         INSERT INTO event_sequence (aggregate_id, seq) VALUES (${aggregateId}, ${seq})
-        ON CONFLICT(aggregate_id) DO NOTHING
+        ON CONFLICT(aggregate_id) DO UPDATE SET seq = MAX(event_sequence.seq, excluded.seq)
       `,
     });
 
-    const seed = Effect.fn("Event.seed")(function* (aggregateId: string, seq: number) {
-      yield* seedSequence({ aggregateId, seq });
+    const advance = Effect.fn("Event.advance")(function* (aggregateId: string, seq: number) {
+      yield* advanceSequence({ aggregateId, seq });
     }, Effect.orDie);
 
     const project = <D extends Definition>(definition: D, projector: Subscriber<D>): Effect.Effect<void> =>
@@ -358,7 +360,7 @@ export const layer = Layer.effect(
       readAggregate,
       publish,
       project,
-      seed,
+      advance,
     });
   }),
 );

@@ -136,13 +136,23 @@ describe("Event store", () => {
 			expect(seen).toEqual([0, 1]);
 		}));
 
-	describe("seed", () => {
+	describe("advance", () => {
 		it("starts an aggregate above a range reserved for copied state", () =>
 			Effect.gen(function* () {
 				const events = yield* Event.Service;
-				yield* events.seed(A, 8);
+				yield* events.advance(A, 8);
 				expect(yield* events.latestSequence(A)).toBe(8);
 				expect((yield* events.publish(Msg, { aggId: A, text: "after" })).durable?.seq).toBe(9);
+			}));
+
+		it("raises the head above state written without an event", () =>
+			Effect.gen(function* () {
+				const events = yield* Event.Service;
+				yield* events.publish(Msg, { aggId: A, text: "one" });
+				// Something took position 5 without publishing — a copied entry, or a
+				// direct write. The next event has to land above it, not collide.
+				yield* events.advance(A, 5);
+				expect((yield* events.publish(Msg, { aggId: A, text: "after" })).durable?.seq).toBe(6);
 			}));
 
 		it("never rewinds an aggregate that already has a log", () =>
@@ -151,7 +161,7 @@ describe("Event store", () => {
 				yield* events.publish(Msg, { aggId: A, text: "one" });
 				yield* events.publish(Msg, { aggId: A, text: "two" });
 
-				yield* events.seed(A, 0);
+				yield* events.advance(A, 0);
 
 				expect(yield* events.latestSequence(A)).toBe(1);
 				expect((yield* events.publish(Msg, { aggId: A, text: "three" })).durable?.seq).toBe(2);
