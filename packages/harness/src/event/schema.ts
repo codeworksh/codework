@@ -52,7 +52,7 @@ export function define<
 		id: ID,
 		metadata: optional(Schema.Record(Schema.String, Schema.Unknown)),
 		type: Schema.Literal(input.type),
-		durable: optional(Schema.Struct({ aggregateID: Schema.String, seq: Schema.Int, version: Schema.Int })),
+		durable: optional(Schema.Struct({ aggregateId: Schema.String, seq: Schema.Int, version: Schema.Int })),
 		data,
 	})
 		.annotate({ identifier: input.type })

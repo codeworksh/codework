@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 import { posix as path } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../../src/db/db.ts";
+import { Event } from "../../src/event/event.ts";
 import { Git } from "../../src/git/git.ts";
 import { ProjectCopy } from "../../src/project/copy.ts";
 import { Project } from "../../src/project/project.ts";
@@ -403,6 +404,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 							// provideMerge, not provide: the block below registers the
 							// sandbox instance directly and needs SqlClient itself.
 							const application = Layer.merge(project, Session.layer).pipe(
+								Layer.provideMerge(Event.layer),
 								Layer.provideMerge(Database.layer(":memory:")),
 							);
 

@@ -7,8 +7,9 @@ import { llm, stream, Type, validateSchema } from "@codeworksh/aikit";
 import { Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
-import { describe, expect, it as vitestIt } from "vite-plus/test";
+import { beforeEach, describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
+import { Event } from "../src/event/event.ts";
 import { AbsolutePath } from "../src/schema.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { Session } from "../src/session/session.ts";
@@ -17,7 +18,10 @@ import { tmpdir } from "./fixtures/tempdir.ts";
 import { testEffect } from "./utils/effect.ts";
 
 // Fresh in-memory database per test: the layer is rebuilt for every it.effect.
-const layer = Session.layer.pipe(Layer.provideMerge(Database.layer(":memory:")));
+const layer = Session.layer.pipe(
+	Layer.provideMerge(Event.layer),
+	Layer.provideMerge(Database.layer(":memory:")),
+);
 const it = testEffect(layer);
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
 const openaiKey = process.env.OPENAI_API_KEY;
@@ -26,6 +30,22 @@ const openaiLiveIt = openaiKey ? it.live : it.live.skip;
 
 // Fixture IDs stay readable; `ID.make` enforces the `ses` prefix.
 const sid = (name: string) => SessionSchema.ID.make(`ses_${name}`);
+
+// In production an entry's seq is the sequence of the event that produced it.
+// These tests exercise the tree directly, with no event log behind them, so a
+// per-session counter stands in. Dense here; sparse in production.
+const seqCounters = new Map<string, number>();
+const nextSeq = (sessionId: string) => {
+	const next = (seqCounters.get(sessionId) ?? 0) + 1;
+	seqCounters.set(sessionId, next);
+	return next;
+};
+// A fork copies entry positions verbatim and seeds the new aggregate above
+// them, so the stand-in counter has to continue from the source's position.
+const inheritSeq = (sourceId: string, forkId: string) => {
+	seqCounters.set(forkId, seqCounters.get(sourceId) ?? 0);
+};
+beforeEach(() => seqCounters.clear());
 
 const createSession = (slug: string) =>
 	Effect.gen(function* () {
@@ -47,6 +67,7 @@ const createSession = (slug: string) =>
 const userEntry = (sessionId: SessionSchema.ID, id: string, text: string): Session.AppendEntry => ({
 	id,
 	sessionId,
+	seq: nextSeq(sessionId),
 	type: "user",
 	data: JSON.stringify({ messageId: id, role: "user", time: { created: 1 } }),
 	parts: [{ type: "text", data: JSON.stringify({ type: "text", text }) }],
@@ -83,6 +104,7 @@ const assistantEntry = (
 ): Session.AppendEntry => ({
 	id,
 	sessionId,
+	seq: nextSeq(sessionId),
 	type: "assistant",
 	data: JSON.stringify({
 		messageId: id,
@@ -121,6 +143,7 @@ const appendMessage = (sessionId: SessionSchema.ID, message: Message.Message, ex
 	return {
 		id: message.messageId,
 		sessionId,
+		seq: nextSeq(sessionId),
 		type: message.role,
 		data: JSON.stringify(envelope),
 		parts: parts.map((part) => ({
@@ -482,6 +505,7 @@ describe("session", () => {
 			yield* session.append({
 				id: "e3",
 				sessionId: created.id,
+				seq: nextSeq(created.id),
 				type: "compaction",
 				data: JSON.stringify({ summary: "earlier work", firstKeptEntryId: "e1", tokensBefore: 1000 }),
 			});
@@ -687,9 +711,9 @@ describe("session", () => {
 			const session = yield* Session.Service;
 			const created = yield* createSession("s-envelope-identity-guard");
 			const invalidEntries: ReadonlyArray<Session.AppendEntry> = [
-				{ id: "bad-json", sessionId: created.id, type: "user", data: "not json" },
-				{ id: "bad-array", sessionId: created.id, type: "user", data: "[]" },
-				{ id: "missing-id", sessionId: created.id, type: "synthetic", data: JSON.stringify({ customType: "x" }) },
+				{ id: "bad-json", sessionId: created.id, seq: nextSeq(created.id), type: "user", data: "not json" },
+				{ id: "bad-array", sessionId: created.id, seq: nextSeq(created.id), type: "user", data: "[]" },
+				{ id: "missing-id", sessionId: created.id, seq: nextSeq(created.id), type: "synthetic", data: JSON.stringify({ customType: "x" }) },
 				{
 					...assistantEntry(created.id, "mismatched-id"),
 					data: JSON.stringify({
@@ -728,24 +752,28 @@ describe("session", () => {
 				{
 					id: "c-missing-boundary",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "missing", tokensBefore: 10 }),
 				},
 				{
 					id: "c-negative-tokens",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "negative", firstKeptEntryId: null, tokensBefore: -1 }),
 				},
 				{
 					id: "c-abandoned-boundary",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "abandoned", firstKeptEntryId: "e2", tokensBefore: 10 }),
 				},
 				{
 					id: "c-foreign-boundary",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "foreign", firstKeptEntryId: "other-e1", tokensBefore: 10 }),
 				},
@@ -764,6 +792,7 @@ describe("session", () => {
 			const anchored = yield* session.append({
 				id: "c-anchored",
 				sessionId: source.id,
+				seq: nextSeq(source.id),
 				parentId: "e2",
 				type: "compaction",
 				data: JSON.stringify({ summary: "root work", firstKeptEntryId: "e1", tokensBefore: 10 }),
@@ -774,6 +803,7 @@ describe("session", () => {
 				.append({
 					id: "c-wrong-anchor",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					parentId: "e2",
 					type: "compaction",
 					data: JSON.stringify({ summary: "wrong path", firstKeptEntryId: "e3", tokensBefore: 10 }),
@@ -787,6 +817,7 @@ describe("session", () => {
 			const summaryOnly = yield* session.append({
 				id: "c-summary-only",
 				sessionId: source.id,
+				seq: nextSeq(source.id),
 				type: "compaction",
 				data: JSON.stringify({ summary: "all prior work", firstKeptEntryId: null, tokensBefore: 10 }),
 			});
@@ -803,6 +834,7 @@ describe("session", () => {
 				.append({
 					id: "e1",
 					sessionId: created.id,
+					seq: nextSeq(created.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "s", firstKeptEntryId: null, tokensBefore: 10 }),
 					parts: [{ type: "text", data: JSON.stringify({ type: "text", text: "x" }) }],
@@ -1026,6 +1058,7 @@ describe("session", () => {
 				forkPath.map((h) => h.entry.id),
 			);
 			// fork diverges independently of the source
+			inheritSeq(source.id, fork.id);
 			yield* session.append(userEntry(fork.id, "f6", "fork continues"));
 			expect((yield* session.timeline({ sessionId: source.id })).length).toBe(4);
 			expect((yield* session.timeline({ sessionId: fork.id })).length).toBe(4);
@@ -1041,6 +1074,7 @@ describe("session", () => {
 			yield* session.append({
 				id: "c3",
 				sessionId: source.id,
+				seq: nextSeq(source.id),
 				type: "compaction",
 				data: JSON.stringify({ summary: "earlier work", firstKeptEntryId: "e2", tokensBefore: 1000 }),
 			});
@@ -1048,6 +1082,7 @@ describe("session", () => {
 			yield* session.append({
 				id: "c5",
 				sessionId: source.id,
+				seq: nextSeq(source.id),
 				type: "compaction",
 				data: JSON.stringify({ summary: "all prior work", firstKeptEntryId: null, tokensBefore: 500 }),
 			});
@@ -1183,7 +1218,10 @@ describe("session", () => {
 	vitestIt("persists session entries across a file database reload", async () => {
 		await using tmp = await tmpdir();
 		const database = path.join(tmp.path, "session.db");
-		const fileLayer = Session.layer.pipe(Layer.provideMerge(Database.layer(database)));
+		const fileLayer = Session.layer.pipe(
+			Layer.provideMerge(Event.layer),
+			Layer.provideMerge(Database.layer(database)),
+		);
 
 		await Effect.runPromise(
 			Effect.gen(function* () {

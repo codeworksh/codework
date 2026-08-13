@@ -15,6 +15,12 @@ import {
 	type ToolStatus,
 	toolStatuses,
 } from "../db/schema.sql.ts";
+import { Event } from "../event/event.ts";
+import { EventList } from "../event/list.ts";
+import { SessionInput } from "./input/input.ts";
+import type { Admitted } from "./input/schema.ts";
+import { SessionMessageSchema } from "./message/schema.ts";
+import type { Delivery, Prompt } from "./prompt/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import type { AbsolutePath } from "../schema.ts";
 import { SessionSchema } from "./schema.ts";
@@ -60,6 +66,25 @@ export class InvalidEntryDataError extends Schema.TaggedError<InvalidEntryDataEr
 	reason: Schema.String,
 }) {}
 
+/**
+ * The prompt could not be admitted under the id it was given: either that id
+ * already carries different content, or it has already left the inbox. Typed
+ * rather than a defect — a client that retried with a reused id can act on it.
+ */
+export class PromptConflictError extends Schema.TaggedError<PromptConflictError>()("PromptConflictError", {
+	sessionId: Schema.String,
+	messageId: Schema.String,
+}) {}
+
+export interface PromptInput {
+	readonly sessionId: SessionSchema.ID;
+	readonly prompt: Prompt;
+	/** Supply to make the call idempotent across retries; minted when omitted. */
+	readonly id?: SessionMessageSchema.ID;
+	/** Defaults to "steer": join the running turn rather than waiting for the next. */
+	readonly delivery?: Delivery;
+}
+
 export interface CreateSession {
 	readonly id?: SessionSchema.ID;
 	readonly projectId: string;
@@ -91,6 +116,12 @@ export interface AppendPart {
 export interface AppendEntry {
 	readonly id: string; // uuidv7; == aikit messageId for message types
 	readonly sessionId: SessionSchema.ID;
+	/**
+	 * Position in the session's durable log — the sequence of the event that
+	 * produced this entry. Must exceed every existing entry's seq, which the
+	 * event log guarantees since sequences only ever advance.
+	 */
+	readonly seq: number;
 	readonly type: EntryType;
 	readonly data: string; // JSON: full payload, or message envelope
 	readonly parts?: ReadonlyArray<AppendPart>; // order = partIndex; message types only
@@ -108,7 +139,7 @@ export interface SettleToolCall {
 
 // Fork copies ONE path (root → fork point) into a new session — never sibling
 // or abandoned branches.
-// Clone = fork at the current leaf.
+// clone = fork at the current leaf.
 export interface ForkInput {
 	readonly sessionId: SessionSchema.ID; // source session
 	readonly entryId?: string; // fork point; default = current leaf (clone)
@@ -147,6 +178,14 @@ export interface Interface {
 		SessionNotFoundError | EntryNotFoundError | LeafConflictError | InvalidEntryDataError
 	>;
 	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void, ToolCallNotFoundError>;
+	/**
+	 * Records a prompt in the session's durable inbox. Returns once it is stored,
+	 * not once it is answered — delivery into the conversation is the runner's
+	 * job, and the inbox is what survives in between.
+	 */
+	readonly prompt: (
+		input: PromptInput,
+	) => Effect.Effect<Admitted, SessionNotFoundError | PromptConflictError>;
 	/** Copy root→fork-point into a new session (`parentId` = source). Clone = fork at leaf. */
 	readonly fork: (
 		input: ForkInput,
@@ -180,6 +219,9 @@ export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const events = yield* Event.Service;
+		const inputs = yield* SessionInput.make;
+		const isLifecycleConflict = Schema.is(SessionInput.LifecycleConflict);
 
 		const findSession = SqlSchema.findOneOption({
 			Request: Schema.String,
@@ -204,19 +246,28 @@ export const layer = Layer.effect(
 			execute: (id) => sql`SELECT * FROM session_entry WHERE id = ${id}`,
 		});
 
-		// seq is computed inside the INSERT — no read-modify-write window. SQLite
-		// serializes write transactions, so two appends cannot commit the same
-		// max(seq) + 1; the unique (session_id, seq) index is the backstop.
-		const insertEntry = SqlSchema.void({
+		// seq is supplied by the caller, not computed here: it is the sequence of
+		// the event that produced the entry, so the durable log and the tree share
+		// one position space.
+		//
+		// The WHERE NOT EXISTS keeps positions strictly advancing. `max(seq) + 1`
+		// used to make that structural; sourcing seq from outside would otherwise
+		// downgrade it to an unchecked contract, and a stale position fails
+		// silently — `selectPath` orders by seq, so a child would sort above its
+		// own parent. Inserting zero rows is the signal, checked by the callers.
+		const insertEntry = SqlSchema.findAll({
 			Request: SessionEntryRow.insert,
+			Result: Schema.Struct({ id: Schema.String }),
 			execute: (row) => sql`
 				INSERT INTO session_entry (id, session_id, parent_id, seq, type, data, label, metadata, created_at, updated_at)
-				VALUES (
-					${row.id}, ${row.sessionId}, ${row.parentId ?? null},
-					(SELECT COALESCE(MAX(seq), 0) + 1 FROM session_entry WHERE session_id = ${row.sessionId}),
+				SELECT
+					${row.id}, ${row.sessionId}, ${row.parentId ?? null}, ${row.seq},
 					${row.type}, ${row.data}, ${row.label ?? null}, ${row.metadata ?? null},
 					${row.createdAt}, ${row.updatedAt}
+				WHERE NOT EXISTS (
+					SELECT 1 FROM session_entry WHERE session_id = ${row.sessionId} AND seq >= ${row.seq}
 				)
+				RETURNING id
 			`,
 		});
 
@@ -493,12 +544,19 @@ export const layer = Layer.effect(
 							id: input.id,
 							sessionId: input.sessionId,
 							parentId,
+							seq: input.seq,
 							type: input.type,
 							data: input.data,
 							label: Option.none(),
 							metadata: Option.none(),
 						});
-						yield* insertEntry(entryRow);
+						const inserted = yield* insertEntry(entryRow);
+						if (inserted.length === 0) {
+							return {
+								_tag: "invalidData",
+								reason: `seq ${input.seq} does not advance past the session's latest entry`,
+							} as const;
+						}
 
 						for (const [partIndex, part] of parts.entries()) {
 							const partRow = yield* SessionEntryPartRow.insert.makeEffect({
@@ -716,18 +774,30 @@ export const layer = Layer.effect(
 						});
 						yield* insertSession(sessionRow);
 
-						// Entries in path order: insertEntry's max(seq)+1 yields dense 1..N.
+						// Positions are carried over verbatim, not renumbered: they are log
+						// positions, and preserving them keeps the copy ordered exactly as
+						// the source. The new aggregate is then seeded above the highest of
+						// them so post-fork events never land underneath.
 						for (const prepared of preparedEntries) {
 							const entryRow = yield* SessionEntryRow.insert.makeEffect({
 								id: prepared.id,
 								sessionId: newSessionId,
 								parentId: Option.map(prepared.source.parentId, (parent) => idMap.get(parent)!),
+								seq: prepared.source.seq,
 								type: prepared.source.type,
 								data: prepared.data,
 								label: prepared.source.label, // annotations ride the copy (§10.12)
 								metadata: prepared.source.metadata,
 							});
-							yield* insertEntry(entryRow);
+							// Path order means source positions already ascend, so a
+							// rejection here would mean the source tree violated its own
+							// ordering invariant rather than anything about this copy.
+							const copied = yield* insertEntry(entryRow);
+							if (copied.length === 0) {
+								return yield* Effect.die(
+									`fork: copied entry ${prepared.id} at seq ${prepared.source.seq} does not advance`,
+								);
+							}
 						}
 
 						// Parts: new ids, re-keyed entry/session, everything else verbatim —
@@ -759,6 +829,28 @@ export const layer = Layer.effect(
 								UPDATE session SET leaf_entry_id = ${idMap.get(targetId.value)!}, updated_at = ${now}
 								WHERE id = ${newSessionId}
 							`;
+						}
+
+						// The copied entries hold positions from the source's log, so the
+						// new aggregate starts above the highest of them. Without this its
+						// first event would land at 0, underneath the copy, and
+						// `parent.seq < child.seq` — which `selectPath` orders by — would
+						// invert. An empty fork copies nothing and starts at 0 normally.
+						if (preparedEntries.length > 0 && Option.isSome(targetId)) {
+							const baseSeq = preparedEntries.reduce(
+								(highest, prepared) => Math.max(highest, prepared.source.seq),
+								0,
+							);
+							yield* events.seed(newSessionId, baseSeq);
+							// Lands at baseSeq + 1, so the seeded range is recorded by the
+							// log itself rather than inferable only from `parentId`.
+							yield* events.publish(EventList.SessionForked, {
+								sessionId: newSessionId,
+								sourceSessionId: input.sessionId,
+								sourceEntryId: targetId.value,
+								baseSeq,
+								timestamp: yield* DateTime.now,
+							});
 						}
 
 						const created = yield* findSession(newSessionId);
@@ -842,7 +934,50 @@ export const layer = Layer.effect(
 			}
 		});
 
+		/**
+		 * Uninterruptible end to end: a client that disconnects mid-call must not
+		 * leave a prompt half-admitted. Everything durable happens inside `admit`,
+		 * which is idempotent on the id, so a retry converges rather than
+		 * duplicating.
+		 */
+		const prompt = Effect.fn("Session.prompt")((input: PromptInput) =>
+			Effect.uninterruptible(
+				Effect.gen(function* () {
+					const session = yield* findSession(input.sessionId).pipe(Effect.orDie);
+					if (Option.isNone(session)) {
+						return yield* new SessionNotFoundError({ sessionId: input.sessionId });
+					}
+
+					const messageId = input.id ?? SessionMessageSchema.ID.create();
+					const delivery = input.delivery ?? "steer";
+					const admitted = yield* inputs
+						.admit({ id: messageId, sessionId: input.sessionId, prompt: input.prompt, delivery })
+						.pipe(
+							// The id already left the inbox for the conversation. That is a
+							// conflict the caller can see, not a broken invariant.
+							Effect.catchDefect((defect) =>
+								isLifecycleConflict(defect)
+									? new PromptConflictError({ sessionId: input.sessionId, messageId })
+									: Effect.die(defect),
+							),
+						);
+
+					// A retry that reuses an id but changes the prompt is not the same
+					// request. The stored row wins, and the caller is told.
+					if (!SessionInput.equivalent(admitted, { sessionId: input.sessionId, prompt: input.prompt, delivery })) {
+						return yield* new PromptConflictError({ sessionId: input.sessionId, messageId });
+					}
+
+					// TODO: wake execution here once the runner port exists, so a prompt
+					// admitted while the session is idle starts a drain. Until then the
+					// inbox holds it and the next explicit run picks it up.
+					return admitted;
+				}),
+			),
+		);
+
 		return Service.of({
+			prompt,
 			create,
 			get,
 			list,

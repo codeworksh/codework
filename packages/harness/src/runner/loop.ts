@@ -13,11 +13,11 @@
  * unpicking assumptions from the rest of `runner/`.
  */
 
-import { Effect, Layer, Option, Schema } from "effect";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
-import { SessionInputRow } from "../db/schema.sql.ts";
+import { Effect, Layer, Option } from "effect";
+import { Event } from "../event/event.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { quote } from "../sandbox/shell/shell.ts";
+import { SessionInput } from "../session/input/input.ts";
 import type { SessionSchema } from "../session/schema.ts";
 import { Session } from "../session/session.ts";
 import { Runner } from "./run.ts";
@@ -56,24 +56,19 @@ export const linesFor = (admittedSeq: number, options: Options = {}): number => 
  * emitted line count is exactly the loop count, and truncated so a long lorem
  * ipsum body does not dominate the command.
  */
-const echoText = (prompt: string): string => {
-	const parts = ((): string => {
-		try {
-			const decoded: unknown = JSON.parse(prompt);
-			const list =
-				typeof decoded === "object" && decoded !== null && "parts" in decoded
-					? (decoded as { parts?: ReadonlyArray<{ type?: string; text?: string }> }).parts
-					: undefined;
-			const text = (list ?? [])
-				.filter((part) => part.type === "text" && typeof part.text === "string")
-				.map((part) => part.text as string)
-				.join(" ");
-			return text.length > 0 ? text : prompt;
-		} catch {
-			return prompt;
+const promptText = (hydrated: Session.HydratedEntry): string => {
+	for (const part of hydrated.parts) {
+		if (part.type !== "text") continue;
+		const parsed: unknown = JSON.parse(part.data);
+		if (typeof parsed === "object" && parsed !== null && "text" in parsed) {
+			return String((parsed as { text: unknown }).text);
 		}
-	})();
-	const flat = parts.replace(/\s+/g, " ").trim();
+	}
+	return hydrated.entry.id;
+};
+
+const echoText = (text: string): string => {
+	const flat = text.replace(/\s+/g, " ").trim();
 	return flat.length <= 60 ? flat : `${flat.slice(0, 57)}...`;
 };
 
@@ -93,35 +88,10 @@ export const layer = (options: Options = {}) =>
 	Layer.effect(
 		Runner.Service,
 		Effect.gen(function* () {
-			const sql = yield* SqlClient.SqlClient;
 			const sessions = yield* Session.Service;
+			const events = yield* Event.Service;
+			const inputs = yield* SessionInput.make;
 			const intervalSeconds = options.intervalSeconds ?? defaults.intervalSeconds;
-
-			// Eligible work: admitted, not yet delivered, oldest first. Covered by
-			// session_input_pending_idx.
-			const pending = SqlSchema.findAll({
-				Request: Schema.String,
-				Result: SessionInputRow,
-				execute: (sessionId) => sql`
-					SELECT * FROM session_input
-					WHERE session_id = ${sessionId} AND promoted_seq IS NULL
-					ORDER BY admitted_seq
-				`,
-			});
-
-			// Delivery order is its own sequence, computed inside the statement so no
-			// read-modify-write window opens between picking a value and using it.
-			// The unique (session_id, promoted_seq) index is the backstop.
-			const promote = SqlSchema.void({
-				Request: Schema.Struct({ id: Schema.String, sessionId: Schema.String }),
-				execute: (r) => sql`
-					UPDATE session_input
-					SET promoted_seq = (
-						SELECT COALESCE(MAX(promoted_seq), 0) + 1 FROM session_input WHERE session_id = ${r.sessionId}
-					)
-					WHERE id = ${r.id}
-				`,
-			});
 
 			/**
 			 * The mock's one real use of the sandbox: ask the shell where it is, and
@@ -180,40 +150,68 @@ export const layer = (options: Options = {}) =>
 					}),
 				);
 
-				const queued = yield* pending(input.sessionId).pipe(Effect.orDie);
+				const hasSteer = yield* inputs.hasPending(input.sessionId, "steer");
+				const hasFollowUp = hasSteer ? false : yield* inputs.hasPending(input.sessionId, "followUp");
 
-				if (queued.length === 0) {
+				if (!input.force && !hasSteer && !hasFollowUp) {
 					// The contract in `run.ts`: an explicit run performs one attempt even
 					// with nothing eligible; a wake with nothing eligible is a no-op.
-					if (!input.force) {
-						yield* Effect.logInfo("loop: nothing eligible, idling").pipe(
-							Effect.annotateLogs({ sessionId: input.sessionId }),
-						);
-						return;
-					}
-					yield* turn("forced", "forced turn, no queued input", linesFor(0, options));
+					yield* Effect.logInfo("loop: nothing eligible, idling").pipe(
+						Effect.annotateLogs({ sessionId: input.sessionId }),
+					);
 					return;
 				}
 
 				let emitted = 0;
-				for (const queuedInput of queued) {
-					const lines = linesFor(queuedInput.admittedSeq, options);
-					yield* Effect.logInfo("loop: delivering input").pipe(
-						Effect.annotateLogs({
-							inputId: queuedInput.id,
-							delivery: queuedInput.delivery,
-							admittedSeq: queuedInput.admittedSeq,
-						}),
+				let delivered = 0;
+				let lane: "steer" | "followUp" | undefined = hasSteer ? "steer" : hasFollowUp ? "followUp" : undefined;
+				let shouldRun = true;
+
+				while (shouldRun) {
+					// Captured before promoting and outside any commit, so a prompt admitted
+					// from here on belongs to the next turn rather than this one. The real
+					// loop keeps this ordering for the same reason.
+					const cutoff = yield* events.latestSequence(input.sessionId);
+					let promoted = 0;
+					if (lane === "followUp") {
+						promoted += Number(yield* inputs.promoteFollowUp(input.sessionId));
+					}
+					promoted += yield* inputs.promoteSteers(input.sessionId, cutoff);
+					delivered += promoted;
+
+					// Promotion appended the prompt, so the newest entry is the text this
+					// turn is answering. Reading it back is also how the mock proves the
+					// admit -> promote -> entry chain actually closed.
+					const path = yield* sessions.path(input.sessionId);
+					const newest = path.at(-1);
+					const text = newest === undefined ? "forced turn, no queued input" : promptText(newest);
+					const lines = linesFor(newest?.entry.seq ?? 0, options);
+
+					yield* Effect.logInfo("loop: delivering").pipe(
+						Effect.annotateLogs({ sessionId: input.sessionId, lane: lane ?? "forced", promoted }),
 					);
-					const done = yield* turn(queuedInput.delivery, echoText(queuedInput.prompt), lines);
+					const done = yield* turn(lane ?? "forced", echoText(text), lines);
 					emitted += done.emitted;
-					// Consumed only after its turn completes, so an interrupt mid-turn
-					// leaves the input eligible for the next drain.
-					yield* promote({ id: queuedInput.id, sessionId: input.sessionId }).pipe(Effect.orDie);
+
+					// Every further pass must promote something, which is what bounds
+					// this loop: inputs are finite, and a pass that delivers nothing has
+					// nothing left it is allowed to deliver. Without it, a promotion
+					// that silently fails to stamp promoted_seq — a projector missing
+					// from the graph, say — spins here forever.
+					if (promoted === 0) break;
+
+					// One follow-up per run, and only once the steer lane is quiet — the
+					// same precedence the real drain uses.
+					if (yield* inputs.hasPending(input.sessionId, "steer")) {
+						lane = "steer";
+						continue;
+					}
+					shouldRun = yield* inputs.hasPending(input.sessionId, "followUp");
+					lane = shouldRun ? "followUp" : undefined;
 				}
 
 				yield* Effect.logInfo("loop: run end").pipe(
-					Effect.annotateLogs({ sessionId: input.sessionId, delivered: queued.length, emitted }),
+					Effect.annotateLogs({ sessionId: input.sessionId, delivered, emitted }),
 				);
 			});
 

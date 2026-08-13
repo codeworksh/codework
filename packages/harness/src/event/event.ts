@@ -92,6 +92,16 @@ export interface Interface {
    * transaction, so a failing projector rolls the event back with it.
    */
   readonly project: <D extends Definition>(definition: D, projector: Subscriber<D>) => Effect.Effect<void>;
+  /**
+   * Starts an aggregate at `seq` rather than at 0, reserving [0..seq] for state
+   * that arrived without events -- a fork's copied entries. The next published
+   * event lands at `seq + 1`.
+   *
+   * A sequence is a version position, not a row count, so declaring an
+   * aggregate "already at version N" is legal. No-op when the aggregate already
+   * exists: seeding must never rewind a live log.
+   */
+  readonly seed: (aggregateId: string, seq: number) => Effect.Effect<void>;
 }
 
 export class Service extends Context.Service<Service, Interface>()(
@@ -322,6 +332,20 @@ export const layer = Layer.effect(
       } as Payload<D>);
     });
 
+    // DO NOTHING, not DO UPDATE: an aggregate with a live log owns its position,
+    // and lowering it would hand out sequences that already exist.
+    const seedSequence = SqlSchema.void({
+      Request: Schema.Struct({ aggregateId: Schema.String, seq: Schema.Int }),
+      execute: ({ aggregateId, seq }) => sql`
+        INSERT INTO event_sequence (aggregate_id, seq) VALUES (${aggregateId}, ${seq})
+        ON CONFLICT(aggregate_id) DO NOTHING
+      `,
+    });
+
+    const seed = Effect.fn("Event.seed")(function* (aggregateId: string, seq: number) {
+      yield* seedSequence({ aggregateId, seq });
+    }, Effect.orDie);
+
     const project = <D extends Definition>(definition: D, projector: Subscriber<D>): Effect.Effect<void> =>
       Effect.sync(() => {
         const list = projectors.get(definition.type) ?? [];
@@ -334,6 +358,7 @@ export const layer = Layer.effect(
       readAggregate,
       publish,
       project,
+      seed,
     });
   }),
 );

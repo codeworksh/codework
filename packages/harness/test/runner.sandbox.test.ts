@@ -2,6 +2,7 @@ import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
+import { Event } from "../src/event/event.ts";
 import { Location } from "../src/location/location.ts";
 import { RunnerExecute } from "../src/runner/execute.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
@@ -66,6 +67,7 @@ const infrastructure = Layer.provideMerge(
 const runtime = RunnerExecute.layer.pipe(
 	Layer.provide(runner),
 	Layer.provideMerge(Session.layer),
+	Layer.provideMerge(Event.layer),
 	Layer.provideMerge(infrastructure),
 );
 const { effect: it } = testEffect(runtime);

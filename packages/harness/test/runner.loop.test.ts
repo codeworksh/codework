@@ -3,6 +3,7 @@ import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { tmpdir as osTmpdir } from "node:os";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
+import { Event } from "../src/event/event.ts";
 import { SessionInputRow } from "../src/db/schema.sql.ts";
 import { RunnerExecute } from "../src/runner/execute.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
@@ -15,7 +16,9 @@ import type { SandboxCreateError } from "../src/sandbox/errors.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { Shell } from "../src/sandbox/shell/shell.ts";
 import { AbsolutePath } from "../src/schema.ts";
+import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
+import { SessionProjector } from "../src/session/projector.ts";
 import { Session } from "../src/session/session.ts";
 import { testEffect } from "./utils/effect.ts";
 
@@ -95,16 +98,12 @@ const runtime = (backend: LoopBackend, options?: Loop.Options) => {
 	);
 	return RunnerExecute.layer.pipe(
 		Layer.provide(Loop.layer(options)),
+		Layer.provideMerge(SessionProjector.layer),
 		Layer.provideMerge(Session.layer),
+		Layer.provideMerge(Event.layer),
 		Layer.provideMerge(infrastructure),
 	);
 };
-
-const insertInput = (sql: SqlClient.SqlClient) =>
-	SqlSchema.void({
-		Request: SessionInputRow.insert,
-		execute: (row) => sql`INSERT INTO session_input ${sql.insert(row)}`,
-	});
 
 const inputsFor = (sql: SqlClient.SqlClient) =>
 	SqlSchema.findAll({
@@ -143,23 +142,22 @@ const lorem =
 	"Lorem ipsum dolor sit amet, consectetur adipiscing elit,\n sed do eiusmod tempor " +
 	"incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud.";
 
+// Admitted through the real entry point, never by raw insert: admitted_seq is a
+// position in the session's durable log, so a fabricated one is meaningless and
+// the drain's cutoff correctly ignores it.
 const enqueue = Effect.fnUntraced(function* (input: {
 	readonly id: string;
 	readonly sessionId: SessionSchema.ID;
-	readonly admittedSeq: number;
 	readonly delivery: "steer" | "followUp";
 	readonly text?: string;
 }) {
-	const sql = yield* SqlClient.SqlClient;
-	const row = yield* SessionInputRow.insert.makeEffect({
-		id: input.id,
+	const sessions = yield* Session.Service;
+	return yield* sessions.prompt({
 		sessionId: input.sessionId,
-		admittedSeq: input.admittedSeq,
+		id: SessionMessageSchema.ID.make(input.id),
+		prompt: { text: input.text ?? `${input.id} ${lorem}` },
 		delivery: input.delivery,
-		prompt: JSON.stringify({ parts: [{ type: "text", text: input.text ?? `${input.id} ${lorem}` }] }),
-		promotedSeq: Option.none(),
 	});
-	yield* insertInput(sql)(row);
 });
 
 /** The drain spec every sandbox backend must satisfy. */
@@ -169,20 +167,23 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 
 	describe(`runner loop — ${name}`, () => {
 		it(
-			"drains queued inputs in admission order and marks them delivered",
+			"drains the steer lane before the follow-up lane, marking each delivered",
 			Effect.gen(function* () {
 				const execution = yield* RunnerExecution.Service;
 				const sessionId = yield* seedSession(backend);
 
-				yield* enqueue({ id: "a", sessionId, admittedSeq: 1, delivery: "followUp" });
-				yield* enqueue({ id: "b", sessionId, admittedSeq: 2, delivery: "steer" });
+				yield* enqueue({ id: "msg_a", sessionId, delivery: "followUp" });
+				yield* enqueue({ id: "msg_b", sessionId, delivery: "steer" });
 
 				yield* execution.resume(sessionId);
 
-				expect(yield* delivered(sessionId)).toEqual([
-					{ id: "a", promotedSeq: 1 },
-					{ id: "b", promotedSeq: 2 },
-				]);
+				// Steers outrank follow-ups, so the later-admitted steer is delivered
+				// first. Positions come from the log rather than a queue counter, so
+				// what matters is the relative order, not the values.
+				const rows = yield* delivered(sessionId);
+				const bySeq = [...rows].sort((x, y) => (x.promotedSeq ?? 0) - (y.promotedSeq ?? 0));
+				expect(bySeq.map((row) => row.id)).toEqual(["msg_b", "msg_a"]);
+				expect(rows.every((row) => row.promotedSeq !== null)).toBe(true);
 			}),
 		);
 
@@ -192,11 +193,11 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 				const execution = yield* RunnerExecution.Service;
 				const sessionId = yield* seedSession(backend);
 
-				yield* enqueue({ id: "only", sessionId, admittedSeq: 1, delivery: "steer" });
+				yield* enqueue({ id: "msg_only", sessionId, delivery: "steer" });
 				yield* execution.resume(sessionId);
 				yield* execution.resume(sessionId);
 
-				expect(yield* delivered(sessionId)).toEqual([{ id: "only", promotedSeq: 1 }]);
+				expect(yield* delivered(sessionId)).toEqual([{ id: "msg_only", promotedSeq: 1 }]);
 			}),
 		);
 
@@ -207,14 +208,14 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 				const first = yield* seedSession(backend);
 				const second = yield* seedSession(backend);
 
-				yield* enqueue({ id: "first-1", sessionId: first, admittedSeq: 1, delivery: "steer" });
-				yield* enqueue({ id: "second-1", sessionId: second, admittedSeq: 1, delivery: "steer" });
+				yield* enqueue({ id: "msg_first-1", sessionId: first, delivery: "steer" });
+				yield* enqueue({ id: "msg_second-1", sessionId: second, delivery: "steer" });
 
 				yield* execution.resume(first);
 				yield* execution.resume(second);
 
-				expect(yield* delivered(first)).toEqual([{ id: "first-1", promotedSeq: 1 }]);
-				expect(yield* delivered(second)).toEqual([{ id: "second-1", promotedSeq: 1 }]);
+				expect(yield* delivered(first)).toEqual([{ id: "msg_first-1", promotedSeq: 1 }]);
+				expect(yield* delivered(second)).toEqual([{ id: "msg_second-1", promotedSeq: 1 }]);
 			}),
 		);
 
@@ -276,19 +277,19 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 				];
 				for (const [index, text] of hostile.entries()) {
 					yield* enqueue({
-						id: `input-${index}`,
+						id: `msg_input-${index}`,
 						sessionId,
-						admittedSeq: index + 1,
-						delivery: index % 2 === 0 ? "steer" : "followUp",
+							delivery: index % 2 === 0 ? "steer" : "followUp",
 						text,
 					});
 				}
 
 				yield* execution.resume(sessionId);
 
-				expect(yield* delivered(sessionId)).toEqual(
-					hostile.map((_, index) => ({ id: `input-${index}`, promotedSeq: index + 1 })),
-				);
+				// Every prompt lands, whichever lane it arrived on.
+				const rows = yield* delivered(sessionId);
+				expect(rows.map((row) => row.id).sort()).toEqual(hostile.map((_, index) => `msg_input-${index}`).sort());
+				expect(rows.every((row) => row.promotedSeq !== null)).toBe(true);
 			}),
 		);
 	});
@@ -308,7 +309,7 @@ describe("runner loop — interruption", () => {
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
 			const sessionId = yield* seedSession(backend);
-			yield* enqueue({ id: "pending", sessionId, admittedSeq: 1, delivery: "steer" });
+			yield* enqueue({ id: "msg_pending", sessionId, delivery: "steer" });
 
 			const fiber = yield* Effect.forkChild(execution.resume(sessionId));
 
@@ -322,9 +323,13 @@ describe("runner loop — interruption", () => {
 			yield* execution.interrupt(sessionId);
 			yield* Fiber.join(fiber).pipe(Effect.exit);
 
-			// Promotion happens only after a turn completes, so an interrupt mid-turn
-			// must leave the input unconsumed.
-			expect(yield* delivered(sessionId)).toEqual([{ id: "pending", promotedSeq: null }]);
+			// Promotion now happens at the start of a turn, not the end: a promoted
+			// prompt is already part of the conversation, and an interrupted turn
+			// means the reply never came — not that the prompt was never asked.
+			// (The mock previously promoted last, treating promotion as "consumed".)
+			const rows = yield* delivered(sessionId);
+			expect(rows.map((row) => row.id)).toEqual(["msg_pending"]);
+			expect(rows[0]!.promotedSeq).not.toBeNull();
 			expect(Array.from(yield* execution.active)).toEqual([]);
 		}),
 	);
@@ -354,9 +359,8 @@ soak("runner loop — soak", () => {
 
 			for (let index = 0; index < count; index++) {
 				yield* enqueue({
-					id: `soak-${index}`,
+					id: `msg_soak-${index}`,
 					sessionId,
-					admittedSeq: index + 1,
 					delivery: index % 3 === 0 ? "steer" : "followUp",
 				});
 			}
