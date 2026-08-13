@@ -56,6 +56,8 @@ export const linesFor = (admittedSeq: number, options: Options = {}): number => 
  * emitted line count is exactly the loop count, and truncated so a long lorem
  * ipsum body does not dominate the command.
  */
+// `Session.append` rejects a part whose data is not a JSON object, so the parse
+// below cannot throw on anything this process wrote.
 const promptText = (hydrated: Session.HydratedEntry): string => {
 	for (const part of hydrated.parts) {
 		if (part.type !== "text") continue;

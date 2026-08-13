@@ -101,9 +101,6 @@ export interface CreateSession {
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
-// Billed usage inside a persisted assistant envelope (harness-owned, ./schema).
-// export { AssistantEnvelopeUsage, CompactionData, MessageEnvelopeIdentity, Usage } from "./schema.ts";
-
 export interface AppendPart {
 	readonly id?: string; // uuidv7; generated when omitted
 	readonly type: PartType;
@@ -456,6 +453,23 @@ export const layer = Layer.effect(
 					type: input.type,
 					reason: `entry type "${input.type}" must not carry parts`,
 				});
+			}
+
+			// Part data is documented as verbatim aikit JSON and every reader parses
+			// it as such, so it is validated here for the same reason the envelope
+			// is: an unparseable part is only discovered by whoever reads it back,
+			// long after the write that could have rejected it.
+			for (const [index, part] of parts.entries()) {
+				yield* decodeJsonObject(part.data).pipe(
+					Effect.mapError(
+						(error) =>
+							new InvalidEntryDataError({
+								entryId: input.id,
+								type: input.type,
+								reason: `part ${index} ("${part.type}") is not a JSON object: ${error.message}`,
+							}),
+					),
+				);
 			}
 
 			const envelopeIdentity = messageTypes.has(input.type)

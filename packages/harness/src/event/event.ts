@@ -3,7 +3,9 @@
 import { Effect, Context, Layer, Option, PubSub, Cause } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { EventRow } from "../db/schema.sql.ts";
-import { Durable } from "./manifest.ts";
+// Uncomment with `decodeSerializedEvent` below — the manifest is what it looks
+// stored types up in.
+// import { Durable } from "./manifest.ts";
 import { Schema } from "effect";
 import { EventSchema } from "./schema.ts";
 import type { Data, Definition, ID, Payload } from "./schema.ts";
@@ -27,22 +29,23 @@ export class InvalidDurableEventError extends Schema.TaggedError<InvalidDurableE
   },
 ) {}
 
-const decodeSerializedEvent = (event: SerializedEvent): Payload => {
-  const definition = Durable.get(event.type);
-  if (!definition?.durable) {
-    throw new Error(`Unknown durable event type ${event.type}`);
-  }
-  return {
-    id: event.id,
-    type: definition.type,
-    durable: {
-      aggregateId: event.aggregateId,
-      seq: event.seq,
-      version: definition.durable.version,
-    },
-    data: Schema.decodeUnknownSync(definition.data)(event.data),
-  };
-};
+// TODO: uncomment when required!
+// const decodeSerializedEvent = (event: SerializedEvent): Payload => {
+//   const definition = Durable.get(event.type);
+//   if (!definition?.durable) {
+//     throw new Error(`Unknown durable event type ${event.type}`);
+//   }
+//   return {
+//     id: event.id,
+//     type: definition.type,
+//     durable: {
+//       aggregateId: event.aggregateId,
+//       seq: event.seq,
+//       version: definition.durable.version,
+//     },
+//     data: Schema.decodeUnknownSync(definition.data)(event.data),
+//   };
+// };
 
 /**
  * A durable read manifest: the definitions whose stored rows are in scope, keyed

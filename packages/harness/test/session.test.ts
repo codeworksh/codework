@@ -706,6 +706,29 @@ describe("session", () => {
 		}),
 	);
 
+	// Part data is read back with a bare JSON.parse by everything downstream, so
+	// an unparseable part has to be rejected at the write rather than discovered
+	// by whichever reader hits it first.
+	it.effect("append rejects a part whose data is not a JSON object", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const created = yield* createSession("s-part-json-guard");
+
+			for (const data of ["not json", "[]", '"just a string"']) {
+				const failure = yield* session
+					.append({
+						...userEntry(created.id, `bad-part-${data.length}`, "hi"),
+						parts: [{ type: "text", data }],
+					})
+					.pipe(Effect.flip);
+				expect(failure._tag).toBe("InvalidEntryDataError");
+			}
+
+			// Nothing was written by any of them.
+			expect(yield* session.path(created.id)).toEqual([]);
+		}),
+	);
+
 	it.effect("append rejects malformed and mismatched message envelopes before writing", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
