@@ -136,6 +136,42 @@ describe("Event store", () => {
 			expect(seen).toEqual([0, 1]);
 		}));
 
+	// Metadata is publish-time context, not log content: it reaches projectors on
+	// the payload and is deliberately absent from the stored row. A projector that
+	// wants it to outlive the publish writes it into its own projection.
+	describe("metadata", () => {
+		it("reaches projectors on the in-memory payload", () =>
+			Effect.gen(function* () {
+				const events = yield* Event.Service;
+				const seen: Array<Record<string, string> | undefined> = [];
+				yield* events.project(Msg, (event) => Effect.sync(() => void seen.push(event.metadata)));
+
+				const published = yield* events.publish(
+					Msg,
+					{ aggId: A, text: "traced" },
+					{ metadata: { requestId: "req_1" } },
+				);
+
+				expect(published.metadata).toEqual({ requestId: "req_1" });
+				expect(seen).toEqual([{ requestId: "req_1" }]);
+			}));
+
+		it("is not stored on the event row, so a durable reread does not see it", () =>
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				const events = yield* Event.Service;
+				yield* events.publish(Msg, { aggId: A, text: "traced" }, { metadata: { requestId: "req_1" } });
+
+				// The row holds the event's data and nothing else about the caller.
+				const stored = yield* rowsFor(sql, A);
+				expect(JSON.parse(stored[0]!.data as string)).toEqual({ aggId: A, text: "traced" });
+				expect(Object.keys(stored[0]!)).not.toContain("metadata");
+
+				const page = yield* events.readAggregate({ aggregateId: A, limit: 10, manifest });
+				expect(page.events[0]).not.toHaveProperty("metadata");
+			}));
+	});
+
 	describe("advance", () => {
 		it("starts an aggregate above a range reserved for copied state", () =>
 			Effect.gen(function* () {

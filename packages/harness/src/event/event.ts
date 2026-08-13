@@ -71,7 +71,14 @@ export type ReadAggregateResult<A> = {
 export interface PublishOptions {
   /** Caller-supplied event ID. Publishing the same ID twice is a defect, not an upsert. */
   readonly id?: ID;
-  readonly metadata?: Record<string, unknown>;
+  /**
+   * Publish-time context — correlation, tracing — carried to projectors on the
+   * in-memory payload and deliberately not stored in the event row. A projector
+   * persists it into its own projection if it means something there; the log
+   * records what happened, not who asked. It therefore does not survive a
+   * durable reread or a rebuild, which `event.test.ts` pins explicitly.
+   */
+  readonly metadata?: Record<string, string>;
 }
 
 export interface Interface {

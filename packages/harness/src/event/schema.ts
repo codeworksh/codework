@@ -33,7 +33,7 @@ export type Payload<D extends Definition = Definition> = {
 		readonly seq: number;
 		readonly version: number;
 	};
-	readonly metadata?: Record<string, unknown>;
+	readonly metadata?: Record<string, string>;
 };
 
 export function define<
@@ -50,7 +50,7 @@ export function define<
 	const data = Schema.Struct(input.schema);
 	return Schema.Struct({
 		id: ID,
-		metadata: optional(Schema.Record(Schema.String, Schema.Unknown)),
+		metadata: optional(Schema.Record(Schema.String, Schema.String)),
 		type: Schema.Literal(input.type),
 		durable: optional(Schema.Struct({ aggregateId: Schema.String, seq: Schema.Int, version: Schema.Int })),
 		data,

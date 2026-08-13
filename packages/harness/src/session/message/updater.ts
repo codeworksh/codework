@@ -35,6 +35,8 @@ export const fromPrompt = (input: {
 	readonly seq: number;
 	readonly prompt: Prompt;
 	readonly timeCreated: DateTime.Utc;
+	/** Publish-time context from the promoting event; the log does not keep it. */
+	readonly metadata?: Readonly<Record<string, string>>;
 }): AppendEntry => {
 	// Built through aikit's own factory so the persisted envelope stays the
 	// shape aikit reads back, rather than a hand-rolled lookalike.
@@ -52,6 +54,7 @@ export const fromPrompt = (input: {
 		type: "user",
 		data: JSON.stringify(envelope),
 		parts: parts.map((part) => ({ type: part.type, data: JSON.stringify(part) })),
+		...(input.metadata === undefined ? {} : { metadata: input.metadata }),
 	};
 };
 

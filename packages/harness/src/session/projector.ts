@@ -80,6 +80,9 @@ export const layer = Layer.effectDiscard(
               seq: event.durable.seq,
               prompt: event.data.prompt,
               timeCreated: event.data.timestamp,
+              // Rides the in-memory payload; the event row never carried it, so
+              // the entry is the only place it can outlive the publish.
+              ...(event.metadata === undefined ? {} : { metadata: event.metadata }),
             }),
           )
           .pipe(Effect.orDie);

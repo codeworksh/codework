@@ -298,6 +298,44 @@ describe("SessionInput projections", () => {
 	// Both projections have to go together. An input and the entry it became are
 	// one identity, and `projectAdmitted` refuses an id that already graduated —
 	// so wiping the inbox alone leaves the entry behind to reject the replay.
+	// The projection is where publish-time context survives, because the log
+	// itself never carried it.
+	it("carries the promoting event's metadata onto the entry", () =>
+		Effect.gen(function* () {
+			const input = yield* setup;
+			const events = yield* Event.Service;
+			const sessions = yield* Session.Service;
+			const admitted = yield* admit(input, "one");
+
+			yield* events.publish(
+				EventList.Prompted,
+				{
+					sessionId,
+					timestamp: admitted.timeCreated,
+					messageId: admitted.id,
+					prompt: admitted.prompt,
+					delivery: admitted.delivery,
+				},
+				{ metadata: { requestId: "req_7" } },
+			);
+
+			const path = yield* sessions.path(sessionId);
+			expect(path.map((h) => h.entry.id)).toEqual([admitted.id]);
+			expect(some(path[0]!.entry.metadata)).toEqual({ requestId: "req_7" });
+		}));
+
+	it("leaves entry metadata unset when the event carried none", () =>
+		Effect.gen(function* () {
+			const input = yield* setup;
+			const events = yield* Event.Service;
+			const sessions = yield* Session.Service;
+			yield* admit(input, "one");
+			yield* input.promoteSteers(sessionId, yield* events.latestSequence(sessionId));
+
+			const path = yield* sessions.path(sessionId);
+			expect(Option.isNone(path[0]!.entry.metadata)).toBe(true);
+		}));
+
 	it("rebuilds both projections from the log alone", () =>
 		Effect.gen(function* () {
 			const sql = yield* SqlClient.SqlClient;

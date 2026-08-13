@@ -126,6 +126,11 @@ export interface AppendEntry {
 	readonly data: string; // JSON: full payload, or message envelope
 	readonly parts?: ReadonlyArray<AppendPart>; // order = partIndex; message types only
 	readonly parentId?: string; // explicit branch appends only; default = current leaf
+	/**
+	 * Publish-time context from the event that produced this entry. The log does
+	 * not store event metadata, so if it is to survive at all it survives here.
+	 */
+	readonly metadata?: Readonly<Record<string, string>>;
 	/** Guard the first append of a run against a leaf changed after context assembly. */
 	readonly expectedLeafEntryId?: string | null;
 }
@@ -548,7 +553,7 @@ export const layer = Layer.effect(
 							type: input.type,
 							data: input.data,
 							label: Option.none(),
-							metadata: Option.none(),
+							metadata: Option.fromUndefinedOr(input.metadata),
 						});
 						const inserted = yield* insertEntry(entryRow);
 						// Keep the aggregate head above what was just written. An entry
