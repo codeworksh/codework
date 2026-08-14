@@ -1,11 +1,13 @@
 import { Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
+import { Control } from "../src/control.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
+import { RunnerExecution } from "../src/runner/execution.ts";
 import { SessionInput } from "../src/session/input/input.ts";
+import { SessionLive } from "../src/session/live.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
-import { SessionProjector } from "../src/session/projector.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
@@ -19,9 +21,13 @@ const some = <A>(option: Option.Option<A>): A => Option.getOrThrow(option);
 
 
 
-const layer = Layer.provideMerge(
-	SessionProjector.layer,
-	Session.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:"))),
+const layer = Control.layer.pipe(
+	// Admission is the whole subject here, so there is nothing to drain and the
+	// wake has nowhere to go.
+	Layer.provide(RunnerExecution.noopLayer),
+	Layer.provideMerge(SessionLive.layer),
+	Layer.provideMerge(Event.layer),
+	Layer.provideMerge(Database.layer(":memory:")),
 );
 const { effect: it } = testEffect(layer);
 
@@ -40,7 +46,7 @@ const setup = Effect.gen(function* () {
 		tag: "test",
 		sandboxInstanceId: SandboxInstance.ID.local,
 	});
-	return { sessions, sessionId: session.id };
+	return { sessions, control: yield* Control.Service, sessionId: session.id };
 });
 
 const admittedCount = Effect.gen(function* () {
@@ -56,13 +62,13 @@ const eventCount = (type: string) =>
 
 const prompt = (text: string) => PromptSchema.Prompt.make({ text });
 
-describe("Session.prompt", () => {
+describe("Control.prompt", () => {
 	it("mints a distinct id for each prompt when none is supplied", () =>
 		Effect.gen(function* () {
-			const { sessions, sessionId } = yield* setup;
+			const { sessions, control, sessionId } = yield* setup;
 
-			const first = yield* sessions.prompt({ sessionId, prompt: prompt(text) });
-			const second = yield* sessions.prompt({ sessionId, prompt: prompt(text) });
+			const first = yield* control.prompt({ sessionId, prompt: prompt(text) });
+			const second = yield* control.prompt({ sessionId, prompt: prompt(text) });
 
 			expect(second.id).not.toBe(first.id);
 			expect(yield* admittedCount).toBe(2);
@@ -72,11 +78,11 @@ describe("Session.prompt", () => {
 
 	it("returns the original record when the id is retried", () =>
 		Effect.gen(function* () {
-			const { sessions, sessionId } = yield* setup;
+			const { sessions, control, sessionId } = yield* setup;
 			const input = { sessionId, id: messageId, prompt: prompt(text) };
 
-			const first = yield* sessions.prompt(input);
-			const retried = yield* sessions.prompt(input);
+			const first = yield* control.prompt(input);
+			const retried = yield* control.prompt(input);
 
 			expect(retried).toEqual(first);
 			expect(yield* admittedCount).toBe(1);
@@ -85,10 +91,10 @@ describe("Session.prompt", () => {
 
 	it("rejects reuse of one id with a different prompt", () =>
 		Effect.gen(function* () {
-			const { sessions, sessionId } = yield* setup;
-			yield* sessions.prompt({ sessionId, id: messageId, prompt: prompt(text) });
+			const { sessions, control, sessionId } = yield* setup;
+			yield* control.prompt({ sessionId, id: messageId, prompt: prompt(text) });
 
-			const failure = yield* sessions
+			const failure = yield* control
 				.prompt({ sessionId, id: messageId, prompt: prompt("Delete the failing tests") })
 				.pipe(Effect.flip);
 
@@ -99,10 +105,10 @@ describe("Session.prompt", () => {
 
 	it("rejects reuse of one id with a different delivery lane", () =>
 		Effect.gen(function* () {
-			const { sessions, sessionId } = yield* setup;
-			yield* sessions.prompt({ sessionId, id: messageId, prompt: prompt(text) });
+			const { sessions, control, sessionId } = yield* setup;
+			yield* control.prompt({ sessionId, id: messageId, prompt: prompt(text) });
 
-			const failure = yield* sessions
+			const failure = yield* control
 				.prompt({ sessionId, id: messageId, prompt: prompt(text), delivery: "followUp" })
 				.pipe(Effect.flip);
 
@@ -111,10 +117,10 @@ describe("Session.prompt", () => {
 
 	it("returns one record to concurrent exact retries", () =>
 		Effect.gen(function* () {
-			const { sessions, sessionId } = yield* setup;
+			const { sessions, control, sessionId } = yield* setup;
 			const input = { sessionId, id: messageId, prompt: prompt(text) };
 
-			const both = yield* Effect.all([sessions.prompt(input), sessions.prompt(input)], {
+			const both = yield* Effect.all([control.prompt(input), control.prompt(input)], {
 				concurrency: "unbounded",
 			});
 
@@ -126,8 +132,8 @@ describe("Session.prompt", () => {
 
 	it("refuses a prompt for a session that does not exist", () =>
 		Effect.gen(function* () {
-			const { sessions } = yield* setup;
-			const failure = yield* sessions
+			const { control } = yield* setup;
+			const failure = yield* control
 				.prompt({ sessionId: SessionSchema.ID.make("ses_nope"), prompt: prompt(text) })
 				.pipe(Effect.flip);
 
@@ -137,9 +143,9 @@ describe("Session.prompt", () => {
 
 	it("promotes once under concurrent promotion attempts", () =>
 		Effect.gen(function* () {
-			const { sessions, sessionId } = yield* setup;
+			const { sessions, control, sessionId } = yield* setup;
 			const inputs = yield* SessionInput.make;
-			const admitted = yield* sessions.prompt({ sessionId, id: messageId, prompt: prompt("Promote once") });
+			const admitted = yield* control.prompt({ sessionId, id: messageId, prompt: prompt("Promote once") });
 
 			const counts = yield* Effect.all(
 				[
@@ -166,9 +172,9 @@ describe("Session.prompt", () => {
 
 	it("reports the follow-up to whichever caller won it", () =>
 		Effect.gen(function* () {
-			const { sessions, sessionId } = yield* setup;
+			const { sessions, control, sessionId } = yield* setup;
 			const inputs = yield* SessionInput.make;
-			yield* sessions.prompt({ sessionId, prompt: prompt("Later"), delivery: "followUp" });
+			yield* control.prompt({ sessionId, prompt: prompt("Later"), delivery: "followUp" });
 
 			const won = yield* Effect.all(
 				[inputs.promoteFollowUp(sessionId), inputs.promoteFollowUp(sessionId)],
@@ -182,11 +188,11 @@ describe("Session.prompt", () => {
 
 	it("promotes steers only through the captured cutoff", () =>
 		Effect.gen(function* () {
-			const { sessions, sessionId } = yield* setup;
+			const { sessions, control, sessionId } = yield* setup;
 			const inputs = yield* SessionInput.make;
-			const first = yield* sessions.prompt({ sessionId, prompt: prompt("Before cutoff") });
+			const first = yield* control.prompt({ sessionId, prompt: prompt("Before cutoff") });
 			const cutoff = first.admittedSeq;
-			const second = yield* sessions.prompt({ sessionId, prompt: prompt("After cutoff") });
+			const second = yield* control.prompt({ sessionId, prompt: prompt("After cutoff") });
 
 			yield* inputs.promoteSteers(sessionId, cutoff);
 

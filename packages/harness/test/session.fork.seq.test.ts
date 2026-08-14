@@ -1,8 +1,10 @@
 import { Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
+import { Control } from "../src/control.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
+import { RunnerExecution } from "../src/runner/execution.ts";
 import { AbsolutePath } from "../src/schema.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SessionInput } from "../src/session/input/input.ts";
@@ -128,7 +130,11 @@ describe("fork sequence seeding", () => {
  * event rolls back. A prompt in that state is never deliverable.
  */
 describe("append keeps the aggregate head in sync", () => {
-	const wired = SessionLive.layer.pipe(
+	const wired = Control.layer.pipe(
+		// Nothing here drains, so the wake has nowhere to go and no runner is worth
+		// standing up for it.
+		Layer.provide(RunnerExecution.noopLayer),
+		Layer.provideMerge(SessionLive.layer),
 		Layer.provideMerge(Event.layer),
 		Layer.provideMerge(Database.layer(":memory:")),
 	);
@@ -137,6 +143,7 @@ describe("append keeps the aggregate head in sync", () => {
 	itWired("a prompt after a direct append still promotes", () =>
 		Effect.gen(function* () {
 			const sessions = yield* Session.Service;
+			const control = yield* Control.Service;
 			const events = yield* Event.Service;
 			const inputs = yield* SessionInput.make;
 			const source = yield* seed;
@@ -145,7 +152,7 @@ describe("append keeps the aggregate head in sync", () => {
 			// The head learned about it, so the next event cannot collide.
 			expect(yield* events.latestSequence(source.id)).toBe(1);
 
-			const admitted = yield* sessions.prompt({
+			const admitted = yield* control.prompt({
 				sessionId: source.id,
 				prompt: PromptSchema.Prompt.make({ text: "after" }),
 			});

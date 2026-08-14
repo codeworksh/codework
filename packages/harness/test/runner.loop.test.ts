@@ -1,7 +1,8 @@
-import { Effect, Fiber, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { tmpdir as osTmpdir } from "node:os";
 import { describe, expect } from "vite-plus/test";
+import { Control } from "../src/control.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { SessionInputRow } from "../src/db/schema.sql.ts";
@@ -96,8 +97,8 @@ const runtime = (backend: LoopBackend, options?: Loop.Options) => {
 		SandboxController.layer().pipe(Layer.provide(SandboxDriver.layer(...backend.drivers))),
 		database,
 	);
-	return RunnerExecute.layer.pipe(
-		Layer.provide(Loop.layer(options)),
+	return Control.layer.pipe(
+		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer(options)))),
 		Layer.provideMerge(SessionProjector.layer),
 		Layer.provideMerge(Session.layer),
 		Layer.provideMerge(Event.layer),
@@ -151,8 +152,8 @@ const enqueue = Effect.fnUntraced(function* (input: {
 	readonly delivery: "steer" | "followUp";
 	readonly text?: string;
 }) {
-	const sessions = yield* Session.Service;
-	return yield* sessions.prompt({
+	const control = yield* Control.Service;
+	return yield* control.prompt({
 		sessionId: input.sessionId,
 		id: SessionMessageSchema.ID.make(input.id),
 		prompt: { text: input.text ?? `${input.id} ${lorem}` },
@@ -341,23 +342,28 @@ describe("runner loop — interruption", () => {
 	const { live: itSlow } = testEffect(runtime(backend, { intervalSeconds: 1, minLines: 30, maxLines: 30 }));
 
 	itSlow(
-		"an interrupted turn leaves its input eligible for the next drain",
+		"an interrupted turn leaves its prompt promoted and the session idle",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
 			const sessionId = yield* seedSession(backend);
+			// Admitting is what starts the drain, so this is the production path
+			// exactly. An explicit `resume` on top would race it: the wake already
+			// owns the key, and if the interrupt lands before the resume fiber runs
+			// its first step it finds the key gone and starts a second, forced
+			// drain — which is the coordinator working, not a turn being resumed.
 			yield* enqueue({ id: "msg_pending", sessionId, delivery: "steer" });
 
-			const fiber = yield* Effect.forkChild(execution.resume(sessionId));
-
-			// Wait for the coordinator to own the drain before cutting it.
+			// Wait for the turn to actually be in flight. `active` is no signal here:
+			// it holds the key from the instant the wake registers it, which is
+			// before the drain fiber has run a single step. Promotion is the first
+			// durable thing a turn does, so it is what "the turn started" means.
 			yield* Effect.gen(function* () {
-				while (!(yield* execution.active).has(sessionId)) {
+				while ((yield* delivered(sessionId)).every((row) => row.promotedSeq === null)) {
 					yield* Effect.sleep("10 millis");
 				}
-			}).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+			}).pipe(Effect.timeout("10 seconds"), Effect.orDie);
 
 			yield* execution.interrupt(sessionId);
-			yield* Fiber.join(fiber).pipe(Effect.exit);
 
 			// Promotion now happens at the start of a turn, not the end: a promoted
 			// prompt is already part of the conversation, and an interrupted turn

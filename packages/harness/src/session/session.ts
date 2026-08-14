@@ -17,10 +17,6 @@ import {
 } from "../db/schema.sql.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
-import { SessionInput } from "./input/input.ts";
-import type { Admitted } from "./input/schema.ts";
-import { SessionMessageSchema } from "./message/schema.ts";
-import type { Delivery, Prompt } from "./prompt/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import type { AbsolutePath } from "../schema.ts";
 import { SessionSchema } from "./schema.ts";
@@ -65,25 +61,6 @@ export class InvalidEntryDataError extends Schema.TaggedError<InvalidEntryDataEr
 	type: Schema.String,
 	reason: Schema.String,
 }) {}
-
-/**
- * The prompt could not be admitted under the id it was given: either that id
- * already carries different content, or it has already left the inbox. Typed
- * rather than a defect — a client that retried with a reused id can act on it.
- */
-export class PromptConflictError extends Schema.TaggedError<PromptConflictError>()("PromptConflictError", {
-	sessionId: Schema.String,
-	messageId: Schema.String,
-}) {}
-
-export interface PromptInput {
-	readonly sessionId: SessionSchema.ID;
-	readonly prompt: Prompt;
-	/** Supply to make the call idempotent across retries; minted when omitted. */
-	readonly id?: SessionMessageSchema.ID;
-	/** Defaults to "steer": join the running turn rather than waiting for the next. */
-	readonly delivery?: Delivery;
-}
 
 export interface CreateSession {
 	readonly id?: SessionSchema.ID;
@@ -180,14 +157,6 @@ export interface Interface {
 		SessionNotFoundError | EntryNotFoundError | LeafConflictError | InvalidEntryDataError
 	>;
 	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void, ToolCallNotFoundError>;
-	/**
-	 * Records a prompt in the session's durable inbox. Returns once it is stored,
-	 * not once it is answered — delivery into the conversation is the runner's
-	 * job, and the inbox is what survives in between.
-	 */
-	readonly prompt: (
-		input: PromptInput,
-	) => Effect.Effect<Admitted, SessionNotFoundError | PromptConflictError>;
 	/** Copy root→fork-point into a new session (`parentId` = source). Clone = fork at leaf. */
 	readonly fork: (
 		input: ForkInput,
@@ -222,9 +191,6 @@ export const layer = Layer.effect(
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 		const events = yield* Event.Service;
-		const inputs = yield* SessionInput.make;
-		const isLifecycleConflict = Schema.is(SessionInput.LifecycleConflict);
-
 		const findSession = SqlSchema.findOneOption({
 			Request: Schema.String,
 			Result: SessionRow,
@@ -958,50 +924,7 @@ export const layer = Layer.effect(
 			}
 		});
 
-		/**
-		 * Uninterruptible end to end: a client that disconnects mid-call must not
-		 * leave a prompt half-admitted. Everything durable happens inside `admit`,
-		 * which is idempotent on the id, so a retry converges rather than
-		 * duplicating.
-		 */
-		const prompt = Effect.fn("Session.prompt")((input: PromptInput) =>
-			Effect.uninterruptible(
-				Effect.gen(function* () {
-					const session = yield* findSession(input.sessionId).pipe(Effect.orDie);
-					if (Option.isNone(session)) {
-						return yield* new SessionNotFoundError({ sessionId: input.sessionId });
-					}
-
-					const messageId = input.id ?? SessionMessageSchema.ID.create();
-					const delivery = input.delivery ?? "steer";
-					const admitted = yield* inputs
-						.admit({ id: messageId, sessionId: input.sessionId, prompt: input.prompt, delivery })
-						.pipe(
-							// The id already left the inbox for the conversation. That is a
-							// conflict the caller can see, not a broken invariant.
-							Effect.catchDefect((defect) =>
-								isLifecycleConflict(defect)
-									? new PromptConflictError({ sessionId: input.sessionId, messageId })
-									: Effect.die(defect),
-							),
-						);
-
-					// A retry that reuses an id but changes the prompt is not the same
-					// request. The stored row wins, and the caller is told.
-					if (!SessionInput.equivalent(admitted, { sessionId: input.sessionId, prompt: input.prompt, delivery })) {
-						return yield* new PromptConflictError({ sessionId: input.sessionId, messageId });
-					}
-
-					// TODO: wake execution here once the runner port exists, so a prompt
-					// admitted while the session is idle starts a drain. Until then the
-					// inbox holds it and the next explicit run picks it up.
-					return admitted;
-				}),
-			),
-		);
-
 		return Service.of({
-			prompt,
 			create,
 			get,
 			list,

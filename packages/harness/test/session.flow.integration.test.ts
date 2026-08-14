@@ -1,8 +1,10 @@
 import { Effect, Fiber, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
+import { Control } from "../src/control.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
+import { RunnerExecution } from "../src/runner/execution.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { AbsolutePath } from "../src/schema.ts";
 import { SessionInput } from "../src/session/input/input.ts";
@@ -27,7 +29,10 @@ const some = <A>(option: Option.Option<A>): A => Option.getOrThrow(option);
  * The sandbox is deliberately absent: `runner.loop.test.ts` covers the shell
  * side, and dragging it in here would make the flow harder to see, not safer.
  */
-const layer = SessionLive.layer.pipe(
+const layer = Control.layer.pipe(
+	// `drain` below stands in for the runner, so the wake has nothing to signal.
+	Layer.provide(RunnerExecution.noopLayer),
+	Layer.provideMerge(SessionLive.layer),
 	Layer.provideMerge(Event.layer),
 	Layer.provideMerge(Database.layer(":memory:")),
 );
@@ -54,7 +59,13 @@ const setup = Effect.gen(function* () {
 		tag: "test",
 		sandboxInstanceId: SandboxInstance.ID.local,
 	});
-	return { sessions, inputs: yield* SessionInput.make, events: yield* Event.Service, sessionId: session.id };
+	return {
+		sessions,
+		control: yield* Control.Service,
+		inputs: yield* SessionInput.make,
+		events: yield* Event.Service,
+		sessionId: session.id,
+	};
 });
 
 /**
@@ -103,13 +114,13 @@ const eventSeqs = Effect.fnUntraced(function* (sessionId: string) {
 describe("Stage 1 + 2 flow", () => {
 	it("carries 17 prompts through admit, promote, and append without losing one", () =>
 		Effect.gen(function* () {
-			const { sessions, inputs, events, sessionId } = yield* setup;
+			const { sessions, control, inputs, events, sessionId } = yield* setup;
 			const count = 17;
 
 			const admitted = [];
 			for (let index = 0; index < count; index += 1) {
 				admitted.push(
-					yield* sessions.prompt({
+					yield* control.prompt({
 						sessionId,
 						prompt: promptAt(index),
 						// Roughly a third arrive as follow-ups.
@@ -168,13 +179,13 @@ describe("Stage 1 + 2 flow", () => {
 	// must not join the batch that drain already decided on.
 	it("holds a steer admitted mid-drain until the next pass", () =>
 		Effect.gen(function* () {
-			const { sessions, inputs, events, sessionId } = yield* setup;
-			const before = yield* sessions.prompt({ sessionId, prompt: promptAt(0) });
+			const { sessions, control, inputs, events, sessionId } = yield* setup;
+			const before = yield* control.prompt({ sessionId, prompt: promptAt(0) });
 
 			// Interleaved on the runtime rather than sequenced: the injected prompt
 			// lands while the drain fiber is between its own suspension points.
 			const draining = yield* Effect.forkChild(drain(sessionId, inputs, events));
-			const during = yield* sessions.prompt({ sessionId, prompt: promptAt(1) });
+			const during = yield* control.prompt({ sessionId, prompt: promptAt(1) });
 			yield* Fiber.join(draining);
 
 			expect(some(yield* inputs.find(before.id)).promotedSeq).toBeDefined();
@@ -200,7 +211,7 @@ describe("Stage 1 + 2 flow", () => {
 
 	it("keeps two sessions' logs and trees independent under interleaved prompts", () =>
 		Effect.gen(function* () {
-			const { sessions, inputs, events, sessionId } = yield* setup;
+			const { sessions, control, inputs, events, sessionId } = yield* setup;
 			const sql = yield* SqlClient.SqlClient;
 			yield* sql`
 				INSERT INTO session (id, project_id, slug, directory, title, tag, sandbox_instance_id, created_at, updated_at)
@@ -209,8 +220,8 @@ describe("Stage 1 + 2 flow", () => {
 			const other = SessionSchema.ID.make("ses_other");
 
 			for (let index = 0; index < 6; index += 1) {
-				yield* sessions.prompt({ sessionId, prompt: promptAt(index) });
-				yield* sessions.prompt({ sessionId: other, prompt: promptAt(index) });
+				yield* control.prompt({ sessionId, prompt: promptAt(index) });
+				yield* control.prompt({ sessionId: other, prompt: promptAt(index) });
 			}
 
 			yield* drain(sessionId, inputs, events);
