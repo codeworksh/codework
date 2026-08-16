@@ -1,7 +1,9 @@
 import { Schema } from "effect";
 import { Model } from "effect/unstable/schema";
+import { EventSchema } from "../event/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
-import { AbsolutePath } from "../schema.ts";
+import { AbsolutePath, NonNegativeInt } from "../schema.ts";
+import { Prompt } from "../session/prompt/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 
 // Column names derive from field names via the client's camelToSnake
@@ -42,10 +44,26 @@ export type PartType = (typeof partTypes)[number];
 export const toolStatuses = ["pending", "running", "completed", "error", "skipped", "aborted"] as const;
 export type ToolStatus = (typeof toolStatuses)[number];
 
-// Controller-owned input lanes. A SessionInput is queued I/O, not a pending
-// session entry; the Loop creates the eventual user message independently.
 export const inputDeliveries = ["steer", "followUp"] as const;
 export type InputDelivery = (typeof inputDeliveries)[number];
+
+const EventData = Schema.Record(Schema.String, Schema.Unknown);
+
+// Head of the event sequence
+export class EventSequenceRow extends Model.Class<EventSequenceRow>("EventSequenceRow")({
+	aggregateId: Schema.String,
+	seq: Schema.Natural,
+	ownerId: Model.FieldOption(Schema.String),
+}) {}
+
+// Event with contigous sequence
+export class EventRow extends Model.Class<EventRow>("EventRow")({
+	id: EventSchema.ID,
+	aggregateId: Schema.String,
+	seq: Schema.Natural,
+	type: Schema.String,
+	data: Model.JsonFromString(EventData),
+}) {}
 
 export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
 	id: Schema.String,
@@ -122,7 +140,7 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 export class SessionInputRow extends Model.Class<SessionInputRow>("SessionInputRow")({
 	id: Schema.String,
 	sessionId: SessionSchema.IDFromDb,
-	prompt: Schema.String, // normalized Prompt encoded as JSON
+	prompt: Model.JsonFromString(Prompt), // normalized Prompt, stored as JSON
 	delivery: Schema.Literals(inputDeliveries),
 	admittedSeq: Schema.Int,
 	promotedSeq: Model.FieldOption(Schema.Int),
@@ -137,7 +155,11 @@ export class SessionEntryRow extends Model.Class<SessionEntryRow>("SessionEntryR
 	id: Schema.String,
 	sessionId: SessionSchema.IDFromDb,
 	parentId: Model.FieldOption(Schema.String), // tree edge; NULL = root
-	seq: Model.GeneratedByDb(Schema.Int), // per-session append order, computed in the INSERT
+	// Position in the session's durable log: the sequence of the event that
+	// produced this entry. Sparse — events that append nothing (a prompt
+	// admission, say) leave gaps. Forked entries carry their source positions,
+	// which is why the fork seeds the new aggregate above them.
+	seq: NonNegativeInt,
 	type: Schema.Literals(entryTypes),
 	data: Schema.String, // JSON: full payload, or message envelope
 	label: Model.FieldOption(Schema.String), // annotation: bookmark text

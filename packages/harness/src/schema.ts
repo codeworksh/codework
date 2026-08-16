@@ -1,4 +1,49 @@
-import { Option, Schema, SchemaGetter } from "effect";
+import { Message } from "@codeworksh/aikit";
+import { Option, Schema, SchemaGetter, DateTime } from "effect";
+import type { Static, TSchema } from "typebox";
+import TypeBoxSchema from "typebox/schema";
+
+const aikitValidators = new WeakMap<TSchema, ReturnType<typeof TypeBoxSchema.Compile>>();
+
+const aikitValidatorFor = <T extends TSchema>(schema: T): ReturnType<typeof TypeBoxSchema.Compile<T>> => {
+	const cached = aikitValidators.get(schema) as ReturnType<typeof TypeBoxSchema.Compile<T>> | undefined;
+	if (cached !== undefined) return cached;
+	const compiled = TypeBoxSchema.Compile(schema);
+	aikitValidators.set(schema, compiled);
+	return compiled;
+};
+
+const aikitErrorPath = (error: {
+	readonly instancePath?: string;
+	readonly params?: Record<string, unknown>;
+}): string => {
+	if (error.instancePath) return error.instancePath.substring(1);
+	const required = error.params?.requiredProperties;
+	return Array.isArray(required) ? required.join(", ") : "root";
+};
+
+const validateAikitSchema = <T extends TSchema>(schema: T, value: unknown, label: string): Static<T> => {
+	const validator = aikitValidatorFor(schema);
+	if (validator.Check(value)) return value;
+
+	const [, issues] = validator.Errors(value);
+	const details =
+		issues.map((issue) => ` - ${aikitErrorPath(issue)}: ${issue.message}`).join("\n") || "Unknown error";
+	throw new Error(`Validation Failed For ${label}\n${details}`);
+};
+
+/** Validate an aikit message without coercing or rewriting durable data. */
+export const validateAikitMessage = (value: unknown, label: string): Message.Message =>
+	validateAikitSchema(Message.MessageSchema, value, label);
+
+export const validateAikitUserMessage = (value: unknown, label: string): Message.UserMessage =>
+	validateAikitSchema(Message.UserMessageSchema, value, label);
+
+export const validateAikitAssistantMessage = (value: unknown, label: string): Message.AssistantMessage =>
+	validateAikitSchema(Message.AssistantMessageSchema, value, label);
+
+export const isAikitAssistantMessage = (value: unknown): value is Message.AssistantMessage =>
+	aikitValidatorFor(Message.AssistantMessageSchema).Check(value);
 
 /**
  * Integer greater than zero.
@@ -31,7 +76,7 @@ export type AbsolutePath = Schema.Schema.Type<typeof AbsolutePath>;
  * Optional public JSON field that can hold explicit `undefined` on the type
  * side but encodes it as an omitted key, matching legacy `JSON.stringify`.
  */
-export const optionalOmitUndefined = <S extends Schema.Top>(schema: S) =>
+export const optional = <S extends Schema.Top>(schema: S) =>
 	Schema.optionalKey(schema).pipe(
 		Schema.decodeTo(Schema.optional(schema), {
 			decode: SchemaGetter.passthrough({ strict: false }),
@@ -121,3 +166,11 @@ export function Newtype<Self>() {
 			};
 	};
 }
+
+
+export const DateTimeUtcFromMillis = Schema.Finite.pipe(
+	Schema.decodeTo(Schema.DateTimeUtc, {
+	  decode: SchemaGetter.transform((value) => DateTime.makeUnsafe(value)),
+	  encode: SchemaGetter.transform((value) => DateTime.toEpochMillis(value)),
+	}),
+  )

@@ -1,110 +1,79 @@
-import { Effect, Fiber, Layer, Option, Schema } from "effect";
+import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
-import { tmpdir as osTmpdir } from "node:os";
 import { describe, expect } from "vite-plus/test";
+import { Context } from "../src/context/context.ts";
+import { Control } from "../src/control.ts";
 import { Database } from "../src/db/db.ts";
 import { SessionInputRow } from "../src/db/schema.sql.ts";
+import { Event } from "../src/event/event.ts";
 import { RunnerExecute } from "../src/runner/execute.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
+import { LLM } from "../src/runner/llm.ts";
 import { Loop } from "../src/runner/loop.ts";
-import { SandboxController } from "../src/sandbox/control.ts";
-import { SandboxDriver } from "../src/sandbox/driver.ts";
-import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
-import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb.ts";
-import type { SandboxCreateError } from "../src/sandbox/errors.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { Shell } from "../src/sandbox/shell/shell.ts";
 import { AbsolutePath } from "../src/schema.ts";
+import { SessionInput } from "../src/session/input/input.ts";
+import { SessionMessageSchema } from "../src/session/message/schema.ts";
+import { SessionProjector } from "../src/session/projector.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { testEffect } from "./utils/effect.ts";
 
-/**
- * The mock loop's work is a real shell command, so running this suite against
- * each backend is how the drain doubles as a SandboxIO exercise: same
- * assertions, different filesystem and shell underneath.
- *
- * Correctness runs use `intervalSeconds: 0` so a turn is only as slow as the
- * shell itself. The wall-clock behaviour the interval exists for is asserted
- * separately, in the soak suite at the bottom.
- */
-interface LoopBackend {
-	readonly drivers: ReadonlyArray<SandboxDriver.Registration>;
-	readonly target: Effect.Effect<
-		{
-			readonly instanceId: SandboxInstance.ID;
-			readonly directory: AbsolutePath;
+const assistant = (
+	input: LLM.Input,
+	index: number,
+	overrides: Partial<Message.AssistantMessage> = {},
+): Message.AssistantMessage =>
+	Message.createAssistantMessage({
+		messageId: `assistant_${index}`,
+		role: "assistant",
+		protocol: "openai",
+		provider: { id: input.provider, name: input.provider, source: "custom", env: [] },
+		model: input.model,
+		usage: {
+			input: 1,
+			output: 1,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 2,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
-		SandboxCreateError,
-		SandboxController.Controller
-	>;
-}
-
-const managedBackend = <CreateConfig, RuntimeConfig extends SandboxDriver.RuntimeConfigBase>(
-	driver: SandboxDriver.Driver<CreateConfig, RuntimeConfig> & SandboxDriver.Registration,
-	config: CreateConfig,
-	directory: AbsolutePath,
-): LoopBackend => ({
-	drivers: [driver],
-	target: Effect.gen(function* () {
-		const controller = yield* SandboxController.Controller;
-		const instance = yield* controller.create({ driver, config });
-		return { instanceId: instance.id, directory };
-	}),
-});
-
-const memoryBackend = (): LoopBackend => {
-	const memory = MemorySandboxDriver.make();
-	const directory = SandboxDriver.AbsolutePath.make("/workspace");
-	return managedBackend(
-		memory.driver,
-		{
-			defaultCwd: directory,
-			initializeCwd: directory,
-		},
-		AbsolutePath.make(directory),
-	);
-};
-
-const sqldbBackend = (): LoopBackend => {
-	const sqldb = SqldbSandboxDriver.make();
-	const directory = SandboxDriver.AbsolutePath.make("/workspace");
-	return managedBackend(
-		sqldb.driver,
-		{
-			defaultCwd: directory,
-			initializeCwd: directory,
-		},
-		AbsolutePath.make(directory),
-	);
-};
-
-const localBackend = (): LoopBackend => ({
-	drivers: [],
-	target: Effect.succeed({
-		instanceId: SandboxInstance.ID.local,
-		directory: AbsolutePath.make(osTmpdir()),
-	}),
-});
-
-const runtime = (backend: LoopBackend, options?: Loop.Options) => {
-	const database = Database.layer(":memory:");
-	const infrastructure = Layer.provideMerge(
-		SandboxController.layer().pipe(Layer.provide(SandboxDriver.layer(...backend.drivers))),
-		database,
-	);
-	return RunnerExecute.layer.pipe(
-		Layer.provide(Loop.layer(options)),
-		Layer.provideMerge(Session.layer),
-		Layer.provideMerge(infrastructure),
-	);
-};
-
-const insertInput = (sql: SqlClient.SqlClient) =>
-	SqlSchema.void({
-		Request: SessionInputRow.insert,
-		execute: (row) => sql`INSERT INTO session_input ${sql.insert(row)}`,
+		stopReason: "stop",
+		time: { created: index, completed: index },
+		parts: [{ type: "text", text: `response ${index}` }],
+		...overrides,
 	});
+
+const immediateOpen = (contexts: Message.Context[] = []): LLM.Open => {
+	let responseIndex = 0;
+	return (input) =>
+		Effect.sync(() => {
+			responseIndex += 1;
+			contexts.push(input.context);
+			const message = assistant(input, responseIndex);
+			const events = createAssistantMessageEventStream();
+			events.push({ type: "start", partial: message });
+			events.push({ type: "text.start", partIndex: 0, partial: message });
+			events.push({ type: "text.delta", partIndex: 0, delta: `response ${responseIndex}`, partial: message });
+			events.push({ type: "text.end", partIndex: 0, content: `response ${responseIndex}`, partial: message });
+			events.push({ type: "done", reason: "stop", message });
+			return events;
+		});
+};
+
+const runtime = (options: { readonly open?: LLM.Open; readonly contexts?: Message.Context[] } = {}) => {
+	const database = Database.layer(":memory:");
+	const request = LLM.make(options.open ?? immediateOpen(options.contexts));
+	return Control.layer.pipe(
+		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
+		Layer.provideMerge(Context.layer),
+		Layer.provideMerge(SessionProjector.layer),
+		Layer.provideMerge(Session.layer),
+		Layer.provideMerge(Event.layer),
+		Layer.provideMerge(database),
+	);
+};
 
 const inputsFor = (sql: SqlClient.SqlClient) =>
 	SqlSchema.findAll({
@@ -115,266 +84,249 @@ const inputsFor = (sql: SqlClient.SqlClient) =>
 		`,
 	});
 
-/** Promotion order per session, `null` where the input is still pending. */
 const delivered = Effect.fnUntraced(function* (sessionId: string) {
 	const sql = yield* SqlClient.SqlClient;
 	const rows = yield* inputsFor(sql)(sessionId);
 	return rows.map((row) => ({ id: row.id, promotedSeq: Option.getOrNull(row.promotedSeq) }));
 });
 
-const seedSession = Effect.fnUntraced(function* (backend: LoopBackend) {
+const seedSession = Effect.fnUntraced(function* (slug = "runner-loop") {
 	const sql = yield* SqlClient.SqlClient;
 	const sessions = yield* Session.Service;
-	const target = yield* backend.target;
 	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('p', 'p', 0, 0)`;
 	const session = yield* sessions.create({
 		projectId: "p",
-		slug: `run-${Date.now()}-${Math.random()}`,
-		directory: target.directory,
+		slug: `${slug}-${crypto.randomUUID()}`,
+		directory: AbsolutePath.make("/repo"),
 		title: "runner loop",
-		sandboxInstanceId: target.instanceId,
+		sandboxInstanceId: SandboxInstance.ID.local,
 	});
 	return session.id;
 });
 
-// Stand-in for a real prompt: long enough to be truncated, with the whitespace
-// and punctuation that would break a naively built shell command.
-const lorem =
-	"Lorem ipsum dolor sit amet, consectetur adipiscing elit,\n sed do eiusmod tempor " +
-	"incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud.";
-
-const enqueue = Effect.fnUntraced(function* (input: {
+const admit = Effect.fnUntraced(function* (input: {
 	readonly id: string;
 	readonly sessionId: SessionSchema.ID;
-	readonly admittedSeq: number;
 	readonly delivery: "steer" | "followUp";
 	readonly text?: string;
 }) {
-	const sql = yield* SqlClient.SqlClient;
-	const row = yield* SessionInputRow.insert.makeEffect({
-		id: input.id,
+	const inputs = yield* SessionInput.make;
+	return yield* inputs.admit({
+		id: SessionMessageSchema.ID.make(input.id),
 		sessionId: input.sessionId,
-		admittedSeq: input.admittedSeq,
+		prompt: { text: input.text ?? input.id },
 		delivery: input.delivery,
-		prompt: JSON.stringify({ parts: [{ type: "text", text: input.text ?? `${input.id} ${lorem}` }] }),
-		promotedSeq: Option.none(),
 	});
-	yield* insertInput(sql)(row);
 });
 
-/** The drain spec every sandbox backend must satisfy. */
-const loopSpec = (name: string, backend: LoopBackend) => {
-	const options: Loop.Options = { intervalSeconds: 0, minLines: 2, maxLines: 7 };
-	const { effect: it } = testEffect(runtime(backend, options));
+describe("runner loop — aikit input/output", () => {
+	const contexts: Message.Context[] = [];
+	const { effect: it } = testEffect(runtime({ contexts }));
 
-	describe(`runner loop — ${name}`, () => {
-		it(
-			"drains queued inputs in admission order and marks them delivered",
-			Effect.gen(function* () {
-				const execution = yield* RunnerExecution.Service;
-				const sessionId = yield* seedSession(backend);
+	it(
+		"drains steers before follow-ups and persists each terminal assistant",
+		Effect.gen(function* () {
+			contexts.length = 0;
+			const execution = yield* RunnerExecution.Service;
+			const sessions = yield* Session.Service;
+			const sessionId = yield* seedSession();
 
-				yield* enqueue({ id: "a", sessionId, admittedSeq: 1, delivery: "followUp" });
-				yield* enqueue({ id: "b", sessionId, admittedSeq: 2, delivery: "steer" });
+			yield* admit({ id: "msg_follow", sessionId, delivery: "followUp" });
+			yield* admit({ id: "msg_steer", sessionId, delivery: "steer" });
+			yield* execution.resume(sessionId);
 
-				yield* execution.resume(sessionId);
+			const rows = yield* delivered(sessionId);
+			const bySeq = [...rows].sort((left, right) => (left.promotedSeq ?? 0) - (right.promotedSeq ?? 0));
+			expect(bySeq.map((row) => row.id)).toEqual(["msg_steer", "msg_follow"]);
+			expect((yield* sessions.path(sessionId)).map((item) => item.entry.type)).toEqual([
+				"user",
+				"assistant",
+				"user",
+				"assistant",
+			]);
 
-				expect(yield* delivered(sessionId)).toEqual([
-					{ id: "a", promotedSeq: 1 },
-					{ id: "b", promotedSeq: 2 },
-				]);
-			}),
-		);
+			// Every request is rebuilt from durable history. The second request sees
+			// the first terminal assistant and the newly promoted follow-up.
+			expect(contexts.map((context) => context.messages.map((message) => message.role))).toEqual([
+				["user"],
+				["user", "assistant", "user"],
+			]);
+		}),
+	);
 
-		it(
-			"a second drain re-delivers nothing and renumbers nothing",
-			Effect.gen(function* () {
-				const execution = yield* RunnerExecution.Service;
-				const sessionId = yield* seedSession(backend);
-
-				yield* enqueue({ id: "only", sessionId, admittedSeq: 1, delivery: "steer" });
-				yield* execution.resume(sessionId);
-				yield* execution.resume(sessionId);
-
-				expect(yield* delivered(sessionId)).toEqual([{ id: "only", promotedSeq: 1 }]);
-			}),
-		);
-
-		it(
-			"promotion is scoped per session",
-			Effect.gen(function* () {
-				const execution = yield* RunnerExecution.Service;
-				const first = yield* seedSession(backend);
-				const second = yield* seedSession(backend);
-
-				yield* enqueue({ id: "first-1", sessionId: first, admittedSeq: 1, delivery: "steer" });
-				yield* enqueue({ id: "second-1", sessionId: second, admittedSeq: 1, delivery: "steer" });
-
-				yield* execution.resume(first);
-				yield* execution.resume(second);
-
-				expect(yield* delivered(first)).toEqual([{ id: "first-1", promotedSeq: 1 }]);
-				expect(yield* delivered(second)).toEqual([{ id: "second-1", promotedSeq: 1 }]);
-			}),
-		);
-
-		it(
-			"wake with nothing eligible idles; an explicit resume still takes a turn",
-			Effect.gen(function* () {
-				const execution = yield* RunnerExecution.Service;
-				const sessionId = yield* seedSession(backend);
-
-				yield* execution.wake(sessionId); // force = false -> idle
-				yield* execution.resume(sessionId); // force = true  -> one turn anyway
-
-				expect(yield* delivered(sessionId)).toEqual([]);
-				expect(Array.from(yield* execution.active)).toEqual([]);
-			}),
-		);
-
-		it(
-			"fails for a session that does not exist",
-			Effect.gen(function* () {
-				const execution = yield* RunnerExecution.Service;
-				const exit = yield* execution.resume(SessionSchema.ID.create()).pipe(Effect.exit);
-				expect(exit._tag).toBe("Failure");
-			}),
-		);
-
-		it(
-			"quotes prompt text so shell metacharacters stay literal",
-			Effect.gen(function* () {
-				// Everything an unquoted command would act on rather than print.
-				const hostile = `a ' b $(echo pwned) c \`id\` d ; e && f | g > h`;
-				const target = yield* backend.target;
-				const controller = yield* SandboxController.Controller;
-
-				const result = yield* Effect.flatMap(Shell, (shell) => shell.exec(Loop.script(hostile, 1, 0))).pipe(
-					Effect.provide(controller.mount(target.instanceId, { cwd: target.directory })),
-					Effect.scoped,
-				);
-
-				expect(result.exitCode).toBe(0);
-				// Exact equality is the assertion: had the substitution run, the
-				// output would read "... c d ..." with the command's result spliced in.
-				expect(result.stdout.trim()).toBe(`${hostile} 1`);
-			}),
-		);
-
-		it(
-			"drains a batch of prompts, quoting and truncating each without breaking the shell",
-			Effect.gen(function* () {
-				const execution = yield* RunnerExecution.Service;
-				const sessionId = yield* seedSession(backend);
-
-				// Prompts carrying the metacharacters an unquoted command would trip on.
-				const hostile = [
-					`plain ${lorem}`,
-					`quotes ' " and $(echo pwned) backticks \`id\``,
-					"semi; colon && ampersand | pipe > redirect",
-					"unicode ✓ — em dash, and \\ backslash",
-				];
-				for (const [index, text] of hostile.entries()) {
-					yield* enqueue({
-						id: `input-${index}`,
-						sessionId,
-						admittedSeq: index + 1,
-						delivery: index % 2 === 0 ? "steer" : "followUp",
-						text,
-					});
-				}
-
-				yield* execution.resume(sessionId);
-
-				expect(yield* delivered(sessionId)).toEqual(
-					hostile.map((_, index) => ({ id: `input-${index}`, promotedSeq: index + 1 })),
-				);
-			}),
-		);
-	});
-};
-
-loopSpec("memory (just-bash)", memoryBackend());
-loopSpec("sqldb (just-bash over sqlite)", sqldbBackend());
-loopSpec("local host", localBackend());
-
-describe("runner loop — interruption", () => {
-	const backend = memoryBackend();
-	// A turn slow enough to be caught mid-flight, on a real clock.
-	const { live: itSlow } = testEffect(runtime(backend, { intervalSeconds: 1, minLines: 30, maxLines: 30 }));
-
-	itSlow(
-		"an interrupted turn leaves its input eligible for the next drain",
+	it(
+		"does not promote an input twice; an explicit resume still performs one forced request",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
-			const sessionId = yield* seedSession(backend);
-			yield* enqueue({ id: "pending", sessionId, admittedSeq: 1, delivery: "steer" });
+			const sessions = yield* Session.Service;
+			const sessionId = yield* seedSession();
+			yield* admit({ id: "msg_once", sessionId, delivery: "steer" });
 
-			const fiber = yield* Effect.forkChild(execution.resume(sessionId));
+			yield* execution.resume(sessionId);
+			yield* execution.resume(sessionId);
 
-			// Wait for the coordinator to own the drain before cutting it.
-			yield* Effect.gen(function* () {
-				while (!(yield* execution.active).has(sessionId)) {
-					yield* Effect.sleep("10 millis");
-				}
-			}).pipe(Effect.timeout("5 seconds"), Effect.orDie);
+			expect(yield* delivered(sessionId)).toEqual([{ id: "msg_once", promotedSeq: 1 }]);
+			expect((yield* sessions.path(sessionId)).map((item) => item.entry.type)).toEqual([
+				"user",
+				"assistant",
+				"assistant",
+			]);
+		}),
+	);
 
-			yield* execution.interrupt(sessionId);
-			yield* Fiber.join(fiber).pipe(Effect.exit);
+	it(
+		"keeps promotion and output scoped per session",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const sessions = yield* Session.Service;
+			const first = yield* seedSession("first");
+			const second = yield* seedSession("second");
+			yield* admit({ id: "msg_first", sessionId: first, delivery: "steer" });
+			yield* admit({ id: "msg_second", sessionId: second, delivery: "steer" });
 
-			// Promotion happens only after a turn completes, so an interrupt mid-turn
-			// must leave the input unconsumed.
-			expect(yield* delivered(sessionId)).toEqual([{ id: "pending", promotedSeq: null }]);
-			expect(Array.from(yield* execution.active)).toEqual([]);
+			yield* execution.resume(first);
+			yield* execution.resume(second);
+
+			expect(yield* delivered(first)).toEqual([{ id: "msg_first", promotedSeq: 1 }]);
+			expect(yield* delivered(second)).toEqual([{ id: "msg_second", promotedSeq: 1 }]);
+			expect((yield* sessions.path(first)).map((item) => item.entry.type)).toEqual(["user", "assistant"]);
+			expect((yield* sessions.path(second)).map((item) => item.entry.type)).toEqual(["user", "assistant"]);
+		}),
+	);
+
+	it(
+		"promotes all current steers as one request, then follow-ups one per request",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const sessions = yield* Session.Service;
+			const sessionId = yield* seedSession();
+			yield* admit({ id: "msg_s1", sessionId, delivery: "steer" });
+			yield* admit({ id: "msg_f1", sessionId, delivery: "followUp" });
+			yield* admit({ id: "msg_s2", sessionId, delivery: "steer" });
+			yield* admit({ id: "msg_f2", sessionId, delivery: "followUp" });
+			yield* admit({ id: "msg_s3", sessionId, delivery: "steer" });
+
+			yield* execution.resume(sessionId);
+
+			const path = yield* sessions.path(sessionId);
+			expect(path.map((item) => item.entry.type)).toEqual([
+				"user",
+				"user",
+				"user",
+				"assistant",
+				"user",
+				"assistant",
+				"user",
+				"assistant",
+			]);
+			expect(path.filter((item) => item.entry.type === "user").map((item) => item.entry.id)).toEqual([
+				"msg_s1",
+				"msg_s2",
+				"msg_s3",
+				"msg_f1",
+				"msg_f2",
+			]);
+		}),
+	);
+
+	it(
+		"fails for a session that does not exist",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const exit = yield* execution.resume(SessionSchema.ID.create()).pipe(Effect.exit);
+			expect(Exit.isFailure(exit)).toBe(true);
 		}),
 	);
 });
 
-/**
- * Soak: many prompts, each a real multi-second command, on a live clock. Opt in
- * with `CODEWORK_LOOP_SOAK=1` — at one second per line and 2–7 lines per input
- * this is minutes of wall clock by design, which is exactly what makes it a
- * useful shakedown of a backend and useless in the default suite.
- *
- * `CODEWORK_LOOP_SOAK_INPUTS` sets the prompt count (default 50).
- */
-const soak = process.env.CODEWORK_LOOP_SOAK === "1" ? describe : describe.skip;
+describe("runner loop — provider interruption", () => {
+	let responseIndex = 0;
+	const open: LLM.Open = (input, signal) =>
+		Effect.sync(() => {
+			responseIndex += 1;
+			const partial = assistant(input, responseIndex, { parts: [{ type: "text", text: "partial" }] });
+			const events = createAssistantMessageEventStream();
+			events.push({ type: "start", partial });
+			events.push({ type: "text.delta", partIndex: 0, delta: "partial", partial });
 
-soak("runner loop — soak", () => {
-	const backend = memoryBackend();
-	const options: Loop.Options = { intervalSeconds: 1, minLines: 2, maxLines: 7 };
-	const count = Number(process.env.CODEWORK_LOOP_SOAK_INPUTS ?? 50);
-	const { live: itSoak } = testEffect(runtime(backend, options));
+			const fail = () => {
+				const failed = assistant(input, responseIndex, {
+					stopReason: "aborted",
+					errorMessage: "Request was aborted",
+					parts: [{ type: "text", text: "partial" }],
+				});
+				events.push({ type: "error", reason: "aborted", error: failed });
+			};
+			if (signal.aborted) fail();
+			else signal.addEventListener("abort", fail, { once: true });
+			return events;
+		});
+	const { live: it } = testEffect(runtime({ open }));
 
-	itSoak(
-		`drains ${count} prompts of 2–7 seconds each`,
+	it(
+		"aborts aikit, durably projects its terminal failure, then propagates interruption",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
-			const sessionId = yield* seedSession(backend);
+			const events = yield* Event.Service;
+			const sessions = yield* Session.Service;
+			const sessionId = yield* seedSession();
+			yield* admit({ id: "msg_interrupted", sessionId, delivery: "steer" });
 
-			for (let index = 0; index < count; index++) {
-				yield* enqueue({
-					id: `soak-${index}`,
-					sessionId,
-					admittedSeq: index + 1,
-					delivery: index % 3 === 0 ? "steer" : "followUp",
-				});
-			}
-
-			const started = Date.now();
-			yield* execution.resume(sessionId);
-			const elapsed = Date.now() - started;
-
-			const rows = yield* delivered(sessionId);
-			expect(rows.map((row) => row.promotedSeq)).toEqual(Array.from({ length: count }, (_, i) => i + 1));
-
-			// Every turn really waited: the floor is the sum of each input's lines.
-			const expected = Array.from({ length: count }, (_, i) => Loop.linesFor(i + 1, options)).reduce(
-				(total, lines) => total + lines,
-				0,
+			const streaming = yield* Deferred.make<void>();
+			yield* events.listen((event) =>
+				event.type === "session.llm.text.delta"
+					? Deferred.succeed(streaming, undefined).pipe(Effect.asVoid)
+					: Effect.void,
 			);
-			expect(elapsed).toBeGreaterThanOrEqual(expected * 1000 * 0.8);
+			const waiting = yield* execution.resume(sessionId).pipe(Effect.forkChild);
+			yield* Deferred.await(streaming);
+
+			yield* execution.interrupt(sessionId);
+			const exit = yield* Fiber.await(waiting);
+			expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
+
+			const path = yield* sessions.path(sessionId);
+			expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant"]);
+			expect(JSON.parse(path[1]!.entry.data)).toMatchObject({ stopReason: "aborted" });
+			expect(JSON.parse(path[1]!.parts[0]!.data)).toEqual({ type: "text", text: "partial" });
+			expect(Array.from(yield* execution.active)).toEqual([]);
 		}),
-		{ timeout: 1000 * 60 * 20 },
+		{ timeout: 10_000 },
+	);
+});
+
+describe("runner loop — provider failure", () => {
+	const open: LLM.Open = (input) =>
+		Effect.sync(() => {
+			const failed = assistant(input, 1, {
+				stopReason: "error",
+				errorMessage: "provider failed",
+				parts: [{ type: "text", text: "partial" }],
+			});
+			const events = createAssistantMessageEventStream();
+			events.push({ type: "start", partial: failed });
+			events.push({ type: "error", reason: "error", error: failed });
+			return events;
+		});
+	const { effect: it } = testEffect(runtime({ open }));
+
+	it(
+		"commits the failed assistant before failing the turn",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const sessions = yield* Session.Service;
+			const sessionId = yield* seedSession();
+			yield* admit({ id: "msg_failed", sessionId, delivery: "steer" });
+
+			const exit = yield* execution.resume(sessionId).pipe(Effect.exit);
+			expect(Exit.isFailure(exit)).toBe(true);
+
+			const path = yield* sessions.path(sessionId);
+			expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant"]);
+			expect(JSON.parse(path[1]!.entry.data)).toMatchObject({
+				stopReason: "error",
+				errorMessage: "provider failed",
+			});
+		}),
 	);
 });

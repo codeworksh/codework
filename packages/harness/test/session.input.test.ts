@@ -64,7 +64,7 @@ const makeInput = (input: {
 		...input,
 		// Fixture rows are seeded by raw SQL, so brand without the prefix check.
 		sessionId: SessionSchema.IDFromDb.make(input.sessionId),
-		prompt: JSON.stringify({ parts: [{ type: "text", text: input.id }] }),
+		prompt: { text: input.id },
 		promotedSeq: Option.none(),
 	});
 
@@ -135,7 +135,7 @@ describe("SessionInput", () => {
 	);
 
 	it(
-		"cascades with its session and has no SessionEntry relationship",
+		"cascades with its session and has no SessionEntry foreign key",
 		Effect.gen(function* () {
 			const sql = yield* SqlClient.SqlClient;
 			const db = queries(sql);
@@ -143,6 +143,9 @@ describe("SessionInput", () => {
 			yield* db.insert(
 				yield* makeInput({ id: "input-1", sessionId: "session-1", admittedSeq: 1, delivery: "followUp" }),
 			);
+			// An input id becomes the entry id once promoted, so the two share a
+			// namespace -- but that is enforced by SessionInput.projectAdmitted, not
+			// by the schema. The only foreign key here is the session.
 			const foreignKeys = yield* sql`PRAGMA foreign_key_list(session_input)`;
 			expect(foreignKeys.map((row) => (row as { table: string }).table)).toEqual(["session"]);
 
@@ -153,7 +156,7 @@ describe("SessionInput", () => {
 			const orphan = yield* sql`
 				INSERT INTO session_input
 					(id, session_id, prompt, delivery, admitted_seq, created_at)
-				VALUES ('orphan', 'missing', '{}', 'steer', 1, 0)
+				VALUES ('orphan', 'missing', '{"text":""}', 'steer', 1, 0)
 			`.pipe(Effect.exit);
 			expect(Exit.isFailure(orphan)).toBe(true);
 		}),

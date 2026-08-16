@@ -15,6 +15,8 @@ import {
 	type ToolStatus,
 	toolStatuses,
 } from "../db/schema.sql.ts";
+import { Event } from "../event/event.ts";
+import { EventList } from "../event/list.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import type { AbsolutePath } from "../schema.ts";
 import { SessionSchema } from "./schema.ts";
@@ -47,12 +49,6 @@ export class ToolCallNotFoundError extends Schema.TaggedError<ToolCallNotFoundEr
 	callId: Schema.String,
 }) {}
 
-export class LeafConflictError extends Schema.TaggedError<LeafConflictError>()("LeafConflictError", {
-	sessionId: Schema.String,
-	expectedLeafEntryId: Schema.NullOr(Schema.String),
-	actualLeafEntryId: Schema.NullOr(Schema.String),
-}) {}
-
 // Structural rejection — the data-structure layer's "index out of bounds".
 export class InvalidEntryDataError extends Schema.TaggedError<InvalidEntryDataError>()("InvalidEntryDataError", {
 	entryId: Schema.String,
@@ -76,9 +72,6 @@ export interface CreateSession {
 	readonly metadata?: Readonly<Record<string, string>>;
 }
 
-// Billed usage inside a persisted assistant envelope (harness-owned, ./schema).
-// export { AssistantEnvelopeUsage, CompactionData, MessageEnvelopeIdentity, Usage } from "./schema.ts";
-
 export interface AppendPart {
 	readonly id?: string; // uuidv7; generated when omitted
 	readonly type: PartType;
@@ -91,12 +84,21 @@ export interface AppendPart {
 export interface AppendEntry {
 	readonly id: string; // uuidv7; == aikit messageId for message types
 	readonly sessionId: SessionSchema.ID;
+	/**
+	 * Position in the session's durable log — the sequence of the event that
+	 * produced this entry. Must exceed every existing entry's seq, which the
+	 * event log guarantees since sequences only ever advance.
+	 */
+	readonly seq: number;
 	readonly type: EntryType;
 	readonly data: string; // JSON: full payload, or message envelope
 	readonly parts?: ReadonlyArray<AppendPart>; // order = partIndex; message types only
 	readonly parentId?: string; // explicit branch appends only; default = current leaf
-	/** Guard the first append of a run against a leaf changed after context assembly. */
-	readonly expectedLeafEntryId?: string | null;
+	/**
+	 * Publish-time context from the event that produced this entry. The log does
+	 * not store event metadata, so if it is to survive at all it survives here.
+	 */
+	readonly metadata?: Readonly<Record<string, string>>;
 }
 
 export interface SettleToolCall {
@@ -108,7 +110,7 @@ export interface SettleToolCall {
 
 // Fork copies ONE path (root → fork point) into a new session — never sibling
 // or abandoned branches.
-// Clone = fork at the current leaf.
+// clone = fork at the current leaf.
 export interface ForkInput {
 	readonly sessionId: SessionSchema.ID; // source session
 	readonly entryId?: string; // fork point; default = current leaf (clone)
@@ -142,10 +144,7 @@ export interface Interface {
 	readonly unsettled: (sessionId: SessionSchema.ID) => Effect.Effect<SessionEntryPartRow[]>;
 	readonly append: (
 		input: AppendEntry,
-	) => Effect.Effect<
-		SessionEntryRow,
-		SessionNotFoundError | EntryNotFoundError | LeafConflictError | InvalidEntryDataError
-	>;
+	) => Effect.Effect<SessionEntryRow, SessionNotFoundError | EntryNotFoundError | InvalidEntryDataError>;
 	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void, ToolCallNotFoundError>;
 	/** Copy root→fork-point into a new session (`parentId` = source). Clone = fork at leaf. */
 	readonly fork: (
@@ -180,7 +179,7 @@ export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
-
+		const events = yield* Event.Service;
 		const findSession = SqlSchema.findOneOption({
 			Request: Schema.String,
 			Result: SessionRow,
@@ -204,19 +203,28 @@ export const layer = Layer.effect(
 			execute: (id) => sql`SELECT * FROM session_entry WHERE id = ${id}`,
 		});
 
-		// seq is computed inside the INSERT — no read-modify-write window. SQLite
-		// serializes write transactions, so two appends cannot commit the same
-		// max(seq) + 1; the unique (session_id, seq) index is the backstop.
-		const insertEntry = SqlSchema.void({
+		// seq is supplied by the caller, not computed here: it is the sequence of
+		// the event that produced the entry, so the durable log and the tree share
+		// one position space.
+		//
+		// The WHERE NOT EXISTS keeps positions strictly advancing. `max(seq) + 1`
+		// used to make that structural; sourcing seq from outside would otherwise
+		// downgrade it to an unchecked contract, and a stale position fails
+		// silently — `selectPath` orders by seq, so a child would sort above its
+		// own parent. Inserting zero rows is the signal, checked by the callers.
+		const insertEntry = SqlSchema.findAll({
 			Request: SessionEntryRow.insert,
+			Result: Schema.Struct({ id: Schema.String }),
 			execute: (row) => sql`
 				INSERT INTO session_entry (id, session_id, parent_id, seq, type, data, label, metadata, created_at, updated_at)
-				VALUES (
-					${row.id}, ${row.sessionId}, ${row.parentId ?? null},
-					(SELECT COALESCE(MAX(seq), 0) + 1 FROM session_entry WHERE session_id = ${row.sessionId}),
+				SELECT
+					${row.id}, ${row.sessionId}, ${row.parentId ?? null}, ${row.seq},
 					${row.type}, ${row.data}, ${row.label ?? null}, ${row.metadata ?? null},
 					${row.createdAt}, ${row.updatedAt}
+				WHERE NOT EXISTS (
+					SELECT 1 FROM session_entry WHERE session_id = ${row.sessionId} AND seq >= ${row.seq}
 				)
+				RETURNING id
 			`,
 		});
 
@@ -389,7 +397,6 @@ export const layer = Layer.effect(
 			| { readonly _tag: "sessionNotFound" }
 			| { readonly _tag: "parentNotFound" }
 			| { readonly _tag: "invalidData"; readonly reason: string }
-			| { readonly _tag: "leafConflict"; readonly actualLeafEntryId: string | null }
 			| { readonly _tag: "inserted"; readonly entry: SessionEntryRow };
 
 		const append = Effect.fn("Session.append")(function* (input: AppendEntry) {
@@ -400,6 +407,23 @@ export const layer = Layer.effect(
 					type: input.type,
 					reason: `entry type "${input.type}" must not carry parts`,
 				});
+			}
+
+			// Part data is documented as verbatim aikit JSON and every reader parses
+			// it as such, so it is validated here for the same reason the envelope
+			// is: an unparseable part is only discovered by whoever reads it back,
+			// long after the write that could have rejected it.
+			for (const [index, part] of parts.entries()) {
+				yield* decodeJsonObject(part.data).pipe(
+					Effect.mapError(
+						(error) =>
+							new InvalidEntryDataError({
+								entryId: input.id,
+								type: input.type,
+								reason: `part ${index} ("${part.type}") is not a JSON object: ${error.message}`,
+							}),
+					),
+				);
 			}
 
 			const envelopeIdentity = messageTypes.has(input.type)
@@ -447,16 +471,6 @@ export const layer = Layer.effect(
 						const session = yield* findSession(input.sessionId);
 						if (Option.isNone(session)) return { _tag: "sessionNotFound" } as const;
 						const currentLeaf = yield* resolveLeaf(session.value);
-						// this might feel a bit redundant; but it's a way for the node
-						// to make sure it appends only on known leaf entry, making sure the
-						// assumption is correct.
-						// Otherwise the assumption is wrong and state has changed.
-						if (input.expectedLeafEntryId !== undefined) {
-							const actualLeafEntryId = Option.getOrNull(currentLeaf);
-							if (actualLeafEntryId !== input.expectedLeafEntryId) {
-								return { _tag: "leafConflict", actualLeafEntryId } as const;
-							}
-						}
 
 						// Append anchor: explicit branch target
 						// (validated same-session; the composite FK is the schema backstop),
@@ -493,12 +507,24 @@ export const layer = Layer.effect(
 							id: input.id,
 							sessionId: input.sessionId,
 							parentId,
+							seq: input.seq,
 							type: input.type,
 							data: input.data,
 							label: Option.none(),
-							metadata: Option.none(),
+							metadata: Option.fromUndefinedOr(input.metadata),
 						});
-						yield* insertEntry(entryRow);
+						const inserted = yield* insertEntry(entryRow);
+						// Keep the aggregate head above what was just written. An entry
+						// that arrived without an event still occupies its position, and
+						// the next event must land above it or hit the guard below
+						// forever.
+						yield* events.advance(input.sessionId, input.seq);
+						if (inserted.length === 0) {
+							return {
+								_tag: "invalidData",
+								reason: `seq ${input.seq} does not advance past the session's latest entry`,
+							} as const;
+						}
 
 						for (const [partIndex, part] of parts.entries()) {
 							const partRow = yield* SessionEntryPartRow.insert.makeEffect({
@@ -549,12 +575,6 @@ export const layer = Layer.effect(
 						entryId: input.id,
 						type: input.type,
 						reason: result.reason,
-					});
-				case "leafConflict":
-					return yield* new LeafConflictError({
-						sessionId: input.sessionId,
-						expectedLeafEntryId: input.expectedLeafEntryId ?? null,
-						actualLeafEntryId: result.actualLeafEntryId,
 					});
 				case "inserted":
 					return result.entry;
@@ -716,18 +736,30 @@ export const layer = Layer.effect(
 						});
 						yield* insertSession(sessionRow);
 
-						// Entries in path order: insertEntry's max(seq)+1 yields dense 1..N.
+						// Positions are carried over verbatim, not renumbered: they are log
+						// positions, and preserving them keeps the copy ordered exactly as
+						// the source. The new aggregate is then seeded above the highest of
+						// them so post-fork events never land underneath.
 						for (const prepared of preparedEntries) {
 							const entryRow = yield* SessionEntryRow.insert.makeEffect({
 								id: prepared.id,
 								sessionId: newSessionId,
 								parentId: Option.map(prepared.source.parentId, (parent) => idMap.get(parent)!),
+								seq: prepared.source.seq,
 								type: prepared.source.type,
 								data: prepared.data,
 								label: prepared.source.label, // annotations ride the copy (§10.12)
 								metadata: prepared.source.metadata,
 							});
-							yield* insertEntry(entryRow);
+							// Path order means source positions already ascend, so a
+							// rejection here would mean the source tree violated its own
+							// ordering invariant rather than anything about this copy.
+							const copied = yield* insertEntry(entryRow);
+							if (copied.length === 0) {
+								return yield* Effect.die(
+									`fork: copied entry ${prepared.id} at seq ${prepared.source.seq} does not advance`,
+								);
+							}
 						}
 
 						// Parts: new ids, re-keyed entry/session, everything else verbatim —
@@ -759,6 +791,28 @@ export const layer = Layer.effect(
 								UPDATE session SET leaf_entry_id = ${idMap.get(targetId.value)!}, updated_at = ${now}
 								WHERE id = ${newSessionId}
 							`;
+						}
+
+						// The copied entries hold positions from the source's log, so the
+						// new aggregate starts above the highest of them. Without this its
+						// first event would land at 0, underneath the copy, and
+						// `parent.seq < child.seq` — which `selectPath` orders by — would
+						// invert. An empty fork copies nothing and starts at 0 normally.
+						if (preparedEntries.length > 0 && Option.isSome(targetId)) {
+							const baseSeq = preparedEntries.reduce(
+								(highest, prepared) => Math.max(highest, prepared.source.seq),
+								0,
+							);
+							yield* events.advance(newSessionId, baseSeq);
+							// Lands at baseSeq + 1, so the seeded range is recorded by the
+							// log itself rather than inferable only from `parentId`.
+							yield* events.publish(EventList.SessionForked, {
+								sessionId: newSessionId,
+								sourceSessionId: input.sessionId,
+								sourceEntryId: targetId.value,
+								baseSeq,
+								timestamp: yield* DateTime.now,
+							});
 						}
 
 						const created = yield* findSession(newSessionId);

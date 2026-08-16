@@ -1,23 +1,22 @@
 import "./utils/env.ts";
 
-import { Message } from "@codeworksh/aikit";
-import type { Model } from "@codeworksh/aikit";
-import type { Protocol } from "@codeworksh/aikit";
-import { llm, stream, Type, validateSchema } from "@codeworksh/aikit";
+import type { Model, Protocol } from "@codeworksh/aikit";
+import { llm, Message, stream, Type } from "@codeworksh/aikit";
 import { Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
-import { describe, expect, it as vitestIt } from "vite-plus/test";
+import { beforeEach, describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
-import { AbsolutePath } from "../src/schema.ts";
+import { Event } from "../src/event/event.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { Session } from "../src/session/session.ts";
+import { AbsolutePath, validateAikitMessage } from "../src/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
+import { Session } from "../src/session/session.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { testEffect } from "./utils/effect.ts";
 
 // Fresh in-memory database per test: the layer is rebuilt for every it.effect.
-const layer = Session.layer.pipe(Layer.provideMerge(Database.layer(":memory:")));
+const layer = Session.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
 const it = testEffect(layer);
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
 const openaiKey = process.env.OPENAI_API_KEY;
@@ -26,6 +25,22 @@ const openaiLiveIt = openaiKey ? it.live : it.live.skip;
 
 // Fixture IDs stay readable; `ID.make` enforces the `ses` prefix.
 const sid = (name: string) => SessionSchema.ID.make(`ses_${name}`);
+
+// In production an entry's seq is the sequence of the event that produced it.
+// These tests exercise the tree directly, with no event log behind them, so a
+// per-session counter stands in. Dense here; sparse in production.
+const seqCounters = new Map<string, number>();
+const nextSeq = (sessionId: string) => {
+	const next = (seqCounters.get(sessionId) ?? 0) + 1;
+	seqCounters.set(sessionId, next);
+	return next;
+};
+// A fork copies entry positions verbatim and seeds the new aggregate above
+// them, so the stand-in counter has to continue from the source's position.
+const inheritSeq = (sourceId: string, forkId: string) => {
+	seqCounters.set(forkId, seqCounters.get(sourceId) ?? 0);
+};
+beforeEach(() => seqCounters.clear());
 
 const createSession = (slug: string) =>
 	Effect.gen(function* () {
@@ -47,6 +62,7 @@ const createSession = (slug: string) =>
 const userEntry = (sessionId: SessionSchema.ID, id: string, text: string): Session.AppendEntry => ({
 	id,
 	sessionId,
+	seq: nextSeq(sessionId),
 	type: "user",
 	data: JSON.stringify({ messageId: id, role: "user", time: { created: 1 } }),
 	parts: [{ type: "text", data: JSON.stringify({ type: "text", text }) }],
@@ -83,6 +99,7 @@ const assistantEntry = (
 ): Session.AppendEntry => ({
 	id,
 	sessionId,
+	seq: nextSeq(sessionId),
 	type: "assistant",
 	data: JSON.stringify({
 		messageId: id,
@@ -116,11 +133,12 @@ const countOf = (rows: ReadonlyArray<unknown>) => {
 	return Number(row?.count ?? 0);
 };
 
-const appendMessage = (sessionId: SessionSchema.ID, message: Message.Message, expectedLeafEntryId: string | null) => {
+const appendMessage = (sessionId: SessionSchema.ID, message: Message.Message) => {
 	const { parts, ...envelope } = message;
 	return {
 		id: message.messageId,
 		sessionId,
+		seq: nextSeq(sessionId),
 		type: message.role,
 		data: JSON.stringify(envelope),
 		parts: parts.map((part) => ({
@@ -130,7 +148,6 @@ const appendMessage = (sessionId: SessionSchema.ID, message: Message.Message, ex
 			toolName: part.type === "toolCall" ? part.name : undefined,
 			data: JSON.stringify(part),
 		})),
-		expectedLeafEntryId,
 	} satisfies Session.AppendEntry;
 };
 
@@ -139,7 +156,7 @@ const messageFromEntry = (hydrated: Session.HydratedEntry): Message.Message => {
 		...(JSON.parse(hydrated.entry.data) as Record<string, unknown>),
 		parts: hydrated.parts.map((part) => JSON.parse(part.data) as unknown),
 	};
-	return validateSchema(Message.MessageSchema, message, `session entry ${hydrated.entry.id}`);
+	return validateAikitMessage(message, `session entry ${hydrated.entry.id}`);
 };
 
 const assistantText = (message: Message.AssistantMessage) =>
@@ -191,16 +208,13 @@ const liveConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 			"Reply with both codewords in the order I gave them, separated by a comma and nothing else.",
 		] as const;
 		const assistantMessages: Message.AssistantMessage[] = [];
-		let expectedLeafEntryId: string | null = null;
-
 		for (const prompt of prompts) {
 			const userMessage = Message.createUserMessage({
 				role: "user",
 				time: { created: Date.now() },
 				parts: [{ type: "text", text: prompt }],
 			});
-			yield* session.append(appendMessage(created.id, userMessage, expectedLeafEntryId));
-			expectedLeafEntryId = userMessage.messageId;
+			yield* session.append(appendMessage(created.id, userMessage));
 
 			// The provider receives context reconstructed from SQLite, not the
 			// in-memory messages accumulated by this test.
@@ -217,8 +231,7 @@ const liveConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 			expect(assistant.usage.input + assistant.usage.cacheRead).toBeGreaterThan(0);
 			expect(assistant.usage.output).toBeGreaterThan(0);
 
-			yield* session.append(appendMessage(created.id, assistant, expectedLeafEntryId));
-			expectedLeafEntryId = assistant.messageId;
+			yield* session.append(appendMessage(created.id, assistant));
 			assistantMessages.push(assistant);
 
 			// Aggregates must be correct after every assistant transaction, not only
@@ -273,7 +286,7 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 				},
 			],
 		});
-		yield* session.append(appendMessage(created.id, userMessage, null));
+		yield* session.append(appendMessage(created.id, userMessage));
 
 		const toolRequestContext: Message.Context = {
 			systemPrompt: "You are a concise assistant. Use the provided weather tool when asked.",
@@ -290,7 +303,7 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 		expect(toolCall.name).toBe(weatherTool.name);
 		expect(String(toolCall.arguments.location).toLowerCase()).toContain("testville");
 
-		yield* session.append(appendMessage(created.id, toolRequest, userMessage.messageId));
+		yield* session.append(appendMessage(created.id, toolRequest));
 		const pending = yield* session.unsettled(created.id);
 		expect(pending).toHaveLength(1);
 		expect(Option.getOrNull(pending[0]!.callId)).toBe(toolCall.callID);
@@ -341,7 +354,7 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 		const finalText = assistantText(finalAssistant).toLowerCase();
 		expect(finalText).toContain("72");
 		expect(finalText).toContain("sunny");
-		yield* session.append(appendMessage(created.id, finalAssistant, toolRequest.messageId));
+		yield* session.append(appendMessage(created.id, finalAssistant));
 
 		const path = yield* session.path(created.id);
 		expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant", "assistant"]);
@@ -482,6 +495,7 @@ describe("session", () => {
 			yield* session.append({
 				id: "e3",
 				sessionId: created.id,
+				seq: nextSeq(created.id),
 				type: "compaction",
 				data: JSON.stringify({ summary: "earlier work", firstKeptEntryId: "e1", tokensBefore: 1000 }),
 			});
@@ -590,33 +604,6 @@ describe("session", () => {
 		}),
 	);
 
-	it.effect("append rejects a leaf changed after context assembly", () =>
-		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const created = yield* createSession("s-expected-leaf");
-			yield* session.append({ ...userEntry(created.id, "e1", "first"), expectedLeafEntryId: null });
-
-			const accepted = yield* session.append({
-				...assistantEntry(created.id, "e2"),
-				expectedLeafEntryId: "e1",
-			});
-			expect(accepted.id).toBe("e2");
-
-			const result = yield* session
-				.append({ ...userEntry(created.id, "e3", "stale"), expectedLeafEntryId: "e1" })
-				.pipe(Effect.flip);
-			expect(result._tag).toBe("LeafConflictError");
-			if (result._tag === "LeafConflictError") {
-				expect(result.expectedLeafEntryId).toBe("e1");
-				expect(result.actualLeafEntryId).toBe("e2");
-			}
-
-			expect(Option.isNone(yield* session.entry("e3"))).toBe(true);
-			const row = Option.getOrElse(yield* session.get(created.id), () => created);
-			expect(Option.getOrElse(row.leafEntryId, () => "")).toBe("e2");
-		}),
-	);
-
 	it.effect("append falls back to the latest entry when the leaf pointer is lost", () =>
 		Effect.gen(function* () {
 			const sql = yield* SqlClient.SqlClient;
@@ -682,14 +669,43 @@ describe("session", () => {
 		}),
 	);
 
+	// Part data is read back with a bare JSON.parse by everything downstream, so
+	// an unparseable part has to be rejected at the write rather than discovered
+	// by whichever reader hits it first.
+	it.effect("append rejects a part whose data is not a JSON object", () =>
+		Effect.gen(function* () {
+			const session = yield* Session.Service;
+			const created = yield* createSession("s-part-json-guard");
+
+			for (const data of ["not json", "[]", '"just a string"']) {
+				const failure = yield* session
+					.append({
+						...userEntry(created.id, `bad-part-${data.length}`, "hi"),
+						parts: [{ type: "text", data }],
+					})
+					.pipe(Effect.flip);
+				expect(failure._tag).toBe("InvalidEntryDataError");
+			}
+
+			// Nothing was written by any of them.
+			expect(yield* session.path(created.id)).toEqual([]);
+		}),
+	);
+
 	it.effect("append rejects malformed and mismatched message envelopes before writing", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
 			const created = yield* createSession("s-envelope-identity-guard");
 			const invalidEntries: ReadonlyArray<Session.AppendEntry> = [
-				{ id: "bad-json", sessionId: created.id, type: "user", data: "not json" },
-				{ id: "bad-array", sessionId: created.id, type: "user", data: "[]" },
-				{ id: "missing-id", sessionId: created.id, type: "synthetic", data: JSON.stringify({ customType: "x" }) },
+				{ id: "bad-json", sessionId: created.id, seq: nextSeq(created.id), type: "user", data: "not json" },
+				{ id: "bad-array", sessionId: created.id, seq: nextSeq(created.id), type: "user", data: "[]" },
+				{
+					id: "missing-id",
+					sessionId: created.id,
+					seq: nextSeq(created.id),
+					type: "synthetic",
+					data: JSON.stringify({ customType: "x" }),
+				},
 				{
 					...assistantEntry(created.id, "mismatched-id"),
 					data: JSON.stringify({
@@ -728,24 +744,28 @@ describe("session", () => {
 				{
 					id: "c-missing-boundary",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "missing", tokensBefore: 10 }),
 				},
 				{
 					id: "c-negative-tokens",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "negative", firstKeptEntryId: null, tokensBefore: -1 }),
 				},
 				{
 					id: "c-abandoned-boundary",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "abandoned", firstKeptEntryId: "e2", tokensBefore: 10 }),
 				},
 				{
 					id: "c-foreign-boundary",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "foreign", firstKeptEntryId: "other-e1", tokensBefore: 10 }),
 				},
@@ -764,6 +784,7 @@ describe("session", () => {
 			const anchored = yield* session.append({
 				id: "c-anchored",
 				sessionId: source.id,
+				seq: nextSeq(source.id),
 				parentId: "e2",
 				type: "compaction",
 				data: JSON.stringify({ summary: "root work", firstKeptEntryId: "e1", tokensBefore: 10 }),
@@ -774,6 +795,7 @@ describe("session", () => {
 				.append({
 					id: "c-wrong-anchor",
 					sessionId: source.id,
+					seq: nextSeq(source.id),
 					parentId: "e2",
 					type: "compaction",
 					data: JSON.stringify({ summary: "wrong path", firstKeptEntryId: "e3", tokensBefore: 10 }),
@@ -787,6 +809,7 @@ describe("session", () => {
 			const summaryOnly = yield* session.append({
 				id: "c-summary-only",
 				sessionId: source.id,
+				seq: nextSeq(source.id),
 				type: "compaction",
 				data: JSON.stringify({ summary: "all prior work", firstKeptEntryId: null, tokensBefore: 10 }),
 			});
@@ -803,6 +826,7 @@ describe("session", () => {
 				.append({
 					id: "e1",
 					sessionId: created.id,
+					seq: nextSeq(created.id),
 					type: "compaction",
 					data: JSON.stringify({ summary: "s", firstKeptEntryId: null, tokensBefore: 10 }),
 					parts: [{ type: "text", data: JSON.stringify({ type: "text", text: "x" }) }],
@@ -1026,6 +1050,7 @@ describe("session", () => {
 				forkPath.map((h) => h.entry.id),
 			);
 			// fork diverges independently of the source
+			inheritSeq(source.id, fork.id);
 			yield* session.append(userEntry(fork.id, "f6", "fork continues"));
 			expect((yield* session.timeline({ sessionId: source.id })).length).toBe(4);
 			expect((yield* session.timeline({ sessionId: fork.id })).length).toBe(4);
@@ -1041,6 +1066,7 @@ describe("session", () => {
 			yield* session.append({
 				id: "c3",
 				sessionId: source.id,
+				seq: nextSeq(source.id),
 				type: "compaction",
 				data: JSON.stringify({ summary: "earlier work", firstKeptEntryId: "e2", tokensBefore: 1000 }),
 			});
@@ -1048,6 +1074,7 @@ describe("session", () => {
 			yield* session.append({
 				id: "c5",
 				sessionId: source.id,
+				seq: nextSeq(source.id),
 				type: "compaction",
 				data: JSON.stringify({ summary: "all prior work", firstKeptEntryId: null, tokensBefore: 500 }),
 			});
@@ -1183,7 +1210,10 @@ describe("session", () => {
 	vitestIt("persists session entries across a file database reload", async () => {
 		await using tmp = await tmpdir();
 		const database = path.join(tmp.path, "session.db");
-		const fileLayer = Session.layer.pipe(Layer.provideMerge(Database.layer(database)));
+		const fileLayer = Session.layer.pipe(
+			Layer.provideMerge(Event.layer),
+			Layer.provideMerge(Database.layer(database)),
+		);
 
 		await Effect.runPromise(
 			Effect.gen(function* () {

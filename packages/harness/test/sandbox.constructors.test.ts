@@ -2,6 +2,7 @@ import { Cause, Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
+import { Event } from "../src/event/event.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
 import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
@@ -28,7 +29,7 @@ const infrastructure = Layer.provideMerge(
 	SandboxController.layer().pipe(Layer.provide(SandboxDriver.layer(memory.driver))),
 	database,
 );
-const runtime = Layer.provideMerge(Session.layer, infrastructure);
+const runtime = Session.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(infrastructure));
 const { effect: it } = testEffect(runtime);
 
 const insertProject = Effect.fnUntraced(function* () {
