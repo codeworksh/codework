@@ -2,6 +2,7 @@ import { Effect, Fiber, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Control } from "../src/control.ts";
+import { ContextCodec } from "../src/context/codec.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
@@ -17,7 +18,6 @@ import { testEffect } from "./utils/effect.ts";
 // `Option` has no `.value` on the union — these tests treat a missing row as a
 // bug in the code under test, not a case to handle.
 const some = <A>(option: Option.Option<A>): A => Option.getOrThrow(option);
-
 
 /**
  * Volume and concurrency over the whole Stage 1 + 2 chain: prompt -> event ->
@@ -73,11 +73,7 @@ const setup = Effect.gen(function* () {
  * before promoting, drain steers first, take one follow-up per pass, and stop
  * when a pass promotes nothing.
  */
-const drain = (
-	sessionId: SessionSchema.ID,
-	inputs: SessionInput.Interface,
-	events: Event.Interface,
-) =>
+const drain = (sessionId: SessionSchema.ID, inputs: SessionInput.Interface, events: Event.Interface) =>
 	Effect.gen(function* () {
 		const passes: number[] = [];
 		let lane: "steer" | "followUp" | undefined = (yield* inputs.hasPending(sessionId, "steer"))
@@ -163,11 +159,9 @@ describe("Stage 1 + 2 flow", () => {
 			const entrySeqs = path.map((h) => h.entry.seq);
 			expect(entrySeqs.every((seq, i) => i === 0 || seq > entrySeqs[i - 1]!)).toBe(true);
 
-			// Text survived the Prompt -> aikit envelope -> part round trip.
-			expect(JSON.parse(path[0]!.parts[0]!.data)).toMatchObject({
-				type: "text",
-				text: some(byPromotion[0]!).prompt.text,
-			});
+			// The projector stores the canonical message; Context rehydrates it.
+			const first = yield* ContextCodec.decodeMessage(path[0]!);
+			expect(first.parts[0]).toMatchObject({ type: "text", text: some(byPromotion[0]!).prompt.text });
 
 			// The inbox is drained, so a further drain is a no-op.
 			expect(yield* inputs.hasPending(sessionId, "steer")).toBe(false);

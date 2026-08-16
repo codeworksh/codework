@@ -1,8 +1,11 @@
+import { Message } from "@codeworksh/aikit";
 import { Effect, Layer, Option, Schema } from "effect";
+import * as TestConsole from "effect/testing/TestConsole";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { tmpdir as osTmpdir } from "node:os";
 import { describe, expect } from "vite-plus/test";
 import { Control } from "../src/control.ts";
+import { HarnessContext } from "../src/context/context.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { SessionInputRow } from "../src/db/schema.sql.ts";
@@ -18,14 +21,15 @@ import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { Shell } from "../src/sandbox/shell/shell.ts";
 import { AbsolutePath } from "../src/schema.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
+import { SessionInput } from "../src/session/input/input.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { SessionProjector } from "../src/session/projector.ts";
 import { Session } from "../src/session/session.ts";
 import { testEffect } from "./utils/effect.ts";
 
 /**
- * The mock loop's work is a real shell command, so running this suite against
- * each backend is how the drain doubles as a SandboxIO exercise: same
+ * The loop retains a real shell command alongside the aikit call, so running
+ * this suite against each backend keeps the drain a SandboxIO exercise: same
  * assertions, different filesystem and shell underneath.
  *
  * Correctness runs use `intervalSeconds: 0` so a turn is only as slow as the
@@ -93,12 +97,35 @@ const localBackend = (): LoopBackend => ({
 
 const runtime = (backend: LoopBackend, options?: Loop.Options) => {
 	const database = Database.layer(":memory:");
+	let responseIndex = 0;
+	const complete: Loop.Completion = Effect.fnUntraced(function* (input) {
+		responseIndex += 1;
+		return Message.createAssistantMessage({
+			messageId: `assistant_${responseIndex}_${crypto.randomUUID()}`,
+			role: "assistant",
+			protocol: "openai",
+			provider: { id: input.provider, name: input.provider, source: "custom", env: [] },
+			model: input.model,
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "stop",
+			time: { created: responseIndex, completed: responseIndex },
+			parts: [{ type: "text", text: `response ${responseIndex}` }],
+		});
+	});
 	const infrastructure = Layer.provideMerge(
 		SandboxController.layer().pipe(Layer.provide(SandboxDriver.layer(...backend.drivers))),
 		database,
 	);
 	return Control.layer.pipe(
-		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer(options)))),
+		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ ...options, complete })))),
+		Layer.provideMerge(HarnessContext.layer),
 		Layer.provideMerge(SessionProjector.layer),
 		Layer.provideMerge(Session.layer),
 		Layer.provideMerge(Event.layer),
@@ -161,6 +188,22 @@ const enqueue = Effect.fnUntraced(function* (input: {
 	});
 });
 
+/** Admit durable inbox work without a process wake, for deterministic batch policy tests. */
+const admit = Effect.fnUntraced(function* (input: {
+	readonly id: string;
+	readonly sessionId: SessionSchema.ID;
+	readonly delivery: "steer" | "followUp";
+	readonly text?: string;
+}) {
+	const inputs = yield* SessionInput.make;
+	return yield* inputs.admit({
+		id: SessionMessageSchema.ID.make(input.id),
+		sessionId: input.sessionId,
+		prompt: { text: input.text ?? `${input.id} ${lorem}` },
+		delivery: input.delivery,
+	});
+});
+
 /** The drain spec every sandbox backend must satisfy. */
 const loopSpec = (name: string, backend: LoopBackend) => {
 	const options: Loop.Options = { intervalSeconds: 0, minLines: 2, maxLines: 7 };
@@ -173,8 +216,8 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 				const execution = yield* RunnerExecution.Service;
 				const sessionId = yield* seedSession(backend);
 
-				yield* enqueue({ id: "msg_a", sessionId, delivery: "followUp" });
-				yield* enqueue({ id: "msg_b", sessionId, delivery: "steer" });
+				yield* admit({ id: "msg_a", sessionId, delivery: "followUp" });
+				yield* admit({ id: "msg_b", sessionId, delivery: "steer" });
 
 				yield* execution.resume(sessionId);
 
@@ -185,6 +228,11 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 				const bySeq = [...rows].sort((x, y) => (x.promotedSeq ?? 0) - (y.promotedSeq ?? 0));
 				expect(bySeq.map((row) => row.id)).toEqual(["msg_b", "msg_a"]);
 				expect(rows.every((row) => row.promotedSeq !== null)).toBe(true);
+				// Only the promoted user entries exist: this slice has no assistant
+				// write path. The assistant interleaving is asserted by the LLM
+				// projector tests once `session.llm.ended` lands.
+				const sessions = yield* Session.Service;
+				expect((yield* sessions.path(sessionId)).map((item) => item.entry.type)).toEqual(["user", "user"]);
 			}),
 		);
 
@@ -234,16 +282,16 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 				const sessionId = yield* seedSession(backend);
 
 				// Admitted interleaved, so lane precedence — not arrival — decides.
-				yield* enqueue({ id: "msg_s1", sessionId, delivery: "steer" });
-				yield* enqueue({ id: "msg_f1", sessionId, delivery: "followUp" });
-				yield* enqueue({ id: "msg_s2", sessionId, delivery: "steer" });
-				yield* enqueue({ id: "msg_f2", sessionId, delivery: "followUp" });
-				yield* enqueue({ id: "msg_s3", sessionId, delivery: "steer" });
+				yield* admit({ id: "msg_s1", sessionId, delivery: "steer" });
+				yield* admit({ id: "msg_f1", sessionId, delivery: "followUp" });
+				yield* admit({ id: "msg_s2", sessionId, delivery: "steer" });
+				yield* admit({ id: "msg_f2", sessionId, delivery: "followUp" });
+				yield* admit({ id: "msg_s3", sessionId, delivery: "steer" });
 
 				yield* execution.resume(sessionId);
 
 				// Steers in admission order, then follow-ups in admission order.
-				const path = yield* sessions.path(sessionId);
+				const path = (yield* sessions.path(sessionId)).filter((item) => item.entry.type === "user");
 				expect(path.map((h) => h.entry.id)).toEqual(["msg_s1", "msg_s2", "msg_s3", "msg_f1", "msg_f2"]);
 
 				// Conversation order is delivery order: the entry positions ascend in
@@ -316,7 +364,7 @@ const loopSpec = (name: string, backend: LoopBackend) => {
 					yield* enqueue({
 						id: `msg_input-${index}`,
 						sessionId,
-							delivery: index % 2 === 0 ? "steer" : "followUp",
+						delivery: index % 2 === 0 ? "steer" : "followUp",
 						text,
 					});
 				}
@@ -341,6 +389,21 @@ describe("runner loop — interruption", () => {
 	// A turn slow enough to be caught mid-flight, on a real clock.
 	const { live: itSlow } = testEffect(runtime(backend, { intervalSeconds: 1, minLines: 30, maxLines: 30 }));
 
+	/**
+	 * Blocks until the turn is genuinely in flight: its input durably promoted and
+	 * its sandbox command started. `active` is no signal — it holds the key from
+	 * the instant the wake registers it, before the drain fiber has run a step.
+	 */
+	const turnInFlight = (sessionId: SessionSchema.ID) =>
+		Effect.gen(function* () {
+			while (
+				(yield* delivered(sessionId)).every((row) => row.promotedSeq === null) ||
+				!(yield* TestConsole.logLines).includes("loop: sandbox turn start")
+			) {
+				yield* Effect.sleep("10 millis");
+			}
+		}).pipe(Effect.timeout("10 seconds"), Effect.orDie);
+
 	itSlow(
 		"an interrupted turn leaves its prompt promoted and the session idle",
 		Effect.gen(function* () {
@@ -353,15 +416,7 @@ describe("runner loop — interruption", () => {
 			// drain — which is the coordinator working, not a turn being resumed.
 			yield* enqueue({ id: "msg_pending", sessionId, delivery: "steer" });
 
-			// Wait for the turn to actually be in flight. `active` is no signal here:
-			// it holds the key from the instant the wake registers it, which is
-			// before the drain fiber has run a single step. Promotion is the first
-			// durable thing a turn does, so it is what "the turn started" means.
-			yield* Effect.gen(function* () {
-				while ((yield* delivered(sessionId)).every((row) => row.promotedSeq === null)) {
-					yield* Effect.sleep("10 millis");
-				}
-			}).pipe(Effect.timeout("10 seconds"), Effect.orDie);
+			yield* turnInFlight(sessionId);
 
 			yield* execution.interrupt(sessionId);
 
@@ -372,6 +427,41 @@ describe("runner loop — interruption", () => {
 			const rows = yield* delivered(sessionId);
 			expect(rows.map((row) => row.id)).toEqual(["msg_pending"]);
 			expect(rows[0]!.promotedSeq).not.toBeNull();
+			// The injected aikit completion is synchronous in this suite, so the only
+			// interruptible work in flight is the mounted sandbox command. If that
+			// boundary is removed from Loop again, the assistant lands and this fails.
+			const sessions = yield* Session.Service;
+			expect((yield* sessions.path(sessionId)).map((item) => item.entry.type)).toEqual(["user"]);
+			expect(Array.from(yield* execution.active)).toEqual([]);
+		}),
+	);
+
+	itSlow(
+		"a prompt admitted mid-turn stays pending when that turn is interrupted",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const inputs = yield* SessionInput.make;
+			const sessionId = yield* seedSession(backend);
+			yield* enqueue({ id: "msg_first", sessionId, delivery: "steer" });
+			yield* turnInFlight(sessionId);
+
+			// Admitted after this drain captured its cutoff, so it belongs to the next
+			// turn. Its wake coalesces onto the active entry rather than starting one,
+			// and the interrupt below clears that pending wake.
+			yield* enqueue({ id: "msg_during", sessionId, delivery: "steer" });
+
+			yield* execution.interrupt(sessionId);
+
+			// The two halves of the rule: an interrupted turn keeps what it already
+			// promoted, and what arrived after stays in the inbox rather than being
+			// lost with the turn that never got to it.
+			const promoted = new Map((yield* delivered(sessionId)).map((row) => [row.id, row.promotedSeq]));
+			expect(promoted.get("msg_first")).not.toBeNull();
+			expect(promoted.get("msg_during")).toBeNull();
+			expect(yield* inputs.hasPending(sessionId, "steer")).toBe(true);
+
+			const sessions = yield* Session.Service;
+			expect((yield* sessions.path(sessionId)).map((item) => item.entry.id)).toEqual(["msg_first"]);
 			expect(Array.from(yield* execution.active)).toEqual([]);
 		}),
 	);

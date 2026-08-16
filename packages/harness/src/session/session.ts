@@ -49,12 +49,6 @@ export class ToolCallNotFoundError extends Schema.TaggedError<ToolCallNotFoundEr
 	callId: Schema.String,
 }) {}
 
-export class LeafConflictError extends Schema.TaggedError<LeafConflictError>()("LeafConflictError", {
-	sessionId: Schema.String,
-	expectedLeafEntryId: Schema.NullOr(Schema.String),
-	actualLeafEntryId: Schema.NullOr(Schema.String),
-}) {}
-
 // Structural rejection — the data-structure layer's "index out of bounds".
 export class InvalidEntryDataError extends Schema.TaggedError<InvalidEntryDataError>()("InvalidEntryDataError", {
 	entryId: Schema.String,
@@ -105,8 +99,6 @@ export interface AppendEntry {
 	 * not store event metadata, so if it is to survive at all it survives here.
 	 */
 	readonly metadata?: Readonly<Record<string, string>>;
-	/** Guard the first append of a run against a leaf changed after context assembly. */
-	readonly expectedLeafEntryId?: string | null;
 }
 
 export interface SettleToolCall {
@@ -152,10 +144,7 @@ export interface Interface {
 	readonly unsettled: (sessionId: SessionSchema.ID) => Effect.Effect<SessionEntryPartRow[]>;
 	readonly append: (
 		input: AppendEntry,
-	) => Effect.Effect<
-		SessionEntryRow,
-		SessionNotFoundError | EntryNotFoundError | LeafConflictError | InvalidEntryDataError
-	>;
+	) => Effect.Effect<SessionEntryRow, SessionNotFoundError | EntryNotFoundError | InvalidEntryDataError>;
 	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void, ToolCallNotFoundError>;
 	/** Copy root→fork-point into a new session (`parentId` = source). Clone = fork at leaf. */
 	readonly fork: (
@@ -408,7 +397,6 @@ export const layer = Layer.effect(
 			| { readonly _tag: "sessionNotFound" }
 			| { readonly _tag: "parentNotFound" }
 			| { readonly _tag: "invalidData"; readonly reason: string }
-			| { readonly _tag: "leafConflict"; readonly actualLeafEntryId: string | null }
 			| { readonly _tag: "inserted"; readonly entry: SessionEntryRow };
 
 		const append = Effect.fn("Session.append")(function* (input: AppendEntry) {
@@ -483,16 +471,6 @@ export const layer = Layer.effect(
 						const session = yield* findSession(input.sessionId);
 						if (Option.isNone(session)) return { _tag: "sessionNotFound" } as const;
 						const currentLeaf = yield* resolveLeaf(session.value);
-						// this might feel a bit redundant; but it's a way for the node
-						// to make sure it appends only on known leaf entry, making sure the
-						// assumption is correct.
-						// Otherwise the assumption is wrong and state has changed.
-						if (input.expectedLeafEntryId !== undefined) {
-							const actualLeafEntryId = Option.getOrNull(currentLeaf);
-							if (actualLeafEntryId !== input.expectedLeafEntryId) {
-								return { _tag: "leafConflict", actualLeafEntryId } as const;
-							}
-						}
 
 						// Append anchor: explicit branch target
 						// (validated same-session; the composite FK is the schema backstop),
@@ -597,12 +575,6 @@ export const layer = Layer.effect(
 						entryId: input.id,
 						type: input.type,
 						reason: result.reason,
-					});
-				case "leafConflict":
-					return yield* new LeafConflictError({
-						sessionId: input.sessionId,
-						expectedLeafEntryId: input.expectedLeafEntryId ?? null,
-						actualLeafEntryId: result.actualLeafEntryId,
 					});
 				case "inserted":
 					return result.entry;

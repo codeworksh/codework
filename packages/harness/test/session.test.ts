@@ -138,7 +138,7 @@ const countOf = (rows: ReadonlyArray<unknown>) => {
 	return Number(row?.count ?? 0);
 };
 
-const appendMessage = (sessionId: SessionSchema.ID, message: Message.Message, expectedLeafEntryId: string | null) => {
+const appendMessage = (sessionId: SessionSchema.ID, message: Message.Message) => {
 	const { parts, ...envelope } = message;
 	return {
 		id: message.messageId,
@@ -153,7 +153,6 @@ const appendMessage = (sessionId: SessionSchema.ID, message: Message.Message, ex
 			toolName: part.type === "toolCall" ? part.name : undefined,
 			data: JSON.stringify(part),
 		})),
-		expectedLeafEntryId,
 	} satisfies Session.AppendEntry;
 };
 
@@ -214,16 +213,13 @@ const liveConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 			"Reply with both codewords in the order I gave them, separated by a comma and nothing else.",
 		] as const;
 		const assistantMessages: Message.AssistantMessage[] = [];
-		let expectedLeafEntryId: string | null = null;
-
 		for (const prompt of prompts) {
 			const userMessage = Message.createUserMessage({
 				role: "user",
 				time: { created: Date.now() },
 				parts: [{ type: "text", text: prompt }],
 			});
-			yield* session.append(appendMessage(created.id, userMessage, expectedLeafEntryId));
-			expectedLeafEntryId = userMessage.messageId;
+			yield* session.append(appendMessage(created.id, userMessage));
 
 			// The provider receives context reconstructed from SQLite, not the
 			// in-memory messages accumulated by this test.
@@ -240,8 +236,7 @@ const liveConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 			expect(assistant.usage.input + assistant.usage.cacheRead).toBeGreaterThan(0);
 			expect(assistant.usage.output).toBeGreaterThan(0);
 
-			yield* session.append(appendMessage(created.id, assistant, expectedLeafEntryId));
-			expectedLeafEntryId = assistant.messageId;
+			yield* session.append(appendMessage(created.id, assistant));
 			assistantMessages.push(assistant);
 
 			// Aggregates must be correct after every assistant transaction, not only
@@ -296,7 +291,7 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 				},
 			],
 		});
-		yield* session.append(appendMessage(created.id, userMessage, null));
+		yield* session.append(appendMessage(created.id, userMessage));
 
 		const toolRequestContext: Message.Context = {
 			systemPrompt: "You are a concise assistant. Use the provided weather tool when asked.",
@@ -313,7 +308,7 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 		expect(toolCall.name).toBe(weatherTool.name);
 		expect(String(toolCall.arguments.location).toLowerCase()).toContain("testville");
 
-		yield* session.append(appendMessage(created.id, toolRequest, userMessage.messageId));
+		yield* session.append(appendMessage(created.id, toolRequest));
 		const pending = yield* session.unsettled(created.id);
 		expect(pending).toHaveLength(1);
 		expect(Option.getOrNull(pending[0]!.callId)).toBe(toolCall.callID);
@@ -364,7 +359,7 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 		const finalText = assistantText(finalAssistant).toLowerCase();
 		expect(finalText).toContain("72");
 		expect(finalText).toContain("sunny");
-		yield* session.append(appendMessage(created.id, finalAssistant, toolRequest.messageId));
+		yield* session.append(appendMessage(created.id, finalAssistant));
 
 		const path = yield* session.path(created.id);
 		expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant", "assistant"]);
@@ -611,33 +606,6 @@ describe("session", () => {
 			// same-session explicit parent works (sibling branch append)
 			const sibling = yield* session.append({ ...userEntry(b.id, "eb3", "good parent"), parentId: "eb1" });
 			expect(Option.getOrElse(sibling.parentId, () => "")).toBe("eb1");
-		}),
-	);
-
-	it.effect("append rejects a leaf changed after context assembly", () =>
-		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const created = yield* createSession("s-expected-leaf");
-			yield* session.append({ ...userEntry(created.id, "e1", "first"), expectedLeafEntryId: null });
-
-			const accepted = yield* session.append({
-				...assistantEntry(created.id, "e2"),
-				expectedLeafEntryId: "e1",
-			});
-			expect(accepted.id).toBe("e2");
-
-			const result = yield* session
-				.append({ ...userEntry(created.id, "e3", "stale"), expectedLeafEntryId: "e1" })
-				.pipe(Effect.flip);
-			expect(result._tag).toBe("LeafConflictError");
-			if (result._tag === "LeafConflictError") {
-				expect(result.expectedLeafEntryId).toBe("e1");
-				expect(result.actualLeafEntryId).toBe("e2");
-			}
-
-			expect(Option.isNone(yield* session.entry("e3"))).toBe(true);
-			const row = Option.getOrElse(yield* session.get(created.id), () => created);
-			expect(Option.getOrElse(row.leafEntryId, () => "")).toBe("e2");
 		}),
 	);
 

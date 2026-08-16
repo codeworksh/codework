@@ -1,12 +1,13 @@
-import { Effect, Layer, Option } from "effect";
+import { Message } from "@codeworksh/aikit";
+import { DateTime, Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
+import { ContextCodec } from "../src/context/codec.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
 import { SessionInput } from "../src/session/input/input.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
-import { SessionMessageUpdater } from "../src/session/message/updater.ts";
 import { SessionProjector } from "../src/session/projector.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
@@ -17,11 +18,7 @@ import { testEffect } from "./utils/effect.ts";
 // bug in the code under test, not a case to handle.
 const some = <A>(option: Option.Option<A>): A => Option.getOrThrow(option);
 
-
-const base = Session.layer.pipe(
-	Layer.provideMerge(Event.layer),
-	Layer.provideMerge(Database.layer(":memory:")),
-);
+const base = Session.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
 // Provided twice on purpose: a layer is built once per graph, so the projectors
 // register once. Registering them per consumer instead would make every
 // admission conflict with itself.
@@ -152,7 +149,8 @@ describe("SessionInput admission", () => {
 
 			expect((yield* sql`SELECT * FROM event`).length).toBe(1);
 			expect((yield* sql`SELECT * FROM session_input`).length).toBe(0);
-		}));
+		}),
+	);
 });
 
 describe("SessionInput promotion", () => {
@@ -376,7 +374,15 @@ describe("SessionInput projections", () => {
 					continue;
 				}
 				yield* input.projectPrompted({ ...shared, promotedSeq: seq });
-				yield* sessions.append(SessionMessageUpdater.fromPrompt({ ...shared, seq }));
+				const encoded = yield* ContextCodec.encodeMessage(
+					Message.createUserMessage({
+						messageId: shared.id,
+						role: "user",
+						time: { created: DateTime.toEpochMillis(shared.timeCreated) },
+						parts: [{ type: "text", text: shared.prompt.text }],
+					}),
+				);
+				yield* sessions.append({ id: shared.id, sessionId: shared.sessionId, seq, ...encoded });
 			}
 
 			const after = some(yield* input.find(admitted.id));

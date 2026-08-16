@@ -2,6 +2,7 @@ import { Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Control } from "../src/control.ts";
+import { ContextCodec } from "../src/context/codec.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
@@ -18,8 +19,6 @@ import { testEffect } from "./utils/effect.ts";
 // `Option` has no `.value` on the union — these tests treat a missing row as a
 // bug in the code under test, not a case to handle.
 const some = <A>(option: Option.Option<A>): A => Option.getOrThrow(option);
-
-
 
 const layer = Control.layer.pipe(
 	// Admission is the whole subject here, so there is nothing to drain and the
@@ -91,7 +90,7 @@ describe("Control.prompt", () => {
 
 	it("rejects reuse of one id with a different prompt", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
+			const { control, sessionId } = yield* setup;
 			yield* control.prompt({ sessionId, id: messageId, prompt: prompt(text) });
 
 			const failure = yield* control
@@ -105,7 +104,7 @@ describe("Control.prompt", () => {
 
 	it("rejects reuse of one id with a different delivery lane", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
+			const { control, sessionId } = yield* setup;
 			yield* control.prompt({ sessionId, id: messageId, prompt: prompt(text) });
 
 			const failure = yield* control
@@ -117,7 +116,7 @@ describe("Control.prompt", () => {
 
 	it("returns one record to concurrent exact retries", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
+			const { control, sessionId } = yield* setup;
 			const input = { sessionId, id: messageId, prompt: prompt(text) };
 
 			const both = yield* Effect.all([control.prompt(input), control.prompt(input)], {
@@ -167,19 +166,21 @@ describe("Control.prompt", () => {
 			const path = yield* sessions.path(sessionId);
 			expect(path.map((h) => h.entry.id)).toEqual([messageId]);
 			expect(path[0]!.entry.seq).toBe(promoted.promotedSeq);
-			expect(JSON.parse(path[0]!.parts[0]!.data)).toMatchObject({ type: "text", text: "Promote once" });
+			expect((yield* ContextCodec.decodeMessage(path[0]!)).parts[0]).toMatchObject({
+				type: "text",
+				text: "Promote once",
+			});
 		}));
 
 	it("reports the follow-up to whichever caller won it", () =>
 		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
+			const { control, sessionId } = yield* setup;
 			const inputs = yield* SessionInput.make;
 			yield* control.prompt({ sessionId, prompt: prompt("Later"), delivery: "followUp" });
 
-			const won = yield* Effect.all(
-				[inputs.promoteFollowUp(sessionId), inputs.promoteFollowUp(sessionId)],
-				{ concurrency: "unbounded" },
-			);
+			const won = yield* Effect.all([inputs.promoteFollowUp(sessionId), inputs.promoteFollowUp(sessionId)], {
+				concurrency: "unbounded",
+			});
 
 			expect(won.filter(Boolean).length).toBe(1);
 			expect(yield* eventCount("session.next.prompt.promoted.1")).toBe(1);

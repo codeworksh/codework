@@ -1,6 +1,6 @@
 // API that deals with event
 
-import { Effect, Context, Layer, Option, PubSub, Cause } from "effect";
+import { Effect, Context, Layer, Option, PubSub, Cause, Stream } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { EventRow } from "../db/schema.sql.ts";
 // Uncomment with `decodeSerializedEvent` below — the manifest is what it looks
@@ -103,6 +103,23 @@ export interface Interface {
    */
   readonly project: <D extends Definition>(definition: D, projector: Subscriber<D>) => Effect.Effect<void>;
   /**
+   * Live stream of one event type.
+   *
+   * This is the only way to read a non-durable definition -- stream deltas and
+   * block boundaries. They never reach a projector: projectors run inside the
+   * commit, and a live event has no commit, so registering one for a live type
+   * compiles and silently never fires.
+   */
+  readonly subscribe: <D extends Definition>(definition: D) => Stream.Stream<Payload<D>>;
+  /** Every event, durable and live alike, in publish order. */
+  readonly all: () => Stream.Stream<Payload>;
+  /**
+   * Callback form of {@link all}, returning its own removal. A listener runs
+   * after the commit for a durable event, and its failures are logged rather
+   * than surfaced -- the event already happened, so a watcher cannot undo it.
+   */
+  readonly listen: (listener: Subscriber) => Effect.Effect<Unsubscribe>;
+  /**
    * Moves an aggregate's head to at least `seq`, so the next published event
    * lands above it. Two callers need this: a fork, reserving [0..seq] for
    * copied entries, and any write that takes a position without going through
@@ -133,6 +150,20 @@ export const layer = Layer.effect(
       };
       const projectors = new Map<string, Subscriber[]>()
       const listeners = new Array<Subscriber>()
+
+      // Subscribers block on their pubsub, so releasing the layer without
+      // shutting them down strands whoever is reading a stream from it.
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          yield* PubSub.shutdown(pubsub.all)
+          yield* Effect.forEach(pubsub.typed.values(), PubSub.shutdown, { discard: true })
+          yield* Effect.forEach(
+            pubsub.durable.values(),
+            (wakes) => Effect.forEach(wakes, PubSub.shutdown, { discard: true }),
+            { discard: true },
+          )
+        }),
+      )
 
 
       const observe = (event: Payload, observer: (event: Payload) => Effect.Effect<void>) =>
@@ -365,10 +396,40 @@ export const layer = Layer.effect(
         projectors.set(definition.type, list);
       });
 
+    // One pubsub per type, created on first subscribe. A type nobody watches
+    // costs nothing, and `notify` skips it.
+    const getOrCreate = (definition: Definition) =>
+      Effect.gen(function* () {
+        const existing = pubsub.typed.get(definition.type);
+        if (existing) return existing;
+        const created = yield* PubSub.unbounded<Payload>();
+        pubsub.typed.set(definition.type, created);
+        return created;
+      });
+
+    const subscribe = <D extends Definition>(definition: D): Stream.Stream<Payload<D>> =>
+      Stream.unwrap(getOrCreate(definition).pipe(Effect.map((created) => Stream.fromPubSub(created)))).pipe(
+        Stream.map((event) => event as Payload<D>),
+      );
+
+    const streamAll = (): Stream.Stream<Payload> => Stream.fromPubSub(pubsub.all);
+
+    const listen = (listener: Subscriber): Effect.Effect<Unsubscribe> =>
+      Effect.sync(() => {
+        listeners.push(listener);
+        return Effect.sync(() => {
+          const index = listeners.indexOf(listener);
+          if (index >= 0) listeners.splice(index, 1);
+        });
+      });
+
     return Service.of({
       latestSequence,
       readAggregate,
       publish,
+      subscribe,
+      all: streamAll,
+      listen,
       project,
       advance,
     });
