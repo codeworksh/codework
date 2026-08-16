@@ -74,6 +74,9 @@ const decodeFailure = (entry: Session.HydratedEntry) => (error: { readonly messa
 		reason: error.message,
 	});
 
+// TODO(sanchitrk):
+// comeback to this when we've decided on compaction, branch summary, etc.
+
 const compactionText = (summary: string) =>
 	`The conversation history before this point was compacted into the following summary:\n\n<summary>\n${summary}\n</summary>`;
 
@@ -88,6 +91,12 @@ const wrapperMessage = (entry: Session.HydratedEntry, text: string): Message.Use
 		parts: [{ type: "text", text }],
 	});
 
+// assembles entries which builds the LLM context.
+// a entry is hybrid data type; with entry types not relevant to the LLMs
+// yet stored into the timeline.
+//
+// Note(sanchitrk):
+// we could simplify; remove unnecessay cases. comeback to this when in use.
 export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 	sessionId: string,
 	path: ReadonlyArray<Session.HydratedEntry>,

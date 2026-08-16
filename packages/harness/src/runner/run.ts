@@ -19,15 +19,6 @@ export class ProviderTurnError extends Schema.TaggedError<ProviderTurnError>()("
 	cause: Schema.Defect(),
 }) {}
 
-/**
- * The provider stream broke its own protocol: two terminal events, an event
- * after the terminal, a message id that changed mid-response, or a stream that
- * ended without terminating at all.
- *
- * Typed rather than a defect because it is a provider fault, not a broken
- * invariant of ours -- the turn fails, the session stays usable, and the
- * promoted prompt is still there to be answered by the next one.
- */
 export class LLMStreamError extends Schema.TaggedError<LLMStreamError>()("Runner.LLMStreamError", {
 	sessionId: Schema.String,
 	reason: Schema.String,

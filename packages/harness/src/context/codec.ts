@@ -1,3 +1,7 @@
+/*
+ * @file Codec provides the wire codec schema b/w harness <-> aikit
+ * Use helper functions to encode-decode payload over the wire.
+ * */
 import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Option, Schema } from "effect";
 import { validateAikitMessage, validateAikitUserMessage } from "../schema.ts";
