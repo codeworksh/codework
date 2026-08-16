@@ -1,27 +1,22 @@
 import "./utils/env.ts";
 
-import { Message } from "@codeworksh/aikit";
-import type { Model } from "@codeworksh/aikit";
-import type { Protocol } from "@codeworksh/aikit";
-import { llm, stream, Type, validateSchema } from "@codeworksh/aikit";
+import type { Model, Protocol } from "@codeworksh/aikit";
+import { llm, Message, stream, Type } from "@codeworksh/aikit";
 import { Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
 import { beforeEach, describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
-import { AbsolutePath } from "../src/schema.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { Session } from "../src/session/session.ts";
+import { AbsolutePath, validateAikitMessage } from "../src/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
+import { Session } from "../src/session/session.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { testEffect } from "./utils/effect.ts";
 
 // Fresh in-memory database per test: the layer is rebuilt for every it.effect.
-const layer = Session.layer.pipe(
-	Layer.provideMerge(Event.layer),
-	Layer.provideMerge(Database.layer(":memory:")),
-);
+const layer = Session.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
 const it = testEffect(layer);
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
 const openaiKey = process.env.OPENAI_API_KEY;
@@ -161,7 +156,7 @@ const messageFromEntry = (hydrated: Session.HydratedEntry): Message.Message => {
 		...(JSON.parse(hydrated.entry.data) as Record<string, unknown>),
 		parts: hydrated.parts.map((part) => JSON.parse(part.data) as unknown),
 	};
-	return validateSchema(Message.MessageSchema, message, `session entry ${hydrated.entry.id}`);
+	return validateAikitMessage(message, `session entry ${hydrated.entry.id}`);
 };
 
 const assistantText = (message: Message.AssistantMessage) =>
@@ -704,7 +699,13 @@ describe("session", () => {
 			const invalidEntries: ReadonlyArray<Session.AppendEntry> = [
 				{ id: "bad-json", sessionId: created.id, seq: nextSeq(created.id), type: "user", data: "not json" },
 				{ id: "bad-array", sessionId: created.id, seq: nextSeq(created.id), type: "user", data: "[]" },
-				{ id: "missing-id", sessionId: created.id, seq: nextSeq(created.id), type: "synthetic", data: JSON.stringify({ customType: "x" }) },
+				{
+					id: "missing-id",
+					sessionId: created.id,
+					seq: nextSeq(created.id),
+					type: "synthetic",
+					data: JSON.stringify({ customType: "x" }),
+				},
 				{
 					...assistantEntry(created.id, "mismatched-id"),
 					data: JSON.stringify({

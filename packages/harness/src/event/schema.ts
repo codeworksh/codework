@@ -1,8 +1,12 @@
-import { Message, validateSchema } from "@codeworksh/aikit";
+import { Message } from "@codeworksh/aikit";
 import { Effect, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effect";
-import Value from "typebox/value";
 import { uuidv7 } from "uuidv7";
-import { optional, withStatics } from "../schema.ts";
+import {
+	isAikitAssistantMessage,
+	optional,
+	validateAikitAssistantMessage,
+	withStatics,
+} from "../schema.ts";
 
 type AikitAssistantPart = Message.AssistantMessage["parts"][number];
 
@@ -28,19 +32,15 @@ const canonicalizeAikitAssistantMessage = (message: Message.AssistantMessage): M
 
 const reasonOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
-const validateAikitAssistantMessage = (value: unknown, options: SchemaAST.ParseOptions) =>
+const decodeAikitAssistantMessage = (value: unknown, options: SchemaAST.ParseOptions) =>
 	Effect.try({
-		try: () =>
-			canonicalizeAikitAssistantMessage(
-				validateSchema(Message.AssistantMessageSchema, value, "aikit assistant message"),
-			),
+		try: () => canonicalizeAikitAssistantMessage(validateAikitAssistantMessage(value, "aikit assistant message")),
 		catch: (cause) => new SchemaIssue.InvalidValue({ message: reasonOf(cause) }, value, options),
 	});
 
-const aikitAssistantMessageDeclared = Schema.declare<Message.AssistantMessage>(
-	(value): value is Message.AssistantMessage => Value.Check(Message.AssistantMessageSchema, value),
-	{ expected: "aikit AssistantMessage" },
-);
+const aikitAssistantMessageDeclared = Schema.declare<Message.AssistantMessage>(isAikitAssistantMessage, {
+	expected: "aikit AssistantMessage",
+});
 
 /**
  * Effect Schema adapter for aikit's TypeBox assistant message. Durable LLM
@@ -48,8 +48,8 @@ const aikitAssistantMessageDeclared = Schema.declare<Message.AssistantMessage>(
  */
 export const AikitAssistantMessage = Schema.Unknown.pipe(
 	Schema.decodeTo(aikitAssistantMessageDeclared, {
-		decode: SchemaGetter.transformOrFail(validateAikitAssistantMessage),
-		encode: SchemaGetter.transformOrFail(validateAikitAssistantMessage),
+		decode: SchemaGetter.transformOrFail(decodeAikitAssistantMessage),
+		encode: SchemaGetter.transformOrFail(decodeAikitAssistantMessage),
 	}),
 );
 export type AikitAssistantMessage = typeof AikitAssistantMessage.Type;

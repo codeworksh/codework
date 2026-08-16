@@ -117,6 +117,18 @@ describe("context codec", () => {
 			expect((yield* sessions.path(created.id)).at(-1)?.entry.id).toBe(original.messageId);
 		}));
 
+	it("rejects invalid primitives instead of coercing message data", () =>
+		Effect.gen(function* () {
+			const invalid = {
+				...assistant("a_invalid", "provider-a", "model-a"),
+				time: { created: "20", completed: 30 },
+			} as unknown as Message.AssistantMessage;
+
+			const failure = yield* ContextCodec.encodeMessage(invalid).pipe(Effect.flip);
+			expect(failure._tag).toBe("ContextEncodeError");
+			expect(failure.reason).toContain("time/created");
+		}));
+
 	it("rejects sparse indexes and mismatched promoted tool columns", () =>
 		Effect.gen(function* () {
 			const { appendMessage, sessions, sql } = yield* setup;

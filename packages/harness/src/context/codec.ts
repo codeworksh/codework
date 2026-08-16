@@ -1,5 +1,6 @@
-import { Message, validateSchema } from "@codeworksh/aikit";
+import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Option, Schema } from "effect";
+import { validateAikitMessage, validateAikitUserMessage } from "../schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 import type { Session } from "../session/session.ts";
 import { ContextDecodeError, ContextEncodeError } from "./errors.ts";
@@ -32,7 +33,7 @@ const validateDecoded = (
 	type: string,
 ): Effect.Effect<Message.Message, ContextDecodeError> =>
 	Effect.try({
-		try: () => validateSchema(Message.MessageSchema, value, `context entry ${entryId}`),
+		try: () => validateAikitMessage(value, `context entry ${entryId}`),
 		catch: (cause) => new ContextDecodeError({ entryId, type, reason: reasonOf(cause) }),
 	});
 
@@ -42,7 +43,7 @@ export const validateUserMessage = (
 	type: string,
 ): Effect.Effect<Message.UserMessage, ContextDecodeError> =>
 	Effect.try({
-		try: () => validateSchema(Message.UserMessageSchema, value, `context entry ${entryId}`),
+		try: () => validateAikitUserMessage(value, `context entry ${entryId}`),
 		catch: (cause) => new ContextDecodeError({ entryId, type, reason: reasonOf(cause) }),
 	});
 
@@ -50,7 +51,7 @@ export const encodeMessage = Effect.fn("Context.encodeMessage")(function* (
 	message: Message.Message,
 ): Effect.fn.Return<EncodedMessage, ContextEncodeError> {
 	const validated = yield* Effect.try({
-		try: () => validateSchema(Message.MessageSchema, message, `context message ${message.messageId}`),
+		try: () => validateAikitMessage(message, `context message ${message.messageId}`),
 		catch: (cause) =>
 			new ContextEncodeError({
 				messageId: message.messageId,

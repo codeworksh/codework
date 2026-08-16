@@ -106,6 +106,14 @@ describe("EventSchema.AikitAssistantMessage", () => {
 		expect(Result.isFailure(decodeResult(null))).toBe(true);
 	});
 
+	it("rejects invalid primitives instead of coercing durable event data", () => {
+		const result = decodeResult({
+			...message([]),
+			time: { created: "10", completed: 20 },
+		});
+		expect(Result.isFailure(result)).toBe(true);
+	});
+
 	it("is usable as an EventSchema.define field", () => {
 		const LLMEnded = EventSchema.define({
 			type: "test.llm.ended",

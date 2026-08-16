@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import { Model } from "effect/unstable/schema";
 import { EventSchema } from "../event/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
-import { AbsolutePath } from "../schema.ts";
+import { AbsolutePath, NonNegativeInt } from "../schema.ts";
 import { Prompt } from "../session/prompt/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 
@@ -44,7 +44,6 @@ export type PartType = (typeof partTypes)[number];
 export const toolStatuses = ["pending", "running", "completed", "error", "skipped", "aborted"] as const;
 export type ToolStatus = (typeof toolStatuses)[number];
 
-// A input is durable queued I/O, pending claim
 export const inputDeliveries = ["steer", "followUp"] as const;
 export type InputDelivery = (typeof inputDeliveries)[number];
 
@@ -160,7 +159,7 @@ export class SessionEntryRow extends Model.Class<SessionEntryRow>("SessionEntryR
 	// produced this entry. Sparse — events that append nothing (a prompt
 	// admission, say) leave gaps. Forked entries carry their source positions,
 	// which is why the fork seeds the new aggregate above them.
-	seq: Schema.Int,
+	seq: NonNegativeInt,
 	type: Schema.Literals(entryTypes),
 	data: Schema.String, // JSON: full payload, or message envelope
 	label: Model.FieldOption(Schema.String), // annotation: bookmark text

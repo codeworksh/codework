@@ -84,7 +84,7 @@ describe("runner LLM — OpenAI live", () => {
 			const durable = yield* sql`SELECT type FROM event ORDER BY seq`;
 			expect(durable.map((row) => row.type)).toEqual(["session.llm.ended.1"]);
 		}),
-		{ timeout: 90_000 },
+		{ timeout: 180_000 },
 	);
 
 	openaiLiveIt(
@@ -129,6 +129,6 @@ describe("runner LLM — OpenAI live", () => {
 			).toBe(true);
 			expect(["thinking", "text"]).toContain(interruptedPart);
 		}),
-		{ timeout: 90_000 },
+		{ timeout: 180_000 },
 	);
 });
