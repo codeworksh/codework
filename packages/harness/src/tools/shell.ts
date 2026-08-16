@@ -26,7 +26,7 @@ export class ToolShellError extends Schema.TaggedError<ToolShellError>()("ToolSh
 /** The command exceeded its deadline. Distinct so handlers can map it to a domain timeout. */
 export class ToolShellTimeout extends Schema.TaggedError<ToolShellTimeout>()("ToolShellTimeout", {
 	command: Schema.String,
-	timeoutMillis: Schema.Number,
+	timeoutMillis: Schema.Finite,
 }) {}
 
 export interface ToolShellResult {

@@ -17,10 +17,7 @@ import { testEffect } from "./utils/effect.ts";
  * reaches `session_entry`. No loop, no publisher, no provider — the whole point
  * of splitting the phases is that this side is provable without them.
  */
-const layer = SessionLive.layer.pipe(
-	Layer.provideMerge(Event.layer),
-	Layer.provideMerge(Database.layer(":memory:")),
-);
+const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
 const { effect: it } = testEffect(layer);
 
 const setup = Effect.gen(function* () {

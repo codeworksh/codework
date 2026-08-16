@@ -164,5 +164,6 @@ describe("append keeps the aggregate head in sync", () => {
 			const path = yield* sessions.path(source.id);
 			expect(path.map((h) => h.entry.id)).toEqual(["msg_direct", admitted.id]);
 			expect(path[1]!.entry.seq).toBeGreaterThan(path[0]!.entry.seq);
-		}));
+		}),
+	);
 });

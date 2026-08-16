@@ -32,7 +32,7 @@ export const layer = Layer.effect(
 		const fs = yield* PlatformFileSystem.FileSystem;
 
 		const exists = Effect.fn("FSUtil.exists")(function* (path: string) {
-			return yield* fs.exists(path).pipe(Effect.catch(() => Effect.succeed(false)));
+			return yield* fs.exists(path).pipe(Effect.orElseSucceed(() => false));
 		});
 
 		const readFileString = Effect.fn("FSUtil.readFileString")(function* (path: string, encoding = "utf8") {
@@ -55,7 +55,7 @@ export const layer = Layer.effect(
 		const isDir = Effect.fn("FSUtil.isDir")(function* (path: string) {
 			return yield* fs.stat(path).pipe(
 				Effect.map((stat) => stat.type === "Directory"),
-				Effect.catch(() => Effect.succeed(false)),
+				Effect.orElseSucceed(() => false),
 			);
 		});
 

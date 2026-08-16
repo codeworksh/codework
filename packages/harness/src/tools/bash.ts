@@ -46,18 +46,18 @@ const outputFields = {
 	fullOutputPath: Schema.optional(Schema.String),
 };
 
-const BashSuccess = Schema.Struct({ ...outputFields, exitCode: Schema.Number });
+const BashSuccess = Schema.Struct({ ...outputFields, exitCode: Schema.Finite });
 
 /** Non-zero exit — expected, model-visible. Carries the same shape as success. */
 class BashFailed extends Schema.TaggedError<BashFailed>()("BashFailed", {
 	...outputFields,
-	exitCode: Schema.Number,
+	exitCode: Schema.Finite,
 }) {}
 
 /** Deadline exceeded — expected, model-visible. Carries the partial output produced so far. */
 class BashTimedOut extends Schema.TaggedError<BashTimedOut>()("BashTimedOut", {
 	...outputFields,
-	timeoutSeconds: Schema.Number,
+	timeoutSeconds: Schema.Finite,
 }) {}
 
 const BashFailure = Schema.Union([BashFailed, BashTimedOut]);
@@ -110,10 +110,9 @@ const footer = (t: TruncationResult, fullOutputPath: string | undefined, lastLin
 
 /** Write full output to a host temp file (best-effort; undefined on failure). */
 const spillToTempFile = (content: string): Effect.Effect<string | undefined> =>
-	Effect.tryPromise(async () => {
+	Effect.tryPromise(() => {
 		const path = join(tmpdir(), `codework-bash-${randomBytes(6).toString("hex")}.log`);
-		await writeFile(path, content, "utf-8");
-		return path;
+		return writeFile(path, content, "utf-8").then(() => path);
 	}).pipe(Effect.orElseSucceed(() => undefined));
 
 /** Variant A: truncate the buffered output once, spilling the full output if truncated. */
@@ -151,12 +150,13 @@ const runBuffered = (
 				// A deadline becomes a model-visible BashTimedOut (no partial output is
 				// available from a buffered exec); an infra/spawn failure is not
 				// model-actionable, so it becomes a defect (run error).
-				Effect.catchTag("ToolShellTimeout", (timeout) =>
-					Effect.fail(
-						new BashTimedOut({ timeoutSeconds: timeout.timeoutMillis / 1000, output: "", truncated: false }),
-					),
-				),
-				Effect.catchTag("ToolShellError", (cause) => Effect.die(cause)),
+				Effect.catchTags({
+					ToolShellTimeout: (timeout) =>
+						Effect.fail(
+							new BashTimedOut({ timeoutSeconds: timeout.timeoutMillis / 1000, output: "", truncated: false }),
+						),
+					ToolShellError: (cause) => Effect.die(cause),
+				}),
 			);
 
 		const present = yield* presentBuffered(combineOutput(result.stdout, result.stderr));

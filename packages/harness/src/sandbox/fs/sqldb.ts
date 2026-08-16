@@ -1,3 +1,4 @@
+/* oxlint-disable effecttsgo/async-function -- VFS operations implement a Promise-based adapter contract. */
 import { create, SqliteProvider } from "@platformatic/vfs";
 import { Effect, Layer, Schema } from "effect";
 import { Process } from "../utils/process.ts";

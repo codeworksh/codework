@@ -1,3 +1,4 @@
+/* oxlint-disable effecttsgo/process-env -- This module is the process configuration boundary for the database. */
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
 import { Effect, Layer, String as Str } from "effect";
 import { Migrator, SqlClient } from "effect/unstable/sql";

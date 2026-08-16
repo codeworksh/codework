@@ -27,8 +27,7 @@ const validateAikitSchema = <T extends TSchema>(schema: T, value: unknown, label
 	if (validator.Check(value)) return value;
 
 	const [, issues] = validator.Errors(value);
-	const details =
-		issues.map((issue) => ` - ${aikitErrorPath(issue)}: ${issue.message}`).join("\n") || "Unknown error";
+	const details = issues.map((issue) => ` - ${aikitErrorPath(issue)}: ${issue.message}`).join("\n") || "Unknown error";
 	throw new Error(`Validation Failed For ${label}\n${details}`);
 };
 
@@ -101,7 +100,6 @@ export const optional = <S extends Schema.Top>(schema: S) =>
  * `readonly [string, Options]`); the general array branch would otherwise
  * widen them to unbounded arrays.
  */
-// eslint-disable-next-line @typescript-eslint/ban-types
 export type DeepMutable<T> = T extends string | number | boolean | bigint | symbol | Function
 	? T
 	: T extends readonly [unknown, ...unknown[]]
@@ -167,10 +165,9 @@ export function Newtype<Self>() {
 	};
 }
 
-
 export const DateTimeUtcFromMillis = Schema.Finite.pipe(
 	Schema.decodeTo(Schema.DateTimeUtc, {
-	  decode: SchemaGetter.transform((value) => DateTime.makeUnsafe(value)),
-	  encode: SchemaGetter.transform((value) => DateTime.toEpochMillis(value)),
+		decode: SchemaGetter.transform((value) => DateTime.makeUnsafe(value)),
+		encode: SchemaGetter.transform((value) => DateTime.toEpochMillis(value)),
 	}),
-  )
+);

@@ -8,7 +8,7 @@ import { AbsolutePath } from "../schema.ts";
 // TODO: shouldn't it be called GitError or something
 export class AppProcessError extends Schema.TaggedError<AppProcessError>()("AppProcessError", {
 	command: Schema.String,
-	exitCode: Schema.optional(Schema.Number),
+	exitCode: Schema.optional(Schema.Finite),
 	stderr: Schema.optional(Schema.String),
 	cause: Schema.optional(Schema.Defect()),
 }) {}
@@ -104,7 +104,7 @@ export const layer = Layer.effect(
 				);
 
 		const run = (cwd: string) => (args: string[]) =>
-			execute(cwd)(args).pipe(Effect.catch(() => Effect.succeed({ exitCode: 1, text: "", stderr: "" })));
+			execute(cwd)(args).pipe(Effect.orElseSucceed(() => ({ exitCode: 1, text: "", stderr: "" })));
 
 		const find = Effect.fn("Git.find")(function* (input: AbsolutePath) {
 			const dotgit = yield* SandboxFs.up(fs, { targets: [".git"], start: input }).pipe(

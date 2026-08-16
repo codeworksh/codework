@@ -12,10 +12,10 @@ export interface ClientOptions {
 }
 
 export const ResourcesConfig = Schema.Struct({
-	cpu: Schema.optional(Schema.Number),
-	gpu: Schema.optional(Schema.Number),
-	memory: Schema.optional(Schema.Number),
-	disk: Schema.optional(Schema.Number),
+	cpu: Schema.optional(Schema.Finite),
+	gpu: Schema.optional(Schema.Finite),
+	memory: Schema.optional(Schema.Finite),
+	disk: Schema.optional(Schema.Finite),
 });
 export type ResourcesConfig = typeof ResourcesConfig.Type;
 
@@ -27,15 +27,15 @@ export const CreateConfig = Schema.Struct({
 	resources: Schema.optional(ResourcesConfig),
 	user: Schema.optional(Schema.String),
 	cwd: Schema.optional(Schema.String),
-	autoStopInterval: Schema.optional(Schema.Number),
-	execTimeout: Schema.optional(Schema.Number),
+	autoStopInterval: Schema.optional(Schema.Finite),
+	execTimeout: Schema.optional(Schema.Finite),
 });
 export type CreateConfig = typeof CreateConfig.Type;
 
 export const RuntimeConfig = Schema.Struct({
 	defaultCwd: SandboxDriver.AbsolutePath,
 	user: Schema.optional(Schema.String),
-	execTimeout: Schema.optional(Schema.Number),
+	execTimeout: Schema.optional(Schema.Finite),
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 

@@ -1,12 +1,7 @@
 import { Message } from "@codeworksh/aikit";
 import { Effect, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effect";
 import { uuidv7 } from "uuidv7";
-import {
-	isAikitAssistantMessage,
-	optional,
-	validateAikitAssistantMessage,
-	withStatics,
-} from "../schema.ts";
+import { isAikitAssistantMessage, optional, validateAikitAssistantMessage, withStatics } from "../schema.ts";
 
 type AikitAssistantPart = Message.AssistantMessage["parts"][number];
 

@@ -1,3 +1,4 @@
+/* oxlint-disable effecttsgo/async-function -- Vercel's sandbox SDK boundary is Promise-based. */
 import { type Command, Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";

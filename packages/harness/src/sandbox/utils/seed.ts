@@ -1,3 +1,4 @@
+/* oxlint-disable effecttsgo/async-function -- Seeding bridges native files and the Promise-based VFS contract. */
 import type { create } from "@platformatic/vfs";
 import fs from "node:fs/promises";
 import path from "node:path";

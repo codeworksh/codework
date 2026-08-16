@@ -1,3 +1,4 @@
+/* oxlint-disable effecttsgo/async-function -- VFS operations implement a Promise-based adapter contract. */
 import type { VirtualFileSystem, VirtualStats } from "@platformatic/vfs";
 import { Context, Effect, Layer } from "effect";
 import { Buffer } from "node:buffer";

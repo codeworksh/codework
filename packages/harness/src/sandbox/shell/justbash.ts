@@ -1,3 +1,4 @@
+/* oxlint-disable effecttsgo/async-function -- just-bash exposes a Promise-based shell adapter contract. */
 import { RealFSProvider, type VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
 import { Bash, type IFileSystem } from "just-bash";

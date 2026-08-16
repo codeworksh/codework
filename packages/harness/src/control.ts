@@ -53,9 +53,7 @@ export interface Interface {
 	 * two the inbox is the only durable record, which is what makes a crash in
 	 * that window recoverable rather than a user message nothing ever answered.
 	 */
-	readonly prompt: (
-		input: PromptInput,
-	) => Effect.Effect<Admitted, Session.SessionNotFoundError | PromptConflictError>;
+	readonly prompt: (input: PromptInput) => Effect.Effect<Admitted, Session.SessionNotFoundError | PromptConflictError>;
 	/** Starts a drain while the session is idle, or joins the one already running. */
 	readonly resume: (
 		sessionId: SessionSchema.ID,

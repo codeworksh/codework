@@ -126,7 +126,7 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	leafEntryId: Model.FieldOption(Schema.String),
 	// Session-lifetime billed usage, mirroring aikit Usage. Bumped in the
 	// assistant-append transaction; a cache — assistant envelopes are truth.
-	cost: Model.GeneratedByDb(Schema.Number),
+	cost: Model.GeneratedByDb(Schema.Finite),
 	tokensInput: Model.GeneratedByDb(Schema.Int),
 	tokensOutput: Model.GeneratedByDb(Schema.Int),
 	tokensCacheRead: Model.GeneratedByDb(Schema.Int),

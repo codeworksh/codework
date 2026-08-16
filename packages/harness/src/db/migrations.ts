@@ -12,7 +12,7 @@ import { SqlClient } from "effect/unstable/sql";
 export const migrations = {
 	"202607070001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
-		
+
 		// Tracks head of the inbox event sequence for a given aggregate.
 		yield* sql`
 			CREATE TABLE event_sequence (

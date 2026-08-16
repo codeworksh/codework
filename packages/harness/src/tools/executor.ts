@@ -221,7 +221,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Executor => {
 			}
 			const def = impl.definition;
 
-			const decoded = yield* Effect.result(Schema.decodeUnknownEffect(asCodec(def.parameters))(call.arguments));
+			const decoded = yield* Effect.result(Schema.decodeEffect(asCodec(def.parameters))(call.arguments));
 			if (Result.isFailure(decoded)) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 				return errored(call, [text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)], now, {

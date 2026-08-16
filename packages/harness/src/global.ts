@@ -1,3 +1,4 @@
+/* oxlint-disable effecttsgo/process-env -- This module resolves process-level Harness directories. */
 import { Context, Effect, Layer } from "effect";
 import fs from "node:fs/promises";
 import * as os from "node:os";

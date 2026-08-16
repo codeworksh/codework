@@ -1,3 +1,4 @@
+/* oxlint-disable effecttsgo/async-function -- Daytona's SDK boundary is Promise-based. */
 import {
 	type CodeLanguage,
 	Daytona,

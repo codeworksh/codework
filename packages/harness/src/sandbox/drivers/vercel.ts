@@ -16,7 +16,7 @@ export const Source = Schema.Union([
 		type: Schema.Literal("git"),
 		url: Schema.String,
 		revision: Schema.optional(Schema.String),
-		depth: Schema.optional(Schema.Number),
+		depth: Schema.optional(Schema.Finite),
 	}),
 	Schema.Struct({
 		type: Schema.Literal("tarball"),
@@ -29,17 +29,17 @@ export const CreateConfig = Schema.Struct({
 	snapshot: Schema.optional(Schema.String),
 	source: Schema.optional(Source),
 	runtime: Schema.optional(Schema.String),
-	ports: Schema.optional(Schema.Array(Schema.Number)),
+	ports: Schema.optional(Schema.Array(Schema.Finite)),
 	envVars: Schema.optional(Schema.Record(Schema.String, Schema.String)),
-	vcpus: Schema.optional(Schema.Number),
-	timeout: Schema.optional(Schema.Number),
-	execTimeout: Schema.optional(Schema.Number),
+	vcpus: Schema.optional(Schema.Finite),
+	timeout: Schema.optional(Schema.Finite),
+	execTimeout: Schema.optional(Schema.Finite),
 });
 export type CreateConfig = typeof CreateConfig.Type;
 
 export const RuntimeConfig = Schema.Struct({
 	defaultCwd: SandboxDriver.AbsolutePath,
-	execTimeout: Schema.optional(Schema.Number),
+	execTimeout: Schema.optional(Schema.Finite),
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 

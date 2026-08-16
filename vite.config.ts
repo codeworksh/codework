@@ -18,6 +18,16 @@ const aliases = {
 	"@codeworksh/utils": fileURLToPath(new URL("./packages/utils/src/index.ts", import.meta.url)),
 };
 
+const harnessRules = {
+	...recommended.rules,
+	// Harness has explicit Node host/provider boundaries; the package's Effect
+	// language-service policy permits these imports for the same reason.
+	"effecttsgo/node-builtin-import": "off",
+	// These APIs intentionally return fresh streams/layers or perform setup when
+	// called. Treating every zero-argument constructor as redundant is incorrect.
+	"effecttsgo/lazy-effect": "off",
+} as const;
+
 export default defineConfig({
 	resolve: {
 		alias: aliases,
@@ -34,7 +44,7 @@ export default defineConfig({
 			{
 				files: ["packages/harness/src/**/*.ts"],
 				...(recommended.plugins && { plugins: recommended.plugins }),
-				...(recommended.rules && { rules: recommended.rules }),
+				rules: harnessRules,
 			},
 		],
 		ignorePatterns: ignoredPaths,
