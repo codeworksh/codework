@@ -1,10 +1,9 @@
 import type { Message } from "@codeworksh/aikit";
 import { Result, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { ContextSchema } from "../src/context/schema.ts";
 import { EventSchema } from "../src/event/schema.ts";
 
-const codec = ContextSchema.AssistantMessage;
+const codec = EventSchema.AikitAssistantMessage;
 const decode = Schema.decodeUnknownSync(codec);
 const decodeResult = Schema.decodeUnknownResult(codec);
 const encode = Schema.encodeSync(codec);
@@ -37,7 +36,7 @@ const toolCall = {
 	time: { start: 10, end: 20 },
 } as const satisfies Message.AssistantMessage["parts"][number];
 
-describe("ContextSchema.AssistantMessage", () => {
+describe("EventSchema.AikitAssistantMessage", () => {
 	it("decodes a valid assistant message and round-trips it", () => {
 		const value = message([
 			{ type: "text", text: "hello" },

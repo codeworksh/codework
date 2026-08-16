@@ -6,9 +6,10 @@
  * request's latches with every other request on the process. Every
  * `yield* make(...)` allocates its own.
  *
- * The loop sequences the stream and hands each event over; this module decides
- * what the event means. It writes nothing itself -- the two durable events reach
- * `session_entry` through the projectors in `session/projector.ts`.
+ * The LLM boundary sequences the stream and hands each event over; this
+ * module decides what the event means. It writes nothing itself -- the two
+ * durable events reach `session_entry` through the projectors in
+ * `session/projector.ts`.
  *
  * There are no fragment buffers here, which is the main structural difference
  * from the reference implementation this file is named after. Its provider
@@ -47,9 +48,7 @@ export interface Publisher {
 	readonly terminal: Effect.Effect<Terminal, Runner.LLMStreamError>;
 }
 
-export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
-	readonly sessionId: SessionSchema.ID;
-}) {
+export const make = Effect.fn("LLMEventPublisher.make")(function* (input: { readonly sessionId: SessionSchema.ID }) {
 	const events = yield* Event.Service;
 
 	let messageId: SessionMessageSchema.ID | undefined;
@@ -220,4 +219,4 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: {
 	return { publish, terminal } satisfies Publisher;
 });
 
-export * as LLMEventPublisher from "./publish-llm-event.ts";
+export * as LLMEventPublisher from "./event.ts";

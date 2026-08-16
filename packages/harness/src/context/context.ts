@@ -27,5 +27,6 @@ export const layer = Layer.effect(
 
 export * from "./assemble.ts";
 export * from "./codec.ts";
-export * as HarnessContext from "./context.ts";
 export * from "./errors.ts";
+
+export * as Context from "./context.ts";

@@ -3,15 +3,15 @@ import { DateTime, Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { ContextCodec } from "../src/context/codec.ts";
-import { HarnessContext } from "../src/context/context.ts";
+import { Context } from "../src/context/context.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { AbsolutePath } from "../src/schema.ts";
-import { SessionSchema } from "../src/session/schema.ts";
-import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { SessionLive } from "../src/session/live.ts";
+import { SessionMessageSchema } from "../src/session/message/schema.ts";
+import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { testEffect } from "./utils/effect.ts";
 
@@ -19,7 +19,7 @@ const sessionLayer = SessionLive.layer.pipe(
 	Layer.provideMerge(Event.layer),
 	Layer.provideMerge(Database.layer(":memory:")),
 );
-const layer = HarnessContext.layer.pipe(Layer.provideMerge(sessionLayer));
+const layer = Context.layer.pipe(Layer.provideMerge(sessionLayer));
 const { effect: it } = testEffect(layer);
 
 const usage = (): Message.Usage => ({
@@ -83,7 +83,7 @@ const setup = Effect.gen(function* () {
 		seq += 1;
 		yield* sessions.append({ ...input, sessionId: created.id, seq });
 	});
-	return { append, appendMessage, context: yield* HarnessContext.Service, created, sessions, sql };
+	return { append, appendMessage, context: yield* Context.Service, created, sessions, sql };
 });
 
 describe("context codec", () => {
@@ -276,5 +276,4 @@ describe("context assembly", () => {
 				expect(failure.type).toBe("custom");
 			}
 		}));
-
 });

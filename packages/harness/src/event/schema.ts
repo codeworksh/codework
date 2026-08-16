@@ -1,6 +1,58 @@
-import { Schema } from "effect";
+import { Message, validateSchema } from "@codeworksh/aikit";
+import { Effect, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effect";
+import Value from "typebox/value";
 import { uuidv7 } from "uuidv7";
 import { optional, withStatics } from "../schema.ts";
+
+type AikitAssistantPart = Message.AssistantMessage["parts"][number];
+
+/** Undeclared fields used only while aikit is assembling a streamed part. */
+const aikitTransientFields: Readonly<Record<AikitAssistantPart["type"], ReadonlyArray<string>>> = {
+	text: ["streamId"],
+	image: [],
+	thinking: ["streamId"],
+	toolCall: ["partialJson"],
+};
+
+const omit = <T extends object>(value: T, keys: ReadonlyArray<string>): T => {
+	if (!keys.some((key) => key in value)) return value;
+	const copy = { ...value } as T & Record<string, unknown>;
+	for (const key of keys) delete copy[key];
+	return copy;
+};
+
+const canonicalizeAikitAssistantMessage = (message: Message.AssistantMessage): Message.AssistantMessage => ({
+	...message,
+	parts: message.parts.map((part) => omit(part, aikitTransientFields[part.type])),
+});
+
+const reasonOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
+
+const validateAikitAssistantMessage = (value: unknown, options: SchemaAST.ParseOptions) =>
+	Effect.try({
+		try: () =>
+			canonicalizeAikitAssistantMessage(
+				validateSchema(Message.AssistantMessageSchema, value, "aikit assistant message"),
+			),
+		catch: (cause) => new SchemaIssue.InvalidValue({ message: reasonOf(cause) }, value, options),
+	});
+
+const aikitAssistantMessageDeclared = Schema.declare<Message.AssistantMessage>(
+	(value): value is Message.AssistantMessage => Value.Check(Message.AssistantMessageSchema, value),
+	{ expected: "aikit AssistantMessage" },
+);
+
+/**
+ * Effect Schema adapter for aikit's TypeBox assistant message. Durable LLM
+ * events use it to validate their payload and strip streaming-only fields.
+ */
+export const AikitAssistantMessage = Schema.Unknown.pipe(
+	Schema.decodeTo(aikitAssistantMessageDeclared, {
+		decode: SchemaGetter.transformOrFail(validateAikitAssistantMessage),
+		encode: SchemaGetter.transformOrFail(validateAikitAssistantMessage),
+	}),
+);
+export type AikitAssistantMessage = typeof AikitAssistantMessage.Type;
 
 export const ID = Schema.String.pipe(
 	Schema.brand("Event.ID"),

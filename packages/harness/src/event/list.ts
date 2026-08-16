@@ -1,5 +1,4 @@
 import { Schema } from "effect";
-import { ContextSchema } from "../context/schema.ts";
 import { DateTimeUtcFromMillis, NonNegativeInt } from "../schema.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import { PromptSchema } from "../session/prompt/schema.ts";
@@ -122,7 +121,7 @@ export const LLMEnded = EventSchema.define({
 	schema: {
 		...LLMFields,
 		reason: Schema.Literals(["stop", "length", "toolUse"]),
-		message: ContextSchema.AssistantMessage,
+		message: EventSchema.AikitAssistantMessage,
 	},
 });
 export type LLMEnded = typeof LLMEnded.Type;
@@ -138,7 +137,7 @@ export const LLMFailed = EventSchema.define({
 	schema: {
 		...LLMFields,
 		reason: Schema.Literals(["aborted", "error"]),
-		message: ContextSchema.AssistantMessage,
+		message: EventSchema.AikitAssistantMessage,
 	},
 });
 export type LLMFailed = typeof LLMFailed.Type;
@@ -164,12 +163,6 @@ export const SessionForked = EventSchema.define({
 });
 export type SessionForked = typeof SessionForked.Type;
 
-export const DurableDefinitions = EventSchema.inventory(
-	PromptAdmitted,
-	Prompted,
-	SessionForked,
-	LLMEnded,
-	LLMFailed,
-);
+export const DurableDefinitions = EventSchema.inventory(PromptAdmitted, Prompted, SessionForked, LLMEnded, LLMFailed);
 
 export * as EventList from "./list.ts";

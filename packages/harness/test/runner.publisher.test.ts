@@ -4,7 +4,7 @@ import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
-import { LLMEventPublisher } from "../src/runner/publish-llm-event.ts";
+import { LLMEventPublisher } from "../src/runner/event.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { AbsolutePath } from "../src/schema.ts";
 import { SessionLive } from "../src/session/live.ts";
@@ -16,10 +16,7 @@ import { testEffect } from "./utils/effect.ts";
  * `LLMMessageEvent` is a plain value, so the whole translation layer is testable
  * by constructing the events a provider would have sent.
  */
-const layer = SessionLive.layer.pipe(
-	Layer.provideMerge(Event.layer),
-	Layer.provideMerge(Database.layer(":memory:")),
-);
+const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
 const { effect: it } = testEffect(layer);
 
 const setup = Effect.gen(function* () {
