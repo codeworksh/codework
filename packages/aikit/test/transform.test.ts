@@ -1,8 +1,16 @@
 import type { FinishReason, LanguageModelUsage } from "ai";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import { convertMessages, convertTools, mapFinishReason, mapUsage } from "../src/llm/transform.ts";
+import {
+	convertMessages,
+	convertTools,
+	mapFinishReason,
+	mapUsage,
+	normalizeOpenAICodexToolCallId,
+} from "../src/llm/transform.ts";
 import * as Message from "../src/message/message.ts";
+import * as Model from "../src/model/model.ts";
+import { openAICodexTools } from "../src/providers/openai-codex/index.ts";
 import {
 	makeAssistantMessage,
 	makeCompletedToolCall,
@@ -44,9 +52,14 @@ describe("mapUsage", () => {
 		});
 	});
 
-	it("subtracts cached tokens from inputTokens when no breakdown is available", () => {
+	it("subtracts cached tokens from inputTokens when no uncached breakdown is available", () => {
 		const usage = mapUsage(
-			{ inputTokens: 100, outputTokens: 50, totalTokens: 150, cachedInputTokens: 30 } as LanguageModelUsage,
+			{
+				inputTokens: 100,
+				outputTokens: 50,
+				totalTokens: 150,
+				inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 30, cacheWriteTokens: undefined },
+			} as LanguageModelUsage,
 			model,
 		);
 		expect(usage.input).toBe(70);
@@ -72,7 +85,12 @@ describe("mapUsage", () => {
 
 	it("never reports negative input tokens", () => {
 		const usage = mapUsage(
-			{ inputTokens: 10, outputTokens: 0, totalTokens: 10, cachedInputTokens: 50 } as LanguageModelUsage,
+			{
+				inputTokens: 10,
+				outputTokens: 0,
+				totalTokens: 10,
+				inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 50, cacheWriteTokens: undefined },
+			} as LanguageModelUsage,
 			model,
 		);
 		expect(usage.input).toBe(0);
@@ -83,9 +101,9 @@ describe("mapUsage", () => {
 			{
 				inputTokens: 100,
 				outputTokens: 50,
-				cachedInputTokens: 30,
+				inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 30, cacheWriteTokens: undefined },
 				totalTokens: undefined,
-			} as unknown as LanguageModelUsage,
+			} as LanguageModelUsage,
 			model,
 		);
 		expect(usage.totalTokens).toBe(70 + 30 + 50);
@@ -107,6 +125,24 @@ describe("mapUsage", () => {
 		expect(usage.cost.cacheWrite).toBeCloseTo(1.5);
 		expect(usage.cost.total).toBeCloseTo(3 + 15 + 0.18 + 1.5);
 	});
+
+	it("preserves reasoning usage and applies a request cost multiplier", () => {
+		const usage = mapUsage(
+			{
+				inputTokens: 1_000_000,
+				outputTokens: 1_000_000,
+				totalTokens: 2_000_000,
+				inputTokenDetails: { noCacheTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 },
+				outputTokenDetails: { textTokens: 750_000, reasoningTokens: 250_000 },
+			} as LanguageModelUsage,
+			model,
+			0.5,
+		);
+
+		expect(usage.reasoning).toBe(250_000);
+		expect(usage.cost.input).toBeCloseTo(1.5);
+		expect(usage.cost.output).toBeCloseTo(7.5);
+	});
 });
 
 describe("convertTools", () => {
@@ -127,6 +163,67 @@ describe("convertTools", () => {
 		expect(Object.keys(toolSet!)).toEqual(["search"]);
 		expect(toolSet!.search!.description).toBe("Search documents");
 		expect(toolSet!.search!.inputSchema).toBeDefined();
+	});
+
+	it("maps Codex grammar tools through provider metadata without changing their object schema", () => {
+		const tool = openAICodexTools.custom({
+			name: "sample",
+			description: "Generate a constrained sample",
+			parameters: Type.Object({ payload: Type.String() }),
+			format: { type: "grammar", syntax: "lark", definition: "start: /[a-z]+/" },
+		});
+		const codexModel = makeModel({
+			protocol: Model.KnownProviderEnum.openaiCodex,
+			compat: { supportsOpenAIGrammarTools: true },
+		});
+
+		const converted = convertTools([tool], codexModel)?.sample;
+		expect(converted?.inputSchema).toBeDefined();
+		expect(converted?.providerOptions).toEqual({
+			"openai-codex": {
+				grammar: {
+					type: "grammar",
+					format: "lark",
+					definition: "start: /[a-z]+/",
+					inputProperty: "payload",
+				},
+			},
+		});
+	});
+
+	it("falls back to a regular tool when Codex grammar tools are unsupported", () => {
+		const tool = openAICodexTools.custom({
+			name: "sample",
+			description: "Generate a sample",
+			parameters: Type.Object({ payload: Type.String() }),
+			format: { type: "grammar", syntax: "regex", definition: "[a-z]+" },
+		});
+		const codexModel = makeModel({
+			protocol: Model.KnownProviderEnum.openaiCodex,
+			compat: { supportsOpenAIGrammarTools: false },
+		});
+
+		expect(convertTools([tool], codexModel)?.sample?.providerOptions).toBeUndefined();
+	});
+
+	it("enables strict JSON-schema tools when supported and rejects required strict mode otherwise", () => {
+		const tool = Message.defineTool({
+			name: "strict_tool",
+			description: "Strict tool",
+			parameters: Type.Object({ value: Type.String() }),
+			constrainedSampling: { type: "json_schema", strict: "require" },
+		});
+		const supported = makeModel({
+			protocol: Model.KnownProviderEnum.openaiCodex,
+			compat: { supportsStrictMode: true },
+		});
+		const unsupported = makeModel({
+			protocol: Model.KnownProviderEnum.openaiCodex,
+			compat: { supportsStrictMode: false },
+		});
+
+		expect(convertTools([tool], supported)?.strict_tool?.strict).toBe(true);
+		expect(() => convertTools([tool], unsupported)).toThrow("requires JSON-schema constrained sampling");
 	});
 });
 
@@ -158,7 +255,7 @@ describe("convertMessages", () => {
 			role: "user",
 			content: [
 				{ type: "text", text: "look" },
-				{ type: "image", image: "aGVsbG8=", mediaType: "image/png" },
+				{ type: "file", data: "aGVsbG8=", mediaType: "image/png" },
 			],
 		});
 
@@ -222,6 +319,96 @@ describe("convertMessages", () => {
 					},
 				],
 			},
+		]);
+	});
+
+	it("preserves Codex message, reasoning, namespace, and deferred-tool replay metadata", () => {
+		const codexModel = makeModel({ protocol: Model.KnownProviderEnum.openaiCodex });
+		const toolCall = makeCompletedToolCall("call-1|fc-1", "search", [{ type: "text", text: "found" }], {
+			query: "x",
+		});
+		toolCall.namespace = "workspace";
+		toolCall.addedToolNames = ["late_tool"];
+		const assistant = makeAssistantMessage(codexModel, {
+			stopReason: "toolUse",
+			parts: [
+				{ type: "text", text: "calling", textSignature: "msg_1" },
+				{
+					type: "thinking",
+					thinking: "reasoning",
+					thinkingSignature: '{"type":"reasoning","id":"rs_1","encrypted_content":"secret"}',
+				},
+				toolCall,
+			],
+		});
+
+		const messages = convertMessages({ messages: [assistant] }, codexModel);
+		expect(messages[0]).toMatchObject({
+			role: "assistant",
+			content: [
+				{ providerOptions: { "openai-codex": { messageId: "msg_1" } } },
+				{ providerOptions: { "openai-codex": { reasoningItem: expect.stringContaining("rs_1") } } },
+				{ providerOptions: { "openai-codex": { namespace: "workspace" } } },
+			],
+		});
+		expect(messages[1]).toMatchObject({
+			role: "tool",
+			content: [{ providerOptions: { "openai-codex": { addedToolNames: ["late_tool"] } } }],
+		});
+	});
+
+	it("preserves empty signed Codex reasoning for encrypted replay", () => {
+		const codexModel = makeModel({ protocol: Model.KnownProviderEnum.openaiCodex });
+		const assistant = makeAssistantMessage(codexModel, {
+			parts: [
+				{
+					type: "thinking",
+					thinking: "",
+					thinkingSignature: '{"type":"reasoning","id":"rs_1","encrypted_content":"secret"}',
+				},
+			],
+		});
+
+		expect(convertMessages({ messages: [assistant] }, codexModel)).toMatchObject([
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "reasoning",
+						text: "",
+						providerOptions: { "openai-codex": { reasoningItem: expect.stringContaining("rs_1") } },
+					},
+				],
+			},
+		]);
+	});
+
+	it("normalizes foreign Codex tool ids and omits item ids across Codex models", () => {
+		const target = makeModel({
+			id: "gpt-5.6-luna",
+			protocol: Model.KnownProviderEnum.openaiCodex,
+			provider: { id: "openai-codex", name: "Codex", source: "custom", env: [] },
+		});
+		const foreign = makeModel({ id: "foreign", protocol: Model.KnownProviderEnum.openaiCompatible });
+		const foreignAssistant = makeAssistantMessage(foreign);
+		const normalized = normalizeOpenAICodexToolCallId("call with spaces|foreign/item/id", target, foreignAssistant);
+		expect(normalized).toMatch(/^call_with_spaces\|fc_[a-z0-9]+$/);
+
+		const priorCodex = makeModel({ ...target, id: "gpt-5.5" });
+		const assistant = makeAssistantMessage(priorCodex, {
+			stopReason: "toolUse",
+			parts: [makeCompletedToolCall("call_1|fc_1", "search")],
+		});
+		expect(convertMessages({ messages: [assistant] }, target)).toMatchObject([
+			{
+				content: [
+					{
+						providerOptions: { "openai-codex": { omitItemId: true } },
+						toolCallId: "call_1|fc_1",
+					},
+				],
+			},
+			{ content: [{ toolCallId: "call_1|fc_1" }] },
 		]);
 	});
 
@@ -320,7 +507,7 @@ describe("convertMessages", () => {
 						type: "content",
 						value: [
 							{ type: "text", text: "the page" },
-							{ type: "image-data", data: "aGVsbG8=", mediaType: "image/png" },
+							{ type: "file", data: { type: "data", data: "aGVsbG8=" }, mediaType: "image/png" },
 						],
 					},
 				},

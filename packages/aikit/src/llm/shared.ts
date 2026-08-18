@@ -29,6 +29,7 @@ export const ThinkingBudgets = Type.Object({
 	medium: Type.Optional(Type.Number()),
 	high: Type.Optional(Type.Number()),
 	xhigh: Type.Optional(Type.Number()),
+	max: Type.Optional(Type.Number()),
 });
 export type ThinkingBudgets = Static<typeof ThinkingBudgets>;
 

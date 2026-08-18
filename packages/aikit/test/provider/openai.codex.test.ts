@@ -4,6 +4,7 @@
  */
 import type { LanguageModelV3Prompt, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { APICallError, LoadAPIKeyError, NoSuchModelError } from "@ai-sdk/provider";
+import { zstdDecompressSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
 	AI_SDK_PACKAGE_TO_PROTOCOL,
@@ -13,6 +14,7 @@ import {
 } from "../../src/llm/registry.ts";
 import { getOpenAICodexApiKey, type OpenAICodexOAuthCredentials } from "../../src/oauth/openai/codex.ts";
 import {
+	appendOpenAICodexGrammarInputJsonDelta,
 	convertToOpenAICodexPrompt,
 	createOpenAICodex,
 	joinToolCallId,
@@ -62,7 +64,14 @@ function createMockFetch(responses: Response | Response[]): {
 	return {
 		fetch: mock,
 		calls,
-		body: (index = 0) => JSON.parse(calls[index]?.init.body as string) as Record<string, unknown>,
+		body: (index = 0) => {
+			const raw = calls[index]?.init.body;
+			const json =
+				typeof raw === "string"
+					? raw
+					: new TextDecoder().decode(zstdDecompressSync(raw as Uint8Array<ArrayBuffer>));
+			return JSON.parse(json) as Record<string, unknown>;
+		},
 	};
 }
 
@@ -80,6 +89,42 @@ async function readAllParts(stream: ReadableStream<LanguageModelV3StreamPart>): 
 const userPrompt: LanguageModelV3Prompt = [
 	{ role: "system", content: "You are concise." },
 	{ role: "user", content: [{ type: "text", text: "Hello" }] },
+];
+
+const deferredToolsPrompt: LanguageModelV3Prompt = [
+	{ role: "user", content: [{ type: "text", text: "Use the tools" }] },
+	{
+		role: "assistant",
+		content: [{ type: "tool-call", toolCallId: "call_1|fc_1", toolName: "base_tool", input: {} }],
+	},
+	{
+		role: "tool",
+		content: [
+			{
+				type: "tool-result",
+				toolCallId: "call_1|fc_1",
+				toolName: "base_tool",
+				output: { type: "text", value: "done" },
+				providerOptions: { "openai-codex": { addedToolNames: ["late_tool"] } },
+			},
+		],
+	},
+	{ role: "user", content: [{ type: "text", text: "Continue" }] },
+];
+
+const deferredTools = [
+	{
+		type: "function" as const,
+		name: "base_tool",
+		description: "Base tool",
+		inputSchema: { type: "object", properties: {} },
+	},
+	{
+		type: "function" as const,
+		name: "late_tool",
+		description: "Late tool",
+		inputSchema: { type: "object", properties: { value: { type: "string" } } },
+	},
 ];
 
 const textEvents: Array<Record<string, unknown>> = [
@@ -304,6 +349,150 @@ describe("request", () => {
 		});
 	});
 
+	it("maps grammar metadata to native Codex custom tools", async () => {
+		const { fetch, body } = createMockFetch(sseResponse(textEvents));
+		await createOpenAICodex({ apiKey: TEST_API_KEY, fetch })("gpt-5.6-luna").doStream({
+			prompt: userPrompt,
+			tools: [
+				{
+					type: "function",
+					name: "sample",
+					description: "Generate a sample",
+					inputSchema: {
+						type: "object",
+						properties: { payload: { type: "string" } },
+						required: ["payload"],
+					},
+					providerOptions: {
+						"openai-codex": {
+							grammar: {
+								type: "grammar",
+								format: "lark",
+								definition: "start: /[a-z]+/",
+								inputProperty: "payload",
+							},
+						},
+					},
+				},
+			],
+		});
+
+		expect(body().tools).toEqual([
+			{
+				type: "custom",
+				name: "sample",
+				description: "Generate a sample",
+				format: { type: "grammar", syntax: "lark", definition: "start: /[a-z]+/" },
+			},
+		]);
+	});
+
+	it("keeps deferred grammar tools native inside additional_tools", async () => {
+		const { fetch, body } = createMockFetch(sseResponse(textEvents));
+		await createOpenAICodex({ apiKey: TEST_API_KEY, fetch })("gpt-5.6-luna").doStream({
+			prompt: deferredToolsPrompt,
+			tools: [
+				deferredTools[0]!,
+				{
+					...deferredTools[1]!,
+					providerOptions: {
+						"openai-codex": {
+							grammar: {
+								type: "grammar",
+								format: "regex",
+								definition: "[a-z]+",
+								inputProperty: "value",
+							},
+						},
+					},
+				},
+			],
+		});
+
+		const additionalTools = (body().input as Array<Record<string, unknown>>).find(
+			(item) => item.type === "additional_tools",
+		);
+		expect(additionalTools?.tools).toEqual([
+			expect.objectContaining({
+				type: "custom",
+				name: "late_tool",
+				format: { type: "grammar", syntax: "regex", definition: "[a-z]+" },
+			}),
+		]);
+	});
+
+	it("loads GPT-5.6 Codex deferred tools through additional_tools", async () => {
+		const { fetch, body } = createMockFetch(sseResponse(textEvents));
+		await createOpenAICodex({ apiKey: TEST_API_KEY, fetch })("gpt-5.6-luna").doStream({
+			prompt: deferredToolsPrompt,
+			tools: deferredTools,
+		});
+
+		const payload = body();
+		expect(payload.tools).toMatchObject([{ name: "base_tool" }]);
+		expect(payload.input).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: "additional_tools",
+					role: "developer",
+					tools: [expect.objectContaining({ name: "late_tool" })],
+				}),
+			]),
+		);
+		expect((payload.input as Array<{ type?: string }>).some((item) => item.type === "tool_search_output")).toBe(
+			false,
+		);
+	});
+
+	it("falls back to transcript tool_search items for GPT-5.4 Codex", async () => {
+		const { fetch, body } = createMockFetch(sseResponse(textEvents));
+		await createOpenAICodex({ apiKey: TEST_API_KEY, fetch })("gpt-5.4").doStream({
+			prompt: deferredToolsPrompt,
+			tools: deferredTools,
+		});
+
+		const payload = body();
+		expect(payload.tools).toMatchObject([{ name: "base_tool" }]);
+		const input = payload.input as Array<Record<string, unknown>>;
+		const searchCall = input.find((item) => item.type === "tool_search_call");
+		const searchOutput = input.find((item) => item.type === "tool_search_output");
+		expect(searchCall).toMatchObject({ execution: "client", status: "completed" });
+		expect(searchOutput).toMatchObject({
+			call_id: searchCall?.call_id,
+			execution: "client",
+			status: "completed",
+			tools: [expect.objectContaining({ name: "late_tool", defer_loading: true })],
+		});
+		expect(input.some((item) => item.type === "additional_tools")).toBe(false);
+	});
+
+	it("keeps all tools top-level when the Codex model has no deferred-tool support", async () => {
+		const { fetch, body } = createMockFetch(sseResponse(textEvents));
+		await createOpenAICodex({ apiKey: TEST_API_KEY, fetch })("gpt-5.3-codex-spark").doStream({
+			prompt: deferredToolsPrompt,
+			tools: deferredTools,
+		});
+
+		const payload = body();
+		expect(payload.tools).toMatchObject([{ name: "base_tool" }, { name: "late_tool" }]);
+		expect(
+			(payload.input as Array<{ type?: string }>).some(
+				(item) => item.type === "additional_tools" || item.type === "tool_search_output",
+			),
+		).toBe(false);
+	});
+
+	it("honors explicit deferred-tool compatibility overrides", async () => {
+		const { fetch, body } = createMockFetch(sseResponse(textEvents));
+		await createOpenAICodex({
+			apiKey: TEST_API_KEY,
+			fetch,
+			compat: { supportsToolSearch: false, supportsAdditionalTools: false },
+		})("gpt-5.6-luna").doStream({ prompt: deferredToolsPrompt, tools: deferredTools });
+
+		expect(body().tools).toMatchObject([{ name: "base_tool" }, { name: "late_tool" }]);
+	});
+
 	it("applies openai-codex provider options", async () => {
 		const { fetch, body } = createMockFetch(sseResponse(textEvents));
 		const provider = createOpenAICodex({ apiKey: TEST_API_KEY, fetch });
@@ -328,12 +517,43 @@ describe("request", () => {
 		});
 	});
 
+	it("forwards max reasoning effort for GPT-5.6 Codex models", async () => {
+		const { fetch, body } = createMockFetch(sseResponse(textEvents));
+		const provider = createOpenAICodex({ apiKey: TEST_API_KEY, fetch });
+		await provider("gpt-5.6-sol").doStream({
+			prompt: userPrompt,
+			providerOptions: { "openai-codex": { reasoningEffort: "max" } },
+		});
+
+		expect(body().reasoning).toEqual({ effort: "max", summary: "auto" });
+	});
+
 	it("defaults the prompt cache key to the provider sessionId", async () => {
 		const { fetch, body } = createMockFetch(sseResponse(textEvents));
 		const provider = createOpenAICodex({ apiKey: TEST_API_KEY, sessionId: "session-9", fetch });
 		await provider("gpt-5.4").doStream({ prompt: userPrompt });
 
 		expect(body().prompt_cache_key).toBe("session-9");
+	});
+
+	it("clamps Codex cache-affinity values to 64 Unicode characters", async () => {
+		const sessionId = `${"🙂".repeat(64)}overflow`;
+		const { fetch, body, calls } = createMockFetch(sseResponse(textEvents));
+		const provider = createOpenAICodex({ apiKey: TEST_API_KEY, sessionId, fetch });
+		await provider("gpt-5.4").doStream({ prompt: userPrompt });
+
+		const expected = "🙂".repeat(64);
+		expect(body().prompt_cache_key).toBe(expected);
+		expect(calls[0]?.init.headers["session-id"]).toBe(expected);
+		expect(calls[0]?.init.headers["x-client-request-id"]).toBe(expected);
+	});
+
+	it("zstd-compresses Codex SSE request bodies when Node supports it", async () => {
+		const { fetch, body, calls } = createMockFetch(sseResponse(textEvents));
+		await createOpenAICodex({ apiKey: TEST_API_KEY, fetch })("gpt-5.4").doStream({ prompt: userPrompt });
+
+		expect(calls[0]?.init.headers["content-encoding"]).toBe("zstd");
+		expect(body()).toMatchObject({ model: "gpt-5.4", stream: true });
 	});
 
 	it("warns on unsupported call options instead of sending them", async () => {
@@ -439,6 +659,60 @@ describe("prompt conversion", () => {
 		expect(input[3]).toEqual({ type: "function_call_output", call_id: "call_1", output: "4" });
 	});
 
+	it("replays signed reasoning, assistant message ids, and deferred-tool namespaces", () => {
+		const signedReasoning = {
+			type: "reasoning" as const,
+			id: "rs_1",
+			summary: [],
+			encrypted_content: "encrypted",
+		};
+		const { input } = convertToOpenAICodexPrompt([
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "reasoning",
+						text: "summary",
+						providerOptions: {
+							"openai-codex": { reasoningItem: JSON.stringify(signedReasoning) },
+						},
+					},
+					{
+						type: "text",
+						text: "answer",
+						providerOptions: { "openai-codex": { messageId: "msg_1" } },
+					},
+					{
+						type: "tool-call",
+						toolCallId: "call_1|fc_1",
+						toolName: "search",
+						input: { query: "docs" },
+						providerOptions: { "openai-codex": { namespace: "workspace" } },
+					},
+				],
+			},
+		]);
+
+		expect(input).toEqual([
+			signedReasoning,
+			{
+				type: "message",
+				role: "assistant",
+				id: "msg_1",
+				content: [{ type: "output_text", text: "answer", annotations: [] }],
+				status: "completed",
+			},
+			{
+				type: "function_call",
+				id: "fc_1",
+				call_id: "call_1",
+				name: "search",
+				arguments: '{"query":"docs"}',
+				namespace: "workspace",
+			},
+		]);
+	});
+
 	it("converts image file parts to input_image entries", () => {
 		const { input } = convertToOpenAICodexPrompt([
 			{
@@ -459,6 +733,26 @@ describe("prompt conversion", () => {
 		});
 	});
 
+	it("converts AI SDK V4 image file data to input_image entries", () => {
+		const { input } = convertToOpenAICodexPrompt([
+			{
+				role: "user",
+				content: [
+					{
+						type: "file",
+						mediaType: "image/png",
+						data: { type: "data", data: "aGVsbG8=" },
+					},
+				],
+			},
+		]);
+
+		expect(input[0]).toEqual({
+			role: "user",
+			content: [{ type: "input_image", image_url: "data:image/png;base64,aGVsbG8=", detail: "auto" }],
+		});
+	});
+
 	it("defaults instructions when no system message exists", () => {
 		const { instructions } = convertToOpenAICodexPrompt([{ role: "user", content: [{ type: "text", text: "hi" }] }]);
 		expect(instructions).toBe("You are a helpful assistant.");
@@ -467,6 +761,116 @@ describe("prompt conversion", () => {
 	it("round-trips composite tool call ids", () => {
 		expect(splitToolCallId(joinToolCallId("call_9", "fc_9"))).toEqual({ callId: "call_9", itemId: "fc_9" });
 		expect(splitToolCallId("plain_id")).toEqual({ callId: "plain_id", itemId: "plain_id" });
+	});
+
+	it("replays native custom tool calls and results from ordinary AI SDK tool parts", () => {
+		const grammarToolInputProperties = new Map([["sample", "payload"]]);
+		const { input } = convertToOpenAICodexPrompt(
+			[
+				{
+					role: "assistant",
+					content: [
+						{
+							type: "tool-call",
+							toolCallId: "call_1|ctc_1",
+							toolName: "sample",
+							input: { payload: "abc" },
+							providerOptions: { "openai-codex": { namespace: "grammar" } },
+						},
+					],
+				},
+				{
+					role: "tool",
+					content: [
+						{
+							type: "tool-result",
+							toolCallId: "call_1|ctc_1",
+							toolName: "sample",
+							output: { type: "text", value: "accepted" },
+						},
+					],
+				},
+			],
+			{ grammarToolInputProperties },
+		);
+
+		expect(input).toEqual([
+			{
+				type: "custom_tool_call",
+				id: "ctc_1",
+				call_id: "call_1",
+				name: "sample",
+				input: "abc",
+				namespace: "grammar",
+			},
+			{ type: "custom_tool_call_output", call_id: "call_1", output: "accepted" },
+		]);
+	});
+
+	it("produces append-only JSON deltas for raw grammar input", () => {
+		const buffer = { input: "", started: false, closed: false };
+		expect(appendOpenAICodexGrammarInputJsonDelta(buffer, "payload", 'a"', false)).toBe('{"payload":"a\\"');
+		expect(appendOpenAICodexGrammarInputJsonDelta(buffer, "payload", 'a"\nb', true)).toBe('\\nb"}');
+		expect(appendOpenAICodexGrammarInputJsonDelta(buffer, "payload", 'a"\nb', true)).toBeUndefined();
+	});
+
+	it("omits Responses item ids for non-composite and cross-model tool calls", () => {
+		const { input } = convertToOpenAICodexPrompt([
+			{
+				role: "assistant",
+				content: [
+					{ type: "tool-call", toolCallId: "plain_id", toolName: "first", input: {} },
+					{
+						type: "tool-call",
+						toolCallId: "call_2|fc_2",
+						toolName: "second",
+						input: {},
+						providerOptions: { "openai-codex": { omitItemId: true } },
+					},
+				],
+			},
+		]);
+
+		expect(input).toEqual([
+			{ type: "function_call", call_id: "plain_id", name: "first", arguments: "{}" },
+			{ type: "function_call", call_id: "call_2", name: "second", arguments: "{}" },
+		]);
+	});
+
+	it("keeps image tool results inside function_call_output for vision models", () => {
+		const prompt: LanguageModelV3Prompt = [
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "call_1|fc_1",
+						toolName: "screenshot",
+						output: {
+							type: "content",
+							value: [
+								{ type: "text", text: "the page" },
+								{ type: "file-data", data: "aGVsbG8=", mediaType: "image/png" },
+							],
+						},
+					},
+				],
+			},
+		];
+
+		expect(convertToOpenAICodexPrompt(prompt, { supportsImages: true }).input[0]).toEqual({
+			type: "function_call_output",
+			call_id: "call_1",
+			output: [
+				{ type: "input_text", text: "the page" },
+				{ type: "input_image", image_url: "data:image/png;base64,aGVsbG8=", detail: "auto" },
+			],
+		});
+		expect(convertToOpenAICodexPrompt(prompt, { supportsImages: false }).input[0]).toEqual({
+			type: "function_call_output",
+			call_id: "call_1",
+			output: "the page",
+		});
 	});
 });
 
@@ -498,6 +902,9 @@ describe("doStream", () => {
 		const deltas = parts.filter((part) => part.type === "text-delta");
 		expect(deltas.map((part) => (part.type === "text-delta" ? part.delta : ""))).toEqual(["Hello", " world"]);
 		expect(deltas.every((part) => part.type === "text-delta" && part.id === "msg_1")).toBe(true);
+		expect(parts.find((part) => part.type === "text-end")).toMatchObject({
+			providerMetadata: { "openai-codex": { messageId: "msg_1" } },
+		});
 
 		const finish = parts.at(-1);
 		expect(finish).toMatchObject({
@@ -508,6 +915,35 @@ describe("doStream", () => {
 				outputTokens: { total: 20, text: 15, reasoning: 5 },
 			},
 		});
+	});
+
+	it("finishes and cancels the SSE body at the terminal response event", async () => {
+		const encoder = new TextEncoder();
+		let cancelled = false;
+		const response = new Response(
+			new ReadableStream<Uint8Array>({
+				start(controller) {
+					controller.enqueue(
+						encoder.encode(
+							`data: ${JSON.stringify({ type: "response.completed", response: { status: "completed" } })}\n\n`,
+						),
+					);
+				},
+				cancel() {
+					cancelled = true;
+				},
+			}),
+			{ status: 200, headers: { "content-type": "text/event-stream" } },
+		);
+		const { fetch } = createMockFetch(response);
+		const { stream } = await createOpenAICodex({ apiKey: TEST_API_KEY, fetch })("gpt-5.4").doStream({
+			prompt: userPrompt,
+		});
+		const parts = await readAllParts(stream);
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+		expect(parts.at(-1)).toMatchObject({ type: "finish", finishReason: { unified: "stop" } });
+		expect(cancelled).toBe(true);
 	});
 
 	it("streams reasoning summaries as reasoning parts", async () => {
@@ -533,6 +969,10 @@ describe("doStream", () => {
 			"reasoning-end",
 			"finish",
 		]);
+		const reasoningEnd = parts.find((part) => part.type === "reasoning-end");
+		expect(reasoningEnd).toMatchObject({
+			providerMetadata: { "openai-codex": { reasoningItem: expect.stringContaining('"id":"rs_1"') } },
+		});
 	});
 
 	it("streams tool calls with composite ids and a tool-calls finish reason", async () => {
@@ -552,6 +992,7 @@ describe("doStream", () => {
 					call_id: "call_1",
 					name: "math_operation",
 					arguments: '{"a":15}',
+					namespace: "math",
 				},
 			},
 			{
@@ -580,23 +1021,121 @@ describe("doStream", () => {
 		expect(start).toMatchObject({ id: toolCallId, toolName: "math_operation" });
 
 		const toolCall = parts.find((part) => part.type === "tool-call");
-		expect(toolCall).toMatchObject({ toolCallId, toolName: "math_operation", input: '{"a":15}' });
+		expect(toolCall).toMatchObject({
+			toolCallId,
+			toolName: "math_operation",
+			input: '{"a":15}',
+			providerMetadata: { "openai-codex": { namespace: "math" } },
+		});
 
 		const finish = parts.at(-1);
 		expect(finish).toMatchObject({ type: "finish", finishReason: { unified: "tool-calls", raw: "completed" } });
 	});
 
-	it("maps incomplete responses to a length finish reason", async () => {
+	it("streams native custom tool calls through the standard tool-call parts", async () => {
+		const events = [
+			{ type: "response.created", response: { id: "resp_custom", model: "gpt-5.6-luna" } },
+			{
+				type: "response.output_item.added",
+				item: { type: "custom_tool_call", id: "ctc_1", call_id: "call_1", name: "sample", input: "" },
+			},
+			{ type: "response.custom_tool_call_input.delta", item_id: "ctc_1", delta: "ab" },
+			{ type: "response.custom_tool_call_input.done", item_id: "ctc_1", input: "abc" },
+			{
+				type: "response.output_item.done",
+				item: {
+					type: "custom_tool_call",
+					id: "ctc_1",
+					call_id: "call_1",
+					name: "sample",
+					input: "abc",
+					namespace: "grammar",
+				},
+			},
+			{ type: "response.completed", response: { status: "completed" } },
+		];
+		const { fetch } = createMockFetch(sseResponse(events));
+		const { stream } = await createOpenAICodex({ apiKey: TEST_API_KEY, fetch })("gpt-5.6-luna").doStream({
+			prompt: userPrompt,
+			tools: [
+				{
+					type: "function",
+					name: "sample",
+					description: "Generate a sample",
+					inputSchema: {
+						type: "object",
+						properties: { payload: { type: "string" } },
+						required: ["payload"],
+					},
+					providerOptions: {
+						"openai-codex": {
+							grammar: {
+								type: "grammar",
+								format: "lark",
+								definition: "start: /[a-z]+/",
+								inputProperty: "payload",
+							},
+						},
+					},
+				},
+			],
+		});
+		const parts = await readAllParts(stream);
+
+		expect(parts.map((part) => part.type)).toEqual([
+			"stream-start",
+			"response-metadata",
+			"tool-input-start",
+			"tool-input-delta",
+			"tool-input-delta",
+			"tool-input-end",
+			"tool-call",
+			"finish",
+		]);
+		const deltas = parts
+			.filter((part) => part.type === "tool-input-delta")
+			.map((part) => (part.type === "tool-input-delta" ? part.delta : ""));
+		expect(deltas.join("")).toBe('{"payload":"abc"}');
+		expect(parts.find((part) => part.type === "tool-call")).toMatchObject({
+			toolCallId: "call_1|ctc_1",
+			toolName: "sample",
+			input: '{"payload":"abc"}',
+			providerMetadata: { "openai-codex": { namespace: "grammar" } },
+		});
+		expect(parts.at(-1)).toMatchObject({
+			type: "finish",
+			finishReason: { unified: "tool-calls", raw: "completed" },
+		});
+	});
+
+	it("maps max-output incomplete responses to a length finish reason", async () => {
 		const events = [
 			{ type: "response.created", response: { id: "resp_4", model: "gpt-5.4" } },
-			{ type: "response.incomplete", response: { status: "incomplete" } },
+			{
+				type: "response.incomplete",
+				response: { status: "incomplete", incomplete_details: { reason: "max_output_tokens" } },
+			},
 		];
 		const { fetch } = createMockFetch(sseResponse(events));
 		const provider = createOpenAICodex({ apiKey: TEST_API_KEY, fetch });
 		const { stream } = await provider("gpt-5.4").doStream({ prompt: userPrompt });
 		const parts = await readAllParts(stream);
 
-		expect(parts.at(-1)).toMatchObject({ type: "finish", finishReason: { unified: "length", raw: "incomplete" } });
+		expect(parts.at(-1)).toMatchObject({
+			type: "finish",
+			finishReason: { unified: "length", raw: "incomplete.max_output_tokens" },
+		});
+	});
+
+	it("maps incomplete responses without a max-output reason to an error", async () => {
+		const events = [{ type: "response.incomplete", response: { status: "incomplete" } }];
+		const { fetch } = createMockFetch(sseResponse(events));
+		const { stream } = await createOpenAICodex({ apiKey: TEST_API_KEY, fetch })("gpt-5.4").doStream({
+			prompt: userPrompt,
+		});
+		const parts = await readAllParts(stream);
+
+		expect(parts.at(-1)).toMatchObject({ type: "finish", finishReason: { unified: "error", raw: "incomplete" } });
 	});
 
 	it("surfaces stream error events as error parts", async () => {
@@ -728,9 +1267,17 @@ describe("doGenerate", () => {
 		const result = await provider("gpt-5.4").doGenerate({ prompt: userPrompt });
 
 		expect(result.content).toEqual([
-			{ type: "reasoning", text: "Plan it" },
+			{
+				type: "reasoning",
+				text: "Plan it",
+				providerMetadata: { "openai-codex": { reasoningItem: '{"type":"reasoning","id":"rs_1"}' } },
+			},
 			expect.objectContaining({ type: "tool-call", toolCallId: joinToolCallId("call_1", "fc_1") }),
-			{ type: "text", text: "Done" },
+			{
+				type: "text",
+				text: "Done",
+				providerMetadata: { "openai-codex": { messageId: "msg_1" } },
+			},
 		]);
 		expect(result.finishReason).toEqual({ unified: "tool-calls", raw: "completed" });
 		expect(result.usage.inputTokens.total).toBe(11);

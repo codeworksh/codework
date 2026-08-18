@@ -300,6 +300,39 @@ describe("OpenAICodexOAuthClient", () => {
 		await expect(client.getApiKey()).resolves.toBe("access-token");
 	});
 
+	it("closes the callback server before login resolves", async () => {
+		const nativeFetch = globalThis.fetch;
+		const storage = new MemoryStorage();
+		const access = makeJwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acct_login" } });
+		let callbackRequest: Promise<Response> | undefined;
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				await new Promise((resolve) => setTimeout(resolve, 20));
+				return Response.json({ access_token: access, refresh_token: "refresh-login", expires_in: 3600 });
+			}),
+		);
+
+		const client = new OpenAICodexOAuthClient({ storage });
+		const credentials = await client.login({
+			onAuth: ({ url }) => {
+				const state = new URL(url).searchParams.get("state");
+				callbackRequest = nativeFetch(`http://127.0.0.1:1455/auth/callback?code=login-code&state=${state}`);
+			},
+			onPrompt: async () => {
+				throw new Error("The callback should supply the authorization code");
+			},
+		});
+
+		expect(credentials.accountId).toBe("acct_login");
+		if (!callbackRequest) throw new Error("Expected the callback request to start");
+		expect((await callbackRequest).status).toBe(200);
+		await expect(
+			nativeFetch("http://127.0.0.1:1455/auth/callback", { signal: AbortSignal.timeout(1000) }),
+		).rejects.toThrow();
+	});
+
 	it("refreshes credentials that are within the expiry skew", async () => {
 		const storage = new MemoryStorage();
 		storage.credentials = makeCredentials({ expires: Date.now() + 1000 });

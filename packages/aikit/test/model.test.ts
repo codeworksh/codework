@@ -23,6 +23,28 @@ describe("Model.calculateCost", () => {
 		Model.calculateCost(model, usage);
 		expect(usage.cost.total).toBe(0);
 	});
+
+	it("uses the highest matching request-wide input pricing tier", () => {
+		const model = makeModel({
+			cost: {
+				input: 1,
+				output: 2,
+				cacheRead: 0.1,
+				cacheWrite: 1.25,
+				tiers: [
+					{ inputTokensAbove: 100, input: 2, output: 3, cacheRead: 0.2, cacheWrite: 2.5 },
+					{ inputTokensAbove: 200, input: 4, output: 6, cacheRead: 0.4, cacheWrite: 5 },
+				],
+			},
+		});
+		const usage = makeUsage({ input: 100, output: 1_000_000, cacheRead: 101 });
+
+		Model.calculateCost(model, usage);
+
+		expect(usage.cost.input).toBeCloseTo(0.0004);
+		expect(usage.cost.output).toBeCloseTo(6);
+		expect(usage.cost.cacheRead).toBeCloseTo(0.0000404);
+	});
 });
 
 describe("Model.normalizeInput", () => {
@@ -93,6 +115,12 @@ describe("Model.getSupportedThinkingLevels", () => {
 		expect(Model.getSupportedThinkingLevels(model)).toContain("xhigh");
 	});
 
+	it("includes max only when the model maps it explicitly", () => {
+		expect(Model.getSupportedThinkingLevels(makeModel({ reasoning: true }))).not.toContain("max");
+		const model = makeModel({ reasoning: true, thinkingLevelMap: { max: "max" } });
+		expect(Model.getSupportedThinkingLevels(model)).toContain("max");
+	});
+
 	it("excludes levels mapped to null", () => {
 		const model = makeModel({ reasoning: true, thinkingLevelMap: { minimal: null, low: null } });
 		expect(Model.getSupportedThinkingLevels(model)).toEqual(["off", "medium", "high"]);
@@ -115,6 +143,11 @@ describe("Model.clampThinkingLevel", () => {
 	it("clamps unsupported xhigh down to high", () => {
 		const model = makeModel({ reasoning: true });
 		expect(Model.clampThinkingLevel(model, "xhigh")).toBe("high");
+	});
+
+	it("clamps unsupported max down to high", () => {
+		const model = makeModel({ reasoning: true });
+		expect(Model.clampThinkingLevel(model, "max")).toBe("high");
 	});
 
 	it("prefers the next higher supported level for disabled levels", () => {

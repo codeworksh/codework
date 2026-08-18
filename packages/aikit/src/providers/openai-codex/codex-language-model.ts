@@ -1,3 +1,4 @@
+import type * as NodeZlib from "node:zlib";
 import type {
 	LanguageModelV3,
 	LanguageModelV3CallOptions,
@@ -10,25 +11,75 @@ import type {
 	SharedV3Warning,
 } from "@ai-sdk/provider";
 import { createOpenAICodexAPICallError } from "./codex-error.ts";
-import { convertToOpenAICodexPrompt, joinToolCallId } from "./codex-prompt.ts";
+import { collectOpenAICodexDeferredToolNames, convertToOpenAICodexPrompt, joinToolCallId } from "./codex-prompt.ts";
 import { parseOpenAICodexSSEStream } from "./codex-sse.ts";
-import { prepareOpenAICodexTools } from "./codex-tools.ts";
+import {
+	appendOpenAICodexGrammarInputJsonDelta,
+	prepareOpenAICodexTools,
+	resolveOpenAICodexDeferredToolsMode,
+	type OpenAICodexGrammarInputBuffer,
+} from "./codex-tools.ts";
 import { convertOpenAICodexUsage, mapOpenAICodexFinishReason, type OpenAICodexUsage } from "./codex-usage.ts";
 
 export const OPENAI_CODEX_DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
+export const OPENAI_CODEX_PROMPT_CACHE_KEY_MAX_LENGTH = 64;
+const REQUEST_COMPRESSION_ZSTD_LEVEL = 3;
 
-export type OpenAICodexModelId = "gpt-5.3-codex-spark" | "gpt-5.4" | "gpt-5.4-mini" | "gpt-5.5" | (string & {});
+type ProcessWithBuiltinModule = typeof process & {
+	getBuiltinModule?: (id: "node:zlib") => typeof NodeZlib;
+};
+
+function compressOpenAICodexRequest(body: string): Uint8Array | undefined {
+	if (typeof process === "undefined" || !(process.versions?.node || process.versions?.bun)) return undefined;
+	const zlib = (process as ProcessWithBuiltinModule).getBuiltinModule?.("node:zlib");
+	if (!zlib || typeof zlib.zstdCompressSync !== "function") return undefined;
+	try {
+		const compressed = zlib.zstdCompressSync(body, {
+			params: { [zlib.constants.ZSTD_c_compressionLevel]: REQUEST_COMPRESSION_ZSTD_LEVEL },
+		});
+		return new Uint8Array(compressed.buffer, compressed.byteOffset, compressed.byteLength);
+	} catch {
+		return undefined;
+	}
+}
+
+export function clampOpenAICodexPromptCacheKey(key: string | undefined): string | undefined {
+	if (key === undefined) return undefined;
+	const characters = Array.from(key);
+	return characters.length <= OPENAI_CODEX_PROMPT_CACHE_KEY_MAX_LENGTH
+		? key
+		: characters.slice(0, OPENAI_CODEX_PROMPT_CACHE_KEY_MAX_LENGTH).join("");
+}
+
+export type OpenAICodexModelId =
+	| "gpt-5.3-codex-spark"
+	| "gpt-5.4"
+	| "gpt-5.4-mini"
+	| "gpt-5.5"
+	| "gpt-5.6-luna"
+	| "gpt-5.6-sol"
+	| "gpt-5.6-terra"
+	| (string & {});
 
 export type OpenAICodexServiceTier = "auto" | "default" | "flex" | "scale" | "priority";
+
+export type OpenAICodexCompatibility = {
+	supportsToolSearch?: boolean;
+	supportsAdditionalTools?: boolean;
+	supportsStrictMode?: boolean;
+	supportsOpenAIGrammarTools?: boolean;
+	/** Internal transport capability derived from the model's input modalities. */
+	supportsImages?: boolean;
+};
 
 /**
  * Per-call options, passed via `providerOptions["openai-codex"]`.
  */
 export type OpenAICodexLanguageModelOptions = {
 	/** Reasoning effort forwarded as `reasoning.effort`. */
-	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | (string & {});
+	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | (string & {});
 	/** Reasoning summary verbosity; defaults to `auto` when an effort is set. */
-	reasoningSummary?: "auto" | "concise" | "detailed";
+	reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on" | null;
 	/** Output text verbosity; defaults to `low`. */
 	textVerbosity?: "low" | "medium" | "high";
 	serviceTier?: OpenAICodexServiceTier;
@@ -36,7 +87,7 @@ export type OpenAICodexLanguageModelOptions = {
 	promptCacheKey?: string;
 	/** `include` fields; defaults to `["reasoning.encrypted_content"]`. */
 	include?: string[];
-	/** The Codex backend requires `store: false`; override only for testing. */
+	/** @deprecated Codex always requires `store: false`; this value is ignored. */
 	store?: boolean;
 };
 
@@ -47,6 +98,7 @@ export type OpenAICodexLanguageModelConfig = {
 	fetch?: typeof globalThis.fetch;
 	sessionId?: string;
 	serviceTier?: OpenAICodexServiceTier;
+	compat?: OpenAICodexCompatibility;
 };
 
 /**
@@ -101,6 +153,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 	private getArgs(options: LanguageModelV3CallOptions): {
 		args: Record<string, unknown>;
 		warnings: SharedV3Warning[];
+		grammarToolInputProperties: ReadonlyMap<string, string>;
 	} {
 		const warnings: SharedV3Warning[] = [];
 
@@ -119,14 +172,25 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		}
 
 		const codexOptions = (options.providerOptions?.["openai-codex"] ?? {}) as OpenAICodexLanguageModelOptions;
-		const { instructions, input } = convertToOpenAICodexPrompt(options.prompt);
-		const tools = prepareOpenAICodexTools({ tools: options.tools, toolChoice: options.toolChoice });
+		const deferredToolsMode = resolveOpenAICodexDeferredToolsMode(this.modelId, this.config.compat);
+		const deferredToolNames = deferredToolsMode ? collectOpenAICodexDeferredToolNames(options.prompt) : undefined;
+		const tools = prepareOpenAICodexTools({
+			tools: options.tools,
+			toolChoice: options.toolChoice,
+			...(deferredToolNames !== undefined && { deferredToolNames }),
+		});
+		const { instructions, input } = convertToOpenAICodexPrompt(options.prompt, {
+			deferredTools: tools.deferredCodexTools,
+			...(deferredToolsMode !== undefined && { deferredToolsMode }),
+			grammarToolInputProperties: tools.grammarToolInputProperties,
+			supportsImages: this.config.compat?.supportsImages ?? this.modelId !== "gpt-5.3-codex-spark",
+		});
 		warnings.push(...tools.warnings);
 
 		const args: Record<string, unknown> = {
 			model: this.modelId,
 			// The ChatGPT backend rejects stored responses for Codex subscriptions.
-			store: codexOptions.store ?? false,
+			store: false,
 			instructions,
 			input,
 			tool_choice: tools.codexToolChoice ?? "auto",
@@ -138,7 +202,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		if (tools.codexTools) args.tools = tools.codexTools;
 		if (options.temperature != null) args.temperature = options.temperature;
 
-		const promptCacheKey = codexOptions.promptCacheKey ?? this.config.sessionId;
+		const promptCacheKey = clampOpenAICodexPromptCacheKey(codexOptions.promptCacheKey ?? this.config.sessionId);
 		if (promptCacheKey) args.prompt_cache_key = promptCacheKey;
 
 		const serviceTier = codexOptions.serviceTier ?? this.config.serviceTier;
@@ -151,15 +215,15 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			};
 		}
 
-		return { args, warnings };
+		return { args, warnings, grammarToolInputProperties: tools.grammarToolInputProperties };
 	}
 
 	async doGenerate(options: LanguageModelV3CallOptions): Promise<LanguageModelV3GenerateResult> {
 		const { stream, request, response } = await this.doStream(options);
 
 		const content: LanguageModelV3Content[] = [];
-		const textBlocks = new Map<string, { type: "text"; text: string }>();
-		const reasoningBlocks = new Map<string, { type: "reasoning"; text: string }>();
+		const textBlocks = new Map<string, Extract<LanguageModelV3Content, { type: "text" }>>();
+		const reasoningBlocks = new Map<string, Extract<LanguageModelV3Content, { type: "reasoning" }>>();
 		const warnings: SharedV3Warning[] = [];
 		let finishReason: LanguageModelV3FinishReason = { unified: "other", raw: undefined };
 		let usage: LanguageModelV3Usage = convertOpenAICodexUsage(undefined);
@@ -190,6 +254,11 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 					if (block) block.text += value.delta;
 					break;
 				}
+				case "text-end": {
+					const block = textBlocks.get(value.id);
+					if (block && value.providerMetadata !== undefined) block.providerMetadata = value.providerMetadata;
+					break;
+				}
 				case "reasoning-start": {
 					const block = { type: "reasoning" as const, text: "" };
 					reasoningBlocks.set(value.id, block);
@@ -199,6 +268,11 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 				case "reasoning-delta": {
 					const block = reasoningBlocks.get(value.id);
 					if (block) block.text += value.delta;
+					break;
+				}
+				case "reasoning-end": {
+					const block = reasoningBlocks.get(value.id);
+					if (block && value.providerMetadata !== undefined) block.providerMetadata = value.providerMetadata;
 					break;
 				}
 				case "tool-call":
@@ -215,7 +289,9 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 
 		return {
 			content: content.filter((part) =>
-				part.type === "text" || part.type === "reasoning" ? part.text !== "" : true,
+				part.type === "text" || part.type === "reasoning"
+					? part.text !== "" || part.providerMetadata !== undefined
+					: true,
 			),
 			finishReason,
 			usage,
@@ -230,7 +306,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 	}
 
 	async doStream(options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
-		const { args, warnings } = this.getArgs(options);
+		const { args, warnings, grammarToolInputProperties } = this.getArgs(options);
 		const body = { ...args, stream: true };
 		const url = resolveOpenAICodexUrl(this.config.baseURL);
 
@@ -238,12 +314,15 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			...(await this.config.headers()),
 			...options.headers,
 		});
+		const bodyJson = JSON.stringify(body);
+		const compressedBody = compressOpenAICodexRequest(bodyJson);
+		if (compressedBody) headers["content-encoding"] = "zstd";
 
 		const fetchImpl = this.config.fetch ?? globalThis.fetch;
 		const response = await fetchImpl(url, {
 			method: "POST",
 			headers,
-			body: JSON.stringify(body),
+			body: compressedBody ?? bodyJson,
 			...(options.abortSignal !== undefined && { signal: options.abortSignal }),
 		});
 
@@ -261,7 +340,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 
 		return {
 			stream: parseOpenAICodexSSEStream(response.body).pipeThrough(
-				this.createTransformStream(warnings, options.includeRawChunks ?? false),
+				this.createTransformStream(warnings, options.includeRawChunks ?? false, grammarToolInputProperties),
 			),
 			request: { body },
 			response: { headers: responseHeaders },
@@ -271,13 +350,33 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 	private createTransformStream(
 		warnings: SharedV3Warning[],
 		includeRawChunks: boolean,
+		grammarToolInputProperties: ReadonlyMap<string, string>,
 	): TransformStream<CodexEvent, LanguageModelV3StreamPart> {
 		let finishReason: LanguageModelV3FinishReason = { unified: "other", raw: undefined };
 		let usage: OpenAICodexUsage | undefined;
 		let hasToolCalls = false;
+		let finished = false;
 		// function_call argument deltas arrive keyed by item id; tool parts use the
 		// composite `call_id|item_id` so multi-turn replay can recover both halves.
 		const toolCallIdsByItemId = new Map<string, string>();
+		const customToolInputsByItemId = new Map<
+			string,
+			{
+				toolCallId: string;
+				toolName: string;
+				inputProperty: string;
+				buffer: OpenAICodexGrammarInputBuffer;
+			}
+		>();
+		const finish = (controller: TransformStreamDefaultController<LanguageModelV3StreamPart>): void => {
+			if (finished) return;
+			finished = true;
+			controller.enqueue({
+				type: "finish",
+				finishReason,
+				usage: convertOpenAICodexUsage(usage),
+			});
+		};
 
 		const handleOutputItemAdded = (
 			item: CodexEvent,
@@ -300,6 +399,18 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 					id: toolCallId,
 					toolName: asString(item.name) ?? "",
 				});
+			} else if (itemType === "custom_tool_call") {
+				const toolName = asString(item.name) ?? "";
+				const inputProperty = grammarToolInputProperties.get(toolName) ?? "input";
+				const toolCallId = joinToolCallId(asString(item.call_id) ?? itemId, itemId);
+				customToolInputsByItemId.set(itemId, {
+					toolCallId,
+					toolName,
+					inputProperty,
+					buffer: { input: "", started: false, closed: false },
+				});
+				hasToolCalls = true;
+				controller.enqueue({ type: "tool-input-start", id: toolCallId, toolName });
 			}
 		};
 
@@ -312,9 +423,17 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			if (!itemType || !itemId) return;
 
 			if (itemType === "message") {
-				controller.enqueue({ type: "text-end", id: itemId });
+				controller.enqueue({
+					type: "text-end",
+					id: itemId,
+					providerMetadata: { "openai-codex": { messageId: itemId } },
+				});
 			} else if (itemType === "reasoning") {
-				controller.enqueue({ type: "reasoning-end", id: itemId });
+				controller.enqueue({
+					type: "reasoning-end",
+					id: itemId,
+					providerMetadata: { "openai-codex": { reasoningItem: JSON.stringify(item) } },
+				});
 			} else if (itemType === "function_call") {
 				const toolCallId =
 					toolCallIdsByItemId.get(itemId) ?? joinToolCallId(asString(item.call_id) ?? itemId, itemId);
@@ -325,7 +444,28 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 					toolCallId,
 					toolName: asString(item.name) ?? "",
 					input: asString(item.arguments) ?? "",
+					...(asString(item.namespace)
+						? { providerMetadata: { "openai-codex": { namespace: asString(item.namespace)! } } }
+						: {}),
 				});
+			} else if (itemType === "custom_tool_call") {
+				const state = customToolInputsByItemId.get(itemId);
+				if (!state) return;
+				const input = asString(item.input) ?? state.buffer.input;
+				const delta = appendOpenAICodexGrammarInputJsonDelta(state.buffer, state.inputProperty, input, true);
+				if (delta) controller.enqueue({ type: "tool-input-delta", id: state.toolCallId, delta });
+				hasToolCalls = true;
+				controller.enqueue({ type: "tool-input-end", id: state.toolCallId });
+				controller.enqueue({
+					type: "tool-call",
+					toolCallId: state.toolCallId,
+					toolName: state.toolName,
+					input: JSON.stringify({ [state.inputProperty]: input }),
+					...(asString(item.namespace)
+						? { providerMetadata: { "openai-codex": { namespace: asString(item.namespace)! } } }
+						: {}),
+				});
+				customToolInputsByItemId.delete(itemId);
 			}
 		};
 
@@ -384,6 +524,38 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 						break;
 					}
 
+					case "response.custom_tool_call_input.delta": {
+						const itemId = asString(event.item_id);
+						const delta = asString(event.delta);
+						const state = itemId ? customToolInputsByItemId.get(itemId) : undefined;
+						if (!state || delta === undefined) break;
+						const jsonDelta = appendOpenAICodexGrammarInputJsonDelta(
+							state.buffer,
+							state.inputProperty,
+							state.buffer.input + delta,
+							false,
+						);
+						if (jsonDelta)
+							controller.enqueue({ type: "tool-input-delta", id: state.toolCallId, delta: jsonDelta });
+						break;
+					}
+
+					case "response.custom_tool_call_input.done": {
+						const itemId = asString(event.item_id);
+						const input = asString(event.input);
+						const state = itemId ? customToolInputsByItemId.get(itemId) : undefined;
+						if (!state || input === undefined) break;
+						const jsonDelta = appendOpenAICodexGrammarInputJsonDelta(
+							state.buffer,
+							state.inputProperty,
+							input,
+							true,
+						);
+						if (jsonDelta)
+							controller.enqueue({ type: "tool-input-delta", id: state.toolCallId, delta: jsonDelta });
+						break;
+					}
+
 					case "response.output_item.done": {
 						const item = asRecord(event.item);
 						if (item) handleOutputItemDone(item, controller);
@@ -397,7 +569,10 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 						usage = (response?.usage as OpenAICodexUsage | undefined) ?? usage;
 						const status =
 							asString(response?.status) ?? (type === "response.incomplete" ? "incomplete" : "completed");
-						finishReason = mapOpenAICodexFinishReason(status, hasToolCalls);
+						const incompleteReason = asString(asRecord(response?.incomplete_details)?.reason);
+						finishReason = mapOpenAICodexFinishReason(status, hasToolCalls, incompleteReason);
+						finish(controller);
+						controller.terminate();
 						break;
 					}
 
@@ -432,11 +607,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			},
 
 			flush(controller) {
-				controller.enqueue({
-					type: "finish",
-					finishReason,
-					usage: convertOpenAICodexUsage(usage),
-				});
+				finish(controller);
 			},
 		});
 	}

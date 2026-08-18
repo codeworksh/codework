@@ -44,9 +44,16 @@ export async function resolveAISDKLanguageModel(model: Model.Info, options: Opti
 		factoryOptions.includeUsage ??= true;
 	}
 
-	if (npm === "@codeworksh/ai-sdk-openai-codex" && options.sessionId) {
+	if (npm === "@codeworksh/ai-sdk-openai-codex") {
 		// Codex uses the session id for the session-id header and prompt cache key.
-		factoryOptions.sessionId ??= options.sessionId;
+		const cacheDisabled =
+			options.cacheRetention === "none" ||
+			(typeof process !== "undefined" && process.env.CODEWORK_CACHE_RETENTION === "none");
+		if (options.sessionId && !cacheDisabled) factoryOptions.sessionId ??= options.sessionId;
+		factoryOptions.compat ??= {
+			...model.compat,
+			supportsImages: model.input.includes("image"),
+		};
 	}
 
 	const provider = createProvider(factoryOptions);

@@ -545,6 +545,44 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
+	// ── OpenAI Codex GPT-5.6 Luna E2E tests ──
+
+	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.6-luna)", () => {
+		const options = openaiCodexOptions();
+		const getModel = () => getOpenAICodexModel("gpt-5.6-luna");
+
+		it("should resolve appropriate protocol", async () => {
+			const model = await getModel();
+			expect(model.protocol).toBe(Model.KnownProviderEnum.openaiCodex);
+		});
+
+		it("should complete basic text generation", { retry: 2, timeout: 60_000 }, async () => {
+			await basicTextGeneration(await getModel(), options);
+		});
+
+		it("should handle tool calling", { retry: 2, timeout: 60_000 }, async () => {
+			await handleToolCall(await getModel(), options);
+		});
+
+		it("should handle streaming", { retry: 2, timeout: 60_000 }, async () => {
+			await handleStreaming(await getModel(), options);
+		});
+
+		it("should handle thinking", { retry: 2, timeout: 60_000 }, async () => {
+			await handleThinking(await getModel(), { ...options, reasoning: "high" });
+		});
+
+		it("should handle multi-turn with thinking and tools", { retry: 2, timeout: 120_000 }, async () => {
+			await handleMultiTurn(await getModel(), { ...options, reasoning: "medium" });
+		});
+
+		it("should handle image input", { retry: 2, timeout: 60_000 }, async (ctx) => {
+			const model = await getModel();
+			if (!model.input.includes("image")) ctx.skip();
+			await handleImage(model, options);
+		});
+	});
+
 	// ── OpenRouter E2E ──
 
 	describeIfOpenRouter("OpenRouter provider (deepseek/deepseek-v4-flash)", () => {

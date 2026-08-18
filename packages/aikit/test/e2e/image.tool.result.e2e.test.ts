@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import type { AnthropicOptions, OpenAIOptions } from "../../src/llm/options.ts";
+import type { AnthropicOptions, OpenAICodexOptions, OpenAIOptions } from "../../src/llm/options.ts";
 import * as Message from "../../src/message/message.ts";
 import * as Model from "../../src/model/model.ts";
 import { complete } from "../../src/stream.ts";
@@ -10,11 +10,14 @@ import {
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
+	describeIfOpenAICodex,
 	describeIfOpenRouter,
 	getAnthropicModel,
 	getOpenAIModel,
+	getOpenAICodexModel,
 	getOpenRouterModel,
 	getText,
+	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
 } from "../utils/llm.ts";
@@ -22,8 +25,9 @@ import {
 type SupportedModel =
 	| Model.TModel<typeof Model.KnownProviderEnum.anthropic>
 	| Model.TModel<typeof Model.KnownProviderEnum.openai>
+	| Model.TModel<typeof Model.KnownProviderEnum.openaiCodex>
 	| Model.TModel<typeof Model.KnownProviderEnum.openrouter>;
-type SupportedOptions = AnthropicOptions | OpenAIOptions;
+type SupportedOptions = AnthropicOptions | OpenAICodexOptions | OpenAIOptions;
 
 function getImageBase64(): string {
 	const imagePath = fileURLToPath(new URL("../data/red-circle.png", import.meta.url));
@@ -56,6 +60,17 @@ function completeToolCall(
 	};
 }
 
+async function completeWithTransientRetry(model: SupportedModel, context: Message.Context, options: SupportedOptions) {
+	for (let attempt = 0; ; attempt++) {
+		const response = await complete(model, context, options as never);
+		const overloaded =
+			response.errorMessage?.includes("server_is_overloaded") ||
+			response.errorMessage?.includes("servers are currently overloaded");
+		if (!overloaded || attempt >= 3) return response;
+		await new Promise((resolve) => setTimeout(resolve, 1_000 * 2 ** attempt));
+	}
+}
+
 async function handleToolWithImageResult(model: SupportedModel, options: SupportedOptions) {
 	expect(model.input).toContain("image");
 
@@ -82,7 +97,7 @@ async function handleToolWithImageResult(model: SupportedModel, options: Support
 		tools: [getImageTool],
 	};
 
-	const firstResponse = await complete(model, context, options as never);
+	const firstResponse = await completeWithTransientRetry(model, context, options);
 	expect(firstResponse.stopReason, firstResponse.errorMessage).toBe("toolUse");
 
 	const toolCall = firstResponse.parts.find((block): block is Message.ToolCall => block.type === "toolCall");
@@ -100,7 +115,7 @@ async function handleToolWithImageResult(model: SupportedModel, options: Support
 		]),
 	);
 
-	const secondResponse = await complete(model, context, options as never);
+	const secondResponse = await completeWithTransientRetry(model, context, options);
 	expect(secondResponse.stopReason, secondResponse.errorMessage).toBe("stop");
 	expect(secondResponse.errorMessage).toBeFalsy();
 
@@ -135,7 +150,7 @@ async function handleToolWithTextAndImageResult(model: SupportedModel, options: 
 		tools: [getImageTool],
 	};
 
-	const firstResponse = await complete(model, context, options as never);
+	const firstResponse = await completeWithTransientRetry(model, context, options);
 	expect(firstResponse.stopReason, firstResponse.errorMessage).toBe("toolUse");
 
 	const toolCall = firstResponse.parts.find((block): block is Message.ToolCall => block.type === "toolCall");
@@ -157,7 +172,7 @@ async function handleToolWithTextAndImageResult(model: SupportedModel, options: 
 		]),
 	);
 
-	const secondResponse = await complete(model, context, options as never);
+	const secondResponse = await completeWithTransientRetry(model, context, options);
 	expect(secondResponse.stopReason, secondResponse.errorMessage).toBe("stop");
 	expect(secondResponse.errorMessage).toBeFalsy();
 
@@ -192,6 +207,20 @@ describe("Tool Results with Images", () => {
 
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
 			const model = await getAnthropicModel();
+			await handleToolWithTextAndImageResult(model, options);
+		});
+	});
+
+	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.6-luna)", () => {
+		const options = openaiCodexOptions({ reasoning: "low" });
+
+		it("should handle tool result with only image", { retry: 2, timeout: 120_000 }, async () => {
+			const model = await getOpenAICodexModel("gpt-5.6-luna");
+			await handleToolWithImageResult(model, options);
+		});
+
+		it("should handle tool result with text and image", { retry: 2, timeout: 120_000 }, async () => {
+			const model = await getOpenAICodexModel("gpt-5.6-luna");
 			await handleToolWithTextAndImageResult(model, options);
 		});
 	});

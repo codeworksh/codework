@@ -8,8 +8,12 @@ export { stream } from "./stream.ts";
 export { createAssistantMessageEventStream, EventStream } from "./utils/eventstream.ts";
 export { validateSchema, validateToolArguments, validateToolCall } from "./utils/validation.ts";
 
-export { createOpenAICodex, openaiCodex } from "./providers/openai-codex/index.ts";
-export type { OpenAICodexProvider, OpenAICodexProviderSettings } from "./providers/openai-codex/index.ts";
+export { createOpenAICodex, openAICodexTools, openaiCodex } from "./providers/openai-codex/index.ts";
+export type {
+	OpenAICodexGrammarConstraint,
+	OpenAICodexProvider,
+	OpenAICodexProviderSettings,
+} from "./providers/openai-codex/index.ts";
 
 export type {
 	AnthropicOptions,

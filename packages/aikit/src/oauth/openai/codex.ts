@@ -99,7 +99,7 @@ type JwtPayload = {
 };
 
 type OAuthServerInfo = {
-	close: () => void;
+	close: () => Promise<void>;
 	cancelWait: () => void;
 	waitForCode: () => Promise<{ code: string } | null>;
 };
@@ -489,12 +489,19 @@ async function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
 			);
 		}
 	});
+	const close = async (): Promise<void> => {
+		if (!server.listening) return;
+		await new Promise<void>((resolve) => {
+			server.close(() => resolve());
+			server.closeAllConnections();
+		});
+	};
 
 	return new Promise((resolve) => {
 		server
 			.listen(1455, readEnv(CODEWORK_OAUTH_CALLBACK_HOST) || "127.0.0.1", () => {
 				resolve({
-					close: () => server.close(),
+					close,
 					cancelWait: () => {
 						settleWait?.(null);
 					},
@@ -504,13 +511,7 @@ async function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
 			.on("error", () => {
 				settleWait?.(null);
 				resolve({
-					close: () => {
-						try {
-							server.close();
-						} catch {
-							// Ignore close errors after a listen failure.
-						}
-					},
+					close,
 					cancelWait: () => {},
 					waitForCode: async () => null,
 				});
@@ -595,7 +596,7 @@ async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promise<OpenA
 			accountId,
 		};
 	} finally {
-		server.close();
+		await server.close();
 	}
 }
 

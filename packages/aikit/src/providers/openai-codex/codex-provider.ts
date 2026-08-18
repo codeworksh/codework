@@ -3,7 +3,9 @@ import { getOpenAICodexAccountId } from "../../oauth/openai/codex.ts";
 import {
 	OPENAI_CODEX_DEFAULT_BASE_URL,
 	OpenAICodexLanguageModel,
+	clampOpenAICodexPromptCacheKey,
 	type OpenAICodexModelId,
+	type OpenAICodexCompatibility,
 	type OpenAICodexServiceTier,
 } from "./codex-language-model.ts";
 
@@ -54,6 +56,9 @@ export interface OpenAICodexProviderSettings {
 
 	/** `originator` header value; defaults to `codework`. */
 	originator?: string;
+
+	/** Optional model capability overrides. Known Codex models use built-in defaults. */
+	compat?: OpenAICodexCompatibility;
 }
 
 async function resolveApiKey(settings: OpenAICodexProviderSettings): Promise<string> {
@@ -85,6 +90,7 @@ function resolveAccountId(settings: OpenAICodexProviderSettings, apiKey: string)
 
 export function createOpenAICodex(options: OpenAICodexProviderSettings = {}): OpenAICodexProvider {
 	const baseURL = options.baseURL?.replace(/\/+$/, "") || OPENAI_CODEX_DEFAULT_BASE_URL;
+	const sessionId = clampOpenAICodexPromptCacheKey(options.sessionId);
 
 	const getHeaders = async (): Promise<Record<string, string | undefined>> => {
 		const apiKey = await resolveApiKey(options);
@@ -97,7 +103,7 @@ export function createOpenAICodex(options: OpenAICodexProviderSettings = {}): Op
 			originator: options.originator ?? DEFAULT_ORIGINATOR,
 			accept: "text/event-stream",
 			"content-type": "application/json",
-			...(options.sessionId ? { "session-id": options.sessionId, "x-client-request-id": options.sessionId } : {}),
+			...(sessionId ? { "session-id": sessionId, "x-client-request-id": sessionId } : {}),
 			...options.headers,
 		};
 	};
@@ -108,8 +114,9 @@ export function createOpenAICodex(options: OpenAICodexProviderSettings = {}): Op
 			baseURL,
 			headers: getHeaders,
 			...(options.fetch !== undefined && { fetch: options.fetch }),
-			...(options.sessionId !== undefined && { sessionId: options.sessionId }),
+			...(sessionId !== undefined && { sessionId }),
 			...(options.serviceTier !== undefined && { serviceTier: options.serviceTier }),
+			...(options.compat !== undefined && { compat: options.compat }),
 		});
 
 	const provider = function (modelId: OpenAICodexModelId) {
