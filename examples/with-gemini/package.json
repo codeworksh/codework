@@ -1,0 +1,22 @@
+{
+  "name": "with-gemini",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "tsx index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "^4.23.12",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@codeworksh/aikit": "link:../../packages/aikit"
+  }
+}
