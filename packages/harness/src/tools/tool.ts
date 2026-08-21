@@ -62,6 +62,8 @@ export interface ToolDef<
 	 * distinct from the fuller `description`.
 	 */
 	readonly promptSnippet?: string;
+	/** Optional guideline bullets appended to the default system prompt Guidelines section when this tool is active. */
+	readonly promptGuidelines?: ReadonlyArray<string>;
 	readonly parameters: Params;
 	readonly success: Success;
 	/** Declared, model-visible failures (typed). Omit for tools that cannot fail expectedly. */
