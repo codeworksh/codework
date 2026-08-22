@@ -15,9 +15,31 @@ export interface EncodedMessage {
 	readonly parts: ReadonlyArray<Session.AppendPart>;
 }
 
+type AikitPart = Message.AssistantMessage["parts"][number] | Message.UserMessage["parts"][number];
+
 const reasonOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 const decodeJsonObject = Schema.decodeUnknownEffect(SessionSchema.JsonObject);
 const encodeJsonObject = Schema.encodeEffect(SessionSchema.JsonObject);
+
+export const encodePart = Effect.fn("Context.encodePart")(function* (
+	part: AikitPart,
+): Effect.fn.Return<Session.AppendPart, ContextEncodeError> {
+	const data = yield* encodeJsonObject(part).pipe(
+		Effect.mapError(
+			(cause) =>
+				new ContextEncodeError({
+					messageId: part.type === "toolCall" ? part.callID : "part",
+					role: "assistant",
+					reason: cause.message,
+				}),
+		),
+	);
+	return {
+		type: part.type,
+		...(part.type === "toolCall" ? { status: part.status, callId: part.callID, toolName: part.name } : {}),
+		data,
+	};
+});
 
 const parseJson = (data: string, entryId: string, type: string, subject: string) =>
 	decodeJsonObject(data).pipe(
@@ -75,18 +97,13 @@ export const encodeMessage = Effect.fn("Context.encodeMessage")(function* (
 		),
 	);
 	const encodedParts = yield* Effect.forEach(parts, (part) =>
-		encodeJsonObject(part).pipe(
-			Effect.map((data) => ({
-				type: part.type,
-				...(part.type === "toolCall" ? { status: part.status, callId: part.callID, toolName: part.name } : {}),
-				data,
-			})),
+		encodePart(part).pipe(
 			Effect.mapError(
 				(cause) =>
 					new ContextEncodeError({
 						messageId: message.messageId,
 						role: message.role,
-						reason: cause.message,
+						reason: cause.reason,
 					}),
 			),
 		),

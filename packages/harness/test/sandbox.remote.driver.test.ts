@@ -5,16 +5,12 @@ import { Database } from "../src/db/db.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
 import { DaytonaSandboxDriver } from "../src/sandbox/drivers/daytona.ts";
-import { VercelSandboxDriver } from "../src/sandbox/drivers/vercel.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
-import { hasLiveOidc } from "./fixtures/vercel.ts";
 import "./utils/env.ts";
 
 const apiKey = process.env.DAYTONA_API_KEY;
-const oidcToken = process.env.VERCEL_OIDC_TOKEN;
 const daytonaSuite = apiKey ? describe : describe.skip;
-const vercelSuite = hasLiveOidc(oidcToken) ? describe : describe.skip;
 
 const cleanup = (controller: SandboxController.Controller["Service"], id: SandboxInstance.ID) =>
 	Effect.gen(function* () {
@@ -113,19 +109,6 @@ daytonaSuite("Sandbox Daytona lifecycle driver", () => {
 			},
 			secret: apiKey!,
 			expectedCancels: false,
-		});
-	}, 180_000);
-});
-
-vercelSuite("Sandbox Vercel lifecycle driver", () => {
-	it("runs create, mount, wake, stop, and destroy through the controller", async () => {
-		await lifecycle({
-			remote: VercelSandboxDriver.make(),
-			config: {
-				runtime: "node24",
-			},
-			secret: oidcToken!,
-			expectedCancels: true,
 		});
 	}, 180_000);
 });

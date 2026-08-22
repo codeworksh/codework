@@ -10,8 +10,10 @@ import { SandboxResource } from "../src/sandbox/resource.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { Shell } from "../src/sandbox/shell/shell.ts";
 import { cancellationSpec } from "./fixtures/cancellation.spec.ts";
-import { labels, makeRemoteOwner } from "./fixtures/remote-owner.ts";
+import { labels } from "./fixtures/remote-owner.ts";
 import { remoteSandboxSpec } from "./fixtures/remote.spec.ts";
+import { runnerCycleSpec } from "./fixtures/runner.cycle.spec.ts";
+import { toolsRegistryVercelSpec } from "./fixtures/tools.registry.vercel.spec.ts";
 import { hasLiveOidc } from "./fixtures/vercel.ts";
 import "./utils/env.ts";
 
@@ -23,12 +25,12 @@ const PROVISION_TIMEOUT = 180_000;
 
 // ⚠️ ONE shared sandbox for the whole gated suite.
 //
-// The Hobby (free) plan caps sandbox creation at ~40 per rolling ~10-minute
-// window (and 10 concurrent), and exhausting it surfaces as HTTP 429 from
-// `Sandbox.create` — NOT a test/code bug. To stay well clear, the suite
-// provisions a SINGLE microVM once (`beforeAll`), captures its locator before
-// attaching a `ManagedRuntime`, reuses it across every behavioral test, and
-// deletes it explicitly on teardown.
+// The free plan has strict creation/account quotas; exhausting them can surface
+// as HTTP 402/429 from `Sandbox.create`. This is the ONLY Vercel provisioning
+// site in the harness tests: it gets or creates one named microVM in `beforeAll`
+// and shares its locator with every provider, tool, and runner contract below.
+// Teardown stops the microVM but deliberately keeps the named sandbox so the
+// next test command resumes it instead of consuming another creation.
 //
 // Creation-time options that would otherwise each need their own sandbox are
 // baked into this one box so their behavior is still covered: a fixed `node24`
@@ -36,45 +38,103 @@ const PROVISION_TIMEOUT = 180_000;
 // sandbox per version, which is intentionally not done — see git history.)
 const SANDBOX_CWD = "/tmp";
 const BAKED_ENV = "from-sandbox";
+const CONFIGURED_SANDBOX_NAME = process.env.VERCEL_TEST_SANDBOX_NAME?.trim() || undefined;
+const DEFAULT_SANDBOX_NAME = "codework-harness-test";
+
+const sharedSandbox = async (instanceId: SandboxInstance.ID): Promise<RemoteSandbox> => {
+	if (CONFIGURED_SANDBOX_NAME !== undefined) {
+		return RemoteSandbox.getOrCreate({
+			name: CONFIGURED_SANDBOX_NAME,
+			runtime: "node24",
+			env: { CW_ENV: BAKED_ENV },
+			tags: { ...labels(instanceId), "codework-suite": "harness" },
+			persistent: true,
+		});
+	}
+
+	const sandboxes = await (await RemoteSandbox.list()).toArray();
+	const named = sandboxes.find((sandbox) => sandbox.name === DEFAULT_SANDBOX_NAME);
+	if (named !== undefined) return RemoteSandbox.get({ name: named.name });
+
+	const managed = sandboxes.filter(
+		(sandbox) =>
+			sandbox.runtime === "node24" &&
+			sandbox.persistent &&
+			sandbox.tags?.["codework-managed"] === "true" &&
+			sandbox.tags?.["codework-test"] === "true",
+	);
+	if (managed.length === 1) return RemoteSandbox.get({ name: managed[0]!.name });
+	if (managed.length > 1) {
+		throw new Error(
+			`multiple reusable Vercel test sandboxes found (${managed.map((sandbox) => sandbox.name).join(", ")}); set VERCEL_TEST_SANDBOX_NAME`,
+		);
+	}
+
+	return RemoteSandbox.getOrCreate({
+		name: DEFAULT_SANDBOX_NAME,
+		runtime: "node24",
+		env: { CW_ENV: BAKED_ENV },
+		tags: { ...labels(instanceId), "codework-suite": "harness" },
+		persistent: true,
+	});
+};
 
 suite("Sandbox.EnvVercel (shared sandbox)", () => {
-	let runtime!: ManagedRuntime.ManagedRuntime<Sandbox.Provides | SandboxResource.Service, EnvVercel.VercelError>;
-	const owner = makeRemoteOwner("sandbox.vercel");
+	let runtime:
+		| ManagedRuntime.ManagedRuntime<Sandbox.Provides | SandboxResource.Service, EnvVercel.VercelError>
+		| undefined;
+	let remote: RemoteSandbox | undefined;
 
 	beforeAll(async () => {
 		const instanceId = SandboxInstance.ID.create();
-		const sandbox = await EnvVercel.createSandbox({
-			runtime: "node24",
-			envVars: { CW_ENV: BAKED_ENV },
-			tags: labels(instanceId),
-		});
-		owner.capture(sandbox.name);
+		remote = await sharedSandbox(instanceId);
 		runtime = ManagedRuntime.make(
 			EnvVercel.services({
-				sandboxName: sandbox.name,
+				sandboxName: remote.name,
 				instanceId,
 				cwd: SANDBOX_CWD,
 			}),
 		);
 	}, PROVISION_TIMEOUT);
-	afterAll(
-		() =>
-			owner.cleanup({
-				destroy: async (name) => {
-					const sandbox = await RemoteSandbox.get({ name, resume: false });
-					await sandbox.delete();
-				},
-				dispose: () => runtime.dispose(),
-			}),
-		PROVISION_TIMEOUT,
-	);
+	afterAll(async () => {
+		const failures: unknown[] = [];
+		if (runtime !== undefined) {
+			try {
+				await runtime.dispose();
+			} catch (cause) {
+				failures.push(cause);
+			}
+		}
+		if (remote !== undefined && remote.status !== "stopped") {
+			try {
+				await remote.stop();
+			} catch (cause) {
+				failures.push(cause);
+			}
+		}
+
+		if (failures.length === 1) throw failures[0];
+		if (failures.length > 1) throw new AggregateError(failures, "shared Vercel sandbox cleanup failed");
+	}, PROVISION_TIMEOUT);
+
+	const sharedRuntime = () => {
+		if (runtime === undefined) throw new Error("shared Vercel sandbox runtime is not initialized");
+		return runtime;
+	};
 
 	// Run a program against the one shared sandbox.
-	const run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> => runtime.runPromise(program);
+	const run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>): Promise<A> =>
+		sharedRuntime().runPromise(program);
 
 	// The locator for the shared sandbox — what the control plane records as
 	// `provider_resource_id` and reattaches through.
-	const resourceId = () => runtime.runPromise(Effect.map(SandboxResource.Service, (r) => r.providerResourceId));
+	const resourceId = () =>
+		sharedRuntime().runPromise(Effect.map(SandboxResource.Service, (r) => r.providerResourceId));
+
+	// Every Vercel-backed harness contract below reattaches to this locator.
+	// No nested spec is allowed to provision or destroy a provider resource.
+	runnerCycleSpec(resourceId);
+	toolsRegistryVercelSpec(resourceId);
 
 	// A second, independent mount of the same underlying resource.
 	const reattach = <A, E>(

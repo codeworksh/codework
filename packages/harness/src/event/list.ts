@@ -39,31 +39,8 @@ export const Prompted = EventSchema.define({
 });
 export type Prompted = typeof Prompted.Type;
 
-/*
- * The aikit response events.
- *
- * Only the two terminals are durable. Every aikit event already carries a
- * complete assistant message, so the terminal one contains everything the
- * response produced -- including whatever was generated before an abort, since
- * aikit reports that as `error` with the accumulated output. Persisting the
- * boundaries in between would buy nothing and cost the invariant: an entry
- * written mid-stream can be left non-terminal by a crash, and `Context.assemble`
- * would then replay a truncated answer to the model as though it were complete.
- *
- * None of these payloads carries aikit's `partial`. It is one mutable object
- * that aikit rewrites in place and pushes by reference into a queue, so by the
- * time a consumer reads a queued event the value has moved on. Only the stable
- * scalars each event computes at push time are safe to carry.
- */
 const LLMFields = {
 	...baseOptions,
-	/*
-	 * aikit's own message id, carried verbatim. `SessionMessageSchema.ID` is
-	 * unprefixed precisely so this needs no translation: the id in the event, the
-	 * id inside the terminal message, and the assistant entry's id are all one
-	 * value, which is what the codec's `entry.id === message.messageId` rule
-	 * wants.
-	 */
 	messageId: SessionMessageSchema.ID,
 };
 
@@ -72,9 +49,37 @@ const LLMPartFields = {
 	partIndex: NonNegativeInt,
 };
 
+export const TurnAbortCause = Schema.Union([
+	Schema.TaggedStruct("interrupted", {}),
+	Schema.TaggedStruct("error", { message: Schema.String }),
+	Schema.TaggedStruct("deferred", { message: Schema.String }),
+]);
+export type TurnAbortCause = typeof TurnAbortCause.Type;
+
+export const TurnStarted = EventSchema.define({
+	type: "session.turn.started",
+	schema: baseOptions,
+});
+export type TurnStarted = typeof TurnStarted.Type;
+
+export const TurnEnded = EventSchema.define({
+	type: "session.turn.ended",
+	...durableOptions,
+	schema: LLMFields,
+});
+export type TurnEnded = typeof TurnEnded.Type;
+
+export const TurnAborted = EventSchema.define({
+	type: "session.turn.aborted",
+	schema: { ...baseOptions, cause: TurnAbortCause },
+});
+export type TurnAborted = typeof TurnAborted.Type;
+
+/** Durable insertion of the request's draft assistant placeholder. */
 export const LLMStarted = EventSchema.define({
 	type: "session.llm.started",
-	schema: LLMFields,
+	...durableOptions,
+	schema: { ...LLMFields, message: EventSchema.AikitAssistantMessage },
 });
 export type LLMStarted = typeof LLMStarted.Type;
 
@@ -114,7 +119,7 @@ export const LLMThinkingEnd = EventSchema.define({
 });
 export type LLMThinkingEnd = typeof LLMThinkingEnd.Type;
 
-/** aikit `done`: the response completed and `message` is authoritative. */
+/** aikit `done`: replace the LLMStarted payload in place; state stays draft. */
 export const LLMEnded = EventSchema.define({
 	type: "session.llm.ended",
 	...durableOptions,
@@ -126,11 +131,7 @@ export const LLMEnded = EventSchema.define({
 });
 export type LLMEnded = typeof LLMEnded.Type;
 
-/**
- * aikit `error`: the response failed or was aborted. aikit names this payload
- * `error`, but it is a complete assistant message carrying everything generated
- * before the failure, so it projects exactly like a successful one.
- */
+/** Abort the whole draft and discard every part. */
 export const LLMFailed = EventSchema.define({
 	type: "session.llm.failed",
 	...durableOptions,
@@ -141,6 +142,29 @@ export const LLMFailed = EventSchema.define({
 	},
 });
 export type LLMFailed = typeof LLMFailed.Type;
+
+export const ToolStarted = EventSchema.define({
+	type: "session.tool.started",
+	schema: { ...LLMFields, callID: Schema.String, name: Schema.String },
+});
+export type ToolStarted = typeof ToolStarted.Type;
+
+export const ToolProgress = EventSchema.define({
+	type: "session.tool.progress",
+	schema: { ...LLMFields, callID: Schema.String, partial: Schema.Unknown },
+});
+export type ToolProgress = typeof ToolProgress.Type;
+
+export const ToolSettled = EventSchema.define({
+	type: "session.tool.settled",
+	...durableOptions,
+	schema: {
+		...LLMFields,
+		callID: Schema.String,
+		part: EventSchema.AikitToolCallTerminalPart,
+	},
+});
+export type ToolSettled = typeof ToolSettled.Type;
 
 /**
  * First event in a forked session's log. The aggregate is the *new* session, so
@@ -163,6 +187,15 @@ export const SessionForked = EventSchema.define({
 });
 export type SessionForked = typeof SessionForked.Type;
 
-export const DurableDefinitions = EventSchema.inventory(PromptAdmitted, Prompted, SessionForked, LLMEnded, LLMFailed);
+export const DurableDefinitions = EventSchema.inventory(
+	PromptAdmitted,
+	Prompted,
+	SessionForked,
+	TurnEnded,
+	LLMStarted,
+	LLMEnded,
+	LLMFailed,
+	ToolSettled,
+);
 
 export * as EventList from "./list.ts";

@@ -160,6 +160,38 @@ describe("context codec", () => {
 });
 
 describe("context assembly", () => {
+	it("omits draft and aborted assistants while retaining the raw tree leaf", () =>
+		Effect.gen(function* () {
+			const { appendMessage, context, created } = yield* setup;
+			const events = yield* Event.Service;
+			const assistantId = SessionMessageSchema.ID.make("msg_hidden_assistant");
+			const message = assistant(assistantId, "provider-a", "model-a");
+			yield* appendMessage(user("msg_visible_user", "hello"));
+
+			yield* events.publish(EventList.LLMStarted, {
+				sessionId: created.id,
+				messageId: assistantId,
+				timestamp: yield* DateTime.now,
+				message,
+			});
+			const during = yield* context.assemble(created.id);
+			expect(during.leafEntryId).toBe(assistantId);
+			expect(during.messages.map((item) => item.messageId)).toEqual(["msg_visible_user"]);
+			expect(during.lastAssistant).toBeUndefined();
+
+			yield* events.publish(EventList.LLMFailed, {
+				sessionId: created.id,
+				messageId: assistantId,
+				timestamp: yield* DateTime.now,
+				reason: "aborted",
+				message: { ...message, stopReason: "aborted", errorMessage: "interrupted", parts: [] },
+			});
+			const after = yield* context.assemble(created.id);
+			expect(after.leafEntryId).toBe(assistantId);
+			expect(after.messages.map((item) => item.messageId)).toEqual(["msg_visible_user"]);
+			expect(after.lastAssistant).toBeUndefined();
+		}));
+
 	it("projects Prompted directly as a canonical user message", () =>
 		Effect.gen(function* () {
 			const { context, created, sessions } = yield* setup;

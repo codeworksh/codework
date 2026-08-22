@@ -4,7 +4,9 @@ import { uuidv7 } from "uuidv7";
 import { Database } from "../db/db.ts";
 import {
 	type EntryType,
+	entryStates,
 	entryTypes,
+	type EntryState,
 	type MessageEntryType,
 	messageEntryTypes,
 	type PartType,
@@ -22,6 +24,7 @@ import type { AbsolutePath } from "../schema.ts";
 import { SessionSchema } from "./schema.ts";
 
 export {
+	entryStates,
 	entryTypes,
 	messageEntryTypes,
 	partTypes,
@@ -30,6 +33,7 @@ export {
 	SessionRow,
 	toolStatuses,
 	type EntryType,
+	type EntryState,
 	type MessageEntryType,
 	type PartType,
 	type ToolStatus,
@@ -91,6 +95,8 @@ export interface AppendEntry {
 	 */
 	readonly seq: number;
 	readonly type: EntryType;
+	/** Defaults to committed. Only LLMStarted inserts a draft. */
+	readonly state?: EntryState;
 	readonly data: string; // JSON: full payload, or message envelope
 	readonly parts?: ReadonlyArray<AppendPart>; // order = partIndex; message types only
 	readonly parentId?: string; // explicit branch appends only; default = current leaf
@@ -106,6 +112,26 @@ export interface SettleToolCall {
 	readonly callId: string; // from the loop's tool.execution.end
 	readonly status: Exclude<ToolStatus, "pending" | "running">;
 	readonly data: string; // settled aikit part JSON, verbatim
+}
+
+export interface ReplaceAssistant {
+	readonly id: string;
+	readonly sessionId: SessionSchema.ID;
+	readonly data: string;
+	readonly parts: ReadonlyArray<AppendPart>;
+}
+
+export interface SetEntryState {
+	readonly id: string;
+	readonly sessionId: SessionSchema.ID;
+	readonly state: "committed";
+}
+
+export interface AbortAssistant {
+	readonly id: string;
+	readonly sessionId: SessionSchema.ID;
+	/** Encoded assistant stub. Parts are always deleted by the transition. */
+	readonly data: string;
 }
 
 // Fork copies ONE path (root → fork point) into a new session — never sibling
@@ -145,7 +171,14 @@ export interface Interface {
 	readonly append: (
 		input: AppendEntry,
 	) => Effect.Effect<SessionEntryRow, SessionNotFoundError | EntryNotFoundError | InvalidEntryDataError>;
-	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void, ToolCallNotFoundError>;
+	/** Projector-only: replace the payload of an existing draft assistant in place. */
+	readonly replaceAssistant: (input: ReplaceAssistant) => Effect.Effect<void>;
+	/** Projector-only: settle one pending/running tool part on a draft assistant. */
+	readonly settleToolCall: (input: SettleToolCall) => Effect.Effect<void>;
+	/** Projector-only: commit a draft after every tool part is terminal. */
+	readonly setEntryState: (input: SetEntryState) => Effect.Effect<void>;
+	/** Projector-only: turn a draft into a partless aborted tombstone. */
+	readonly abortAssistant: (input: AbortAssistant) => Effect.Effect<void>;
 	/** Copy root→fork-point into a new session (`parentId` = source). Clone = fork at leaf. */
 	readonly fork: (
 		input: ForkInput,
@@ -216,10 +249,10 @@ export const layer = Layer.effect(
 			Request: SessionEntryRow.insert,
 			Result: Schema.Struct({ id: Schema.String }),
 			execute: (row) => sql`
-				INSERT INTO session_entry (id, session_id, parent_id, seq, type, data, label, metadata, created_at, updated_at)
+				INSERT INTO session_entry (id, session_id, parent_id, seq, type, state, data, label, metadata, created_at, updated_at)
 				SELECT
 					${row.id}, ${row.sessionId}, ${row.parentId ?? null}, ${row.seq},
-					${row.type}, ${row.data}, ${row.label ?? null}, ${row.metadata ?? null},
+					${row.type}, ${row.state}, ${row.data}, ${row.label ?? null}, ${row.metadata ?? null},
 					${row.createdAt}, ${row.updatedAt}
 				WHERE NOT EXISTS (
 					SELECT 1 FROM session_entry WHERE session_id = ${row.sessionId} AND seq >= ${row.seq}
@@ -401,6 +434,17 @@ export const layer = Layer.effect(
 
 		const append = Effect.fn("Session.append")(function* (input: AppendEntry) {
 			const parts = input.parts ?? [];
+			const state = input.state ?? "committed";
+			if (state === "aborted" || (input.type !== "assistant" && state !== "committed")) {
+				return yield* new InvalidEntryDataError({
+					entryId: input.id,
+					type: input.type,
+					reason:
+						state === "aborted"
+							? "an aborted assistant must be produced by abortAssistant"
+							: `entry type "${input.type}" must be committed`,
+				});
+			}
 			if (parts.length > 0 && !messageTypes.has(input.type)) {
 				return yield* new InvalidEntryDataError({
 					entryId: input.id,
@@ -509,6 +553,7 @@ export const layer = Layer.effect(
 							parentId,
 							seq: input.seq,
 							type: input.type,
+							state,
 							data: input.data,
 							label: Option.none(),
 							metadata: Option.fromUndefinedOr(input.metadata),
@@ -541,8 +586,9 @@ export const layer = Layer.effect(
 							yield* insertPart(partRow);
 						}
 
-						// Advance the cursor; assistant appends bump the usage aggregates
-						// in the same statement (envelope usage is final at message.end).
+						// Advance the cursor and account for the envelope currently stored.
+						// Draft assistants are adjusted by replace/abort when their terminal
+						// envelope arrives.
 						const now = yield* epochNow;
 						yield* sql`
 							UPDATE session SET
@@ -581,30 +627,129 @@ export const layer = Layer.effect(
 			}
 		});
 
-		const settleToolCall = Effect.fn("Session.settleToolCall")(function* (input: SettleToolCall) {
-			const settled = yield* sql
-				.withTransaction(
-					Effect.gen(function* () {
-						const rows = yield* sql`
-							SELECT id FROM session_entry_part
-							WHERE entry_id = ${input.entryId} AND call_id = ${input.callId} AND type = 'toolCall'
+		const replaceAssistant = Effect.fn("Session.replaceAssistant")(function* (input: ReplaceAssistant) {
+			const nextEnvelope = yield* decodeEnvelopeUsage(input.data);
+			yield* sql.withTransaction(
+				Effect.gen(function* () {
+					const current = yield* findEntry(input.id);
+					if (
+						Option.isNone(current) ||
+						current.value.sessionId !== input.sessionId ||
+						current.value.type !== "assistant" ||
+						current.value.state !== "draft"
+					) {
+						return yield* Effect.die(`replaceAssistant requires draft assistant ${input.id}`);
+					}
+					const previousEnvelope = yield* decodeEnvelopeUsage(current.value.data);
+					const now = yield* epochNow;
+					yield* sql`DELETE FROM session_entry_part WHERE entry_id = ${input.id}`;
+					for (const [partIndex, part] of input.parts.entries()) {
+						const partRow = yield* SessionEntryPartRow.insert.makeEffect({
+							id: part.id ?? uuidv7(),
+							entryId: input.id,
+							sessionId: input.sessionId,
+							partIndex,
+							type: part.type,
+							status: Option.fromUndefinedOr(part.status),
+							callId: Option.fromUndefinedOr(part.callId),
+							toolName: Option.fromUndefinedOr(part.toolName),
+							data: part.data,
+						});
+						yield* insertPart(partRow);
+					}
+					yield* sql`
+							UPDATE session_entry SET data = ${input.data}, updated_at = ${now}
+							WHERE id = ${input.id} AND session_id = ${input.sessionId} AND state = 'draft'
 						`;
-						if (rows.length === 0) return false;
-						const now = yield* epochNow;
-						yield* sql`
-							UPDATE session_entry_part
-							SET data = ${input.data}, status = ${input.status}, updated_at = ${now}
-							WHERE entry_id = ${input.entryId} AND call_id = ${input.callId} AND type = 'toolCall'
+					yield* sql`
+							UPDATE session SET
+								updated_at = ${now},
+								cost = cost + ${nextEnvelope.usage.cost.total - previousEnvelope.usage.cost.total},
+								tokens_input = tokens_input + ${nextEnvelope.usage.input - previousEnvelope.usage.input},
+								tokens_output = tokens_output + ${nextEnvelope.usage.output - previousEnvelope.usage.output},
+								tokens_cache_read = tokens_cache_read + ${nextEnvelope.usage.cacheRead - previousEnvelope.usage.cacheRead},
+								tokens_cache_write = tokens_cache_write + ${nextEnvelope.usage.cacheWrite - previousEnvelope.usage.cacheWrite}
+							WHERE id = ${input.sessionId}
 						`;
-						return true;
-					}),
-				)
-				.pipe(Effect.orDie);
+				}),
+			);
+		}, Effect.orDie);
 
-			if (!settled) {
-				return yield* new ToolCallNotFoundError({ entryId: input.entryId, callId: input.callId });
+		const settleToolCall = Effect.fn("Session.settleToolCall")(function* (input: SettleToolCall) {
+			const data = yield* decodeJsonObject(input.data).pipe(Effect.orDie);
+			if (data["type"] !== "toolCall" || data["callID"] !== input.callId || data["status"] !== input.status) {
+				return yield* Effect.die(`settled tool payload does not match call ${input.callId}`);
 			}
-		});
+			const now = yield* epochNow;
+			const rows = yield* sql`
+				UPDATE session_entry_part
+				SET data = ${input.data}, status = ${input.status}, updated_at = ${now}
+				WHERE entry_id = ${input.entryId}
+					AND call_id = ${input.callId}
+					AND type = 'toolCall'
+					AND status IN ('pending', 'running')
+					AND EXISTS (
+						SELECT 1 FROM session_entry
+						WHERE id = ${input.entryId} AND state = 'draft'
+					)
+				RETURNING id
+			`;
+			if (rows.length !== 1) {
+				return yield* Effect.die(`settleToolCall requires one unsettled call ${input.entryId}/${input.callId}`);
+			}
+		}, Effect.orDie);
+
+		const setEntryState = Effect.fn("Session.setEntryState")(function* (input: SetEntryState) {
+			const now = yield* epochNow;
+			const rows = yield* sql`
+				UPDATE session_entry SET state = ${input.state}, updated_at = ${now}
+				WHERE id = ${input.id}
+					AND session_id = ${input.sessionId}
+					AND type = 'assistant'
+					AND state = 'draft'
+					AND NOT EXISTS (
+						SELECT 1 FROM session_entry_part
+						WHERE entry_id = ${input.id} AND status IN ('pending', 'running')
+					)
+				RETURNING id
+			`;
+			if (rows.length !== 1) return yield* Effect.die(`setEntryState requires a fully-settled draft ${input.id}`);
+		}, Effect.orDie);
+
+		const abortAssistant = Effect.fn("Session.abortAssistant")(function* (input: AbortAssistant) {
+			const nextEnvelope = yield* decodeEnvelopeUsage(input.data);
+			yield* sql.withTransaction(
+				Effect.gen(function* () {
+					const current = yield* findEntry(input.id);
+					if (
+						Option.isNone(current) ||
+						current.value.sessionId !== input.sessionId ||
+						current.value.type !== "assistant" ||
+						current.value.state !== "draft"
+					) {
+						return yield* Effect.die(`abortAssistant requires draft assistant ${input.id}`);
+					}
+					const previousEnvelope = yield* decodeEnvelopeUsage(current.value.data);
+					const now = yield* epochNow;
+					yield* sql`DELETE FROM session_entry_part WHERE entry_id = ${input.id}`;
+					yield* sql`
+							UPDATE session_entry
+							SET state = 'aborted', data = ${input.data}, updated_at = ${now}
+							WHERE id = ${input.id} AND session_id = ${input.sessionId} AND state = 'draft'
+						`;
+					yield* sql`
+							UPDATE session SET
+								updated_at = ${now},
+								cost = cost + ${nextEnvelope.usage.cost.total - previousEnvelope.usage.cost.total},
+								tokens_input = tokens_input + ${nextEnvelope.usage.input - previousEnvelope.usage.input},
+								tokens_output = tokens_output + ${nextEnvelope.usage.output - previousEnvelope.usage.output},
+								tokens_cache_read = tokens_cache_read + ${nextEnvelope.usage.cacheRead - previousEnvelope.usage.cacheRead},
+								tokens_cache_write = tokens_cache_write + ${nextEnvelope.usage.cacheWrite - previousEnvelope.usage.cacheWrite}
+							WHERE id = ${input.sessionId}
+						`;
+				}),
+			);
+		}, Effect.orDie);
 
 		type ForkTxResult =
 			| { readonly _tag: "sessionNotFound" }
@@ -747,6 +892,7 @@ export const layer = Layer.effect(
 								parentId: Option.map(prepared.source.parentId, (parent) => idMap.get(parent)!),
 								seq: prepared.source.seq,
 								type: prepared.source.type,
+								state: prepared.source.state,
 								data: prepared.data,
 								label: prepared.source.label, // annotations ride the copy (§10.12)
 								metadata: prepared.source.metadata,
@@ -905,7 +1051,10 @@ export const layer = Layer.effect(
 			timeline,
 			unsettled,
 			append,
+			replaceAssistant,
 			settleToolCall,
+			setEntryState,
+			abortAssistant,
 			fork,
 			branch,
 			setLabel,

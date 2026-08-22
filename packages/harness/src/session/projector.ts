@@ -16,8 +16,8 @@
  * Only durable definitions are registered here, and that is not a stylistic
  * choice: `Event.project` hands its callback to `commitDurableEvent`, which only
  * runs for events that have a transaction. Registering a projector for a live
- * definition -- any `session.llm.*` except the two terminals -- compiles, looks
- * wired, and never fires.
+ * definition -- TurnStarted/TurnAborted, LLM fragments, or tool progress --
+ * compiles, looks wired, and never fires.
  *
  * Live events are not lost, they take the other path. `notify` publishes every
  * event to the typed and firehose pubsubs, so deltas and block boundaries are
@@ -43,47 +43,17 @@ export const layer = Layer.effectDiscard(
 		const input = yield* SessionInput.make;
 		const sessions = yield* Session.Service;
 
-		/**
-		 * One provider response becomes one assistant entry, written once, at the
-		 * terminal event.
-		 *
-		 * Nothing is appended while a stream is in flight, so an entry can never be
-		 * left mid-response by a crash -- which is what stops `Context.assemble`
-		 * replaying a truncated answer to the model as though it had been finished.
-		 * A hard kill instead leaves no assistant entry at all and a prompt that is
-		 * still promoted, so the turn simply runs again.
-		 *
-		 * `Session.append` charges usage from the envelope on an assistant insert,
-		 * and the terminal message is the one that carries final usage, so the
-		 * existing behaviour is already the right one: charged once, never at a
-		 * token boundary.
-		 */
-		const appendAssistant = Effect.fn("SessionProjector.appendAssistant")(function* (input: {
+		const encodeAssistant = Effect.fn("SessionProjector.encodeAssistant")(function* (input: {
 			readonly sessionId: SessionSchema.ID;
 			readonly messageId: SessionMessageSchema.ID;
 			readonly message: Message.AssistantMessage;
-			readonly seq: number;
-			readonly metadata?: Record<string, string>;
 		}) {
-			// Two fields that could disagree: the event names the message it is about,
-			// and the message names itself. The codec requires the entry id to equal
-			// the message id, so a disagreement here would silently store the entry
-			// under one id while its envelope claims another.
 			if (input.message.messageId !== input.messageId) {
 				return yield* Effect.die(
 					`assistant message id "${input.message.messageId}" does not match event message id "${input.messageId}"`,
 				);
 			}
-			const encoded = yield* ContextCodec.encodeMessage(input.message).pipe(Effect.orDie);
-			yield* sessions
-				.append({
-					id: input.messageId,
-					sessionId: input.sessionId,
-					seq: input.seq,
-					...encoded,
-					...(input.metadata === undefined ? {} : { metadata: input.metadata }),
-				})
-				.pipe(Effect.orDie);
+			return yield* ContextCodec.encodeMessage(input.message).pipe(Effect.orDie);
 		});
 
 		yield* events.project(EventList.PromptAdmitted, (event) =>
@@ -135,6 +105,7 @@ export const layer = Layer.effectDiscard(
 						id: event.data.messageId,
 						sessionId: event.data.sessionId,
 						seq: event.durable.seq,
+						state: "committed",
 						...encoded,
 						// Rides the in-memory payload; the event row never carried it, so
 						// the entry is the only place it can outlive the publish.
@@ -144,37 +115,75 @@ export const layer = Layer.effectDiscard(
 			}),
 		);
 
-		yield* events.project(EventList.LLMEnded, (event) =>
+		yield* events.project(EventList.LLMStarted, (event) =>
 			Effect.gen(function* () {
-				if (event.durable === undefined) return yield* Effect.die("LLMEnded is missing its aggregate sequence");
-				yield* appendAssistant({
+				if (event.durable === undefined) return yield* Effect.die("LLMStarted is missing its aggregate sequence");
+				const encoded = yield* encodeAssistant({
 					sessionId: event.data.sessionId,
 					messageId: event.data.messageId,
 					message: event.data.message,
-					seq: event.durable.seq,
-					...(event.metadata === undefined ? {} : { metadata: event.metadata }),
+				});
+				yield* sessions
+					.append({
+						id: event.data.messageId,
+						sessionId: event.data.sessionId,
+						seq: event.durable.seq,
+						state: "draft",
+						...encoded,
+						...(event.metadata === undefined ? {} : { metadata: event.metadata }),
+					})
+					.pipe(Effect.orDie);
+			}),
+		);
+
+		yield* events.project(EventList.LLMEnded, (event) =>
+			Effect.gen(function* () {
+				const encoded = yield* encodeAssistant({
+					sessionId: event.data.sessionId,
+					messageId: event.data.messageId,
+					message: event.data.message,
+				});
+				yield* sessions.replaceAssistant({
+					id: event.data.messageId,
+					sessionId: event.data.sessionId,
+					data: encoded.data,
+					parts: encoded.parts,
 				});
 			}),
 		);
 
-		/*
-		 * A failed response is stored exactly like a successful one. aikit names the
-		 * payload `error`, but it is a complete assistant message carrying whatever
-		 * was generated before the failure -- its `stopReason` and `errorMessage` are
-		 * what record that it failed, not its absence from the conversation. An
-		 * aborted turn therefore keeps the text the model had already produced, which
-		 * is what both reference implementations do.
-		 */
 		yield* events.project(EventList.LLMFailed, (event) =>
 			Effect.gen(function* () {
-				if (event.durable === undefined) return yield* Effect.die("LLMFailed is missing its aggregate sequence");
-				yield* appendAssistant({
+				const encoded = yield* encodeAssistant({
 					sessionId: event.data.sessionId,
 					messageId: event.data.messageId,
 					message: event.data.message,
-					seq: event.durable.seq,
-					...(event.metadata === undefined ? {} : { metadata: event.metadata }),
 				});
+				yield* sessions.abortAssistant({
+					id: event.data.messageId,
+					sessionId: event.data.sessionId,
+					data: encoded.data,
+				});
+			}),
+		);
+
+		yield* events.project(EventList.ToolSettled, (event) =>
+			Effect.gen(function* () {
+				const encoded = yield* ContextCodec.encodePart(event.data.part).pipe(Effect.orDie);
+				yield* sessions.settleToolCall({
+					entryId: event.data.messageId,
+					callId: event.data.callID,
+					status: event.data.part.status,
+					data: encoded.data,
+				});
+			}),
+		);
+
+		yield* events.project(EventList.TurnEnded, (event) =>
+			sessions.setEntryState({
+				id: event.data.messageId,
+				sessionId: event.data.sessionId,
+				state: "committed",
 			}),
 		);
 	}),

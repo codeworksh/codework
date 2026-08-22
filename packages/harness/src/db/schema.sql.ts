@@ -33,6 +33,11 @@ export type EntryType = (typeof entryTypes)[number];
 export const messageEntryTypes = ["user", "assistant", "synthetic"] as const;
 export type MessageEntryType = (typeof messageEntryTypes)[number];
 
+// Conversation visibility for one tree node. Non-assistant entries are born
+// committed; an assistant alone moves draft -> committed | aborted.
+export const entryStates = ["draft", "committed", "aborted"] as const;
+export type EntryState = (typeof entryStates)[number];
+
 // Part discriminant: aikit wire literals, verbatim — the column value always
 // equals json_extract(data, '$.type').
 export const partTypes = ["text", "image", "thinking", "toolCall"] as const;
@@ -147,9 +152,10 @@ export class SessionInputRow extends Model.Class<SessionInputRow>("SessionInputR
 	createdAt: Model.DateTimeInsertFromNumber,
 }) {}
 
-// One timeline/tree node. Identity and `data` are immutable after insert;
-// only the annotation columns (`label`, `metadata`) may change. For message
-// types (user/assistant/synthetic), `data` holds the aikit message envelope
+// One timeline/tree node. Identity, tree position, and type are immutable.
+// A draft assistant's `data` and `state` are filled in place by lifecycle
+// projectors; other payloads are immutable. For message types
+// (user/assistant/synthetic), `data` holds the aikit message envelope
 // (everything except `parts`); parts live in SessionEntryPartRow.
 export class SessionEntryRow extends Model.Class<SessionEntryRow>("SessionEntryRow")({
 	id: Schema.String,
@@ -161,6 +167,7 @@ export class SessionEntryRow extends Model.Class<SessionEntryRow>("SessionEntryR
 	// which is why the fork seeds the new aggregate above them.
 	seq: NonNegativeInt,
 	type: Schema.Literals(entryTypes),
+	state: Schema.Literals(entryStates),
 	data: Schema.String, // JSON: full payload, or message envelope
 	label: Model.FieldOption(Schema.String), // annotation: bookmark text
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)), // annotation: engine scratch

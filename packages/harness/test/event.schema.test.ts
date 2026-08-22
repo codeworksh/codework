@@ -96,7 +96,7 @@ describe("EventSchema.AikitAssistantMessage", () => {
 		expect(Result.isFailure(result)).toBe(true);
 		if (Result.isFailure(result)) {
 			expect(Schema.isSchemaError(result.failure)).toBe(true);
-			expect(String(result.failure)).toContain("Validation Failed For aikit assistant message");
+			expect(String(result.failure)).toContain("validation failed for aikit assistant message");
 		}
 	});
 

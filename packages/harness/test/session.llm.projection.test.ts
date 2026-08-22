@@ -58,6 +58,19 @@ const assistant = (overrides: Partial<Message.AssistantMessage> = {}): Message.A
 	...overrides,
 });
 
+const draft = () =>
+	assistant({
+		parts: [],
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+	});
+
 const usageTotals = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
 	// The client is configured with `transformResultNames: snakeToCamel`, so the
@@ -72,12 +85,18 @@ const eventCount = Effect.gen(function* () {
 });
 
 describe("LLM terminal projection", () => {
-	it("appends one assistant entry from session.llm.ended", () =>
+	it("inserts a draft at start, fills it in place, and commits it at turn end", () =>
 		Effect.gen(function* () {
 			const { sessions, events, sessionId } = yield* setup;
 			const message = assistant();
 
-			const published = yield* events.publish(EventList.LLMEnded, {
+			const started = yield* events.publish(EventList.LLMStarted, {
+				sessionId,
+				messageId,
+				timestamp: DateTime.makeUnsafe(0),
+				message: draft(),
+			});
+			yield* events.publish(EventList.LLMEnded, {
 				sessionId,
 				messageId,
 				timestamp: DateTime.makeUnsafe(0),
@@ -88,29 +107,40 @@ describe("LLM terminal projection", () => {
 			const path = yield* sessions.path(sessionId);
 			expect(path.length).toBe(1);
 			const [entry] = path;
-			// The entry is the message: same id, and positioned by the event that
-			// produced it rather than by a counter of its own.
+			// LLMEnded replaces the placeholder rather than appending or moving it.
 			expect(entry!.entry.id).toBe(messageId);
 			expect(entry!.entry.type).toBe("assistant");
-			expect(entry!.entry.seq).toBe(published.durable?.seq);
+			expect(entry!.entry.seq).toBe(started.durable?.seq);
+			expect(entry!.entry.state).toBe("draft");
 
 			// Parts are split out of the envelope and stored dense, in order.
 			expect(entry!.parts.map((part) => part.type)).toEqual(["text"]);
 			expect(JSON.parse(entry!.parts[0]!.data)).toEqual({ type: "text", text: "the answer" });
 			expect(JSON.parse(entry!.entry.data)).toMatchObject({ role: "assistant", stopReason: "stop" });
+
+			yield* events.publish(EventList.TurnEnded, {
+				sessionId,
+				messageId,
+				timestamp: DateTime.makeUnsafe(0),
+			});
+			expect((yield* sessions.path(sessionId))[0]!.entry.state).toBe("committed");
 		}));
 
-	it("stores a failed response the same way, keeping what the model produced", () =>
+	it("aborts the whole draft and discards partial response parts", () =>
 		Effect.gen(function* () {
 			const { sessions, events, sessionId } = yield* setup;
 
+			yield* events.publish(EventList.LLMStarted, {
+				sessionId,
+				messageId,
+				timestamp: DateTime.makeUnsafe(0),
+				message: draft(),
+			});
 			yield* events.publish(EventList.LLMFailed, {
 				sessionId,
 				messageId,
 				timestamp: DateTime.makeUnsafe(0),
 				reason: "aborted",
-				// aikit reports an abort as a complete message carrying everything
-				// generated before it, so the partial text is history, not a loss.
 				message: assistant({
 					stopReason: "aborted",
 					errorMessage: "Request was aborted",
@@ -120,11 +150,12 @@ describe("LLM terminal projection", () => {
 
 			const path = yield* sessions.path(sessionId);
 			expect(path.map((item) => item.entry.type)).toEqual(["assistant"]);
+			expect(path[0]!.entry.state).toBe("aborted");
 			expect(JSON.parse(path[0]!.entry.data)).toMatchObject({
 				stopReason: "aborted",
 				errorMessage: "Request was aborted",
 			});
-			expect(JSON.parse(path[0]!.parts[0]!.data)).toEqual({ type: "text", text: "half an ans" });
+			expect(path[0]!.parts).toEqual([]);
 		}));
 
 	it("charges usage once, from the terminal message", () =>
@@ -132,6 +163,12 @@ describe("LLM terminal projection", () => {
 			const { events, sessionId } = yield* setup;
 			expect((yield* usageTotals).tokensInput).toBe(0);
 
+			yield* events.publish(EventList.LLMStarted, {
+				sessionId,
+				messageId,
+				timestamp: DateTime.makeUnsafe(0),
+				message: draft(),
+			});
 			yield* events.publish(EventList.LLMEnded, {
 				sessionId,
 				messageId,
@@ -150,6 +187,12 @@ describe("LLM terminal projection", () => {
 	it("rolls back the entry, the event row, and the sequence when the ids disagree", () =>
 		Effect.gen(function* () {
 			const { sessions, events, sessionId } = yield* setup;
+			const started = yield* events.publish(EventList.LLMStarted, {
+				sessionId,
+				messageId,
+				timestamp: DateTime.makeUnsafe(0),
+				message: draft(),
+			});
 			const before = yield* events.latestSequence(sessionId);
 
 			// The event names one message, the payload names another. Storing this
@@ -165,10 +208,12 @@ describe("LLM terminal projection", () => {
 				.pipe(Effect.exit);
 
 			expect(failure._tag).toBe("Failure");
-			// A projector runs inside the commit, so its rejection takes the event and
-			// the sequence allocation down with it — not just the entry.
-			expect(yield* sessions.path(sessionId)).toEqual([]);
-			expect(yield* eventCount).toBe(0);
+			// The rejected fill rolls itself back without disturbing the earlier draft.
+			const path = yield* sessions.path(sessionId);
+			expect(path).toHaveLength(1);
+			expect(path[0]!.entry.seq).toBe(started.durable?.seq);
+			expect(path[0]!.entry.state).toBe("draft");
+			expect(yield* eventCount).toBe(1);
 			expect(yield* events.latestSequence(sessionId)).toBe(before);
 		}));
 
@@ -184,6 +229,12 @@ describe("LLM terminal projection", () => {
 				prompt: { text: "ask" },
 				delivery: "steer",
 			});
+			const started = yield* events.publish(EventList.LLMStarted, {
+				sessionId,
+				messageId,
+				timestamp: DateTime.makeUnsafe(0),
+				message: draft(),
+			});
 			yield* events.publish(EventList.LLMEnded, {
 				sessionId,
 				messageId,
@@ -195,8 +246,8 @@ describe("LLM terminal projection", () => {
 			const path = yield* sessions.path(sessionId);
 			expect(path.map((item) => item.entry.id)).toEqual([userId, messageId]);
 			expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant"]);
-			// Both positions come from the same log, so the assistant is strictly above
-			// the prompt it answers.
+			// The assistant keeps the position allocated by LLMStarted.
+			expect(path[1]!.entry.seq).toBe(started.durable?.seq);
 			expect(path[1]!.entry.seq).toBeGreaterThan(path[0]!.entry.seq);
 		}));
 });

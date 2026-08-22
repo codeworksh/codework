@@ -74,6 +74,7 @@ describe("runner LLM — OpenAI live", () => {
 			expect(yield* Ref.get(thinkingDeltas)).toBeGreaterThan(0);
 			const path = yield* sessions.path(sessionId);
 			expect(path.map((item) => item.entry.type)).toEqual(["assistant"]);
+			expect(path[0]!.entry.state).toBe("draft");
 			expect(JSON.parse(path[0]!.entry.data)).toMatchObject({ stopReason: "stop" });
 			expect(path[0]!.parts.some((part) => part.type === "thinking")).toBe(true);
 
@@ -82,13 +83,13 @@ describe("runner LLM — OpenAI live", () => {
 			expect(stored.parts.some((part) => part.type === "thinking" && part.thinking.trim().length > 0)).toBe(true);
 
 			const durable = yield* sql`SELECT type FROM event ORDER BY seq`;
-			expect(durable.map((row) => row.type)).toEqual(["session.llm.ended.1"]);
+			expect(durable.map((row) => row.type)).toEqual(["session.llm.started.1", "session.llm.ended.1"]);
 		}),
 		{ timeout: 180_000 },
 	);
 
 	openaiLiveIt(
-		"bridges Effect interruption to provider abort and commits the terminal failure",
+		"bridges Effect interruption to a partless aborted tombstone",
 		Effect.gen(function* () {
 			const { sessions, sessionId } = yield* setup;
 			const events = yield* Event.Service;
@@ -117,16 +118,11 @@ describe("runner LLM — OpenAI live", () => {
 
 			const path = yield* sessions.path(sessionId);
 			expect(path.map((item) => item.entry.type)).toEqual(["assistant"]);
+			expect(path[0]!.entry.state).toBe("aborted");
 			const stored = yield* ContextCodec.decodeMessage(path[0]!);
 			if (stored.role !== "assistant") return yield* Effect.die(`stored message is ${stored.role}, not assistant`);
 			expect(stored.stopReason).toBe("aborted");
-			expect(
-				stored.parts.some(
-					(part) =>
-						(part.type === "text" && part.text.length > 0) ||
-						(part.type === "thinking" && part.thinking.length > 0),
-				),
-			).toBe(true);
+			expect(stored.parts).toEqual([]);
 			expect(["thinking", "text"]).toContain(interruptedPart);
 		}),
 		{ timeout: 180_000 },

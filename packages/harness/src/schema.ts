@@ -27,8 +27,8 @@ const validateAikitSchema = <T extends TSchema>(schema: T, value: unknown, label
 	if (validator.Check(value)) return value;
 
 	const [, issues] = validator.Errors(value);
-	const details = issues.map((issue) => ` - ${aikitErrorPath(issue)}: ${issue.message}`).join("\n") || "Unknown error";
-	throw new Error(`Validation Failed For ${label}\n${details}`);
+	const details = issues.map((issue) => ` - ${aikitErrorPath(issue)}: ${issue.message}`).join("\n") || "unknown error";
+	throw new Error(`validation failed for ${label}\n${details}`);
 };
 
 /** Validate an aikit message without coercing or rewriting durable data. */
@@ -41,8 +41,14 @@ export const validateAikitUserMessage = (value: unknown, label: string): Message
 export const validateAikitAssistantMessage = (value: unknown, label: string): Message.AssistantMessage =>
 	validateAikitSchema(Message.AssistantMessageSchema, value, label);
 
+export const validateAikitToolCallTerminalPart = (value: unknown, label: string): Message.ToolCallTerminalPart =>
+	validateAikitSchema(Message.ToolCallTerminalPartSchema, value, label);
+
 export const isAikitAssistantMessage = (value: unknown): value is Message.AssistantMessage =>
 	aikitValidatorFor(Message.AssistantMessageSchema).Check(value);
+
+export const isAikitToolCallTerminalPart = (value: unknown): value is Message.ToolCallTerminalPart =>
+	aikitValidatorFor(Message.ToolCallTerminalPartSchema).Check(value);
 
 /**
  * Integer greater than zero.

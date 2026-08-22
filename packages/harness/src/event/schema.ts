@@ -1,7 +1,14 @@
 import { Message } from "@codeworksh/aikit";
 import { Effect, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effect";
 import { uuidv7 } from "uuidv7";
-import { isAikitAssistantMessage, optional, validateAikitAssistantMessage, withStatics } from "../schema.ts";
+import {
+	isAikitAssistantMessage,
+	isAikitToolCallTerminalPart,
+	optional,
+	validateAikitAssistantMessage,
+	validateAikitToolCallTerminalPart,
+	withStatics,
+} from "../schema.ts";
 
 type AikitAssistantPart = Message.AssistantMessage["parts"][number];
 
@@ -48,6 +55,24 @@ export const AikitAssistantMessage = Schema.Unknown.pipe(
 	}),
 );
 export type AikitAssistantMessage = typeof AikitAssistantMessage.Type;
+
+const decodeAikitToolCallTerminalPart = (value: unknown, options: SchemaAST.ParseOptions) =>
+	Effect.try({
+		try: () => validateAikitToolCallTerminalPart(value, "aikit terminal toolcall part"),
+		catch: (cause) => new SchemaIssue.InvalidValue({ message: reasonOf(cause) }, value, options),
+	});
+
+const aikitToolCallTerminalPartDeclared = Schema.declare<Message.ToolCallTerminalPart>(isAikitToolCallTerminalPart, {
+	expected: "aikit terminal toolcall part",
+});
+
+export const AikitToolCallTerminalPart = Schema.Unknown.pipe(
+	Schema.decodeTo(aikitToolCallTerminalPartDeclared, {
+		decode: SchemaGetter.transformOrFail(decodeAikitToolCallTerminalPart),
+		encode: SchemaGetter.transformOrFail(decodeAikitToolCallTerminalPart),
+	}),
+);
+export type AikitToolCallTerminalPart = typeof AikitToolCallTerminalPart.Type;
 
 export const ID = Schema.String.pipe(
 	Schema.brand("Event.ID"),
@@ -126,7 +151,7 @@ export function durable<const Definitions extends ReadonlyArray<Definition>>(def
 		definitions.reduce((result, definition) => {
 			if (!definition.durable) return result;
 			const key = versionedType(definition.type, definition.durable.version);
-			if (result.has(key)) throw new Error(`Duplicate durable event definition for ${key}`);
+			if (result.has(key)) throw new Error(`duplicate durable event definition for ${key}`);
 			result.set(key, definition);
 			return result;
 		}, new Map<string, Definitions[number]>()),
@@ -162,7 +187,7 @@ export function latest(definitions: ReadonlyArray<Definition>) {
 				if (definition.durable.version > existing.durable.version) result.set(definition.type, definition);
 				return result;
 			}
-			if (definition !== existing) throw new Error(`Duplicate latest event definition for ${definition.type}`);
+			if (definition !== existing) throw new Error(`duplicate latest event definition for ${definition.type}`);
 			return result;
 		}, new Map<string, Definition>()),
 	);

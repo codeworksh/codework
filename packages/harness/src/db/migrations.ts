@@ -151,6 +151,8 @@ export const migrations = {
 				parent_id TEXT,
 				seq INTEGER NOT NULL,
 				type TEXT NOT NULL,
+				state TEXT NOT NULL DEFAULT 'committed'
+					CHECK (state IN ('draft', 'committed', 'aborted')),
 				data TEXT NOT NULL,
 				label TEXT,
 				metadata TEXT,
@@ -188,6 +190,7 @@ export const migrations = {
 		yield* sql`CREATE UNIQUE INDEX session_entry_session_seq_idx ON session_entry (session_id, seq)`;
 		yield* sql`CREATE INDEX session_entry_parent_idx ON session_entry (session_id, parent_id)`;
 		yield* sql`CREATE INDEX session_entry_type_idx ON session_entry (session_id, type, seq)`;
+		yield* sql`CREATE INDEX session_entry_state_idx ON session_entry (session_id, state, seq)`;
 		yield* sql`CREATE INDEX session_entry_label_idx ON session_entry (session_id, seq) WHERE label IS NOT NULL`;
 
 		yield* sql`CREATE UNIQUE INDEX session_entry_part_entry_idx ON session_entry_part (entry_id, part_index)`;

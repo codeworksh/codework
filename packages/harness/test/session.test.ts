@@ -101,6 +101,7 @@ const assistantEntry = (
 	sessionId,
 	seq: nextSeq(sessionId),
 	type: "assistant",
+	state: options?.toolCall === undefined ? "committed" : "draft",
 	data: JSON.stringify({
 		messageId: id,
 		role: "assistant",
@@ -303,7 +304,7 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 		expect(toolCall.name).toBe(weatherTool.name);
 		expect(String(toolCall.arguments.location).toLowerCase()).toContain("testville");
 
-		yield* session.append(appendMessage(created.id, toolRequest));
+		yield* session.append({ ...appendMessage(created.id, toolRequest), state: "draft" });
 		const pending = yield* session.unsettled(created.id);
 		expect(pending).toHaveLength(1);
 		expect(Option.getOrNull(pending[0]!.callId)).toBe(toolCall.callID);
@@ -331,6 +332,7 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 			status: "completed",
 			data: JSON.stringify(completedToolCall),
 		});
+		yield* session.setEntryState({ id: toolRequest.messageId, sessionId: created.id, state: "committed" });
 		expect(yield* session.unsettled(created.id)).toHaveLength(0);
 
 		const settledEntry = Option.getOrElse(yield* session.entry(toolRequest.messageId), () => {
@@ -555,7 +557,7 @@ describe("session", () => {
 		}),
 	);
 
-	it.effect("settleToolCall on an unknown call fails typed", () =>
+	it.effect("settleToolCall on an illegal transition defects", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
 			const created = yield* createSession("s-settle-missing");
@@ -563,8 +565,8 @@ describe("session", () => {
 
 			const result = yield* session
 				.settleToolCall({ entryId: "e1", callId: "call_x", status: "error", data: "{}" })
-				.pipe(Effect.flip);
-			expect(result._tag).toBe("ToolCallNotFoundError");
+				.pipe(Effect.exit);
+			expect(Exit.isFailure(result)).toBe(true);
 		}),
 	);
 

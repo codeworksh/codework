@@ -95,12 +95,14 @@ const wrapperMessage = (entry: Session.HydratedEntry, text: string): Message.Use
 // a entry is hybrid data type; with entry types not relevant to the LLMs
 // yet stored into the timeline.
 //
-// Note(sanchitrk):
-// we could simplify; remove unnecessay cases. comeback to this when in use.
+// NOTE(sanchitrk):
+// remove unnecessary cases. comeback to this when in use.
 export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 	sessionId: string,
 	path: ReadonlyArray<Session.HydratedEntry>,
 ): Effect.fn.Return<Snapshot, ContextDecodeError> {
+	const leafEntryId = path.at(-1)?.entry.id ?? null;
+	const committedPath = path.filter((hydrated) => hydrated.entry.state === "committed");
 	let model: EffectiveConfig["model"];
 	let thinkingLevel: Model.ThinkingLevel | undefined;
 	let lastAssistant: Snapshot["lastAssistant"];
@@ -110,7 +112,7 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 	const compactions = new Map<string, SessionSchema.CompactionData>();
 	const branchSummaries = new Map<string, string>();
 
-	for (const [index, hydrated] of path.entries()) {
+	for (const [index, hydrated] of committedPath.entries()) {
 		const { entry } = hydrated;
 		if (entry.sessionId !== sessionId) {
 			return yield* new ContextDecodeError({
@@ -175,23 +177,23 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 		}
 	}
 
-	let effectivePath = path;
+	let effectivePath = committedPath;
 	if (latestCompaction !== undefined) {
 		const { index, data } = latestCompaction;
 		let kept: ReadonlyArray<Session.HydratedEntry> = [];
 		if (data.firstKeptEntryId !== null) {
-			const firstKeptIndex = path.findIndex((item) => item.entry.id === data.firstKeptEntryId);
+			const firstKeptIndex = committedPath.findIndex((item) => item.entry.id === data.firstKeptEntryId);
 			if (firstKeptIndex < 0 || firstKeptIndex >= index) {
-				const entry = path[index]!;
+				const entry = committedPath[index]!;
 				return yield* new ContextDecodeError({
 					entryId: entry.entry.id,
 					type: entry.entry.type,
 					reason: `firstKeptEntryId "${data.firstKeptEntryId}" is not before the compaction on its path`,
 				});
 			}
-			kept = path.slice(firstKeptIndex, index);
+			kept = committedPath.slice(firstKeptIndex, index);
 		}
-		effectivePath = [path[index]!, ...kept, ...path.slice(index + 1)];
+		effectivePath = [committedPath[index]!, ...kept, ...committedPath.slice(index + 1)];
 	}
 
 	const messages: Message.Message[] = [];
@@ -215,7 +217,7 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 
 	return {
 		sessionId,
-		leafEntryId: path.at(-1)?.entry.id ?? null,
+		leafEntryId,
 		messages,
 		config: {
 			...(model === undefined ? {} : { model }),

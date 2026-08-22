@@ -7,17 +7,17 @@
  * `yield* make(...)` allocates its own.
  *
  * The LLM boundary sequences the stream and hands each event over; this
- * module decides what the event means. It writes nothing itself -- the two
- * durable events reach `session_entry` through the projectors in
+ * module decides what the event means. It writes nothing itself -- durable
+ * lifecycle events reach `session_entry` through the projectors in
  * `session/projector.ts`.
  *
  * There are no fragment buffers here, which is the main structural difference
  * from the reference implementation this file is named after. Its provider
  * events carry only fragments, so it has to reassemble text across deltas before
  * it can persist a block. Every aikit event already carries a complete assistant
- * message, and the terminal one carries the whole response -- including whatever
- * was generated before an abort -- so there is nothing to reassemble and nothing
- * to flush.
+ * message, and the terminal one carries the whole response. Successful output
+ * can therefore replace the draft in one write; failed output becomes a
+ * partless tombstone without needing a fragment buffer.
  */
 
 import type { Event as AikitEvent, Message } from "@codeworksh/aikit";
@@ -42,6 +42,8 @@ export type Terminal =
 	  };
 
 export interface Publisher {
+	/** Set only after LLMStarted committed its draft row. */
+	readonly startedMessageId: SessionMessageSchema.ID | undefined;
 	/** Interpret one provider event. Durable ones commit before this returns. */
 	readonly publish: (event: AikitEvent.LLMMessageEvent) => Effect.Effect<void, Runner.LLMStreamError>;
 	/** How the response settled; fails if the stream ended without terminating. */
@@ -52,7 +54,9 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: { read
 	const events = yield* Event.Service;
 
 	let messageId: SessionMessageSchema.ID | undefined;
+	let startedMessageId: SessionMessageSchema.ID | undefined;
 	let settled: Terminal | undefined;
+	const clone = (message: Message.AssistantMessage): Message.AssistantMessage => structuredClone(message);
 
 	const fault = (reason: string) => new Runner.LLMStreamError({ sessionId: input.sessionId, reason });
 
@@ -90,10 +94,19 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: { read
 
 			switch (event.type) {
 				case "start": {
-					yield* events.publish(EventList.LLMStarted, {
-						...base,
-						messageId: yield* identify(event.partial.messageId),
-					});
+					if (startedMessageId !== undefined) return yield* fault("received a second start event");
+					const message = clone(event.partial);
+					const identified = yield* identify(message.messageId);
+					yield* Effect.uninterruptible(
+						Effect.gen(function* () {
+							yield* events.publish(EventList.LLMStarted, {
+								...base,
+								messageId: identified,
+								message,
+							});
+							startedMessageId = identified;
+						}),
+					);
 					return;
 				}
 
@@ -162,49 +175,57 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: { read
 				}
 
 				/*
-				 * Out of scope for this phase, and unreachable in practice: the loop
-				 * registers no tools, so a provider has nothing to call. Logged rather
-				 * than failed because a stray tool event is the provider misbehaving,
-				 * not a reason to lose the response -- the terminal message still
-				 * carries the call, and the durable projection stores it verbatim.
+				 * Tool stream fragments stay live-only. The authoritative pending calls
+				 * arrive in the terminal assistant and are persisted by LLMEnded.
 				 */
 				case "toolcall.start":
 				case "toolcall.delta":
 				case "toolcall.end":
 				case "toolcall.final": {
-					yield* Effect.logWarning("llm: tool-call event with no tools registered").pipe(
-						Effect.annotateLogs({ sessionId: input.sessionId, type: event.type, partIndex: event.partIndex }),
-					);
 					return;
 				}
 
 				case "done": {
-					yield* events.publish(EventList.LLMEnded, {
-						...base,
-						messageId: yield* identify(event.message.messageId),
-						reason: event.reason,
-						message: event.message,
-					});
-					// Latched after the commit, so it records what is durable rather than
-					// what was attempted.
-					settled = { outcome: "ended", reason: event.reason, message: event.message };
+					if (startedMessageId === undefined) return yield* fault("received done before start");
+					const message = clone(event.message);
+					const identified = yield* identify(message.messageId);
+					yield* Effect.uninterruptible(
+						Effect.gen(function* () {
+							yield* events.publish(EventList.LLMEnded, {
+								...base,
+								messageId: identified,
+								reason: event.reason,
+								message,
+							});
+							// Latched after the commit, so it records what is durable rather than
+							// what was attempted.
+							settled = { outcome: "ended", reason: event.reason, message };
+						}),
+					);
 					return;
 				}
 
 				/*
 				 * aikit calls the payload `error`, but it is a complete assistant
-				 * message: an abort arrives here carrying every block produced before
-				 * the interrupt. Publishing it is what keeps that work, so the durable
-				 * path for a failure is the same one a success takes.
+				 * message. LLMFailed uses its envelope as an aborted tombstone and the
+				 * projector deliberately discards every partial part.
 				 */
 				case "error": {
-					yield* events.publish(EventList.LLMFailed, {
-						...base,
-						messageId: yield* identify(event.error.messageId),
-						reason: event.reason,
-						message: event.error,
-					});
-					settled = { outcome: "failed", reason: event.reason, message: event.error };
+					const message = clone(event.error);
+					const identified = yield* identify(message.messageId);
+					yield* Effect.uninterruptible(
+						Effect.gen(function* () {
+							if (startedMessageId !== undefined) {
+								yield* events.publish(EventList.LLMFailed, {
+									...base,
+									messageId: identified,
+									reason: event.reason,
+									message,
+								});
+							}
+							settled = { outcome: "failed", reason: event.reason, message };
+						}),
+					);
 					return;
 				}
 			}
@@ -216,7 +237,13 @@ export const make = Effect.fn("LLMEventPublisher.make")(function* (input: { read
 			: Effect.succeed(settled),
 	);
 
-	return { publish, terminal } satisfies Publisher;
+	return {
+		get startedMessageId() {
+			return startedMessageId;
+		},
+		publish,
+		terminal,
+	} satisfies Publisher;
 });
 
 export * as LLMEventPublisher from "./event.ts";

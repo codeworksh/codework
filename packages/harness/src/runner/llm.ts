@@ -12,10 +12,12 @@ import {
 	llm,
 	type Event as AikitEvent,
 	type Message,
+	type Model,
 	type OpenAIOptions,
 } from "@codeworksh/aikit";
 import { Effect, Exit, Fiber, Scope, Stream } from "effect";
 import type { SessionSchema } from "../session/schema.ts";
+import type { State } from "../state/state.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { Runner } from "./run.ts";
 
@@ -24,6 +26,8 @@ export interface Input {
 	readonly context: Message.Context;
 	readonly provider: string;
 	readonly model: string;
+	readonly thinkingLevel?: Model.ThinkingLevel;
+	readonly options?: State.RequestOptions;
 }
 
 export interface RequestInput extends Input {
@@ -42,15 +46,14 @@ export type Request = (
 	Runner.ModelNotFoundError | Runner.ProviderTurnError | Runner.LLMStreamError
 >;
 
-const runtimeOptions = (input: Input, signal: AbortSignal): OpenAIOptions => ({
-	maxTokens: 1_024,
-	reasoning: "high",
-	providerOptions: { openai: { reasoningSummary: "auto" } },
-	timeoutMs: 60_000,
-	maxRetries: 0,
-	sessionId: input.sessionId,
-	signal,
-});
+const runtimeOptions = (input: Input, signal: AbortSignal): OpenAIOptions =>
+	({
+		providerOptions: { openai: { reasoningSummary: "auto" } },
+		...input.options,
+		...(input.thinkingLevel === undefined || input.thinkingLevel === "off" ? {} : { reasoning: input.thinkingLevel }),
+		sessionId: input.sessionId,
+		signal,
+	}) as unknown as OpenAIOptions;
 
 /** Resolve the configured model and start aikit's provider stream. */
 export const open: Open = Effect.fn("LLM.open")(function* (input, signal) {

@@ -73,19 +73,19 @@ const storedEvents = Effect.gen(function* () {
 });
 
 describe("LLMEventPublisher", () => {
-	it("persists only the terminal event, and one assistant entry from it", () =>
+	it("inserts one draft at start and fills that same entry at the terminal", () =>
 		Effect.gen(function* () {
 			const { sessions, sessionId, publisher } = yield* setup;
 			const message = assistant();
 
 			yield* Effect.forEach(textStream(message), (event) => publisher.publish(event), { discard: true });
 
-			// Six provider events in, exactly one durable row out. The deltas and the
-			// block boundaries were published live and touched no table.
-			expect(yield* storedEvents).toEqual(["session.llm.ended.1"]);
+			// Start inserts the durable placeholder; deltas stay live; done fills it.
+			expect(yield* storedEvents).toEqual(["session.llm.started.1", "session.llm.ended.1"]);
 
 			const path = yield* sessions.path(sessionId);
 			expect(path.map((item) => item.entry.id)).toEqual([messageId]);
+			expect(path[0]!.entry.state).toBe("draft");
 			expect(JSON.parse(path[0]!.parts[0]!.data)).toEqual({ type: "text", text: "hello" });
 
 			const terminal = yield* publisher.terminal;
@@ -93,7 +93,7 @@ describe("LLMEventPublisher", () => {
 			expect(terminal.reason).toBe("stop");
 		}));
 
-	it("persists an aborted response with the text produced before the interrupt", () =>
+	it("aborts the whole draft and discards text produced before the interrupt", () =>
 		Effect.gen(function* () {
 			const { sessions, sessionId, publisher } = yield* setup;
 			const partial = assistant({ parts: [{ type: "text", text: "half" }] });
@@ -110,9 +110,10 @@ describe("LLMEventPublisher", () => {
 				}),
 			});
 
-			expect(yield* storedEvents).toEqual(["session.llm.failed.1"]);
+			expect(yield* storedEvents).toEqual(["session.llm.started.1", "session.llm.failed.1"]);
 			const path = yield* sessions.path(sessionId);
-			expect(JSON.parse(path[0]!.parts[0]!.data)).toEqual({ type: "text", text: "half" });
+			expect(path[0]!.entry.state).toBe("aborted");
+			expect(path[0]!.parts).toEqual([]);
 			expect(JSON.parse(path[0]!.entry.data)).toMatchObject({ stopReason: "aborted" });
 
 			const terminal = yield* publisher.terminal;
@@ -124,6 +125,7 @@ describe("LLMEventPublisher", () => {
 		Effect.gen(function* () {
 			const { sessions, sessionId, publisher } = yield* setup;
 			const message = assistant();
+			yield* publisher.publish({ type: "start", partial: message });
 			yield* publisher.publish({ type: "done", reason: "stop", message });
 
 			const failure = yield* publisher.publish({ type: "done", reason: "stop", message }).pipe(Effect.flip);
@@ -137,6 +139,7 @@ describe("LLMEventPublisher", () => {
 		Effect.gen(function* () {
 			const { publisher } = yield* setup;
 			const message = assistant();
+			yield* publisher.publish({ type: "start", partial: message });
 			yield* publisher.publish({ type: "done", reason: "stop", message });
 
 			const failure = yield* publisher
@@ -173,9 +176,9 @@ describe("LLMEventPublisher", () => {
 
 			expect(failure._tag).toBe("Runner.LLMStreamError");
 			expect(failure.reason).toContain("without a terminal event");
-			// Nothing was written, so the prompt this turn answered is still promoted
-			// and the next run re-asks rather than inheriting a half-response.
-			expect(yield* sessions.path(sessionId)).toEqual([]);
+			const path = yield* sessions.path(sessionId);
+			expect(path).toHaveLength(1);
+			expect(path[0]!.entry.state).toBe("draft");
 		}));
 
 	it("ignores tool-call events rather than failing the response", () =>
@@ -196,9 +199,7 @@ describe("LLMEventPublisher", () => {
 			yield* publisher.publish({ type: "toolcall.end", partIndex: 1, toolCall, partial: message });
 			yield* publisher.publish({ type: "done", reason: "stop", message });
 
-			// No tools are registered this phase, so a tool event is the provider
-			// misbehaving. Losing the whole response over it would be worse.
-			expect(yield* storedEvents).toEqual(["session.llm.ended.1"]);
+			expect(yield* storedEvents).toEqual(["session.llm.started.1", "session.llm.ended.1"]);
 			expect((yield* sessions.path(sessionId)).length).toBe(1);
 		}));
 
@@ -249,6 +250,7 @@ describe("LLMEventPublisher", () => {
 	it("gives each request its own latches", () =>
 		Effect.gen(function* () {
 			const { sessionId, publisher } = yield* setup;
+			yield* publisher.publish({ type: "start", partial: assistant() });
 			yield* publisher.publish({ type: "done", reason: "stop", message: assistant() });
 
 			// A second request on the same session must not inherit the first's
