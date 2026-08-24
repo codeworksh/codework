@@ -12,6 +12,8 @@ export interface Interface {
 	readonly active: Effect.Effect<ReadonlySet<SessionSchema.ID>>;
 	/** Starts execution while idle or joins the active execution. */
 	readonly resume: (sessionId: SessionSchema.ID) => Effect.Effect<void, Runner.RunError>;
+	/** Drains durable queued input without forcing an otherwise empty provider turn. */
+	readonly drain: (sessionId: SessionSchema.ID) => Effect.Effect<void, Runner.RunError>;
 	/** Registers newly recorded work. Repeated wakeups may coalesce. */
 	readonly wake: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
 	/** Interrupt active work owned by this process. Idle interruption is a no-op. */
@@ -26,6 +28,7 @@ export const noopLayer = Layer.succeed(
 	Service.of({
 		active: Effect.succeed(new Set()),
 		resume: () => Effect.void,
+		drain: () => Effect.void,
 		wake: () => Effect.void,
 		interrupt: () => Effect.void,
 	}),

@@ -28,7 +28,7 @@
  */
 
 import { Message } from "@codeworksh/aikit";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
 import { ContextCodec } from "../context/codec.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
@@ -36,12 +36,41 @@ import { SessionInput } from "./input/input.ts";
 import type { SessionMessageSchema } from "./message/schema.ts";
 import type { SessionSchema } from "./schema.ts";
 import { Session } from "./session.ts";
+import { optional } from "../schema.ts";
+
+const ConfigChangeData = Schema.fromJsonString(
+	Schema.Struct({
+		model: optional(Schema.Struct({ providerId: Schema.String, modelId: Schema.String })),
+		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh"])),
+	}),
+);
+const encodeConfigChange = Schema.encodeEffect(ConfigChangeData);
 
 export const layer = Layer.effectDiscard(
 	Effect.gen(function* () {
 		const events = yield* Event.Service;
 		const input = yield* SessionInput.make;
 		const sessions = yield* Session.Service;
+
+		yield* events.project(EventList.ConfigChanged, (event) =>
+			Effect.gen(function* () {
+				if (event.durable === undefined)
+					return yield* Effect.die("ConfigChanged is missing its aggregate sequence");
+				yield* sessions
+					.append({
+						id: event.id,
+						sessionId: event.data.sessionId,
+						seq: event.durable.seq,
+						type: "configChange",
+						state: "committed",
+						data: yield* encodeConfigChange({
+							...(event.data.model === undefined ? {} : { model: event.data.model }),
+							...(event.data.thinkingLevel === undefined ? {} : { thinkingLevel: event.data.thinkingLevel }),
+						}).pipe(Effect.orDie),
+					})
+					.pipe(Effect.orDie);
+			}),
+		);
 
 		const encodeAssistant = Effect.fn("SessionProjector.encodeAssistant")(function* (input: {
 			readonly sessionId: SessionSchema.ID;

@@ -16,6 +16,7 @@ import { SandboxDriver } from "../../src/sandbox/driver.ts";
 import { VercelSandboxDriver } from "../../src/sandbox/drivers/vercel.ts";
 import { AbsolutePath } from "../../src/schema.ts";
 import { SessionLive } from "../../src/session/live.ts";
+import { SessionRuntime } from "../../src/session/runtime.ts";
 import type { SessionSchema } from "../../src/session/schema.ts";
 import { Session } from "../../src/session/session.ts";
 import { State } from "../../src/state/state.ts";
@@ -29,6 +30,7 @@ const sandbox = SandboxController.layer().pipe(
 const runtime = Control.layer.pipe(
 	Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer()))),
 	Layer.provideMerge(State.layer()),
+	Layer.provideMerge(SessionRuntime.layer),
 	Layer.provideMerge(sandbox),
 	Layer.provideMerge(Context.layer),
 	Layer.provideMerge(SessionLive.layer),

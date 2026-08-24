@@ -23,7 +23,7 @@ export default defineConfig({
 		alias: aliases,
 	},
 	pack: {
-		entry: ["src/index.ts"],
+		entry: ["src/index.ts", "src/effect.ts", "src/cli/index.ts"],
 		format: ["esm"],
 		outDir: "dist/pack",
 		deps: {

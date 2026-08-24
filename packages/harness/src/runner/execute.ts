@@ -13,7 +13,7 @@ import { SandboxController } from "../sandbox/control.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { RunCoordinator } from "./coordinator.ts";
-import { RunnerExecution } from "./execution.ts";
+import * as RunnerExecution from "./execution.ts";
 import { Runner } from "./run.ts";
 
 // session
@@ -81,6 +81,7 @@ export const layer = Layer.effect(
 			active: coordinator.active,
 			interrupt: coordinator.interrupt,
 			resume: coordinator.run,
+			drain: coordinator.drain,
 			wake: coordinator.wake,
 		});
 	}),

@@ -8,6 +8,7 @@ import { EventRow } from "../db/schema.sql.ts";
 // import { Durable } from "./manifest.ts";
 import { Schema } from "effect";
 import { EventSchema } from "./schema.ts";
+import { EventManifest } from "./manifest.ts";
 import type { Data, Definition, ID, Payload } from "./schema.ts";
 
 export type SerializedEvent = {
@@ -113,6 +114,8 @@ export interface Interface {
 	readonly subscribe: <D extends Definition>(definition: D) => Stream.Stream<Payload<D>>;
 	/** Every event, durable and live alike, in publish order. */
 	readonly all: () => Stream.Stream<Payload>;
+	/** Durable catch-up followed by the process-local event tail for one session. */
+	readonly stream: (input: { readonly sessionId: string; readonly after?: number }) => Stream.Stream<Payload>;
 	/**
 	 * Callback form of {@link all}, returning its own removal. A listener runs
 	 * after the commit for a durable event, and its failures are logged rather
@@ -402,6 +405,33 @@ export const layer = Layer.effect(
 
 		const streamAll = (): Stream.Stream<Payload> => Stream.fromPubSub(pubsub.all);
 
+		const stream = (input: { readonly sessionId: string; readonly after?: number }): Stream.Stream<Payload> => {
+			const tail = streamAll().pipe(
+				Stream.filter((event) => (event.data as { readonly sessionId?: unknown }).sessionId === input.sessionId),
+			);
+			if (input.after === undefined) return tail;
+
+			const history = Stream.paginate(
+				input.after,
+				Effect.fn("Event.stream.history")(function* (after) {
+					const page = yield* readAggregate({
+						aggregateId: input.sessionId,
+						after,
+						limit: 100,
+						manifest: EventManifest.Manifest,
+					});
+					const last = page.events.at(-1);
+					const next =
+						page.hasMore && last?.durable !== undefined ? Option.some(last.durable.seq) : Option.none<number>();
+					return [page.events, next] as const;
+				}),
+			);
+			return history.pipe(
+				Stream.map((event) => event as Payload),
+				Stream.concat(tail),
+			);
+		};
+
 		const listen = (listener: Subscriber): Effect.Effect<Unsubscribe> =>
 			Effect.sync(() => {
 				listeners.push(listener);
@@ -417,6 +447,7 @@ export const layer = Layer.effect(
 			publish,
 			subscribe,
 			all: streamAll,
+			stream,
 			listen,
 			project,
 			advance,

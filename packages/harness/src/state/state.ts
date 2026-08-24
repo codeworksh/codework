@@ -13,7 +13,8 @@
  */
 
 import type { Model, Protocol } from "@codeworksh/aikit";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context as SessionContext } from "../context/context.ts";
 import { Location } from "../location/location.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { bashTool } from "../tools/bash.ts";
@@ -21,6 +22,7 @@ import { make as makeRegistry, type Resolved } from "../tools/registry.ts";
 import { fromSandboxShell } from "../tools/shell.ts";
 import * as Tool from "../tools/tool.ts";
 import type { ID as SessionId } from "../session/schema.ts";
+import { SessionRuntime } from "../session/runtime.ts";
 import { StatePrompt } from "./prompt.ts";
 
 /**
@@ -73,6 +75,8 @@ export interface Options extends RequestOptions {
 	 * requires fixing if needed within tool registry
 	 */
 	readonly tools?: ReadonlyArray<Tool.RegisteredTool>;
+	/** Built-in tool names enabled for this session. Omitted keeps the Bash default. */
+	readonly builtinTools?: ReadonlyArray<"bash">;
 	readonly provider?: string;
 	readonly model?: string;
 	readonly thinkingLevel?: Model.ThinkingLevel;
@@ -147,7 +151,7 @@ export interface Interface {
 	 */
 	readonly snapshot: (
 		sessionId: SessionId,
-	) => Effect.Effect<Snapshot, SnapshotError, SandboxIO.Provides | Location.Service>;
+	) => Effect.Effect<Snapshot, SnapshotError | SessionContext.ContextReadError, SandboxIO.Provides | Location.Service>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/state/state/Service") {}
@@ -176,85 +180,94 @@ const applyOverride = Effect.fn("State.applyOverride")(function* (
 });
 
 export const layer = (options: Options = {}) => {
-	const {
-		promptCustom,
-		promptSystemAppend,
-		promptSystemOverride,
-		tools: callerTools = [],
-		provider = defaults.provider,
-		model = defaults.model,
-		thinkingLevel = defaults.thinkingLevel,
-		toolExecution = defaults.toolExecution,
-		...rest
-	} = options;
-
-	// The caller's request bag, with our two transport defaults underneath it.
-	const request: RequestOptions = {
-		timeoutMs: defaults.timeoutMs,
-		maxRetries: defaults.maxRetries,
-		...rest,
-	};
-
-	return Layer.succeed(
+	return Layer.effect(
 		Service,
-		Service.of({
-			snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
-				const sandbox = yield* SandboxIO.Current;
-				const location = yield* Location.Service;
+		Effect.gen(function* () {
+			const runtime = yield* SessionRuntime.Service;
+			const contexts = yield* SessionContext.Service;
+			return Service.of({
+				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
+					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
+					const durable = (yield* contexts.assemble(sessionId)).config;
+					const merged = { ...options, ...sessionOptions };
+					const {
+						promptCustom,
+						promptSystemAppend,
+						promptSystemOverride,
+						tools: callerTools = [],
+						builtinTools = ["bash"],
+						provider: runtimeProvider,
+						model: runtimeModel,
+						thinkingLevel: runtimeThinkingLevel,
+						toolExecution = defaults.toolExecution,
+						...rest
+					} = merged;
+					const provider = runtimeProvider ?? durable.model?.providerId ?? defaults.provider;
+					const model = runtimeModel ?? durable.model?.modelId ?? defaults.model;
+					const thinkingLevel = runtimeThinkingLevel ?? durable.thinkingLevel ?? defaults.thinkingLevel;
+					const request: RequestOptions = {
+						timeoutMs: defaults.timeoutMs,
+						maxRetries: defaults.maxRetries,
+						...rest,
+					};
+					const sandbox = yield* SandboxIO.Current;
+					const location = yield* Location.Service;
 
-				/*
-				 * Bash is bound to the shell of the mount that is open right now.
-				 * `ToolShell.local()` would look equivalent and be wrong: it executes on
-				 * the host, bypassing whichever in-memory or remote namespace the session
-				 * actually selected.
-				 *
-				 * Capturing the service and re-providing it keeps the binding valid for
-				 * the whole exchange -- the drain owns the mount for longer than any turn
-				 * inside it, so a handler captured here is still executable when a later
-				 * turn calls it.
-				 */
-				const shell = yield* SandboxIO.Shell;
-				const mountedShell = fromSandboxShell.pipe(Layer.provide(Layer.succeed(SandboxIO.Shell, shell)));
+					/*
+					 * Bash is bound to the shell of the mount that is open right now.
+					 * `ToolShell.local()` would look equivalent and be wrong: it executes on
+					 * the host, bypassing whichever in-memory or remote namespace the session
+					 * actually selected.
+					 *
+					 * Capturing the service and re-providing it keeps the binding valid for
+					 * the whole exchange -- the drain owns the mount for longer than any turn
+					 * inside it, so a handler captured here is still executable when a later
+					 * turn calls it.
+					 */
+					const shell = yield* SandboxIO.Shell;
+					const mountedShell = fromSandboxShell.pipe(Layer.provide(Layer.succeed(SandboxIO.Shell, shell)));
 
-				// Bash first, caller tools after: last registration wins, so a caller can
-				// replace Bash by name on purpose.
-				const registry = makeRegistry([Tool.provide(bashTool, mountedShell), ...callerTools]);
-				const resolved = registry.resolve();
+					// Bash first, caller tools after: last registration wins, so a caller can
+					// replace Bash by name on purpose.
+					const builtins = builtinTools.includes("bash") ? [Tool.provide(bashTool, mountedShell)] : [];
+					const registry = makeRegistry([...builtins, ...callerTools]);
+					const resolved = registry.resolve();
 
-				const rendered = StatePrompt.build({
-					tools: resolved.defs,
-					directory: location.directory,
-					...(promptCustom === undefined ? {} : { promptCustom }),
-					...(promptSystemAppend === undefined ? {} : { promptSystemAppend }),
-				});
+					const rendered = StatePrompt.build({
+						tools: resolved.defs,
+						directory: location.directory,
+						...(promptCustom === undefined ? {} : { promptCustom }),
+						...(promptSystemAppend === undefined ? {} : { promptSystemAppend }),
+					});
 
-				const systemPrompt =
-					promptSystemOverride === undefined
-						? rendered
-						: yield* applyOverride(sessionId, promptSystemOverride, {
-								systemPrompt: rendered,
-								tools: resolved.defs,
-								sandbox,
-								location,
-								provider,
-								model,
-								thinkingLevel,
-								toolExecution,
-							});
+					const systemPrompt =
+						promptSystemOverride === undefined
+							? rendered
+							: yield* applyOverride(sessionId, promptSystemOverride, {
+									systemPrompt: rendered,
+									tools: resolved.defs,
+									sandbox,
+									location,
+									provider,
+									model,
+									thinkingLevel,
+									toolExecution,
+								});
 
-				return {
-					sessionId,
-					sandbox,
-					location,
-					systemPrompt,
-					tools: resolved,
-					provider,
-					model,
-					thinkingLevel,
-					request,
-					toolExecution,
-				} satisfies Snapshot;
-			}),
+					return {
+						sessionId,
+						sandbox,
+						location,
+						systemPrompt,
+						tools: resolved,
+						provider,
+						model,
+						thinkingLevel,
+						request,
+						toolExecution,
+					} satisfies Snapshot;
+				}),
+			});
 		}),
 	);
 };

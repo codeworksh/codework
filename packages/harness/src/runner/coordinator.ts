@@ -10,6 +10,8 @@ export interface Coordinator<Key, E> {
 	readonly active: Effect.Effect<ReadonlySet<Key>>;
 	/** Starts execution while idle or joins the active execution. */
 	readonly run: (key: Key) => Effect.Effect<void, E>;
+	/** Coalesces queued work and awaits the drain generation assigned to it. */
+	readonly drain: (key: Key) => Effect.Effect<void, E>;
 	/** Registers one coalesced follow-up after newly recorded work. */
 	readonly wake: (key: Key) => Effect.Effect<void>;
 	/** Stops active execution and waits for its cleanup. */
@@ -19,6 +21,8 @@ export interface Coordinator<Key, E> {
 type Entry<E> = {
 	// other fiber wants to know when key is finished will await this deferred
 	readonly done: Deferred.Deferred<void, E>;
+	currentWaiters: Array<Deferred.Deferred<void, E>>;
+	pendingWaiters: Array<Deferred.Deferred<void, E>>;
 	// process owner
 	owner?: Fiber.Fiber<void, void>;
 	// if called wake() while the fiber is running, flips to true
@@ -38,11 +42,17 @@ export const make = <Key, E>(options: {
 		const active = new Map<Key, Entry<E>>();
 		const fork = yield* FiberSet.makeRuntime<never, void, never>();
 
-		const makeEntry = (): Entry<E> => ({
+		const makeEntry = (waiter?: Deferred.Deferred<void, E>): Entry<E> => ({
 			done: Deferred.makeUnsafe<void, E>(),
+			currentWaiters: waiter === undefined ? [] : [waiter],
+			pendingWaiters: [],
 			pendingWake: false,
 			stopping: false,
 		});
+
+		const complete = (waiters: ReadonlyArray<Deferred.Deferred<void, E>>, exit: Exit.Exit<void, E>) => {
+			for (const waiter of waiters) Deferred.doneUnsafe(waiter, exit);
+		};
 
 		const start = (key: Key, entry: Entry<E>, force: boolean, successor = false) => {
 			// The Race Condition:
@@ -70,12 +80,18 @@ export const make = <Key, E>(options: {
 
 		const settle = (key: Key, entry: Entry<E>, exit: Exit.Exit<void, E>) => {
 			if (Exit.isSuccess(exit) && !entry.stopping && entry.pendingWake) {
+				complete(entry.currentWaiters, exit);
+				entry.currentWaiters = entry.pendingWaiters;
+				entry.pendingWaiters = [];
 				entry.pendingWake = false;
 				start(key, entry, false, true);
 				return;
 			}
 
+			complete(entry.currentWaiters, exit);
+			if (entry.stopping) complete(entry.pendingWaiters, exit);
 			const successor = entry.pendingWake ? makeEntry() : undefined;
+			if (successor !== undefined) successor.currentWaiters = entry.pendingWaiters;
 			if (successor === undefined) active.delete(key);
 			else {
 				active.set(key, successor);
@@ -96,6 +112,23 @@ export const make = <Key, E>(options: {
 				active.set(key, next);
 				start(key, next, true);
 				return restore(Deferred.await(next.done));
+			});
+
+		const drain = (key: Key): Effect.Effect<void, E> =>
+			Effect.uninterruptibleMask((restore) => {
+				const waiter = Deferred.makeUnsafe<void, E>();
+				const entry = active.get(key);
+				if (entry !== undefined) {
+					if (entry.stopping) return restore(Deferred.await(entry.done).pipe(Effect.andThen(drain(key))));
+					entry.pendingWake = true;
+					entry.pendingWaiters.push(waiter);
+					return restore(Deferred.await(waiter));
+				}
+
+				const next = makeEntry(waiter);
+				active.set(key, next);
+				start(key, next, false);
+				return restore(Deferred.await(waiter));
 			});
 
 		const wake = (key: Key) =>
@@ -120,7 +153,7 @@ export const make = <Key, E>(options: {
 				return Fiber.interrupt(entry.owner);
 			});
 
-		return { active: Effect.sync(() => new Set(active.keys())), run, wake, interrupt };
+		return { active: Effect.sync(() => new Set(active.keys())), run, drain, wake, interrupt };
 	});
 
 export * as RunCoordinator from "./coordinator.ts";

@@ -83,6 +83,62 @@ describe("RunCoordinator", () => {
 	);
 
 	it.effect(
+		"drain awaits queued work without forcing an empty pass",
+		Effect.gen(function* () {
+			const gate = yield* Deferred.make<void>();
+			const started = yield* Deferred.make<void>();
+			const forces: boolean[] = [];
+			const coordinator = yield* RunCoordinator.make<string, never>({
+				drain: (_key, force) =>
+					Effect.sync(() => forces.push(force)).pipe(
+						Effect.andThen(Deferred.succeed(started, undefined)),
+						Effect.andThen(Deferred.await(gate)),
+					),
+			});
+
+			const draining = yield* Effect.forkChild(coordinator.drain("session"));
+			yield* Deferred.await(started);
+			expect(forces).toEqual([false]);
+			expect(draining.pollUnsafe()).toBeUndefined();
+
+			yield* Deferred.succeed(gate, undefined);
+			yield* Fiber.join(draining);
+		}),
+	);
+
+	it.effect(
+		"drain requested during active work awaits its coalesced successor",
+		Effect.gen(function* () {
+			const firstStarted = yield* Deferred.make<void>();
+			const firstGate = yield* Deferred.make<void>();
+			const secondStarted = yield* Deferred.make<void>();
+			const secondGate = yield* Deferred.make<void>();
+			const forces: boolean[] = [];
+			const coordinator = yield* RunCoordinator.make<string, never>({
+				drain: (_key, force) =>
+					Effect.suspend(() => {
+						forces.push(force);
+						return forces.length === 1
+							? Deferred.succeed(firstStarted, undefined).pipe(Effect.andThen(Deferred.await(firstGate)))
+							: Deferred.succeed(secondStarted, undefined).pipe(Effect.andThen(Deferred.await(secondGate)));
+					}),
+			});
+
+			const running = yield* Effect.forkChild(coordinator.run("session"));
+			yield* Deferred.await(firstStarted);
+			const draining = yield* Effect.forkChild(coordinator.drain("session"));
+			yield* Deferred.succeed(firstGate, undefined);
+			yield* Deferred.await(secondStarted);
+			expect(draining.pollUnsafe()).toBeUndefined();
+
+			yield* Deferred.succeed(secondGate, undefined);
+			yield* Fiber.join(running);
+			yield* Fiber.join(draining);
+			expect(forces).toEqual([true, false]);
+		}),
+	);
+
+	it.effect(
 		"a wake during an active drain runs exactly one successor, unforced",
 		Effect.gen(function* () {
 			const gate = yield* Deferred.make<void>();

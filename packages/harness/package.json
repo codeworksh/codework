@@ -21,6 +21,9 @@
 		"url": "git+https://github.com/codeworksh/codework.git",
 		"directory": "packages/harness"
 	},
+	"bin": {
+		"codework": "./dist/pack/cli/index.mjs"
+	},
 	"files": [
 		"dist",
 		"src"
@@ -32,6 +35,11 @@
 			"types": "./dist/pack/index.d.mts",
 			"import": "./dist/pack/index.mjs",
 			"default": "./dist/pack/index.mjs"
+		},
+		"./effect": {
+			"types": "./dist/pack/effect.d.mts",
+			"import": "./dist/pack/effect.mjs",
+			"default": "./dist/pack/effect.mjs"
 		},
 		"./package.json": "./package.json"
 	},

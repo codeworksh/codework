@@ -1,9 +1,9 @@
 import { NodeFileSystem } from "@effect/platform-node";
-import { DateTime, Effect, FileSystem, Layer, Option } from "effect";
+import { ConfigProvider, DateTime, Effect, FileSystem, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
 import { describe, expect } from "vite-plus/test";
-import { Database, SqlSchema } from "../../src/db/db.ts";
+import * as Database from "../../src/db/db.ts";
 import { ProjectDirectoryRow, ProjectRow } from "../../src/db/schema.sql.ts";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
 import { SandboxStore } from "../../src/sandbox/store.ts";
@@ -29,20 +29,20 @@ const { effect: memoryIt } = testEffect(Database.layer(":memory:"));
 // Model-encoded queries shared by the tests; column names derive from the
 // camelCase field names via the client's name transforms.
 const queries = (sql: SqlClient.SqlClient) => ({
-	insertProject: SqlSchema.void({
+	insertProject: Database.SqlSchema.void({
 		Request: ProjectRow.insert,
 		execute: (row) => sql`INSERT INTO project ${sql.insert(row)}`,
 	}),
-	findProject: SqlSchema.findOneOption({
+	findProject: Database.SqlSchema.findOneOption({
 		Request: ProjectRow.fields.id,
 		Result: ProjectRow,
 		execute: (id) => sql`SELECT * FROM project WHERE id = ${id}`,
 	}),
-	insertDirectory: SqlSchema.void({
+	insertDirectory: Database.SqlSchema.void({
 		Request: ProjectDirectoryRow.insert,
 		execute: (row) => sql`INSERT INTO project_directory ${sql.insert(row)}`,
 	}),
-	selectDirectories: SqlSchema.findAll({
+	selectDirectories: Database.SqlSchema.findAll({
 		Request: ProjectRow.fields.id,
 		Result: ProjectDirectoryRow,
 		execute: (projectId) => sql`SELECT * FROM project_directory WHERE project_id = ${projectId} ORDER BY id`,
@@ -65,6 +65,22 @@ const registerInstances = (...ids: ReadonlyArray<string>) =>
 	});
 
 describe("Database", () => {
+	describe("configuration", () => {
+		memoryIt(
+			"resolves CODEWORK_DB through ConfigProvider",
+			Effect.gen(function* () {
+				const data = path.resolve("configured-data");
+				const location = yield* Database.path(data);
+				expect(location).toBe(path.join(data, "sessions.db"));
+			}).pipe(
+				Effect.provideService(
+					ConfigProvider.ConfigProvider,
+					ConfigProvider.fromUnknown({ CODEWORK_DB: "sessions.db" }),
+				),
+			),
+		);
+	});
+
 	describe("models", () => {
 		it(
 			"round-trips a project through the migrated schema",

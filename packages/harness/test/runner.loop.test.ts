@@ -21,51 +21,11 @@ import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { SessionProjector } from "../src/session/projector.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
+import { SessionRuntime } from "../src/session/runtime.ts";
 import { State } from "../src/state/state.ts";
 import * as Tool from "../src/tools/tool.ts";
+import { assistant, immediateOpen } from "./fixtures/llm.ts";
 import { testEffect } from "./utils/effect.ts";
-
-const assistant = (
-	input: LLM.Input,
-	index: number,
-	overrides: Partial<Message.AssistantMessage> = {},
-): Message.AssistantMessage =>
-	Message.createAssistantMessage({
-		messageId: `assistant_${index}`,
-		role: "assistant",
-		protocol: "openai",
-		provider: { id: input.provider, name: input.provider, source: "custom", env: [] },
-		model: input.model,
-		usage: {
-			input: 1,
-			output: 1,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 2,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "stop",
-		time: { created: index, completed: index },
-		parts: [{ type: "text", text: `response ${index}` }],
-		...overrides,
-	});
-
-const immediateOpen = (contexts: Message.Context[] = []): LLM.Open => {
-	let responseIndex = 0;
-	return (input) =>
-		Effect.sync(() => {
-			responseIndex += 1;
-			contexts.push(input.context);
-			const message = assistant(input, responseIndex);
-			const events = createAssistantMessageEventStream();
-			events.push({ type: "start", partial: message });
-			events.push({ type: "text.start", partIndex: 0, partial: message });
-			events.push({ type: "text.delta", partIndex: 0, delta: `response ${responseIndex}`, partial: message });
-			events.push({ type: "text.end", partIndex: 0, content: `response ${responseIndex}`, partial: message });
-			events.push({ type: "done", reason: "stop", message });
-			return events;
-		});
-};
 
 const runtime = (
 	options: { readonly open?: LLM.Open; readonly contexts?: Message.Context[]; readonly state?: State.Options } = {},
@@ -79,6 +39,7 @@ const runtime = (
 	return Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
 		Layer.provideMerge(State.layer(options.state)),
+		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionProjector.layer),

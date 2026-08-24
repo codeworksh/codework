@@ -78,6 +78,11 @@ export interface Interface {
 	) => Effect.Effect<SandboxInstance.Info, SandboxRegisterError>;
 	readonly get: (id: SandboxInstance.ID) => Effect.Effect<Option.Option<SandboxInstance.Info>, SandboxReadError>;
 	readonly list: (input?: ListInput) => Effect.Effect<ReadonlyArray<SandboxInstance.Info>, SandboxReadError>;
+	/** Resolve a session cwd without mounting or waking the sandbox. */
+	readonly resolveCwd: (
+		id?: SandboxInstance.ID,
+		override?: string,
+	) => Effect.Effect<SandboxDriver.AbsolutePath, SandboxMountError>;
 	readonly refresh: (id: SandboxInstance.ID) => Effect.Effect<SandboxInstance.Info, SandboxRefreshError>;
 	readonly mount: (id?: SandboxInstance.ID, options?: MountOptions) => SandboxIO.Layer<SandboxMountError>;
 	readonly withMount: <A, E, R>(
@@ -366,6 +371,26 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 					(input.usage === undefined || info.usage === input.usage),
 			),
 		);
+
+	const resolveCwd: Interface["resolveCwd"] = Effect.fn("Sandbox.Controller.resolveCwd")(function* (
+		id = SandboxInstance.ID.local,
+		override,
+	) {
+		if (id === SandboxInstance.ID.local) {
+			return SandboxDriver.AbsolutePath.make(SandboxIO.resolveMountCwd(hostDefaultCwd, override));
+		}
+		const row = yield* requireRow(id);
+		if (row.status === "removed") {
+			return yield* new SandboxRemovedError({ id, removedAt: Option.getOrUndefined(row.removedAt) });
+		}
+		if (row.status === "unavail") {
+			return yield* new SandboxUnavailError({ id, reason: "driver resource is unavailable" });
+		}
+		const attached = yield* runtime(row, "resolveCwd");
+		return SandboxDriver.AbsolutePath.make(
+			SandboxIO.resolveMountCwd(attached.input.runtimeConfig.defaultCwd, override),
+		);
+	});
 
 	const create: Interface["create"] = Effect.fn("Sandbox.Controller.create")(function* (input) {
 		const driver = yield* registry.get(input.driver.name);
@@ -833,6 +858,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		register,
 		get,
 		list,
+		resolveCwd,
 		refresh,
 		mount,
 		withMount,

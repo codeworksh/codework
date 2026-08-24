@@ -1,6 +1,5 @@
-/* oxlint-disable effecttsgo/process-env -- This module is the process configuration boundary for the database. */
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
-import { Effect, Layer, String as Str } from "effect";
+import { Config, Effect, Layer, String as Str } from "effect";
 import { Migrator, SqlClient } from "effect/unstable/sql";
 import * as fs from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
@@ -44,16 +43,18 @@ export function layer(location: string) {
 	);
 }
 
-export function path() {
-	const envPath = process.env.CODEWORK_DB;
-	if (envPath) {
-		if (envPath === ":memory:" || isAbsolute(envPath)) return envPath;
-		return join(Global.Path.data, envPath);
-	}
-	return join(Global.Path.data, "codework.db");
+export const locationConfig = Config.string("CODEWORK_DB").pipe(Config.withDefault("codework.db"));
+
+export function resolveLocation(configured: string, data: string) {
+	if (configured === ":memory:" || isAbsolute(configured)) return configured;
+	return join(data, configured);
 }
 
-// Deferred so `path()` reads CODEWORK_DB at construction time, not at import.
-export const defaultLayer = Layer.unwrap(Effect.sync(() => layer(path())));
+export const path = Effect.fn("Database.path")(function* (data?: string) {
+	const directory = data ?? (yield* Global.resolve()).data;
+	return resolveLocation(yield* locationConfig, directory);
+});
+
+export const defaultLayer = Layer.unwrap(path().pipe(Effect.map(layer)));
 
 export * as Database from "./db.ts";
