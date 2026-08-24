@@ -3,18 +3,21 @@
 import { generateModels } from "@codeworksh/aikit/modelgen";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Fiber, Option, Queue, Schema, Stream } from "effect";
+import { Effect, Fiber, Option, Queue, Ref, Schema, Stream } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/unstable/cli";
 import { Harness } from "../effect/harness.ts";
 import { Sandbox } from "../effect/sandbox.ts";
 import { Session } from "../effect/session.ts";
+import { EventList } from "../event/list.ts";
 import type { EventSchema } from "../event/schema.ts";
+import { addUsage, emptyUsage, header, usage, type UsageSummary } from "./output.ts";
 
 const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const sandboxDrivers = ["local", "daytona", "vercel"] as const;
 
 const writeOut = (value: string) => Effect.sync(() => void process.stdout.write(value));
 const writeError = (value: string) => Effect.sync(() => void process.stderr.write(value));
+const terminalColumns = () => (process.stderr.isTTY ? (process.stderr.columns ?? 72) : 72);
 
 class InvalidInputError extends Schema.TaggedError<InvalidInputError>()("CLI.InvalidInputError", {
 	message: Schema.String,
@@ -24,14 +27,41 @@ class ModelgenError extends Schema.TaggedError<ModelgenError>()("CLI.ModelgenErr
 	cause: Schema.Defect(),
 }) {}
 
-const render = (ended: Queue.Queue<string>) =>
+interface RenderState {
+	readonly usage: UsageSummary;
+	readonly textSeen: boolean;
+	readonly textEndsWithNewline: boolean;
+}
+
+const initialRenderState: RenderState = {
+	usage: emptyUsage,
+	textSeen: false,
+	textEndsWithNewline: false,
+};
+
+const isTextDelta = Schema.is(EventList.LLMTextDelta);
+const isLLMEnded = Schema.is(EventList.LLMEnded);
+const isTurnEnded = Schema.is(EventList.TurnEnded);
+
+const render = (ended: Queue.Queue<string>, state: Ref.Ref<RenderState>) =>
 	Effect.fn("CLI.render")(function* (event: EventSchema.Payload) {
-		if (event.type === "session.llm.text.delta") {
-			yield* writeOut((event.data as { readonly delta: string }).delta);
+		if (isTextDelta(event)) {
+			yield* writeOut(event.data.delta);
+			if (event.data.delta.length > 0) {
+				yield* Ref.update(state, (current) => ({
+					...current,
+					textSeen: true,
+					textEndsWithNewline: event.data.delta.endsWith("\n"),
+				}));
+			}
 			return;
 		}
-		if (event.type === "session.turn.ended") {
-			yield* Queue.offer(ended, (event.data as { readonly messageId: string }).messageId);
+		if (isLLMEnded(event)) {
+			yield* Ref.update(state, (current) => ({ ...current, usage: addUsage(current.usage, event.data.message) }));
+			return;
+		}
+		if (isTurnEnded(event)) {
+			yield* Queue.offer(ended, event.data.messageId);
 		}
 	});
 
@@ -127,17 +157,29 @@ const run = Command.make(
 				});
 			}
 			const ended = yield* Queue.unbounded<string>();
+			const renderState = yield* Ref.make(initialRenderState);
 			const printer = yield* handle
 				.events()
-				.pipe(Stream.runForEach(render(ended)), Effect.forkScoped({ startImmediately: true }));
+				.pipe(Stream.runForEach(render(ended, renderState)), Effect.forkScoped({ startImmediately: true }));
 
-			yield* writeError(`session ${handle.id}\n`);
+			const info = yield* handle.info;
+			const columns = terminalColumns();
+			yield* writeError(
+				header({
+					sessionId: handle.id,
+					sandbox: info.sandbox?.driver ?? "local",
+					directory: info.directory,
+					columns,
+				}),
+			);
 			yield* handle.run(prompt);
 			const path = yield* handle.path();
 			const leaf = path.at(-1);
 			if (leaf !== undefined) yield* awaitMessage(ended, leaf.entry.id);
 			yield* Fiber.interrupt(printer);
-			yield* writeOut("\n");
+			const rendered = yield* Ref.get(renderState);
+			if (rendered.textSeen && !rendered.textEndsWithNewline) yield* writeOut("\n");
+			yield* writeError(usage(rendered.usage, columns));
 		});
 
 		return yield* program.pipe(

@@ -1,6 +1,6 @@
 // API that deals with event
 
-import { Effect, Context, Layer, Option, PubSub, Cause, Stream } from "effect";
+import { Cause, Context, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { EventRow } from "../db/schema.sql.ts";
 // Uncomment with `decodeSerializedEvent` below — the manifest is what it looks
@@ -145,7 +145,6 @@ export const layer = Layer.effect(
 
 		const pubsub = {
 			all: yield* PubSub.unbounded<Payload>(),
-			durable: new Map<string, Set<PubSub.PubSub<void>>>(),
 			typed: new Map<string, PubSub.PubSub<Payload>>(),
 		};
 		const projectors = new Map<string, Subscriber[]>();
@@ -157,11 +156,6 @@ export const layer = Layer.effect(
 			Effect.gen(function* () {
 				yield* PubSub.shutdown(pubsub.all);
 				yield* Effect.forEach(pubsub.typed.values(), PubSub.shutdown, { discard: true });
-				yield* Effect.forEach(
-					pubsub.durable.values(),
-					(wakes) => Effect.forEach(wakes, PubSub.shutdown, { discard: true }),
-					{ discard: true },
-				);
 			}),
 		);
 
@@ -325,11 +319,6 @@ export const layer = Layer.effect(
 						return payload;
 					}),
 				);
-				// Durable subscribers carry no payload -- they re-read from their own
-				// cursor, so one content-free wake per aggregate is enough.
-				yield* Effect.forEach(pubsub.durable.get(aggregateId) ?? [], (wake) => PubSub.publish(wake, undefined), {
-					discard: true,
-				});
 				return committed;
 			},
 			Effect.orDie,
@@ -406,29 +395,53 @@ export const layer = Layer.effect(
 		const streamAll = (): Stream.Stream<Payload> => Stream.fromPubSub(pubsub.all);
 
 		const stream = (input: { readonly sessionId: string; readonly after?: number }): Stream.Stream<Payload> => {
-			const tail = streamAll().pipe(
-				Stream.filter((event) => (event.data as { readonly sessionId?: unknown }).sessionId === input.sessionId),
-			);
-			if (input.after === undefined) return tail;
+			const forSession = (event: Payload) =>
+				(event.data as { readonly sessionId?: unknown }).sessionId === input.sessionId;
+			const after = input.after;
+			if (after === undefined) return streamAll().pipe(Stream.filter(forSession));
 
-			const history = Stream.paginate(
-				input.after,
-				Effect.fn("Event.stream.history")(function* (after) {
-					const page = yield* readAggregate({
-						aggregateId: input.sessionId,
+			return Stream.unwrap(
+				Effect.gen(function* () {
+					// Subscribe before the first journal read. The subscription's unbounded
+					// queue buffers durable and live-only events across the replay boundary.
+					const subscription = yield* PubSub.subscribe(pubsub.all);
+					const watermark = yield* Ref.make(after);
+					const history = Stream.paginate(
 						after,
-						limit: 100,
-						manifest: EventManifest.Manifest,
-					});
-					const last = page.events.at(-1);
-					const next =
-						page.hasMore && last?.durable !== undefined ? Option.some(last.durable.seq) : Option.none<number>();
-					return [page.events, next] as const;
+						Effect.fn("Event.stream.history")(function* (after) {
+							const page = yield* readAggregate({
+								aggregateId: input.sessionId,
+								after,
+								limit: 100,
+								manifest: EventManifest.Manifest,
+							});
+							const last = page.events.at(-1);
+							const next =
+								page.hasMore && last?.durable !== undefined
+									? Option.some(last.durable.seq)
+									: Option.none<number>();
+							return [page.events, next] as const;
+						}),
+					).pipe(
+						Stream.map((event) => event as Payload),
+						Stream.tap((event) => {
+							const seq = event.durable?.seq;
+							return seq === undefined
+								? Effect.void
+								: Ref.update(watermark, (current) => Math.max(current, seq));
+						}),
+					);
+					const tail = Stream.fromSubscription(subscription).pipe(
+						Stream.filter(forSession),
+						Stream.filterEffect((event) => {
+							const seq = event.durable?.seq;
+							return seq === undefined
+								? Effect.succeed(true)
+								: Ref.get(watermark).pipe(Effect.map((replayed) => seq > replayed));
+						}),
+					);
+					return history.pipe(Stream.concat(tail));
 				}),
-			);
-			return history.pipe(
-				Stream.map((event) => event as Payload),
-				Stream.concat(tail),
 			);
 		};
 

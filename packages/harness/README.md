@@ -76,6 +76,21 @@ pnpm dlx @codeworksh/harness@dev \
   "Inspect this repository"
 ```
 
+The streamed response remains clean on stdout for piping. Session context and the per-run model usage summary are written to stderr:
+
+```text
+session  ses_...
+sandbox  local · /workspace/project
+
+── response ─────────────────────────────────────────────────────────────
+The response streams here.
+── usage ────────────────────────────────────────────────────────────────
+model    openai/gpt-5.5
+tokens   12,400 input · 820 output · 13,220 total
+cache    9,600 read · 0 write
+cost     $0.014200 · 1 turn
+```
+
 `modelgen [path]` uses Aikit's model generator and writes `./models.gen.json` by default. Set `CODEWORK_MODELS_FILE` or pass a path when you keep the catalog elsewhere.
 
 The CLI prints the session ID to stderr. Provider, model, and thinking settings are stored with the session, so use the same home directory and session ID to continue it:
