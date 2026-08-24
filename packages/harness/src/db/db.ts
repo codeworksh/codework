@@ -1,9 +1,9 @@
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
 import { Config, Effect, Layer, String as Str } from "effect";
 import { Migrator, SqlClient } from "effect/unstable/sql";
-import * as fs from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
 import { Global } from "../global.ts";
+import { fileSystem } from "../host.ts";
+import { posix } from "../posix.ts";
 import { migrations } from "./migrations.ts";
 
 export { SqlClient, SqlSchema } from "effect/unstable/sql";
@@ -28,7 +28,7 @@ export function layer(location: string) {
 	const client = Layer.unwrap(
 		Effect.gen(function* () {
 			if (location !== ":memory:") {
-				yield* Effect.promise(() => fs.mkdir(dirname(location), { recursive: true }));
+				yield* fileSystem.makeDirectory(posix.dirname(location), { recursive: true }).pipe(Effect.orDie);
 			}
 			return SqliteClient.layer({
 				filename: location,
@@ -46,8 +46,8 @@ export function layer(location: string) {
 export const locationConfig = Config.string("CODEWORK_DB").pipe(Config.withDefault("codework.db"));
 
 export function resolveLocation(configured: string, data: string) {
-	if (configured === ":memory:" || isAbsolute(configured)) return configured;
-	return join(data, configured);
+	if (configured === ":memory:" || posix.isAbsolute(configured)) return configured;
+	return posix.join(data, configured);
 }
 
 export const path = Effect.fn("Database.path")(function* (data?: string) {

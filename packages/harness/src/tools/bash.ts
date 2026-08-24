@@ -1,8 +1,8 @@
 import { Duration, Effect, Option, Ref, Schema, Stream } from "effect";
 import { randomBytes } from "node:crypto";
-import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { fileSystem } from "../host.ts";
+import { posix } from "../posix.ts";
 import { Accumulator, type OutputSnapshot } from "./accumulator.ts";
 import { ToolProgress } from "./progress.ts";
 import { type IToolShell, ToolShell } from "./shell.ts";
@@ -110,9 +110,9 @@ const footer = (t: TruncationResult, fullOutputPath: string | undefined, lastLin
 
 /** Write full output to a host temp file (best-effort; undefined on failure). */
 const spillToTempFile = (content: string): Effect.Effect<string | undefined> =>
-	Effect.tryPromise(() => {
-		const path = join(tmpdir(), `codework-bash-${randomBytes(6).toString("hex")}.log`);
-		return writeFile(path, content, "utf-8").then(() => path);
+	Effect.suspend(() => {
+		const path = posix.join(tmpdir(), `codework-bash-${randomBytes(6).toString("hex")}.log`);
+		return fileSystem.writeFileString(path, content).pipe(Effect.as(path));
 	}).pipe(Effect.orElseSucceed(() => undefined));
 
 /** Variant A: truncate the buffered output once, spilling the full output if truncated. */
@@ -171,52 +171,49 @@ const runStreaming = (
 	stream: NonNullable<IToolShell["stream"]>,
 	params: typeof BashParams.Type,
 ): Effect.Effect<typeof BashSuccess.Type, BashFailureError, ToolProgress> =>
-	Effect.acquireUseRelease(
-		// The accumulator's temp file is closed on success, failure, OR interrupt.
-		Effect.sync(() => new Accumulator({ tempFilePrefix: "codework-bash" })),
-		(acc) =>
-			Effect.gen(function* () {
-				const progress = yield* ToolProgress;
-				const exitCode = yield* Ref.make<number | null>(null);
-				// executes command and streams output
-				const consume = stream(params.command).pipe(
-					Stream.runForEach((event) =>
-						event._tag === "Exit"
-							? Ref.set(exitCode, event.exitCode)
-							: // `gen` so the snapshot is read *after* the append runs (not eagerly
-								// at pipeline-construction time, which would lag a chunk behind).
-								Effect.gen(function* () {
-									yield* Effect.sync(() => acc.append(Buffer.from(event.bytes)));
-									yield* progress.report({ content: [{ type: "text", text: acc.snapshot().content }] });
-								}),
-					),
-					// Infra/spawn failure → defect (run error), like variant A.
-					Effect.catchTag("ToolShellError", (cause) => Effect.die(cause)),
-				);
+	Effect.scoped(
+		Effect.gen(function* () {
+			const acc = new Accumulator({ tempFilePrefix: "codework-bash" });
+			const progress = yield* ToolProgress;
+			const exitCode = yield* Ref.make<number | null>(null);
+			// executes command and streams output
+			const consume = stream(params.command).pipe(
+				Stream.runForEach((event) =>
+					event._tag === "Exit"
+						? Ref.set(exitCode, event.exitCode)
+						: // `gen` so the snapshot is read *after* the append runs (not eagerly
+							// at pipeline-construction time, which would lag a chunk behind).
+							Effect.gen(function* () {
+								yield* acc.append(Buffer.from(event.bytes));
+								yield* progress.report({ content: [{ type: "text", text: acc.snapshot().content }] });
+							}),
+				),
+				// Infra/spawn failure → defect (run error), like variant A.
+				Effect.catchTag("ToolShellError", (cause) => Effect.die(cause)),
+			);
 
-				// Consume with the deadline; on timeout the accumulator keeps what arrived.
-				let timedOutAfter: number | undefined;
-				if (params.timeout !== undefined) {
-					const finished = yield* consume.pipe(Effect.timeoutOption(Duration.seconds(params.timeout)));
-					if (Option.isNone(finished)) timedOutAfter = params.timeout;
-				} else {
-					yield* consume;
-				}
+			// Consume with the deadline; on timeout the accumulator keeps what arrived.
+			let timedOutAfter: number | undefined;
+			if (params.timeout !== undefined) {
+				const finished = yield* consume.pipe(Effect.timeoutOption(Duration.seconds(params.timeout)));
+				if (Option.isNone(finished)) timedOutAfter = params.timeout;
+			} else {
+				yield* consume;
+			}
 
-				yield* Effect.sync(() => acc.finish());
-				const present = presentSnapshot(acc.snapshot({ persistIfTruncated: true }), acc.getLastLineBytes());
+			yield* acc.finish();
+			const present = presentSnapshot(acc.snapshot(), acc.getLastLineBytes());
 
-				if (timedOutAfter !== undefined) {
-					return yield* new BashTimedOut({ timeoutSeconds: timedOutAfter, ...present });
-				}
-				const code = yield* Ref.get(exitCode);
-				// No Exit event (e.g. killed before reporting one) → treat as a failure.
-				if (code === null || code !== 0) {
-					return yield* new BashFailed({ exitCode: code ?? -1, ...present });
-				}
-				return { exitCode: code, ...present } satisfies typeof BashSuccess.Type;
-			}),
-		(acc) => Effect.promise(() => acc.closeTempFile().catch(() => {})),
+			if (timedOutAfter !== undefined) {
+				return yield* new BashTimedOut({ timeoutSeconds: timedOutAfter, ...present });
+			}
+			const code = yield* Ref.get(exitCode);
+			// No Exit event (e.g. killed before reporting one) → treat as a failure.
+			if (code === null || code !== 0) {
+				return yield* new BashFailed({ exitCode: code ?? -1, ...present });
+			}
+			return { exitCode: code, ...present } satisfies typeof BashSuccess.Type;
+		}),
 	);
 
 export const bashHandler: Tool.Handler<

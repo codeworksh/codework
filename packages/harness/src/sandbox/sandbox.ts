@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
-import { posix as path } from "node:path";
 import { Database } from "../db/db.ts";
+import { posix as path } from "../posix.ts";
 import { SandboxController } from "./control.ts";
 import { SandboxDriver } from "./driver.ts";
 import { MemorySandboxDriver } from "./drivers/memory.ts";

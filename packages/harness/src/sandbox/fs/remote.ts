@@ -1,4 +1,4 @@
-import { posix } from "node:path";
+import { posix } from "../../posix.ts";
 import { SandboxFileSystem } from "./filesystem.ts";
 
 // The provider contract and FileStat live in `filesystem.ts` (the single source of truth, VFS-free).

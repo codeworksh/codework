@@ -2,7 +2,6 @@
 import { type Command, Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
-import type { Stats } from "node:fs";
 import { sanitizeError } from "../errors.ts";
 import { SandboxFileSystem } from "../fs/filesystem.ts";
 import { RemoteFileSystem } from "../fs/remote.ts";
@@ -145,6 +144,14 @@ const remote = (options: Options) =>
 			catch: (cause) => new VercelError({ sanitized: sanitizeError(cause) }),
 		}),
 	);
+
+interface Stats {
+	readonly size: number;
+	readonly mtime: Date;
+	readonly isFile: () => boolean;
+	readonly isDirectory: () => boolean;
+	readonly isSymbolicLink: () => boolean;
+}
 
 export const statsFrom = (stats: Stats): RemoteFileSystem.FileStat => {
 	const mtime = stats.mtime;

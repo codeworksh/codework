@@ -1,8 +1,8 @@
-/* oxlint-disable effecttsgo/async-function, effecttsgo/new-promise -- Writable-stream callbacks use Promise completion. */
+import { Effect, type FileSystem, type Scope } from "effect";
 import { randomBytes } from "node:crypto";
-import { createWriteStream, type WriteStream } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { fileSystem } from "../host.ts";
+import { posix } from "../posix.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail, type TruncationResult } from "./truncate.ts";
 
 /**
@@ -12,9 +12,8 @@ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail, type TruncationResu
  * to a temp file once it exceeds the display limits — so a multi-gigabyte stream
  * never sits in memory.
  *
- * It is a plain mutable class; the streaming bash handler wraps it in
- * `Effect.acquireRelease` so {@link closeTempFile} runs on completion *or*
- * interrupt (the "better with Effect" part — no manual `finally`).
+ * It is a plain mutable class; the streaming bash handler runs it in an Effect
+ * scope, so the spill file handle closes on completion, failure, or interrupt.
  */
 
 export interface OutputAccumulatorOptions {
@@ -30,7 +29,7 @@ export interface OutputSnapshot {
 }
 
 function defaultTempFilePath(prefix: string): string {
-	return join(tmpdir(), `${prefix}-${randomBytes(8).toString("hex")}.log`);
+	return posix.join(tmpdir(), `${prefix}-${randomBytes(8).toString("hex")}.log`);
 }
 
 function byteLength(text: string): number {
@@ -57,7 +56,7 @@ export class Accumulator {
 	private finished = false;
 
 	private tempFilePath: string | undefined;
-	private tempFileStream: WriteStream | undefined;
+	private tempFile: FileSystem.File | undefined;
 
 	constructor(options: OutputAccumulatorOptions = {}) {
 		this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
@@ -66,34 +65,37 @@ export class Accumulator {
 		this.tempFilePrefix = options.tempFilePrefix ?? "codework-output";
 	}
 
-	append(data: Buffer): void {
-		if (this.finished) {
-			throw new Error("Cannot append to a finished output accumulator");
-		}
+	append(data: Buffer): Effect.Effect<void, never, Scope.Scope> {
+		return Effect.suspend(() => {
+			if (this.finished) return Effect.die(new Error("Cannot append to a finished output accumulator"));
 
-		this.totalRawBytes += data.length;
-		this.appendDecodedText(this.decoder.decode(data, { stream: true }));
+			this.totalRawBytes += data.length;
+			this.appendDecodedText(this.decoder.decode(data, { stream: true }));
 
-		if (this.tempFileStream || this.shouldUseTempFile()) {
-			this.ensureTempFile();
-			this.tempFileStream?.write(data);
-		} else if (data.length > 0) {
-			this.rawChunks.push(data);
-		}
+			if (this.tempFile !== undefined || this.shouldUseTempFile()) {
+				return Effect.gen({ self: this }, function* () {
+					yield* this.ensureTempFile();
+					yield* this.tempFile!.writeAll(data).pipe(Effect.orDie);
+				});
+			}
+			if (data.length > 0) this.rawChunks.push(data);
+			return Effect.void;
+		});
 	}
 
-	finish(): void {
-		if (this.finished) {
-			return;
-		}
-		this.finished = true;
-		this.appendDecodedText(this.decoder.decode());
-		if (this.shouldUseTempFile()) {
-			this.ensureTempFile();
-		}
+	finish(): Effect.Effect<void, never, Scope.Scope> {
+		return Effect.suspend(() => {
+			if (this.finished) return Effect.void;
+			this.finished = true;
+			this.appendDecodedText(this.decoder.decode());
+			return Effect.gen({ self: this }, function* () {
+				if (this.shouldUseTempFile()) yield* this.ensureTempFile();
+				if (this.tempFile !== undefined) yield* this.tempFile.sync.pipe(Effect.orDie);
+			});
+		});
 	}
 
-	snapshot(options: { persistIfTruncated?: boolean } = {}): OutputSnapshot {
+	snapshot(): OutputSnapshot {
 		const tailTruncation = truncateTail(this.getSnapshotText(), {
 			maxLines: this.maxLines,
 			maxBytes: this.maxBytes,
@@ -112,39 +114,11 @@ export class Accumulator {
 			maxBytes: this.maxBytes,
 		};
 
-		if (options.persistIfTruncated && truncation.truncated) {
-			this.ensureTempFile();
-		}
-
 		return {
 			content: truncation.content,
 			truncation,
 			...(this.tempFilePath === undefined ? {} : { fullOutputPath: this.tempFilePath }),
 		};
-	}
-
-	/** Flush the streaming decoder and close the temp file (idempotent). */
-	async closeTempFile(): Promise<void> {
-		if (!this.tempFileStream) {
-			return;
-		}
-
-		const stream = this.tempFileStream;
-		this.tempFileStream = undefined;
-
-		await new Promise<void>((resolve, reject) => {
-			const onError = (error: Error) => {
-				stream.off("finish", onFinish);
-				reject(error);
-			};
-			const onFinish = () => {
-				stream.off("error", onError);
-				resolve();
-			};
-			stream.once("error", onError);
-			stream.once("finish", onFinish);
-			stream.end();
-		});
 	}
 
 	/** Bytes in the final (possibly unterminated) line — for the partial-line footer. */
@@ -215,15 +189,13 @@ export class Accumulator {
 		);
 	}
 
-	private ensureTempFile(): void {
-		if (this.tempFilePath) {
-			return;
-		}
-		this.tempFilePath = defaultTempFilePath(this.tempFilePrefix);
-		this.tempFileStream = createWriteStream(this.tempFilePath);
-		for (const chunk of this.rawChunks) {
-			this.tempFileStream.write(chunk);
-		}
-		this.rawChunks = [];
+	private ensureTempFile(): Effect.Effect<void, never, Scope.Scope> {
+		if (this.tempFile !== undefined) return Effect.void;
+		return Effect.gen({ self: this }, function* () {
+			this.tempFilePath = defaultTempFilePath(this.tempFilePrefix);
+			this.tempFile = yield* fileSystem.open(this.tempFilePath, { flag: "w" });
+			for (const chunk of this.rawChunks) yield* this.tempFile.writeAll(chunk);
+			this.rawChunks = [];
+		}).pipe(Effect.orDie);
 	}
 }

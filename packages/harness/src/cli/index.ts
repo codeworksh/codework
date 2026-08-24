@@ -4,10 +4,10 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Fiber, Option, Queue, Schema, Stream } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/unstable/cli";
-import { resolve } from "node:path";
 import { Harness } from "../effect/harness.ts";
 import { Session } from "../effect/session.ts";
 import type { EventSchema } from "../event/schema.ts";
+import { posix } from "../posix.ts";
 
 const writeOut = (value: string) => Effect.sync(() => void process.stdout.write(value));
 const writeError = (value: string) => Effect.sync(() => void process.stderr.write(value));
@@ -66,7 +66,7 @@ const run = Command.make(
 				? yield* Session.attach({ sessionId: Session.SessionSchema.ID.make(session.value) })
 				: yield* Session.create({
 						title: "CLI",
-						...(Option.isNone(cwd) ? {} : { directory: resolve(cwd.value) }),
+						...(Option.isNone(cwd) ? {} : { directory: posix.resolve(cwd.value) }),
 					});
 			const ended = yield* Queue.unbounded<string>();
 			const printer = yield* handle

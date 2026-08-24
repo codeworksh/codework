@@ -10,7 +10,7 @@ import {
 } from "@daytona/sdk";
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { Buffer } from "node:buffer";
-import { posix } from "node:path";
+import { posix } from "../../posix.ts";
 import { sanitizeError } from "../errors.ts";
 import { SandboxFileSystem } from "../fs/filesystem.ts";
 import { RemoteFileSystem } from "../fs/remote.ts";

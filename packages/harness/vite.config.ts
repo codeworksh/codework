@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { recommended } from "@effect/tsgo/oxlint-presets";
 import { defineConfig } from "vite-plus";
 
 const ignoredPaths = [
@@ -39,8 +40,10 @@ export default defineConfig({
 		include: ["test/**/*.test.ts", "tests/**/*.test.ts"],
 	},
 	lint: {
+		...recommended,
 		ignorePatterns: ignoredPaths,
 		options: {
+			...recommended.options,
 			typeAware: true,
 			typeCheck: true,
 		},

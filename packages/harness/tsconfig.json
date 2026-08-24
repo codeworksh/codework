@@ -1,5 +1,5 @@
 {
-	"$schema": "https://raw.githubusercontent.com/Effect-TS/language-service/refs/heads/main/schema.json",
+	"$schema": "../../node_modules/@effect/tsgo/schema.json",
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
 		"tsBuildInfoFile": "../../.cache/typescript/harness.tsbuildinfo",
@@ -30,8 +30,7 @@
 					"schemaSyncInEffect": "error",
 					"cryptoRandomUUID": "error",
 					"cryptoRandomUUIDInEffect": "error",
-					// Harness host/provider adapters intentionally use native Node boundaries, as T3Code does.
-					"nodeBuiltinImport": "off",
+					"nodeBuiltinImport": "error",
 					"globalDate": "error",
 					"globalDateInEffect": "error",
 					"globalConsole": "error",

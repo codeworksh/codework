@@ -1,17 +1,17 @@
 import { Config, Context, Effect, Layer } from "effect";
-import fs from "node:fs/promises";
 import * as os from "node:os";
-import { join, resolve as resolvePath } from "node:path";
+import { fileSystem } from "./host.ts";
+import { posix } from "./posix.ts";
 
 export const configDir = ".codework";
 export const app = "codework";
 
-const defaultHome = join(os.homedir(), configDir);
+const defaultHome = posix.join(os.homedir(), configDir);
 
 function expandHome(value: string) {
 	if (value === "~") return os.homedir();
-	if (value.startsWith("~/")) return join(os.homedir(), value.slice(2));
-	return resolvePath(value);
+	if (value.startsWith("~/")) return posix.join(os.homedir(), value.slice(2));
+	return posix.resolve(value);
 }
 
 export const homeConfig = Config.string("CODEWORK_HOME_DIR").pipe(
@@ -33,10 +33,10 @@ export function make(input: Partial<Interface> = {}): Interface {
 	const home = expandHome(input.home ?? defaultHome);
 	return {
 		home,
-		cache: input.cache ?? join(home, "cache"),
-		agent: input.agent ?? join(home, "agent"),
-		data: input.data ?? join(home, "data"),
-		log: input.log ?? join(home, "log"),
+		cache: input.cache ?? posix.join(home, "cache"),
+		agent: input.agent ?? posix.join(home, "agent"),
+		data: input.data ?? posix.join(home, "data"),
+		log: input.log ?? posix.join(home, "log"),
 	};
 }
 
@@ -48,14 +48,12 @@ export const resolve = Effect.fn("Global.resolve")(function* (input: Partial<Int
 const build = (input: Partial<Interface>) =>
 	Effect.gen(function* () {
 		const paths = yield* resolve(input);
-		yield* Effect.promise(() =>
-			Promise.all([
-				fs.mkdir(paths.cache, { recursive: true }),
-				fs.mkdir(paths.agent, { recursive: true }),
-				fs.mkdir(paths.data, { recursive: true }),
-				fs.mkdir(paths.log, { recursive: true }),
-			]),
-		);
+		yield* Effect.all([
+			fileSystem.makeDirectory(paths.cache, { recursive: true }),
+			fileSystem.makeDirectory(paths.agent, { recursive: true }),
+			fileSystem.makeDirectory(paths.data, { recursive: true }),
+			fileSystem.makeDirectory(paths.log, { recursive: true }),
+		]).pipe(Effect.orDie);
 		return Service.of(paths);
 	});
 

@@ -60,7 +60,7 @@
 		"release:dry": "node ../../scripts/publish.mjs aikit --dry-run",
 		"test": "vp test --exclude \"test/e2e/**\"",
 		"test:e2e": "vp test",
-		"typecheck": "node ../../scripts/tsgo.mjs --noEmit"
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^4.0.36",

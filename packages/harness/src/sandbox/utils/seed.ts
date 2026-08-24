@@ -1,7 +1,9 @@
 /* oxlint-disable effecttsgo/async-function -- Seeding bridges native files and the Promise-based VFS contract. */
 import type { create } from "@platformatic/vfs";
-import fs from "node:fs/promises";
-import path from "node:path";
+import { Effect, Option } from "effect";
+import { Buffer } from "node:buffer";
+import { fileSystem } from "../../host.ts";
+import { posix } from "../../posix.ts";
 
 export interface SeedOptions {
 	/** Virtual working directory used to resolve relative filesystem paths. Defaults to "/". */
@@ -24,33 +26,38 @@ const copyDirectory = async (
 ): Promise<void> => {
 	await vfs.promises.mkdir(targetDirectory, { recursive: true });
 
-	for (const entry of await fs.readdir(sourceDirectory, { withFileTypes: true })) {
-		const sourcePath = path.join(sourceDirectory, entry.name);
-		const targetPath = path.posix.join(targetDirectory, entry.name);
+	for (const name of await Effect.runPromise(fileSystem.readDirectory(sourceDirectory))) {
+		const sourcePath = posix.join(sourceDirectory, name);
+		const targetPath = posix.join(targetDirectory, name);
+		const link = await Effect.runPromise(fileSystem.readLink(sourcePath).pipe(Effect.option));
 
-		if (entry.isDirectory()) {
+		if (Option.isSome(link)) {
+			await vfs.promises.symlink(link.value, targetPath);
+			continue;
+		}
+
+		const entry = await Effect.runPromise(fileSystem.stat(sourcePath));
+
+		if (entry.type === "Directory") {
 			await copyDirectory(vfs, sourcePath, targetPath);
 			continue;
 		}
 
-		if (entry.isSymbolicLink()) {
-			await vfs.promises.symlink(await fs.readlink(sourcePath), targetPath);
-			continue;
-		}
-
-		if (entry.isFile()) {
-			await vfs.promises.writeFile(targetPath, await fs.readFile(sourcePath));
+		if (entry.type === "File") {
+			await vfs.promises.writeFile(
+				targetPath,
+				Buffer.from(await Effect.runPromise(fileSystem.readFile(sourcePath))),
+			);
 		}
 	}
 };
 
 export const initialize = async (vfs: VirtualFileSystem, options?: SeedOptions): Promise<void> => {
 	const cwd = options?.cwd ?? "/";
-	if (!path.posix.isAbsolute(cwd)) {
+	if (!posix.isAbsolute(cwd)) {
 		throw new TypeError(`Virtual filesystem default cwd must be absolute: ${cwd}`);
 	}
-	const resolve = (value: string) =>
-		path.posix.isAbsolute(value) ? path.posix.normalize(value) : path.posix.resolve(cwd, value);
+	const resolve = (value: string) => (posix.isAbsolute(value) ? posix.normalize(value) : posix.resolve(cwd, value));
 
 	await vfs.promises.mkdir(cwd, { recursive: true });
 
@@ -60,7 +67,7 @@ export const initialize = async (vfs: VirtualFileSystem, options?: SeedOptions):
 
 	for (const [filePath, data] of Object.entries(options?.seed ?? {})) {
 		const target = resolve(filePath);
-		await vfs.promises.mkdir(path.posix.dirname(target), { recursive: true });
+		await vfs.promises.mkdir(posix.dirname(target), { recursive: true });
 		await vfs.promises.writeFile(target, typeof data === "string" ? data : Buffer.from(data));
 	}
 };

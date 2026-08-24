@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { posix as path } from "node:path";
+import { posix as path } from "../posix.ts";
 import { SandboxFs } from "../sandbox/fs/util.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { Sandbox } from "../sandbox/sandbox.ts";

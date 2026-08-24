@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { posix } from "node:path";
+import { posix } from "../../posix.ts";
 import type { SandboxFileSystem } from "./filesystem.ts";
 
 /**

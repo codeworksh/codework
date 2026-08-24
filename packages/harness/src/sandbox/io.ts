@@ -1,5 +1,5 @@
 import { Context, Effect, Layer as EffectLayer } from "effect";
-import { posix } from "node:path";
+import { posix } from "../posix.ts";
 import type { SandboxDriver } from "./driver.ts";
 import { SandboxFileSystem } from "./fs/filesystem.ts";
 import { SandboxInstance } from "./instance.ts";

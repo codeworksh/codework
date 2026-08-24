@@ -1,6 +1,6 @@
 import { NodeFileSystem } from "@effect/platform-node";
 import { Context, Effect, Layer, FileSystem as PlatformFileSystem, Schema } from "effect";
-import { posix } from "node:path";
+import { posix } from "../posix.ts";
 
 /**
  * Host-side filesystem helpers over `@effect/platform`, for the machine the

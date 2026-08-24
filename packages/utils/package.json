@@ -43,7 +43,7 @@
 		"bump": "bumpp",
 		"check": "vp check",
 		"lint": "vp lint",
-		"typecheck": "node ../../scripts/tsgo.mjs --noEmit"
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"glob": "^13.0.6",
@@ -52,9 +52,6 @@
 	},
 	"devDependencies": {
 		"bumpp": "^11.0.1"
-	},
-	"peerDependencies": {
-		"typescript": "^6"
 	},
 	"engines": {
 		"node": ">=24.14.1"
