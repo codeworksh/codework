@@ -6,11 +6,12 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Fiber, Option, Queue, Schema, Stream } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/unstable/cli";
 import { Harness } from "../effect/harness.ts";
+import { Sandbox } from "../effect/sandbox.ts";
 import { Session } from "../effect/session.ts";
 import type { EventSchema } from "../event/schema.ts";
-import { posix } from "../posix.ts";
 
 const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const sandboxDrivers = ["local", "daytona", "vercel"] as const;
 
 const writeOut = (value: string) => Effect.sync(() => void process.stdout.write(value));
 const writeError = (value: string) => Effect.sync(() => void process.stderr.write(value));
@@ -40,6 +41,21 @@ const awaitMessage = Effect.fn("CLI.awaitMessage")(function* (ended: Queue.Queue
 	}
 });
 
+const selectSandbox = Effect.fn("CLI.selectSandbox")(function* (
+	driver: (typeof sandboxDrivers)[number],
+	providerResourceId?: string,
+) {
+	if (driver === "local") return undefined;
+	if (driver === "daytona") {
+		return providerResourceId === undefined
+			? yield* Sandbox.create({ driver })
+			: yield* Sandbox.register({ driver, providerResourceId });
+	}
+	return providerResourceId === undefined
+		? yield* Sandbox.create({ driver })
+		: yield* Sandbox.register({ driver, providerResourceId });
+});
+
 const root = Command.make("codework").pipe(
 	Command.withSharedFlags({
 		home: Flag.string("home").pipe(Flag.withDescription("Harness data directory"), Flag.optional),
@@ -59,7 +75,15 @@ const run = Command.make(
 		),
 		cwd: Flag.string("cwd").pipe(
 			Flag.withAlias("C"),
-			Flag.withDescription("Working directory for a new local session"),
+			Flag.withDescription("Working directory for a new session"),
+			Flag.optional,
+		),
+		sandbox: Flag.choice("sandbox", sandboxDrivers).pipe(
+			Flag.withDescription("Sandbox for a new session (default: local)"),
+			Flag.optional,
+		),
+		sandboxProviderId: Flag.string("sandbox-provider-id").pipe(
+			Flag.withDescription("Provider ID of an existing sandbox"),
 			Flag.optional,
 		),
 		provider: Flag.string("provider").pipe(
@@ -72,10 +96,15 @@ const run = Command.make(
 			Flag.optional,
 		),
 	},
-	Effect.fn("CLI.run")(function* ({ prompt, session, cwd, provider, model, thinking }) {
+	Effect.fn("CLI.run")(function* ({ prompt, session, cwd, sandbox, sandboxProviderId, provider, model, thinking }) {
 		const shared = yield* root;
-		if (Option.isSome(session) && Option.isSome(cwd)) {
-			return yield* new InvalidInputError({ message: "--cwd can only be used when creating a new session" });
+		if (
+			Option.isSome(session) &&
+			(Option.isSome(cwd) || Option.isSome(sandbox) || Option.isSome(sandboxProviderId))
+		) {
+			return yield* new InvalidInputError({
+				message: "--cwd, --sandbox, and --sandbox-provider-id can only be used when creating a new session",
+			});
 		}
 		if (Option.isSome(provider) !== Option.isSome(model)) {
 			return yield* new InvalidInputError({ message: "--provider and --model must be provided together" });
@@ -85,17 +114,26 @@ const run = Command.make(
 				message: "--provider, --model, and --thinking can only be used when creating a new session",
 			});
 		}
+		if (Option.isSome(sandboxProviderId) && (Option.isNone(sandbox) || sandbox.value === "local")) {
+			return yield* new InvalidInputError({ message: "--sandbox-provider-id requires a remote --sandbox" });
+		}
 		const program = Effect.gen(function* () {
-			const handle = Option.isSome(session)
-				? yield* Session.attach({ sessionId: Session.SessionSchema.ID.make(session.value) })
-				: yield* Session.create({
-						title: "CLI",
-						...(Option.isNone(cwd) ? {} : { directory: posix.resolve(cwd.value) }),
-						...(Option.isNone(provider) || Option.isNone(model)
-							? {}
-							: { model: { provider: provider.value, id: model.value } }),
-						...(Option.isNone(thinking) ? {} : { thinkingLevel: thinking.value }),
-					});
+			let handle: Session.Handle;
+			if (Option.isSome(session)) {
+				handle = yield* Session.attach({ sessionId: Session.SessionSchema.ID.make(session.value) });
+			} else {
+				const selectedSandbox = Option.getOrElse(sandbox, () => "local" as const);
+				const selected = yield* selectSandbox(selectedSandbox, Option.getOrUndefined(sandboxProviderId));
+				handle = yield* Session.create({
+					title: "CLI",
+					...(selected === undefined ? {} : { sandbox: selected }),
+					...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
+					...(Option.isNone(provider) || Option.isNone(model)
+						? {}
+						: { model: { provider: provider.value, id: model.value } }),
+					...(Option.isNone(thinking) ? {} : { thinkingLevel: thinking.value }),
+				});
+			}
 			const ended = yield* Queue.unbounded<string>();
 			const printer = yield* handle
 				.events()
@@ -115,18 +153,27 @@ const run = Command.make(
 				Harness.layer({
 					...(Option.isNone(shared.home) ? {} : { home: shared.home.value }),
 					...(Option.isNone(shared.database) ? {} : { database: shared.database.value }),
+					sandboxes: [Sandbox.Drivers.daytona(), Sandbox.Drivers.vercel()],
 				}),
 			),
 			Effect.scoped,
 		);
 	}),
 ).pipe(
-	Command.withDescription("Start or continue a local agent session"),
+	Command.withDescription("Start or continue an agent session"),
 	Command.withExamples([
 		{ command: 'codework run "Inspect the failing tests"', description: "Create a session" },
 		{
 			command: 'codework run --provider openai --model gpt-5.5 --thinking high "Inspect the failing tests"',
 			description: "Create a session with an explicit model",
+		},
+		{
+			command: 'codework run --sandbox daytona "Inspect the repository"',
+			description: "Create a Daytona sandbox and session",
+		},
+		{
+			command: 'codework run --sandbox daytona --sandbox-provider-id <id> "Inspect the repository"',
+			description: "Use an existing remote sandbox",
 		},
 		{ command: 'codework run --session <id> "Now fix them"', description: "Continue a session" },
 	]),

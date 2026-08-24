@@ -29,6 +29,9 @@ export default defineConfig({
 		format: ["esm"],
 		outDir: "dist/pack",
 		deps: {
+			// Daytona's published ESM imports tslib without declaring it, so keep
+			// both inside the lazy provider chunk instead of relying on hoisting.
+			alwaysBundle: ["@daytona/sdk", "tslib"],
 			dts: {
 				neverBundle: true,
 			},

@@ -1,13 +1,4 @@
 /* oxlint-disable effecttsgo/async-function -- Daytona's SDK boundary is Promise-based. */
-import {
-	type CodeLanguage,
-	Daytona,
-	DaytonaNotFoundError,
-	type FileInfo,
-	type Image,
-	type Sandbox as RemoteSandbox,
-	type Resources,
-} from "@daytona/sdk";
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { Buffer } from "node:buffer";
 import { posix } from "../../posix.ts";
@@ -18,6 +9,13 @@ import { SandboxInstance } from "../instance.ts";
 import { SandboxIO } from "../io.ts";
 import { SandboxResource } from "../resource.ts";
 import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../shell/shell.ts";
+
+type CodeLanguage = import("@daytona/sdk").CodeLanguage;
+type Daytona = import("@daytona/sdk").Daytona;
+type FileInfo = import("@daytona/sdk").FileInfo;
+type Image = import("@daytona/sdk").Image;
+type RemoteSandbox = import("@daytona/sdk").Sandbox;
+type Resources = import("@daytona/sdk").Resources;
 
 /** Fallback when Daytona cannot report a snapshot/image-specific work directory. */
 export const DEFAULT_CWD = "/home/daytona";
@@ -118,6 +116,7 @@ const remote = (options: Options) =>
 		Remote,
 		Effect.tryPromise({
 			try: async (): Promise<RemoteState> => {
+				const { Daytona } = await import("@daytona/sdk");
 				const daytona = new Daytona({
 					...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
 					...(options.apiUrl === undefined ? {} : { apiUrl: options.apiUrl }),
@@ -183,6 +182,7 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 				await sandbox.fs.getFileDetails(path);
 				return true;
 			} catch (cause) {
+				const { DaytonaNotFoundError } = await import("@daytona/sdk");
 				if (cause instanceof DaytonaNotFoundError) return false;
 				throw cause;
 			}

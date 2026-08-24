@@ -1,4 +1,3 @@
-import { Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Effect, Layer, Option, Schema } from "effect";
 import { SandboxDriver } from "../driver.ts";
 import { makeRedactor, providerError, type SandboxProviderError } from "../errors.ts";
@@ -44,6 +43,7 @@ export const RuntimeConfig = Schema.Struct({
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
 const name = SandboxDriver.Name.make("vercel");
+type RemoteSandbox = import("@vercel/sandbox").Sandbox;
 
 const statusFrom = (
 	status: RemoteSandbox["status"],
@@ -102,10 +102,12 @@ export const make = (
 
 	const get = (providerResourceId: string, resume: boolean, operation: string) =>
 		attempt(operation, () =>
-			RemoteSandbox.get(
-				credentials === undefined
-					? { name: providerResourceId, resume }
-					: { ...credentials, name: providerResourceId, resume },
+			import("@vercel/sandbox").then(({ Sandbox }) =>
+				Sandbox.get(
+					credentials === undefined
+						? { name: providerResourceId, resume }
+						: { ...credentials, name: providerResourceId, resume },
+				),
 			),
 		);
 
