@@ -12,6 +12,7 @@ import {
 	convertMessages,
 	convertTools,
 	createAssistantMessage,
+	encodeOpenAIReasoningSignature,
 	mapFinishReason,
 	mapUsage,
 	toolCallFromPart,
@@ -362,7 +363,13 @@ function handlePart(
 		}
 		case "reasoning-end": {
 			const reasoningItem = openAICodexMetadata(part.providerMetadata)?.reasoningItem;
-			finishThinkingBlock(output, part.id, stream, typeof reasoningItem === "string" ? reasoningItem : undefined);
+			const openAISignature = encodeOpenAIReasoningSignature(part.providerMetadata);
+			finishThinkingBlock(
+				output,
+				part.id,
+				stream,
+				typeof reasoningItem === "string" ? reasoningItem : openAISignature,
+			);
 			break;
 		}
 		case "tool-input-start":

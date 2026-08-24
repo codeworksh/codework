@@ -110,11 +110,27 @@ describe("Harness Effect SDK", () => {
 						]);
 					}).pipe(Effect.provide(runtime()), Effect.scoped);
 
-					expect(contexts).toHaveLength(2);
+					yield* Effect.gen(function* () {
+						const session = yield* Session.attach({
+							sessionId,
+							model: { provider: "override", id: "override-model" },
+							thinkingLevel: "low",
+						});
+						yield* session.run("third");
+					}).pipe(Effect.provide(runtime()), Effect.scoped);
+
+					yield* Effect.gen(function* () {
+						const session = yield* Session.attach({ sessionId });
+						yield* session.run("fourth");
+					}).pipe(Effect.provide(runtime()), Effect.scoped);
+
+					expect(contexts).toHaveLength(4);
 					expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual(
 						[
 							{ provider: "test", model: "test-model", thinkingLevel: "max" },
 							{ provider: "test", model: "test-model", thinkingLevel: "max" },
+							{ provider: "override", model: "override-model", thinkingLevel: "low" },
+							{ provider: "override", model: "override-model", thinkingLevel: "low" },
 						],
 					);
 				});

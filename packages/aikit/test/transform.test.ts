@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
 	convertMessages,
 	convertTools,
+	encodeOpenAIReasoningSignature,
 	mapFinishReason,
 	mapUsage,
 	normalizeOpenAICodexToolCallId,
@@ -320,6 +321,52 @@ describe("convertMessages", () => {
 				],
 			},
 		]);
+	});
+
+	it("preserves OpenAI Responses reasoning metadata for same-model replay", () => {
+		const openAIModel = makeModel({
+			protocol: Model.KnownProviderEnum.openai,
+			provider: { id: "openai", name: "OpenAI", source: "api", env: [] },
+		});
+		const thinkingSignature = encodeOpenAIReasoningSignature({
+			openai: {
+				itemId: "rs_1",
+				reasoningEncryptedContent: "encrypted-reasoning",
+			},
+		});
+		const assistant = makeAssistantMessage(openAIModel, {
+			parts: [{ type: "thinking", thinking: "step by step", thinkingSignature }],
+		});
+
+		expect(convertMessages({ messages: [assistant] }, openAIModel)).toEqual([
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "reasoning",
+						text: "step by step",
+						providerOptions: {
+							openai: {
+								itemId: "rs_1",
+								reasoningEncryptedContent: "encrypted-reasoning",
+							},
+						},
+					},
+				],
+			},
+		]);
+	});
+
+	it("omits legacy unsigned OpenAI reasoning instead of triggering an AI SDK warning", () => {
+		const openAIModel = makeModel({
+			protocol: Model.KnownProviderEnum.openai,
+			provider: { id: "openai", name: "OpenAI", source: "api", env: [] },
+		});
+		const assistant = makeAssistantMessage(openAIModel, {
+			parts: [{ type: "thinking", thinking: "step by step" }],
+		});
+
+		expect(convertMessages({ messages: [assistant] }, openAIModel)).toEqual([]);
 	});
 
 	it("preserves Codex message, reasoning, namespace, and deferred-tool replay metadata", () => {

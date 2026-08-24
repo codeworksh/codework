@@ -86,15 +86,9 @@ const run = Command.make(
 			Flag.withDescription("Provider ID of an existing sandbox"),
 			Flag.optional,
 		),
-		provider: Flag.string("provider").pipe(
-			Flag.withDescription("Model catalog provider ID for a new session"),
-			Flag.optional,
-		),
-		model: Flag.string("model").pipe(Flag.withDescription("Model ID for a new session"), Flag.optional),
-		thinking: Flag.choice("thinking", thinkingLevels).pipe(
-			Flag.withDescription("Thinking level for a new session"),
-			Flag.optional,
-		),
+		provider: Flag.string("provider").pipe(Flag.withDescription("Model catalog provider ID"), Flag.optional),
+		model: Flag.string("model").pipe(Flag.withDescription("Model ID"), Flag.optional),
+		thinking: Flag.choice("thinking", thinkingLevels).pipe(Flag.withDescription("Thinking level"), Flag.optional),
 	},
 	Effect.fn("CLI.run")(function* ({ prompt, session, cwd, sandbox, sandboxProviderId, provider, model, thinking }) {
 		const shared = yield* root;
@@ -109,29 +103,27 @@ const run = Command.make(
 		if (Option.isSome(provider) !== Option.isSome(model)) {
 			return yield* new InvalidInputError({ message: "--provider and --model must be provided together" });
 		}
-		if (Option.isSome(session) && (Option.isSome(provider) || Option.isSome(thinking))) {
-			return yield* new InvalidInputError({
-				message: "--provider, --model, and --thinking can only be used when creating a new session",
-			});
-		}
 		if (Option.isSome(sandboxProviderId) && (Option.isNone(sandbox) || sandbox.value === "local")) {
 			return yield* new InvalidInputError({ message: "--sandbox-provider-id requires a remote --sandbox" });
 		}
 		const program = Effect.gen(function* () {
+			const runtime = {
+				...(Option.isNone(provider) || Option.isNone(model)
+					? {}
+					: { model: { provider: provider.value, id: model.value } }),
+				...(Option.isNone(thinking) ? {} : { thinkingLevel: thinking.value }),
+			};
 			let handle: Session.Handle;
 			if (Option.isSome(session)) {
-				handle = yield* Session.attach({ sessionId: Session.SessionSchema.ID.make(session.value) });
+				handle = yield* Session.attach({ sessionId: Session.SessionSchema.ID.make(session.value), ...runtime });
 			} else {
 				const selectedSandbox = Option.getOrElse(sandbox, () => "local" as const);
 				const selected = yield* selectSandbox(selectedSandbox, Option.getOrUndefined(sandboxProviderId));
 				handle = yield* Session.create({
 					title: "CLI",
+					...runtime,
 					...(selected === undefined ? {} : { sandbox: selected }),
 					...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
-					...(Option.isNone(provider) || Option.isNone(model)
-						? {}
-						: { model: { provider: provider.value, id: model.value } }),
-					...(Option.isNone(thinking) ? {} : { thinkingLevel: thinking.value }),
 				});
 			}
 			const ended = yield* Queue.unbounded<string>();
@@ -175,7 +167,10 @@ const run = Command.make(
 			command: 'codework run --sandbox daytona --sandbox-provider-id <id> "Inspect the repository"',
 			description: "Use an existing remote sandbox",
 		},
-		{ command: 'codework run --session <id> "Now fix them"', description: "Continue a session" },
+		{
+			command: 'codework run --session <id> --provider openai --model gpt-5.6-luna "Now fix them"',
+			description: "Continue a session with explicit model bindings",
+		},
 	]),
 );
 

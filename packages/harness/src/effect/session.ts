@@ -51,7 +51,7 @@ export interface CreateInput extends RuntimeInput {
 	readonly directory?: string;
 }
 
-export interface AttachInput extends Pick<RuntimeInput, "tools" | "systemPrompt"> {
+export interface AttachInput extends RuntimeInput {
 	readonly sessionId: SessionSchema.ID;
 }
 
@@ -92,6 +92,20 @@ const runtimeBindings = (input: RuntimeInput): SessionRuntime.Bindings => ({
 	...(input.systemPrompt?.custom === undefined ? {} : { promptCustom: input.systemPrompt.custom }),
 	...(input.systemPrompt?.append === undefined ? {} : { promptSystemAppend: input.systemPrompt.append }),
 	...(input.systemPrompt?.override === undefined ? {} : { promptSystemOverride: input.systemPrompt.override }),
+});
+
+const publishConfig = Effect.fn("Session.publishConfig")(function* (
+	events: Event.Interface,
+	sessionId: SessionSchema.ID,
+	input: Pick<RuntimeInput, "model" | "thinkingLevel">,
+) {
+	if (input.model === undefined && input.thinkingLevel === undefined) return;
+	yield* events.publish(EventList.ConfigChanged, {
+		timestamp: yield* DateTime.now,
+		sessionId,
+		...(input.model === undefined ? {} : { model: { providerId: input.model.provider, modelId: input.model.id } }),
+		...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
+	});
 });
 
 const promptInput = (input: PromptInput) => {
@@ -166,14 +180,7 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 		directory: AbsolutePath.make(directory),
 		sandboxInstanceId: sandboxId,
 	});
-	if (input.model !== undefined || input.thinkingLevel !== undefined) {
-		yield* events.publish(EventList.ConfigChanged, {
-			timestamp: yield* DateTime.now,
-			sessionId: id,
-			...(input.model === undefined ? {} : { model: { providerId: input.model.provider, modelId: input.model.id } }),
-			...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
-		});
-	}
+	yield* publishConfig(events, id, input);
 	yield* runtime.set(id, runtimeBindings(input));
 	return yield* makeHandle(id);
 });
@@ -191,6 +198,8 @@ export const attach = Effect.fn("Session.attach")(function* (input: AttachInput)
 		return yield* new SessionStore.SessionNotFoundError({ sessionId: input.sessionId });
 	}
 	const runtime = yield* SessionRuntime.Service;
+	const events = yield* Event.Service;
+	yield* publishConfig(events, input.sessionId, input);
 	yield* runtime.set(input.sessionId, runtimeBindings(input));
 	return found.value;
 });

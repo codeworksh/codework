@@ -1,3 +1,4 @@
+import type { Warning } from "ai";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import Type from "typebox";
@@ -354,6 +355,49 @@ async function handleMultiTurn<TOptions extends Protocol.CommonOptions>(model: S
 	expect(allTextContent.includes("887")).toBe(true);
 }
 
+async function handleOpenAIReasoningReplay<TOptions extends Protocol.CommonOptions>(
+	model: StreamableModel,
+	options: TOptions,
+) {
+	const context: Message.Context = {
+		systemPrompt: "Reason briefly before answering. Keep the final answer concise.",
+		messages: [
+			Message.createUserMessage({
+				role: "user",
+				time: { created: Date.now() },
+				parts: [{ type: "text", text: "What is 17 multiplied by 19?" }],
+			}),
+		],
+	};
+	const warnings: Warning[] = [];
+	const previousLogger = globalThis.AI_SDK_LOG_WARNINGS;
+	globalThis.AI_SDK_LOG_WARNINGS = ({ warnings: emitted }) => warnings.push(...emitted);
+
+	try {
+		const first = await stream.complete(model, context, options);
+		expect(first.stopReason, `Error: ${first.errorMessage}`).toBe("stop");
+		const thinking = first.parts.find((part): part is Message.ThinkingContent => part.type === "thinking");
+		expect(thinking?.thinkingSignature).toBeTruthy();
+		const metadata: unknown = JSON.parse(thinking?.thinkingSignature ?? "null");
+		expect(metadata).toMatchObject({ itemId: expect.any(String) });
+
+		context.messages.push(
+			first,
+			Message.createUserMessage({
+				role: "user",
+				time: { created: Date.now() },
+				parts: [{ type: "text", text: "Is that result greater than 300? Answer yes or no." }],
+			}),
+		);
+		const second = await stream.complete(model, context, options);
+		expect(second.stopReason, `Error: ${second.errorMessage}`).toBe("stop");
+		expect(getText(second).toLowerCase()).toContain("yes");
+		expect(warnings).toEqual([]);
+	} finally {
+		globalThis.AI_SDK_LOG_WARNINGS = previousLogger;
+	}
+}
+
 async function handleImage<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	// Read the test image
 	const imagePath = fileURLToPath(new URL("../data/red-circle.png", import.meta.url));
@@ -500,6 +544,17 @@ describe("Generate E2E Tests", () => {
 			const model = await getOpenAIModel("gpt-5.4");
 			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
+		});
+	});
+
+	describeIfOpenAI("OpenAI reasoning replay (gpt-5.6-luna)", () => {
+		it("should persist and replay native reasoning metadata without warnings", { timeout: 120_000 }, async () => {
+			const model = await getOpenAIModel("gpt-5.6-luna");
+			await handleOpenAIReasoningReplay(model, {
+				...openaiOptions(),
+				reasoning: "low",
+				providerOptions: { openai: { reasoningSummary: "detailed" } },
+			});
 		});
 	});
 

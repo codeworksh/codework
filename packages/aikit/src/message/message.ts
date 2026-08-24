@@ -19,7 +19,9 @@ export type ImageContent = Static<typeof ImageContentSchema>;
 export const ThinkingContentSchema = Type.Object({
 	type: Type.Literal("thinking"),
 	thinking: Type.String(),
-	thinkingSignature: Type.Optional(Type.String()), // e.g., for OpenAI responses, the reasoning item ID
+	// Provider-native replay data: an Anthropic signature, serialized OpenAI
+	// reasoning metadata, or a serialized OpenAI Codex reasoning item.
+	thinkingSignature: Type.Optional(Type.String()),
 	/** When true, the thinking content was redacted by safety filters. The opaque
 	 *  encrypted payload is stored in `thinkingSignature` so it can be passed back
 	 *  to the API for multi-turn continuity. */

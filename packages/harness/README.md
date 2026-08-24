@@ -78,13 +78,23 @@ pnpm dlx @codeworksh/harness@dev \
 
 `modelgen [path]` uses Aikit's model generator and writes `./models.gen.json` by default. Set `CODEWORK_MODELS_FILE` or pass a path when you keep the catalog elsewhere.
 
-The CLI prints the session ID to stderr. Provider, model, and thinking settings are stored with a new session, so use the same home directory and session ID to continue it:
+The CLI prints the session ID to stderr. Provider, model, and thinking settings are stored with the session, so use the same home directory and session ID to continue it:
 
 ```sh
 pnpm dlx @codeworksh/harness@dev \
   --home .codework-beta \
   run --session <session-id> \
   "Continue with the implementation"
+```
+
+Persisted settings are the fallback. A new CLI process can explicitly re-bind or change them while attaching; supplied values are recorded as the session's latest configuration:
+
+```sh
+pnpm dlx @codeworksh/harness@dev \
+  --home .codework-beta \
+  run --session <session-id> \
+  --provider openai --model gpt-5.6-luna --thinking high \
+  "Continue with this model"
 ```
 
 Local execution is the default. To create a session in a new Daytona sandbox, set `DAYTONA_API_KEY` and select the Daytona driver:

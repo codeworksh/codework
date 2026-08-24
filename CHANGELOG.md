@@ -11,6 +11,17 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.7.1]
+
+### Fixed
+
+- Preserved native OpenAI Responses reasoning metadata across multi-turn requests so reasoning items replay without AI SDK `Non-OpenAI reasoning parts are not supported` warnings.
+- Silently omitted legacy OpenAI reasoning parts whose replay metadata was already lost, matching the provider's existing behavior without emitting unusable-content warnings.
+
+### Internal
+
+- Added real API regression coverage for reasoning metadata persistence and replay with `openai/gpt-5.6-luna`.
+
 ## [@codeworksh/aikit@0.7.0]
 
 ### Added
