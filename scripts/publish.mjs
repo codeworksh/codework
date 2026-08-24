@@ -8,10 +8,14 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceMap = new Map([
 	["aikit", "packages/aikit"],
 	["@codeworksh/aikit", "packages/aikit"],
+	["harness", "packages/harness"],
+	["@codeworksh/harness", "packages/harness"],
 ]);
 
 function usage() {
-	console.error("Usage: node scripts/publish.mjs <aikit|@codeworksh/aikit> [npm publish args]");
+	console.error(
+		"Usage: node scripts/publish.mjs <aikit|harness|@codeworksh/aikit|@codeworksh/harness> [npm publish args]",
+	);
 	process.exit(1);
 }
 
@@ -370,7 +374,15 @@ if (buildExitCode !== 0) {
 
 const publishDir = await preparePublishDirectory(packageDir, manifest, publishVersion);
 console.error(`Publishing ${manifest.name}@${publishVersion} from ${publishDir}`);
-const exitCode = await run("npm", publishArgs, publishDir, createSanitizedPublishEnv(), true);
+const npmCacheDir = await mkdtemp(resolve(tmpdir(), "codework-npm-cache-"));
+const exitCode = await run(
+	"npm",
+	publishArgs,
+	publishDir,
+	{ ...createSanitizedPublishEnv(), npm_config_cache: npmCacheDir },
+	true,
+);
 await rm(publishDir, { recursive: true, force: true });
+await rm(npmCacheDir, { recursive: true, force: true });
 
 process.exit(exitCode);

@@ -44,6 +44,11 @@
 			"import": "./dist/pack/oauth/openai/codex.mjs",
 			"default": "./dist/pack/oauth/openai/codex.mjs"
 		},
+		"./modelgen": {
+			"types": "./dist/pack/modelgen.d.mts",
+			"import": "./dist/pack/modelgen.mjs",
+			"default": "./dist/pack/modelgen.mjs"
+		},
 		"./package.json": "./package.json"
 	},
 	"publishConfig": {

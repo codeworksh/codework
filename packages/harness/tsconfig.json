@@ -4,7 +4,8 @@
 	"compilerOptions": {
 		"tsBuildInfoFile": "../../.cache/typescript/harness.tsbuildinfo",
 		"paths": {
-			"@codeworksh/aikit": ["../aikit/dist/types/index.d.ts"]
+			"@codeworksh/aikit": ["../aikit/dist/pack/index.d.mts"],
+			"@codeworksh/aikit/modelgen": ["../aikit/dist/pack/modelgen.d.mts"]
 		},
 		"plugins": [
 			{

@@ -43,11 +43,18 @@
 		},
 		"./package.json": "./package.json"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "vp pack",
+		"bump": "bumpp",
 		"check": "vp check",
 		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
 		"lint": "vp lint",
+		"release": "node ../../scripts/publish.mjs harness",
+		"release:dev": "node ../../scripts/publish.mjs harness --dev",
+		"release:dry": "node ../../scripts/publish.mjs harness --dry-run",
 		"test": "vp test",
 		"typecheck": "tsc --noEmit"
 	},
@@ -65,7 +72,8 @@
 		"uuidv7": "^1.2.1"
 	},
 	"devDependencies": {
-		"@types/node": "^25.9.5"
+		"@types/node": "^25.9.5",
+		"bumpp": "^12.2.0"
 	},
 	"engines": {
 		"node": ">=24.14.1"

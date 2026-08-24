@@ -50,7 +50,7 @@ export const ConfigChanged = EventSchema.define({
 				modelId: Schema.String,
 			}),
 		),
-		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh"])),
+		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
 	},
 });
 export type ConfigChanged = typeof ConfigChanged.Type;

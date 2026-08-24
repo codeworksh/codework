@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import Value from "typebox/value";
-import { openAICodexBuiltInModels } from "../src/cli/modelgen.ts";
+import { generateModels as generateModelsImplementation, openAICodexBuiltInModels } from "../src/cli/modelgen.ts";
+import { generateModels } from "../src/modelgen.ts";
 import * as Model from "../src/model/model.ts";
 
 describe("openAICodexBuiltInModels", () => {
+	it("exposes catalog generation through the public modelgen entry", () => {
+		expect(generateModels).toBe(generateModelsImplementation);
+	});
+
 	it("includes Pi's current explicit Codex model list", () => {
 		const models = openAICodexBuiltInModels();
 

@@ -15,11 +15,14 @@ This file is the canonical source for unreleased changes and published release n
 
 ### Added
 
+- Added GPT-5.6 Luna, Sol, and Terra model metadata, reasoning levels, pricing, and OpenAI Codex OAuth support.
 - Exported concrete pending, running, completed, error, skipped, aborted, and terminal tool-call part schemas and their corresponding TypeScript types.
 - Added `skipped` and `aborted` support to the terminal `tool.execution.end` event contract.
 
 ### Changed
 
+- Expanded the OpenAI Codex provider with deferred tools, replay metadata, usage reporting, and grammar-constrained custom tools.
+- Preserved Aikit's existing tool-call event contract while adding the new Codex provider capabilities.
 - Made tool execution lifecycle events self-contained: start, update, and end events now carry `messageId`, `partIndex`, and a complete pending, running, or terminal `toolCall` part.
 
 ### Breaking Changes

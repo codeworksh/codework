@@ -41,7 +41,7 @@ import { optional } from "../schema.ts";
 const ConfigChangeData = Schema.fromJsonString(
 	Schema.Struct({
 		model: optional(Schema.Struct({ providerId: Schema.String, modelId: Schema.String })),
-		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh"])),
+		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
 	}),
 );
 const encodeConfigChange = Schema.encodeEffect(ConfigChangeData);

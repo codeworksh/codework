@@ -136,6 +136,9 @@ importers:
       '@types/node':
         specifier: ^25.9.5
         version: 25.9.5
+      bumpp:
+        specifier: ^12.2.0
+        version: 12.2.0
 
   packages/utils:
     dependencies:

@@ -16,10 +16,16 @@ export default defineConfig({
 		entry: ["src/index.ts"],
 		format: ["esm"],
 		outDir: "dist/pack",
+		deps: {
+			dts: {
+				neverBundle: true,
+			},
+		},
 		sourcemap: true,
 		clean: true,
 		dts: {
-			resolver: "tsc",
+			resolver: "oxc",
+			tsconfig: "../../tsconfig.pack.json",
 		},
 	},
 	test: {

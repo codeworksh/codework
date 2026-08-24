@@ -14,6 +14,7 @@
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
 			"@codeworksh/aikit": ["./packages/aikit/src/index.ts"],
+			"@codeworksh/aikit/modelgen": ["./packages/aikit/src/modelgen.ts"],
 			"@codeworksh/harness": ["./packages/harness/src/index.ts"],
 			"@codeworksh/utils": ["./packages/utils/src/index.ts"]
 		},

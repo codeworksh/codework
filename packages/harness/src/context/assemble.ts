@@ -57,7 +57,7 @@ const ConfigChangeData = Schema.fromJsonString(
 				modelId: Schema.String,
 			}),
 		),
-		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh"])),
+		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
 	}),
 );
 

@@ -92,7 +92,7 @@ describe("Harness Effect SDK", () => {
 						const session = yield* Session.create({
 							directory: process.cwd(),
 							model: { provider: "test", id: "test-model" },
-							thinkingLevel: "high",
+							thinkingLevel: "max",
 						});
 						yield* session.run("first");
 						return session.id;
@@ -113,8 +113,8 @@ describe("Harness Effect SDK", () => {
 					expect(contexts).toHaveLength(2);
 					expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual(
 						[
-							{ provider: "test", model: "test-model", thinkingLevel: "high" },
-							{ provider: "test", model: "test-model", thinkingLevel: "high" },
+							{ provider: "test", model: "test-model", thinkingLevel: "max" },
+							{ provider: "test", model: "test-model", thinkingLevel: "max" },
 						],
 					);
 				});
