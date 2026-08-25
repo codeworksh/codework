@@ -11,6 +11,7 @@ import {
 } from "../src/sandbox/errors.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
+import { sanitizeProviderError as sanitizeVercelProviderError } from "../src/sandbox/providers/vercel.ts";
 import { it as effectTests, testEffect } from "./utils/effect.ts";
 
 const fake = FakeSandboxDriver.make();
@@ -156,6 +157,36 @@ describe("SandboxDriver", () => {
 });
 
 describe("Sandbox provider errors", () => {
+	it(
+		"prefers structured Vercel API details and redacts them",
+		Effect.sync(() => {
+			const sentinel = "sentinel-super-secret";
+			const cause = Object.assign(new Error("Status code 402 is not ok"), {
+				json: {
+					error: {
+						message: `Sandbox quota exhausted token=${sentinel}`,
+						code: `quota_${sentinel}`,
+					},
+				},
+			});
+
+			const error = providerError({
+				driver: "vercel",
+				operation: "create",
+				cause,
+				redact: makeRedactor([sentinel]),
+				sanitize: sanitizeVercelProviderError,
+			});
+
+			expect(error.sanitized).toEqual({
+				name: "Error",
+				message: "Sandbox quota exhausted token=<redacted>",
+				code: "quota_<redacted>",
+			});
+			expect(providerErrorCause(error)).toBe(cause);
+		}),
+	);
+
 	it(
 		"redacts configured and structural secrets without an enumerable raw cause",
 		Effect.sync(() => {

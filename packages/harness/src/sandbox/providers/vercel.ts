@@ -1,7 +1,7 @@
 /* oxlint-disable effecttsgo/async-function -- Vercel's sandbox SDK boundary is Promise-based. */
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
-import { sanitizeError } from "../errors.ts";
+import { makeRedactor, type Redactor, sanitizeError as sanitizeSandboxError } from "../errors.ts";
 import { SandboxFileSystem } from "../fs/filesystem.ts";
 import { RemoteFileSystem } from "../fs/remote.ts";
 import { SandboxInstance } from "../instance.ts";
@@ -27,6 +27,32 @@ export const DEFAULT_CWD = "/vercel/sandbox";
 export class VercelError extends Schema.TaggedError<VercelError>()("VercelError", {
 	sanitized: SandboxInstance.PersistedError,
 }) {}
+
+const ApiFailure = Schema.Struct({
+	json: Schema.Struct({
+		error: Schema.Struct({
+			message: Schema.optional(Schema.String),
+			code: Schema.optional(Schema.String),
+		}),
+	}),
+});
+const isApiFailure = Schema.is(ApiFailure);
+
+/** Prefer Vercel's structured API failure while retaining the shared redaction boundary. */
+export const sanitizeProviderError = (
+	cause: unknown,
+	redact: Redactor = makeRedactor(),
+): SandboxInstance.PersistedError => {
+	const fallback = sanitizeSandboxError(cause, redact);
+	if (!isApiFailure(cause)) return fallback;
+	const message = cause.json.error.message?.trim();
+	const code = cause.json.error.code?.trim();
+	return {
+		...fallback,
+		...(message === undefined || message.length === 0 ? {} : { message: redact(message) }),
+		...(code === undefined || code.length === 0 ? {} : { code: redact(code) }),
+	};
+};
 
 /**
  * Vercel API credentials. Either all three are provided together or none are:
@@ -140,7 +166,7 @@ const remote = (options: Options) =>
 					: await createSandbox(options, creds);
 				return { sandbox };
 			},
-			catch: (cause) => new VercelError({ sanitized: sanitizeError(cause) }),
+			catch: (cause) => new VercelError({ sanitized: sanitizeProviderError(cause) }),
 		}),
 	);
 

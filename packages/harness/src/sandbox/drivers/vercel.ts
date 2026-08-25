@@ -96,6 +96,7 @@ export const make = (
 					operation,
 					cause,
 					redact,
+					sanitize: EnvVercel.sanitizeProviderError,
 					notFound: isNotFound(cause),
 				}),
 		});
