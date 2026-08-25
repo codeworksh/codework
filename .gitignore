@@ -55,3 +55,6 @@ packages/aikit/site
 .scratch
 .repos
 .codework
+
+models.json
+models.gen.json
