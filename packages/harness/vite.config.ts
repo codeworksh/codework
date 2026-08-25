@@ -17,6 +17,7 @@ const ignoredPaths = [
 const aliases = {
 	"@codeworksh/utils": fileURLToPath(new URL("../utils/src/index.ts", import.meta.url)),
 	"@codeworksh/aikit/modelgen": fileURLToPath(new URL("../aikit/src/modelgen.ts", import.meta.url)),
+	"@codeworksh/aikit/failure": fileURLToPath(new URL("../aikit/src/llm/failure.ts", import.meta.url)),
 	"@codeworksh/aikit": fileURLToPath(new URL("../aikit/src/index.ts", import.meta.url)),
 };
 

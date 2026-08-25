@@ -1,10 +1,36 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
 const cli = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
+const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 
-const run = (...args: ReadonlyArray<string>) => spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" });
+const run = (...args: ReadonlyArray<string>) =>
+	spawnSync(process.execPath, ["--conditions=development", cli, ...args], { encoding: "utf8" });
+
+const runIsolated = (env: NodeJS.ProcessEnv, ...args: ReadonlyArray<string>) => {
+	const home = mkdtempSync(join(tmpdir(), "codework-cli-"));
+	try {
+		const childEnv = { ...process.env, ...env };
+		for (const [key, value] of Object.entries(env)) {
+			if (value === undefined) delete childEnv[key];
+		}
+		return spawnSync(
+			process.execPath,
+			["--conditions=development", cli, "--home", home, "--database", ":memory:", ...args],
+			{
+				encoding: "utf8",
+				env: childEnv,
+				timeout: 20_000,
+			},
+		);
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+	}
+};
 
 describe("codework CLI", () => {
 	it("documents local as the default and exposes remote sandbox flags", () => {
@@ -22,5 +48,44 @@ describe("codework CLI", () => {
 
 		expect(result.status).toBe(1);
 		expect(result.stdout).toContain("--sandbox-provider-id requires a remote --sandbox");
+	});
+
+	it("reports a missing model catalog without an Effect stack", () => {
+		const result = runIsolated(
+			{ CODEWORK_MODELS_FILE: join(tmpdir(), `missing-models-${crypto.randomUUID()}.json`) },
+			"run",
+			"--provider",
+			"openrouter",
+			"--model",
+			"stealth/ox-alpha",
+			"test",
+		);
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("error[model_catalog]: model catalog not found");
+		expect(result.stderr).toContain("hint: run `codework modelgen`");
+		expect(result.stderr).not.toContain("Runner.TurnError");
+		expect(result.stderr).not.toContain("at Loop.runTurn");
+	});
+
+	it("reports a missing provider API key with its taxonomy and remedy", () => {
+		const result = runIsolated(
+			{ CODEWORK_MODELS_FILE: models, OPENROUTER_API_KEY: undefined },
+			"run",
+			"--provider",
+			"openrouter",
+			"--model",
+			"stealth/ox-alpha",
+			"test",
+		);
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("error[authentication]");
+		expect(result.stderr).toContain("openrouter API key is missing");
+		expect(result.stderr).toContain("hint: set OPENROUTER_API_KEY and retry");
+		expect(result.stderr).not.toContain("Runner.TurnError");
+		expect(result.stderr).not.toContain("at Loop.runTurn");
+		expect(result.stderr).not.toContain("requestBodyValues");
+		expect(result.stderr).not.toContain("AI_LoadAPIKeyError");
 	});
 });

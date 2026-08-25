@@ -10,6 +10,7 @@ import { Sandbox } from "../effect/sandbox.ts";
 import { Session } from "../effect/session.ts";
 import { EventList } from "../event/list.ts";
 import type { EventSchema } from "../event/schema.ts";
+import { renderError } from "./error.ts";
 import { addUsage, emptyUsage, header, usage, type UsageSummary } from "./output.ts";
 
 const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
@@ -191,6 +192,15 @@ const run = Command.make(
 				}),
 			),
 			Effect.scoped,
+			Effect.catch((error) =>
+				writeError(renderError(error)).pipe(
+					Effect.andThen(
+						Effect.sync(() => {
+							process.exitCode = 1;
+						}),
+					),
+				),
+			),
 		);
 	}),
 ).pipe(

@@ -11,6 +11,24 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.7.2]
+
+### Added
+
+- Added a provider-independent failure taxonomy with safe authentication, configuration, authorization, model availability, rate limit, quota, request, policy, timeout, transport, availability, response, and unknown failure categories.
+- Added structured failure metadata to terminal assistant messages and exported the failure schemas and normalization helpers from `@codeworksh/aikit` and `@codeworksh/aikit/failure`.
+- Added typed model-catalog load errors for missing, unreadable, empty, and invalid generated catalogs.
+
+### Changed
+
+- Changed model-catalog loading to report configuration failures instead of silently treating an unavailable catalog as empty.
+- Standardized normalized provider error messages with lowercase opening prose and no terminal punctuation.
+
+### Fixed
+
+- Preserved safe provider status, code, request ID, retryability, and retry timing metadata without exposing request bodies, response bodies, or headers.
+- Prevented the underlying AI SDK from logging raw provider exceptions before Aikit can return its normalized terminal failure event.
+
 ## [@codeworksh/aikit@0.7.1]
 
 ### Fixed

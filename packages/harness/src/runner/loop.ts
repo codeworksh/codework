@@ -34,7 +34,10 @@ export interface Options {
 
 const errorMessage = <E>(cause: Cause.Cause<E>): string => {
 	const squashed = Cause.squash(cause);
-	return squashed instanceof Error ? squashed.message : String(squashed);
+	if (squashed instanceof Error && squashed.message.trim().length > 0) return squashed.message;
+	if (typeof squashed === "string" && squashed.trim().length > 0) return squashed;
+	if (typeof squashed === "object" && squashed !== null && "_tag" in squashed) return String(squashed._tag);
+	return "the turn failed for an unknown reason";
 };
 
 const terminalResult = (text: string) => ({
@@ -276,15 +279,11 @@ export const layer = (options: Options = {}) =>
 					});
 
 					if (terminal.outcome === "failed") {
-						const cause: EventList.TurnAbortCause =
-							terminal.reason === "aborted"
-								? { _tag: "interrupted" }
-								: { _tag: "error", message: terminal.message.errorMessage ?? "provider turn failed" };
-						return yield* new Runner.TurnError({
-							sessionId,
-							...(publisher.startedMessageId === undefined ? {} : { messageId: publisher.startedMessageId }),
-							cause,
-						});
+						if (terminal.reason === "aborted") return yield* Effect.interrupt;
+						return yield* LLM.providerError(
+							{ provider: snapshot.provider, model: snapshot.model },
+							LLM.messageFailure(terminal.message),
+						);
 					}
 
 					const interrupted = yield* settleTools(snapshot, terminal.message, terminal.reason, () => {
@@ -300,43 +299,29 @@ export const layer = (options: Options = {}) =>
 				return yield* turnWindow.pipe(
 					Effect.catchCause((cause) => {
 						if (committed) return Effect.failCause(cause);
-						const failure = Cause.findErrorOption(cause);
-						if (Option.isSome(failure) && failure.value._tag === "Runner.TurnError") {
-							return Effect.fail(failure.value);
-						}
 						const turnCause: EventList.TurnAbortCause = Cause.hasInterruptsOnly(cause)
 							? { _tag: "interrupted" }
 							: { _tag: "error", message: errorMessage(cause) };
-						return Effect.fail(
-							new Runner.TurnError({
+						const record = Effect.gen(function* () {
+							if (publisher?.startedMessageId !== undefined) {
+								const stored = yield* sessions.entry(publisher.startedMessageId);
+								if (Option.isSome(stored) && stored.value.entry.state === "draft") {
+									yield* publishFailure(stored.value, turnCause);
+								}
+							}
+							yield* events.publish(EventList.TurnAborted, {
+								timestamp: yield* DateTime.now,
 								sessionId,
-								...(publisher?.startedMessageId === undefined ? {} : { messageId: publisher.startedMessageId }),
 								cause: turnCause,
-							}),
-						);
+							});
+						});
+						return Effect.uninterruptible(record).pipe(Effect.andThen(Effect.failCause(cause)));
 					}),
 				);
 			});
 
 			const runTurn = Effect.fn("Loop.runTurn")(function* (promotion: Promotion, snapshot: State.Snapshot) {
-				return yield* runTurnAttempt(promotion, snapshot).pipe(
-					Effect.catchTag("Runner.TurnError", (error) =>
-						Effect.gen(function* () {
-							if (error.messageId !== undefined) {
-								const stored = yield* sessions.entry(error.messageId);
-								if (Option.isSome(stored) && stored.value.entry.state === "draft") {
-									yield* publishFailure(stored.value, error.cause);
-								}
-							}
-							yield* events.publish(EventList.TurnAborted, {
-								timestamp: yield* DateTime.now,
-								sessionId: snapshot.sessionId,
-								cause: error.cause,
-							});
-							return yield* error;
-						}),
-					),
-				);
+				return yield* runTurnAttempt(promotion, snapshot);
 			});
 
 			const run = Effect.fn("Loop.run")(function* (input: {

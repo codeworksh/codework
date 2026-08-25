@@ -519,11 +519,21 @@ describe("runner loop — provider interruption", () => {
 describe("runner loop — provider failure", () => {
 	const open: LLM.Open = (input) =>
 		Effect.sync(() => {
-			const failed = assistant(input, 1, {
-				stopReason: "error",
-				errorMessage: "provider failed",
-				parts: [{ type: "text", text: "partial" }],
-			});
+			const failed = Object.assign(
+				assistant(input, 1, {
+					stopReason: "error",
+					errorMessage: "provider failed",
+					parts: [{ type: "text", text: "partial" }],
+				}),
+				{
+					failure: {
+						_tag: "Authentication",
+						reason: "missing",
+						message: "provider failed",
+						retryable: false,
+					} as const,
+				},
+			);
 			const events = createAssistantMessageEventStream();
 			events.push({ type: "start", partial: failed });
 			events.push({ type: "error", reason: "error", error: failed });
@@ -541,6 +551,14 @@ describe("runner loop — provider failure", () => {
 
 			const exit = yield* execution.resume(sessionId).pipe(Effect.exit);
 			expect(Exit.isFailure(exit)).toBe(true);
+			if (Exit.isFailure(exit)) {
+				const failure = Cause.findErrorOption(exit.cause);
+				expect(Option.isSome(failure) && failure.value._tag).toBe("Runner.ProviderError");
+				if (Option.isSome(failure) && failure.value._tag === "Runner.ProviderError") {
+					expect(failure.value.reason._tag).toBe("Runner.ProviderAuthenticationError");
+					expect(failure.value.message).toBe("openai/gpt-5.5: provider failed");
+				}
+			}
 
 			const path = yield* sessions.path(sessionId);
 			expect(path.map((item) => item.entry.type)).toEqual(["user", "assistant"]);
@@ -549,6 +567,7 @@ describe("runner loop — provider failure", () => {
 			expect(JSON.parse(path[1]!.entry.data)).toMatchObject({
 				stopReason: "error",
 				errorMessage: "provider failed",
+				failure: { _tag: "Authentication", reason: "missing", retryable: false },
 			});
 		}),
 	);

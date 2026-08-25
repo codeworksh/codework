@@ -1,5 +1,6 @@
 import Type, { type Static, type TSchema } from "typebox";
 import { uuidv7 } from "uuidv7";
+import * as Failure from "../llm/failure/schema.ts";
 import * as Model from "../model/model.ts";
 
 export const TextContentSchema = Type.Object({
@@ -174,6 +175,8 @@ export const AssistantMessageSchema = Type.Object({
 	usage: UsageSchema,
 	stopReason: StopReasonSchema,
 	errorMessage: Type.Optional(Type.String()),
+	/** Structured, provider-independent details for a failed request. */
+	failure: Type.Optional(Failure.FailureSchema),
 	time: Type.Object({
 		created: Type.Number(),
 		completed: Type.Number(),

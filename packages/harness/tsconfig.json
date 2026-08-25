@@ -5,6 +5,7 @@
 		"tsBuildInfoFile": "../../.cache/typescript/harness.tsbuildinfo",
 		"paths": {
 			"@codeworksh/aikit": ["../aikit/dist/pack/index.d.mts"],
+			"@codeworksh/aikit/failure": ["../aikit/src/llm/failure.ts"],
 			"@codeworksh/aikit/modelgen": ["../aikit/dist/pack/modelgen.d.mts"]
 		},
 		"plugins": [

@@ -6,6 +6,8 @@ import * as ModelCatalog from "./catalog.ts";
 export const KnownProviderEnum = ModelCatalog.KnownProviderEnum;
 export const KnownProviderEnumSchema = ModelCatalog.KnownProviderEnumSchema;
 export type KnownProviderEnum = ModelCatalog.KnownProviderEnum;
+export const ModelCatalogLoadError = ModelCatalog.ModelCatalogLoadError;
+export type ModelCatalogLoadError = ModelCatalog.ModelCatalogLoadError;
 
 // Common reasoning-effort levels used by adapters that expose model reasoning,
 // thinking, or deliberation controls. Protocol-specific layers can map these

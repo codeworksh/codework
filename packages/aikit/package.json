@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/aikit",
-	"version": "0.7.1",
+	"version": "0.7.2",
 	"description": "TypeScript SDK that provides a unified API for working with multiple LLM providers, automatic model discovery, and more.",
 	"keywords": [
 		"agent",
@@ -35,19 +35,28 @@
 	"types": "./dist/pack/index.d.mts",
 	"exports": {
 		".": {
+			"development": "./src/index.ts",
 			"types": "./dist/pack/index.d.mts",
 			"import": "./dist/pack/index.mjs",
 			"default": "./dist/pack/index.mjs"
 		},
 		"./oauth/openai/codex": {
+			"development": "./src/oauth/openai/codex.ts",
 			"types": "./dist/pack/oauth/openai/codex.d.mts",
 			"import": "./dist/pack/oauth/openai/codex.mjs",
 			"default": "./dist/pack/oauth/openai/codex.mjs"
 		},
 		"./modelgen": {
+			"development": "./src/modelgen.ts",
 			"types": "./dist/pack/modelgen.d.mts",
 			"import": "./dist/pack/modelgen.mjs",
 			"default": "./dist/pack/modelgen.mjs"
+		},
+		"./failure": {
+			"development": "./src/llm/failure.ts",
+			"types": "./dist/pack/llm/failure.d.mts",
+			"import": "./dist/pack/llm/failure.mjs",
+			"default": "./dist/pack/llm/failure.mjs"
 		},
 		"./package.json": "./package.json"
 	},

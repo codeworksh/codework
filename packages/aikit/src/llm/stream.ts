@@ -3,6 +3,7 @@ import * as Message from "../message/message.ts";
 import * as Model from "../model/model.ts";
 import { AssistantMessageEventStream } from "../utils/eventstream.ts";
 import { compact } from "../utils/helpers.ts";
+import * as Failure from "./failure.ts";
 import { Options } from "./options.ts";
 import * as Protocol from "./protocol.ts";
 import { resolveAISDKLanguageModel } from "./provider.ts";
@@ -482,6 +483,10 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 				timeout: runtimeOptions.timeoutMs,
 				maxRetries: runtimeOptions.maxRetries,
 				headers: runtimeOptions.headers,
+				// Aikit owns error normalization and emits one terminal error event.
+				// AI SDK's default callback logs the raw exception (including request
+				// payloads) before that event can reach an SDK or CLI consumer.
+				onError: () => {},
 			});
 
 			const payload = await runtimeOptions.onPayload?.(params, model);
@@ -514,7 +519,12 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			}
 			output.time.completed = Date.now();
 			output.stopReason = runtimeOptions.signal?.aborted || output.stopReason === "aborted" ? "aborted" : "error";
-			output.errorMessage = formatThrownError(error);
+			if (output.stopReason === "aborted") {
+				output.errorMessage = formatThrownError(error);
+			} else {
+				output.failure = Failure.normalize(error);
+				output.errorMessage = output.failure.message;
+			}
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}
