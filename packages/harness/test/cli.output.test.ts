@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { renderError } from "../src/cli/error.ts";
 import { addUsage, emptyUsage, header, usage } from "../src/cli/output.ts";
 import { Runner } from "../src/runner/run.ts";
+import { SandboxProviderError } from "../src/sandbox/errors.ts";
 
 const message = (input: {
 	readonly model: string;
@@ -100,5 +101,25 @@ describe("CLI output", () => {
 		expect(output).toContain("provider: openrouter");
 		expect(output).toContain("hint: set OPENROUTER_API_KEY and retry");
 		expect(output).not.toContain("Runner.ProviderError");
+	});
+
+	it("renders the sanitized sandbox provider failure", () => {
+		const output = renderError(
+			new SandboxProviderError({
+				driver: "vercel",
+				operation: "create",
+				sanitized: {
+					name: "APIError",
+					message: "The project is not authorized to create a sandbox",
+					code: "forbidden",
+				},
+			}),
+		);
+
+		expect(output).toContain("error: SandboxProviderError - The project is not authorized to create a sandbox");
+		expect(output).toContain("driver: vercel");
+		expect(output).toContain("operation: create");
+		expect(output).toContain("code: forbidden");
+		expect(output).toMatch(/traceback:\nSandboxProviderError(?:: )?\n/);
 	});
 });

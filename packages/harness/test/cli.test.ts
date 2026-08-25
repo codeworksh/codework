@@ -88,4 +88,14 @@ describe("codework CLI", () => {
 		expect(result.stderr).not.toContain("requestBodyValues");
 		expect(result.stderr).not.toContain("AI_LoadAPIKeyError");
 	});
+
+	it("reports the sanitized remote sandbox provider failure", () => {
+		const result = runIsolated({ VERCEL_OIDC_TOKEN: undefined }, "run", "--sandbox", "vercel", "test");
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("error: SandboxProviderError - Could not get credentials from OIDC context.");
+		expect(result.stderr).toContain("driver: vercel");
+		expect(result.stderr).toContain("operation: create");
+		expect(result.stderr).toContain("traceback:\nSandboxProviderError\n");
+	});
 });

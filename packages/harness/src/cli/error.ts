@@ -1,10 +1,12 @@
 import { Duration, Schema } from "effect";
 import { Runner } from "../runner/run.ts";
+import { SandboxProviderError } from "../sandbox/errors.ts";
 
 const isProviderError = Schema.is(Runner.ProviderError);
 const isModelCatalogError = Schema.is(Runner.ModelCatalogError);
 const isModelNotFoundError = Schema.is(Runner.ModelNotFoundError);
 const isLLMStreamError = Schema.is(Runner.LLMStreamError);
+const isSandboxProviderError = Schema.is(SandboxProviderError);
 
 const providerCategory = (reason: Runner.ProviderFailureReason): string => {
 	switch (reason._tag) {
@@ -88,6 +90,17 @@ const unknownMessage = (error: unknown): string => {
 
 /** Render typed SDK errors for humans without exposing Effect causes or provider payloads. */
 export const renderError = (error: unknown): string => {
+	if (isSandboxProviderError(error)) {
+		return (
+			[
+				`error: SandboxProviderError - ${error.sanitized.message}`,
+				`driver: ${error.driver}`,
+				`operation: ${error.operation}`,
+				...(error.sanitized.code === undefined ? [] : [`code: ${error.sanitized.code}`]),
+				...(error.stack === undefined ? [] : ["traceback:", error.stack]),
+			].join("\n") + "\n"
+		);
+	}
 	if (isProviderError(error)) {
 		const hint = providerHint(error);
 		return (
