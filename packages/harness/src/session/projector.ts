@@ -32,11 +32,11 @@ import { DateTime, Effect, Layer, Schema } from "effect";
 import { ContextCodec } from "../context/codec.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
+import { optional } from "../schema.ts";
 import { SessionInput } from "./input/input.ts";
 import type { SessionMessageSchema } from "./message/schema.ts";
 import type { SessionSchema } from "./schema.ts";
 import { Session } from "./session.ts";
-import { optional } from "../schema.ts";
 
 const ConfigChangeData = Schema.fromJsonString(
 	Schema.Struct({

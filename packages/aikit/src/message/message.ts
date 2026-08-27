@@ -175,7 +175,11 @@ export const AssistantMessageSchema = Type.Object({
 	usage: UsageSchema,
 	stopReason: StopReasonSchema,
 	errorMessage: Type.Optional(Type.String()),
-	/** Structured, provider-independent details for a failed request. */
+	/**
+	 * Structured, provider-independent failure details for a failed request.
+	 * The schema is based on ai-sdk as the underlying provider wire protocol.
+	 * Depends on ai-sdk
+	 */
 	failure: Type.Optional(Failure.FailureSchema),
 	time: Type.Object({
 		created: Type.Number(),

@@ -1,5 +1,3 @@
-// API that deals with event
-
 import { Cause, Context, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { EventRow } from "../db/schema.sql.ts";
@@ -7,9 +5,9 @@ import { EventRow } from "../db/schema.sql.ts";
 // stored types up in.
 // import { Durable } from "./manifest.ts";
 import { Schema } from "effect";
-import { EventSchema } from "./schema.ts";
 import { EventManifest } from "./manifest.ts";
 import type { Data, Definition, ID, Payload } from "./schema.ts";
+import { EventSchema } from "./schema.ts";
 
 export type SerializedEvent = {
 	readonly id: ID;
@@ -114,7 +112,11 @@ export interface Interface {
 	readonly subscribe: <D extends Definition>(definition: D) => Stream.Stream<Payload<D>>;
 	/** Every event, durable and live alike, in publish order. */
 	readonly all: () => Stream.Stream<Payload>;
-	/** Durable catch-up followed by the process-local event tail for one session. */
+	/** Durable catch-up followed by the process-local event tail for one session.
+	 * TODO(sanchitrk):
+	 * revisite once's we implement durable streams, a common channel for IO output,
+	 * chances are we wont't need this anymore?
+	 */
 	readonly stream: (input: { readonly sessionId: string; readonly after?: number }) => Stream.Stream<Payload>;
 	/**
 	 * Callback form of {@link all}, returning its own removal. A listener runs

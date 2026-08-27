@@ -15,7 +15,7 @@
  */
 
 import { Context, Effect, Layer, Option, Schema } from "effect";
-import * as RunnerExecution from "./runner/execution.ts";
+import { RunnerExecution } from "./runner/execution.ts";
 import type { Runner } from "./runner/run.ts";
 import { SessionInput } from "./session/input/input.ts";
 import type { Admitted } from "./session/input/schema.ts";

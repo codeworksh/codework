@@ -26,11 +26,11 @@ import {
 	sanitizeError,
 } from "./errors.ts";
 import { SandboxFileSystem } from "./fs/filesystem.ts";
+import { EnvNodeJSDefault } from "./fs/nodejs.ts";
 import { Local } from "./fs/vfs.ts";
-import { HostExe } from "./shell/host.ts";
 import { SandboxInstance } from "./instance.ts";
 import { SandboxIO } from "./io.ts";
-import { EnvNodeJSDefault } from "./fs/nodejs.ts";
+import { HostExe } from "./shell/host.ts";
 import { withCwd as shellWithCwd } from "./shell/shell.ts";
 import { SandboxStore } from "./store.ts";
 

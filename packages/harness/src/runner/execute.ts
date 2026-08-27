@@ -13,7 +13,7 @@ import { SandboxController } from "../sandbox/control.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { RunCoordinator } from "./coordinator.ts";
-import * as RunnerExecution from "./execution.ts";
+import { RunnerExecution } from "./execution.ts";
 import { Runner } from "./run.ts";
 
 // session

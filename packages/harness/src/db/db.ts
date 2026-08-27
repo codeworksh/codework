@@ -45,14 +45,14 @@ export function layer(location: string) {
 
 export const locationConfig = Config.string("CODEWORK_DB").pipe(Config.withDefault("codework.db"));
 
-export function resolveLocation(configured: string, data: string) {
+export function resolveDatabaseLocation(configured: string, data: string) {
 	if (configured === ":memory:" || posix.isAbsolute(configured)) return configured;
 	return posix.join(data, configured);
 }
 
 export const path = Effect.fn("Database.path")(function* (data?: string) {
 	const directory = data ?? (yield* Global.resolve()).data;
-	return resolveLocation(yield* locationConfig, directory);
+	return resolveDatabaseLocation(yield* locationConfig, directory);
 });
 
 export const defaultLayer = Layer.unwrap(path().pipe(Effect.map(layer)));

@@ -27,7 +27,7 @@ export const layer = (options: Options = {}) =>
 			const paths = yield* Global.resolve(options.home === undefined ? {} : { home: options.home });
 			const configuredDatabase = options.database ?? (yield* Database.locationConfig);
 			const global = Global.layerWith(paths);
-			const database = Database.layer(Database.resolveLocation(configuredDatabase, paths.data));
+			const database = Database.layer(Database.resolveDatabaseLocation(configuredDatabase, paths.data));
 			const drivers = SandboxDriver.layer(...(options.sandboxes ?? []));
 			const sandboxes = SandboxController.layer().pipe(Layer.provideMerge(drivers), Layer.provideMerge(database));
 			const loop = options.llm === undefined ? Loop.layer() : Loop.layer({ request: LLM.make(options.llm) });

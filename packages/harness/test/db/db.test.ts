@@ -3,7 +3,7 @@ import { ConfigProvider, DateTime, Effect, FileSystem, Layer, Option } from "eff
 import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
 import { describe, expect } from "vite-plus/test";
-import * as Database from "../../src/db/db.ts";
+import { Database } from "../../src/db/db.ts";
 import { ProjectDirectoryRow, ProjectRow } from "../../src/db/schema.sql.ts";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
 import { SandboxStore } from "../../src/sandbox/store.ts";

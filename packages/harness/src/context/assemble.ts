@@ -57,6 +57,7 @@ const ConfigChangeData = Schema.fromJsonString(
 				modelId: Schema.String,
 			}),
 		),
+		// Keep in sync with {@link import('@codeworksh/aikit/model/model.ts').ThinkingLevelEnum}
 		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
 	}),
 );

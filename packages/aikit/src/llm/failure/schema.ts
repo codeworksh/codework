@@ -33,7 +33,11 @@ export const Unavailable = variant("Unavailable");
 export const InvalidResponse = variant("InvalidResponse");
 export const Unknown = variant("Unknown");
 
-/** Provider-independent, JSON-safe failure data carried by terminal assistant messages. */
+/**
+ *
+Provider-independent, JSON-safe failure data carried by terminal assistant messages.
+Powered by ai-sdk as the underlying provider wire protocol.
+*/
 export const FailureSchema = Type.Union([
 	Authentication,
 	Configuration,
