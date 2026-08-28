@@ -53,7 +53,7 @@ describe("responseId E2E Tests", () => {
 
 	describeIfAnthropic("Anthropic Provider", () => {
 		it("should expose responseId", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel("claude-sonnet-4-20250514");
+			const model = await getAnthropicModel();
 			await expectResponseId(model, anthropicOptions());
 		});
 	});

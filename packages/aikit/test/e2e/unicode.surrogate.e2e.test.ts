@@ -170,17 +170,17 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 		const options = anthropicOptions();
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel("claude-sonnet-4-20250514");
+			const model = await getAnthropicModel();
 			await testEmojiInToolResults(model, options);
 		});
 
 		it("should handle real-world LinkedIn comment data with emoji", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel("claude-sonnet-4-20250514");
+			const model = await getAnthropicModel();
 			await testRealWorldLinkedInData(model, options);
 		});
 
 		it("should handle unpaired high surrogate (0xD83D) in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel("claude-sonnet-4-20250514");
+			const model = await getAnthropicModel();
 			await testUnpairedHighSurrogate(model, options);
 		});
 	});

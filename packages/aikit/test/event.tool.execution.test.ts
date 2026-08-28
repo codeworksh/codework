@@ -1,7 +1,6 @@
 import Value from "typebox/value";
 import { describe, expect, it } from "vite-plus/test";
-import { Event } from "../src/index.ts";
-import { Message } from "../src/index.ts";
+import { Event, Message } from "../src/index.ts";
 
 const pending: Message.ToolCallPendingPart = {
 	type: "toolCall",

@@ -92,7 +92,7 @@ describe("Tool Call Without Result Tests", () => {
 		const options = anthropicOptions();
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel("claude-sonnet-4-20250514");
+			const model = await getAnthropicModel();
 			await testToolCallWithoutResult(model, options);
 		});
 	});

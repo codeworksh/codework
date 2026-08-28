@@ -109,19 +109,19 @@ describe("AI Providers Empty Message Tests", () => {
 		const options = anthropicOptions();
 
 		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyMessage(await getAnthropicModel("claude-sonnet-4-20250514"), options);
+			await testEmptyMessage(await getAnthropicModel(), options);
 		});
 
 		it("should handle empty string content", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyStringMessage(await getAnthropicModel("claude-sonnet-4-20250514"), options);
+			await testEmptyStringMessage(await getAnthropicModel(), options);
 		});
 
 		it("should handle whitespace-only content", { retry: 3, timeout: 30000 }, async () => {
-			await testWhitespaceOnlyMessage(await getAnthropicModel("claude-sonnet-4-20250514"), options);
+			await testWhitespaceOnlyMessage(await getAnthropicModel(), options);
 		});
 
 		it("should handle empty assistant message in conversation", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyAssistantMessage(await getAnthropicModel("claude-sonnet-4-20250514"), options);
+			await testEmptyAssistantMessage(await getAnthropicModel(), options);
 		});
 	});
 

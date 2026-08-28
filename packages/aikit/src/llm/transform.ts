@@ -285,15 +285,18 @@ export function convertTools(tools?: Message.Tool[], model?: Model.Info): ToolSe
 
 	const result: ToolSet = {};
 	for (const tool of tools) {
-		const constraint =
+		const jsonSchemaConstraint = Message.resolveJsonSchemaConstraint(tool, model?.compat);
+		const grammarConstraint =
 			model?.protocol === Model.KnownProviderEnum.openaiCodex
 				? resolveOpenAICodexToolConstraint(tool, model.compat)
 				: undefined;
 		result[tool.name] = {
 			description: tool.description,
 			inputSchema: jsonSchema(tool.parameters as any),
-			...(constraint?.type === "json_schema" ? { strict: true } : {}),
-			...(constraint?.type === "grammar" ? { providerOptions: { "openai-codex": { grammar: constraint } } } : {}),
+			...(jsonSchemaConstraint ? { strict: true } : {}),
+			...(grammarConstraint?.type === "grammar"
+				? { providerOptions: { "openai-codex": { grammar: grammarConstraint } } }
+				: {}),
 		};
 	}
 	return result;

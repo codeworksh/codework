@@ -53,7 +53,7 @@ function createMockFetch(responses: Response | Response[]): {
 } {
 	const queue = Array.isArray(responses) ? [...responses] : [responses];
 	const calls: FetchCall[] = [];
-	const mock = (async (url: RequestInfo | URL, init?: RequestInit) => {
+	const mock = (async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
 		const target = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 		calls.push({ url: target, init: (init ?? {}) as FetchCall["init"] });
 		const next = queue.shift();

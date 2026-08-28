@@ -33,6 +33,14 @@ export function expectValidToolCall(toolCall: Message.ToolCall, expectedStatus?:
 	}
 }
 
+export function expectToolCallPart(parts: Message.AssistantMessage["parts"], partIndex: number): Message.ToolCall {
+	const part = parts[partIndex];
+	expect(part).toBeDefined();
+	expect(part?.type).toBe("toolCall");
+	if (part?.type !== "toolCall") throw new Error(`expected toolCall at index ${partIndex}`);
+	return part;
+}
+
 export function expectAssistantToolUseMessage(message: Message.AssistantMessage): Message.ToolCall[] {
 	expect(message.stopReason).toBe("toolUse");
 

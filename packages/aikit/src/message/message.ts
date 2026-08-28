@@ -276,6 +276,20 @@ export function defineTool<TParameters extends TSchema>(tool: Tool<TParameters>)
 	return tool;
 }
 
+export function resolveJsonSchemaConstraint(
+	tool: Tool,
+	compat?: Pick<Model.Compatibility, "supportsStrictMode">,
+): { type: "json_schema"; strict: true } | undefined {
+	const config = tool.constrainedSampling;
+	if (!config || config.type !== "json_schema") return;
+	if (compat?.supportsStrictMode ?? true) return { type: "json_schema", strict: true };
+	if (config.strict === "require") {
+		throw new Error(
+			`Tool "${tool.name}" requires JSON-schema constrained sampling, but strict tools are unsupported.`,
+		);
+	}
+}
+
 export const ContextSchema = Type.Object({
 	systemPrompt: Type.Optional(Type.String()),
 	messages: Type.Array(MessageSchema),
