@@ -76,6 +76,7 @@ export interface Handle {
 	readonly info: Effect.Effect<Info, SessionStore.SessionNotFoundError>;
 	readonly prompt: (input: PromptInput) => ReturnType<Control.Interface["prompt"]>;
 	readonly run: (input: PromptInput) => ReturnType<Control.Interface["run"]>;
+	readonly wait: () => ReturnType<Control.Interface["wait"]>;
 	readonly resume: () => ReturnType<Control.Interface["resume"]>;
 	readonly interrupt: () => ReturnType<Control.Interface["interrupt"]>;
 	readonly events: (options?: { readonly after?: number }) => Stream.Stream<EventSchema.Payload>;
@@ -146,6 +147,7 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 		info,
 		prompt: (input) => control.prompt({ sessionId: id, ...promptInput(input) }),
 		run: (input) => control.run({ sessionId: id, ...promptInput(input) }),
+		wait: () => control.wait(id),
 		resume: () => control.resume(id),
 		interrupt: () => control.interrupt(id),
 		events: (options = {}) => events.stream({ sessionId: id, ...options }),

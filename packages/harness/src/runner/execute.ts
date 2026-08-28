@@ -81,8 +81,8 @@ export const layer = Layer.effect(
 			active: coordinator.active,
 			interrupt: coordinator.interrupt,
 			resume: coordinator.run,
-			drain: coordinator.drain,
 			wake: coordinator.wake,
+			awaitIdle: coordinator.awaitIdle,
 		});
 	}),
 );

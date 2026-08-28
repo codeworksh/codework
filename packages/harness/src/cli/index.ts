@@ -3,7 +3,7 @@
 import { generateModels } from "@codeworksh/aikit/modelgen";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Fiber, Option, Queue, Ref, Schema, Stream } from "effect";
+import { Effect, Exit, Fiber, Option, Queue, Ref, Schema, Stream } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/unstable/cli";
 import { Harness } from "../effect/harness.ts";
 import { Sandbox } from "../effect/sandbox.ts";
@@ -173,7 +173,14 @@ const run = Command.make(
 					columns,
 				}),
 			);
-			yield* handle.run(prompt);
+			// OpenCode's noninteractive client gets typed failures from execution
+			// lifecycle events while `wait` only observes idleness. Harness does not
+			// publish those lifecycle events yet, so this exclusive process joins the
+			// execution started by `prompt`, waits through successors, then restores
+			// the joined exit for the existing human-friendly error renderer.
+			const execution = yield* handle.prompt(prompt).pipe(Effect.andThen(handle.resume()), Effect.exit);
+			yield* handle.wait();
+			if (Exit.isFailure(execution)) return yield* Effect.failCause(execution.cause);
 			const path = yield* handle.path();
 			const leaf = path.at(-1);
 			if (leaf !== undefined) yield* awaitMessage(ended, leaf.entry.id);

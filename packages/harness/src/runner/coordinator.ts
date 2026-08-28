@@ -1,159 +1,136 @@
 /*
  * @file Coordinator provides the execution process manager (fibers).
  * Handles process concurrency and coordination for the provided drain function.
- * */
+ */
 import { Deferred, Effect, Exit, Fiber, FiberSet, Scope } from "effect";
 
 /** Serializes execution for each key while allowing different keys to run concurrently. */
-export interface Coordinator<Key, E> {
+export interface Coordinator<Key, E, Reason = never> {
 	/** Snapshots keys with an execution owned by this coordinator. */
 	readonly active: Effect.Effect<ReadonlySet<Key>>;
-	/** Starts execution while idle or joins the active execution. */
+	/** Starts an execution while idle, or joins the active execution and returns its exit. */
 	readonly run: (key: Key) => Effect.Effect<void, E>;
-	/** Coalesces queued work and awaits the drain generation assigned to it. */
-	readonly drain: (key: Key) => Effect.Effect<void, E>;
-	/** Registers one coalesced follow-up after newly recorded work. */
+	/** Rings the doorbell so newly recorded work is drained without waiting for it. */
 	readonly wake: (key: Key) => Effect.Effect<void>;
-	/** Stops active execution and waits for its cleanup. */
-	readonly interrupt: (key: Key) => Effect.Effect<void>;
+	/** Accepts interruption of active work without waiting for cleanup to settle. */
+	readonly interrupt: (key: Key, reason?: Reason) => Effect.Effect<boolean>;
+	/** Resolves once no execution is active for the key. Never starts work. */
+	readonly awaitIdle: (key: Key) => Effect.Effect<void>;
 }
 
-type Entry<E> = {
-	// other fiber wants to know when key is finished will await this deferred
+/** One process-local busy period for a key. */
+type Execution<E, Reason> = {
 	readonly done: Deferred.Deferred<void, E>;
-	currentWaiters: Array<Deferred.Deferred<void, E>>;
-	pendingWaiters: Array<Deferred.Deferred<void, E>>;
-	// process owner
-	owner?: Fiber.Fiber<void, void>;
-	// if called wake() while the fiber is running, flips to true
-	// runs one more time when finished.
+	owner?: Fiber.Fiber<void>;
 	pendingWake: boolean;
-	// set by interrupt()
 	stopping: boolean;
+	interruptionReason?: Reason;
 };
 
-export const make = <Key, E>(options: {
-	// Actual work that is to be run within the coordinator
-	// key: Execution resource ID e.g: sessionID
-	// force: A boolean flag passed down by coordinator
+export const make = <Key, E, Reason = never>(options: {
+	/** Actual work serialized by the coordinator. */
 	readonly drain: (key: Key, force: boolean) => Effect.Effect<void, E>;
-}): Effect.Effect<Coordinator<Key, E>, never, Scope.Scope> =>
+	/** Runs once when a busy period begins, before its first drain. */
+	readonly started?: (key: Key) => Effect.Effect<void>;
+	/** Runs after the final drain exits and before joiners are released. */
+	readonly settled?: (key: Key, exit: Exit.Exit<void, E>, reason?: Reason) => Effect.Effect<void>;
+}): Effect.Effect<Coordinator<Key, E, Reason>, never, Scope.Scope> =>
 	Effect.gen(function* () {
-		const active = new Map<Key, Entry<E>>();
+		const executions = new Map<Key, Execution<E, Reason>>();
 		const fork = yield* FiberSet.makeRuntime<never, void, never>();
 
-		const makeEntry = (waiter?: Deferred.Deferred<void, E>): Entry<E> => ({
-			done: Deferred.makeUnsafe<void, E>(),
-			currentWaiters: waiter === undefined ? [] : [waiter],
-			pendingWaiters: [],
-			pendingWake: false,
-			stopping: false,
-		});
+		const loop = (key: Key, execution: Execution<E, Reason>, force: boolean): Effect.Effect<void, E> =>
+			Effect.suspend(() => options.drain(key, force)).pipe(
+				Effect.andThen(
+					Effect.suspend(() => {
+						if (execution.stopping || !execution.pendingWake) return Effect.void;
+						execution.pendingWake = false;
+						// Trampoline so drains that complete synchronously cannot grow the stack.
+						return Effect.yieldNow.pipe(Effect.andThen(loop(key, execution, false)));
+					}),
+				),
+			);
 
-		const complete = (waiters: ReadonlyArray<Deferred.Deferred<void, E>>, exit: Exit.Exit<void, E>) => {
-			for (const waiter of waiters) Deferred.doneUnsafe(waiter, exit);
-		};
-
-		const start = (key: Key, entry: Entry<E>, force: boolean, successor = false) => {
-			// The Race Condition:
-			// When we spawn new fiber, Effect fork might start immediate execution on same tick of event loop
-			// `entry.owner` might not be set i.e `settle` is invoked before setting `entry.owner`, leading to race conditions
-			// To prevent this, parent creates Deferred called ready.
-			// The child fiber sees:  `Deferred.await(ready)` and sleeps giving time for parent to set the `entry.owner = owner`
-			// Once assigned, the parent calls `Deferred.doneUnsafe` waking the child up for actual work.
-			//
-			// In Successor Path:
-			// If the fiber was spawned by settle because pendingWake was set true, it doesn't need the ready lock.
-			// As the parent of settle, already knows about the entry exists and has set `entry.owner`
-			const ready = Deferred.makeUnsafe<void>();
-			const owner = fork(
-				(successor ? Effect.yieldNow : Deferred.await(ready)).pipe(
-					Effect.andThen(Effect.suspend(() => options.drain(key, force))),
-					Effect.onExit((exit) => Effect.sync(() => settle(key, entry, exit))),
+		const start = (key: Key, force: boolean) => {
+			const execution: Execution<E, Reason> = {
+				done: Deferred.makeUnsafe<void, E>(),
+				pendingWake: false,
+				stopping: false,
+			};
+			executions.set(key, execution);
+			// The leading yield lets `owner` be assigned before the drain can settle and
+			// trampolines successor executions after synchronous failures.
+			execution.owner = fork(
+				Effect.yieldNow.pipe(
+					Effect.andThen(Effect.uninterruptible(options.started?.(key) ?? Effect.void)),
+					Effect.andThen(loop(key, execution, force)),
+					Effect.onExit((exit) =>
+						Effect.sync(() => {
+							delete execution.owner;
+						}).pipe(Effect.andThen(options.settled?.(key, exit, execution.interruptionReason) ?? Effect.void)),
+					),
+					Effect.onExit((exit) => Effect.sync(() => settle(key, execution, exit))),
 					Effect.exit,
 					Effect.asVoid,
 				),
 			);
-			entry.owner = owner;
-			if (!successor) Deferred.doneUnsafe(ready, Effect.void);
+			return execution;
 		};
 
-		const settle = (key: Key, entry: Entry<E>, exit: Exit.Exit<void, E>) => {
-			if (Exit.isSuccess(exit) && !entry.stopping && entry.pendingWake) {
-				complete(entry.currentWaiters, exit);
-				entry.currentWaiters = entry.pendingWaiters;
-				entry.pendingWaiters = [];
-				entry.pendingWake = false;
-				start(key, entry, false, true);
-				return;
-			}
-
-			complete(entry.currentWaiters, exit);
-			if (entry.stopping) complete(entry.pendingWaiters, exit);
-			const successor = entry.pendingWake ? makeEntry() : undefined;
-			if (successor !== undefined) successor.currentWaiters = entry.pendingWaiters;
-			if (successor === undefined) active.delete(key);
-			else {
-				active.set(key, successor);
-				start(key, successor, false, true);
-			}
-			Deferred.doneUnsafe(entry.done, exit);
+		// A wake that survives the loop or arrives during cleanup starts a fresh busy period.
+		const settle = (key: Key, execution: Execution<E, Reason>, exit: Exit.Exit<void, E>) => {
+			if (execution.pendingWake) start(key, false);
+			else executions.delete(key);
+			Deferred.doneUnsafe(execution.done, exit);
 		};
 
 		const run = (key: Key): Effect.Effect<void, E> =>
-			Effect.uninterruptibleMask((restore) => {
-				const entry = active.get(key);
-				if (entry !== undefined) {
-					if (entry.stopping) return restore(Deferred.await(entry.done).pipe(Effect.andThen(run(key))));
-					return restore(Deferred.await(entry.done));
+			Effect.suspend(() => {
+				const execution = executions.get(key);
+				if (execution !== undefined) {
+					if (execution.stopping) {
+						return Deferred.await(execution.done).pipe(Effect.ignoreCause, Effect.andThen(run(key)));
+					}
+					return Deferred.await(execution.done);
 				}
-
-				const next = makeEntry();
-				active.set(key, next);
-				start(key, next, true);
-				return restore(Deferred.await(next.done));
-			});
-
-		const drain = (key: Key): Effect.Effect<void, E> =>
-			Effect.uninterruptibleMask((restore) => {
-				const waiter = Deferred.makeUnsafe<void, E>();
-				const entry = active.get(key);
-				if (entry !== undefined) {
-					if (entry.stopping) return restore(Deferred.await(entry.done).pipe(Effect.andThen(drain(key))));
-					entry.pendingWake = true;
-					entry.pendingWaiters.push(waiter);
-					return restore(Deferred.await(waiter));
-				}
-
-				const next = makeEntry(waiter);
-				active.set(key, next);
-				start(key, next, false);
-				return restore(Deferred.await(waiter));
+				return Deferred.await(start(key, true).done);
 			});
 
 		const wake = (key: Key) =>
 			Effect.sync(() => {
-				const entry = active.get(key);
-				if (entry !== undefined) {
-					entry.pendingWake = true;
+				const execution = executions.get(key);
+				if (execution !== undefined) {
+					execution.pendingWake = true;
 					return;
 				}
-
-				const next = makeEntry();
-				active.set(key, next);
-				start(key, next, false);
+				start(key, false);
 			});
 
-		const interrupt = (key: Key): Effect.Effect<void> =>
+		const interrupt = (key: Key, reason?: Reason): Effect.Effect<boolean> =>
+			Effect.sync(() => {
+				const execution = executions.get(key);
+				if (execution === undefined || execution.stopping) return false;
+				if (execution.owner === undefined) {
+					// The terminal exit is already decided. Claim earlier wakes so settlement
+					// does not restart work for the interrupted intent.
+					execution.pendingWake = false;
+					return false;
+				}
+				execution.stopping = true;
+				execution.pendingWake = false;
+				if (reason !== undefined) execution.interruptionReason = reason;
+				fork(Fiber.interrupt(execution.owner));
+				return true;
+			});
+
+		const awaitIdle = (key: Key): Effect.Effect<void> =>
 			Effect.suspend(() => {
-				const entry = active.get(key);
-				if (entry?.owner === undefined) return Effect.void;
-				entry.stopping = true;
-				entry.pendingWake = false;
-				return Fiber.interrupt(entry.owner);
+				const execution = executions.get(key);
+				if (execution === undefined) return Effect.void;
+				return Deferred.await(execution.done).pipe(Effect.ignoreCause, Effect.andThen(awaitIdle(key)));
 			});
 
-		return { active: Effect.sync(() => new Set(active.keys())), run, drain, wake, interrupt };
+		return { active: Effect.sync(() => new Set(executions.keys())), run, wake, interrupt, awaitIdle };
 	});
 
 export * as RunCoordinator from "./coordinator.ts";

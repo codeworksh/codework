@@ -54,10 +54,10 @@ export interface Interface {
 	 * that window recoverable rather than a user message nothing ever answered.
 	 */
 	readonly prompt: (input: PromptInput) => Effect.Effect<Admitted, Session.SessionNotFoundError | PromptConflictError>;
-	/** Records a prompt and awaits the drain generation responsible for it. */
-	readonly run: (
-		input: PromptInput,
-	) => Effect.Effect<Admitted, Session.SessionNotFoundError | PromptConflictError | Runner.RunError>;
+	/** Records a prompt, wakes execution, and waits until the session is idle. */
+	readonly run: (input: PromptInput) => Effect.Effect<Admitted, Session.SessionNotFoundError | PromptConflictError>;
+	/** Waits until the session is idle without starting work. */
+	readonly wait: (sessionId: SessionSchema.ID) => Effect.Effect<void, Session.SessionNotFoundError>;
 	/** Starts a drain while the session is idle, or joins the one already running. */
 	readonly resume: (
 		sessionId: SessionSchema.ID,
@@ -121,11 +121,18 @@ export const layer = Layer.effect(
 			Effect.uninterruptibleMask((restore) =>
 				Effect.gen(function* () {
 					const admitted = yield* admit(input);
-					yield* restore(execution.drain(admitted.sessionId));
+					yield* execution.wake(admitted.sessionId);
+					yield* restore(execution.awaitIdle(admitted.sessionId));
 					return admitted;
 				}),
 			),
 		);
+
+		const wait = Effect.fn("Control.wait")(function* (sessionId: SessionSchema.ID) {
+			const session = yield* sessions.get(sessionId);
+			if (Option.isNone(session)) return yield* new Session.SessionNotFoundError({ sessionId });
+			yield* execution.awaitIdle(sessionId);
+		});
 
 		const resume = Effect.fn("Control.resume")(function* (sessionId: SessionSchema.ID) {
 			const session = yield* sessions.get(sessionId);
@@ -133,13 +140,13 @@ export const layer = Layer.effect(
 			yield* execution.resume(sessionId);
 		});
 
-		// Uninterruptible because `interrupt` waits for the owner fiber's cleanup:
-		// cancelling the caller partway would abandon a stop it already started.
+		// A Control interrupt preserves the blocking SDK contract even though the
+		// coordinator acknowledges interruption as soon as the owner accepts it.
 		const interrupt = Effect.fn("Control.interrupt")((sessionId: SessionSchema.ID) =>
-			Effect.uninterruptible(execution.interrupt(sessionId)),
+			Effect.uninterruptible(execution.interrupt(sessionId).pipe(Effect.andThen(execution.awaitIdle(sessionId)))),
 		);
 
-		return Service.of({ prompt, run, resume, interrupt, active: execution.active });
+		return Service.of({ prompt, run, wait, resume, interrupt, active: execution.active });
 	}),
 );
 
