@@ -2,7 +2,7 @@ import { Duration, Effect, Option, Ref, Schema, Stream } from "effect";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { fileSystem } from "../host.ts";
-import { posix } from "../posix.ts";
+import { posix } from "../util/posix.ts";
 import { Accumulator, type OutputSnapshot } from "./accumulator.ts";
 import { ToolProgress } from "./progress.ts";
 import { type IToolShell, ToolShell } from "./shell.ts";

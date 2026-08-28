@@ -1,7 +1,7 @@
 import { Config, Context, Effect, Layer } from "effect";
 import * as os from "node:os";
 import { fileSystem } from "./host.ts";
-import { posix } from "./posix.ts";
+import { posix } from "./util/posix.ts";
 
 export const configDir = ".codework";
 export const app = "codework";

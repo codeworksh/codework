@@ -1,5 +1,5 @@
 import { Context, Effect, Schema } from "effect";
-import { posix } from "../../posix.ts";
+import { posix } from "../../util/posix.ts";
 
 /**
  * The runtime filesystem contract, independent of any backend.

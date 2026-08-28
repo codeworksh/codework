@@ -1,7 +1,7 @@
 import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer, Option, Schema } from "effect";
 import { fileSystem } from "../../host.ts";
-import { posix } from "../../posix.ts";
+import { posix } from "../../util/posix.ts";
 import { SandboxDriver } from "../driver.ts";
 import { providerError } from "../errors.ts";
 import { SandboxInstance } from "../instance.ts";

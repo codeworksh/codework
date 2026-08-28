@@ -3,7 +3,7 @@ import { Config, Effect, Layer, String as Str } from "effect";
 import { Migrator, SqlClient } from "effect/unstable/sql";
 import { Global } from "../global.ts";
 import { fileSystem } from "../host.ts";
-import { posix } from "../posix.ts";
+import { posix } from "../util/posix.ts";
 import { migrations } from "./migrations.ts";
 
 export { SqlClient, SqlSchema } from "effect/unstable/sql";

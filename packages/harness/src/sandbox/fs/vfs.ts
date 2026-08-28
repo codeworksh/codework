@@ -2,7 +2,7 @@
 import type { VirtualFileSystem, VirtualStats } from "@platformatic/vfs";
 import { Context, Effect, Layer } from "effect";
 import { Buffer } from "node:buffer";
-import { posix } from "../../posix.ts";
+import { posix } from "../../util/posix.ts";
 import { SandboxFileSystem } from "./filesystem.ts";
 
 // The local backend: a `SandboxFileSystem.Service` over a `@platformatic/vfs`

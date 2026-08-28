@@ -3,7 +3,7 @@ import type { create } from "@platformatic/vfs";
 import { Effect, Option } from "effect";
 import { Buffer } from "node:buffer";
 import { fileSystem } from "../../host.ts";
-import { posix } from "../../posix.ts";
+import { posix } from "../../util/posix.ts";
 
 export interface SeedOptions {
 	/** Virtual working directory used to resolve relative filesystem paths. Defaults to "/". */

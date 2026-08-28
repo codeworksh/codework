@@ -2,7 +2,7 @@ import { Effect, type FileSystem, type Scope } from "effect";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { fileSystem } from "../host.ts";
-import { posix } from "../posix.ts";
+import { posix } from "../util/posix.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail, type TruncationResult } from "./truncate.ts";
 
 /**

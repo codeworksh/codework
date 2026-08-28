@@ -1,7 +1,7 @@
 /* oxlint-disable effecttsgo/async-function -- Daytona's SDK boundary is Promise-based. */
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { Buffer } from "node:buffer";
-import { posix } from "../../posix.ts";
+import { posix } from "../../util/posix.ts";
 import { sanitizeError } from "../errors.ts";
 import { SandboxFileSystem } from "../fs/filesystem.ts";
 import { RemoteFileSystem } from "../fs/remote.ts";

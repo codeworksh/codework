@@ -1,16 +1,16 @@
 import { Effect, Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { Database } from "../db/db.ts";
-import { posix as path } from "../posix.ts";
+import { posix as path } from "../util/posix.ts";
 import { SandboxController } from "./control.ts";
 import { SandboxDriver } from "./driver.ts";
 import { MemorySandboxDriver } from "./drivers/memory.ts";
 import { SqldbSandboxDriver } from "./drivers/sqldb.ts";
 import { EnvNodeJSDefault } from "./fs/nodejs.ts";
 import { Local } from "./fs/vfs.ts";
-import { HostExe } from "./shell/host.ts";
 import { SandboxInstance } from "./instance.ts";
 import { SandboxIO } from "./io.ts";
+import { HostExe } from "./shell/host.ts";
 
 // re-export from sandbox
 export { SandboxController } from "./control.ts";
@@ -23,11 +23,11 @@ export { SandboxError } from "./errors.ts";
 export { EnvInMemory } from "./fs/inmemory.ts";
 export { EnvNodeJSDefault } from "./fs/nodejs.ts";
 export { EnvSqldb } from "./fs/sqldb.ts";
-export { HostExe } from "./shell/host.ts";
 export { SandboxInstance } from "./instance.ts";
 export { SandboxIO } from "./io.ts";
-export { EnvBash } from "./shell/justbash.ts";
 export { SandboxResource } from "./resource.ts";
+export { HostExe } from "./shell/host.ts";
+export { EnvBash } from "./shell/justbash.ts";
 export { Process } from "./utils/process.ts";
 
 /**
