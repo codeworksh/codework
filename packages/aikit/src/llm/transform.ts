@@ -88,7 +88,7 @@ function toolResultOutput(toolCall: TerminalToolCall) {
 	if (toolCall.result.isError) {
 		return {
 			type: "error-text" as const,
-			value: text || "Tool returned an error",
+			value: text || "tool returned an error",
 		};
 	}
 
@@ -156,7 +156,7 @@ export function encodeOpenAIReasoningSignature(providerMetadata: unknown): strin
 	return JSON.stringify(signature);
 }
 
-function decodeOpenAIReasoningSignature(signature: string): OpenAIReasoningMetadata {
+function decodeOpenAIReasoningSignature(signature: string): OpenAIReasoningMetadata | undefined {
 	try {
 		const parsed: unknown = JSON.parse(signature);
 		if (isRecord(parsed) && typeof parsed.itemId === "string") {
@@ -168,9 +168,8 @@ function decodeOpenAIReasoningSignature(signature: string): OpenAIReasoningMetad
 			};
 		}
 	} catch {
-		// Older persisted messages may contain the item id directly.
+		return;
 	}
-	return { itemId: signature };
 }
 
 function assistantMessages(message: Message.AssistantMessage, model: Model.Info): ModelMessage[] {
@@ -196,11 +195,12 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 			const thinking = sanitizeSurrogates(part.thinking);
 			if (thinking.trim().length === 0 && !part.thinkingSignature) continue;
 			const reasoning: Record<string, unknown> = { type: "reasoning", text: thinking };
-			// OpenAI Responses only accepts native reasoning items. Older messages
-			// without metadata would be skipped by the SDK with a warning anyway.
+			// OpenAI Responses only accepts native reasoning items with encoded metadata.
 			if (message.protocol === Model.KnownProviderEnum.openai) {
 				if (!part.thinkingSignature) continue;
-				reasoning.providerOptions = { openai: decodeOpenAIReasoningSignature(part.thinkingSignature) };
+				const openai = decodeOpenAIReasoningSignature(part.thinkingSignature);
+				if (!openai) continue;
+				reasoning.providerOptions = { openai };
 			} else if (part.thinkingSignature) {
 				reasoning.providerOptions =
 					message.protocol === Model.KnownProviderEnum.openaiCodex
@@ -246,7 +246,7 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 				? toolResultOutput(terminal)
 				: {
 						type: "error-text",
-						value: "No result provided",
+						value: "no result provided",
 					},
 		});
 	}

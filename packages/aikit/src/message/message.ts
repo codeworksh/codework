@@ -268,6 +268,9 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	name: string;
 	description: string;
 	parameters: TParameters;
+	/** How the provider constrains generated tool-call arguments (strict JSON schema or grammar).
+	 * used by convert tool.
+	 * */
 	constrainedSampling?: false | ConstrainedSampling;
 }
 export type ToolArguments<T extends Tool> = Static<T["parameters"]>;
@@ -314,7 +317,7 @@ function syntheticSkippedToolCall(toolCall: ToolCallPendingPart | ToolCallRunnin
 		...base,
 		status: ToolStatusEnum.skipped,
 		result: {
-			content: [{ type: "text", text: "No result provided" }],
+			content: [{ type: "text", text: "no result provided" }],
 			isError: true,
 		},
 		time: {

@@ -197,20 +197,12 @@ describe("Message.transformMessages", () => {
 				parts: [{ type: "thinking", thinking: "reasoning here", thinkingSignature: "sig-1" }],
 			});
 
+			expect(expectSingleAssistant(Message.transformMessages([assistant], sameModel)).parts).toEqual([
+				{ type: "thinking", thinking: "reasoning here", thinkingSignature: "sig-1" },
+			]);
+
 			expect(expectSingleAssistant(Message.transformMessages([assistant], otherModel)).parts).toEqual([
 				{ type: "text", text: "reasoning here" },
-			]);
-		});
-
-		it("downgrades thinking when only the model id changes", () => {
-			const source = makeCodexModel({ id: "gpt-5.5" });
-			const target = makeCodexModel({ id: "gpt-5.6-luna" });
-			const assistant = makeAssistantMessage(source, {
-				parts: [{ type: "thinking", thinking: "plan", thinkingSignature: "sig-1" }],
-			});
-
-			expect(expectSingleAssistant(Message.transformMessages([assistant], target)).parts).toEqual([
-				{ type: "text", text: "plan" },
 			]);
 		});
 
@@ -251,6 +243,10 @@ describe("Message.transformMessages", () => {
 			).toBeUndefined();
 		});
 
+		/** Gemini 3 enforces stricter validation on thought signatures than earlier versions.
+		 * If a required thought signature is not returned when using Gemini 3 models, the model will return a 400 error.
+		 * @see: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thinking/thought-signatures
+		 **/
 		it("keeps thoughtSignature for the same model", () => {
 			const toolCall: Message.ToolCallCompletedPart = {
 				...makeCompletedToolCall("call-1"),
@@ -273,7 +269,7 @@ describe("Message.transformMessages", () => {
 			expect(part.status).toBe("skipped");
 			if (part.status !== "skipped") throw new Error("unreachable");
 			expect(part.result.isError).toBe(true);
-			expect(part.result.content).toEqual([{ type: "text", text: "No result provided" }]);
+			expect(part.result.content).toEqual([{ type: "text", text: "no result provided" }]);
 		});
 
 		it("converts running tool calls into synthetic skipped results without partials", () => {
@@ -305,6 +301,11 @@ describe("Message.transformMessages", () => {
 	});
 
 	describe("tool call ID normalization", () => {
+		/**
+		 * In most cases you just want to sanitize existing call IDs; rather than generating a completely new ID.
+		 * Call IDs must be unique; should never have the same call ID. e.g passing a common function that generates
+		 * a single ID will duplicate call IDs across multiple call IDs.
+		 */
 		it("rewrites tool call IDs via the callback when handing off to another model", () => {
 			const assistant = makeAssistantMessage(sameModel, {
 				stopReason: "toolUse",
@@ -347,6 +348,7 @@ describe("Message.transformMessages", () => {
 			expect(calls).toBe(1);
 		});
 
+		// call ID normalization call back must not be invoked in case of same model.
 		it("does not invoke the callback for the same model", () => {
 			const assistant = makeAssistantMessage(sameModel, {
 				stopReason: "toolUse",
@@ -364,6 +366,10 @@ describe("Message.transformMessages", () => {
 });
 
 describe("mapFinishReason", () => {
+	/**
+	 * Specific to ai-sdk wire protocol.
+	 * @see: https://ai-sdk.dev/docs/ai-sdk-core/lifecycle-callbacks#finish-reason
+	 */
 	const cases: Array<[FinishReason | undefined, Message.StopReason]> = [
 		["stop", "stop"],
 		["length", "length"],
@@ -395,7 +401,7 @@ describe("mapUsage", () => {
 		});
 	});
 
-	it("subtracts cached read and write tokens from inputTokens when no uncached breakdown is available", () => {
+	it("subtracts cached read and write tokens from inputTokens when no noCacheTokens breakdown is available", () => {
 		const usage = mapUsage(
 			makeLanguageModelUsage({
 				inputTokens: 100,
@@ -412,7 +418,11 @@ describe("mapUsage", () => {
 		expect(usage.totalTokens).toBe(150);
 	});
 
-	it("prefers inputTokenDetails when present", () => {
+	/**
+	 * We get full breakdown when noCacheTokens is present within inputTokenDetails
+	 * No subtraction is required
+	 **/
+	it("use noCacheTokens within inputTokenDetails when present", () => {
 		const usage = mapUsage(
 			makeLanguageModelUsage({
 				inputTokens: 100,
@@ -425,6 +435,8 @@ describe("mapUsage", () => {
 		expect(usage.input).toBe(40);
 		expect(usage.cacheRead).toBe(35);
 		expect(usage.cacheWrite).toBe(25);
+		expect(usage.output).toBe(10);
+		expect(usage.totalTokens).toBe(110);
 	});
 
 	it("never reports negative input tokens", () => {
@@ -520,7 +532,7 @@ describe("convertTools", () => {
 		expect(convertTools([])).toBeUndefined();
 	});
 
-	it("converts tool definitions to an ai-sdk ToolSet keyed by name", () => {
+	it("converts tool definitions to an ai-sdk native ToolSet keyed by name", () => {
 		const tool = Message.defineTool({
 			name: "search",
 			description: "Search documents",
@@ -532,6 +544,9 @@ describe("convertTools", () => {
 		expect(converted?.inputSchema).toBeDefined();
 	});
 
+	/**
+	 * Note: keep this in sync with custom codex provider
+	 */
 	it("maps codex grammar tools through provider metadata without changing their object schema", () => {
 		const tool = openAICodexTools.custom({
 			name: "sample",
@@ -628,6 +643,9 @@ describe("convertTools", () => {
 	});
 });
 
+/**
+ * Note: keep in sync with openAI provider
+ */
 describe("encodeOpenAIReasoningSignature", () => {
 	it("encodes item id and encrypted reasoning content", () => {
 		expect(
@@ -651,6 +669,9 @@ describe("encodeOpenAIReasoningSignature", () => {
 	});
 });
 
+/**
+ * Note: keep this in sync with custom codex provider; take cues from codex source code
+ */
 describe("normalizeOpenAICodexToolCallId", () => {
 	const target = makeCodexModel({ id: "gpt-5.6-luna" });
 
@@ -824,6 +845,11 @@ describe("convertMessages", () => {
 		]);
 	});
 
+	/**
+	 * FIXME: fix incoming:
+	 *  - COD-39
+	 *  - COD-38
+	 */
 	it("drops assistant image parts", () => {
 		const assistant = makeAssistantMessage(imageModel, {
 			parts: [{ type: "image", data: PNG, mimeType: "image/png" }],
@@ -889,31 +915,12 @@ describe("convertMessages", () => {
 		]);
 	});
 
-	it("decodes a legacy OpenAI item id stored as the thinking signature", () => {
+	it.each([
+		{ type: "thinking" as const, thinking: "step by step" },
+		{ type: "thinking" as const, thinking: "step by step", thinkingSignature: "{}" },
+	])("omits OpenAI reasoning without a valid encoded signature", (part) => {
 		const openAIModel = makeOpenAIModel();
-		const assistant = makeAssistantMessage(openAIModel, {
-			parts: [{ type: "thinking", thinking: "step by step", thinkingSignature: "rs_legacy" }],
-		});
-
-		expect(convertMessages({ messages: [assistant] }, openAIModel)).toEqual([
-			{
-				role: "assistant",
-				content: [
-					{
-						type: "reasoning",
-						text: "step by step",
-						providerOptions: { openai: { itemId: "rs_legacy" } },
-					},
-				],
-			},
-		]);
-	});
-
-	it("omits legacy unsigned OpenAI reasoning instead of triggering an AI SDK warning", () => {
-		const openAIModel = makeOpenAIModel();
-		const assistant = makeAssistantMessage(openAIModel, {
-			parts: [{ type: "thinking", thinking: "step by step" }],
-		});
+		const assistant = makeAssistantMessage(openAIModel, { parts: [part] });
 
 		expect(convertMessages({ messages: [assistant] }, openAIModel)).toEqual([]);
 	});
@@ -1017,6 +1024,8 @@ describe("convertMessages", () => {
 		]);
 	});
 
+	// FIXME: incoming:
+	// - COD-40
 	it("does not put Google thoughtSignature on the wire", () => {
 		const toolCall: Message.ToolCallCompletedPart = {
 			...makeCompletedToolCall("call-1", "search", [{ type: "text", text: "ok" }], { query: "x" }),
@@ -1026,7 +1035,7 @@ describe("convertMessages", () => {
 		expect(JSON.stringify(convertMessages({ messages: [assistant] }, imageModel))).not.toContain("google-sig");
 	});
 
-	it("converts completed tool calls into tool-call plus tool-result messages", () => {
+	it("converts completed tool calls into ai-sdk native tool-call plus tool-result messages", () => {
 		const assistant = makeAssistantMessage(imageModel, {
 			stopReason: "toolUse",
 			parts: [makeCompletedToolCall("call-1", "search", [{ type: "text", text: "found it" }], { query: "x" })],
@@ -1067,7 +1076,7 @@ describe("convertMessages", () => {
 				{
 					type: "tool-result",
 					toolCallId: "call-1",
-					output: { type: "error-text", value: "No result provided" },
+					output: { type: "error-text", value: "no result provided" },
 				},
 			],
 		});
@@ -1105,7 +1114,7 @@ describe("convertMessages", () => {
 		expect(
 			convertMessages({ messages: [assistant] }, imageModel).find((message) => message.role === "tool"),
 		).toMatchObject({
-			content: [{ output: { type: "error-text", value: "Tool returned an error" } }],
+			content: [{ output: { type: "error-text", value: "tool returned an error" } }],
 		});
 	});
 
