@@ -61,6 +61,7 @@ describe("Model.normalizeInput", () => {
 		expect(Model.normalizeInput(["text", "text", "image", "image"])).toEqual(["text", "image"]);
 	});
 
+	// FIXME: no fallback to known modalities; keep what's only supported.
 	it("falls back to text when only unknown modalities are given", () => {
 		expect(Model.normalizeInput(["audio"])).toEqual(["text"]);
 	});

@@ -52,6 +52,7 @@ export const ActiveThinkingLevel = Type.Union([
 ]);
 export type ActiveThinkingLevel = Static<typeof ActiveThinkingLevel>;
 
+// Note: order of entries matters!
 const ACTIVE_THINKING_LEVELS = [
 	ThinkingLevelEnum.minimal,
 	ThinkingLevelEnum.low,
@@ -311,10 +312,13 @@ export function clampThinkingLevel<TProtocol extends KnownProviderEnum>(
 	const requestedIndex = MODEL_THINKING_LEVELS.indexOf(level);
 	if (requestedIndex === -1) return availableLevels[0] ?? "off";
 
+	// walk up the ladder from the point and pick first supported
+	// biased to avail more thinking, then less not round to nearest.
 	for (let i = requestedIndex; i < MODEL_THINKING_LEVELS.length; i++) {
 		const candidate = MODEL_THINKING_LEVELS[i]!;
 		if (availableLevels.includes(candidate)) return candidate;
 	}
+	// otherwise walk down from the point
 	for (let i = requestedIndex - 1; i >= 0; i--) {
 		const candidate = MODEL_THINKING_LEVELS[i]!;
 		if (availableLevels.includes(candidate)) return candidate;

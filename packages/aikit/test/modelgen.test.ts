@@ -1,15 +1,15 @@
-import { describe, expect, it } from "vite-plus/test";
 import Value from "typebox/value";
+import { describe, expect, it } from "vite-plus/test";
 import { generateModels as generateModelsImplementation, openAICodexBuiltInModels } from "../src/cli/modelgen.ts";
-import { generateModels } from "../src/modelgen.ts";
 import * as Model from "../src/model/model.ts";
+import { generateModels } from "../src/modelgen.ts";
 
 describe("openAICodexBuiltInModels", () => {
 	it("exposes catalog generation through the public modelgen entry", () => {
 		expect(generateModels).toBe(generateModelsImplementation);
 	});
 
-	it("includes Pi's current explicit Codex model list", () => {
+	it("includes explicit Codex model list", () => {
 		const models = openAICodexBuiltInModels();
 
 		expect(Object.keys(models)).toEqual([
@@ -41,7 +41,7 @@ describe("openAICodexBuiltInModels", () => {
 		}
 	});
 
-	it("maps Pi's Codex deferred-tool capability flags", () => {
+	it("maps Codex deferred-tool capability flags", () => {
 		const models = openAICodexBuiltInModels();
 
 		expect(models["gpt-5.3-codex-spark"]?.compat).toEqual({ supportsOpenAIGrammarTools: true });
