@@ -1,5 +1,5 @@
 import { Context, type Effect, Schema, type Stream } from "effect";
-import { posix as path } from "node:path";
+import { posix as path } from "../../util/posix.ts";
 
 /**
  * The pluggable execution contract. Local sandboxes usually get a Shell through

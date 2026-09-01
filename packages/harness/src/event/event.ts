@@ -1,14 +1,13 @@
-// API that deals with event
-
-import { Effect, Context, Layer, Option, PubSub, Cause, Stream } from "effect";
+import { Cause, Context, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { EventRow } from "../db/schema.sql.ts";
 // Uncomment with `decodeSerializedEvent` below — the manifest is what it looks
 // stored types up in.
 // import { Durable } from "./manifest.ts";
 import { Schema } from "effect";
-import { EventSchema } from "./schema.ts";
+import { EventManifest } from "./manifest.ts";
 import type { Data, Definition, ID, Payload } from "./schema.ts";
+import { EventSchema } from "./schema.ts";
 
 export type SerializedEvent = {
 	readonly id: ID;
@@ -33,7 +32,7 @@ export class InvalidDurableEventError extends Schema.TaggedError<InvalidDurableE
 // const decodeSerializedEvent = (event: SerializedEvent): Payload => {
 //   const definition = Durable.get(event.type);
 //   if (!definition?.durable) {
-//     throw new Error(`Unknown durable event type ${event.type}`);
+//     throw new Error(`unknown durable event type ${event.type}`);
 //   }
 //   return {
 //     id: event.id,
@@ -113,6 +112,12 @@ export interface Interface {
 	readonly subscribe: <D extends Definition>(definition: D) => Stream.Stream<Payload<D>>;
 	/** Every event, durable and live alike, in publish order. */
 	readonly all: () => Stream.Stream<Payload>;
+	/** Durable catch-up followed by the process-local event tail for one session.
+	 * TODO(sanchitrk):
+	 * revisite once's we implement durable streams, a common channel for IO output,
+	 * chances are we wont't need this anymore?
+	 */
+	readonly stream: (input: { readonly sessionId: string; readonly after?: number }) => Stream.Stream<Payload>;
 	/**
 	 * Callback form of {@link all}, returning its own removal. A listener runs
 	 * after the commit for a durable event, and its failures are logged rather
@@ -142,7 +147,6 @@ export const layer = Layer.effect(
 
 		const pubsub = {
 			all: yield* PubSub.unbounded<Payload>(),
-			durable: new Map<string, Set<PubSub.PubSub<void>>>(),
 			typed: new Map<string, PubSub.PubSub<Payload>>(),
 		};
 		const projectors = new Map<string, Subscriber[]>();
@@ -154,11 +158,6 @@ export const layer = Layer.effect(
 			Effect.gen(function* () {
 				yield* PubSub.shutdown(pubsub.all);
 				yield* Effect.forEach(pubsub.typed.values(), PubSub.shutdown, { discard: true });
-				yield* Effect.forEach(
-					pubsub.durable.values(),
-					(wakes) => Effect.forEach(wakes, PubSub.shutdown, { discard: true }),
-					{ discard: true },
-				);
 			}),
 		);
 
@@ -322,11 +321,6 @@ export const layer = Layer.effect(
 						return payload;
 					}),
 				);
-				// Durable subscribers carry no payload -- they re-read from their own
-				// cursor, so one content-free wake per aggregate is enough.
-				yield* Effect.forEach(pubsub.durable.get(aggregateId) ?? [], (wake) => PubSub.publish(wake, undefined), {
-					discard: true,
-				});
 				return committed;
 			},
 			Effect.orDie,
@@ -402,6 +396,57 @@ export const layer = Layer.effect(
 
 		const streamAll = (): Stream.Stream<Payload> => Stream.fromPubSub(pubsub.all);
 
+		const stream = (input: { readonly sessionId: string; readonly after?: number }): Stream.Stream<Payload> => {
+			const forSession = (event: Payload) =>
+				(event.data as { readonly sessionId?: unknown }).sessionId === input.sessionId;
+			const after = input.after;
+			if (after === undefined) return streamAll().pipe(Stream.filter(forSession));
+
+			return Stream.unwrap(
+				Effect.gen(function* () {
+					// Subscribe before the first journal read. The subscription's unbounded
+					// queue buffers durable and live-only events across the replay boundary.
+					const subscription = yield* PubSub.subscribe(pubsub.all);
+					const watermark = yield* Ref.make(after);
+					const history = Stream.paginate(
+						after,
+						Effect.fn("Event.stream.history")(function* (after) {
+							const page = yield* readAggregate({
+								aggregateId: input.sessionId,
+								after,
+								limit: 100,
+								manifest: EventManifest.Manifest,
+							});
+							const last = page.events.at(-1);
+							const next =
+								page.hasMore && last?.durable !== undefined
+									? Option.some(last.durable.seq)
+									: Option.none<number>();
+							return [page.events, next] as const;
+						}),
+					).pipe(
+						Stream.map((event) => event as Payload),
+						Stream.tap((event) => {
+							const seq = event.durable?.seq;
+							return seq === undefined
+								? Effect.void
+								: Ref.update(watermark, (current) => Math.max(current, seq));
+						}),
+					);
+					const tail = Stream.fromSubscription(subscription).pipe(
+						Stream.filter(forSession),
+						Stream.filterEffect((event) => {
+							const seq = event.durable?.seq;
+							return seq === undefined
+								? Effect.succeed(true)
+								: Ref.get(watermark).pipe(Effect.map((replayed) => seq > replayed));
+						}),
+					);
+					return history.pipe(Stream.concat(tail));
+				}),
+			);
+		};
+
 		const listen = (listener: Subscriber): Effect.Effect<Unsubscribe> =>
 			Effect.sync(() => {
 				listeners.push(listener);
@@ -417,6 +462,7 @@ export const layer = Layer.effect(
 			publish,
 			subscribe,
 			all: streamAll,
+			stream,
 			listen,
 			project,
 			advance,

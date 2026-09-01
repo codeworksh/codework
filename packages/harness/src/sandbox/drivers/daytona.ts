@@ -1,4 +1,3 @@
-import { Daytona, DaytonaNotFoundError, type Sandbox as RemoteSandbox, type Resources } from "@daytona/sdk";
 import { Effect, Layer, Option, Schema } from "effect";
 import { SandboxDriver } from "../driver.ts";
 import { makeRedactor, providerError, type SandboxProviderError } from "../errors.ts";
@@ -40,6 +39,9 @@ export const RuntimeConfig = Schema.Struct({
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
 const name = SandboxDriver.Name.make("daytona");
+type DaytonaSdk = typeof import("@daytona/sdk");
+type RemoteSandbox = import("@daytona/sdk").Sandbox;
+type Resources = import("@daytona/sdk").Resources;
 
 const statusFrom = (
 	state: RemoteSandbox["state"],
@@ -69,28 +71,38 @@ export const make = (
 	client: ClientOptions = {},
 ): SandboxDriver.Driver<CreateConfig, RuntimeConfig> & SandboxDriver.Registration => {
 	const redact = makeRedactor([client.apiKey ?? ""]);
-	const daytona = () =>
-		new Daytona({
+	const daytona = (sdk: DaytonaSdk) =>
+		new sdk.Daytona({
 			...(client.apiKey === undefined ? {} : { apiKey: client.apiKey }),
 			...(client.apiUrl === undefined ? {} : { apiUrl: client.apiUrl }),
 			...(client.target === undefined ? {} : { target: client.target }),
 		});
 
-	const attempt = <A>(operation: string, run: () => Promise<A>): Effect.Effect<A, SandboxProviderError> =>
-		Effect.tryPromise({
-			try: run,
-			catch: (cause) =>
-				providerError({
-					driver: name,
-					operation,
-					cause,
-					redact,
-					notFound: cause instanceof DaytonaNotFoundError,
-				}),
+	const attempt = <A>(
+		operation: string,
+		run: (sdk: DaytonaSdk) => Promise<A>,
+	): Effect.Effect<A, SandboxProviderError> =>
+		Effect.suspend(() => {
+			let sdk: DaytonaSdk | undefined;
+			return Effect.tryPromise({
+				try: () =>
+					import("@daytona/sdk").then((loaded) => {
+						sdk = loaded;
+						return run(loaded);
+					}),
+				catch: (cause) =>
+					providerError({
+						driver: name,
+						operation,
+						cause,
+						redact,
+						notFound: sdk !== undefined && cause instanceof sdk.DaytonaNotFoundError,
+					}),
+			});
 		});
 
 	const get = (providerResourceId: string, operation: string) =>
-		attempt(operation, () => daytona().get(providerResourceId));
+		attempt(operation, (sdk) => daytona(sdk).get(providerResourceId));
 
 	const refresh = (sandbox: RemoteSandbox, operation: string) =>
 		attempt(operation, () => sandbox.refreshData()).pipe(Effect.as(sandbox));
@@ -132,7 +144,6 @@ export const make = (
 		runtimeConfigCodec: RuntimeConfig,
 		create: ({ instanceId, config }) =>
 			Effect.gen(function* () {
-				const sdk = daytona();
 				const base = {
 					language: config.language ?? "typescript",
 					...(config.envVars === undefined ? {} : { envVars: config.envVars }),
@@ -144,15 +155,16 @@ export const make = (
 						"codework-managed": "true",
 					},
 				};
-				const sandbox = yield* attempt("create", () =>
-					config.image === undefined
+				const sandbox = yield* attempt("create", (loaded) => {
+					const sdk = daytona(loaded);
+					return config.image === undefined
 						? sdk.create({ ...base, ...(config.snapshot === undefined ? {} : { snapshot: config.snapshot }) })
 						: sdk.create({
 								...base,
 								image: config.image,
 								...(config.resources === undefined ? {} : { resources: config.resources as Resources }),
-							}),
-				);
+							});
+				});
 				const defaultCwd = yield* attempt("create.cwd", () =>
 					EnvDaytona.mountCwd(config.cwd, () => sandbox.getWorkDir()),
 				);

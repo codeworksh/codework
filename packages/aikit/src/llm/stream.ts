@@ -3,6 +3,7 @@ import * as Message from "../message/message.ts";
 import * as Model from "../model/model.ts";
 import { AssistantMessageEventStream } from "../utils/eventstream.ts";
 import { compact } from "../utils/helpers.ts";
+import * as Failure from "./failure.ts";
 import { Options } from "./options.ts";
 import * as Protocol from "./protocol.ts";
 import { resolveAISDKLanguageModel } from "./provider.ts";
@@ -12,6 +13,7 @@ import {
 	convertMessages,
 	convertTools,
 	createAssistantMessage,
+	encodeOpenAIReasoningSignature,
 	mapFinishReason,
 	mapUsage,
 	toolCallFromPart,
@@ -63,10 +65,6 @@ function cacheProviderOptions(model: Model.Info, options: RuntimeOptions): Provi
 		if (retention === "short") openai.promptCacheRetention = "in_memory";
 		if (retention === "long") openai.promptCacheRetention = "24h";
 		return Object.keys(openai).length > 0 ? { [key]: openai } : {};
-	}
-
-	if (key === "openai-codex" && options.sessionId) {
-		return { [key]: { promptCacheKey: options.sessionId } };
 	}
 
 	if ((key === "anthropic" || key === "google-vertex-anthropic") && retention) {
@@ -362,7 +360,13 @@ function handlePart(
 		}
 		case "reasoning-end": {
 			const reasoningItem = openAICodexMetadata(part.providerMetadata)?.reasoningItem;
-			finishThinkingBlock(output, part.id, stream, typeof reasoningItem === "string" ? reasoningItem : undefined);
+			const openAISignature = encodeOpenAIReasoningSignature(part.providerMetadata);
+			finishThinkingBlock(
+				output,
+				part.id,
+				stream,
+				typeof reasoningItem === "string" ? reasoningItem : openAISignature,
+			);
 			break;
 		}
 		case "tool-input-start":
@@ -475,6 +479,10 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 				timeout: runtimeOptions.timeoutMs,
 				maxRetries: runtimeOptions.maxRetries,
 				headers: runtimeOptions.headers,
+				// Aikit owns error normalization and emits one terminal error event.
+				// AI SDK's default callback logs the raw exception (including request
+				// payloads) before that event can reach an SDK or CLI consumer.
+				onError: () => {},
 			});
 
 			const payload = await runtimeOptions.onPayload?.(params, model);
@@ -490,10 +498,10 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			}
 
 			if (runtimeOptions.signal?.aborted || output.stopReason === "aborted") {
-				throw new Error(output.errorMessage || "Request was aborted");
+				throw new Error(output.errorMessage || "request was aborted");
 			}
 			if (output.stopReason === "error") {
-				throw new Error(output.errorMessage || "Provider returned an error stop reason");
+				throw new Error(output.errorMessage || "provider returned an error stop reason");
 			}
 
 			output.time.completed = Date.now();
@@ -507,7 +515,12 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			}
 			output.time.completed = Date.now();
 			output.stopReason = runtimeOptions.signal?.aborted || output.stopReason === "aborted" ? "aborted" : "error";
-			output.errorMessage = formatThrownError(error);
+			if (output.stopReason === "aborted") {
+				output.errorMessage = formatThrownError(error);
+			} else {
+				output.failure = Failure.normalize(error);
+				output.errorMessage = output.failure.message;
+			}
 			stream.push({ type: "error", reason: output.stopReason, error: output });
 			stream.end();
 		}

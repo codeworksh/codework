@@ -1,5 +1,6 @@
 export * as Event from "./event/event.ts";
 export { llm } from "./llm.ts";
+export * as Failure from "./llm/failure.ts";
 export * as Protocol from "./llm/protocol.ts";
 export { ThinkingBudgets } from "./llm/shared.ts";
 export * as Message from "./message/message.ts";
@@ -8,7 +9,7 @@ export { stream } from "./stream.ts";
 export { createAssistantMessageEventStream, EventStream } from "./utils/eventstream.ts";
 export { validateSchema, validateToolArguments, validateToolCall } from "./utils/validation.ts";
 
-export { createOpenAICodex, openAICodexTools, openaiCodex } from "./providers/openai-codex/index.ts";
+export { createOpenAICodex, openaiCodex, openAICodexTools } from "./providers/openai-codex/index.ts";
 export type {
 	OpenAICodexGrammarConstraint,
 	OpenAICodexProvider,

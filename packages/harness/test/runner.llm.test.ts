@@ -61,7 +61,7 @@ describe("runner LLM", () => {
 	);
 
 	it(
-		"maps an async iterator failure to ProviderTurnError",
+		"maps an async iterator failure to a typed ProviderError",
 		Effect.gen(function* () {
 			const { sessionId, publisher } = yield* setup;
 			const request = LLM.make(() =>
@@ -81,7 +81,10 @@ describe("runner LLM", () => {
 				publisher,
 			}).pipe(Effect.flip);
 
-			expect(failure._tag).toBe("Runner.ProviderTurnError");
+			expect(failure._tag).toBe("Runner.ProviderError");
+			if (failure._tag !== "Runner.ProviderError") return yield* Effect.die("unexpected LLM failure type");
+			expect(failure.reason._tag).toBe("Runner.ProviderUnknownError");
+			expect(failure.message).toBe("openai/gpt-4o-mini: iterator failed");
 		}),
 	);
 

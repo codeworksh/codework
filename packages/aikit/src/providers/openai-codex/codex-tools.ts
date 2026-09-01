@@ -1,6 +1,6 @@
 import type { LanguageModelV3CallOptions, LanguageModelV3ToolChoice, SharedV3Warning } from "@ai-sdk/provider";
 import type { TSchema } from "typebox";
-import type * as Message from "../../message/message.ts";
+import * as Message from "../../message/message.ts";
 import type { OpenAICodexCompatibility } from "./codex-language-model.ts";
 
 export type OpenAICodexTool =
@@ -97,15 +97,7 @@ export function resolveOpenAICodexToolConstraint(
 ): OpenAICodexGrammarConstraint | { type: "json_schema"; strict: true } | undefined {
 	const config = tool.constrainedSampling;
 	if (!config) return undefined;
-	if (config.type === "json_schema") {
-		if (compat?.supportsStrictMode ?? true) return { type: "json_schema", strict: true };
-		if (config.strict === "require") {
-			throw new Error(
-				`Tool "${tool.name}" requires JSON-schema constrained sampling, but strict tools are unsupported.`,
-			);
-		}
-		return undefined;
-	}
+	if (config.type === "json_schema") return Message.resolveJsonSchemaConstraint(tool, compat);
 	if (!(compat?.supportsOpenAIGrammarTools ?? false)) return undefined;
 
 	const lark = config.variants.openai_lark;
@@ -126,7 +118,7 @@ export function resolveOpenAICodexToolConstraint(
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Tool "${tool.name}" cannot use grammar constrained sampling: ${message}.`);
+		throw new Error(`tool "${tool.name}" cannot use grammar constrained sampling: ${message}.`);
 	}
 }
 

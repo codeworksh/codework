@@ -1,10 +1,10 @@
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { Model } from "effect/unstable/schema";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
-import { posix as path } from "node:path";
 import { Database } from "../db/db.ts";
 import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql.ts";
 import { Git } from "../git/git.ts";
+import { posix as path } from "../util/posix.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { Sandbox } from "../sandbox/sandbox.ts";

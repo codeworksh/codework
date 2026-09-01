@@ -82,6 +82,22 @@ describe("Sandbox.Controller", () => {
 	);
 
 	it(
+		"resolves default and overridden cwd without mounting or waking",
+		Effect.gen(function* () {
+			const controller = yield* SandboxController.Controller;
+			const attachCalls = fake.state.calls.attach.length;
+			const wakeCalls = fake.state.calls.wake.length;
+			const info = yield* create(controller, "/provider-default");
+
+			expect(yield* controller.resolveCwd(info.id)).toBe("/provider-default");
+			expect(yield* controller.resolveCwd(info.id, "/session/repo")).toBe("/session/repo");
+			expect(yield* controller.resolveCwd(SandboxInstance.ID.local)).toBe(process.cwd());
+			expect(fake.state.calls.attach).toHaveLength(attachCalls);
+			expect(fake.state.calls.wake).toHaveLength(wakeCalls);
+		}),
+	);
+
+	it(
 		"persists a create failure as faulted and returns the sanitized provider error",
 		Effect.gen(function* () {
 			const controller = yield* SandboxController.Controller;

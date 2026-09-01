@@ -11,15 +11,72 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Added
+
+- Added native JSON Schema output support to the OpenAI Codex provider and a live Codex round-trip regression test.
+
+### Changed
+
+- Aligned OpenAI Codex request shaping with the ChatGPT Codex backend: requests always disable storage, include encrypted reasoning content, and derive the prompt cache key from the provider session ID.
+
+### Fixed
+
+- Replaced the OpenAI Codex SSE decoder with a standards-compliant parser, rejected streams that close before a terminal Responses event, and stopped accepting WebSocket-only completion events on the HTTP transport.
+- Distinguished transient Codex rate limits from terminal plan and quota failures while preserving structured error codes, retry timing, and OpenAI request IDs.
+- Restricted persisted OpenAI Codex OAuth credentials to owner-only file permissions and redacted token material from OAuth failure messages.
+
+### Breaking Changes
+
+- Removed the `store`, `include`, and `promptCacheKey` OpenAI Codex language-model options. These backend-required values are now controlled by the provider.
+- Removed the unused agent lifecycle event protocol from the public `Event` namespace: `AgentEventType`, `AgentEventSchema`, `AgentEvent`, and the `tool.execution.start` / `tool.execution.update` / `tool.execution.end` types. LLM stream events (`LLMMessageEvent`) are unchanged.
+
+### Internal
+
+- Reorganized the OpenAI Codex unit tests by provider module and expanded live coverage for empty messages, response IDs, Unicode surrogate handling, incomplete tool-call histories, native grammar tools, and structured output using HTTP/SSE behavior as a reference.
+- Renamed the Codex OAuth suite for clarity and added CLI coverage for credential status, refresh, and logout wiring.
+- Removed unit coverage for the unused agent lifecycle event schemas.
+
+## [@codeworksh/aikit@0.7.2]
+
+### Added
+
+- Added a provider-independent failure taxonomy with safe authentication, configuration, authorization, model availability, rate limit, quota, request, policy, timeout, transport, availability, response, and unknown failure categories.
+- Added structured failure metadata to terminal assistant messages and exported the failure schemas and normalization helpers from `@codeworksh/aikit` and `@codeworksh/aikit/failure`.
+- Added typed model-catalog load errors for missing, unreadable, empty, and invalid generated catalogs.
+
+### Changed
+
+- Changed model-catalog loading to report configuration failures instead of silently treating an unavailable catalog as empty.
+- Standardized normalized provider error messages with lowercase opening prose and no terminal punctuation.
+
+### Fixed
+
+- Preserved safe provider status, code, request ID, retryability, and retry timing metadata without exposing request bodies, response bodies, or headers.
+- Prevented the underlying AI SDK from logging raw provider exceptions before Aikit can return its normalized terminal failure event.
+
+## [@codeworksh/aikit@0.7.1]
+
+### Fixed
+
+- Preserved native OpenAI Responses reasoning metadata across multi-turn requests so reasoning items replay without AI SDK `Non-OpenAI reasoning parts are not supported` warnings.
+- Silently omitted legacy OpenAI reasoning parts whose replay metadata was already lost, matching the provider's existing behavior without emitting unusable-content warnings.
+
+### Internal
+
+- Added real API regression coverage for reasoning metadata persistence and replay with `openai/gpt-5.6-luna`.
+
 ## [@codeworksh/aikit@0.7.0]
 
 ### Added
 
+- Added GPT-5.6 Luna, Sol, and Terra model metadata, reasoning levels, pricing, and OpenAI Codex OAuth support.
 - Exported concrete pending, running, completed, error, skipped, aborted, and terminal tool-call part schemas and their corresponding TypeScript types.
 - Added `skipped` and `aborted` support to the terminal `tool.execution.end` event contract.
 
 ### Changed
 
+- Expanded the OpenAI Codex provider with deferred tools, replay metadata, usage reporting, and grammar-constrained custom tools.
+- Preserved Aikit's existing tool-call event contract while adding the new Codex provider capabilities.
 - Made tool execution lifecycle events self-contained: start, update, and end events now carry `messageId`, `partIndex`, and a complete pending, running, or terminal `toolCall` part.
 
 ### Breaking Changes

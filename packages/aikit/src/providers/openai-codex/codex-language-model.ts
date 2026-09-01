@@ -10,7 +10,11 @@ import type {
 	LanguageModelV3Usage,
 	SharedV3Warning,
 } from "@ai-sdk/provider";
-import { createOpenAICodexAPICallError } from "./codex-error.ts";
+import {
+	createOpenAICodexAPICallError,
+	createOpenAICodexPrematureCloseError,
+	createOpenAICodexStreamError,
+} from "./codex-error.ts";
 import { collectOpenAICodexDeferredToolNames, convertToOpenAICodexPrompt, joinToolCallId } from "./codex-prompt.ts";
 import { parseOpenAICodexSSEStream } from "./codex-sse.ts";
 import {
@@ -83,12 +87,6 @@ export type OpenAICodexLanguageModelOptions = {
 	/** Output text verbosity; defaults to `low`. */
 	textVerbosity?: "low" | "medium" | "high";
 	serviceTier?: OpenAICodexServiceTier;
-	/** Prompt cache key; defaults to the provider `sessionId`. */
-	promptCacheKey?: string;
-	/** `include` fields; defaults to `["reasoning.encrypted_content"]`. */
-	include?: string[];
-	/** @deprecated Codex always requires `store: false`; this value is ignored. */
-	store?: boolean;
 };
 
 export type OpenAICodexLanguageModelConfig = {
@@ -167,7 +165,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			// The ChatGPT Codex backend rejects max_output_tokens with a 400.
 			warnings.push({ type: "unsupported", feature: "maxOutputTokens" });
 		}
-		if (options.responseFormat && options.responseFormat.type !== "text") {
+		if (options.responseFormat?.type === "json" && options.responseFormat.schema === undefined) {
 			warnings.push({ type: "unsupported", feature: "responseFormat" });
 		}
 
@@ -187,6 +185,16 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		});
 		warnings.push(...tools.warnings);
 
+		const text: Record<string, unknown> = { verbosity: codexOptions.textVerbosity ?? "low" };
+		if (options.responseFormat?.type === "json" && options.responseFormat.schema !== undefined) {
+			text.format = {
+				type: "json_schema",
+				strict: true,
+				schema: options.responseFormat.schema,
+				name: options.responseFormat.name ?? "codex_output_schema",
+			};
+		}
+
 		const args: Record<string, unknown> = {
 			model: this.modelId,
 			// The ChatGPT backend rejects stored responses for Codex subscriptions.
@@ -195,14 +203,14 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			input,
 			tool_choice: tools.codexToolChoice ?? "auto",
 			parallel_tool_calls: true,
-			include: codexOptions.include ?? ["reasoning.encrypted_content"],
-			text: { verbosity: codexOptions.textVerbosity ?? "low" },
+			include: ["reasoning.encrypted_content"],
+			text,
 		};
 
 		if (tools.codexTools) args.tools = tools.codexTools;
 		if (options.temperature != null) args.temperature = options.temperature;
 
-		const promptCacheKey = clampOpenAICodexPromptCacheKey(codexOptions.promptCacheKey ?? this.config.sessionId);
+		const promptCacheKey = clampOpenAICodexPromptCacheKey(this.config.sessionId);
 		if (promptCacheKey) args.prompt_cache_key = promptCacheKey;
 
 		const serviceTier = codexOptions.serviceTier ?? this.config.serviceTier;
@@ -330,7 +338,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			throw await createOpenAICodexAPICallError({ response, url, requestBodyValues: body });
 		}
 		if (!response.body) {
-			throw new Error("OpenAI Codex response has no body");
+			throw new Error("openAI codex response has no body");
 		}
 
 		const responseHeaders: Record<string, string> = {};
@@ -340,7 +348,11 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 
 		return {
 			stream: parseOpenAICodexSSEStream(response.body).pipeThrough(
-				this.createTransformStream(warnings, options.includeRawChunks ?? false, grammarToolInputProperties),
+				this.createTransformStream(warnings, options.includeRawChunks ?? false, grammarToolInputProperties, {
+					url,
+					requestBodyValues: body,
+					responseHeaders,
+				}),
 			),
 			request: { body },
 			response: { headers: responseHeaders },
@@ -351,6 +363,11 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		warnings: SharedV3Warning[],
 		includeRawChunks: boolean,
 		grammarToolInputProperties: ReadonlyMap<string, string>,
+		request: {
+			url: string;
+			requestBodyValues: unknown;
+			responseHeaders: Record<string, string>;
+		},
 	): TransformStream<CodexEvent, LanguageModelV3StreamPart> {
 		let finishReason: LanguageModelV3FinishReason = { unified: "other", raw: undefined };
 		let usage: OpenAICodexUsage | undefined;
@@ -376,6 +393,12 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 				finishReason,
 				usage: convertOpenAICodexUsage(usage),
 			});
+		};
+		const fail = (controller: TransformStreamDefaultController<LanguageModelV3StreamPart>, error: unknown): void => {
+			if (finished) return;
+			finished = true;
+			controller.enqueue({ type: "error", error });
+			controller.terminate();
 		};
 
 		const handleOutputItemAdded = (
@@ -563,7 +586,6 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 					}
 
 					case "response.completed":
-					case "response.done":
 					case "response.incomplete": {
 						const response = asRecord(event.response);
 						usage = (response?.usage as OpenAICodexUsage | undefined) ?? usage;
@@ -580,23 +602,20 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 						const response = asRecord(event.response);
 						const error = asRecord(response?.error);
 						finishReason = { unified: "error", raw: "failed" };
-						controller.enqueue({
-							type: "error",
-							error: new Error(asString(error?.message) ?? "OpenAI Codex response failed"),
-						});
+						fail(
+							controller,
+							createOpenAICodexStreamError({
+								error: error ?? { message: "OpenAI Codex response failed" },
+								...request,
+							}),
+						);
 						break;
 					}
 
 					case "error": {
 						const code = asString(event.code);
-						const message = asString(event.message);
 						finishReason = { unified: "error", raw: code ?? "error" };
-						controller.enqueue({
-							type: "error",
-							error: new Error(
-								`OpenAI Codex error${code ? ` ${code}` : ""}: ${message ?? JSON.stringify(event)}`,
-							),
-						});
+						fail(controller, createOpenAICodexStreamError({ error: event, ...request }));
 						break;
 					}
 
@@ -607,7 +626,13 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			},
 
 			flush(controller) {
-				finish(controller);
+				if (!finished) {
+					finished = true;
+					controller.enqueue({
+						type: "error",
+						error: createOpenAICodexPrematureCloseError(request),
+					});
+				}
 			},
 		});
 	}

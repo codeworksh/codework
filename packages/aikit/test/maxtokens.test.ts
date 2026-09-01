@@ -20,6 +20,16 @@ describe("applyDefaultMaxTokens", () => {
 		expect(applyDefaultMaxTokens(model).maxTokens).toBe(32_000);
 	});
 
+	it("caps the default within the context-window tolerance", () => {
+		const model = makeModel({ maxTokens: 198_976, contextWindow: 200_000 });
+		expect(applyDefaultMaxTokens(model).maxTokens).toBe(32_000);
+	});
+
+	it("keeps the default just outside the context-window tolerance", () => {
+		const model = makeModel({ maxTokens: 198_975, contextWindow: 200_000 });
+		expect(applyDefaultMaxTokens(model).maxTokens).toBe(198_975);
+	});
+
 	it("keeps small maxTokens even when it equals the context window", () => {
 		const model = makeModel({ maxTokens: 4096, contextWindow: 4096 });
 		expect(applyDefaultMaxTokens(model).maxTokens).toBe(4096);

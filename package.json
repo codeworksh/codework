@@ -17,7 +17,7 @@
 	],
 	"type": "module",
 	"scripts": {
-		"prepare": "node scripts/clean-tsgo-backups.mjs && effect-tsgo patch --typescript --oxlint --typescript-package @typescript/native",
+		"prepare": "node scripts/clean-tsgo-backups.mjs && effect-tsgo patch --typescript --oxlint",
 		"lint": "vp lint",
 		"check": "vp check",
 		"check:packages": "vp run -r check",
@@ -27,14 +27,17 @@
 		"build": "vp run -r build",
 		"build:packages": "vp run -r build",
 		"bump:aikit": "pnpm --filter @codeworksh/aikit run bump",
+		"bump:harness": "pnpm --filter @codeworksh/harness run bump",
 		"release:aikit": "pnpm --filter @codeworksh/aikit run release",
 		"release:aikit:dev": "pnpm --filter @codeworksh/aikit run release:dev",
-		"release:aikit:dry": "pnpm --filter @codeworksh/aikit run release:dry"
+		"release:aikit:dry": "pnpm --filter @codeworksh/aikit run release:dry",
+		"release:harness": "pnpm --filter @codeworksh/harness run release",
+		"release:harness:dev": "pnpm --filter @codeworksh/harness run release:dev",
+		"release:harness:dry": "pnpm --filter @codeworksh/harness run release:dry"
 	},
 	"devDependencies": {
 		"@effect/tsgo": "catalog:",
 		"@types/node": "catalog:",
-		"@typescript/native": "catalog:",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	},

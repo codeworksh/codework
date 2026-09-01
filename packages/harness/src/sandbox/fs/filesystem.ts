@@ -1,5 +1,5 @@
 import { Context, Effect, Schema } from "effect";
-import { posix } from "node:path";
+import { posix } from "../../util/posix.ts";
 
 /**
  * The runtime filesystem contract, independent of any backend.
@@ -25,8 +25,8 @@ import { posix } from "node:path";
  *
  * **Paths are POSIX, and the harness is Unix-only (for now!).** Every path uses `/`
  * separators on both the host and inside a sandbox — Windows is not supported,
- * so no translation layer exists. Consumers must use `node:path`'s `posix`
- * variant, never the platform default, or a host running the harness would
+ * so no translation layer exists. Consumers must use the shared Effect POSIX
+ * path implementation, never the platform default, or a host running the harness would
  * impose its own flavour on a remote sandbox's paths. Relative paths resolve
  * against the backend's configured `cwd`.
  */

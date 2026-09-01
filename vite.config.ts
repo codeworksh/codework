@@ -13,6 +13,7 @@ const ignoredPaths = [
 	"**/.vercel/**",
 ];
 const aliases = {
+	"@codeworksh/aikit/failure": fileURLToPath(new URL("./packages/aikit/src/llm/failure.ts", import.meta.url)),
 	"@codeworksh/aikit": fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),
 	"@codeworksh/harness": fileURLToPath(new URL("./packages/harness/src/index.ts", import.meta.url)),
 	"@codeworksh/utils": fileURLToPath(new URL("./packages/utils/src/index.ts", import.meta.url)),

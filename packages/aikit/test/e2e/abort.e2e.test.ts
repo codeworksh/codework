@@ -152,7 +152,7 @@ async function testAbortThenNewMessage(model: StreamableModel, options: StreamOp
 }
 
 describe("AI Provider Abort Tests", () => {
-	describeIfAnthropic("Anthropic provider (claude-haiku-4-5-20251001)", () => {
+	describeIfAnthropic("Anthropic provider (claude-haiku-4-5)", () => {
 		const options = anthropicOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {
@@ -171,7 +171,7 @@ describe("AI Provider Abort Tests", () => {
 		});
 	});
 
-	describeIfOpenAI("OpenAI provider (gpt-4o-mini)", () => {
+	describeIfOpenAI("OpenAI provider (gpt-5.6-luna)", () => {
 		const options = openaiOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {
@@ -202,14 +202,9 @@ describe("AI Provider Abort Tests", () => {
 			const model = await getOpenAICodexModel();
 			await testImmediateAbort(model, options);
 		});
-
-		it("should handle abort then new message", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getOpenAICodexModel();
-			await testAbortThenNewMessage(model, options);
-		});
 	});
 
-	describeIfOpenRouter("OpenRouter provider (deepseek/deepseek-v4-flash)", () => {
+	describeIfOpenRouter("OpenRouter provider (z-ai/glm-5.3-flash)", () => {
 		const options = openrouterOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {

@@ -14,8 +14,10 @@ export interface Interface {
 	readonly resume: (sessionId: SessionSchema.ID) => Effect.Effect<void, Runner.RunError>;
 	/** Registers newly recorded work. Repeated wakeups may coalesce. */
 	readonly wake: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
-	/** Interrupt active work owned by this process. Idle interruption is a no-op. */
-	readonly interrupt: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
+	/** Accepts interruption of active work. Idle interruption returns false. */
+	readonly interrupt: (sessionId: SessionSchema.ID) => Effect.Effect<boolean>;
+	/** Waits until this process owns no execution for the session. */
+	readonly awaitIdle: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/runner/execution/Service") {}
@@ -27,7 +29,8 @@ export const noopLayer = Layer.succeed(
 		active: Effect.succeed(new Set()),
 		resume: () => Effect.void,
 		wake: () => Effect.void,
-		interrupt: () => Effect.void,
+		interrupt: () => Effect.succeed(false),
+		awaitIdle: () => Effect.void,
 	}),
 );
 

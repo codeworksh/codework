@@ -1,48 +1,23 @@
-/* oxlint-disable effecttsgo/process-env -- This module resolves process-level Harness directories. */
-import { Context, Effect, Layer } from "effect";
-import fs from "node:fs/promises";
+import { Config, Context, Effect, Layer } from "effect";
 import * as os from "node:os";
-import { join, resolve } from "node:path";
+import { fileSystem } from "./host.ts";
+import { posix } from "./util/posix.ts";
 
 export const configDir = ".codework";
 export const app = "codework";
 
-function homeDir() {
-	const envDir = process.env.CODEWORK_HOME_DIR;
-	if (envDir) {
-		if (envDir === "~") return os.homedir();
-		if (envDir.startsWith("~/")) return join(os.homedir(), envDir.slice(2));
-		return resolve(envDir);
-	}
-	return join(os.homedir(), configDir);
+const defaultHome = posix.join(os.homedir(), configDir);
+
+function expandHome(value: string) {
+	if (value === "~") return os.homedir();
+	if (value.startsWith("~/")) return posix.join(os.homedir(), value.slice(2));
+	return posix.resolve(value);
 }
 
-const home = homeDir();
-
-export const Path = {
-	get home() {
-		return home;
-	},
-	get cache() {
-		return join(home, "cache");
-	},
-	get agent() {
-		return join(home, "agent");
-	},
-	get data() {
-		return join(home, "data");
-	},
-	get log() {
-		return join(home, "log");
-	},
-} as const;
-
-await Promise.all([
-	fs.mkdir(Path.cache, { recursive: true }),
-	fs.mkdir(Path.agent, { recursive: true }),
-	fs.mkdir(Path.data, { recursive: true }),
-	fs.mkdir(Path.log, { recursive: true }),
-]);
+export const homeConfig = Config.string("CODEWORK_HOME_DIR").pipe(
+	Config.withDefault(defaultHome),
+	Config.map(expandHome),
+);
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/global/Service") {}
 
@@ -55,27 +30,37 @@ export interface Interface {
 }
 
 export function make(input: Partial<Interface> = {}): Interface {
+	const home = expandHome(input.home ?? defaultHome);
 	return {
-		home: Path.home,
-		cache: Path.cache,
-		agent: Path.agent,
-		data: Path.data,
-		log: Path.log,
-		...input,
+		home,
+		cache: input.cache ?? posix.join(home, "cache"),
+		agent: input.agent ?? posix.join(home, "agent"),
+		data: input.data ?? posix.join(home, "data"),
+		log: input.log ?? posix.join(home, "log"),
 	};
 }
 
-export const layer = Layer.effect(
-	Service,
-	Effect.sync(() => Service.of(make())),
-);
+export const resolve = Effect.fn("Global.resolve")(function* (input: Partial<Interface> = {}) {
+	const home = input.home === undefined ? yield* homeConfig : expandHome(input.home);
+	return make({ ...input, home });
+});
+
+const build = (input: Partial<Interface>) =>
+	Effect.gen(function* () {
+		const paths = yield* resolve(input);
+		yield* Effect.all([
+			fileSystem.makeDirectory(paths.cache, { recursive: true }),
+			fileSystem.makeDirectory(paths.agent, { recursive: true }),
+			fileSystem.makeDirectory(paths.data, { recursive: true }),
+			fileSystem.makeDirectory(paths.log, { recursive: true }),
+		]).pipe(Effect.orDie);
+		return Service.of(paths);
+	});
+
+export const layer = Layer.effect(Service, build({}));
 
 export const defaultLayer = layer;
 
-export const layerWith = (input: Partial<Interface>) =>
-	Layer.effect(
-		Service,
-		Effect.sync(() => Service.of(make(input))),
-	);
+export const layerWith = (input: Partial<Interface>) => Layer.effect(Service, build(input));
 
 export * as Global from "./global.ts";

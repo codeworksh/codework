@@ -54,6 +54,10 @@ export interface Interface {
 	 * that window recoverable rather than a user message nothing ever answered.
 	 */
 	readonly prompt: (input: PromptInput) => Effect.Effect<Admitted, Session.SessionNotFoundError | PromptConflictError>;
+	/** Records a prompt, wakes execution, and waits until the session is idle. */
+	readonly run: (input: PromptInput) => Effect.Effect<Admitted, Session.SessionNotFoundError | PromptConflictError>;
+	/** Waits until the session is idle without starting work. */
+	readonly wait: (sessionId: SessionSchema.ID) => Effect.Effect<void, Session.SessionNotFoundError>;
 	/** Starts a drain while the session is idle, or joins the one already running. */
 	readonly resume: (
 		sessionId: SessionSchema.ID,
@@ -80,43 +84,55 @@ export const layer = Layer.effect(
 		 * which is idempotent on the id, so a retry converges rather than
 		 * duplicating.
 		 */
+		const admit = Effect.fn("Control.admit")(function* (input: PromptInput) {
+			const session = yield* sessions.get(input.sessionId);
+			if (Option.isNone(session)) {
+				return yield* new Session.SessionNotFoundError({ sessionId: input.sessionId });
+			}
+
+			const messageId = input.id ?? SessionMessageSchema.ID.create();
+			const delivery = input.delivery ?? "steer";
+			const admitted = yield* inputs
+				.admit({ id: messageId, sessionId: input.sessionId, prompt: input.prompt, delivery })
+				.pipe(
+					// The id already left the inbox for the conversation. That is a
+					// conflict the caller can see, not a broken invariant.
+					Effect.catchDefect((defect) =>
+						isLifecycleConflict(defect)
+							? new PromptConflictError({ sessionId: input.sessionId, messageId })
+							: Effect.die(defect),
+					),
+				);
+
+			// A retry that reuses an id but changes the prompt is not the same
+			// request. The stored row wins, and the caller is told.
+			if (!SessionInput.equivalent(admitted, { sessionId: input.sessionId, prompt: input.prompt, delivery })) {
+				return yield* new PromptConflictError({ sessionId: input.sessionId, messageId });
+			}
+
+			return admitted;
+		});
+
 		const prompt = Effect.fn("Control.prompt")((input: PromptInput) =>
-			Effect.uninterruptible(
+			Effect.uninterruptible(admit(input).pipe(Effect.tap((admitted) => execution.wake(admitted.sessionId)))),
+		);
+
+		const run = Effect.fn("Control.run")((input: PromptInput) =>
+			Effect.uninterruptibleMask((restore) =>
 				Effect.gen(function* () {
-					const session = yield* sessions.get(input.sessionId);
-					if (Option.isNone(session)) {
-						return yield* new Session.SessionNotFoundError({ sessionId: input.sessionId });
-					}
-
-					const messageId = input.id ?? SessionMessageSchema.ID.create();
-					const delivery = input.delivery ?? "steer";
-					const admitted = yield* inputs
-						.admit({ id: messageId, sessionId: input.sessionId, prompt: input.prompt, delivery })
-						.pipe(
-							// The id already left the inbox for the conversation. That is a
-							// conflict the caller can see, not a broken invariant.
-							Effect.catchDefect((defect) =>
-								isLifecycleConflict(defect)
-									? new PromptConflictError({ sessionId: input.sessionId, messageId })
-									: Effect.die(defect),
-							),
-						);
-
-					// A retry that reuses an id but changes the prompt is not the same
-					// request. The stored row wins, and the caller is told.
-					if (!SessionInput.equivalent(admitted, { sessionId: input.sessionId, prompt: input.prompt, delivery })) {
-						return yield* new PromptConflictError({ sessionId: input.sessionId, messageId });
-					}
-
-					// A lossy signal over durable truth: the wake carries no payload, and
-					// a drain that misses it loses nothing, because the inbox still holds
-					// the prompt for the next pass. Retries wake too — a crash between
-					// admit and drain is exactly when the second call needs to start one.
+					const admitted = yield* admit(input);
 					yield* execution.wake(admitted.sessionId);
+					yield* restore(execution.awaitIdle(admitted.sessionId));
 					return admitted;
 				}),
 			),
 		);
+
+		const wait = Effect.fn("Control.wait")(function* (sessionId: SessionSchema.ID) {
+			const session = yield* sessions.get(sessionId);
+			if (Option.isNone(session)) return yield* new Session.SessionNotFoundError({ sessionId });
+			yield* execution.awaitIdle(sessionId);
+		});
 
 		const resume = Effect.fn("Control.resume")(function* (sessionId: SessionSchema.ID) {
 			const session = yield* sessions.get(sessionId);
@@ -124,13 +140,13 @@ export const layer = Layer.effect(
 			yield* execution.resume(sessionId);
 		});
 
-		// Uninterruptible because `interrupt` waits for the owner fiber's cleanup:
-		// cancelling the caller partway would abandon a stop it already started.
+		// A Control interrupt preserves the blocking SDK contract even though the
+		// coordinator acknowledges interruption as soon as the owner accepts it.
 		const interrupt = Effect.fn("Control.interrupt")((sessionId: SessionSchema.ID) =>
-			Effect.uninterruptible(execution.interrupt(sessionId)),
+			Effect.uninterruptible(execution.interrupt(sessionId).pipe(Effect.andThen(execution.awaitIdle(sessionId)))),
 		);
 
-		return Service.of({ prompt, resume, interrupt, active: execution.active });
+		return Service.of({ prompt, run, wait, resume, interrupt, active: execution.active });
 	}),
 );
 

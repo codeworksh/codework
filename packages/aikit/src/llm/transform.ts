@@ -88,7 +88,7 @@ function toolResultOutput(toolCall: TerminalToolCall) {
 	if (toolCall.result.isError) {
 		return {
 			type: "error-text" as const,
-			value: text || "Tool returned an error",
+			value: text || "tool returned an error",
 		};
 	}
 
@@ -135,6 +135,43 @@ export function normalizeOpenAICodexToolCallId(
 	return `${normalizedCallId}|${normalizedItemId}`;
 }
 
+type OpenAIReasoningMetadata = {
+	itemId: string;
+	reasoningEncryptedContent?: string | null;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function encodeOpenAIReasoningSignature(providerMetadata: unknown): string | undefined {
+	if (!isRecord(providerMetadata)) return;
+	const metadata = providerMetadata.openai;
+	if (!isRecord(metadata) || typeof metadata.itemId !== "string") return;
+
+	const signature: OpenAIReasoningMetadata = { itemId: metadata.itemId };
+	if (typeof metadata.reasoningEncryptedContent === "string" || metadata.reasoningEncryptedContent === null) {
+		signature.reasoningEncryptedContent = metadata.reasoningEncryptedContent;
+	}
+	return JSON.stringify(signature);
+}
+
+function decodeOpenAIReasoningSignature(signature: string): OpenAIReasoningMetadata | undefined {
+	try {
+		const parsed: unknown = JSON.parse(signature);
+		if (isRecord(parsed) && typeof parsed.itemId === "string") {
+			return {
+				itemId: parsed.itemId,
+				...(typeof parsed.reasoningEncryptedContent === "string" || parsed.reasoningEncryptedContent === null
+					? { reasoningEncryptedContent: parsed.reasoningEncryptedContent }
+					: {}),
+			};
+		}
+	} catch {
+		return;
+	}
+}
+
 function assistantMessages(message: Message.AssistantMessage, model: Model.Info): ModelMessage[] {
 	if (message.stopReason === "error" || message.stopReason === "aborted") return [];
 
@@ -158,8 +195,13 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 			const thinking = sanitizeSurrogates(part.thinking);
 			if (thinking.trim().length === 0 && !part.thinkingSignature) continue;
 			const reasoning: Record<string, unknown> = { type: "reasoning", text: thinking };
-			// Include the provider signature for faithful replay (e.g. Anthropic extended thinking).
-			if (part.thinkingSignature) {
+			// OpenAI Responses only accepts native reasoning items with encoded metadata.
+			if (message.protocol === Model.KnownProviderEnum.openai) {
+				if (!part.thinkingSignature) continue;
+				const openai = decodeOpenAIReasoningSignature(part.thinkingSignature);
+				if (!openai) continue;
+				reasoning.providerOptions = { openai };
+			} else if (part.thinkingSignature) {
 				reasoning.providerOptions =
 					message.protocol === Model.KnownProviderEnum.openaiCodex
 						? { "openai-codex": { reasoningItem: part.thinkingSignature } }
@@ -204,7 +246,7 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 				? toolResultOutput(terminal)
 				: {
 						type: "error-text",
-						value: "No result provided",
+						value: "no result provided",
 					},
 		});
 	}
@@ -243,15 +285,18 @@ export function convertTools(tools?: Message.Tool[], model?: Model.Info): ToolSe
 
 	const result: ToolSet = {};
 	for (const tool of tools) {
-		const constraint =
+		const jsonSchemaConstraint = Message.resolveJsonSchemaConstraint(tool, model?.compat);
+		const grammarConstraint =
 			model?.protocol === Model.KnownProviderEnum.openaiCodex
 				? resolveOpenAICodexToolConstraint(tool, model.compat)
 				: undefined;
 		result[tool.name] = {
 			description: tool.description,
 			inputSchema: jsonSchema(tool.parameters as any),
-			...(constraint?.type === "json_schema" ? { strict: true } : {}),
-			...(constraint?.type === "grammar" ? { providerOptions: { "openai-codex": { grammar: constraint } } } : {}),
+			...(jsonSchemaConstraint ? { strict: true } : {}),
+			...(grammarConstraint?.type === "grammar"
+				? { providerOptions: { "openai-codex": { grammar: grammarConstraint } } }
+				: {}),
 		};
 	}
 	return result;

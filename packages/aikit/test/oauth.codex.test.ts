@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -9,6 +9,7 @@ import {
 	getOpenAICodexAccountId,
 	openAICodexHeaders,
 	parseOpenAICodexAuthorizationInput,
+	refreshOpenAICodexToken,
 	type OpenAICodexAuthStorage,
 	type OpenAICodexOAuthCredentials,
 } from "../src/oauth/openai/codex.ts";
@@ -193,6 +194,15 @@ describe("JsonOpenAICodexAuthStorage", () => {
 		expect(file["openai-codex"]).toEqual(credentials);
 	});
 
+	it("writes credentials with owner-only file permissions", async () => {
+		const storage = new JsonOpenAICodexAuthStorage({ path });
+		await storage.set(makeCredentials());
+
+		if (process.platform !== "win32") {
+			expect((await stat(path)).mode & 0o777).toBe(0o600);
+		}
+	});
+
 	it("reads a flat credentials file", async () => {
 		const credentials = makeCredentials();
 		await writeFile(path, JSON.stringify(credentials));
@@ -321,12 +331,12 @@ describe("OpenAICodexOAuthClient", () => {
 				callbackRequest = nativeFetch(`http://127.0.0.1:1455/auth/callback?code=login-code&state=${state}`);
 			},
 			onPrompt: async () => {
-				throw new Error("The callback should supply the authorization code");
+				throw new Error("the callback should supply the authorization code");
 			},
 		});
 
 		expect(credentials.accountId).toBe("acct_login");
-		if (!callbackRequest) throw new Error("Expected the callback request to start");
+		if (!callbackRequest) throw new Error("expected the callback request to start");
 		expect((await callbackRequest).status).toBe(200);
 		await expect(
 			nativeFetch("http://127.0.0.1:1455/auth/callback", { signal: AbortSignal.timeout(1000) }),
@@ -360,17 +370,52 @@ describe("OpenAICodexOAuthClient", () => {
 		expect(storage.credentials).toEqual(refreshed);
 	});
 
-	it("surfaces refresh failures as errors", async () => {
+	it("redacts refresh tokens from endpoint failures", async () => {
 		const storage = new MemoryStorage();
-		storage.credentials = makeCredentials({ expires: Date.now() - 1000 });
+		const refresh = "refresh-super-secret";
+		storage.credentials = makeCredentials({ refresh, expires: Date.now() - 1000 });
 
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(async () => new Response("invalid_grant", { status: 400 })),
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ error: "invalid_grant", refresh_token: refresh }), { status: 400 }),
+			),
 		);
 
 		const client = new OpenAICodexOAuthClient({ storage });
-		await expect(client.getCredentials()).rejects.toThrow(/token refresh failed \(400\)/);
+		const error = await client.getCredentials().then(
+			() => undefined,
+			(thrown: unknown) => thrown,
+		);
+
+		expect(error).toBeInstanceOf(Error);
+		if (error instanceof Error) {
+			expect(error.message).toContain("token refresh failed (400)");
+			expect(error.message).toContain("[REDACTED]");
+			expect(error.message).not.toContain(refresh);
+		}
+	});
+
+	it("does not include returned tokens in malformed-response errors", async () => {
+		const access = "access-super-secret";
+		const refresh = "refresh-super-secret";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => Response.json({ access_token: access, refresh_token: refresh })),
+		);
+
+		const error = await refreshOpenAICodexToken("stored-refresh-secret").then(
+			() => undefined,
+			(thrown: unknown) => thrown,
+		);
+
+		expect(error).toBeInstanceOf(Error);
+		if (error instanceof Error) {
+			expect(error.message).toContain("missing fields: expires_in");
+			expect(error.message).not.toContain(access);
+			expect(error.message).not.toContain(refresh);
+		}
 	});
 
 	it("builds request headers from refreshed credentials", async () => {

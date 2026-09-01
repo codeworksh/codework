@@ -1,7 +1,7 @@
 import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer, Option, Schema } from "effect";
-import * as fs from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { fileSystem } from "../../host.ts";
+import { posix } from "../../util/posix.ts";
 import { SandboxDriver } from "../driver.ts";
 import { providerError } from "../errors.ts";
 import { SandboxInstance } from "../instance.ts";
@@ -80,7 +80,7 @@ export const make = () => {
 		createConfigCodec: CreateConfig,
 		runtimeConfigCodec: RuntimeConfig,
 		create: ({ instanceId, config }) => {
-			const location = config.location === undefined ? undefined : resolve(config.location);
+			const location = config.location === undefined ? undefined : posix.resolve(config.location);
 			return EnvSqldb.make(location, { cwd: config.initializeCwd ?? config.defaultCwd }).pipe(
 				Effect.mapError((cause) => providerError({ driver: name, operation: "create", cause })),
 				Effect.map((namespace) => {
@@ -99,7 +99,7 @@ export const make = () => {
 			);
 		},
 		runtimeConfigFor: ({ providerResourceId, overrides }) => {
-			if (!isAbsolute(providerResourceId)) {
+			if (!posix.isAbsolute(providerResourceId)) {
 				return Effect.fail(
 					providerError({
 						driver: name,
@@ -108,7 +108,7 @@ export const make = () => {
 					}),
 				);
 			}
-			const location = resolve(providerResourceId);
+			const location = posix.resolve(providerResourceId);
 			return Effect.succeed({
 				defaultCwd: overrides?.defaultCwd ?? SandboxDriver.AbsolutePath.make("/"),
 				location,
@@ -149,10 +149,10 @@ export const make = () => {
 					}),
 				);
 			}
-			return Effect.tryPromise({
-				try: () => fs.access(location),
-				catch: (cause) => providerError({ driver: name, operation: "inspect", cause, notFound: true }),
-			}).pipe(Effect.as({ status: "offline" as const, providerStatus: "closed" }));
+			return fileSystem.access(location).pipe(
+				Effect.mapError((cause) => providerError({ driver: name, operation: "inspect", cause, notFound: true })),
+				Effect.as({ status: "offline" as const, providerStatus: "closed" }),
+			);
 		},
 		wake: (input) =>
 			input.runtimeConfig.inMemory
@@ -184,10 +184,9 @@ export const make = () => {
 							cause: new Error(`sqldb runtime location is missing: ${input.id}`),
 						}),
 					)
-				: Effect.tryPromise({
-						try: () => fs.rm(location, { force: true }),
-						catch: (cause) => providerError({ driver: name, operation: "destroy", cause }),
-					});
+				: fileSystem
+						.remove(location, { force: true })
+						.pipe(Effect.mapError((cause) => providerError({ driver: name, operation: "destroy", cause })));
 		},
 	});
 

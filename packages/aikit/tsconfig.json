@@ -4,5 +4,5 @@
 		"noUnusedLocals": false,
 		"tsBuildInfoFile": "../../.cache/typescript/aikit.tsbuildinfo"
 	},
-	"include": ["src"]
+	"include": ["src", "test"]
 }

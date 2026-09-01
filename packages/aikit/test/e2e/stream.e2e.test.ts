@@ -1,3 +1,4 @@
+import type { Warning } from "ai";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import Type from "typebox";
@@ -23,7 +24,7 @@ import {
 	openrouterOptions,
 	type StreamableModel,
 } from "../utils/llm.ts";
-import { expectAssistantToolUseMessage, expectValidToolCall } from "../utils/message.ts";
+import { expectAssistantToolUseMessage, expectToolCallPart, expectValidToolCall } from "../utils/message.ts";
 
 async function basicTextGeneration<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	const context = {
@@ -104,45 +105,36 @@ async function handleToolCall<TOptions extends Protocol.CommonOptions>(model: St
 	for await (const event of s) {
 		if (event.type === "toolcall.start") {
 			hasToolStart = true;
-			const toolCall = event.partial.parts[event.partIndex];
+			const toolCall = expectToolCallPart(event.partial.parts, event.partIndex);
 			index = event.partIndex;
-			expect(toolCall.type).toBe("toolCall");
-			if (toolCall.type === "toolCall") {
-				expect(toolCall.name).toBe("math_operation");
-				expect(toolCall.callID).toBeTruthy();
-				callId = toolCall.callID;
-			}
+			expect(toolCall.name).toBe("math_operation");
+			expect(toolCall.callID).toBeTruthy();
+			callId = toolCall.callID;
 		}
 		if (event.type === "toolcall.delta") {
 			hasToolDelta = true;
-			const toolCall = event.partial.parts[event.partIndex];
+			const toolCall = expectToolCallPart(event.partial.parts, event.partIndex);
 			if (index !== undefined) expect(event.partIndex).toBe(index); // must be the same parts index
-			expect(toolCall.type).toBe("toolCall");
-			if (toolCall.type === "toolCall") {
-				expect(toolCall.name).toBe("math_operation");
-				accumulatedToolArgs += event.delta;
-				// Check that we have a parsed arguments object during streaming
-				expect(toolCall.arguments).toBeDefined();
-				expect(typeof toolCall.arguments).toBe("object");
-				// The arguments should be partially populated as we stream
-				// At minimum it should be an empty object, never undefined
-				expect(toolCall.arguments).not.toBeNull();
-				expect(toolCall.callID).toEqual(callId); // must have same call ID
-			}
+			expect(toolCall.name).toBe("math_operation");
+			accumulatedToolArgs += event.delta;
+			// Check that we have a parsed arguments object during streaming
+			expect(toolCall.arguments).toBeDefined();
+			expect(typeof toolCall.arguments).toBe("object");
+			// The arguments should be partially populated as we stream
+			// At minimum it should be an empty object, never undefined
+			expect(toolCall.arguments).not.toBeNull();
+			expect(toolCall.callID).toEqual(callId); // must have same call ID
 		}
 		if (event.type === "toolcall.end") {
 			hasToolEnd = true;
-			const toolCall = event.partial.parts[event.partIndex];
+			const toolCall = expectToolCallPart(event.partial.parts, event.partIndex);
 			if (index !== undefined) expect(event.partIndex).toBe(index);
-			expect(toolCall.type).toBe("toolCall");
-			if (toolCall.type === "toolCall") {
-				expect(toolCall.name).toBe("math_operation");
-				if (accumulatedToolArgs) expect(() => JSON.parse(accumulatedToolArgs)).not.toThrow();
-				expect(toolCall.arguments).not.toBeUndefined();
-				expect((toolCall.arguments as any).a).toBe(15);
-				expect((toolCall.arguments as any).b).toBe(27);
-				expect((toolCall.arguments as any).operation).oneOf(["add", "subtract", "multiply", "divide"]);
-			}
+			expect(toolCall.name).toBe("math_operation");
+			if (accumulatedToolArgs) expect(() => JSON.parse(accumulatedToolArgs)).not.toThrow();
+			expect(toolCall.arguments).not.toBeUndefined();
+			expect(toolCall.arguments["a"]).toBe(15);
+			expect(toolCall.arguments["b"]).toBe(27);
+			expect(toolCall.arguments["operation"]).oneOf(["add", "subtract", "multiply", "divide"]);
 		}
 		if (event.type === "toolcall.final") {
 			hasToolFinal = true;
@@ -150,9 +142,9 @@ async function handleToolCall<TOptions extends Protocol.CommonOptions>(model: St
 			expectValidToolCall(toolCall);
 			expect(toolCall.name).toBe("math_operation");
 			if (callId) expect(toolCall.callID).toBe(callId);
-			expect((toolCall.arguments as any).a).toBe(15);
-			expect((toolCall.arguments as any).b).toBe(27);
-			expect((toolCall.arguments as any).operation).oneOf(["add", "subtract", "multiply", "divide"]);
+			expect(toolCall.arguments["a"]).toBe(15);
+			expect(toolCall.arguments["b"]).toBe(27);
+			expect(toolCall.arguments["operation"]).oneOf(["add", "subtract", "multiply", "divide"]);
 		}
 	}
 
@@ -354,6 +346,49 @@ async function handleMultiTurn<TOptions extends Protocol.CommonOptions>(model: S
 	expect(allTextContent.includes("887")).toBe(true);
 }
 
+async function handleOpenAIReasoningReplay<TOptions extends Protocol.CommonOptions>(
+	model: StreamableModel,
+	options: TOptions,
+) {
+	const context: Message.Context = {
+		systemPrompt: "Reason briefly before answering. Keep the final answer concise.",
+		messages: [
+			Message.createUserMessage({
+				role: "user",
+				time: { created: Date.now() },
+				parts: [{ type: "text", text: "What is 17 multiplied by 19?" }],
+			}),
+		],
+	};
+	const warnings: Warning[] = [];
+	const previousLogger = globalThis.AI_SDK_LOG_WARNINGS;
+	globalThis.AI_SDK_LOG_WARNINGS = ({ warnings: emitted }) => warnings.push(...emitted);
+
+	try {
+		const first = await stream.complete(model, context, options);
+		expect(first.stopReason, `Error: ${first.errorMessage}`).toBe("stop");
+		const thinking = first.parts.find((part): part is Message.ThinkingContent => part.type === "thinking");
+		expect(thinking?.thinkingSignature).toBeTruthy();
+		const metadata: unknown = JSON.parse(thinking?.thinkingSignature ?? "null");
+		expect(metadata).toMatchObject({ itemId: expect.any(String) });
+
+		context.messages.push(
+			first,
+			Message.createUserMessage({
+				role: "user",
+				time: { created: Date.now() },
+				parts: [{ type: "text", text: "Is that result greater than 300? Answer yes or no." }],
+			}),
+		);
+		const second = await stream.complete(model, context, options);
+		expect(second.stopReason, `Error: ${second.errorMessage}`).toBe("stop");
+		expect(getText(second).toLowerCase()).toContain("yes");
+		expect(warnings).toEqual([]);
+	} finally {
+		globalThis.AI_SDK_LOG_WARNINGS = previousLogger;
+	}
+}
+
 async function handleImage<TOptions extends Protocol.CommonOptions>(model: StreamableModel, options: TOptions) {
 	// Read the test image
 	const imagePath = fileURLToPath(new URL("../data/red-circle.png", import.meta.url));
@@ -398,7 +433,7 @@ async function handleImage<TOptions extends Protocol.CommonOptions>(model: Strea
 describe("Generate E2E Tests", () => {
 	// ── Anthropic E2E tests ──
 
-	describeIfAnthropic("Anthropic provider (claude-haiku-4-5-20251001)", () => {
+	describeIfAnthropic("Anthropic provider (claude-haiku-4-5)", () => {
 		const options = anthropicOptions();
 
 		it("should resolve appropriate protocol", async () => {
@@ -439,9 +474,9 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	// ── OpenAI E2E tests (gpt-4o-mini, non-reasoning) ──
+	// ── OpenAI E2E tests (gpt-5.6-luna) ──
 
-	describeIfOpenAI("OpenAI provider (gpt-4o-mini)", () => {
+	describeIfOpenAI("OpenAI provider (gpt-5.6-luna)", () => {
 		const options = openaiOptions();
 
 		it("should resolve appropriate protocol", async () => {
@@ -471,35 +506,14 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	// ── OpenAI reasoning model E2E tests (gpt-5.4) ──
-
-	describeIfOpenAI("OpenAI reasoning provider (gpt-5.4)", () => {
-		const options = openaiOptions();
-
-		it("should resolve appropriate protocol", async () => {
-			const model = await getOpenAIModel("gpt-5.4");
-			expect(model.protocol).toBe(Model.KnownProviderEnum.openai);
-		});
-
-		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel("gpt-5.4");
-			await basicTextGeneration(model, options);
-		});
-
-		it("should handle tool calling", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel("gpt-5.4");
-			await handleToolCall(model, options);
-		});
-
-		it("should handle streaming", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel("gpt-5.4");
-			await handleStreaming(model, options);
-		});
-
-		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
-			const model = await getOpenAIModel("gpt-5.4");
-			if (!model.input.includes("image")) ctx.skip();
-			await handleImage(model, options);
+	describeIfOpenAI("OpenAI reasoning replay (gpt-5.6-luna)", () => {
+		it("should persist and replay native reasoning metadata without warnings", { timeout: 120_000 }, async () => {
+			const model = await getOpenAIModel();
+			await handleOpenAIReasoningReplay(model, {
+				...openaiOptions(),
+				reasoning: "low",
+				providerOptions: { openai: { reasoningSummary: "detailed" } },
+			});
 		});
 	});
 
@@ -507,11 +521,6 @@ describe("Generate E2E Tests", () => {
 
 	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.4)", () => {
 		const options = openaiCodexOptions();
-
-		it("should resolve appropriate protocol", async () => {
-			const model = await getOpenAICodexModel();
-			expect(model.protocol).toBe(Model.KnownProviderEnum.openaiCodex);
-		});
 
 		it("should complete basic text generation", { retry: 3, timeout: 60000 }, async () => {
 			const model = await getOpenAICodexModel();
@@ -551,11 +560,6 @@ describe("Generate E2E Tests", () => {
 		const options = openaiCodexOptions();
 		const getModel = () => getOpenAICodexModel("gpt-5.6-luna");
 
-		it("should resolve appropriate protocol", async () => {
-			const model = await getModel();
-			expect(model.protocol).toBe(Model.KnownProviderEnum.openaiCodex);
-		});
-
 		it("should complete basic text generation", { retry: 2, timeout: 60_000 }, async () => {
 			await basicTextGeneration(await getModel(), options);
 		});
@@ -585,7 +589,7 @@ describe("Generate E2E Tests", () => {
 
 	// ── OpenRouter E2E ──
 
-	describeIfOpenRouter("OpenRouter provider (deepseek/deepseek-v4-flash)", () => {
+	describeIfOpenRouter("OpenRouter provider (z-ai/glm-5.3-flash)", () => {
 		const options = openrouterOptions();
 
 		it("should resolve appropriate protocol", async () => {

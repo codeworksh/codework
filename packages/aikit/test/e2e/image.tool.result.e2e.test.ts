@@ -102,7 +102,7 @@ async function handleToolWithImageResult(model: SupportedModel, options: Support
 
 	const toolCall = firstResponse.parts.find((block): block is Message.ToolCall => block.type === "toolCall");
 	expect(toolCall).toBeTruthy();
-	if (!toolCall) throw new Error("Expected tool call");
+	if (!toolCall) throw new Error("expected tool call");
 	expect(toolCall.name).toBe("get_circle");
 
 	context.messages.push(
@@ -155,7 +155,7 @@ async function handleToolWithTextAndImageResult(model: SupportedModel, options: 
 
 	const toolCall = firstResponse.parts.find((block): block is Message.ToolCall => block.type === "toolCall");
 	expect(toolCall).toBeTruthy();
-	if (!toolCall) throw new Error("Expected tool call");
+	if (!toolCall) throw new Error("expected tool call");
 	expect(toolCall.name).toBe("get_circle_with_description");
 
 	context.messages.push(
@@ -183,8 +183,8 @@ async function handleToolWithTextAndImageResult(model: SupportedModel, options: 
 }
 
 describe("Tool Results with Images", () => {
-	describeIfOpenAI("OpenAI provider (gpt-4o-mini)", () => {
-		const options = openaiOptions({ maxTokens: 256, temperature: 0 });
+	describeIfOpenAI("OpenAI provider (gpt-5.6-luna)", () => {
+		const options = openaiOptions({ maxTokens: 256 });
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
 			const model = await getOpenAIModel();
@@ -197,7 +197,7 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describeIfAnthropic("Anthropic provider (claude-haiku-4-5-20251001)", () => {
+	describeIfAnthropic("Anthropic provider (claude-haiku-4-5)", () => {
 		const options = anthropicOptions({ maxTokens: 256, temperature: 0 });
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
@@ -225,16 +225,16 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describeIfOpenRouter("OpenRouter provider (z-ai/glm-4.6v)", () => {
+	describeIfOpenRouter("OpenRouter provider (z-ai/glm-5.3-flash)", () => {
 		const options = openrouterOptions();
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel("z-ai/glm-4.6v");
+			const model = await getOpenRouterModel();
 			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel("z-ai/glm-4.6v");
+			const model = await getOpenRouterModel();
 			await handleToolWithTextAndImageResult(model, options);
 		});
 	});

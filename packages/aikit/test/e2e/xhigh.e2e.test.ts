@@ -57,31 +57,21 @@ async function completeWithXhigh(model: Model.Info, options: AnthropicOptions | 
 }
 
 describe("xhigh reasoning", () => {
-	describeIfOpenAI("openai provider (gpt-4o-mini)", () => {
+	describeIfOpenAI("openai provider (gpt-5.6-luna)", () => {
 		const options = openaiOptions();
 
-		it("should ignore xhigh for a non-reasoning model", { retry: 3, timeout: 30000 }, async () => {
+		it("should clamp unsupported xhigh to high", { retry: 3, timeout: 120000 }, async () => {
 			const model = await getOpenAIModel();
-			expectXhighSupport(model, "off");
-			await completeWithXhigh(model, options);
-		});
-	});
-
-	describeIfOpenAI("openai reasoning provider (o3-mini)", () => {
-		const options = openaiOptions();
-
-		it("should clamp unsupported xhigh to high", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel("o3-mini");
 			expectXhighSupport(model, "high");
 			await completeWithXhigh(model, options);
 		});
 	});
 
-	describeIfAnthropic("anthropic provider (claude-sonnet-4-20250514)", () => {
+	describeIfAnthropic("anthropic provider (claude-haiku-4-5)", () => {
 		const options = anthropicOptions();
 
 		it("should clamp unsupported xhigh to high", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel("claude-sonnet-4-20250514");
+			const model = await getAnthropicModel();
 			expectXhighSupport(model, "high");
 			await completeWithXhigh(model, options);
 		});

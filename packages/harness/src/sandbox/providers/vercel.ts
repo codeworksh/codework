@@ -1,9 +1,7 @@
 /* oxlint-disable effecttsgo/async-function -- Vercel's sandbox SDK boundary is Promise-based. */
-import { type Command, Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
-import type { Stats } from "node:fs";
-import { sanitizeError } from "../errors.ts";
+import { makeRedactor, type Redactor, sanitizeError as sanitizeSandboxError } from "../errors.ts";
 import { SandboxFileSystem } from "../fs/filesystem.ts";
 import { RemoteFileSystem } from "../fs/remote.ts";
 import { SandboxInstance } from "../instance.ts";
@@ -20,6 +18,8 @@ import {
 } from "../shell/shell.ts";
 
 const utf8 = new TextEncoder();
+type Command = import("@vercel/sandbox").Command;
+type RemoteSandbox = import("@vercel/sandbox").Sandbox;
 
 /** Vercel's namespace-intrinsic working directory. */
 export const DEFAULT_CWD = "/vercel/sandbox";
@@ -27,6 +27,32 @@ export const DEFAULT_CWD = "/vercel/sandbox";
 export class VercelError extends Schema.TaggedError<VercelError>()("VercelError", {
 	sanitized: SandboxInstance.PersistedError,
 }) {}
+
+const ApiFailure = Schema.Struct({
+	json: Schema.Struct({
+		error: Schema.Struct({
+			message: Schema.optional(Schema.String),
+			code: Schema.optional(Schema.String),
+		}),
+	}),
+});
+const isApiFailure = Schema.is(ApiFailure);
+
+/** Prefer Vercel's structured API failure while retaining the shared redaction boundary. */
+export const sanitizeProviderError = (
+	cause: unknown,
+	redact: Redactor = makeRedactor(),
+): SandboxInstance.PersistedError => {
+	const fallback = sanitizeSandboxError(cause, redact);
+	if (!isApiFailure(cause)) return fallback;
+	const message = cause.json.error.message?.trim();
+	const code = cause.json.error.code?.trim();
+	return {
+		...fallback,
+		...(message === undefined || message.length === 0 ? {} : { message: redact(message) }),
+		...(code === undefined || code.length === 0 ? {} : { code: redact(code) }),
+	};
+};
 
 /**
  * Vercel API credentials. Either all three are provided together or none are:
@@ -97,7 +123,8 @@ export const credentialsFrom = (options: Options): Credentials | undefined =>
 		? { token: options.token, teamId: options.teamId, projectId: options.projectId }
 		: undefined;
 
-export const createSandbox = (options: Options, creds: Credentials | undefined = credentialsFrom(options)) => {
+export const createSandbox = async (options: Options, creds: Credentials | undefined = credentialsFrom(options)) => {
+	const { Sandbox } = await import("@vercel/sandbox");
 	const withCreds = <T extends object>(params: T) => (creds ? { ...params, ...creds } : params);
 	const source =
 		options.source?.type === "git"
@@ -117,10 +144,8 @@ export const createSandbox = (options: Options, creds: Credentials | undefined =
 		...(options.vcpus === undefined ? {} : { resources: { vcpus: options.vcpus } }),
 	};
 	return options.snapshot !== undefined
-		? RemoteSandbox.create(
-				withCreds({ ...base, source: { type: "snapshot" as const, snapshotId: options.snapshot } }),
-			)
-		: RemoteSandbox.create(
+		? Sandbox.create(withCreds({ ...base, source: { type: "snapshot" as const, snapshotId: options.snapshot } }))
+		: Sandbox.create(
 				withCreds({
 					...base,
 					...(options.runtime === undefined ? {} : { runtime: options.runtime }),
@@ -134,17 +159,24 @@ const remote = (options: Options) =>
 		Remote,
 		Effect.tryPromise({
 			try: async (): Promise<RemoteState> => {
+				const { Sandbox } = await import("@vercel/sandbox");
 				const creds = credentialsFrom(options);
 				const sandbox = options.sandboxName
-					? await RemoteSandbox.get(
-							creds ? { ...creds, name: options.sandboxName } : { name: options.sandboxName },
-						)
+					? await Sandbox.get(creds ? { ...creds, name: options.sandboxName } : { name: options.sandboxName })
 					: await createSandbox(options, creds);
 				return { sandbox };
 			},
-			catch: (cause) => new VercelError({ sanitized: sanitizeError(cause) }),
+			catch: (cause) => new VercelError({ sanitized: sanitizeProviderError(cause) }),
 		}),
 	);
+
+interface Stats {
+	readonly size: number;
+	readonly mtime: Date;
+	readonly isFile: () => boolean;
+	readonly isDirectory: () => boolean;
+	readonly isSymbolicLink: () => boolean;
+}
 
 export const statsFrom = (stats: Stats): RemoteFileSystem.FileStat => {
 	const mtime = stats.mtime;

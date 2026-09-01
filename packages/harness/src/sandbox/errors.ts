@@ -144,12 +144,14 @@ export const providerError = (input: {
 	readonly operation: string;
 	readonly cause: unknown;
 	readonly redact?: Redactor;
+	readonly sanitize?: (cause: unknown, redact: Redactor) => SandboxInstance.PersistedError;
 	readonly notFound?: boolean;
 }): SandboxProviderError => {
+	const redact = input.redact ?? makeRedactor();
 	const error = new SandboxProviderError({
 		driver: input.driver,
 		operation: input.operation,
-		sanitized: sanitizeError(input.cause, input.redact),
+		sanitized: (input.sanitize ?? sanitizeError)(input.cause, redact),
 	});
 	Object.defineProperty(error, rawCause, {
 		configurable: false,

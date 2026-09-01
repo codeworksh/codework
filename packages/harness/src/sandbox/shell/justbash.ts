@@ -3,7 +3,7 @@ import { RealFSProvider, type VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
 import { Bash, type IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
-import { posix } from "node:path";
+import { posix } from "../../util/posix.ts";
 import { Local } from "../fs/vfs.ts";
 import { SandboxIO } from "../io.ts";
 import type { LocalPrimitives } from "../sandbox.ts";

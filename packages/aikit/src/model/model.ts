@@ -7,6 +7,9 @@ export const KnownProviderEnum = ModelCatalog.KnownProviderEnum;
 export const KnownProviderEnumSchema = ModelCatalog.KnownProviderEnumSchema;
 export type KnownProviderEnum = ModelCatalog.KnownProviderEnum;
 
+export const ModelCatalogLoadError = ModelCatalog.ModelCatalogLoadError;
+export type ModelCatalogLoadError = ModelCatalog.ModelCatalogLoadError;
+
 // Common reasoning-effort levels used by adapters that expose model reasoning,
 // thinking, or deliberation controls. Protocol-specific layers can map these
 // values to native fields like OpenAI `reasoning_effort`, Anthropic `thinking`,
@@ -49,6 +52,7 @@ export const ActiveThinkingLevel = Type.Union([
 ]);
 export type ActiveThinkingLevel = Static<typeof ActiveThinkingLevel>;
 
+// Note: order of entries matters!
 const ACTIVE_THINKING_LEVELS = [
 	ThinkingLevelEnum.minimal,
 	ThinkingLevelEnum.low,
@@ -308,10 +312,13 @@ export function clampThinkingLevel<TProtocol extends KnownProviderEnum>(
 	const requestedIndex = MODEL_THINKING_LEVELS.indexOf(level);
 	if (requestedIndex === -1) return availableLevels[0] ?? "off";
 
+	// walk up the ladder from the point and pick first supported
+	// biased to avail more thinking, then less not round to nearest.
 	for (let i = requestedIndex; i < MODEL_THINKING_LEVELS.length; i++) {
 		const candidate = MODEL_THINKING_LEVELS[i]!;
 		if (availableLevels.includes(candidate)) return candidate;
 	}
+	// otherwise walk down from the point
 	for (let i = requestedIndex - 1; i >= 0; i--) {
 		const candidate = MODEL_THINKING_LEVELS[i]!;
 		if (availableLevels.includes(candidate)) return candidate;

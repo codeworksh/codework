@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { DateTimeUtcFromMillis, NonNegativeInt } from "../schema.ts";
+import { DateTimeUtcFromMillis, NonNegativeInt, optional } from "../schema.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import { PromptSchema } from "../session/prompt/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
@@ -38,6 +38,22 @@ export const Prompted = EventSchema.define({
 	schema: PromptFields,
 });
 export type Prompted = typeof Prompted.Type;
+
+export const ConfigChanged = EventSchema.define({
+	type: "session.config.changed",
+	...durableOptions,
+	schema: {
+		...baseOptions,
+		model: optional(
+			Schema.Struct({
+				providerId: Schema.String,
+				modelId: Schema.String,
+			}),
+		),
+		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
+	},
+});
+export type ConfigChanged = typeof ConfigChanged.Type;
 
 const LLMFields = {
 	...baseOptions,
@@ -190,6 +206,7 @@ export type SessionForked = typeof SessionForked.Type;
 export const DurableDefinitions = EventSchema.inventory(
 	PromptAdmitted,
 	Prompted,
+	ConfigChanged,
 	SessionForked,
 	TurnEnded,
 	LLMStarted,

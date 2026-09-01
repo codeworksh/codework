@@ -21,6 +21,9 @@
 		"url": "git+https://github.com/codeworksh/codework.git",
 		"directory": "packages/harness"
 	},
+	"bin": {
+		"codework": "./dist/pack/cli/index.mjs"
+	},
 	"files": [
 		"dist",
 		"src"
@@ -33,15 +36,27 @@
 			"import": "./dist/pack/index.mjs",
 			"default": "./dist/pack/index.mjs"
 		},
+		"./effect": {
+			"types": "./dist/pack/effect.d.mts",
+			"import": "./dist/pack/effect.mjs",
+			"default": "./dist/pack/effect.mjs"
+		},
 		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
 	},
 	"scripts": {
 		"build": "vp pack",
+		"bump": "bumpp",
 		"check": "vp check",
 		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
 		"lint": "vp lint",
+		"release": "node ../../scripts/publish.mjs harness",
+		"release:dev": "node ../../scripts/publish.mjs harness --dev",
+		"release:dry": "node ../../scripts/publish.mjs harness --dry-run",
 		"test": "vp test",
-		"typecheck": "node ../../scripts/tsgo.mjs --noEmit"
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",
@@ -52,15 +67,14 @@
 		"@vercel/sandbox": "^2.9.2",
 		"effect": "4.0.0-beta.107",
 		"just-bash": "^2.14.5",
+		"tslib": "^2.8.1",
 		"typebox": "^1.3.10",
 		"uuid": "^14.0.1",
 		"uuidv7": "^1.2.1"
 	},
 	"devDependencies": {
-		"@types/node": "^25.9.5"
-	},
-	"peerDependencies": {
-		"typescript": "^6"
+		"@types/node": "^25.9.5",
+		"bumpp": "^12.2.0"
 	},
 	"engines": {
 		"node": ">=24.14.1"

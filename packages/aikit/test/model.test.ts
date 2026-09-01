@@ -24,6 +24,42 @@ describe("Model.calculateCost", () => {
 		expect(usage.cost.total).toBe(0);
 	});
 
+	it("keeps decimal precision for large token counts", () => {
+		const model = makeModel({ cost: { input: 0.2, output: 1.2, cacheRead: 0.02, cacheWrite: 0.25 } });
+		const usage = makeUsage({
+			input: 9_876_543_210,
+			output: 1_234_567_890,
+			cacheRead: 2_222_222_222,
+			cacheWrite: 3_333_333_333,
+		});
+
+		Model.calculateCost(model, usage);
+
+		expect(usage.cost.input).toBeCloseTo(1_975.308642, 10);
+		expect(usage.cost.output).toBeCloseTo(1_481.481468, 10);
+		expect(usage.cost.cacheRead).toBeCloseTo(44.44444444, 10);
+		expect(usage.cost.cacheWrite).toBeCloseTo(833.33333325, 10);
+		expect(usage.cost.total).toBeCloseTo(4_334.56788769, 10);
+	});
+
+	it("keeps base rates at the exact tier threshold", () => {
+		const model = makeModel({
+			cost: {
+				input: 1,
+				output: 2,
+				cacheRead: 0.1,
+				cacheWrite: 1.25,
+				tiers: [{ inputTokensAbove: 100, input: 4, output: 6, cacheRead: 0.4, cacheWrite: 5 }],
+			},
+		});
+		const usage = makeUsage({ input: 100, output: 1_000_000 });
+
+		Model.calculateCost(model, usage);
+
+		expect(usage.cost.input).toBeCloseTo(0.0001);
+		expect(usage.cost.output).toBe(2);
+	});
+
 	it("uses the highest matching request-wide input pricing tier", () => {
 		const model = makeModel({
 			cost: {
@@ -61,6 +97,7 @@ describe("Model.normalizeInput", () => {
 		expect(Model.normalizeInput(["text", "text", "image", "image"])).toEqual(["text", "image"]);
 	});
 
+	// FIXME: no fallback to known modalities; keep what's only supported.
 	it("falls back to text when only unknown modalities are given", () => {
 		expect(Model.normalizeInput(["audio"])).toEqual(["text"]);
 	});
@@ -153,6 +190,11 @@ describe("Model.clampThinkingLevel", () => {
 	it("prefers the next higher supported level for disabled levels", () => {
 		const model = makeModel({ reasoning: true, thinkingLevelMap: { medium: null } });
 		expect(Model.clampThinkingLevel(model, "medium")).toBe("high");
+	});
+
+	it("skips consecutive disabled levels while preferring higher levels", () => {
+		const model = makeModel({ reasoning: true, thinkingLevelMap: { low: null, medium: null } });
+		expect(Model.clampThinkingLevel(model, "low")).toBe("high");
 	});
 
 	it("falls back to the next lower supported level when nothing higher exists", () => {

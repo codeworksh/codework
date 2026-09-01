@@ -6,10 +6,13 @@ import {
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
+	describeIfOpenAICodex,
 	describeIfOpenRouter,
 	getAnthropicModel,
+	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
+	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
 	type StreamableModel,
@@ -53,8 +56,15 @@ describe("responseId E2E Tests", () => {
 
 	describeIfAnthropic("Anthropic Provider", () => {
 		it("should expose responseId", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel("claude-sonnet-4-20250514");
+			const model = await getAnthropicModel();
 			await expectResponseId(model, anthropicOptions());
+		});
+	});
+
+	describeIfOpenAICodex("OpenAI Codex Provider", () => {
+		it("should expose responseId", { retry: 3, timeout: 60_000 }, async () => {
+			const model = await getOpenAICodexModel();
+			await expectResponseId(model, openaiCodexOptions());
 		});
 	});
 

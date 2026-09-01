@@ -202,3 +202,22 @@ describe("Control.prompt", () => {
 			expect((yield* sessions.path(sessionId)).map((h) => h.entry.id)).toEqual([first.id]);
 		}));
 });
+
+describe("Control.wait", () => {
+	it("returns immediately for an existing idle session without starting work", () =>
+		Effect.gen(function* () {
+			const { control, sessionId } = yield* setup;
+
+			yield* control.wait(sessionId);
+
+			expect((yield* control.active).has(sessionId)).toBe(false);
+		}));
+
+	it("rejects a session that does not exist", () =>
+		Effect.gen(function* () {
+			const { control } = yield* setup;
+			const failure = yield* control.wait(SessionSchema.ID.make("ses_nope")).pipe(Effect.flip);
+
+			expect(failure._tag).toBe("SessionNotFoundError");
+		}));
+});

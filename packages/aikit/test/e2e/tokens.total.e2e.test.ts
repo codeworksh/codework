@@ -32,12 +32,12 @@ import {
 type Usage = Message.AssistantMessage["usage"];
 type StreamOptionsWithExtras = Protocol.CommonOptions & Record<string, unknown>;
 
-// Generate a long system prompt to trigger caching (>2k bytes for most providers)
+// Claude Haiku 4.5 requires at least 4,096 tokens for prompt caching.
 const LONG_SYSTEM_PROMPT = `You are a helpful assistant. Be concise in your responses.
 
 Here is some additional context that makes this system prompt long enough to trigger caching:
 
-${Array(50)
+${Array(100)
 	.fill(
 		"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.",
 	)
@@ -103,10 +103,10 @@ describe("totalTokens field", () => {
 	// ── Anthropic ---
 	describeIfAnthropic("Anthropic", () => {
 		it(
-			"claude-sonnet-4 - should return totalTokens equal to sum of components",
+			"claude-haiku-4-5 - should return totalTokens equal to sum of components",
 			{ retry: 3, timeout: 60000 },
 			async () => {
-				const model = await getAnthropicModel("claude-sonnet-4-20250514");
+				const model = await getAnthropicModel();
 				const options = anthropicOptions({ cacheRetention: "short" });
 
 				console.log(`\nAnthropic / ${model.id}:`);
@@ -128,7 +128,7 @@ describe("totalTokens field", () => {
 	// --- OpenAI ---
 	describeIfOpenAI("OpenAI", () => {
 		it(
-			"gpt-4o-mini - should return totalTokens equal to sum of components",
+			"gpt-5.6-luna - should return totalTokens equal to sum of components",
 			{ retry: 3, timeout: 60000 },
 			async () => {
 				const model = await getOpenAIModel();
@@ -166,7 +166,7 @@ describe("totalTokens field", () => {
 	// --- OpenRouter ---
 	describeIfOpenRouter("OpenRouter", () => {
 		it(
-			"deepseek/deepseek-v4-flash - should return totalTokens equal to sum of components",
+			"z-ai/glm-5.3-flash - should return totalTokens equal to sum of components",
 			{ retry: 3, timeout: 60000 },
 			async () => {
 				const model = await getOpenRouterModel();

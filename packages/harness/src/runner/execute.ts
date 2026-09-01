@@ -69,9 +69,9 @@ export const layer = Layer.effect(
 				return yield* scopedRun.pipe(
 					Effect.scoped,
 					Effect.tapCause((cause) =>
-						Cause.hasInterruptsOnly(cause)
-							? Effect.void
-							: Effect.logError("failed to drain session", cause).pipe(Effect.annotateLogs({ sessionId })),
+						Cause.hasDies(cause)
+							? Effect.logError("runner defect", cause).pipe(Effect.annotateLogs({ sessionId }))
+							: Effect.void,
 					),
 				);
 			}),
@@ -82,6 +82,7 @@ export const layer = Layer.effect(
 			interrupt: coordinator.interrupt,
 			resume: coordinator.run,
 			wake: coordinator.wake,
+			awaitIdle: coordinator.awaitIdle,
 		});
 	}),
 );

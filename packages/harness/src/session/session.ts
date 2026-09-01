@@ -3,10 +3,10 @@ import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { uuidv7 } from "uuidv7";
 import { Database } from "../db/db.ts";
 import {
-	type EntryType,
-	entryStates,
-	entryTypes,
 	type EntryState,
+	entryStates,
+	type EntryType,
+	entryTypes,
 	type MessageEntryType,
 	messageEntryTypes,
 	type PartType,
@@ -32,8 +32,8 @@ export {
 	SessionEntryRow,
 	SessionRow,
 	toolStatuses,
-	type EntryType,
 	type EntryState,
+	type EntryType,
 	type MessageEntryType,
 	type PartType,
 	type ToolStatus,
@@ -353,6 +353,7 @@ export const layer = Layer.effect(
 			return yield* selectPartsForEntries(ids).pipe(Effect.orDie);
 		});
 
+		// TODO(sanchitrk): auto generate slug not from input
 		const create = Effect.fn("Session.create")(function* (input: CreateSession) {
 			const id = input.id ?? SessionSchema.ID.create();
 			const row = yield* SessionRow.insert

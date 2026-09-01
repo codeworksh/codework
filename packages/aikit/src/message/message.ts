@@ -1,5 +1,6 @@
 import Type, { type Static, type TSchema } from "typebox";
 import { uuidv7 } from "uuidv7";
+import * as Failure from "../llm/failure/schema.ts";
 import * as Model from "../model/model.ts";
 
 export const TextContentSchema = Type.Object({
@@ -19,7 +20,9 @@ export type ImageContent = Static<typeof ImageContentSchema>;
 export const ThinkingContentSchema = Type.Object({
 	type: Type.Literal("thinking"),
 	thinking: Type.String(),
-	thinkingSignature: Type.Optional(Type.String()), // e.g., for OpenAI responses, the reasoning item ID
+	// Provider-native replay data: an Anthropic signature, serialized OpenAI
+	// reasoning metadata, or a serialized OpenAI Codex reasoning item.
+	thinkingSignature: Type.Optional(Type.String()),
 	/** When true, the thinking content was redacted by safety filters. The opaque
 	 *  encrypted payload is stored in `thinkingSignature` so it can be passed back
 	 *  to the API for multi-turn continuity. */
@@ -172,6 +175,12 @@ export const AssistantMessageSchema = Type.Object({
 	usage: UsageSchema,
 	stopReason: StopReasonSchema,
 	errorMessage: Type.Optional(Type.String()),
+	/**
+	 * Structured, provider-independent failure details for a failed request.
+	 * The schema is based on ai-sdk as the underlying provider wire protocol.
+	 * Depends on ai-sdk
+	 */
+	failure: Type.Optional(Failure.FailureSchema),
 	time: Type.Object({
 		created: Type.Number(),
 		completed: Type.Number(),
@@ -259,12 +268,29 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	name: string;
 	description: string;
 	parameters: TParameters;
+	/** How the provider constrains generated tool-call arguments (strict JSON schema or grammar).
+	 * used by convert tool.
+	 * */
 	constrainedSampling?: false | ConstrainedSampling;
 }
 export type ToolArguments<T extends Tool> = Static<T["parameters"]>;
 
 export function defineTool<TParameters extends TSchema>(tool: Tool<TParameters>): Tool<TParameters> {
 	return tool;
+}
+
+export function resolveJsonSchemaConstraint(
+	tool: Tool,
+	compat?: Pick<Model.Compatibility, "supportsStrictMode">,
+): { type: "json_schema"; strict: true } | undefined {
+	const config = tool.constrainedSampling;
+	if (!config || config.type !== "json_schema") return;
+	if (compat?.supportsStrictMode ?? true) return { type: "json_schema", strict: true };
+	if (config.strict === "require") {
+		throw new Error(
+			`tool "${tool.name}" requires JSON-schema constrained sampling, but strict tools are unsupported.`,
+		);
+	}
 }
 
 export const ContextSchema = Type.Object({
@@ -291,7 +317,7 @@ function syntheticSkippedToolCall(toolCall: ToolCallPendingPart | ToolCallRunnin
 		...base,
 		status: ToolStatusEnum.skipped,
 		result: {
-			content: [{ type: "text", text: "No result provided" }],
+			content: [{ type: "text", text: "no result provided" }],
 			isError: true,
 		},
 		time: {

@@ -70,7 +70,7 @@ async function testTokensOnAbort(model: StreamableModel, options: StreamOptionsW
 describe("Token Statistics on Abort", () => {
 	describeIfOpenAI("OpenAI Provider", () => {
 		it(
-			"gpt-4o-mini - should report zero token usage when aborted mid-stream",
+			"gpt-5.6-luna - should report zero token usage when aborted mid-stream",
 			{ retry: 3, timeout: 30000 },
 			async () => {
 				const model = await getOpenAIModel();
@@ -81,10 +81,10 @@ describe("Token Statistics on Abort", () => {
 
 	describeIfAnthropic("Anthropic Provider", () => {
 		it(
-			"claude-sonnet-4-20250514 - should report zero token usage when aborted mid-stream",
+			"claude-haiku-4-5 - should report zero token usage when aborted mid-stream",
 			{ retry: 3, timeout: 30000 },
 			async () => {
-				const model = await getAnthropicModel("claude-sonnet-4-20250514");
+				const model = await getAnthropicModel();
 				await testTokensOnAbort(model, anthropicOptions());
 			},
 		);
@@ -92,7 +92,7 @@ describe("Token Statistics on Abort", () => {
 
 	describeIfOpenRouter("OpenRouter Provider", () => {
 		it(
-			"deepseek/deepseek-v4-flash - should report zero token usage when aborted mid-stream",
+			"z-ai/glm-5.3-flash - should report zero token usage when aborted mid-stream",
 			{ retry: 3, timeout: 30000 },
 			async () => {
 				const model = await getOpenRouterModel();

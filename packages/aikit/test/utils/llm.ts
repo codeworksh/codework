@@ -19,21 +19,25 @@ export const describeIfOpenAI = process.env.OPENAI_API_KEY ? describe : describe
 export const describeIfOpenAICodex = process.env.OPENAI_CODEX_API_KEY ? describe : describe.skip;
 export const describeIfOpenRouter = process.env.OPENROUTER_API_KEY ? describe : describe.skip;
 
-export function anthropicOptions(extras: Partial<AnthropicOptions> = {}): AnthropicOptions {
-	return { apiKey: process.env.ANTHROPIC_API_KEY, ...extras };
+function fromEnvApiKey(value: string | undefined): { apiKey: string } | Record<string, never> {
+	return value === undefined ? {} : { apiKey: value };
 }
 
-export function openaiOptions(extras: Partial<OpenAIOptions> = {}): OpenAIOptions {
-	return { apiKey: process.env.OPENAI_API_KEY, ...extras };
+export function anthropicOptions(extras: AnthropicOptions = {}): AnthropicOptions {
+	return { ...fromEnvApiKey(process.env.ANTHROPIC_API_KEY), ...extras };
 }
 
-export function openaiCodexOptions(extras: Partial<OpenAICodexOptions> = {}): OpenAICodexOptions {
-	return { apiKey: process.env.OPENAI_CODEX_API_KEY, ...extras };
+export function openaiOptions(extras: OpenAIOptions = {}): OpenAIOptions {
+	return { ...fromEnvApiKey(process.env.OPENAI_API_KEY), ...extras };
 }
 
-export function openrouterOptions(extras: Partial<OpenRouterOptions> = {}): OpenRouterOptions {
+export function openaiCodexOptions(extras: OpenAICodexOptions = {}): OpenAICodexOptions {
+	return { ...fromEnvApiKey(process.env.OPENAI_CODEX_API_KEY), ...extras };
+}
+
+export function openrouterOptions(extras: OpenRouterOptions = {}): OpenRouterOptions {
 	return {
-		apiKey: process.env.OPENROUTER_API_KEY,
+		...fromEnvApiKey(process.env.OPENROUTER_API_KEY),
 		headers: {
 			"HTTP-Referer": "https://www.codework.sh",
 			"X-OpenRouter-Title": "CodeWork",
@@ -47,14 +51,14 @@ export function assertProtocol<TProtocol extends Model.KnownProviderEnum>(
 	model: Model.Info | undefined,
 	protocol: TProtocol,
 ): asserts model is Model.TModel<TProtocol> {
-	if (!model) throw new Error("Expected model to be defined");
+	if (!model) throw new Error("expected model to be defined");
 	if (model.protocol !== protocol) {
-		throw new Error(`Expected ${protocol} protocol, received ${model.protocol}`);
+		throw new Error(`expected ${protocol} protocol, received ${model.protocol}`);
 	}
 }
 
 export async function getAnthropicModel(
-	modelId = "claude-haiku-4-5-20251001",
+	modelId = "claude-haiku-4-5",
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.anthropic>> {
 	const model = await llm("anthropic", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.anthropic);
@@ -62,7 +66,7 @@ export async function getAnthropicModel(
 }
 
 export async function getOpenAIModel(
-	modelId = "gpt-4o-mini",
+	modelId = "gpt-5.6-luna",
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.openai>> {
 	const model = await llm("openai", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openai);
@@ -78,7 +82,7 @@ export async function getOpenAICodexModel(
 }
 
 export async function getOpenRouterModel(
-	modelId = "deepseek/deepseek-v4-flash",
+	modelId = "z-ai/glm-5.3-flash",
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.openrouter>> {
 	const model = await llm("openrouter", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openrouter);
