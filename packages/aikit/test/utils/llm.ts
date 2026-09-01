@@ -51,9 +51,9 @@ export function assertProtocol<TProtocol extends Model.KnownProviderEnum>(
 	model: Model.Info | undefined,
 	protocol: TProtocol,
 ): asserts model is Model.TModel<TProtocol> {
-	if (!model) throw new Error("Expected model to be defined");
+	if (!model) throw new Error("expected model to be defined");
 	if (model.protocol !== protocol) {
-		throw new Error(`Expected ${protocol} protocol, received ${model.protocol}`);
+		throw new Error(`expected ${protocol} protocol, received ${model.protocol}`);
 	}
 }
 

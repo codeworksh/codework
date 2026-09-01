@@ -331,12 +331,12 @@ describe("OpenAICodexOAuthClient", () => {
 				callbackRequest = nativeFetch(`http://127.0.0.1:1455/auth/callback?code=login-code&state=${state}`);
 			},
 			onPrompt: async () => {
-				throw new Error("The callback should supply the authorization code");
+				throw new Error("the callback should supply the authorization code");
 			},
 		});
 
 		expect(credentials.accountId).toBe("acct_login");
-		if (!callbackRequest) throw new Error("Expected the callback request to start");
+		if (!callbackRequest) throw new Error("expected the callback request to start");
 		expect((await callbackRequest).status).toBe(200);
 		await expect(
 			nativeFetch("http://127.0.0.1:1455/auth/callback", { signal: AbortSignal.timeout(1000) }),

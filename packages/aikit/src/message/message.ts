@@ -288,7 +288,7 @@ export function resolveJsonSchemaConstraint(
 	if (compat?.supportsStrictMode ?? true) return { type: "json_schema", strict: true };
 	if (config.strict === "require") {
 		throw new Error(
-			`Tool "${tool.name}" requires JSON-schema constrained sampling, but strict tools are unsupported.`,
+			`tool "${tool.name}" requires JSON-schema constrained sampling, but strict tools are unsupported.`,
 		);
 	}
 }

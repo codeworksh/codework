@@ -498,10 +498,10 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			}
 
 			if (runtimeOptions.signal?.aborted || output.stopReason === "aborted") {
-				throw new Error(output.errorMessage || "Request was aborted");
+				throw new Error(output.errorMessage || "request was aborted");
 			}
 			if (output.stopReason === "error") {
-				throw new Error(output.errorMessage || "Provider returned an error stop reason");
+				throw new Error(output.errorMessage || "provider returned an error stop reason");
 			}
 
 			output.time.completed = Date.now();

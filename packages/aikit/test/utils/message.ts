@@ -14,7 +14,7 @@ export function expectValidToolCall(toolCall: Message.ToolCall, expectedStatus?:
 	latestErrors = errors;
 
 	if (!valid) {
-		throw new Error(`Invalid Message.ToolCall shape:\n${formatErrors()}`);
+		throw new Error(`invalid Message.ToolCall shape:\n${formatErrors()}`);
 	}
 
 	expect(toolCall.type).toBe("toolCall");

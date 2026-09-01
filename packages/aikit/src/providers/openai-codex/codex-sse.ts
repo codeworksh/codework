@@ -26,11 +26,11 @@ export function parseOpenAICodexSSEStream(body: ReadableStream<Uint8Array>): Rea
 					try {
 						const parsed: unknown = JSON.parse(data);
 						if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-							throw new TypeError("Codex SSE data must be a JSON object");
+							throw new TypeError("codex SSE data must be a JSON object");
 						}
 						controller.enqueue(parsed as Record<string, unknown>);
 					} catch (cause) {
-						controller.error(new Error(`Invalid OpenAI Codex SSE JSON: ${data.slice(0, 200)}`, { cause }));
+						controller.error(new Error(`invalid OpenAI Codex SSE JSON: ${data.slice(0, 200)}`, { cause }));
 					}
 				},
 			}),

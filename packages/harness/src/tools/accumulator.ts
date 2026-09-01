@@ -67,7 +67,7 @@ export class Accumulator {
 
 	append(data: Buffer): Effect.Effect<void, never, Scope.Scope> {
 		return Effect.suspend(() => {
-			if (this.finished) return Effect.die(new Error("Cannot append to a finished output accumulator"));
+			if (this.finished) return Effect.die(new Error("cannot append to a finished output accumulator"));
 
 			this.totalRawBytes += data.length;
 			this.appendDecodedText(this.decoder.decode(data, { stream: true }));

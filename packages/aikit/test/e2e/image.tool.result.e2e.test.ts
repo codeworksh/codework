@@ -102,7 +102,7 @@ async function handleToolWithImageResult(model: SupportedModel, options: Support
 
 	const toolCall = firstResponse.parts.find((block): block is Message.ToolCall => block.type === "toolCall");
 	expect(toolCall).toBeTruthy();
-	if (!toolCall) throw new Error("Expected tool call");
+	if (!toolCall) throw new Error("expected tool call");
 	expect(toolCall.name).toBe("get_circle");
 
 	context.messages.push(
@@ -155,7 +155,7 @@ async function handleToolWithTextAndImageResult(model: SupportedModel, options: 
 
 	const toolCall = firstResponse.parts.find((block): block is Message.ToolCall => block.type === "toolCall");
 	expect(toolCall).toBeTruthy();
-	if (!toolCall) throw new Error("Expected tool call");
+	if (!toolCall) throw new Error("expected tool call");
 	expect(toolCall.name).toBe("get_circle_with_description");
 
 	context.messages.push(

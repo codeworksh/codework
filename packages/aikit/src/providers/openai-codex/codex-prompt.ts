@@ -190,11 +190,11 @@ function toolResultOutput(
 
 function customToolInput(input: unknown, toolName: string, inputProperty: string): string {
 	if (typeof input !== "object" || input === null || Array.isArray(input)) {
-		throw new Error(`Custom tool "${toolName}" requires object input with string property "${inputProperty}".`);
+		throw new Error(`custom tool "${toolName}" requires object input with string property "${inputProperty}".`);
 	}
 	const value = (input as Record<string, unknown>)[inputProperty];
 	if (typeof value !== "string") {
-		throw new Error(`Custom tool "${toolName}" requires string input property "${inputProperty}".`);
+		throw new Error(`custom tool "${toolName}" requires string input property "${inputProperty}".`);
 	}
 	return value;
 }

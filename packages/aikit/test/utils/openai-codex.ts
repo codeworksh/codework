@@ -38,7 +38,7 @@ export function createOpenAICodexMockFetch(responses: Response | Response[]): {
 		const target = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
 		calls.push({ url: target, init: (init ?? {}) as OpenAICodexFetchCall["init"] });
 		const next = queue.shift();
-		if (!next) throw new Error("Mock fetch queue exhausted");
+		if (!next) throw new Error("mock fetch queue exhausted");
 		return next;
 	}) as typeof globalThis.fetch;
 

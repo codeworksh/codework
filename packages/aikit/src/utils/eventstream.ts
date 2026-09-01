@@ -84,7 +84,7 @@ export class AssistantMessageEventStream extends EventStream<Event.LLMMessageEve
 				} else if (event.type === "error") {
 					return event.error;
 				}
-				throw new Error("Unexpected event type for final result");
+				throw new Error("unexpected event type for final result");
 			},
 		);
 	}

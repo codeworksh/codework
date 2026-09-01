@@ -32,7 +32,7 @@ export class InvalidDurableEventError extends Schema.TaggedError<InvalidDurableE
 // const decodeSerializedEvent = (event: SerializedEvent): Payload => {
 //   const definition = Durable.get(event.type);
 //   if (!definition?.durable) {
-//     throw new Error(`Unknown durable event type ${event.type}`);
+//     throw new Error(`unknown durable event type ${event.type}`);
 //   }
 //   return {
 //     id: event.id,

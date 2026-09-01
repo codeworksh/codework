@@ -130,7 +130,7 @@ function expandHome(path: string): string {
 function homeDirectory(): string {
 	const home = readEnv("HOME") ?? readEnv("USERPROFILE");
 	if (!home) {
-		throw new Error("Unable to resolve home directory for OpenAI Codex auth storage");
+		throw new Error("unable to resolve home directory for OpenAI Codex auth storage");
 	}
 	return home;
 }
@@ -215,7 +215,7 @@ type WebCrypto = typeof globalThis.crypto;
 
 function getCrypto(): WebCrypto {
 	if (!globalThis.crypto?.getRandomValues || !globalThis.crypto.subtle) {
-		throw new Error("OpenAI Codex OAuth requires Web Crypto support");
+		throw new Error("openAI codex OAuth requires web crypto support");
 	}
 	return globalThis.crypto;
 }
@@ -459,7 +459,7 @@ function oauthErrorHtml(message: string, details?: string): string {
 async function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
 	const http = await import("node:http").catch(() => undefined);
 	if (!http) {
-		throw new Error("OpenAI Codex OAuth callback server is only available in Node.js environments");
+		throw new Error("openAI codex OAuth callback server is only available in Node.js environments");
 	}
 
 	let settleWait: ((value: { code: string } | null) => void) | undefined;
@@ -577,7 +577,7 @@ async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promise<OpenA
 				code = result.code;
 			} else if (manualCode) {
 				const parsed = parseOpenAICodexAuthorizationInput(manualCode);
-				if (parsed.state && parsed.state !== flow.state) throw new Error("State mismatch");
+				if (parsed.state && parsed.state !== flow.state) throw new Error("state mismatch");
 				code = parsed.code;
 			}
 
@@ -586,7 +586,7 @@ async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promise<OpenA
 				if (manualError) throw manualError;
 				if (manualCode) {
 					const parsed = parseOpenAICodexAuthorizationInput(manualCode);
-					if (parsed.state && parsed.state !== flow.state) throw new Error("State mismatch");
+					if (parsed.state && parsed.state !== flow.state) throw new Error("state mismatch");
 					code = parsed.code;
 				}
 			}
@@ -600,17 +600,17 @@ async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promise<OpenA
 				message: "Paste the authorization code or full redirect URL:",
 			});
 			const parsed = parseOpenAICodexAuthorizationInput(input);
-			if (parsed.state && parsed.state !== flow.state) throw new Error("State mismatch");
+			if (parsed.state && parsed.state !== flow.state) throw new Error("state mismatch");
 			code = parsed.code;
 		}
 
-		if (!code) throw new Error("Missing authorization code");
+		if (!code) throw new Error("missing authorization code");
 
 		const tokenResult = await exchangeOpenAICodexAuthorizationCode(code, flow.verifier, flow.redirectUri);
 		if (tokenResult.type !== "success") throw new Error(tokenResult.message);
 
 		const accountId = getOpenAICodexAccountId(tokenResult.access);
-		if (!accountId) throw new Error("Failed to extract accountId from token");
+		if (!accountId) throw new Error("failed to extract accountId from token");
 
 		return {
 			access: tokenResult.access,
@@ -631,7 +631,7 @@ export async function refreshOpenAICodexToken(refreshToken: string): Promise<Ope
 
 	const accountId = getOpenAICodexAccountId(result.access);
 	if (!accountId) {
-		throw new Error("Failed to extract accountId from token");
+		throw new Error("failed to extract accountId from token");
 	}
 
 	return {

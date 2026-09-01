@@ -118,7 +118,7 @@ export function resolveOpenAICodexToolConstraint(
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Tool "${tool.name}" cannot use grammar constrained sampling: ${message}.`);
+		throw new Error(`tool "${tool.name}" cannot use grammar constrained sampling: ${message}.`);
 	}
 }
 

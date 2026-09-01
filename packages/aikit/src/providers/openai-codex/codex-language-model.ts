@@ -338,7 +338,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			throw await createOpenAICodexAPICallError({ response, url, requestBodyValues: body });
 		}
 		if (!response.body) {
-			throw new Error("OpenAI Codex response has no body");
+			throw new Error("openAI codex response has no body");
 		}
 
 		const responseHeaders: Record<string, string> = {};

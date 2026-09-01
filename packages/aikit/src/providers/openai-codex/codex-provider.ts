@@ -121,7 +121,7 @@ export function createOpenAICodex(options: OpenAICodexProviderSettings = {}): Op
 
 	const provider = function (modelId: OpenAICodexModelId) {
 		if (new.target) {
-			throw new Error("The OpenAI Codex model function cannot be called with the new keyword.");
+			throw new Error("openAI codex model function cannot be called with the new keyword.");
 		}
 		return createLanguageModel(modelId);
 	};

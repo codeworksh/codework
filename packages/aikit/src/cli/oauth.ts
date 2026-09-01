@@ -187,9 +187,9 @@ export const OAuthCommand: CommandModule<object, AuthArgs> = {
 				describe: "print request headers for Codex API calls",
 			})
 			.check((args) => {
-				if (!args.openaiCodex) throw new Error("Choose an auth provider, for example: auth --openai-codex");
+				if (!args.openaiCodex) throw new Error("choose an auth provider, for example: auth --openai-codex");
 				const actions = [args.status, args.refresh, args.logout].filter(Boolean).length;
-				if (actions > 1) throw new Error("Choose only one of --status, --refresh, or --logout");
+				if (actions > 1) throw new Error("choose only one of --status, --refresh, or --logout");
 				return true;
 			}),
 	handler: async (args) => {

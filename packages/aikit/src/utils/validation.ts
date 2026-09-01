@@ -66,7 +66,7 @@ export function validateToolCall<T extends Message.Tool>(
 ): Message.ToolArguments<T> {
 	const tool = tools.find((t) => t.name === toolExecution.name);
 	if (!tool) {
-		throw new Error(`Tool "${toolExecution.name}" not found`);
+		throw new Error(`tool "${toolExecution.name}" not found`);
 	}
 	return validateToolArguments(tool, toolExecution);
 }
