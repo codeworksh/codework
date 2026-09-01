@@ -1,729 +1,1234 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>aikit — test themes</title>
-<style>
-:root {
-	--bg: #fbfbfa; --panel: #ffffff; --panel-2: #f5f5f3; --border: #e3e2de;
-	--text: #1c1b19; --muted: #6f6d68; --faint: #97948d;
-	--accent: #b8532a; --accent-soft: #fbeee7;
-	--unit: #2f6f4e; --unit-soft: #e6f2eb;
-	--e2e: #7a4bab; --e2e-soft: #f0e9f8;
-	--support: #2a5d8f; --support-soft: #e7eff7;
-	--warn: #9a6a10; --warn-soft: #fcf2dd;
-	--mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-	--sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-}
-@media (prefers-color-scheme: dark) {
-	:root {
-		--bg: #171716; --panel: #1e1e1c; --panel-2: #262624; --border: #34342f;
-		--text: #eceae4; --muted: #9d9a92; --faint: #78756e;
-		--accent: #e2825a; --accent-soft: #2e211a;
-		--unit: #6fbf90; --unit-soft: #1c2b22;
-		--e2e: #b48ee0; --e2e-soft: #251d30;
-		--support: #79aada; --support-soft: #18242e;
-		--warn: #d7a545; --warn-soft: #2c2416;
-	}
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
-body {
-	background: var(--bg); color: var(--text); font-family: var(--sans);
-	font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
-}
-code, .mono { font-family: var(--mono); font-size: 0.86em; }
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>aikit — test themes</title>
+		<style>
+			:root {
+				--bg: #fbfbfa;
+				--panel: #ffffff;
+				--panel-2: #f5f5f3;
+				--border: #e3e2de;
+				--text: #1c1b19;
+				--muted: #6f6d68;
+				--faint: #97948d;
+				--accent: #b8532a;
+				--accent-soft: #fbeee7;
+				--unit: #2f6f4e;
+				--unit-soft: #e6f2eb;
+				--e2e: #7a4bab;
+				--e2e-soft: #f0e9f8;
+				--support: #2a5d8f;
+				--support-soft: #e7eff7;
+				--warn: #9a6a10;
+				--warn-soft: #fcf2dd;
+				--mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+				--sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+			}
+			@media (prefers-color-scheme: dark) {
+				:root {
+					--bg: #171716;
+					--panel: #1e1e1c;
+					--panel-2: #262624;
+					--border: #34342f;
+					--text: #eceae4;
+					--muted: #9d9a92;
+					--faint: #78756e;
+					--accent: #e2825a;
+					--accent-soft: #2e211a;
+					--unit: #6fbf90;
+					--unit-soft: #1c2b22;
+					--e2e: #b48ee0;
+					--e2e-soft: #251d30;
+					--support: #79aada;
+					--support-soft: #18242e;
+					--warn: #d7a545;
+					--warn-soft: #2c2416;
+				}
+			}
+			* {
+				box-sizing: border-box;
+			}
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+			}
+			body {
+				background: var(--bg);
+				color: var(--text);
+				font-family: var(--sans);
+				font-size: 15px;
+				line-height: 1.55;
+				-webkit-font-smoothing: antialiased;
+			}
+			code,
+			.mono {
+				font-family: var(--mono);
+				font-size: 0.86em;
+			}
 
-/* ---------- layout ---------- */
-.shell { display: grid; grid-template-columns: 320px minmax(0, 1fr); min-height: 100vh; }
-.side {
-	border-right: 1px solid var(--border); background: var(--panel-2);
-	position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 20px 16px 40px;
-}
-.main { padding: 32px 40px 96px; max-width: 980px; }
-@media (max-width: 900px) {
-	.shell { grid-template-columns: 1fr; }
-	.side { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
-	.main { padding: 24px 20px 64px; }
-}
+			/* ---------- layout ---------- */
+			.shell {
+				display: grid;
+				grid-template-columns: 320px minmax(0, 1fr);
+				min-height: 100vh;
+			}
+			.side {
+				border-right: 1px solid var(--border);
+				background: var(--panel-2);
+				position: sticky;
+				top: 0;
+				height: 100vh;
+				overflow-y: auto;
+				padding: 20px 16px 40px;
+			}
+			.main {
+				padding: 32px 40px 96px;
+				max-width: 980px;
+			}
+			@media (max-width: 900px) {
+				.shell {
+					grid-template-columns: 1fr;
+				}
+				.side {
+					position: static;
+					height: auto;
+					border-right: 0;
+					border-bottom: 1px solid var(--border);
+				}
+				.main {
+					padding: 24px 20px 64px;
+				}
+			}
 
-/* ---------- sidebar ---------- */
-.brand { font-size: 13px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-.brand strong { color: var(--text); }
-.meta { font-size: 12px; color: var(--faint); margin-top: 4px; font-family: var(--mono); }
-.progress-wrap { margin: 18px 0 14px; }
-.progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-.progress { height: 5px; background: var(--border); border-radius: 99px; overflow: hidden; }
-.progress > span { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.25s ease; }
-.search {
-	width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px;
-	background: var(--panel); color: var(--text); font-family: var(--sans); font-size: 13px; margin-bottom: 14px;
-}
-.search:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.group-title { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); margin: 16px 0 7px; font-weight: 650; }
-.nav-item {
-	display: block; width: 100%; text-align: left; border: 1px solid transparent; background: transparent;
-	color: var(--text); padding: 8px 10px; border-radius: 7px; cursor: pointer; font-family: inherit;
-	font-size: 13.5px; line-height: 1.35; margin-bottom: 2px;
-}
-.nav-item:hover { background: var(--panel); }
-.nav-item.active { background: var(--panel); border-color: var(--border); box-shadow: inset 2px 0 0 var(--accent); }
-.nav-item.done .nav-name { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
-.nav-row { display: flex; align-items: baseline; gap: 7px; }
-.nav-name { font-weight: 520; }
-.nav-sub { font-size: 11.5px; color: var(--faint); font-family: var(--mono); margin-top: 2px; }
+			/* ---------- sidebar ---------- */
+			.brand {
+				font-size: 13px;
+				font-weight: 650;
+				letter-spacing: 0.04em;
+				text-transform: uppercase;
+				color: var(--muted);
+			}
+			.brand strong {
+				color: var(--text);
+			}
+			.meta {
+				font-size: 12px;
+				color: var(--faint);
+				margin-top: 4px;
+				font-family: var(--mono);
+			}
+			.progress-wrap {
+				margin: 18px 0 14px;
+			}
+			.progress-label {
+				display: flex;
+				justify-content: space-between;
+				font-size: 12px;
+				color: var(--muted);
+				margin-bottom: 6px;
+			}
+			.progress {
+				height: 5px;
+				background: var(--border);
+				border-radius: 99px;
+				overflow: hidden;
+			}
+			.progress > span {
+				display: block;
+				height: 100%;
+				background: var(--accent);
+				border-radius: 99px;
+				transition: width 0.25s ease;
+			}
+			.search {
+				width: 100%;
+				padding: 7px 10px;
+				border: 1px solid var(--border);
+				border-radius: 7px;
+				background: var(--panel);
+				color: var(--text);
+				font-family: var(--sans);
+				font-size: 13px;
+				margin-bottom: 14px;
+			}
+			.search:focus {
+				outline: 2px solid var(--accent);
+				outline-offset: -1px;
+			}
+			.group-title {
+				font-size: 11px;
+				letter-spacing: 0.08em;
+				text-transform: uppercase;
+				color: var(--faint);
+				margin: 16px 0 7px;
+				font-weight: 650;
+			}
+			.nav-item {
+				display: block;
+				width: 100%;
+				text-align: left;
+				border: 1px solid transparent;
+				background: transparent;
+				color: var(--text);
+				padding: 8px 10px;
+				border-radius: 7px;
+				cursor: pointer;
+				font-family: inherit;
+				font-size: 13.5px;
+				line-height: 1.35;
+				margin-bottom: 2px;
+			}
+			.nav-item:hover {
+				background: var(--panel);
+			}
+			.nav-item.active {
+				background: var(--panel);
+				border-color: var(--border);
+				box-shadow: inset 2px 0 0 var(--accent);
+			}
+			.nav-item.done .nav-name {
+				color: var(--muted);
+				text-decoration: line-through;
+				text-decoration-color: var(--faint);
+			}
+			.nav-row {
+				display: flex;
+				align-items: baseline;
+				gap: 7px;
+			}
+			.nav-name {
+				font-weight: 520;
+			}
+			.nav-sub {
+				font-size: 11.5px;
+				color: var(--faint);
+				font-family: var(--mono);
+				margin-top: 2px;
+			}
 
-/* ---------- badges ---------- */
-.badge {
-	display: inline-block; font-size: 10.5px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase;
-	padding: 1px 6px; border-radius: 4px; vertical-align: middle; white-space: nowrap;
-}
-.badge.unit { background: var(--unit-soft); color: var(--unit); }
-.badge.e2e { background: var(--e2e-soft); color: var(--e2e); }
-.badge.support { background: var(--support-soft); color: var(--support); }
-.badge.gap { background: var(--warn-soft); color: var(--warn); }
+			/* ---------- badges ---------- */
+			.badge {
+				display: inline-block;
+				font-size: 10.5px;
+				font-weight: 650;
+				letter-spacing: 0.04em;
+				text-transform: uppercase;
+				padding: 1px 6px;
+				border-radius: 4px;
+				vertical-align: middle;
+				white-space: nowrap;
+			}
+			.badge.unit {
+				background: var(--unit-soft);
+				color: var(--unit);
+			}
+			.badge.e2e {
+				background: var(--e2e-soft);
+				color: var(--e2e);
+			}
+			.badge.support {
+				background: var(--support-soft);
+				color: var(--support);
+			}
+			.badge.gap {
+				background: var(--warn-soft);
+				color: var(--warn);
+			}
 
-/* ---------- main ---------- */
-h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
-h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 34px 0 12px; font-weight: 650; }
-h3 { font-size: 15px; margin: 0 0 4px; }
-p { margin: 0 0 12px; }
-.lede { color: var(--muted); font-size: 15px; margin-bottom: 4px; }
-.headline { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
-.actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
-button.btn {
-	font-family: inherit; font-size: 13px; padding: 6px 12px; border-radius: 7px; cursor: pointer;
-	border: 1px solid var(--border); background: var(--panel); color: var(--text);
-}
-button.btn:hover { border-color: var(--accent); color: var(--accent); }
-button.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.btn.primary:hover { opacity: 0.9; color: #fff; }
-.chk { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; user-select: none; }
+			/* ---------- main ---------- */
+			h1 {
+				font-size: 26px;
+				margin: 0 0 6px;
+				letter-spacing: -0.01em;
+			}
+			h2 {
+				font-size: 14px;
+				text-transform: uppercase;
+				letter-spacing: 0.07em;
+				color: var(--muted);
+				margin: 34px 0 12px;
+				font-weight: 650;
+			}
+			h3 {
+				font-size: 15px;
+				margin: 0 0 4px;
+			}
+			p {
+				margin: 0 0 12px;
+			}
+			.lede {
+				color: var(--muted);
+				font-size: 15px;
+				margin-bottom: 4px;
+			}
+			.headline {
+				display: flex;
+				align-items: flex-start;
+				justify-content: space-between;
+				gap: 20px;
+				flex-wrap: wrap;
+			}
+			.actions {
+				display: flex;
+				gap: 8px;
+				align-items: center;
+				flex-shrink: 0;
+			}
+			button.btn {
+				font-family: inherit;
+				font-size: 13px;
+				padding: 6px 12px;
+				border-radius: 7px;
+				cursor: pointer;
+				border: 1px solid var(--border);
+				background: var(--panel);
+				color: var(--text);
+			}
+			button.btn:hover {
+				border-color: var(--accent);
+				color: var(--accent);
+			}
+			button.btn.primary {
+				background: var(--accent);
+				border-color: var(--accent);
+				color: #fff;
+			}
+			button.btn.primary:hover {
+				opacity: 0.9;
+				color: #fff;
+			}
+			.chk {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 13px;
+				color: var(--muted);
+				cursor: pointer;
+				user-select: none;
+			}
 
-.card { border: 1px solid var(--border); background: var(--panel); border-radius: 10px; padding: 16px 18px; margin-bottom: 10px; }
-.card-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-.path { font-family: var(--mono); font-size: 12.5px; color: var(--accent); word-break: break-all; }
-.stats { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin-left: auto; white-space: nowrap; }
-.covers { font-size: 14px; margin: 0 0 10px; }
-.notes { margin: 0; padding-left: 18px; font-size: 13.5px; color: var(--muted); }
-.notes li { margin-bottom: 4px; }
-.notes li::marker { color: var(--faint); }
+			.card {
+				border: 1px solid var(--border);
+				background: var(--panel);
+				border-radius: 10px;
+				padding: 16px 18px;
+				margin-bottom: 10px;
+			}
+			.card-head {
+				display: flex;
+				align-items: baseline;
+				gap: 10px;
+				flex-wrap: wrap;
+				margin-bottom: 8px;
+			}
+			.path {
+				font-family: var(--mono);
+				font-size: 12.5px;
+				color: var(--accent);
+				word-break: break-all;
+			}
+			.stats {
+				font-family: var(--mono);
+				font-size: 11.5px;
+				color: var(--faint);
+				margin-left: auto;
+				white-space: nowrap;
+			}
+			.covers {
+				font-size: 14px;
+				margin: 0 0 10px;
+			}
+			.notes {
+				margin: 0;
+				padding-left: 18px;
+				font-size: 13.5px;
+				color: var(--muted);
+			}
+			.notes li {
+				margin-bottom: 4px;
+			}
+			.notes li::marker {
+				color: var(--faint);
+			}
 
-ul.plain { margin: 0 0 12px; padding-left: 18px; }
-ul.plain li { margin-bottom: 6px; }
-.srclist { display: flex; flex-wrap: wrap; gap: 6px; }
-.srclist span { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); padding: 2px 7px; border-radius: 5px; color: var(--muted); }
+			ul.plain {
+				margin: 0 0 12px;
+				padding-left: 18px;
+			}
+			ul.plain li {
+				margin-bottom: 6px;
+			}
+			.srclist {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 6px;
+			}
+			.srclist span {
+				font-family: var(--mono);
+				font-size: 12px;
+				background: var(--panel-2);
+				border: 1px solid var(--border);
+				padding: 2px 7px;
+				border-radius: 5px;
+				color: var(--muted);
+			}
 
-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); }
-th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); font-weight: 650; }
-td.mono { font-family: var(--mono); font-size: 12px; }
-.yes { color: var(--unit); font-weight: 650; }
-.no { color: var(--warn); font-weight: 650; }
-.scroll { overflow-x: auto; }
+			table {
+				border-collapse: collapse;
+				width: 100%;
+				font-size: 13px;
+			}
+			th,
+			td {
+				text-align: left;
+				padding: 7px 10px;
+				border-bottom: 1px solid var(--border);
+			}
+			th {
+				font-size: 11px;
+				text-transform: uppercase;
+				letter-spacing: 0.06em;
+				color: var(--faint);
+				font-weight: 650;
+			}
+			td.mono {
+				font-family: var(--mono);
+				font-size: 12px;
+			}
+			.yes {
+				color: var(--unit);
+				font-weight: 650;
+			}
+			.no {
+				color: var(--warn);
+				font-weight: 650;
+			}
+			.scroll {
+				overflow-x: auto;
+			}
 
-.callout { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 14px; font-size: 14px; }
-.callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
-.callout p:last-child { margin-bottom: 0; }
-.toast {
-	position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(12px);
-	background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; font-size: 13px;
-	opacity: 0; pointer-events: none; transition: all 0.18s ease;
-}
-.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-.cmd { font-family: var(--mono); font-size: 12.5px; background: var(--panel-2); border: 1px solid var(--border); padding: 8px 12px; border-radius: 7px; display: block; margin-bottom: 8px; }
-</style>
-</head>
-<body>
-<div class="shell">
-	<nav class="side">
-		<div class="brand"><strong>aikit</strong> · test themes</div>
-		<div class="meta" id="meta"></div>
+			.callout {
+				border-left: 3px solid var(--accent);
+				background: var(--accent-soft);
+				padding: 12px 16px;
+				border-radius: 0 8px 8px 0;
+				margin-bottom: 14px;
+				font-size: 14px;
+			}
+			.callout.warn {
+				border-left-color: var(--warn);
+				background: var(--warn-soft);
+			}
+			.callout p:last-child {
+				margin-bottom: 0;
+			}
+			.toast {
+				position: fixed;
+				bottom: 22px;
+				left: 50%;
+				transform: translateX(-50%) translateY(12px);
+				background: var(--text);
+				color: var(--bg);
+				padding: 8px 16px;
+				border-radius: 8px;
+				font-size: 13px;
+				opacity: 0;
+				pointer-events: none;
+				transition: all 0.18s ease;
+			}
+			.toast.show {
+				opacity: 1;
+				transform: translateX(-50%) translateY(0);
+			}
+			.cmd {
+				font-family: var(--mono);
+				font-size: 12.5px;
+				background: var(--panel-2);
+				border: 1px solid var(--border);
+				padding: 8px 12px;
+				border-radius: 7px;
+				display: block;
+				margin-bottom: 8px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="shell">
+			<nav class="side">
+				<div class="brand"><strong>aikit</strong> · test themes</div>
+				<div class="meta" id="meta"></div>
 
-		<div class="progress-wrap">
-			<div class="progress-label"><span>reviewed</span><span id="progress-count"></span></div>
-			<div class="progress"><span id="progress-bar" style="width:0%"></span></div>
+				<div class="progress-wrap">
+					<div class="progress-label"><span>reviewed</span><span id="progress-count"></span></div>
+					<div class="progress"><span id="progress-bar" style="width: 0%"></span></div>
+				</div>
+
+				<input class="search" id="search" type="search" placeholder="filter themes / files…" />
+				<div id="nav"></div>
+			</nav>
+			<main class="main" id="main"></main>
 		</div>
+		<div class="toast" id="toast"></div>
 
-		<input class="search" id="search" type="search" placeholder="filter themes / files…" />
-		<div id="nav"></div>
-	</nav>
-	<main class="main" id="main"></main>
-</div>
-<div class="toast" id="toast"></div>
+		<script>
+			const REPO = "packages/aikit";
+			const SNAPSHOT = { date: "2026-08-28", commit: "f920d9706", branch: "sdk" };
 
-<script>
-const REPO = "packages/aikit";
-const SNAPSHOT = { date: "2026-08-28", commit: "f920d9706", branch: "sdk" };
+			const THEMES = [
+				{
+					id: "transform",
+					name: "Wire transform & message normalization",
+					layer: "unit",
+					goal: "The bidirectional bridge between aikit's internal Message model and the AI SDK wire format — plus the cross-model handoff rules that make a transcript replayable on a different model.",
+					src: ["src/llm/transform.ts (375)", "src/message/message.ts (391)"],
+					files: [
+						{
+							path: "test/transform.test.ts",
+							lines: 585,
+							tests: 31,
+							kind: "unit",
+							covers:
+								"mapFinishReason (table-driven), mapUsage (cached-token subtraction, totals, per-million cost, request multipliers), convertTools (Codex grammar tools, strict JSON schema, fallbacks), convertMessages (user/assistant/tool conversion, reasoning-metadata replay, tool-call ↔ result pairing, image results, surrogate sanitizing).",
+							notes: [
+								"Second-largest file in the suite. Four unrelated functions share one file because they share one source module — consider splitting convertMessages into its own file if it keeps growing.",
+								"5 of the 21 convertMessages cases are Codex replay-metadata specific (message ids, namespaces, deferred tools, encrypted reasoning). Decide whether they belong here or with the Codex provider theme.",
+								"mapUsage asserts cost arithmetic against a hand-built model — check it also exercises the tiered pricing path that model.test.ts covers separately.",
+							],
+						},
+						{
+							path: "test/message.transform.test.ts",
+							lines: 180,
+							tests: 14,
+							kind: "unit",
+							covers:
+								"Message.transformMessages — same-model vs cross-model handoff: keeping/downgrading thinking parts, stripping Google thoughtSignature, synthesizing skipped results for pending/running tool calls, tool-call ID rewriting via callback, input immutability.",
+							notes: [
+								"Tightly focused and well organized; the strongest file in this theme.",
+								"Filename collides conceptually with transform.test.ts — a reader can't tell which is which. Renaming one (e.g. handoff.test.ts) would pay for itself.",
+								"Covers the callback-based ID rewrite but not what happens when the callback returns a duplicate/colliding ID.",
+							],
+						},
+					],
+					improve: [
+						"Resolve the transform.test.ts / message.transform.test.ts naming ambiguity.",
+						"Audit convertMessages coverage against every branch in src/llm/transform.ts — this is the module most likely to silently drop content.",
+						"Consider moving the Codex-specific replay cases next to the Codex provider tests so provider knowledge lives in one place.",
+					],
+				},
+				{
+					id: "model",
+					name: "Model catalog, pricing & capabilities",
+					layer: "unit",
+					goal: "Model metadata as a decision surface: cost math, modality normalization, protocol support, thinking-level clamping, and the generated catalog that feeds it all.",
+					src: [
+						"src/model/model.ts (323)",
+						"src/cli/modelgen.ts",
+						"src/llm/shared.ts",
+						"src/model/catalog.ts (106) — untested",
+					],
+					files: [
+						{
+							path: "test/model.test.ts",
+							lines: 162,
+							tests: 22,
+							kind: "unit",
+							covers:
+								"calculateCost (per-component, free models, tiered request-wide input pricing), normalizeInput (modality defaults/dedupe/unknown), supportsProtocol, modelsAreEqual, getSupportedThinkingLevels, clampThinkingLevel (down to high, up for disabled levels, off for non-reasoning).",
+							notes: [
+								"Best-structured unit file in the repo — one describe per exported function, tight assertions.",
+								"clampThinkingLevel has the subtlest logic (prefer higher, then fall back lower); worth adding a case where the requested level sits between two disabled levels.",
+								"No case pins cost precision (floating-point drift on large token counts).",
+							],
+						},
+						{
+							path: "test/modelgen.test.ts",
+							lines: 79,
+							tests: 5,
+							kind: "unit",
+							covers:
+								"openAICodexBuiltInModels — the public modelgen entry, the explicit Codex model list, GPT-5.6 Codex metadata + reasoning levels, deferred-tool capability flags, pricing tiers.",
+							notes: [
+								"These are snapshot-shaped assertions against a hardcoded model list; they will need editing every time a Codex model ships. Consider whether that churn is worth it, or whether shape-only assertions would do.",
+								"Only the Codex generator is tested — generateModels for other providers is exercised only through the import.",
+								"Sits between this theme and the Codex provider theme; review it in whichever session you do second.",
+							],
+						},
+						{
+							path: "test/shared.test.ts",
+							lines: 39,
+							tests: 6,
+							kind: "unit",
+							covers:
+								"applyDefaultMaxTokens — honoring caller values, defaulting from model maxTokens, capping when maxTokens spans the whole context window, leaving undefined when unspecified, preserving unrelated options.",
+							notes: [
+								"Small and complete for the one function it covers; src/llm/shared.ts may have grown other exports since — check for untested siblings.",
+								"Filename says nothing about what it tests. maxtokens.test.ts would read better.",
+							],
+						},
+					],
+					improve: [
+						"src/model/catalog.ts (106 lines) has no direct test — check whether catalog loading/merging deserves one.",
+						"Decide the policy for modelgen.test.ts: pinned metadata (high churn, high signal) vs shape-only (low churn, low signal).",
+						"Rename shared.test.ts to match its subject.",
+					],
+				},
+				{
+					id: "codex-provider",
+					name: "OpenAI Codex provider",
+					layer: "unit",
+					goal: "The hand-written AI SDK V3 provider for the ChatGPT Codex backend — request shaping, prompt conversion, SSE stream decoding, error mapping, and registry integration.",
+					src: ["src/providers/openai-codex/* (7 modules)", "src/llm/registry.ts"],
+					files: [
+						{
+							path: "test/provider/openai.codex.test.ts",
+							lines: 1353,
+							tests: 57,
+							kind: "unit",
+							covers:
+								"ProviderV3 conformance; auth resolution (env key, async resolver, account id from JWT, explicit accountId); request building (endpoint, headers, defaults, tool + tool-choice mapping, native grammar tools, deferred tools via additional_tools, provider options, cache keys, zstd compression, unsupported-option warnings, custom base URLs); prompt conversion (all message roles, signed reasoning replay, images incl. AI SDK V4 shape, composite tool-call ids, image tool results); doStream (V3 part sequence, SSE cancellation, reasoning summaries, tool calls, incomplete/length mapping, error + response.failed events, raw chunks, usage-limit APICallError); doGenerate aggregation; registry registration.",
+							notes: [
+								"By far the largest file — 1353 lines, 24% of all test code. It is really five files: provider construction, auth, request, prompt, stream.",
+								"Splitting it along the existing top-level describes would let you review each in one sitting and would mirror the src/providers/openai-codex/ module layout.",
+								"Coverage here is genuinely thorough; the risk is maintainability, not gaps.",
+								"Note the shared-fixture setup at the top (~180 lines before the first describe) — a good candidate for extraction into test/utils/.",
+							],
+						},
+						{
+							path: "test/e2e/codex.e2e.test.ts",
+							lines: 77,
+							tests: 1,
+							kind: "e2e",
+							covers:
+								"One live test: streaming a Luna grammar tool through standard aikit tool events against the real Codex backend.",
+							notes: [
+								"Single test; validates that the native custom-tool path survives a real round trip. High value, low cost.",
+								"Only Codex e2e file that is not part of the cross-provider matrix — keep it here rather than in the E2E themes.",
+							],
+						},
+					],
+					improve: [
+						"Split test/provider/openai.codex.test.ts into files mirroring src/providers/openai-codex/ (provider, auth, request, prompt, sse).",
+						"Extract the fixture preamble into a shared helper so the split files don't duplicate it.",
+						"Check codex-usage.ts and codex-error.ts are reached — they are asserted indirectly and would be easy to break silently.",
+					],
+				},
+				{
+					id: "codex-auth",
+					name: "Codex OAuth & credential storage",
+					layer: "unit",
+					goal: "The device-free OAuth flow for ChatGPT Codex: PKCE authorization, JWT account extraction, on-disk credential storage layouts, refresh and expiry skew.",
+					src: ["src/oauth/openai/codex.ts", "src/cli/oauth.ts (198) — untested"],
+					files: [
+						{
+							path: "test/codex.test.ts",
+							lines: 387,
+							tests: 32,
+							kind: "unit",
+							covers:
+								"parseOpenAICodexAuthorizationInput (redirect URL, code#state, raw query, bare code, blank); getOpenAICodexAccountId (JWT claim, missing/empty/malformed); createOpenAICodexAuthorizationFlow (PKCE URL, custom redirect/scope/originator, uniqueness); JsonOpenAICodexAuthStorage (default path, CODEWORK_CREDENTIALS / CODEWORK_HOME_DIR, nested vs flat file layouts, key preservation, scoped clear, custom provider id); openAICodexHeaders; OpenAICodexOAuthClient (fresh credentials, callback server shutdown, refresh within skew, refresh failure, headers from refreshed credentials).",
+							notes: [
+								"Filename is the weakest signal in the suite — codex.test.ts sits next to test/provider/openai.codex.test.ts and test/e2e/codex.e2e.test.ts and tests something different from both. Rename to oauth.codex.test.ts or auth.test.ts.",
+								"Storage round-tripping is covered well, including the legacy flat-file shape.",
+								"Security-adjacent surface: check there is a case asserting credentials are never written world-readable, and that refresh tokens are not logged in error paths.",
+								"'closes the callback server before login resolves' is the kind of test that catches real hangs — keep it.",
+							],
+						},
+					],
+					improve: [
+						"Rename the file so its subject is unambiguous against the two other codex test files.",
+						"src/cli/oauth.ts (198 lines) is untested — decide if the CLI wiring warrants coverage or is acceptable as glue.",
+						"Add file-permission and secret-redaction assertions if they are not already implied.",
+					],
+				},
+				{
+					id: "events",
+					name: "Event stream & runtime plumbing",
+					layer: "unit",
+					goal: "The async delivery primitive that carries agent events to consumers, the event schema itself, and the small runtime helpers every provider path touches.",
+					src: ["src/utils/eventstream.ts", "src/event/event.ts (273)", "src/llm/runtime.ts"],
+					files: [
+						{
+							path: "test/eventstream.test.ts",
+							lines: 127,
+							tests: 10,
+							kind: "unit",
+							covers:
+								"EventStream — queued-before-iteration ordering, delivery to a waiting consumer, auto-end on the completing event, result() resolution, ignoring post-completion pushes, end() releasing a consumer, end(result) without a completing event, draining after end(). AssistantMessageEventStream — result() from done and from error events.",
+							notes: [
+								"Good coverage of the happy paths and the ordering guarantees.",
+								"No test for a consumer that abandons iteration mid-stream (break / early return), or for two concurrent consumers — both are real usage patterns.",
+								"No backpressure or unbounded-queue case.",
+							],
+						},
+						{
+							path: "test/event.tool.execution.test.ts",
+							lines: 47,
+							tests: 2,
+							kind: "unit",
+							covers:
+								"Schema validation for tool.execution.start and tool.execution.end, asserting the complete tool-call part (including thoughtSignature and aborted terminal state) survives Value.Check.",
+							notes: [
+								"src/event/event.ts declares 23 event type literals; this file asserts 2 of them. The largest single coverage gap in the unit suite.",
+								"The pattern is right — a table over every event variant would generalize it cheaply.",
+								"Filename suggests a broader scope than the file delivers; either widen the file to all events or narrow the name.",
+							],
+							flag: "gap",
+						},
+						{
+							path: "test/runtime.test.ts",
+							lines: 77,
+							tests: 13,
+							kind: "unit",
+							covers:
+								"mergeHeaders (precedence, undefined sources, null preservation for unsetting, empty case), getEnvApiKey (nothing configured, provider env list, explicit key name precedence, empty-candidate fallthrough), formatThrownError (Error stack, empty stack, strings, plain objects, unserializable values).",
+							notes: [
+								"Complete for the three functions it covers.",
+								"formatThrownError cases are the ones that matter for user-facing error text — check they match what the CLI actually prints.",
+							],
+						},
+					],
+					improve: [
+						"Turn event.tool.execution.test.ts into a table-driven schema test across all 23 AgentEvent variants.",
+						"Add EventStream cases for early consumer exit and multiple consumers.",
+						"src/llm/stream.ts (534 lines) — the streaming orchestrator these events flow through — has no unit test at all; see the Gaps view.",
+					],
+				},
+				{
+					id: "parsing",
+					name: "Tool argument validation & streaming JSON",
+					layer: "unit",
+					goal: "Making sense of partial, malformed, or wrongly-typed model output: incremental JSON repair during streaming, and schema validation of tool arguments before execution.",
+					src: ["src/utils/jsonparse.ts", "src/utils/validation.ts"],
+					files: [
+						{
+							path: "test/jsonparse.test.ts",
+							lines: 95,
+							tests: 18,
+							kind: "unit",
+							covers:
+								"parseStreamingJson — empty input, complete objects and nesting, valid escapes, partial JSON (missing brace, incomplete string, dangling key, incomplete array, lone brace), string repair (raw newlines/tabs/CR, invalid escapes, valid escapes preserved, repair inside incomplete strings), unparseable garbage and trailing backslash.",
+							notes: [
+								"Excellent structure — four nested describes that map to the four behaviors of the parser.",
+								"Everything returns {} on failure; no case distinguishes 'legitimately empty' from 'failed to parse', which may matter to callers.",
+								"No unicode/surrogate case here, though sanitize.test.ts covers that separately — check the two agree on ordering (sanitize before parse, or after).",
+							],
+						},
+						{
+							path: "test/validation.test.ts",
+							lines: 166,
+							tests: 5,
+							kind: "unit",
+							covers:
+								"validateToolArguments / validateToolCall — a no-Function-constructor environment, TypeBox primitive coercion, rejecting invalid coercions, matching a tool and validating an in-flight call, and validation through the public Message interface.",
+							notes: [
+								"166 lines for 5 tests — heavy schema setup per case. Extracting the schemas would let you add cases cheaply.",
+								"Only 1 test covers the public interface path; the other 4 poke internals.",
+								"No case for a tool call naming a tool that does not exist, or for arguments that are valid JSON but the wrong root type.",
+								"The 'Function constructor unavailable' case is a good edge — note why it exists so it is not deleted as noise.",
+							],
+						},
+					],
+					improve: [
+						"Extract TypeBox schema fixtures out of validation.test.ts and add the missing negative cases (unknown tool, wrong root type, extra properties).",
+						"Decide whether parseStreamingJson should signal failure distinctly from an empty object, and pin that decision with a test.",
+						"Confirm the sanitize → parse → validate ordering is asserted somewhere end to end.",
+					],
+				},
+				{
+					id: "unicode",
+					name: "Unicode & text safety",
+					layer: "mixed",
+					goal: "Surviving lone surrogates and emoji that break provider JSON encoders — the unit rule and its live confirmation against real APIs.",
+					src: ["src/utils/sanitize.ts", "src/llm/transform.ts (call sites)"],
+					files: [
+						{
+							path: "test/sanitize.test.ts",
+							lines: 50,
+							tests: 10,
+							kind: "unit",
+							covers:
+								"sanitizeSurrogates — ASCII untouched, paired surrogates and emoji preserved, BMP + combining sequences preserved, unpaired high/low removal at start/end/middle, consecutive unpaired of the same kind, valid pair kept when preceded by an unpaired high, empty string.",
+							notes: [
+								"Compact and exhaustive for a small pure function. Model file for how a utility test should read.",
+								"No property/fuzz case — a quick round-trip over random code units would catch regressions this table cannot.",
+							],
+						},
+						{
+							path: "test/e2e/unicode.surrogate.e2e.test.ts",
+							lines: 225,
+							tests: 9,
+							kind: "e2e",
+							covers:
+								"Live: emoji in tool results, real-world LinkedIn comment data with emoji, and an unpaired high surrogate (0xD83D) in tool results — across OpenAI, Anthropic, OpenRouter.",
+							notes: [
+								"Codex is not covered here (see the provider matrix) even though Codex has its own SSE/JSON path — the most likely place for a surrogate bug to survive.",
+								"The 'real-world LinkedIn comment data' fixture is inline; moving it to test/data/ would shrink the file and make its provenance clear.",
+								"3 providers × 3 cases is a copy-paste block; a shared matrix helper would cut it to a table.",
+							],
+							flag: "gap",
+						},
+					],
+					improve: [
+						"Add Codex to the surrogate e2e matrix — it is the provider most likely to differ.",
+						"Move the LinkedIn fixture to test/data/ alongside red-circle.png.",
+						"Consider a fuzz case in sanitize.test.ts.",
+					],
+				},
+				{
+					id: "failure",
+					name: "Failure classification & context overflow",
+					layer: "unit",
+					goal: "Turning heterogeneous provider errors into decisions the agent loop can act on: is this auth, rate limiting, quota, or a context window that just overflowed?",
+					src: ["src/llm/failure.ts (186)", "src/llm/failure/schema.ts", "src/utils/overflow.ts"],
+					files: [
+						{
+							path: "test/failure.test.ts",
+							lines: 54,
+							tests: 3,
+							kind: "unit",
+							covers:
+								"Classifying a missing API key as authentication, keeping safe rate-limit metadata while dropping provider payloads, distinguishing quota exhaustion from ordinary rate limiting.",
+							notes: [
+								"Only 3 tests for a 186-line module that the agent loop makes retry decisions from. Thin relative to its blast radius.",
+								"The 'drops provider payloads' case is a privacy guarantee — worth stating that intent in a comment so it is not relaxed later.",
+								"No cases for network/timeout/aborted, 5xx vs 4xx, or malformed provider error bodies.",
+							],
+							flag: "gap",
+						},
+						{
+							path: "test/overflow.test.ts",
+							lines: 99,
+							tests: 9,
+							kind: "unit",
+							covers:
+								"isContextOverflow — a 17-provider table of real overflow error strings (Anthropic, Bedrock, OpenAI, Google, xAI, Groq, OpenRouter, Copilot, llama.cpp, LM Studio, MiniMax, Kimi, generics), empty-body 400/413, not flagging 429 or unrelated errors, requiring stopReason error; silent overflow detected via usage vs context window; getOverflowPatterns returning a defensive copy.",
+							notes: [
+								"The provider string table is the highest-value asset in the suite — it encodes knowledge you cannot re-derive. Keep it growing.",
+								"Each string should carry a date or provider version comment; these drift.",
+								"The usage-based 'silent overflow' path is the clever one and has only 3 cases — worth one more for the boundary (input exactly equal to the window).",
+							],
+						},
+					],
+					improve: [
+						"Expand failure.test.ts to cover the classification branches the retry loop actually switches on.",
+						"Annotate each overflow string with where and when it was observed.",
+						"Add the exactly-at-context-window boundary case.",
+					],
+				},
+				{
+					id: "e2e-core",
+					name: "E2E · core generation matrix",
+					layer: "e2e",
+					goal: "The main live conformance matrix: every provider must resolve its protocol and handle text, tools, streaming, thinking, multi-turn, and images the same way.",
+					src: ["src/stream.ts", "src/llm/stream.ts (534)", "all provider paths"],
+					files: [
+						{
+							path: "test/e2e/stream.e2e.test.ts",
+							lines: 640,
+							tests: 32,
+							kind: "e2e",
+							covers:
+								"Per provider (OpenAI, Anthropic, OpenRouter, Codex): protocol resolution, basic text generation, tool calling, streaming, thinking, multi-turn with thinking + tools, image input. Plus an OpenAI-specific test that native reasoning metadata persists and replays without warnings.",
+							notes: [
+								"The single most valuable file in the suite and the most expensive to run. 4 providers × ~7 cases, mostly copy-pasted blocks with inline retry/timeout literals.",
+								"Timeouts vary per provider (30s / 60s / 120s) with no stated reason — encode that as data rather than magic numbers.",
+								"Not every provider gets every case (thinking and multi-turn are skipped for OpenRouter) — the omissions are invisible in the current shape. A matrix helper would make them explicit.",
+								"Currently modified in your working tree (model ids updated in test/utils/llm.ts).",
+							],
+						},
+					],
+					improve: [
+						"Extract a runProviderMatrix(cases, providers) helper so provider × capability becomes a table, and unsupported combinations are declared rather than omitted.",
+						"Move retry/timeout into per-provider config in test/utils/llm.ts.",
+						"Once the matrix helper exists, most of the E2E edge-case theme collapses into it.",
+					],
+				},
+				{
+					id: "e2e-edge",
+					name: "E2E · provider edge-case conformance",
+					layer: "e2e",
+					goal: "Live tests for the awkward inputs that providers disagree about — abort, empty content, dangling tool calls, image tool results, response ids, unsupported reasoning levels.",
+					src: ["src/stream.ts", "src/llm/transform.ts", "provider paths"],
+					files: [
+						{
+							path: "test/e2e/abort.e2e.test.ts",
+							lines: 230,
+							tests: 12,
+							kind: "e2e",
+							covers: "Abort mid-stream, immediate abort, and abort-then-new-message — across all 4 providers.",
+							notes: [
+								"The only edge file with full 4-provider coverage.",
+								"Abort-then-new-message is the case that catches leaked state; keep it first-class.",
+							],
+						},
+						{
+							path: "test/e2e/empty.e2e.test.ts",
+							lines: 147,
+							tests: 12,
+							kind: "e2e",
+							covers:
+								"Empty content array, empty string content, whitespace-only content, and an empty assistant message mid-conversation. The contract: empty input may be rejected, but only as a structured error, never a thrown exception.",
+							notes: [
+								"Codex missing.",
+								"expectGracefulResponse encodes the real contract and is worth promoting to test/utils/message.ts.",
+							],
+						},
+						{
+							path: "test/e2e/image.tool.result.e2e.test.ts",
+							lines: 241,
+							tests: 8,
+							kind: "e2e",
+							covers:
+								"Tool results carrying only an image, and text + image — across all 4 providers, using test/data/red-circle.png.",
+							notes: [
+								"Full provider coverage.",
+								"The only file that uses the fixture image; the read + base64 preamble could move to fixtures.",
+							],
+						},
+						{
+							path: "test/e2e/response.id.e2e.test.ts",
+							lines: 67,
+							tests: 3,
+							kind: "e2e",
+							covers: "Provider responseId is exposed on the assistant message.",
+							notes: [
+								"Codex missing — and Codex is the provider whose response ids drive reasoning replay, so this omission matters more here than elsewhere.",
+							],
+							flag: "gap",
+						},
+						{
+							path: "test/e2e/toolcall.without.result.e2e.test.ts",
+							lines: 117,
+							tests: 3,
+							kind: "e2e",
+							covers:
+								"A transcript containing a tool call with no matching tool result must still be accepted by the provider.",
+							notes: [
+								"Codex missing.",
+								"Directly mirrors the synthetic-skipped-result logic in message.transform.test.ts — cross-reference them.",
+							],
+						},
+						{
+							path: "test/e2e/xhigh.e2e.test.ts",
+							lines: 90,
+							tests: 3,
+							kind: "e2e",
+							covers:
+								"Clamping an unsupported xhigh reasoning level down to high (OpenAI, Anthropic) and native xhigh support (Codex).",
+							notes: [
+								"OpenRouter missing.",
+								"Live counterpart to clampThinkingLevel in model.test.ts — the pair is the real contract.",
+							],
+						},
+					],
+					improve: [
+						"Close the provider gaps: Codex in empty / response.id / toolcall.without.result; OpenRouter in xhigh.",
+						"Fold these files into the shared provider-matrix helper from the core theme; each becomes a case list rather than a file of nested describes.",
+						"Promote expectGracefulResponse and the image fixture loader into test/utils/.",
+					],
+				},
+				{
+					id: "e2e-tokens",
+					name: "E2E · token accounting",
+					layer: "e2e",
+					goal: "Usage numbers must be trustworthy — they drive cost, context management, and overflow detection. Two live invariants: totals add up, and aborts do not invent usage.",
+					src: ["src/llm/transform.ts (mapUsage)", "src/model/model.ts (calculateCost)"],
+					files: [
+						{
+							path: "test/e2e/tokens.e2e.test.ts",
+							lines: 110,
+							tests: 4,
+							kind: "e2e",
+							covers: "Zero token usage reported when a stream is aborted mid-flight — all 4 providers.",
+							notes: [
+								"Pairs directly with abort.e2e.test.ts; consider whether they should live together.",
+								"'Zero on abort' is a strong claim — confirm it is the intended contract rather than 'whatever the provider sent before the abort'.",
+							],
+						},
+						{
+							path: "test/e2e/tokens.total.e2e.test.ts",
+							lines: 186,
+							tests: 4,
+							kind: "e2e",
+							covers: "totalTokens equals the sum of its components — all 4 providers.",
+							notes: [
+								"186 lines for 4 assertions of the same invariant; the per-provider setup dominates.",
+								"The unit-level equivalent lives in transform.test.ts (mapUsage computes totals when the provider omits them) — this file proves providers agree with that math.",
+							],
+						},
+					],
+					improve: [
+						"Collapse both files into one usage-invariant matrix; the two invariants share all their setup.",
+						"Pin the abort-usage contract explicitly in a comment so a future provider change is a decision, not a surprise.",
+						"Add a cached-token invariant if any provider reports one live.",
+					],
+				},
+				{
+					id: "support",
+					name: "Test harness · fixtures & helpers",
+					layer: "support",
+					goal: "The shared scaffolding every other theme depends on. Improving it is the cheapest way to improve all 26 test files at once.",
+					src: ["consumed by every theme"],
+					files: [
+						{
+							path: "test/utils/fixtures.ts",
+							lines: 92,
+							tests: 0,
+							kind: "support",
+							covers:
+								"makeModel, makeUsage, makeAssistantMessage, makeUserMessage, makePendingToolCall, makeCompletedToolCall.",
+							notes: [
+								"Well-factored and widely used (model, overflow, eventstream, transform, empty e2e, unicode e2e).",
+								"No makeToolResult / makeErrorResult — several files hand-build those inline.",
+								"Overrides are Partial<T> with no deep-merge; nested time/usage overrides silently replace rather than merge.",
+							],
+						},
+						{
+							path: "test/utils/llm.ts",
+							lines: 105,
+							tests: 0,
+							kind: "support",
+							covers:
+								"describeIf<Provider> env gates, per-provider option builders, assertProtocol, get<Provider>Model with default model ids, getText / getGeneratedText.",
+							notes: [
+								"The natural home for the provider-matrix helper the E2E themes need, plus per-provider retry/timeout config.",
+								"Default model ids are hardcoded here and were just updated in your working tree — a single stale id silently skips or fails a whole matrix.",
+								"describeIf* silently skips when a key is absent; there is no summary of what was skipped, so a green run can mean 'nothing ran'.",
+							],
+						},
+						{
+							path: "test/utils/message.ts",
+							lines: 47,
+							tests: 0,
+							kind: "support",
+							covers: "expectValidToolCall (optionally asserting status), expectAssistantToolUseMessage.",
+							notes: ["Used by only 2 e2e files despite several others hand-rolling the same assertions."],
+						},
+						{
+							path: "test/utils/oauth.ts",
+							lines: 38,
+							tests: 0,
+							kind: "support",
+							covers: "resolveOpenAICodexToken — resolving a usable Codex token for live tests.",
+							notes: ["Only consumer is the Codex e2e path; fine as is."],
+						},
+						{
+							path: "test/utils/env.ts",
+							lines: 8,
+							tests: 0,
+							kind: "support",
+							covers: "Environment setup shim.",
+							notes: ["8 lines — check it is still referenced at all."],
+						},
+					],
+					improve: [
+						"Add the provider-matrix runner + per-provider retry/timeout config to test/utils/llm.ts. This is the highest-leverage change in the whole suite.",
+						"Print a one-line skip summary when provider keys are absent, so a green e2e run is honest about what it covered.",
+						"Extend fixtures.ts with tool-result builders and adopt test/utils/message.ts assertions consistently.",
+					],
+				},
+			];
 
-const THEMES = [
-	{
-		id: "transform",
-		name: "Wire transform & message normalization",
-		layer: "unit",
-		goal: "The bidirectional bridge between aikit's internal Message model and the AI SDK wire format — plus the cross-model handoff rules that make a transcript replayable on a different model.",
-		src: ["src/llm/transform.ts (375)", "src/message/message.ts (391)"],
-		files: [
-			{
-				path: "test/transform.test.ts", lines: 585, tests: 31, kind: "unit",
-				covers: "mapFinishReason (table-driven), mapUsage (cached-token subtraction, totals, per-million cost, request multipliers), convertTools (Codex grammar tools, strict JSON schema, fallbacks), convertMessages (user/assistant/tool conversion, reasoning-metadata replay, tool-call ↔ result pairing, image results, surrogate sanitizing).",
-				notes: [
-					"Second-largest file in the suite. Four unrelated functions share one file because they share one source module — consider splitting convertMessages into its own file if it keeps growing.",
-					"5 of the 21 convertMessages cases are Codex replay-metadata specific (message ids, namespaces, deferred tools, encrypted reasoning). Decide whether they belong here or with the Codex provider theme.",
-					"mapUsage asserts cost arithmetic against a hand-built model — check it also exercises the tiered pricing path that model.test.ts covers separately."
-				]
-			},
-			{
-				path: "test/message.transform.test.ts", lines: 180, tests: 14, kind: "unit",
-				covers: "Message.transformMessages — same-model vs cross-model handoff: keeping/downgrading thinking parts, stripping Google thoughtSignature, synthesizing skipped results for pending/running tool calls, tool-call ID rewriting via callback, input immutability.",
-				notes: [
-					"Tightly focused and well organized; the strongest file in this theme.",
-					"Filename collides conceptually with transform.test.ts — a reader can't tell which is which. Renaming one (e.g. handoff.test.ts) would pay for itself.",
-					"Covers the callback-based ID rewrite but not what happens when the callback returns a duplicate/colliding ID."
-				]
-			}
-		],
-		improve: [
-			"Resolve the transform.test.ts / message.transform.test.ts naming ambiguity.",
-			"Audit convertMessages coverage against every branch in src/llm/transform.ts — this is the module most likely to silently drop content.",
-			"Consider moving the Codex-specific replay cases next to the Codex provider tests so provider knowledge lives in one place."
-		]
-	},
-	{
-		id: "model",
-		name: "Model catalog, pricing & capabilities",
-		layer: "unit",
-		goal: "Model metadata as a decision surface: cost math, modality normalization, protocol support, thinking-level clamping, and the generated catalog that feeds it all.",
-		src: ["src/model/model.ts (323)", "src/cli/modelgen.ts", "src/llm/shared.ts", "src/model/catalog.ts (106) — untested"],
-		files: [
-			{
-				path: "test/model.test.ts", lines: 162, tests: 22, kind: "unit",
-				covers: "calculateCost (per-component, free models, tiered request-wide input pricing), normalizeInput (modality defaults/dedupe/unknown), supportsProtocol, modelsAreEqual, getSupportedThinkingLevels, clampThinkingLevel (down to high, up for disabled levels, off for non-reasoning).",
-				notes: [
-					"Best-structured unit file in the repo — one describe per exported function, tight assertions.",
-					"clampThinkingLevel has the subtlest logic (prefer higher, then fall back lower); worth adding a case where the requested level sits between two disabled levels.",
-					"No case pins cost precision (floating-point drift on large token counts)."
-				]
-			},
-			{
-				path: "test/modelgen.test.ts", lines: 79, tests: 5, kind: "unit",
-				covers: "openAICodexBuiltInModels — the public modelgen entry, the explicit Codex model list, GPT-5.6 Codex metadata + reasoning levels, deferred-tool capability flags, pricing tiers.",
-				notes: [
-					"These are snapshot-shaped assertions against a hardcoded model list; they will need editing every time a Codex model ships. Consider whether that churn is worth it, or whether shape-only assertions would do.",
-					"Only the Codex generator is tested — generateModels for other providers is exercised only through the import.",
-					"Sits between this theme and the Codex provider theme; review it in whichever session you do second."
-				]
-			},
-			{
-				path: "test/shared.test.ts", lines: 39, tests: 6, kind: "unit",
-				covers: "applyDefaultMaxTokens — honoring caller values, defaulting from model maxTokens, capping when maxTokens spans the whole context window, leaving undefined when unspecified, preserving unrelated options.",
-				notes: [
-					"Small and complete for the one function it covers; src/llm/shared.ts may have grown other exports since — check for untested siblings.",
-					"Filename says nothing about what it tests. maxtokens.test.ts would read better."
-				]
-			}
-		],
-		improve: [
-			"src/model/catalog.ts (106 lines) has no direct test — check whether catalog loading/merging deserves one.",
-			"Decide the policy for modelgen.test.ts: pinned metadata (high churn, high signal) vs shape-only (low churn, low signal).",
-			"Rename shared.test.ts to match its subject."
-		]
-	},
-	{
-		id: "codex-provider",
-		name: "OpenAI Codex provider",
-		layer: "unit",
-		goal: "The hand-written AI SDK V3 provider for the ChatGPT Codex backend — request shaping, prompt conversion, SSE stream decoding, error mapping, and registry integration.",
-		src: ["src/providers/openai-codex/* (7 modules)", "src/llm/registry.ts"],
-		files: [
-			{
-				path: "test/provider/openai.codex.test.ts", lines: 1353, tests: 57, kind: "unit",
-				covers: "ProviderV3 conformance; auth resolution (env key, async resolver, account id from JWT, explicit accountId); request building (endpoint, headers, defaults, tool + tool-choice mapping, native grammar tools, deferred tools via additional_tools, provider options, cache keys, zstd compression, unsupported-option warnings, custom base URLs); prompt conversion (all message roles, signed reasoning replay, images incl. AI SDK V4 shape, composite tool-call ids, image tool results); doStream (V3 part sequence, SSE cancellation, reasoning summaries, tool calls, incomplete/length mapping, error + response.failed events, raw chunks, usage-limit APICallError); doGenerate aggregation; registry registration.",
-				notes: [
-					"By far the largest file — 1353 lines, 24% of all test code. It is really five files: provider construction, auth, request, prompt, stream.",
-					"Splitting it along the existing top-level describes would let you review each in one sitting and would mirror the src/providers/openai-codex/ module layout.",
-					"Coverage here is genuinely thorough; the risk is maintainability, not gaps.",
-					"Note the shared-fixture setup at the top (~180 lines before the first describe) — a good candidate for extraction into test/utils/."
-				]
-			},
-			{
-				path: "test/e2e/codex.e2e.test.ts", lines: 77, tests: 1, kind: "e2e",
-				covers: "One live test: streaming a Luna grammar tool through standard aikit tool events against the real Codex backend.",
-				notes: [
-					"Single test; validates that the native custom-tool path survives a real round trip. High value, low cost.",
-					"Only Codex e2e file that is not part of the cross-provider matrix — keep it here rather than in the E2E themes."
-				]
-			}
-		],
-		improve: [
-			"Split test/provider/openai.codex.test.ts into files mirroring src/providers/openai-codex/ (provider, auth, request, prompt, sse).",
-			"Extract the fixture preamble into a shared helper so the split files don't duplicate it.",
-			"Check codex-usage.ts and codex-error.ts are reached — they are asserted indirectly and would be easy to break silently."
-		]
-	},
-	{
-		id: "codex-auth",
-		name: "Codex OAuth & credential storage",
-		layer: "unit",
-		goal: "The device-free OAuth flow for ChatGPT Codex: PKCE authorization, JWT account extraction, on-disk credential storage layouts, refresh and expiry skew.",
-		src: ["src/oauth/openai/codex.ts", "src/cli/oauth.ts (198) — untested"],
-		files: [
-			{
-				path: "test/codex.test.ts", lines: 387, tests: 32, kind: "unit",
-				covers: "parseOpenAICodexAuthorizationInput (redirect URL, code#state, raw query, bare code, blank); getOpenAICodexAccountId (JWT claim, missing/empty/malformed); createOpenAICodexAuthorizationFlow (PKCE URL, custom redirect/scope/originator, uniqueness); JsonOpenAICodexAuthStorage (default path, CODEWORK_CREDENTIALS / CODEWORK_HOME_DIR, nested vs flat file layouts, key preservation, scoped clear, custom provider id); openAICodexHeaders; OpenAICodexOAuthClient (fresh credentials, callback server shutdown, refresh within skew, refresh failure, headers from refreshed credentials).",
-				notes: [
-					"Filename is the weakest signal in the suite — codex.test.ts sits next to test/provider/openai.codex.test.ts and test/e2e/codex.e2e.test.ts and tests something different from both. Rename to oauth.codex.test.ts or auth.test.ts.",
-					"Storage round-tripping is covered well, including the legacy flat-file shape.",
-					"Security-adjacent surface: check there is a case asserting credentials are never written world-readable, and that refresh tokens are not logged in error paths.",
-					"'closes the callback server before login resolves' is the kind of test that catches real hangs — keep it."
-				]
-			}
-		],
-		improve: [
-			"Rename the file so its subject is unambiguous against the two other codex test files.",
-			"src/cli/oauth.ts (198 lines) is untested — decide if the CLI wiring warrants coverage or is acceptable as glue.",
-			"Add file-permission and secret-redaction assertions if they are not already implied."
-		]
-	},
-	{
-		id: "events",
-		name: "Event stream & runtime plumbing",
-		layer: "unit",
-		goal: "The async delivery primitive that carries agent events to consumers, the event schema itself, and the small runtime helpers every provider path touches.",
-		src: ["src/utils/eventstream.ts", "src/event/event.ts (273)", "src/llm/runtime.ts"],
-		files: [
-			{
-				path: "test/eventstream.test.ts", lines: 127, tests: 10, kind: "unit",
-				covers: "EventStream — queued-before-iteration ordering, delivery to a waiting consumer, auto-end on the completing event, result() resolution, ignoring post-completion pushes, end() releasing a consumer, end(result) without a completing event, draining after end(). AssistantMessageEventStream — result() from done and from error events.",
-				notes: [
-					"Good coverage of the happy paths and the ordering guarantees.",
-					"No test for a consumer that abandons iteration mid-stream (break / early return), or for two concurrent consumers — both are real usage patterns.",
-					"No backpressure or unbounded-queue case."
-				]
-			},
-			{
-				path: "test/event.tool.execution.test.ts", lines: 47, tests: 2, kind: "unit",
-				covers: "Schema validation for tool.execution.start and tool.execution.end, asserting the complete tool-call part (including thoughtSignature and aborted terminal state) survives Value.Check.",
-				notes: [
-					"src/event/event.ts declares 23 event type literals; this file asserts 2 of them. The largest single coverage gap in the unit suite.",
-					"The pattern is right — a table over every event variant would generalize it cheaply.",
-					"Filename suggests a broader scope than the file delivers; either widen the file to all events or narrow the name."
+			const GAPS = {
+				modules: [
+					{
+						path: "src/llm/stream.ts",
+						lines: 534,
+						note: "The core streaming orchestrator. No unit test file — covered only indirectly through live e2e runs, which means it is untested whenever provider keys are absent. Highest-priority gap in the repo.",
+					},
+					{
+						path: "src/event/event.ts",
+						lines: 273,
+						note: "23 event type literals; only tool.execution.start / .end are schema-asserted.",
+					},
+					{
+						path: "src/cli/oauth.ts",
+						lines: 198,
+						note: "OAuth CLI wiring — untested. May be acceptable as glue.",
+					},
+					{
+						path: "src/llm/protocol.ts",
+						lines: 177,
+						note: "Used throughout e2e via assertProtocol, never unit tested directly.",
+					},
+					{ path: "src/model/catalog.ts", lines: 106, note: "Catalog loading/merging — no direct test." },
+					{ path: "src/llm/provider.ts", lines: 61, note: "No direct test." },
+					{
+						path: "src/utils/helpers.ts",
+						lines: 49,
+						note: "StringEnum is used in stream.e2e; the rest is unasserted.",
+					},
+					{ path: "src/utils/hash.ts", lines: 13, note: "Tiny; probably fine untested." },
 				],
-				flag: "gap"
-			},
-			{
-				path: "test/runtime.test.ts", lines: 77, tests: 13, kind: "unit",
-				covers: "mergeHeaders (precedence, undefined sources, null preservation for unsetting, empty case), getEnvApiKey (nothing configured, provider env list, explicit key name precedence, empty-candidate fallthrough), formatThrownError (Error stack, empty stack, strings, plain objects, unserializable values).",
-				notes: [
-					"Complete for the three functions it covers.",
-					"formatThrownError cases are the ones that matter for user-facing error text — check they match what the CLI actually prints."
-				]
+				matrix: {
+					providers: ["OpenAI", "Anthropic", "OpenRouter", "Codex"],
+					rows: [
+						{ file: "stream.e2e", cov: [1, 1, 1, 1] },
+						{ file: "abort.e2e", cov: [1, 1, 1, 1] },
+						{ file: "image.tool.result.e2e", cov: [1, 1, 1, 1] },
+						{ file: "tokens.e2e", cov: [1, 1, 1, 1] },
+						{ file: "tokens.total.e2e", cov: [1, 1, 1, 1] },
+						{ file: "empty.e2e", cov: [1, 1, 1, 0] },
+						{ file: "response.id.e2e", cov: [1, 1, 1, 0] },
+						{ file: "toolcall.without.result.e2e", cov: [1, 1, 1, 0] },
+						{ file: "unicode.surrogate.e2e", cov: [1, 1, 1, 0] },
+						{ file: "xhigh.e2e", cov: [1, 1, 0, 1] },
+						{ file: "codex.e2e", cov: [0, 0, 0, 1] },
+					],
+				},
+			};
+
+			/* ---------- state ---------- */
+			const STORE = "aikit-test-themes-reviewed";
+			let reviewed = new Set();
+			try {
+				reviewed = new Set(JSON.parse(localStorage.getItem(STORE) || "[]"));
+			} catch (_) {}
+			function persist() {
+				try {
+					localStorage.setItem(STORE, JSON.stringify([...reviewed]));
+				} catch (_) {}
 			}
-		],
-		improve: [
-			"Turn event.tool.execution.test.ts into a table-driven schema test across all 23 AgentEvent variants.",
-			"Add EventStream cases for early consumer exit and multiple consumers.",
-			"src/llm/stream.ts (534 lines) — the streaming orchestrator these events flow through — has no unit test at all; see the Gaps view."
-		]
-	},
-	{
-		id: "parsing",
-		name: "Tool argument validation & streaming JSON",
-		layer: "unit",
-		goal: "Making sense of partial, malformed, or wrongly-typed model output: incremental JSON repair during streaming, and schema validation of tool arguments before execution.",
-		src: ["src/utils/jsonparse.ts", "src/utils/validation.ts"],
-		files: [
-			{
-				path: "test/jsonparse.test.ts", lines: 95, tests: 18, kind: "unit",
-				covers: "parseStreamingJson — empty input, complete objects and nesting, valid escapes, partial JSON (missing brace, incomplete string, dangling key, incomplete array, lone brace), string repair (raw newlines/tabs/CR, invalid escapes, valid escapes preserved, repair inside incomplete strings), unparseable garbage and trailing backslash.",
-				notes: [
-					"Excellent structure — four nested describes that map to the four behaviors of the parser.",
-					"Everything returns {} on failure; no case distinguishes 'legitimately empty' from 'failed to parse', which may matter to callers.",
-					"No unicode/surrogate case here, though sanitize.test.ts covers that separately — check the two agree on ordering (sanitize before parse, or after)."
-				]
-			},
-			{
-				path: "test/validation.test.ts", lines: 166, tests: 5, kind: "unit",
-				covers: "validateToolArguments / validateToolCall — a no-Function-constructor environment, TypeBox primitive coercion, rejecting invalid coercions, matching a tool and validating an in-flight call, and validation through the public Message interface.",
-				notes: [
-					"166 lines for 5 tests — heavy schema setup per case. Extracting the schemas would let you add cases cheaply.",
-					"Only 1 test covers the public interface path; the other 4 poke internals.",
-					"No case for a tool call naming a tool that does not exist, or for arguments that are valid JSON but the wrong root type.",
-					"The 'Function constructor unavailable' case is a good edge — note why it exists so it is not deleted as noise."
-				]
+
+			let current = location.hash.slice(1) || THEMES[0].id;
+			let filter = "";
+
+			/* ---------- helpers ---------- */
+			const esc = (s) =>
+				String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+			const totals = (t) =>
+				t.files.reduce((a, f) => ({ lines: a.lines + f.lines, tests: a.tests + f.tests }), { lines: 0, tests: 0 });
+
+			function matches(t) {
+				if (!filter) return true;
+				const hay = (
+					t.name +
+					" " +
+					t.goal +
+					" " +
+					t.files.map((f) => f.path + " " + f.covers).join(" ")
+				).toLowerCase();
+				return hay.includes(filter);
 			}
-		],
-		improve: [
-			"Extract TypeBox schema fixtures out of validation.test.ts and add the missing negative cases (unknown tool, wrong root type, extra properties).",
-			"Decide whether parseStreamingJson should signal failure distinctly from an empty object, and pin that decision with a test.",
-			"Confirm the sanitize → parse → validate ordering is asserted somewhere end to end."
-		]
-	},
-	{
-		id: "unicode",
-		name: "Unicode & text safety",
-		layer: "mixed",
-		goal: "Surviving lone surrogates and emoji that break provider JSON encoders — the unit rule and its live confirmation against real APIs.",
-		src: ["src/utils/sanitize.ts", "src/llm/transform.ts (call sites)"],
-		files: [
-			{
-				path: "test/sanitize.test.ts", lines: 50, tests: 10, kind: "unit",
-				covers: "sanitizeSurrogates — ASCII untouched, paired surrogates and emoji preserved, BMP + combining sequences preserved, unpaired high/low removal at start/end/middle, consecutive unpaired of the same kind, valid pair kept when preceded by an unpaired high, empty string.",
-				notes: [
-					"Compact and exhaustive for a small pure function. Model file for how a utility test should read.",
-					"No property/fuzz case — a quick round-trip over random code units would catch regressions this table cannot."
-				]
-			},
-			{
-				path: "test/e2e/unicode.surrogate.e2e.test.ts", lines: 225, tests: 9, kind: "e2e",
-				covers: "Live: emoji in tool results, real-world LinkedIn comment data with emoji, and an unpaired high surrogate (0xD83D) in tool results — across OpenAI, Anthropic, OpenRouter.",
-				notes: [
-					"Codex is not covered here (see the provider matrix) even though Codex has its own SSE/JSON path — the most likely place for a surrogate bug to survive.",
-					"The 'real-world LinkedIn comment data' fixture is inline; moving it to test/data/ would shrink the file and make its provenance clear.",
-					"3 providers × 3 cases is a copy-paste block; a shared matrix helper would cut it to a table."
-				],
-				flag: "gap"
+
+			function toast(msg) {
+				const el = document.getElementById("toast");
+				el.textContent = msg;
+				el.classList.add("show");
+				clearTimeout(toast._t);
+				toast._t = setTimeout(() => el.classList.remove("show"), 1600);
 			}
-		],
-		improve: [
-			"Add Codex to the surrogate e2e matrix — it is the provider most likely to differ.",
-			"Move the LinkedIn fixture to test/data/ alongside red-circle.png.",
-			"Consider a fuzz case in sanitize.test.ts."
-		]
-	},
-	{
-		id: "failure",
-		name: "Failure classification & context overflow",
-		layer: "unit",
-		goal: "Turning heterogeneous provider errors into decisions the agent loop can act on: is this auth, rate limiting, quota, or a context window that just overflowed?",
-		src: ["src/llm/failure.ts (186)", "src/llm/failure/schema.ts", "src/utils/overflow.ts"],
-		files: [
-			{
-				path: "test/failure.test.ts", lines: 54, tests: 3, kind: "unit",
-				covers: "Classifying a missing API key as authentication, keeping safe rate-limit metadata while dropping provider payloads, distinguishing quota exhaustion from ordinary rate limiting.",
-				notes: [
-					"Only 3 tests for a 186-line module that the agent loop makes retry decisions from. Thin relative to its blast radius.",
-					"The 'drops provider payloads' case is a privacy guarantee — worth stating that intent in a comment so it is not relaxed later.",
-					"No cases for network/timeout/aborted, 5xx vs 4xx, or malformed provider error bodies."
-				],
-				flag: "gap"
-			},
-			{
-				path: "test/overflow.test.ts", lines: 99, tests: 9, kind: "unit",
-				covers: "isContextOverflow — a 17-provider table of real overflow error strings (Anthropic, Bedrock, OpenAI, Google, xAI, Groq, OpenRouter, Copilot, llama.cpp, LM Studio, MiniMax, Kimi, generics), empty-body 400/413, not flagging 429 or unrelated errors, requiring stopReason error; silent overflow detected via usage vs context window; getOverflowPatterns returning a defensive copy.",
-				notes: [
-					"The provider string table is the highest-value asset in the suite — it encodes knowledge you cannot re-derive. Keep it growing.",
-					"Each string should carry a date or provider version comment; these drift.",
-					"The usage-based 'silent overflow' path is the clever one and has only 3 cases — worth one more for the boundary (input exactly equal to the window)."
-				]
+
+			/* ---------- session prompt ---------- */
+			function sessionPrompt(t) {
+				const lines = [];
+				lines.push(`Review and improve the aikit test theme: ${t.name}.`);
+				lines.push("");
+				lines.push(t.goal);
+				lines.push("");
+				lines.push("Files in scope:");
+				for (const f of t.files) {
+					lines.push(`- ${REPO}/${f.path} — ${f.lines} lines, ${f.tests} test blocks [${f.kind}]`);
+				}
+				lines.push("");
+				lines.push("Source under test:");
+				for (const s of t.src) lines.push(`- ${REPO}/${s}`);
+				lines.push("");
+				lines.push("Observations from an earlier pass (weigh them, do not treat them as a mandate):");
+				for (const f of t.files) for (const n of f.notes) lines.push(`- [${f.path}] ${n}`);
+				lines.push("");
+				lines.push("Improvement candidates:");
+				for (const i of t.improve) lines.push(`- ${i}`);
+				lines.push("");
+				lines.push(
+					"Read every file in scope and its source module before proposing changes. Tell me what you would change and why before editing.",
+				);
+				const needsE2E = t.files.some((f) => f.kind === "e2e");
+				lines.push(
+					needsE2E
+						? "Run `pnpm test` from packages/aikit for the unit suite; e2e needs `pnpm test:e2e` and live provider keys — do not run it without asking."
+						: "Run `pnpm test` from packages/aikit.",
+				);
+				lines.push("`vp check` and `vp run typecheck` must pass.");
+				return lines.join("\n");
 			}
-		],
-		improve: [
-			"Expand failure.test.ts to cover the classification branches the retry loop actually switches on.",
-			"Annotate each overflow string with where and when it was observed.",
-			"Add the exactly-at-context-window boundary case."
-		]
-	},
-	{
-		id: "e2e-core",
-		name: "E2E · core generation matrix",
-		layer: "e2e",
-		goal: "The main live conformance matrix: every provider must resolve its protocol and handle text, tools, streaming, thinking, multi-turn, and images the same way.",
-		src: ["src/stream.ts", "src/llm/stream.ts (534)", "all provider paths"],
-		files: [
-			{
-				path: "test/e2e/stream.e2e.test.ts", lines: 640, tests: 32, kind: "e2e",
-				covers: "Per provider (OpenAI, Anthropic, OpenRouter, Codex): protocol resolution, basic text generation, tool calling, streaming, thinking, multi-turn with thinking + tools, image input. Plus an OpenAI-specific test that native reasoning metadata persists and replays without warnings.",
-				notes: [
-					"The single most valuable file in the suite and the most expensive to run. 4 providers × ~7 cases, mostly copy-pasted blocks with inline retry/timeout literals.",
-					"Timeouts vary per provider (30s / 60s / 120s) with no stated reason — encode that as data rather than magic numbers.",
-					"Not every provider gets every case (thinking and multi-turn are skipped for OpenRouter) — the omissions are invisible in the current shape. A matrix helper would make them explicit.",
-					"Currently modified in your working tree (model ids updated in test/utils/llm.ts)."
-				]
+
+			async function copy(text, what) {
+				try {
+					await navigator.clipboard.writeText(text);
+					toast(what + " copied");
+				} catch (_) {
+					const ta = document.createElement("textarea");
+					ta.value = text;
+					document.body.appendChild(ta);
+					ta.select();
+					document.execCommand("copy");
+					ta.remove();
+					toast(what + " copied");
+				}
 			}
-		],
-		improve: [
-			"Extract a runProviderMatrix(cases, providers) helper so provider × capability becomes a table, and unsupported combinations are declared rather than omitted.",
-			"Move retry/timeout into per-provider config in test/utils/llm.ts.",
-			"Once the matrix helper exists, most of the E2E edge-case theme collapses into it."
-		]
-	},
-	{
-		id: "e2e-edge",
-		name: "E2E · provider edge-case conformance",
-		layer: "e2e",
-		goal: "Live tests for the awkward inputs that providers disagree about — abort, empty content, dangling tool calls, image tool results, response ids, unsupported reasoning levels.",
-		src: ["src/stream.ts", "src/llm/transform.ts", "provider paths"],
-		files: [
-			{
-				path: "test/e2e/abort.e2e.test.ts", lines: 230, tests: 12, kind: "e2e",
-				covers: "Abort mid-stream, immediate abort, and abort-then-new-message — across all 4 providers.",
-				notes: ["The only edge file with full 4-provider coverage.", "Abort-then-new-message is the case that catches leaked state; keep it first-class."]
-			},
-			{
-				path: "test/e2e/empty.e2e.test.ts", lines: 147, tests: 12, kind: "e2e",
-				covers: "Empty content array, empty string content, whitespace-only content, and an empty assistant message mid-conversation. The contract: empty input may be rejected, but only as a structured error, never a thrown exception.",
-				notes: ["Codex missing.", "expectGracefulResponse encodes the real contract and is worth promoting to test/utils/message.ts."]
-			},
-			{
-				path: "test/e2e/image.tool.result.e2e.test.ts", lines: 241, tests: 8, kind: "e2e",
-				covers: "Tool results carrying only an image, and text + image — across all 4 providers, using test/data/red-circle.png.",
-				notes: ["Full provider coverage.", "The only file that uses the fixture image; the read + base64 preamble could move to fixtures."]
-			},
-			{
-				path: "test/e2e/response.id.e2e.test.ts", lines: 67, tests: 3, kind: "e2e",
-				covers: "Provider responseId is exposed on the assistant message.",
-				notes: ["Codex missing — and Codex is the provider whose response ids drive reasoning replay, so this omission matters more here than elsewhere."],
-				flag: "gap"
-			},
-			{
-				path: "test/e2e/toolcall.without.result.e2e.test.ts", lines: 117, tests: 3, kind: "e2e",
-				covers: "A transcript containing a tool call with no matching tool result must still be accepted by the provider.",
-				notes: ["Codex missing.", "Directly mirrors the synthetic-skipped-result logic in message.transform.test.ts — cross-reference them."]
-			},
-			{
-				path: "test/e2e/xhigh.e2e.test.ts", lines: 90, tests: 3, kind: "e2e",
-				covers: "Clamping an unsupported xhigh reasoning level down to high (OpenAI, Anthropic) and native xhigh support (Codex).",
-				notes: ["OpenRouter missing.", "Live counterpart to clampThinkingLevel in model.test.ts — the pair is the real contract."]
+
+			/* ---------- render ---------- */
+			function renderMeta() {
+				const files = THEMES.reduce((a, t) => a + t.files.length, 0);
+				const tests = THEMES.reduce((a, t) => a + totals(t).tests, 0);
+				const lines = THEMES.reduce((a, t) => a + totals(t).lines, 0);
+				document.getElementById("meta").textContent =
+					`${THEMES.length} themes · ${files} files · ${tests} tests · ${lines.toLocaleString()} lines`;
+				document.title = "aikit — test themes";
 			}
-		],
-		improve: [
-			"Close the provider gaps: Codex in empty / response.id / toolcall.without.result; OpenRouter in xhigh.",
-			"Fold these files into the shared provider-matrix helper from the core theme; each becomes a case list rather than a file of nested describes.",
-			"Promote expectGracefulResponse and the image fixture loader into test/utils/."
-		]
-	},
-	{
-		id: "e2e-tokens",
-		name: "E2E · token accounting",
-		layer: "e2e",
-		goal: "Usage numbers must be trustworthy — they drive cost, context management, and overflow detection. Two live invariants: totals add up, and aborts do not invent usage.",
-		src: ["src/llm/transform.ts (mapUsage)", "src/model/model.ts (calculateCost)"],
-		files: [
-			{
-				path: "test/e2e/tokens.e2e.test.ts", lines: 110, tests: 4, kind: "e2e",
-				covers: "Zero token usage reported when a stream is aborted mid-flight — all 4 providers.",
-				notes: [
-					"Pairs directly with abort.e2e.test.ts; consider whether they should live together.",
-					"'Zero on abort' is a strong claim — confirm it is the intended contract rather than 'whatever the provider sent before the abort'."
-				]
-			},
-			{
-				path: "test/e2e/tokens.total.e2e.test.ts", lines: 186, tests: 4, kind: "e2e",
-				covers: "totalTokens equals the sum of its components — all 4 providers.",
-				notes: [
-					"186 lines for 4 assertions of the same invariant; the per-provider setup dominates.",
-					"The unit-level equivalent lives in transform.test.ts (mapUsage computes totals when the provider omits them) — this file proves providers agree with that math."
-				]
+
+			function renderProgress() {
+				const done = THEMES.filter((t) => reviewed.has(t.id)).length;
+				document.getElementById("progress-count").textContent = `${done} / ${THEMES.length}`;
+				document.getElementById("progress-bar").style.width = (done / THEMES.length) * 100 + "%";
 			}
-		],
-		improve: [
-			"Collapse both files into one usage-invariant matrix; the two invariants share all their setup.",
-			"Pin the abort-usage contract explicitly in a comment so a future provider change is a decision, not a surprise.",
-			"Add a cached-token invariant if any provider reports one live."
-		]
-	},
-	{
-		id: "support",
-		name: "Test harness · fixtures & helpers",
-		layer: "support",
-		goal: "The shared scaffolding every other theme depends on. Improving it is the cheapest way to improve all 26 test files at once.",
-		src: ["consumed by every theme"],
-		files: [
-			{
-				path: "test/utils/fixtures.ts", lines: 92, tests: 0, kind: "support",
-				covers: "makeModel, makeUsage, makeAssistantMessage, makeUserMessage, makePendingToolCall, makeCompletedToolCall.",
-				notes: [
-					"Well-factored and widely used (model, overflow, eventstream, transform, empty e2e, unicode e2e).",
-					"No makeToolResult / makeErrorResult — several files hand-build those inline.",
-					"Overrides are Partial<T> with no deep-merge; nested time/usage overrides silently replace rather than merge."
-				]
-			},
-			{
-				path: "test/utils/llm.ts", lines: 105, tests: 0, kind: "support",
-				covers: "describeIf<Provider> env gates, per-provider option builders, assertProtocol, get<Provider>Model with default model ids, getText / getGeneratedText.",
-				notes: [
-					"The natural home for the provider-matrix helper the E2E themes need, plus per-provider retry/timeout config.",
-					"Default model ids are hardcoded here and were just updated in your working tree — a single stale id silently skips or fails a whole matrix.",
-					"describeIf* silently skips when a key is absent; there is no summary of what was skipped, so a green run can mean 'nothing ran'."
-				]
-			},
-			{
-				path: "test/utils/message.ts", lines: 47, tests: 0, kind: "support",
-				covers: "expectValidToolCall (optionally asserting status), expectAssistantToolUseMessage.",
-				notes: ["Used by only 2 e2e files despite several others hand-rolling the same assertions."]
-			},
-			{
-				path: "test/utils/oauth.ts", lines: 38, tests: 0, kind: "support",
-				covers: "resolveOpenAICodexToken — resolving a usable Codex token for live tests.",
-				notes: ["Only consumer is the Codex e2e path; fine as is."]
-			},
-			{
-				path: "test/utils/env.ts", lines: 8, tests: 0, kind: "support",
-				covers: "Environment setup shim.",
-				notes: ["8 lines — check it is still referenced at all."]
-			}
-		],
-		improve: [
-			"Add the provider-matrix runner + per-provider retry/timeout config to test/utils/llm.ts. This is the highest-leverage change in the whole suite.",
-			"Print a one-line skip summary when provider keys are absent, so a green e2e run is honest about what it covered.",
-			"Extend fixtures.ts with tool-result builders and adopt test/utils/message.ts assertions consistently."
-		]
-	}
-];
 
-const GAPS = {
-	modules: [
-		{ path: "src/llm/stream.ts", lines: 534, note: "The core streaming orchestrator. No unit test file — covered only indirectly through live e2e runs, which means it is untested whenever provider keys are absent. Highest-priority gap in the repo." },
-		{ path: "src/event/event.ts", lines: 273, note: "23 event type literals; only tool.execution.start / .end are schema-asserted." },
-		{ path: "src/cli/oauth.ts", lines: 198, note: "OAuth CLI wiring — untested. May be acceptable as glue." },
-		{ path: "src/llm/protocol.ts", lines: 177, note: "Used throughout e2e via assertProtocol, never unit tested directly." },
-		{ path: "src/model/catalog.ts", lines: 106, note: "Catalog loading/merging — no direct test." },
-		{ path: "src/llm/provider.ts", lines: 61, note: "No direct test." },
-		{ path: "src/utils/helpers.ts", lines: 49, note: "StringEnum is used in stream.e2e; the rest is unasserted." },
-		{ path: "src/utils/hash.ts", lines: 13, note: "Tiny; probably fine untested." }
-	],
-	matrix: {
-		providers: ["OpenAI", "Anthropic", "OpenRouter", "Codex"],
-		rows: [
-			{ file: "stream.e2e", cov: [1, 1, 1, 1] },
-			{ file: "abort.e2e", cov: [1, 1, 1, 1] },
-			{ file: "image.tool.result.e2e", cov: [1, 1, 1, 1] },
-			{ file: "tokens.e2e", cov: [1, 1, 1, 1] },
-			{ file: "tokens.total.e2e", cov: [1, 1, 1, 1] },
-			{ file: "empty.e2e", cov: [1, 1, 1, 0] },
-			{ file: "response.id.e2e", cov: [1, 1, 1, 0] },
-			{ file: "toolcall.without.result.e2e", cov: [1, 1, 1, 0] },
-			{ file: "unicode.surrogate.e2e", cov: [1, 1, 1, 0] },
-			{ file: "xhigh.e2e", cov: [1, 1, 0, 1] },
-			{ file: "codex.e2e", cov: [0, 0, 0, 1] }
-		]
-	}
-};
-
-/* ---------- state ---------- */
-const STORE = "aikit-test-themes-reviewed";
-let reviewed = new Set();
-try { reviewed = new Set(JSON.parse(localStorage.getItem(STORE) || "[]")); } catch (_) {}
-function persist() { try { localStorage.setItem(STORE, JSON.stringify([...reviewed])); } catch (_) {} }
-
-let current = location.hash.slice(1) || THEMES[0].id;
-let filter = "";
-
-/* ---------- helpers ---------- */
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const totals = (t) => t.files.reduce((a, f) => ({ lines: a.lines + f.lines, tests: a.tests + f.tests }), { lines: 0, tests: 0 });
-
-function matches(t) {
-	if (!filter) return true;
-	const hay = (t.name + " " + t.goal + " " + t.files.map((f) => f.path + " " + f.covers).join(" ")).toLowerCase();
-	return hay.includes(filter);
-}
-
-function toast(msg) {
-	const el = document.getElementById("toast");
-	el.textContent = msg;
-	el.classList.add("show");
-	clearTimeout(toast._t);
-	toast._t = setTimeout(() => el.classList.remove("show"), 1600);
-}
-
-/* ---------- session prompt ---------- */
-function sessionPrompt(t) {
-	const lines = [];
-	lines.push(`Review and improve the aikit test theme: ${t.name}.`);
-	lines.push("");
-	lines.push(t.goal);
-	lines.push("");
-	lines.push("Files in scope:");
-	for (const f of t.files) {
-		lines.push(`- ${REPO}/${f.path} — ${f.lines} lines, ${f.tests} test blocks [${f.kind}]`);
-	}
-	lines.push("");
-	lines.push("Source under test:");
-	for (const s of t.src) lines.push(`- ${REPO}/${s}`);
-	lines.push("");
-	lines.push("Observations from an earlier pass (weigh them, do not treat them as a mandate):");
-	for (const f of t.files) for (const n of f.notes) lines.push(`- [${f.path}] ${n}`);
-	lines.push("");
-	lines.push("Improvement candidates:");
-	for (const i of t.improve) lines.push(`- ${i}`);
-	lines.push("");
-	lines.push("Read every file in scope and its source module before proposing changes. Tell me what you would change and why before editing.");
-	const needsE2E = t.files.some((f) => f.kind === "e2e");
-	lines.push(needsE2E
-		? "Run `pnpm test` from packages/aikit for the unit suite; e2e needs `pnpm test:e2e` and live provider keys — do not run it without asking."
-		: "Run `pnpm test` from packages/aikit.");
-	lines.push("`vp check` and `vp run typecheck` must pass.");
-	return lines.join("\n");
-}
-
-async function copy(text, what) {
-	try {
-		await navigator.clipboard.writeText(text);
-		toast(what + " copied");
-	} catch (_) {
-		const ta = document.createElement("textarea");
-		ta.value = text; document.body.appendChild(ta); ta.select();
-		document.execCommand("copy"); ta.remove();
-		toast(what + " copied");
-	}
-}
-
-/* ---------- render ---------- */
-function renderMeta() {
-	const files = THEMES.reduce((a, t) => a + t.files.length, 0);
-	const tests = THEMES.reduce((a, t) => a + totals(t).tests, 0);
-	const lines = THEMES.reduce((a, t) => a + totals(t).lines, 0);
-	document.getElementById("meta").textContent =
-		`${THEMES.length} themes · ${files} files · ${tests} tests · ${lines.toLocaleString()} lines`;
-	document.title = "aikit — test themes";
-}
-
-function renderProgress() {
-	const done = THEMES.filter((t) => reviewed.has(t.id)).length;
-	document.getElementById("progress-count").textContent = `${done} / ${THEMES.length}`;
-	document.getElementById("progress-bar").style.width = (done / THEMES.length * 100) + "%";
-}
-
-function renderNav() {
-	const groups = [
-		["Unit", THEMES.filter((t) => t.layer === "unit")],
-		["Mixed", THEMES.filter((t) => t.layer === "mixed")],
-		["Live (e2e)", THEMES.filter((t) => t.layer === "e2e")],
-		["Support", THEMES.filter((t) => t.layer === "support")]
-	];
-	let html = "";
-	for (const [label, list] of groups) {
-		const visible = list.filter(matches);
-		if (!visible.length) continue;
-		html += `<div class="group-title">${label}</div>`;
-		for (const t of visible) {
-			const s = totals(t);
-			const cls = "nav-item" + (t.id === current ? " active" : "") + (reviewed.has(t.id) ? " done" : "");
-			html += `<button class="${cls}" data-id="${t.id}">
+			function renderNav() {
+				const groups = [
+					["Unit", THEMES.filter((t) => t.layer === "unit")],
+					["Mixed", THEMES.filter((t) => t.layer === "mixed")],
+					["Live (e2e)", THEMES.filter((t) => t.layer === "e2e")],
+					["Support", THEMES.filter((t) => t.layer === "support")],
+				];
+				let html = "";
+				for (const [label, list] of groups) {
+					const visible = list.filter(matches);
+					if (!visible.length) continue;
+					html += `<div class="group-title">${label}</div>`;
+					for (const t of visible) {
+						const s = totals(t);
+						const cls = "nav-item" + (t.id === current ? " active" : "") + (reviewed.has(t.id) ? " done" : "");
+						html += `<button class="${cls}" data-id="${t.id}">
 				<div class="nav-row"><span class="nav-name">${esc(t.name)}</span></div>
 				<div class="nav-sub">${t.files.length} files · ${s.tests} tests · ${s.lines} ln</div>
 			</button>`;
-		}
-	}
-	html += `<div class="group-title">Cross-cutting</div>
+					}
+				}
+				html += `<div class="group-title">Cross-cutting</div>
 		<button class="nav-item${current === "__gaps" ? " active" : ""}" data-id="__gaps">
 			<div class="nav-row"><span class="nav-name">Coverage gaps</span></div>
 			<div class="nav-sub">untested modules · provider matrix</div>
 		</button>`;
-	const nav = document.getElementById("nav");
-	nav.innerHTML = html;
-	for (const b of nav.querySelectorAll(".nav-item")) {
-		b.addEventListener("click", () => { current = b.dataset.id; location.hash = current; render(); window.scrollTo(0, 0); });
-	}
-}
+				const nav = document.getElementById("nav");
+				nav.innerHTML = html;
+				for (const b of nav.querySelectorAll(".nav-item")) {
+					b.addEventListener("click", () => {
+						current = b.dataset.id;
+						location.hash = current;
+						render();
+						window.scrollTo(0, 0);
+					});
+				}
+			}
 
-function renderTheme(t) {
-	const s = totals(t);
-	const done = reviewed.has(t.id);
-	let html = `<div class="headline">
+			function renderTheme(t) {
+				const s = totals(t);
+				const done = reviewed.has(t.id);
+				let html = `<div class="headline">
 		<div>
 			<h1>${esc(t.name)}</h1>
 			<div class="lede">${esc(t.goal)}</div>
@@ -734,11 +1239,11 @@ function renderTheme(t) {
 		</div>
 	</div>`;
 
-	html += `<h2>Source under test</h2><div class="srclist">${t.src.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
+				html += `<h2>Source under test</h2><div class="srclist">${t.src.map((x) => `<span>${esc(x)}</span>`).join("")}</div>`;
 
-	html += `<h2>Files · ${t.files.length} · ${s.tests} tests · ${s.lines} lines</h2>`;
-	for (const f of t.files) {
-		html += `<div class="card">
+				html += `<h2>Files · ${t.files.length} · ${s.tests} tests · ${s.lines} lines</h2>`;
+				for (const f of t.files) {
+					html += `<div class="card">
 			<div class="card-head">
 				<span class="badge ${f.kind}">${f.kind}</span>
 				<span class="path">${esc(REPO)}/${esc(f.path)}</span>
@@ -748,87 +1253,95 @@ function renderTheme(t) {
 			<p class="covers">${esc(f.covers)}</p>
 			<ul class="notes">${f.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
 		</div>`;
-	}
+				}
 
-	html += `<h2>Improvement candidates</h2><ul class="plain">${t.improve.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
+				html += `<h2>Improvement candidates</h2><ul class="plain">${t.improve.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`;
 
-	const needsE2E = t.files.some((f) => f.kind === "e2e");
-	html += `<h2>Running this theme</h2>`;
-	html += `<code class="cmd">cd ${REPO} &amp;&amp; pnpm test</code>`;
-	if (needsE2E) {
-		html += `<code class="cmd">cd ${REPO} &amp;&amp; pnpm test:e2e</code>
+				const needsE2E = t.files.some((f) => f.kind === "e2e");
+				html += `<h2>Running this theme</h2>`;
+				html += `<code class="cmd">cd ${REPO} &amp;&amp; pnpm test</code>`;
+				if (needsE2E) {
+					html += `<code class="cmd">cd ${REPO} &amp;&amp; pnpm test:e2e</code>
 		<div class="callout warn"><p>Live suites call paid providers and are gated on <code>ANTHROPIC_API_KEY</code>, <code>OPENAI_API_KEY</code>, <code>OPENAI_CODEX_API_KEY</code>, <code>OPENROUTER_API_KEY</code>. A missing key silently skips its <code>describe</code> — a green run does not mean full coverage.</p></div>`;
-	}
-	return html;
-}
+				}
+				return html;
+			}
 
-function renderGaps() {
-	let html = `<div class="headline"><div>
+			function renderGaps() {
+				let html = `<div class="headline"><div>
 		<h1>Coverage gaps</h1>
 		<div class="lede">What the 26 test files do not reach, and where the live matrix is uneven.</div>
 	</div></div>`;
 
-	html += `<div class="callout"><p><strong>src/llm/stream.ts — 534 lines, zero unit tests.</strong> The streaming orchestrator every provider path runs through is exercised only by live e2e suites. When provider keys are absent, the most important module in the package is completely untested.</p></div>`;
+				html += `<div class="callout"><p><strong>src/llm/stream.ts — 534 lines, zero unit tests.</strong> The streaming orchestrator every provider path runs through is exercised only by live e2e suites. When provider keys are absent, the most important module in the package is completely untested.</p></div>`;
 
-	html += `<h2>Modules without a dedicated test file</h2><div class="scroll"><table>
+				html += `<h2>Modules without a dedicated test file</h2><div class="scroll"><table>
 		<thead><tr><th>Module</th><th>Lines</th><th>Note</th></tr></thead><tbody>`;
-	for (const m of GAPS.modules) {
-		html += `<tr><td class="mono">${esc(m.path)}</td><td class="mono">${m.lines}</td><td>${esc(m.note)}</td></tr>`;
-	}
-	html += `</tbody></table></div>`;
+				for (const m of GAPS.modules) {
+					html += `<tr><td class="mono">${esc(m.path)}</td><td class="mono">${m.lines}</td><td>${esc(m.note)}</td></tr>`;
+				}
+				html += `</tbody></table></div>`;
 
-	html += `<h2>Live provider matrix</h2><p class="lede" style="font-size:14px">Which e2e files exercise which provider.</p><div class="scroll"><table>
+				html += `<h2>Live provider matrix</h2><p class="lede" style="font-size:14px">Which e2e files exercise which provider.</p><div class="scroll"><table>
 		<thead><tr><th>File</th>${GAPS.matrix.providers.map((p) => `<th>${esc(p)}</th>`).join("")}</tr></thead><tbody>`;
-	for (const r of GAPS.matrix.rows) {
-		html += `<tr><td class="mono">${esc(r.file)}</td>${r.cov.map((c) => `<td class="${c ? "yes" : "no"}">${c ? "✓" : "—"}</td>`).join("")}</tr>`;
-	}
-	html += `</tbody></table></div>`;
+				for (const r of GAPS.matrix.rows) {
+					html += `<tr><td class="mono">${esc(r.file)}</td>${r.cov.map((c) => `<td class="${c ? "yes" : "no"}">${c ? "✓" : "—"}</td>`).join("")}</tr>`;
+				}
+				html += `</tbody></table></div>`;
 
-	html += `<h2>Structural observations</h2><ul class="plain">
+				html += `<h2>Structural observations</h2><ul class="plain">
 		<li><strong>Three files named for Codex, three different subjects.</strong> <code>test/codex.test.ts</code> is OAuth, <code>test/provider/openai.codex.test.ts</code> is the provider, <code>test/e2e/codex.e2e.test.ts</code> is live. Renaming the first is the cheapest legibility win available.</li>
 		<li><strong>One file holds 24% of all test code.</strong> <code>test/provider/openai.codex.test.ts</code> at 1353 lines should be five files mirroring <code>src/providers/openai-codex/</code>.</li>
 		<li><strong>Every e2e file repeats the same per-provider block.</strong> Nested <code>describeIf*</code> wrappers with copy-pasted <code>it</code> bodies and inline retry/timeout literals. A single matrix runner in <code>test/utils/llm.ts</code> would shrink the e2e suite substantially and make provider gaps declarative instead of invisible.</li>
 		<li><strong>Filenames carry the theme, mostly.</strong> The exceptions worth renaming: <code>codex.test.ts</code>, <code>shared.test.ts</code>, <code>message.transform.test.ts</code> vs <code>transform.test.ts</code>, and <code>event.tool.execution.test.ts</code> (name implies all events, covers two).</li>
 	</ul>`;
 
-	html += `<h2>Suggested order</h2><ul class="plain">
+				html += `<h2>Suggested order</h2><ul class="plain">
 		<li><strong>1 · Test harness</strong> — the matrix runner and fixtures unlock everything downstream.</li>
 		<li><strong>2 · E2E core + edge</strong> — apply the matrix runner, close the four provider gaps.</li>
 		<li><strong>3 · Codex provider</strong> — split the 1353-line file.</li>
 		<li><strong>4 · Events &amp; runtime</strong> — table-drive the event schema, and decide what a <code>stream.ts</code> unit test looks like.</li>
 		<li><strong>5 · Everything else</strong> — smaller, healthier, mostly renames and added edge cases.</li>
 	</ul>`;
-	return html;
-}
+				return html;
+			}
 
-function render() {
-	renderNav();
-	renderProgress();
-	const main = document.getElementById("main");
-	if (current === "__gaps") {
-		main.innerHTML = renderGaps();
-		return;
-	}
-	const t = THEMES.find((x) => x.id === current) || THEMES[0];
-	main.innerHTML = renderTheme(t);
-	document.getElementById("copy-prompt").addEventListener("click", () => copy(sessionPrompt(t), "Session prompt"));
-	document.getElementById("reviewed").addEventListener("change", (e) => {
-		if (e.target.checked) reviewed.add(t.id); else reviewed.delete(t.id);
-		persist(); renderNav(); renderProgress();
-	});
-}
+			function render() {
+				renderNav();
+				renderProgress();
+				const main = document.getElementById("main");
+				if (current === "__gaps") {
+					main.innerHTML = renderGaps();
+					return;
+				}
+				const t = THEMES.find((x) => x.id === current) || THEMES[0];
+				main.innerHTML = renderTheme(t);
+				document
+					.getElementById("copy-prompt")
+					.addEventListener("click", () => copy(sessionPrompt(t), "Session prompt"));
+				document.getElementById("reviewed").addEventListener("change", (e) => {
+					if (e.target.checked) reviewed.add(t.id);
+					else reviewed.delete(t.id);
+					persist();
+					renderNav();
+					renderProgress();
+				});
+			}
 
-document.getElementById("search").addEventListener("input", (e) => {
-	filter = e.target.value.trim().toLowerCase();
-	renderNav();
-});
-window.addEventListener("hashchange", () => {
-	const h = location.hash.slice(1);
-	if (h && h !== current) { current = h; render(); }
-});
+			document.getElementById("search").addEventListener("input", (e) => {
+				filter = e.target.value.trim().toLowerCase();
+				renderNav();
+			});
+			window.addEventListener("hashchange", () => {
+				const h = location.hash.slice(1);
+				if (h && h !== current) {
+					current = h;
+					render();
+				}
+			});
 
-renderMeta();
-render();
-</script>
-</body>
+			renderMeta();
+			render();
+		</script>
+	</body>
 </html>

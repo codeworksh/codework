@@ -55,8 +55,7 @@ export function path(): string {
 	return resolve(process.env.CODEWORK_MODELS_FILE ?? join(projectRoot(), filename));
 }
 
-export const data: LazyGeneratedCatalog = lazy(async () => {
-	const catalogPath = path();
+export async function load(catalogPath = path()): Promise<GeneratedCatalog> {
 	let content: string;
 	try {
 		content = await Filesystem.readText(catalogPath);
@@ -99,7 +98,9 @@ export const data: LazyGeneratedCatalog = lazy(async () => {
 			{ cause },
 		);
 	}
-});
+}
+
+export const data: LazyGeneratedCatalog = lazy(() => load());
 
 export async function get(): Promise<GeneratedCatalog> {
 	return data();
