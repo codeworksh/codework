@@ -106,6 +106,12 @@ type OAuthServerInfo = {
 
 type AuthFile = Record<string, unknown>;
 
+type TokenEndpointPayload = {
+	access_token?: string;
+	refresh_token?: string;
+	expires_in?: number;
+};
+
 function readEnv(name: string): string | undefined {
 	if (typeof process === "undefined") return undefined;
 	return process.env[name];
@@ -155,6 +161,40 @@ function isOpenAICodexCredentials(value: unknown): value is OpenAICodexOAuthCred
 		typeof value.expires === "number" &&
 		typeof value.accountId === "string"
 	);
+}
+
+function redactOAuthSecrets(value: string, secrets: readonly string[] = []): string {
+	let redacted = value;
+	for (const secret of secrets.filter(Boolean).sort((left, right) => right.length - left.length)) {
+		redacted = redacted.replaceAll(secret, "[REDACTED]");
+	}
+	return redacted
+		.replace(
+			/((?:"?(?:access_token|refresh_token|id_token|code|code_verifier)"?)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^&\s,}]+)/gi,
+			'$1"[REDACTED]"',
+		)
+		.replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]");
+}
+
+function tokenEndpointResult(payload: TokenEndpointPayload, operation: "exchange" | "refresh"): OpenAICodexTokenResult {
+	const missing = [
+		!payload.access_token && "access_token",
+		!payload.refresh_token && "refresh_token",
+		typeof payload.expires_in !== "number" && "expires_in",
+	].filter((field): field is string => Boolean(field));
+	if (missing.length > 0) {
+		return {
+			type: "failed",
+			message: `OpenAI Codex token ${operation} response missing fields: ${missing.join(", ")}`,
+		};
+	}
+
+	return {
+		type: "success",
+		access: payload.access_token!,
+		refresh: payload.refresh_token!,
+		expires: Date.now() + payload.expires_in! * 1000,
+	};
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {
@@ -279,46 +319,41 @@ export async function exchangeOpenAICodexAuthorizationCode(
 	verifier: string,
 	redirectUri: string = DEFAULT_REDIRECT_URI,
 ): Promise<OpenAICodexTokenResult> {
-	const response = await fetch(TOKEN_URL, {
-		method: "POST",
-		headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		body: new URLSearchParams({
-			grant_type: "authorization_code",
-			client_id: CLIENT_ID,
-			code,
-			code_verifier: verifier,
-			redirect_uri: redirectUri,
-		}),
-	});
+	try {
+		const response = await fetch(TOKEN_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({
+				grant_type: "authorization_code",
+				client_id: CLIENT_ID,
+				code,
+				code_verifier: verifier,
+				redirect_uri: redirectUri,
+			}),
+		});
 
-	if (!response.ok) {
-		const text = await response.text().catch(() => "");
+		if (!response.ok) {
+			const text = await response.text().catch(() => "");
+			return {
+				type: "failed",
+				status: response.status,
+				message: `OpenAI Codex token exchange failed (${response.status}): ${redactOAuthSecrets(
+					text || response.statusText,
+					[code, verifier],
+				)}`,
+			};
+		}
+
+		return tokenEndpointResult((await response.json()) as TokenEndpointPayload, "exchange");
+	} catch (error) {
 		return {
 			type: "failed",
-			status: response.status,
-			message: `OpenAI Codex token exchange failed (${response.status}): ${text || response.statusText}`,
+			message: `OpenAI Codex token exchange error: ${redactOAuthSecrets(
+				error instanceof Error ? error.message : String(error),
+				[code, verifier],
+			)}`,
 		};
 	}
-
-	const json = (await response.json()) as {
-		access_token?: string;
-		refresh_token?: string;
-		expires_in?: number;
-	};
-
-	if (!json.access_token || !json.refresh_token || typeof json.expires_in !== "number") {
-		return {
-			type: "failed",
-			message: `OpenAI Codex token exchange response missing fields: ${JSON.stringify(json)}`,
-		};
-	}
-
-	return {
-		type: "success",
-		access: json.access_token,
-		refresh: json.refresh_token,
-		expires: Date.now() + json.expires_in * 1000,
-	};
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<OpenAICodexTokenResult> {
@@ -338,33 +373,21 @@ async function refreshAccessToken(refreshToken: string): Promise<OpenAICodexToke
 			return {
 				type: "failed",
 				status: response.status,
-				message: `OpenAI Codex token refresh failed (${response.status}): ${text || response.statusText}`,
+				message: `OpenAI Codex token refresh failed (${response.status}): ${redactOAuthSecrets(
+					text || response.statusText,
+					[refreshToken],
+				)}`,
 			};
 		}
 
-		const json = (await response.json()) as {
-			access_token?: string;
-			refresh_token?: string;
-			expires_in?: number;
-		};
-
-		if (!json.access_token || !json.refresh_token || typeof json.expires_in !== "number") {
-			return {
-				type: "failed",
-				message: `OpenAI Codex token refresh response missing fields: ${JSON.stringify(json)}`,
-			};
-		}
-
-		return {
-			type: "success",
-			access: json.access_token,
-			refresh: json.refresh_token,
-			expires: Date.now() + json.expires_in * 1000,
-		};
+		return tokenEndpointResult((await response.json()) as TokenEndpointPayload, "refresh");
 	} catch (error) {
 		return {
 			type: "failed",
-			message: `OpenAI Codex token refresh error: ${error instanceof Error ? error.message : String(error)}`,
+			message: `OpenAI Codex token refresh error: ${redactOAuthSecrets(
+				error instanceof Error ? error.message : String(error),
+				[refreshToken],
+			)}`,
 		};
 	}
 }
@@ -692,7 +715,8 @@ export class JsonOpenAICodexAuthStorage implements OpenAICodexAuthStorage {
 		const path = await import("node:path");
 		await fs.mkdir(path.dirname(this.path), { recursive: true });
 		const tempPath = `${this.path}.${process.pid}.${Date.now()}.tmp`;
-		await fs.writeFile(tempPath, `${JSON.stringify(value, null, "\t")}\n`, "utf8");
+		await fs.writeFile(tempPath, `${JSON.stringify(value, null, "\t")}\n`, { encoding: "utf8", mode: 0o600 });
+		await fs.chmod(tempPath, 0o600);
 		await fs.rename(tempPath, this.path);
 	}
 }

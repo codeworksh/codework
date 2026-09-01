@@ -23,14 +23,18 @@ This file is the canonical source for unreleased changes and published release n
 
 - Replaced the OpenAI Codex SSE decoder with a standards-compliant parser, rejected streams that close before a terminal Responses event, and stopped accepting WebSocket-only completion events on the HTTP transport.
 - Distinguished transient Codex rate limits from terminal plan and quota failures while preserving structured error codes, retry timing, and OpenAI request IDs.
+- Restricted persisted OpenAI Codex OAuth credentials to owner-only file permissions and redacted token material from OAuth failure messages.
 
 ### Breaking Changes
 
 - Removed the `store`, `include`, and `promptCacheKey` OpenAI Codex language-model options. These backend-required values are now controlled by the provider.
+- Removed the unused agent lifecycle event protocol from the public `Event` namespace: `AgentEventType`, `AgentEventSchema`, `AgentEvent`, and the `tool.execution.start` / `tool.execution.update` / `tool.execution.end` types. LLM stream events (`LLMMessageEvent`) are unchanged.
 
 ### Internal
 
 - Reorganized the OpenAI Codex unit tests by provider module and expanded live coverage for empty messages, response IDs, Unicode surrogate handling, incomplete tool-call histories, native grammar tools, and structured output using HTTP/SSE behavior as a reference.
+- Renamed the Codex OAuth suite for clarity and added CLI coverage for credential status, refresh, and logout wiring.
+- Removed unit coverage for the unused agent lifecycle event schemas.
 
 ## [@codeworksh/aikit@0.7.2]
 

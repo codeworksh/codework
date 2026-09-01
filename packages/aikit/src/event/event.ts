@@ -108,166 +108,166 @@ export const LLMMessageEventSchema = Type.Union([
 ]);
 export type LLMMessageEvent = Static<typeof LLMMessageEventSchema>;
 
-export const AgentEventType = {
-	// Agent lifecycle
-	agentStart: "agent.start",
-	agentEnd: "agent.end",
-	// Turn lifecycle - a turn is one assistant response + any tool calls/results
-	turnStart: "turn.start",
-	turnEnd: "turn.end",
-	// Message lifecycle - emitted for user, assistant message and corresponding parts
-	messageStart: "message.start",
+// export const AgentEventType = {
+// 	// Agent lifecycle
+// 	agentStart: "agent.start",
+// 	agentEnd: "agent.end",
+// 	// Turn lifecycle - a turn is one assistant response + any tool calls/results
+// 	turnStart: "turn.start",
+// 	turnEnd: "turn.end",
+// 	// Message lifecycle - emitted for user, assistant message and corresponding parts
+// 	messageStart: "message.start",
 
-	messagePartStart: "message.part.start",
-	messagePartUpdate: "message.part.update",
-	messagePartEnd: "message.part.end",
+// 	messagePartStart: "message.part.start",
+// 	messagePartUpdate: "message.part.update",
+// 	messagePartEnd: "message.part.end",
 
-	messageUpdate: "message.update",
-	messageEnd: "message.end",
-	// Tool execution lifecycle
-	toolExecutionStart: "tool.execution.start",
-	toolExecutionUpdate: "tool.execution.update",
-	toolExecutionEnd: "tool.execution.end",
-} as const;
-export type AgentEventType = (typeof AgentEventType)[keyof typeof AgentEventType];
+// 	messageUpdate: "message.update",
+// 	messageEnd: "message.end",
+// 	// Tool execution lifecycle
+// 	toolExecutionStart: "tool.execution.start",
+// 	toolExecutionUpdate: "tool.execution.update",
+// 	toolExecutionEnd: "tool.execution.end",
+// } as const;
+// export type AgentEventType = (typeof AgentEventType)[keyof typeof AgentEventType];
 
 //
 // message parts
-const UserMessagePart = Type.Union([Message.TextContentSchema, Message.ImageContentSchema]);
-const AssistantMessagePart = Type.Union([
-	Message.TextContentSchema,
-	Message.ImageContentSchema,
-	Message.ThinkingContentSchema,
-	Message.ToolCallSchema,
-]);
+// const UserMessagePart = Type.Union([Message.TextContentSchema, Message.ImageContentSchema]);
+// const AssistantMessagePart = Type.Union([
+// 	Message.TextContentSchema,
+// 	Message.ImageContentSchema,
+// 	Message.ThinkingContentSchema,
+// 	Message.ToolCallSchema,
+// ]);
 
 //
 // user message part
 // part start
-const UserMessagePartStart = Type.Object({
-	type: Type.Literal(AgentEventType.messagePartStart),
-	message: Message.UserMessageSchema,
-	partIndex: Type.Number(),
-	part: UserMessagePart,
-});
+// const UserMessagePartStart = Type.Object({
+// 	type: Type.Literal(AgentEventType.messagePartStart),
+// 	message: Message.UserMessageSchema,
+// 	partIndex: Type.Number(),
+// 	part: UserMessagePart,
+// });
 // part end
-const UserMessagePartEnd = Type.Object({
-	type: Type.Literal(AgentEventType.messagePartEnd),
-	message: Message.UserMessageSchema,
-	partIndex: Type.Number(),
-	part: UserMessagePart,
-});
+// const UserMessagePartEnd = Type.Object({
+// 	type: Type.Literal(AgentEventType.messagePartEnd),
+// 	message: Message.UserMessageSchema,
+// 	partIndex: Type.Number(),
+// 	part: UserMessagePart,
+// });
 
 //
 // assistant message part
 // part start
-const AssistantMessagePartStart = Type.Object({
-	type: Type.Literal(AgentEventType.messagePartStart),
-	message: Message.AssistantMessageSchema,
-	partIndex: Type.Number(),
-	part: AssistantMessagePart,
-});
+// const AssistantMessagePartStart = Type.Object({
+// 	type: Type.Literal(AgentEventType.messagePartStart),
+// 	message: Message.AssistantMessageSchema,
+// 	partIndex: Type.Number(),
+// 	part: AssistantMessagePart,
+// });
 // part update llm
-const AssistantMessagePartLLMUpdate = Type.Object({
-	type: Type.Literal(AgentEventType.messagePartUpdate),
-	message: Message.AssistantMessageSchema,
-	partIndex: Type.Number(),
-	part: AssistantMessagePart,
-	source: Type.Literal("llm"),
-});
+// const AssistantMessagePartLLMUpdate = Type.Object({
+// 	type: Type.Literal(AgentEventType.messagePartUpdate),
+// 	message: Message.AssistantMessageSchema,
+// 	partIndex: Type.Number(),
+// 	part: AssistantMessagePart,
+// 	source: Type.Literal("llm"),
+// });
 // part update tool
-const AssistantMessagePartToolUpdate = Type.Object({
-	type: Type.Literal(AgentEventType.messagePartUpdate),
-	message: Message.AssistantMessageSchema,
-	partIndex: Type.Number(),
-	part: AssistantMessagePart,
-	source: Type.Literal("tool"),
-});
+// const AssistantMessagePartToolUpdate = Type.Object({
+// 	type: Type.Literal(AgentEventType.messagePartUpdate),
+// 	message: Message.AssistantMessageSchema,
+// 	partIndex: Type.Number(),
+// 	part: AssistantMessagePart,
+// 	source: Type.Literal("tool"),
+// });
 // part end
-const AssistantMessagePartEnd = Type.Object({
-	type: Type.Literal(AgentEventType.messagePartEnd),
-	message: Message.AssistantMessageSchema,
-	partIndex: Type.Number(),
-	part: AssistantMessagePart,
-});
+// const AssistantMessagePartEnd = Type.Object({
+// 	type: Type.Literal(AgentEventType.messagePartEnd),
+// 	message: Message.AssistantMessageSchema,
+// 	partIndex: Type.Number(),
+// 	part: AssistantMessagePart,
+// });
 
 //
 // tool exection
-const ToolExecutionStartSchema = Type.Object({
-	type: Type.Literal(AgentEventType.toolExecutionStart),
-	messageId: Type.String(),
-	partIndex: Type.Number(),
-	toolCall: Message.ToolCallPendingPartSchema,
-});
-export type ToolExecutionStart = Static<typeof ToolExecutionStartSchema>;
+// const ToolExecutionStartSchema = Type.Object({
+// 	type: Type.Literal(AgentEventType.toolExecutionStart),
+// 	messageId: Type.String(),
+// 	partIndex: Type.Number(),
+// 	toolCall: Message.ToolCallPendingPartSchema,
+// });
+// export type ToolExecutionStart = Static<typeof ToolExecutionStartSchema>;
 
-const ToolExecutionUpdateSchema = Type.Object({
-	type: Type.Literal(AgentEventType.toolExecutionUpdate),
-	messageId: Type.String(),
-	partIndex: Type.Number(),
-	toolCall: Message.ToolCallRunningPartSchema,
-});
-export type ToolExecutionUpdate = Static<typeof ToolExecutionUpdateSchema>;
+// const ToolExecutionUpdateSchema = Type.Object({
+// 	type: Type.Literal(AgentEventType.toolExecutionUpdate),
+// 	messageId: Type.String(),
+// 	partIndex: Type.Number(),
+// 	toolCall: Message.ToolCallRunningPartSchema,
+// });
+// export type ToolExecutionUpdate = Static<typeof ToolExecutionUpdateSchema>;
 
-const ToolExecutionEndSchema = Type.Object({
-	type: Type.Literal(AgentEventType.toolExecutionEnd),
-	messageId: Type.String(),
-	partIndex: Type.Number(),
-	toolCall: Message.ToolCallTerminalPartSchema,
-});
-export type ToolExecutionEnd = Static<typeof ToolExecutionEndSchema>;
+// const ToolExecutionEndSchema = Type.Object({
+// 	type: Type.Literal(AgentEventType.toolExecutionEnd),
+// 	messageId: Type.String(),
+// 	partIndex: Type.Number(),
+// 	toolCall: Message.ToolCallTerminalPartSchema,
+// });
+// export type ToolExecutionEnd = Static<typeof ToolExecutionEndSchema>;
 
 /**
  * Events emitted by the Agent lifecycle
  * These events provide fine-grained lifecycle information for messages, turns, and tool execution.
  */
-export const AgentEventSchema = Type.Union([
-	//
-	// Agent lifecycle
-	Type.Object({
-		type: Type.Literal(AgentEventType.agentStart),
-	}),
-	Type.Object({
-		type: Type.Literal(AgentEventType.agentEnd),
-		messages: Type.Array(Message.MessageSchema),
-	}),
-	//
-	// Turn lifecycle - a turn is one assistant response + any tool calls/results
-	Type.Object({
-		type: Type.Literal(AgentEventType.turnStart),
-	}),
-	Type.Object({
-		type: Type.Literal(AgentEventType.turnEnd),
-		message: Message.AssistantMessageSchema,
-	}),
-	//
-	// Message lifecycle - emitted for user, assistant and corresponding parts
-	Type.Object({
-		type: Type.Literal(AgentEventType.messageStart),
-		message: Message.MessageSchema,
-	}),
-	// user message parts lifecycle
-	Type.Union([UserMessagePartStart, UserMessagePartEnd]),
-	//
-	// assistant message parts lifecycle
-	Type.Union([
-		AssistantMessagePartStart,
-		AssistantMessagePartLLMUpdate,
-		AssistantMessagePartToolUpdate,
-		AssistantMessagePartEnd,
-	]),
-	Type.Object({
-		type: Type.Literal(AgentEventType.messageUpdate),
-		message: Message.MessageSchema,
-	}),
-	Type.Object({
-		type: Type.Literal(AgentEventType.messageEnd),
-		message: Message.MessageSchema,
-	}),
-	//
-	// Tool execution lifecycle
-	ToolExecutionStartSchema,
-	ToolExecutionUpdateSchema,
-	ToolExecutionEndSchema,
-]);
-export type AgentEvent = Static<typeof AgentEventSchema>;
+// export const AgentEventSchema = Type.Union([
+// 	//
+// 	// Agent lifecycle
+// 	Type.Object({
+// 		type: Type.Literal(AgentEventType.agentStart),
+// 	}),
+// 	Type.Object({
+// 		type: Type.Literal(AgentEventType.agentEnd),
+// 		messages: Type.Array(Message.MessageSchema),
+// 	}),
+// 	//
+// 	// Turn lifecycle - a turn is one assistant response + any tool calls/results
+// 	Type.Object({
+// 		type: Type.Literal(AgentEventType.turnStart),
+// 	}),
+// 	Type.Object({
+// 		type: Type.Literal(AgentEventType.turnEnd),
+// 		message: Message.AssistantMessageSchema,
+// 	}),
+// 	//
+// 	// Message lifecycle - emitted for user, assistant and corresponding parts
+// 	Type.Object({
+// 		type: Type.Literal(AgentEventType.messageStart),
+// 		message: Message.MessageSchema,
+// 	}),
+// 	// user message parts lifecycle
+// 	Type.Union([UserMessagePartStart, UserMessagePartEnd]),
+// 	//
+// 	// assistant message parts lifecycle
+// 	Type.Union([
+// 		AssistantMessagePartStart,
+// 		AssistantMessagePartLLMUpdate,
+// 		AssistantMessagePartToolUpdate,
+// 		AssistantMessagePartEnd,
+// 	]),
+// 	Type.Object({
+// 		type: Type.Literal(AgentEventType.messageUpdate),
+// 		message: Message.MessageSchema,
+// 	}),
+// 	Type.Object({
+// 		type: Type.Literal(AgentEventType.messageEnd),
+// 		message: Message.MessageSchema,
+// 	}),
+// 	//
+// 	// Tool execution lifecycle
+// 	ToolExecutionStartSchema,
+// 	ToolExecutionUpdateSchema,
+// 	ToolExecutionEndSchema,
+// ]);
+// export type AgentEvent = Static<typeof AgentEventSchema>;

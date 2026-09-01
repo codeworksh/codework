@@ -270,7 +270,7 @@ export function collectOpenAICodexDeferredToolNames(
 }
 
 function deferredToolCallId(toolCallId: string, names: readonly string[]): string {
-	return `aikit_tool_load_${shortHash(`${toolCallId}:${names.join(",")}`)}`;
+	return `cdwrk_aikit_tool_${shortHash(`${toolCallId}:${names.join(",")}`)}`;
 }
 
 /**
@@ -359,7 +359,7 @@ export function convertToOpenAICodexPrompt(
 							id:
 								typeof messageId === "string" && messageId.length <= 64
 									? messageId
-									: `msg_aikit_${syntheticMessageCounter}`,
+									: `msg_cdwrk_aikit_${syntheticMessageCounter}`,
 							content: [{ type: "output_text", text: part.text, annotations: [] }],
 							status: "completed",
 						});
