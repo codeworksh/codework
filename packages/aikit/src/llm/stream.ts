@@ -67,10 +67,6 @@ function cacheProviderOptions(model: Model.Info, options: RuntimeOptions): Provi
 		return Object.keys(openai).length > 0 ? { [key]: openai } : {};
 	}
 
-	if (key === "openai-codex" && options.sessionId) {
-		return { [key]: { promptCacheKey: options.sessionId } };
-	}
-
 	if ((key === "anthropic" || key === "google-vertex-anthropic") && retention) {
 		return {
 			[key]: {

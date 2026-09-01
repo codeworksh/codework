@@ -7,11 +7,14 @@ import {
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
+	describeIfOpenAICodex,
 	describeIfOpenRouter,
 	getAnthropicModel,
+	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
 	getText,
+	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
 	type StreamableModel,
@@ -102,6 +105,15 @@ describe("Tool Call Without Result Tests", () => {
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
 			const model = await getOpenAIModel();
+			await testToolCallWithoutResult(model, options);
+		});
+	});
+
+	describeIfOpenAICodex("OpenAI Codex Provider", () => {
+		const options = openaiCodexOptions();
+
+		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 120_000 }, async () => {
+			const model = await getOpenAICodexModel();
 			await testToolCallWithoutResult(model, options);
 		});
 	});

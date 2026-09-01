@@ -87,6 +87,7 @@
 		"@openrouter/ai-sdk-provider": "^3.0.0",
 		"ai": "^7.0.58",
 		"dedent": "^1.7.2",
+		"eventsource-parser": "^3.1.0",
 		"partial-json": "^0.1.7",
 		"remeda": "^2.39.0",
 		"typebox": "^1.3.12",

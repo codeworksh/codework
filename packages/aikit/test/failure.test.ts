@@ -51,4 +51,23 @@ describe("provider failure normalization", () => {
 		expect(failure._tag).toBe("Quota");
 		expect(failure.code).toBe("insufficient_quota");
 	});
+
+	it("recognizes Codex policy codes and OpenAI request ids", () => {
+		const failure = Failure.normalize(
+			new APICallError({
+				message: "Request blocked",
+				url: "https://chatgpt.com/backend-api/codex/responses",
+				requestBodyValues: {},
+				statusCode: 400,
+				responseHeaders: { "x-oai-request-id": "req_codex" },
+				data: { error: { code: "cyber_policy" } },
+			}),
+		);
+
+		expect(failure).toMatchObject({
+			_tag: "ContentPolicy",
+			code: "cyber_policy",
+			requestId: "req_codex",
+		});
+	});
 });

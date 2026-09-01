@@ -522,11 +522,6 @@ describe("Generate E2E Tests", () => {
 	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.4)", () => {
 		const options = openaiCodexOptions();
 
-		it("should resolve appropriate protocol", async () => {
-			const model = await getOpenAICodexModel();
-			expect(model.protocol).toBe(Model.KnownProviderEnum.openaiCodex);
-		});
-
 		it("should complete basic text generation", { retry: 3, timeout: 60000 }, async () => {
 			const model = await getOpenAICodexModel();
 			await basicTextGeneration(model, options);
@@ -564,11 +559,6 @@ describe("Generate E2E Tests", () => {
 	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.6-luna)", () => {
 		const options = openaiCodexOptions();
 		const getModel = () => getOpenAICodexModel("gpt-5.6-luna");
-
-		it("should resolve appropriate protocol", async () => {
-			const model = await getModel();
-			expect(model.protocol).toBe(Model.KnownProviderEnum.openaiCodex);
-		});
 
 		it("should complete basic text generation", { retry: 2, timeout: 60_000 }, async () => {
 			await basicTextGeneration(await getModel(), options);

@@ -11,6 +11,27 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Added
+
+- Added native JSON Schema output support to the OpenAI Codex provider and a live Codex round-trip regression test.
+
+### Changed
+
+- Aligned OpenAI Codex request shaping with the ChatGPT Codex backend: requests always disable storage, include encrypted reasoning content, and derive the prompt cache key from the provider session ID.
+
+### Fixed
+
+- Replaced the OpenAI Codex SSE decoder with a standards-compliant parser, rejected streams that close before a terminal Responses event, and stopped accepting WebSocket-only completion events on the HTTP transport.
+- Distinguished transient Codex rate limits from terminal plan and quota failures while preserving structured error codes, retry timing, and OpenAI request IDs.
+
+### Breaking Changes
+
+- Removed the `store`, `include`, and `promptCacheKey` OpenAI Codex language-model options. These backend-required values are now controlled by the provider.
+
+### Internal
+
+- Reorganized the OpenAI Codex unit tests by provider module and expanded live coverage for empty messages, response IDs, Unicode surrogate handling, incomplete tool-call histories, native grammar tools, and structured output using HTTP/SSE behavior as a reference.
+
 ## [@codeworksh/aikit@0.7.2]
 
 ### Added

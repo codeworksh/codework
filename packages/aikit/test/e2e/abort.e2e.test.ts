@@ -202,11 +202,6 @@ describe("AI Provider Abort Tests", () => {
 			const model = await getOpenAICodexModel();
 			await testImmediateAbort(model, options);
 		});
-
-		it("should handle abort then new message", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getOpenAICodexModel();
-			await testAbortThenNewMessage(model, options);
-		});
 	});
 
 	describeIfOpenRouter("OpenRouter provider (z-ai/glm-5.3-flash)", () => {

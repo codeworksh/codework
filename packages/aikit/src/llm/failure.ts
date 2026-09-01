@@ -86,6 +86,7 @@ const apiMetadata = (error: APICallError): Metadata => {
 	);
 	const requestId =
 		header(error.responseHeaders, "x-request-id") ??
+		header(error.responseHeaders, "x-oai-request-id") ??
 		header(error.responseHeaders, "request-id") ??
 		header(error.responseHeaders, "cf-ray");
 	const retryAfterMs = retryAfter(error.responseHeaders);
@@ -105,7 +106,16 @@ const includes = (value: string | undefined, terms: ReadonlyArray<string>): bool
 const fromAPICall = (error: APICallError): Failure => {
 	const details = apiMetadata(error);
 	if (includes(details.code, ["quota", "billing", "credit"])) return { _tag: "Quota", ...details };
-	if (includes(details.code, ["content_filter", "content_policy", "safety"])) {
+	if (
+		includes(details.code, [
+			"content_filter",
+			"content_policy",
+			"safety",
+			"cyber_policy",
+			"bio_policy",
+			"misalignment_policy",
+		])
+	) {
 		return { _tag: "ContentPolicy", ...details };
 	}
 	if (error.statusCode === 401) return { _tag: "Authentication", reason: "invalid", ...details };

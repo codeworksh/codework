@@ -6,10 +6,13 @@ import {
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
+	describeIfOpenAICodex,
 	describeIfOpenRouter,
 	getAnthropicModel,
+	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
+	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
 	type StreamableModel,
@@ -122,6 +125,26 @@ describe("AI Providers Empty Message Tests", () => {
 
 		it("should handle empty assistant message in conversation", { retry: 3, timeout: 30000 }, async () => {
 			await testEmptyAssistantMessage(await getAnthropicModel(), options);
+		});
+	});
+
+	describeIfOpenAICodex("OpenAI Codex Provider Empty Messages", () => {
+		const options = openaiCodexOptions();
+
+		it("should handle empty content array", { retry: 3, timeout: 60_000 }, async () => {
+			await testEmptyMessage(await getOpenAICodexModel(), options);
+		});
+
+		it("should handle empty string content", { retry: 3, timeout: 60_000 }, async () => {
+			await testEmptyStringMessage(await getOpenAICodexModel(), options);
+		});
+
+		it("should handle whitespace-only content", { retry: 3, timeout: 60_000 }, async () => {
+			await testWhitespaceOnlyMessage(await getOpenAICodexModel(), options);
+		});
+
+		it("should handle empty assistant message in conversation", { retry: 3, timeout: 60_000 }, async () => {
+			await testEmptyAssistantMessage(await getOpenAICodexModel(), options);
 		});
 	});
 

@@ -48,7 +48,7 @@ export interface OpenAICodexProviderSettings {
 	/** Custom fetch implementation. */
 	fetch?: typeof globalThis.fetch;
 
-	/** Session id used for the `session-id` header and the default prompt cache key. */
+	/** Session id used for request identity, the `session-id` header, and prompt cache affinity. */
 	sessionId?: string;
 
 	/** Default service tier for requests. */
