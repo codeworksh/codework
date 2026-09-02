@@ -30,7 +30,7 @@ When uncertain, prefer: Effect, Tailwind, TypeScript, React, Clerk, TanStack, Ve
 ## General Preferences
 
 - If asked to do too much work at once, stop and state that clearly.
-- If computer use is helpful for completing or verifying work, shell out to gpt-5.5 with Codex for it
+- If computer use is helpful for completing or verifying work, shell out to gpt-5.6 with Codex for it
 - Avoid defensive future-facing design. This leads to pre-mature assumptions which are never true.
 
 ## Maintainability
