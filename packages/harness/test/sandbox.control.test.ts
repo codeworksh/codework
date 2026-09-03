@@ -4,6 +4,7 @@ import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
 import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
 import {
 	SandboxBusyError,
@@ -20,7 +21,7 @@ import { SandboxStore } from "../src/sandbox/store.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("control-fake"));
-const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(fake.driver));
+const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(fake.driver));
 const controllerLayer = Layer.provideMerge(
 	SandboxController.layer({ transportIdleTimeToLive: "1 hour" }),
 	dependencies,

@@ -8,22 +8,17 @@ import { SandboxInstance } from "../instance.ts";
 import { EnvSqldb } from "../fs/sqldb.ts";
 import { transport, transportLayer } from "../virtual.ts";
 
-export interface CreateConfig {
-	readonly defaultCwd: SandboxDriver.AbsolutePath;
-	readonly initializeCwd?: SandboxDriver.AbsolutePath | undefined;
-	readonly location?: string | undefined;
-}
-
 export interface RuntimeConfig extends SandboxDriver.RuntimeConfigBase {
 	readonly location?: string | undefined;
 	readonly inMemory: boolean;
 }
 
 export const CreateConfig = Schema.Struct({
-	defaultCwd: SandboxDriver.AbsolutePath,
+	defaultCwd: Schema.optional(SandboxDriver.AbsolutePath),
 	initializeCwd: Schema.optional(SandboxDriver.AbsolutePath),
 	location: Schema.optional(Schema.String),
 });
+export type CreateConfig = typeof CreateConfig.Type;
 
 export const RuntimeConfig = Schema.Struct({
 	defaultCwd: SandboxDriver.AbsolutePath,
@@ -71,6 +66,7 @@ export const make = () => {
 		name,
 		kind: "virtual",
 		capabilities: {
+			inspect: true,
 			reattach: true,
 			wake: true,
 			stop: true,
@@ -80,8 +76,9 @@ export const make = () => {
 		createConfigCodec: CreateConfig,
 		runtimeConfigCodec: RuntimeConfig,
 		create: ({ instanceId, config }) => {
+			const defaultCwd = config.defaultCwd ?? SandboxDriver.AbsolutePath.make("/");
 			const location = config.location === undefined ? undefined : posix.resolve(config.location);
-			return EnvSqldb.make(location, { cwd: config.initializeCwd ?? config.defaultCwd }).pipe(
+			return EnvSqldb.make(location, { cwd: config.initializeCwd ?? defaultCwd }).pipe(
 				Effect.mapError((cause) => providerError({ driver: name, operation: "create", cause })),
 				Effect.map((namespace) => {
 					if (location === undefined) memory.set(instanceId, namespace);
@@ -90,7 +87,7 @@ export const make = () => {
 						...(location === undefined ? {} : { providerResourceId: location }),
 						providerStatus: location === undefined ? "online" : "offline",
 						runtimeConfig: {
-							defaultCwd: config.defaultCwd,
+							defaultCwd,
 							...(location === undefined ? {} : { location }),
 							inMemory: location === undefined,
 						},

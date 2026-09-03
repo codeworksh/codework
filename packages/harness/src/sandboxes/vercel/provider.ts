@@ -1,12 +1,11 @@
 /* oxlint-disable effecttsgo/async-function -- Vercel's sandbox SDK boundary is Promise-based. */
 import { Context, Effect, Layer, Schema, Stream } from "effect";
 import { Buffer } from "node:buffer";
-import { makeRedactor, type Redactor, sanitizeError as sanitizeSandboxError } from "../errors.ts";
-import { SandboxFileSystem } from "../fs/filesystem.ts";
-import { RemoteFileSystem } from "../fs/remote.ts";
-import { SandboxInstance } from "../instance.ts";
-import { SandboxIO } from "../io.ts";
-import { SandboxResource } from "../resource.ts";
+import { makeRedactor, type Redactor, sanitizeError as sanitizeSandboxError } from "../../sandbox/errors.ts";
+import { SandboxFileSystem } from "../../sandbox/fs/filesystem.ts";
+import { SandboxInstance } from "../../sandbox/instance.ts";
+import { SandboxIO } from "../../sandbox/io.ts";
+import { SandboxResource } from "../../sandbox/resource.ts";
 import {
 	type ExecChunk,
 	type ExecResult,
@@ -15,7 +14,8 @@ import {
 	resolveCwd,
 	Shell,
 	ShellError,
-} from "../shell/shell.ts";
+} from "../../sandbox/shell/shell.ts";
+import * as RemoteFileSystem from "./fs.ts";
 
 const utf8 = new TextEncoder();
 type Command = import("@vercel/sandbox").Command;
@@ -114,7 +114,7 @@ interface RemoteState {
 	readonly sandbox: RemoteSandbox;
 }
 
-class Remote extends Context.Service<Remote, RemoteState>()("@codeworksh/harness/sandbox/providers/vercel/Remote") {}
+class Remote extends Context.Service<Remote, RemoteState>()("@codeworksh/harness/sandboxes/vercel/provider/Remote") {}
 
 // Vercel requires all three credential fields together or none — partial
 // credentials are rejected by the SDK — so only forward them when complete.
@@ -431,5 +431,3 @@ export const layer = (
 };
 
 export const services = layer;
-
-export * as EnvVercel from "./vercel.ts";

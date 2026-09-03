@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { DEFAULT_CWD, mountCwd } from "../src/sandbox/providers/daytona.ts";
+import { DEFAULT_CWD, mountCwd } from "../src/sandboxes/daytona/provider.ts";
 
 /**
  * Ungated: `mountCwd` is the one piece of Daytona's mount that decides where

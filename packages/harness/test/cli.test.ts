@@ -75,7 +75,7 @@ describe("codework CLI", () => {
 			"--provider",
 			"openrouter",
 			"--model",
-			"stealth/ox-alpha",
+			"z-ai/glm-5.3-flash",
 			"test",
 		);
 

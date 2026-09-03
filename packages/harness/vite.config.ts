@@ -16,6 +16,7 @@ const ignoredPaths = [
 ];
 const aliases = {
 	"@codeworksh/utils": fileURLToPath(new URL("../utils/src/index.ts", import.meta.url)),
+	"@codeworksh/harness/sandbox": fileURLToPath(new URL("src/sandbox.ts", import.meta.url)),
 	"@codeworksh/aikit/modelgen": fileURLToPath(new URL("../aikit/src/modelgen.ts", import.meta.url)),
 	"@codeworksh/aikit/failure": fileURLToPath(new URL("../aikit/src/llm/failure.ts", import.meta.url)),
 	"@codeworksh/aikit": fileURLToPath(new URL("../aikit/src/index.ts", import.meta.url)),
@@ -26,13 +27,17 @@ export default defineConfig({
 		alias: aliases,
 	},
 	pack: {
-		entry: ["src/index.ts", "src/effect.ts", "src/cli/index.ts"],
+		entry: [
+			"src/index.ts",
+			"src/effect.ts",
+			"src/sandbox.ts",
+			"src/sandboxes/daytona/index.ts",
+			"src/sandboxes/vercel/index.ts",
+			"src/cli/index.ts",
+		],
 		format: ["esm"],
 		outDir: "dist/pack",
 		deps: {
-			// Daytona's published ESM imports tslib without declaring it, so keep
-			// both inside the lazy provider chunk instead of relying on hoisting.
-			alwaysBundle: ["@daytona/sdk", "tslib"],
 			dts: {
 				neverBundle: true,
 			},

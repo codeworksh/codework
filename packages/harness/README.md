@@ -34,7 +34,7 @@ import { Effect } from "effect";
 import { Harness, Sandbox, Session } from "@codeworksh/harness/effect";
 
 const program = Effect.gen(function* () {
-	const sandbox = yield* Sandbox.create({ driver: "memory", cwd: "/workspace" });
+	const sandbox = yield* Sandbox.create({ driver: "memory", config: { defaultCwd: "/workspace" } });
 	const session = yield* Session.create({ sandbox });
 	const info = yield* session.info;
 	console.log(`${sandbox.driver}:${info.directory}`);
@@ -45,12 +45,23 @@ await program.pipe(
 		Harness.layer({
 			database: ":memory:",
 			home: ".codework-readme",
-			sandboxes: [Sandbox.Drivers.memory],
 		}),
 	),
 	Effect.scoped,
 	Effect.runPromise,
 );
+```
+
+`local` always exists, while `memory` and `sqldb` are registered automatically. Install third-party drivers with pnpm and load their package specifiers when constructing the layer:
+
+```sh
+pnpm install @acme/codework-sandbox-whatever
+```
+
+```ts
+Harness.layer({
+	sandboxes: ["@acme/codework-sandbox-whatever"],
+});
 ```
 
 Vercel and Daytona are the first remote drivers. More providers can be added behind the same lifecycle and I/O contracts without changing session or agent-loop code.

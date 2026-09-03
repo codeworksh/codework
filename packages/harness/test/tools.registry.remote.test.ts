@@ -4,7 +4,7 @@ import { appendFile, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { EnvDaytona } from "../src/sandbox/providers/daytona.ts";
+import * as EnvDaytona from "../src/sandboxes/daytona/provider.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { bashTool } from "../src/tools/bash.ts";
 import type * as Executor from "../src/tools/executor.ts";

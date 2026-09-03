@@ -12,8 +12,8 @@ import { Event } from "../../src/event/event.ts";
 import { RunnerExecute } from "../../src/runner/execute.ts";
 import { Loop } from "../../src/runner/loop.ts";
 import { SandboxController } from "../../src/sandbox/control.ts";
-import { SandboxDriver } from "../../src/sandbox/driver.ts";
-import { VercelSandboxDriver } from "../../src/sandbox/drivers/vercel.ts";
+import { SandboxDriverRegistry } from "../../src/sandbox/registry.ts";
+import * as VercelSandboxDriver from "../../src/sandboxes/vercel/index.ts";
 import { AbsolutePath } from "../../src/schema.ts";
 import { SessionLive } from "../../src/session/live.ts";
 import { SessionRuntime } from "../../src/session/runtime.ts";
@@ -24,7 +24,7 @@ import { State } from "../../src/state/state.ts";
 const database = Database.layer(":memory:");
 const vercel = VercelSandboxDriver.make();
 const sandbox = SandboxController.layer().pipe(
-	Layer.provideMerge(SandboxDriver.layer(vercel)),
+	Layer.provideMerge(SandboxDriverRegistry.layer(vercel)),
 	Layer.provideMerge(database),
 );
 const runtime = Control.layer.pipe(

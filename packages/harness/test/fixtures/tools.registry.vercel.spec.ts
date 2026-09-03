@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
-import { EnvVercel } from "../../src/sandbox/providers/vercel.ts";
+import * as EnvVercel from "../../src/sandboxes/vercel/provider.ts";
 import { bashTool } from "../../src/tools/bash.ts";
 import type * as Executor from "../../src/tools/executor.ts";
 import * as Registry from "../../src/tools/registry.ts";

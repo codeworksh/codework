@@ -2,13 +2,13 @@
 import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
 import { Buffer } from "node:buffer";
 import { posix } from "../../util/posix.ts";
-import { sanitizeError } from "../errors.ts";
-import { SandboxFileSystem } from "../fs/filesystem.ts";
-import { RemoteFileSystem } from "../fs/remote.ts";
-import { SandboxInstance } from "../instance.ts";
-import { SandboxIO } from "../io.ts";
-import { SandboxResource } from "../resource.ts";
-import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../shell/shell.ts";
+import { sanitizeError } from "../../sandbox/errors.ts";
+import { SandboxFileSystem } from "../../sandbox/fs/filesystem.ts";
+import { SandboxInstance } from "../../sandbox/instance.ts";
+import { SandboxIO } from "../../sandbox/io.ts";
+import { SandboxResource } from "../../sandbox/resource.ts";
+import { type ISandboxExe, quote, quoteArgv, resolveCwd, Shell, ShellError } from "../../sandbox/shell/shell.ts";
+import * as RemoteFileSystem from "./fs.ts";
 
 type CodeLanguage = import("@daytona/sdk").CodeLanguage;
 type Daytona = import("@daytona/sdk").Daytona;
@@ -83,7 +83,7 @@ interface RemoteState {
 	readonly cwd: string;
 }
 
-class Remote extends Context.Service<Remote, RemoteState>()("@codeworksh/harness/sandbox/providers/daytona/Remote") {}
+class Remote extends Context.Service<Remote, RemoteState>()("@codeworksh/harness/sandboxes/daytona/provider/Remote") {}
 
 const assertCommandSucceeded = (command: string, result: { exitCode: number; result?: string }) => {
 	if (result.exitCode !== 0) throw new Error(result.result || `command failed (${result.exitCode}): ${command}`);
@@ -320,5 +320,3 @@ export const layer = (options: Options = {}): Layer.Layer<SandboxIO.Provides | S
 	);
 
 export const services = layer;
-
-export * as EnvDaytona from "./daytona.ts";

@@ -1,14 +1,15 @@
 import { Effect, Layer, Option, Schema } from "effect";
-import { SandboxDriver } from "../driver.ts";
-import { makeRedactor, providerError, type SandboxProviderError } from "../errors.ts";
-import { SandboxInstance } from "../instance.ts";
-import { EnvVercel } from "../providers/vercel.ts";
+import { SandboxDriver, SandboxInstance, SandboxProvider } from "../../sandbox.ts";
+import * as EnvVercel from "./provider.ts";
 
-export interface ClientOptions {
-	readonly token?: string | undefined;
-	readonly teamId?: string | undefined;
-	readonly projectId?: string | undefined;
-}
+export const Options = Schema.Struct({
+	token: Schema.optional(Schema.String),
+	teamId: Schema.optional(Schema.String),
+	projectId: Schema.optional(Schema.String),
+});
+export type Options = typeof Options.Type;
+export const ClientOptions = Options;
+export type ClientOptions = Options;
 
 export const Source = Schema.Union([
 	Schema.Struct({
@@ -85,13 +86,16 @@ export const make = (
 	client: ClientOptions = {},
 ): SandboxDriver.Driver<CreateConfig, RuntimeConfig> & SandboxDriver.Registration => {
 	const credentials = EnvVercel.credentialsFrom(client);
-	const redact = makeRedactor([client.token ?? ""]);
+	const redact = SandboxProvider.makeRedactor([client.token ?? ""]);
 
-	const attempt = <A>(operation: string, run: () => Promise<A>): Effect.Effect<A, SandboxProviderError> =>
+	const attempt = <A>(
+		operation: string,
+		run: () => Promise<A>,
+	): Effect.Effect<A, SandboxProvider.SandboxProviderError> =>
 		Effect.tryPromise({
 			try: run,
 			catch: (cause) =>
-				providerError({
+				SandboxProvider.providerError({
 					driver: name,
 					operation,
 					cause,
@@ -123,6 +127,7 @@ export const make = (
 		name,
 		kind: "remote",
 		capabilities: {
+			inspect: true,
 			reattach: true,
 			wake: true,
 			stop: true,
@@ -236,4 +241,13 @@ export const make = (
 	});
 };
 
-export * as VercelSandboxDriver from "./vercel.ts";
+const sandbox = SandboxDriver.module({
+	apiVersion: SandboxDriver.apiVersion,
+	name,
+	options: Options,
+	make,
+});
+
+export const config = (value: CreateConfig) => ({ driver: "vercel" as const, config: value });
+
+export default sandbox;

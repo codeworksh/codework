@@ -1,6 +1,7 @@
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { describe, expect } from "vite-plus/test";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
 import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
 import {
 	makeRedactor,
@@ -11,18 +12,18 @@ import {
 } from "../src/sandbox/errors.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
-import { sanitizeProviderError as sanitizeVercelProviderError } from "../src/sandbox/providers/vercel.ts";
+import { sanitizeProviderError as sanitizeVercelProviderError } from "../src/sandboxes/vercel/provider.ts";
 import { it as effectTests, testEffect } from "./utils/effect.ts";
 
 const fake = FakeSandboxDriver.make();
-const { effect: driverIt } = testEffect(SandboxDriver.layer(fake.driver));
+const { effect: driverIt } = testEffect(SandboxDriverRegistry.layer(fake.driver));
 const { effect: it } = effectTests;
 
 describe("SandboxDriver", () => {
 	driverIt(
 		"registers an open driver name and rejects unknown names",
 		Effect.gen(function* () {
-			const registry = yield* SandboxDriver.Registry;
+			const registry = yield* SandboxDriverRegistry.Registry;
 			expect(registry.names).toEqual(new Set([SandboxDriver.Name.make("fake")]));
 			expect(Option.isSome(registry.find(SandboxDriver.Name.make("fake")))).toBe(true);
 
@@ -37,7 +38,7 @@ describe("SandboxDriver", () => {
 	driverIt(
 		"uses the registered codecs as the authoritative unknown boundary",
 		Effect.gen(function* () {
-			const registry = yield* SandboxDriver.Registry;
+			const registry = yield* SandboxDriverRegistry.Registry;
 			const name = SandboxDriver.Name.make("fake");
 
 			const create = yield* registry.decodeCreateConfig(name, { defaultCwd: "/workspace" });
@@ -62,7 +63,7 @@ describe("SandboxDriver", () => {
 	driverIt(
 		"round-trips persisted runtime config through unknown JSON",
 		Effect.gen(function* () {
-			const registry = yield* SandboxDriver.Registry;
+			const registry = yield* SandboxDriverRegistry.Registry;
 			const name = SandboxDriver.Name.make("fake");
 			const runtime = {
 				defaultCwd: SandboxDriver.AbsolutePath.make("/workspace"),
@@ -78,7 +79,7 @@ describe("SandboxDriver", () => {
 	it(
 		"rejects duplicate names and destroy without stop",
 		Effect.gen(function* () {
-			const duplicate = yield* Effect.exit(SandboxDriver.makeRegistry([fake.driver, fake.driver]));
+			const duplicate = yield* Effect.exit(SandboxDriverRegistry.make([fake.driver, fake.driver]));
 			expect(Exit.isFailure(duplicate)).toBe(true);
 			if (Exit.isFailure(duplicate)) {
 				expect(Cause.squash(duplicate.cause)).toBeInstanceOf(SandboxDriverRegistrationError);
@@ -89,7 +90,7 @@ describe("SandboxDriver", () => {
 				name: SandboxDriver.Name.make("invalid"),
 				capabilities: { ...fake.driver.capabilities, stop: false, destroy: true },
 			});
-			const capability = yield* Effect.exit(SandboxDriver.makeRegistry([invalid]));
+			const capability = yield* Effect.exit(SandboxDriverRegistry.make([invalid]));
 			expect(Exit.isFailure(capability)).toBe(true);
 			if (Exit.isFailure(capability)) {
 				expect(Cause.squash(capability.cause)).toBeInstanceOf(SandboxDriverRegistrationError);
@@ -104,7 +105,7 @@ describe("SandboxDriver", () => {
 				...fake.driver,
 				name: SandboxDriver.Name.make("cloudflare-workers"),
 			});
-			const registry = yield* SandboxDriver.makeRegistry([fake.driver, cloudflare]);
+			const registry = yield* SandboxDriverRegistry.make([fake.driver, cloudflare]);
 			expect(registry.names).toEqual(
 				new Set([SandboxDriver.Name.make("fake"), SandboxDriver.Name.make("cloudflare-workers")]),
 			);

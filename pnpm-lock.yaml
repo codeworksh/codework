@@ -36,6 +36,22 @@ importers:
         specifier: 'catalog:'
         version: 0.2.8(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.1.2)(esbuild@0.28.2)(jiti@2.7.0)(msw@2.13.4(@types/node@26.1.2)(typescript@7.0.2))(tsx@4.23.12)(typescript@7.0.2)(unrun@0.2.36)(vite@8.0.7(@types/node@26.1.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))(yaml@2.9.0)
 
+  extras/codework-sandbox-vercel:
+    dependencies:
+      '@codeworksh/harness':
+        specifier: '*'
+        version: 0.0.1-dev.20260824142157(ioredis@5.11.1)(zod@4.4.3)
+      '@vercel/sandbox':
+        specifier: ^2.9.2
+        version: 2.9.2
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.5
+        version: 25.9.5
+      effect:
+        specifier: 4.0.0-beta.107
+        version: 4.0.0-beta.107
+
   packages/aikit:
     dependencies:
       '@ai-sdk/anthropic':
@@ -105,9 +121,6 @@ importers:
       '@codeworksh/aikit':
         specifier: workspace:*
         version: link:../aikit
-      '@daytona/sdk':
-        specifier: ^0.187.0
-        version: 0.187.0(ws@8.21.1)
       '@effect/platform-node':
         specifier: 4.0.0-beta.107
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)(ioredis@5.11.1)
@@ -117,9 +130,6 @@ importers:
       '@platformatic/vfs':
         specifier: ^0.4.0
         version: 0.4.0
-      '@vercel/sandbox':
-        specifier: ^2.9.2
-        version: 2.9.2
       effect:
         specifier: 4.0.0-beta.107
         version: 4.0.0-beta.107
@@ -139,12 +149,24 @@ importers:
         specifier: ^1.2.1
         version: 1.2.1
     devDependencies:
+      '@codeworksh-test/codework-sandbox-vercel':
+        specifier: workspace:*
+        version: link:../../extras/codework-sandbox-vercel
+      '@daytona/sdk':
+        specifier: ^0.187.0
+        version: 0.187.0(ws@8.21.1)
       '@types/node':
         specifier: ^25.9.5
         version: 25.9.5
+      '@vercel/sandbox':
+        specifier: ^2.9.2
+        version: 2.9.2
       bumpp:
         specifier: ^12.2.0
         version: 12.2.0
+      dedent:
+        specifier: ^1.7.2
+        version: 1.7.2
 
   packages/utils:
     dependencies:
@@ -314,6 +336,16 @@ packages:
 
   '@borewit/text-codec@0.2.2':
     resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
+
+  '@codeworksh/aikit@0.7.0':
+    resolution: {integrity: sha512-ZXJrYy/tX8lYaQCNLw6BkdUFfxS6q23Vw8SicoMxIqJLpd1bxklWitSGJ3pWjT0I/CP2MABJWiqHjk3B+5gXwQ==}
+    engines: {node: '>=22.0.0'}
+    hasBin: true
+
+  '@codeworksh/harness@0.0.1-dev.20260824142157':
+    resolution: {integrity: sha512-uoSWKH18GxKwPlMdgiKknUwR6kSerIsYe6DZCaiPQA2U9Eg6H6DOFK5a/AgB6a3T31jP8uWuywfvUejucbPWWQ==}
+    engines: {node: '>=24.14.1'}
+    hasBin: true
 
   '@daytona/api-client@0.187.0':
     resolution: {integrity: sha512-riKOJ6eSuy67DL6iJlAa3Bfjnm4iQmkOdJk0B5hqrYMZeZmVDsgdiZtYvFpyoa+2KCZFNb0Gs5dQwO1d6NhGCw==}
@@ -3627,6 +3659,53 @@ snapshots:
   '@blazediff/core@1.9.1': {}
 
   '@borewit/text-codec@0.2.2': {}
+
+  '@codeworksh/aikit@0.7.0(zod@4.4.3)':
+    dependencies:
+      '@ai-sdk/anthropic': 4.0.36(zod@4.4.3)
+      '@ai-sdk/google': 4.0.39(zod@4.4.3)
+      '@ai-sdk/google-vertex': 5.0.48(zod@4.4.3)
+      '@ai-sdk/openai': 4.0.36(zod@4.4.3)
+      '@ai-sdk/openai-compatible': 3.0.28(zod@4.4.3)
+      '@ai-sdk/provider': 4.0.7
+      '@ai-sdk/xai': 4.0.33(zod@4.4.3)
+      '@openrouter/ai-sdk-provider': 3.0.0(ai@7.0.58(zod@4.4.3))(zod@4.4.3)
+      ai: 7.0.58(zod@4.4.3)
+      dedent: 1.7.2
+      partial-json: 0.1.7
+      remeda: 2.39.0
+      typebox: 1.3.12
+      uuidv7: 1.2.1
+      yargs: 18.1.0
+    transitivePeerDependencies:
+      - babel-plugin-macros
+      - supports-color
+      - zod
+
+  '@codeworksh/harness@0.0.1-dev.20260824142157(ioredis@5.11.1)(zod@4.4.3)':
+    dependencies:
+      '@codeworksh/aikit': 0.7.0(zod@4.4.3)
+      '@daytona/sdk': 0.187.0(ws@8.21.1)
+      '@effect/platform-node': 4.0.0-beta.107(effect@4.0.0-beta.107)(ioredis@5.11.1)
+      '@effect/sql-sqlite-node': 4.0.0-beta.107(effect@4.0.0-beta.107)
+      '@platformatic/vfs': 0.4.0
+      '@vercel/sandbox': 2.9.2
+      effect: 4.0.0-beta.107
+      just-bash: 2.14.5
+      typebox: 1.3.12
+      uuid: 14.0.1
+      uuidv7: 1.2.1
+    transitivePeerDependencies:
+      - babel-plugin-macros
+      - bare-abort-controller
+      - bufferutil
+      - debug
+      - ioredis
+      - react-native-b4a
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
 
   '@daytona/api-client@0.187.0':
     dependencies:

@@ -3,6 +3,7 @@ import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
 import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
 import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
@@ -16,7 +17,7 @@ const processLocalLifecycle = <CreateConfig, RuntimeConfig extends SandboxDriver
 		readonly config: CreateConfig;
 	},
 ) => {
-	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(fixture.driver));
+	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(fixture.driver));
 	const runtime = Layer.provideMerge(SandboxController.layer({ transportIdleTimeToLive: "1 hour" }), dependencies);
 	const { effect: it } = testEffect(runtime);
 

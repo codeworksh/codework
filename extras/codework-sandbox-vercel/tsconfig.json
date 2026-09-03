@@ -1,0 +1,11 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"allowImportingTsExtensions": true,
+		"paths": {
+			"@codeworksh/harness/sandbox": ["../../packages/harness/src/sandbox.ts"]
+		},
+		"tsBuildInfoFile": "../../.cache/typescript/sandbox-vercel-smoke.tsbuildinfo"
+	},
+	"include": ["src/**/*.ts"]
+}

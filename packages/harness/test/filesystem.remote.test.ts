@@ -3,7 +3,7 @@ import { Buffer } from "node:buffer";
 import { posix } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
-import { RemoteFileSystem } from "../src/sandbox/fs/remote.ts";
+import * as RemoteFileSystem from "../src/sandboxes/vercel/fs.ts";
 
 const enoent = (path: string) => {
 	const error = new Error(`ENOENT: no such file or directory, '${path}'`) as NodeJS.ErrnoException;

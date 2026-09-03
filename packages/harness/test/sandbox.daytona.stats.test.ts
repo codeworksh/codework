@@ -1,6 +1,6 @@
 import type { FileInfo } from "@daytona/sdk";
 import { describe, expect, it } from "vite-plus/test";
-import { statsFrom } from "../src/sandbox/providers/daytona.ts";
+import { statsFrom } from "../src/sandboxes/daytona/provider.ts";
 
 // statsFrom maps the toolbox FileInfo to a FileStat. The contract: isFile and
 // isDirectory are always present; size, mtime, and isSymbolicLink are omitted

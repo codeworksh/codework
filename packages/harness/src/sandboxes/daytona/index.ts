@@ -1,14 +1,15 @@
 import { Effect, Layer, Option, Schema } from "effect";
-import { SandboxDriver } from "../driver.ts";
-import { makeRedactor, providerError, type SandboxProviderError } from "../errors.ts";
-import { SandboxInstance } from "../instance.ts";
-import { EnvDaytona } from "../providers/daytona.ts";
+import { SandboxDriver, SandboxInstance, SandboxProvider } from "../../sandbox.ts";
+import * as EnvDaytona from "./provider.ts";
 
-export interface ClientOptions {
-	readonly apiKey?: string | undefined;
-	readonly apiUrl?: string | undefined;
-	readonly target?: string | undefined;
-}
+export const Options = Schema.Struct({
+	apiKey: Schema.optional(Schema.String),
+	apiUrl: Schema.optional(Schema.String),
+	target: Schema.optional(Schema.String),
+});
+export type Options = typeof Options.Type;
+export const ClientOptions = Options;
+export type ClientOptions = Options;
 
 export const ResourcesConfig = Schema.Struct({
 	cpu: Schema.optional(Schema.Finite),
@@ -70,7 +71,7 @@ const shouldWake = (sandbox: RemoteSandbox): boolean => sandbox.state === "stopp
 export const make = (
 	client: ClientOptions = {},
 ): SandboxDriver.Driver<CreateConfig, RuntimeConfig> & SandboxDriver.Registration => {
-	const redact = makeRedactor([client.apiKey ?? ""]);
+	const redact = SandboxProvider.makeRedactor([client.apiKey ?? ""]);
 	const daytona = (sdk: DaytonaSdk) =>
 		new sdk.Daytona({
 			...(client.apiKey === undefined ? {} : { apiKey: client.apiKey }),
@@ -81,7 +82,7 @@ export const make = (
 	const attempt = <A>(
 		operation: string,
 		run: (sdk: DaytonaSdk) => Promise<A>,
-	): Effect.Effect<A, SandboxProviderError> =>
+	): Effect.Effect<A, SandboxProvider.SandboxProviderError> =>
 		Effect.suspend(() => {
 			let sdk: DaytonaSdk | undefined;
 			return Effect.tryPromise({
@@ -91,7 +92,7 @@ export const make = (
 						return run(loaded);
 					}),
 				catch: (cause) =>
-					providerError({
+					SandboxProvider.providerError({
 						driver: name,
 						operation,
 						cause,
@@ -132,6 +133,7 @@ export const make = (
 		name,
 		kind: "remote",
 		capabilities: {
+			inspect: true,
 			reattach: true,
 			wake: true,
 			stop: true,
@@ -245,4 +247,13 @@ export const make = (
 	});
 };
 
-export * as DaytonaSandboxDriver from "./daytona.ts";
+const sandbox = SandboxDriver.module({
+	apiVersion: SandboxDriver.apiVersion,
+	name,
+	options: Options,
+	make,
+});
+
+export const config = (value: CreateConfig) => ({ driver: "daytona" as const, config: value });
+
+export default sandbox;

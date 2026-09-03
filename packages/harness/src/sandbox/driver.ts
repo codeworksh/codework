@@ -1,11 +1,11 @@
-import { Context, Effect, Layer, Option, Schema } from "effect";
-import {
-	SandboxDriverNotRegisteredError,
-	SandboxDriverRegistrationError,
-	type SandboxProviderError,
-} from "./errors.ts";
+import { type Effect, type Layer, Option, Schema } from "effect";
+import type { SandboxProviderError } from "./errors.ts";
 import { SandboxInstance } from "./instance.ts";
 import { SandboxIO } from "./io.ts";
+
+/** Version of the loadable sandbox-driver module ABI. */
+export const apiVersion = 1 as const;
+export type ApiVersion = typeof apiVersion;
 
 /** Open driver identity. Adding a driver never extends a union in core. */
 export const Name = Schema.String.check(Schema.isNonEmpty()).pipe(Schema.brand("SandboxDriver.Name"));
@@ -17,12 +17,11 @@ export const AbsolutePath = Schema.String.check(Schema.isStartsWith("/")).pipe(
 );
 export type AbsolutePath = typeof AbsolutePath.Type;
 
-export const RuntimeConfigBase = Schema.Struct({
-	defaultCwd: AbsolutePath,
-});
+export const RuntimeConfigBase = Schema.Struct({ defaultCwd: AbsolutePath });
 export interface RuntimeConfigBase extends Schema.Schema.Type<typeof RuntimeConfigBase> {}
 
 export interface Capabilities {
+	readonly inspect: boolean;
 	readonly reattach: boolean;
 	readonly wake: boolean;
 	readonly stop: boolean;
@@ -51,25 +50,23 @@ export interface RuntimeInput<RuntimeConfig extends RuntimeConfigBase> {
 
 export interface Driver<CreateConfig, RuntimeConfig extends RuntimeConfigBase> {
 	readonly name: Name;
-	readonly kind: SandboxInstance.Kind;
+	readonly kind: Exclude<SandboxInstance.Kind, "local">;
 	readonly capabilities: Capabilities;
 	readonly createConfigCodec: Schema.Codec<CreateConfig, unknown>;
 	readonly runtimeConfigCodec: Schema.Codec<RuntimeConfig, unknown>;
-
 	readonly create: (input: {
 		readonly instanceId: SandboxInstance.ID;
 		readonly config: CreateConfig;
 	}) => Effect.Effect<Provisioned<RuntimeConfig>, SandboxProviderError>;
-
-	readonly runtimeConfigFor: (input: {
-		readonly providerResourceId: string;
-		readonly overrides?: Partial<RuntimeConfig> | undefined;
-	}) => Effect.Effect<RuntimeConfig, SandboxProviderError>;
-
+	readonly runtimeConfigFor?:
+		| ((input: {
+				readonly providerResourceId: string;
+				readonly overrides?: Partial<RuntimeConfig> | undefined;
+		  }) => Effect.Effect<RuntimeConfig, SandboxProviderError>)
+		| undefined;
 	readonly attach: (
 		input: RuntimeInput<RuntimeConfig>,
 	) => Layer.Layer<SandboxIO.FileSystem | SandboxIO.Shell, SandboxProviderError>;
-
 	readonly inspect?: (input: RuntimeInput<RuntimeConfig>) => Effect.Effect<Observed, SandboxProviderError>;
 	readonly wake?: (input: RuntimeInput<RuntimeConfig>) => Effect.Effect<Observed, SandboxProviderError>;
 	readonly stop?: (input: RuntimeInput<RuntimeConfig>) => Effect.Effect<Observed, SandboxProviderError>;
@@ -81,14 +78,10 @@ export type Definition<CreateConfig, RuntimeConfig extends RuntimeConfigBase> = 
 	"name" | "createConfigCodec" | "runtimeConfigCodec"
 >;
 
-/**
- * The registry's type-erased shape. Erasure happens once at registration;
- * untrusted values still cross the registered driver's codecs before reaching
- * its typed implementation.
- */
+/** Registry-only erased shape. Driver authors construct it via {@link driver}. */
 export interface Registered {
 	readonly name: Name;
-	readonly kind: SandboxInstance.Kind;
+	readonly kind: Exclude<SandboxInstance.Kind, "local">;
 	readonly capabilities: Capabilities;
 	readonly createConfigCodec: Schema.Codec<unknown, unknown>;
 	readonly runtimeConfigCodec: Schema.Codec<RuntimeConfigBase, unknown>;
@@ -96,10 +89,12 @@ export interface Registered {
 		readonly instanceId: SandboxInstance.ID;
 		readonly config: unknown;
 	}) => Effect.Effect<Provisioned<RuntimeConfigBase>, SandboxProviderError>;
-	readonly runtimeConfigFor: (input: {
-		readonly providerResourceId: string;
-		readonly overrides?: Readonly<Record<string, unknown>> | undefined;
-	}) => Effect.Effect<RuntimeConfigBase, SandboxProviderError>;
+	readonly runtimeConfigFor?:
+		| ((input: {
+				readonly providerResourceId: string;
+				readonly overrides?: Readonly<Record<string, unknown>> | undefined;
+		  }) => Effect.Effect<RuntimeConfigBase, SandboxProviderError>)
+		| undefined;
 	readonly attach: (
 		input: RuntimeInput<RuntimeConfigBase>,
 	) => Layer.Layer<SandboxIO.FileSystem | SandboxIO.Shell, SandboxProviderError>;
@@ -109,159 +104,85 @@ export interface Registered {
 	readonly destroy?: (input: RuntimeInput<RuntimeConfigBase>) => Effect.Effect<void, SandboxProviderError>;
 }
 
-const erase = <CreateConfig, RuntimeConfig extends RuntimeConfigBase>(
-	driver: Driver<CreateConfig, RuntimeConfig>,
+export const erase = <CreateConfig, RuntimeConfig extends RuntimeConfigBase>(
+	value: Driver<CreateConfig, RuntimeConfig>,
 ): Registered => ({
-	name: driver.name,
-	kind: driver.kind,
-	capabilities: driver.capabilities,
-	createConfigCodec: driver.createConfigCodec as Schema.Codec<unknown, unknown>,
-	runtimeConfigCodec: driver.runtimeConfigCodec as Schema.Codec<RuntimeConfigBase, unknown>,
-	create: (input) => driver.create({ instanceId: input.instanceId, config: input.config as CreateConfig }),
-	runtimeConfigFor: (input) =>
-		driver.runtimeConfigFor({
-			providerResourceId: input.providerResourceId,
-			...(input.overrides === undefined ? {} : { overrides: input.overrides as Partial<RuntimeConfig> }),
-		}),
-	attach: (input) => driver.attach(input as RuntimeInput<RuntimeConfig>),
-	...(driver.inspect === undefined
+	name: value.name,
+	kind: value.kind,
+	capabilities: value.capabilities,
+	createConfigCodec: value.createConfigCodec as Schema.Codec<unknown, unknown>,
+	runtimeConfigCodec: value.runtimeConfigCodec as Schema.Codec<RuntimeConfigBase, unknown>,
+	create: (input) => value.create({ instanceId: input.instanceId, config: input.config as CreateConfig }),
+	...(value.runtimeConfigFor === undefined
 		? {}
-		: { inspect: (input: RuntimeInput<RuntimeConfigBase>) => driver.inspect!(input as RuntimeInput<RuntimeConfig>) }),
-	...(driver.wake === undefined
+		: {
+				runtimeConfigFor: (input: {
+					readonly providerResourceId: string;
+					readonly overrides?: Readonly<Record<string, unknown>> | undefined;
+				}) =>
+					value.runtimeConfigFor!({
+						providerResourceId: input.providerResourceId,
+						...(input.overrides === undefined ? {} : { overrides: input.overrides as Partial<RuntimeConfig> }),
+					}),
+			}),
+	attach: (input) => value.attach(input as RuntimeInput<RuntimeConfig>),
+	...(value.inspect === undefined
 		? {}
-		: { wake: (input: RuntimeInput<RuntimeConfigBase>) => driver.wake!(input as RuntimeInput<RuntimeConfig>) }),
-	...(driver.stop === undefined
+		: { inspect: (input: RuntimeInput<RuntimeConfigBase>) => value.inspect!(input as RuntimeInput<RuntimeConfig>) }),
+	...(value.wake === undefined
 		? {}
-		: { stop: (input: RuntimeInput<RuntimeConfigBase>) => driver.stop!(input as RuntimeInput<RuntimeConfig>) }),
-	...(driver.destroy === undefined
+		: { wake: (input: RuntimeInput<RuntimeConfigBase>) => value.wake!(input as RuntimeInput<RuntimeConfig>) }),
+	...(value.stop === undefined
 		? {}
-		: { destroy: (input: RuntimeInput<RuntimeConfigBase>) => driver.destroy!(input as RuntimeInput<RuntimeConfig>) }),
+		: { stop: (input: RuntimeInput<RuntimeConfigBase>) => value.stop!(input as RuntimeInput<RuntimeConfig>) }),
+	...(value.destroy === undefined
+		? {}
+		: { destroy: (input: RuntimeInput<RuntimeConfigBase>) => value.destroy!(input as RuntimeInput<RuntimeConfig>) }),
 });
 
-export interface RegistryService {
-	readonly names: ReadonlySet<Name>;
-	readonly find: (name: Name) => Option.Option<Registered>;
-	readonly get: (name: Name) => Effect.Effect<Registered, SandboxDriverNotRegisteredError>;
-	readonly decodeCreateConfig: (
-		name: Name,
-		input: unknown,
-	) => Effect.Effect<unknown, SandboxDriverNotRegisteredError | SandboxDriverRegistrationError>;
-	readonly decodeRuntimeConfig: (
-		name: Name,
-		input: unknown,
-	) => Effect.Effect<RuntimeConfigBase, SandboxDriverNotRegisteredError | SandboxDriverRegistrationError>;
-	readonly encodeRuntimeConfig: (
-		name: Name,
-		input: RuntimeConfigBase,
-	) => Effect.Effect<unknown, SandboxDriverNotRegisteredError | SandboxDriverRegistrationError>;
-}
-
-export class Registry extends Context.Service<Registry, RegistryService>()(
-	"@codeworksh/harness/sandbox/driver/Registry",
-) {}
-
-const codecFailure = (driver: Name, reason: unknown) =>
-	new SandboxDriverRegistrationError({ driver, reason: String(reason) });
+export type Source = "core" | "builtin" | "package" | "file";
 
 export interface Registration {
 	readonly registered: Registered;
+	readonly apiVersion: ApiVersion;
+	readonly source: Source;
 }
 
-/**
- * Creates in-memory driver registry map and throws for invalid state operations.
- * Exposes registry services methods to work with.
- */
-export const makeRegistry = (
-	drivers: ReadonlyArray<Registration>,
-): Effect.Effect<RegistryService, SandboxDriverRegistrationError> =>
-	Effect.gen(function* () {
-		const entries = new Map<Name, Registered>();
-		for (const registration of drivers) {
-			const driver = registration.registered;
-			if (entries.has(driver.name)) {
-				return yield* new SandboxDriverRegistrationError({
-					driver: driver.name,
-					reason: "duplicate driver registration",
-				});
-			}
-			if (driver.capabilities.destroy && !driver.capabilities.stop) {
-				return yield* new SandboxDriverRegistrationError({
-					driver: driver.name,
-					reason: "destroy capability requires stop capability",
-				});
-			}
-			for (const operation of ["wake", "stop", "destroy"] as const) {
-				if (driver.capabilities[operation] !== (driver[operation] !== undefined)) {
-					return yield* new SandboxDriverRegistrationError({
-						driver: driver.name,
-						reason: `${operation} capability does not match its lifecycle implementation`,
-					});
-				}
-			}
-			entries.set(driver.name, erase(driver));
-		}
+export interface Module<Options> {
+	readonly apiVersion: ApiVersion;
+	readonly name: Name;
+	readonly options: Schema.Codec<Options, unknown>;
+	readonly make: (options: Options) => Registration;
+}
 
-		// `find` safely returns undefined if nothing
-		// `get` throws
-		const find = (name: Name) => Option.fromUndefinedOr(entries.get(name));
-		const get = (name: Name) =>
-			Effect.fromOption(find(name)).pipe(
-				Effect.mapError(() => new SandboxDriverNotRegisteredError({ driver: name })),
-			);
+export interface ModuleDefinition<Options> {
+	readonly apiVersion: ApiVersion;
+	readonly name: string | Name;
+	readonly options: Schema.Codec<Options, unknown>;
+	readonly make: (options: Options) => Registration;
+}
 
-		const decodeCreateConfig = Effect.fn("SandboxDriver.Registry.decodeCreateConfig")(function* (
-			name: Name,
-			input: unknown,
-		) {
-			const driver = yield* get(name);
-			return yield* Schema.decodeUnknownEffect(driver.createConfigCodec)(input).pipe(
-				Effect.mapError((error) => codecFailure(name, error)),
-			);
-		});
+/** Define the default export of a loadable sandbox package. */
+const defineModule = <Options>(value: ModuleDefinition<Options>): Module<Options> => ({
+	...value,
+	name: Name.make(value.name),
+});
+export { defineModule as module };
 
-		const decodeRuntimeConfig = Effect.fn("SandboxDriver.Registry.decodeRuntimeConfig")(function* (
-			name: Name,
-			input: unknown,
-		) {
-			const driver = yield* get(name);
-			return yield* Schema.decodeUnknownEffect(driver.runtimeConfigCodec)(input).pipe(
-				Effect.mapError((error) => codecFailure(name, error)),
-			);
-		});
-
-		const encodeRuntimeConfig = Effect.fn("SandboxDriver.Registry.encodeRuntimeConfig")(function* (
-			name: Name,
-			input: RuntimeConfigBase,
-		) {
-			const driver = yield* get(name);
-			return yield* Schema.encodeUnknownEffect(driver.runtimeConfigCodec)(input).pipe(
-				Effect.mapError((error) => codecFailure(name, error)),
-			);
-		});
-
-		return Registry.of({
-			names: new Set(entries.keys()),
-			find,
-			get,
-			decodeCreateConfig,
-			decodeRuntimeConfig,
-			encodeRuntimeConfig,
-		});
-	});
-
-/**
- * Register a static set of drivers for one process-lifetime control plane.
- *
- * `driver()` preserves the concrete driver at its definition site; this layer
- * is the only erasure boundary.
- */
-export const layer = (...drivers: ReadonlyArray<Registration>) => Layer.effect(Registry, makeRegistry(drivers));
-
+/** Construct a driver and its registry contribution. */
 export const driver = <CreateConfig, RuntimeConfig extends RuntimeConfigBase>(
 	value: Driver<CreateConfig, RuntimeConfig>,
 ): Driver<CreateConfig, RuntimeConfig> & Registration =>
 	Object.assign(value, {
 		registered: erase(value),
+		apiVersion,
+		source: "builtin" as const,
 	});
+
+/** Attach trusted origin metadata without changing the driver implementation. */
+export const withSource = (registration: Registration, source: Source): Registration => ({
+	...registration,
+	source,
+});
 
 export * as SandboxDriver from "./driver.ts";

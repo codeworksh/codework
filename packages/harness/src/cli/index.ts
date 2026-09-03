@@ -10,6 +10,8 @@ import { Sandbox } from "../effect/sandbox.ts";
 import { Session } from "../effect/session.ts";
 import { EventList } from "../event/list.ts";
 import type { EventSchema } from "../event/schema.ts";
+import DaytonaSandbox from "../sandboxes/daytona/index.ts";
+import VercelSandbox from "../sandboxes/vercel/index.ts";
 import { renderError } from "./error.ts";
 import { addUsage, emptyUsage, header, usage, type UsageSummary } from "./output.ts";
 
@@ -195,7 +197,7 @@ const run = Command.make(
 				Harness.layer({
 					...(Option.isNone(shared.home) ? {} : { home: shared.home.value }),
 					...(Option.isNone(shared.database) ? {} : { database: shared.database.value }),
-					sandboxes: [Sandbox.Drivers.daytona(), Sandbox.Drivers.vercel()],
+					sandboxes: [DaytonaSandbox.make({}), VercelSandbox.make({})],
 				}),
 			),
 			Effect.scoped,

@@ -4,6 +4,7 @@ import { Database } from "../db/db.ts";
 import { posix as path } from "../util/posix.ts";
 import { SandboxController } from "./control.ts";
 import { SandboxDriver } from "./driver.ts";
+import { SandboxDriverRegistry } from "./registry.ts";
 import { MemorySandboxDriver } from "./drivers/memory.ts";
 import { SqldbSandboxDriver } from "./drivers/sqldb.ts";
 import { EnvNodeJSDefault } from "./fs/nodejs.ts";
@@ -15,10 +16,10 @@ import { HostExe } from "./shell/host.ts";
 // re-export from sandbox
 export { SandboxController } from "./control.ts";
 export { SandboxDriver } from "./driver.ts";
-export { DaytonaSandboxDriver } from "./drivers/daytona.ts";
+export * as DaytonaSandboxDriver from "../sandboxes/daytona/index.ts";
 export { MemorySandboxDriver } from "./drivers/memory.ts";
 export { SqldbSandboxDriver } from "./drivers/sqldb.ts";
-export { VercelSandboxDriver } from "./drivers/vercel.ts";
+export * as VercelSandboxDriver from "../sandboxes/vercel/index.ts";
 export { SandboxError } from "./errors.ts";
 export { EnvInMemory } from "./fs/inmemory.ts";
 export { EnvNodeJSDefault } from "./fs/nodejs.ts";
@@ -69,7 +70,7 @@ export const services = <E, RIn>(backend: LocalBackend<E, RIn>, identity: Sandbo
 	);
 
 const controllerLayer = (...drivers: ReadonlyArray<SandboxDriver.Registration>) => {
-	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(...drivers));
+	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(...drivers));
 	return Layer.provide(SandboxController.layer(), dependencies);
 };
 

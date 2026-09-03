@@ -13,7 +13,8 @@
 		"url": "git+https://github.com/codeworksh/codework.git"
 	},
 	"workspaces": [
-		"packages/*"
+		"packages/*",
+		"extras/*"
 	],
 	"type": "module",
 	"scripts": {

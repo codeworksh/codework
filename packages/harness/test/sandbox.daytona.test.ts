@@ -3,7 +3,7 @@ import { Effect, ManagedRuntime } from "effect";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
-import { EnvDaytona } from "../src/sandbox/providers/daytona.ts";
+import * as EnvDaytona from "../src/sandboxes/daytona/provider.ts";
 import { SandboxResource } from "../src/sandbox/resource.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { Shell } from "../src/sandbox/shell/shell.ts";

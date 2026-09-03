@@ -9,15 +9,18 @@ import { LLM } from "../runner/llm.ts";
 import { Loop } from "../runner/loop.ts";
 import { SandboxController } from "../sandbox/control.ts";
 import { SandboxDriver } from "../sandbox/driver.ts";
+import { MemorySandboxDriver } from "../sandbox/drivers/memory.ts";
+import { SqldbSandboxDriver } from "../sandbox/drivers/sqldb.ts";
+import { SandboxDriverLoader } from "../sandbox/loader.ts";
+import { SandboxDriverRegistry } from "../sandbox/registry.ts";
 import { SessionLive } from "../session/live.ts";
 import { SessionRuntime } from "../session/runtime.ts";
 import { State } from "../state/state.ts";
-import type { Driver } from "./sandbox.ts";
 
 export interface Options {
 	readonly database?: string;
 	readonly home?: string;
-	readonly sandboxes?: ReadonlyArray<Driver>;
+	readonly sandboxes?: ReadonlyArray<SandboxDriverLoader.Entry>;
 	readonly llm?: LLM.Open;
 }
 
@@ -28,7 +31,12 @@ export const layer = (options: Options = {}) =>
 			const configuredDatabase = options.database ?? (yield* Database.locationConfig);
 			const global = Global.layerWith(paths);
 			const database = Database.layer(Database.resolveDatabaseLocation(configuredDatabase, paths.data));
-			const drivers = SandboxDriver.layer(...(options.sandboxes ?? []));
+			const configured = yield* SandboxDriverLoader.loadAll(options.sandboxes ?? []);
+			const drivers = SandboxDriverRegistry.layer(
+				SandboxDriver.withSource(MemorySandboxDriver.make().driver, "core"),
+				SandboxDriver.withSource(SqldbSandboxDriver.make().driver, "core"),
+				...configured,
+			);
 			const sandboxes = SandboxController.layer().pipe(Layer.provideMerge(drivers), Layer.provideMerge(database));
 			const loop = options.llm === undefined ? Loop.layer() : Loop.layer({ request: LLM.make(options.llm) });
 

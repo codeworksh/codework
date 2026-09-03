@@ -5,6 +5,7 @@ import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
 import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
@@ -26,7 +27,7 @@ import { testEffect } from "./utils/effect.ts";
 const memory = MemorySandboxDriver.make();
 const database = Database.layer(":memory:");
 const infrastructure = Layer.provideMerge(
-	SandboxController.layer().pipe(Layer.provide(SandboxDriver.layer(memory.driver))),
+	SandboxController.layer().pipe(Layer.provide(SandboxDriverRegistry.layer(memory.driver))),
 	database,
 );
 const runtime = Session.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(infrastructure));

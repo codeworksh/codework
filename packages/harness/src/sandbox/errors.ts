@@ -13,6 +13,7 @@ export class SandboxDriverNotRegisteredError extends Schema.TaggedError<SandboxD
 	"SandboxDriverNotRegisteredError",
 	{
 		driver: Schema.String,
+		registered: Schema.optional(Schema.Array(Schema.String)),
 	},
 ) {}
 
@@ -23,6 +24,24 @@ export class SandboxDriverRegistrationError extends Schema.TaggedError<SandboxDr
 		reason: Schema.String,
 	},
 ) {}
+
+export const SandboxDriverLoadPhase = Schema.Literals([
+	"resolve",
+	"import",
+	"module",
+	"api-version",
+	"options",
+	"factory",
+	"registration",
+]);
+export type SandboxDriverLoadPhase = typeof SandboxDriverLoadPhase.Type;
+
+export class SandboxDriverLoadError extends Schema.TaggedError<SandboxDriverLoadError>()("SandboxDriverLoadError", {
+	specifier: Schema.String,
+	phase: SandboxDriverLoadPhase,
+	driver: Schema.optional(Schema.String),
+	reason: Schema.String,
+}) {}
 
 export class SandboxBusyError extends Schema.TaggedError<SandboxBusyError>()("SandboxBusyError", {
 	id: SandboxInstance.ID,
@@ -48,7 +67,7 @@ export class SandboxUnavailError extends Schema.TaggedError<SandboxUnavailError>
 }) {}
 
 export class SandboxUnsupportedError extends Schema.TaggedError<SandboxUnsupportedError>()("SandboxUnsupportedError", {
-	id: SandboxInstance.ID,
+	id: Schema.optional(SandboxInstance.ID),
 	driver: Schema.String,
 	operation: Schema.String,
 }) {}
@@ -183,6 +202,7 @@ export type SandboxCreateError =
 export type SandboxRegisterError =
 	| SandboxDriverNotRegisteredError
 	| SandboxDriverRegistrationError
+	| SandboxUnsupportedError
 	| SandboxProviderError;
 
 export type SandboxReadError = never;

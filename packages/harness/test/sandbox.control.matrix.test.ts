@@ -4,6 +4,7 @@ import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
 import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
 import {
 	SandboxBusyError,
@@ -26,7 +27,7 @@ import { testEffect } from "./utils/effect.ts";
  */
 
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("matrix-fake"));
-const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriver.layer(fake.driver));
+const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(fake.driver));
 const controllerLayer = Layer.provideMerge(
 	SandboxController.layer({ transportIdleTimeToLive: "1 hour" }),
 	dependencies,
@@ -301,10 +302,13 @@ describe("Sandbox.Controller matrix", () => {
 		Effect.gen(function* () {
 			const bare = FakeSandboxDriver.make(SandboxDriver.Name.make("matrix-no-inspect"));
 			const { registered: _registered, inspect: _inspect, ...rest } = bare.driver;
-			const noInspect = SandboxDriver.driver(rest);
+			const noInspect = SandboxDriver.driver({
+				...rest,
+				capabilities: { ...rest.capabilities, inspect: false },
+			});
 
 			const controller = yield* SandboxController.make({ transportIdleTimeToLive: "1 hour" }).pipe(
-				Effect.provide(SandboxDriver.layer(noInspect)),
+				Effect.provide(SandboxDriverRegistry.layer(noInspect)),
 			);
 			const info = yield* controller.create({
 				driver: noInspect,
@@ -390,7 +394,7 @@ describe("SandboxDriver registry capability validation", () => {
 			const { registered: _registered, wake: _wake, ...rest } = base.driver;
 			const missingWake = SandboxDriver.driver(rest);
 
-			const exit = yield* Effect.exit(SandboxDriver.makeRegistry([missingWake]));
+			const exit = yield* Effect.exit(SandboxDriverRegistry.make([missingWake]));
 			const error = failure(exit);
 			expect(error).toBeInstanceOf(SandboxDriverRegistrationError);
 			expect((error as SandboxDriverRegistrationError).reason).toContain("wake");
@@ -406,7 +410,7 @@ describe("SandboxDriver registry capability validation", () => {
 				capabilities: { ...rest.capabilities, wake: false },
 			});
 
-			const exit = yield* Effect.exit(SandboxDriver.makeRegistry([undeclaredWake]));
+			const exit = yield* Effect.exit(SandboxDriverRegistry.make([undeclaredWake]));
 			const error = failure(exit);
 			expect(error).toBeInstanceOf(SandboxDriverRegistrationError);
 			expect((error as SandboxDriverRegistrationError).reason).toContain("wake");

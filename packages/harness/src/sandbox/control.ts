@@ -2,6 +2,7 @@ import { Cause, Context, DateTime, type Duration, Effect, Layer, LayerMap, Optio
 import { SqlClient } from "effect/unstable/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
 import { SandboxDriver } from "./driver.ts";
+import { SandboxDriverRegistry } from "./registry.ts";
 import {
 	providerError,
 	providerErrorIsNotFound,
@@ -124,7 +125,7 @@ const parseJson = (driver: SandboxDriver.Name, operation: string, value: string)
 
 export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Options = {}) {
 	const sql = yield* SqlClient.SqlClient;
-	const registry = yield* SandboxDriver.Registry;
+	const registry = yield* SandboxDriverRegistry.Registry;
 	const store = yield* SandboxStore.make;
 	const gate = yield* Semaphore.make(1);
 	const refs = new Map<SandboxInstance.ID, number>();
@@ -479,6 +480,12 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 				Option.getOrUndefined(row.providerResourceId) === input.providerResourceId &&
 				row.status !== "removed",
 		);
+		if (driver.runtimeConfigFor === undefined) {
+			return yield* new SandboxUnsupportedError({
+				driver: driver.name,
+				operation: "register",
+			});
+		}
 		const runtimeConfig = yield* driver.runtimeConfigFor({
 			providerResourceId: input.providerResourceId,
 			overrides: input.runtimeConfig as Readonly<Record<string, unknown>> | undefined,

@@ -13,7 +13,7 @@ import { RunnerExecution } from "../src/runner/execution.ts";
 import { LLM } from "../src/runner/llm.ts";
 import { Loop } from "../src/runner/loop.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
-import { SandboxDriver } from "../src/sandbox/driver.ts";
+import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { AbsolutePath } from "../src/schema.ts";
 import { SessionInput } from "../src/session/input/input.ts";
@@ -33,7 +33,7 @@ const runtime = (
 	const database = Database.layer(":memory:");
 	const request = LLM.make(options.open ?? immediateOpen(options.contexts));
 	const sandbox = SandboxController.layer().pipe(
-		Layer.provideMerge(SandboxDriver.layer()),
+		Layer.provideMerge(SandboxDriverRegistry.layer()),
 		Layer.provideMerge(database),
 	);
 	return Control.layer.pipe(

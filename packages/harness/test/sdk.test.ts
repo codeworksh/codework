@@ -158,7 +158,10 @@ describe("Harness Effect SDK", () => {
 			(home) =>
 				Effect.gen(function* () {
 					for (const driver of ["memory", "sqldb"] as const) {
-						const sandbox = yield* Sandbox.create({ driver, cwd: "/provider-default" });
+						const sandbox = yield* Sandbox.create({
+							driver,
+							config: { defaultCwd: "/provider-default", initializeCwd: "/provider-default" },
+						});
 						const defaults = yield* Session.create({ sandbox });
 						const overridden = yield* Session.create({ sandbox, directory: "/session/repo" });
 						expect((yield* defaults.info).directory).toBe("/provider-default");
@@ -169,7 +172,6 @@ describe("Harness Effect SDK", () => {
 						Harness.layer({
 							database: ":memory:",
 							home,
-							sandboxes: [Sandbox.Drivers.memory, Sandbox.Drivers.sqldb],
 						}),
 					),
 					Effect.scoped,

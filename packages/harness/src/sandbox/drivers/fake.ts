@@ -122,6 +122,7 @@ export const make = (
 		name,
 		kind: "virtual",
 		capabilities: {
+			inspect: true,
 			reattach: true,
 			wake: true,
 			stop: true,

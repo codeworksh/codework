@@ -32,14 +32,34 @@
 	"types": "./dist/pack/index.d.mts",
 	"exports": {
 		".": {
+			"development": "./src/index.ts",
 			"types": "./dist/pack/index.d.mts",
 			"import": "./dist/pack/index.mjs",
 			"default": "./dist/pack/index.mjs"
 		},
 		"./effect": {
+			"development": "./src/effect.ts",
 			"types": "./dist/pack/effect.d.mts",
 			"import": "./dist/pack/effect.mjs",
 			"default": "./dist/pack/effect.mjs"
+		},
+		"./sandbox": {
+			"development": "./src/sandbox.ts",
+			"types": "./dist/pack/sandbox.d.mts",
+			"import": "./dist/pack/sandbox.mjs",
+			"default": "./dist/pack/sandbox.mjs"
+		},
+		"./sandboxes/daytona": {
+			"development": "./src/sandboxes/daytona/index.ts",
+			"types": "./dist/pack/sandboxes/daytona/index.d.mts",
+			"import": "./dist/pack/sandboxes/daytona/index.mjs",
+			"default": "./dist/pack/sandboxes/daytona/index.mjs"
+		},
+		"./sandboxes/vercel": {
+			"development": "./src/sandboxes/vercel/index.ts",
+			"types": "./dist/pack/sandboxes/vercel/index.d.mts",
+			"import": "./dist/pack/sandboxes/vercel/index.mjs",
+			"default": "./dist/pack/sandboxes/vercel/index.mjs"
 		},
 		"./package.json": "./package.json"
 	},
@@ -56,15 +76,16 @@
 		"release:dev": "node ../../scripts/publish.mjs harness --dev",
 		"release:dry": "node ../../scripts/publish.mjs harness --dry-run",
 		"test": "vp test",
+		"test:sandbox:package": "node test/scripts/codework-sandbox-vercel-smoke.mjs",
+		"test:sandbox:package:e2e": "node test/scripts/codework-sandbox-vercel-smoke.mjs --e2e",
+		"test:sandbox:e2e": "CODEWORK_SANDBOX_E2E_REQUIRED=1 vp test test/sandbox.remote.driver.test.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",
-		"@daytona/sdk": "^0.187.0",
 		"@effect/platform-node": "4.0.0-beta.107",
 		"@effect/sql-sqlite-node": "4.0.0-beta.107",
 		"@platformatic/vfs": "^0.4.0",
-		"@vercel/sandbox": "^2.9.2",
 		"effect": "4.0.0-beta.107",
 		"just-bash": "^2.14.5",
 		"tslib": "^2.8.1",
@@ -73,8 +94,24 @@
 		"uuidv7": "^1.2.1"
 	},
 	"devDependencies": {
+		"@codeworksh-test/codework-sandbox-vercel": "workspace:*",
+		"@daytona/sdk": "^0.187.0",
 		"@types/node": "^25.9.5",
-		"bumpp": "^12.2.0"
+		"@vercel/sandbox": "^2.9.2",
+		"bumpp": "^12.2.0",
+		"dedent": "^1.7.2"
+	},
+	"peerDependencies": {
+		"@daytona/sdk": "*",
+		"@vercel/sandbox": "*"
+	},
+	"peerDependenciesMeta": {
+		"@daytona/sdk": {
+			"optional": true
+		},
+		"@vercel/sandbox": {
+			"optional": true
+		}
 	},
 	"engines": {
 		"node": ">=24.14.1"

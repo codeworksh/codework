@@ -6,17 +6,13 @@ import { EnvInMemory } from "../fs/inmemory.ts";
 import { SandboxInstance } from "../instance.ts";
 import { transport } from "../virtual.ts";
 
-export interface CreateConfig {
-	readonly defaultCwd: SandboxDriver.AbsolutePath;
-	readonly initializeCwd?: SandboxDriver.AbsolutePath | undefined;
-}
-
 export interface RuntimeConfig extends SandboxDriver.RuntimeConfigBase {}
 
 export const CreateConfig = Schema.Struct({
-	defaultCwd: SandboxDriver.AbsolutePath,
+	defaultCwd: Schema.optional(SandboxDriver.AbsolutePath),
 	initializeCwd: Schema.optional(SandboxDriver.AbsolutePath),
 });
+export type CreateConfig = typeof CreateConfig.Type;
 
 export const RuntimeConfig = SandboxDriver.RuntimeConfigBase;
 
@@ -46,6 +42,7 @@ export const make = (): MemoryDriver => {
 		name,
 		kind: "virtual",
 		capabilities: {
+			inspect: true,
 			reattach: false,
 			wake: true,
 			stop: true,
@@ -54,27 +51,20 @@ export const make = (): MemoryDriver => {
 		},
 		createConfigCodec: CreateConfig,
 		runtimeConfigCodec: RuntimeConfig,
-		create: ({ instanceId, config }) =>
-			EnvInMemory.make({ cwd: config.initializeCwd ?? config.defaultCwd }).pipe(
+		create: ({ instanceId, config }) => {
+			const defaultCwd = config.defaultCwd ?? SandboxDriver.AbsolutePath.make("/");
+			return EnvInMemory.make({ cwd: config.initializeCwd ?? defaultCwd }).pipe(
 				Effect.mapError((cause) => providerError({ driver: name, operation: "create", cause })),
 				Effect.map((vfs) => {
 					resources.set(instanceId, vfs);
 					return {
 						providerResourceId: `memory:${instanceId}`,
 						providerStatus: "online",
-						runtimeConfig: { defaultCwd: config.defaultCwd },
+						runtimeConfig: { defaultCwd },
 					};
 				}),
-			),
-		runtimeConfigFor: ({ providerResourceId }) =>
-			Effect.fail(
-				providerError({
-					driver: name,
-					operation: "runtimeConfigFor",
-					cause: new Error(`memory resources cannot be reattached: ${providerResourceId}`),
-					notFound: true,
-				}),
-			),
+			);
+		},
 		attach: (input) => Layer.unwrap(Effect.map(find("attach", input), transport)),
 		inspect: (input) =>
 			Effect.as(find("inspect", input), {
