@@ -1,6 +1,6 @@
-import { lazy } from "@codeworksh/utils";
 import Type, { type Static } from "typebox";
 import * as ModelCatalog from "./catalog.ts";
+import { lazy } from "../utils/lazy.ts";
 
 // re-export
 export const KnownProviderEnum = ModelCatalog.KnownProviderEnum;

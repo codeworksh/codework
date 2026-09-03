@@ -17,7 +17,6 @@ const aliases = {
 	"@codeworksh/aikit/failure": fileURLToPath(new URL("./packages/aikit/src/llm/failure.ts", import.meta.url)),
 	"@codeworksh/aikit": fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),
 	"@codeworksh/harness": fileURLToPath(new URL("./packages/harness/src/index.ts", import.meta.url)),
-	"@codeworksh/utils": fileURLToPath(new URL("./packages/utils/src/index.ts", import.meta.url)),
 };
 
 // Packages written against Effect. Kept as a list so lint overrides and the
@@ -46,8 +45,8 @@ export default defineConfig({
 				: [...configDefaults.exclude, "packages/**/*.e2e.test.ts"],
 	},
 	lint: {
-		// Effect rules from @effect/tsgo, scoped to the Effect codebases here -- aikit and
-		// utils are plain TypeScript and would drown in false positives. Overrides cannot
+		// Effect rules from @effect/tsgo, scoped to the Effect codebases here -- aikit
+		// is plain TypeScript and would drown in false positives. Overrides cannot
 		// `extends`, so the preset's plugins/rules are spread in directly. These need Oxlint's
 		// type-aware mode, which the patched oxlint-tsgolint binary provides (`prepare`).
 		overrides: [

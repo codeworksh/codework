@@ -1,8 +1,8 @@
-import { NamedError } from "@codeworksh/utils";
 import type { Static, TSchema } from "typebox";
 import Type from "typebox";
 import type * as Message from "../message/message.ts";
 import * as Model from "../model/model.ts";
+import { NamedError } from "../utils/error.ts";
 import type { AssistantMessageEventStream } from "../utils/eventstream.ts";
 import type {
 	AnthropicOptions,

@@ -1,11 +1,11 @@
-import { Filesystem } from "@codeworksh/utils";
-import { lazy } from "@codeworksh/utils";
 import { resolve } from "node:path";
 import { mapValues, pickBy, pipe } from "remeda";
 import type { CommandModule } from "yargs";
 import { DEFAULT_AI_SDK_FALLBACK, isAISDKPackage, protocolForPackage } from "../llm/registry.ts";
 import * as ModelCatalog from "../model/catalog.ts";
 import * as Model from "../model/model.ts";
+import * as Filesystem from "../utils/filesystem.ts";
+import { lazy } from "../utils/lazy.ts";
 
 const DEFAULT_PROVIDER_BASE_URLS: Partial<Record<Model.KnownProviderEnum, string>> = {
 	[Model.KnownProviderEnum.anthropic]: "https://api.anthropic.com/v1",

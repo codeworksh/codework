@@ -11,22 +11,14 @@ const ignoredPaths = [
 	".idea/**",
 	".vscode/**",
 ];
-const aliases = {
-	"@codeworksh/utils": fileURLToPath(new URL("../utils/src/index.ts", import.meta.url)),
-};
 
 export default defineConfig({
-	resolve: {
-		alias: aliases,
-	},
 	pack: {
 		entry: ["src/index.ts", "src/cli.ts", "src/modelgen.ts", "src/llm/failure.ts", "src/oauth/openai/codex.ts"],
 		format: ["esm"],
 		outDir: "dist/pack",
 		deps: {
-			alwaysBundle: ["@codeworksh/utils"],
 			dts: {
-				alwaysBundle: ["@codeworksh/utils"],
 				neverBundle: true,
 			},
 		},

@@ -1,6 +1,8 @@
-import { Filesystem, lazy, NamedError } from "@codeworksh/utils";
 import { join, resolve } from "node:path";
 import Type, { type Static } from "typebox";
+import { NamedError } from "../utils/error.ts";
+import * as Filesystem from "../utils/filesystem.ts";
+import { lazy } from "../utils/lazy.ts";
 
 // known AI SDK LLM providers
 // used as the public protocol discriminator for the AI SDK transport layer

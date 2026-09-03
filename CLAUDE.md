@@ -41,7 +41,6 @@ Long term maintainability is a core priority. If you add new functionality, firs
 
 - `packages/aikit` - Low level SDK that provides unified LLM API for multiple LLM providers.
 - `packages/harness` - Effect powered main Agent Harness application, uses `packages/aikit` under the hood.
-- `packages/utils` - Shared support utilities used by `packages/aikit` and `packages/harness`.
 - `.scratch/packages` - Local, ignored reference archive for packages that are no longer developed.
 
 ## Vendored Repositories
