@@ -34,7 +34,6 @@ export default defineConfig({
 			"src/sandbox.ts",
 			"src/sandboxes/daytona/index.ts",
 			"src/sandboxes/vercel/index.ts",
-			"src/cli/index.ts",
 		],
 		format: ["esm"],
 		outDir: "dist/pack",

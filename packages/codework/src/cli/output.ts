@@ -1,4 +1,5 @@
 import type { Message } from "@codeworksh/aikit";
+import { Effect } from "effect";
 
 export interface UsageSummary {
 	readonly turns: number;
@@ -76,3 +77,7 @@ export const usage = (summary: UsageSummary, columns?: number): string => {
 		`${formatCost(summary.cost)} · ${turns}`,
 	)}`;
 };
+
+export const writeOut = (value: string) => Effect.sync(() => void process.stdout.write(value));
+export const writeError = (value: string) => Effect.sync(() => void process.stderr.write(value));
+export const terminalColumns = () => (process.stderr.isTTY ? (process.stderr.columns ?? 72) : 72);

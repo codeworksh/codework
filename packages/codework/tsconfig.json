@@ -7,6 +7,8 @@
 			"@codeworksh/harness": ["../harness/src/index.ts"],
 			"@codeworksh/harness/effect": ["../harness/src/effect.ts"],
 			"@codeworksh/harness/sandbox": ["../harness/src/sandbox.ts"],
+			"@codeworksh/harness/sandboxes/daytona": ["../harness/src/sandboxes/daytona/index.ts"],
+			"@codeworksh/harness/sandboxes/vercel": ["../harness/src/sandboxes/vercel/index.ts"],
 			"@codeworksh/aikit": ["../aikit/dist/pack/index.d.mts"],
 			"@codeworksh/aikit/failure": ["../aikit/src/llm/failure.ts"],
 			"@codeworksh/aikit/modelgen": ["../aikit/dist/pack/modelgen.d.mts"]
@@ -50,5 +52,5 @@
 			}
 		]
 	},
-	"include": ["src"]
+	"include": ["src", "test"]
 }

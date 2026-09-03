@@ -22,6 +22,7 @@
 		"lint": "vp lint",
 		"check": "vp check",
 		"check:packages": "vp run -r check",
+		"cli": "vp run @codeworksh/cli#cli",
 		"test": "vp test",
 		"test:packages": "vp run -r test",
 		"typecheck": "vp run -r --concurrency-limit 2 typecheck",

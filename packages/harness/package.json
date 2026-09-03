@@ -15,14 +15,10 @@
 		"url": "https://github.com/codeworksh/codework/issues"
 	},
 	"license": "MIT",
-	"author": "Sanchit Kudari",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/codeworksh/codework.git",
 		"directory": "packages/harness"
-	},
-	"bin": {
-		"codework": "./dist/pack/cli/index.mjs"
 	},
 	"files": [
 		"dist",

@@ -1,3 +1,5 @@
+/* @effect-diagnostics nodeBuiltinImport:off -- this suite spawns the CLI as a child process. */
+/* @effect-diagnostics cryptoRandomUUID:off -- fixtures only need a distinct temp path. */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
-const cli = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
+const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 
 const run = (...args: ReadonlyArray<string>) =>
@@ -37,10 +39,18 @@ describe("codework CLI", () => {
 		const result = run("run", "--help");
 
 		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("--sandbox choice");
+		expect(result.stdout).toContain("--sandbox string");
 		expect(result.stdout).toContain("default: local");
-		expect(result.stdout).toContain("choices: local, daytona, vercel");
+		expect(result.stdout).toContain("Registered sandbox driver");
 		expect(result.stdout).toContain("--sandbox-provider-id string");
+	});
+
+	it("validates sandbox names against the harness registry", () => {
+		const result = runIsolated({}, "run", "--sandbox", "missing", "test");
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain('sandbox driver "missing" is not registered');
+		expect(result.stderr).toContain("available: local, daytona, memory, sqldb, vercel");
 	});
 
 	it("requires a provider sandbox ID to name its driver", () => {

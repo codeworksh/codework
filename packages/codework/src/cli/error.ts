@@ -1,12 +1,28 @@
+import { Runner } from "@codeworksh/harness/effect";
+import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Schema } from "effect";
-import { Runner } from "../runner/run.ts";
-import { SandboxProviderError } from "../sandbox/errors.ts";
+
+/** Bad flag or argument combinations the parser cannot express on its own. */
+export class InvalidInputError extends Schema.TaggedError<InvalidInputError>()("CLI.InvalidInputError", {
+	message: Schema.String,
+}) {}
+
+export class ModelgenError extends Schema.TaggedError<ModelgenError>()("CLI.ModelgenError", {
+	cause: Schema.Defect(),
+}) {}
+
+/**
+ * Every failure a command handler may surface to the runtime. Harness failures are
+ * rendered inside the handler that owns them, so only the CLI's own errors reach
+ * the top-level renderer.
+ */
+export type CommandError = InvalidInputError | ModelgenError;
 
 const isProviderError = Schema.is(Runner.ProviderError);
 const isModelCatalogError = Schema.is(Runner.ModelCatalogError);
 const isModelNotFoundError = Schema.is(Runner.ModelNotFoundError);
 const isLLMStreamError = Schema.is(Runner.LLMStreamError);
-const isSandboxProviderError = Schema.is(SandboxProviderError);
+const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
 
 const providerCategory = (reason: Runner.ProviderFailureReason): string => {
 	switch (reason._tag) {

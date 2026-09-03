@@ -1,9 +1,10 @@
+/* @effect-diagnostics cryptoRandomUUID:off -- fixtures only need distinct message IDs. */
 import { Message } from "@codeworksh/aikit";
 import { describe, expect, it } from "vite-plus/test";
+import { Runner } from "@codeworksh/harness/effect";
+import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { renderError } from "../src/cli/error.ts";
 import { addUsage, emptyUsage, header, usage } from "../src/cli/output.ts";
-import { Runner } from "../src/runner/run.ts";
-import { SandboxProviderError } from "../src/sandbox/errors.ts";
 
 const message = (input: {
 	readonly model: string;
@@ -105,7 +106,7 @@ describe("CLI output", () => {
 
 	it("renders the sanitized sandbox provider failure", () => {
 		const output = renderError(
-			new SandboxProviderError({
+			new SandboxProvider.SandboxProviderError({
 				driver: "vercel",
 				operation: "create",
 				sanitized: {

@@ -13,18 +13,24 @@ const ignoredPaths = [
 	".vscode/**",
 ];
 
-// The CLI ships as a single self-contained binary, so every workspace package it
-// depends on is resolved from source and inlined by `pack` (see `deps.alwaysBundle`).
+// The CLI ships the harness inside its own bundle, so harness resolves from source
+// and is inlined by `pack` (see `deps.alwaysBundle`). Everything harness needs at
+// runtime stays external and is declared in this package's dependencies.
 const aliases = {
 	"@codeworksh/harness/sandbox": fileURLToPath(new URL("../harness/src/sandbox.ts", import.meta.url)),
+	"@codeworksh/harness/sandboxes/daytona": fileURLToPath(
+		new URL("../harness/src/sandboxes/daytona/index.ts", import.meta.url),
+	),
+	"@codeworksh/harness/sandboxes/vercel": fileURLToPath(
+		new URL("../harness/src/sandboxes/vercel/index.ts", import.meta.url),
+	),
 	"@codeworksh/harness/effect": fileURLToPath(new URL("../harness/src/effect.ts", import.meta.url)),
 	"@codeworksh/harness": fileURLToPath(new URL("../harness/src/index.ts", import.meta.url)),
 	"@codeworksh/aikit/modelgen": fileURLToPath(new URL("../aikit/src/modelgen.ts", import.meta.url)),
 	"@codeworksh/aikit/failure": fileURLToPath(new URL("../aikit/src/llm/failure.ts", import.meta.url)),
 	"@codeworksh/aikit": fileURLToPath(new URL("../aikit/src/index.ts", import.meta.url)),
-	"@codeworksh/utils": fileURLToPath(new URL("../utils/src/index.ts", import.meta.url)),
 };
-const bundledWorkspaceDeps = ["@codeworksh/harness", "@codeworksh/aikit", "@codeworksh/utils"];
+const bundledWorkspaceDeps = ["@codeworksh/harness"];
 
 export default defineConfig({
 	resolve: {

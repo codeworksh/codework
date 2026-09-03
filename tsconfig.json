@@ -15,7 +15,12 @@
 		"paths": {
 			"@codeworksh/aikit": ["./packages/aikit/src/index.ts"],
 			"@codeworksh/aikit/modelgen": ["./packages/aikit/src/modelgen.ts"],
+			"@codeworksh/aikit/failure": ["./packages/aikit/src/llm/failure.ts"],
 			"@codeworksh/harness": ["./packages/harness/src/index.ts"],
+			"@codeworksh/harness/effect": ["./packages/harness/src/effect.ts"],
+			"@codeworksh/harness/sandbox": ["./packages/harness/src/sandbox.ts"],
+			"@codeworksh/harness/sandboxes/daytona": ["./packages/harness/src/sandboxes/daytona/index.ts"],
+			"@codeworksh/harness/sandboxes/vercel": ["./packages/harness/src/sandboxes/vercel/index.ts"],
 			"@codeworksh/utils": ["./packages/utils/src/index.ts"]
 		},
 		"types": ["node"],
