@@ -116,6 +116,25 @@ importers:
         specifier: ^4.23.12
         version: 4.23.12
 
+  packages/codework:
+    dependencies:
+      '@effect/platform-node':
+        specifier: 4.0.0-beta.107
+        version: 4.0.0-beta.107(effect@4.0.0-beta.107)(ioredis@5.11.1)
+      effect:
+        specifier: 4.0.0-beta.107
+        version: 4.0.0-beta.107
+    devDependencies:
+      '@codeworksh/harness':
+        specifier: workspace:*
+        version: link:../harness
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.1.2
+      bumpp:
+        specifier: ^12.2.0
+        version: 12.2.0
+
   packages/harness:
     dependencies:
       '@codeworksh/aikit':

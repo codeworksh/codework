@@ -20,9 +20,13 @@ const aliases = {
 	"@codeworksh/utils": fileURLToPath(new URL("./packages/utils/src/index.ts", import.meta.url)),
 };
 
-const harnessRules = {
+// Packages written against Effect. Kept as a list so lint overrides and the
+// Effect rule set stay in one place as more Effect packages land.
+const effectPackages = ["packages/harness/src/**/*.ts", "packages/codework/src/**/*.ts"];
+
+const effectRules = {
 	...recommended.rules,
-	// Harness has explicit Node host/provider boundaries; the package's Effect
+	// These packages have explicit Node host/provider boundaries; their Effect
 	// language-service policy permits these imports for the same reason.
 	"effecttsgo/node-builtin-import": "off",
 	// These APIs intentionally return fresh streams/layers or perform setup when
@@ -42,15 +46,15 @@ export default defineConfig({
 				: [...configDefaults.exclude, "packages/**/*.e2e.test.ts"],
 	},
 	lint: {
-		// Effect rules from @effect/tsgo, scoped to the only Effect codebase here -- aikit and
+		// Effect rules from @effect/tsgo, scoped to the Effect codebases here -- aikit and
 		// utils are plain TypeScript and would drown in false positives. Overrides cannot
 		// `extends`, so the preset's plugins/rules are spread in directly. These need Oxlint's
 		// type-aware mode, which the patched oxlint-tsgolint binary provides (`prepare`).
 		overrides: [
 			{
-				files: ["packages/harness/src/**/*.ts"],
+				files: effectPackages,
 				...(recommended.plugins && { plugins: recommended.plugins }),
-				rules: harnessRules,
+				rules: effectRules,
 			},
 		],
 		ignorePatterns: ignoredPaths,

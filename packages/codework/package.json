@@ -1,0 +1,67 @@
+{
+	"name": "@codeworksh/cli",
+	"version": "0.0.1",
+	"description": "Codework CLI — the command line interface for the Codework agent harness.",
+	"keywords": [
+		"agent",
+		"ai",
+		"cli",
+		"codework",
+		"coding-agent",
+		"typescript"
+	],
+	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/codework",
+	"bugs": {
+		"url": "https://github.com/codeworksh/codework/issues"
+	},
+	"license": "MIT",
+	"author": "Sanchit Kudari",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/codework"
+	},
+	"bin": {
+		"codework": "./dist/pack/index.mjs"
+	},
+	"files": [
+		"dist",
+		"src",
+		"README.md"
+	],
+	"type": "module",
+	"types": "./dist/pack/index.d.mts",
+	"exports": {
+		".": {
+			"development": "./src/index.ts",
+			"types": "./dist/pack/index.d.mts",
+			"import": "./dist/pack/index.mjs",
+			"default": "./dist/pack/index.mjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"bump": "bumpp",
+		"check": "vp check",
+		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
+		"lint": "vp lint",
+		"test": "vp test",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@effect/platform-node": "4.0.0-beta.107",
+		"effect": "4.0.0-beta.107"
+	},
+	"devDependencies": {
+		"@codeworksh/harness": "workspace:*",
+		"@types/node": "catalog:",
+		"bumpp": "^12.2.0"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	}
+}

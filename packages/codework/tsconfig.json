@@ -1,0 +1,54 @@
+{
+	"$schema": "../../node_modules/@effect/tsgo/schema.json",
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"tsBuildInfoFile": "../../.cache/typescript/codework.tsbuildinfo",
+		"paths": {
+			"@codeworksh/harness": ["../harness/src/index.ts"],
+			"@codeworksh/harness/effect": ["../harness/src/effect.ts"],
+			"@codeworksh/harness/sandbox": ["../harness/src/sandbox.ts"],
+			"@codeworksh/aikit": ["../aikit/dist/pack/index.d.mts"],
+			"@codeworksh/aikit/failure": ["../aikit/src/llm/failure.ts"],
+			"@codeworksh/aikit/modelgen": ["../aikit/dist/pack/modelgen.d.mts"]
+		},
+		"plugins": [
+			{
+				"name": "@effect/language-service",
+				"diagnostics": true,
+				"refactors": true,
+				"namespaceImportPackages": ["@effect/platform-node", "effect"],
+				"diagnosticSeverity": {
+					"importFromBarrel": "error",
+					"anyUnknownInErrorContext": "error",
+					"unsafeEffectTypeAssertion": "error",
+					"instanceOfSchema": "error",
+					"deterministicKeys": "error",
+					"strictEffectProvide": "off",
+					"missingEffectServiceDependency": "error",
+					"leakingRequirements": "error",
+					"globalErrorInEffectCatch": "error",
+					"globalErrorInEffectFailure": "error",
+					"unknownInEffectCatch": "error",
+					"strictBooleanExpressions": "off",
+					"lazyEffect": "off",
+					"preferSchemaOverJson": "error",
+					"schemaSyncInEffect": "error",
+					"cryptoRandomUUID": "error",
+					"cryptoRandomUUIDInEffect": "error",
+					"nodeBuiltinImport": "error",
+					"globalDate": "error",
+					"globalDateInEffect": "error",
+					"globalConsole": "error",
+					"globalConsoleInEffect": "error",
+					"globalRandom": "error",
+					"globalRandomInEffect": "error",
+					"globalTimers": "error",
+					"globalTimersInEffect": "error",
+					"globalFetch": "error",
+					"globalFetchInEffect": "error"
+				}
+			}
+		]
+	},
+	"include": ["src"]
+}
