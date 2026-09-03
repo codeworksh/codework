@@ -381,7 +381,7 @@ const paritySpec = (backend: Backend) => {
  *
  * Not repeated here. `cancellationSpec` already runs against all five of these
  * backends — memory, sqldb, and host in `sandbox.cancellation.test.ts`, vercel in
- * `sandbox.vercel.test.ts`, daytona in `sandbox.daytona.test.ts` — and it asserts
+ * `sandbox.vercel.e2e.test.ts`, Daytona in `sandbox.daytona.e2e.test.ts` — and it asserts
  * more than Flue's demo does: not that the caller unwinds, but that the command's
  * filesystem witness stops advancing. Running it a sixth time would add two
  * settle windows per backend and no signal.

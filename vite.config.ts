@@ -1,6 +1,7 @@
 import { recommended } from "@effect/tsgo/oxlint-presets";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import { configDefaults } from "vite-plus/test/config";
 
 const ignoredPaths = [
 	"dist/**",
@@ -35,6 +36,10 @@ export default defineConfig({
 	},
 	test: {
 		include: ["packages/**/*.test.ts"],
+		exclude:
+			process.env.CODEWORK_SANDBOX_E2E_REQUIRED === "1"
+				? configDefaults.exclude
+				: [...configDefaults.exclude, "packages/**/*.e2e.test.ts"],
 	},
 	lint: {
 		// Effect rules from @effect/tsgo, scoped to the only Effect codebase here -- aikit and

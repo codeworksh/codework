@@ -12,7 +12,7 @@ import { fromSandboxShell, ToolShell } from "../../src/tools/shell.ts";
 import * as Tool from "../../src/tools/tool.ts";
 import { pendingCall } from "../tools.fixture.ts";
 
-// Uses the Vercel sandbox owned by sandbox.vercel.test.ts; never provisions one.
+// Uses the Vercel sandbox owned by sandbox.vercel.e2e.test.ts; never provisions one.
 const PROVISION_TIMEOUT = 180_000;
 const LINES = 120;
 const line = (index: number) => `progress-line-${index}/${LINES}`;

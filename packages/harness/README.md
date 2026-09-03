@@ -44,7 +44,7 @@ await program.pipe(
 	Effect.provide(
 		Harness.layer({
 			database: ":memory:",
-			home: ".codework-readme",
+			home: ".codework",
 		}),
 	),
 	Effect.scoped,
@@ -55,12 +55,12 @@ await program.pipe(
 `local` always exists, while `memory` and `sqldb` are registered automatically. Install third-party drivers with pnpm and load their package specifiers when constructing the layer:
 
 ```sh
-pnpm install @acme/codework-sandbox-whatever
+pnpm install @acme/codework-sandbox-e2b
 ```
 
 ```ts
 Harness.layer({
-	sandboxes: ["@acme/codework-sandbox-whatever"],
+	sandboxes: ["@acme/codework-sandbox-e2b"],
 });
 ```
 

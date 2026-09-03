@@ -20,9 +20,9 @@ const PROVISION_TIMEOUT = 180_000;
 const SANDBOX_CWD = "/tmp";
 const BAKED_ENV = "from-sandbox";
 
-// One real sandbox serves the complete provider contract. Reattaching by the
+// One fresh real sandbox serves the complete provider contract. Reattaching by the
 // provider's own locator does not transfer ownership; cleanup is explicit.
-suite("Sandbox.EnvDaytona (shared sandbox)", () => {
+suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 	let runtime!: ManagedRuntime.ManagedRuntime<Sandbox.Provides | SandboxResource.Service, EnvDaytona.DaytonaError>;
 	const owner = makeRemoteOwner("sandbox.daytona");
 

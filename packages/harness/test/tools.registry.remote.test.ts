@@ -20,7 +20,7 @@ import "./utils/env.ts";
 // with live progress flushed to a File IO temp sink. Gated on provider credentials from
 // `.env.local` (see ./utils/env) — each suite skips when its key is absent.
 //
-// The Vercel streaming case lives in sandbox.vercel.test.ts so every Vercel
+// The Vercel streaming case lives in sandbox.vercel.e2e.test.ts so every Vercel
 // contract shares that file's single free-tier resource.
 
 const daytonaKey = process.env.DAYTONA_API_KEY;

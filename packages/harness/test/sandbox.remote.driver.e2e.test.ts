@@ -13,6 +13,8 @@ import { SandboxIO } from "../src/sandbox/io.ts";
 import { hasLiveOidc } from "./fixtures/vercel.ts";
 import "./utils/env.ts";
 
+// These lifecycle cases provision independently and run serially via the E2E script.
+
 const apiKey = process.env.DAYTONA_API_KEY;
 const daytonaSuite = apiKey ? describe : describe.skip;
 const vercelToken = process.env.VERCEL_OIDC_TOKEN;

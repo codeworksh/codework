@@ -78,7 +78,7 @@
 		"test": "vp test",
 		"test:sandbox:package": "node test/scripts/codework-sandbox-vercel-smoke.mjs",
 		"test:sandbox:package:e2e": "node test/scripts/codework-sandbox-vercel-smoke.mjs --e2e",
-		"test:sandbox:e2e": "CODEWORK_SANDBOX_E2E_REQUIRED=1 vp test test/sandbox.remote.driver.test.ts",
+		"test:sandbox:e2e": "CODEWORK_SANDBOX_E2E_REQUIRED=1 vp test --no-file-parallelism test/sandbox.vercel.e2e.test.ts test/sandbox.daytona.e2e.test.ts test/sandbox.remote.driver.e2e.test.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
