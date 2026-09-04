@@ -180,7 +180,44 @@ function mergeThinkingLevelMap(model: Model.Info, map: ThinkingLevelMap): void {
 	model.thinkingLevelMap = { ...model.thinkingLevelMap, ...map };
 }
 
+/**
+ * Claude models that decide their own thinking depth.
+ *
+ * These take an `effort` level and let the model size each turn's reasoning; the
+ * older models take a fixed `budget_tokens` instead. Sending a budget to an
+ * adaptive model pins it to one depth for every turn, which is the thing adaptive
+ * thinking exists to avoid.
+ */
+function isAnthropicAdaptiveThinkingModel(modelId: string): boolean {
+	return [
+		"opus-4-6",
+		"opus-4.6",
+		"opus-4-7",
+		"opus-4.7",
+		"opus-4-8",
+		"opus-4.8",
+		"opus-5",
+		"opus.5",
+		"sonnet-4-6",
+		"sonnet-4.6",
+		"sonnet-5",
+		"sonnet.5",
+		"fable-5",
+	].some((needle) => modelId.includes(needle));
+}
+
+function mergeCompat(model: Model.Info, compat: Model.Compatibility): void {
+	model.compat = { ...model.compat, ...compat };
+}
+
 function applyThinkingLevelMetadata(model: Model.Info): void {
+	if (
+		(model.protocol === Model.KnownProviderEnum.anthropic ||
+			model.protocol === Model.KnownProviderEnum.googleVertexAnthropic) &&
+		isAnthropicAdaptiveThinkingModel(model.id)
+	) {
+		mergeCompat(model, { forceAdaptiveThinking: true });
+	}
 	if (model.protocol === Model.KnownProviderEnum.openai && model.id.startsWith("gpt-5")) {
 		mergeThinkingLevelMap(model, { off: null });
 	}

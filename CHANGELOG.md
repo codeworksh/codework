@@ -13,25 +13,50 @@ This file is the canonical source for unreleased changes and published release n
 
 ### Added
 
+- Added context-aware response sizing: every request now measures what the conversation already costs and shrinks its output ceiling to what the context window can still hold, instead of asking for an answer that cannot fit.
+- Added adaptive thinking for newer Claude models, which receive an effort level and size each turn's reasoning themselves rather than being pinned to a fixed token budget.
+- Added `usage.cacheWrite1h`, the portion of a cache write made with 1h retention, where the provider reports the split.
+- Added `isRecoverableLength`, which reports whether a length stop ended below the output limit that was actually requested, so callers can decide whether one compact-and-retry attempt is worthwhile.
+- Added `compat.thinkingTokenBudgetField` and `compat.supportsThinkingTokenBudget`, letting an OpenAI-compatible endpoint declare the request field it takes a thinking-token budget in.
+- Added `compat.forceAdaptiveThinking` to the generated catalog for Claude models that support it.
 - Added native JSON Schema output support to the OpenAI Codex provider and a live Codex round-trip regression test.
 
 ### Changed
 
+- Changed `maxTokens` to mean the room reserved for the answer. A thinking budget is added on top and the total is clamped to the model's ceiling, so raising the thinking level no longer silently shortens the answer.
+- Changed default thinking budgets to fixed token counts per level (1024, 2048, 8192, 16384) rather than a fraction of each model's output ceiling, so one setting behaves the same across large and small models. `xhigh` and `max` inherit the `high` budget unless one is configured for them.
+- Changed reasoning to be switched off explicitly when no thinking level is requested. Models that reason by default previously did so anyway, spending output tokens on reasoning the caller never asked for.
+- Changed Google thinking configuration to use per-family token budgets, and to send a thinking level rather than a budget for the model families that take one.
 - Aligned OpenAI Codex request shaping with the ChatGPT Codex backend: requests always disable storage, include encrypted reasoning content, and derive the prompt cache key from the provider session ID.
 
 ### Fixed
 
+- Fixed an oversized thinking budget consuming the entire response. A budget that does not fit is now reduced, always leaving at least 1024 tokens for the answer, instead of shrinking the answer toward a single token.
+- Fixed Anthropic requests counting the thinking budget twice, which inflated the requested ceiling and, with an explicit `maxTokens`, produced answers several times longer than asked for.
+- Fixed a thinking budget below a provider's own minimum being sent as an enabled request, which the provider rejected outright. Thinking is now dropped for that turn instead, so a nearly full context still produces an answer.
+- Fixed 1h cache writes being billed at the 5-minute rate. The 1h portion is now priced at twice the base input rate, correcting a roughly 37% understatement of cache-write cost whenever long cache retention is enabled.
+- Fixed service-tier pricing being applied only to OpenAI Codex requests and being calculated from the tier requested rather than the tier the response was served at.
+- Fixed rate-limit and throttling errors being misread as context overflow, which sent callers to compact a conversation that was never too long instead of retrying.
+- Fixed context-overflow detection missing providers that truncate an oversized prompt to fit the window and then stop with no output, and broadened the recognized provider error messages.
+- Fixed thinking-token budgets never reaching OpenAI-compatible endpoints that accept one.
+- Fixed the default response ceiling being capped at a fixed 32000 tokens for models whose catalog output limit approaches their context window; the context-aware ceiling now decides.
 - Replaced the OpenAI Codex SSE decoder with a standards-compliant parser, rejected streams that close before a terminal Responses event, and stopped accepting WebSocket-only completion events on the HTTP transport.
 - Distinguished transient Codex rate limits from terminal plan and quota failures while preserving structured error codes, retry timing, and OpenAI request IDs.
 - Restricted persisted OpenAI Codex OAuth credentials to owner-only file permissions and redacted token material from OAuth failure messages.
 
 ### Breaking Changes
 
+- Changed the meaning of `maxTokens` from the whole response to the answer alone. A request that previously carved the thinking budget out of `maxTokens` now adds it on top, so responses can be longer than before at the same setting.
+- Changed default thinking budgets to absolute token counts. On models with a large output ceiling these are substantially smaller than the previous proportional defaults; set `thinkingBudgets` explicitly to keep the old amounts.
+- Changed requests without a thinking level to disable reasoning explicitly. Providers whose models reason by default will no longer do so unless a level is set.
 - Removed the `store`, `include`, and `promptCacheKey` OpenAI Codex language-model options. These backend-required values are now controlled by the provider.
 - Removed the unused agent lifecycle event protocol from the public `Event` namespace: `AgentEventType`, `AgentEventSchema`, `AgentEvent`, and the `tool.execution.start` / `tool.execution.update` / `tool.execution.end` types. LLM stream events (`LLMMessageEvent`) are unchanged.
 
 ### Internal
 
+- Extracted thinking resolution, request pricing, and context estimation into `llm/thinking.ts`, `llm/pricing.ts`, and `utils/estimate.ts`, so each derivation from model metadata has one home and can be tested directly.
+- Added `Model.optionsKey` as the single accessor for a model's provider option namespace, replacing a copy inside the streaming module.
+- Surfaced the service tier a Codex response was served at in provider metadata, so a turn is priced by what it actually cost.
 - Reorganized the OpenAI Codex unit tests by provider module and expanded live coverage for empty messages, response IDs, Unicode surrogate handling, incomplete tool-call histories, native grammar tools, and structured output using HTTP/SSE behavior as a reference.
 - Renamed the Codex OAuth suite for clarity and added CLI coverage for credential status, refresh, and logout wiring.
 - Removed unit coverage for the unused agent lifecycle event schemas.

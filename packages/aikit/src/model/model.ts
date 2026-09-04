@@ -1,6 +1,6 @@
 import Type, { type Static } from "typebox";
-import * as ModelCatalog from "./catalog.ts";
 import { lazy } from "../utils/lazy.ts";
+import * as ModelCatalog from "./catalog.ts";
 
 // re-export
 export const KnownProviderEnum = ModelCatalog.KnownProviderEnum;
@@ -143,6 +143,12 @@ export const CompatibilitySchema = Type.Object({
 	supportsAdditionalTools: Type.Optional(Type.Boolean()),
 	supportsStrictMode: Type.Optional(Type.Boolean()),
 	supportsOpenAIGrammarTools: Type.Optional(Type.Boolean()),
+	/** The model takes a thinking-token budget as a top-level request field. */
+	supportsThinkingTokenBudget: Type.Optional(Type.Boolean()),
+	/** Claude model that sizes its own thinking, driven by `effort` instead of a token budget. */
+	forceAdaptiveThinking: Type.Optional(Type.Boolean()),
+	/** Name of that field, when it is not the conventional `thinking_token_budget`. */
+	thinkingTokenBudgetField: Type.Optional(Type.String()),
 });
 export type Compatibility = Static<typeof CompatibilitySchema>;
 
@@ -181,6 +187,7 @@ export function calculateCost(
 		output: number;
 		cacheRead: number;
 		cacheWrite: number;
+		cacheWrite1h?: number;
 		cost: {
 			input: number;
 			output: number;
@@ -200,10 +207,14 @@ export function calculateCost(
 		}
 	}
 
+	// Anthropic charges 2x base input for 1h cache writes; `cost.cacheWrite` is the 5m rate.
+	const longWrite = usage.cacheWrite1h ?? 0;
+	const shortWrite = usage.cacheWrite - longWrite;
+
 	usage.cost.input = (usage.input / 1_000_000) * rates.input;
 	usage.cost.output = (usage.output / 1_000_000) * rates.output;
 	usage.cost.cacheRead = (usage.cacheRead / 1_000_000) * rates.cacheRead;
-	usage.cost.cacheWrite = (usage.cacheWrite / 1_000_000) * rates.cacheWrite;
+	usage.cost.cacheWrite = (rates.cacheWrite * shortWrite + rates.input * 2 * longWrite) / 1_000_000;
 	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 }
 
@@ -236,6 +247,27 @@ export const registry = lazy(async () => {
 	}
 	return registry;
 });
+
+/**
+ * The key a provider's own option bag is filed under.
+ *
+ * Providers that speak another provider's protocol still carry their own option
+ * namespace, so this is not always the protocol.
+ */
+/**
+ * The request-body field a model takes its thinking-token budget in, if any.
+ *
+ * OpenAI-compatible endpoints have no standard place for this, so each one names
+ * its own field; a bare `supportsThinkingTokenBudget` means the conventional name.
+ */
+export function thinkingTokenBudgetField(model: Info): string | undefined {
+	if (model.compat?.thinkingTokenBudgetField) return model.compat.thinkingTokenBudgetField;
+	return model.compat?.supportsThinkingTokenBudget ? "thinking_token_budget" : undefined;
+}
+
+export function optionsKey(model: Info): string {
+	return model.providerOptionsKey ?? model.protocol;
+}
 
 export function supportsProtocol(model: Info, protocol: KnownProviderEnum): boolean {
 	if (model.protocol === protocol) return true;

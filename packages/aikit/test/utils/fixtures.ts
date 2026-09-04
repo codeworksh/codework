@@ -1,3 +1,4 @@
+import type { LanguageModelUsage } from "ai";
 import * as Message from "../../src/message/message.ts";
 import type * as Model from "../../src/model/model.ts";
 
@@ -88,5 +89,37 @@ export function makeCompletedToolCall(
 		status: "completed",
 		result: { content, isError: false },
 		time: { start: Date.now(), end: Date.now() },
+	};
+}
+
+export function makeLanguageModelUsage(
+	overrides: {
+		inputTokens?: number;
+		outputTokens?: number;
+		totalTokens?: number;
+		inputTokenDetails?: {
+			noCacheTokens?: number;
+			cacheReadTokens?: number;
+			cacheWriteTokens?: number;
+		};
+		outputTokenDetails?: {
+			textTokens?: number;
+			reasoningTokens?: number;
+		};
+	} = {},
+): LanguageModelUsage {
+	return {
+		inputTokens: overrides.inputTokens,
+		outputTokens: overrides.outputTokens,
+		totalTokens: overrides.totalTokens,
+		inputTokenDetails: {
+			noCacheTokens: overrides.inputTokenDetails?.noCacheTokens,
+			cacheReadTokens: overrides.inputTokenDetails?.cacheReadTokens,
+			cacheWriteTokens: overrides.inputTokenDetails?.cacheWriteTokens,
+		},
+		outputTokenDetails: {
+			textTokens: overrides.outputTokenDetails?.textTokens,
+			reasoningTokens: overrides.outputTokenDetails?.reasoningTokens,
+		},
 	};
 }

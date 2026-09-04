@@ -136,6 +136,8 @@ export const UsageSchema = Type.Object({
 	output: Type.Number(),
 	cacheRead: Type.Number(),
 	cacheWrite: Type.Number(),
+	/** Subset of `cacheWrite` written with 1h retention. Only Anthropic reports this split. */
+	cacheWrite1h: Type.Optional(Type.Number()),
 	reasoning: Type.Optional(Type.Number()),
 	totalTokens: Type.Number(),
 	cost: Type.Object({

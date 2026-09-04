@@ -146,7 +146,9 @@ async function testAbortThenNewMessage(model: StreamableModel, options: StreamOp
 		}),
 	);
 
-	const followUp = await complete(model, context, { maxTokens: 128, ...options });
+	// Some endpoints reason regardless of what is asked for, and those tokens come
+	// out of this cap, so it has to cover more than the answer alone.
+	const followUp = await complete(model, context, { maxTokens: 512, ...options });
 	expect(followUp.stopReason).toBe("stop");
 	expect(getGeneratedText(followUp).length).toBeGreaterThan(0);
 }

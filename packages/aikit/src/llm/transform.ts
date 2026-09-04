@@ -10,6 +10,7 @@ import {
 	type UserModelMessage,
 } from "ai";
 import * as Message from "../message/message.ts";
+import { Pricing } from "./pricing.ts";
 import * as Model from "../model/model.ts";
 import { resolveOpenAICodexToolConstraint } from "../providers/openai-codex/codex-tools.ts";
 import { shortHash } from "../utils/hash.ts";
@@ -322,9 +323,11 @@ export function mapUsage(
 	usage: LanguageModelUsage | undefined,
 	model: Model.Info,
 	costMultiplier = 1,
+	providerMetadata?: unknown,
 ): Message.AssistantMessage["usage"] {
 	const cacheRead = usage?.inputTokenDetails.cacheReadTokens ?? 0;
 	const cacheWrite = usage?.inputTokenDetails?.cacheWriteTokens ?? 0;
+	const cacheWrite1h = Pricing.cacheWrite1hTokens(providerMetadata);
 	const input =
 		usage?.inputTokenDetails?.noCacheTokens ?? Math.max((usage?.inputTokens ?? 0) - cacheRead - cacheWrite, 0);
 	const output = usage?.outputTokens ?? 0;
@@ -334,6 +337,7 @@ export function mapUsage(
 		output,
 		cacheRead,
 		cacheWrite,
+		...(cacheWrite1h === undefined ? {} : { cacheWrite1h }),
 		...(usage?.outputTokenDetails?.reasoningTokens !== undefined
 			? { reasoning: usage.outputTokenDetails.reasoningTokens }
 			: {}),
