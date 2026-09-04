@@ -373,6 +373,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		let usage: OpenAICodexUsage | undefined;
 		let hasToolCalls = false;
 		let finished = false;
+		let servedServiceTier: string | undefined;
 		// function_call argument deltas arrive keyed by item id; tool parts use the
 		// composite `call_id|item_id` so multi-turn replay can recover both halves.
 		const toolCallIdsByItemId = new Map<string, string>();
@@ -392,6 +393,11 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 				type: "finish",
 				finishReason,
 				usage: convertOpenAICodexUsage(usage),
+				// The tier the response was served at decides what it costs, and it is
+				// not always the tier that was requested.
+				...(servedServiceTier === undefined
+					? {}
+					: { providerMetadata: { "openai-codex": { serviceTier: servedServiceTier } } }),
 			});
 		};
 		const fail = (controller: TransformStreamDefaultController<LanguageModelV3StreamPart>, error: unknown): void => {
@@ -589,6 +595,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 					case "response.incomplete": {
 						const response = asRecord(event.response);
 						usage = (response?.usage as OpenAICodexUsage | undefined) ?? usage;
+						servedServiceTier = asString(response?.service_tier) ?? servedServiceTier;
 						const status =
 							asString(response?.status) ?? (type === "response.incomplete" ? "incomplete" : "completed");
 						const incompleteReason = asString(asRecord(response?.incomplete_details)?.reason);

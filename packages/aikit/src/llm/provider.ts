@@ -17,7 +17,33 @@ function resolveBaseURL(model: Model.Info, options: Options): string | undefined
 	return (options.baseURL ?? model.api?.url ?? model.baseUrl) || undefined;
 }
 
-export async function resolveAISDKLanguageModel(model: Model.Info, options: Options): Promise<LanguageModel> {
+/**
+ * Inject a thinking-token budget the AI SDK has no field for.
+ *
+ * `@ai-sdk/openai-compatible` validates provider options against a closed schema,
+ * so an endpoint-specific budget field cannot travel that way. `transformRequestBody`
+ * is the SDK's own hook for exactly this: the last edit before the body is sent.
+ */
+export function thinkingTokenBudgetTransform(
+	field: string,
+	budget: number,
+	existing: unknown,
+): (body: Record<string, unknown>) => Record<string, unknown> {
+	const chain =
+		typeof existing === "function"
+			? (existing as (body: Record<string, unknown>) => Record<string, unknown>)
+			: undefined;
+	return (body) => {
+		const transformed = chain ? chain(body) : body;
+		return { ...transformed, [field]: budget };
+	};
+}
+
+export async function resolveAISDKLanguageModel(
+	model: Model.Info,
+	options: Options,
+	thinkingTokenBudget?: number,
+): Promise<LanguageModel> {
 	const npm = packageForModel(model);
 	const createProvider = await loadProviderFactory(npm);
 	const apiKey = options.apiKey ?? getEnvApiKey(model.provider);
@@ -42,6 +68,15 @@ export async function resolveAISDKLanguageModel(model: Model.Info, options: Opti
 		}
 		factoryOptions.name ??= model.provider.id;
 		factoryOptions.includeUsage ??= true;
+
+		const budgetField = Model.thinkingTokenBudgetField(model);
+		if (budgetField && thinkingTokenBudget !== undefined && thinkingTokenBudget > 0) {
+			factoryOptions.transformRequestBody = thinkingTokenBudgetTransform(
+				budgetField,
+				thinkingTokenBudget,
+				factoryOptions.transformRequestBody,
+			);
+		}
 	}
 
 	if (npm === "@codeworksh/ai-sdk-openai-codex") {

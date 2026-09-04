@@ -1,4 +1,4 @@
-import type { FinishReason, LanguageModelUsage, TextStreamPart, ToolSet } from "ai";
+import type { FinishReason, TextStreamPart, ToolSet } from "ai";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -18,6 +18,7 @@ import { openAICodexTools } from "../src/providers/openai-codex/index.ts";
 import { shortHash } from "../src/utils/hash.ts";
 import {
 	makeAssistantMessage,
+	makeLanguageModelUsage,
 	makeCompletedToolCall,
 	makeModel,
 	makePendingToolCall,
@@ -49,38 +50,6 @@ function makeCodexModel(overrides: Partial<Model.Info> = {}): Model.Info {
 		provider: { id: "openai-codex", name: "Codex", source: "custom", env: [] },
 		...overrides,
 	});
-}
-
-function makeLanguageModelUsage(
-	overrides: {
-		inputTokens?: number;
-		outputTokens?: number;
-		totalTokens?: number;
-		inputTokenDetails?: {
-			noCacheTokens?: number;
-			cacheReadTokens?: number;
-			cacheWriteTokens?: number;
-		};
-		outputTokenDetails?: {
-			textTokens?: number;
-			reasoningTokens?: number;
-		};
-	} = {},
-): LanguageModelUsage {
-	return {
-		inputTokens: overrides.inputTokens,
-		outputTokens: overrides.outputTokens,
-		totalTokens: overrides.totalTokens,
-		inputTokenDetails: {
-			noCacheTokens: overrides.inputTokenDetails?.noCacheTokens,
-			cacheReadTokens: overrides.inputTokenDetails?.cacheReadTokens,
-			cacheWriteTokens: overrides.inputTokenDetails?.cacheWriteTokens,
-		},
-		outputTokenDetails: {
-			textTokens: overrides.outputTokenDetails?.textTokens,
-			reasoningTokens: overrides.outputTokenDetails?.reasoningTokens,
-		},
-	};
 }
 
 function makeRunningToolCall(callID: string): Message.ToolCallRunningPart {
