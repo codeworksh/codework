@@ -11,6 +11,8 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.8.0]
+
 ### Added
 
 - Added context-aware response sizing: every request now measures what the conversation already costs and shrinks its output ceiling to what the context window can still hold, instead of asking for an answer that cannot fit.
