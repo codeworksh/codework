@@ -102,7 +102,7 @@ describe("Thinking.reasoningProviderOptions", () => {
 		for (const [id, expected] of cases) {
 			const model = google(id);
 			const options = Thinking.reasoningProviderOptions(model, planFor(model, { reasoning: "high" }));
-			expect(options.google?.thinkingConfig).toMatchObject({ thinkingLevel: "high", thinkingBudget: expected });
+			expect(options.google?.thinkingConfig).toEqual({ includeThoughts: true, thinkingBudget: expected });
 		}
 	});
 

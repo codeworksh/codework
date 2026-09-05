@@ -25,6 +25,7 @@ import {
  */
 export interface Plan {
 	readonly level: Model.ThinkingLevel;
+	/** Fitted tokens, or Google's -1 sentinel for provider-managed dynamic thinking. */
 	readonly budget: number;
 	readonly maxTokens: number | undefined;
 	/** The caller configured a budget for this level, rather than inheriting a default. */
@@ -56,21 +57,28 @@ export function resolvePlan(model: Model.Info, context: Message.Context, options
 
 	const budgets = options.thinkingBudgets;
 	const explicit = budgets?.[level] !== undefined;
+	const key = Model.optionsKey(model);
+	const usesGoogleBudget = (key === "google" || key === "google-vertex") && !usesGoogleThinkingLevel(model);
+	const requestedBudget = usesGoogleBudget
+		? (budgets?.[level] ?? googleThinkingBudget(model, googleThinkingLevel(model.thinkingLevelMap?.[level] ?? level)))
+		: thinkingBudgetForLevel(level, budgets);
 
 	// A catalog entry without a ceiling gives the fit nothing to work against.
 	if (model.maxTokens <= 0) {
-		const budget = thinkingBudgetForLevel(level, budgets);
-		return { level, budget, maxTokens: clampToContext(options.maxTokens), explicit };
+		return { level, budget: requestedBudget, maxTokens: clampToContext(options.maxTokens), explicit };
 	}
 
-	const adjusted = adjustMaxTokensForThinking(options.maxTokens, model.maxTokens, level, budgets);
+	// Google's -1 is a dynamic-thinking sentinel, not a negative token count.
+	const dynamic = usesGoogleBudget && requestedBudget === -1;
+	const adjusted = adjustMaxTokensForThinking(options.maxTokens, model.maxTokens, level, {
+		[level]: dynamic ? 0 : requestedBudget,
+	});
 	const maxTokens = clampMaxTokensToContext(model, context, adjusted.maxTokens);
 
 	/*
-	 * Re-fit only when the context clamp actually took room away. The budget was
-	 * already fitted under `adjusted.maxTokens` with the answer floor reserved, so
-	 * clamping again against an unchanged ceiling would reserve that floor twice
-	 * and can push the budget under a provider's own minimum.
+	 * Preserve an explicit small answer allowance when it fits, and apply the
+	 * 1024-token reserve when context pressure reduces it. Pi's Anthropic wrapper
+	 * applies this reserve unconditionally; aikit deliberately permits small answers.
 	 */
 	const budget =
 		maxTokens < adjusted.maxTokens
@@ -86,7 +94,7 @@ export function resolvePlan(model: Model.Info, context: Message.Context, options
 		return { level: "off", budget: 0, maxTokens, explicit };
 	}
 
-	return { level, budget, maxTokens, explicit };
+	return { level, budget: dynamic ? -1 : budget, maxTokens, explicit };
 }
 
 type GoogleThinkingLevel = "minimal" | "low" | "medium" | "high";
@@ -113,8 +121,7 @@ const GOOGLE_THINKING_BUDGETS: ReadonlyArray<[RegExp, Record<GoogleThinkingLevel
 	[/2\.5-flash/, { minimal: 128, low: 2048, medium: 8192, high: 24576 }],
 ];
 
-function googleThinkingBudget(model: Model.Info, level: GoogleThinkingLevel, plan: Plan): number {
-	if (plan.explicit) return plan.budget;
+function googleThinkingBudget(model: Model.Info, level: GoogleThinkingLevel): number {
 	for (const [pattern, budgets] of GOOGLE_THINKING_BUDGETS) {
 		if (pattern.test(model.id)) return budgets[level];
 	}
@@ -231,9 +238,8 @@ export function reasoningProviderOptions(model: Model.Info, plan: Plan): Provide
 		return {
 			[key]: {
 				thinkingConfig: {
-					thinkingLevel,
 					includeThoughts: true,
-					thinkingBudget: googleThinkingBudget(model, thinkingLevel, plan),
+					thinkingBudget: budget,
 				},
 			},
 		};

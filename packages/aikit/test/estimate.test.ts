@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { clampMaxTokensToContext } from "../src/llm/shared.ts";
 import * as Message from "../src/message/message.ts";
 import { estimateContextTokens, estimateMessageTokens, estimateTextTokens } from "../src/utils/estimate.ts";
-import { makeModel, makeUsage } from "./utils/fixtures.ts";
+import { makeCompletedToolCall, makeModel, makeUsage } from "./utils/fixtures.ts";
 
 const model = makeModel({ contextWindow: 10_000, maxTokens: 8_000 });
 
@@ -70,6 +70,22 @@ describe("estimateMessageTokens", () => {
 });
 
 describe("estimateContextTokens", () => {
+	it("adds results and discovered tools on the usage-bearing turn only once", () => {
+		const latest = assistant(100, 1_000);
+		latest.parts = [makeCompletedToolCall("read", "read", [{ type: "text", text: "r".repeat(40_000) }])];
+		const call = latest.parts[0]!;
+		if (call.type === "toolCall") call.addedToolNames = ["new_tool"];
+		const tool: Message.Tool = { name: "new_tool", description: "new", parameters: { type: "object" } };
+		const context: Message.Context = { messages: [latest], tools: [tool] };
+		const added = 10_000 + estimateTextTokens(JSON.stringify([tool]));
+		expect(estimateContextTokens(context)).toMatchObject({ tokens: 1_000 + added, trailingTokens: added });
+		expect(clampMaxTokensToContext(makeModel({ contextWindow: 20_000 }), context, 16_000)).toBe(
+			20_000 - 1_000 - added - 4_096,
+		);
+		context.messages.push(assistant(200, 12_000));
+		expect(estimateContextTokens(context)).toMatchObject({ tokens: 12_000, trailingTokens: 0 });
+	});
+
 	it("ignores stale assistant usage after a newer message is inserted before it", () => {
 		const context: Message.Context = {
 			systemPrompt: "system",

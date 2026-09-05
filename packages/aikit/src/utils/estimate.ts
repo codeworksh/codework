@@ -57,9 +57,11 @@ export function estimateContentTokens(content: ReadonlyArray<Message.TextContent
  * results in their own messages -- the result it already holds.
  */
 function toolCallChars(part: Message.ToolCall): number {
-	let chars = part.name.length + safeJsonStringify(part.arguments).length;
-	if ("result" in part && part.result) chars += contentChars(part.result.content);
-	return chars;
+	return part.name.length + safeJsonStringify(part.arguments).length + toolResultChars(part);
+}
+
+function toolResultChars(part: Message.ToolCall): number {
+	return "result" in part && part.result ? contentChars(part.result.content) : 0;
 }
 
 export function estimateMessageTokens(message: Message.Message): number {
@@ -118,7 +120,14 @@ function estimateMessages(messages: ReadonlyArray<Message.Message>): ContextUsag
 	const usage = lastAssistantUsage(messages);
 	if (usage) {
 		const usageTokens = calculateContextTokens(usage.usage);
-		let trailingTokens = 0;
+		// Unlike Pi's separate tool-result messages, our results are attached to
+		// the assistant turn after its usage was reported. Only its output is counted.
+		const latest = messages[usage.index]!;
+		let resultChars = 0;
+		for (const part of latest.parts) {
+			if (part.type === "toolCall") resultChars += toolResultChars(part);
+		}
+		let trailingTokens = Math.ceil(resultChars / CHARS_PER_TOKEN);
 		for (let i = usage.index + 1; i < messages.length; i++) trailingTokens += estimateMessageTokens(messages[i]!);
 		return { tokens: usageTokens + trailingTokens, usageTokens, trailingTokens, lastUsageIndex: usage.index };
 	}
@@ -133,10 +142,10 @@ function estimateToolsTokens(tools: ReadonlyArray<Message.Tool> | undefined): nu
 	return estimateTextTokens(safeJsonStringify(tools));
 }
 
-/** Tool names that only became available after the given message index. */
+/** Tools discovered by execution of the given assistant turn or later turns. */
 function toolNamesAddedAfter(messages: ReadonlyArray<Message.Message>, index: number): Set<string> {
 	const names = new Set<string>();
-	for (let i = index + 1; i < messages.length; i++) {
+	for (let i = index; i < messages.length; i++) {
 		const message = messages[i]!;
 		if (message.role !== "assistant") continue;
 		for (const part of message.parts) {
