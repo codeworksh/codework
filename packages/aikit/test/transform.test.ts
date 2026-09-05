@@ -6,6 +6,7 @@ import {
 	convertTools,
 	createAssistantMessage,
 	encodeOpenAIReasoningSignature,
+	googleThoughtSignature,
 	mapFinishReason,
 	mapUsage,
 	normalizeOpenAICodexToolCallId,
@@ -26,6 +27,30 @@ import {
 } from "./utils/fixtures.ts";
 
 const PNG = "aGVsbG8=";
+
+describe("Google thought signature replay", () => {
+	it.each(["google", "google-vertex"] as const)("retains signatures in the %s namespace", (protocol) => {
+		const model = makeModel({ protocol });
+		const message = makeAssistantMessage(model, {
+			parts: [
+				{ type: "text", text: "Answer", textSignature: "text-signature" },
+				{ type: "thinking", thinking: "Reasoning", thinkingSignature: "thinking-signature" },
+				{ ...makeCompletedToolCall("call"), thoughtSignature: "tool-signature" },
+			],
+		});
+		const converted = convertMessages({ messages: [message] }, model);
+		expect(converted[0]).toMatchObject({
+			content: [
+				{ type: "text", providerOptions: { [protocol]: { thoughtSignature: "text-signature" } } },
+				{ type: "reasoning", providerOptions: { [protocol]: { thoughtSignature: "thinking-signature" } } },
+				{ type: "tool-call", providerOptions: { [protocol]: { thoughtSignature: "tool-signature" } } },
+			],
+		});
+		expect(googleThoughtSignature({ [protocol]: { thoughtSignature: "tool-signature" } })).toBe("tool-signature");
+		const switched = convertMessages({ messages: [message] }, { ...model, id: "another-model" });
+		expect(JSON.stringify(switched)).not.toContain("-signature");
+	});
+});
 const unpairedSurrogate = String.fromCharCode(0xd83d);
 
 const sameModel = makeModel();

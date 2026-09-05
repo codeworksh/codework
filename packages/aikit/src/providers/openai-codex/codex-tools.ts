@@ -147,24 +147,13 @@ export const openAICodexTools = {
 export type OpenAICodexToolChoice = "auto" | "none" | "required";
 export type OpenAICodexDeferredToolsMode = "additional-tools" | "tool-search";
 
-const TOOL_SEARCH_MODEL_IDS = new Set([
-	"gpt-5.4",
-	"gpt-5.4-mini",
-	"gpt-5.5",
-	"gpt-5.6-luna",
-	"gpt-5.6-sol",
-	"gpt-5.6-terra",
-]);
-const ADDITIONAL_TOOLS_MODEL_IDS = new Set(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"]);
-
 export function resolveOpenAICodexDeferredToolsMode(
-	modelId: string,
 	compat?: OpenAICodexCompatibility,
 ): OpenAICodexDeferredToolsMode | undefined {
-	const supportsAdditionalTools = compat?.supportsAdditionalTools ?? ADDITIONAL_TOOLS_MODEL_IDS.has(modelId);
+	const supportsAdditionalTools = compat?.supportsAdditionalTools ?? false;
 	if (supportsAdditionalTools) return "additional-tools";
 
-	const supportsToolSearch = compat?.supportsToolSearch ?? TOOL_SEARCH_MODEL_IDS.has(modelId);
+	const supportsToolSearch = compat?.supportsToolSearch ?? false;
 	return supportsToolSearch ? "tool-search" : undefined;
 }
 

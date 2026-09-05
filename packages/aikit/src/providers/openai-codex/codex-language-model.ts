@@ -170,7 +170,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		}
 
 		const codexOptions = (options.providerOptions?.["openai-codex"] ?? {}) as OpenAICodexLanguageModelOptions;
-		const deferredToolsMode = resolveOpenAICodexDeferredToolsMode(this.modelId, this.config.compat);
+		const deferredToolsMode = resolveOpenAICodexDeferredToolsMode(this.config.compat);
 		const deferredToolNames = deferredToolsMode ? collectOpenAICodexDeferredToolNames(options.prompt) : undefined;
 		const tools = prepareOpenAICodexTools({
 			tools: options.tools,
@@ -181,7 +181,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			deferredTools: tools.deferredCodexTools,
 			...(deferredToolsMode !== undefined && { deferredToolsMode }),
 			grammarToolInputProperties: tools.grammarToolInputProperties,
-			supportsImages: this.config.compat?.supportsImages ?? this.modelId !== "gpt-5.3-codex-spark",
+			supportsImages: this.config.compat?.supportsImages ?? false,
 		});
 		warnings.push(...tools.warnings);
 

@@ -12,6 +12,7 @@ import { formatThrownError } from "./runtime.ts";
 import { applyDefaultMaxTokens } from "./shared.ts";
 import * as Thinking from "./thinking.ts";
 import {
+	googleThoughtSignature,
 	convertMessages,
 	convertTools,
 	createAssistantMessage,
@@ -215,6 +216,8 @@ function finalizeToolCall(
 	block.arguments =
 		typeof part.input === "object" && part.input !== null ? (part.input as Record<string, unknown>) : {};
 	const namespace = openAICodexMetadata(part.providerMetadata)?.namespace;
+	const thoughtSignature = googleThoughtSignature(part.providerMetadata);
+	if (thoughtSignature) block.thoughtSignature = thoughtSignature;
 	if (typeof namespace === "string") block.namespace = namespace;
 	block.time.end = Date.now();
 	delete block.partialJson;
@@ -251,6 +254,8 @@ function handlePart(
 			break;
 		case "text-delta": {
 			const block = ensureTextBlock(output, part.id, stream);
+			const signature = googleThoughtSignature(part.providerMetadata);
+			if (signature) block.textSignature = signature;
 			block.text += part.text;
 			stream.push({ type: "text.delta", partIndex: partIndex(output, block), delta: part.text, partial: output });
 			break;
@@ -270,7 +275,8 @@ function handlePart(
 			// @ai-sdk/anthropic emits it as a reasoning-delta with empty text and providerMetadata.
 			const sig =
 				(part.providerMetadata?.anthropic as Record<string, unknown> | undefined)?.signature ??
-				(part.providerMetadata?.["google-vertex-anthropic"] as Record<string, unknown> | undefined)?.signature;
+				(part.providerMetadata?.["google-vertex-anthropic"] as Record<string, unknown> | undefined)?.signature ??
+				googleThoughtSignature(part.providerMetadata);
 			if (typeof sig === "string") block.thinkingSignature = sig;
 			stream.push({
 				type: "thinking.delta",

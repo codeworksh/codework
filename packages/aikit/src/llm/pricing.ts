@@ -58,9 +58,7 @@ export function servedServiceTier(
 }
 
 export function serviceTierCostMultiplier(model: Model.Info, serviceTier: string | undefined): number {
-	if (serviceTier === "flex") return 0.5;
-	if (serviceTier === "priority") return model.id === "gpt-5.5" ? 2.5 : 2;
-	return 1;
+	return serviceTier === undefined ? 1 : (model.cost.serviceTierMultipliers?.[serviceTier] ?? 1);
 }
 
 /**

@@ -173,19 +173,44 @@ function decodeOpenAIReasoningSignature(signature: string): OpenAIReasoningMetad
 	}
 }
 
+export function googleThoughtSignature(metadata: unknown): string | undefined {
+	if (!isRecord(metadata)) return;
+	for (const key of ["google", "google-vertex"]) {
+		const provider = metadata[key];
+		if (isRecord(provider) && typeof provider.thoughtSignature === "string") return provider.thoughtSignature;
+	}
+}
+
 function assistantMessages(message: Message.AssistantMessage, model: Model.Info): ModelMessage[] {
 	if (message.stopReason === "error" || message.stopReason === "aborted") return [];
 
 	const assistantContent: Exclude<AssistantModelMessage["content"], string> = [];
 	const toolResults: ToolModelMessage["content"] = [];
+	const googleReplay =
+		(model.protocol === "google" || model.protocol === "google-vertex") &&
+		message.protocol === model.protocol &&
+		message.provider.id === model.provider.id &&
+		message.model === model.id;
+	const googleOptions = (signature: string | undefined) =>
+		googleReplay && signature ? { [Model.optionsKey(model)]: { thoughtSignature: signature } } : undefined;
 
 	for (const part of message.parts) {
+		const google = googleOptions(
+			part.type === "text"
+				? part.textSignature
+				: part.type === "thinking"
+					? part.thinkingSignature
+					: part.type === "toolCall"
+						? part.thoughtSignature
+						: undefined,
+		);
 		if (part.type === "text") {
 			const text = sanitizeSurrogates(part.text);
 			if (text.trim().length === 0) continue;
 			assistantContent.push({
 				type: "text",
 				text,
+				...(google ? { providerOptions: google } : {}),
 				...(part.textSignature && message.protocol === Model.KnownProviderEnum.openaiCodex
 					? { providerOptions: { "openai-codex": { messageId: part.textSignature } } }
 					: {}),
@@ -202,7 +227,9 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 				const openai = decodeOpenAIReasoningSignature(part.thinkingSignature);
 				if (!openai) continue;
 				reasoning.providerOptions = { openai };
-			} else if (part.thinkingSignature) {
+			} else if (google) {
+				reasoning.providerOptions = google;
+			} else if (part.thinkingSignature && message.protocol !== "google" && message.protocol !== "google-vertex") {
 				reasoning.providerOptions =
 					message.protocol === Model.KnownProviderEnum.openaiCodex
 						? { "openai-codex": { reasoningItem: part.thinkingSignature } }
@@ -230,6 +257,7 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 			toolCallId: part.callID,
 			toolName: part.name,
 			input: sanitizeRecord(part.arguments ?? {}),
+			...(google ? { providerOptions: google } : {}),
 			...(Object.keys(codexToolMetadata).length > 0
 				? { providerOptions: { "openai-codex": codexToolMetadata } }
 				: {}),

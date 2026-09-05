@@ -52,6 +52,9 @@ export const ActiveThinkingLevel = Type.Union([
 ]);
 export type ActiveThinkingLevel = Static<typeof ActiveThinkingLevel>;
 
+export const ThinkingBudgets = Type.Partial(Type.Record(ActiveThinkingLevel, Type.Number()));
+export type ThinkingBudgets = Static<typeof ThinkingBudgets>;
+
 // Note: order of entries matters!
 const ACTIVE_THINKING_LEVELS = [
 	ThinkingLevelEnum.minimal,
@@ -90,6 +93,7 @@ const CostTierSchema = Type.Object({
 const CostSchema = Type.Object({
 	...CostRatesSchema.properties,
 	tiers: Type.Optional(Type.Array(CostTierSchema)),
+	serviceTierMultipliers: Type.Optional(Type.Record(Type.String(), Type.Number())),
 });
 const SupportedProtocolsSchema = Type.Partial(
 	Type.Object({
@@ -139,6 +143,8 @@ export const ThinkingLevelMapSchema = Type.Partial(
 export type ThinkingLevelMap = Static<typeof ThinkingLevelMapSchema>;
 
 export const CompatibilitySchema = Type.Object({
+	/** The Google protocol accepts thinking levels rather than a token budget. */
+	supportsThinkingLevel: Type.Optional(Type.Boolean()),
 	supportsToolSearch: Type.Optional(Type.Boolean()),
 	supportsAdditionalTools: Type.Optional(Type.Boolean()),
 	supportsStrictMode: Type.Optional(Type.Boolean()),
@@ -159,6 +165,8 @@ export const Schema = Type.Object({
 	baseUrl: Type.String(),
 	reasoning: Type.Boolean(),
 	thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
+	/** Default budgets; request-level thinkingBudgets take precedence. */
+	thinkingBudgets: Type.Optional(ThinkingBudgets),
 	input: InputSchema,
 	cost: CostSchema,
 	contextWindow: Type.Number(),

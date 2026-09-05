@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { resolveMaxOutputTokens } from "../src/llm/stream.ts";
 import { Thinking } from "../src/llm/thinking.ts";
 import * as Message from "../src/message/message.ts";
-import { makeModel, makeUsage } from "./utils/fixtures.ts";
+import { makeGeneratedModel, makeModel, makeUsage } from "./utils/fixtures.ts";
 
 const emptyContext: Message.Context = { messages: [] };
 
@@ -11,10 +11,29 @@ function planFor(model: ReturnType<typeof makeModel>, options: Parameters<typeof
 }
 
 function google(id: string) {
-	return makeModel({ id, protocol: "google", providerOptionsKey: "google", reasoning: true, maxTokens: 64_000 });
+	return makeGeneratedModel(id);
 }
 
 describe("Thinking.resolvePlan", () => {
+	it("uses catalog budgets for an unknown ID and lets caller budgets override them", () => {
+		const model = makeModel({
+			id: "custom",
+			protocol: "google",
+			reasoning: true,
+			maxTokens: 64_000,
+			thinkingBudgets: { high: 6_000 },
+		});
+		expect(planFor(model, { reasoning: "high", maxTokens: 2_000 })).toMatchObject({
+			budget: 6_000,
+			maxTokens: 8_000,
+			explicit: false,
+		});
+		expect(planFor(model, { reasoning: "high", maxTokens: 2_000, thinkingBudgets: { high: 3_000 } })).toMatchObject({
+			budget: 3_000,
+			maxTokens: 5_000,
+			explicit: true,
+		});
+	});
 	const model = makeModel({ reasoning: true, maxTokens: 64_000, contextWindow: 200_000 });
 
 	it("stays off when no reasoning level is requested", () => {
@@ -52,6 +71,37 @@ describe("Thinking.resolvePlan", () => {
 });
 
 describe("Thinking.reasoningProviderOptions", () => {
+	it("uses a level for an arbitrary model ID when the catalog declares support", () => {
+		const model = makeModel({
+			id: "custom",
+			protocol: "google",
+			reasoning: true,
+			compat: { supportsThinkingLevel: true },
+		});
+		expect(
+			Thinking.reasoningProviderOptions(model, planFor(model, { reasoning: "low" })).google?.thinkingConfig,
+		).toEqual({ thinkingLevel: "low", includeThoughts: true });
+	});
+	it("uses model metadata for the minimum supported Google level", () => {
+		const model = { ...google("gemini-3-flash-custom"), thinkingLevelMap: { off: "low", minimal: null } };
+		expect(Thinking.reasoningProviderOptions(model, planFor(model)).google?.thinkingConfig).toEqual({
+			thinkingLevel: "low",
+		});
+		expect(
+			Thinking.reasoningProviderOptions(model, planFor(model, { reasoning: "minimal" })).google?.thinkingConfig,
+		).toEqual({ thinkingLevel: "low", includeThoughts: true });
+	});
+
+	it("honors a custom Google off mapping and a nonstandard minimal mapping", () => {
+		const model = { ...google("gemini-3-flash-custom"), thinkingLevelMap: { off: "medium", minimal: "high" } };
+		expect(Thinking.reasoningProviderOptions(model, planFor(model)).google?.thinkingConfig).toEqual({
+			thinkingLevel: "medium",
+		});
+		expect(
+			Thinking.reasoningProviderOptions(model, planFor(model, { reasoning: "minimal" })).google?.thinkingConfig,
+		).toEqual({ thinkingLevel: "high", includeThoughts: true });
+	});
+
 	it("sends only an effort string for openai, xai, and codex", () => {
 		const openai = makeModel({ protocol: "openai", providerOptionsKey: "openai", reasoning: true });
 		const plan = planFor(openai, { reasoning: "medium" });
@@ -172,16 +222,21 @@ describe("Thinking.disabledProviderOptions", () => {
 
 	it("falls back to the lowest level for Gemini 3, which cannot disable thinking", () => {
 		expect(
-			off({ id: "gemini-3.1-pro-preview", protocol: "google", providerOptionsKey: "google", reasoning: true }),
+			off({
+				id: "gemini-3.1-pro-preview",
+				protocol: "google",
+				providerOptionsKey: "google",
+				reasoning: true,
+				compat: { supportsThinkingLevel: true },
+				thinkingLevelMap: { off: "low", minimal: null },
+			}),
 		).toEqual({
 			google: { thinkingConfig: { thinkingLevel: "low" } },
 		});
-		expect(
-			off({ id: "gemini-3.1-flash", protocol: "google", providerOptionsKey: "google", reasoning: true }),
-		).toEqual({
+		expect(off({ ...google("gemini-3.1-flash") })).toEqual({
 			google: { thinkingConfig: { thinkingLevel: "minimal" } },
 		});
-		expect(off({ id: "gemma-4-31b-it", protocol: "google", providerOptionsKey: "google", reasoning: true })).toEqual({
+		expect(off({ ...google("gemma-4-31b-it") })).toEqual({
 			google: { thinkingConfig: { thinkingLevel: "minimal" } },
 		});
 	});

@@ -1,6 +1,30 @@
 import type { LanguageModelUsage } from "ai";
 import * as Message from "../../src/message/message.ts";
 import type * as Model from "../../src/model/model.ts";
+import { applyModification } from "../../src/cli/modelgen.ts";
+
+/** Exercise the same model normalization that writes the generated catalog. */
+export function makeGeneratedModel(id: string, npm = "@ai-sdk/google"): Model.Info {
+	const model = applyModification(
+		"test-provider",
+		{ id: "test-provider", name: "Test Provider", env: [], npm, models: {} },
+		{
+			id,
+			name: id,
+			family: "test",
+			attachment: true,
+			reasoning: true,
+			tool_call: true,
+			release_date: "2026-01-01",
+			last_updated: "2026-01-01",
+			modalities: { input: ["text", "image"], output: ["text"] },
+			open_weights: false,
+			limit: { context: 200_000, output: 64_000 },
+		},
+	);
+	if (!model) throw new Error(`Unsupported test model package ${npm}`);
+	return model;
+}
 
 export function makeModel(overrides: Partial<Model.Info> = {}): Model.Info {
 	return {

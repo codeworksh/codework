@@ -85,9 +85,10 @@ export async function resolveAISDKLanguageModel(
 			options.cacheRetention === "none" ||
 			(typeof process !== "undefined" && process.env.CODEWORK_CACHE_RETENTION === "none");
 		if (options.sessionId && !cacheDisabled) factoryOptions.sessionId ??= options.sessionId;
-		factoryOptions.compat ??= {
+		factoryOptions.compat = {
 			...model.compat,
 			supportsImages: model.input.includes("image"),
+			...(typeof factoryOptions.compat === "object" && factoryOptions.compat !== null ? factoryOptions.compat : {}),
 		};
 	}
 

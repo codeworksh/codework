@@ -1,6 +1,6 @@
 import { Type, type Static } from "typebox";
 import type * as Message from "../message/message.ts";
-import type * as Model from "../model/model.ts";
+import * as Model from "../model/model.ts";
 import { estimateContextTokens } from "../utils/estimate.ts";
 
 export const CacheRetention = Type.Union([Type.Literal("none"), Type.Literal("short"), Type.Literal("long")]);
@@ -25,15 +25,8 @@ export const HelperOptions = Type.Object({
 	metadata: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 
-export const ThinkingBudgets = Type.Object({
-	minimal: Type.Optional(Type.Number()),
-	low: Type.Optional(Type.Number()),
-	medium: Type.Optional(Type.Number()),
-	high: Type.Optional(Type.Number()),
-	xhigh: Type.Optional(Type.Number()),
-	max: Type.Optional(Type.Number()),
-});
-export type ThinkingBudgets = Static<typeof ThinkingBudgets>;
+export const ThinkingBudgets = Model.ThinkingBudgets;
+export type ThinkingBudgets = Model.ThinkingBudgets;
 
 export const SharedOptions = Type.Evaluate(Type.Intersect([GenerationOptions, HelperOptions]));
 export type SharedOptions = Static<typeof SharedOptions>;

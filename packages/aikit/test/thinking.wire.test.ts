@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { stream } from "../src/llm/stream.ts";
 import type { RuntimeOptions } from "../src/llm/options.ts";
-import { makeModel, makeUserMessage } from "./utils/fixtures.ts";
+import { makeGeneratedModel, makeModel, makeUserMessage } from "./utils/fixtures.ts";
 
 async function capture(model: ReturnType<typeof makeModel>, options: RuntimeOptions) {
 	let body: unknown;
@@ -28,7 +28,7 @@ async function capture(model: ReturnType<typeof makeModel>, options: RuntimeOpti
 
 const google = (overrides: Parameters<typeof makeModel>[0] = {}) =>
 	makeModel({
-		id: "gemini-2.5-pro",
+		...makeGeneratedModel(overrides.id ?? "gemini-2.5-pro"),
 		protocol: "google",
 		npm: "@ai-sdk/google",
 		reasoning: true,

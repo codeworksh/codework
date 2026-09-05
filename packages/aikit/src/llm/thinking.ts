@@ -55,13 +55,11 @@ export function resolvePlan(model: Model.Info, context: Message.Context, options
 	const level = requested ? Model.clampThinkingLevel(model, requested) : "off";
 	if (level === "off") return { level, budget: 0, maxTokens: clampToContext(options.maxTokens), explicit: false };
 
-	const budgets = options.thinkingBudgets;
-	const explicit = budgets?.[level] !== undefined;
+	const budgets = { ...model.thinkingBudgets, ...options.thinkingBudgets };
+	const explicit = options.thinkingBudgets?.[level] !== undefined;
 	const key = Model.optionsKey(model);
-	const usesGoogleBudget = (key === "google" || key === "google-vertex") && !usesGoogleThinkingLevel(model);
-	const requestedBudget = usesGoogleBudget
-		? (budgets?.[level] ?? googleThinkingBudget(model, googleThinkingLevel(model.thinkingLevelMap?.[level] ?? level)))
-		: thinkingBudgetForLevel(level, budgets);
+	const usesGoogleBudget = (key === "google" || key === "google-vertex") && !model.compat?.supportsThinkingLevel;
+	const requestedBudget = thinkingBudgetForLevel(level, budgets);
 
 	// A catalog entry without a ceiling gives the fit nothing to work against.
 	if (model.maxTokens <= 0) {
@@ -99,33 +97,8 @@ export function resolvePlan(model: Model.Info, context: Message.Context, options
 
 type GoogleThinkingLevel = "minimal" | "low" | "medium" | "high";
 
-/** Families that take `thinkingLevel` and reject a token budget. */
-function usesGoogleThinkingLevel(model: Model.Info): boolean {
-	const id = model.id.toLowerCase();
-	return (
-		/gemini-3(?:\.\d+)?-(?:pro|flash)/.test(id) ||
-		/gemma-?4/.test(id) ||
-		id === "gemini-flash-latest" ||
-		id === "gemini-flash-lite-latest"
-	);
-}
-
 function googleThinkingLevel(mapped: string): GoogleThinkingLevel {
 	return mapped === "xhigh" || mapped === "max" ? "high" : (mapped as GoogleThinkingLevel);
-}
-
-/** Per-family budgets. `-1` asks Gemini to size thinking dynamically. */
-const GOOGLE_THINKING_BUDGETS: ReadonlyArray<[RegExp, Record<GoogleThinkingLevel, number>]> = [
-	[/2\.5-pro/, { minimal: 128, low: 2048, medium: 8192, high: 32768 }],
-	[/2\.5-flash-lite/, { minimal: 512, low: 2048, medium: 8192, high: 24576 }],
-	[/2\.5-flash/, { minimal: 128, low: 2048, medium: 8192, high: 24576 }],
-];
-
-function googleThinkingBudget(model: Model.Info, level: GoogleThinkingLevel): number {
-	for (const [pattern, budgets] of GOOGLE_THINKING_BUDGETS) {
-		if (pattern.test(model.id)) return budgets[level];
-	}
-	return -1;
 }
 
 /**
@@ -151,6 +124,7 @@ export function disabledProviderOptions(model: Model.Info): ProviderOptionBag {
 	}
 
 	if (key === "google" || key === "google-vertex") {
+		if (model.thinkingLevelMap?.off === null) return {};
 		return { [key]: { thinkingConfig: googleDisabledThinkingConfig(model) } };
 	}
 
@@ -171,9 +145,7 @@ export function disabledProviderOptions(model: Model.Info): ProviderOptionBag {
  * `includeThoughts` off so the thinking stays hidden. Gemini 2.x takes a zero budget.
  */
 function googleDisabledThinkingConfig(model: Model.Info): Record<string, unknown> {
-	const id = model.id.toLowerCase();
-	if (/gemini-3(?:\.\d+)?-pro/.test(id)) return { thinkingLevel: "low" };
-	if (usesGoogleThinkingLevel(model)) return { thinkingLevel: "minimal" };
+	if (model.compat?.supportsThinkingLevel) return { thinkingLevel: model.thinkingLevelMap?.off ?? "minimal" };
 	return { thinkingBudget: 0 };
 }
 
@@ -232,7 +204,7 @@ export function reasoningProviderOptions(model: Model.Info, plan: Plan): Provide
 	if (key === "google" || key === "google-vertex") {
 		const thinkingLevel = googleThinkingLevel(mapped);
 		// Gemini 3 and Gemma 4 take a level; earlier families take a token budget.
-		if (usesGoogleThinkingLevel(model)) {
+		if (model.compat?.supportsThinkingLevel) {
 			return { [key]: { thinkingConfig: { thinkingLevel, includeThoughts: true } } };
 		}
 		return {

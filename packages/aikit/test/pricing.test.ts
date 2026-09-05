@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { Pricing } from "../src/llm/pricing.ts";
-import { makeModel } from "./utils/fixtures.ts";
+import { makeGeneratedModel, makeModel } from "./utils/fixtures.ts";
 
-const openai = makeModel({ id: "gpt-5.6", protocol: "openai", providerOptionsKey: "openai" });
+const openai = makeGeneratedModel("gpt-5.6", "@ai-sdk/openai");
 const codex = makeModel({ id: "gpt-5.4", protocol: "openai-codex", providerOptionsKey: "openai-codex" });
 const anthropic = makeModel({ id: "claude-sonnet-5", protocol: "anthropic", providerOptionsKey: "anthropic" });
 
@@ -43,13 +43,18 @@ describe("Pricing.servedServiceTier", () => {
 });
 
 describe("Pricing.serviceTierCostMultiplier", () => {
+	it("uses custom pricing metadata without recognizing the model name", () => {
+		const model = makeModel({ cost: { ...openai.cost, serviceTierMultipliers: { priority: 3 } } });
+		expect(Pricing.serviceTierCostMultiplier(model, "priority")).toBe(3);
+		expect(Pricing.serviceTierCostMultiplier(makeModel({ id: "gpt-5.5" }), "priority")).toBe(1);
+	});
 	it("halves the cost on flex", () => {
 		expect(Pricing.serviceTierCostMultiplier(openai, "flex")).toBe(0.5);
 	});
 
 	it("doubles the cost on priority, and 2.5x for gpt-5.5", () => {
 		expect(Pricing.serviceTierCostMultiplier(openai, "priority")).toBe(2);
-		expect(Pricing.serviceTierCostMultiplier(makeModel({ id: "gpt-5.5" }), "priority")).toBe(2.5);
+		expect(Pricing.serviceTierCostMultiplier(makeGeneratedModel("gpt-5.5", "@ai-sdk/openai"), "priority")).toBe(2.5);
 	});
 
 	it("leaves the cost alone for auto, default, and unset", () => {
