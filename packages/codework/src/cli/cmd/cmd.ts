@@ -74,5 +74,43 @@ export const Cmd = Spec.make("codework", {
 			},
 			examples: [{ command: "codework modelgen", description: "Generate models.gen.json" }],
 		}),
+		Spec.make("models", {
+			description: "Model catalog management and inspection",
+			params: {
+				provider: Argument.string("provider").pipe(
+					Argument.withDescription("Filter models by provider ID"),
+					Argument.optional,
+				),
+			},
+			examples: [
+				{ command: "codework models", description: "List all models from all providers" },
+				{ command: "codework models openai", description: "List models for a specific provider" },
+				{ command: "codework models provider", description: "List all available provider IDs" },
+				{ command: "codework models generate", description: "Generate models.gen.json" },
+				{ command: "codework models generate .", description: "Generate models.gen.json in current directory" },
+				{ command: "codework models generate /path/to/models.gen.json", description: "Generate catalog at explicit path" },
+			],
+			commands: [
+				Spec.make("provider", {
+					description: "List available model providers in the catalog",
+				}),
+				Spec.make("generate", {
+					description: "Generate or update the model catalog",
+					params: {
+						path: Argument.string("path").pipe(
+							Argument.withDescription(
+								"Output file or directory; defaults to CODEWORK_MODELS_FILE or ./models.gen.json",
+							),
+							Argument.optional,
+						),
+					},
+					examples: [
+						{ command: "codework models generate", description: "Generate models.gen.json" },
+						{ command: "codework models generate .", description: "Generate models.gen.json in current directory" },
+						{ command: "codework models generate /path/to/models.gen.json", description: "Generate catalog at explicit path" },
+					],
+				}),
+			],
+		}),
 	],
 });

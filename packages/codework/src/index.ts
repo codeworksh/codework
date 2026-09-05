@@ -12,6 +12,11 @@ import { Runtime } from "./framework/runtime.ts";
 const Handlers = Runtime.handlers(Cmd, {
 	run: () => import("./cli/cmd/handlers/run.ts"),
 	modelgen: () => import("./cli/cmd/handlers/modelgen.ts"),
+	models: {
+		$: () => import("./cli/cmd/handlers/models/list.ts"),
+		provider: () => import("./cli/cmd/handlers/models/provider.ts"),
+		generate: () => import("./cli/cmd/handlers/models/generate.ts"),
+	},
 });
 
 export const main: Effect.Effect<void, CommandError | CliError.CliError> = Runtime.run(Cmd, Handlers, {
