@@ -57,7 +57,7 @@ export interface OpenAICodexProviderSettings {
 	/** `originator` header value; defaults to `codework`. */
 	originator?: string;
 
-	/** Optional model capability overrides. Known Codex models use built-in defaults. */
+	/** Model capabilities supplied by aikit or the direct caller; absent flags are disabled. */
 	compat?: OpenAICodexCompatibility;
 }
 

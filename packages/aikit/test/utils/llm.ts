@@ -6,7 +6,13 @@ import "./env.ts";
 
 import { describe } from "vite-plus/test";
 import { llm } from "../../src/llm.ts";
-import type { AnthropicOptions, OpenAICodexOptions, OpenAIOptions, OpenRouterOptions } from "../../src/llm/options.ts";
+import type {
+	AnthropicOptions,
+	GoogleOptions,
+	OpenAICodexOptions,
+	OpenAIOptions,
+	OpenRouterOptions,
+} from "../../src/llm/options.ts";
 import type * as Protocol from "../../src/llm/protocol.ts";
 import type * as Message from "../../src/message/message.ts";
 import * as Model from "../../src/model/model.ts";
@@ -18,6 +24,17 @@ export const describeIfAnthropic = process.env.ANTHROPIC_API_KEY ? describe : de
 export const describeIfOpenAI = process.env.OPENAI_API_KEY ? describe : describe.skip;
 export const describeIfOpenAICodex = process.env.OPENAI_CODEX_API_KEY ? describe : describe.skip;
 export const describeIfOpenRouter = process.env.OPENROUTER_API_KEY ? describe : describe.skip;
+export const describeIfGoogle = process.env.GEMINI_API_KEY ? describe : describe.skip;
+
+export function googleOptions(extras: GoogleOptions = {}): GoogleOptions {
+	return { ...fromEnvApiKey(process.env.GEMINI_API_KEY), ...extras };
+}
+
+export async function getGoogleModel(modelId = "gemini-3.5-flash"): Promise<Model.TModel<"google">> {
+	const model = await llm("google", modelId);
+	assertProtocol(model, Model.KnownProviderEnum.google);
+	return model;
+}
 
 function fromEnvApiKey(value: string | undefined): { apiKey: string } | Record<string, never> {
 	return value === undefined ? {} : { apiKey: value };

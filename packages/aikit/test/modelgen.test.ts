@@ -1,11 +1,14 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Value from "typebox/value";
 import { describe, expect, it } from "vite-plus/test";
 import { generateModels as generateModelsImplementation, openAICodexBuiltInModels } from "../src/cli/modelgen.ts";
 import * as Model from "../src/model/model.ts";
+import * as ModelCatalog from "../src/model/catalog.ts";
+import * as Thinking from "../src/llm/thinking.ts";
 import { generateModels } from "../src/modelgen.ts";
+import { makeGeneratedModel } from "./utils/fixtures.ts";
 
 const CODEX_MODEL_IDS = [
 	"gpt-5.3-codex-spark",
@@ -90,7 +93,7 @@ describe("openAICodexBuiltInModels", () => {
 		expect(models["gpt-5.4"]?.cost.tiers).toEqual([
 			{ inputTokensAbove: 272_000, input: 5, output: 22.5, cacheRead: 0.5, cacheWrite: 0 },
 		]);
-		expect(models["gpt-5.6-luna"]?.cost).toEqual({
+		expect(models["gpt-5.6-luna"]?.cost).toMatchObject({
 			input: 0.2,
 			output: 1.2,
 			cacheRead: 0.02,
@@ -103,6 +106,34 @@ describe("openAICodexBuiltInModels", () => {
 });
 
 describe("generateModels", () => {
+	it("owns Google mode and budget defaults for both Google protocols", () => {
+		for (const npm of ["@ai-sdk/google", "@ai-sdk/google-vertex"]) {
+			for (const [id, high] of [
+				["gemini-2.5-pro", 32768],
+				["gemini-2.5-flash", 24576],
+				["gemini-2.5-flash-lite", 24576],
+				["gemini-unknown", -1],
+			] as const) {
+				const model = makeGeneratedModel(id, npm);
+				expect(model.compat?.supportsThinkingLevel).toBe(false);
+				expect(model.thinkingBudgets?.high).toBe(high);
+			}
+			for (const id of ["gemini-3.5-flash", "gemma-4-31b-it", "gemini-flash-latest"]) {
+				const model = makeGeneratedModel(id, npm);
+				expect(model.compat?.supportsThinkingLevel).toBe(true);
+				expect(model.thinkingBudgets).toBeUndefined();
+			}
+		}
+	});
+
+	it("generates service-tier pricing for API and custom Codex models", () => {
+		const api = makeGeneratedModel("gpt-5.5", "@ai-sdk/openai");
+		const codex = openAICodexBuiltInModels()["gpt-5.5"]!;
+		for (const model of [api, codex]) {
+			expect(model.cost.serviceTierMultipliers).toEqual({ flex: 0.5, priority: 2.5 });
+			expect(Value.Check(Model.Info, model)).toBe(true);
+		}
+	});
 	it("generates supported provider models and merges explicit Codex models", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "aikit-modelgen-"));
 		const modelsDevPath = join(directory, "modelsdev.json");
@@ -123,11 +154,33 @@ describe("generateModels", () => {
 			cost: { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 },
 			limit: { context: 200_000, output: 8_192 },
 		};
+		const googleIds = [
+			"gemini-3.5-flash",
+			"gemini-3.5-flash-lite",
+			"gemini-3.7-flash",
+			"gemini-3.8-flash",
+			"gemini-3.1-pro-preview",
+		];
+		const googleProviders = Object.fromEntries(
+			["google", "google-vertex"].map((id) => [
+				id,
+				{
+					id,
+					name: id,
+					env: [],
+					npm: `@ai-sdk/${id}`,
+					models: Object.fromEntries(
+						googleIds.map((modelId) => [modelId, { ...supportedModel, id: modelId, name: modelId }]),
+					),
+				},
+			]),
+		);
 
 		try {
 			await writeFile(
 				modelsDevPath,
 				JSON.stringify({
+					...googleProviders,
 					anthropic: {
 						id: "anthropic",
 						name: "Anthropic",
@@ -149,7 +202,7 @@ describe("generateModels", () => {
 			process.env.OPENCODE_MODELS_DEV_FILE = modelsDevPath;
 
 			await expect(generateModels({ path: outputPath })).resolves.toBe(outputPath);
-			const catalog = JSON.parse(await readFile(outputPath, "utf8")) as Model.BuiltInModels;
+			const catalog = (await ModelCatalog.load(outputPath)) as Model.BuiltInModels;
 			const model = catalog.anthropic?.["claude-test"];
 
 			expect(Value.Check(Model.Info, model)).toBe(true);
@@ -168,6 +221,30 @@ describe("generateModels", () => {
 			});
 			expect(catalog.anthropic?.["claude-without-tools"]).toBeUndefined();
 			expect(Object.keys(catalog["openai-codex"] ?? {})).toEqual(CODEX_MODEL_IDS);
+			for (const provider of ["google", "google-vertex"]) {
+				for (const id of googleIds) {
+					const generated = catalog[provider]?.[id];
+					expect(Value.Check(Model.Info, generated)).toBe(true);
+					if (!generated) throw new Error(`Missing generated model ${provider}/${id}`);
+					const restricted = !id.startsWith("gemini-3.5");
+					if (restricted) {
+						expect(generated.thinkingLevelMap).toEqual({ off: "low", minimal: null });
+						expect(Model.getSupportedThinkingLevels(generated)).toEqual(["off", "low", "medium", "high"]);
+					} else {
+						expect(generated.thinkingLevelMap).toBeUndefined();
+						expect(Model.getSupportedThinkingLevels(generated)).toContain("minimal");
+					}
+					const off = Thinking.resolvePlan(generated, { messages: [] }, {});
+					const minimal = Thinking.resolvePlan(generated, { messages: [] }, { reasoning: "minimal" });
+					expect(Thinking.reasoningProviderOptions(generated, off)[provider]?.thinkingConfig).toEqual({
+						thinkingLevel: restricted ? "low" : "minimal",
+					});
+					expect(Thinking.reasoningProviderOptions(generated, minimal)[provider]?.thinkingConfig).toEqual({
+						thinkingLevel: restricted ? "low" : "minimal",
+						includeThoughts: true,
+					});
+				}
+			}
 		} finally {
 			if (configuredModelsDevPath === undefined) delete process.env.OPENCODE_MODELS_DEV_FILE;
 			else process.env.OPENCODE_MODELS_DEV_FILE = configuredModelsDevPath;

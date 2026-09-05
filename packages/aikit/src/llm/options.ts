@@ -15,9 +15,9 @@ import type {
 } from "@ai-sdk/openai-compatible";
 import type { XaiLanguageModelChatOptions, XaiLanguageModelResponsesOptions, XaiProviderSettings } from "@ai-sdk/xai";
 import type { OpenRouterProviderOptions, OpenRouterProviderSettings } from "@openrouter/ai-sdk-provider";
-import type { OpenAICodexLanguageModelOptions, OpenAICodexProviderSettings } from "../providers/openai-codex/index.ts";
 import { Type, type Static } from "typebox";
 import * as Model from "../model/model.ts";
+import type { OpenAICodexLanguageModelOptions, OpenAICodexProviderSettings } from "../providers/openai-codex/index.ts";
 import type * as Protocol from "./protocol.ts";
 import { SharedOptions, ThinkingBudgets } from "./shared.ts";
 
@@ -38,7 +38,10 @@ export const Options = Type.Evaluate(
 	]),
 );
 
-type ProviderOptionBag = Record<string, Record<string, unknown> | undefined>;
+export type ProviderOptionBag = Record<string, Record<string, unknown> | undefined>;
+
+/** Caller options as the transport sees them, after protocol-level fields are merged in. */
+export type RuntimeOptions = Options & Protocol.CommonOptions;
 
 export type AISDKOptions<
 	TFactoryOptions,
