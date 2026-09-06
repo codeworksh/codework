@@ -4,12 +4,15 @@ import * as Model from "../model/model.ts";
 import { AssistantMessageEventStream } from "../utils/eventstream.ts";
 import { compact } from "../utils/helpers.ts";
 import * as Failure from "./failure.ts";
-import { Options } from "./options.ts";
+import { Options, type ProviderOptionBag, type RuntimeOptions } from "./options.ts";
+import * as Pricing from "./pricing.ts";
 import * as Protocol from "./protocol.ts";
 import { resolveAISDKLanguageModel } from "./provider.ts";
 import { formatThrownError } from "./runtime.ts";
 import { applyDefaultMaxTokens } from "./shared.ts";
+import * as Thinking from "./thinking.ts";
 import {
+	googleThoughtSignature,
 	convertMessages,
 	convertTools,
 	createAssistantMessage,
@@ -25,12 +28,6 @@ type TextBlock = Message.TextContent & { streamId?: string };
 type ThinkingBlock = Message.ThinkingContent & { streamId?: string };
 
 type StreamBlock = TextBlock | ThinkingBlock | StreamingToolCallBlock;
-type RuntimeOptions = Options & Protocol.CommonOptions;
-type ProviderOptionBag = Record<string, Record<string, unknown> | undefined>;
-
-function providerOptionsKey(model: Model.Info): string {
-	return model.providerOptionsKey ?? model.protocol;
-}
 
 function mergeProviderOptions(...sources: Array<ProviderOptionBag | undefined>): ProviderOptionBag {
 	const result: ProviderOptionBag = {};
@@ -55,7 +52,7 @@ function configuredCacheRetention(options: RuntimeOptions): "none" | "short" | "
 
 function cacheProviderOptions(model: Model.Info, options: RuntimeOptions): ProviderOptionBag {
 	const retention = configuredCacheRetention(options);
-	const key = providerOptionsKey(model);
+	const key = Model.optionsKey(model);
 
 	if (retention === "none") return {};
 
@@ -81,96 +78,11 @@ function cacheProviderOptions(model: Model.Info, options: RuntimeOptions): Provi
 	return {};
 }
 
-// Default thinking budgets as a fraction of model.maxTokens, per level.
-const DEFAULT_THINKING_BUDGET_FRACTIONS: Record<Model.ActiveThinkingLevel, number> = {
-	minimal: 0.05,
-	low: 0.1,
-	medium: 0.25,
-	high: 0.5,
-	xhigh: 0.8,
-	max: 0.95,
-};
-
-const MIN_THINKING_BUDGET = 1024;
-
-function resolveThinkingBudget(
-	model: Model.Info,
-	options: RuntimeOptions,
-	level: Model.ActiveThinkingLevel,
-): number | undefined {
-	// Explicit budget from caller takes priority.
-	const explicit = options.thinkingBudgets?.[level];
-	if (explicit !== undefined) return explicit;
-
-	// Compute a sensible default so @ai-sdk/anthropic does not warn.
-	const key = providerOptionsKey(model);
-	if (key === "anthropic" || key === "google-vertex-anthropic") {
-		const fraction = DEFAULT_THINKING_BUDGET_FRACTIONS[level];
-		return Math.max(Math.floor(model.maxTokens * fraction), MIN_THINKING_BUDGET);
-	}
-
-	return undefined;
-}
-
-function reasoningProviderOptions(model: Model.Info, options: RuntimeOptions): ProviderOptionBag {
-	const requestedLevel = options.reasoning;
-	if (!requestedLevel) return {};
-
-	const level = Model.clampThinkingLevel(model, requestedLevel);
-	if (level === "off") return {};
-
-	const mapped = model.thinkingLevelMap?.[level] ?? level;
-	if (!mapped) return {};
-
-	const key = providerOptionsKey(model);
-	const budget = resolveThinkingBudget(model, options, level);
-
-	if (key === "openai" || key === "xai" || key === "openai-codex") {
-		return { [key]: { reasoningEffort: mapped } };
-	}
-
-	if (key === "openrouter") {
-		return {
-			[key]: {
-				reasoning: {
-					effort: mapped === "off" ? "none" : mapped,
-				},
-			},
-		};
-	}
-
-	if (key === "google" || key === "google-vertex") {
-		const thinkingLevel = mapped === "xhigh" ? "high" : mapped;
-		return {
-			[key]: {
-				thinkingConfig: {
-					thinkingLevel,
-					includeThoughts: true,
-					...(budget !== undefined ? { thinkingBudget: budget } : {}),
-				},
-			},
-		};
-	}
-
-	if (key === "anthropic" || key === "google-vertex-anthropic") {
-		return {
-			[key]: {
-				thinking: {
-					type: "enabled",
-					budgetTokens: budget ?? MIN_THINKING_BUDGET,
-				},
-			},
-		};
-	}
-
-	return {};
-}
-
-function resolveProviderOptions(model: Model.Info, options: RuntimeOptions): ProviderOptionBag {
+function resolveProviderOptions(model: Model.Info, options: RuntimeOptions, plan: Thinking.Plan): ProviderOptionBag {
 	return mergeProviderOptions(
 		model.providerOptions as ProviderOptionBag | undefined,
 		cacheProviderOptions(model, options),
-		reasoningProviderOptions(model, options),
+		Thinking.reasoningProviderOptions(model, plan),
 		options.providerOptions as ProviderOptionBag | undefined,
 	);
 }
@@ -304,6 +216,8 @@ function finalizeToolCall(
 	block.arguments =
 		typeof part.input === "object" && part.input !== null ? (part.input as Record<string, unknown>) : {};
 	const namespace = openAICodexMetadata(part.providerMetadata)?.namespace;
+	const thoughtSignature = googleThoughtSignature(part.providerMetadata);
+	if (thoughtSignature) block.thoughtSignature = thoughtSignature;
 	if (typeof namespace === "string") block.namespace = namespace;
 	block.time.end = Date.now();
 	delete block.partialJson;
@@ -316,12 +230,23 @@ function finalizeToolCall(
 	stream.push({ type: "toolcall.final", partIndex: index, toolCall: block, partial: output });
 }
 
+/**
+ * Pricing inputs that are only complete once the provider answers.
+ *
+ * The requested tier is known upfront; the tier actually served and the cache-write
+ * breakdown arrive with the terminal usage, and both change what the turn costs.
+ */
+interface Pricing {
+	readonly requestedServiceTier: string | undefined;
+	providerMetadata?: unknown;
+}
+
 function handlePart(
 	part: TextStreamPart<ToolSet>,
 	output: Message.AssistantMessage,
 	model: Model.Info,
 	stream: AssistantMessageEventStream,
-	costMultiplier: number,
+	pricing: Pricing,
 ): void {
 	switch (part.type) {
 		case "text-start":
@@ -329,6 +254,8 @@ function handlePart(
 			break;
 		case "text-delta": {
 			const block = ensureTextBlock(output, part.id, stream);
+			const signature = googleThoughtSignature(part.providerMetadata);
+			if (signature) block.textSignature = signature;
 			block.text += part.text;
 			stream.push({ type: "text.delta", partIndex: partIndex(output, block), delta: part.text, partial: output });
 			break;
@@ -348,7 +275,8 @@ function handlePart(
 			// @ai-sdk/anthropic emits it as a reasoning-delta with empty text and providerMetadata.
 			const sig =
 				(part.providerMetadata?.anthropic as Record<string, unknown> | undefined)?.signature ??
-				(part.providerMetadata?.["google-vertex-anthropic"] as Record<string, unknown> | undefined)?.signature;
+				(part.providerMetadata?.["google-vertex-anthropic"] as Record<string, unknown> | undefined)?.signature ??
+				googleThoughtSignature(part.providerMetadata);
 			if (typeof sig === "string") block.thinkingSignature = sig;
 			stream.push({
 				type: "thinking.delta",
@@ -394,11 +322,12 @@ function handlePart(
 			output.responseId ||= part.response.id;
 			if (part.response.modelId && part.response.modelId !== model.id)
 				output.responseModel ||= part.response.modelId;
-			output.usage = mapUsage(part.usage, model, costMultiplier);
+			pricing.providerMetadata = part.providerMetadata ?? pricing.providerMetadata;
+			output.usage = mapUsage(part.usage, model, resolvePricing(model, pricing), pricing.providerMetadata);
 			output.stopReason = mapFinishReason(part.finishReason);
 			break;
 		case "finish":
-			output.usage = mapUsage(part.totalUsage, model, costMultiplier);
+			output.usage = mapUsage(part.totalUsage, model, resolvePricing(model, pricing), pricing.providerMetadata);
 			output.stopReason = mapFinishReason(part.finishReason);
 			break;
 		case "abort":
@@ -410,43 +339,37 @@ function handlePart(
 	}
 }
 
-function resolveCostMultiplier(model: Model.Info, options: RuntimeOptions, providerOptions: ProviderOptionBag): number {
-	if (providerOptionsKey(model) !== "openai-codex") return 1;
-	const providerTier = providerOptions["openai-codex"]?.serviceTier;
-	const factoryTier = options.factoryOptions?.serviceTier;
-	const modelTier = model.options?.serviceTier;
-	const serviceTier = providerTier ?? factoryTier ?? modelTier;
-	if (serviceTier === "flex") return 0.5;
-	if (serviceTier === "priority") return model.id === "gpt-5.5" ? 2.5 : 2;
-	return 1;
+function resolvePricing(model: Model.Info, pricing: Pricing): number {
+	return Pricing.serviceTierCostMultiplier(
+		model,
+		Pricing.servedServiceTier(model, pricing.requestedServiceTier, pricing.providerMetadata),
+	);
 }
 
 /**
- * Resolve maxOutputTokens so that (maxOutputTokens + thinkingBudget) does not exceed model.maxTokens.
- * Without this adjustment @ai-sdk/anthropic logs a warning and silently caps the value.
+ * The response ceiling to send, already fitted around the thinking budget by
+ * {@link Thinking.resolvePlan}.
+ *
+ * `plan.maxTokens` is the whole response -- thinking and answer together, which is
+ * what Anthropic's own `max_tokens` means. But `@ai-sdk/anthropic` treats
+ * `maxOutputTokens` as the answer alone and adds the budget back on before sending
+ * (`baseArgs.max_tokens = maxTokens + thinkingBudget`). Handing it the total there
+ * would ask for the budget twice, so it gets the answer room and reconstructs the
+ * total itself.
+ *
+ * That only applies when a budget is actually sent. An adaptive model is given an
+ * effort level and no budget, so the SDK adds nothing and the total goes through
+ * unchanged -- subtracting there would quietly under-ask by the whole budget.
  */
-function resolveMaxOutputTokens(
-	model: Model.Info,
-	options: RuntimeOptions,
-	providerOptions: Record<string, unknown> | undefined,
-): number | undefined {
-	const maxTokens = options.maxTokens;
-	if (maxTokens === undefined) return undefined;
-
-	const key = providerOptionsKey(model);
+export function resolveMaxOutputTokens(model: Model.Info, plan: Thinking.Plan): number | undefined {
+	const key = Model.optionsKey(model);
 	// The ChatGPT Codex backend rejects max_output_tokens, so never send it.
 	if (key === "openai-codex") return undefined;
+	if (plan.maxTokens === undefined) return undefined;
 
-	if (key === "anthropic" || key === "google-vertex-anthropic") {
-		const thinkingConfig = providerOptions?.[key] as Record<string, unknown> | undefined;
-		const thinking = thinkingConfig?.thinking as { budgetTokens?: number } | undefined;
-		const budgetTokens = thinking?.budgetTokens ?? 0;
-		if (budgetTokens > 0 && maxTokens + budgetTokens > model.maxTokens) {
-			return Math.max(model.maxTokens - budgetTokens, 1);
-		}
-	}
-
-	return maxTokens;
+	const sendsBudget =
+		(key === "anthropic" || key === "google-vertex-anthropic") && !model.compat?.forceAdaptiveThinking;
+	return sendsBudget ? plan.maxTokens - plan.budget : plan.maxTokens;
 }
 
 export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Options> = (model, context, options) => {
@@ -456,13 +379,20 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 	void (async () => {
 		const output = createAssistantMessage(model);
 		try {
-			const languageModel = await resolveAISDKLanguageModel(model, runtimeOptions);
+			const plan = Thinking.resolvePlan(model, context, runtimeOptions);
+			const languageModel = await resolveAISDKLanguageModel(model, runtimeOptions, plan.budget);
 			const tools = convertTools(context.tools, model);
 			const messages = convertMessages(context, model);
-			const providerOptions = resolveProviderOptions(model, runtimeOptions) as Parameters<
+			const providerOptions = resolveProviderOptions(model, runtimeOptions, plan) as Parameters<
 				typeof streamText<ToolSet>
 			>[0]["providerOptions"];
-			const costMultiplier = resolveCostMultiplier(model, runtimeOptions, providerOptions as ProviderOptionBag);
+			const pricing: Pricing = {
+				requestedServiceTier: Pricing.requestedServiceTier(
+					model,
+					runtimeOptions,
+					providerOptions as ProviderOptionBag,
+				),
+			};
 			const activeTools = runtimeOptions.activeTools?.filter((name) => !tools || name in tools);
 
 			let params: Parameters<typeof streamText<ToolSet>>[0] = compact({
@@ -472,7 +402,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 				tools,
 				toolChoice: runtimeOptions.toolChoice as Parameters<typeof streamText<ToolSet>>[0]["toolChoice"],
 				activeTools,
-				maxOutputTokens: resolveMaxOutputTokens(model, runtimeOptions, providerOptions),
+				maxOutputTokens: resolveMaxOutputTokens(model, plan),
 				temperature: runtimeOptions.temperature,
 				providerOptions,
 				abortSignal: runtimeOptions.signal,
@@ -494,7 +424,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			stream.push({ type: "start", partial: output });
 
 			for await (const part of result.fullStream) {
-				handlePart(part, output, model, stream, costMultiplier);
+				handlePart(part, output, model, stream, pricing);
 			}
 
 			if (runtimeOptions.signal?.aborted || output.stopReason === "aborted") {

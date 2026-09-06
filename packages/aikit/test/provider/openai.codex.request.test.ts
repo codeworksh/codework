@@ -1,3 +1,6 @@
+import { openAICodexBuiltInModels } from "../../src/cli/modelgen.ts";
+import { stream } from "../../src/stream.ts";
+import { makeUserMessage } from "../utils/fixtures.ts";
 /** Request shaping for the OpenAI Codex Responses endpoint. */
 import { describe, expect, it } from "vite-plus/test";
 import { createOpenAICodex, resolveOpenAICodexUrl } from "../../src/providers/openai-codex/index.ts";
@@ -14,6 +17,26 @@ import {
 } from "../utils/openai-codex.ts";
 
 describe("request", () => {
+	it.each(["gpt-5.3-codex-spark", "gpt-5.4"])(
+		"derives image support from %s metadata despite a partial factory override",
+		async (id) => {
+			const metadata = openAICodexBuiltInModels()[id]!;
+			const model = { ...metadata, id: "custom-model", api: { ...metadata.api, id: "custom-model" } };
+			const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
+			const user = makeUserMessage("Describe the image");
+			user.parts.push({ type: "image", data: "aGVsbG8=", mimeType: "image/png" });
+			const result = await stream.complete(
+				model,
+				{ messages: [user] },
+				{
+					apiKey: OPENAI_CODEX_TEST_API_KEY,
+					factoryOptions: { fetch, compat: { supportsToolSearch: false } },
+				},
+			);
+			expect(result.stopReason, result.errorMessage).toBe("stop");
+			expect(JSON.stringify(body().input).includes("input_image")).toBe(metadata.input.includes("image"));
+		},
+	);
 	it("posts to the codex responses endpoint with Codex headers", async () => {
 		const { fetch, calls } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
 		const provider = createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, sessionId: "session-1", fetch });
@@ -153,7 +176,11 @@ describe("request", () => {
 
 	it("keeps deferred grammar tools native inside additional_tools", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		await createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch })("gpt-5.6-luna").doStream({
+		await createOpenAICodex({
+			apiKey: OPENAI_CODEX_TEST_API_KEY,
+			fetch,
+			compat: { ...openAICodexBuiltInModels()["gpt-5.6-luna"]!.compat },
+		})("gpt-5.6-luna").doStream({
 			prompt: openAICodexDeferredToolsPrompt,
 			tools: [
 				openAICodexDeferredTools[0]!,
@@ -185,9 +212,13 @@ describe("request", () => {
 		]);
 	});
 
-	it("loads GPT-5.6 Codex deferred tools through additional_tools", async () => {
+	it("uses generated deferred-tool capabilities even with an unknown model ID", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		await createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch })("gpt-5.6-luna").doStream({
+		await createOpenAICodex({
+			apiKey: OPENAI_CODEX_TEST_API_KEY,
+			fetch,
+			compat: { ...openAICodexBuiltInModels()["gpt-5.6-luna"]!.compat },
+		})("custom-codex").doStream({
 			prompt: openAICodexDeferredToolsPrompt,
 			tools: openAICodexDeferredTools,
 		});
@@ -210,7 +241,11 @@ describe("request", () => {
 
 	it("falls back to transcript tool_search items for GPT-5.4 Codex", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		await createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch })("gpt-5.4").doStream({
+		await createOpenAICodex({
+			apiKey: OPENAI_CODEX_TEST_API_KEY,
+			fetch,
+			compat: { ...openAICodexBuiltInModels()["gpt-5.4"]!.compat },
+		})("gpt-5.4").doStream({
 			prompt: openAICodexDeferredToolsPrompt,
 			tools: openAICodexDeferredTools,
 		});

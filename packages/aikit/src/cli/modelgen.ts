@@ -62,7 +62,7 @@ interface ModelsDevProvider {
 	models: Record<string, ModelsDevModel>;
 }
 
-export type BuiltInModels = Partial<Record<string, Record<string, Model.Info>>>;
+export type BuiltInModels = Model.BuiltInModels;
 
 // Doesn't represent the full spec from models.dev.
 // Represents the provider entries on a best-effort basis.
@@ -180,7 +180,81 @@ function mergeThinkingLevelMap(model: Model.Info, map: ThinkingLevelMap): void {
 	model.thinkingLevelMap = { ...model.thinkingLevelMap, ...map };
 }
 
-function applyThinkingLevelMetadata(model: Model.Info): void {
+/**
+ * Claude models that decide their own thinking depth.
+ *
+ * These take an `effort` level and let the model size each turn's reasoning; the
+ * older models take a fixed `budget_tokens` instead. Sending a budget to an
+ * adaptive model pins it to one depth for every turn, which is the thing adaptive
+ * thinking exists to avoid.
+ */
+function isAnthropicAdaptiveThinkingModel(modelId: string): boolean {
+	return [
+		"opus-4-6",
+		"opus-4.6",
+		"opus-4-7",
+		"opus-4.7",
+		"opus-4-8",
+		"opus-4.8",
+		"opus-5",
+		"opus.5",
+		"sonnet-4-6",
+		"sonnet-4.6",
+		"sonnet-5",
+		"sonnet.5",
+		"fable-5",
+	].some((needle) => modelId.includes(needle));
+}
+
+function mergeCompat(model: Model.Info, compat: Model.Compatibility): void {
+	model.compat = { ...model.compat, ...compat };
+}
+
+function applyGoogleThinkingMetadata(model: Model.Info): void {
+	const id = model.id.toLowerCase();
+	const supportsThinkingLevel =
+		/gemini-3(?:\.\d+)?-(?:pro|flash)|gemma-?4/.test(id) ||
+		id === "gemini-flash-latest" ||
+		id === "gemini-flash-lite-latest";
+	mergeCompat(model, { supportsThinkingLevel });
+	if (supportsThinkingLevel) return;
+
+	// Unknown budget-based families ask the provider to size thinking dynamically.
+	const defaults: Array<[string, Model.ThinkingBudgets]> = [
+		["2.5-pro", { minimal: 128, low: 2048, medium: 8192, high: 32768 }],
+		["2.5-flash-lite", { minimal: 512, low: 2048, medium: 8192, high: 24576 }],
+		["2.5-flash", { minimal: 128, low: 2048, medium: 8192, high: 24576 }],
+	];
+	model.thinkingBudgets = defaults.find(([family]) => id.includes(family))?.[1] ?? {
+		minimal: -1,
+		low: -1,
+		medium: -1,
+		high: -1,
+	};
+}
+
+function applyModelMetadata(model: Model.Info): void {
+	if (model.protocol === Model.KnownProviderEnum.google || model.protocol === Model.KnownProviderEnum.googleVertex) {
+		applyGoogleThinkingMetadata(model);
+	}
+	if (model.protocol === Model.KnownProviderEnum.openai || model.protocol === Model.KnownProviderEnum.openaiCodex) {
+		model.cost.serviceTierMultipliers = { flex: 0.5, priority: model.id === "gpt-5.5" ? 2.5 : 2 };
+	}
+	if (
+		(model.protocol === Model.KnownProviderEnum.google || model.protocol === Model.KnownProviderEnum.googleVertex) &&
+		/gemini-3(?:\.\d+)?-pro|gemini-3\.[78]-flash/.test(model.id.toLowerCase())
+	) {
+		// These models cannot disable thinking or accept minimal. Expose supported
+		// levels to callers and let the shared clamp promote minimal to low.
+		mergeThinkingLevelMap(model, { off: "low", minimal: null });
+	}
+	if (
+		(model.protocol === Model.KnownProviderEnum.anthropic ||
+			model.protocol === Model.KnownProviderEnum.googleVertexAnthropic) &&
+		isAnthropicAdaptiveThinkingModel(model.id)
+	) {
+		mergeCompat(model, { forceAdaptiveThinking: true });
+	}
 	if (model.protocol === Model.KnownProviderEnum.openai && model.id.startsWith("gpt-5")) {
 		mergeThinkingLevelMap(model, { off: null });
 	}
@@ -340,7 +414,7 @@ export function openAICodexBuiltInModels(): Record<string, Model.Info> {
 			},
 			protocol: Model.KnownProviderEnum.openaiCodex,
 		};
-		applyThinkingLevelMetadata(info);
+		applyModelMetadata(info);
 		models[seed.id] = info;
 	}
 	return models;
@@ -421,6 +495,6 @@ export function applyModification(
 		protocol,
 	};
 	if (Object.keys(info.headers ?? {}).length === 0) delete info.headers;
-	applyThinkingLevelMetadata(info);
+	applyModelMetadata(info);
 	return info;
 }
