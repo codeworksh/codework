@@ -73,7 +73,7 @@ describe("codework CLI", () => {
 
 		expect(result.status).toBe(1);
 		expect(result.stderr).toContain("error[model_catalog]: model catalog not found");
-		expect(result.stderr).toContain("hint: run `codework modelgen`");
+		expect(result.stderr).toContain("hint: run `codework models generate`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");
 	});

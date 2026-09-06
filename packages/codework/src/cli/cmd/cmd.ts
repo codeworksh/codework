@@ -64,16 +64,6 @@ export const Cmd = Spec.make("codework", {
 				},
 			],
 		}),
-		Spec.make("modelgen", {
-			description: "Generate the model catalog",
-			params: {
-				path: Argument.string("path").pipe(
-					Argument.withDescription("Output path; defaults to CODEWORK_MODELS_FILE or ./models.gen.json"),
-					Argument.optional,
-				),
-			},
-			examples: [{ command: "codework modelgen", description: "Generate models.gen.json" }],
-		}),
 		Spec.make("models", {
 			description: "Model catalog management and inspection",
 			params: {
@@ -88,7 +78,10 @@ export const Cmd = Spec.make("codework", {
 				{ command: "codework models provider", description: "List all available provider IDs" },
 				{ command: "codework models generate", description: "Generate models.gen.json" },
 				{ command: "codework models generate .", description: "Generate models.gen.json in current directory" },
-				{ command: "codework models generate /path/to/models.gen.json", description: "Generate catalog at explicit path" },
+				{
+					command: "codework models generate /path/to/models.gen.json",
+					description: "Generate catalog at explicit path",
+				},
 			],
 			commands: [
 				Spec.make("provider", {
@@ -106,8 +99,14 @@ export const Cmd = Spec.make("codework", {
 					},
 					examples: [
 						{ command: "codework models generate", description: "Generate models.gen.json" },
-						{ command: "codework models generate .", description: "Generate models.gen.json in current directory" },
-						{ command: "codework models generate /path/to/models.gen.json", description: "Generate catalog at explicit path" },
+						{
+							command: "codework models generate .",
+							description: "Generate models.gen.json in current directory",
+						},
+						{
+							command: "codework models generate /path/to/models.gen.json",
+							description: "Generate catalog at explicit path",
+						},
 					],
 				}),
 			],

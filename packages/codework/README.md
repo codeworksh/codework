@@ -34,6 +34,7 @@ codework run --sandbox daytona --sandbox-provider-id <remote-id> "Continue in sa
 ```
 
 #### Flags:
+
 - `-s, --session <id>` — Continue an existing session ID.
 - `-C, --cwd <path>` — Working directory for a new session.
 - `--sandbox <driver>` — Sandbox driver (`local`, `daytona`, `vercel`, `memory`, `sqldb`). Default: `local`.
@@ -78,20 +79,18 @@ codework models generate .
 codework models generate ./path/to/custom-models.json
 ```
 
-*(Note: `codework modelgen [path]` is also available as an alias for catalog generation).*
-
 ---
 
 ## Environment Variables
 
-| Variable | Description |
-| :--- | :--- |
-| `CODEWORK_MODELS_FILE` | Path to the generated `models.gen.json` catalog file |
-| `OPENAI_API_KEY` | API key for OpenAI models |
-| `ANTHROPIC_API_KEY` | API key for Anthropic models |
-| `OPENROUTER_API_KEY` | API key for OpenRouter models |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | API key for Google models |
-| `XAI_API_KEY` | API key for xAI models |
+| Variable                       | Description                                          |
+| :----------------------------- | :--------------------------------------------------- |
+| `CODEWORK_MODELS_FILE`         | Path to the generated `models.gen.json` catalog file |
+| `OPENAI_API_KEY`               | API key for OpenAI models                            |
+| `ANTHROPIC_API_KEY`            | API key for Anthropic models                         |
+| `OPENROUTER_API_KEY`           | API key for OpenRouter models                        |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | API key for Google models                            |
+| `XAI_API_KEY`                  | API key for xAI models                               |
 
 ---
 
