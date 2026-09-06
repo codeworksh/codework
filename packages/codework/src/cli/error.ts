@@ -133,7 +133,7 @@ export const renderError = (error: unknown): string => {
 		return (
 			[
 				`error[model_catalog]: ${error.message}`,
-				"hint: run `codework modelgen` or set CODEWORK_MODELS_FILE to a generated catalog",
+				"hint: run `codework models generate` or set CODEWORK_MODELS_FILE to a generated catalog",
 			].join("\n") + "\n"
 		);
 	}

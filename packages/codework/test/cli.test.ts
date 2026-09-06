@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
-const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
+const models = fileURLToPath(new URL("../models.gen.json", import.meta.url));
 
 const run = (...args: ReadonlyArray<string>) =>
 	spawnSync(process.execPath, ["--conditions=development", cli, ...args], { encoding: "utf8" });
@@ -73,7 +73,7 @@ describe("codework CLI", () => {
 
 		expect(result.status).toBe(1);
 		expect(result.stderr).toContain("error[model_catalog]: model catalog not found");
-		expect(result.stderr).toContain("hint: run `codework modelgen`");
+		expect(result.stderr).toContain("hint: run `codework models generate`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");
 	});
@@ -107,5 +107,55 @@ describe("codework CLI", () => {
 		expect(result.stderr).toContain("driver: vercel");
 		expect(result.stderr).toContain("operation: create");
 		expect(result.stderr).toContain("traceback:\nSandboxProviderError\n");
+	});
+
+	it("lists available model providers with models provider", () => {
+		const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "models", "provider");
+
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain("openai\n");
+		expect(result.stdout).toContain("anthropic\n");
+		expect(result.stdout).toContain("openrouter\n");
+	});
+
+	it("lists all models with models command", () => {
+		const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "models");
+
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain("openai/gpt-4o\n");
+		expect(result.stdout).toContain("anthropic/claude-sonnet-4-5\n");
+	});
+
+	it("filters models by provider with models <provider>", () => {
+		const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "models", "openai");
+
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain("openai/gpt-4o\n");
+		expect(result.stdout).not.toContain("anthropic/");
+	});
+
+	it("generates model catalog to specified path with models generate", () => {
+		const targetDir = mkdtempSync(join(tmpdir(), "codework-gen-"));
+		const targetFile = join(targetDir, "custom-models.json");
+		try {
+			const result = runIsolated({}, "models", "generate", targetFile);
+
+			expect(result.status).toBe(0);
+			expect(result.stdout).toContain(`Generated model catalog at ${targetFile}`);
+		} finally {
+			rmSync(targetDir, { recursive: true, force: true });
+		}
+	});
+
+	it("resolves directory target with models generate <dir>", () => {
+		const targetDir = mkdtempSync(join(tmpdir(), "codework-gen-"));
+		try {
+			const result = runIsolated({}, "models", "generate", targetDir);
+
+			expect(result.status).toBe(0);
+			expect(result.stdout).toContain(`Generated model catalog at ${join(targetDir, "models.gen.json")}`);
+		} finally {
+			rmSync(targetDir, { recursive: true, force: true });
+		}
 	});
 });
