@@ -1,3 +1,4 @@
+import { Settings } from "../src/settings/settings.ts";
 import { Effect, Option } from "effect";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -9,7 +10,6 @@ import { Session } from "../src/effect/session.ts";
 import { Global } from "../src/global.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { Session as SessionStore } from "../src/session/session.ts";
-import { State } from "../src/state/state.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { it } from "./utils/effect.ts";
 
@@ -165,15 +165,15 @@ describe("Harness Effect SDK", () => {
 						[
 							{ provider: "test", model: "test-model", thinkingLevel: "max" },
 							{
-								provider: State.defaults.provider,
-								model: State.defaults.model,
-								thinkingLevel: State.defaults.thinkingLevel,
+								provider: Settings.defaults.model.provider,
+								model: Settings.defaults.model.id,
+								thinkingLevel: Settings.defaults.model.thinkingLevel,
 							},
 							{ provider: "override", model: "override-model", thinkingLevel: "low" },
 							{
-								provider: State.defaults.provider,
-								model: State.defaults.model,
-								thinkingLevel: State.defaults.thinkingLevel,
+								provider: Settings.defaults.model.provider,
+								model: Settings.defaults.model.id,
+								thinkingLevel: Settings.defaults.model.thinkingLevel,
 							},
 						],
 					);

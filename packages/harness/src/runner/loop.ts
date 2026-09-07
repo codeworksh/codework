@@ -275,6 +275,7 @@ export const layer = (options: Options = {}) =>
 						model: snapshot.model,
 						thinkingLevel: snapshot.thinkingLevel,
 						options: snapshot.request,
+						settings: snapshot.settings,
 						publisher,
 					});
 

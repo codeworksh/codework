@@ -6,3 +6,5 @@ export { EventList } from "./event/list.ts";
 export { EventSchema } from "./event/schema.ts";
 export { Runner } from "./runner/run.ts";
 export * as Tool from "./tools/tool.ts";
+
+export { Settings } from "./settings/settings.ts";

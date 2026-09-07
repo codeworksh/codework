@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit, Schema } from "effect";
+import { fileURLToPath } from "node:url";
 import { describe, expect } from "vite-plus/test";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
 import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
@@ -11,6 +12,9 @@ const errorFrom = <A, E>(exit: Exit.Exit<A, E>): E => {
 	if (Exit.isSuccess(exit)) throw new Error("expected failure");
 	return Cause.squash(exit.cause) as E;
 };
+
+// Resolve the dependencies installed for this fixture, independent of the test runner cwd.
+const packageDirectory = fileURLToPath(new URL("../", import.meta.url));
 
 const resolver: SandboxDriverLoader.Resolver = (specifier) =>
 	Effect.succeed({ specifier, url: "file:///installed/driver.mjs", source: "package" });
@@ -82,7 +86,7 @@ describe("SandboxDriverLoader", () => {
 
 	it.effect("resolves installed package subpaths to canonical file URLs", () =>
 		Effect.gen(function* () {
-			const resolved = yield* SandboxDriverLoader.packageResolver()("effect/Schema");
+			const resolved = yield* SandboxDriverLoader.packageResolver(packageDirectory)("effect/Schema");
 			expect(resolved.url).toMatch(/^file:/);
 			expect(resolved.url).toContain("/effect/dist/Schema.js");
 		}),
@@ -91,7 +95,12 @@ describe("SandboxDriverLoader", () => {
 	it.effect("loads the installed external Vercel copy by package name", () =>
 		Effect.gen(function* () {
 			const loaded = yield* SandboxDriverLoader.load("@codeworksh-test/codework-sandbox-vercel", {
-				resolve: SandboxDriverLoader.packageResolver(process.cwd(), ["development", "node", "import", "default"]),
+				resolve: SandboxDriverLoader.packageResolver(packageDirectory, [
+					"development",
+					"node",
+					"import",
+					"default",
+				]),
 			});
 			const registry = yield* SandboxDriverRegistry.make([loaded]);
 			expect(registry.drivers).toMatchObject([
@@ -108,7 +117,12 @@ describe("SandboxDriverLoader", () => {
 	it.effect("loads a first-party provider through its public package subpath", () =>
 		Effect.gen(function* () {
 			const loaded = yield* SandboxDriverLoader.load("@codeworksh/harness/sandboxes/vercel", {
-				resolve: SandboxDriverLoader.packageResolver(process.cwd(), ["development", "node", "import", "default"]),
+				resolve: SandboxDriverLoader.packageResolver(packageDirectory, [
+					"development",
+					"node",
+					"import",
+					"default",
+				]),
 			});
 			expect(loaded.registered.name).toBe("vercel");
 			expect(loaded.source).toBe("builtin");

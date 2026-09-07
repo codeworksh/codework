@@ -5,8 +5,7 @@ import type { State } from "../state/state.ts";
 /**
  * Per-session configuration, held in process.
  *
- * This is the only config layer between `State.defaults` and a caller's
- * `State.layer(options)` -- nothing here is written to the session log, so nothing
+ * These bindings override file settings and the caller's `State.layer(options)` -- nothing here is written to the session log, so nothing
  * survives a restart. `Session.attach` merges into it rather than replacing it.
  */
 export type Bindings = State.Options;

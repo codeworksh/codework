@@ -20,7 +20,9 @@ export interface Coordinator<Key, E, Reason = never> {
 
 /** One process-local busy period for a key. */
 type Execution<E, Reason> = {
-	readonly done: Deferred.Deferred<void, E>;
+	// Completion is always successful; joiners explicitly replay the drain's exit.
+	// Idle observers must not inherit its interruption while waiting in a finalizer.
+	readonly done: Deferred.Deferred<Exit.Exit<void, E>>;
 	owner?: Fiber.Fiber<void>;
 	pendingWake: boolean;
 	stopping: boolean;
@@ -53,7 +55,7 @@ export const make = <Key, E, Reason = never>(options: {
 
 		const start = (key: Key, force: boolean) => {
 			const execution: Execution<E, Reason> = {
-				done: Deferred.makeUnsafe<void, E>(),
+				done: Deferred.makeUnsafe<Exit.Exit<void, E>>(),
 				pendingWake: false,
 				stopping: false,
 			};
@@ -81,7 +83,7 @@ export const make = <Key, E, Reason = never>(options: {
 		const settle = (key: Key, execution: Execution<E, Reason>, exit: Exit.Exit<void, E>) => {
 			if (execution.pendingWake) start(key, false);
 			else executions.delete(key);
-			Deferred.doneUnsafe(execution.done, exit);
+			Deferred.doneUnsafe(execution.done, Exit.succeed(exit));
 		};
 
 		const run = (key: Key): Effect.Effect<void, E> =>
@@ -89,11 +91,11 @@ export const make = <Key, E, Reason = never>(options: {
 				const execution = executions.get(key);
 				if (execution !== undefined) {
 					if (execution.stopping) {
-						return Deferred.await(execution.done).pipe(Effect.ignoreCause, Effect.andThen(run(key)));
+						return Deferred.await(execution.done).pipe(Effect.andThen(run(key)));
 					}
-					return Deferred.await(execution.done);
+					return Deferred.await(execution.done).pipe(Effect.flatMap((exit) => exit));
 				}
-				return Deferred.await(start(key, true).done);
+				return Deferred.await(start(key, true).done).pipe(Effect.flatMap((exit) => exit));
 			});
 
 		const wake = (key: Key) =>
@@ -127,7 +129,7 @@ export const make = <Key, E, Reason = never>(options: {
 			Effect.suspend(() => {
 				const execution = executions.get(key);
 				if (execution === undefined) return Effect.void;
-				return Deferred.await(execution.done).pipe(Effect.ignoreCause, Effect.andThen(awaitIdle(key)));
+				return Deferred.await(execution.done).pipe(Effect.andThen(awaitIdle(key)));
 			});
 
 		return { active: Effect.sync(() => new Set(executions.keys())), run, wake, interrupt, awaitIdle };

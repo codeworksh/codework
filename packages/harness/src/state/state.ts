@@ -16,12 +16,16 @@ import type { Model, Protocol } from "@codeworksh/aikit";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { Location } from "../location/location.ts";
 import { SandboxIO } from "../sandbox/io.ts";
+import { SessionRuntime } from "../session/runtime.ts";
+import type { ID as SessionId } from "../session/schema.ts";
+import { merge } from "../settings/merge.ts";
+import { compose, resolveOptions } from "../settings/resolve.ts";
+import type { Block } from "../settings/schema.ts";
+import { Settings } from "../settings/settings.ts";
 import { bashTool } from "../tools/bash.ts";
 import { make as makeRegistry, type Resolved } from "../tools/registry.ts";
 import { fromSandboxShell } from "../tools/shell.ts";
 import * as Tool from "../tools/tool.ts";
-import type { ID as SessionId } from "../session/schema.ts";
-import { SessionRuntime } from "../session/runtime.ts";
 import { StatePrompt } from "./prompt.ts";
 
 /**
@@ -83,30 +87,6 @@ export interface Options extends RequestOptions {
 }
 
 /**
- * FIXME(sanchitrk): read from settings config once we set that up;
- *
- * Defaults. `maxTokens` is deliberately absent: aikit's `stream()` already calls
- * `applyDefaultMaxTokens`, which derives it from the model's own `maxTokens` and
- * `contextWindow`. Setting one here would override a model-aware value with a
- * fixed guess.
- */
-export const defaults = {
-	provider: "openai",
-	model: "gpt-5.5",
-	thinkingLevel: "medium",
-	toolExecution: "sequential",
-	timeoutMs: 60_000,
-	maxRetries: 0,
-} as const satisfies {
-	readonly provider: string;
-	readonly model: string;
-	readonly thinkingLevel: Model.ThinkingLevel;
-	readonly toolExecution: ToolExecutionMode;
-	readonly timeoutMs: number;
-	readonly maxRetries: number;
-};
-
-/**
  * The prompt override threw or rejected.
  *
  * Typed rather than a defect: a caller's callback failing is a caller bug, but it
@@ -140,6 +120,8 @@ export interface Snapshot {
 	readonly model: string;
 	readonly thinkingLevel: Model.ThinkingLevel;
 	readonly request: RequestOptions;
+	/** Matched file attributes; catalog resolution stays at the LLM boundary. */
+	readonly settings: Block;
 	readonly toolExecution: ToolExecutionMode;
 }
 
@@ -183,30 +165,25 @@ export const layer = (options: Options = {}) => {
 		Service,
 		Effect.gen(function* () {
 			const runtime = yield* SessionRuntime.Service;
+			const settings = yield* Settings.Service;
 			return Service.of({
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
 					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
-					const merged = { ...options, ...sessionOptions };
+					const configured = compose(yield* settings.load, options, sessionOptions);
 					const {
 						promptCustom,
 						promptSystemAppend,
 						promptSystemOverride,
 						tools: callerTools = [],
 						builtinTools = ["bash"],
-						provider: runtimeProvider,
-						model: runtimeModel,
-						thinkingLevel: runtimeThinkingLevel,
-						toolExecution = defaults.toolExecution,
+						provider: _provider,
+						model: _model,
+						thinkingLevel: _thinkingLevel,
+						toolExecution: _toolExecution,
 						...rest
-					} = merged;
-					const provider = runtimeProvider ?? defaults.provider;
-					const model = runtimeModel ?? defaults.model;
-					const thinkingLevel = runtimeThinkingLevel ?? defaults.thinkingLevel;
-					const request: RequestOptions = {
-						timeoutMs: defaults.timeoutMs,
-						maxRetries: defaults.maxRetries,
-						...rest,
-					};
+					} = configured.runtime;
+					const { provider, model, thinkingLevel, toolExecution } = configured;
+					const request = merge(resolveOptions(configured.block), rest);
 					const sandbox = yield* SandboxIO.Current;
 					const location = yield* Location.Service;
 
@@ -261,6 +238,7 @@ export const layer = (options: Options = {}) => {
 						model,
 						thinkingLevel,
 						request,
+						settings: configured.block,
 						toolExecution,
 					} satisfies Snapshot;
 				}),

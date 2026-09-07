@@ -1,3 +1,4 @@
+import { Settings } from "../src/settings/settings.ts";
 import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
@@ -40,6 +41,7 @@ const runtime = (
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
 		Layer.provideMerge(State.layer(options.state)),
 		Layer.provideMerge(SessionRuntime.layer),
+		Layer.provideMerge(Layer.succeed(Settings.Service, { load: Effect.succeed(Settings.defaults) })),
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionProjector.layer),
@@ -556,7 +558,9 @@ describe("runner loop — provider failure", () => {
 				expect(Option.isSome(failure) && failure.value._tag).toBe("Runner.ProviderError");
 				if (Option.isSome(failure) && failure.value._tag === "Runner.ProviderError") {
 					expect(failure.value.reason._tag).toBe("Runner.ProviderAuthenticationError");
-					expect(failure.value.message).toBe("openai/gpt-5.5: provider failed");
+					expect(failure.value.message).toBe(
+						`${Settings.defaults.model.provider}/${Settings.defaults.model.id}: provider failed`,
+					);
 				}
 			}
 

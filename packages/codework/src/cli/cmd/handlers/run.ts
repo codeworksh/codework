@@ -160,6 +160,7 @@ export default Runtime.handler(
 		return yield* program.pipe(
 			Effect.provide(
 				Harness.layer({
+					...(Option.isNone(shared.agentConfigDir) ? {} : { agentConfigDir: shared.agentConfigDir.value }),
 					...(Option.isNone(shared.home) ? {} : { home: shared.home.value }),
 					...(Option.isNone(shared.database) ? {} : { database: shared.database.value }),
 					sandboxes: [DaytonaSandbox.make({}), VercelSandbox.make({})],
