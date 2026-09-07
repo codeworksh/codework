@@ -3,7 +3,6 @@ import { DateTime, Effect, Option, Stream } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import * as Control from "../control.ts";
 import * as Event from "../event/event.ts";
-import { EventList } from "../event/list.ts";
 import type { EventSchema } from "../event/schema.ts";
 import * as SandboxController from "../sandbox/control.ts";
 import { SandboxInstance as SandboxInstanceSchema } from "../sandbox/instance.ts";
@@ -95,20 +94,6 @@ const runtimeBindings = (input: RuntimeInput): SessionRuntime.Bindings => ({
 	...(input.systemPrompt?.override === undefined ? {} : { promptSystemOverride: input.systemPrompt.override }),
 });
 
-const publishConfig = Effect.fn("Session.publishConfig")(function* (
-	events: Event.Interface,
-	sessionId: SessionSchema.ID,
-	input: Pick<RuntimeInput, "model" | "thinkingLevel">,
-) {
-	if (input.model === undefined && input.thinkingLevel === undefined) return;
-	yield* events.publish(EventList.ConfigChanged, {
-		timestamp: yield* DateTime.now,
-		sessionId,
-		...(input.model === undefined ? {} : { model: { providerId: input.model.provider, modelId: input.model.id } }),
-		...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
-	});
-});
-
 const promptInput = (input: PromptInput) => {
 	const value = typeof input === "string" ? { text: input } : input;
 	return {
@@ -169,7 +154,7 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 	const sessions = yield* SessionStore.Service;
 	const runtime = yield* SessionRuntime.Service;
 	const sandboxes = yield* SandboxController.Controller;
-	const events = yield* Event.Service;
+	// const events = yield* Event.Service;
 	const id = SessionSchema.ID.create();
 	const sandboxId = input.sandbox?.id ?? SandboxInstanceSchema.ID.local;
 	const directory = yield* sandboxes.resolveCwd(sandboxId, input.directory);
@@ -182,7 +167,6 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 		directory: AbsolutePath.make(directory),
 		sandboxInstanceId: sandboxId,
 	});
-	yield* publishConfig(events, id, input);
 	yield* runtime.set(id, runtimeBindings(input));
 	return yield* makeHandle(id);
 });
@@ -200,9 +184,13 @@ export const attach = Effect.fn("Session.attach")(function* (input: AttachInput)
 		return yield* new SessionStore.SessionNotFoundError({ sessionId: input.sessionId });
 	}
 	const runtime = yield* SessionRuntime.Service;
-	const events = yield* Event.Service;
-	yield* publishConfig(events, input.sessionId, input);
-	yield* runtime.set(input.sessionId, runtimeBindings(input));
+	/*
+	 * Merge, not replace. `runtimeBindings` emits only the keys this call names, so a
+	 * bare `attach({ sessionId })` produces `{}` -- and a replace would silently drop the
+	 * tools, prompt overrides, and model a previous attach established. Bindings are now
+	 * the only config layer, so there is nothing behind them to restore what a wipe took.
+	 */
+	yield* runtime.update(input.sessionId, runtimeBindings(input));
 	return found.value;
 });
 

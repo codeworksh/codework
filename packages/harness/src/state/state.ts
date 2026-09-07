@@ -14,7 +14,6 @@
 
 import type { Model, Protocol } from "@codeworksh/aikit";
 import { Context, Effect, Layer, Option, Schema } from "effect";
-import { Context as SessionContext } from "../context/context.ts";
 import { Location } from "../location/location.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { bashTool } from "../tools/bash.ts";
@@ -151,7 +150,7 @@ export interface Interface {
 	 */
 	readonly snapshot: (
 		sessionId: SessionId,
-	) => Effect.Effect<Snapshot, SnapshotError | SessionContext.ContextReadError, SandboxIO.Provides | Location.Service>;
+	) => Effect.Effect<Snapshot, SnapshotError, SandboxIO.Provides | Location.Service>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/state/state/Service") {}
@@ -184,11 +183,9 @@ export const layer = (options: Options = {}) => {
 		Service,
 		Effect.gen(function* () {
 			const runtime = yield* SessionRuntime.Service;
-			const contexts = yield* SessionContext.Service;
 			return Service.of({
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
 					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
-					const durable = (yield* contexts.assemble(sessionId)).config;
 					const merged = { ...options, ...sessionOptions };
 					const {
 						promptCustom,
@@ -202,9 +199,9 @@ export const layer = (options: Options = {}) => {
 						toolExecution = defaults.toolExecution,
 						...rest
 					} = merged;
-					const provider = runtimeProvider ?? durable.model?.providerId ?? defaults.provider;
-					const model = runtimeModel ?? durable.model?.modelId ?? defaults.model;
-					const thinkingLevel = runtimeThinkingLevel ?? durable.thinkingLevel ?? defaults.thinkingLevel;
+					const provider = runtimeProvider ?? defaults.provider;
+					const model = runtimeModel ?? defaults.model;
+					const thinkingLevel = runtimeThinkingLevel ?? defaults.thinkingLevel;
 					const request: RequestOptions = {
 						timeoutMs: defaults.timeoutMs,
 						maxRetries: defaults.maxRetries,

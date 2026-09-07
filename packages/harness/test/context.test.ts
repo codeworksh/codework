@@ -233,26 +233,17 @@ describe("context assembly", () => {
 				sessionId: created.id,
 				leafEntryId: null,
 				messages: [],
-				config: {},
 			});
 
 			const missing = yield* context.assemble(SessionSchema.ID.make("ses_missing")).pipe(Effect.flip);
 			expect(missing._tag).toBe("SessionNotFoundError");
 		}));
 
-	it("applies latest compaction while resolving config over the full path", () =>
+	it("applies latest compaction over the full path", () =>
 		Effect.gen(function* () {
 			const { append, appendMessage, context, created, sessions } = yield* setup;
 			yield* appendMessage(user("u1", "old prompt"));
 			yield* appendMessage(assistant("a1", "provider-1", "model-1"));
-			yield* append({
-				id: "config1",
-				type: "configChange",
-				data: JSON.stringify({
-					model: { providerId: "configured", modelId: "configured-model" },
-					thinkingLevel: "high",
-				}),
-			});
 			yield* appendMessage(user("u2", "kept prompt"));
 			yield* append({
 				id: "branch1",
@@ -272,18 +263,8 @@ describe("context assembly", () => {
 			});
 			yield* append({ id: "custom1", type: "custom", data: JSON.stringify({ customType: "checkpoint" }) });
 			yield* appendMessage(assistant("a2", "provider-2", "model-2", [{ type: "text", text: "new answer" }]));
-			yield* append({
-				id: "config2",
-				type: "configChange",
-				data: JSON.stringify({ thinkingLevel: "low" }),
-			});
-
 			const snapshot = yield* context.assemble(created.id);
-			expect(snapshot.leafEntryId).toBe("config2");
-			expect(snapshot.config).toEqual({
-				model: { providerId: "provider-2", modelId: "model-2" },
-				thinkingLevel: "low",
-			});
+			expect(snapshot.leafEntryId).toBe("a2");
 			expect(snapshot.lastAssistant).toMatchObject({ entryId: "a2", message: { messageId: "a2" } });
 			expect(snapshot.messages.map((message) => message.messageId)).toEqual([
 				"compact1",

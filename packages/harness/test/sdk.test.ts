@@ -9,6 +9,7 @@ import { Session } from "../src/effect/session.ts";
 import { Global } from "../src/global.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { Session as SessionStore } from "../src/session/session.ts";
+import { State } from "../src/state/state.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { it } from "./utils/effect.ts";
 
@@ -51,6 +52,36 @@ describe("Harness Effect SDK", () => {
 			}),
 		),
 	);
+
+	it.effect("keeps prior runtime config when attach names none", () => {
+		const contexts: Parameters<typeof immediateOpen>[0] = [];
+		const inputs: LLM.Input[] = [];
+		const open = immediateOpen(contexts);
+		const llm: LLM.Open = (input, signal) => {
+			inputs.push(input);
+			return open(input, signal);
+		};
+		return withHarness(
+			Effect.gen(function* () {
+				const created = yield* Session.create({
+					directory: process.cwd(),
+					model: { provider: "test", id: "test-model" },
+					thinkingLevel: "max",
+				});
+				yield* created.run("first");
+
+				// Bare re-attach in the same runtime: merges nothing, clears nothing.
+				const attached = yield* Session.attach({ sessionId: created.id });
+				yield* attached.run("second");
+
+				expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual([
+					{ provider: "test", model: "test-model", thinkingLevel: "max" },
+					{ provider: "test", model: "test-model", thinkingLevel: "max" },
+				]);
+			}),
+			llm,
+		);
+	});
 
 	it.effect("runs a prompt to completion and continues through an attached handle", () => {
 		const contexts: Parameters<typeof immediateOpen>[0] = [];
@@ -102,7 +133,6 @@ describe("Harness Effect SDK", () => {
 						const session = yield* Session.attach({ sessionId });
 						yield* session.run("second");
 						expect((yield* session.path()).map(({ entry }) => entry.type)).toEqual([
-							"configChange",
 							"user",
 							"assistant",
 							"user",
@@ -125,12 +155,26 @@ describe("Harness Effect SDK", () => {
 					}).pipe(Effect.provide(runtime()), Effect.scoped);
 
 					expect(contexts).toHaveLength(4);
+					/*
+					 * Model config is process-local: it lives in SessionRuntime bindings and is
+					 * not written to the session log. An attach that names a model applies it for
+					 * that runtime's lifetime; an attach that does not falls back to the defaults,
+					 * even on a session whose earlier runtime had one set.
+					 */
 					expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual(
 						[
 							{ provider: "test", model: "test-model", thinkingLevel: "max" },
-							{ provider: "test", model: "test-model", thinkingLevel: "max" },
+							{
+								provider: State.defaults.provider,
+								model: State.defaults.model,
+								thinkingLevel: State.defaults.thinkingLevel,
+							},
 							{ provider: "override", model: "override-model", thinkingLevel: "low" },
-							{ provider: "override", model: "override-model", thinkingLevel: "low" },
+							{
+								provider: State.defaults.provider,
+								model: State.defaults.model,
+								thinkingLevel: State.defaults.thinkingLevel,
+							},
 						],
 					);
 				});

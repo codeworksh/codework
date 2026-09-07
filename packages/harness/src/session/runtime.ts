@@ -2,7 +2,13 @@ import { Context, Effect, Layer, Option, Ref } from "effect";
 import type { SessionSchema } from "./schema.ts";
 import type { State } from "../state/state.ts";
 
-/** Process-local values that cannot be reconstructed from the durable session log. */
+/**
+ * Per-session configuration, held in process.
+ *
+ * This is the only config layer between `State.defaults` and a caller's
+ * `State.layer(options)` -- nothing here is written to the session log, so nothing
+ * survives a restart. `Session.attach` merges into it rather than replacing it.
+ */
 export type Bindings = State.Options;
 
 export interface Interface {
