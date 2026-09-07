@@ -11,6 +11,10 @@ export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh
 export const Cmd = Spec.make("codework", {
 	description: "CodeWork command line interface",
 	shared: {
+		userConfigDir: Flag.string("user-config-dir").pipe(
+			Flag.withDescription("Directory containing config overrides"),
+			Flag.optional,
+		),
 		home: Flag.string("home").pipe(Flag.withDescription("Harness data directory"), Flag.optional),
 		database: Flag.string("database").pipe(Flag.withDescription("SQLite path or :memory:"), Flag.optional),
 	},

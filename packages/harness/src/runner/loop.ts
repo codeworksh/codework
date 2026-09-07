@@ -7,8 +7,8 @@
 
 import { type Message } from "@codeworksh/aikit";
 import { Cause, DateTime, Effect, Exit, Layer, Option } from "effect";
-import { Context } from "../context/context.ts";
 import { ContextCodec } from "../context/codec.ts";
+import { Context } from "../context/context.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { SessionInput } from "../session/input/input.ts";
@@ -275,6 +275,7 @@ export const layer = (options: Options = {}) =>
 						model: snapshot.model,
 						thinkingLevel: snapshot.thinkingLevel,
 						options: snapshot.request,
+						settings: snapshot.settings,
 						publisher,
 					});
 

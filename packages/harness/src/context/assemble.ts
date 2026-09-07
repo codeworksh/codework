@@ -1,4 +1,4 @@
-import { Message, Model } from "@codeworksh/aikit";
+import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Schema } from "effect";
 import { optional } from "../schema.ts";
 import { SessionSchema } from "../session/schema.ts";
@@ -6,19 +6,10 @@ import type { Session } from "../session/session.ts";
 import { decodeMessage, decodeSyntheticMessage } from "./codec.ts";
 import { ContextDecodeError } from "./errors.ts";
 
-export interface EffectiveConfig {
-	readonly model?: {
-		readonly providerId: string;
-		readonly modelId: string;
-	};
-	readonly thinkingLevel?: Model.ThinkingLevel;
-}
-
 export interface Snapshot {
 	readonly sessionId: string;
 	readonly leafEntryId: string | null;
 	readonly messages: ReadonlyArray<Message.Message>;
-	readonly config: EffectiveConfig;
 	readonly lastAssistant?: {
 		readonly entryId: string;
 		readonly message: Message.AssistantMessage;
@@ -49,24 +40,10 @@ const CustomData = Schema.fromJsonString(
 	}),
 );
 
-const ConfigChangeData = Schema.fromJsonString(
-	Schema.Struct({
-		model: optional(
-			Schema.Struct({
-				providerId: Schema.String,
-				modelId: Schema.String,
-			}),
-		),
-		// Keep in sync with {@link import('@codeworksh/aikit/model/model.ts').ThinkingLevelEnum}
-		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
-	}),
-);
-
 const decodeSyntheticData = Schema.decodeUnknownEffect(SyntheticData);
 const decodeCompactionData = Schema.decodeUnknownEffect(SessionSchema.CompactionData);
 const decodeBranchSummaryData = Schema.decodeUnknownEffect(BranchSummaryData);
 const decodeCustomData = Schema.decodeUnknownEffect(CustomData);
-const decodeConfigChangeData = Schema.decodeUnknownEffect(ConfigChangeData);
 
 const decodeFailure = (entry: Session.HydratedEntry) => (error: { readonly message: string }) =>
 	new ContextDecodeError({
@@ -104,8 +81,6 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 ): Effect.fn.Return<Snapshot, ContextDecodeError> {
 	const leafEntryId = path.at(-1)?.entry.id ?? null;
 	const committedPath = path.filter((hydrated) => hydrated.entry.state === "committed");
-	let model: EffectiveConfig["model"];
-	let thinkingLevel: Model.ThinkingLevel | undefined;
 	let lastAssistant: Snapshot["lastAssistant"];
 	let latestCompaction: { readonly index: number; readonly data: SessionSchema.CompactionData } | undefined;
 
@@ -138,7 +113,6 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 					});
 				}
 				messagesByEntry.set(entry.id, message);
-				model = { providerId: message.provider.id, modelId: message.model };
 				lastAssistant = { entryId: entry.id, message };
 				break;
 			}
@@ -167,12 +141,6 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 			}
 			case "custom": {
 				yield* decodeCustomData(entry.data).pipe(Effect.mapError(decodeFailure(hydrated)));
-				break;
-			}
-			case "configChange": {
-				const data = yield* decodeConfigChangeData(entry.data).pipe(Effect.mapError(decodeFailure(hydrated)));
-				if (data.model !== undefined) model = data.model;
-				if (data.thinkingLevel !== undefined) thinkingLevel = data.thinkingLevel;
 				break;
 			}
 		}
@@ -220,10 +188,6 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 		sessionId,
 		leafEntryId,
 		messages,
-		config: {
-			...(model === undefined ? {} : { model }),
-			...(thinkingLevel === undefined ? {} : { thinkingLevel }),
-		},
 		...(lastAssistant === undefined ? {} : { lastAssistant }),
 	};
 });

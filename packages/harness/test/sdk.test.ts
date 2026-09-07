@@ -1,3 +1,4 @@
+import { Settings } from "../src/settings/settings.ts";
 import { Effect, Option } from "effect";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -52,6 +53,36 @@ describe("Harness Effect SDK", () => {
 		),
 	);
 
+	it.effect("keeps prior runtime config when attach names none", () => {
+		const contexts: Parameters<typeof immediateOpen>[0] = [];
+		const inputs: LLM.Input[] = [];
+		const open = immediateOpen(contexts);
+		const llm: LLM.Open = (input, signal) => {
+			inputs.push(input);
+			return open(input, signal);
+		};
+		return withHarness(
+			Effect.gen(function* () {
+				const created = yield* Session.create({
+					directory: process.cwd(),
+					model: { provider: "test", id: "test-model" },
+					thinkingLevel: "max",
+				});
+				yield* created.run("first");
+
+				// Bare re-attach in the same runtime: merges nothing, clears nothing.
+				const attached = yield* Session.attach({ sessionId: created.id });
+				yield* attached.run("second");
+
+				expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual([
+					{ provider: "test", model: "test-model", thinkingLevel: "max" },
+					{ provider: "test", model: "test-model", thinkingLevel: "max" },
+				]);
+			}),
+			llm,
+		);
+	});
+
 	it.effect("runs a prompt to completion and continues through an attached handle", () => {
 		const contexts: Parameters<typeof immediateOpen>[0] = [];
 		return withHarness(
@@ -102,7 +133,6 @@ describe("Harness Effect SDK", () => {
 						const session = yield* Session.attach({ sessionId });
 						yield* session.run("second");
 						expect((yield* session.path()).map(({ entry }) => entry.type)).toEqual([
-							"configChange",
 							"user",
 							"assistant",
 							"user",
@@ -125,12 +155,26 @@ describe("Harness Effect SDK", () => {
 					}).pipe(Effect.provide(runtime()), Effect.scoped);
 
 					expect(contexts).toHaveLength(4);
+					/*
+					 * Model config is process-local: it lives in SessionRuntime bindings and is
+					 * not written to the session log. An attach that names a model applies it for
+					 * that runtime's lifetime; an attach that does not falls back to the defaults,
+					 * even on a session whose earlier runtime had one set.
+					 */
 					expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual(
 						[
 							{ provider: "test", model: "test-model", thinkingLevel: "max" },
-							{ provider: "test", model: "test-model", thinkingLevel: "max" },
+							{
+								provider: Settings.defaults.model.provider,
+								model: Settings.defaults.model.id,
+								thinkingLevel: Settings.defaults.model.thinkingLevel,
+							},
 							{ provider: "override", model: "override-model", thinkingLevel: "low" },
-							{ provider: "override", model: "override-model", thinkingLevel: "low" },
+							{
+								provider: Settings.defaults.model.provider,
+								model: Settings.defaults.model.id,
+								thinkingLevel: Settings.defaults.model.thinkingLevel,
+							},
 						],
 					);
 				});

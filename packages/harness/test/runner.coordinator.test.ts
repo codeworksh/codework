@@ -36,6 +36,25 @@ const recorder = () => {
 const settle = Effect.andThen(Effect.yieldNow, Effect.andThen(Effect.yieldNow, Effect.yieldNow));
 
 describe("RunCoordinator", () => {
+	it.live(
+		"an uninterruptible idle observer does not replay the drain interruption",
+		Effect.gen(function* () {
+			const entered = yield* Deferred.make<void>();
+			const coordinator = yield* RunCoordinator.make<string, never>({
+				drain: () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+			});
+			const joined = yield* coordinator.run("session").pipe(Effect.forkChild);
+			yield* Deferred.await(entered);
+			yield* coordinator
+				.interrupt("session")
+				.pipe(Effect.andThen(coordinator.awaitIdle("session")), Effect.uninterruptible);
+			expect(Array.from(yield* coordinator.active)).toEqual([]);
+			const exit = yield* Fiber.await(joined);
+			expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+		}),
+		{ timeout: 5000 },
+	);
+
 	it.effect(
 		"concurrent runs for one key join a single drain",
 		Effect.gen(function* () {

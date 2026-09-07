@@ -67,6 +67,8 @@ describe("runner LLM — OpenAI live", () => {
 				),
 				provider: "openai",
 				model: "gpt-5.5",
+				thinkingLevel: "medium",
+				settings: { reasoningSummary: "auto" },
 				publisher,
 			});
 
