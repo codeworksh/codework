@@ -7,19 +7,15 @@
  * enough to publish aikit's terminal error event durably.
  */
 
-import {
-	stream as aikitStream,
-	llm,
-	type Event as AikitEvent,
-	type Message,
-	type Model,
-	type OpenAIOptions,
-} from "@codeworksh/aikit";
+import { stream as aikitStream, llm, type Event as AikitEvent, type Message, type Model } from "@codeworksh/aikit";
 import * as AikitFailure from "@codeworksh/aikit/failure";
 import { Duration, Effect, Exit, Fiber, Scope, Stream } from "effect";
 import type { SessionSchema } from "../session/schema.ts";
 import type { State } from "../state/state.ts";
 import { LLMEventPublisher } from "./event.ts";
+import { resolveOverrides, resolveRequest } from "../settings/resolve.ts";
+import { merge } from "../settings/merge.ts";
+import type { Block } from "../settings/schema.ts";
 import { Runner } from "./run.ts";
 
 export interface Input {
@@ -29,6 +25,7 @@ export interface Input {
 	readonly model: string;
 	readonly thinkingLevel?: Model.ThinkingLevel;
 	readonly options?: State.RequestOptions;
+	readonly settings?: Block;
 }
 
 export interface RequestInput extends Input {
@@ -50,14 +47,16 @@ export type Request = (
 	Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError | Runner.LLMStreamError
 >;
 
-const runtimeOptions = (input: Input, signal: AbortSignal): OpenAIOptions =>
-	({
-		providerOptions: { openai: { reasoningSummary: "auto" } },
-		...input.options,
+export const runtimeOptions = (input: Input, model: Model.Info, signal: AbortSignal) => {
+	const { activeTools, ...options } = merge(resolveRequest(input.settings ?? {}, model), input.options);
+	return {
+		...options,
+		...(activeTools === undefined ? {} : { activeTools: [...activeTools] }),
 		...(input.thinkingLevel === undefined || input.thinkingLevel === "off" ? {} : { reasoning: input.thinkingLevel }),
 		sessionId: input.sessionId,
 		signal,
-	}) as unknown as OpenAIOptions;
+	};
+};
 
 const reasonFields = (failure: AikitFailure.Failure) => ({
 	message: failure.message,
@@ -151,7 +150,7 @@ export const messageFailure = (message: Message.AssistantMessage): AikitFailure.
 /** Resolve the configured model and start aikit's provider stream. */
 export const open: Open = Effect.fn("LLM.open")(function* (input, signal) {
 	const model = yield* Effect.tryPromise({
-		try: () => llm(input.provider, input.model),
+		try: () => llm(input.provider, input.model, resolveOverrides(input.settings ?? {})),
 		catch: (cause) => {
 			const catalog = modelCatalogFailure(cause);
 			return catalog === undefined
@@ -168,7 +167,7 @@ export const open: Open = Effect.fn("LLM.open")(function* (input, signal) {
 	}
 
 	return yield* Effect.try({
-		try: () => aikitStream(model, input.context, runtimeOptions(input, signal)),
+		try: () => aikitStream(model, input.context, runtimeOptions(input, model, signal)),
 		catch: (cause) => providerErrorFromUnknown(input, cause),
 	});
 });

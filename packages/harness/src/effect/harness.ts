@@ -15,11 +15,14 @@ import { SandboxDriverLoader } from "../sandbox/loader.ts";
 import { SandboxDriverRegistry } from "../sandbox/registry.ts";
 import { SessionLive } from "../session/live.ts";
 import { SessionRuntime } from "../session/runtime.ts";
+import { Settings } from "../settings/settings.ts";
 import { State } from "../state/state.ts";
 
 export interface Options {
 	readonly database?: string;
 	readonly home?: string;
+	/** user provided directory containing the highest-priority config. */
+	readonly userConfigDir?: string;
 	readonly sandboxes?: ReadonlyArray<SandboxDriverLoader.Entry>;
 	readonly llm?: LLM.Open;
 }
@@ -43,6 +46,9 @@ export const layer = (options: Options = {}) =>
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
 				Layer.provideMerge(State.layer()),
+				Layer.provideMerge(
+					Settings.layer(options.userConfigDir === undefined ? {} : { userConfigDir: options.userConfigDir }),
+				),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),
 				Layer.provideMerge(Context.layer),

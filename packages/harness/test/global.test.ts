@@ -14,7 +14,7 @@ describe("global", () => {
 			const home = path.resolve("custom-home");
 			const paths = make({ home });
 			expect(paths.cache).toBe(path.join(home, "cache"));
-			expect(paths.agent).toBe(path.join(home, "agent"));
+			expect(paths.config).toBe(path.join(home, "config"));
 			expect(paths.data).toBe(path.join(home, "data"));
 			expect(paths.log).toBe(path.join(home, "log"));
 		});
@@ -26,7 +26,7 @@ describe("global", () => {
 					Effect.gen(function* () {
 						const service = yield* Service;
 						expect(service.home).toBe(home);
-						for (const directory of [service.cache, service.agent, service.data, service.log]) {
+						for (const directory of [service.cache, service.config, service.data, service.log]) {
 							expect((yield* Effect.promise(() => fs.stat(directory))).isDirectory()).toBe(true);
 						}
 					}).pipe(Effect.provide(layerWith({ home }))),
@@ -65,7 +65,7 @@ describe("global", () => {
 						const service = yield* Service;
 						expect(service.home).toBe(home);
 						expect(service.cache).toBe(cache);
-						expect(service.agent).toBe(path.join(home, "agent"));
+						expect(service.config).toBe(path.join(home, "config"));
 					}).pipe(
 						Effect.provide(
 							layerWith({
