@@ -1,4 +1,3 @@
-import "./utils/env.ts";
 import { llm } from "@codeworksh/aikit";
 import { Effect } from "effect";
 import { writeFile } from "node:fs/promises";
@@ -9,6 +8,7 @@ import { Session } from "../src/effect/session.ts";
 import { SessionRuntime } from "../src/session/runtime.ts";
 import type { State } from "../src/state/state.ts";
 import { withSettings } from "./fixtures/settings.ts";
+import "./utils/env.ts";
 
 const live = process.env.OPENAI_API_KEY ? it : it.skip;
 
@@ -94,9 +94,7 @@ describe("settings against a live provider", () => {
 						);
 					}
 				}).pipe(
-					Effect.provide(
-						Harness.layer({ home: join(root, "home"), database: ":memory:", agentConfigDir: custom }),
-					),
+					Effect.provide(Harness.layer({ home: join(root, "home"), database: ":memory:", userConfigDir: custom })),
 					Effect.scoped,
 					Effect.timeout("240 seconds"),
 				),

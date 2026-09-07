@@ -35,14 +35,14 @@ const runIsolated = (env: NodeJS.ProcessEnv, ...args: ReadonlyArray<string>) => 
 };
 
 describe("codework CLI", () => {
-	it("reads custom settings from --agent-config-dir without requiring model flags", () => {
+	it("reads custom settings from --user-config-dir without requiring model flags", () => {
 		const dir = mkdtempSync(join(tmpdir(), "codework-cli-settings-"));
 		try {
 			writeFileSync(
 				join(dir, "settings.json"),
 				JSON.stringify({ model: { provider: "settings-test-provider", id: "settings-test-model" } }),
 			);
-			const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "--agent-config-dir", dir, "run", "test");
+			const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "--user-config-dir", dir, "run", "test");
 			expect(result.status).toBe(1);
 			expect(result.stderr).toContain("settings-test-provider");
 			expect(result.stderr).toContain("settings-test-model");
@@ -52,27 +52,27 @@ describe("codework CLI", () => {
 		}
 	});
 
-	it("rereads --agent-config-dir settings on every invocation, including a revert", () => {
+	it("rereads --user-config-dir settings on every invocation, including a revert", () => {
 		const dir = mkdtempSync(join(tmpdir(), "codework-cli-settings-cycle-"));
 		const write = (settings: object) => writeFileSync(join(dir, "settings.json"), JSON.stringify(settings));
 		const select = (stderr: string) => [/provider[^a-z0-9]+([a-z0-9-]+)/i.exec(stderr)?.[1] ?? "", stderr];
 		try {
 			// A: a selection plus a key that only A carries.
 			write({ model: { provider: "cycle-a-provider", id: "cycle-a-model", options: { maxRetries: 7 } } });
-			const first = runIsolated({ CODEWORK_MODELS_FILE: models }, "--agent-config-dir", dir, "run", "test");
+			const first = runIsolated({ CODEWORK_MODELS_FILE: models }, "--user-config-dir", dir, "run", "test");
 			expect(first.stderr).toContain("cycle-a-provider");
 			expect(first.stderr).toContain("cycle-a-model");
 
 			// B: a different selection, and A's extra key is absent from the file.
 			write({ model: { provider: "cycle-b-provider", id: "cycle-b-model" } });
-			const second = runIsolated({ CODEWORK_MODELS_FILE: models }, "--agent-config-dir", dir, "run", "test");
+			const second = runIsolated({ CODEWORK_MODELS_FILE: models }, "--user-config-dir", dir, "run", "test");
 			expect(second.stderr).toContain("cycle-b-provider");
 			expect(second.stderr).toContain("cycle-b-model");
 			expect(second.stderr).not.toContain("cycle-a-model");
 
 			// Back to A: the earlier selection returns rather than sticking on B.
 			write({ model: { provider: "cycle-a-provider", id: "cycle-a-model", options: { maxRetries: 7 } } });
-			const third = runIsolated({ CODEWORK_MODELS_FILE: models }, "--agent-config-dir", dir, "run", "test");
+			const third = runIsolated({ CODEWORK_MODELS_FILE: models }, "--user-config-dir", dir, "run", "test");
 			expect(third.stderr).toContain("cycle-a-provider");
 			expect(third.stderr).toContain("cycle-a-model");
 			expect(third.stderr).not.toContain("cycle-b-model");

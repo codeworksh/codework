@@ -10,8 +10,8 @@ import type { Message } from "@codeworksh/aikit";
 import { Effect, Layer, Queue, Schema } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { describe, expect, it as vitestIt } from "vite-plus/test";
-import { Context } from "../../src/context/context.ts";
 import { ContextCodec } from "../../src/context/codec.ts";
+import { Context } from "../../src/context/context.ts";
 import { Control } from "../../src/control.ts";
 import { Database } from "../../src/db/db.ts";
 import { Event } from "../../src/event/event.ts";
@@ -39,7 +39,7 @@ const runtime = (root: string, custom: string) =>
 		Layer.provideMerge(State.layer()),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
-			Settings.layer({ cwd: root, agentConfigDir: custom }).pipe(
+			Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
 			),
 		),

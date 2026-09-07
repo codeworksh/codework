@@ -4,8 +4,8 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Harness } from "../src/effect/harness.ts";
-import { Session } from "../src/effect/session.ts";
 import { Sandbox } from "../src/effect/sandbox.ts";
+import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
 import { LLM } from "../src/runner/llm.ts";
 import * as Tool from "../src/tools/tool.ts";
@@ -108,7 +108,7 @@ describe("settings at exchange boundaries", () => {
 							Harness.layer({
 								home: join(root, "home"),
 								database: ":memory:",
-								agentConfigDir: custom,
+								userConfigDir: custom,
 								llm: open,
 							}),
 						),
@@ -195,7 +195,7 @@ describe("settings at exchange boundaries", () => {
 							Harness.layer({
 								home: join(root, "home"),
 								database: ":memory:",
-								agentConfigDir: custom,
+								userConfigDir: custom,
 								llm: open,
 							}),
 						),
@@ -249,7 +249,7 @@ describe("settings at exchange boundaries", () => {
 							Harness.layer({
 								home: join(root, "home"),
 								database: ":memory:",
-								agentConfigDir: custom,
+								userConfigDir: custom,
 								llm: open,
 							}),
 						),
@@ -303,7 +303,7 @@ describe("settings at exchange boundaries", () => {
 							Harness.layer({
 								home: join(root, "home"),
 								database: ":memory:",
-								agentConfigDir: custom,
+								userConfigDir: custom,
 								llm: open,
 							}),
 						),
@@ -323,7 +323,7 @@ describe("settings at exchange boundaries", () => {
 					return terminal(input, inputs.length);
 				});
 			const database = join(root, "sessions.db");
-			const runtime = () => Harness.layer({ home: join(root, "home"), database, agentConfigDir: custom, llm: open });
+			const runtime = () => Harness.layer({ home: join(root, "home"), database, userConfigDir: custom, llm: open });
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const sessionId = yield* Effect.gen(function* () {
@@ -383,7 +383,7 @@ describe("settings at exchange boundaries", () => {
 							Harness.layer({
 								home: join(root, "home"),
 								database: ":memory:",
-								agentConfigDir: custom,
+								userConfigDir: custom,
 								llm: open,
 							}),
 						),
@@ -434,7 +434,7 @@ describe("settings at exchange boundaries", () => {
 							Harness.layer({
 								home: join(root, "home"),
 								database: ":memory:",
-								agentConfigDir: custom,
+								userConfigDir: custom,
 								llm: open,
 							}),
 						),

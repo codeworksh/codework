@@ -11,8 +11,8 @@ export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh
 export const Cmd = Spec.make("codework", {
 	description: "CodeWork command line interface",
 	shared: {
-		agentConfigDir: Flag.string("agent-config-dir").pipe(
-			Flag.withDescription("Host directory containing settings.json overrides"),
+		userConfigDir: Flag.string("user-config-dir").pipe(
+			Flag.withDescription("Directory containing config overrides"),
 			Flag.optional,
 		),
 		home: Flag.string("home").pipe(Flag.withDescription("Harness data directory"), Flag.optional),

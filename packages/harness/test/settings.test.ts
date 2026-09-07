@@ -1,10 +1,10 @@
 import { Effect, Layer } from "effect";
-import { writeFile, unlink, mkdir } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Global } from "../src/global.ts";
-import { Settings, paths, parse } from "../src/settings/settings.ts";
+import { Settings, parse, paths } from "../src/settings/settings.ts";
 
 import { withSettings } from "./fixtures/settings.ts";
 
@@ -27,7 +27,7 @@ describe("host settings loader", () => {
 			await mkdir(join(global, "settings.json"));
 			await writeFile(join(local, "settings.json"), JSON.stringify({ model: { thinkingLevel: "max" } }));
 			await writeFile(join(custom, "settings.json"), JSON.stringify({ model: { options: { maxRetries: 4 } } }));
-			const layer = Settings.layer({ cwd: join(root, "subdirectory"), agentConfigDir: custom }).pipe(
+			const layer = Settings.layer({ cwd: join(root, "subdirectory"), userConfigDir: custom }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
 			);
 			const result = await Effect.runPromise(
@@ -38,18 +38,18 @@ describe("host settings loader", () => {
 		}));
 
 	it("uses global, startup-local, custom paths and expands home", () => {
-		expect(paths("/home/agent", "/startup", "relative")).toEqual([
-			"/home/agent/settings.json",
-			"/startup/.codework/agent/settings.json",
+		expect(paths("/home/config", "/startup", "relative")).toEqual([
+			"/home/config/settings.json",
+			"/startup/.codework/config/settings.json",
 			"/startup/relative/settings.json",
 		]);
-		expect(paths("/home/agent", "/startup", "~/custom").at(-1)).toBe(join(homedir(), "custom/settings.json"));
+		expect(paths("/home/config", "/startup", "~/custom").at(-1)).toBe(join(homedir(), "custom/settings.json"));
 	});
 
 	it("loads fresh files for each exchange with no shared cache or mutations", () =>
 		withSettings(async ({ root, local, global, custom }) => {
 			const write = (dir: string, model: object) => writeFile(join(dir, "settings.json"), JSON.stringify({ model }));
-			const layer = Settings.layer({ cwd: root, agentConfigDir: "custom" }).pipe(
+			const layer = Settings.layer({ cwd: root, userConfigDir: "custom" }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
 			);
 			await Effect.runPromise(

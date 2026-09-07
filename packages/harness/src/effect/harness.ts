@@ -21,8 +21,8 @@ import { State } from "../state/state.ts";
 export interface Options {
 	readonly database?: string;
 	readonly home?: string;
-	/** Host directory containing the highest-priority settings.json. */
-	readonly agentConfigDir?: string;
+	/** user provided directory containing the highest-priority config. */
+	readonly userConfigDir?: string;
 	readonly sandboxes?: ReadonlyArray<SandboxDriverLoader.Entry>;
 	readonly llm?: LLM.Open;
 }
@@ -47,7 +47,7 @@ export const layer = (options: Options = {}) =>
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
 				Layer.provideMerge(State.layer()),
 				Layer.provideMerge(
-					Settings.layer(options.agentConfigDir === undefined ? {} : { agentConfigDir: options.agentConfigDir }),
+					Settings.layer(options.userConfigDir === undefined ? {} : { userConfigDir: options.userConfigDir }),
 				),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),

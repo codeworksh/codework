@@ -1,16 +1,16 @@
 /*
- * @file Host discovery and loading for `.codework/agent/settings.json`.
+ * @file Host discovery and loading for `.codework/config/settings.json`.
  *
  * Three files are read, lowest priority first, each merged onto the built-in defaults so
  * that "no file anywhere" needs no special case -- zero patches over the defaults is a
  * valid result:
  *
- * 1. `<Global.agent>/settings.json`          -- the user's own, `~/.codework/agent` by default
- * 2. `<startup cwd>/.codework/agent/settings.json` -- committed with the project
- * 3. `<--agent-config-dir>/settings.json`    -- explicit override, `~` expanded, relative to cwd
+ * 1. `<Global.config>/settings.json`          -- the user's own, `~/.codework/config` by default
+ * 2. `<startup cwd>/.codework/config/settings.json` -- committed with the project
+ * 3. `<--user-config-dir>/settings.json`      -- explicit override, `~` expanded, relative to cwd
  *
  * **All three are host paths.** They are resolved from the process's startup directory and
- * `Global.agent`, never from a session's `--cwd`, its working directory, or its sandbox
+ * `Global.config`, never from a session's `--cwd`, its working directory, or its sandbox
  * mount. A session running in a remote or in-memory sandbox reads the same host files as
  * every other session in the process; there is no per-project or per-sandbox settings file,
  * and no parent-directory search. The startup directory is captured once, so later `cd` or
@@ -30,17 +30,17 @@ import { merge, normalize } from "./merge.ts";
 import { defaults, Patch, type Info } from "./schema.ts";
 
 export interface Options {
-	readonly agentConfigDir?: string;
+	readonly userConfigDir?: string;
 	/** Host startup directory, independent of the session/sandbox cwd. */
 	readonly cwd?: string;
 }
 
-export function paths(agent: string, cwd: string, custom?: string): ReadonlyArray<string> {
+export function paths(config: string, cwd: string, custom?: string): ReadonlyArray<string> {
 	const expanded =
 		custom === "~" ? homedir() : custom?.startsWith("~/") ? hostPath.join(homedir(), custom.slice(2)) : custom;
 	return [
-		hostPath.join(agent, "settings.json"),
-		hostPath.join(cwd, ".codework", "agent", "settings.json"),
+		hostPath.join(config, "settings.json"),
+		hostPath.join(cwd, ".codework", "config", "settings.json"),
 		...(expanded === undefined ? [] : [hostPath.resolve(cwd, expanded, "settings.json")]),
 	];
 }
@@ -94,7 +94,7 @@ export const layer = (options: Options = {}) =>
 		Service,
 		Effect.gen(function* () {
 			const global = yield* Global.Service;
-			const files = paths(global.agent, hostPath.resolve(options.cwd ?? process.cwd()), options.agentConfigDir);
+			const files = paths(global.config, hostPath.resolve(options.cwd ?? process.cwd()), options.userConfigDir);
 			const load = Effect.fn("Settings.load")(function* () {
 				let settings = merge(defaults);
 				for (const path of files) {

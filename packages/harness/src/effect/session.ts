@@ -154,7 +154,6 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 	const sessions = yield* SessionStore.Service;
 	const runtime = yield* SessionRuntime.Service;
 	const sandboxes = yield* SandboxController.Controller;
-	// const events = yield* Event.Service;
 	const id = SessionSchema.ID.create();
 	const sandboxId = input.sandbox?.id ?? SandboxInstanceSchema.ID.local;
 	const directory = yield* sandboxes.resolveCwd(sandboxId, input.directory);
