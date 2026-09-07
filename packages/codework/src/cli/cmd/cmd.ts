@@ -83,12 +83,6 @@ export const Cmd = Spec.make("codework", {
 					description: "List models for a specific provider",
 				},
 				{ command: "codework models providers", description: "List all available provider IDs" },
-				{ command: "codework models generate", description: "Generate models.gen.json" },
-				{ command: "codework models generate .", description: "Generate models.gen.json in the current directory" },
-				{
-					command: "codework models generate /path/to/models.gen.json",
-					description: "Generate the catalog at an explicit path",
-				},
 			],
 			commands: [
 				Spec.make("providers", {
