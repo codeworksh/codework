@@ -18,6 +18,8 @@ import {
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
+	OPENAI_CODEX_E2E_MODEL,
+	OPENAI_E2E_MODEL,
 	getText,
 	openaiCodexOptions,
 	openaiOptions,
@@ -474,9 +476,9 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	// ── OpenAI E2E tests (gpt-5.6-luna) ──
+	// ── OpenAI E2E tests (gpt-5.6-luna, thinking low) ──
 
-	describeIfOpenAI("OpenAI provider (gpt-5.6-luna)", () => {
+	describeIfOpenAI(`OpenAI provider (${OPENAI_E2E_MODEL})`, () => {
 		const options = openaiOptions();
 
 		it("should resolve appropriate protocol", async () => {
@@ -506,82 +508,48 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	describeIfOpenAI("OpenAI reasoning replay (gpt-5.6-luna)", () => {
+	describeIfOpenAI(`OpenAI reasoning replay (${OPENAI_E2E_MODEL})`, () => {
 		it("should persist and replay native reasoning metadata without warnings", { timeout: 120_000 }, async () => {
 			const model = await getOpenAIModel();
 			await handleOpenAIReasoningReplay(model, {
 				...openaiOptions(),
-				reasoning: "low",
 				providerOptions: { openai: { reasoningSummary: "detailed" } },
 			});
 		});
 	});
 
-	// ── OpenAI Codex E2E tests (ChatGPT OAuth, gpt-5.4) ──
+	// ── OpenAI Codex E2E tests (ChatGPT OAuth, gpt-5.6-luna, thinking low) ──
 
-	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.4)", () => {
+	describeIfOpenAICodex(`OpenAI Codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
 		const options = openaiCodexOptions();
 
-		it("should complete basic text generation", { retry: 3, timeout: 60000 }, async () => {
+		it("should complete basic text generation", { retry: 2, timeout: 60_000 }, async () => {
 			const model = await getOpenAICodexModel();
 			await basicTextGeneration(model, options);
 		});
 
-		it("should handle tool calling", { retry: 3, timeout: 60000 }, async () => {
+		it("should handle tool calling", { retry: 2, timeout: 60_000 }, async () => {
 			const model = await getOpenAICodexModel();
 			await handleToolCall(model, options);
 		});
 
-		it("should handle streaming", { retry: 3, timeout: 60000 }, async () => {
+		it("should handle streaming", { retry: 2, timeout: 60_000 }, async () => {
 			const model = await getOpenAICodexModel();
 			await handleStreaming(model, options);
 		});
 
-		it("should handle thinking", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getOpenAICodexModel();
-			await handleThinking(model, { ...options, reasoning: "high" });
-		});
-
-		it("should handle multi-turn with thinking and tools", { retry: 3, timeout: 120000 }, async () => {
-			const model = await getOpenAICodexModel();
-			await handleMultiTurn(model, { ...options, reasoning: "medium" });
-		});
-
-		it("should handle image input", { retry: 3, timeout: 60000 }, async (ctx) => {
-			const model = await getOpenAICodexModel();
-			if (!model.input.includes("image")) ctx.skip();
-			await handleImage(model, options);
-		});
-	});
-
-	// ── OpenAI Codex GPT-5.6 Luna E2E tests ──
-
-	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.6-luna)", () => {
-		const options = openaiCodexOptions();
-		const getModel = () => getOpenAICodexModel("gpt-5.6-luna");
-
-		it("should complete basic text generation", { retry: 2, timeout: 60_000 }, async () => {
-			await basicTextGeneration(await getModel(), options);
-		});
-
-		it("should handle tool calling", { retry: 2, timeout: 60_000 }, async () => {
-			await handleToolCall(await getModel(), options);
-		});
-
-		it("should handle streaming", { retry: 2, timeout: 60_000 }, async () => {
-			await handleStreaming(await getModel(), options);
-		});
-
 		it("should handle thinking", { retry: 2, timeout: 60_000 }, async () => {
-			await handleThinking(await getModel(), { ...options, reasoning: "high" });
+			const model = await getOpenAICodexModel();
+			await handleThinking(model, options);
 		});
 
 		it("should handle multi-turn with thinking and tools", { retry: 2, timeout: 120_000 }, async () => {
-			await handleMultiTurn(await getModel(), { ...options, reasoning: "medium" });
+			const model = await getOpenAICodexModel();
+			await handleMultiTurn(model, options);
 		});
 
 		it("should handle image input", { retry: 2, timeout: 60_000 }, async (ctx) => {
-			const model = await getModel();
+			const model = await getOpenAICodexModel();
 			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});

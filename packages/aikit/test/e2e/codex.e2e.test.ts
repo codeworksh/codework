@@ -3,11 +3,16 @@ import { expect, it } from "vite-plus/test";
 import * as Message from "../../src/message/message.ts";
 import { createOpenAICodex } from "../../src/providers/openai-codex/index.ts";
 import { stream } from "../../src/stream.ts";
-import { describeIfOpenAICodex, getOpenAICodexModel, openaiCodexOptions } from "../utils/llm.ts";
+import {
+	describeIfOpenAICodex,
+	getOpenAICodexModel,
+	OPENAI_CODEX_E2E_MODEL,
+	openaiCodexOptions,
+} from "../utils/llm.ts";
 
-describeIfOpenAICodex("OpenAI Codex GPT-5.6", () => {
+describeIfOpenAICodex(`OpenAI Codex ${OPENAI_CODEX_E2E_MODEL}`, () => {
 	it("streams a Luna grammar tool through standard Aikit tool events", { retry: 2, timeout: 120_000 }, async () => {
-		const model = await getOpenAICodexModel("gpt-5.6-luna");
+		const model = await getOpenAICodexModel();
 		const constrainedTool = Message.defineTool({
 			name: "emit_token",
 			description: "Emit the lowercase token requested by the user",
@@ -29,7 +34,7 @@ describeIfOpenAICodex("OpenAI Codex GPT-5.6", () => {
 				],
 				tools: [constrainedTool],
 			},
-			openaiCodexOptions({ reasoning: "low", toolChoice: "required" }),
+			openaiCodexOptions({ toolChoice: "required" }),
 		);
 		const eventTypes: string[] = [];
 		for await (const event of responseStream) eventTypes.push(event.type);
@@ -49,7 +54,7 @@ describeIfOpenAICodex("OpenAI Codex GPT-5.6", () => {
 	it("enforces native JSON schema output over a real Codex round trip", { retry: 2, timeout: 120_000 }, async () => {
 		const apiKey = process.env.OPENAI_CODEX_API_KEY;
 		if (!apiKey) throw new Error("OPENAI_CODEX_API_KEY is required");
-		const result = await createOpenAICodex({ apiKey })("gpt-5.6-luna").doGenerate({
+		const result = await createOpenAICodex({ apiKey })(OPENAI_CODEX_E2E_MODEL).doGenerate({
 			prompt: [
 				{
 					role: "user",

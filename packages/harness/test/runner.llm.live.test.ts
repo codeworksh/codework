@@ -66,8 +66,8 @@ describe("runner LLM — OpenAI live", () => {
 					"Solve carefully: find the smallest positive integer divisible by every integer from 1 through 12. Reply with the number and one short verification sentence.",
 				),
 				provider: "openai",
-				model: "gpt-5.5",
-				thinkingLevel: "medium",
+				model: "gpt-5.6-luna",
+				thinkingLevel: "low",
 				settings: { reasoningSummary: "auto" },
 				publisher,
 			});
@@ -109,7 +109,7 @@ describe("runner LLM — OpenAI live", () => {
 				sessionId,
 				context: context("List 200 distinct first names, one per line."),
 				provider: "openai",
-				model: "gpt-5.5",
+				model: "gpt-5.6-luna",
 				publisher,
 			}).pipe(Effect.forkChild);
 			const interruptedPart = yield* Deferred.await(streaming);

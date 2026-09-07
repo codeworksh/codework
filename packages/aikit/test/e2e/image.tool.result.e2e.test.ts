@@ -17,6 +17,8 @@ import {
 	getOpenAICodexModel,
 	getOpenRouterModel,
 	getText,
+	OPENAI_CODEX_E2E_MODEL,
+	OPENAI_E2E_MODEL,
 	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
@@ -183,7 +185,7 @@ async function handleToolWithTextAndImageResult(model: SupportedModel, options: 
 }
 
 describe("Tool Results with Images", () => {
-	describeIfOpenAI("OpenAI provider (gpt-5.6-luna)", () => {
+	describeIfOpenAI(`OpenAI provider (${OPENAI_E2E_MODEL})`, () => {
 		const options = openaiOptions({ maxTokens: 256 });
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
@@ -211,16 +213,16 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.6-luna)", () => {
-		const options = openaiCodexOptions({ reasoning: "low" });
+	describeIfOpenAICodex(`OpenAI Codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
+		const options = openaiCodexOptions();
 
 		it("should handle tool result with only image", { retry: 2, timeout: 120_000 }, async () => {
-			const model = await getOpenAICodexModel("gpt-5.6-luna");
+			const model = await getOpenAICodexModel();
 			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 2, timeout: 120_000 }, async () => {
-			const model = await getOpenAICodexModel("gpt-5.6-luna");
+			const model = await getOpenAICodexModel();
 			await handleToolWithTextAndImageResult(model, options);
 		});
 	});

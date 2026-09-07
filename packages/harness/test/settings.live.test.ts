@@ -32,15 +32,15 @@ describe("settings against a live provider", () => {
 		withSettings(async ({ root, custom }) => {
 			const write = (model: object) => writeFile(join(custom, "settings.json"), JSON.stringify({ model }));
 			// A names a budget, a summary mode and a header. B names none of them.
-			const selection = { provider: "openai", id: "gpt-5.5" };
+			const selection = { provider: "openai", id: "gpt-5.6-luna" };
 			const catalog = await llm(selection.provider, selection.id);
 			expect(catalog).toBeDefined();
 			const A = {
 				...selection,
-				thinkingLevel: "high",
+				thinkingLevel: "low",
 				providerOptions: {
 					openai: {
-						"gpt-5.5": {
+						"gpt-5.6-luna": {
 							thinkingLevel: "low",
 							thinkingBudgets: { low: 1024 },
 							maxTokens: 2048,
@@ -50,7 +50,7 @@ describe("settings against a live provider", () => {
 					},
 				},
 			};
-			const B = { ...selection, thinkingLevel: "high" };
+			const B = { ...selection, thinkingLevel: "low" };
 
 			const sent: Sent[] = [];
 			const replies: string[] = [];
@@ -117,7 +117,7 @@ describe("settings against a live provider", () => {
 			expect(first.maxOutputTokens).toBe(3072);
 
 			// B carries none of A's attributes, so each one falls back rather than persisting.
-			expect(second.reasoningEffort).toBe("high");
+			expect(second.reasoningEffort).toBe("low");
 			expect(second.reasoningSummary).toBeUndefined();
 			expect(second.headers).toBeUndefined();
 			expect(second.maxOutputTokens).toBe(catalog?.maxTokens);

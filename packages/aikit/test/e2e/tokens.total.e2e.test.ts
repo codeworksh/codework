@@ -23,6 +23,8 @@ import {
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
+	OPENAI_CODEX_E2E_MODEL,
+	OPENAI_E2E_MODEL,
 	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
@@ -128,7 +130,7 @@ describe("totalTokens field", () => {
 	// --- OpenAI ---
 	describeIfOpenAI("OpenAI", () => {
 		it(
-			"gpt-5.6-luna - should return totalTokens equal to sum of components",
+			`${OPENAI_E2E_MODEL} - should return totalTokens equal to sum of components`,
 			{ retry: 3, timeout: 60000 },
 			async () => {
 				const model = await getOpenAIModel();
@@ -148,19 +150,23 @@ describe("totalTokens field", () => {
 
 	// --- OpenAI Codex ---
 	describeIfOpenAICodex("OpenAI Codex", () => {
-		it("gpt-5.4 - should return totalTokens equal to sum of components", { retry: 3, timeout: 120000 }, async () => {
-			const model = await getOpenAICodexModel();
-			const options = openaiCodexOptions({ sessionId: `aikit-e2e-${Date.now()}` });
+		it(
+			`${OPENAI_CODEX_E2E_MODEL} - should return totalTokens equal to sum of components`,
+			{ retry: 3, timeout: 120000 },
+			async () => {
+				const model = await getOpenAICodexModel();
+				const options = openaiCodexOptions({ sessionId: `aikit-e2e-${Date.now()}` });
 
-			console.log(`\nOpenAI Codex / ${model.id}:`);
-			const { first, second } = await testTotalTokensWithCache(model, options);
+				console.log(`\nOpenAI Codex / ${model.id}:`);
+				const { first, second } = await testTotalTokensWithCache(model, options);
 
-			logUsage("First request", first);
-			logUsage("Second request", second);
+				logUsage("First request", first);
+				logUsage("Second request", second);
 
-			assertTotalTokensEqualsComponents(first);
-			assertTotalTokensEqualsComponents(second);
-		});
+				assertTotalTokensEqualsComponents(first);
+				assertTotalTokensEqualsComponents(second);
+			},
+		);
 	});
 
 	// --- OpenRouter ---

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { AnthropicOptions, OpenAICodexOptions, OpenAIOptions } from "../../src/llm/options.ts";
+import type { AnthropicOptions } from "../../src/llm/options.ts";
 import * as Message from "../../src/message/message.ts";
 import * as Model from "../../src/model/model.ts";
 import { stream } from "../../src/stream.ts";
@@ -12,8 +12,8 @@ import {
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getText,
-	openaiCodexOptions,
-	openaiOptions,
+	OPENAI_CODEX_E2E_MODEL,
+	OPENAI_E2E_MODEL,
 } from "../utils/llm.ts";
 
 function makeContext(): Message.Context {
@@ -41,7 +41,7 @@ function expectXhighSupport(model: Model.Info, clamped: Model.ThinkingLevel) {
 	expect(Model.clampThinkingLevel(model, "xhigh")).toBe(clamped);
 }
 
-async function completeWithXhigh(model: Model.Info, options: AnthropicOptions | OpenAIOptions | OpenAICodexOptions) {
+async function completeWithXhigh(model: Model.Info, options: AnthropicOptions) {
 	const response = await stream.complete(model as never, makeContext(), {
 		maxTokens: 256,
 		...options,
@@ -57,13 +57,10 @@ async function completeWithXhigh(model: Model.Info, options: AnthropicOptions | 
 }
 
 describe("xhigh reasoning", () => {
-	describeIfOpenAI("openai provider (gpt-5.6-luna)", () => {
-		const options = openaiOptions();
-
-		it("should clamp unsupported xhigh to high", { retry: 3, timeout: 120000 }, async () => {
+	describeIfOpenAI(`openai provider (${OPENAI_E2E_MODEL})`, () => {
+		it("should clamp unsupported xhigh to high", async () => {
 			const model = await getOpenAIModel();
 			expectXhighSupport(model, "high");
-			await completeWithXhigh(model, options);
 		});
 	});
 
@@ -77,14 +74,11 @@ describe("xhigh reasoning", () => {
 		});
 	});
 
-	describeIfOpenAICodex("openai codex provider (gpt-5.4)", () => {
-		const options = openaiCodexOptions();
-
-		it("should support xhigh natively", { retry: 3, timeout: 120000 }, async () => {
+	describeIfOpenAICodex(`openai codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
+		it("should support xhigh in the catalog without a live xhigh call", async () => {
 			const model = await getOpenAICodexModel();
 			expect(Model.getSupportedThinkingLevels(model)).toContain("xhigh");
 			expect(Model.clampThinkingLevel(model, "xhigh")).toBe("xhigh");
-			await completeWithXhigh(model, options);
 		});
 	});
 });

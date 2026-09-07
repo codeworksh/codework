@@ -12,6 +12,8 @@ import {
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
+	OPENAI_CODEX_E2E_MODEL,
+	OPENAI_E2E_MODEL,
 	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
@@ -70,7 +72,7 @@ async function testTokensOnAbort(model: StreamableModel, options: StreamOptionsW
 describe("Token Statistics on Abort", () => {
 	describeIfOpenAI("OpenAI Provider", () => {
 		it(
-			"gpt-5.6-luna - should report zero token usage when aborted mid-stream",
+			`${OPENAI_E2E_MODEL} - should report zero token usage when aborted mid-stream`,
 			{ retry: 3, timeout: 30000 },
 			async () => {
 				const model = await getOpenAIModel();
@@ -102,9 +104,13 @@ describe("Token Statistics on Abort", () => {
 	});
 
 	describeIfOpenAICodex("OpenAI Codex Provider", () => {
-		it("gpt-5.4 - should report zero token usage when aborted mid-stream", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getOpenAICodexModel();
-			await testTokensOnAbort(model, openaiCodexOptions());
-		});
+		it(
+			`${OPENAI_CODEX_E2E_MODEL} - should report zero token usage when aborted mid-stream`,
+			{ retry: 3, timeout: 60000 },
+			async () => {
+				const model = await getOpenAICodexModel();
+				await testTokensOnAbort(model, openaiCodexOptions());
+			},
+		);
 	});
 });

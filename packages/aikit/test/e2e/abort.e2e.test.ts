@@ -13,6 +13,8 @@ import {
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
+	OPENAI_CODEX_E2E_MODEL,
+	OPENAI_E2E_MODEL,
 	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
@@ -173,7 +175,7 @@ describe("AI Provider Abort Tests", () => {
 		});
 	});
 
-	describeIfOpenAI("OpenAI provider (gpt-5.6-luna)", () => {
+	describeIfOpenAI(`OpenAI provider (${OPENAI_E2E_MODEL})`, () => {
 		const options = openaiOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {
@@ -192,7 +194,7 @@ describe("AI Provider Abort Tests", () => {
 		});
 	});
 
-	describeIfOpenAICodex("OpenAI Codex provider (gpt-5.4)", () => {
+	describeIfOpenAICodex(`OpenAI Codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
 		const options = openaiCodexOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 60000 }, async () => {

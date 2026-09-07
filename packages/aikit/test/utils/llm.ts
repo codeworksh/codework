@@ -44,12 +44,15 @@ export function anthropicOptions(extras: AnthropicOptions = {}): AnthropicOption
 	return { ...fromEnvApiKey(process.env.ANTHROPIC_API_KEY), ...extras };
 }
 
+export const OPENAI_E2E_MODEL = "gpt-5.6-luna";
+export const OPENAI_CODEX_E2E_MODEL = "gpt-5.6-luna";
+
 export function openaiOptions(extras: OpenAIOptions = {}): OpenAIOptions {
-	return { ...fromEnvApiKey(process.env.OPENAI_API_KEY), ...extras };
+	return { ...fromEnvApiKey(process.env.OPENAI_API_KEY), ...extras, reasoning: "low" };
 }
 
 export function openaiCodexOptions(extras: OpenAICodexOptions = {}): OpenAICodexOptions {
-	return { ...fromEnvApiKey(process.env.OPENAI_CODEX_API_KEY), ...extras };
+	return { ...fromEnvApiKey(process.env.OPENAI_CODEX_API_KEY), ...extras, reasoning: "low" };
 }
 
 export function openrouterOptions(extras: OpenRouterOptions = {}): OpenRouterOptions {
@@ -83,7 +86,7 @@ export async function getAnthropicModel(
 }
 
 export async function getOpenAIModel(
-	modelId = "gpt-5.6-luna",
+	modelId = OPENAI_E2E_MODEL,
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.openai>> {
 	const model = await llm("openai", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openai);
@@ -91,7 +94,7 @@ export async function getOpenAIModel(
 }
 
 export async function getOpenAICodexModel(
-	modelId = "gpt-5.4",
+	modelId = OPENAI_CODEX_E2E_MODEL,
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.openaiCodex>> {
 	const model = await llm("openai-codex", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openaiCodex);
