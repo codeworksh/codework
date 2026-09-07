@@ -49,8 +49,8 @@
 		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
 		"lint": "vp lint",
 		"test": "vp test",
-		"typecheck": "tsc --noEmit",
-		"cli": "node --conditions=development src/index.ts"
+		"start": "node --conditions=development src/index.ts",
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",

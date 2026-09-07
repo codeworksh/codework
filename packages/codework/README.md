@@ -10,6 +10,20 @@ pnpm add -g @codeworksh/cli
 pnpm dlx @codeworksh/cli <command>
 ```
 
+After install, every command is `codework <command>`.
+
+## Development
+
+From `packages/codework`, or `pnpm cli` at the repo root:
+
+```bash
+pnpm start -- --help
+pnpm start -- models list
+pnpm start -- run "Inspect the failing tests"
+```
+
+`start` runs `src/index.ts` with `--conditions=development` so workspace packages resolve to source. The published `codework` binary is the packed `dist` build.
+
 ---
 
 ## Commands
