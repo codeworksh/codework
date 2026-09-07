@@ -43,23 +43,23 @@ codework run --sandbox daytona --sandbox-provider-id <remote-id> "Continue in sa
 - `--model <id>` — Model ID.
 - `--thinking <level>` — Thinking/reasoning level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`).
 
+Global flags: `--user-config-dir`, `--home`, `--database`.
+
 ---
 
 ### `codework models`
 
-Inspect and discover models and providers from the model catalog.
+List catalog models as `provider/model`, one per line.
 
 ```bash
 # List all models across all providers
 codework models
 
 # List models for a specific provider
-codework models openai
-codework models anthropic
-codework models openrouter
+codework models --provider openai
 
 # List all supported provider IDs
-codework models provider
+codework models providers
 ```
 
 ---

@@ -71,15 +71,15 @@ export const Cmd = Spec.make("codework", {
 		Spec.make("models", {
 			description: "Model catalog management and inspection",
 			params: {
-				provider: Argument.string("provider").pipe(
-					Argument.withDescription("Filter models by provider ID"),
-					Argument.optional,
-				),
+				provider: Flag.string("provider").pipe(Flag.withDescription("Model catalog provider ID"), Flag.optional),
 			},
 			examples: [
 				{ command: "codework models", description: "List all models from all providers" },
-				{ command: "codework models openai", description: "List models for a specific provider" },
-				{ command: "codework models provider", description: "List all available provider IDs" },
+				{
+					command: "codework models --provider openai",
+					description: "List models for a specific provider",
+				},
+				{ command: "codework models providers", description: "List all available provider IDs" },
 				{ command: "codework models generate", description: "Generate models.gen.json" },
 				{ command: "codework models generate .", description: "Generate models.gen.json in current directory" },
 				{
@@ -88,7 +88,7 @@ export const Cmd = Spec.make("codework", {
 				},
 			],
 			commands: [
-				Spec.make("provider", {
+				Spec.make("providers", {
 					description: "List available model providers in the catalog",
 				}),
 				Spec.make("generate", {

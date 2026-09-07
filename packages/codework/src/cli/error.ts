@@ -1,6 +1,7 @@
 import { Runner } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
-import { Duration, Schema } from "effect";
+import { Duration, Effect, Schema } from "effect";
+import { writeError } from "./output.ts";
 
 /** Bad flag or argument combinations the parser cannot express on its own. */
 export class InvalidInputError extends Schema.TaggedError<InvalidInputError>()("CLI.InvalidInputError", {
@@ -18,6 +19,8 @@ export class ModelgenError extends Schema.TaggedError<ModelgenError>()("CLI.Mode
  */
 export type CommandError = InvalidInputError | ModelgenError;
 
+const isInvalidInputError = Schema.is(InvalidInputError);
+const isModelgenError = Schema.is(ModelgenError);
 const isProviderError = Schema.is(Runner.ProviderError);
 const isModelCatalogError = Schema.is(Runner.ModelCatalogError);
 const isModelNotFoundError = Schema.is(Runner.ModelNotFoundError);
@@ -106,6 +109,16 @@ const unknownMessage = (error: unknown): string => {
 
 /** Render typed SDK errors for humans without exposing Effect causes or provider payloads. */
 export const renderError = (error: unknown): string => {
+	if (isInvalidInputError(error)) {
+		return `error: ${error.message}\n`;
+	}
+	if (isModelgenError(error)) {
+		return (
+			["error[model_catalog]: failed to generate the model catalog", "hint: check the output path and retry"].join(
+				"\n",
+			) + "\n"
+		);
+	}
 	if (isSandboxProviderError(error)) {
 		return (
 			[
@@ -150,3 +163,12 @@ export const renderError = (error: unknown): string => {
 	}
 	return `error: ${unknownMessage(error)}\n`;
 };
+
+export const reportFailure = (error: unknown) =>
+	writeError(renderError(error)).pipe(
+		Effect.andThen(
+			Effect.sync(() => {
+				process.exitCode = 1;
+			}),
+		),
+	);

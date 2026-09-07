@@ -1,14 +1,14 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- this suite spawns the CLI as a child process. */
 /* @effect-diagnostics cryptoRandomUUID:off -- fixtures only need a distinct temp path. */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
-const models = fileURLToPath(new URL("../models.gen.json", import.meta.url));
+const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 
 const run = (...args: ReadonlyArray<string>) =>
 	spawnSync(process.execPath, ["--conditions=development", cli, ...args], { encoding: "utf8" });
@@ -156,13 +156,14 @@ describe("codework CLI", () => {
 		expect(result.stderr).toContain("traceback:\nSandboxProviderError\n");
 	});
 
-	it("lists available model providers with models provider", () => {
-		const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "models", "provider");
+	it("documents models --provider and subcommands", () => {
+		const result = run("models", "--help");
 
 		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("openai\n");
-		expect(result.stdout).toContain("anthropic\n");
-		expect(result.stdout).toContain("openrouter\n");
+		expect(result.stdout).toContain("--provider");
+		expect(result.stdout).toContain("Model catalog provider ID");
+		expect(result.stdout).toContain("providers");
+		expect(result.stdout).toContain("generate");
 	});
 
 	it("lists all models with models command", () => {
@@ -173,12 +174,42 @@ describe("codework CLI", () => {
 		expect(result.stdout).toContain("anthropic/claude-sonnet-4-5\n");
 	});
 
-	it("filters models by provider with models <provider>", () => {
-		const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "models", "openai");
+	it("filters models by provider with models --provider", () => {
+		const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "models", "--provider", "openai");
 
 		expect(result.status).toBe(0);
 		expect(result.stdout).toContain("openai/gpt-4o\n");
 		expect(result.stdout).not.toContain("anthropic/");
+	});
+
+	it("lists available model providers with models providers", () => {
+		const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "models", "providers");
+
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain("openai\n");
+		expect(result.stdout).toContain("anthropic\n");
+		expect(result.stdout).toContain("openrouter\n");
+	});
+
+	it("rejects an unknown models --provider", () => {
+		const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "models", "--provider", "not-a-provider");
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain('provider "not-a-provider" is not in the catalog');
+		expect(result.stderr).toContain("hint: run `codework models providers`");
+	});
+
+	it("reports a missing model catalog from models without an Effect stack", () => {
+		const result = runIsolated(
+			{ CODEWORK_MODELS_FILE: join(tmpdir(), `missing-models-${crypto.randomUUID()}.json`) },
+			"models",
+		);
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("error[model_catalog]: model catalog not found");
+		expect(result.stderr).toContain("hint: run `codework models generate`");
+		expect(result.stderr).not.toContain("Runner.TurnError");
+		expect(result.stderr).not.toContain("at Loop.runTurn");
 	});
 
 	it("generates model catalog to specified path with models generate", () => {
@@ -188,7 +219,9 @@ describe("codework CLI", () => {
 			const result = runIsolated({}, "models", "generate", targetFile);
 
 			expect(result.status).toBe(0);
-			expect(result.stdout).toContain(`Generated model catalog at ${targetFile}`);
+			expect(result.stdout).toBe(`${targetFile}\n`);
+			expect(result.stderr).toContain(`Generated model catalog at ${targetFile}`);
+			expect(existsSync(targetFile)).toBe(true);
 		} finally {
 			rmSync(targetDir, { recursive: true, force: true });
 		}
@@ -196,11 +229,14 @@ describe("codework CLI", () => {
 
 	it("resolves directory target with models generate <dir>", () => {
 		const targetDir = mkdtempSync(join(tmpdir(), "codework-gen-"));
+		const targetFile = join(targetDir, "models.gen.json");
 		try {
 			const result = runIsolated({}, "models", "generate", targetDir);
 
 			expect(result.status).toBe(0);
-			expect(result.stdout).toContain(`Generated model catalog at ${join(targetDir, "models.gen.json")}`);
+			expect(result.stdout).toBe(`${targetFile}\n`);
+			expect(result.stderr).toContain(`Generated model catalog at ${targetFile}`);
+			expect(existsSync(targetFile)).toBe(true);
 		} finally {
 			rmSync(targetDir, { recursive: true, force: true });
 		}

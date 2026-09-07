@@ -13,7 +13,7 @@ const Handlers = Runtime.handlers(Cmd, {
 	run: () => import("./cli/cmd/handlers/run.ts"),
 	models: {
 		$: () => import("./cli/cmd/handlers/models/list.ts"),
-		provider: () => import("./cli/cmd/handlers/models/provider.ts"),
+		providers: () => import("./cli/cmd/handlers/models/providers.ts"),
 		generate: () => import("./cli/cmd/handlers/models/generate.ts"),
 	},
 });
