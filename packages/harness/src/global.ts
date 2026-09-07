@@ -3,10 +3,10 @@ import * as os from "node:os";
 import { fileSystem } from "./host.ts";
 import { posix } from "./util/posix.ts";
 
-export const configDir = ".codework";
+export const appConfigDir = ".codework";
 export const app = "codework";
 
-const defaultHome = posix.join(os.homedir(), configDir);
+const defaultHome = posix.join(os.homedir(), appConfigDir);
 
 function expandHome(value: string) {
 	if (value === "~") return os.homedir();

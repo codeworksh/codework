@@ -40,7 +40,7 @@ export function paths(config: string, cwd: string, custom?: string): ReadonlyArr
 		custom === "~" ? homedir() : custom?.startsWith("~/") ? hostPath.join(homedir(), custom.slice(2)) : custom;
 	return [
 		hostPath.join(config, "settings.json"),
-		hostPath.join(cwd, ".codework", "config", "settings.json"),
+		hostPath.join(cwd, Global.appConfigDir, "config", "settings.json"),
 		...(expanded === undefined ? [] : [hostPath.resolve(cwd, expanded, "settings.json")]),
 	];
 }
