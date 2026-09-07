@@ -1,6 +1,6 @@
 # @codeworksh/cli
 
-Command-line interface for the CodeWork coding agent.
+Run coding-agent sessions in your repo or a sandbox.
 
 ## Installation
 
@@ -18,7 +18,7 @@ From `packages/codework`, or `pnpm cli` at the repo root:
 
 ```bash
 pnpm start -- --help
-pnpm start -- models list
+pnpm start -- models
 pnpm start -- run "Inspect the failing tests"
 ```
 
@@ -49,13 +49,13 @@ codework run --sandbox daytona --sandbox-provider-id <remote-id> "Continue in sa
 
 #### Flags:
 
-- `-s, --session <id>` — Continue an existing session ID.
+- `-s, --session <id>` — Continue an existing session.
 - `-C, --cwd <path>` — Working directory for a new session.
 - `--sandbox <driver>` — Sandbox driver (`local`, `daytona`, `vercel`, `memory`, `sqldb`). Default: `local`.
 - `--sandbox-provider-id <id>` — Provider ID of an existing remote sandbox.
 - `--provider <id>` — Model catalog provider ID.
 - `--model <id>` — Model ID.
-- `--thinking <level>` — Thinking/reasoning level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`).
+- `--thinking <level>` — Reasoning effort the model uses before answering (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`).
 
 Global flags: `--user-config-dir`, `--home`, `--database`.
 

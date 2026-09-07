@@ -1,7 +1,7 @@
 {
 	"name": "@codeworksh/cli",
 	"version": "0.0.1",
-	"description": "CodeWork command line interface.",
+	"description": "CLI for running CodeWork coding-agent sessions.",
 	"keywords": [
 		"agent",
 		"ai",

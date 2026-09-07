@@ -9,23 +9,26 @@ import { Spec } from "../../framework/spec.ts";
 export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 export const Cmd = Spec.make("codework", {
-	description: "CodeWork command line interface",
+	description: "CodeWork Command Line Interface",
 	shared: {
 		userConfigDir: Flag.string("user-config-dir").pipe(
-			Flag.withDescription("Directory containing config overrides"),
+			Flag.withDescription("Directory containing user config overrides (e.g. settings.json)"),
 			Flag.optional,
 		),
-		home: Flag.string("home").pipe(Flag.withDescription("Harness data directory"), Flag.optional),
-		database: Flag.string("database").pipe(Flag.withDescription("SQLite path or :memory:"), Flag.optional),
+		home: Flag.string("home").pipe(
+			Flag.withDescription("CodeWork data directory (default: ~/.codework)"),
+			Flag.optional,
+		),
+		database: Flag.string("database").pipe(Flag.withDescription("SQLite database path or :memory:"), Flag.optional),
 	},
 	commands: [
 		Spec.make("run", {
-			description: "Run codework with a prompt",
+			description: "Start or continue an agent session",
 			params: {
 				prompt: Argument.string("prompt").pipe(Argument.withDescription("Prompt for the agent")),
 				session: Flag.string("session").pipe(
 					Flag.withAlias("s"),
-					Flag.withDescription("Continue an existing session ID"),
+					Flag.withDescription("Continue an existing session"),
 					Flag.optional,
 				),
 				cwd: Flag.string("cwd").pipe(
@@ -34,17 +37,17 @@ export const Cmd = Spec.make("codework", {
 					Flag.optional,
 				),
 				sandbox: Flag.string("sandbox").pipe(
-					Flag.withDescription("Registered sandbox driver for a new session (default: local)"),
+					Flag.withDescription("Sandbox driver for a new session (default: local)"),
 					Flag.optional,
 				),
 				sandboxProviderId: Flag.string("sandbox-provider-id").pipe(
-					Flag.withDescription("Provider ID of an existing sandbox"),
+					Flag.withDescription("Provider ID of an existing remote sandbox"),
 					Flag.optional,
 				),
 				provider: Flag.string("provider").pipe(Flag.withDescription("Model catalog provider ID"), Flag.optional),
 				model: Flag.string("model").pipe(Flag.withDescription("Model ID"), Flag.optional),
 				thinking: Flag.choice("thinking", thinkingLevels).pipe(
-					Flag.withDescription("Thinking level"),
+					Flag.withDescription("Reasoning effort the model uses before answering"),
 					Flag.optional,
 				),
 			},
@@ -69,7 +72,7 @@ export const Cmd = Spec.make("codework", {
 			],
 		}),
 		Spec.make("models", {
-			description: "Model catalog management and inspection",
+			description: "List or generate the model catalog",
 			params: {
 				provider: Flag.string("provider").pipe(Flag.withDescription("Model catalog provider ID"), Flag.optional),
 			},
@@ -81,10 +84,10 @@ export const Cmd = Spec.make("codework", {
 				},
 				{ command: "codework models providers", description: "List all available provider IDs" },
 				{ command: "codework models generate", description: "Generate models.gen.json" },
-				{ command: "codework models generate .", description: "Generate models.gen.json in current directory" },
+				{ command: "codework models generate .", description: "Generate models.gen.json in the current directory" },
 				{
 					command: "codework models generate /path/to/models.gen.json",
-					description: "Generate catalog at explicit path",
+					description: "Generate the catalog at an explicit path",
 				},
 			],
 			commands: [
@@ -105,11 +108,11 @@ export const Cmd = Spec.make("codework", {
 						{ command: "codework models generate", description: "Generate models.gen.json" },
 						{
 							command: "codework models generate .",
-							description: "Generate models.gen.json in current directory",
+							description: "Generate models.gen.json in the current directory",
 						},
 						{
 							command: "codework models generate /path/to/models.gen.json",
-							description: "Generate catalog at explicit path",
+							description: "Generate the catalog at an explicit path",
 						},
 					],
 				}),
