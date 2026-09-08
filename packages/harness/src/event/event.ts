@@ -70,6 +70,31 @@ export type ReadAggregateResult<A> = {
 	readonly hasMore: boolean;
 };
 
+/**
+ * Emitted once per `log` stream, at the sequence its catch-up read was pinned
+ * to. It is what separates replayed history from what happens next, so a
+ * consumer that must not act twice on the same fact acts only after it. No
+ * `seq` means the aggregate held nothing at that point.
+ */
+export type Synced = {
+	readonly type: "log.synced";
+	readonly aggregateId: string;
+	readonly seq?: number;
+};
+
+/** Either a stored event or the watermark marker that ends `log`'s catch-up. */
+export type LogItem = Payload | Synced;
+
+export const isSynced = (item: LogItem): item is Synced => item.type === "log.synced";
+
+export type LogInput = {
+	readonly aggregateId: string;
+	/** Exclusive lower bound. Omitted reads from the first stored sequence (0). */
+	readonly after?: number;
+	/** Keep the stream open past the marker, appending events as they commit. */
+	readonly follow?: boolean;
+};
+
 export interface PublishOptions {
 	/** Caller-supplied event ID. Publishing the same ID twice is a defect, not an upsert. */
 	readonly id?: ID;
@@ -86,6 +111,19 @@ export interface PublishOptions {
 export interface Interface {
 	readonly latestSequence: (aggregateId: string) => Effect.Effect<number>;
 	readonly readAggregate: <A>(input: ReadAggregateInput<A>) => Effect.Effect<ReadAggregateResult<A>>;
+	/**
+	 * Durable, ordered read of one aggregate: every stored event after `after`,
+	 * then a {@link Synced} marker at the sequence the read was pinned to. With
+	 * `follow`, the stream stays open and each commit on that aggregate wakes a
+	 * reread of the table, so every item a consumer sees came from storage --
+	 * there is no live payload to reconcile against the log, and a commit landing
+	 * mid-catch-up is either inside the pinned window or behind a later wake.
+	 *
+	 * Commits only. Live definitions are never stored and so never appear here:
+	 * reconnecting with `after` replays facts, not stream deltas. Use
+	 * {@link subscribe} or {@link all} for those.
+	 */
+	readonly log: (input: LogInput) => Stream.Stream<LogItem>;
 	/**
 	 * Appends one event. Durable definitions are assigned the aggregate's next
 	 * sequence, projected, and stored in a single transaction; the returned
@@ -148,6 +186,10 @@ export const layer = Layer.effect(
 		const pubsub = {
 			all: yield* PubSub.unbounded<Payload>(),
 			typed: new Map<string, PubSub.PubSub<Payload>>(),
+			// Per-aggregate doorbells for `log`. A wake carries no payload -- the
+			// follower rereads the table -- so sliding(1) is enough: a coalesced
+			// wake loses nothing, and a slow follower never holds up a publish.
+			durable: new Map<string, Set<PubSub.PubSub<void>>>(),
 		};
 		const projectors = new Map<string, Subscriber[]>();
 		const listeners = new Array<Subscriber>();
@@ -158,6 +200,11 @@ export const layer = Layer.effect(
 			Effect.gen(function* () {
 				yield* PubSub.shutdown(pubsub.all);
 				yield* Effect.forEach(pubsub.typed.values(), PubSub.shutdown, { discard: true });
+				yield* Effect.forEach(
+					Array.from(pubsub.durable.values(), (wakes) => Array.from(wakes)).flat(),
+					PubSub.shutdown,
+					{ discard: true },
+				);
 			}),
 		);
 
@@ -169,8 +216,18 @@ export const layer = Layer.effect(
 				),
 			);
 
+		// Snapshotted: a follower's scope can close on another fiber while this
+		// iterates, and publishing into a shut-down wake it already left is a no-op.
+		const wakeFollowers = (aggregateId: string) =>
+			Effect.forEach(Array.from(pubsub.durable.get(aggregateId) ?? []), (wake) => PubSub.publish(wake, undefined), {
+				discard: true,
+			});
+
 		function notify(event: Payload, isolateListeners: boolean) {
 			return Effect.gen(function* () {
+				// First: the row is already committed, and a slow listener must not
+				// hold up the followers reading behind it.
+				if (event.durable) yield* wakeFollowers(event.durable.aggregateId);
 				yield* Effect.forEach(
 					listeners,
 					(listener) => (isolateListeners ? observe(event, listener) : listener(event)),
@@ -204,36 +261,27 @@ export const layer = Layer.effect(
 			Request: Schema.Struct({
 				aggregateId: Schema.String,
 				after: Schema.Int,
+				through: Schema.Int,
 				types: Schema.Array(Schema.String),
 				limit: Schema.Int,
 			}),
 			Result: EventRow,
-			execute: ({ aggregateId, after, types, limit }) =>
+			execute: ({ aggregateId, after, through, types, limit }) =>
 				sql`
           SELECT * FROM event
-          WHERE aggregate_id = ${aggregateId} AND seq > ${after} AND ${sql.in("type", types)}
+          WHERE aggregate_id = ${aggregateId} AND seq > ${after} AND seq <= ${through} AND ${sql.in("type", types)}
           ORDER BY seq ASC
           LIMIT ${limit}
         `,
 		});
 
-		// Reads one page of an aggregate's durable history. One row past the page is
-		// fetched so `hasMore` needs no second query; the extra row is dropped.
-		const readAggregate = Effect.fn("Event.readAggregate")(function* <A>(input: ReadAggregateInput<A>) {
-			const after = input.after ?? -1;
-			const rows = yield* selectAggregateEvents({
-				aggregateId: input.aggregateId,
-				after,
-				types: Array.from(input.manifest.definitions.keys()),
-				limit: input.limit + 1,
-			});
-			const page = rows.slice(0, input.limit);
-			const decode = Schema.decodeUnknownEffect(input.manifest.schema);
-			// The `type` column stores the versioned type; the envelope carries the
-			// bare type, so it is mapped back through the definition. A row that no
-			// longer decodes is a broken store, not a recoverable read.
-			const events = yield* Effect.forEach(page, (row) => {
-				const definition = input.manifest.definitions.get(row.type);
+		// The `type` column stores the versioned type; the envelope carries the
+		// bare type, so it is mapped back through the definition. A row that no
+		// longer decodes is a broken store, not a recoverable read.
+		const decodeRows = <A>(rows: ReadonlyArray<EventRow>, manifest: Manifest<A>) => {
+			const decode = Schema.decodeUnknownEffect(manifest.schema);
+			return Effect.forEach(rows, (row) => {
+				const definition = manifest.definitions.get(row.type);
 				return decode({
 					id: row.id,
 					type: definition?.type ?? row.type,
@@ -245,8 +293,65 @@ export const layer = Layer.effect(
 					data: row.data,
 				});
 			});
+		};
+
+		// An unbounded read: `seq` is a signed 32-bit column, so this is above any
+		// sequence the store can hold.
+		const UNBOUNDED = Number.MAX_SAFE_INTEGER;
+		// Rows per page while walking an aggregate. Large enough that a long session
+		// replays in a handful of queries, small enough to stay off the heap.
+		const PAGE_SIZE = 100;
+
+		// Reads one page of an aggregate's durable history. One row past the page is
+		// fetched so `hasMore` needs no second query; the extra row is dropped.
+		const readAggregate = Effect.fn("Event.readAggregate")(function* <A>(input: ReadAggregateInput<A>) {
+			const rows = yield* selectAggregateEvents({
+				aggregateId: input.aggregateId,
+				after: input.after ?? -1,
+				through: UNBOUNDED,
+				types: Array.from(input.manifest.definitions.keys()),
+				limit: input.limit + 1,
+			});
+			const page = rows.slice(0, input.limit);
+			const events = yield* decodeRows(page, input.manifest);
 			return { events, hasMore: rows.length > input.limit };
 		}, Effect.orDie);
+
+		// The same read against the process-wide manifest, bounded above. Both
+		// `log` and `stream` walk an aggregate through this.
+		const readPage = Effect.fn("Event.readPage")(function* (input: {
+			readonly aggregateId: string;
+			readonly after: number;
+			readonly through: number;
+		}) {
+			const rows = yield* selectAggregateEvents({
+				aggregateId: input.aggregateId,
+				after: input.after,
+				through: input.through,
+				types: Array.from(EventManifest.Manifest.definitions.keys()),
+				limit: PAGE_SIZE + 1,
+			});
+			const page = rows.slice(0, PAGE_SIZE);
+			const events = (yield* decodeRows(page, EventManifest.Manifest)) as ReadonlyArray<Payload>;
+			return { events, hasMore: rows.length > PAGE_SIZE };
+		}, Effect.orDie);
+
+		/** One catch-up pass over (`from`, `through`], paged, oldest first. */
+		const readAggregateStream = (input: {
+			readonly aggregateId: string;
+			readonly from: number;
+			readonly through: number;
+		}): Stream.Stream<Payload> =>
+			Stream.paginate(
+				input.from,
+				Effect.fn("Event.readAggregateStream.page")(function* (after: number) {
+					const page = yield* readPage({ aggregateId: input.aggregateId, after, through: input.through });
+					const last = page.events.at(-1);
+					const next =
+						page.hasMore && last?.durable !== undefined ? Option.some(last.durable.seq) : Option.none<number>();
+					return [page.events, next] as const;
+				}),
+			);
 
 		// Allocates an aggregate's next sequence in one statement: the row is
 		// created at 0 or bumped by one, and the new value comes back. Deliberately
@@ -396,6 +501,85 @@ export const layer = Layer.effect(
 
 		const streamAll = (): Stream.Stream<Payload> => Stream.fromPubSub(pubsub.all);
 
+		/**
+		 * Registers a doorbell for one aggregate, removed with the caller's scope.
+		 * Subscribing before publishing it means the follower cannot miss a wake it
+		 * is registered for.
+		 */
+		const subscribeWake = (aggregateId: string) =>
+			Effect.gen(function* () {
+				const wake = yield* PubSub.sliding<void>(1);
+				const subscription = yield* PubSub.subscribe(wake);
+				yield* Effect.acquireRelease(
+					Effect.sync(() => {
+						const wakes = pubsub.durable.get(aggregateId) ?? new Set<PubSub.PubSub<void>>();
+						wakes.add(wake);
+						pubsub.durable.set(aggregateId, wakes);
+					}),
+					() =>
+						Effect.sync(() => {
+							const wakes = pubsub.durable.get(aggregateId);
+							wakes?.delete(wake);
+							if (wakes?.size === 0) pubsub.durable.delete(aggregateId);
+						}).pipe(Effect.andThen(PubSub.shutdown(wake))),
+				);
+				return subscription;
+			});
+
+		const log = (input: LogInput): Stream.Stream<LogItem> =>
+			Stream.unwrap(
+				Effect.gen(function* () {
+					// The cursor outlives a single catch-up: each wake resumes from the
+					// last sequence actually emitted, not from where the pass began.
+					const cursor = yield* Ref.make(input.after ?? -1);
+					const catchUp = (through: number): Stream.Stream<Payload> =>
+						Stream.unwrap(
+							Ref.get(cursor).pipe(
+								Effect.map((from) => readAggregateStream({ aggregateId: input.aggregateId, from, through })),
+							),
+						).pipe(
+							Stream.tap((event) =>
+								event.durable === undefined ? Effect.void : Ref.set(cursor, event.durable.seq),
+							),
+							// A finished pass read the whole window, so the cursor belongs at
+							// its bound rather than at the last row that happened to be in it.
+							// Without this, a head standing above the rows -- `advance` on a
+							// fork, or types this build cannot decode -- would leave the live
+							// filter permanently open and reread nothing on every wake. Only
+							// on completion: a pass cut short mid-window must resume from the
+							// last event actually emitted.
+							Stream.onEnd(Ref.update(cursor, (seq) => Math.max(seq, through))),
+						);
+					// Registering the doorbell before reading the head is what closes the
+					// gap: a commit landing during catch-up is either inside the window
+					// pinned below or waiting as a wake once the marker is out.
+					const wakes = input.follow ? yield* subscribeWake(input.aggregateId) : undefined;
+					// Reading the head, and every reread below, can never land inside a
+					// publisher's open transaction: the client holds one connection behind
+					// a Semaphore(1), and `withTransaction` keeps that permit until it
+					// commits. So a follower never sees a bumped sequence whose row is not
+					// there yet, and never emits an event a failing projector rolls back.
+					// A connection pool would take that guarantee away and need its own
+					// per-aggregate lock -- what OpenCode's KeyedMutex is doing.
+					const head = yield* latestSequence(input.aggregateId);
+					const marker: Synced = {
+						type: "log.synced",
+						aggregateId: input.aggregateId,
+						...(head >= 0 ? { seq: head } : {}),
+					};
+					const replay = catchUp(head).pipe(Stream.concat(Stream.make(marker)));
+					if (!wakes) return replay;
+					const live = Stream.fromSubscription(wakes).pipe(
+						Stream.mapEffect(() => latestSequence(input.aggregateId)),
+						// A wake coalesced with one already drained, or one for rows this
+						// build cannot decode, leaves the head where the cursor is.
+						Stream.filterEffect((target) => Ref.get(cursor).pipe(Effect.map((seq) => target > seq))),
+						Stream.flatMap((target) => catchUp(target)),
+					);
+					return replay.pipe(Stream.concat(live));
+				}),
+			);
+
 		const stream = (input: { readonly sessionId: string; readonly after?: number }): Stream.Stream<Payload> => {
 			const forSession = (event: Payload) =>
 				(event.data as { readonly sessionId?: unknown }).sessionId === input.sessionId;
@@ -408,24 +592,11 @@ export const layer = Layer.effect(
 					// queue buffers durable and live-only events across the replay boundary.
 					const subscription = yield* PubSub.subscribe(pubsub.all);
 					const watermark = yield* Ref.make(after);
-					const history = Stream.paginate(
-						after,
-						Effect.fn("Event.stream.history")(function* (after) {
-							const page = yield* readAggregate({
-								aggregateId: input.sessionId,
-								after,
-								limit: 100,
-								manifest: EventManifest.Manifest,
-							});
-							const last = page.events.at(-1);
-							const next =
-								page.hasMore && last?.durable !== undefined
-									? Option.some(last.durable.seq)
-									: Option.none<number>();
-							return [page.events, next] as const;
-						}),
-					).pipe(
-						Stream.map((event) => event as Payload),
+					const history = readAggregateStream({
+						aggregateId: input.sessionId,
+						from: after,
+						through: UNBOUNDED,
+					}).pipe(
 						Stream.tap((event) => {
 							const seq = event.durable?.seq;
 							return seq === undefined
@@ -459,6 +630,7 @@ export const layer = Layer.effect(
 		return Service.of({
 			latestSequence,
 			readAggregate,
+			log,
 			publish,
 			subscribe,
 			all: streamAll,
