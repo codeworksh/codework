@@ -94,6 +94,6 @@ export const defaults: Info = {
 		id: "gpt-5.6-luna",
 		thinkingLevel: "high",
 		toolExecution: "sequential",
-		options: { timeoutMs: 90_000, maxRetries: 2 },
+		options: { timeoutMs: 3_600_000, maxRetries: 3 },
 	},
 };
