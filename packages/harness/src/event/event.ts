@@ -297,7 +297,7 @@ export const layer = Layer.effect(
 		const UNBOUNDED = Number.MAX_SAFE_INTEGER;
 		// Rows per page while walking an aggregate. Large enough that a long session
 		// replays in a handful of queries, small enough to stay off the heap.
-		const PAGE_SIZE = 100;
+		const PAGE_SIZE = 128;
 
 		// Reads one page of an aggregate's durable history. One row past the page is
 		// fetched so `hasMore` needs no second query; the extra row is dropped.
