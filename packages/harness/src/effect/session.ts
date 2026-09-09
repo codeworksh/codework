@@ -78,7 +78,8 @@ export interface Handle {
 	readonly wait: () => ReturnType<Control.Interface["wait"]>;
 	readonly resume: () => ReturnType<Control.Interface["resume"]>;
 	readonly interrupt: () => ReturnType<Control.Interface["interrupt"]>;
-	readonly events: (options?: { readonly after?: number }) => Stream.Stream<EventSchema.Payload>;
+	/** Live session notifications. Use Event.log for durable replay. */
+	readonly events: () => Stream.Stream<EventSchema.Payload, Event.SubscriptionOverflowError>;
 	readonly path: () => Effect.Effect<ReadonlyArray<SessionStore.HydratedEntry>>;
 }
 
@@ -135,7 +136,10 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 		wait: () => control.wait(id),
 		resume: () => control.resume(id),
 		interrupt: () => control.interrupt(id),
-		events: (options = {}) => events.stream({ sessionId: id, ...options }),
+		events: () =>
+			events
+				.subscribe()
+				.pipe(Stream.filter((event) => (event.data as { readonly sessionId?: unknown }).sessionId === id)),
 		path: () => sessions.path(id),
 	} satisfies Handle;
 });

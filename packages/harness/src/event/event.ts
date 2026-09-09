@@ -1,4 +1,4 @@
-import { Cause, Context, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
+import { Cause, Context, Effect, Layer, Option, PubSub, Queue, Ref, Stream } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { EventRow } from "../db/schema.sql.ts";
 // Uncomment with `decodeSerializedEvent` below — the manifest is what it looks
@@ -70,6 +70,30 @@ export type ReadAggregateResult<A> = {
 	readonly hasMore: boolean;
 };
 
+/**
+ * Marks completion of the initial journal read through the captured sequence.
+ * Emitted once per `log` stream; omitted `seq` means the head was -1.
+ * This is a replay boundary, not an acknowledgment of consumer processing.
+ */
+export type Synced = {
+	readonly type: "log.synced";
+	readonly aggregateId: string;
+	readonly seq?: number;
+};
+
+/** Either a stored event or the watermark marker that ends `log`'s catch-up. */
+export type LogItem = Payload | Synced;
+
+export const isSynced = (item: LogItem): item is Synced => item.type === "log.synced";
+
+export type LogInput = {
+	readonly aggregateId: string;
+	/** Exclusive lower bound. Omitted reads from the first stored sequence (0). */
+	readonly after?: number;
+	/** Keep the stream open past the marker, appending events as they commit. */
+	readonly follow?: boolean;
+};
+
 export interface PublishOptions {
 	/** Caller-supplied event ID. Publishing the same ID twice is a defect, not an upsert. */
 	readonly id?: ID;
@@ -83,13 +107,48 @@ export interface PublishOptions {
 	readonly metadata?: Record<string, string>;
 }
 
+export class SubscriptionOverflowError extends Schema.TaggedError<SubscriptionOverflowError>()(
+	"SubscriptionOverflowError",
+	{ capacity: Schema.Int },
+) {}
+
+export interface SubscribeOptions {
+	/** Maximum queued events per consumer. Defaults to 4096; must be a positive integer. */
+	readonly capacity?: number;
+}
+
+export interface Subscribe {
+	(options?: SubscribeOptions): Stream.Stream<Payload, SubscriptionOverflowError>;
+	<D extends Definition>(
+		definition: D,
+		options?: SubscribeOptions,
+	): Stream.Stream<Payload<D>, SubscriptionOverflowError>;
+}
+
 export interface Interface {
+	/** Current sequence head, or -1 if absent. A version position, not a row count. */
 	readonly latestSequence: (aggregateId: string) => Effect.Effect<number>;
+	/**
+	 * Reads one page of stored events in sequence order, filtered and decoded by
+	 * the supplied manifest. `after` is exclusive; `hasMore` indicates another
+	 * matching page. Does not follow new commits or emit a sync marker.
+	 */
 	readonly readAggregate: <A>(input: ReadAggregateInput<A>) => Effect.Effect<ReadAggregateResult<A>>;
 	/**
-	 * Appends one event. Durable definitions are assigned the aggregate's next
-	 * sequence, projected, and stored in a single transaction; the returned
-	 * payload carries that sequence in `durable`.
+	 * Reads one aggregate's stored events after the exclusive `after` cursor in
+	 * sequence order, using the application manifest. Unknown types are skipped.
+	 * Emits a {@link Synced} marker after reading through the captured head.
+	 *
+	 * Completes after the marker unless `follow` is true. Following rereads storage
+	 * when this service instance commits an event; writes through other instances
+	 * do not wake it. Ephemeral events are never included.
+	 */
+	readonly log: (input: LogInput) => Stream.Stream<LogItem>;
+	/**
+	 * Publishes one event and returns its payload. Durable events receive an
+	 * aggregate sequence and commit with their projector changes in one transaction,
+	 * then wake log followers before notifying live consumers. Ephemeral events
+	 * only notify live consumers and have no stored row or durable sequence.
 	 */
 	readonly publish: <D extends Definition>(
 		definition: D,
@@ -97,43 +156,32 @@ export interface Interface {
 		options?: PublishOptions,
 	) => Effect.Effect<Payload<D>>;
 	/**
-	 * Registers a projector for one event type. Projectors run inside the commit
-	 * transaction, so a failing projector rolls the event back with it.
+	 * Registers a callback for future durable commits of one type. Runs inside
+	 * the transaction, so failure rolls back the event and transactional changes.
+	 * Does not replay history. Registering an ephemeral type never invokes it.
 	 */
 	readonly project: <D extends Definition>(definition: D, projector: Subscriber<D>) => Effect.Effect<void>;
 	/**
-	 * Live stream of one event type.
-	 *
-	 * This is the only way to read a non-durable definition -- stream deltas and
-	 * block boundaries. They never reach a projector: projectors run inside the
-	 * commit, and a live event has no commit, so registering one for a live type
-	 * compiles and silently never fires.
+	 * Future durable and ephemeral events from this instance, optionally filtered
+	 * by definition. Each consumer has a bounded queue; overflow fails only that
+	 * subscription without blocking publishers. Subscribes when consumed, with no
+	 * replay. Concurrent notification order may differ from durable sequence order;
+	 * use `log` for ordered recovery. Missed ephemeral events cannot be recovered.
 	 */
-	readonly subscribe: <D extends Definition>(definition: D) => Stream.Stream<Payload<D>>;
-	/** Every event, durable and live alike, in publish order. */
-	readonly all: () => Stream.Stream<Payload>;
-	/** Durable catch-up followed by the process-local event tail for one session.
-	 * TODO(sanchitrk):
-	 * revisite once's we implement durable streams, a common channel for IO output,
-	 * chances are we wont't need this anymore?
-	 */
-	readonly stream: (input: { readonly sessionId: string; readonly after?: number }) => Stream.Stream<Payload>;
+	readonly subscribe: Subscribe;
 	/**
-	 * Callback form of {@link all}, returning its own removal. A listener runs
-	 * after the commit for a durable event, and its failures are logged rather
-	 * than surfaced -- the event already happened, so a watcher cannot undo it.
+	 * Registers a live callback across types and aggregates; returns an effect to
+	 * remove it. Publishers await callbacks before notifying stream subscribers.
+	 * Keep callbacks short, such as nonblocking queue insertion; perform network IO
+	 * and slow processing in a separate consumer.
+	 * Durable callbacks run after commit: non-interruption failures are logged,
+	 * while interruption propagates. Ephemeral callback failures propagate.
 	 */
 	readonly listen: (listener: Subscriber) => Effect.Effect<Unsubscribe>;
 	/**
-	 * Moves an aggregate's head to at least `seq`, so the next published event
-	 * lands above it. Two callers need this: a fork, reserving [0..seq] for
-	 * copied entries, and any write that takes a position without going through
-	 * an event -- otherwise the head still points below state that already
-	 * exists, and the next event collides with it.
-	 *
-	 * A sequence is a version position, not a row count, so declaring an
-	 * aggregate "already at version N" is legal. Never rewinds: a lower `seq`
-	 * than the current head is a no-op.
+	 * Moves the sequence head to at least `seq` without inserting an event, running
+	 * projectors, or waking followers. Used to reserve an inherited prefix on a
+	 * fork. The next durable event receives a higher sequence; never rewinds.
 	 */
 	readonly advance: (aggregateId: string, seq: number) => Effect.Effect<void>;
 }
@@ -146,9 +194,16 @@ export const layer = Layer.effect(
 		const sql = yield* SqlClient.SqlClient;
 
 		const pubsub = {
-			all: yield* PubSub.unbounded<Payload>(),
-			typed: new Map<string, PubSub.PubSub<Payload>>(),
+			// Per-aggregate doorbells for `log`. A wake carries no payload -- the
+			// follower rereads the table -- so sliding(1) is enough: a coalesced
+			// wake loses nothing, and a slow follower never holds up a publish.
+			durable: new Map<string, Set<PubSub.PubSub<void>>>(),
 		};
+		const subscriptions = new Set<{
+			readonly type: string | undefined;
+			readonly capacity: number;
+			readonly queue: Queue.Queue<Payload, SubscriptionOverflowError>;
+		}>();
 		const projectors = new Map<string, Subscriber[]>();
 		const listeners = new Array<Subscriber>();
 
@@ -156,8 +211,13 @@ export const layer = Layer.effect(
 		// shutting them down strands whoever is reading a stream from it.
 		yield* Effect.addFinalizer(() =>
 			Effect.gen(function* () {
-				yield* PubSub.shutdown(pubsub.all);
-				yield* Effect.forEach(pubsub.typed.values(), PubSub.shutdown, { discard: true });
+				yield* Effect.forEach(subscriptions, (subscriber) => Queue.shutdown(subscriber.queue), { discard: true });
+				subscriptions.clear();
+				yield* Effect.forEach(
+					Array.from(pubsub.durable.values(), (wakes) => Array.from(wakes)).flat(),
+					PubSub.shutdown,
+					{ discard: true },
+				);
 			}),
 		);
 
@@ -169,6 +229,13 @@ export const layer = Layer.effect(
 				),
 			);
 
+		// Snapshotted: a follower's scope can close on another fiber while this
+		// iterates, and publishing into a shut-down wake it already left is a no-op.
+		const wakeFollowers = (aggregateId: string) =>
+			Effect.forEach(Array.from(pubsub.durable.get(aggregateId) ?? []), (wake) => PubSub.publish(wake, undefined), {
+				discard: true,
+			});
+
 		function notify(event: Payload, isolateListeners: boolean) {
 			return Effect.gen(function* () {
 				yield* Effect.forEach(
@@ -176,9 +243,17 @@ export const layer = Layer.effect(
 					(listener) => (isolateListeners ? observe(event, listener) : listener(event)),
 					{ discard: true },
 				);
-				const typed = pubsub.typed.get(event.type);
-				if (typed) yield* PubSub.publish(typed, event);
-				yield* PubSub.publish(pubsub.all, event);
+				yield* Effect.sync(() => {
+					for (const subscriber of subscriptions) {
+						if (subscriber.type !== undefined && subscriber.type !== event.type) continue;
+						if (Queue.offerUnsafe(subscriber.queue, event)) continue;
+						subscriptions.delete(subscriber);
+						Queue.failCauseUnsafe(
+							subscriber.queue,
+							Cause.fail(new SubscriptionOverflowError({ capacity: subscriber.capacity })),
+						);
+					}
+				});
 			});
 		}
 
@@ -204,36 +279,27 @@ export const layer = Layer.effect(
 			Request: Schema.Struct({
 				aggregateId: Schema.String,
 				after: Schema.Int,
+				through: Schema.Int,
 				types: Schema.Array(Schema.String),
 				limit: Schema.Int,
 			}),
 			Result: EventRow,
-			execute: ({ aggregateId, after, types, limit }) =>
+			execute: ({ aggregateId, after, through, types, limit }) =>
 				sql`
           SELECT * FROM event
-          WHERE aggregate_id = ${aggregateId} AND seq > ${after} AND ${sql.in("type", types)}
+          WHERE aggregate_id = ${aggregateId} AND seq > ${after} AND seq <= ${through} AND ${sql.in("type", types)}
           ORDER BY seq ASC
           LIMIT ${limit}
         `,
 		});
 
-		// Reads one page of an aggregate's durable history. One row past the page is
-		// fetched so `hasMore` needs no second query; the extra row is dropped.
-		const readAggregate = Effect.fn("Event.readAggregate")(function* <A>(input: ReadAggregateInput<A>) {
-			const after = input.after ?? -1;
-			const rows = yield* selectAggregateEvents({
-				aggregateId: input.aggregateId,
-				after,
-				types: Array.from(input.manifest.definitions.keys()),
-				limit: input.limit + 1,
-			});
-			const page = rows.slice(0, input.limit);
-			const decode = Schema.decodeUnknownEffect(input.manifest.schema);
-			// The `type` column stores the versioned type; the envelope carries the
-			// bare type, so it is mapped back through the definition. A row that no
-			// longer decodes is a broken store, not a recoverable read.
-			const events = yield* Effect.forEach(page, (row) => {
-				const definition = input.manifest.definitions.get(row.type);
+		// The `type` column stores the versioned type; the envelope carries the
+		// bare type, so it is mapped back through the definition. A row that no
+		// longer decodes is a broken store, not a recoverable read.
+		const decodeRows = <A>(rows: ReadonlyArray<EventRow>, manifest: Manifest<A>) => {
+			const decode = Schema.decodeUnknownEffect(manifest.schema);
+			return Effect.forEach(rows, (row) => {
+				const definition = manifest.definitions.get(row.type);
 				return decode({
 					id: row.id,
 					type: definition?.type ?? row.type,
@@ -245,8 +311,65 @@ export const layer = Layer.effect(
 					data: row.data,
 				});
 			});
+		};
+
+		// An unbounded read: `seq` is a signed 32-bit column, so this is above any
+		// sequence the store can hold.
+		const UNBOUNDED = Number.MAX_SAFE_INTEGER;
+		// Rows per page while walking an aggregate. Large enough that a long session
+		// replays in a handful of queries, small enough to stay off the heap.
+		const PAGE_SIZE = 128;
+
+		// Reads one page of an aggregate's durable history. One row past the page is
+		// fetched so `hasMore` needs no second query; the extra row is dropped.
+		const readAggregate = Effect.fn("Event.readAggregate")(function* <A>(input: ReadAggregateInput<A>) {
+			const rows = yield* selectAggregateEvents({
+				aggregateId: input.aggregateId,
+				after: input.after ?? -1,
+				through: UNBOUNDED,
+				types: Array.from(input.manifest.definitions.keys()),
+				limit: input.limit + 1,
+			});
+			const page = rows.slice(0, input.limit);
+			const events = yield* decodeRows(page, input.manifest);
 			return { events, hasMore: rows.length > input.limit };
 		}, Effect.orDie);
+
+		// The same read against the process-wide manifest, bounded above. Both
+		// `log` and `stream` walk an aggregate through this.
+		const readPage = Effect.fn("Event.readPage")(function* (input: {
+			readonly aggregateId: string;
+			readonly after: number;
+			readonly through: number;
+		}) {
+			const rows = yield* selectAggregateEvents({
+				aggregateId: input.aggregateId,
+				after: input.after,
+				through: input.through,
+				types: Array.from(EventManifest.Manifest.definitions.keys()),
+				limit: PAGE_SIZE + 1,
+			});
+			const page = rows.slice(0, PAGE_SIZE);
+			const events = (yield* decodeRows(page, EventManifest.Manifest)) as ReadonlyArray<Payload>;
+			return { events, hasMore: rows.length > PAGE_SIZE };
+		}, Effect.orDie);
+
+		/** One catch-up pass over (`from`, `through`], paged, oldest first. */
+		const readAggregateStream = (input: {
+			readonly aggregateId: string;
+			readonly from: number;
+			readonly through: number;
+		}): Stream.Stream<Payload> =>
+			Stream.paginate(
+				input.from,
+				Effect.fn("Event.readAggregateStream.page")(function* (after: number) {
+					const page = yield* readPage({ aggregateId: input.aggregateId, after, through: input.through });
+					const last = page.events.at(-1);
+					const next =
+						page.hasMore && last?.durable !== undefined ? Option.some(last.durable.seq) : Option.none<number>();
+					return [page.events, next] as const;
+				}),
+			);
 
 		// Allocates an aggregate's next sequence in one statement: the row is
 		// created at 0 or bumped by one, and the new value comes back. Deliberately
@@ -321,6 +444,9 @@ export const layer = Layer.effect(
 						return payload;
 					}),
 				);
+				// Keep the post-commit wake uninterruptible too: cancellation must not
+				// strand a stored row while followers wait for their next notification.
+				yield* wakeFollowers(aggregateId);
 				return committed;
 			},
 			Effect.orDie,
@@ -378,74 +504,110 @@ export const layer = Layer.effect(
 				projectors.set(definition.type, list);
 			});
 
-		// One pubsub per type, created on first subscribe. A type nobody watches
-		// costs nothing, and `notify` skips it.
-		const getOrCreate = (definition: Definition) =>
-			Effect.gen(function* () {
-				const existing = pubsub.typed.get(definition.type);
-				if (existing) return existing;
-				const created = yield* PubSub.unbounded<Payload>();
-				pubsub.typed.set(definition.type, created);
-				return created;
-			});
-
-		const subscribe = <D extends Definition>(definition: D): Stream.Stream<Payload<D>> =>
-			Stream.unwrap(getOrCreate(definition).pipe(Effect.map((created) => Stream.fromPubSub(created)))).pipe(
-				Stream.map((event) => event as Payload<D>),
-			);
-
-		const streamAll = (): Stream.Stream<Payload> => Stream.fromPubSub(pubsub.all);
-
-		const stream = (input: { readonly sessionId: string; readonly after?: number }): Stream.Stream<Payload> => {
-			const forSession = (event: Payload) =>
-				(event.data as { readonly sessionId?: unknown }).sessionId === input.sessionId;
-			const after = input.after;
-			if (after === undefined) return streamAll().pipe(Stream.filter(forSession));
-
+		function subscribe(options?: SubscribeOptions): Stream.Stream<Payload, SubscriptionOverflowError>;
+		function subscribe<D extends Definition>(
+			definition: D,
+			options?: SubscribeOptions,
+		): Stream.Stream<Payload<D>, SubscriptionOverflowError>;
+		function subscribe(
+			input?: Definition | SubscribeOptions,
+			options?: SubscribeOptions,
+		): Stream.Stream<Payload, SubscriptionOverflowError> {
+			const definition = input && "type" in input ? input : undefined;
+			const capacity = (definition ? options : (input as SubscribeOptions | undefined))?.capacity ?? 4096;
 			return Stream.unwrap(
 				Effect.gen(function* () {
-					// Subscribe before the first journal read. The subscription's unbounded
-					// queue buffers durable and live-only events across the replay boundary.
-					const subscription = yield* PubSub.subscribe(pubsub.all);
-					const watermark = yield* Ref.make(after);
-					const history = Stream.paginate(
-						after,
-						Effect.fn("Event.stream.history")(function* (after) {
-							const page = yield* readAggregate({
-								aggregateId: input.sessionId,
-								after,
-								limit: 100,
-								manifest: EventManifest.Manifest,
-							});
-							const last = page.events.at(-1);
-							const next =
-								page.hasMore && last?.durable !== undefined
-									? Option.some(last.durable.seq)
-									: Option.none<number>();
-							return [page.events, next] as const;
-						}),
-					).pipe(
-						Stream.map((event) => event as Payload),
-						Stream.tap((event) => {
-							const seq = event.durable?.seq;
-							return seq === undefined
-								? Effect.void
-								: Ref.update(watermark, (current) => Math.max(current, seq));
-						}),
+					if (!Number.isSafeInteger(capacity) || capacity <= 0)
+						return yield* Effect.die(new RangeError("Subscription capacity must be a positive integer"));
+					const queue = yield* Queue.dropping<Payload, SubscriptionOverflowError>(capacity);
+					const subscriber = { type: definition?.type, capacity, queue };
+					yield* Effect.acquireRelease(
+						Effect.sync(() => subscriptions.add(subscriber)),
+						() => Effect.sync(() => subscriptions.delete(subscriber)).pipe(Effect.andThen(Queue.shutdown(queue))),
 					);
-					const tail = Stream.fromSubscription(subscription).pipe(
-						Stream.filter(forSession),
-						Stream.filterEffect((event) => {
-							const seq = event.durable?.seq;
-							return seq === undefined
-								? Effect.succeed(true)
-								: Ref.get(watermark).pipe(Effect.map((replayed) => seq > replayed));
-						}),
-					);
-					return history.pipe(Stream.concat(tail));
+					return Stream.fromQueue(queue);
 				}),
 			);
-		};
+		}
+
+		/**
+		 * Registers a doorbell for one aggregate, removed with the caller's scope.
+		 * Subscribing before publishing it means the follower cannot miss a wake it
+		 * is registered for.
+		 */
+		const subscribeWake = (aggregateId: string) =>
+			Effect.gen(function* () {
+				const wake = yield* PubSub.sliding<void>(1);
+				const subscription = yield* PubSub.subscribe(wake);
+				yield* Effect.acquireRelease(
+					Effect.sync(() => {
+						const wakes = pubsub.durable.get(aggregateId) ?? new Set<PubSub.PubSub<void>>();
+						wakes.add(wake);
+						pubsub.durable.set(aggregateId, wakes);
+					}),
+					() =>
+						Effect.sync(() => {
+							const wakes = pubsub.durable.get(aggregateId);
+							wakes?.delete(wake);
+							if (wakes?.size === 0) pubsub.durable.delete(aggregateId);
+						}).pipe(Effect.andThen(PubSub.shutdown(wake))),
+				);
+				return subscription;
+			});
+
+		const log = (input: LogInput): Stream.Stream<LogItem> =>
+			Stream.unwrap(
+				Effect.gen(function* () {
+					// The cursor outlives a single catch-up: each wake resumes from the
+					// last sequence actually emitted, not from where the pass began.
+					const cursor = yield* Ref.make(input.after ?? -1);
+					const catchUp = (through: number): Stream.Stream<Payload> =>
+						Stream.unwrap(
+							Ref.get(cursor).pipe(
+								Effect.map((from) => readAggregateStream({ aggregateId: input.aggregateId, from, through })),
+							),
+						).pipe(
+							Stream.tap((event) =>
+								event.durable === undefined ? Effect.void : Ref.set(cursor, event.durable.seq),
+							),
+							// A finished pass read the whole window, so the cursor belongs at
+							// its bound rather than at the last row that happened to be in it.
+							// Without this, a head standing above the rows -- `advance` on a
+							// fork, or types this build cannot decode -- would leave the live
+							// filter permanently open and reread nothing on every wake. Only
+							// on completion: a pass cut short mid-window must resume from the
+							// last event actually emitted.
+							Stream.onEnd(Ref.update(cursor, (seq) => Math.max(seq, through))),
+						);
+					// Registering the doorbell before reading the head is what closes the
+					// gap: a commit landing during catch-up is either inside the window
+					// pinned below or waiting as a wake once the marker is out.
+					const wakes = input.follow ? yield* subscribeWake(input.aggregateId) : undefined;
+					// Reading the head, and every reread below, can never land inside a
+					// publisher's open transaction: the client holds one connection behind
+					// a Semaphore(1), and `withTransaction` keeps that permit until it
+					// commits. So a follower never sees a bumped sequence whose row is not
+					// there yet, and never emits an event a failing projector rolls back.
+					// A connection pool would take that guarantee away and need its own
+					// per-aggregate lock -- what OpenCode's KeyedMutex is doing.
+					const head = yield* latestSequence(input.aggregateId);
+					const marker: Synced = {
+						type: "log.synced",
+						aggregateId: input.aggregateId,
+						...(head >= 0 ? { seq: head } : {}),
+					};
+					const replay = catchUp(head).pipe(Stream.concat(Stream.make(marker)));
+					if (!wakes) return replay;
+					const live = Stream.fromSubscription(wakes).pipe(
+						Stream.mapEffect(() => latestSequence(input.aggregateId)),
+						// A wake coalesced with one already drained, or one for rows this
+						// build cannot decode, leaves the head where the cursor is.
+						Stream.filterEffect((target) => Ref.get(cursor).pipe(Effect.map((seq) => target > seq))),
+						Stream.flatMap((target) => catchUp(target)),
+					);
+					return replay.pipe(Stream.concat(live));
+				}),
+			);
 
 		const listen = (listener: Subscriber): Effect.Effect<Unsubscribe> =>
 			Effect.sync(() => {
@@ -459,10 +621,9 @@ export const layer = Layer.effect(
 		return Service.of({
 			latestSequence,
 			readAggregate,
+			log,
 			publish,
 			subscribe,
-			all: streamAll,
-			stream,
 			listen,
 			project,
 			advance,

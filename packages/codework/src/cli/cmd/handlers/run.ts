@@ -145,7 +145,9 @@ export default Runtime.handler(
 			// publish those lifecycle events yet, so this exclusive process joins the
 			// execution started by `prompt`, waits through successors, then restores
 			// the joined exit for the existing human-friendly error renderer.
-			const execution = yield* handle.prompt({ text: prompt, delivery: "followUp" }).pipe(Effect.andThen(handle.resume()), Effect.exit);
+			const execution = yield* handle
+				.prompt({ text: prompt, delivery: "followUp" })
+				.pipe(Effect.andThen(handle.resume()), Effect.exit);
 			yield* handle.wait();
 			if (Exit.isFailure(execution)) return yield* Effect.failCause(execution.cause);
 			const path = yield* handle.path();
