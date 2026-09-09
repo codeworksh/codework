@@ -1,4 +1,4 @@
-import { DateTime, Deferred, Effect, Fiber, Layer, Ref, Stream } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Ref, Stream } from "effect";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
@@ -28,6 +28,95 @@ const names = (items: ReadonlyArray<Event.LogItem>) =>
 	items.flatMap((item) => (Event.isSynced(item) ? [] : [(item.data as { readonly messageId: string }).messageId]));
 
 describe("Event.log", () => {
+	liveIt("drains coalesced wakes across pages after a follower pauses", () =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const paused = yield* Deferred.make<void>();
+			const resume = yield* Deferred.make<void>();
+			const expected = Array.from({ length: 250 }, (_, index) => `message_${index}`);
+			const follower = yield* events.log({ aggregateId: A, follow: true }).pipe(
+				Stream.tap((item) =>
+					Event.isSynced(item)
+						? Deferred.succeed(paused, undefined).pipe(Effect.andThen(Deferred.await(resume)))
+						: Effect.void,
+				),
+				Stream.take(expected.length + 1),
+				Stream.runCollect,
+				Effect.timeout("5 seconds"),
+				Effect.forkChild,
+			);
+			yield* Deferred.await(paused);
+			// No wake can be consumed until all three pages have committed.
+			yield* turns(events, A, expected);
+			yield* Deferred.succeed(resume, undefined);
+			const items = Array.from(yield* Fiber.join(follower));
+			expect(items[0]).toEqual({ type: "log.synced", aggregateId: A });
+			expect(names(items)).toEqual(expected);
+			expect(items.flatMap((item) => (Event.isSynced(item) ? [] : [item.durable?.seq]))).toEqual(
+				expected.map((_, index) => index),
+			);
+		}),
+	);
+
+	liveIt("delivers durable events while a listener is blocked", () =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const synced = yield* Deferred.make<void>();
+			const listening = yield* Deferred.make<void>();
+			const release = yield* Deferred.make<void>();
+			const follower = yield* events.log({ aggregateId: A, follow: true }).pipe(
+				Stream.tap((item) => (Event.isSynced(item) ? Deferred.succeed(synced, undefined) : Effect.void)),
+				Stream.take(2),
+				Stream.runCollect,
+				Effect.timeout("5 seconds"),
+				Effect.forkChild,
+			);
+			yield* Deferred.await(synced);
+			yield* events.listen(() =>
+				Deferred.succeed(listening, undefined).pipe(Effect.andThen(Deferred.await(release))),
+			);
+			const publisher = yield* turns(events, A, ["committed"]).pipe(Effect.forkChild);
+			yield* Deferred.await(listening);
+			// Delivery must complete before the listener is allowed to return.
+			expect(names(Array.from(yield* Fiber.join(follower)))).toEqual(["committed"]);
+			yield* Deferred.succeed(release, undefined);
+			yield* Fiber.join(publisher);
+		}),
+	);
+
+	liveIt("wakes followers when a publisher is cancelled during its commit", () =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const synced = yield* Deferred.make<void>();
+			const projecting = yield* Deferred.make<void>();
+			const continueCommit = yield* Deferred.make<void>();
+			const follower = yield* events.log({ aggregateId: A, follow: true }).pipe(
+				Stream.tap((item) => (Event.isSynced(item) ? Deferred.succeed(synced, undefined) : Effect.void)),
+				Stream.take(2),
+				Stream.runCollect,
+				Effect.timeout("5 seconds"),
+				Effect.forkChild,
+			);
+			yield* Deferred.await(synced);
+			yield* events.project(EventList.TurnEnded, () =>
+				Deferred.succeed(projecting, undefined).pipe(Effect.andThen(Deferred.await(continueCommit))),
+			);
+			const publisher = yield* turns(events, A, ["cancelled"]).pipe(Effect.forkChild);
+			yield* Deferred.await(projecting);
+			// Start cancellation while the transaction is paused, then let it commit.
+			const interruption = yield* Fiber.interrupt(publisher).pipe(Effect.forkChild({ startImmediately: true }));
+			yield* Deferred.succeed(continueCommit, undefined);
+			yield* Fiber.join(interruption);
+			const exit = yield* Fiber.await(publisher);
+			expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
+			expect(yield* events.latestSequence(A)).toBe(0);
+			expect(names(Array.from(yield* events.log({ aggregateId: A }).pipe(Stream.runCollect)))).toEqual([
+				"cancelled",
+			]);
+			expect(names(Array.from(yield* Fiber.join(follower)))).toEqual(["cancelled"]);
+		}),
+	);
+
 	it("replays an aggregate and completes at the marker", () =>
 		Effect.gen(function* () {
 			const events = yield* Event.Service;

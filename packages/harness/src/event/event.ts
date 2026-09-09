@@ -225,9 +225,6 @@ export const layer = Layer.effect(
 
 		function notify(event: Payload, isolateListeners: boolean) {
 			return Effect.gen(function* () {
-				// First: the row is already committed, and a slow listener must not
-				// hold up the followers reading behind it.
-				if (event.durable) yield* wakeFollowers(event.durable.aggregateId);
 				yield* Effect.forEach(
 					listeners,
 					(listener) => (isolateListeners ? observe(event, listener) : listener(event)),
@@ -426,6 +423,9 @@ export const layer = Layer.effect(
 						return payload;
 					}),
 				);
+				// Keep the post-commit wake uninterruptible too: cancellation must not
+				// strand a stored row while followers wait for their next notification.
+				yield* wakeFollowers(aggregateId);
 				return committed;
 			},
 			Effect.orDie,
