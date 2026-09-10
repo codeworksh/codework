@@ -8,6 +8,7 @@ import { Sandbox } from "../src/effect/sandbox.ts";
 import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
 import { LLM } from "../src/runner/llm.ts";
+import { defaults } from "../src/settings/schema.ts";
 import * as Tool from "../src/tools/tool.ts";
 import { assistant } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
@@ -419,9 +420,11 @@ describe("settings at exchange boundaries", () => {
 						yield* Effect.promise(() => write(B));
 						yield* handle.run("with B");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("high");
-						// A's header and retry count are gone, not merged forward.
+						// A's header and retry count are gone, not merged forward. B names no
+						// `maxRetries`, so it falls back to the default — read from `defaults`
+						// rather than restated, which goes stale whenever a default is retuned.
 						expect(inputs.at(-1)?.options?.headers).toEqual({ shared: "b" });
-						expect(inputs.at(-1)?.options?.maxRetries).toBe(2);
+						expect(inputs.at(-1)?.options?.maxRetries).toBe(defaults.model.options?.maxRetries);
 
 						yield* Effect.promise(() => write(A));
 						yield* handle.run("back to A");

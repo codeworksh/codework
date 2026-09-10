@@ -60,7 +60,10 @@ describe("settings resolution", () => {
 		});
 		const result = collect(merge(base, patch), "openai", "anything");
 		expect(result).toMatchObject({
-			timeoutMs: 90000,
+			// The patch nulls `timeoutMs` at two levels; both are ignored, so the value
+			// still comes from `defaults`. Read it from there rather than restating the
+			// number, which silently goes stale whenever a default is retuned.
+			timeoutMs: defaults.model.options?.timeoutMs,
 			headers: { a: "inherited", b: "new" },
 			providerArray: ["one"],
 			extras: { organization: "org" },
