@@ -1,5 +1,5 @@
 import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node";
-import { Duration, Effect, Layer, Ref, Schedule, Schema } from "effect";
+import { Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { resolve } from "import-meta-resolve";
 import { createHash } from "node:crypto";
@@ -58,13 +58,35 @@ const run: Runner = Effect.fn("PluginPackage.run")(
 
 /** How long to wait for another installer of the same spec before giving up. */
 const LOCK_TIMEOUT = Duration.minutes(2);
+/** The holder refreshes the lock's mtime this often; a lock not refreshed for the timeout is abandoned. */
+const LOCK_HEARTBEAT = Duration.seconds(15);
+
+/**
+ * A lock whose holder stopped refreshing it was left by a crashed installer. Staleness is
+ * measured from the heartbeat, not the install's start, so a slow but live install is never
+ * stolen from.
+ */
+const abandoned = (directory: string) =>
+	Effect.gen(function* () {
+		const info = yield* fs.stat(directory);
+		const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+		return Option.exists(info.mtime, (mtime) => now - mtime.getTime() > Duration.toMillis(LOCK_TIMEOUT));
+	}).pipe(Effect.orElseSucceed(() => false));
+
+const heartbeat = (directory: string) =>
+	Effect.clockWith((clock) => clock.currentTimeMillis).pipe(
+		Effect.flatMap((now) => fs.utimes(directory, now, now)),
+		Effect.ignore,
+		Effect.repeat(Schedule.spaced(LOCK_HEARTBEAT)),
+	);
 
 /**
  * Claims `directory` by creating it, polling while another process holds it.
  *
  * One finalizer for the whole wait, registered before the first attempt: retrying inside
  * `acquireRelease` would add a finalizer per poll. A crashed installer leaves its lock
- * behind, so the wait is bounded rather than infinite.
+ * behind; an abandoned one is reclaimed rather than waited on forever, and the wait itself
+ * is bounded. While held, the lock is heartbeated so waiters can tell live from dead.
  */
 const lock = Effect.fn("PluginPackage.lock")(function* (directory: string) {
 	const held = yield* Ref.make(false);
@@ -74,10 +96,25 @@ const lock = Effect.fn("PluginPackage.lock")(function* (directory: string) {
 			Effect.orDie,
 		),
 	);
-	const acquired = yield* fs.makeDirectory(directory).pipe(
+	// One attempt is uninterruptible so `mkdir` and recording ownership cannot be split: an
+	// interrupt between them would leave a lock the finalizer does not know to remove.
+	const attempt = fs.makeDirectory(directory).pipe(
+		Effect.andThen(Ref.set(held, true)),
 		Effect.as(true),
-		Effect.catch((error) => (error.reason._tag === "AlreadyExists" ? Effect.succeed(false) : Effect.fail(error))),
-		Effect.tap((owned) => (owned ? Ref.set(held, true) : Effect.void)),
+		Effect.catch((error) =>
+			error.reason._tag === "AlreadyExists"
+				? abandoned(directory).pipe(
+						Effect.flatMap((stale) =>
+							stale
+								? fs.remove(directory, { recursive: true, force: true }).pipe(Effect.as(false))
+								: Effect.succeed(false),
+						),
+					)
+				: Effect.fail(error),
+		),
+		Effect.uninterruptible,
+	);
+	const acquired = yield* attempt.pipe(
 		Effect.repeat({ schedule: Schedule.spaced("50 millis"), until: (owned) => owned }),
 		Effect.timeout(LOCK_TIMEOUT),
 		Effect.catchTag("TimeoutError", () => Effect.succeed(false)),
@@ -86,6 +123,8 @@ const lock = Effect.fn("PluginPackage.lock")(function* (directory: string) {
 		return yield* new InstallError({
 			cause: new Error(`Timed out waiting for another plugin installation to release ${directory}`),
 		});
+	// Scoped to the install: the heartbeat dies with the scope, before the lock is removed.
+	yield* Effect.forkScoped(heartbeat(directory));
 });
 
 export const install = Effect.fn("PluginPackage.install")(

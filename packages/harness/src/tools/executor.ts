@@ -1,4 +1,10 @@
-import type { HookReturn, ToolAfterResult, ToolBefore, ToolRegistration } from "../plugin/tool/schema.ts";
+import {
+	ToolBeforeResult,
+	type HookReturn,
+	type ToolAfterResult,
+	type ToolBefore,
+	type ToolRegistration,
+} from "../plugin/tool/schema.ts";
 import { Message } from "@codeworksh/aikit";
 import {
 	Cause,
@@ -313,6 +319,16 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 					if (Cause.hasInterrupts(before.cause))
 						return yield* Effect.failCause(before.cause as Cause.Cause<never>);
 					return yield* failureOutcome(call, before.cause, "beforeToolCall failed");
+				}
+				// A malformed verdict is as much a hook failure as a thrown one: silently
+				// reading `.block` off arbitrary data would let `{block: "yes"}` block and
+				// `"denied"` run the handler.
+				if (before.value !== undefined && !Schema.is(ToolBeforeResult)(before.value)) {
+					return yield* failureOutcome(
+						call,
+						Cause.die(new Error("beforeToolCall returned an invalid result")),
+						"beforeToolCall failed",
+					);
 				}
 				if (before.value?.block) {
 					const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);

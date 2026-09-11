@@ -88,7 +88,7 @@ describe("codework CLI", () => {
 		expect(result.status).toBe(0);
 		expect(result.stdout).toContain("--sandbox string");
 		expect(result.stdout).toContain("default: local");
-		expect(result.stdout).toContain("Registered sandbox driver");
+		expect(result.stdout).toContain("Sandbox driver for a new session");
 		expect(result.stdout).toContain("--sandbox-provider-id string");
 	});
 

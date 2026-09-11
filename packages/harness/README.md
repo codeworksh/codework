@@ -65,6 +65,8 @@ Omitting `plugins` selects Bash then the default prompt. An explicit array repla
 
 Package sources install with pnpm, with lifecycle scripts disabled, under the harness home cache. An omitted version means `latest` on the first installation; subsequent constructions reuse that completed installation. Plugin discovery from settings and daemon lifecycles are not implemented.
 
+Failures are attributed: a bad reference, unreadable module, or malformed plugin fails `Harness.layer` construction with `PluginPreparationError`, which carries the failing phase (`source`, `install`, `import`, or `definition`) and the index of the offending reference. A failing package install reports `PluginInstallError`; a plugin's `setup` failure becomes `Plugin.SetupError` with the plugin id, surfacing as a `SnapshotError` for that exchange. Plugins are trusted in-process code — local paths and `file:` references import whatever they point at, so only load sources you trust.
+
 ## Pluggable Sandboxes
 
 Harness uses a driver-based sandbox architecture. Drivers share a common lifecycle and I/O surface, keeping provider details out of session and agent-loop code.

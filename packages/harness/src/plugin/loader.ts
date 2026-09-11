@@ -96,8 +96,10 @@ const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string,
 		const target = targets?.[0];
 		if (target === undefined || !target.startsWith("./"))
 			return yield* failure(origin, "source", new Error("No valid root package export"));
-		const resolved = path.resolve(location, target);
-		if (path.relative(location, resolved).startsWith(".."))
+		// Compare real paths: a symlinked target (or root) can point outside while the
+		// string paths still nest.
+		const resolved = yield* fs.realPath(path.resolve(location, target));
+		if (path.relative(yield* fs.realPath(location), resolved).startsWith(".."))
 			return yield* failure(origin, "source", new Error("Package export escapes its root"));
 		return pathToFileURL(resolved).href;
 	}
