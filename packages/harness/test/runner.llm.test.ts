@@ -46,13 +46,9 @@ describe("runner LLM", () => {
 	it(
 		"maps an unknown model to ModelNotFoundError",
 		Effect.gen(function* () {
-			const { sessionId, publisher } = yield* setup;
-			const failure = yield* LLM.run({
-				sessionId,
-				context,
+			const failure = yield* LLM.resolve({
 				provider: "openai",
 				model: "model-that-does-not-exist",
-				publisher,
 			}).pipe(Effect.flip);
 
 			expect(failure._tag).toBe("Runner.ModelNotFoundError");
@@ -78,6 +74,7 @@ describe("runner LLM", () => {
 				context,
 				provider: "openai",
 				model: "gpt-4o-mini",
+				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
 				publisher,
 			}).pipe(Effect.flip);
 
@@ -104,6 +101,7 @@ describe("runner LLM", () => {
 				context,
 				provider: "openai",
 				model: "gpt-4o-mini",
+				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
 				publisher,
 			}).pipe(Effect.flip);
 

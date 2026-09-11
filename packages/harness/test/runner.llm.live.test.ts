@@ -67,6 +67,7 @@ describe("runner LLM — OpenAI live", () => {
 				),
 				provider: "openai",
 				model: "gpt-5.6-luna",
+				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-5.6-luna" }),
 				thinkingLevel: "low",
 				settings: { reasoningSummary: "auto" },
 				publisher,
@@ -110,6 +111,7 @@ describe("runner LLM — OpenAI live", () => {
 				context: context("List 200 distinct first names, one per line."),
 				provider: "openai",
 				model: "gpt-5.6-luna",
+				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-5.6-luna" }),
 				publisher,
 			}).pipe(Effect.forkChild);
 			const interruptedPart = yield* Deferred.await(streaming);

@@ -16,9 +16,12 @@ import { SandboxDriverRegistry } from "../sandbox/registry.ts";
 import { SessionLive } from "../session/live.ts";
 import { SessionRuntime } from "../session/runtime.ts";
 import { Settings } from "../settings/settings.ts";
+import { prepare, type PluginRef } from "../plugin/catalog.ts";
+import { builtins, defaultRefs } from "../plugin/internal.ts";
 import { State } from "../state/state.ts";
 
 export interface Options {
+	readonly plugins?: ReadonlyArray<PluginRef>;
 	readonly database?: string;
 	readonly home?: string;
 	/** user provided directory containing the highest-priority config. */
@@ -27,10 +30,12 @@ export interface Options {
 	readonly llm?: LLM.Open;
 }
 
-export const layer = (options: Options = {}) =>
-	Layer.unwrap(
+export const layer = (options: Options = {}) => {
+	const base = process.cwd();
+	return Layer.unwrap(
 		Effect.gen(function* () {
 			const paths = yield* Global.resolve(options.home === undefined ? {} : { home: options.home });
+			const plugins = yield* prepare(options.plugins ?? defaultRefs, { builtins, cache: paths.cache, base });
 			const configuredDatabase = options.database ?? (yield* Database.locationConfig);
 			const global = Global.layerWith(paths);
 			const database = Database.layer(Database.resolveDatabaseLocation(configuredDatabase, paths.data));
@@ -45,7 +50,7 @@ export const layer = (options: Options = {}) =>
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
-				Layer.provideMerge(State.layer()),
+				Layer.provideMerge(State.layer({}, plugins)),
 				Layer.provideMerge(
 					Settings.layer(options.userConfigDir === undefined ? {} : { userConfigDir: options.userConfigDir }),
 				),
@@ -59,5 +64,6 @@ export const layer = (options: Options = {}) =>
 			);
 		}),
 	);
+};
 
 export * as Harness from "./harness.ts";

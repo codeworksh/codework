@@ -186,6 +186,8 @@ export const layer = (options: Options = {}) =>
 							});
 							const handled = yield* snapshot.tools
 								.handle(call, {
+									sessionId: snapshot.sessionId,
+									messageId,
 									onProgress: (progress) =>
 										events
 											.publish(EventList.ToolProgress, {
@@ -199,8 +201,8 @@ export const layer = (options: Options = {}) =>
 								})
 								.pipe(
 									Effect.catchCause((cause) =>
-										Cause.hasInterruptsOnly(cause)
-											? Effect.interrupt
+										Cause.hasInterrupts(cause)
+											? Effect.failCause(cause)
 											: Effect.map(
 													Effect.clockWith((clock) => clock.currentTimeMillis),
 													(now) => errorPart(call, cause, now),
@@ -224,7 +226,7 @@ export const layer = (options: Options = {}) =>
 						});
 						const exit = yield* restore(execution).pipe(Effect.exit);
 						if (Exit.isFailure(exit)) {
-							if (!Cause.hasInterruptsOnly(exit.cause)) return yield* Effect.failCause(exit.cause);
+							if (!Cause.hasInterrupts(exit.cause)) return yield* Effect.failCause(exit.cause);
 							interruptedCause = exit.cause;
 							for (const call of pending) {
 								if (settled.has(call.callID)) continue;
@@ -273,6 +275,7 @@ export const layer = (options: Options = {}) =>
 						},
 						provider: snapshot.provider,
 						model: snapshot.model,
+						resolvedModel: snapshot.resolvedModel,
 						thinkingLevel: snapshot.thinkingLevel,
 						options: snapshot.request,
 						settings: snapshot.settings,
@@ -300,7 +303,7 @@ export const layer = (options: Options = {}) =>
 				return yield* turnWindow.pipe(
 					Effect.catchCause((cause) => {
 						if (committed) return Effect.failCause(cause);
-						const turnCause: EventList.TurnAbortCause = Cause.hasInterruptsOnly(cause)
+						const turnCause: EventList.TurnAbortCause = Cause.hasInterrupts(cause)
 							? { _tag: "interrupted" }
 							: { _tag: "error", message: errorMessage(cause) };
 						const record = Effect.gen(function* () {

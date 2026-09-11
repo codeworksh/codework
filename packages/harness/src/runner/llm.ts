@@ -23,6 +23,7 @@ export interface Input {
 	readonly context: Message.Context;
 	readonly provider: string;
 	readonly model: string;
+	readonly resolvedModel: Model.Info;
 	readonly thinkingLevel?: Model.ThinkingLevel;
 	readonly options?: State.RequestOptions;
 	readonly settings?: Block;
@@ -147,8 +148,13 @@ export const messageFailure = (message: Message.AssistantMessage): AikitFailure.
 		: AikitFailure.fromMessage(message.errorMessage ?? "The provider turn failed.");
 };
 
-/** Resolve the configured model and start aikit's provider stream. */
-export const open: Open = Effect.fn("LLM.open")(function* (input, signal) {
+export type ResolutionInput = Pick<Input, "provider" | "model" | "settings">;
+export type Resolve = (
+	input: ResolutionInput,
+) => Effect.Effect<Model.Info, Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError>;
+
+/** Resolve once before exchange setup; execution reuses this exact instance. */
+export const resolve: Resolve = Effect.fn("LLM.resolve")(function* (input) {
 	const model = yield* Effect.tryPromise({
 		try: () => llm(input.provider, input.model, resolveOverrides(input.settings ?? {})),
 		catch: (cause) => {
@@ -166,6 +172,12 @@ export const open: Open = Effect.fn("LLM.open")(function* (input, signal) {
 		return yield* new Runner.ModelNotFoundError({ provider: input.provider, model: input.model });
 	}
 
+	return model;
+});
+
+/** Start a provider stream using the model pinned by State. */
+export const open: Open = Effect.fn("LLM.open")(function* (input, signal) {
+	const model = input.resolvedModel;
 	return yield* Effect.try({
 		try: () => aikitStream(model, input.context, runtimeOptions(input, model, signal)),
 		catch: (cause) => providerErrorFromUnknown(input, cause),

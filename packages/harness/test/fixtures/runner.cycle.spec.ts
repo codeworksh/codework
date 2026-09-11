@@ -154,7 +154,6 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							const bindings = yield* SessionRuntime.Service;
 							yield* bindings.update(session.id, {
 								// This conversation expects one response per prompt; tools have their own remote suite.
-								builtinTools: [],
 								onPayload: async (payload, model) => {
 									const params = payload as Record<string, unknown>;
 									const bag = params.providerOptions as Record<string, Record<string, unknown>> | undefined;

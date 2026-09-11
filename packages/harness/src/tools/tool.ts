@@ -24,11 +24,12 @@ import type { ToolProgress } from "./progress.ts";
 export type ModelContent = ReadonlyArray<Message.TextContent | Message.ImageContent>;
 
 /** Per-call metadata handed to a handler instead of positional args. */
-export interface ToolCallContext {
-	readonly callID: string;
-	readonly toolName: string;
-	readonly rawArgs: Record<string, unknown>;
-}
+export const ToolCallContext = Schema.Struct({
+	callID: Schema.String,
+	toolName: Schema.String,
+	rawArgs: Schema.Record(Schema.String, Schema.Unknown),
+});
+export type ToolCallContext = typeof ToolCallContext.Type;
 
 /**
  * A pure tool definition. Parametrised over the *schema* instances so the

@@ -14,6 +14,13 @@
 
 import type { Model, Protocol } from "@codeworksh/aikit";
 import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Event } from "../event/event.ts";
+import { makeEvents, type PromptResolver } from "../plugin/context.ts";
+import { run as setup } from "../plugin/host.ts";
+import { defaults } from "../plugin/internal.ts";
+import type { Plugin } from "../plugin/plugin.ts";
+import { LLM } from "../runner/llm.ts";
+import type { Runner } from "../runner/run.ts";
 import { Location } from "../location/location.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { SessionRuntime } from "../session/runtime.ts";
@@ -22,11 +29,7 @@ import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
 import type { Block } from "../settings/schema.ts";
 import { Settings } from "../settings/settings.ts";
-import { bashTool } from "../tools/bash.ts";
-import { make as makeRegistry, type Resolved } from "../tools/registry.ts";
-import { fromSandboxShell } from "../tools/shell.ts";
-import * as Tool from "../tools/tool.ts";
-import { StatePrompt } from "./prompt.ts";
+import type { Resolved } from "../tools/registry.ts";
 
 /**
  * How a turn's tool calls are scheduled once the array has been re-read.
@@ -63,23 +66,9 @@ export type RequestOptions = Omit<Protocol.CommonOptions, "signal" | "sessionId"
 };
 
 export interface Options extends RequestOptions {
-	/** Replaces the default foundation prose. */
-	readonly promptCustom?: string;
-	/** Appended after the rendered tool sections. */
-	readonly promptSystemAppend?: string;
-	/** Owns the final prompt outright. Sync or async. */
-	readonly promptSystemOverride?: StatePrompt.PromptSystemOverride;
-	/**
-	 * Registered after the built-in Bash tool, so the registry's
-	 * last-registration-wins rule lets a caller intentionally replace Bash by
-	 * name.
-	 *
-	 * TODO(sanchitrk): check if our assumption is correct here? overriding with same name allowed.
-	 * requires fixing if needed within tool registry
-	 */
-	readonly tools?: ReadonlyArray<Tool.RegisteredTool>;
-	/** Built-in tool names enabled for this session. Omitted keeps the Bash default. */
-	readonly builtinTools?: ReadonlyArray<"bash">;
+	/** Optional caller inputs interpreted by prompt plugins. */
+	readonly promptCustom?: string | PromptResolver;
+	readonly promptSystemAppend?: string | PromptResolver;
 	readonly provider?: string;
 	readonly model?: string;
 	readonly thinkingLevel?: Model.ThinkingLevel;
@@ -87,7 +76,7 @@ export interface Options extends RequestOptions {
 }
 
 /**
- * The prompt override threw or rejected.
+ * Exchange plugin setup failed.
  *
  * Typed rather than a defect: a caller's callback failing is a caller bug, but it
  * is one the session should report and survive rather than crash on. The turn
@@ -118,9 +107,10 @@ export interface Snapshot {
 	readonly tools: Resolved;
 	readonly provider: string;
 	readonly model: string;
+	readonly resolvedModel: Model.Info;
 	readonly thinkingLevel: Model.ThinkingLevel;
 	readonly request: RequestOptions;
-	/** Matched file attributes; catalog resolution stays at the LLM boundary. */
+	/** Matched file attributes used to construct provider requests. */
 	readonly settings: Block;
 	readonly toolExecution: ToolExecutionMode;
 }
@@ -132,50 +122,32 @@ export interface Interface {
 	 */
 	readonly snapshot: (
 		sessionId: SessionId,
-	) => Effect.Effect<Snapshot, SnapshotError, SandboxIO.Provides | Location.Service>;
+	) => Effect.Effect<
+		Snapshot,
+		SnapshotError | Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError,
+		SandboxIO.Provides | Location.Service
+	>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/state/state/Service") {}
 
-/**
- * Run a caller's override, converting a synchronous throw or a rejected promise
- * into {@link SnapshotError}.
- */
-const applyOverride = Effect.fn("State.applyOverride")(function* (
-	sessionId: SessionId,
-	override: StatePrompt.PromptSystemOverride,
-	input: StatePrompt.PromptSystemOverrideInput,
-) {
-	const fail = (cause: unknown) =>
-		new SnapshotError({
-			sessionId,
-			reason: "`promptSystemOverride` callback failed",
-			cause,
-		});
-	const result = yield* Effect.try({
-		try: () => override(input),
-		catch: fail,
-	});
-	if (typeof result === "string") return result;
-	return yield* Effect.tryPromise({ try: () => result, catch: fail });
-});
+const resolver = (input: string | PromptResolver): PromptResolver => (typeof input === "string" ? () => input : input);
 
-export const layer = (options: Options = {}) => {
+export const layer = (options: Options = {}, plugins: ReadonlyArray<Plugin> = defaults) => {
 	return Layer.effect(
 		Service,
 		Effect.gen(function* () {
 			const runtime = yield* SessionRuntime.Service;
 			const settings = yield* Settings.Service;
+			const events = makeEvents(yield* Event.Service);
 			return Service.of({
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
 					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
-					const configured = compose(yield* settings.load, options, sessionOptions);
+					const loadedSettings = yield* settings.load;
+					const configured = compose(loadedSettings, options, sessionOptions);
 					const {
 						promptCustom,
 						promptSystemAppend,
-						promptSystemOverride,
-						tools: callerTools = [],
-						builtinTools = ["bash"],
 						provider: _provider,
 						model: _model,
 						thinkingLevel: _thinkingLevel,
@@ -187,55 +159,28 @@ export const layer = (options: Options = {}) => {
 					const sandbox = yield* SandboxIO.Current;
 					const location = yield* Location.Service;
 
-					/*
-					 * Bash is bound to the shell of the mount that is open right now.
-					 * `ToolShell.local()` would look equivalent and be wrong: it executes on
-					 * the host, bypassing whichever in-memory or remote namespace the session
-					 * actually selected.
-					 *
-					 * Capturing the service and re-providing it keeps the binding valid for
-					 * the whole exchange -- the drain owns the mount for longer than any turn
-					 * inside it, so a handler captured here is still executable when a later
-					 * turn calls it.
-					 */
-					const shell = yield* SandboxIO.Shell;
-					const mountedShell = fromSandboxShell.pipe(Layer.provide(Layer.succeed(SandboxIO.Shell, shell)));
-
-					// Bash first, caller tools after: last registration wins, so a caller can
-					// replace Bash by name on purpose.
-					const builtins = builtinTools.includes("bash") ? [Tool.provide(bashTool, mountedShell)] : [];
-					const registry = makeRegistry([...builtins, ...callerTools]);
-					const resolved = registry.resolve();
-
-					const rendered = StatePrompt.build({
-						tools: resolved.defs,
-						directory: location.directory,
-						...(promptCustom === undefined ? {} : { promptCustom }),
-						...(promptSystemAppend === undefined ? {} : { promptSystemAppend }),
-					});
-
-					const systemPrompt =
-						promptSystemOverride === undefined
-							? rendered
-							: yield* applyOverride(sessionId, promptSystemOverride, {
-									systemPrompt: rendered,
-									tools: resolved.defs,
-									sandbox,
-									location,
-									provider,
-									model,
-									thinkingLevel,
-									toolExecution,
-								});
+					const resolvedModel = yield* LLM.resolve({ provider, model, settings: configured.block });
+					const contributions = yield* setup(plugins, {
+						sessionId,
+						sandbox,
+						location,
+						settings: loadedSettings,
+						model: resolvedModel,
+						events,
+						config: {
+							...(promptCustom === undefined ? {} : { promptCustom: resolver(promptCustom) }),
+							...(promptSystemAppend === undefined ? {} : { promptSystemAppend: resolver(promptSystemAppend) }),
+						},
+					}).pipe(Effect.mapError((cause) => new SnapshotError({ sessionId, reason: cause.message, cause })));
 
 					return {
 						sessionId,
 						sandbox,
 						location,
-						systemPrompt,
-						tools: resolved,
+						...contributions,
 						provider,
 						model,
+						resolvedModel,
 						thinkingLevel,
 						request,
 						settings: configured.block,

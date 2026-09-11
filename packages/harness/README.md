@@ -15,6 +15,54 @@ The initial public surface is the Effect SDK at `@codeworksh/harness/effect`.
 - **Model Flexibility:** select any provider and model available in Aikit's generated catalog, including its supported thinking levels.
 - **Pluggable Sandboxes:** run the same workflow against the host machine, a virtual filesystem, or a remote sandbox.
 
+## Plugins
+
+Pass an ordered plugin list when constructing the harness. Each plugin has a required ID and contributes tools or a prompt during setup. Setup runs once per exchange, after model resolution; its tools, hooks, and prompt remain pinned through tool continuations.
+
+```ts
+import { Effect, Schema } from "effect";
+import { Harness, Plugin, Tool } from "@codeworksh/harness/effect";
+
+const echo = Plugin.define({
+	id: "acme.tool.echo",
+	setup(ctx) {
+		ctx.plugin.tools.add(
+			Tool.register(
+				Tool.make({
+					name: "echo",
+					description: "Echo a message",
+					parameters: Schema.Struct({ text: Schema.String }),
+					success: Schema.String,
+					handler: ({ text }) => Effect.succeed(text),
+				}),
+			),
+			{
+				beforeToolCall(call) {
+					// Arguments have already been decoded. Return { block: true, reason: "..." }
+					// to skip this handler and its after hook.
+				},
+				afterToolCall({ terminal }) {
+					// Completed/error results can be patched through content, details, isError.
+					// Aborted results are observation-only; keep cancellation cleanup short.
+				},
+			},
+		);
+	},
+});
+
+const runtime = Harness.layer({
+	plugins: ["codework.tool.bash", echo, "codework.prompt.default"],
+});
+```
+
+Hooks belong to the tool registration. Sequential or parallel scheduling, selected with `Session.create({ tools: { execution: "parallel" } })`, covers the entire hook/handler pipeline. After runs for a started, interrupted tool if it has not already started, with a one-second cooperative cleanup grace period. The kernel owns result settlement.
+
+Prompt plugins use `ctx.plugin.prompt.get()` and `set(string)`. Each `set` replaces the entire prompt, including with an empty string. Place a prompt plugin after the tools or prompt contributors it needs. Contributions close after setup; plugins receive event publication but no subscription or background lifecycle.
+
+Omitting `plugins` selects Bash, the default prompt, and guidelines. An explicit array replaces that selection. Entries may be plugin objects, IDs, `!vendor.domain.name` to disable an ID, local paths/file URLs, or package specs such as `@acme/codework-plugin@1.2.0`. Source modules must default-export one plugin object. Definitions load before selection; the last occurrence of each ID determines whether it runs and its position.
+
+Package sources install with pnpm, with lifecycle scripts disabled, under the harness home cache. An omitted version means `latest` on the first installation; subsequent constructions reuse that completed installation. Plugin discovery from settings and daemon lifecycles are not implemented.
+
 ## Pluggable Sandboxes
 
 Harness uses a driver-based sandbox architecture. Drivers share a common lifecycle and I/O surface, keeping provider details out of session and agent-loop code.
