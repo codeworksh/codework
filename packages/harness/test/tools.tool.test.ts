@@ -1,7 +1,6 @@
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { bashDef } from "../src/tools/bash.ts";
-import { ToolExecutionError } from "../src/tools/error.ts";
 import * as Executor from "../src/tools/executor.ts";
 import * as Tool from "../src/tools/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
@@ -19,22 +18,11 @@ describe("Tool definition", () => {
 	it("is pure, serializable data", () => {
 		expect(bashDef.name).toBe("bash");
 		expect(bashDef.label).toBe("bash");
-		expect(bashDef.failureMode).toBe("return");
 		expect(typeof bashDef.description).toBe("string");
 		// schemas are present (not the decoded values)
 		expect(bashDef.parameters).toBeDefined();
 		expect(bashDef.success).toBeDefined();
 		expect(bashDef.failure).toBeDefined();
-	});
-
-	it('defaults failureMode to "return"', () => {
-		const def = Tool.define({
-			name: "noop",
-			description: "does nothing",
-			parameters: Schema.Struct({}),
-			success: Schema.Struct({}),
-		});
-		expect(def.failureMode).toBe("return");
 	});
 });
 
@@ -101,40 +89,13 @@ describe("Executor", () => {
 		expect(() => Executor.make([Tool.register(first), Tool.register(second)])).toThrow(/duplicate/i);
 	});
 
-	it('propagates declared failures when failureMode is "error"', async () => {
-		const tool = Tool.make({
-			name: "expectedFailure",
-			description: "fails through the error channel",
-			parameters: EmptyParams,
-			success: EmptySuccess,
-			failure: ExpectedFailure,
-			failureMode: "error",
-			handler: () => Effect.fail(new ExpectedFailure({ message: "boom" })),
-		});
-		const executor = Executor.make([Tool.register(tool)]);
-
-		const exit = await Effect.runPromiseExit(executor.handle(call("expectedFailure")));
-
-		expect(Exit.isFailure(exit)).toBe(true);
-		if (Exit.isFailure(exit)) {
-			const failure = Cause.findErrorOption(exit.cause);
-			expect(Option.isSome(failure)).toBe(true);
-			if (Option.isSome(failure)) {
-				expect(failure.value).toBeInstanceOf(ToolExecutionError);
-				expect(failure.value.toolName).toBe("expectedFailure");
-				expect(failure.value.cause).toBeInstanceOf(ExpectedFailure);
-			}
-		}
-	});
-
-	it('returns declared failures as tool errors when failureMode is "return"', async () => {
+	it("returns declared failures as encoded tool errors", async () => {
 		const tool = Tool.make({
 			name: "returnedFailure",
 			description: "fails as a tool result",
 			parameters: EmptyParams,
 			success: EmptySuccess,
 			failure: ExpectedFailure,
-			failureMode: "return",
 			handler: () => Effect.fail(new ExpectedFailure({ message: "boom" })),
 		});
 		const executor = Executor.make([Tool.register(tool)]);

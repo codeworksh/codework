@@ -231,7 +231,6 @@ const weatherDef = Tool.define({
 	parameters: WeatherParams,
 	success: WeatherReport,
 	failure: WeatherUnknownCity,
-	failureMode: "return",
 	encodeContent: (report) => [{ type: "text", text: `${report.city}: ${report.tempC}°C, ${report.sky}` }],
 	encodeFailureContent: (failure) => [{ type: "text", text: `No weather data for "${failure.city}".` }],
 });
@@ -296,7 +295,7 @@ describe("ToolRegistry — custom weather tool alongside the built-in bash", () 
 		expect(elapsed).toBeGreaterThanOrEqual(Duration.toMillis(latency) - 5); // timer jitter tolerance
 	});
 
-	it("returns a declared failure as a model-visible error outcome (failureMode: return)", async () => {
+	it("returns a declared failure as a model-visible error outcome", async () => {
 		const resolved = Registry.make([registerWeather()]).resolve();
 
 		const outcome = await Effect.runPromise(resolved.handle(pendingCall("weather", { city: "atlantis" })));

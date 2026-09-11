@@ -23,19 +23,6 @@ import type { ToolProgress } from "./progress.ts";
 /** What the model reads next turn (the `content` side of content/details). */
 export type ModelContent = ReadonlyArray<Message.TextContent | Message.ImageContent>;
 
-/**
- * Expected failures become a tool-error result fed back to the model ("return");
- * "error" lets them hit the calling effect's error channel. Defaults to
- * "return" in {@link define}.
- *
- * "return" — almost always, for agent tools.
- * 	A bash non-zero exit, a file-not-found, a bad-patch — the model should see these and adapt.
- *
- * "error" — the rare "this failure is fatal to the run"
- * 	case: e.g. an unrecoverable auth/quota error where letting the model keep looping is pointless.
- */
-export type FailureMode = "return" | "error";
-
 /** Per-call metadata handed to a handler instead of positional args. */
 export interface ToolCallContext {
 	readonly callID: string;
@@ -68,7 +55,6 @@ export interface ToolDef<
 	readonly success: Success;
 	/** Declared, model-visible failures (typed). Omit for tools that cannot fail expectedly. */
 	readonly failure?: Failure;
-	readonly failureMode: FailureMode;
 	/** Render success for the model. Omit → executor falls back to JSON text. */
 	readonly encodeContent?: (success: Success["Type"]) => ModelContent;
 	/** Render an expected failure for the model. Omit → executor falls back to JSON text. */
@@ -114,7 +100,6 @@ interface DefineInput<
 	readonly parameters: Params;
 	readonly success: Success;
 	readonly failure?: Failure;
-	readonly failureMode?: FailureMode;
 	readonly encodeContent?: (success: Success["Type"]) => ModelContent;
 	readonly encodeFailureContent?: (failure: Failure["Type"]) => ModelContent;
 }
@@ -129,7 +114,6 @@ export const define = <
 	input: DefineInput<Name, Params, Success, Failure>,
 ): ToolDef<Name, Params, Success, Failure> => ({
 	...input,
-	failureMode: input.failureMode ?? "return",
 });
 
 /** Attach a handler to an existing definition (the testable def/exec split). */

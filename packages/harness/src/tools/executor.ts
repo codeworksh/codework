@@ -54,8 +54,8 @@ export interface Executor {
 	/**
 	 * Atomically transform one complete pending tool-call part into a complete terminal
 	 * part. Most failures become a terminal
-	 * `ToolOutcome`; a `failureMode: "error"` tool propagates a {@link ToolExecutionError}
-	 * retaining its declared failure as `cause`, and undeclared failures/defects propagate as defects.
+	 * `ToolOutcome`; declared failures retain their encoded details, while undeclared
+	 * failures/defects propagate as defects.
 	 *
 	 * Tools enter as {@link RegisteredTool}s (capability `R` already discharged at
 	 * registration), so the only requirement left in the result is a progress sink's own
@@ -64,7 +64,7 @@ export interface Executor {
 	readonly handle: <RProgress = never, EProgress = never>(
 		call: Message.ToolCallPendingPart,
 		options?: HandleOptions<RProgress, EProgress>,
-	) => Effect.Effect<ToolOutcome, ToolExecutionError, RProgress>;
+	) => Effect.Effect<ToolOutcome, never, RProgress>;
 }
 
 /** Default sliding-queue capacity for best-effort progress. */
@@ -144,7 +144,7 @@ const encodeOutcome = (
 	call: Message.ToolCallPendingPart,
 	exit: Exit.Exit<unknown, ToolExecutionError>,
 	latest: Ref.Ref<Option.Option<ToolProgressPartial>>,
-): Effect.Effect<ToolOutcome, ToolExecutionError> =>
+): Effect.Effect<ToolOutcome> =>
 	Effect.gen(function* () {
 		if (Exit.isSuccess(exit)) {
 			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.success))(exit.value).pipe(Effect.orDie);
@@ -171,12 +171,7 @@ const encodeOutcome = (
 			if (def.failure === undefined || !Schema.is(asCodec(def.failure))(failure)) {
 				return yield* Effect.die(failure);
 			}
-			// A declared, expected failure. "error" opts it into the caller's error
-			// channel as ToolExecutionError; "return" (default) encodes the original
-			// failure into a model-facing tool error result.
-			if (def.failureMode === "error") {
-				return yield* executionError.value;
-			}
+			// Encode declared failures as model-facing tool error results.
 			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.failure))(failure).pipe(Effect.orDie);
 			const content = def.encodeFailureContent ? def.encodeFailureContent(failure) : [yield* jsonText(encoded)];
 			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
@@ -209,7 +204,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Executor => {
 	const handle = <RProgress = never, EProgress = never>(
 		call: Message.ToolCallPendingPart,
 		options?: HandleOptions<RProgress, EProgress>,
-	): Effect.Effect<ToolOutcome, ToolExecutionError, RProgress> =>
+	): Effect.Effect<ToolOutcome, never, RProgress> =>
 		Effect.gen(function* () {
 			const impl = impls.get(call.name);
 			if (impl === undefined) {

@@ -74,7 +74,6 @@ export const bashDef = Tool.define({
 	parameters: BashParams,
 	success: BashSuccess,
 	failure: BashFailure,
-	failureMode: "return",
 	// The model reads just the command output, not the JSON envelope.
 	encodeContent: (success) => [{ type: "text", text: success.output }],
 	encodeFailureContent: (failure) => [{ type: "text", text: failure.output }],
