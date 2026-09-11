@@ -1,10 +1,5 @@
 import type { RegisteredTool } from "../../tools/tool.ts";
-import type { ToolAddOptions, ToolDefPatch, ToolRegistry } from "./schema.ts";
-
-export interface ToolRegistration {
-	readonly tool: RegisteredTool;
-	readonly hooks: ToolAddOptions;
-}
+import type { ToolAddOptions, ToolDefPatch, ToolRegistration, ToolRegistry } from "./schema.ts";
 
 const definition = (tool: RegisteredTool): RegisteredTool => ({
 	...tool,

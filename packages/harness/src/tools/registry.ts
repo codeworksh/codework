@@ -1,4 +1,4 @@
-import type { ToolRegistration } from "../plugin/tool/registry.ts";
+import type { ToolRegistration } from "../plugin/tool/schema.ts";
 import type { Message } from "@codeworksh/aikit";
 import { Context, Layer } from "effect";
 import * as Executor from "./executor.ts";

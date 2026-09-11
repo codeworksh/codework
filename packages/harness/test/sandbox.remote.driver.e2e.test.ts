@@ -144,6 +144,7 @@ vercelSuite("installed third-party Vercel lifecycle driver", () => {
 	it("runs the copied package through the same controller lifecycle", async () => {
 		const remote = await Effect.runPromise(
 			SandboxDriverLoader.load("@codeworksh-test/codework-sandbox-vercel", {
+				hostCwd: process.cwd(),
 				resolve: SandboxDriverLoader.packageResolver(process.cwd(), ["development", "node", "import", "default"]),
 			}),
 		);

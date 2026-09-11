@@ -1,3 +1,4 @@
+import "./utils/env.ts";
 import { createAssistantMessageEventStream } from "@codeworksh/aikit";
 import { Deferred, Effect, Fiber, Schema } from "effect";
 import { writeFile } from "node:fs/promises";

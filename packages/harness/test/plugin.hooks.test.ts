@@ -2,6 +2,7 @@ import { Cause, Deferred, Effect, Exit, Fiber, Schema } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect } from "vite-plus/test";
 import { make } from "../src/tools/executor.ts";
+import { make as makeBuckets } from "../src/plugin/registry.ts";
 import { ToolProgress } from "../src/tools/progress.ts";
 import * as Tool from "../src/tools/tool.ts";
 import type { ToolAddOptions, ToolAfter } from "../src/plugin/tool/schema.ts";
@@ -305,6 +306,100 @@ describe("per-tool hooks", () => {
 			const exit = yield* Fiber.await(fiber);
 			expect(status).toBe("aborted");
 			expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
+		}),
+	);
+	it.effect("invokes after exactly once when cancellation races hook entry", () =>
+		Effect.gen(function* () {
+			// The after-started marker and the callback must land in one step. A yield between
+			// them lets cancellation see the marker with no invocation having happened, and the
+			// abort notification then declines a started call that is owed one. Whether the
+			// scheduler yields there is not controllable from here, so this is a property check
+			// of the invariant across interrupt points, not a reproduction of that window.
+			for (let yields = 0; yields < 40; yields++) {
+				const statuses: string[] = [];
+				let started = false;
+				const run = executor({ afterToolCall: ({ terminal }) => void statuses.push(terminal.status) }, () =>
+					Effect.sync(() => {
+						started = true;
+						return "hello";
+					}),
+				);
+				const fiber = yield* run.handle(call, options).pipe(Effect.forkChild);
+				for (let step = 0; step < yields; step++) yield* Effect.yieldNow;
+				yield* Fiber.interrupt(fiber);
+				yield* Fiber.await(fiber);
+				// Started means owed exactly one notification; never started means none.
+				expect(statuses.length, `after invocations at ${yields} yields (started: ${started})`).toBe(
+					started ? 1 : 0,
+				);
+			}
+		}),
+	);
+	it.effect("keeps one registration's hooks off another tool", () =>
+		Effect.gen(function* () {
+			let hooked = 0;
+			const other = Tool.register(
+				Tool.make({
+					name: "other",
+					description: "Other",
+					parameters: Schema.Struct({}),
+					success: Schema.String,
+					handler: () => Effect.succeed("other"),
+				}),
+			);
+			const run = make([
+				{
+					tool: tool(),
+					hooks: {
+						beforeToolCall: () => void hooked++,
+						afterToolCall: () => void hooked++,
+					},
+				},
+				{ tool: other, hooks: {} },
+			]);
+			expect((yield* run.handle(pendingCall("other"), options)).status).toBe("completed");
+			expect(hooked).toBe(0);
+			yield* run.handle(call, options);
+			expect(hooked).toBe(2);
+		}),
+	);
+	it.effect("normalizes an unexpected failure identically with no hook and with an empty after", () =>
+		Effect.gen(function* () {
+			// The executor owns this normalization, so a registration without hooks must produce
+			// the same terminal as one whose after returns nothing.
+			const boom = () => Effect.die(new Error("kaboom"));
+			const bare = yield* make([tool(boom)]).handle(call, options);
+			const empty = yield* executor({ afterToolCall: () => {} }, boom).handle(call, options);
+			expect(bare.status).toBe("error");
+			expect(bare.result).toEqual(empty.result);
+			// Model-facing text carries the message, never a rendered stack trace.
+			const rendered = bare.result.content[0];
+			expect(rendered?.type === "text" && rendered.text).toBe("Tool execution failed: kaboom");
+		}),
+	);
+	it.effect("turns an invalid result patch into a tool error rather than a bad terminal", () =>
+		Effect.gen(function* () {
+			const terminal = yield* executor({
+				afterToolCall: () => ({ content: [{ type: "video", url: "nope" }] as never }),
+			}).handle(call, options);
+			expect(terminal.status).toBe("error");
+			expect(terminal.result.isError).toBe(true);
+			const rendered = terminal.result.content[0];
+			expect(rendered?.type === "text" && rendered.text).toContain("afterToolCall failed");
+		}),
+	);
+	it.effect("preserves hooks and kernel timestamps across a prose update", () =>
+		Effect.gen(function* () {
+			const buckets = makeBuckets();
+			let seen = 0;
+			buckets.registry.tools.add(tool(), { afterToolCall: () => void seen++ });
+			buckets.registry.tools.update("echo", { description: "patched", promptSnippet: "echoes" });
+			buckets.registry.prompt.set("");
+			const snapshot = buckets.freeze();
+			expect(snapshot.tools.defs[0]).toMatchObject({ description: "patched", promptSnippet: "echoes" });
+			const terminal = yield* snapshot.tools.handle(call, options);
+			expect(seen).toBe(1);
+			expect(terminal.time.start).toBe(call.time.start);
 		}),
 	);
 });

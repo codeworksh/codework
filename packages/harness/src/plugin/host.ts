@@ -35,22 +35,32 @@ export const run = Effect.fn("PluginHost.run")(function* (
 						new SetupError({ pluginId: plugin.id, message: `Plugin setup failed: ${plugin.id}`, cause }),
 				});
 			}).pipe(
-				Effect.catchCause((cause) =>
-					Cause.hasInterrupts(cause)
-						? Effect.failCause(cause)
-						: Effect.fail(
-								new SetupError({
+				Effect.catchCause((cause) => {
+					if (Cause.hasInterrupts(cause)) return Effect.failCause(cause);
+					// Typed failures are already SetupErrors; wrap only defects (sync throws, dies)
+					// so the original plugin error is never nested twice. `Schema.is` on a tagged
+					// error class is an identity check, so a plugin throwing its own
+					// SetupError-shaped object still gets attributed to it.
+					const squashed = Cause.squash(cause);
+					return Effect.fail(
+						Schema.is(SetupError)(squashed)
+							? squashed
+							: new SetupError({
 									pluginId: plugin.id,
 									message: `Plugin setup failed: ${plugin.id}`,
-									cause: Cause.squash(cause),
+									cause: squashed,
 								}),
-							),
-				),
+					);
+				}),
 			);
 		}
 		return yield* Effect.try({
 			try: buckets.freeze,
-			catch: (cause) => new SetupError({ message: "Plugin snapshot freeze failed", cause }),
+			catch: (cause) =>
+				new SetupError({
+					message: `Plugin snapshot freeze failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+					cause,
+				}),
 		});
 	});
 	return yield* setup.pipe(Effect.ensuring(Effect.sync(buckets.close)));

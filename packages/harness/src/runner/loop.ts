@@ -16,6 +16,7 @@ import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { SessionSchema } from "../session/schema.ts";
 import { Session } from "../session/session.ts";
 import { State } from "../state/state.ts";
+import { errorMessage } from "../tools/error.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { LLM } from "./llm.ts";
 import { Runner } from "./run.ts";
@@ -31,14 +32,6 @@ export interface Options {
 	/** Deterministic provider seam for tests. */
 	readonly request?: LLM.Request;
 }
-
-const errorMessage = <E>(cause: Cause.Cause<E>): string => {
-	const squashed = Cause.squash(cause);
-	if (squashed instanceof Error && squashed.message.trim().length > 0) return squashed.message;
-	if (typeof squashed === "string" && squashed.trim().length > 0) return squashed;
-	if (typeof squashed === "object" && squashed !== null && "_tag" in squashed) return String(squashed._tag);
-	return "the turn failed for an unknown reason";
-};
 
 const terminalResult = (text: string) => ({
 	content: [{ type: "text" as const, text }],

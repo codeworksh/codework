@@ -32,7 +32,7 @@ describe("SandboxDriverLoader", () => {
 		Effect.gen(function* () {
 			const loaded = yield* SandboxDriverLoader.load(
 				{ package: "@acme/codework-sandbox-test", options: { token: "secret" } },
-				{ resolve: resolver, import: () => Promise.resolve({ default: moduleFor() }) },
+				{ hostCwd: process.cwd(), resolve: resolver, import: () => Promise.resolve({ default: moduleFor() }) },
 			);
 			expect(loaded.registered.name).toBe("acme.test");
 			expect(loaded.source).toBe("package");
@@ -42,7 +42,7 @@ describe("SandboxDriverLoader", () => {
 	it.effect("rejects path references until settings supplies a trusted resolver", () =>
 		Effect.gen(function* () {
 			for (const specifier of ["./plugin.ts", "../plugin.ts", "/tmp/plugin.ts", "file:///tmp/plugin.ts"]) {
-				const exit = yield* Effect.exit(SandboxDriverLoader.packageResolver()(specifier));
+				const exit = yield* Effect.exit(SandboxDriverLoader.packageResolver(process.cwd())(specifier));
 				const error = errorFrom(exit);
 				expect(error).toBeInstanceOf(SandboxDriverLoadError);
 				expect((error as SandboxDriverLoadError).phase).toBe("resolve");
@@ -55,7 +55,7 @@ describe("SandboxDriverLoader", () => {
 			const exit = yield* Effect.exit(
 				SandboxDriverLoader.load(
 					{ package: "@acme/codework-sandbox-test", options: { token: 123_456 } },
-					{ resolve: resolver, import: () => Promise.resolve({ default: moduleFor() }) },
+					{ hostCwd: process.cwd(), resolve: resolver, import: () => Promise.resolve({ default: moduleFor() }) },
 				),
 			);
 			const error = errorFrom(exit);
@@ -70,6 +70,7 @@ describe("SandboxDriverLoader", () => {
 		return Effect.gen(function* () {
 			const exit = yield* Effect.exit(
 				SandboxDriverLoader.load("@acme/codework-sandbox-test", {
+					hostCwd: process.cwd(),
 					resolve: resolver,
 					import: () =>
 						Promise.resolve({
@@ -95,6 +96,7 @@ describe("SandboxDriverLoader", () => {
 	it.effect("loads the installed external Vercel copy by package name", () =>
 		Effect.gen(function* () {
 			const loaded = yield* SandboxDriverLoader.load("@codeworksh-test/codework-sandbox-vercel", {
+				hostCwd: process.cwd(),
 				resolve: SandboxDriverLoader.packageResolver(packageDirectory, [
 					"development",
 					"node",
@@ -117,6 +119,7 @@ describe("SandboxDriverLoader", () => {
 	it.effect("loads a first-party provider through its public package subpath", () =>
 		Effect.gen(function* () {
 			const loaded = yield* SandboxDriverLoader.load("@codeworksh/harness/sandboxes/vercel", {
+				hostCwd: process.cwd(),
 				resolve: SandboxDriverLoader.packageResolver(packageDirectory, [
 					"development",
 					"node",

@@ -99,8 +99,15 @@ const exportedTarget = (
 
 const official = new Set(["@codeworksh/harness/sandboxes/vercel", "@codeworksh/harness/sandboxes/daytona"]);
 
+/**
+ * Resolves driver package specifiers against `hostCwd` -- the OS process's
+ * directory, supplied by the caller. This is host module resolution, not sandbox
+ * addressing: a driver package lives on the host filesystem no matter which
+ * namespace the sandbox it builds will serve. Required rather than defaulted so
+ * it can never silently disagree with the directory the harness was started in.
+ */
 export const packageResolver = (
-	base = process.cwd(),
+	hostCwd: string,
 	conditions: ReadonlyArray<string> = ["node", "import", "default"],
 ): Resolver =>
 	Effect.fn("SandboxDriverLoader.resolve")(function* (specifier: string) {
@@ -113,7 +120,7 @@ export const packageResolver = (
 		}
 		const parsed = splitPackage(specifier)!;
 		const packageJson = yield* Effect.try({
-			try: () => findPackageJSON(parsed.name, pathToFileURL(hostPath.resolve(base, "package.json"))),
+			try: () => findPackageJSON(parsed.name, pathToFileURL(hostPath.resolve(hostCwd, "package.json"))),
 			catch: (reason) => new SandboxDriverLoadError({ specifier, phase: "resolve", reason: String(reason) }),
 		});
 		if (packageJson === undefined) {
@@ -207,15 +214,17 @@ const failure = (specifier: string, phase: SandboxDriverLoadError["phase"], reas
 	});
 
 export interface Options {
+	/** The OS process's directory. See {@link packageResolver}. */
+	readonly hostCwd: string;
 	readonly resolve?: Resolver;
 	readonly import?: Importer;
 }
 
-export const load = Effect.fn("SandboxDriverLoader.load")(function* (entry: Entry, options: Options = {}) {
+export const load = Effect.fn("SandboxDriverLoader.load")(function* (entry: Entry, options: Options) {
 	if (isRegistration(entry)) return entry;
 	const specifier = typeof entry === "string" ? entry : entry.package;
 	const rawOptions = typeof entry === "string" ? {} : (entry.options ?? {});
-	const resolved = yield* (options.resolve ?? packageResolver())(specifier);
+	const resolved = yield* (options.resolve ?? packageResolver(options.hostCwd))(specifier);
 	const imported = yield* Effect.tryPromise({
 		try: () => (options.import ?? ((url) => import(/* @vite-ignore */ url)))(resolved.url),
 		catch: (reason) => failure(specifier, "import", reason),
@@ -253,7 +262,7 @@ export const load = Effect.fn("SandboxDriverLoader.load")(function* (entry: Entr
 
 export const loadAll = (
 	entries: ReadonlyArray<Entry>,
-	options: Options = {},
+	options: Options,
 ): Effect.Effect<ReadonlyArray<SandboxDriver.Registration>, SandboxDriverLoadError> =>
 	Effect.forEach(entries, (entry) => load(entry, options));
 

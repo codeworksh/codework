@@ -1,3 +1,4 @@
+import "./utils/env.ts";
 import { Settings } from "../src/settings/settings.ts";
 import { Effect, Option } from "effect";
 import fs from "node:fs/promises";

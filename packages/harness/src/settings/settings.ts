@@ -6,15 +6,15 @@
  * valid result:
  *
  * 1. `<Global.config>/settings.json`          -- the user's own, `~/.codework/config` by default
- * 2. `<startup cwd>/.codework/config/settings.json` -- committed with the project
+ * 2. `<options.cwd>/.codework/config/settings.json`  -- committed with the project
  * 3. `<--user-config-dir>/settings.json`      -- explicit override, `~` expanded, relative to cwd
  *
  * **All three are host paths.** They are resolved from the process's startup directory and
  * `Global.config`, never from a session's `--cwd`, its working directory, or its sandbox
  * mount. A session running in a remote or in-memory sandbox reads the same host files as
  * every other session in the process; there is no per-project or per-sandbox settings file,
- * and no parent-directory search. The startup directory is captured once, so later `cd` or
- * a session pointed elsewhere changes nothing.
+ * and no parent-directory search. The startup directory arrives as `options.cwd` and is
+ * resolved once, so later `cd` or a session pointed elsewhere changes nothing.
  *
  * `load` re-reads all three on every call. There is no cache to invalidate and no reload
  * API: an edit lands at the next exchange capture because the next capture goes to disk.
@@ -31,8 +31,13 @@ import { defaults, Patch, type Info } from "./schema.ts";
 
 export interface Options {
 	readonly userConfigDir?: string;
-	/** Host startup directory, independent of the session/sandbox cwd. */
-	readonly cwd?: string;
+	/**
+	 * Host startup directory, supplied by the caller -- never `process.cwd()` read
+	 * here. The distinction it protects is between the OS process's directory and a
+	 * session's sandbox mount, which are unrelated and easy to confuse; requiring it
+	 * means a caller cannot get the host layer by forgetting to say which it meant.
+	 */
+	readonly cwd: string;
 }
 
 export function paths(config: string, cwd: string, custom?: string): ReadonlyArray<string> {
@@ -89,12 +94,12 @@ export interface Interface {
 }
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/settings/settings/Service") {}
 
-export const layer = (options: Options = {}) =>
+export const layer = (options: Options) =>
 	Layer.effect(
 		Service,
 		Effect.gen(function* () {
 			const global = yield* Global.Service;
-			const files = paths(global.config, hostPath.resolve(options.cwd ?? process.cwd()), options.userConfigDir);
+			const files = paths(global.config, hostPath.resolve(options.cwd), options.userConfigDir);
 			const load = Effect.fn("Settings.load")(function* () {
 				let settings = merge(defaults);
 				for (const path of files) {

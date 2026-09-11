@@ -34,6 +34,15 @@ export interface ToolDefPatch {
 	readonly promptSnippet?: string;
 	readonly promptGuidelines?: ReadonlyArray<string>;
 }
+/**
+ * One frozen bucket entry: the winning tool for a name together with the hooks that
+ * `add` declared alongside it. Kept here rather than in the bucket implementation so
+ * the executor shares the contract without importing plugin assembly.
+ */
+export interface ToolRegistration {
+	readonly tool: RegisteredTool;
+	readonly hooks: ToolAddOptions;
+}
 export interface ToolRegistry {
 	readonly add: (tool: RegisteredTool, options?: ToolAddOptions) => void;
 	readonly update: (name: string, patch: ToolDefPatch) => void;

@@ -6,7 +6,8 @@ import { fileSystem as fs, hostPath as path } from "../host.ts";
 import * as Package from "./package.ts";
 import type { Plugin } from "./plugin.ts";
 
-export const idPattern = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9.-]*$/;
+/** `vendor.domain.context`, exactly three segments — a fourth would shadow a package name. */
+export const idPattern = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*){2}$/;
 const Id = Schema.String.check(Schema.isPattern(idPattern));
 const Definition = Schema.Struct({
 	id: Id,
@@ -30,9 +31,13 @@ export const failure = (origin: Origin, phase: PreparationError["phase"], cause:
 	new PreparationError({ ...origin, phase, cause, ...(id === undefined ? {} : { id }) });
 
 export const validate = Effect.fn("PluginLoader.validate")(function* (input: unknown, origin: Origin, builtin = false) {
-	const plugin = yield* Schema.decodeUnknownEffect(Definition)(input).pipe(
+	yield* Schema.decodeUnknownEffect(Definition)(input).pipe(
 		Effect.mapError((cause) => failure(origin, "definition", cause)),
 	);
+	// The author's own object, not the decoded copy: a `Struct` decode keeps only the
+	// declared keys, which would strip a plugin's other properties and leave `this`
+	// pointing at a clone inside the documented `setup() {}` shorthand.
+	const plugin = input as Plugin;
 	if (!builtin && plugin.id.startsWith("codework.")) {
 		return yield* failure(
 			origin,
@@ -50,13 +55,19 @@ export type Source =
 	| { readonly kind: "local"; readonly path: string }
 	| { readonly kind: "package"; readonly request: Package.Request };
 
-export const classify = (source: string, base: string): Source => {
+export const classify = (source: string, hostCwd: string): Source => {
 	if (source.startsWith("!")) {
 		const id = Schema.decodeSync(Id)(source.slice(1));
 		return { kind: "disable", id };
 	}
-	if (source.startsWith("file:") || source.startsWith("./") || source.startsWith("../") || path.isAbsolute(source)) {
-		return { kind: "local", path: source.startsWith("file:") ? fileURLToPath(source) : path.resolve(base, source) };
+	if (source.startsWith("file:")) {
+		// Both `new URL` and `fileURLToPath` silently read a relative `file:./x` as `/x`. A file
+		// URL names an absolute path or it is not one.
+		if (!source.startsWith("file:///")) throw new Error(`Not an absolute file URL: ${source}`);
+		return { kind: "local", path: fileURLToPath(source) };
+	}
+	if (source.startsWith("./") || source.startsWith("../") || path.isAbsolute(source)) {
+		return { kind: "local", path: path.resolve(hostCwd, source) };
 	}
 	if (Schema.is(Id)(source)) return { kind: "id", id: source };
 	return { kind: "package", request: Package.parse(source) };
@@ -71,7 +82,12 @@ const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string,
 	const stat = yield* fs.stat(location);
 	if (stat.type !== "Directory") return pathToFileURL(location).href;
 	const manifestPath = path.join(location, "package.json");
-	if (!(yield* fs.exists(manifestPath))) return pathToFileURL(path.join(location, "index.js")).href;
+	if (!(yield* fs.exists(manifestPath))) {
+		const fallback = path.join(location, "index.js");
+		if (!(yield* fs.exists(fallback)))
+			return yield* failure(origin, "source", new Error(`Directory has no package.json or index.js: ${location}`));
+		return pathToFileURL(fallback).href;
+	}
 	const manifest = yield* fs
 		.readFileString(manifestPath)
 		.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Manifest))));
@@ -90,7 +106,8 @@ const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string,
 
 export interface Options {
 	readonly cache: string;
-	readonly base?: string;
+	/** The OS process's directory, that constructor-relative references resolve against. Never read here. */
+	readonly hostCwd: string;
 	readonly import?: (url: string) => Promise<unknown>;
 	readonly install?: (
 		request: Package.Request,
@@ -116,7 +133,11 @@ export const load = Effect.fn("PluginLoader.load")(function* (
 				)
 			: {
 					url: yield* localUrl(source.path, origin).pipe(
-						Effect.mapError((cause) => failure(origin, "source", cause)),
+						// `localUrl` already reports its own source failures; only platform errors
+						// reaching here still need attribution.
+						Effect.mapError((cause) =>
+							Schema.is(PreparationError)(cause) ? cause : failure(origin, "source", cause),
+						),
 					),
 				};
 	const module = yield* Effect.tryPromise({

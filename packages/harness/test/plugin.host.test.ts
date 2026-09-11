@@ -1,3 +1,4 @@
+import "./utils/env.ts";
 import { createAssistantMessageEventStream, type Model } from "@codeworksh/aikit";
 import { Deferred, Effect, Fiber, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
@@ -79,7 +80,13 @@ describe("plugin domains and exchange host", () => {
 					expect(contexts[0]?.plugin).not.toBe(contexts[1]?.plugin);
 					expect(contexts[0]?.model).toBe(models[0]);
 					expect(contexts[1]?.model).toBe(models[1]);
-					expect(observed).toEqual(["custom:1\n\nappend\nwrapped", "custom:1\n\nappend\nwrapped"]);
+					// The body belongs to `codework.prompt.default`; what the host owes is that both
+					// slots were awaited against this exchange's bucket and the wrap saw the result.
+					expect(observed).toHaveLength(2);
+					expect(observed[0]).toBe(observed[1]);
+					expect(observed[0]?.startsWith("custom:1\n\n")).toBe(true);
+					expect(observed[0]).toContain("\n\nappend\n\n");
+					expect(observed[0]?.endsWith("\nwrapped")).toBe(true);
 					expect(contexts[0]?.events).not.toHaveProperty("subscribe");
 					expect(() => contexts[0]?.plugin.prompt.set("late")).toThrow();
 				}).pipe(
@@ -145,6 +152,37 @@ describe("plugin domains and exchange host", () => {
 					Effect.scoped,
 				),
 			);
+		}));
+	it("runs no setup when preparation fails", () =>
+		withSettings(async ({ root }) => {
+			let setups = 0;
+			const counted = {
+				id: "acme.prompt.counted",
+				setup: () => {
+					setups++;
+				},
+			};
+			const failure = await Effect.runPromise(
+				Effect.gen(function* () {
+					const session = yield* Session.create({ directory: root });
+					yield* session.run("hello");
+				}).pipe(
+					Effect.provide(
+						Harness.layer({
+							home: join(root, "home"),
+							database: ":memory:",
+							llm: immediateOpen(),
+							// A malformed entry after a valid one: nothing may run, not even the
+							// definition that resolved.
+							plugins: [counted, { id: "nope" } as never],
+						}),
+					),
+					Effect.scoped,
+					Effect.flip,
+				),
+			);
+			expect(failure).toMatchObject({ _tag: "PluginPreparationError", phase: "definition", index: 1 });
+			expect(setups).toBe(0);
 		}));
 	it("runs no setup when model resolution fails", () =>
 		withSettings(async ({ root }) => {

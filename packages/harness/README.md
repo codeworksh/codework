@@ -57,9 +57,11 @@ const runtime = Harness.layer({
 
 Hooks belong to the tool registration. Sequential or parallel scheduling, selected with `Session.create({ tools: { execution: "parallel" } })`, covers the entire hook/handler pipeline. After runs for a started, interrupted tool if it has not already started, with a one-second cooperative cleanup grace period. The kernel owns result settlement.
 
+`ctx.plugin.tools.update(name, patch)` rewrites a registration's model-facing prose without replacing the tool or its hooks. A read sees only earlier contributions, so a plugin patching `promptSnippet` or `promptGuidelines` must run _before_ the prompt plugin that indexes them — after it, the patch still reaches the wire description but no longer the system prompt.
+
 Prompt plugins use `ctx.plugin.prompt.get()` and `set(string)`. Each `set` replaces the entire prompt, including with an empty string. Place a prompt plugin after the tools or prompt contributors it needs. Contributions close after setup; plugins receive event publication but no subscription or background lifecycle.
 
-Omitting `plugins` selects Bash, the default prompt, and guidelines. An explicit array replaces that selection. Entries may be plugin objects, IDs, `!vendor.domain.name` to disable an ID, local paths/file URLs, or package specs such as `@acme/codework-plugin@1.2.0`. Source modules must default-export one plugin object. Definitions load before selection; the last occurrence of each ID determines whether it runs and its position.
+Omitting `plugins` selects Bash then the default prompt. An explicit array replaces that selection. Entries may be plugin objects, IDs, `!vendor.domain.name` to disable an ID, local paths/file URLs, or package specs such as `@acme/codework-plugin@1.2.0`. Source modules must default-export one plugin object. Definitions load before selection; the last occurrence of each ID determines whether it runs and its position.
 
 Package sources install with pnpm, with lifecycle scripts disabled, under the harness home cache. An omitted version means `latest` on the first installation; subsequent constructions reuse that completed installation. Plugin discovery from settings and daemon lifecycles are not implemented.
 

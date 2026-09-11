@@ -17,7 +17,6 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
 import { Event } from "../event/event.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
 import { run as setup } from "../plugin/host.ts";
-import { defaults } from "../plugin/internal.ts";
 import type { Plugin } from "../plugin/plugin.ts";
 import { LLM } from "../runner/llm.ts";
 import type { Runner } from "../runner/run.ts";
@@ -133,7 +132,12 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 
 const resolver = (input: string | PromptResolver): PromptResolver => (typeof input === "string" ? () => input : input);
 
-export const layer = (options: Options = {}, plugins: ReadonlyArray<Plugin> = defaults) => {
+/**
+ * `plugins` is the prepared, ordered list — resolved once during harness construction
+ * (`plugin/catalog.ts`). State runs it as given: no insertion, reordering, or rerun, and no
+ * default of its own.
+ */
+export const layer = (options: Options, plugins: ReadonlyArray<Plugin>) => {
 	return Layer.effect(
 		Service,
 		Effect.gen(function* () {

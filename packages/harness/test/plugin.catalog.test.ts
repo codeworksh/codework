@@ -1,8 +1,9 @@
 import { Deferred, Effect, Fiber } from "effect";
+import { existsSync, realpathSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { join, relative } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { prepare } from "../src/plugin/catalog.ts";
 import { classify, validate } from "../src/plugin/loader.ts";
@@ -11,7 +12,7 @@ import { define } from "../src/plugin/plugin.ts";
 
 const a = define({ id: "acme.tool.a", setup: () => {} });
 const b = define({ id: "acme.tool.b", setup: () => {} });
-const options = { builtins: [], cache: "/unused", base: "/project" };
+const options = { builtins: [], cache: "/unused", hostCwd: "/project" };
 const withDirectory = async (body: (directory: string) => Promise<void>) => {
 	const directory = await mkdtemp(join(tmpdir(), "plugin-catalog-"));
 	try {
@@ -75,17 +76,51 @@ describe("plugin catalog and source resolution", () => {
 			).toMatchObject({ phase: "definition", index: 2 });
 		},
 	);
+	it("reports a malformed supplied object as a typed definition failure", async () => {
+		// Nothing has validated the entry yet, so `origin.reference` cannot read an `id` off it.
+		for (const input of [{}, [], () => a, { id: 123, setup: () => {} }]) {
+			const error = await Effect.runPromise(prepare([b, input as never], options).pipe(Effect.flip));
+			expect(error).toMatchObject({ phase: "definition", index: 1 });
+			expect(typeof error.reference).toBe("string");
+		}
+	});
+	it("selects the caller's own object rather than a validated copy", async () => {
+		// A `Struct` decode would return a clone holding only `id`/`setup`, which breaks both
+		// object identity and `this` inside the documented `setup() {}` shorthand.
+		const seen: string[] = [];
+		const plugin = {
+			id: "acme.tool.self",
+			label: "kept",
+			setup() {
+				seen.push((this as { label: string }).label);
+			},
+		};
+		const [resolved] = await Effect.runPromise(prepare([plugin], options));
+		expect(resolved).toBe(plugin);
+		void resolved?.setup({} as never);
+		expect(seen).toEqual(["kept"]);
+	});
 	it("normalizes package specs and classifies local sources", () => {
 		expect(parse("@acme/plugin")).toEqual({ name: "@acme/plugin", spec: "@acme/plugin@latest" });
 		expect(parse("@acme/plugin@latest")).toEqual(parse("@acme/plugin"));
 		expect(parse("@acme/plugin@1.2.0").spec).toBe("@acme/plugin@1.2.0");
 		expect(parse("plugin@*").spec).toBe("plugin@*");
+		// A trailing bare `@` is no version at all, not the `*` range npa reports for it.
+		expect(parse("plugin@")).toEqual(parse("plugin"));
 		expect(classify("./plugin.ts", "/project")).toEqual({ kind: "local", path: "/project/plugin.ts" });
 		expect(classify("file:///project/plugin.ts", "/elsewhere")).toEqual({
 			kind: "local",
 			path: "/project/plugin.ts",
 		});
 		expect(classify(a.id, "/project")).toEqual({ kind: "id", id: a.id });
+		// A dotted package name needs an explicit version to be read as a package.
+		expect(classify(`${a.id}@latest`, "/project")).toEqual({ kind: "package", request: parse(`${a.id}@latest`) });
+		// An ID is exactly three segments; a fourth belongs to a package name.
+		expect(classify("acme.tool.deep.name", "/project").kind).toBe("package");
+		expect(classify(`!${a.id}`, "/project")).toEqual({ kind: "disable", id: a.id });
+		expect(() => classify("!", "/project")).toThrow();
+		// `fileURLToPath` would silently turn this into `/rel.ts`.
+		expect(() => classify("file:./rel.ts", "/project")).toThrow();
 		expect(() => parse("https://example.com/plugin.tgz")).toThrow();
 	});
 	it("loads each normalized source once and validates default exports", async () => {
@@ -141,6 +176,44 @@ describe("plugin catalog and source resolution", () => {
 				reference: directory,
 			});
 		}));
+	it("falls back to index.js and reports a directory with no entry as a source error", () =>
+		withDirectory(async (directory) => {
+			const empty = join(directory, "empty");
+			await mkdir(empty);
+			expect(await Effect.runPromise(prepare([empty], options).pipe(Effect.flip))).toMatchObject({
+				phase: "source",
+				reference: empty,
+			});
+			await writeFile(join(empty, "index.js"), "");
+			let url = "";
+			await Effect.runPromise(
+				prepare([empty], {
+					...options,
+					import: async (input) => {
+						url = input;
+						return { default: a };
+					},
+				}),
+			);
+			expect(url).toBe(pathToFileURL(join(empty, "index.js")).href);
+		}));
+	it("resolves a manifest without exports through legacy main", () =>
+		withDirectory(async (directory) => {
+			await writeFile(join(directory, "package.json"), JSON.stringify({ name: "fixture", main: "./legacy.js" }));
+			await writeFile(join(directory, "legacy.js"), "");
+			let url = "";
+			await Effect.runPromise(
+				prepare([directory], {
+					...options,
+					import: async (input) => {
+						url = input;
+						return { default: a };
+					},
+				}),
+			);
+			// The legacy branch resolves through `createRequire`, which realpaths its answer.
+			expect(url).toBe(pathToFileURL(realpathSync(join(directory, "legacy.js"))).href);
+		}));
 	it("stages installs, reuses complete cache and isolates explicit versions", () =>
 		withDirectory(async (cache) => {
 			let runs = 0;
@@ -158,6 +231,27 @@ describe("plugin catalog and source resolution", () => {
 			expect(runs).toBe(2);
 			expect(first.url).toContain("/plugins/");
 			expect(await readdir(cache)).toEqual(["plugins"]);
+		}));
+	it("records an entrypoint inside the published installation", () =>
+		withDirectory(async (cache) => {
+			// `import-meta-resolve` realpaths its answer while the staging directory is not
+			// realpathed, so a symlinked cache root used to record a path outside the entry.
+			const installed = await Effect.runPromise(install(parse("fixture"), cache, fixture));
+			const file = fileURLToPath(installed.url);
+			expect(existsSync(file)).toBe(true);
+			expect(relative(join(cache, "plugins"), file).startsWith("..")).toBe(false);
+		}));
+	it("reads a complete cache without waiting on a leftover lock", () =>
+		withDirectory(async (cache) => {
+			const first = await Effect.runPromise(install(parse("fixture"), cache, fixture));
+			// A killed installer leaves its lock directory behind; a cache hit must not block on it.
+			const stale = (await readdir(join(cache, "plugins"))).map((entry) => join(cache, "plugins", `${entry}.lock`));
+			await Promise.all(stale.map((lock) => mkdir(lock, { recursive: true })));
+			expect(
+				await Effect.runPromise(
+					install(parse("fixture"), cache, fixture).pipe(Effect.timeout("2 seconds"), Effect.orDie),
+				),
+			).toEqual(first);
 		}));
 	it("does not reuse failed installations", () =>
 		withDirectory(async (cache) => {

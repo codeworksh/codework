@@ -1,8 +1,22 @@
-import type { ToolRegistration } from "../plugin/tool/registry.ts";
-import type { HookReturn, ToolAfterResult, ToolBefore } from "../plugin/tool/schema.ts";
+import type { HookReturn, ToolAfterResult, ToolBefore, ToolRegistration } from "../plugin/tool/schema.ts";
 import { Message } from "@codeworksh/aikit";
-import { Cause, Duration, Effect, Exit, Fiber, Option, Queue, Ref, Result, Schedule, Schema, Scope } from "effect";
-import { ToolExecutionError } from "./error.ts";
+import {
+	Cause,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Option,
+	Predicate,
+	Queue,
+	Ref,
+	Result,
+	Schedule,
+	Schema,
+	Scope,
+} from "effect";
+import { isAikitToolCallTerminalPart } from "../schema.ts";
+import { errorMessage, ToolExecutionError } from "./error.ts";
 import { ToolProgress, type ToolProgressPartial } from "./progress.ts";
 import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, type ToolCallContext } from "./tool.ts";
 
@@ -175,6 +189,10 @@ const encodeOutcome = (
 			if (def.failure === undefined || !Schema.is(asCodec(def.failure))(failure)) {
 				return yield* Effect.die(failure);
 			}
+			// A failing finalizer alongside the declared failure is not model-facing, but losing
+			// it entirely makes the tool look like it failed cleanly.
+			if (Cause.hasDies(cause))
+				yield* Effect.logError("tool finalizer defect alongside a declared failure", Cause.pretty(cause));
 			// Encode declared failures as model-facing tool error results.
 			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.failure))(failure).pipe(Effect.orDie);
 			const content = def.encodeFailureContent ? def.encodeFailureContent(failure) : [yield* jsonText(encoded)];
@@ -200,15 +218,21 @@ const invoke = <A>(callback: () => HookReturn<A>): Effect.Effect<A | void, HookE
 			// @effect-diagnostics-next-line anyUnknownInErrorContext:off
 			return result.pipe(Effect.mapError((cause) => new HookExecutionError({ cause })));
 		}
-		if (value instanceof Promise)
-			return Effect.tryPromise({ try: () => value, catch: (cause) => new HookExecutionError({ cause }) });
+		// Any thenable: a foreign-realm or userland promise would otherwise fall through and be
+		// read as the hook's own return value.
+		if (Predicate.isPromiseLike(value))
+			return Effect.tryPromise({
+				try: () => Promise.resolve(value),
+				catch: (cause) => new HookExecutionError({ cause }),
+			});
 		return Effect.succeed(value);
 	});
 
 const failureOutcome = (call: Message.ToolCallPendingPart, cause: Cause.Cause<unknown>, phase: string) =>
 	Effect.map(
 		Effect.clockWith((clock) => clock.currentTimeMillis),
-		(now) => errored(call, [text(`${phase}: ${Cause.pretty(cause)}`)], now),
+		// Never `Cause.pretty` here: this text goes to the model, and it joins stack traces.
+		(now) => errored(call, [text(`${phase}: ${errorMessage(cause)}`)], now),
 	);
 
 const patchOutcome = (terminal: ToolOutcome, patch: ToolAfterResult | void): ToolOutcome => {
@@ -302,9 +326,13 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 			let afterStarted = false;
 			const notifyAbort = Effect.fn("ToolExecutor.notifyAbort")(function* (terminal: ToolOutcome) {
 				if (!handlerStarted || afterStarted || !hooks.afterToolCall || !hookCall) return;
-				afterStarted = true;
 				const callback = hooks.afterToolCall;
-				const fiber = yield* invoke(() => callback({ ...hookCall, terminal })).pipe(
+				// `invoke` suspends, so the marker and the call land in one step: a scheduler
+				// yield between them would let cancellation skip the hook entirely.
+				const fiber = yield* invoke(() => {
+					afterStarted = true;
+					return callback({ ...hookCall, terminal });
+				}).pipe(
 					Effect.interruptible,
 					Effect.timeout(ABORT_HOOK_GRACE),
 					Effect.catchCause((cause) =>
@@ -392,17 +420,28 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 						return notifyAbort(terminal).pipe(Effect.uninterruptible, Effect.as(terminal));
 					if (!hooks.afterToolCall || !hookCall) return Effect.succeed(terminal);
 					const callback = hooks.afterToolCall;
-					return Effect.suspend(() => {
+					return invoke(() => {
 						afterStarted = true;
-						return invoke(() => callback({ ...hookCall, terminal })).pipe(
-							Effect.map((patch) => patchOutcome(terminal, patch)),
-							Effect.catchCause((cause) =>
-								Cause.hasInterrupts(cause)
-									? Effect.failCause(cause as Cause.Cause<never>)
-									: failureOutcome(call, cause, "afterToolCall failed"),
-							),
-						);
-					});
+						return callback({ ...hookCall, terminal });
+					}).pipe(
+						Effect.flatMap((patch) => {
+							const patched = patchOutcome(terminal, patch);
+							// A patch is arbitrary plugin data and the journal validates the part on
+							// write. Reject it here, or one bad hook aborts the whole turn and takes
+							// its sibling calls with it.
+							if (isAikitToolCallTerminalPart(patched)) return Effect.succeed(patched);
+							return failureOutcome(
+								call,
+								Cause.die(new Error("afterToolCall returned an invalid result patch")),
+								"afterToolCall failed",
+							);
+						}),
+						Effect.catchCause((cause) =>
+							Cause.hasInterrupts(cause)
+								? Effect.failCause(cause as Cause.Cause<never>)
+								: failureOutcome(call, cause, "afterToolCall failed"),
+						),
+					);
 				}),
 				Effect.onExit((exit) =>
 					Effect.gen(function* () {
