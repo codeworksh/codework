@@ -1,6 +1,7 @@
 import { Config, Context, Effect, Layer } from "effect";
 import * as os from "node:os";
 import { fileSystem } from "./host.ts";
+import { expandTilde } from "./util/home.ts";
 import { posix } from "./util/posix.ts";
 
 export const appConfigDir = ".codework";
@@ -8,11 +9,7 @@ export const app = "codework";
 
 const defaultHome = posix.join(os.homedir(), appConfigDir);
 
-function expandHome(value: string) {
-	if (value === "~") return os.homedir();
-	if (value.startsWith("~/")) return posix.join(os.homedir(), value.slice(2));
-	return posix.resolve(value);
-}
+const expandHome = (value: string) => posix.resolve(expandTilde(value, posix));
 
 export const homeConfig = Config.string("CODEWORK_HOME_DIR").pipe(
 	Config.withDefault(defaultHome),

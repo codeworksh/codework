@@ -1,7 +1,7 @@
 /* @effect-diagnostics cryptoRandomUUID:off -- fixtures only need distinct message IDs. */
 import { Message } from "@codeworksh/aikit";
 import { describe, expect, it } from "vite-plus/test";
-import { Runner } from "@codeworksh/harness/effect";
+import { Plugin, Runner } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { renderError } from "../src/cli/error.ts";
 import { addUsage, emptyUsage, header, usage } from "../src/cli/output.ts";
@@ -102,6 +102,48 @@ describe("CLI output", () => {
 		expect(output).toContain("provider: openrouter");
 		expect(output).toContain("hint: set OPENROUTER_API_KEY and retry");
 		expect(output).not.toContain("Runner.ProviderError");
+	});
+
+	it("renders a plugin preparation failure with its reference and a phase hint", () => {
+		const output = renderError(
+			new Plugin.PreparationError({
+				phase: "source",
+				index: 3,
+				reference: "codework-acme-plugn",
+				cause: new Error("Unsupported plugin package source: codework-acme-plugn"),
+			}),
+		);
+
+		expect(output).toContain('error[plugin]: failed to prepare plugin "codework-acme-plugn"');
+		expect(output).toContain("phase: source");
+		expect(output).toContain("detail: Unsupported plugin package source: codework-acme-plugn");
+		expect(output).toContain("hint: check the spelling;");
+		// The bare tag is what a settings typo used to print on its own.
+		expect(output).not.toContain("PluginPreparationError");
+	});
+
+	it("names the unknown ID when a selection enables one nothing defines", () => {
+		const output = renderError(
+			new Plugin.PreparationError({
+				phase: "resolve",
+				index: 2,
+				reference: "acme.tool.missing",
+				id: "acme.tool.missing",
+				cause: new Error("Unknown plugin ID: acme.tool.missing"),
+			}),
+		);
+
+		expect(output).toContain("id: acme.tool.missing");
+		expect(output).toContain("hint: the selection enables an ID that no entry defines");
+	});
+
+	it("renders a plugin install failure without the tag", () => {
+		const output = renderError(
+			new Plugin.InstallError({ cause: new Error("pnpm installation failed with exit code 1") }),
+		);
+
+		expect(output).toContain("error[plugin_install]: pnpm installation failed with exit code 1");
+		expect(output).not.toContain("PluginInstallError");
 	});
 
 	it("renders the sanitized sandbox provider failure", () => {

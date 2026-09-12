@@ -61,7 +61,7 @@ Hooks belong to the tool registration. Sequential or parallel scheduling, select
 
 Prompt plugins use `ctx.plugin.prompt.get()` and `set(string)`. Each `set` replaces the entire prompt, including with an empty string. Place a prompt plugin after the tools or prompt contributors it needs. Contributions close after setup; plugins receive event publication but no subscription or background lifecycle.
 
-Omitting `plugins` selects Bash then the default prompt, followed by the host settings' `plugins` block. An explicit array replaces all of that, and an empty one runs nothing. Entries may be plugin objects, IDs, `!vendor.domain.name` to disable an ID, local paths/file URLs, or package specs such as `@acme/codework-plugin@1.2.0`. Source modules must default-export one plugin object. Definitions load before selection; the last occurrence of each ID determines whether it runs and its position.
+Omitting `plugins` selects Bash then the default prompt, followed by the host settings' `plugins` block. An explicit array replaces all of that, and an empty one runs nothing — which is not a usable harness: `freeze` requires a system prompt, so a selection without a prompt plugin fails every exchange with `SnapshotError("no prompt plugin set a system prompt")`. Every working selection ends with a prompt plugin, whether `codework.prompt.default` or your own. Entries may be plugin objects, IDs, `!vendor.domain.name` to disable an ID, local paths/file URLs, or package specs such as `@acme/codework-plugin@1.2.0`. Source modules must default-export one plugin object. Definitions load before selection; the last occurrence of each ID determines whether it runs and its position.
 
 Settings entries are strings only, and they extend the built-in selection instead of standing in for it, so naming one plugin cannot silently drop Bash or the prompt:
 
@@ -70,7 +70,7 @@ Settings entries are strings only, and they extend the built-in selection instea
 { "plugins": ["codework-acme-plugin", "@acme/codework-plugin@1.2.0", "./plugins/local.ts", "!codework.tool.bash"] }
 ```
 
-The array replaces across settings layers rather than concatenating, so the highest-priority file that names `plugins` owns the whole list. A `./` or `../` path resolves against the directory of the file that declared it — next to `codework.json`, inside `.codework/`, or beside `~/.codework/settings.json` — so one entry means one file in every project. IDs, `!id` disables, `file:` URLs, and package specs are taken as written.
+The array replaces across settings layers rather than concatenating, so the highest-priority file that names `plugins` owns the whole list. A leading `~` expands to the home directory. A `./` or `../` path resolves against the directory of the file that declared it — next to `codework.json`, inside `.codework/`, or beside `~/.codework/settings.json` — so one entry means one file in every project. IDs, `!id` disables, `file:` URLs, and package specs are taken as written.
 
 Entries append after the built-ins, so a tool plugin added here registers after `codework.prompt.default` rendered its index — the usual ordering rule, not a special case for settings. Its tool reaches the provider with its own description but is absent from the system prompt's list. Re-list the prompt plugin to move it, since the last occurrence of an ID owns its position:
 
@@ -78,7 +78,7 @@ Entries append after the built-ins, so a tool plugin added here registers after 
 { "plugins": ["./plugins/read.ts", "codework.prompt.default"] }
 ```
 
-Package sources install with pnpm, with lifecycle scripts disabled, under the harness home cache. An omitted version means `latest` on the first installation; subsequent constructions reuse that completed installation. The selection is read once per `Harness.layer`, so an edited `plugins` block applies at the next construction; hot reload and daemon lifecycles are not implemented.
+Package sources install with pnpm, with lifecycle scripts disabled, under the harness home cache. The installer inherits stderr, so a first install prints pnpm's own progress and errors to the terminal — and a `plugins` entry in a settings file means that can happen during `Harness.layer` construction, before any session exists. An omitted version means `latest` on the first installation; subsequent constructions reuse that completed installation. The selection is read once per `Harness.layer`, so an edited `plugins` block applies at the next construction; hot reload and daemon lifecycles are not implemented.
 
 Failures are attributed: a bad reference, unreadable module, or malformed plugin fails `Harness.layer` construction with `PluginPreparationError`, which carries the failing phase (`source`, `install`, `import`, or `definition`) and the index of the offending reference. A failing package install reports `PluginInstallError`; a plugin's `setup` failure becomes `Plugin.SetupError` with the plugin id, surfacing as a `SnapshotError` for that exchange. Plugins are trusted in-process code — local paths and `file:` references import whatever they point at, so only load sources you trust.
 

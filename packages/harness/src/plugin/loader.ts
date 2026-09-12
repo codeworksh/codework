@@ -1,6 +1,7 @@
 import { Effect, Predicate, Schema } from "effect";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { expandTilde } from "../util/home.ts";
 import { importModule, resolveModule } from "../util/module.ts";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
 import * as Package from "./package.ts";
@@ -61,8 +62,11 @@ export const classify = (source: string, hostCwd: string): Source => {
 		if (!source.startsWith("file:///")) throw new Error(`not an absolute file URL: ${source}`);
 		return { kind: "local", path: fileURLToPath(source) };
 	}
-	if (source.startsWith("./") || source.startsWith("../") || path.isAbsolute(source)) {
-		return { kind: "local", path: path.resolve(hostCwd, source) };
+	// `~` before the package branch: npm names cannot start with it, and `npa` would otherwise
+	// read `~` as a package and `~/x` as an unsupported spec, reporting a path as a bad package.
+	const expanded = expandTilde(source, path);
+	if (expanded.startsWith("./") || expanded.startsWith("../") || path.isAbsolute(expanded)) {
+		return { kind: "local", path: path.resolve(hostCwd, expanded) };
 	}
 	if (Schema.is(Id)(source)) return { kind: "id", id: source };
 	return { kind: "package", request: Package.parse(source) };

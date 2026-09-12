@@ -2,7 +2,7 @@ import { Deferred, Effect, Exit, Fiber } from "effect";
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { mkdtemp, mkdir, writeFile, rm, readdir, symlink, utimes } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
@@ -118,6 +118,12 @@ describe("plugin catalog and source resolution", () => {
 		expect(classify(`${a.id}@latest`, "/project")).toEqual({ kind: "package", request: parse(`${a.id}@latest`) });
 		// An ID is exactly three segments; a fourth belongs to a package name.
 		expect(classify("acme.tool.deep.name", "/project").kind).toBe("package");
+		// A `~` reference is a path: npa would read `~` as a package and `~/x` as a bad spec.
+		expect(classify("~/plugins/one.ts", "/project")).toEqual({
+			kind: "local",
+			path: join(homedir(), "plugins/one.ts"),
+		});
+		expect(classify("~", "/project")).toEqual({ kind: "local", path: homedir() });
 		expect(classify(`!${a.id}`, "/project")).toEqual({ kind: "disable", id: a.id });
 		expect(() => classify("!", "/project")).toThrow();
 		// `fileURLToPath` would silently turn this into `/rel.ts`.

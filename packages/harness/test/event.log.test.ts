@@ -334,6 +334,33 @@ describe("Event.log", () => {
 			expect(first.durable?.seq).toBe(0);
 		}));
 
+	it("skips a row whose manifest entry is not durable instead of failing the read", () =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const topic = "plugin:test.foreign:nondurable";
+			yield* events.publish(Foreign, { topic, note: "one" });
+
+			// `EventSchema.durable` drops non-durable definitions, so only a hand-built manifest
+			// can key one under a stored type. The row is skipped, as in opencode's Bus, rather
+			// than decoded with a version nothing wrote.
+			const Ephemeral = EventSchema.define({
+				type: "test.foreign.happened",
+				schema: { topic: Schema.String, note: Schema.String },
+			});
+			const handBuilt = new Map([[EventSchema.versionedType("test.foreign.happened", 1), Ephemeral]]);
+			const items = Array.from(
+				yield* events.log({ aggregateId: topic, definitions: handBuilt }).pipe(Stream.runCollect),
+			);
+			expect(items.filter((item) => !Event.isSynced(item))).toEqual([]);
+			expect(items.filter(Event.isSynced)).toHaveLength(1);
+
+			// The same row still decodes through its durable definition.
+			const decoded = Array.from(
+				yield* events.log({ aggregateId: topic, definitions: foreignDefinitions }).pipe(Stream.runCollect),
+			);
+			expect(decoded.filter((item) => !Event.isSynced(item))).toHaveLength(1);
+		}));
+
 	it("pages custom definitions across many pages and resumes from a cursor", () =>
 		Effect.gen(function* () {
 			const events = yield* Event.Service;

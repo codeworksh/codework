@@ -1,4 +1,4 @@
-import { Runner } from "@codeworksh/harness/effect";
+import { Plugin, Runner } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
 import { writeError } from "./output.ts";
@@ -26,6 +26,8 @@ const isModelCatalogError = Schema.is(Runner.ModelCatalogError);
 const isModelNotFoundError = Schema.is(Runner.ModelNotFoundError);
 const isLLMStreamError = Schema.is(Runner.LLMStreamError);
 const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
+const isPluginPreparationError = Schema.is(Plugin.PreparationError);
+const isPluginInstallError = Schema.is(Plugin.InstallError);
 
 const providerCategory = (reason: Runner.ProviderFailureReason): string => {
 	switch (reason._tag) {
@@ -107,6 +109,25 @@ const unknownMessage = (error: unknown): string => {
 	return "the command failed for an unknown reason";
 };
 
+/**
+ * What the reader can do about a reference that failed to prepare. A plugin list is
+ * usually hand-written in a settings file, so the phase is worth translating.
+ */
+const pluginHint = (phase: Plugin.PreparationError["phase"]): string => {
+	switch (phase) {
+		case "source":
+			return "check the spelling; a path entry starts with `./`, `../`, `~/`, or `/`, and anything else is a package";
+		case "install":
+			return "check the package name and version, and that the registry is reachable";
+		case "import":
+			return "the module failed to load; import it directly to see its own error";
+		case "definition":
+			return "a plugin module must default-export one object with a `setup` and a `vendor.domain.name` id";
+		case "resolve":
+			return "the selection enables an ID that no entry defines; check for a typo or a missing source";
+	}
+};
+
 /** Render typed SDK errors for humans without exposing Effect causes or provider payloads. */
 export const renderError = (error: unknown): string => {
 	if (isInvalidInputError(error)) {
@@ -127,6 +148,25 @@ export const renderError = (error: unknown): string => {
 				`operation: ${error.operation}`,
 				...(error.sanitized.code === undefined ? [] : [`code: ${error.sanitized.code}`]),
 				...(error.stack === undefined ? [] : ["traceback:", error.stack]),
+			].join("\n") + "\n"
+		);
+	}
+	if (isPluginPreparationError(error)) {
+		return (
+			[
+				`error[plugin]: failed to prepare plugin "${error.reference}"`,
+				`phase: ${error.phase}`,
+				...(error.id === undefined ? [] : [`id: ${error.id}`]),
+				`detail: ${unknownMessage(error.cause)}`,
+				`hint: ${pluginHint(error.phase)}`,
+			].join("\n") + "\n"
+		);
+	}
+	if (isPluginInstallError(error)) {
+		return (
+			[
+				`error[plugin_install]: ${unknownMessage(error.cause)}`,
+				"hint: check the package name and version, and that the registry is reachable",
 			].join("\n") + "\n"
 		);
 	}

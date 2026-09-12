@@ -25,9 +25,9 @@
  */
 
 import { Context, Effect, Layer, Result, Schema, SchemaIssue } from "effect";
-import { homedir } from "node:os";
 import { Global } from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
+import { expandTilde } from "../util/home.ts";
 import { merge, normalize } from "./merge.ts";
 import { defaults, Patch, type Info } from "./schema.ts";
 
@@ -49,8 +49,7 @@ export interface Options {
  * pick either layout and the single file takes precedence.
  */
 export function paths(home: string, cwd: string, custom?: string): ReadonlyArray<ReadonlyArray<string>> {
-	const expanded =
-		custom === "~" ? homedir() : custom?.startsWith("~/") ? hostPath.join(homedir(), custom.slice(2)) : custom;
+	const expanded = custom === undefined ? undefined : expandTilde(custom, hostPath);
 	return [
 		[hostPath.join(home, "settings.json")],
 		[hostPath.join(cwd, "codework.json"), hostPath.join(cwd, Global.appConfigDir, "settings.json")],

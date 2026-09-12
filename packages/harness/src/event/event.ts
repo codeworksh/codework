@@ -365,11 +365,21 @@ export const layer = Layer.effect(
 		) {
 			// The SQL filter is built from these same keys, so a row here always matches.
 			const definition = definitions.get(row.type)!;
+			// The envelope's version is the stored row's, read back off its definition; a default
+			// would label the row with a version nothing wrote. Callers filter non-durable
+			// definitions out before this, so the guard is a backstop, not a code path.
+			if (definition.durable === undefined)
+				return yield* Effect.die(
+					new InvalidDurableEventError({
+						type: definition.type,
+						message: `Unknown durable event type ${definition.type}`,
+					}),
+				);
 			const data = yield* Schema.decodeEffect(definition.data as Schema.Codec<unknown, unknown>)(row.data);
 			return {
 				id: row.id,
 				type: definition.type,
-				durable: { aggregateId: row.aggregateId, seq: row.seq, version: definition.durable?.version ?? 0 },
+				durable: { aggregateId: row.aggregateId, seq: row.seq, version: definition.durable.version },
 				data,
 			} as Payload;
 		});
@@ -392,7 +402,11 @@ export const layer = Layer.effect(
 				limit: PAGE_SIZE + 1,
 			});
 			const page = rows.slice(0, PAGE_SIZE);
-			const events = yield* Effect.forEach(page, (row) => decodeLogRow(row, input.definitions));
+			// Skip a type the manifest does not carry as durable rather than failing the read: the
+			// aggregate may hold rows this process cannot decode. `seq` below comes off the raw
+			// tail, so cursors advance across the gap.
+			const decodable = page.filter((row) => input.definitions.get(row.type)?.durable !== undefined);
+			const events = yield* Effect.forEach(decodable, (row) => decodeLogRow(row, input.definitions));
 			// `seq` is the stored row's, not one read back off a decoded value: the
 			// window advances on what the table actually holds.
 			return { events, hasMore: rows.length > PAGE_SIZE, seq: page.at(-1)?.seq };

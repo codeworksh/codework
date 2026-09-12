@@ -39,8 +39,10 @@ export const run = Effect.fn("PluginHost.run")(function* (
 					if (Cause.hasInterrupts(cause)) return Effect.failCause(cause);
 					// Typed failures are already SetupErrors; wrap only defects (sync throws, dies)
 					// so the original plugin error is never nested twice. `Schema.is` on a tagged
-					// error class is an identity check, so a plugin throwing its own
-					// SetupError-shaped object still gets attributed to it.
+					// error class matches any Error carrying the same `_tag` and fields -- another
+					// class with this tag passes, while a plain object does not, lacking the Error
+					// prototype -- so a plugin throwing a bare `{ _tag: "Plugin.SetupError" }` is
+					// wrapped and attributed here like any other defect.
 					const squashed = Cause.squash(cause);
 					return Effect.fail(
 						Schema.is(SetupError)(squashed)
