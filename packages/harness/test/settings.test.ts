@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Logger } from "effect";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -38,13 +38,122 @@ describe("host settings loader", () => {
 		}));
 
 	it("uses global, startup-local, custom paths and expands home", () => {
-		expect(paths("/home/config", "/startup", "relative")).toEqual([
-			"/home/config/settings.json",
-			"/startup/.codework/config/settings.json",
-			"/startup/relative/settings.json",
+		expect(paths("/home", "/startup", "relative")).toEqual([
+			["/home/settings.json"],
+			["/startup/codework.json", "/startup/.codework/settings.json"],
+			["/startup/relative/settings.json"],
 		]);
-		expect(paths("/home/config", "/startup", "~/custom").at(-1)).toBe(join(homedir(), "custom/settings.json"));
+		expect(paths("/home", "/startup", "~/custom").at(-1)).toEqual([join(homedir(), "custom/settings.json")]);
 	});
+
+	it("loads codework.json as the project layer", () =>
+		withSettings(async ({ root, custom }) => {
+			await writeFile(join(root, "codework.json"), JSON.stringify({ model: { thinkingLevel: "low" } }));
+			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
+			);
+			const result = await Effect.runPromise(
+				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(layer)),
+			);
+			expect(result.model.thinkingLevel).toBe("low");
+			expect(result.model.options?.maxRetries).toBe(3);
+		}));
+
+	it("prefers codework.json over .codework/settings.json when both exist", () =>
+		withSettings(async ({ root, local, custom }) => {
+			await writeFile(
+				join(root, "codework.json"),
+				JSON.stringify({ model: { thinkingLevel: "max", options: { maxRetries: 2 } } }),
+			);
+			await writeFile(
+				join(local, "settings.json"),
+				JSON.stringify({ model: { thinkingLevel: "low", options: { maxRetries: 9, timeoutMs: 123 } } }),
+			);
+			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
+			);
+			const result = await Effect.runPromise(
+				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(layer)),
+			);
+			// The directory file is never consulted, so none of its values leak through.
+			expect(result.model.thinkingLevel).toBe("max");
+			expect(result.model.options?.maxRetries).toBe(2);
+			expect(result.model.options?.timeoutMs).toBe(Settings.defaults.model.options?.timeoutMs);
+		}));
+
+	it("merges global, codework.json, and custom settings without using global codework.json", () =>
+		withSettings(async ({ root, global, custom }) => {
+			await writeFile(
+				join(global, "codework.json"),
+				JSON.stringify({ model: { options: { headers: { excluded: "yes" } } } }),
+			);
+			await writeFile(
+				join(global, "settings.json"),
+				JSON.stringify({ model: { thinkingLevel: "low", options: { maxRetries: 2, timeoutMs: 100 } } }),
+			);
+			await writeFile(
+				join(root, "codework.json"),
+				JSON.stringify({ model: { thinkingLevel: "high", options: { timeoutMs: 200 } } }),
+			);
+			await writeFile(join(custom, "settings.json"), JSON.stringify({ model: { thinkingLevel: "max" } }));
+			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: global }))),
+			);
+			const result = await Effect.runPromise(
+				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(layer)),
+			);
+			expect(result.model).toMatchObject({
+				thinkingLevel: "max",
+				options: { maxRetries: 2, timeoutMs: 200 },
+			});
+			expect(result.model.options?.headers).toEqual(Settings.defaults.model.options?.headers);
+		}));
+
+	it("falls back to .codework/settings.json only when codework.json is missing", () =>
+		withSettings(async ({ root, local, custom }) => {
+			await writeFile(join(local, "settings.json"), JSON.stringify({ model: { thinkingLevel: "low" } }));
+			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
+			);
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const settings = yield* Settings.Service;
+					expect((yield* settings.load).model.thinkingLevel).toBe("low");
+					yield* Effect.promise(() =>
+						writeFile(join(root, "codework.json"), JSON.stringify({ model: { thinkingLevel: "max" } })),
+					);
+					expect((yield* settings.load).model.thinkingLevel).toBe("max");
+					yield* Effect.promise(() => unlink(join(root, "codework.json")));
+					expect((yield* settings.load).model.thinkingLevel).toBe("low");
+				}).pipe(Effect.provide(layer)),
+			);
+		}));
+
+	it("warns on a malformed codework.json without falling back to the directory file", () =>
+		withSettings(async ({ root, local, custom }) => {
+			await writeFile(join(root, "codework.json"), '{"model":');
+			await writeFile(join(local, "settings.json"), JSON.stringify({ model: { thinkingLevel: "low" } }));
+			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
+			);
+			const logs: Array<{ level: string; message: unknown }> = [];
+			const logger = Logger.make((entry) => {
+				logs.push({ level: entry.logLevel, message: entry.message });
+			});
+			const result = await Effect.runPromise(
+				Settings.Service.use((settings) => settings.load).pipe(
+					Effect.provide(layer),
+					Effect.provide(Logger.layer([logger])),
+				),
+			);
+			expect(result.model.thinkingLevel).toBe(Settings.defaults.model.thinkingLevel);
+			expect(logs).toEqual([
+				{
+					level: "Warn",
+					message: [expect.stringContaining(`Settings: ${join(root, "codework.json")}: parse: Invalid JSON`)],
+				},
+			]);
+		}));
 
 	it("loads fresh files for each exchange with no shared cache or mutations", () =>
 		withSettings(async ({ root, local, global, custom }) => {

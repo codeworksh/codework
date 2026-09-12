@@ -24,7 +24,6 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 export interface Interface {
 	readonly home: string;
 	readonly cache: string;
-	readonly config: string;
 	readonly data: string;
 	readonly log: string;
 }
@@ -34,7 +33,6 @@ export function make(input: Partial<Interface> = {}): Interface {
 	return {
 		home,
 		cache: input.cache ?? posix.join(home, "cache"),
-		config: input.config ?? posix.join(home, "config"),
 		data: input.data ?? posix.join(home, "data"),
 		log: input.log ?? posix.join(home, "log"),
 	};
@@ -50,7 +48,6 @@ const build = (input: Partial<Interface>) =>
 		const paths = yield* resolve(input);
 		yield* Effect.all([
 			fileSystem.makeDirectory(paths.cache, { recursive: true }),
-			fileSystem.makeDirectory(paths.config, { recursive: true }),
 			fileSystem.makeDirectory(paths.data, { recursive: true }),
 			fileSystem.makeDirectory(paths.log, { recursive: true }),
 		]).pipe(Effect.orDie);
