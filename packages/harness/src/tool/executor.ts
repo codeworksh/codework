@@ -22,7 +22,8 @@ import {
 	Scope,
 } from "effect";
 import { isAikitToolCallTerminalPart } from "../schema.ts";
-import { errorMessage, ToolExecutionError } from "./error.ts";
+import { errorMessage } from "../util/error.ts";
+import { ToolExecutionError } from "./error.ts";
 import { ToolProgress, type ToolProgressPartial } from "./progress.ts";
 import { type AnyToolDef, type ModelContent, type RegisteredTool, toAikitTool, type ToolCallContext } from "./tool.ts";
 

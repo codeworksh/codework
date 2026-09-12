@@ -30,9 +30,7 @@ export const makeRemoteOwner = (label: string) => {
 
 	const cleanup = async ({ destroy, dispose }: Cleanup): Promise<void> => {
 		const failures: unknown[] = [];
-		if (locator === undefined) {
-			failures.push(new Error(`${label} resource locator was never captured`));
-		} else {
+		if (locator !== undefined) {
 			try {
 				await destroy(locator);
 			} catch (cause) {

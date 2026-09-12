@@ -43,3 +43,18 @@ export const immediateOpen = (contexts: Message.Context[] = []): LLM.Open => {
 			return events;
 		});
 };
+
+/** First request asks for the calls, every request after stops. */
+export const toolTurn = (...calls: ReadonlyArray<Message.ToolCallPendingPart>): LLM.Open => {
+	let index = 0;
+	return (input) =>
+		Effect.sync(() => {
+			index += 1;
+			const first = index === 1;
+			const message = assistant(input, index, first ? { stopReason: "toolUse", parts: [...calls] } : {});
+			const stream = createAssistantMessageEventStream();
+			stream.push({ type: "start", partial: message });
+			stream.push({ type: "done", reason: first ? "toolUse" : "stop", message });
+			return stream;
+		});
+};

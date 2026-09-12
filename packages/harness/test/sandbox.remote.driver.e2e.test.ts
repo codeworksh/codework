@@ -1,6 +1,7 @@
+import { remoteSuite } from "./fixtures/live.ts";
 import { Effect, Layer, ManagedRuntime, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { describe, expect, it } from "vite-plus/test";
+import { expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriver } from "../src/sandbox/driver.ts";
@@ -16,17 +17,9 @@ import "./utils/env.ts";
 // These lifecycle cases provision independently and run serially via the E2E script.
 
 const apiKey = process.env.DAYTONA_API_KEY;
-const daytonaSuite = apiKey ? describe : describe.skip;
+const daytonaSuite = remoteSuite("DAYTONA_API_KEY", Boolean(apiKey?.trim()));
 const vercelToken = process.env.VERCEL_OIDC_TOKEN;
-const vercelSuite = hasLiveOidc(vercelToken) ? describe : describe.skip;
-
-if (process.env.CODEWORK_SANDBOX_E2E_REQUIRED === "1") {
-	const missing = [
-		...(apiKey === undefined ? ["DAYTONA_API_KEY"] : []),
-		...(!hasLiveOidc(vercelToken) ? ["VERCEL_OIDC_TOKEN"] : []),
-	];
-	if (missing.length > 0) throw new Error(`sandbox E2E credentials are missing or invalid: ${missing.join(", ")}`);
-}
+const vercelSuite = remoteSuite("VERCEL_OIDC_TOKEN", hasLiveOidc(vercelToken));
 
 const cleanup = (controller: SandboxController.Controller["Service"], id: SandboxInstance.ID) =>
 	Effect.gen(function* () {

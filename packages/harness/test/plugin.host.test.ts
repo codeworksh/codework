@@ -51,7 +51,7 @@ describe("plugin domains and exchange host", () => {
 	it("requires a prompt string, preserves full replacement, and rejects unknown tool patches", () => {
 		const empty = make();
 		expect(empty.registry.prompt.get()).toBeUndefined();
-		expect(() => empty.freeze()).toThrow("No Prompt plugin");
+		expect(() => empty.freeze()).toThrow("no prompt plugin set a system prompt");
 		const buckets = make();
 		buckets.registry.prompt.set("old");
 		buckets.registry.prompt.set("new");

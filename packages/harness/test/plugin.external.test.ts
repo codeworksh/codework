@@ -1,5 +1,5 @@
 import "./utils/env.ts";
-import { createAssistantMessageEventStream, type Message } from "@codeworksh/aikit";
+import type { Message } from "@codeworksh/aikit";
 import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,32 +11,16 @@ import { EventSchema } from "../src/event/schema.ts";
 import { prepare } from "../src/plugin/catalog.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { SessionSchema } from "../src/session/schema.ts";
-import { assistant, immediateOpen } from "./fixtures/llm.ts";
+import { immediateOpen, toolTurn } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
 /**
- * Third-party plugins as they exist in production: plain `.mjs` modules loaded by
- * path or directory, written against the structural contract rather than the SDK
- * types. Every scenario below goes through the real import, never the seams.
+ * Third-party plugins as they exist in production: TypeScript modules loaded by
+ * path or directory, using the plugin and tool contracts. Every scenario below goes through the real import, never the seams.
  */
 const dir = fileURLToPath(new URL("./plugins", import.meta.url));
 const pluginPath = (name: string) => join(dir, name);
-
-/** First request asks for the calls, every request after stops. */
-const toolTurn = (...calls: ReadonlyArray<Message.ToolCallPendingPart>): LLM.Open => {
-	let index = 0;
-	return (input) =>
-		Effect.sync(() => {
-			index += 1;
-			const first = index === 1;
-			const message = assistant(input, index, first ? { stopReason: "toolUse", parts: [...calls] } : {});
-			const stream = createAssistantMessageEventStream();
-			stream.push({ type: "start", partial: message });
-			stream.push({ type: "done", reason: first ? "toolUse" : "stop", message });
-			return stream;
-		});
-};
 
 /** One `Session.create` + one `run`, capturing every provider request. */
 const exchange = (input: {
@@ -75,7 +59,7 @@ const exchange = (input: {
 describe("third-party plugins", () => {
 	it("loads a directory package and a single file through real imports", async () => {
 		const plugins = await Effect.runPromise(
-			prepare([pluginPath("acme-echo"), `file://${pluginPath("acme-prompt.mjs")}`], {
+			prepare([pluginPath("tool/acme-echo"), `file://${pluginPath("prompt/acme-prompt.ts")}`], {
 				builtins: [],
 				cache: "/unused",
 				hostCwd: "/project",
@@ -86,7 +70,7 @@ describe("third-party plugins", () => {
 
 	it("rejects a malformed module and a reserved namespace through real imports", async () => {
 		const failure = await Effect.runPromise(
-			prepare([pluginPath("acme-broken.mjs")], {
+			prepare([pluginPath("host/acme-broken.ts")], {
 				builtins: [],
 				cache: "/unused",
 				hostCwd: "/project",
@@ -99,7 +83,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { contexts, prompts, path } = await exchange({
 				root,
-				plugins: [pluginPath("acme-echo"), "codework.prompt.default"],
+				plugins: [pluginPath("tool/acme-echo"), "codework.prompt.default"],
 				llm: toolTurn(pendingCall("acme_echo", { value: "hello" }, "call_echo")),
 			});
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["acme_echo"]);
@@ -126,7 +110,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { path } = await exchange({
 				root,
-				plugins: [pluginPath("acme-guarded.mjs"), "codework.prompt.default"],
+				plugins: [pluginPath("tool/acme-guarded.ts"), "codework.prompt.default"],
 				llm: toolTurn(
 					pendingCall("acme_secret", { value: "deny" }, "call_blocked"),
 					pendingCall("acme_secret", { value: "allow" }, "call_allowed"),
@@ -149,7 +133,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { prompts, path } = await exchange({
 				root,
-				plugins: ["codework.tool.bash", pluginPath("acme-bash-override.mjs"), "codework.prompt.default"],
+				plugins: ["codework.tool.bash", pluginPath("tool/acme-bash-override.ts"), "codework.prompt.default"],
 				llm: toolTurn(pendingCall("bash", { command: "echo hi" }, "call_bash")),
 			});
 			expect(prompts[0]).toContain("- bash: Run a command through the acme shell");
@@ -164,7 +148,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { prompts } = await exchange({
 				root,
-				plugins: [pluginPath("acme-echo"), "codework.prompt.default", pluginPath("acme-prompt.mjs")],
+				plugins: [pluginPath("tool/acme-echo"), "codework.prompt.default", pluginPath("prompt/acme-prompt.ts")],
 			});
 			expect(prompts[0]).toContain("You are an expert coding assistant");
 			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
@@ -200,7 +184,7 @@ describe("third-party plugins", () => {
 							home: join(root, "home"),
 							database: ":memory:",
 							llm: immediateOpen(),
-							plugins: [pluginPath("acme-journal.mjs"), "codework.prompt.default"],
+							plugins: [pluginPath("event/acme-journal.ts"), "codework.prompt.default"],
 						}),
 					),
 					Effect.scoped,
@@ -232,7 +216,7 @@ describe("third-party plugins", () => {
 								contexts.push(request.context);
 								return immediateOpen()(request, signal);
 							},
-							plugins: [pluginPath("acme-throws.mjs"), "codework.prompt.default"],
+							plugins: [pluginPath("host/acme-throws.ts"), "codework.prompt.default"],
 						}),
 					),
 					Effect.scoped,
@@ -258,7 +242,7 @@ describe("third-party plugins", () => {
 							home: join(root, "home"),
 							database: ":memory:",
 							llm: immediateOpen(),
-							plugins: [pluginPath("acme-bad-tool.mjs"), "codework.prompt.default"],
+							plugins: [pluginPath("tool/acme-bad-tool.ts"), "codework.prompt.default"],
 						}),
 					),
 					Effect.scoped,
@@ -281,7 +265,7 @@ describe("third-party plugins", () => {
 							home: join(root, "home"),
 							database: ":memory:",
 							llm: immediateOpen(),
-							plugins: [pluginPath("acme-broken.mjs")],
+							plugins: [pluginPath("host/acme-broken.ts")],
 						}),
 					),
 					Effect.scoped,
@@ -298,7 +282,7 @@ describe("third-party plugins", () => {
 			// default prompt (placed after both) indexes the patched description.
 			const { contexts, prompts, path } = await exchange({
 				root,
-				plugins: [pluginPath("acme-echo"), pluginPath("acme-relabel.mjs"), "codework.prompt.default"],
+				plugins: [pluginPath("tool/acme-echo"), pluginPath("tool/acme-relabel.ts"), "codework.prompt.default"],
 				llm: toolTurn(pendingCall("acme_echo", { value: "hi" }, "call_echo")),
 			});
 			expect(contexts[0]?.tools?.[0]).toMatchObject({ name: "acme_echo", description: "Echo, relabelled by acme" });
@@ -331,7 +315,7 @@ describe("third-party plugins", () => {
 								contexts.push(request.context);
 								return immediateOpen()(request, signal);
 							},
-							plugins: [pluginPath("acme-hangs.mjs"), "codework.prompt.default"],
+							plugins: [pluginPath("host/acme-hangs.ts"), "codework.prompt.default"],
 						}),
 					),
 					Effect.scoped,

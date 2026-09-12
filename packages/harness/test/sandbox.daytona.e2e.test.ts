@@ -1,6 +1,9 @@
+import { bashPluginSpec } from "./fixtures/bash.spec.ts";
+import * as Driver from "../src/sandboxes/daytona/index.ts";
+import { remoteSuite } from "./fixtures/live.ts";
 import { Daytona } from "@daytona/sdk";
 import { Effect, ManagedRuntime } from "effect";
-import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import * as EnvDaytona from "../src/sandboxes/daytona/provider.ts";
@@ -14,7 +17,7 @@ import "./utils/env.ts";
 
 const apiKey = process.env.DAYTONA_API_KEY;
 const githubPat = process.env.GITHUB_PAT;
-const suite = apiKey ? describe : describe.skip;
+const suite = remoteSuite("DAYTONA_API_KEY", Boolean(apiKey?.trim()));
 
 const PROVISION_TIMEOUT = 180_000;
 const SANDBOX_CWD = "/tmp";
@@ -52,7 +55,7 @@ suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 					const sdk = new Daytona({ apiKey });
 					await sdk.delete(await sdk.get(id));
 				},
-				dispose: () => runtime.dispose(),
+				dispose: () => runtime?.dispose() ?? Promise.resolve(),
 			}),
 		PROVISION_TIMEOUT,
 	);
@@ -78,6 +81,8 @@ suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 				),
 			),
 		);
+
+	bashPluginSpec({ driver: Driver.make(), resourceId, streaming: false });
 
 	remoteSandboxSpec({
 		kind: "daytona",

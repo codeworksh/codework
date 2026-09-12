@@ -1,4 +1,5 @@
 import dedent from "dedent";
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,6 +9,9 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const harness = resolve(root, "packages/harness");
 const external = resolve(root, "extras/codework-sandbox-vercel");
+const envFile = resolve(harness, ".env.local");
+if (existsSync(envFile)) process.loadEnvFile(envFile);
+
 const temporary = await mkdtemp(resolve(tmpdir(), "codework-sandbox-package-"));
 const artifacts = resolve(temporary, "artifacts");
 const consumer = resolve(temporary, "consumer");
@@ -57,10 +61,30 @@ try {
 		)}\n`,
 	);
 
+	// The smoke only loads JavaScript, so the optional native accelerators stay unbuilt.
+	// pnpm fails the install on undeclared ignored build scripts, so decline them explicitly.
+	// Effect's own caret ranges match across prerelease tags, so a fresh install otherwise
+	// pairs a newer platform-node-shared with the effect version the harness is built against.
+	await writeFile(
+		resolve(consumer, "pnpm-workspace.yaml"),
+		`${dedent`
+			overrides:
+			  "@effect/platform-node-shared": 4.0.0-beta.107
+			allowBuilds:
+			  "@mongodb-js/zstd": false
+			  esbuild: false
+			  lmdb: false
+			  msgpackr-extract: false
+			  node-liblzma: false
+			  protobufjs: false
+		`}\n`,
+	);
+
 	await writeFile(
 		resolve(consumer, "smoke.mjs"),
 		`${dedent`
-			import { Effect, ManagedRuntime } from "effect";
+			import assert from "node:assert/strict";
+			import { Effect, ManagedRuntime, Option } from "effect";
 			import { Harness, Sandbox } from "@codeworksh/harness/effect";
 
 			const runtime = ManagedRuntime.make(Harness.layer({
@@ -69,6 +93,7 @@ try {
 				sandboxes: ["@codeworksh-test/codework-sandbox-vercel"],
 			}));
 			let created;
+			const failures = [];
 
 			try {
 				const drivers = await runtime.runPromise(Sandbox.drivers());
@@ -82,20 +107,24 @@ try {
 						driver: "codework.test.vercel",
 						config: { runtime: "node24", timeout: 300000, execTimeout: 30000 },
 					}));
-					await runtime.runPromise(Sandbox.refresh(created.id));
-					await runtime.runPromise(Sandbox.stop(created.id));
-					await runtime.runPromise(Sandbox.wake(created.id));
-					await runtime.runPromise(Sandbox.stop(created.id));
+					assert.equal((await runtime.runPromise(Sandbox.refresh(created.id))).status, "online");
+					assert.equal((await runtime.runPromise(Sandbox.stop(created.id))).status, "offline");
+					assert.equal((await runtime.runPromise(Sandbox.wake(created.id))).status, "online");
+					assert.equal((await runtime.runPromise(Sandbox.stop(created.id))).status, "offline");
 					await runtime.runPromise(Sandbox.destroy(created.id));
+					assert.equal(Option.getOrThrow(await runtime.runPromise(Sandbox.get(created.id))).status, "removed");
 					created = undefined;
 				}
+			} catch (cause) {
+				failures.push(cause);
 			} finally {
 				if (created !== undefined) {
-					await runtime.runPromise(Sandbox.stop(created.id)).catch(() => undefined);
-					await runtime.runPromise(Sandbox.destroy(created.id)).catch(() => undefined);
+					await runtime.runPromise(Sandbox.stop(created.id)).catch((cause) => failures.push(cause));
+					await runtime.runPromise(Sandbox.destroy(created.id)).catch((cause) => failures.push(cause));
 				}
-				await runtime.dispose();
+				await runtime.dispose().catch((cause) => failures.push(cause));
 			}
+			if (failures.length > 0) throw new AggregateError(failures, "installed-package smoke failed");
 		`}\n`,
 	);
 

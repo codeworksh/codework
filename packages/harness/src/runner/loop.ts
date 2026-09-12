@@ -16,7 +16,7 @@ import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { SessionSchema } from "../session/schema.ts";
 import { Session } from "../session/session.ts";
 import { State } from "../state/state.ts";
-import { errorMessage } from "../tool/error.ts";
+import { errorMessage } from "../util/error.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { LLM } from "./llm.ts";
 import { Runner } from "./run.ts";
