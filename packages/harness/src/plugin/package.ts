@@ -1,7 +1,7 @@
 import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node";
 import { Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { resolve } from "import-meta-resolve";
+import { resolveModule } from "../util/module.ts";
 import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import npa from "npm-package-arg";
@@ -148,9 +148,7 @@ export const install = Effect.fn("PluginPackage.install")(
 			const manifest = yield* fs.readFileString(path.join(staging, "node_modules", request.name, "package.json"));
 			const installed = yield* Schema.decodeEffect(Schema.fromJsonString(Manifest))(manifest);
 			// Validate root resolution before marking this installation complete.
-			const entrypoint = yield* Effect.try(() =>
-				resolve(request.name, pathToFileURL(path.join(staging, "package.json")).href),
-			);
+			const entrypoint = yield* Effect.try(() => resolveModule(request.name, staging));
 			// `resolve` realpaths its answer while `makeTempDirectory` does not, so relate the
 			// two through the realpath or a symlinked cache root escapes the published entry.
 			const entry = path.relative(yield* fs.realPath(staging), fileURLToPath(entrypoint));

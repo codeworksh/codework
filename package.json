@@ -38,6 +38,7 @@
 		"release:harness:dry": "pnpm --filter @codeworksh/harness run release:dry"
 	},
 	"devDependencies": {
+		"@codeworksh-test/codework-sandbox-vercel": "workspace:*",
 		"@effect/tsgo": "catalog:",
 		"@types/node": "catalog:",
 		"typescript": "catalog:",

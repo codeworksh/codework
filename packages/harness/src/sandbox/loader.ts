@@ -1,7 +1,5 @@
-import { findPackageJSON } from "node:module";
-import { pathToFileURL } from "node:url";
 import { Effect, Schema } from "effect";
-import { fileSystem, hostPath } from "../host.ts";
+import { importModule, resolveModule } from "../util/module.ts";
 import { SandboxDriver } from "./driver.ts";
 import { SandboxDriverLoadError } from "./errors.ts";
 
@@ -20,12 +18,6 @@ export interface Resolved {
 
 export type Resolver = (specifier: string) => Effect.Effect<Resolved, SandboxDriverLoadError>;
 export type Importer = (url: string) => Promise<unknown>;
-
-interface PackageManifest {
-	readonly exports?: unknown;
-	readonly module?: unknown;
-	readonly main?: unknown;
-}
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
 	typeof value === "object" && value !== null;
@@ -48,55 +40,6 @@ export const isPackageSpecifier = (specifier: string): boolean =>
 	!specifier.includes(":") &&
 	splitPackage(specifier) !== undefined;
 
-const selectCondition = (value: unknown, conditions: ReadonlyArray<string>): string | undefined => {
-	if (typeof value === "string") return value;
-	if (Array.isArray(value)) {
-		for (const candidate of value) {
-			const selected = selectCondition(candidate, conditions);
-			if (selected !== undefined) return selected;
-		}
-		return undefined;
-	}
-	if (!isRecord(value)) return undefined;
-	for (const condition of conditions) {
-		const selected = selectCondition(value[condition], conditions);
-		if (selected !== undefined) return selected;
-	}
-	return undefined;
-};
-
-const exportedTarget = (
-	manifest: PackageManifest,
-	key: string,
-	conditions: ReadonlyArray<string>,
-): string | undefined => {
-	const exports = manifest.exports;
-	if (typeof exports === "string" || Array.isArray(exports))
-		return key === "." ? selectCondition(exports, conditions) : undefined;
-	if (!isRecord(exports)) {
-		if (key !== ".") return undefined;
-		return typeof manifest.module === "string"
-			? manifest.module
-			: typeof manifest.main === "string"
-				? manifest.main
-				: "./index.js";
-	}
-	const hasSubpaths = Object.keys(exports).some((name) => name.startsWith("."));
-	if (!hasSubpaths) return selectCondition(key === "." ? exports : undefined, conditions);
-	const exact = selectCondition(exports[key], conditions);
-	if (exact !== undefined) return exact;
-	for (const pattern of Object.keys(exports)
-		.filter((name) => name.includes("*"))
-		.sort((a, b) => b.length - a.length)) {
-		const [prefix, suffix = ""] = pattern.split("*");
-		if (!key.startsWith(prefix!) || !key.endsWith(suffix)) continue;
-		const match = key.slice(prefix!.length, key.length - suffix.length);
-		const target = selectCondition(exports[pattern], conditions);
-		if (target !== undefined) return target.replaceAll("*", match);
-	}
-	return undefined;
-};
-
 const official = new Set(["@codeworksh/harness/sandboxes/vercel", "@codeworksh/harness/sandboxes/daytona"]);
 
 /**
@@ -118,51 +61,13 @@ export const packageResolver = (
 				reason: "expected an installed npm package specifier; filesystem paths are not supported yet",
 			});
 		}
-		const parsed = splitPackage(specifier)!;
-		const packageJson = yield* Effect.try({
-			try: () => findPackageJSON(parsed.name, pathToFileURL(hostPath.resolve(hostCwd, "package.json"))),
+		const url = yield* Effect.try({
+			try: () => resolveModule(specifier, hostCwd, conditions),
 			catch: (reason) => new SandboxDriverLoadError({ specifier, phase: "resolve", reason: String(reason) }),
 		});
-		if (packageJson === undefined) {
-			return yield* new SandboxDriverLoadError({
-				specifier,
-				phase: "resolve",
-				reason: `installed package was not found: ${parsed.name}`,
-			});
-		}
-		const source = yield* fileSystem
-			.readFileString(packageJson)
-			.pipe(
-				Effect.mapError(
-					(reason) => new SandboxDriverLoadError({ specifier, phase: "resolve", reason: String(reason) }),
-				),
-			);
-		const decoded = yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(source).pipe(
-			Effect.mapError(
-				(reason) => new SandboxDriverLoadError({ specifier, phase: "resolve", reason: String(reason) }),
-			),
-		);
-		const manifest: PackageManifest = isRecord(decoded) ? decoded : {};
-		const target = exportedTarget(manifest, parsed.key, conditions);
-		if (target === undefined || !target.startsWith("./")) {
-			return yield* new SandboxDriverLoadError({
-				specifier,
-				phase: "resolve",
-				reason: `package export is missing or unsupported: ${parsed.key}`,
-			});
-		}
-		const root = hostPath.dirname(packageJson);
-		const location = hostPath.resolve(root, target);
-		if (location !== root && !location.startsWith(`${root}${hostPath.sep}`)) {
-			return yield* new SandboxDriverLoadError({
-				specifier,
-				phase: "resolve",
-				reason: "package export resolves outside its package root",
-			});
-		}
 		return {
 			specifier,
-			url: pathToFileURL(location).href,
+			url,
 			source: official.has(specifier) ? "builtin" : "package",
 		};
 	});
@@ -226,7 +131,7 @@ export const load = Effect.fn("SandboxDriverLoader.load")(function* (entry: Entr
 	const rawOptions = typeof entry === "string" ? {} : (entry.options ?? {});
 	const resolved = yield* (options.resolve ?? packageResolver(options.hostCwd))(specifier);
 	const imported = yield* Effect.tryPromise({
-		try: () => (options.import ?? ((url) => import(/* @vite-ignore */ url)))(resolved.url),
+		try: () => (options.import ?? importModule)(resolved.url),
 		catch: (reason) => failure(specifier, "import", reason),
 	});
 	const loaded = isRecord(imported) ? imported.default : undefined;

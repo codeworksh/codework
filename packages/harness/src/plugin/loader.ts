@@ -1,7 +1,7 @@
 import { Effect, Predicate, Schema } from "effect";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { exports as packageExports } from "resolve.exports";
+import { importModule, resolveModule } from "../util/module.ts";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
 import * as Package from "./package.ts";
 import type { Plugin } from "./plugin.ts";
@@ -75,30 +75,29 @@ const Manifest = Schema.Struct({
 
 const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string, origin: Origin) {
 	const stat = yield* fs.stat(location);
-	if (stat.type !== "Directory") return pathToFileURL(location).href;
+	if (stat.type !== "Directory") return yield* Effect.try(() => resolveModule(location, path.dirname(location)));
 	const manifestPath = path.join(location, "package.json");
 	if (!(yield* fs.exists(manifestPath))) {
-		const fallback = path.join(location, "index.js");
-		if (!(yield* fs.exists(fallback)))
-			return yield* failure(origin, "source", new Error(`Directory has no package.json or index.js: ${location}`));
-		return pathToFileURL(fallback).href;
+		return yield* Effect.try(() => resolveModule("./index", location));
 	}
 	const manifest = yield* fs
 		.readFileString(manifestPath)
 		.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Manifest))));
 	if (manifest.exports !== undefined) {
-		const targets = yield* Effect.try(() => packageExports(manifest, "."));
-		const target = targets?.[0];
-		if (target === undefined || !target.startsWith("./"))
-			return yield* failure(origin, "source", new Error("No valid root package export"));
+		const name = manifest.name;
+		if (!name)
+			return yield* failure(origin, "source", new Error("A local package with exports must declare its name"));
+		const url = yield* Effect.try(() => resolveModule(name, location));
 		// Compare real paths: a symlinked target (or root) can point outside while the
 		// string paths still nest.
-		const resolved = yield* fs.realPath(path.resolve(location, target));
+		const resolved = yield* fs.realPath(fileURLToPath(url));
 		if (path.relative(yield* fs.realPath(location), resolved).startsWith(".."))
 			return yield* failure(origin, "source", new Error("Package export escapes its root"));
 		return pathToFileURL(resolved).href;
 	}
-	return yield* Effect.try(() => pathToFileURL(createRequire(pathToFileURL(manifestPath)).resolve(location)).href);
+	return yield* Effect.try(() =>
+		resolveModule(createRequire(pathToFileURL(manifestPath)).resolve(location), location),
+	);
 });
 
 export interface Options {
@@ -138,7 +137,7 @@ export const load = Effect.fn("PluginLoader.load")(function* (
 					),
 				};
 	const module = yield* Effect.tryPromise({
-		try: () => (options.import ?? ((url) => import(/* @vite-ignore */ url)))(installed.url),
+		try: () => (options.import ?? importModule)(installed.url),
 		catch: (cause) => failure(origin, "import", cause),
 	});
 	const plugin = yield* validate(

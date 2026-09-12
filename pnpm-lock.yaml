@@ -23,6 +23,9 @@ importers:
 
   .:
     devDependencies:
+      '@codeworksh-test/codework-sandbox-vercel':
+        specifier: workspace:*
+        version: link:extras/codework-sandbox-vercel
       '@effect/tsgo':
         specifier: 'catalog:'
         version: 0.36.4
@@ -39,8 +42,8 @@ importers:
   extras/codework-sandbox-vercel:
     dependencies:
       '@codeworksh/harness':
-        specifier: '*'
-        version: 0.0.1-dev.20260824142157(ioredis@5.11.1)(zod@4.4.3)
+        specifier: workspace:*
+        version: link:../../packages/harness
       '@vercel/sandbox':
         specifier: ^2.9.2
         version: 2.9.2
@@ -170,6 +173,9 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-beta.107
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)(ioredis@5.11.1)
+      '@effect/platform-node-shared':
+        specifier: 4.0.0-beta.107
+        version: 4.0.0-beta.107(effect@4.0.0-beta.107)
       '@effect/sql-sqlite-node':
         specifier: 4.0.0-beta.107
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)
@@ -179,18 +185,12 @@ importers:
       effect:
         specifier: 4.0.0-beta.107
         version: 4.0.0-beta.107
-      import-meta-resolve:
-        specifier: ^4.2.0
-        version: 4.2.0
       just-bash:
         specifier: ^2.14.5
         version: 2.14.5
       npm-package-arg:
         specifier: ^14.0.0
         version: 14.0.0
-      resolve.exports:
-        specifier: ^2.0.3
-        version: 2.0.3
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
@@ -204,9 +204,6 @@ importers:
         specifier: ^1.2.1
         version: 1.2.1
     devDependencies:
-      '@codeworksh-test/codework-sandbox-vercel':
-        specifier: workspace:*
-        version: link:../../extras/codework-sandbox-vercel
       '@daytona/sdk':
         specifier: ^0.187.0
         version: 0.187.0(ws@8.21.1)
@@ -378,16 +375,6 @@ packages:
 
   '@borewit/text-codec@0.2.2':
     resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
-
-  '@codeworksh/aikit@0.7.0':
-    resolution: {integrity: sha512-ZXJrYy/tX8lYaQCNLw6BkdUFfxS6q23Vw8SicoMxIqJLpd1bxklWitSGJ3pWjT0I/CP2MABJWiqHjk3B+5gXwQ==}
-    engines: {node: '>=22.0.0'}
-    hasBin: true
-
-  '@codeworksh/harness@0.0.1-dev.20260824142157':
-    resolution: {integrity: sha512-uoSWKH18GxKwPlMdgiKknUwR6kSerIsYe6DZCaiPQA2U9Eg6H6DOFK5a/AgB6a3T31jP8uWuywfvUejucbPWWQ==}
-    engines: {node: '>=24.14.1'}
-    hasBin: true
 
   '@daytona/api-client@0.187.0':
     resolution: {integrity: sha512-riKOJ6eSuy67DL6iJlAa3Bfjnm4iQmkOdJk0B5hqrYMZeZmVDsgdiZtYvFpyoa+2KCZFNb0Gs5dQwO1d6NhGCw==}
@@ -2484,9 +2471,6 @@ packages:
     resolution: {integrity: sha512-AiohS3H80sXO6owEltjGX+glb7qXaDhBoJb9XcQVH4UI207xu/bDLUcadVKp7Qe576reg9yr/PXZjV5qx8gfbA==}
     engines: {node: '>=18'}
 
-  import-meta-resolve@4.2.0:
-    resolution: {integrity: sha512-Iqv2fzaTQN28s/FwZAoFq0ZSs/7hMAHJVX+w8PZl3cY19Pxk6jFFalxQoIfW2826i/fDLXv8IiEZRIT0lDuWcg==}
-
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
@@ -2951,10 +2935,6 @@ packages:
   require-in-the-middle@8.0.1:
     resolution: {integrity: sha512-QT7FVMXfWOYFbeRBF6nu+I6tr2Tf3u0q8RIEjNob/heKY/nh7drD/k7eeMFmSQgnTtCzLDcCu/XEnpW2wk4xCQ==}
     engines: {node: '>=9.3.0 || >=8.10.0 <9.0.0'}
-
-  resolve.exports@2.0.3:
-    resolution: {integrity: sha512-OcXjMsGdhL4XnbShKpAcSqPMzQoYkYyhbEaeSko47MjRP9NfEQMhZkXL1DoFlt9LWQn4YttrdnV6X2OiyzBi+A==}
-    engines: {node: '>=10'}
 
   retry@0.13.1:
     resolution: {integrity: sha512-XQBQ3I8W1Cge0Seh+6gjj03LbmRFWuoszgK9ooCpwYIrhhoO80pfq4cUkU5DkknwfOfFteRwlZ56PYOGYyFWdg==}
@@ -3670,53 +3650,6 @@ snapshots:
   '@blazediff/core@1.9.1': {}
 
   '@borewit/text-codec@0.2.2': {}
-
-  '@codeworksh/aikit@0.7.0(zod@4.4.3)':
-    dependencies:
-      '@ai-sdk/anthropic': 4.0.36(zod@4.4.3)
-      '@ai-sdk/google': 4.0.39(zod@4.4.3)
-      '@ai-sdk/google-vertex': 5.0.48(zod@4.4.3)
-      '@ai-sdk/openai': 4.0.36(zod@4.4.3)
-      '@ai-sdk/openai-compatible': 3.0.28(zod@4.4.3)
-      '@ai-sdk/provider': 4.0.7
-      '@ai-sdk/xai': 4.0.33(zod@4.4.3)
-      '@openrouter/ai-sdk-provider': 3.0.0(ai@7.0.58(zod@4.4.3))(zod@4.4.3)
-      ai: 7.0.58(zod@4.4.3)
-      dedent: 1.7.2
-      partial-json: 0.1.7
-      remeda: 2.39.0
-      typebox: 1.3.12
-      uuidv7: 1.2.1
-      yargs: 18.1.0
-    transitivePeerDependencies:
-      - babel-plugin-macros
-      - supports-color
-      - zod
-
-  '@codeworksh/harness@0.0.1-dev.20260824142157(ioredis@5.11.1)(zod@4.4.3)':
-    dependencies:
-      '@codeworksh/aikit': 0.7.0(zod@4.4.3)
-      '@daytona/sdk': 0.187.0(ws@8.21.1)
-      '@effect/platform-node': 4.0.0-beta.107(effect@4.0.0-beta.107)(ioredis@5.11.1)
-      '@effect/sql-sqlite-node': 4.0.0-beta.107(effect@4.0.0-beta.107)
-      '@platformatic/vfs': 0.4.0
-      '@vercel/sandbox': 2.9.2
-      effect: 4.0.0-beta.107
-      just-bash: 2.14.5
-      typebox: 1.3.12
-      uuid: 14.0.1
-      uuidv7: 1.2.1
-    transitivePeerDependencies:
-      - babel-plugin-macros
-      - bare-abort-controller
-      - bufferutil
-      - debug
-      - ioredis
-      - react-native-b4a
-      - supports-color
-      - utf-8-validate
-      - ws
-      - zod
 
   '@daytona/api-client@0.187.0':
     dependencies:
@@ -5509,8 +5442,6 @@ snapshots:
       es-module-lexer: 2.3.1
       module-details-from-path: 1.0.4
 
-  import-meta-resolve@4.2.0: {}
-
   inherits@2.0.4: {}
 
   ini@1.3.8:
@@ -6013,8 +5944,6 @@ snapshots:
       module-details-from-path: 1.0.4
     transitivePeerDependencies:
       - supports-color
-
-  resolve.exports@2.0.3: {}
 
   retry@0.13.1: {}
 

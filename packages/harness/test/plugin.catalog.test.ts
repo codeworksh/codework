@@ -168,14 +168,17 @@ describe("plugin catalog and source resolution", () => {
 			).toEqual([a]);
 			// Containment compares real paths, so the exported URL is the real one too.
 			expect(url).toBe(pathToFileURL(realpathSync(join(directory, "entry.js"))).href);
+			// Node caches package manifests; a different package exercises invalid exports.
+			const broken = join(directory, "broken");
+			await mkdir(broken);
 			await writeFile(
-				join(directory, "package.json"),
-				JSON.stringify({ name: "fixture", exports: { "./other": "./entry.js" } }),
+				join(broken, "package.json"),
+				JSON.stringify({ name: "broken", exports: { "./other": "./entry.js" } }),
 			);
-			expect(await Effect.runPromise(prepare([directory], options).pipe(Effect.flip))).toMatchObject({
+			expect(await Effect.runPromise(prepare([broken], options).pipe(Effect.flip))).toMatchObject({
 				phase: "source",
 				index: 0,
-				reference: directory,
+				reference: broken,
 			});
 		}));
 	it("falls back to index.js and reports a directory with no entry as a source error", () =>
@@ -197,7 +200,30 @@ describe("plugin catalog and source resolution", () => {
 					},
 				}),
 			);
-			expect(url).toBe(pathToFileURL(join(empty, "index.js")).href);
+			expect(url).toBe(pathToFileURL(realpathSync(join(empty, "index.js"))).href);
+		}));
+	it("resolves an unnamed TypeScript directory through its index", () =>
+		withDirectory(async (directory) => {
+			await writeFile(join(directory, "index.ts"), "");
+			let resolved = "";
+			await Effect.runPromise(
+				prepare([directory], {
+					...options,
+					import: async (url) => {
+						resolved = url;
+						return { default: a };
+					},
+				}),
+			);
+			expect(resolved).toBe(pathToFileURL(realpathSync(join(directory, "index.ts"))).href);
+		}));
+	it("requires a package name for native local export resolution", () =>
+		withDirectory(async (directory) => {
+			await writeFile(join(directory, "package.json"), JSON.stringify({ exports: "./entry.js" }));
+			await writeFile(join(directory, "entry.js"), "");
+			const error = await Effect.runPromise(prepare([directory], options).pipe(Effect.flip));
+			expect(error.phase).toBe("source");
+			expect(String(error.cause)).toContain("must declare its name");
 		}));
 	it("resolves a manifest without exports through legacy main", () =>
 		withDirectory(async (directory) => {
@@ -250,7 +276,7 @@ describe("plugin catalog and source resolution", () => {
 		}));
 	it("records an entrypoint inside the published installation", () =>
 		withDirectory(async (cache) => {
-			// `import-meta-resolve` realpaths its answer while the staging directory is not
+			// Node resolution realpaths its answer while the staging directory is not
 			// realpathed, so a symlinked cache root used to record a path outside the entry.
 			const installed = await Effect.runPromise(install(parse("fixture"), cache, fixture));
 			const file = fileURLToPath(installed.url);

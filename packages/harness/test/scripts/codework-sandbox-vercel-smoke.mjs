@@ -63,13 +63,9 @@ try {
 
 	// The smoke only loads JavaScript, so the optional native accelerators stay unbuilt.
 	// pnpm fails the install on undeclared ignored build scripts, so decline them explicitly.
-	// Effect's own caret ranges match across prerelease tags, so a fresh install otherwise
-	// pairs a newer platform-node-shared with the effect version the harness is built against.
 	await writeFile(
 		resolve(consumer, "pnpm-workspace.yaml"),
 		`${dedent`
-			overrides:
-			  "@effect/platform-node-shared": 4.0.0-beta.107
 			allowBuilds:
 			  "@mongodb-js/zstd": false
 			  esbuild: false
