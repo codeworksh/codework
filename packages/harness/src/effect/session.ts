@@ -13,11 +13,8 @@ import { PromptSchema } from "../session/prompt/schema.ts";
 import * as SessionRuntime from "../session/runtime.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
-import type { StatePrompt } from "../state/prompt.ts";
 import type { State } from "../state/state.ts";
-import type { RegisteredTool } from "../tools/tool.ts";
 import type { Info as SandboxInfo } from "./sandbox.ts";
-import type { bash } from "./tools.ts";
 
 export interface ModelConfig {
 	readonly provider: string;
@@ -26,15 +23,12 @@ export interface ModelConfig {
 }
 
 export interface ToolsConfig {
-	readonly builtins?: ReadonlyArray<typeof bash>;
-	readonly extras?: ReadonlyArray<RegisteredTool>;
 	readonly execution?: State.ToolExecutionMode;
 }
 
 export interface SystemPromptConfig {
-	readonly custom?: string;
-	readonly append?: string;
-	readonly override?: StatePrompt.PromptSystemOverride;
+	readonly custom?: State.Options["promptCustom"];
+	readonly append?: State.Options["promptSystemAppend"];
 }
 
 export interface RuntimeInput {
@@ -87,12 +81,9 @@ const runtimeBindings = (input: RuntimeInput): SessionRuntime.Bindings => ({
 	...input.model?.options,
 	...(input.model === undefined ? {} : { provider: input.model.provider, model: input.model.id }),
 	...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
-	...(input.tools?.extras === undefined ? {} : { tools: input.tools.extras }),
-	...(input.tools?.builtins === undefined ? {} : { builtinTools: input.tools.builtins }),
 	...(input.tools?.execution === undefined ? {} : { toolExecution: input.tools.execution }),
 	...(input.systemPrompt?.custom === undefined ? {} : { promptCustom: input.systemPrompt.custom }),
 	...(input.systemPrompt?.append === undefined ? {} : { promptSystemAppend: input.systemPrompt.append }),
-	...(input.systemPrompt?.override === undefined ? {} : { promptSystemOverride: input.systemPrompt.override }),
 });
 
 const promptInput = (input: PromptInput) => {
@@ -190,7 +181,7 @@ export const attach = Effect.fn("Session.attach")(function* (input: AttachInput)
 	/*
 	 * Merge, not replace. `runtimeBindings` emits only the keys this call names, so a
 	 * bare `attach({ sessionId })` produces `{}` -- and a replace would silently drop the
-	 * tools, prompt overrides, and model a previous attach established. Bindings are now
+	 * tool execution mode, prompt inputs, and model a previous attach established. Bindings are now
 	 * the only config layer, so there is nothing behind them to restore what a wipe took.
 	 */
 	yield* runtime.update(input.sessionId, runtimeBindings(input));

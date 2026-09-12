@@ -1,16 +1,16 @@
+import { fileSink, readSink, outputTextOf } from "./fixtures/progress.ts";
+import { tmpdir } from "./fixtures/tempdir.ts";
+import { remoteSuite } from "./fixtures/live.ts";
 import { Daytona } from "@daytona/sdk";
 import { Effect, Layer, ManagedRuntime } from "effect";
-import { appendFile, mkdtemp, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import * as EnvDaytona from "../src/sandboxes/daytona/provider.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { bashTool } from "../src/tools/bash.ts";
-import type * as Executor from "../src/tools/executor.ts";
-import * as Registry from "../src/tools/registry.ts";
-import { fromSandboxShell, ToolShell } from "../src/tools/shell.ts";
-import * as Tool from "../src/tools/tool.ts";
+import { bashTool } from "../src/plugin/internal/tool/bash.ts";
+import * as Registry from "../src/tool/registry.ts";
+import { fromSandboxShell, ToolShell } from "../src/tool/shell.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { labels, makeRemoteOwner } from "./fixtures/remote-owner.ts";
 import { pendingCall } from "./tools.fixture.ts";
 import "./utils/env.ts";
@@ -24,7 +24,7 @@ import "./utils/env.ts";
 // contract shares that file's single free-tier resource.
 
 const daytonaKey = process.env.DAYTONA_API_KEY;
-const daytonaSuite = daytonaKey ? describe : describe.skip;
+const daytonaSuite = remoteSuite("DAYTONA_API_KEY", Boolean(daytonaKey?.trim()));
 
 const PROVISION_TIMEOUT = 180_000;
 
@@ -32,36 +32,6 @@ const LINES = 120;
 const line = (i: number) => `progress-line-${i}/${LINES}`;
 /** Long-running: one line every 20ms → ~2.4s of paced output, so progress arrives over time. */
 const BUFFERED_COMMAND = `for i in $(seq 1 ${LINES}); do echo "progress-line-$i/${LINES}"; done`;
-
-interface SinkEntry {
-	readonly callID: string;
-	readonly text: string;
-}
-
-const tempSinkFile = async (): Promise<string> =>
-	join(await mkdtemp(join(tmpdir(), "codework-registry-remote-")), "progress.ndjson");
-
-// The File IO progress sink: one NDJSON line per delivered event, carrying the partial's
-// cumulative text — exactly what a live UI would render for the user at that moment.
-const fileSink =
-	(path: string) =>
-	(event: Executor.ProgressEvent): Effect.Effect<void> =>
-		Effect.promise(() => {
-			const first = event.partial.content?.[0];
-			const entry: SinkEntry = { callID: event.ctx.callID, text: first?.type === "text" ? first.text : "" };
-			return appendFile(path, `${JSON.stringify(entry)}\n`);
-		});
-
-const readSink = async (path: string): Promise<SinkEntry[]> =>
-	(await readFile(path, "utf8").catch(() => ""))
-		.split("\n")
-		.filter(Boolean)
-		.map((raw) => JSON.parse(raw) as SinkEntry);
-
-const outputTextOf = (outcome: Executor.ToolOutcome): string => {
-	const first = outcome.result.content[0];
-	return first && first.type === "text" ? first.text : "";
-};
 
 const acquireToolShell = <E>(runtime: ManagedRuntime.ManagedRuntime<ToolShell, E>) =>
 	runtime.runPromise(
@@ -98,7 +68,7 @@ daytonaSuite("ToolRegistry × real Daytona sandbox — buffered bash (no streami
 					const sdk = new Daytona({ apiKey: daytonaKey });
 					await sdk.delete(await sdk.get(id));
 				},
-				dispose: () => runtime.dispose(),
+				dispose: () => runtime?.dispose() ?? Promise.resolve(),
 			}),
 		PROVISION_TIMEOUT,
 	);
@@ -109,7 +79,8 @@ daytonaSuite("ToolRegistry × real Daytona sandbox — buffered bash (no streami
 			const shell = await acquireToolShell(runtime);
 			expect(shell.stream).toBeUndefined(); // Daytona backend is exec-only → buffered path
 			const resolved = Registry.make([Tool.provide(bashTool, Layer.succeed(ToolShell, shell))]).resolve();
-			const path = await tempSinkFile();
+			await using temp = await tmpdir();
+			const path = join(temp.path, "progress.ndjson");
 
 			const outcome = await Effect.runPromise(
 				resolved.handle(pendingCall("bash", { command: BUFFERED_COMMAND }, "daytona-bash"), {
@@ -121,8 +92,7 @@ daytonaSuite("ToolRegistry × real Daytona sandbox — buffered bash (no streami
 			expect(outcome.status).toBe("completed");
 			const finalLines = outputTextOf(outcome).split("\n").filter(Boolean);
 			expect(finalLines).toHaveLength(LINES);
-			expect(finalLines[0]).toBe(line(1));
-			expect(finalLines.at(-1)).toBe(line(LINES));
+			expect(finalLines).toEqual(Array.from({ length: LINES }, (_, index) => line(index + 1)));
 			expect(await readSink(path)).toHaveLength(0);
 		},
 		PROVISION_TIMEOUT,

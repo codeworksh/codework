@@ -1,3 +1,6 @@
+import "./utils/env.ts";
+import type { Plugin } from "../src/plugin/plugin.ts";
+import { builtins as plugins } from "../src/plugin/internal.ts";
 import { Settings } from "../src/settings/settings.ts";
 import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
@@ -24,12 +27,17 @@ import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { SessionRuntime } from "../src/session/runtime.ts";
 import { State } from "../src/state/state.ts";
-import * as Tool from "../src/tools/tool.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { assistant, immediateOpen } from "./fixtures/llm.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const runtime = (
-	options: { readonly open?: LLM.Open; readonly contexts?: Message.Context[]; readonly state?: State.Options } = {},
+	options: {
+		readonly open?: LLM.Open;
+		readonly contexts?: Message.Context[];
+		readonly state?: State.Options;
+		readonly plugins?: ReadonlyArray<Plugin>;
+	} = {},
 ) => {
 	const database = Database.layer(":memory:");
 	const request = LLM.make(options.open ?? immediateOpen(options.contexts));
@@ -39,7 +47,7 @@ const runtime = (
 	);
 	return Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
-		Layer.provideMerge(State.layer(options.state)),
+		Layer.provideMerge(State.layer(options.state ?? {}, options.plugins ?? plugins)),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(Layer.succeed(Settings.Service, { load: Effect.succeed(Settings.defaults) })),
 		Layer.provideMerge(sandbox),
@@ -283,13 +291,16 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 	const { effect: it } = testEffect(
 		runtime({
 			open,
-			state: {
-				tools: [echo],
-				promptSystemOverride: ({ systemPrompt }) => {
-					snapshots += 1;
-					return systemPrompt;
+			plugins: [
+				...plugins,
+				{
+					id: "test.tool.echo",
+					setup: (ctx) => {
+						snapshots += 1;
+						ctx.plugin.tools.add(echo);
+					},
 				},
-			},
+			],
 		}),
 	);
 
@@ -336,12 +347,15 @@ describe("runner loop — crash healing", () => {
 	const { effect: it } = testEffect(
 		runtime({
 			contexts,
-			state: {
-				promptSystemOverride: ({ systemPrompt }) => {
-					snapshots += 1;
-					return systemPrompt;
+			plugins: [
+				...plugins,
+				{
+					id: "test.prompt.count",
+					setup: () => {
+						snapshots += 1;
+					},
 				},
-			},
+			],
 		}),
 	);
 
@@ -355,6 +369,7 @@ describe("runner loop — crash healing", () => {
 			const sessions = yield* Session.Service;
 			const sessionId = yield* seedSession("heal");
 			const input: LLM.Input = {
+				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
 				sessionId,
 				context: { messages: [] },
 				provider: "openai",
@@ -412,7 +427,13 @@ describe("runner loop — tool interruption", () => {
 			stream.push({ type: "done", reason: "toolUse", message });
 			return stream;
 		});
-	const { live: it } = testEffect(runtime({ open, state: { tools: [blocking], toolExecution: "parallel" } }));
+	const { live: it } = testEffect(
+		runtime({
+			open,
+			state: { toolExecution: "parallel" },
+			plugins: [...plugins, { id: "test.tool.blocking", setup: (ctx) => ctx.plugin.tools.add(blocking) }],
+		}),
+	);
 
 	it(
 		"settles every unfinished call as aborted and commits before rethrowing interrupt",

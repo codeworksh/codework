@@ -1,16 +1,24 @@
-import { Duration, Effect, Option, Ref, Schema, Stream } from "effect";
+import { Duration, Effect, Layer, Option, Ref, Schema, Stream } from "effect";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
-import { fileSystem } from "../host.ts";
-import { posix } from "../util/posix.ts";
-import { Accumulator, type OutputSnapshot } from "./accumulator.ts";
-import { ToolProgress } from "./progress.ts";
-import { type IToolShell, ToolShell } from "./shell.ts";
-import * as Tool from "./tool.ts";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateTail, type TruncationResult } from "./truncate.ts";
+import { fileSystem } from "../../../host.ts";
+import { SandboxIO } from "../../../sandbox/io.ts";
+import { Accumulator, type OutputSnapshot } from "../../../tool/accumulator.ts";
+import { ToolProgress } from "../../../tool/progress.ts";
+import { fromSandboxShell, type IToolShell, ToolShell } from "../../../tool/shell.ts";
+import * as Tool from "../../../tool/tool.ts";
+import {
+	DEFAULT_MAX_BYTES,
+	DEFAULT_MAX_LINES,
+	formatSize,
+	truncateTail,
+	type TruncationResult,
+} from "../../../tool/truncate.ts";
+import { posix } from "../../../util/posix.ts";
+import { define } from "../../plugin.ts";
 
 /**
- * The bash tool — the worked example of the design. The definition is pure data;
+ * The self-contained bash plugin — a worked example for tool plugins. The definition is pure data;
  * the handler depends only on {@link ToolShell} / {@link ToolProgress}, never
  * `sandbox/Shell`, so the backend (local OS / just-bash / remote provider) is
  * swapped by changing the provided Layer with no change to the tool.
@@ -74,7 +82,6 @@ export const bashDef = Tool.define({
 	parameters: BashParams,
 	success: BashSuccess,
 	failure: BashFailure,
-	failureMode: "return",
 	// The model reads just the command output, not the JSON envelope.
 	encodeContent: (success) => [{ type: "text", text: success.output }],
 	encodeFailureContent: (failure) => [{ type: "text", text: failure.output }],
@@ -230,3 +237,12 @@ export const bashHandler: Tool.Handler<
 
 /** The bash tool: definition + handler, wired the testable (def/exec split) way. */
 export const bashTool = Tool.implement(bashDef, bashHandler);
+
+export const bashPlugin = define({
+	id: "codework.tool.bash",
+	setup: Effect.fn("BashPlugin.setup")(function* (ctx) {
+		const shell = yield* SandboxIO.Shell;
+		const mounted = fromSandboxShell.pipe(Layer.provide(Layer.succeed(SandboxIO.Shell, shell)));
+		ctx.plugin.tools.add(Tool.provide(bashTool, mounted));
+	}),
+});

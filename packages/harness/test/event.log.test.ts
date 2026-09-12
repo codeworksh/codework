@@ -1,8 +1,9 @@
-import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Ref, Stream } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Ref, Schema, Stream } from "effect";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
+import { EventSchema } from "../src/event/schema.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { testEffect } from "./utils/effect.ts";
@@ -23,6 +24,19 @@ const turns = (events: Event.Interface, sessionId: SessionSchema.ID, names: Read
 			{ discard: true },
 		);
 	});
+
+/**
+ * A durable type defined outside `EventList`, standing in for a plugin's own.
+ * The application manifest cannot name it, which is exactly the case `manifest`
+ * exists for.
+ */
+const Foreign = EventSchema.define({
+	type: "test.foreign.happened",
+	durable: { aggregate: "topic", version: 1 },
+	schema: { topic: Schema.String, note: Schema.String },
+});
+/** Just the definitions — `log` decodes each row's `data` and builds the envelope. */
+const foreignDefinitions = EventSchema.durable([Foreign]);
 
 const names = (items: ReadonlyArray<Event.LogItem>) =>
 	items.flatMap((item) => (Event.isSynced(item) ? [] : [(item.data as { readonly messageId: string }).messageId]));
@@ -290,4 +304,108 @@ describe("Event.log", () => {
 			expect(collected).toHaveLength(102);
 		}),
 	);
+
+	it("reads types the application manifest does not know, when given their manifest", () =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const topic = "plugin:test.foreign";
+			yield* events.publish(Foreign, { topic, note: "one" });
+			yield* events.publish(Foreign, { topic, note: "two" });
+
+			// Without a manifest the default filter excludes the type entirely: the
+			// rows are stored, and every one of them is skipped.
+			const withDefault = Array.from(yield* events.log({ aggregateId: topic }).pipe(Stream.runCollect));
+			expect(withDefault.filter((item) => !Event.isSynced(item))).toEqual([]);
+			expect(withDefault.filter(Event.isSynced)).toHaveLength(1);
+
+			// With the owning definitions the same rows decode.
+			const withDefinitions = Array.from(
+				yield* events.log({ aggregateId: topic, definitions: foreignDefinitions }).pipe(Stream.runCollect),
+			);
+			const notes = withDefinitions.flatMap((item) =>
+				Event.isSynced(item) ? [] : [(item.data as { readonly note: string }).note],
+			);
+			expect(notes).toEqual(["one", "two"]);
+			// The envelope is the kernel's, built from the row rather than decoded.
+			const first = withDefinitions.find((item) => !Event.isSynced(item)) as Event.LogItem & {
+				readonly durable?: { readonly aggregateId: string; readonly seq: number };
+			};
+			expect(first.durable?.aggregateId).toBe(topic);
+			expect(first.durable?.seq).toBe(0);
+		}));
+
+	it("skips a row whose manifest entry is not durable instead of failing the read", () =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const topic = "plugin:test.foreign:nondurable";
+			yield* events.publish(Foreign, { topic, note: "one" });
+
+			// `EventSchema.durable` drops non-durable definitions, so only a hand-built manifest
+			// can key one under a stored type. The row is skipped, as in opencode's Bus, rather
+			// than decoded with a version nothing wrote.
+			const Ephemeral = EventSchema.define({
+				type: "test.foreign.happened",
+				schema: { topic: Schema.String, note: Schema.String },
+			});
+			const handBuilt = new Map([[EventSchema.versionedType("test.foreign.happened", 1), Ephemeral]]);
+			const items = Array.from(
+				yield* events.log({ aggregateId: topic, definitions: handBuilt }).pipe(Stream.runCollect),
+			);
+			expect(items.filter((item) => !Event.isSynced(item))).toEqual([]);
+			expect(items.filter(Event.isSynced)).toHaveLength(1);
+
+			// The same row still decodes through its durable definition.
+			const decoded = Array.from(
+				yield* events.log({ aggregateId: topic, definitions: foreignDefinitions }).pipe(Stream.runCollect),
+			);
+			expect(decoded.filter((item) => !Event.isSynced(item))).toHaveLength(1);
+		}));
+
+	it("pages custom definitions across many pages and resumes from a cursor", () =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const topic = "plugin:test.foreign:paged";
+			// Two full pages and a remainder: pagination that stopped after the first
+			// page would truncate here while still emitting `Synced` at the head.
+			const total = 300;
+			yield* Effect.forEach(
+				Array.from({ length: total }, (_, index) => index),
+				(index) => events.publish(Foreign, { topic, note: `n${index}` }),
+				{ discard: true },
+			);
+
+			const all = Array.from(
+				yield* events.log({ aggregateId: topic, definitions: foreignDefinitions }).pipe(Stream.runCollect),
+			);
+			const notes = all.flatMap((item) =>
+				Event.isSynced(item) ? [] : [(item.data as { readonly note: string }).note],
+			);
+			expect(notes).toHaveLength(total);
+			expect(notes.at(0)).toBe("n0");
+			expect(notes.at(-1)).toBe(`n${total - 1}`);
+			// Sequences are contiguous across the page boundaries, so nothing was
+			// skipped or re-read where one page hands over to the next.
+			const seqs = all.flatMap((item) => (Event.isSynced(item) ? [] : [item.durable?.seq]));
+			expect(seqs).toEqual(Array.from({ length: total }, (_, index) => index));
+
+			// And a cursor resumes mid-stream rather than replaying from the start.
+			const resumed = Array.from(
+				yield* events
+					.log({ aggregateId: topic, after: 199, definitions: foreignDefinitions })
+					.pipe(Stream.runCollect),
+			);
+			const tail = resumed.flatMap((item) =>
+				Event.isSynced(item) ? [] : [(item.data as { readonly note: string }).note],
+			);
+			expect(tail).toHaveLength(total - 200);
+			expect(tail.at(0)).toBe("n200");
+		}));
+
+	it("leaves kernel reads on the application manifest", () =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			yield* turns(events, A, ["first", "second"]);
+			const items = Array.from(yield* events.log({ aggregateId: A }).pipe(Stream.runCollect));
+			expect(names(items)).toEqual(["first", "second"]);
+		}));
 });

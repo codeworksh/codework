@@ -5,12 +5,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { type ExecChunk, fromExec, type ISandboxExe, Shell as SandboxShell } from "../src/sandbox/shell/shell.ts";
-import { bashTool } from "../src/tools/bash.ts";
-import * as Executor from "../src/tools/executor.ts";
-import { ToolProgress } from "../src/tools/progress.ts";
-import * as Registry from "../src/tools/registry.ts";
-import { fromSandboxShell, local, ToolShell, type ToolShellEvent } from "../src/tools/shell.ts";
-import * as Tool from "../src/tools/tool.ts";
+import { bashTool } from "../src/plugin/internal/tool/bash.ts";
+import * as Executor from "../src/tool/executor.ts";
+import { ToolProgress } from "../src/tool/progress.ts";
+import * as Registry from "../src/tool/registry.ts";
+import { fromSandboxShell, local, ToolShell, type ToolShellEvent } from "../src/tool/shell.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
 // A tiny fake tool with no capabilities. Returns a fixed string
@@ -231,7 +231,6 @@ const weatherDef = Tool.define({
 	parameters: WeatherParams,
 	success: WeatherReport,
 	failure: WeatherUnknownCity,
-	failureMode: "return",
 	encodeContent: (report) => [{ type: "text", text: `${report.city}: ${report.tempC}°C, ${report.sky}` }],
 	encodeFailureContent: (failure) => [{ type: "text", text: `No weather data for "${failure.city}".` }],
 });
@@ -296,7 +295,7 @@ describe("ToolRegistry — custom weather tool alongside the built-in bash", () 
 		expect(elapsed).toBeGreaterThanOrEqual(Duration.toMillis(latency) - 5); // timer jitter tolerance
 	});
 
-	it("returns a declared failure as a model-visible error outcome (failureMode: return)", async () => {
+	it("returns a declared failure as a model-visible error outcome", async () => {
 		const resolved = Registry.make([registerWeather()]).resolve();
 
 		const outcome = await Effect.runPromise(resolved.handle(pendingCall("weather", { city: "atlantis" })));

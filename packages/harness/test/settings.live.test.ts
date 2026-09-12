@@ -74,7 +74,6 @@ describe("settings against a live provider", () => {
 					const handle = yield* Session.create({
 						directory: root,
 						// Selection and matching controls come from the host file.
-						tools: { builtins: [] },
 					});
 					const runtime = yield* SessionRuntime.Service;
 					yield* runtime.update(handle.id, { onPayload });

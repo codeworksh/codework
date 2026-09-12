@@ -1,3 +1,4 @@
+import "./utils/env.ts";
 import { Settings } from "../src/settings/settings.ts";
 import { Effect, Option } from "effect";
 import fs from "node:fs/promises";
@@ -65,7 +66,7 @@ describe("Harness Effect SDK", () => {
 			Effect.gen(function* () {
 				const created = yield* Session.create({
 					directory: process.cwd(),
-					model: { provider: "test", id: "test-model" },
+					model: { provider: "openai", id: "gpt-4o-mini" },
 					thinkingLevel: "max",
 				});
 				yield* created.run("first");
@@ -75,8 +76,8 @@ describe("Harness Effect SDK", () => {
 				yield* attached.run("second");
 
 				expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual([
-					{ provider: "test", model: "test-model", thinkingLevel: "max" },
-					{ provider: "test", model: "test-model", thinkingLevel: "max" },
+					{ provider: "openai", model: "gpt-4o-mini", thinkingLevel: "max" },
+					{ provider: "openai", model: "gpt-4o-mini", thinkingLevel: "max" },
 				]);
 			}),
 			llm,
@@ -122,7 +123,7 @@ describe("Harness Effect SDK", () => {
 					const sessionId = yield* Effect.gen(function* () {
 						const session = yield* Session.create({
 							directory: process.cwd(),
-							model: { provider: "test", id: "test-model" },
+							model: { provider: "openai", id: "gpt-4o-mini" },
 							thinkingLevel: "max",
 						});
 						yield* session.run("first");
@@ -143,7 +144,7 @@ describe("Harness Effect SDK", () => {
 					yield* Effect.gen(function* () {
 						const session = yield* Session.attach({
 							sessionId,
-							model: { provider: "override", id: "override-model" },
+							model: { provider: "openai", id: "gpt-4o" },
 							thinkingLevel: "low",
 						});
 						yield* session.run("third");
@@ -163,13 +164,13 @@ describe("Harness Effect SDK", () => {
 					 */
 					expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual(
 						[
-							{ provider: "test", model: "test-model", thinkingLevel: "max" },
+							{ provider: "openai", model: "gpt-4o-mini", thinkingLevel: "max" },
 							{
 								provider: Settings.defaults.model.provider,
 								model: Settings.defaults.model.id,
 								thinkingLevel: Settings.defaults.model.thinkingLevel,
 							},
-							{ provider: "override", model: "override-model", thinkingLevel: "low" },
+							{ provider: "openai", model: "gpt-4o", thinkingLevel: "low" },
 							{
 								provider: Settings.defaults.model.provider,
 								model: Settings.defaults.model.id,

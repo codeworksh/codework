@@ -23,6 +23,9 @@ importers:
 
   .:
     devDependencies:
+      '@codeworksh-test/codework-sandbox-vercel':
+        specifier: workspace:*
+        version: link:extras/codework-sandbox-vercel
       '@effect/tsgo':
         specifier: 'catalog:'
         version: 0.36.4
@@ -39,8 +42,8 @@ importers:
   extras/codework-sandbox-vercel:
     dependencies:
       '@codeworksh/harness':
-        specifier: '*'
-        version: 0.0.1-dev.20260824142157(ioredis@5.11.1)(zod@4.4.3)
+        specifier: workspace:*
+        version: link:../../packages/harness
       '@vercel/sandbox':
         specifier: ^2.9.2
         version: 2.9.2
@@ -170,6 +173,9 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-beta.107
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)(ioredis@5.11.1)
+      '@effect/platform-node-shared':
+        specifier: 4.0.0-beta.107
+        version: 4.0.0-beta.107(effect@4.0.0-beta.107)
       '@effect/sql-sqlite-node':
         specifier: 4.0.0-beta.107
         version: 4.0.0-beta.107(effect@4.0.0-beta.107)
@@ -182,6 +188,9 @@ importers:
       just-bash:
         specifier: ^2.14.5
         version: 2.14.5
+      npm-package-arg:
+        specifier: ^14.0.0
+        version: 14.0.0
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
@@ -195,15 +204,15 @@ importers:
         specifier: ^1.2.1
         version: 1.2.1
     devDependencies:
-      '@codeworksh-test/codework-sandbox-vercel':
-        specifier: workspace:*
-        version: link:../../extras/codework-sandbox-vercel
       '@daytona/sdk':
         specifier: ^0.187.0
         version: 0.187.0(ws@8.21.1)
       '@types/node':
         specifier: ^25.9.5
         version: 25.9.5
+      '@types/npm-package-arg':
+        specifier: ^6.1.4
+        version: 6.1.4
       '@vercel/sandbox':
         specifier: ^2.9.2
         version: 2.9.2
@@ -366,16 +375,6 @@ packages:
 
   '@borewit/text-codec@0.2.2':
     resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
-
-  '@codeworksh/aikit@0.7.0':
-    resolution: {integrity: sha512-ZXJrYy/tX8lYaQCNLw6BkdUFfxS6q23Vw8SicoMxIqJLpd1bxklWitSGJ3pWjT0I/CP2MABJWiqHjk3B+5gXwQ==}
-    engines: {node: '>=22.0.0'}
-    hasBin: true
-
-  '@codeworksh/harness@0.0.1-dev.20260824142157':
-    resolution: {integrity: sha512-uoSWKH18GxKwPlMdgiKknUwR6kSerIsYe6DZCaiPQA2U9Eg6H6DOFK5a/AgB6a3T31jP8uWuywfvUejucbPWWQ==}
-    engines: {node: '>=24.14.1'}
-    hasBin: true
 
   '@daytona/api-client@0.187.0':
     resolution: {integrity: sha512-riKOJ6eSuy67DL6iJlAa3Bfjnm4iQmkOdJk0B5hqrYMZeZmVDsgdiZtYvFpyoa+2KCZFNb0Gs5dQwO1d6NhGCw==}
@@ -1572,6 +1571,9 @@ packages:
   '@types/node@26.1.2':
     resolution: {integrity: sha512-Vu4a5UFA9rIIFJ7rB/Vaafh9lrCQszopTCx6KjFboXTGQbPNasehVR5TEiithSDGyd1DEiUByggTZsg8jukeIg==}
 
+  '@types/npm-package-arg@6.1.4':
+    resolution: {integrity: sha512-vDgdbMy2QXHnAruzlv68pUtXCjmqUk3WrBAsRboRovsOmxbfn/WiYCjmecyKjGztnMps5dWp4Uq2prp+Ilo17Q==}
+
   '@types/set-cookie-parser@2.4.10':
     resolution: {integrity: sha512-GGmQVGpQWUe5qglJozEjZV/5dyxbOOZ0LHe/lqyWssB88Y4svNfst0uqBVscdDeIKl5Jy5+aPSvy7mI9tYRguw==}
 
@@ -2450,6 +2452,10 @@ packages:
     resolution: {integrity: sha512-eSmmWE5bZTK2Nou4g0AI3zZ9rswp7GRKoKXS1BLUkvPviOqs4YTN1djQIqrXy9k5gEtdLPy86JjRwsNM9tnDcA==}
     engines: {node: '>=0.10.0'}
 
+  hosted-git-info@10.1.1:
+    resolution: {integrity: sha512-DeOnSPAvOndYKfw075gt8yZzQ7S2hNztw34zBTfhIzLhmBTswIBg5/y+pqu/VD5cYWm5goAFTusDmUEmKZ0PEQ==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
+
   https-proxy-agent@5.0.1:
     resolution: {integrity: sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==}
     engines: {node: '>= 6'}
@@ -2621,6 +2627,10 @@ packages:
   long@5.3.2:
     resolution: {integrity: sha512-mNAgZ1GmyNhD7AuqnTG3/VQ26o760+ZYBPKjPvugO8+nLbYfX6TVpJPseBvopbdY+qpZ/lKUnmEc1LeZYS3QAA==}
 
+  lru-cache@11.5.2:
+    resolution: {integrity: sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==}
+    engines: {node: 20 || >=22}
+
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
     hasBin: true
@@ -2753,6 +2763,10 @@ packages:
     engines: {node: '>=16.0.0'}
     hasBin: true
 
+  npm-package-arg@14.0.0:
+    resolution: {integrity: sha512-69XQh3k+dtGa1p+7RaR57IuG3rCko96xr/nUfN4yDYBXbTYICiWcOpsFKLN2GtGE9cyIljE+f1exnaYt9MvM+Q==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
+
   obug@2.1.4:
     resolution: {integrity: sha512-4a+OsYv9UktOJKE+l1A4OufDgdRF9PifWj+tJnHURo/P+WOxpG4GzUFL9qCalmWauao6ogiG+QvnCovwPoyAWA==}
     engines: {node: '>=12.20.0'}
@@ -2852,6 +2866,10 @@ packages:
   pretty-format@27.5.1:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
+
+  proc-log@7.0.0:
+    resolution: {integrity: sha512-FYgfaA69XZ93zaXLoMNQ+ViDXGGBgR8aLh03txzcFhV+9xOXx7+8DLCULrKKpR9+GsH9ZfHm82aSUPpozX0Ztg==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   protobufjs@7.6.5:
     resolution: {integrity: sha512-/FPD0nUc9jH6rfFjji9IBqOz4pcSE3CsT1m7Ep6Mdb0LxSUMj8hgl6GomOvZzpNpAqqGaXA0P3VSrZLFzIhQrw==}
@@ -3192,6 +3210,10 @@ packages:
   uuidv7@1.2.1:
     resolution: {integrity: sha512-4kPkK3/XTQW9Hbm4CaqfICn+kY9LJtDVEOfgsRRra/+n2Ofg4NqzRFceAkxvQ/Ud/6BpHOPzj8cirqM7TzTN5Q==}
     hasBin: true
+
+  validate-npm-package-name@8.0.0:
+    resolution: {integrity: sha512-SCv6OOV6Xj2/3cXy3dGmADluJTNcL3o7hZAglNPTe+WYuEuvxgJzxPrSDLZhF+CwyQOubqgecjMmTJGMVLWjYQ==}
+    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
   verkit@0.3.2:
     resolution: {integrity: sha512-zj/ob3UsvJGN0whEAKFp53REA5X66hvffVqoCtVQAakJKnKlH+/PcOfMoFwIG/o4rElqLv/ycAFlx8ZlXUorCg==}
@@ -3628,53 +3650,6 @@ snapshots:
   '@blazediff/core@1.9.1': {}
 
   '@borewit/text-codec@0.2.2': {}
-
-  '@codeworksh/aikit@0.7.0(zod@4.4.3)':
-    dependencies:
-      '@ai-sdk/anthropic': 4.0.36(zod@4.4.3)
-      '@ai-sdk/google': 4.0.39(zod@4.4.3)
-      '@ai-sdk/google-vertex': 5.0.48(zod@4.4.3)
-      '@ai-sdk/openai': 4.0.36(zod@4.4.3)
-      '@ai-sdk/openai-compatible': 3.0.28(zod@4.4.3)
-      '@ai-sdk/provider': 4.0.7
-      '@ai-sdk/xai': 4.0.33(zod@4.4.3)
-      '@openrouter/ai-sdk-provider': 3.0.0(ai@7.0.58(zod@4.4.3))(zod@4.4.3)
-      ai: 7.0.58(zod@4.4.3)
-      dedent: 1.7.2
-      partial-json: 0.1.7
-      remeda: 2.39.0
-      typebox: 1.3.12
-      uuidv7: 1.2.1
-      yargs: 18.1.0
-    transitivePeerDependencies:
-      - babel-plugin-macros
-      - supports-color
-      - zod
-
-  '@codeworksh/harness@0.0.1-dev.20260824142157(ioredis@5.11.1)(zod@4.4.3)':
-    dependencies:
-      '@codeworksh/aikit': 0.7.0(zod@4.4.3)
-      '@daytona/sdk': 0.187.0(ws@8.21.1)
-      '@effect/platform-node': 4.0.0-beta.107(effect@4.0.0-beta.107)(ioredis@5.11.1)
-      '@effect/sql-sqlite-node': 4.0.0-beta.107(effect@4.0.0-beta.107)
-      '@platformatic/vfs': 0.4.0
-      '@vercel/sandbox': 2.9.2
-      effect: 4.0.0-beta.107
-      just-bash: 2.14.5
-      typebox: 1.3.12
-      uuid: 14.0.1
-      uuidv7: 1.2.1
-    transitivePeerDependencies:
-      - babel-plugin-macros
-      - bare-abort-controller
-      - bufferutil
-      - debug
-      - ioredis
-      - react-native-b4a
-      - supports-color
-      - utf-8-validate
-      - ws
-      - zod
 
   '@daytona/api-client@0.187.0':
     dependencies:
@@ -4684,6 +4659,8 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
 
+  '@types/npm-package-arg@6.1.4': {}
+
   '@types/set-cookie-parser@2.4.10':
     dependencies:
       '@types/node': 25.9.5
@@ -5439,6 +5416,10 @@ snapshots:
     dependencies:
       parse-passwd: 1.0.0
 
+  hosted-git-info@10.1.1:
+    dependencies:
+      lru-cache: 11.5.2
+
   https-proxy-agent@5.0.1:
     dependencies:
       agent-base: 6.0.2
@@ -5604,6 +5585,8 @@ snapshots:
 
   long@5.3.2: {}
 
+  lru-cache@11.5.2: {}
+
   lz-string@1.5.0: {}
 
   magic-string@0.30.21:
@@ -5736,6 +5719,13 @@ snapshots:
       node-gyp-build: 4.8.4
     optional: true
 
+  npm-package-arg@14.0.0:
+    dependencies:
+      hosted-git-info: 10.1.1
+      proc-log: 7.0.0
+      semver: 7.8.5
+      validate-npm-package-name: 8.0.0
+
   obug@2.1.4: {}
 
   once@1.4.0:
@@ -5862,6 +5852,8 @@ snapshots:
       ansi-regex: 5.0.1
       ansi-styles: 5.2.0
       react-is: 17.0.2
+
+  proc-log@7.0.0: {}
 
   protobufjs@7.6.5:
     dependencies:
@@ -6013,8 +6005,7 @@ snapshots:
     dependencies:
       commander: 6.2.1
 
-  semver@7.8.5:
-    optional: true
+  semver@7.8.5: {}
 
   set-cookie-parser@3.1.2:
     optional: true
@@ -6284,6 +6275,8 @@ snapshots:
   uuid@14.0.1: {}
 
   uuidv7@1.2.1: {}
+
+  validate-npm-package-name@8.0.0: {}
 
   verkit@0.3.2: {}
 

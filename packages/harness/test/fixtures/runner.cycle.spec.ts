@@ -25,6 +25,7 @@ import { SessionLive } from "../../src/session/live.ts";
 import { SessionRuntime } from "../../src/session/runtime.ts";
 import type { SessionSchema } from "../../src/session/schema.ts";
 import { Session } from "../../src/session/session.ts";
+import { builtins } from "../../src/plugin/internal.ts";
 import { State } from "../../src/state/state.ts";
 
 const database = Database.layer(":memory:");
@@ -36,7 +37,7 @@ const sandbox = SandboxController.layer().pipe(
 const runtime = (root: string, custom: string) =>
 	Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer()))),
-		Layer.provideMerge(State.layer()),
+		Layer.provideMerge(State.layer({}, builtins)),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
@@ -154,7 +155,6 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							const bindings = yield* SessionRuntime.Service;
 							yield* bindings.update(session.id, {
 								// This conversation expects one response per prompt; tools have their own remote suite.
-								builtinTools: [],
 								onPayload: async (payload, model) => {
 									const params = payload as Record<string, unknown>;
 									const bag = params.providerOptions as Record<string, Record<string, unknown>> | undefined;

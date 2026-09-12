@@ -4,11 +4,11 @@ import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { type ExecChunk, Shell } from "../src/sandbox/shell/shell.ts";
-import { bashTool } from "../src/tools/bash.ts";
-import * as Executor from "../src/tools/executor.ts";
-import { noop as progressNoop } from "../src/tools/progress.ts";
-import { fromSandboxShell, local, ToolShell, ToolShellTimeout } from "../src/tools/shell.ts";
-import * as Tool from "../src/tools/tool.ts";
+import { bashTool } from "../src/plugin/internal/tool/bash.ts";
+import * as Executor from "../src/tool/executor.ts";
+import { noop as progressNoop } from "../src/tool/progress.ts";
+import { fromSandboxShell, local, ToolShell, ToolShellTimeout } from "../src/tool/shell.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 

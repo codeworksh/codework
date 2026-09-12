@@ -7,6 +7,10 @@
 		"noEmit": false,
 		"outDir": "dist",
 		"rootDir": "src",
-		"rewriteRelativeImportExtensions": true
+		"rewriteRelativeImportExtensions": true,
+		"paths": {
+			"@codeworksh/harness/sandbox": ["../../packages/harness/dist/pack/sandbox.d.mts"]
+		},
+		"noEmitOnError": true
 	}
 }

@@ -1,6 +1,9 @@
+import { bashPluginSpec } from "./fixtures/bash.spec.ts";
+import * as Driver from "../src/sandboxes/vercel/index.ts";
+import { remoteSuite } from "./fixtures/live.ts";
 import { Sandbox as RemoteSandbox } from "@vercel/sandbox";
 import { Effect, ManagedRuntime, Stream } from "effect";
-import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
@@ -18,7 +21,7 @@ import "./utils/env.ts";
 
 const token = process.env.VERCEL_OIDC_TOKEN;
 const githubPat = process.env.GITHUB_PAT;
-const suite = hasLiveOidc(token) ? describe : describe.skip;
+const suite = remoteSuite("VERCEL_OIDC_TOKEN", hasLiveOidc(token));
 
 const PROVISION_TIMEOUT = 180_000;
 
@@ -101,6 +104,8 @@ suite("Sandbox.EnvVercel (fresh sandbox)", () => {
 				),
 			),
 		);
+
+	bashPluginSpec({ driver: Driver.make(), resourceId, streaming: true });
 
 	remoteSandboxSpec({
 		kind: "vercel",
@@ -189,13 +194,15 @@ suite("Sandbox.EnvVercel (fresh sandbox)", () => {
 			let exitCode: number | undefined;
 			for (const chunk of result.chunks) {
 				if (chunk._tag === "exit") exitCode = chunk.exitCode;
-				else text += decoder.decode(chunk.bytes);
+				else text += decoder.decode(chunk.bytes, { stream: true });
 			}
 
 			expect(text).toContain(result.cwd);
 			expect(text).toContain("hello");
 			expect(text).toContain("oops");
 			expect(exitCode).toBe(0);
+			expect(result.chunks.filter((chunk) => chunk._tag === "exit")).toEqual([{ _tag: "exit", exitCode: 0 }]);
+			expect(result.chunks.at(-1)).toEqual({ _tag: "exit", exitCode: 0 });
 		},
 		PROVISION_TIMEOUT,
 	);
@@ -216,14 +223,16 @@ suite("Sandbox.EnvVercel (fresh sandbox)", () => {
 			let exitCode: number | undefined;
 			for (const chunk of chunks) {
 				if (chunk._tag === "exit") exitCode = chunk.exitCode;
-				else text += decoder.decode(chunk.bytes);
+				else text += decoder.decode(chunk.bytes, { stream: true });
 			}
+			text += decoder.decode();
 			const lines = text.split("\n").filter((line) => line.length > 0);
 
 			expect(lines.length).toBe(50);
-			expect(lines[0]).toBe("1");
-			expect(lines.at(-1)).toBe("50");
+			expect(lines).toEqual(Array.from({ length: 50 }, (_, index) => String(index + 1)));
 			expect(exitCode).toBe(0);
+			expect(chunks.filter((chunk) => chunk._tag === "exit")).toEqual([{ _tag: "exit", exitCode: 0 }]);
+			expect(chunks.at(-1)).toEqual({ _tag: "exit", exitCode: 0 });
 		},
 		PROVISION_TIMEOUT,
 	);
@@ -239,9 +248,8 @@ suite("Sandbox.EnvVercel (fresh sandbox)", () => {
 				}),
 			);
 
-			const exit = chunks.find((chunk) => chunk._tag === "exit");
-			expect(exit).toBeDefined();
-			expect((exit as { exitCode: number }).exitCode).toBe(3);
+			expect(chunks.filter((chunk) => chunk._tag === "exit")).toEqual([{ _tag: "exit", exitCode: 3 }]);
+			expect(chunks.at(-1)).toEqual({ _tag: "exit", exitCode: 3 });
 		},
 		PROVISION_TIMEOUT,
 	);

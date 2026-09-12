@@ -1,6 +1,7 @@
 import { Config, Context, Effect, Layer } from "effect";
 import * as os from "node:os";
 import { fileSystem } from "./host.ts";
+import { expandTilde } from "./util/home.ts";
 import { posix } from "./util/posix.ts";
 
 export const appConfigDir = ".codework";
@@ -8,11 +9,7 @@ export const app = "codework";
 
 const defaultHome = posix.join(os.homedir(), appConfigDir);
 
-function expandHome(value: string) {
-	if (value === "~") return os.homedir();
-	if (value.startsWith("~/")) return posix.join(os.homedir(), value.slice(2));
-	return posix.resolve(value);
-}
+const expandHome = (value: string) => posix.resolve(expandTilde(value, posix));
 
 export const homeConfig = Config.string("CODEWORK_HOME_DIR").pipe(
 	Config.withDefault(defaultHome),
@@ -24,7 +21,6 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 export interface Interface {
 	readonly home: string;
 	readonly cache: string;
-	readonly config: string;
 	readonly data: string;
 	readonly log: string;
 }
@@ -34,7 +30,6 @@ export function make(input: Partial<Interface> = {}): Interface {
 	return {
 		home,
 		cache: input.cache ?? posix.join(home, "cache"),
-		config: input.config ?? posix.join(home, "config"),
 		data: input.data ?? posix.join(home, "data"),
 		log: input.log ?? posix.join(home, "log"),
 	};
@@ -50,7 +45,6 @@ const build = (input: Partial<Interface>) =>
 		const paths = yield* resolve(input);
 		yield* Effect.all([
 			fileSystem.makeDirectory(paths.cache, { recursive: true }),
-			fileSystem.makeDirectory(paths.config, { recursive: true }),
 			fileSystem.makeDirectory(paths.data, { recursive: true }),
 			fileSystem.makeDirectory(paths.log, { recursive: true }),
 		]).pipe(Effect.orDie);

@@ -27,7 +27,7 @@
 		"effect": "4.0.0-beta.107"
 	},
 	"peerDependencies": {
-		"@codeworksh/harness": "*",
+		"@codeworksh/harness": "workspace:*",
 		"effect": "4.0.0-beta.107"
 	},
 	"engines": {

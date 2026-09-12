@@ -33,7 +33,7 @@ export interface ShellOptions {
 /**
  * A streamed chunk of command output, terminated by a single `exit` carrying the
  * exit code. (A backend-level mirror of the tool layer's event; kept here so
- * `sandbox/` does not depend on `tools/`.)
+ * `sandbox/` does not depend on `tool/`.)
  */
 export type ExecChunk =
 	| { readonly _tag: "stdout"; readonly bytes: Uint8Array }

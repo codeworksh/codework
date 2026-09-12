@@ -22,7 +22,7 @@ export interface IToolProgress {
 }
 
 export class ToolProgress extends Context.Service<ToolProgress, IToolProgress>()(
-	"@codeworksh/harness/tools/progress/ToolProgress",
+	"@codeworksh/harness/tool/progress/ToolProgress",
 ) {}
 
 /** Build a `ToolProgress` Layer from a `report` implementation. */

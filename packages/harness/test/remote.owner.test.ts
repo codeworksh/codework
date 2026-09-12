@@ -59,7 +59,7 @@ describe("remote fixture owner", () => {
 		expect((failure as AggregateError).errors).toEqual([deletion, disposal]);
 	});
 
-	it("reports an uncaptured locator without skipping disposal", async () => {
+	it("disposes without a secondary failure when provisioning never captured a resource", async () => {
 		const owner = makeRemoteOwner("test");
 		let disposed = false;
 
@@ -72,7 +72,7 @@ describe("remote fixture owner", () => {
 					disposed = true;
 				},
 			}),
-		).rejects.toThrow("resource locator was never captured");
+		).resolves.toBeUndefined();
 		expect(disposed).toBe(true);
 	});
 });

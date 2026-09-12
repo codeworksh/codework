@@ -1,3 +1,4 @@
+import type { ToolRegistration } from "../plugin/tool/schema.ts";
 import type { Message } from "@codeworksh/aikit";
 import { Context, Layer } from "effect";
 import * as Executor from "./executor.ts";
@@ -54,15 +55,18 @@ export interface Registry {
  * order — only the bound implementation changes. Override resolution happens here, before
  * `Executor.make`, which requires unique effective names.
  */
-export const make = (tools: ReadonlyArray<RegisteredTool>): Registry => {
-	const byName = new Map<string, RegisteredTool>();
-	for (const tool of tools) byName.set(tool.definition.name, tool);
+export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): Registry => {
+	const byName = new Map<string, ToolRegistration>();
+	for (const item of tools) {
+		const entry = "tool" in item ? item : { tool: item, hooks: {} };
+		byName.set(entry.tool.definition.name, entry);
+	}
 
 	// Capture the effective set ONCE; the snapshot closes over these frozen arrays, so it
 	// keeps its winning implementations and membership regardless of any later change.
 	const effective = Object.freeze([...byName.values()]);
-	const defs = Object.freeze(effective.map((tool) => tool.definition));
-	const names = Object.freeze(effective.map((tool) => tool.definition.name));
+	const defs = Object.freeze(effective.map((entry) => entry.tool.definition));
+	const names = Object.freeze(effective.map((entry) => entry.tool.definition.name));
 
 	// The effective set is unique, so the executor's own duplicate guard never trips.
 	const executor = Executor.make(effective);
@@ -76,7 +80,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Registry => {
 	return Object.freeze({
 		defs,
 		names,
-		getDef: (name: string) => byName.get(name)?.definition,
+		getDef: (name: string) => byName.get(name)?.tool.definition,
 		resolve: () => resolved,
 	});
 };
@@ -87,9 +91,9 @@ export const make = (tools: ReadonlyArray<RegisteredTool>): Registry => {
  * `R` is discharged at registration), so there is no capability union to fix here.
  */
 export class ToolRegistry extends Context.Service<ToolRegistry, Registry>()(
-	"@codeworksh/harness/tools/registry/ToolRegistry",
+	"@codeworksh/harness/tool/registry/ToolRegistry",
 ) {}
 
 /** Provide a catalog of registered tools as the {@link ToolRegistry} service. */
-export const layer = (tools: ReadonlyArray<RegisteredTool>): Layer.Layer<ToolRegistry> =>
+export const layer = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): Layer.Layer<ToolRegistry> =>
 	Layer.succeed(ToolRegistry, ToolRegistry.of(make(tools)));

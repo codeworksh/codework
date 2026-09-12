@@ -1,47 +1,59 @@
 /*
- * @file Host discovery and loading for `.codework/config/settings.json`.
+ * @file Host discovery and loading for settings files.
  *
- * Three files are read, lowest priority first, each merged onto the built-in defaults so
+ * Three layers are read, lowest priority first, each merged onto the built-in defaults so
  * that "no file anywhere" needs no special case -- zero patches over the defaults is a
  * valid result:
  *
- * 1. `<Global.config>/settings.json`          -- the user's own, `~/.codework/config` by default
- * 2. `<startup cwd>/.codework/config/settings.json` -- committed with the project
+ * 1. `<Global.home>/settings.json`            -- the user's own, `~/.codework` by default
+ * 2. `<options.cwd>/codework.json` or, when absent, `<options.cwd>/.codework/settings.json`
+ *                                             -- committed with the project; the single file
+ *                                                wins, it is never merged with the directory
  * 3. `<--user-config-dir>/settings.json`      -- explicit override, `~` expanded, relative to cwd
  *
  * **All three are host paths.** They are resolved from the process's startup directory and
- * `Global.config`, never from a session's `--cwd`, its working directory, or its sandbox
+ * `Global.home`, never from a session's `--cwd`, its working directory, or its sandbox
  * mount. A session running in a remote or in-memory sandbox reads the same host files as
- * every other session in the process; there is no per-project or per-sandbox settings file,
- * and no parent-directory search. The startup directory is captured once, so later `cd` or
- * a session pointed elsewhere changes nothing.
+ * every other session in the process; there is no per-session settings discovery
+ * and no parent-directory search. The startup directory arrives as `options.cwd` and is
+ * resolved once, so later `cd` or a session pointed elsewhere changes nothing.
  *
- * `load` re-reads all three on every call. There is no cache to invalidate and no reload
+ * `load` re-reads all layers on every call. There is no cache to invalidate and no reload
  * API: an edit lands at the next exchange capture because the next capture goes to disk.
  * A missing file is ordinary. A malformed or unreadable one warns and contributes nothing,
  * so a typo in one layer cannot stop the layers around it from applying.
  */
 
-import { Context, Effect, Layer, Schema, SchemaIssue } from "effect";
-import { homedir } from "node:os";
+import { Context, Effect, Layer, Result, Schema, SchemaIssue } from "effect";
 import { Global } from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
+import { expandTilde } from "../util/home.ts";
 import { merge, normalize } from "./merge.ts";
 import { defaults, Patch, type Info } from "./schema.ts";
 
 export interface Options {
 	readonly userConfigDir?: string;
-	/** Host startup directory, independent of the session/sandbox cwd. */
-	readonly cwd?: string;
+	/**
+	 * Host startup directory, supplied by the caller -- never `process.cwd()` read
+	 * here. The distinction it protects is between the OS process's directory and a
+	 * session's sandbox mount, which are unrelated and easy to confuse; requiring it
+	 * means a caller cannot get the host layer by forgetting to say which it meant.
+	 */
+	readonly cwd: string;
 }
 
-export function paths(config: string, cwd: string, custom?: string): ReadonlyArray<string> {
-	const expanded =
-		custom === "~" ? homedir() : custom?.startsWith("~/") ? hostPath.join(homedir(), custom.slice(2)) : custom;
+/**
+ * Ordered layers, each a group of candidates where the first file that exists is
+ * selected -- a group never contributes more than one file. The project layer's
+ * candidates are `codework.json` then `.codework/settings.json`, so a project can
+ * pick either layout and the single file takes precedence.
+ */
+export function paths(home: string, cwd: string, custom?: string): ReadonlyArray<ReadonlyArray<string>> {
+	const expanded = custom === undefined ? undefined : expandTilde(custom, hostPath);
 	return [
-		hostPath.join(config, "settings.json"),
-		hostPath.join(cwd, Global.appConfigDir, "config", "settings.json"),
-		...(expanded === undefined ? [] : [hostPath.resolve(cwd, expanded, "settings.json")]),
+		[hostPath.join(home, "settings.json")],
+		[hostPath.join(cwd, "codework.json"), hostPath.join(cwd, Global.appConfigDir, "settings.json")],
+		...(expanded === undefined ? [] : [[hostPath.resolve(cwd, expanded, "settings.json")]]),
 	];
 }
 
@@ -89,31 +101,62 @@ export interface Interface {
 }
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/settings/settings/Service") {}
 
-export const layer = (options: Options = {}) =>
+/**
+ * Anchor relative plugin entries to the file that declared them.
+ *
+ * A reference is otherwise resolved against the host startup directory, which is right for
+ * a project file sitting in it and meaningless for `~/.codework/settings.json`, where
+ * `./plugins/x.ts` would name a different file in every project the process is started in.
+ * IDs, `!id` disables, `file:` URLs, and package specs are left exactly as written.
+ */
+const anchor = (patch: Patch, file: string): Patch => {
+	if (patch.plugins === undefined) return patch;
+	const directory = hostPath.dirname(file);
+	return {
+		...patch,
+		plugins: patch.plugins.map((entry) =>
+			entry.startsWith("./") || entry.startsWith("../") ? hostPath.resolve(directory, entry) : entry,
+		),
+	};
+};
+
+const attempt = (path: string) =>
+	fileSystem.readFileString(path).pipe(
+		Effect.mapError((error) => new SettingsError({ path, reason: "read", detail: error.reason._tag })),
+		Effect.flatMap((source) => parse(path, source)),
+	);
+
+/**
+ * One read of every layer. Exported for the harness constructor, which needs the plugin
+ * selection before any layer is built; everything else goes through `Service`.
+ */
+export const load = Effect.fn("Settings.load")(function* (options: Options & { readonly home: string }) {
+	const files = paths(options.home, hostPath.resolve(options.cwd), options.userConfigDir);
+	let settings = merge(defaults);
+	for (const group of files) {
+		for (const path of group) {
+			const result = yield* Effect.result(attempt(path));
+			if (Result.isSuccess(result)) {
+				settings = merge(settings, anchor(result.success, path));
+				break;
+			}
+			const error = result.failure;
+			// A missing candidate falls through to the next; anything else selects
+			// the file, warns, and the group contributes nothing.
+			if (error.reason === "read" && error.detail === "NotFound") continue;
+			yield* Effect.logWarning(`Settings: ${error.path}: ${error.reason}: ${error.detail}`);
+			break;
+		}
+	}
+	return settings;
+});
+
+export const layer = (options: Options) =>
 	Layer.effect(
 		Service,
 		Effect.gen(function* () {
 			const global = yield* Global.Service;
-			const files = paths(global.config, hostPath.resolve(options.cwd ?? process.cwd()), options.userConfigDir);
-			const load = Effect.fn("Settings.load")(function* () {
-				let settings = merge(defaults);
-				for (const path of files) {
-					const patch = yield* fileSystem.readFileString(path).pipe(
-						Effect.mapError((error) => new SettingsError({ path, reason: "read", detail: error.reason._tag })),
-						Effect.flatMap((source) => parse(path, source)),
-						Effect.catch((error) =>
-							error.reason === "read" && error.detail === "NotFound"
-								? Effect.succeed({})
-								: Effect.logWarning(`Settings: ${error.path}: ${error.reason}: ${error.detail}`).pipe(
-										Effect.as({}),
-									),
-						),
-					);
-					settings = merge(settings, patch);
-				}
-				return settings;
-			});
-			return Service.of({ load: load() });
+			return Service.of({ load: load({ ...options, home: global.home }) });
 		}),
 	);
 

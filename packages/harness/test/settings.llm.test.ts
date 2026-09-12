@@ -17,6 +17,7 @@ describe("settings at the LLM boundary", () => {
 			sessionId: SessionSchema.ID.create(),
 			provider: "lmstudio",
 			model: model.id,
+			resolvedModel: model,
 			context: {
 				messages: [
 					Message.createUserMessage({
@@ -94,6 +95,9 @@ describe("settings at the LLM boundary", () => {
 					sessionId: SessionSchema.ID.create(),
 					provider: selection.provider,
 					model: selection.model,
+					resolvedModel: await Effect.runPromise(
+						LLM.resolve({ provider: selection.provider, model: selection.model, settings: selection.block }),
+					),
 					thinkingLevel: "off",
 					context: {
 						messages: [
@@ -119,25 +123,13 @@ describe("settings at the LLM boundary", () => {
 	});
 
 	it("keeps typed lookup errors when settings select a model the catalog does not have", async () => {
-		const input = (provider: string, model: string): LLM.Input => ({
-			sessionId: SessionSchema.ID.create(),
-			provider,
-			model,
-			context: {
-				messages: [
-					Message.createUserMessage({ role: "user", time: { created: 1 }, parts: [{ type: "text", text: "hi" }] }),
-				],
-			},
-			// A selection is never validated during composition, so overrides ride along unused.
-			settings: { contextWindow: 999 },
-		});
-		const signal = new AbortController().signal;
-		const missing = await Effect.runPromise(LLM.open(input("openai", "no-such-model"), signal).pipe(Effect.flip));
+		const input = (provider: string, model: string) => ({ provider, model, settings: { contextWindow: 999 } });
+		const missing = await Effect.runPromise(LLM.resolve(input("openai", "no-such-model")).pipe(Effect.flip));
 		expect(missing._tag).toBe("Runner.ModelNotFoundError");
 		expect(missing).toMatchObject({ provider: "openai", model: "no-such-model" });
 
 		const unknownProvider = await Effect.runPromise(
-			LLM.open(input("no-such-provider", "no-such-model"), signal).pipe(Effect.flip),
+			LLM.resolve(input("no-such-provider", "no-such-model")).pipe(Effect.flip),
 		);
 		expect(unknownProvider._tag).toBe("Runner.ModelNotFoundError");
 	});

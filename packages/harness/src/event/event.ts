@@ -92,6 +92,21 @@ export type LogInput = {
 	readonly after?: number;
 	/** Keep the stream open past the marker, appending events as they commit. */
 	readonly follow?: boolean;
+	/**
+	 * Which stored types this read understands, keyed by versioned type -- build it
+	 * with `EventSchema.durable([...definitions])`. Rows of any other type are
+	 * skipped, exactly as an unknown type from a newer build is. Defaults to the
+	 * application manifest, so a kernel reader passes nothing.
+	 *
+	 * A caller owning durable definitions outside `EventList` supplies them here,
+	 * including the older versions it still decodes; the default does not know them
+	 * and would filter every row.
+	 *
+	 * Only the definitions are needed, not a decoder: `log` decodes each row's
+	 * `data` with its own definition and builds the envelope itself, so what it
+	 * emits is always a well-formed {@link Payload}.
+	 */
+	readonly definitions?: ReadonlyMap<string, Definition>;
 };
 
 export interface PublishOptions {
@@ -136,8 +151,10 @@ export interface Interface {
 	readonly readAggregate: <A>(input: ReadAggregateInput<A>) => Effect.Effect<ReadAggregateResult<A>>;
 	/**
 	 * Reads one aggregate's stored events after the exclusive `after` cursor in
-	 * sequence order, using the application manifest. Unknown types are skipped.
-	 * Emits a {@link Synced} marker after reading through the captured head.
+	 * sequence order, decoded through `input.definitions` -- the application
+	 * manifest unless the caller owns durable types outside `EventList`. Types the
+	 * definitions do not name are skipped. Emits a {@link Synced} marker after reading
+	 * through the captured head.
 	 *
 	 * Completes after the marker unless `follow` is true. Following rereads storage
 	 * when this service instance commits an event; writes through other instances
@@ -335,23 +352,64 @@ export const layer = Layer.effect(
 			return { events, hasMore: rows.length > input.limit };
 		}, Effect.orDie);
 
-		// The same read against the process-wide manifest, bounded above. Both
-		// `log` and `stream` walk an aggregate through this.
+		/**
+		 * One stored row to a payload, decoding `data` with its own definition and
+		 * building the envelope from the row. Deliberately not a decode of the whole
+		 * envelope through a union: `log` promises {@link Payload}, so `id`, `type`
+		 * and `durable` are the kernel's to construct, never a caller-supplied
+		 * decoder's to reshape or drop.
+		 */
+		const decodeLogRow = Effect.fn("Event.decodeLogRow")(function* (
+			row: EventRow,
+			definitions: ReadonlyMap<string, Definition>,
+		) {
+			// The SQL filter is built from these same keys, so a row here always matches.
+			const definition = definitions.get(row.type)!;
+			// The envelope's version is the stored row's, read back off its definition; a default
+			// would label the row with a version nothing wrote. Callers filter non-durable
+			// definitions out before this, so the guard is a backstop, not a code path.
+			if (definition.durable === undefined)
+				return yield* Effect.die(
+					new InvalidDurableEventError({
+						type: definition.type,
+						message: `Unknown durable event type ${definition.type}`,
+					}),
+				);
+			const data = yield* Schema.decodeEffect(definition.data as Schema.Codec<unknown, unknown>)(row.data);
+			return {
+				id: row.id,
+				type: definition.type,
+				durable: { aggregateId: row.aggregateId, seq: row.seq, version: definition.durable.version },
+				data,
+			} as Payload;
+		});
+
+		// The same read as `readAggregate`, bounded above and paged for `log`. The
+		// manifest is a parameter rather than the process-wide one: a reader owning
+		// durable types outside `EventList` supplies its own, and the filter would
+		// otherwise drop every one of its rows.
 		const readPage = Effect.fn("Event.readPage")(function* (input: {
 			readonly aggregateId: string;
 			readonly after: number;
 			readonly through: number;
+			readonly definitions: ReadonlyMap<string, Definition>;
 		}) {
 			const rows = yield* selectAggregateEvents({
 				aggregateId: input.aggregateId,
 				after: input.after,
 				through: input.through,
-				types: Array.from(EventManifest.Manifest.definitions.keys()),
+				types: Array.from(input.definitions.keys()),
 				limit: PAGE_SIZE + 1,
 			});
 			const page = rows.slice(0, PAGE_SIZE);
-			const events = (yield* decodeRows(page, EventManifest.Manifest)) as ReadonlyArray<Payload>;
-			return { events, hasMore: rows.length > PAGE_SIZE };
+			// Skip a type the manifest does not carry as durable rather than failing the read: the
+			// aggregate may hold rows this process cannot decode. `seq` below comes off the raw
+			// tail, so cursors advance across the gap.
+			const decodable = page.filter((row) => input.definitions.get(row.type)?.durable !== undefined);
+			const events = yield* Effect.forEach(decodable, (row) => decodeLogRow(row, input.definitions));
+			// `seq` is the stored row's, not one read back off a decoded value: the
+			// window advances on what the table actually holds.
+			return { events, hasMore: rows.length > PAGE_SIZE, seq: page.at(-1)?.seq };
 		}, Effect.orDie);
 
 		/** One catch-up pass over (`from`, `through`], paged, oldest first. */
@@ -359,14 +417,18 @@ export const layer = Layer.effect(
 			readonly aggregateId: string;
 			readonly from: number;
 			readonly through: number;
+			readonly definitions: ReadonlyMap<string, Definition>;
 		}): Stream.Stream<Payload> =>
 			Stream.paginate(
 				input.from,
 				Effect.fn("Event.readAggregateStream.page")(function* (after: number) {
-					const page = yield* readPage({ aggregateId: input.aggregateId, after, through: input.through });
-					const last = page.events.at(-1);
-					const next =
-						page.hasMore && last?.durable !== undefined ? Option.some(last.durable.seq) : Option.none<number>();
+					const page = yield* readPage({
+						aggregateId: input.aggregateId,
+						after,
+						through: input.through,
+						definitions: input.definitions,
+					});
+					const next = page.hasMore && page.seq !== undefined ? Option.some(page.seq) : Option.none<number>();
 					return [page.events, next] as const;
 				}),
 			);
@@ -558,15 +620,20 @@ export const layer = Layer.effect(
 		const log = (input: LogInput): Stream.Stream<LogItem> =>
 			Stream.unwrap(
 				Effect.gen(function* () {
+					const definitions = input.definitions ?? EventManifest.Manifest.definitions;
 					// The cursor outlives a single catch-up: each wake resumes from the
 					// last sequence actually emitted, not from where the pass began.
 					const cursor = yield* Ref.make(input.after ?? -1);
 					const catchUp = (through: number): Stream.Stream<Payload> =>
 						Stream.unwrap(
 							Ref.get(cursor).pipe(
-								Effect.map((from) => readAggregateStream({ aggregateId: input.aggregateId, from, through })),
+								Effect.map((from) =>
+									readAggregateStream({ aggregateId: input.aggregateId, from, through, definitions }),
+								),
 							),
 						).pipe(
+							// `durable` is built by `decodeLogRow`, never by a caller's decoder,
+							// so the sequence here is always the stored one.
 							Stream.tap((event) =>
 								event.durable === undefined ? Effect.void : Ref.set(cursor, event.durable.seq),
 							),

@@ -1,3 +1,4 @@
+import "./utils/env.ts";
 import { createAssistantMessageEventStream } from "@codeworksh/aikit";
 import { Deferred, Effect, Fiber, Schema } from "effect";
 import { writeFile } from "node:fs/promises";
@@ -8,7 +9,8 @@ import { Sandbox } from "../src/effect/sandbox.ts";
 import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
 import { LLM } from "../src/runner/llm.ts";
-import * as Tool from "../src/tools/tool.ts";
+import { defaults } from "../src/settings/schema.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { assistant } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 
@@ -81,7 +83,7 @@ describe("settings at exchange boundaries", () => {
 						return terminal(input, index, index === 1);
 					});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root, tools: { builtins: [], extras: [wait] } });
+						const handle = yield* Session.create({ directory: root });
 						yield* handle.prompt("first");
 						yield* Deferred.await(requestEntered);
 						yield* Effect.promise(() => file(custom, "medium"));
@@ -100,7 +102,7 @@ describe("settings at exchange boundaries", () => {
 						expect(inputs.at(-1)?.thinkingLevel).toBe("off");
 						// A virtual sandbox uses the same host settings, without any virtual settings file.
 						const sandbox = yield* Sandbox.create({ driver: "memory" });
-						const virtual = yield* Session.create({ sandbox, tools: { builtins: [] } });
+						const virtual = yield* Session.create({ sandbox });
 						yield* virtual.run("virtual");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("off");
 					}).pipe(
@@ -110,6 +112,10 @@ describe("settings at exchange boundaries", () => {
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
+								plugins: [
+									{ id: "test.tool.wait", setup: (ctx) => ctx.plugin.tools.add(wait) },
+									"codework.prompt.default",
+								],
 							}),
 						),
 						Effect.scoped,
@@ -180,7 +186,7 @@ describe("settings at exchange boundaries", () => {
 							return stream;
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root, tools: { builtins: [], extras: [pair] } });
+						const handle = yield* Session.create({ directory: root });
 						yield* handle.run("parallel, including continuation");
 						yield* handle.run("fresh sequential");
 						expect(starts).toEqual([2, 2, 2]);
@@ -197,6 +203,10 @@ describe("settings at exchange boundaries", () => {
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
+								plugins: [
+									{ id: "test.tool.pair", setup: (ctx) => ctx.plugin.tools.add(pair) },
+									"codework.prompt.default",
+								],
 							}),
 						),
 						Effect.scoped,
@@ -229,7 +239,7 @@ describe("settings at exchange boundaries", () => {
 							return stream;
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root, tools: { builtins: [] } });
+						const handle = yield* Session.create({ directory: root });
 						const events = yield* Event.Service;
 						yield* events.listen((event) =>
 							event.type === "session.llm.started"
@@ -287,7 +297,7 @@ describe("settings at exchange boundaries", () => {
 							return terminal(input, inputs.length, inputs.length === 1);
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root, tools: { builtins: [], extras: [wait] } });
+						const handle = yield* Session.create({ directory: root });
 						yield* handle.prompt("first");
 						yield* Deferred.await(toolEntered);
 						// A binding set mid-exchange must not disturb the snapshot already pinned.
@@ -305,6 +315,10 @@ describe("settings at exchange boundaries", () => {
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
+								plugins: [
+									{ id: "test.tool.wait", setup: (ctx) => ctx.plugin.tools.add(wait) },
+									"codework.prompt.default",
+								],
 							}),
 						),
 						Effect.scoped,
@@ -327,7 +341,7 @@ describe("settings at exchange boundaries", () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const sessionId = yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root, tools: { builtins: [] } });
+						const handle = yield* Session.create({ directory: root });
 						// A binding is process-local; the file is not.
 						yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
 						yield* handle.run("first");
@@ -363,13 +377,11 @@ describe("settings at exchange boundaries", () => {
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root, tools: { builtins: [] } });
+						const handle = yield* Session.create({ directory: root });
 						yield* handle.run("first");
-						// The lookup fails before a draft exists, so the prompt is left unanswered.
-						expect((yield* handle.path()).map(({ entry }) => [entry.type, entry.state])).toEqual([
-							["user", "committed"],
-						]);
-						expect(inputs.at(-1)?.model).toBe("no-such-model");
+						// Lookup fails before promotion; the admitted prompt remains queued.
+						expect(yield* handle.path()).toEqual([]);
+						expect(inputs).toHaveLength(0);
 
 						yield* Effect.promise(() => select("openai", "gpt-5.6-luna"));
 						yield* handle.resume();
@@ -409,7 +421,7 @@ describe("settings at exchange boundaries", () => {
 							return terminal(input, inputs.length);
 						});
 					yield* Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: root, tools: { builtins: [] } });
+						const handle = yield* Session.create({ directory: root });
 
 						yield* handle.run("with A");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("low");
@@ -419,9 +431,11 @@ describe("settings at exchange boundaries", () => {
 						yield* Effect.promise(() => write(B));
 						yield* handle.run("with B");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("high");
-						// A's header and retry count are gone, not merged forward.
+						// A's header and retry count are gone, not merged forward. B names no
+						// `maxRetries`, so it falls back to the default — read from `defaults`
+						// rather than restated, which goes stale whenever a default is retuned.
 						expect(inputs.at(-1)?.options?.headers).toEqual({ shared: "b" });
-						expect(inputs.at(-1)?.options?.maxRetries).toBe(2);
+						expect(inputs.at(-1)?.options?.maxRetries).toBe(defaults.model.options?.maxRetries);
 
 						yield* Effect.promise(() => write(A));
 						yield* handle.run("back to A");
