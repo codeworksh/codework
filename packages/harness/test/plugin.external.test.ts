@@ -1,7 +1,8 @@
 import "./utils/env.ts";
 import type { Message } from "@codeworksh/aikit";
 import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import { writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { Harness } from "../src/effect/harness.ts";
@@ -25,7 +26,8 @@ const pluginPath = (name: string) => join(dir, name);
 /** One `Session.create` + one `run`, capturing every provider request. */
 const exchange = (input: {
 	readonly root: string;
-	readonly plugins: ReadonlyArray<string>;
+	readonly plugins?: ReadonlyArray<string>;
+	readonly userConfigDir?: string;
 	readonly llm?: LLM.Open;
 	readonly prompt?: string;
 }) => {
@@ -48,7 +50,8 @@ const exchange = (input: {
 					prompts.push(request.context.systemPrompt ?? "");
 					return open(request, signal);
 				},
-				plugins: input.plugins,
+				...(input.plugins === undefined ? {} : { plugins: input.plugins }),
+				...(input.userConfigDir === undefined ? {} : { userConfigDir: input.userConfigDir }),
 			}),
 		),
 		Effect.scoped,
@@ -57,6 +60,146 @@ const exchange = (input: {
 };
 
 describe("third-party plugins", () => {
+	it.each(["global", "custom"] as const)(
+		"adds %s settings plugins to the built-ins and executes their hooks",
+		(source) =>
+			withSettings(async ({ root, global, custom }) => {
+				const directory = source === "global" ? global : custom;
+				await writeFile(
+					join(directory, "settings.json"),
+					JSON.stringify({
+						// The relative entry anchors to this file's directory, not to the process cwd.
+						plugins: [
+							`./${relative(directory, pluginPath("tool/acme-echo"))}`,
+							pluginPath("prompt/acme-prompt.ts"),
+						],
+					}),
+				);
+				const { contexts, prompts, path } = await exchange({
+					root,
+					userConfigDir: custom,
+					llm: toolTurn(pendingCall("acme_echo", { value: "settings" }, "call_settings")),
+				});
+				// The built-in Bash tool and prompt survive: a settings entry adds, it does not select.
+				expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash", "acme_echo"]);
+				expect(prompts[0]?.endsWith("\n\nacme-marker")).toBe(true);
+				expect(JSON.parse(path[1]?.parts[0]?.data ?? "{}")).toMatchObject({
+					status: "completed",
+					result: {
+						content: [
+							{ type: "text", text: "settings" },
+							{ type: "text", text: "(acme-checked)" },
+						],
+					},
+				});
+			}),
+	);
+
+	it("leaves the built-ins alone when no settings file asks for plugins", () =>
+		withSettings(async ({ root, custom }) => {
+			await writeFile(join(custom, "settings.json"), JSON.stringify({ model: { id: "gpt-5.6-luna" } }));
+			const { contexts } = await exchange({ root, userConfigDir: custom });
+			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
+		}));
+
+	it("indexes a settings tool in the prompt only when the prompt plugin is re-listed after it", () =>
+		withSettings(async ({ root, custom }) => {
+			const write = (plugins: ReadonlyArray<string>) =>
+				writeFile(join(custom, "settings.json"), JSON.stringify({ plugins }));
+			const tool = pluginPath("tool/acme-echo");
+			// Appended after the built-in prompt plugin, the tool is registered but unlisted:
+			// a prompt plugin sees only earlier contributions, from settings as from anywhere.
+			await write([tool]);
+			const appended = await exchange({ root, userConfigDir: custom });
+			expect(appended.contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "acme_echo"]);
+			expect(appended.prompts[0]).not.toContain("acme_echo");
+			// Re-listing the prompt plugin moves it, since the last occurrence owns the position.
+			await write([tool, "codework.prompt.default"]);
+			const relisted = await exchange({ root, userConfigDir: custom });
+			expect(relisted.prompts[0]).toContain("- acme_echo: Echo a value back");
+		}));
+
+	it("disables a built-in named with a leading bang in settings", () =>
+		withSettings(async ({ root, custom }) => {
+			await writeFile(join(custom, "settings.json"), JSON.stringify({ plugins: ["!codework.tool.bash"] }));
+			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
+			expect(contexts[0]?.tools ?? []).toEqual([]);
+			expect(prompts[0]).toContain("Available tools:\n(none)");
+		}));
+
+	it("lets an explicit option selection replace the settings plugins", () =>
+		withSettings(async ({ root, custom }) => {
+			// The broken plugin would fail preparation if settings still contributed.
+			await writeFile(
+				join(custom, "settings.json"),
+				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
+			);
+			const { contexts } = await exchange({
+				root,
+				userConfigDir: custom,
+				plugins: ["codework.tool.bash", "codework.prompt.default"],
+			});
+			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
+		}));
+
+	it("honours an empty option selection over both the settings and the built-ins", () =>
+		withSettings(async ({ root, custom }) => {
+			await writeFile(
+				join(custom, "settings.json"),
+				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
+			);
+			let calls = 0;
+			const failure = await Effect.runPromise(
+				Effect.gen(function* () {
+					const session = yield* Session.create({ directory: root });
+					yield* session.prompt("hello");
+					return yield* session.resume().pipe(Effect.flip);
+				}).pipe(
+					Effect.provide(
+						Harness.layer({
+							home: join(root, "home"),
+							database: ":memory:",
+							userConfigDir: custom,
+							plugins: [],
+							llm: (request, signal) => {
+								calls++;
+								return immediateOpen()(request, signal);
+							},
+						}),
+					),
+					Effect.scoped,
+				),
+			);
+			expect(failure).toMatchObject({
+				_tag: "State.SnapshotError",
+				cause: {
+					_tag: "Plugin.SetupError",
+					message: "plugin snapshot freeze failed: no prompt plugin set a system prompt",
+				},
+			});
+			expect(calls).toBe(0);
+		}));
+
+	it("reports preparation failures from settings before calling the model", () =>
+		withSettings(async ({ root, custom }) => {
+			await writeFile(
+				join(custom, "settings.json"),
+				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
+			);
+			let calls = 0;
+			await expect(
+				exchange({
+					root,
+					userConfigDir: custom,
+					llm: (request, signal) => {
+						calls++;
+						return immediateOpen()(request, signal);
+					},
+				}),
+			).rejects.toMatchObject({ _tag: "PluginPreparationError", phase: "definition" });
+			expect(calls).toBe(0);
+		}));
+
 	it("loads a directory package and a single file through real imports", async () => {
 		const plugins = await Effect.runPromise(
 			prepare([pluginPath("tool/acme-echo"), `file://${pluginPath("prompt/acme-prompt.ts")}`], {

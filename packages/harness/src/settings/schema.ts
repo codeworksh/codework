@@ -74,11 +74,17 @@ export const Model = Schema.Struct({
 });
 export const Patch = Schema.Struct({
 	$schema: Schema.optional(Schema.String),
+	plugins: Schema.optional(Schema.Array(Schema.String.check(Schema.isNonEmpty()))),
 	model: Schema.optional(Model),
 });
 export type Patch = typeof Patch.Type;
 
 export interface Info {
+	/**
+	 * Plugin references added to the harness selection, in order. Like every array in a
+	 * patch this replaces rather than concatenates, so one layer owns the whole list.
+	 */
+	readonly plugins: ReadonlyArray<string>;
 	readonly model: typeof Model.Type & {
 		readonly provider: string;
 		readonly id: string;
@@ -89,6 +95,7 @@ export interface Info {
 
 /** Let aikit supply model-aware generation defaults. */
 export const defaults: Info = {
+	plugins: [],
 	model: {
 		provider: "openai",
 		id: "gpt-5.6-luna",

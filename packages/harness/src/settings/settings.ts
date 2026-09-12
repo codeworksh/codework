@@ -102,37 +102,62 @@ export interface Interface {
 }
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/settings/settings/Service") {}
 
+/**
+ * Anchor relative plugin entries to the file that declared them.
+ *
+ * A reference is otherwise resolved against the host startup directory, which is right for
+ * a project file sitting in it and meaningless for `~/.codework/settings.json`, where
+ * `./plugins/x.ts` would name a different file in every project the process is started in.
+ * IDs, `!id` disables, `file:` URLs, and package specs are left exactly as written.
+ */
+const anchor = (patch: Patch, file: string): Patch => {
+	if (patch.plugins === undefined) return patch;
+	const directory = hostPath.dirname(file);
+	return {
+		...patch,
+		plugins: patch.plugins.map((entry) =>
+			entry.startsWith("./") || entry.startsWith("../") ? hostPath.resolve(directory, entry) : entry,
+		),
+	};
+};
+
+const attempt = (path: string) =>
+	fileSystem.readFileString(path).pipe(
+		Effect.mapError((error) => new SettingsError({ path, reason: "read", detail: error.reason._tag })),
+		Effect.flatMap((source) => parse(path, source)),
+	);
+
+/**
+ * One read of every layer. Exported for the harness constructor, which needs the plugin
+ * selection before any layer is built; everything else goes through `Service`.
+ */
+export const load = Effect.fn("Settings.load")(function* (options: Options & { readonly home: string }) {
+	const files = paths(options.home, hostPath.resolve(options.cwd), options.userConfigDir);
+	let settings = merge(defaults);
+	for (const group of files) {
+		for (const path of group) {
+			const result = yield* Effect.result(attempt(path));
+			if (Result.isSuccess(result)) {
+				settings = merge(settings, anchor(result.success, path));
+				break;
+			}
+			const error = result.failure;
+			// A missing candidate falls through to the next; anything else selects
+			// the file, warns, and the group contributes nothing.
+			if (error.reason === "read" && error.detail === "NotFound") continue;
+			yield* Effect.logWarning(`Settings: ${error.path}: ${error.reason}: ${error.detail}`);
+			break;
+		}
+	}
+	return settings;
+});
+
 export const layer = (options: Options) =>
 	Layer.effect(
 		Service,
 		Effect.gen(function* () {
 			const global = yield* Global.Service;
-			const files = paths(global.home, hostPath.resolve(options.cwd), options.userConfigDir);
-			const attempt = (path: string) =>
-				fileSystem.readFileString(path).pipe(
-					Effect.mapError((error) => new SettingsError({ path, reason: "read", detail: error.reason._tag })),
-					Effect.flatMap((source) => parse(path, source)),
-				);
-			const load = Effect.fn("Settings.load")(function* () {
-				let settings = merge(defaults);
-				for (const group of files) {
-					for (const path of group) {
-						const result = yield* Effect.result(attempt(path));
-						if (Result.isSuccess(result)) {
-							settings = merge(settings, result.success);
-							break;
-						}
-						const error = result.failure;
-						// A missing candidate falls through to the next; anything else selects
-						// the file, warns, and the group contributes nothing.
-						if (error.reason === "read" && error.detail === "NotFound") continue;
-						yield* Effect.logWarning(`Settings: ${error.path}: ${error.reason}: ${error.detail}`);
-						break;
-					}
-				}
-				return settings;
-			});
-			return Service.of({ load: load() });
+			return Service.of({ load: load({ ...options, home: global.home }) });
 		}),
 	);
 

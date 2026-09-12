@@ -21,6 +21,11 @@ import { Settings } from "../settings/settings.ts";
 import { State } from "../state/state.ts";
 
 export interface Options {
+	/**
+	 * The complete selection, replacing both the built-ins and whatever `settings.plugins`
+	 * asks for -- an embedder that passes this owns the plugin set, and an empty array runs
+	 * none. Omit it to get the built-ins plus the settings block.
+	 */
 	readonly plugins?: ReadonlyArray<PluginRef>;
 	readonly database?: string;
 	readonly home?: string;
@@ -38,9 +43,23 @@ export const layer = (options: Options = {}) =>
 			// takes the host directory as a required parameter, so no module can quietly
 			// fall back to the OS process's directory when it meant a session's mount.
 			const hostCwd = process.cwd();
-			const plugins = yield* prepare(options.plugins ?? defaultRefs, { builtins, cache: paths.cache, hostCwd });
-			const configuredDatabase = options.database ?? (yield* Database.locationConfig);
 			const global = Global.layerWith(paths);
+			const settingsOptions = {
+				cwd: hostCwd,
+				...(options.userConfigDir === undefined ? {} : { userConfigDir: options.userConfigDir }),
+			};
+			// Settings are read once here because the plugin selection has to be prepared before
+			// any layer that depends on it; every later read goes through `Settings.Service`.
+			const config = yield* Settings.load({ ...settingsOptions, home: paths.home });
+			// Settings entries extend the built-in selection rather than standing in for it, so
+			// naming a plugin cannot silently drop Bash or the default prompt. A built-in is turned
+			// off the same way as any other plugin, with a `!codework.tool.bash` entry.
+			const plugins = yield* prepare(options.plugins ?? [...defaultRefs, ...config.plugins], {
+				builtins,
+				cache: paths.cache,
+				hostCwd,
+			});
+			const configuredDatabase = options.database ?? (yield* Database.locationConfig);
 			const database = Database.layer(Database.resolveDatabaseLocation(configuredDatabase, paths.data));
 			const configured = yield* SandboxDriverLoader.loadAll(options.sandboxes ?? [], { hostCwd });
 			const drivers = SandboxDriverRegistry.layer(
@@ -54,12 +73,7 @@ export const layer = (options: Options = {}) =>
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
 				Layer.provideMerge(State.layer({}, plugins)),
-				Layer.provideMerge(
-					Settings.layer({
-						cwd: hostCwd,
-						...(options.userConfigDir === undefined ? {} : { userConfigDir: options.userConfigDir }),
-					}),
-				),
+				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),
 				Layer.provideMerge(Context.layer),

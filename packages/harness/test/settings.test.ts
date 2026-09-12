@@ -9,6 +9,75 @@ import { Settings, parse, paths } from "../src/settings/settings.ts";
 import { withSettings } from "./fixtures/settings.ts";
 
 describe("host settings loader", () => {
+	it.each(["codework-acme-plugin", [123], [{}], [""]])(
+		"rejects a plugins block that is not a string array: %j",
+		async (plugins) => {
+			const failure = await Effect.runPromise(parse("settings.json", JSON.stringify({ plugins })).pipe(Effect.flip));
+			expect(failure).toMatchObject({ reason: "decode" });
+			expect(failure.detail).toContain("plugins");
+		},
+	);
+
+	it("resolves plugin arrays by layer, replacing rather than concatenating", () =>
+		withSettings(async ({ root, global, local, custom }) => {
+			const write = (path: string, plugins: ReadonlyArray<string>) => writeFile(path, JSON.stringify({ plugins }));
+			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: global }))),
+			);
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const settings = yield* Settings.Service;
+					expect((yield* settings.load).plugins).toEqual([]);
+					yield* Effect.promise(() => write(join(global, "settings.json"), ["codework-global-plugin"]));
+					expect((yield* settings.load).plugins).toEqual(["codework-global-plugin"]);
+					yield* Effect.promise(() => write(join(local, "settings.json"), ["codework-local-plugin"]));
+					expect((yield* settings.load).plugins).toEqual(["codework-local-plugin"]);
+					yield* Effect.promise(() =>
+						write(join(root, "codework.json"), ["codework-acme-plugin", "codework-other-plugin"]),
+					);
+					expect((yield* settings.load).plugins).toEqual(["codework-acme-plugin", "codework-other-plugin"]);
+					yield* Effect.promise(() => writeFile(join(root, "codework.json"), "{}"));
+					expect((yield* settings.load).plugins).toEqual(["codework-global-plugin"]);
+					yield* Effect.promise(() => write(join(root, "codework.json"), []));
+					expect((yield* settings.load).plugins).toEqual([]);
+					yield* Effect.promise(() => write(join(custom, "settings.json"), ["codework-custom-plugin"]));
+					expect((yield* settings.load).plugins).toEqual(["codework-custom-plugin"]);
+				}).pipe(Effect.provide(layer)),
+			);
+		}));
+
+	it("anchors relative plugin entries to the file that declared them", () =>
+		withSettings(async ({ root, global, local }) => {
+			const layer = Settings.layer({ cwd: root }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: global }))),
+			);
+			const entries = ["./plugins/one.ts", "../sibling/two.ts", "codework-acme-plugin", "!codework.tool.bash"];
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const settings = yield* Settings.Service;
+					yield* Effect.promise(() =>
+						writeFile(join(global, "settings.json"), JSON.stringify({ plugins: entries })),
+					);
+					expect((yield* settings.load).plugins).toEqual([
+						join(global, "plugins/one.ts"),
+						join(root, "sibling/two.ts"),
+						// IDs, disables and package specs pass through untouched.
+						"codework-acme-plugin",
+						"!codework.tool.bash",
+					]);
+					// The project layer anchors to its own directory, which differs between the two layouts.
+					yield* Effect.promise(() =>
+						writeFile(join(local, "settings.json"), JSON.stringify({ plugins: ["./plugins/one.ts"] })),
+					);
+					expect((yield* settings.load).plugins).toEqual([join(local, "plugins/one.ts")]);
+					yield* Effect.promise(() =>
+						writeFile(join(root, "codework.json"), JSON.stringify({ plugins: ["./plugins/one.ts"] })),
+					);
+					expect((yield* settings.load).plugins).toEqual([join(root, "plugins/one.ts")]);
+				}).pipe(Effect.provide(layer)),
+			);
+		}));
+
 	it("reports syntax locations and decode paths without exposing values", async () => {
 		const malformed = '{\n"model": {"options": {"timeoutMs": 2,, "secret": "do-not-print"}}}';
 		const syntax = await Effect.runPromise(parse("broken.json", malformed).pipe(Effect.flip));
