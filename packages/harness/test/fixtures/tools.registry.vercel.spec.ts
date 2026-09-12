@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
 import * as EnvVercel from "../../src/sandboxes/vercel/provider.ts";
-import { bashTool } from "../../src/tools/bash.ts";
-import type * as Executor from "../../src/tools/executor.ts";
-import * as Registry from "../../src/tools/registry.ts";
-import { fromSandboxShell, ToolShell } from "../../src/tools/shell.ts";
-import * as Tool from "../../src/tools/tool.ts";
+import { bashTool } from "../../src/plugin/internal/tool/bash.ts";
+import type * as Executor from "../../src/tool/executor.ts";
+import * as Registry from "../../src/tool/registry.ts";
+import { fromSandboxShell, ToolShell } from "../../src/tool/shell.ts";
+import * as Tool from "../../src/tool/tool.ts";
 import { pendingCall } from "../tools.fixture.ts";
 
 // Uses the Vercel sandbox owned by sandbox.vercel.e2e.test.ts; never provisions one.

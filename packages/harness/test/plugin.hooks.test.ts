@@ -1,10 +1,10 @@
 import { Cause, Deferred, Effect, Exit, Fiber, Schema } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect } from "vite-plus/test";
-import { make } from "../src/tools/executor.ts";
+import { make } from "../src/tool/executor.ts";
 import { make as makeBuckets } from "../src/plugin/registry.ts";
-import { ToolProgress } from "../src/tools/progress.ts";
-import * as Tool from "../src/tools/tool.ts";
+import { ToolProgress } from "../src/tool/progress.ts";
+import * as Tool from "../src/tool/tool.ts";
 import type { ToolAddOptions, ToolAfter } from "../src/plugin/tool/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";

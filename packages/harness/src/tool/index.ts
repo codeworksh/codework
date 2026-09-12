@@ -36,4 +36,4 @@ export {
 	type ToolProgressPartial,
 } from "./progress.ts";
 
-export { bashDef, bashTool } from "./bash.ts";
+export { Accumulator, type OutputAccumulatorOptions, type OutputSnapshot } from "./accumulator.ts";

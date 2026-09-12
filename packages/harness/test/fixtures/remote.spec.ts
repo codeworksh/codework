@@ -15,7 +15,7 @@ import { type ISandboxExe, Shell } from "../../src/sandbox/shell/shell.ts";
 import { SandboxStore } from "../../src/sandbox/store.ts";
 import { AbsolutePath } from "../../src/schema.ts";
 import { Session } from "../../src/session/session.ts";
-import { fromSandboxShell, ToolShell, ToolShellTimeout } from "../../src/tools/shell.ts";
+import { fromSandboxShell, ToolShell, ToolShellTimeout } from "../../src/tool/shell.ts";
 import { Hash } from "../../src/util/hash.ts";
 
 type Run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>) => Promise<A>;

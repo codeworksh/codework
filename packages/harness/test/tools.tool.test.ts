@@ -1,8 +1,8 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { bashDef } from "../src/tools/bash.ts";
-import * as Executor from "../src/tools/executor.ts";
-import * as Tool from "../src/tools/tool.ts";
+import { bashDef } from "../src/plugin/internal/tool/bash.ts";
+import * as Executor from "../src/tool/executor.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
 class ExpectedFailure extends Schema.TaggedError<ExpectedFailure>()("ExpectedFailure", {

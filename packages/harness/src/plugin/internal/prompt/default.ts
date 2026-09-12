@@ -8,7 +8,7 @@
  */
 
 import { Effect } from "effect";
-import type { AnyToolDef } from "../../../tools/tool.ts";
+import type { AnyToolDef } from "../../../tool/tool.ts";
 import type { PromptResolver, SharedPluginContext } from "../../context.ts";
 import { define } from "../../plugin.ts";
 

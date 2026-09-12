@@ -1,5 +1,5 @@
 import { Predicate, Schema } from "effect";
-import type { RegisteredTool } from "../../tools/tool.ts";
+import type { RegisteredTool } from "../../tool/tool.ts";
 import type { ToolAddOptions, ToolDefPatch, ToolRegistration, ToolRegistry } from "./schema.ts";
 
 const definition = (tool: RegisteredTool): RegisteredTool => ({

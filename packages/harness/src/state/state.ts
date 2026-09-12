@@ -28,7 +28,7 @@ import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
 import type { Block } from "../settings/schema.ts";
 import { Settings } from "../settings/settings.ts";
-import type { Resolved } from "../tools/registry.ts";
+import type { Resolved } from "../tool/registry.ts";
 
 /**
  * How a turn's tool calls are scheduled once the array has been re-read.

@@ -2,7 +2,7 @@ import { type Effect, Schema } from "effect";
 import * as EventSchema from "../../event/schema.ts";
 import { SessionMessageSchema } from "../../session/message/schema.ts";
 import { SessionSchema } from "../../session/schema.ts";
-import { type AnyToolDef, type ModelContent, type RegisteredTool, ToolCallContext } from "../../tools/tool.ts";
+import { type AnyToolDef, type ModelContent, type RegisteredTool, ToolCallContext } from "../../tool/tool.ts";
 
 export const ToolBefore = Schema.Struct({
 	...ToolCallContext.fields,

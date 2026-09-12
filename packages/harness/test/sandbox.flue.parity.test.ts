@@ -7,7 +7,7 @@ import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { quote, Shell } from "../src/sandbox/shell/shell.ts";
-import { fromSandboxShell, ToolShell, ToolShellTimeout } from "../src/tools/shell.ts";
+import { fromSandboxShell, ToolShell, ToolShellTimeout } from "../src/tool/shell.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import "./utils/env.ts";
 

@@ -1,7 +1,7 @@
 import type { Effect } from "effect";
-import type { SharedPluginContext } from "./context.ts";
 import type { Location } from "../location/location.ts";
 import type { SandboxIO } from "../sandbox/io.ts";
+import type { SharedPluginContext } from "./context.ts";
 
 export type Mount = SandboxIO.Provides | Location.Service;
 export interface Plugin {

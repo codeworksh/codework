@@ -81,7 +81,7 @@ export interface IToolShell {
 	readonly stream?: (command: string, options?: ToolShellExecOptions) => Stream.Stream<ToolShellEvent, ToolShellError>;
 }
 
-export class ToolShell extends Context.Service<ToolShell, IToolShell>()("@codeworksh/harness/tools/shell/ToolShell") {}
+export class ToolShell extends Context.Service<ToolShell, IToolShell>()("@codeworksh/harness/tool/shell/ToolShell") {}
 
 /**
  * Bridge the existing `sandbox/Shell` into a `ToolShell`. Used for just-bash

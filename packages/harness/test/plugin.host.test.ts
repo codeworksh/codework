@@ -7,7 +7,7 @@ import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import type { SharedPluginContext } from "../src/plugin/context.ts";
 import { make } from "../src/plugin/registry.ts";
-import * as Tool from "../src/tools/tool.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
 import { assistant, immediateOpen } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";

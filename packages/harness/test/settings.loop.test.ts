@@ -10,7 +10,7 @@ import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
 import { LLM } from "../src/runner/llm.ts";
 import { defaults } from "../src/settings/schema.ts";
-import * as Tool from "../src/tools/tool.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { assistant } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 

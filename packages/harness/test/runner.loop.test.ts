@@ -27,7 +27,7 @@ import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { SessionRuntime } from "../src/session/runtime.ts";
 import { State } from "../src/state/state.ts";
-import * as Tool from "../src/tools/tool.ts";
+import * as Tool from "../src/tool/tool.ts";
 import { assistant, immediateOpen } from "./fixtures/llm.ts";
 import { testEffect } from "./utils/effect.ts";
 

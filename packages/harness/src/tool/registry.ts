@@ -91,7 +91,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): R
  * `R` is discharged at registration), so there is no capability union to fix here.
  */
 export class ToolRegistry extends Context.Service<ToolRegistry, Registry>()(
-	"@codeworksh/harness/tools/registry/ToolRegistry",
+	"@codeworksh/harness/tool/registry/ToolRegistry",
 ) {}
 
 /** Provide a catalog of registered tools as the {@link ToolRegistry} service. */
