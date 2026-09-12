@@ -21,7 +21,7 @@ export const make = () => {
 		freeze: () => {
 			close();
 			const systemPrompt = prompt.value();
-			if (systemPrompt === undefined) throw new Error("No Prompt plugin set a system prompt");
+			if (systemPrompt === undefined) throw new Error("no prompt plugin set a system prompt");
 			return { tools: makeCatalog(tools.entries()).resolve(), systemPrompt };
 		},
 	};

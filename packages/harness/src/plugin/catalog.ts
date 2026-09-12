@@ -41,7 +41,7 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 	/** Source metadata exists for diagnostics; a silent ID replacement is where it earns that. */
 	const note = (plugin: Plugin, source: string) =>
 		catalog.has(plugin.id)
-			? Effect.logDebug(`Plugin ${plugin.id} redefined by ${source}; the earlier definition is discarded`)
+			? Effect.logDebug(`plugin ${plugin.id} redefined by ${source}; the earlier definition is discarded`)
 			: Effect.void;
 	const operations = new Map<string, { enabled: boolean; origin: Loader.Origin }>();
 	const loaded = new Map<string, Loader.Loaded>();

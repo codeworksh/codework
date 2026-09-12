@@ -32,6 +32,6 @@ export const makeEvents = (events: Events): Events =>
 	Object.freeze<Events>({
 		publish: (definition, data, options) =>
 			reserved.has(definition.type)
-				? Effect.die(new Error(`Plugins cannot publish kernel journal event: ${definition.type}`))
+				? Effect.die(new Error(`plugins cannot publish kernel journal event: ${definition.type}`))
 				: events.publish(definition, data, options),
 	});

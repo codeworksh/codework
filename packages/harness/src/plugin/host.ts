@@ -25,14 +25,14 @@ export const run = Effect.fn("PluginHost.run")(function* (
 					return result.pipe(
 						Effect.mapError(
 							(cause) =>
-								new SetupError({ pluginId: plugin.id, message: `Plugin setup failed: ${plugin.id}`, cause }),
+								new SetupError({ pluginId: plugin.id, message: `plugin setup failed: ${plugin.id}`, cause }),
 						),
 					);
 				if (result === undefined) return Effect.void;
 				return Effect.tryPromise({
 					try: () => result,
 					catch: (cause) =>
-						new SetupError({ pluginId: plugin.id, message: `Plugin setup failed: ${plugin.id}`, cause }),
+						new SetupError({ pluginId: plugin.id, message: `plugin setup failed: ${plugin.id}`, cause }),
 				});
 			}).pipe(
 				Effect.catchCause((cause) => {
@@ -47,7 +47,7 @@ export const run = Effect.fn("PluginHost.run")(function* (
 							? squashed
 							: new SetupError({
 									pluginId: plugin.id,
-									message: `Plugin setup failed: ${plugin.id}`,
+									message: `plugin setup failed: ${plugin.id}`,
 									cause: squashed,
 								}),
 					);
@@ -58,7 +58,7 @@ export const run = Effect.fn("PluginHost.run")(function* (
 			try: buckets.freeze,
 			catch: (cause) =>
 				new SetupError({
-					message: `Plugin snapshot freeze failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+					message: `plugin snapshot freeze failed: ${cause instanceof Error ? cause.message : String(cause)}`,
 					cause,
 				}),
 		});

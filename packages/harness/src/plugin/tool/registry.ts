@@ -47,7 +47,7 @@ export const make = () => {
 	let open = true;
 	const entries = new Map<string, ToolRegistration>();
 	const assertOpen = () => {
-		if (!open) throw new Error("Tool registry is closed");
+		if (!open) throw new Error("tool registry is closed");
 	};
 	const registry: ToolRegistry = Object.freeze({
 		add: (tool: RegisteredTool, hooks: ToolAddOptions = {}) => {

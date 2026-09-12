@@ -39,12 +39,7 @@ export const validate = Effect.fn("PluginLoader.validate")(function* (input: unk
 	// pointing at a clone inside the documented `setup() {}` shorthand.
 	const plugin = input as Plugin;
 	if (!builtin && plugin.id.startsWith("codework.")) {
-		return yield* failure(
-			origin,
-			"definition",
-			new Error("The codework namespace is reserved for built-ins"),
-			plugin.id,
-		);
+		return yield* failure(origin, "definition", new Error("codework namespace is reserved for builtins"), plugin.id);
 	}
 	return plugin;
 });
@@ -63,7 +58,7 @@ export const classify = (source: string, hostCwd: string): Source => {
 	if (source.startsWith("file:")) {
 		// Both `new URL` and `fileURLToPath` silently read a relative `file:./x` as `/x`. A file
 		// URL names an absolute path or it is not one.
-		if (!source.startsWith("file:///")) throw new Error(`Not an absolute file URL: ${source}`);
+		if (!source.startsWith("file:///")) throw new Error(`not an absolute file URL: ${source}`);
 		return { kind: "local", path: fileURLToPath(source) };
 	}
 	if (source.startsWith("./") || source.startsWith("../") || path.isAbsolute(source)) {

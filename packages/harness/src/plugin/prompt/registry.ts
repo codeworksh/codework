@@ -5,7 +5,7 @@ export const make = () => {
 	let value: string | undefined;
 	const registry: PromptRegistry = Object.freeze({
 		set: (prompt: string) => {
-			if (!open) throw new Error("Prompt registry is closed");
+			if (!open) throw new Error("prompt registry is closed");
 			value = prompt;
 		},
 		get: () => value,
