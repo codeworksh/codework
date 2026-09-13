@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import type { SharedPluginContext } from "../src/plugin/context.ts";
+import { fallback } from "../src/plugin/prompt/registry.ts";
 import { make } from "../src/plugin/registry.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
@@ -48,10 +49,10 @@ describe("plugin domains and exchange host", () => {
 		expect(() => tools.update("echo", { description: "late" })).toThrow();
 		expect(() => buckets.registry.prompt.set("late")).toThrow();
 	});
-	it("requires a prompt string, preserves full replacement, and rejects unknown tool patches", () => {
+	it("falls back to a default prompt, preserves full replacement, and rejects unknown tool patches", () => {
 		const empty = make();
 		expect(empty.registry.prompt.get()).toBeUndefined();
-		expect(() => empty.freeze()).toThrow("no prompt plugin set a system prompt");
+		expect(empty.freeze().systemPrompt).toBe(fallback);
 		const buckets = make();
 		buckets.registry.prompt.set("old");
 		buckets.registry.prompt.set("new");

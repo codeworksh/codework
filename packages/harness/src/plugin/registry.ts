@@ -1,5 +1,5 @@
 import { make as makeCatalog } from "../tool/registry.ts";
-import { make as makePrompt } from "./prompt/registry.ts";
+import { fallback, make as makePrompt } from "./prompt/registry.ts";
 import type { PromptRegistry } from "./prompt/schema.ts";
 import { make as makeTools } from "./tool/registry.ts";
 import type { ToolRegistry } from "./tool/schema.ts";
@@ -20,9 +20,7 @@ export const make = () => {
 		close,
 		freeze: () => {
 			close();
-			const systemPrompt = prompt.value();
-			if (systemPrompt === undefined) throw new Error("no prompt plugin set a system prompt");
-			return { tools: makeCatalog(tools.entries()).resolve(), systemPrompt };
+			return { tools: makeCatalog(tools.entries()).resolve(), systemPrompt: prompt.value() ?? fallback };
 		},
 	};
 };
