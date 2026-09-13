@@ -23,7 +23,7 @@ importers:
 
   .:
     devDependencies:
-      '@codeworksh-test/codework-sandbox-vercel':
+      '@acme/codework-sandbox-vercel':
         specifier: workspace:*
         version: link:extras/codework-sandbox-vercel
       '@effect/tsgo':

@@ -52,7 +52,7 @@ try {
 				type: "module",
 				dependencies: {
 					"@codeworksh/harness": `file:${harnessTarball}`,
-					"@codeworksh-test/codework-sandbox-vercel": `file:${externalTarball}`,
+					"@acme/codework-sandbox-vercel": `file:${externalTarball}`,
 					effect: "4.0.0-beta.107",
 				},
 			},
@@ -86,7 +86,7 @@ try {
 			const runtime = ManagedRuntime.make(Harness.layer({
 				database: ":memory:",
 				home: new URL("./home", import.meta.url).pathname,
-				sandboxes: ["@codeworksh-test/codework-sandbox-vercel"],
+				sandboxes: ["@acme/codework-sandbox-vercel"],
 			}));
 			let created;
 			const failures = [];

@@ -95,7 +95,7 @@ describe("SandboxDriverLoader", () => {
 
 	it.effect("loads the installed external Vercel copy by package name", () =>
 		Effect.gen(function* () {
-			const loaded = yield* SandboxDriverLoader.load("@codeworksh-test/codework-sandbox-vercel", {
+			const loaded = yield* SandboxDriverLoader.load("@acme/codework-sandbox-vercel", {
 				hostCwd: process.cwd(),
 				resolve: SandboxDriverLoader.packageResolver(packageDirectory, [
 					"development",
