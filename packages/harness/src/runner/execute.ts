@@ -8,7 +8,6 @@ import { SqlClient } from "effect/unstable/sql";
 import { Location } from "../location/location.ts";
 import { SandboxController } from "../sandbox/control.ts";
 import { SandboxIO } from "../sandbox/io.ts";
-import { posix } from "../util/posix.ts";
 import { RunCoordinator } from "./coordinator.ts";
 import { RunnerExecution } from "./execution.ts";
 import { Runner } from "./run.ts";
@@ -33,10 +32,9 @@ export const layer = Layer.effect(
 				if (Option.isNone(session)) return yield* Effect.die(`session not found: ${sessionId}`);
 				const space = yield* store.space(sessionId);
 				if (Option.isNone(space)) return yield* Effect.die(`space not found for session: ${sessionId}`);
-				// The session's env and cwd are derived through its space (D-SESSION).
+				// The session's env is derived through its space; its cwd is its own (D-SESSION).
 				const instanceId = space.value.env;
-				const cwd = posix.join(space.value.location, session.value.directory);
-				const mount = sandbox.mount(instanceId, { cwd });
+				const mount = sandbox.mount(instanceId, { cwd: session.value.directory });
 
 				const scopedRun = Effect.gen(function* () {
 					const mountContext = yield* Layer.build(mount);

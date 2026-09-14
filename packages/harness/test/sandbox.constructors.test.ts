@@ -10,7 +10,6 @@ import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { RelativePath } from "../src/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
@@ -78,12 +77,12 @@ describe("Sandbox convenience constructors vs the application database", () => {
 				},
 			});
 
-			const { spaceId } = yield* seedSpace({ location: "/workspace", env: info.id, projectId: "ctor" });
+			const { spaceId, location } = yield* seedSpace({ location: "/workspace", env: info.id, projectId: "ctor" });
 			const sessions = yield* Session.Service;
 			const session = yield* sessions.create({
 				spaceId,
 				slug: `ctor-accept-${Date.now()}`,
-				directory: RelativePath.make(""),
+				directory: location,
 				title: "shared namespace",
 			});
 

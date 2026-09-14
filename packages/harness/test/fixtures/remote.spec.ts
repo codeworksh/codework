@@ -474,7 +474,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 				expect(mapped.projectId).toBe(Hash.fast("git:github.com/codeworksh/69th"));
 				expect(mapped.projectName).toBe("69th");
 				expect(mapped.space).toEqual({ location: mapped.repo, env: envId, kind: "primary" });
-				expect(mapped.directory).toBe("");
+				expect(mapped.directory).toBe(mapped.repo);
 				expect(mapped.sessionEnvId).toBe(envId);
 			},
 			options.timeout,

@@ -7,7 +7,7 @@ import { Database } from "../src/db/db.ts";
 import { ProjectSchema } from "../src/project/schema.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { AbsolutePath, RelativePath } from "../src/schema.ts";
+import { AbsolutePath } from "../src/schema.ts";
 import { SpaceSchema } from "../src/space/schema.ts";
 import { Space } from "../src/space/space.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
@@ -310,27 +310,27 @@ describe("Space", () => {
 	});
 
 	describe("absorb", () => {
-		it("moves sessions onto the parent with a re-based directory and deletes the stray", () =>
+		it("re-points the stray's sessions at the parent, leaves directories untouched and deletes the stray", () =>
 			Effect.gen(function* () {
 				yield* seedProject("p");
 				yield* seedProject("stray");
 				const into = yield* seedSpace({ projectId: "p", location: "/x", kind: "primary" });
 				const strayId = yield* seedSpace({ projectId: "stray", location: "/x/y", kind: "plain" });
-				yield* seedSession("root", strayId, "");
-				yield* seedSession("deep", strayId, "z");
-				yield* seedSession("own", into, "k");
+				yield* seedSession("root", strayId, "/x/y");
+				yield* seedSession("deep", strayId, "/x/y/z");
+				yield* seedSession("own", into, "/x/k");
 
 				const service = yield* Space.Service;
-				yield* service.absorb({ strayId, into, rel: RelativePath.make("y") });
+				yield* service.absorb({ strayId, into });
 
 				const sql = yield* SqlClient.SqlClient;
 				const sessions = yield* sql<{ id: string; spaceId: string; directory: string }>`
 					SELECT id, space_id, directory FROM session ORDER BY id
 				`;
 				expect(sessions).toEqual([
-					{ id: "deep", spaceId: into, directory: "y/z" },
-					{ id: "own", spaceId: into, directory: "k" },
-					{ id: "root", spaceId: into, directory: "y" },
+					{ id: "deep", spaceId: into, directory: "/x/y/z" },
+					{ id: "own", spaceId: into, directory: "/x/k" },
+					{ id: "root", spaceId: into, directory: "/x/y" },
 				]);
 				expect((yield* spaces).map((space) => space.id)).toEqual([into]);
 			}));

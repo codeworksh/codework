@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { ProjectSchema } from "../src/project/schema.ts";
-import { RelativePath, validateAikitMessage } from "../src/schema.ts";
+import { validateAikitMessage } from "../src/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { SpaceSchema } from "../src/space/schema.ts";
@@ -47,12 +47,12 @@ beforeEach(() => seqCounters.clear());
 const createSession = (slug: string) =>
 	Effect.gen(function* () {
 		// session.space_id references space(id)
-		const { spaceId } = yield* seedSpace();
+		const { spaceId, location } = yield* seedSpace();
 		const session = yield* Session.Service;
 		return yield* session.create({
 			spaceId,
 			slug,
-			directory: RelativePath.make(""),
+			directory: location,
 			title: "Test session",
 			tag: "test",
 		});
@@ -1222,13 +1222,13 @@ describe("session", () => {
 
 		await Effect.runPromise(
 			Effect.gen(function* () {
-				const { spaceId } = yield* seedSpace();
+				const { spaceId, location } = yield* seedSpace();
 				const session = yield* Session.Service;
 				yield* session.create({
 					id: sid("persisted-session"),
 					spaceId,
 					slug: "s-file-reload",
-					directory: RelativePath.make(""),
+					directory: location,
 					title: "Persisted session",
 					tag: "test",
 				});

@@ -21,7 +21,7 @@ import {
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { ProjectSchema } from "../project/schema.ts";
-import type { RelativePath } from "../schema.ts";
+import type { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 import { Space } from "../space/space.ts";
 import { SessionSchema } from "./schema.ts";
@@ -69,8 +69,8 @@ export interface CreateSession {
 	readonly spaceId: SpaceSchema.ID;
 	readonly parentId?: SessionSchema.ID; // session hierarchy (subagents) or fork lineage
 	readonly slug: string;
-	/** Relative to `space.location`; `""` = root. */
-	readonly directory: RelativePath;
+	/** Absolute realpath of the cwd; equal to or under `space.location`. */
+	readonly directory: AbsolutePath;
 	readonly title: string;
 	readonly tag?: string;
 	readonly metadata?: Readonly<Record<string, string>>;

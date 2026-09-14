@@ -7,7 +7,6 @@ import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { LLMEventPublisher } from "../src/runner/event.ts";
 import { LLM } from "../src/runner/llm.ts";
-import { RelativePath } from "../src/schema.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { Session } from "../src/session/session.ts";
@@ -17,12 +16,12 @@ const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.prov
 const { effect: it } = testEffect(layer);
 
 const setup = Effect.gen(function* () {
-	const { spaceId } = yield* seedSpace();
+	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
 		spaceId,
 		slug: `provider-${crypto.randomUUID()}`,
-		directory: RelativePath.make(""),
+		directory: location,
 		title: "Provider test",
 		tag: "test",
 	});

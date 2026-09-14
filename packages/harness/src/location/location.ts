@@ -6,10 +6,9 @@ import { ProjectSchema } from "../project/schema.ts";
 import { Repo } from "../repo/repo.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { Sandbox } from "../sandbox/sandbox.ts";
-import { AbsolutePath, RelativePath } from "../schema.ts";
+import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 import { Space } from "../space/space.ts";
-import { posix } from "../util/posix.ts";
 import { Worktree } from "../worktree/worktree.ts";
 
 /**
@@ -18,9 +17,9 @@ import { Worktree } from "../worktree/worktree.ts";
  * The pair (space, directory) is the key. A path alone does not name a place —
  * `/app/repo` on the host and `/app/repo` inside a remote sandbox are different
  * trees wearing the same spelling — so the space carries the env and the
- * absolute location, and `directory` is relative to it (`""` = root). Sessions
- * sharing a space share the project; worktree relationships stay a Project
- * concern beneath it.
+ * root it lives under (`space.location`), and `directory` is the absolute cwd
+ * equal to or beneath that root. Sessions sharing a space share the project;
+ * worktree relationships stay a Project concern beneath it.
  *
  * **Both halves come from the mount, so `Ref` is overrides and nothing else.**
  * A Location is a directory *within* a mounted namespace — the mount has to be
@@ -37,14 +36,11 @@ export const Ref = Schema.Struct({
 export type Ref = typeof Ref.Type;
 
 export class Info extends Schema.Class<Info>("Location.Info")({
-	/** Relative to `space.location`; `""` at the space root. */
-	directory: RelativePath,
+	/** The absolute cwd tools run in; `space.location` is the root it lives under. */
+	directory: AbsolutePath,
 	space: SpaceSchema.Info,
 	project: ProjectSchema.Info,
 }) {}
-
-/** The absolute cwd tools run in: `space.location` joined with `directory`. */
-export const cwd = (info: Info) => AbsolutePath.make(posix.join(info.space.location, info.directory));
 
 export interface Interface extends Info {}
 

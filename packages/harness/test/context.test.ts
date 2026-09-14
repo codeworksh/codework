@@ -7,7 +7,6 @@ import { Context } from "../src/context/context.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
-import { RelativePath } from "../src/schema.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
@@ -59,12 +58,12 @@ const assistant = (
 
 const setup = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
-	const { spaceId } = yield* seedSpace();
+	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
 	const created = yield* sessions.create({
 		spaceId,
 		slug: `context-${crypto.randomUUID()}`,
-		directory: RelativePath.make(""),
+		directory: location,
 		title: "Context test",
 	});
 	let seq = 0;

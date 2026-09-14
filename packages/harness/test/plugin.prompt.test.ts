@@ -51,7 +51,7 @@ describe("codework.prompt.default", () => {
 			expect(prompt.startsWith("You are an expert coding assistant")).toBe(true);
 			expect(prompt).toContain("Available tools:\n- bash: Execute bash commands");
 			expect(prompt).toContain("\n\nGuidelines:\n- Be concise.");
-			// The directory is the space's realpath, not the spelling the session was given.
+			// The directory is the session's realpath'd cwd, not the spelling it was given.
 			expect(prompt.endsWith(`Current working directory: ${await realpath(root)}`)).toBe(true);
 		}));
 

@@ -47,10 +47,10 @@ const queries = (sql: SqlClient.SqlClient) => ({
 const createSession = Effect.fn("SessionInputTest.createSession")(function* (id: string) {
 	const sql = yield* SqlClient.SqlClient;
 	// A host space: NULL env needs no sandbox registered at all.
-	const { spaceId } = yield* seedSpace();
+	const { spaceId, location } = yield* seedSpace();
 	yield* sql`
 		INSERT INTO session (id, space_id, slug, directory, title, tag, created_at, updated_at)
-		VALUES (${id}, ${spaceId}, ${id}, '', 'Test session', 'test', 0, 0)
+		VALUES (${id}, ${spaceId}, ${id}, ${location}, 'Test session', 'test', 0, 0)
 	`;
 });
 

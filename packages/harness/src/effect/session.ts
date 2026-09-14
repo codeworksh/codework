@@ -14,7 +14,6 @@ import * as SessionRuntime from "../session/runtime.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
 import type { State } from "../state/state.ts";
-import { posix } from "../util/posix.ts";
 import type { Info as SandboxInfo } from "./sandbox.ts";
 
 export interface ModelConfig {
@@ -109,7 +108,7 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 			return yield* new SessionStore.SessionNotFoundError({ sessionId: id });
 		}
 		const row = found.value;
-		// Env and absolute cwd are the space's; the row only knows its offset within it.
+		// The env is the space's; the row carries its own absolute cwd.
 		const sandbox =
 			space.value.env === SandboxInstanceSchema.ID.local
 				? undefined
@@ -117,7 +116,7 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 		return {
 			id,
 			title: row.title,
-			directory: AbsolutePath.make(posix.join(space.value.location, row.directory)),
+			directory: row.directory,
 			...(sandbox === undefined ? {} : { sandbox }),
 		};
 	}).pipe(Effect.withSpan("Session.info"));

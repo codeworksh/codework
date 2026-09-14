@@ -55,14 +55,13 @@ describe("Location", () => {
 
 		const location = await run(resolve(repo));
 
-		expect(location.directory).toBe("");
+		expect(location.directory).toBe(realRepo);
 		expect(location.space.kind).toBe("primary");
 		expect(location.space.location).toBe(realRepo);
 		expect(location.space.env).toBe(SandboxInstance.ID.local);
 		expect(location.project.id).toBe(ProjectSchema.ID.make(Hash.fast("git:github.com/codeworksh/widget")));
 		expect(location.project.name).toBe("widget");
 		expect(location.project.vcs).toEqual({ type: "git", store: path.join(realRepo, ".git") });
-		expect(Location.cwd(location)).toBe(realRepo);
 	});
 
 	it("resolves a plain directory to a plain space", async () => {
@@ -73,17 +72,16 @@ describe("Location", () => {
 
 		const location = await run(resolve(plain));
 
-		expect(location.directory).toBe("");
+		expect(location.directory).toBe(realPlain);
 		expect(location.space.kind).toBe("plain");
 		expect(location.space.location).toBe(realPlain);
 		expect(location.project.name).toBe("scratch");
 		expect(location.project.vcs).toBeUndefined();
-		expect(Location.cwd(location)).toBe(realPlain);
 	});
 
-	// S25: a monorepo subdirectory keeps the worktree as its space and carries
-	// the offset as a relative directory; `cwd` puts the two back together.
-	it("keeps a subdirectory cwd relative to the worktree space", async () => {
+	// S25: a monorepo subdirectory keeps the worktree as its space and its own
+	// absolute cwd as the directory.
+	it("keeps a subdirectory cwd under the worktree space", async () => {
 		await using tmp = await tmpdir();
 		const repo = path.join(tmp.path, "mono");
 		await initRepo(repo, "https://github.com/codeworksh/mono.git");
@@ -94,11 +92,10 @@ describe("Location", () => {
 
 		const [root, nested] = await run(Effect.all([resolve(repo), resolve(subdir)]));
 
-		expect(nested.directory).toBe("packages/x");
+		expect(nested.directory).toBe(realSubdir);
 		expect(nested.space).toEqual(root.space);
 		expect(nested.space.location).toBe(realRepo);
 		expect(nested.project.id).toBe(root.project.id);
-		expect(Location.cwd(nested)).toBe(realSubdir);
 	});
 
 	// The convenience wiring itself: defaultLayer needs nothing but the ref and
@@ -115,6 +112,6 @@ describe("Location", () => {
 		);
 
 		expect(location.space.kind).toBe("plain");
-		expect(Location.cwd(location)).toBe(await fs.realpath(plain));
+		expect(location.directory).toBe(await fs.realpath(plain));
 	}, 30_000);
 });

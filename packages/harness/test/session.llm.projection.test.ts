@@ -5,7 +5,6 @@ import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
-import { RelativePath } from "../src/schema.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
@@ -21,12 +20,12 @@ const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.prov
 const { effect: it } = testEffect(layer);
 
 const setup = Effect.gen(function* () {
-	const { spaceId } = yield* seedSpace();
+	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
 		spaceId,
 		slug: "llm",
-		directory: RelativePath.make(""),
+		directory: location,
 		title: "T",
 		tag: "test",
 	});

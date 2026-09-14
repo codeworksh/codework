@@ -3,7 +3,7 @@ import { Model } from "effect/unstable/schema";
 import { EventSchema } from "../event/schema.ts";
 import { ProjectSchema } from "../project/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
-import { AbsolutePath, NonNegativeInt, RelativePath } from "../schema.ts";
+import { AbsolutePath, NonNegativeInt } from "../schema.ts";
 import { Prompt } from "../session/prompt/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
@@ -126,8 +126,8 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	spaceId: Schema.String,
 	parentId: Model.FieldOption(SessionSchema.IDFromDb),
 	slug: Schema.String,
-	// Relative to `space.location`; `""` is the space root.
-	directory: RelativePath,
+	// Absolute realpath of the session cwd; always equal to or under `space.location`.
+	directory: AbsolutePath,
 	title: Schema.String,
 	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),

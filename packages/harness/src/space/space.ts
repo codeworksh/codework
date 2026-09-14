@@ -5,7 +5,7 @@ import { ProjectSchema } from "../project/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import type { Sandbox } from "../sandbox/sandbox.ts";
-import { AbsolutePath, RelativePath } from "../schema.ts";
+import type { AbsolutePath } from "../schema.ts";
 import { Hash } from "../util/hash.ts";
 import { SpaceSchema } from "./schema.ts";
 
@@ -24,8 +24,6 @@ export interface RehomeInput {
 export interface AbsorbInput {
 	readonly strayId: SpaceSchema.ID;
 	readonly into: SpaceSchema.ID;
-	/** The stray's location relative to the absorbing space. */
-	readonly rel: RelativePath;
 }
 
 export interface Interface {
@@ -38,7 +36,7 @@ export interface Interface {
 	readonly archiveEnv: (env: SandboxInstance.ID) => Effect.Effect<void>;
 	/** Upsert (§5.2). The only way resolve writes a space row. */
 	readonly rehome: (input: RehomeInput) => Effect.Effect<void>;
-	/** Move a stray subdirectory space's sessions onto its parent, then delete it (§5.3). */
+	/** Re-point a stray subdirectory space's sessions at its parent, then delete it (§5.3). `session.directory` is absolute and stays put. */
 	readonly absorb: (input: AbsorbInput) => Effect.Effect<void>;
 }
 
@@ -225,16 +223,9 @@ export const layer = Layer.effect(
 		});
 
 		const absorb = Effect.fn("Space.absorb")(function* (input: AbsorbInput) {
-			const now = yield* Clock.currentTimeMillis;
-			yield* sql`
-				UPDATE session SET
-					space_id = ${input.into},
-					directory = CASE directory WHEN '' THEN ${input.rel} ELSE ${input.rel} || '/' || directory END,
-					updated_at = ${now}
-				WHERE space_id = ${input.strayId}
-			`.pipe(Effect.orDie);
-			yield* sql`DELETE FROM space WHERE id = ${input.strayId}`.pipe(Effect.orDie);
-		});
+			yield* sql`UPDATE session SET space_id = ${input.into} WHERE space_id = ${input.strayId}`;
+			yield* sql`DELETE FROM space WHERE id = ${input.strayId}`;
+		}, Effect.orDie);
 
 		return Service.of({
 			get,

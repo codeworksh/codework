@@ -18,7 +18,6 @@ import { LLM } from "../src/runner/llm.ts";
 import { Loop } from "../src/runner/loop.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
-import { RelativePath } from "../src/schema.ts";
 import { SessionInput } from "../src/session/input/input.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { SessionProjector } from "../src/session/projector.ts";
@@ -76,11 +75,11 @@ const delivered = Effect.fnUntraced(function* (sessionId: string) {
 
 const seedSession = Effect.fnUntraced(function* (slug = "runner-loop") {
 	const sessions = yield* Session.Service;
-	const { spaceId } = yield* seedSpace({ location: process.cwd(), projectId: "p" });
+	const { spaceId, location } = yield* seedSpace({ location: process.cwd(), projectId: "p" });
 	const session = yield* sessions.create({
 		spaceId,
 		slug: `${slug}-${crypto.randomUUID()}`,
-		directory: RelativePath.make(""),
+		directory: location,
 		title: "runner loop",
 	});
 	return session.id;
@@ -223,14 +222,14 @@ describe("runner loop — aikit input/output", () => {
 			const sessions = yield* Session.Service;
 			const sql = yield* SqlClient.SqlClient;
 			// The space row records where the directory was; the mount finds it gone.
-			const { spaceId } = yield* seedSpace({
+			const { spaceId, location } = yield* seedSpace({
 				location: `/definitely-missing-${crypto.randomUUID()}`,
 				projectId: "p",
 			});
 			const session = yield* sessions.create({
 				spaceId,
 				slug: `missing-sandbox-cwd-${crypto.randomUUID()}`,
-				directory: RelativePath.make(""),
+				directory: location,
 				title: "missing sandbox cwd",
 			});
 

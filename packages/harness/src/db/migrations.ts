@@ -130,8 +130,8 @@ export const migrations = {
 		yield* sql`CREATE INDEX space_project_idx ON space (project_id)`;
 
 		// A session belongs to a space; project and env are derived through it,
-		// never denormalised here. `directory` is RELATIVE to space.location
-		// ('' = root) so a space can move without touching its sessions.
+		// never denormalised here. `directory` is the ABSOLUTE realpath of the
+		// session cwd, always equal to or under space.location (which is immutable).
 		// RESTRICT: sessions are history, a referenced space cannot go away.
 		yield* sql`
 			CREATE TABLE session (

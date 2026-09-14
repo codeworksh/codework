@@ -21,7 +21,6 @@ import { Loop } from "../../src/runner/loop.ts";
 import { SandboxController } from "../../src/sandbox/control.ts";
 import { SandboxDriverRegistry } from "../../src/sandbox/registry.ts";
 import * as VercelSandboxDriver from "../../src/sandboxes/vercel/index.ts";
-import { RelativePath } from "../../src/schema.ts";
 import { SessionLive } from "../../src/session/live.ts";
 import { SessionRuntime } from "../../src/session/runtime.ts";
 import type { SessionSchema } from "../../src/session/schema.ts";
@@ -143,11 +142,11 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 								metadata: { test: "runner-cycle" },
 							})).id;
 
-							const { spaceId } = yield* seedSpace({ location: "/tmp", env: sandboxInstanceId });
+							const { spaceId, location } = yield* seedSpace({ location: "/tmp", env: sandboxInstanceId });
 							const session = yield* sessions.create({
 								spaceId,
 								slug: `runner-cycle-${crypto.randomUUID()}`,
-								directory: RelativePath.make(""),
+								directory: location,
 								title: "Live runner cycle",
 								tag: "test",
 							});

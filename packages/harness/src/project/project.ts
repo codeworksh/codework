@@ -9,7 +9,7 @@ import { SandboxFs } from "../sandbox/fs/util.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { Sandbox } from "../sandbox/sandbox.ts";
-import { AbsolutePath, RelativePath } from "../schema.ts";
+import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 import { Space } from "../space/space.ts";
 import { Hash } from "../util/hash.ts";
@@ -24,8 +24,8 @@ export const provisional = (env: SandboxInstance.ID, location: string): ProjectS
 export interface Resolved {
 	readonly project: ProjectSchema.Info;
 	readonly space: SpaceSchema.Info;
-	/** `cwd` relative to `space.location`; `""` when equal. */
-	readonly directory: RelativePath;
+	/** Realpath of `cwd`; equal to or under `space.location`. */
+	readonly directory: AbsolutePath;
 	/** `space.kind ∈ { primary, plain }` */
 	readonly isDefault: boolean;
 }
@@ -185,11 +185,7 @@ export const layer = Layer.effect(
 						// Strays at the worktree itself were re-pointed by rehome (same id).
 						for (const stray of verified) {
 							if (stray.location === worktree) continue;
-							yield* spaces.absorb({
-								strayId: SpaceSchema.ID.make(stray.id),
-								into: worktreeSpaceId,
-								rel: RelativePath.make(path.relative(worktree, stray.location)),
-							});
+							yield* spaces.absorb({ strayId: SpaceSchema.ID.make(stray.id), into: worktreeSpaceId });
 						}
 						// RESTRICT keeps this honest: a project still referenced is left alone.
 						for (const strayProject of new Set(verified.map((stray) => stray.projectId))) {
@@ -211,7 +207,7 @@ export const layer = Layer.effect(
 			const resolved: Resolved = {
 				project: toInfo(project.value, vcs),
 				space: space.value,
-				directory: RelativePath.make(path.relative(worktree, location)),
+				directory: location,
 				isDefault: space.value.kind === "primary" || space.value.kind === "plain",
 			};
 			return resolved;

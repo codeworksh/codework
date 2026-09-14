@@ -97,7 +97,7 @@ const sessions = Effect.flatMap(
 	(sql) => sql<{ id: string; spaceId: string; directory: string }>`SELECT * FROM session ORDER BY id`,
 );
 
-// §5.7 I1 and I2, asserted after every scenario.
+// §5.7 I1, I2 and I6, asserted after every scenario.
 const invariants = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
 	const primaries = yield* sql`
@@ -108,6 +108,11 @@ const invariants = Effect.gen(function* () {
 		SELECT s.id FROM session s LEFT JOIN space p ON p.id = s.space_id WHERE p.id IS NULL
 	`;
 	expect(orphans, "I2: every session points at a space").toEqual([]);
+	const escaped = yield* sql`
+		SELECT s.id FROM session s JOIN space p ON p.id = s.space_id
+		WHERE NOT (s.directory = p.location OR s.directory LIKE p.location || '/%')
+	`;
+	expect(escaped, "I6: every session directory is at or under its space location").toEqual([]);
 });
 
 const remoteId = (normalized: string) => Hash.fast(`git:${normalized}`);
@@ -126,7 +131,7 @@ describe("Project.resolveOrCreate", () => {
 				vcs: { type: "git", store: path.join(dir, ".git") },
 			});
 			expect(result.space).toMatchObject({ id: spaceId(dir), location: dir, kind: "primary", env: local });
-			expect(result.directory).toBe("");
+			expect(result.directory).toBe(dir);
 			expect(result.isDefault).toBe(true);
 			expect(yield* readMarker(dir)).toBe(result.project.id);
 			expect(yield* spaces).toHaveLength(1);
@@ -194,8 +199,8 @@ describe("Project.resolveOrCreate", () => {
 			yield* mkdir(y);
 			const plainX = yield* resolve(x);
 			const plainY = yield* resolve(y);
-			yield* seedSession("sx", plainX.space.id, "");
-			yield* seedSession("sy", plainY.space.id, "");
+			yield* seedSession("sx", plainX.space.id, x);
+			yield* seedSession("sy", plainY.space.id, y);
 			yield* initRepo(x, { commit: false });
 			yield* resolve(x); // S4 state
 
@@ -207,11 +212,11 @@ describe("Project.resolveOrCreate", () => {
 			expect(yield* readMarker(x)).toBe(pinned);
 			// same space id, new project, primary
 			expect(result.space).toMatchObject({ id: plainX.space.id, projectId: pinned, kind: "primary" });
-			// the subdirectory space is gone and its sessions moved with a re-based directory
+			// the subdirectory space is gone and its sessions re-pointed; directories are absolute and untouched
 			expect(yield* spaces).toMatchObject([{ id: plainX.space.id, location: x }]);
 			expect(yield* sessions).toMatchObject([
-				{ id: "sx", spaceId: plainX.space.id, directory: "" },
-				{ id: "sy", spaceId: plainX.space.id, directory: "y" },
+				{ id: "sx", spaceId: plainX.space.id, directory: x },
+				{ id: "sy", spaceId: plainX.space.id, directory: y },
 			]);
 			// both provisional projects were deleted
 			expect((yield* projects).map((row) => row.id)).toEqual([pinned]);
@@ -250,7 +255,7 @@ describe("Project.resolveOrCreate", () => {
 
 			expect(viaAlias.space.location).toBe(dir);
 			expect(viaAlias.space.id).toBe(viaReal.space.id);
-			expect(viaAlias.directory).toBe("");
+			expect(viaAlias.directory).toBe(dir);
 			expect(yield* spaces).toHaveLength(1);
 			yield* invariants;
 		}));
@@ -333,7 +338,7 @@ describe("Project.resolveOrCreate", () => {
 			yield* invariants;
 		}));
 
-	it("S25: a monorepo subdirectory resolves to the worktree space with a relative directory", () =>
+	it("S25: a monorepo subdirectory resolves to the worktree space with its absolute directory", () =>
 		Effect.gen(function* () {
 			const dir = yield* initRepo(path.join(yield* root, "repo"));
 			const pkg = path.join(dir, "packages", "x");
@@ -343,7 +348,7 @@ describe("Project.resolveOrCreate", () => {
 			const result = yield* resolve(pkg);
 
 			expect(result.space.id).toBe(top.space.id);
-			expect(result.directory).toBe("packages/x");
+			expect(result.directory).toBe(pkg);
 			expect(result.isDefault).toBe(true);
 			expect(yield* spaces).toHaveLength(1);
 			yield* invariants;
@@ -358,23 +363,24 @@ describe("Project.resolveOrCreate", () => {
 			const result = yield* resolve(pkg);
 
 			expect(result.space).toMatchObject({ id: spaceId(dir), location: dir, kind: "primary" });
-			expect(result.directory).toBe("packages/x");
+			expect(result.directory).toBe(pkg);
 			expect(yield* spaces).toHaveLength(1);
 			yield* invariants;
 		}));
 
-	it("S27: sessions below an absorbed plain subdirectory get their directory re-based", () =>
+	it("S27: sessions below an absorbed plain subdirectory move to the parent space with their directory unchanged", () =>
 		Effect.gen(function* () {
 			const x = path.join(yield* root, "x");
 			const y = path.join(x, "y");
-			yield* mkdir(path.join(y, "z"));
+			const z = path.join(y, "z");
+			yield* mkdir(z);
 			const plainY = yield* resolve(y);
-			yield* seedSession("s", plainY.space.id, "z");
+			yield* seedSession("s", plainY.space.id, z);
 
 			yield* initRepo(x);
 			yield* resolve(x);
 
-			expect(yield* sessions).toMatchObject([{ id: "s", spaceId: spaceId(x), directory: "y/z" }]);
+			expect(yield* sessions).toMatchObject([{ id: "s", spaceId: spaceId(x), directory: z }]);
 			expect((yield* spaces).map((row) => row.location)).toEqual([x]);
 			yield* invariants;
 		}));

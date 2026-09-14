@@ -34,11 +34,11 @@ const prompt = PromptSchema.Prompt.make({ text: "fix the bug" });
 
 const seedSessions = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
-	const { spaceId } = yield* seedSpace();
+	const { spaceId, location } = yield* seedSpace();
 	for (const id of [sessionId, other]) {
 		yield* sql`
 			INSERT INTO session (id, space_id, slug, directory, title, tag, created_at, updated_at)
-			VALUES (${id}, ${spaceId}, ${id}, '', 'T', 'test', 0, 0)
+			VALUES (${id}, ${spaceId}, ${id}, ${location}, 'T', 'test', 0, 0)
 		`;
 	}
 });

@@ -66,22 +66,6 @@ export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 export const NonNegativeCost = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
 
 /**
- * POSIX relative path (e.g., `src/components/Button.tsx`). `""` is the root.
- * No leading `/`, no empty, `.` or `..` segments — so joining it onto an
- * absolute base can never escape or alias that base.
- */
-export const RelativePath = Schema.String.check(
-	Schema.makeFilter(
-		(path) =>
-			path === "" ||
-			(!path.startsWith("/") &&
-				!path.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) ||
-			"Expected a POSIX relative path without leading '/', empty, '.' or '..' segments",
-	),
-).pipe(Schema.brand("RelativePath"));
-export type RelativePath = Schema.Schema.Type<typeof RelativePath>;
-
-/**
  * Absolute file path (e.g., `/home/user/projects/myapp/src/main.ts`).
  */
 export const AbsolutePath = Schema.String.pipe(Schema.brand("AbsolutePath"));

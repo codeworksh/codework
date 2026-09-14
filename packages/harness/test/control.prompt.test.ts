@@ -12,7 +12,6 @@ import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
-import { RelativePath } from "../src/schema.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 
@@ -34,12 +33,12 @@ const messageId = SessionMessageSchema.ID.make("msg_fixed");
 const text = "Fix the failing tests";
 
 const setup = Effect.gen(function* () {
-	const { spaceId } = yield* seedSpace();
+	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
 		spaceId,
 		slug: "prompted",
-		directory: RelativePath.make(""),
+		directory: location,
 		title: "T",
 		tag: "test",
 	});

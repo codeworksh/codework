@@ -6,7 +6,6 @@ import { ContextCodec } from "../src/context/codec.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
-import { RelativePath } from "../src/schema.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { SessionInput } from "../src/session/input/input.ts";
 import { SessionLive } from "../src/session/live.ts";
@@ -48,12 +47,12 @@ const lorem = [
 const promptAt = (index: number) => PromptSchema.Prompt.make({ text: `${index}: ${lorem[index % lorem.length]}` });
 
 const setup = Effect.gen(function* () {
-	const { spaceId } = yield* seedSpace();
+	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
 		spaceId,
 		slug: "flow",
-		directory: RelativePath.make(""),
+		directory: location,
 		title: "T",
 		tag: "test",
 	});
@@ -205,10 +204,10 @@ describe("Stage 1 + 2 flow", () => {
 		Effect.gen(function* () {
 			const { sessions, control, inputs, events, sessionId } = yield* setup;
 			const sql = yield* SqlClient.SqlClient;
-			const { spaceId } = yield* seedSpace();
+			const { spaceId, location } = yield* seedSpace();
 			yield* sql`
 				INSERT INTO session (id, space_id, slug, directory, title, tag, created_at, updated_at)
-				VALUES ('ses_other', ${spaceId}, 'other', '', 'T', 'test', 0, 0)
+				VALUES ('ses_other', ${spaceId}, 'other', ${location}, 'T', 'test', 0, 0)
 			`;
 			const other = SessionSchema.ID.make("ses_other");
 
