@@ -21,9 +21,10 @@ import {
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { ProjectSchema } from "../project/schema.ts";
-import type { AbsolutePath } from "../schema.ts";
+import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 import { Space } from "../space/space.ts";
+import { posix } from "../util/posix.ts";
 import { SessionSchema } from "./schema.ts";
 
 export {
@@ -62,6 +63,32 @@ export class InvalidEntryDataError extends Schema.TaggedError<InvalidEntryDataEr
 	type: Schema.String,
 	reason: Schema.String,
 }) {}
+
+// Relink rejections: the target is not a live space, the session would cross
+// projects, or an explicit directory would break the containment invariant.
+export class RelinkError extends Schema.TaggedError<RelinkError>()("RelinkError", {
+	sessionId: Schema.String,
+	spaceId: Schema.String,
+	reason: Schema.Literals(["space-not-found", "space-archived", "project-mismatch", "directory-outside-space"]),
+}) {}
+export type RelinkReason = RelinkError["reason"];
+
+// I6: a session's directory is its space's location or sits underneath it.
+const directoryWithin = (location: AbsolutePath, directory: AbsolutePath) =>
+	directory === location || directory.startsWith(`${location}/`);
+
+/**
+ * Re-root a session directory onto another space of the same project: the
+ * position relative to the old root is kept, so `dir = /old/app/pkg/x` under
+ * `from = /old/app` lands on `/new/app/pkg/x` under `to = /new/app`. A
+ * directory not under the old root — a broken invariant — lands on the new
+ * root instead.
+ */
+export const rebaseDirectory = (from: AbsolutePath, to: AbsolutePath, directory: AbsolutePath): AbsolutePath => {
+	if (!directoryWithin(from, directory)) return to;
+	const relative = posix.relative(from, directory);
+	return AbsolutePath.make(relative === "" ? to : posix.join(to, relative));
+};
 
 export interface CreateSession {
 	readonly id?: SessionSchema.ID;
@@ -150,6 +177,20 @@ export interface ForkInput {
 	readonly tag?: string; // default: source tag
 }
 
+// The env move: point a session at another space of the same project (remote
+// env died, repo cloned locally, worktree consolidated). Transcript entries
+// are keyed by session id and are untouched.
+export interface RelinkInput {
+	readonly sessionId: SessionSchema.ID;
+	/** Target space; must be active and belong to the session's project. */
+	readonly spaceId: SpaceSchema.ID;
+	/**
+	 * Landing directory; must equal or sit under the target space's location.
+	 * Default: `rebaseDirectory` of the current directory onto the new root.
+	 */
+	readonly directory?: AbsolutePath;
+}
+
 // Entry row + its part rows, zipped. Message decode happens above this layer.
 export interface HydratedEntry {
 	readonly entry: SessionEntryRow;
@@ -188,6 +229,12 @@ export interface Interface {
 	readonly fork: (
 		input: ForkInput,
 	) => Effect.Effect<SessionRow, SessionNotFoundError | EntryNotFoundError | InvalidEntryDataError>;
+	/**
+	 * Move the session to another space of the same project. Without an explicit
+	 * `directory` the cwd keeps its position relative to the old root; either way
+	 * the result satisfies I6 (directory at or under the space's location).
+	 */
+	readonly relink: (input: RelinkInput) => Effect.Effect<SessionRow, SessionNotFoundError | RelinkError>;
 	/** Move the leaf cursor; the next append forks a sibling branch. */
 	readonly branch: (input: {
 		sessionId: SessionSchema.ID;
@@ -230,6 +277,12 @@ export const layer = Layer.effect(
 			execute: (sessionId) => sql`
 				SELECT p.* FROM space p JOIN session s ON s.space_id = p.id WHERE s.id = ${sessionId}
 			`,
+		});
+
+		const findSpaceById = SqlSchema.findOneOption({
+			Request: Schema.String,
+			Result: SpaceRow,
+			execute: (id) => sql`SELECT * FROM space WHERE id = ${id}`,
 		});
 
 		const selectByProject = SqlSchema.findAll({
@@ -1021,6 +1074,36 @@ export const layer = Layer.effect(
 			}
 		});
 
+		const relink = Effect.fn("Session.relink")(function* (input: RelinkInput) {
+			const reject = (reason: RelinkReason) =>
+				new RelinkError({ sessionId: input.sessionId, spaceId: input.spaceId, reason });
+			const session = yield* findSession(input.sessionId).pipe(Effect.orDie);
+			if (Option.isNone(session)) return yield* new SessionNotFoundError({ sessionId: input.sessionId });
+			const target = yield* findSpaceById(input.spaceId).pipe(Effect.orDie);
+			if (Option.isNone(target)) return yield* reject("space-not-found");
+			if (target.value.status !== "active") return yield* reject("space-archived");
+			// Same-project guard. A missing current space means the FK invariant is
+			// already broken; there is nothing to compare, so the move is allowed.
+			const current = yield* findSpace(input.sessionId).pipe(Effect.orDie);
+			if (Option.isSome(current) && current.value.projectId !== target.value.projectId) {
+				return yield* reject("project-mismatch");
+			}
+			const directory =
+				input.directory ??
+				(Option.isSome(current)
+					? rebaseDirectory(current.value.location, target.value.location, session.value.directory)
+					: target.value.location);
+			if (!directoryWithin(target.value.location, directory)) return yield* reject("directory-outside-space");
+			const now = yield* epochNow;
+			yield* sql`
+				UPDATE session SET space_id = ${input.spaceId}, directory = ${directory}, updated_at = ${now}
+				WHERE id = ${input.sessionId}
+			`.pipe(Effect.orDie);
+			const updated = yield* findSession(input.sessionId).pipe(Effect.orDie);
+			if (Option.isNone(updated)) return yield* Effect.die(new Error("session relink did not persist"));
+			return updated.value;
+		});
+
 		const branch = Effect.fn("Session.branch")(function* (input: { sessionId: string; entryId: string }) {
 			const moved = yield* sql
 				.withTransaction(
@@ -1086,6 +1169,7 @@ export const layer = Layer.effect(
 			setEntryState,
 			abortAssistant,
 			fork,
+			relink,
 			branch,
 			setLabel,
 		});

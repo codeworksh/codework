@@ -11,6 +11,7 @@ export interface SeedSpaceOptions {
 	readonly env?: SandboxInstance.ID;
 	readonly projectId?: string;
 	readonly kind?: SpaceSchema.Kind;
+	readonly status?: SpaceSchema.Status;
 }
 
 export interface SeededSpace {
@@ -37,7 +38,7 @@ export const seedSpace = Effect.fn("seedSpace")(function* (options: SeedSpaceOpt
 	`;
 	yield* sql`
 		INSERT OR IGNORE INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
-		VALUES (${spaceId}, ${projectId}, ${location}, ${options.kind ?? "plain"}, ${SandboxInstance.toColumn(env)}, 'active', 0, 0)
+		VALUES (${spaceId}, ${projectId}, ${location}, ${options.kind ?? "plain"}, ${SandboxInstance.toColumn(env)}, ${options.status ?? "active"}, 0, 0)
 	`;
 	const seeded: SeededSpace = { spaceId, projectId, location, env };
 	return seeded;

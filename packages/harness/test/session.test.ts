@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { ProjectSchema } from "../src/project/schema.ts";
-import { validateAikitMessage } from "../src/schema.ts";
+import { AbsolutePath, validateAikitMessage } from "../src/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { SpaceSchema } from "../src/space/schema.ts";
@@ -1211,6 +1211,146 @@ describe("session", () => {
 			expect(missing._tag).toBe("SessionNotFoundError");
 		}),
 	);
+
+	describe("relink", () => {
+		// Two spaces of one project: the env move relinks between them.
+		const seedPair = Effect.fnUntraced(function* () {
+			const from = yield* seedSpace({ location: "/old/app", projectId: "p", kind: "primary" });
+			const to = yield* seedSpace({ location: "/new/app", projectId: "p", kind: "copy" });
+			return { from, to };
+		});
+
+		it.effect("keeps the session's position under the new root", () =>
+			Effect.gen(function* () {
+				const { from, to } = yield* seedPair();
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink",
+					directory: AbsolutePath.make("/old/app/packages/x"),
+					title: "t",
+				});
+
+				const moved = yield* session.relink({ sessionId: created.id, spaceId: to.spaceId });
+				expect(moved.spaceId).toBe(to.spaceId);
+				expect(moved.directory).toBe("/new/app/packages/x");
+
+				// Sitting at the old root lands on the new root.
+				const atRoot = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-root",
+					directory: from.location,
+					title: "t",
+				});
+				const movedRoot = yield* session.relink({ sessionId: atRoot.id, spaceId: to.spaceId });
+				expect(movedRoot.directory).toBe("/new/app");
+			}),
+		);
+
+		it.effect("a directory outside the old root lands on the new root", () =>
+			Effect.gen(function* () {
+				const { from, to } = yield* seedPair();
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-outside",
+					directory: AbsolutePath.make("/elsewhere"),
+					title: "t",
+				});
+				const moved = yield* session.relink({ sessionId: created.id, spaceId: to.spaceId });
+				expect(moved.directory).toBe("/new/app");
+			}),
+		);
+
+		it.effect("an explicit directory under the target wins; outside it is rejected", () =>
+			Effect.gen(function* () {
+				const { from, to } = yield* seedPair();
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-dir",
+					directory: AbsolutePath.make("/old/app/pkg"),
+					title: "t",
+				});
+
+				const explicit = yield* session.relink({
+					sessionId: created.id,
+					spaceId: to.spaceId,
+					directory: AbsolutePath.make("/new/app/other"),
+				});
+				expect(explicit.directory).toBe("/new/app/other");
+
+				const rejected = yield* session
+					.relink({ sessionId: created.id, spaceId: to.spaceId, directory: AbsolutePath.make("/nope") })
+					.pipe(Effect.flip);
+				expect(rejected).toMatchObject({ _tag: "RelinkError", reason: "directory-outside-space" });
+			}),
+		);
+
+		it.effect("rejects a space of another project without touching the session", () =>
+			Effect.gen(function* () {
+				const { from } = yield* seedPair();
+				const other = yield* seedSpace({ location: "/other", projectId: "q", kind: "primary" });
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-x",
+					directory: from.location,
+					title: "t",
+				});
+
+				const error = yield* session.relink({ sessionId: created.id, spaceId: other.spaceId }).pipe(Effect.flip);
+				expect(error).toMatchObject({ _tag: "RelinkError", reason: "project-mismatch" });
+				const row = Option.getOrThrow(yield* session.get(created.id));
+				expect(row.spaceId).toBe(from.spaceId);
+			}),
+		);
+
+		it.effect("rejects missing and archived targets, and a missing session", () =>
+			Effect.gen(function* () {
+				const { from } = yield* seedPair();
+				const archived = yield* seedSpace({ location: "/gone", projectId: "p", kind: "copy", status: "archived" });
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-err",
+					directory: from.location,
+					title: "t",
+				});
+
+				const missingSpace = yield* session
+					.relink({ sessionId: created.id, spaceId: SpaceSchema.ID.make("nope") })
+					.pipe(Effect.flip);
+				expect(missingSpace).toMatchObject({ _tag: "RelinkError", reason: "space-not-found" });
+
+				const dead = yield* session.relink({ sessionId: created.id, spaceId: archived.spaceId }).pipe(Effect.flip);
+				expect(dead).toMatchObject({ _tag: "RelinkError", reason: "space-archived" });
+
+				const missingSession = yield* session
+					.relink({ sessionId: sid("nope"), spaceId: archived.spaceId })
+					.pipe(Effect.flip);
+				expect(missingSession._tag).toBe("SessionNotFoundError");
+			}),
+		);
+
+		it.effect("keeps the transcript across the move", () =>
+			Effect.gen(function* () {
+				const { from, to } = yield* seedPair();
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-tx",
+					directory: from.location,
+					title: "t",
+				});
+				yield* session.append(userEntry(created.id, "e1", "before the move"));
+				yield* session.append(assistantEntry(created.id, "e2"));
+
+				yield* session.relink({ sessionId: created.id, spaceId: to.spaceId });
+				expect((yield* session.path(created.id)).map(({ entry }) => entry.id)).toEqual(["e1", "e2"]);
+			}),
+		);
+	});
 
 	vitestIt("persists session entries across a file database reload", async () => {
 		await using tmp = await tmpdir();

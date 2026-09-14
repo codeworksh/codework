@@ -6,6 +6,7 @@ import type { EventSchema } from "../event/schema.ts";
 import { Location } from "../location/location.ts";
 import * as SandboxController from "../sandbox/control.ts";
 import { SandboxInstance as SandboxInstanceSchema } from "../sandbox/instance.ts";
+import { SandboxIO } from "../sandbox/io.ts";
 import { AbsolutePath } from "../schema.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { Delivery } from "../session/prompt/schema.ts";
@@ -46,6 +47,12 @@ export interface CreateInput extends RuntimeInput {
 
 export interface AttachInput extends RuntimeInput {
 	readonly sessionId: SessionSchema.ID;
+}
+
+export interface RelinkInput {
+	readonly sessionId: SessionSchema.ID;
+	readonly sandbox?: SandboxInfo;
+	readonly directory?: string;
 }
 
 export type PromptInput =
@@ -160,6 +167,39 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 	});
 	yield* runtime.set(id, runtimeBindings(input));
 	return yield* makeHandle(id);
+});
+
+/**
+ * Move a session to wherever a checkout of the same project now lives — the
+ * remote env died and the repo was cloned locally, say. `directory` is
+ * resolved into its space exactly like `create`; the session keeps its
+ * position under the new root when that absolute path exists there, else it
+ * lands on the resolved directory. The transcript is untouched.
+ */
+export const relink = Effect.fn("Session.relink")(function* (input: RelinkInput) {
+	const sessions = yield* SessionStore.Service;
+	const sandboxes = yield* SandboxController.Controller;
+	const sandboxId = input.sandbox?.id ?? SandboxInstanceSchema.ID.local;
+	return yield* sandboxes.withMount(
+		sandboxId,
+		Effect.gen(function* () {
+			const location = yield* Location.Service.use(Effect.succeed).pipe(Effect.provide(Location.layerMounted()));
+			const session = yield* sessions.get(input.sessionId);
+			const current = yield* sessions.space(input.sessionId);
+			const rebased =
+				Option.isSome(session) && Option.isSome(current)
+					? SessionStore.rebaseDirectory(current.value.location, location.space.location, session.value.directory)
+					: undefined;
+			const fs = yield* SandboxIO.FileSystem;
+			const directory =
+				rebased !== undefined && (yield* fs.exists(rebased).pipe(Effect.orElseSucceed(() => false)))
+					? rebased
+					: location.directory;
+			yield* sessions.relink({ sessionId: input.sessionId, spaceId: location.space.id, directory });
+			return yield* makeHandle(input.sessionId);
+		}),
+		input.directory === undefined ? undefined : { cwd: input.directory },
+	);
 });
 
 export const get = Effect.fn("Session.get")(function* (sessionId: SessionSchema.ID) {
