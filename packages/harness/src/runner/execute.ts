@@ -29,9 +29,11 @@ export const layer = Layer.effect(
 		const coordinator = yield* RunCoordinator.make<SessionId, Runner.RunError>({
 			drain: Effect.fnUntraced(function* (sessionId: SessionId, force) {
 				const session = yield* store.get(sessionId);
-				if (Option.isNone(session)) return yield* Effect.die(`session not found: ${sessionId}`);
+				if (Option.isNone(session)) return yield* new Session.SessionNotFoundError({ sessionId });
 				const space = yield* store.space(sessionId);
-				if (Option.isNone(space)) return yield* Effect.die(`space not found for session: ${sessionId}`);
+				// Unreachable while the FK holds; typed so a UI can offer relink
+				// as the repair instead of surfacing a defect.
+				if (Option.isNone(space)) return yield* new Session.SessionLinkedSpaceNotFoundError({ sessionId });
 				// The session's env is derived through its space; its cwd is its own (D-SESSION).
 				const instanceId = space.value.env;
 				const mount = sandbox.mount(instanceId, { cwd: session.value.directory });

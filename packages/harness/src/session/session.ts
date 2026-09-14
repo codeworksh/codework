@@ -47,6 +47,13 @@ export class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundErro
 	sessionId: Schema.String,
 }) {}
 
+// The session's space row is gone — unreachable while the FK holds, but typed
+// so a run surfaces it as a failure a UI can offer `relink` to repair.
+export class SessionLinkedSpaceNotFoundError extends Schema.TaggedError<SessionLinkedSpaceNotFoundError>()(
+	"SessionLinkedSpaceNotFoundError",
+	{ sessionId: Schema.String },
+) {}
+
 export class EntryNotFoundError extends Schema.TaggedError<EntryNotFoundError>()("EntryNotFoundError", {
 	sessionId: Schema.String,
 	entryId: Schema.String,

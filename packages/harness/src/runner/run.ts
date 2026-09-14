@@ -12,7 +12,7 @@ import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { optional } from "../schema.ts";
 import type { ID as SessionId } from "../session/schema.ts";
-import type { SessionNotFoundError } from "../session/session.ts";
+import type { SessionLinkedSpaceNotFoundError, SessionNotFoundError } from "../session/session.ts";
 import type { State } from "../state/state.ts";
 
 export class SandboxDirectoryNotFoundError extends Schema.TaggedError<SandboxDirectoryNotFoundError>()(
@@ -175,6 +175,7 @@ export type RunError =
 	| ContextDecodeError
 	| ContextEncodeError
 	| SessionNotFoundError
+	| SessionLinkedSpaceNotFoundError
 	| State.SnapshotError
 	| SandboxDirectoryNotFoundError
 	| SandboxMountError

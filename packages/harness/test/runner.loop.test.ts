@@ -243,6 +243,27 @@ describe("runner loop — aikit input/output", () => {
 			expect(durable).toEqual([]);
 		}),
 	);
+
+	it(
+		"fails typed when the session's space row is gone",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const sql = yield* SqlClient.SqlClient;
+			const sessionId = yield* seedSession("no-space");
+			// Simulate the FK invariant being broken: the only way a session can
+			// outlive its space row.
+			yield* sql`PRAGMA foreign_keys = OFF`;
+			yield* sql`DELETE FROM space WHERE id = (SELECT space_id FROM session WHERE id = ${sessionId})`;
+			yield* sql`PRAGMA foreign_keys = ON`;
+
+			const exit = yield* execution.resume(sessionId).pipe(Effect.exit);
+			expect(Exit.isFailure(exit)).toBe(true);
+			if (Exit.isFailure(exit)) {
+				const failure = Cause.findErrorOption(exit.cause);
+				expect(Option.isSome(failure) && failure.value._tag).toBe("SessionLinkedSpaceNotFoundError");
+			}
+		}),
+	);
 });
 
 describe("runner loop — tool continuation and lifecycle gate", () => {
