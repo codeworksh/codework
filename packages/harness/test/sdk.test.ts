@@ -10,6 +10,8 @@ import { Sandbox } from "../src/effect/sandbox.ts";
 import { Session } from "../src/effect/session.ts";
 import { Global } from "../src/global.ts";
 import type { LLM } from "../src/runner/llm.ts";
+import { SandboxController } from "../src/sandbox/control.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
 import { Session as SessionStore } from "../src/session/session.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { it } from "./utils/effect.ts";
@@ -202,11 +204,17 @@ describe("Harness Effect SDK", () => {
 			Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "codework-sdk-sandbox-"))),
 			(home) =>
 				Effect.gen(function* () {
+					const sandboxes = yield* SandboxController.Controller;
 					for (const driver of ["memory", "sqldb"] as const) {
 						const sandbox = yield* Sandbox.create({
 							driver,
 							config: { defaultCwd: "/provider-default", initializeCwd: "/provider-default" },
 						});
+						// A session cwd resolves into a space, so it has to exist in the sandbox.
+						yield* sandboxes.withMount(
+							sandbox.id,
+							Effect.flatMap(SandboxIO.FileSystem, (fs) => fs.mkdir("/session/repo", { recursive: true })),
+						);
 						const defaults = yield* Session.create({ sandbox });
 						const overridden = yield* Session.create({ sandbox, directory: "/session/repo" });
 						expect((yield* defaults.info).directory).toBe("/provider-default");

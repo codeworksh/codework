@@ -5,8 +5,8 @@ import { Control } from "../src/control.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
-import { AbsolutePath } from "../src/schema.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { RelativePath } from "../src/schema.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { SessionInput } from "../src/session/input/input.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
@@ -29,16 +29,14 @@ const entry = (sessionId: SessionSchema.ID, id: string, seq: number): Session.Ap
 });
 
 const seed = Effect.gen(function* () {
-	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local','local',0,0)`;
+	const { spaceId } = yield* seedSpace();
 	const session = yield* Session.Service;
 	return yield* session.create({
-		projectId: "local",
+		spaceId,
 		slug: "src",
-		directory: AbsolutePath.make("/repo"),
+		directory: RelativePath.make(""),
 		title: "T",
 		tag: "test",
-		sandboxInstanceId: SandboxInstance.ID.local,
 	});
 });
 

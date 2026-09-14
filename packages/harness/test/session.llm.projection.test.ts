@@ -5,8 +5,8 @@ import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { AbsolutePath } from "../src/schema.ts";
+import { RelativePath } from "../src/schema.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { Session } from "../src/session/session.ts";
@@ -21,16 +21,14 @@ const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.prov
 const { effect: it } = testEffect(layer);
 
 const setup = Effect.gen(function* () {
-	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local','local',0,0)`;
+	const { spaceId } = yield* seedSpace();
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
-		projectId: "local",
+		spaceId,
 		slug: "llm",
-		directory: AbsolutePath.make("/repo"),
+		directory: RelativePath.make(""),
 		title: "T",
 		tag: "test",
-		sandboxInstanceId: SandboxInstance.ID.local,
 	});
 	return { sessions, events: yield* Event.Service, sessionId: session.id };
 });

@@ -8,6 +8,7 @@
  */
 
 import { Effect } from "effect";
+import { Location } from "../../../location/location.ts";
 import type { AnyToolDef } from "../../../tool/tool.ts";
 import type { PromptResolver, SharedPluginContext } from "../../context.ts";
 import { define } from "../../plugin.ts";
@@ -100,7 +101,7 @@ export const defaultPromptPlugin = define({
 			assemble({
 				// Only tools registered by an earlier plugin are visible here.
 				tools: ctx.plugin.tools.list(),
-				directory: ctx.location.directory,
+				directory: Location.cwd(ctx.location),
 				...(custom === undefined ? {} : { promptCustom: custom }),
 				...(append === undefined ? {} : { promptSystemAppend: append }),
 			}),

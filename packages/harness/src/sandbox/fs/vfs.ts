@@ -88,6 +88,9 @@ const make = (vfs: VirtualFileSystem): Interface => {
 			await vfs.promises.mkdir(path, options);
 		},
 		rm,
+		// Every VFS provider resolves symlinks itself (the host one via
+		// `fs.realpath`) and rejects with ENOENT for a missing path.
+		realpath: (path) => vfs.promises.realpath(path),
 	};
 };
 

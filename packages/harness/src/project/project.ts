@@ -1,74 +1,62 @@
-import { Context, Effect, Layer, Option, Schema } from "effect";
-import { Model } from "effect/unstable/schema";
+import { Context, Effect, Layer, Option, Schema, Semaphore } from "effect";
 import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { Database } from "../db/db.ts";
-import { ProjectDirectoryRow, ProjectRow } from "../db/schema.sql.ts";
+import { ProjectRow } from "../db/schema.sql.ts";
 import { Git } from "../git/git.ts";
-import { posix as path } from "../util/posix.ts";
+import { Repo } from "../repo/repo.ts";
+import type { RepoSchema } from "../repo/schema.ts";
+import { SandboxFs } from "../sandbox/fs/util.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { Sandbox } from "../sandbox/sandbox.ts";
-import { AbsolutePath } from "../schema.ts";
+import { AbsolutePath, RelativePath } from "../schema.ts";
+import { SpaceSchema } from "../space/schema.ts";
+import { Space } from "../space/space.ts";
 import { Hash } from "../util/hash.ts";
-import { ProjectCopy } from "./copy.ts";
+import { posix as path } from "../util/posix.ts";
+import { Worktree } from "../worktree/worktree.ts";
 import { ProjectSchema } from "./schema.ts";
 
-/**
- * Row identity for a registered directory. Keyed on the environment as well as
- * the path: `/workspace` in two different sandboxes is two different places,
- * and hashing the path alone would collapse them into one row.
- */
-const directoryId = (projectId: string, sandboxInstanceId: string, directory: string) =>
-	Hash.fast(JSON.stringify([projectId, sandboxInstanceId, directory]));
+/** Deterministic, env-local id for a directory without a portable identity. Never written to a marker. */
+export const provisional = (env: SandboxInstance.ID, location: string): ProjectSchema.ID =>
+	ProjectSchema.ID.make(Hash.fast(JSON.stringify(["dir", SandboxInstance.toColumn(env) ?? "local", location])));
 
 export interface Resolved {
-	previous?: ProjectSchema.ID; // previous ID before moving
-	id: ProjectSchema.ID; // current ID
-	directory: AbsolutePath;
-	vcs?: ProjectSchema.Vcs;
-	name: string;
+	readonly project: ProjectSchema.Info;
+	readonly space: SpaceSchema.Info;
+	/** `cwd` relative to `space.location`; `""` when equal. */
+	readonly directory: RelativePath;
+	/** `space.kind ∈ { primary, plain }` */
+	readonly isDefault: boolean;
 }
 
 export interface Interface {
-	readonly resolve: (input: AbsolutePath) => Effect.Effect<Resolved>;
-	readonly directories: (input: ProjectSchema.DirectoriesInput) => Effect.Effect<ProjectSchema.ProjectDirectory[]>;
-	readonly fromDirectory: (input: AbsolutePath) => Effect.Effect<ProjectSchema.Info>;
+	/** PROJECT.md §5.1: discover, identify, register the whole worktree family, adopt strays. */
+	readonly resolveOrCreate: (cwd: AbsolutePath) => Effect.Effect<Resolved>;
+	readonly get: (id: ProjectSchema.ID) => Effect.Effect<Option.Option<ProjectSchema.Info>>;
+	readonly list: () => Effect.Effect<ProjectSchema.Info[]>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/project/project/Service") {}
+
+interface Member {
+	readonly location: AbsolutePath;
+	readonly main: boolean;
+}
 
 export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
-
 		const fs = yield* SandboxIO.FileSystem;
-		const git = yield* Git.Service;
-		const copy = yield* ProjectCopy.Service;
-		// Which sandbox instance these directories live in. Rows belonging to
-		// another namespace are invisible here: their paths mean nothing to this
-		// filesystem, so probing them would report absence and delete them.
-		const { id: instanceId } = yield* SandboxIO.Current;
-		// The storage form of the namespace, resolved once: NULL for the host.
-		const instanceColumn = SandboxInstance.toColumn(instanceId);
+		const repos = yield* Repo.Service;
+		const worktrees = yield* Worktree.Service;
+		const spaces = yield* Space.Service;
+		const { id: env } = yield* SandboxIO.Current;
+		const envColumn = SandboxInstance.toColumn(env);
 
-		// `IS`, not `=`: SQLite's `= NULL` never matches, and NULL is the host. One
-		// query serves both cases with no branch here.
-		const selectDirectories = SqlSchema.findAll({
-			Request: Schema.Struct({ projectId: Schema.String, sandboxInstanceId: Schema.NullOr(Schema.String) }),
-			Result: ProjectDirectoryRow,
-			execute: ({ projectId, sandboxInstanceId }) =>
-				sql`SELECT * FROM project_directory WHERE project_id = ${projectId} AND sandbox_instance_id IS ${sandboxInstanceId}`,
-		});
-
-		// Every environment's rows. Only for re-homing during an id migration,
-		// where rows would otherwise cascade-delete with the old project — reads
-		// must stay scoped to the current environment.
-		const selectAllDirectories = SqlSchema.findAll({
-			Request: Schema.String,
-			Result: ProjectDirectoryRow,
-			execute: (projectId) => sql`SELECT * FROM project_directory WHERE project_id = ${projectId}`,
-		});
+		// D-LOCK: one long-running server, so an in-process lock is the global one.
+		const lock = yield* Semaphore.make(1);
 
 		const findProject = SqlSchema.findOneOption({
 			Request: Schema.String,
@@ -76,269 +64,169 @@ export const layer = Layer.effect(
 			execute: (id) => sql`SELECT * FROM project WHERE id = ${id}`,
 		});
 
-		const insertProject = SqlSchema.void({
-			Request: ProjectRow.insert,
-			execute: (row) => sql`INSERT INTO project ${sql.insert(row)}`,
+		const findAllProjects = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: ProjectRow,
+			execute: () => sql`SELECT * FROM project ORDER BY name, id`,
 		});
 
-		// the conflict target is the primary key; only the update timestamp moves
+		// name and created_at never move on conflict
 		const upsertProject = SqlSchema.void({
 			Request: ProjectRow.insert,
 			execute: (row) => sql`
 				INSERT INTO project ${sql.insert(row)}
-				ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at
+				ON CONFLICT(id) DO UPDATE SET status = 'active', updated_at = excluded.updated_at
 			`,
 		});
 
-		// tolerates both id and (project_id, directory) conflicts
-		const insertDirectory = SqlSchema.void({
-			Request: ProjectDirectoryRow.insert,
-			execute: (row) => sql`INSERT OR IGNORE INTO project_directory ${sql.insert(row)}`,
+		const toInfo = (row: ProjectRow, vcs: RepoSchema.Vcs | undefined): ProjectSchema.Info =>
+			new ProjectSchema.Info({
+				id: ProjectSchema.ID.make(row.id),
+				name: row.name,
+				status: row.status,
+				...(vcs === undefined ? {} : { vcs }),
+			});
+
+		// Info carries `vcs` only when resolved from a checkout; a bare lookup has no repo to ask.
+		const get = Effect.fn("Project.get")(function* (id: ProjectSchema.ID) {
+			return Option.map(yield* findProject(id).pipe(Effect.orDie), (row) => toInfo(row, undefined));
 		});
 
-		const toProjectDirectory = (row: ProjectDirectoryRow): ProjectSchema.ProjectDirectory => {
-			return {
-				directory: AbsolutePath.make(row.directory),
-				// Public results carry a concrete id; NULL is resolved back to the host.
-				sandboxInstanceId: SandboxInstance.fromField(row.sandboxInstanceId),
-				type: row.type,
-			};
-		};
+		const list = Effect.fn("Project.list")(function* () {
+			return (yield* findAllProjects().pipe(Effect.orDie)).map((row) => toInfo(row, undefined));
+		});
 
-		const directories = Effect.fn("Project.directories")(function* (input: ProjectSchema.DirectoriesInput) {
-			const rows = yield* selectDirectories({ projectId: input.projectId, sandboxInstanceId: instanceColumn }).pipe(
-				Effect.orDie,
-			);
+		// PHASE 2b: git's worktree list, filtered to what is actually on disk, main first.
+		const family = Effect.fnUntraced(function* (repo: RepoSchema.Info) {
+			const listed = yield* worktrees.list(repo).pipe(Effect.orElseSucceed((): ReadonlyArray<Member> => []));
+			const present = yield* Effect.filter(listed, (member) => SandboxFs.isDirectory(fs, member.location));
+			const members: Member[] = present.some((member) => member.location === repo.directory)
+				? [...present]
+				: [...present, { location: repo.directory, main: repo.gitDir === repo.store }];
+			return members.toSorted((a, b) => Number(b.main) - Number(a.main));
+		});
 
-			// Three-way, not two: a row is kept, dropped, or unknown. Only a
-			// definitive "absent" prunes — a backend that could not answer (expired
-			// token, timeout) leaves the row alone rather than destroying a record
-			// we may not be able to rebuild.
-			const probed = yield* Effect.forEach(
-				rows,
-				(row) =>
-					fs.exists(row.directory).pipe(
-						Effect.map((exists) => ({ row, stale: !exists })),
-						Effect.orElseSucceed(() => ({ row, stale: false })),
-					),
-				{ concurrency: "unbounded" },
-			);
-
-			const validRows = probed.filter((entry) => !entry.stale).map((entry) => entry.row);
-			const staleIDs = probed.filter((entry) => entry.stale).map((entry) => entry.row.id);
-			if (staleIDs.length > 0) {
-				yield* sql`DELETE FROM project_directory WHERE ${sql.in("id", staleIDs)}`.pipe(Effect.orDie);
+		const resolveOrCreate = Effect.fn("Project.resolveOrCreate")(function* (cwd: AbsolutePath) {
+			// PHASE 0
+			const location = AbsolutePath.make(yield* SandboxFs.realpath(fs, cwd));
+			if (!(yield* SandboxFs.isDirectory(fs, location))) {
+				return yield* Effect.die(new Error(`Project.resolveOrCreate: cwd is not a directory: ${cwd}`));
 			}
 
-			return validRows
-				.toSorted((a, b) => a.directory.localeCompare(b.directory))
-				.map((row) => toProjectDirectory(row));
-		});
+			// PHASE 1 + 2
+			const repo = yield* repos.find(location);
+			const ident = repo === undefined ? undefined : yield* repos.identity(repo);
 
-		const cached = Effect.fnUntraced(function* (dir: string) {
-			return yield* fs.readFile(path.join(dir, "codework")).pipe(
-				Effect.map((value) => value.trim()),
-				Effect.map((value) => (value ? ProjectSchema.ID.make(value) : undefined)),
-				Effect.catch(() => Effect.void),
+			const worktree = repo?.directory ?? location;
+			const projectId = ident?.id === undefined ? provisional(env, worktree) : ProjectSchema.ID.make(ident.id);
+			const name = ident?.name ?? path.basename(worktree);
+			const vcs: RepoSchema.Vcs | undefined = repo === undefined ? undefined : { type: "git", store: repo.store };
+			const members: ReadonlyArray<Member> =
+				repo === undefined ? [{ location: worktree, main: true }] : yield* family(repo);
+
+			// PHASE 3 probes — outside the transaction.
+			const candidates = yield* sql<{ id: string; projectId: string; location: string }>`
+				SELECT id, project_id, location FROM space WHERE env IS ${envColumn} AND project_id != ${projectId}
+			`.pipe(Effect.orDie);
+			const strays = candidates.filter(
+				(row) => row.location === worktree || row.location.startsWith(`${worktree}/`),
 			);
-		});
+			// A stray belongs to this checkout only when its nearest `.git` is ours —
+			// a nested repository keeps its own project (S12). Plain dirs adopt nothing.
+			const dotgit = path.join(worktree, ".git");
+			const verified =
+				repo === undefined
+					? []
+					: yield* Effect.filter(strays, (row) =>
+							SandboxFs.up(fs, { targets: [".git"], start: row.location }).pipe(
+								Effect.map((found) => found[0] === dotgit),
+							),
+						);
 
-		const remote = Effect.fnUntraced(function* (repo: Git.Repo) {
-			const origin = yield* git.remote(repo);
-			if (!origin) return undefined;
-			const normalized = url(origin);
-			if (!normalized) return undefined;
-			return {
-				id: ProjectSchema.ID.make(Hash.fast(`git:${normalized}`)),
-				name: path.basename(normalized),
+			const primaryRows = yield* sql<{ location: string }>`
+				SELECT location FROM space
+				WHERE project_id = ${projectId} AND env IS ${envColumn} AND kind = 'primary'
+			`.pipe(Effect.orDie);
+			let existingPrimary = primaryRows[0]?.location;
+			const claim = (location: string) => {
+				if (existingPrimary !== undefined && existingPrimary !== location) return false;
+				existingPrimary = location;
+				return true;
 			};
-		});
 
-		function url(input: string) {
-			const value = input.trim();
-			if (!value) return undefined;
+			const worktreeSpaceId = Space.id(env, worktree);
 
-			try {
-				const parsed = new URL(value);
-				if (parsed.protocol === "file:") return undefined;
-				return parts(parsed.hostname, parsed.pathname);
-			} catch {
-				const scp = value.match(/^([^@/:]+@)?([^/:]+):(.+)$/);
-				if (scp) return parts(scp[2]!, scp[3]!);
-				return undefined;
-			}
-		}
-
-		function parts(host: string, name: string) {
-			const pathname = name
-				.replace(/^\/+/, "")
-				.replace(/\.git\/?$/, "")
-				.replace(/\/+$/, "");
-			if (!host || !pathname) return undefined;
-			return `${host.toLowerCase()}/${pathname}`;
-		}
-
-		const root = Effect.fnUntraced(function* (repo: Git.Repo) {
-			const root = (yield* git.roots(repo))[0];
-			return root ? ProjectSchema.ID.make(root) : undefined;
-		});
-
-		const resolve = Effect.fn("Project.resolve")(function* (input: AbsolutePath) {
-			const repo = yield* git.find(input);
-			if (!repo) {
-				const local: Resolved = {
-					id: ProjectSchema.ID.local,
-					directory: input,
-					name: path.basename(path.normalize(input)),
-				};
-				return local;
-			}
-
-			const previous = yield* cached(repo.store);
-			const origin = yield* remote(repo);
-			const id = origin?.id ?? previous ?? (yield* root(repo));
-			const resolved: Resolved = {
-				id: id ?? ProjectSchema.ID.local,
-				...(previous ? { previous } : {}),
-				directory: repo.directory,
-				vcs: { type: "git", store: repo.store },
-				name: origin?.name ?? path.basename(path.normalize(repo.directory)),
-			};
-			return resolved;
-		});
-
-		const migrateProjectId = Effect.fn("Project.migrateProjectID")(function* (
-			oldID: ProjectSchema.ID | undefined,
-			newID: ProjectSchema.ID,
-		) {
-			if (!oldID) return; // nothing to migrate from
-			if (oldID === ProjectSchema.ID.local) return; // local project copy are ignored
-			if (oldID === newID) return; // just the same
-
+			// PHASE 3 tx: 3.1 project → 3.3 family → 3.2 adoption. Family goes before
+			// adoption so `into` exists when the first stray is absorbed.
 			yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
-						const oldProject = yield* findProject(oldID);
-						if (Option.isNone(oldProject)) return;
+						const row = yield* ProjectRow.insert.makeEffect({ id: projectId, name, status: "active" });
+						yield* upsertProject(row);
 
-						const newProject = yield* findProject(newID);
-						if (Option.isNone(newProject)) {
-							const row = yield* ProjectRow.insert.makeEffect({
-								id: newID,
-								name: oldProject.value.name,
-								createdAt: Model.Override(oldProject.value.createdAt),
+						for (const member of members) {
+							const kind: SpaceSchema.Kind =
+								repo === undefined
+									? "plain"
+									: !member.main
+										? "linked"
+										: claim(member.location)
+											? "primary"
+											: "copy";
+							yield* spaces.rehome({
+								id: Space.id(env, member.location),
+								projectId,
+								location: member.location,
+								kind,
+								env,
 							});
-							yield* insertProject(row);
 						}
 
-						// directories cascade-delete with the old project row, so
-						// re-home them under the new id (with re-derived row ids)
-						// before the delete; directories the new project already
-						// registered win the conflict
-						const directories = yield* selectAllDirectories(oldID);
-						for (const row of directories) {
-							const rehomed = yield* ProjectDirectoryRow.insert.makeEffect({
-								id: directoryId(newID, SandboxInstance.fromField(row.sandboxInstanceId), row.directory),
-								projectId: newID,
-								directory: row.directory,
-								type: row.type,
-								sandboxInstanceId: row.sandboxInstanceId,
-								createdAt: Model.Override(row.createdAt),
+						// Strays at the worktree itself were re-pointed by rehome (same id).
+						for (const stray of verified) {
+							if (stray.location === worktree) continue;
+							yield* spaces.absorb({
+								strayId: SpaceSchema.ID.make(stray.id),
+								into: worktreeSpaceId,
+								rel: RelativePath.make(path.relative(worktree, stray.location)),
 							});
-							yield* insertDirectory(rehomed);
 						}
-
-						yield* sql`DELETE FROM project WHERE id = ${oldID}`;
+						// RESTRICT keeps this honest: a project still referenced is left alone.
+						for (const strayProject of new Set(verified.map((stray) => stray.projectId))) {
+							yield* sql`
+								DELETE FROM project WHERE id = ${strayProject}
+									AND NOT EXISTS (SELECT 1 FROM space WHERE project_id = ${strayProject})
+							`;
+						}
 					}),
 				)
 				.pipe(Effect.orDie);
-		});
 
-		const saveDirectory = Effect.fn("Project.saveDirectory")(function* (input: {
-			projectId: ProjectSchema.ID;
-			directory: string;
-		}) {
-			if (input.projectId === ProjectSchema.ID.local) return;
-			const isGitWorktree = yield* copy.isGitWorktree({
-				directory: AbsolutePath.make(input.directory),
-			});
+			const project = yield* findProject(projectId).pipe(Effect.orDie);
+			const space = yield* spaces.get(worktreeSpaceId);
+			if (Option.isNone(project) || Option.isNone(space)) {
+				return yield* Effect.die(new Error(`Project.resolveOrCreate: registration vanished for ${worktree}`));
+			}
 
-			yield* sql
-				.withTransaction(
-					Effect.gen(function* () {
-						// "main" is per environment: each sandbox has its own primary
-						// checkout, so a main elsewhere must not demote this one to root.
-						const hasMain = yield* sql`
-							SELECT directory FROM project_directory
-							WHERE project_id = ${input.projectId}
-								AND sandbox_instance_id IS ${instanceColumn}
-								AND type = 'main'
-							LIMIT 1
-						`;
-
-						const row = yield* ProjectDirectoryRow.insert.makeEffect({
-							id: directoryId(input.projectId, instanceId, input.directory),
-							projectId: input.projectId,
-							directory: AbsolutePath.make(input.directory),
-							type: isGitWorktree ? "gitworktree" : hasMain.length > 0 ? "root" : "main",
-							sandboxInstanceId: SandboxInstance.toField(instanceId),
-						});
-						yield* insertDirectory(row);
-					}),
-				)
-				.pipe(
-					Effect.catchCause((cause) =>
-						Effect.logWarning("project directory persistence failed", {
-							projectId: input.projectId,
-							cause,
-						}),
-					),
-				);
-		});
-
-		const fromDirectory = Effect.fn("Project.fromDirectory")(function* (directory: string) {
-			const data = yield* resolve(AbsolutePath.make(directory));
-			const projectId = ProjectSchema.ID.make(data.id);
-
-			// conditionally migrates previous cached projectId to new one
-			yield* migrateProjectId(data.previous ? ProjectSchema.ID.make(data.previous) : undefined, projectId);
-
-			const existing = yield* findProject(projectId).pipe(Effect.orDie);
-			const name = Option.match(existing, {
-				onNone: () => data.name,
-				onSome: (row) => row.name,
-			});
-
-			// on conflict only the update timestamp moves; the stored name and
-			// creation time stay as they are
-			const row = yield* ProjectRow.insert.makeEffect({ id: projectId, name }).pipe(Effect.orDie);
-			yield* upsertProject(row).pipe(Effect.orDie);
-
-			yield* saveDirectory({ projectId: projectId, directory: data.directory });
-
-			const result: ProjectSchema.Info = {
-				id: projectId,
-				name,
-				vcs: data.vcs ?? undefined,
-				directory: data.directory,
+			const resolved: Resolved = {
+				project: toInfo(project.value, vcs),
+				space: space.value,
+				directory: RelativePath.make(path.relative(worktree, location)),
+				isDefault: space.value.kind === "primary" || space.value.kind === "plain",
 			};
+			return resolved;
+		}, lock.withPermits(1));
 
-			return result;
-		});
-
-		return Service.of({ resolve, directories, fromDirectory });
+		return Service.of({ resolveOrCreate, get, list });
 	}),
 );
 
 /** Takes an assembled sandbox — local or remote — not a local backend. */
 export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>
 	layer.pipe(
+		Layer.provide(Layer.mergeAll(Repo.layer, Worktree.layer, Space.layer)),
 		Layer.provide(Git.layer),
-		Layer.provide(ProjectCopy.layer),
 		Layer.provide(sandbox),
-		// Plain database: the host needs no row, and the foreign key is skipped on
-		// NULL, so nothing has to exist before a host directory can be written.
-		// Any other namespace is registered by whoever created it.
 		Layer.provide(Database.defaultLayer),
 	);
 

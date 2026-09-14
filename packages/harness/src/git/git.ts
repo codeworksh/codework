@@ -1,6 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { posix as path } from "../util/posix.ts";
-import { SandboxFs } from "../sandbox/fs/util.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { Sandbox } from "../sandbox/sandbox.ts";
 import { AbsolutePath } from "../schema.ts";
@@ -13,42 +12,20 @@ export class AppProcessError extends Schema.TaggedError<AppProcessError>()("AppP
 	cause: Schema.optional(Schema.Defect()),
 }) {}
 
-export interface Repo {
-	/**
-	 * The root directory of the working tree that contains the input path.
-	 *
-	 * For `/home/me/app/src/file.ts` in a normal clone, this is `/home/me/app`.
-	 * For `/home/me/app-feature/src/file.ts` in a linked worktree, this is
-	 * `/home/me/app-feature`.
-	 */
-	readonly directory: AbsolutePath;
-	/**
-	 * The shared Git storage directory used by this repo and any linked worktrees.
-	 *
-	 * For a normal clone at `/home/me/app`, this is usually `/home/me/app/.git`.
-	 * For a linked worktree at `/home/me/app-feature` whose main checkout is
-	 * `/home/me/app`, this is usually `/home/me/app/.git`.
-	 */
-	readonly store: AbsolutePath;
-}
-
 export interface Result {
 	readonly exitCode: number;
 	readonly text: string;
 	readonly stderr: string;
 }
 
-export class WorktreeError extends Schema.TaggedError<WorktreeError>()("Git.WorktreeError", {
-	operation: Schema.Literals(["create", "remove", "list"]),
-	message: Schema.String,
-	directory: Schema.optional(AbsolutePath),
-	cause: Schema.optional(Schema.Defect()),
-}) {}
+export type RevParse = "--show-toplevel" | "--git-dir" | "--git-common-dir";
 
 export interface Interface {
-	readonly find: (input: AbsolutePath) => Effect.Effect<Repo | undefined>;
-	readonly remote: (repo: Repo, name?: string) => Effect.Effect<string | undefined>;
-	readonly roots: (repo: Repo) => Effect.Effect<string[]>;
+	/** Run `git <args>` in `directory`; fails only when the process cannot be spawned. */
+	readonly exec: (directory: string, args: ReadonlyArray<string>) => Effect.Effect<Result, AppProcessError>;
+	readonly revParse: (directory: string, arg: RevParse) => Effect.Effect<string | undefined>;
+	readonly remote: (directory: string, name?: string) => Effect.Effect<string | undefined>;
+	readonly roots: (directory: string) => Effect.Effect<string[]>;
 	readonly origin: (directory: string) => Effect.Effect<string | undefined>;
 	readonly head: (directory: string) => Effect.Effect<string | undefined>;
 	readonly dir: (directory: string) => Effect.Effect<string | undefined>;
@@ -70,9 +47,6 @@ export interface Interface {
 		readonly remote?: string;
 		readonly env?: Record<string, string>;
 	}) => Effect.Effect<Result, AppProcessError>;
-	readonly worktreeCreate: (input: { repo: Repo; directory: AbsolutePath }) => Effect.Effect<void, WorktreeError>;
-	readonly worktreeRemove: (input: { repo: Repo; directory: AbsolutePath }) => Effect.Effect<void, WorktreeError>;
-	readonly worktreeList: (repo: Repo) => Effect.Effect<AbsolutePath[], WorktreeError>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/git/git/Service") {}
@@ -80,59 +54,48 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
-		const fs = yield* SandboxIO.FileSystem;
 		const shell = yield* SandboxIO.Shell;
 
 		// Arguments go through `execArgv`, never a command string: branch names and
 		// paths are caller-supplied, and a space or `$(…)` in one must stay data.
-		const execute = (cwd: string) => (args: string[], options?: { readonly env?: Record<string, string> }) =>
-			shell
-				.execArgv(["git", ...args], {
-					cwd,
-					...(options?.env === undefined ? {} : { env: options.env }),
-				})
-				.pipe(
-					Effect.map(
-						(result) =>
-							({
-								exitCode: result.exitCode,
-								text: result.stdout,
-								stderr: result.stderr,
-							}) satisfies Result,
-					),
-					Effect.mapError((cause) => new AppProcessError({ command: ["git", ...args].join(" "), cause })),
-				);
+		const execute =
+			(cwd: string) => (args: ReadonlyArray<string>, options?: { readonly env?: Record<string, string> }) =>
+				shell
+					.execArgv(["git", ...args], {
+						cwd,
+						...(options?.env === undefined ? {} : { env: options.env }),
+					})
+					.pipe(
+						Effect.map(
+							(result) =>
+								({
+									exitCode: result.exitCode,
+									text: result.stdout,
+									stderr: result.stderr,
+								}) satisfies Result,
+						),
+						Effect.mapError((cause) => new AppProcessError({ command: ["git", ...args].join(" "), cause })),
+					);
 
-		const run = (cwd: string) => (args: string[]) =>
+		const run = (cwd: string) => (args: ReadonlyArray<string>) =>
 			execute(cwd)(args).pipe(Effect.orElseSucceed(() => ({ exitCode: 1, text: "", stderr: "" })));
 
-		const find = Effect.fn("Git.find")(function* (input: AbsolutePath) {
-			const dotgit = yield* SandboxFs.up(fs, { targets: [".git"], start: input }).pipe(
-				Effect.map((matches) => matches[0]),
-			);
-			if (!dotgit) return undefined;
+		const exec = Effect.fn("Git.exec")((directory: string, args: ReadonlyArray<string>) => execute(directory)(args));
 
-			const cwd = path.dirname(dotgit);
-			const git = run(cwd);
-			const topLevel = yield* git(["rev-parse", "--show-toplevel"]);
-			const commonDir = yield* git(["rev-parse", "--git-common-dir"]);
-			if (commonDir.exitCode !== 0) return undefined;
-
-			const directory = topLevel.exitCode === 0 ? resolvePath(cwd, topLevel.text) : cwd;
-			return {
-				directory: AbsolutePath.make(directory),
-				store: AbsolutePath.make(resolvePath(directory, commonDir.text)),
-			} satisfies Repo;
+		const revParse = Effect.fn("Git.revParse")(function* (directory: string, arg: RevParse) {
+			const result = yield* run(directory)(["rev-parse", arg]);
+			if (result.exitCode !== 0) return undefined;
+			return resolvePath(directory, result.text);
 		});
 
-		const remote = Effect.fn("Git.remote")(function* (repo: Repo, name = "origin") {
-			const result = yield* run(repo.directory)(["remote", "get-url", name]);
+		const remote = Effect.fn("Git.remote")(function* (directory: string, name = "origin") {
+			const result = yield* run(directory)(["remote", "get-url", name]);
 			if (result.exitCode !== 0) return undefined;
 			return result.text.trim() || undefined;
 		});
 
-		const roots = Effect.fn("Git.roots")(function* (repo: Repo) {
-			const result = yield* run(repo.directory)(["rev-list", "--max-parents=0", "HEAD"]);
+		const roots = Effect.fn("Git.roots")(function* (directory: string) {
+			const result = yield* run(directory)(["rev-list", "--max-parents=0", "HEAD"]);
 			if (result.exitCode !== 0) return [];
 			return result.text
 				.split("\n")
@@ -154,9 +117,8 @@ export const layer = Layer.effect(
 		});
 
 		const dir = Effect.fn("Git.dir")(function* (directory: string) {
-			const result = yield* run(directory)(["rev-parse", "--git-dir"]);
-			if (result.exitCode !== 0) return undefined;
-			return AbsolutePath.make(resolvePath(directory, result.text));
+			const result = yield* revParse(directory, "--git-dir");
+			return result === undefined ? undefined : AbsolutePath.make(result);
 		});
 
 		const branch = Effect.fn("Git.branch")(function* (directory: string) {
@@ -211,66 +173,9 @@ export const layer = Layer.effect(
 				),
 		);
 
-		const worktree = Effect.fnUntraced(function* (
-			operation: "create" | "remove" | "list",
-			repo: Repo,
-			args: string[],
-			worktreeDirectory?: AbsolutePath,
-			cwd = repo.directory,
-		) {
-			const result = yield* execute(cwd)(args).pipe(
-				Effect.mapError(
-					(cause) =>
-						new WorktreeError({
-							operation,
-							directory: worktreeDirectory,
-							message: cause.message,
-							cause,
-						}),
-				),
-			);
-			if (result.exitCode === 0) return result.text;
-			return yield* new WorktreeError({
-				operation,
-				directory: worktreeDirectory,
-				message: result.stderr.trim() || result.text.trim() || "Git failed",
-			});
-		});
-
-		const worktreeCreate = Effect.fn("Git.worktreeCreate")(function* (input: {
-			repo: Repo;
-			directory: AbsolutePath;
-		}) {
-			yield* worktree(
-				"create",
-				input.repo,
-				["worktree", "add", "--detach", input.directory, "HEAD"],
-				input.directory,
-			);
-		});
-
-		const worktreeRemove = Effect.fn("Git.worktreeRemove")(function* (input: {
-			repo: Repo;
-			directory: AbsolutePath;
-		}) {
-			yield* worktree(
-				"remove",
-				input.repo,
-				["worktree", "remove", "--force", input.directory],
-				input.directory,
-				input.repo.store,
-			);
-		});
-
-		const worktreeList = Effect.fn("Git.worktreeList")(function* (repo: Repo) {
-			return (yield* worktree("list", repo, ["worktree", "list", "--porcelain"]))
-				.split("\n")
-				.filter((line) => line.startsWith("worktree "))
-				.map((line) => AbsolutePath.make(resolvePath(repo.directory, line.slice("worktree ".length).trim())));
-		});
-
 		return Service.of({
-			find,
+			exec,
+			revParse,
 			remote,
 			roots,
 			origin,
@@ -284,27 +189,25 @@ export const layer = Layer.effect(
 			checkout,
 			reset,
 			push,
-			worktreeCreate,
-			worktreeRemove,
-			worktreeList,
 		});
 	}),
 );
 
 /**
- * Run git inside the given sandbox — local, remote, or virtual. The sandbox
- * supplies both halves: repository discovery walks its filesystem and commands
- * run through its shell, so git can never read files in one place and execute
- * in another.
+ * Run git inside the given sandbox — local, remote, or virtual. Every command
+ * goes through the sandbox shell, so git never executes anywhere other than
+ * where the caller's files live. Discovery and identity live in `repo/`,
+ * worktree management in `worktree/`; this module is only the command runner.
  *
  * The sandbox must have a real `git` binary. A VFS-backed shell (`EnvBash`) has
- * builtins only, so commands there exit 127 and `find` reports no repository.
+ * builtins only, so commands there exit 127 and every probe reports nothing.
  */
 export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) => layer.pipe(Layer.provide(sandbox));
 
 export const defaultLayer = (rootPath: string) => layerWith(Sandbox.defaultLayer(rootPath));
 
-function resolvePath(cwd: string, value: string) {
+/** Resolve a (possibly relative) git output path against `cwd`, trimming the trailing newline. */
+export function resolvePath(cwd: string, value: string) {
 	const trimmed = value.replace(/[\r\n]+$/, "");
 	if (!trimmed) return cwd;
 	if (path.isAbsolute(trimmed)) return path.normalize(trimmed);

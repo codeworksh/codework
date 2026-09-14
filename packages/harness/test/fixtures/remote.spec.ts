@@ -5,10 +5,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { Database } from "../../src/db/db.ts";
 import { Event } from "../../src/event/event.ts";
 import { Git } from "../../src/git/git.ts";
-import { ProjectCopy } from "../../src/project/copy.ts";
-import { Project } from "../../src/project/project.ts";
+import { Location } from "../../src/location/location.ts";
 import { SandboxFileSystem } from "../../src/sandbox/fs/filesystem.ts";
-import { SandboxInstance } from "../../src/sandbox/instance.ts";
+import type { SandboxInstance } from "../../src/sandbox/instance.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
 import { Sandbox } from "../../src/sandbox/sandbox.ts";
 import { type ISandboxExe, Shell } from "../../src/sandbox/shell/shell.ts";
@@ -396,50 +395,52 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 									}),
 								),
 							);
-							const project = Project.layer.pipe(
-								Layer.provide(Git.layer),
-								Layer.provide(ProjectCopy.layer),
-								Layer.provide(sandbox),
-							);
-							// provideMerge, not provide: the block below registers the
-							// sandbox instance directly and needs SqlClient itself.
-							const application = Layer.merge(project, Session.layer).pipe(
-								Layer.provideMerge(Event.layer),
-								Layer.provideMerge(Database.layer(":memory:")),
-							);
-
-							const persisted = yield* Effect.gen(function* () {
-								// Project directories and sessions are foreign-keyed to
-								// sandbox_instance, so the remote namespace has to be
-								// registered before anything claims to live in it.
-								const instanceId = mappedEnvId;
-								yield* Effect.flatMap(SandboxStore.make, (store) =>
+							const database = Database.layer(":memory:");
+							// Spaces are foreign-keyed to sandbox_instance, so the remote
+							// namespace has to be registered before anything claims to live
+							// in it — and before Location resolves the repo into a space.
+							const registered = Layer.effectDiscard(
+								Effect.flatMap(SandboxStore.make, (store) =>
 									store.register({
-										id: instanceId,
+										id: mappedEnvId,
 										driver: options.kind,
 										kind: "remote",
 										ownership: "external",
 									}),
-								);
+								),
+							).pipe(Layer.provide(database));
+							const location = Location.layerMounted({ directory: AbsolutePath.make(repo) }).pipe(
+								Layer.provide(sandbox),
+								Layer.provide(registered),
+							);
+							// provideMerge, not provide: `registered` and the block below
+							// share the one in-memory database.
+							const application = Layer.merge(location, Session.layer).pipe(
+								Layer.provideMerge(Event.layer),
+								Layer.provideMerge(database),
+							);
 
-								const projects = yield* Project.Service;
+							const persisted = yield* Effect.gen(function* () {
+								const resolved = yield* Location.Service;
 								const sessions = yield* Session.Service;
-								const info = yield* projects.fromDirectory(AbsolutePath.make(repo));
-								const directories = yield* projects.directories({ projectId: info.id });
 								const created = yield* sessions.create({
-									projectId: info.id,
+									spaceId: resolved.space.id,
 									slug: `${options.kind}-${Date.now()}`,
-									directory: AbsolutePath.make(repo),
+									directory: resolved.directory,
 									title: `${options.kind} integration`,
-									sandboxInstanceId: instanceId,
 								});
-								const reloaded = yield* sessions.get(created.id);
+								const space = Option.getOrThrow(yield* sessions.space(created.id));
 								return {
-									directories,
-									projectId: info.id,
-									projectName: info.name,
-									// A remote namespace is a real row, so the column is never NULL here.
-									sessionEnvId: SandboxInstance.fromField(Option.getOrThrow(reloaded).sandboxInstanceId),
+									space: {
+										location: resolved.space.location,
+										env: resolved.space.env,
+										kind: resolved.space.kind,
+									},
+									directory: resolved.directory,
+									projectId: resolved.project.id,
+									projectName: resolved.project.name,
+									// The session's env is its space's; a remote namespace is a real row.
+									sessionEnvId: space.env,
 								};
 							}).pipe(Effect.provide(application));
 
@@ -472,7 +473,8 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 				expect(mapped.git.subject.stdout.trim()).toBe(`test: ${options.kind} sandbox IO`);
 				expect(mapped.projectId).toBe(Hash.fast("git:github.com/codeworksh/69th"));
 				expect(mapped.projectName).toBe("69th");
-				expect(mapped.directories).toEqual([{ directory: mapped.repo, sandboxInstanceId: envId, type: "main" }]);
+				expect(mapped.space).toEqual({ location: mapped.repo, env: envId, kind: "primary" });
+				expect(mapped.directory).toBe("");
 				expect(mapped.sessionEnvId).toBe(envId);
 			},
 			options.timeout,

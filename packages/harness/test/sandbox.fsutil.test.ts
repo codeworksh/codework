@@ -140,3 +140,45 @@ describe("SandboxFs predicates", () => {
 		expect(result).toEqual({ present: "content", missing: undefined });
 	});
 });
+
+describe("realpath", () => {
+	it("resolves symlinks on the host filesystem", async () => {
+		await using tmp = await tmpdir();
+		const target = path.join(tmp.path, "target");
+		const link = path.join(tmp.path, "link");
+		await fs.mkdir(target);
+		await fs.symlink(target, link);
+		const expected = await fs.realpath(target);
+
+		const resolved = await run(
+			Effect.gen(function* () {
+				const filesystem = yield* SandboxFileSystem.Service;
+				return yield* filesystem.realpath(path.join(link, ".", "..", "link"));
+			}),
+			Sandbox.EnvNodeJSDefault.layer(),
+		);
+
+		expect(resolved).toBe(expected);
+	});
+
+	it("normalizes existing paths in memory and fails on missing ones", async () => {
+		const result = await run(
+			Effect.gen(function* () {
+				const filesystem = yield* SandboxFileSystem.Service;
+				yield* filesystem.mkdir("/a/b", { recursive: true });
+				return {
+					existing: yield* filesystem.realpath("/a/./b/../b"),
+					missing: yield* Effect.flip(filesystem.realpath("/a/nope")),
+					// the helper degrades to the normalized input instead of failing
+					fallback: yield* SandboxFs.realpath(filesystem, "/a/./nope"),
+				};
+			}),
+			Sandbox.EnvInMemory.layer(),
+		);
+
+		expect(result.existing).toBe("/a/b");
+		expect(result.missing).toMatchObject({ _tag: "SandboxFileSystemError", method: "realpath", path: "/a/nope" });
+		expect(SandboxFileSystem.isNotFoundError(result.missing.cause)).toBe(true);
+		expect(result.fallback).toBe("/a/nope");
+	});
+});

@@ -4,6 +4,7 @@ import { describe, expect } from "vite-plus/test";
 import { Database, SqlSchema } from "../src/db/db.ts";
 import { inputDeliveries, SessionInputRow } from "../src/db/schema.sql.ts";
 import { SessionSchema } from "../src/session/schema.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const { effect: it } = testEffect(Database.layer(":memory:"));
@@ -45,12 +46,11 @@ const queries = (sql: SqlClient.SqlClient) => ({
 
 const createSession = Effect.fn("SessionInputTest.createSession")(function* (id: string) {
 	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local', 'local', 0, 0)`;
-	// NULL is the host, and the foreign key is skipped on NULL — so a session
-	// needs no sandbox registered at all. An invented namespace would be rejected.
+	// A host space: NULL env needs no sandbox registered at all.
+	const { spaceId } = yield* seedSpace();
 	yield* sql`
-		INSERT INTO session (id, project_id, slug, directory, title, tag, sandbox_instance_id, created_at, updated_at)
-		VALUES (${id}, 'local', ${id}, '/repo', 'Test session', 'test', NULL, 0, 0)
+		INSERT INTO session (id, space_id, slug, directory, title, tag, created_at, updated_at)
+		VALUES (${id}, ${spaceId}, ${id}, '', 'Test session', 'test', 0, 0)
 	`;
 });
 

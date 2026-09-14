@@ -79,7 +79,7 @@ export const resolveMountCwd = (defaultCwd: string, cwd?: string): string => {
 		throw new TypeError(`Sandbox default cwd must be absolute: ${defaultCwd}`);
 	}
 	// `resolve`, not `normalize`: normalize keeps a trailing slash, and `cwd` is
-	// persisted — `Location.directory` and `project_directory`'s hash would read
+	// persisted — `space.location` and its id hash would read
 	// `/workspace/` and `/workspace` as two directories and keep a row for each.
 	//
 	// A provider-reported default (`getWorkDir()`) or a config value is free to

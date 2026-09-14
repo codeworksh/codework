@@ -1,10 +1,12 @@
 import { Schema } from "effect";
 import { Model } from "effect/unstable/schema";
 import { EventSchema } from "../event/schema.ts";
+import { ProjectSchema } from "../project/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
-import { AbsolutePath, NonNegativeInt } from "../schema.ts";
+import { AbsolutePath, NonNegativeInt, RelativePath } from "../schema.ts";
 import { Prompt } from "../session/prompt/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
+import { SpaceSchema } from "../space/schema.ts";
 
 // Column names derive from field names via the client's camelToSnake
 
@@ -73,6 +75,7 @@ export class EventRow extends Model.Class<EventRow>("EventRow")({
 export class ProjectRow extends Model.Class<ProjectRow>("ProjectRow")({
 	id: Schema.String,
 	name: Schema.String,
+	status: ProjectSchema.Status,
 	...Timestamps,
 }) {}
 
@@ -103,29 +106,31 @@ export class SandboxInstanceRow extends Model.Class<SandboxInstanceRow>("Sandbox
 	...Timestamps,
 }) {}
 
-export class ProjectDirectoryRow extends Model.Class<ProjectDirectoryRow>("ProjectDirectoryRow")({
+// One directory in one env that belongs to a project. `id = hash(env, location)`.
+export class SpaceRow extends Model.Class<SpaceRow>("SpaceRow")({
 	id: Schema.String,
 	projectId: Schema.String,
-	directory: AbsolutePath,
-	type: Schema.Literals(["main", "root", "gitworktree"]),
-	// Nullable: NULL is the host. Service-level code sees a plain ID through
+	location: AbsolutePath,
+	kind: SpaceSchema.Kind,
+	// Nullable: NULL is the host (same convention as sandboxInstanceId
+	// elsewhere). Service-level code sees a plain ID through
 	// SandboxInstance.toColumn/fromColumn and never branches on the host.
-	sandboxInstanceId: Model.FieldOption(SandboxInstance.ID),
+	env: Model.FieldOption(SandboxInstance.ID),
+	status: SpaceSchema.Status,
 	...Timestamps,
 }) {}
 
 export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	id: SessionSchema.IDFromDb,
-	projectId: Schema.String,
+	// Project and env are derived through the space, never denormalised here.
+	spaceId: Schema.String,
 	parentId: Model.FieldOption(SessionSchema.IDFromDb),
 	slug: Schema.String,
-	directory: AbsolutePath,
+	// Relative to `space.location`; `""` is the space root.
+	directory: RelativePath,
 	title: Schema.String,
 	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),
-	// Nullable: NULL is the host (§4), so a session can be written before any
-	// namespace is registered — the foreign key is skipped on NULL.
-	sandboxInstanceId: Model.FieldOption(SandboxInstance.ID),
 	// Durable leaf cursor: read anchor (path walks leaf→root) and append anchor
 	// (new entries attach here). Moved inside every append/branch transaction.
 	leafEntryId: Model.FieldOption(Schema.String),

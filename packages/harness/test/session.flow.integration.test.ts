@@ -6,8 +6,8 @@ import { ContextCodec } from "../src/context/codec.ts";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { AbsolutePath } from "../src/schema.ts";
+import { RelativePath } from "../src/schema.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { SessionInput } from "../src/session/input/input.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
@@ -48,16 +48,14 @@ const lorem = [
 const promptAt = (index: number) => PromptSchema.Prompt.make({ text: `${index}: ${lorem[index % lorem.length]}` });
 
 const setup = Effect.gen(function* () {
-	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local','local',0,0)`;
+	const { spaceId } = yield* seedSpace();
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
-		projectId: "local",
+		spaceId,
 		slug: "flow",
-		directory: AbsolutePath.make("/repo"),
+		directory: RelativePath.make(""),
 		title: "T",
 		tag: "test",
-		sandboxInstanceId: SandboxInstance.ID.local,
 	});
 	return {
 		sessions,
@@ -207,9 +205,10 @@ describe("Stage 1 + 2 flow", () => {
 		Effect.gen(function* () {
 			const { sessions, control, inputs, events, sessionId } = yield* setup;
 			const sql = yield* SqlClient.SqlClient;
+			const { spaceId } = yield* seedSpace();
 			yield* sql`
-				INSERT INTO session (id, project_id, slug, directory, title, tag, sandbox_instance_id, created_at, updated_at)
-				VALUES ('ses_other', 'local', 'other', '/repo', 'T', 'test', NULL, 0, 0)
+				INSERT INTO session (id, space_id, slug, directory, title, tag, created_at, updated_at)
+				VALUES ('ses_other', ${spaceId}, 'other', '', 'T', 'test', 0, 0)
 			`;
 			const other = SessionSchema.ID.make("ses_other");
 

@@ -1,22 +1,26 @@
 import { Context, Effect, Layer, Schema } from "effect";
+import { Database } from "../db/db.ts";
+import { Git } from "../git/git.ts";
 import { Project } from "../project/project.ts";
 import { ProjectSchema } from "../project/schema.ts";
-import { SandboxInstance } from "../sandbox/instance.ts";
+import { Repo } from "../repo/repo.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { Sandbox } from "../sandbox/sandbox.ts";
-import { AbsolutePath } from "../schema.ts";
+import { AbsolutePath, RelativePath } from "../schema.ts";
+import { SpaceSchema } from "../space/schema.ts";
+import { Space } from "../space/space.ts";
+import { posix } from "../util/posix.ts";
+import { Worktree } from "../worktree/worktree.ts";
 
 /**
- * Where work happens: a directory, qualified by the namespace it lives in.
+ * Where work happens: a directory inside a space.
  *
- * The pair is the key. A path alone does not name a place — `/app/repo` on the
- * host and `/app/repo` inside a remote sandbox are different trees wearing the
- * same spelling — so everything scoped to a location carries both halves.
- * Sessions sharing a pair share the project and its registered directories;
- * `main`, `root`, and worktree relationships stay a Project concern beneath it.
- *
- * With the host the second half is constant, so a Location degenerates to
- * exactly what a path-keyed runtime gives you.
+ * The pair (space, directory) is the key. A path alone does not name a place —
+ * `/app/repo` on the host and `/app/repo` inside a remote sandbox are different
+ * trees wearing the same spelling — so the space carries the env and the
+ * absolute location, and `directory` is relative to it (`""` = root). Sessions
+ * sharing a space share the project; worktree relationships stay a Project
+ * concern beneath it.
  *
  * **Both halves come from the mount, so `Ref` is overrides and nothing else.**
  * A Location is a directory *within* a mounted namespace — the mount has to be
@@ -33,15 +37,14 @@ export const Ref = Schema.Struct({
 export type Ref = typeof Ref.Type;
 
 export class Info extends Schema.Class<Info>("Location.Info")({
-	directory: AbsolutePath,
-	sandboxInstanceId: SandboxInstance.ID,
-	project: Schema.Struct({
-		id: ProjectSchema.ID,
-		name: Schema.String,
-		vcs: Schema.optional(ProjectSchema.Vcs),
-		directory: AbsolutePath,
-	}),
+	/** Relative to `space.location`; `""` at the space root. */
+	directory: RelativePath,
+	space: SpaceSchema.Info,
+	project: ProjectSchema.Info,
 }) {}
+
+/** The absolute cwd tools run in: `space.location` joined with `directory`. */
+export const cwd = (info: Info) => AbsolutePath.make(posix.join(info.space.location, info.directory));
 
 export interface Interface extends Info {}
 
@@ -57,24 +60,30 @@ export const layer = (ref: Ref = {}) =>
 			const instance = yield* SandboxIO.Current;
 			const directory = AbsolutePath.make(ref.directory ?? instance.cwd);
 			const project = yield* Project.Service;
-			const resolved = yield* project.fromDirectory(directory);
-			return Service.of({
-				// `directory` is pwd; `project.directory` is the repository root found
-				// by walking up from it. Frequently different, and never an input.
-				directory,
-				sandboxInstanceId: instance.id,
-				project: {
-					id: resolved.id,
-					name: resolved.name,
-					vcs: resolved.vcs,
-					directory: resolved.directory,
-				},
-			});
+			const resolved = yield* project.resolveOrCreate(directory);
+			return Service.of(
+				new Info({ directory: resolved.directory, space: resolved.space, project: resolved.project }),
+			);
 		}),
 	);
 
+/**
+ * `layer` with the whole resolution stack (Project, Space, Repo, Worktree, Git)
+ * folded in. What remains is exactly the mount and the database — for callers
+ * that already hold both, such as the runner and `Session.create`.
+ */
+export const layerMounted = (ref: Ref = {}) =>
+	layer(ref).pipe(
+		Layer.provide(
+			Project.layer.pipe(
+				Layer.provide(Layer.mergeAll(Repo.layer, Worktree.layer, Space.layer)),
+				Layer.provide(Git.layer),
+			),
+		),
+	);
+
 export const layerWith = <E, RIn>(ref: Ref, sandbox: Sandbox.Sandbox<E, RIn>) =>
-	layer(ref).pipe(Layer.provideMerge(Project.layerWith(sandbox)), Layer.provide(sandbox));
+	layerMounted(ref).pipe(Layer.provide(sandbox), Layer.provide(Database.defaultLayer));
 
 export const defaultLayer = (ref: Ref, path: string) => layerWith(ref, Sandbox.defaultLayer(path));
 

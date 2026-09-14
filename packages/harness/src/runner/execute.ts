@@ -5,13 +5,10 @@
 
 import { Cause, Context, Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { Git } from "../git/git.ts";
 import { Location } from "../location/location.ts";
-import { ProjectCopy } from "../project/copy.ts";
-import { Project } from "../project/project.ts";
 import { SandboxController } from "../sandbox/control.ts";
-import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
+import { posix } from "../util/posix.ts";
 import { RunCoordinator } from "./coordinator.ts";
 import { RunnerExecution } from "./execution.ts";
 import { Runner } from "./run.ts";
@@ -34,9 +31,12 @@ export const layer = Layer.effect(
 			drain: Effect.fnUntraced(function* (sessionId: SessionId, force) {
 				const session = yield* store.get(sessionId);
 				if (Option.isNone(session)) return yield* Effect.die(`session not found: ${sessionId}`);
-				const row = session.value;
-				const instanceId = SandboxInstance.fromField(row.sandboxInstanceId);
-				const mount = sandbox.mount(instanceId, { cwd: row.directory });
+				const space = yield* store.space(sessionId);
+				if (Option.isNone(space)) return yield* Effect.die(`space not found for session: ${sessionId}`);
+				// The session's env and cwd are derived through its space (D-SESSION).
+				const instanceId = space.value.env;
+				const cwd = posix.join(space.value.location, session.value.directory);
+				const mount = sandbox.mount(instanceId, { cwd });
 
 				const scopedRun = Effect.gen(function* () {
 					const mountContext = yield* Layer.build(mount);
@@ -50,15 +50,10 @@ export const layer = Layer.effect(
 						});
 					}
 
-					const mounted = Layer.succeedContext(mountContext);
-					const database = Layer.succeed(SqlClient.SqlClient, sql);
-					const projectDependencies = Layer.merge(Git.layer, ProjectCopy.layer).pipe(Layer.provide(mounted));
-					const project = Project.layer.pipe(
-						Layer.provide(projectDependencies),
-						Layer.provide(mounted),
-						Layer.provide(database),
+					const location = Location.layerMounted().pipe(
+						Layer.provide(Layer.succeedContext(mountContext)),
+						Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
 					);
-					const location = Location.layer().pipe(Layer.provide(project), Layer.provide(mounted));
 					const locationContext = yield* Layer.build(location);
 
 					return yield* runner

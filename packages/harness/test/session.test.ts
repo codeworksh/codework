@@ -8,10 +8,12 @@ import path from "node:path";
 import { beforeEach, describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { AbsolutePath, validateAikitMessage } from "../src/schema.ts";
+import { ProjectSchema } from "../src/project/schema.ts";
+import { RelativePath, validateAikitMessage } from "../src/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
+import { SpaceSchema } from "../src/space/schema.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { testEffect } from "./utils/effect.ts";
 
@@ -44,18 +46,15 @@ beforeEach(() => seqCounters.clear());
 
 const createSession = (slug: string) =>
 	Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		// session.project_id references project(id)
-		yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local', 'local', 0, 0)`;
-
+		// session.space_id references space(id)
+		const { spaceId } = yield* seedSpace();
 		const session = yield* Session.Service;
 		return yield* session.create({
-			projectId: "local",
+			spaceId,
 			slug,
-			directory: AbsolutePath.make("/repo"),
+			directory: RelativePath.make(""),
 			title: "Test session",
 			tag: "test",
-			sandboxInstanceId: SandboxInstance.ID.local,
 		});
 	});
 
@@ -389,8 +388,12 @@ describe("session", () => {
 			expect(row.tokensInput).toBe(0);
 			expect(Option.isNone(row.leafEntryId)).toBe(true);
 
-			const listed = yield* session.list({ projectId: "local" });
-			expect(listed.map((r) => r.id)).toContain(created.id);
+			const byProject = yield* session.list({ projectId: ProjectSchema.ID.make("local") });
+			expect(byProject.map((r) => r.id)).toContain(created.id);
+			const bySpace = yield* session.list({ spaceId: SpaceSchema.ID.make(created.spaceId) });
+			expect(bySpace.map((r) => r.id)).toContain(created.id);
+			const space = yield* session.space(created.id);
+			expect(Option.map(space, (s) => s.location)).toEqual(Option.some("/repo"));
 		}),
 	);
 
@@ -1219,18 +1222,15 @@ describe("session", () => {
 
 		await Effect.runPromise(
 			Effect.gen(function* () {
-				const sql = yield* SqlClient.SqlClient;
-				yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local', 'local', 0, 0)`;
-
+				const { spaceId } = yield* seedSpace();
 				const session = yield* Session.Service;
 				yield* session.create({
 					id: sid("persisted-session"),
-					projectId: "local",
+					spaceId,
 					slug: "s-file-reload",
-					directory: AbsolutePath.make("/repo"),
+					directory: RelativePath.make(""),
 					title: "Persisted session",
 					tag: "test",
-					sandboxInstanceId: SandboxInstance.ID.local,
 				});
 				yield* session.append(userEntry(sid("persisted-session"), "e1", "hello"));
 				yield* session.append(assistantEntry(sid("persisted-session"), "e2"));

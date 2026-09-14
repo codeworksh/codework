@@ -16,7 +16,7 @@ const sandboxStore = SandboxStore.make;
 
 const seedProject = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('p', 'p', 0, 0)`;
+	yield* sql`INSERT OR IGNORE INTO project (id, name, status, created_at, updated_at) VALUES ('p', 'p', 'active', 0, 0)`;
 });
 
 describe("SandboxInstance", () => {
@@ -112,42 +112,36 @@ describe("SandboxInstance", () => {
 		);
 
 		it(
-			"rejects a project directory or session in an unregistered namespace",
+			"rejects a space in an unregistered namespace",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				yield* seedProject;
 
-				const directory = (rowId: string, instanceId: string | null) => sql`
-					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
-					VALUES (${rowId}, 'p', ${`/workspace/${rowId}`}, 'main', ${instanceId}, 0, 0)
-				`;
-				const session = (rowId: string, instanceId: string | null) => sql`
-					INSERT INTO session (id, project_id, slug, directory, title, sandbox_instance_id, created_at, updated_at)
-					VALUES (${rowId}, 'p', ${rowId}, '/workspace', 't', ${instanceId}, 0, 0)
+				const space = (rowId: string, env: string | null) => sql`
+					INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
+					VALUES (${rowId}, 'p', ${`/workspace/${rowId}`}, 'plain', ${env}, 'active', 0, 0)
 				`;
 
-				// positive controls: NULL is the host and needs no registration at
-				// all, so the rejections below cannot be passing for another reason.
-				yield* directory("ok", null);
-				yield* session("ok", null);
+				// positive control: NULL is the host and needs no registration at
+				// all, so the rejection below cannot be passing for another reason.
+				yield* space("ok", null);
 
-				expect(Option.isSome(yield* Effect.option(directory("bad", "never-registered")))).toBe(false);
-				expect(Option.isSome(yield* Effect.option(session("bad", "never-registered")))).toBe(false);
+				expect(Option.isSome(yield* Effect.option(space("bad", "never-registered")))).toBe(false);
 			}),
 		);
 
 		// Destroying infrastructure tombstones the row; it never deletes it, so
 		// history keeps a valid reference. RESTRICT is what enforces that.
 		it(
-			"restricts deleting an instance that Project history still references",
+			"restricts deleting an instance that a space still references",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const store = yield* sandboxStore;
 				yield* seedProject;
 				yield* store.register({ id: id("sbx_a"), driver: "memory", kind: "virtual", ownership: "managed" });
 				yield* sql`
-					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
-					VALUES ('d', 'p', '/workspace', 'main', 'sbx_a', 0, 0)
+					INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
+					VALUES ('s', 'p', '/workspace', 'plain', 'sbx_a', 'active', 0, 0)
 				`;
 
 				const deletion = sql`DELETE FROM sandbox_instance WHERE id = 'sbx_a'`;
@@ -158,27 +152,27 @@ describe("SandboxInstance", () => {
 		// SQLite treats NULLs as distinct in a unique index, so without COALESCE the
 		// host could register one path twice. This is the test that catches it.
 		it(
-			"scopes directory uniqueness by instance, including for the NULL host",
+			"scopes location uniqueness by instance, including for the NULL host",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const store = yield* sandboxStore;
 				yield* seedProject;
 				yield* store.register({ id: id("sbx_a"), driver: "memory", kind: "virtual", ownership: "managed" });
 
-				const insert = (rowId: string, instanceId: string | null) => sql`
-					INSERT INTO project_directory (id, project_id, directory, type, sandbox_instance_id, created_at, updated_at)
-					VALUES (${rowId}, 'p', '/workspace', 'main', ${instanceId}, 0, 0)
+				const insert = (rowId: string, env: string | null) => sql`
+					INSERT INTO space (id, project_id, location, kind, env, status, created_at, updated_at)
+					VALUES (${rowId}, 'p', '/workspace', 'plain', ${env}, 'active', 0, 0)
 				`;
 
 				// one path, two namespaces — the host and a registered one
-				yield* insert("d1", null);
-				yield* insert("d2", "sbx_a");
+				yield* insert("s1", null);
+				yield* insert("s2", "sbx_a");
 
 				// the same pair is rejected in both, NULL included
-				expect(Option.isSome(yield* Effect.option(insert("d3", null)))).toBe(false);
-				expect(Option.isSome(yield* Effect.option(insert("d4", "sbx_a")))).toBe(false);
+				expect(Option.isSome(yield* Effect.option(insert("s3", null)))).toBe(false);
+				expect(Option.isSome(yield* Effect.option(insert("s4", "sbx_a")))).toBe(false);
 
-				const rows = yield* sql`SELECT * FROM project_directory`;
+				const rows = yield* sql`SELECT * FROM space`;
 				expect(rows).toHaveLength(2);
 			}),
 		);

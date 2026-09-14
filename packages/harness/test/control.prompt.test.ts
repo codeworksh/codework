@@ -12,8 +12,8 @@ import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
-import { AbsolutePath } from "../src/schema.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { RelativePath } from "../src/schema.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 
 // `Option` has no `.value` on the union — these tests treat a missing row as a
@@ -34,16 +34,14 @@ const messageId = SessionMessageSchema.ID.make("msg_fixed");
 const text = "Fix the failing tests";
 
 const setup = Effect.gen(function* () {
-	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local','local',0,0)`;
+	const { spaceId } = yield* seedSpace();
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
-		projectId: "local",
+		spaceId,
 		slug: "prompted",
-		directory: AbsolutePath.make("/repo"),
+		directory: RelativePath.make(""),
 		title: "T",
 		tag: "test",
-		sandboxInstanceId: SandboxInstance.ID.local,
 	});
 	return { sessions, control: yield* Control.Service, sessionId: session.id };
 });

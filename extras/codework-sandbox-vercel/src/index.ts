@@ -55,7 +55,7 @@ const status = (remote: Remote): SandboxDriver.Observed => ({
 	providerStatus: remote.status,
 });
 
-const filesystem = (remote: Remote): SandboxFileSystem.Interface =>
+const filesystem = (remote: Remote, execTimeout: number | undefined): SandboxFileSystem.Interface =>
 	SandboxFileSystem.fromProvider({
 		readFile: (path) => remote.fs.readFile(path, "utf8"),
 		readFileBuffer: async (path) => new Uint8Array(await remote.fs.readFile(path)),
@@ -85,6 +85,14 @@ const filesystem = (remote: Remote): SandboxFileSystem.Interface =>
 			await remote.fs.mkdir(path, options?.recursive === undefined ? {} : { recursive: options.recursive });
 		},
 		rm: (path, options) => remote.fs.rm(path, options),
+		realpath: async (path) => {
+			for (const script of SandboxFileSystem.realpathScripts) {
+				const result = await (await command(remote, execTimeout, ["sh", "-c", script, "_", path])).wait();
+				if (result.exitCode === 0) return (await result.stdout()).trimEnd();
+			}
+			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
+			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
+		},
 	});
 
 const command = (
@@ -211,7 +219,7 @@ export const make = (options: Options = {}) => {
 					),
 					(remote) =>
 						Layer.merge(
-							Layer.succeed(SandboxIO.FileSystem, filesystem(remote)),
+							Layer.succeed(SandboxIO.FileSystem, filesystem(remote, input.runtimeConfig.execTimeout)),
 							Layer.succeed(SandboxIO.Shell, shell(remote, input.runtimeConfig.execTimeout)),
 						),
 				),

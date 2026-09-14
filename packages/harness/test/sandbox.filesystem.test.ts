@@ -22,6 +22,7 @@ describe("SandboxFileSystem.fromProvider", () => {
 				throw new Error("mkdir exploded");
 			},
 			rm: async () => undefined,
+			realpath: async (path) => path,
 		};
 		const filesystem = SandboxFileSystem.fromProvider(provider);
 

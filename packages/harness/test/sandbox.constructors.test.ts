@@ -10,8 +10,9 @@ import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { AbsolutePath } from "../src/schema.ts";
+import { RelativePath } from "../src/schema.ts";
 import { Session } from "../src/session/session.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 
 /**
@@ -33,11 +34,6 @@ const infrastructure = Layer.provideMerge(
 const runtime = Session.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(infrastructure));
 const { effect: it } = testEffect(runtime);
 
-const insertProject = Effect.fnUntraced(function* () {
-	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('ctor', 'ctor', 0, 0)`;
-});
-
 describe("Sandbox convenience constructors vs the application database", () => {
 	it(
 		"rejects a Sandbox.memory() instance id at the foreign key instead of dangling",
@@ -54,18 +50,9 @@ describe("Sandbox convenience constructors vs the application database", () => {
 			expect(marker.id).toBe(instanceId);
 			expect(marker.content).toBe("isolated");
 
-			// The application database has no such row, so the reference is refused.
-			yield* insertProject();
-			const sessions = yield* Session.Service;
-			const exit = yield* Effect.exit(
-				sessions.create({
-					projectId: "ctor",
-					slug: `ctor-reject-${Date.now()}`,
-					directory: AbsolutePath.make("/workspace"),
-					title: "isolated namespace",
-					sandboxInstanceId: instanceId,
-				}),
-			);
+			// The application database has no such row, so a space in that
+			// namespace — the only thing a session can attach to — is refused.
+			const exit = yield* Effect.exit(seedSpace({ location: "/workspace", env: instanceId, projectId: "ctor" }));
 
 			expect(Exit.isFailure(exit)).toBe(true);
 			if (Exit.isFailure(exit)) {
@@ -74,7 +61,7 @@ describe("Sandbox convenience constructors vs the application database", () => {
 
 			// Rejected means rejected: no dangling row was persisted.
 			const sql = yield* SqlClient.SqlClient;
-			const rows = yield* sql`SELECT id FROM session WHERE sandbox_instance_id = ${instanceId}`;
+			const rows = yield* sql`SELECT id FROM space WHERE env = ${instanceId}`;
 			expect(rows).toHaveLength(0);
 		}),
 	);
@@ -91,17 +78,17 @@ describe("Sandbox convenience constructors vs the application database", () => {
 				},
 			});
 
-			yield* insertProject();
+			const { spaceId } = yield* seedSpace({ location: "/workspace", env: info.id, projectId: "ctor" });
 			const sessions = yield* Session.Service;
 			const session = yield* sessions.create({
-				projectId: "ctor",
+				spaceId,
 				slug: `ctor-accept-${Date.now()}`,
-				directory: AbsolutePath.make("/workspace"),
+				directory: RelativePath.make(""),
 				title: "shared namespace",
-				sandboxInstanceId: info.id,
 			});
 
-			expect(SandboxInstance.fromField(session.sandboxInstanceId)).toBe(info.id);
+			const space = yield* sessions.space(session.id);
+			expect(Option.map(space, (s) => s.env)).toEqual(Option.some(info.id));
 			expect(Option.isSome(yield* controller.get(info.id))).toBe(true);
 		}),
 	);
