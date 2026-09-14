@@ -103,16 +103,16 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 
 	const info = Effect.gen(function* () {
 		const found = yield* sessions.get(id);
-		const space = yield* sessions.space(id);
-		if (Option.isNone(found) || Option.isNone(space)) {
-			return yield* new SessionStore.SessionNotFoundError({ sessionId: id });
-		}
+		if (Option.isNone(found)) return yield* new SessionStore.SessionNotFoundError({ sessionId: id });
 		const row = found.value;
-		// The env is the space's; the row carries its own absolute cwd.
+		// The env is the space's. A missing space or a destroyed env both read as
+		// "no sandbox": the handle stays readable (title, directory); running it
+		// is the mount's call, which refuses a removed instance.
+		const space = Option.getOrUndefined(yield* sessions.space(id));
 		const sandbox =
-			space.value.env === SandboxInstanceSchema.ID.local
+			space === undefined || space.env === SandboxInstanceSchema.ID.local
 				? undefined
-				: Option.getOrUndefined(yield* sandboxes.get(space.value.env));
+				: Option.getOrUndefined(yield* sandboxes.get(space.env));
 		return {
 			id,
 			title: row.title,
