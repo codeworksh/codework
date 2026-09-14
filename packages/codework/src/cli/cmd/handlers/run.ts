@@ -82,7 +82,16 @@ const selectSandbox = Effect.fn("CLI.selectSandbox")(function* (driver: string, 
 		});
 	}
 	return providerResourceId === undefined
-		? yield* Sandbox.create({ driver })
+		? yield* Sandbox.create({ driver }).pipe(
+				Effect.tap((created) =>
+					// A managed sandbox was provisioned for this invocation; stop it when
+					// the command's scope closes so a finished run doesn't leave a VM
+					// running. External sandboxes are someone else's — never stopped.
+					created.ownership === "managed"
+						? Effect.addFinalizer(() => Effect.ignore(Sandbox.stop(created.id)))
+						: Effect.void,
+				),
+			)
 		: yield* Sandbox.register({ driver, providerResourceId });
 });
 

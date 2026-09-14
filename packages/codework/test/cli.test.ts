@@ -16,7 +16,9 @@ const run = (...args: ReadonlyArray<string>) =>
 const runIsolated = (env: NodeJS.ProcessEnv, ...args: ReadonlyArray<string>) => {
 	const home = mkdtempSync(join(tmpdir(), "codework-cli-"));
 	try {
-		const childEnv = { ...process.env, ...env };
+		// HOME too: provider SDKs cache credentials under it (e.g. Vercel's OIDC
+		// token in ~/Library/Application Support), so "isolated" must hide them.
+		const childEnv: NodeJS.ProcessEnv = { ...process.env, HOME: home, ...env };
 		for (const [key, value] of Object.entries(env)) {
 			if (value === undefined) delete childEnv[key];
 		}
