@@ -5,12 +5,8 @@
 
 import { Cause, Context, Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { Git } from "../git/git.ts";
 import { Location } from "../location/location.ts";
-import { ProjectCopy } from "../project/copy.ts";
-import { Project } from "../project/project.ts";
 import { SandboxController } from "../sandbox/control.ts";
-import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { RunCoordinator } from "./coordinator.ts";
 import { RunnerExecution } from "./execution.ts";
@@ -33,10 +29,14 @@ export const layer = Layer.effect(
 		const coordinator = yield* RunCoordinator.make<SessionId, Runner.RunError>({
 			drain: Effect.fnUntraced(function* (sessionId: SessionId, force) {
 				const session = yield* store.get(sessionId);
-				if (Option.isNone(session)) return yield* Effect.die(`session not found: ${sessionId}`);
-				const row = session.value;
-				const instanceId = SandboxInstance.fromField(row.sandboxInstanceId);
-				const mount = sandbox.mount(instanceId, { cwd: row.directory });
+				if (Option.isNone(session)) return yield* new Session.SessionNotFoundError({ sessionId });
+				const space = yield* store.space(sessionId);
+				// Unreachable while the FK holds; typed so a UI can offer relink
+				// as the repair instead of surfacing a defect.
+				if (Option.isNone(space)) return yield* new Session.SessionLinkedSpaceNotFoundError({ sessionId });
+				// The session's env is derived through its space; its cwd is its own (D-SESSION).
+				const instanceId = space.value.env;
+				const mount = sandbox.mount(instanceId, { cwd: session.value.directory });
 
 				const scopedRun = Effect.gen(function* () {
 					const mountContext = yield* Layer.build(mount);
@@ -50,15 +50,10 @@ export const layer = Layer.effect(
 						});
 					}
 
-					const mounted = Layer.succeedContext(mountContext);
-					const database = Layer.succeed(SqlClient.SqlClient, sql);
-					const projectDependencies = Layer.merge(Git.layer, ProjectCopy.layer).pipe(Layer.provide(mounted));
-					const project = Project.layer.pipe(
-						Layer.provide(projectDependencies),
-						Layer.provide(mounted),
-						Layer.provide(database),
+					const location = Location.layerMounted().pipe(
+						Layer.provide(Layer.succeedContext(mountContext)),
+						Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
 					);
-					const location = Location.layer().pipe(Layer.provide(project), Layer.provide(mounted));
 					const locationContext = yield* Layer.build(location);
 
 					return yield* runner

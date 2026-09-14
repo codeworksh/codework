@@ -4,7 +4,7 @@ import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../../src/db/db.ts";
-import { ProjectDirectoryRow, ProjectRow } from "../../src/db/schema.sql.ts";
+import { ProjectRow, SpaceRow } from "../../src/db/schema.sql.ts";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
 import { SandboxStore } from "../../src/sandbox/store.ts";
 import { AbsolutePath } from "../../src/schema.ts";
@@ -38,23 +38,39 @@ const queries = (sql: SqlClient.SqlClient) => ({
 		Result: ProjectRow,
 		execute: (id) => sql`SELECT * FROM project WHERE id = ${id}`,
 	}),
-	insertDirectory: Database.SqlSchema.void({
-		Request: ProjectDirectoryRow.insert,
-		execute: (row) => sql`INSERT INTO project_directory ${sql.insert(row)}`,
+	insertSpace: Database.SqlSchema.void({
+		Request: SpaceRow.insert,
+		execute: (row) => sql`INSERT INTO space ${sql.insert(row)}`,
 	}),
-	selectDirectories: Database.SqlSchema.findAll({
+	selectSpaces: Database.SqlSchema.findAll({
 		Request: ProjectRow.fields.id,
-		Result: ProjectDirectoryRow,
-		execute: (projectId) => sql`SELECT * FROM project_directory WHERE project_id = ${projectId} ORDER BY id`,
+		Result: SpaceRow,
+		execute: (projectId) => sql`SELECT * FROM space WHERE project_id = ${projectId} ORDER BY id`,
 	}),
 });
 
-// Directories and sessions are foreign-keyed to sandbox_instance, so a namespace
-// has to exist before anything can claim to live in it. Registering here keeps
-// these tests about the schema rather than about the Controller.
+// Spaces are foreign-keyed to sandbox_instance, so a namespace has to exist
+// before anything can claim to live in it. Registering here keeps these tests
+// about the schema rather than about the Controller.
 const instanceId = (id: string) => SandboxInstance.ID.make(id);
 // Row models carry the namespace as an Option, since NULL is the host.
 const instance = (id: string) => SandboxInstance.toField(instanceId(id));
+
+const space = (input: {
+	readonly id: string;
+	readonly projectId: string;
+	readonly location: string;
+	readonly kind: SpaceRow["kind"];
+	readonly env: string;
+}) =>
+	SpaceRow.insert.makeEffect({
+		id: input.id,
+		projectId: input.projectId,
+		location: AbsolutePath.make(input.location),
+		kind: input.kind,
+		env: instance(input.env),
+		status: "active",
+	});
 
 const registerInstances = (...ids: ReadonlyArray<string>) =>
 	Effect.gen(function* () {
@@ -89,7 +105,11 @@ describe("Database", () => {
 				const db = queries(sql);
 				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
-				const project = yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" });
+				const project = yield* ProjectRow.insert.makeEffect({
+					id: "project-1",
+					name: "codework",
+					status: "active",
+				});
 				yield* db.insertProject(project);
 
 				const found = yield* db.findProject("project-1");
@@ -102,132 +122,138 @@ describe("Database", () => {
 		);
 
 		it(
-			"inserts and reads a project with its directories",
+			"inserts and reads a project with its spaces",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const db = queries(sql);
 				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
-				yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" }));
-				yield* db.insertDirectory(
-					yield* ProjectDirectoryRow.insert.makeEffect({
-						id: "directory-1",
+				yield* db.insertProject(
+					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
+				);
+				yield* db.insertSpace(
+					yield* space({
+						id: "space-1",
 						projectId: "project-1",
-						directory: AbsolutePath.make("/workspace/codework"),
-						type: "main",
-						sandboxInstanceId: instance("sandbox-1"),
+						location: "/workspace/codework",
+						kind: "primary",
+						env: "sandbox-1",
 					}),
 				);
-				yield* db.insertDirectory(
-					yield* ProjectDirectoryRow.insert.makeEffect({
-						id: "directory-2",
+				yield* db.insertSpace(
+					yield* space({
+						id: "space-2",
 						projectId: "project-1",
-						directory: AbsolutePath.make("/workspace/codework-feature"),
-						type: "gitworktree",
-						sandboxInstanceId: instance("sandbox-2"),
+						location: "/workspace/codework-feature",
+						kind: "linked",
+						env: "sandbox-2",
 					}),
 				);
 
-				const directories = yield* db.selectDirectories("project-1");
-				expect(
-					directories.map((row) => ({
-						id: row.id,
-						directory: row.directory,
-						type: row.type,
-						sandboxInstanceId: row.sandboxInstanceId,
-					})),
-				).toEqual([
-					{
-						id: "directory-1",
-						directory: AbsolutePath.make("/workspace/codework"),
-						type: "main",
-						sandboxInstanceId: instance("sandbox-1"),
-					},
-					{
-						id: "directory-2",
-						directory: AbsolutePath.make("/workspace/codework-feature"),
-						type: "gitworktree",
-						sandboxInstanceId: instance("sandbox-2"),
-					},
-				]);
+				const spaces = yield* db.selectSpaces("project-1");
+				expect(spaces.map((row) => ({ id: row.id, location: row.location, kind: row.kind, env: row.env }))).toEqual(
+					[
+						{ id: "space-1", location: "/workspace/codework", kind: "primary", env: instance("sandbox-1") },
+						{
+							id: "space-2",
+							location: "/workspace/codework-feature",
+							kind: "linked",
+							env: instance("sandbox-2"),
+						},
+					],
+				);
 			}),
 		);
 
 		it(
-			"enforces foreign keys and unique project directories",
+			"enforces foreign keys, one row per place, and one primary per env",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const db = queries(sql);
 				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
-				const orphan = yield* ProjectDirectoryRow.insert.makeEffect({
+				const orphan = yield* space({
 					id: "orphan",
 					projectId: "missing-project",
-					directory: AbsolutePath.make("/workspace/orphan"),
-					type: "root",
-					sandboxInstanceId: instance("sandbox-orphan"),
+					location: "/workspace/orphan",
+					kind: "plain",
+					env: "sandbox-orphan",
 				});
-				const orphanExit = yield* db.insertDirectory(orphan).pipe(Effect.exit);
+				const orphanExit = yield* db.insertSpace(orphan).pipe(Effect.exit);
 				expect(orphanExit._tag).toBe("Failure");
 
-				yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" }));
-				yield* db.insertDirectory(
-					yield* ProjectDirectoryRow.insert.makeEffect({
-						id: "directory-1",
+				yield* db.insertProject(
+					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
+				);
+				yield* db.insertSpace(
+					yield* space({
+						id: "space-1",
 						projectId: "project-1",
-						directory: AbsolutePath.make("/workspace/codework"),
-						type: "main",
-						sandboxInstanceId: instance("sandbox-1"),
+						location: "/workspace/codework",
+						kind: "primary",
+						env: "sandbox-1",
 					}),
 				);
 
 				// The same path in a different sandbox is a different place, so it
-				// registers independently rather than colliding.
-				const otherEnv = yield* ProjectDirectoryRow.insert.makeEffect({
-					id: "directory-2",
+				// registers independently — and may be that env's primary.
+				const otherEnv = yield* space({
+					id: "space-2",
 					projectId: "project-1",
-					directory: AbsolutePath.make("/workspace/codework"),
-					type: "root",
-					sandboxInstanceId: instance("sandbox-2"),
+					location: "/workspace/codework",
+					kind: "primary",
+					env: "sandbox-2",
 				});
-				const otherEnvExit = yield* db.insertDirectory(otherEnv).pipe(Effect.exit);
+				const otherEnvExit = yield* db.insertSpace(otherEnv).pipe(Effect.exit);
 				expect(otherEnvExit._tag).toBe("Success");
 
 				// The same path in the same sandbox is a genuine duplicate.
-				const duplicate = yield* ProjectDirectoryRow.insert.makeEffect({
-					id: "directory-3",
+				const duplicate = yield* space({
+					id: "space-3",
 					projectId: "project-1",
-					directory: AbsolutePath.make("/workspace/codework"),
-					type: "root",
-					sandboxInstanceId: instance("sandbox-1"),
+					location: "/workspace/codework",
+					kind: "copy",
+					env: "sandbox-1",
 				});
-				const duplicateExit = yield* db.insertDirectory(duplicate).pipe(Effect.exit);
+				const duplicateExit = yield* db.insertSpace(duplicate).pipe(Effect.exit);
 				expect(duplicateExit._tag).toBe("Failure");
+
+				// A second primary in the same (project, env) is refused.
+				const secondPrimary = yield* space({
+					id: "space-4",
+					projectId: "project-1",
+					location: "/workspace/codework-clone",
+					kind: "primary",
+					env: "sandbox-1",
+				});
+				const secondPrimaryExit = yield* db.insertSpace(secondPrimary).pipe(Effect.exit);
+				expect(secondPrimaryExit._tag).toBe("Failure");
 			}),
 		);
 
 		it(
-			"deletes project directories when their project is deleted",
+			"restricts deleting a project that still has spaces",
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
 				const db = queries(sql);
 				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
-				yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" }));
-				yield* db.insertDirectory(
-					yield* ProjectDirectoryRow.insert.makeEffect({
-						id: "directory-1",
+				yield* db.insertProject(
+					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
+				);
+				yield* db.insertSpace(
+					yield* space({
+						id: "space-1",
 						projectId: "project-1",
-						directory: AbsolutePath.make("/workspace/codework"),
-						type: "main",
-						sandboxInstanceId: instance("sandbox-1"),
+						location: "/workspace/codework",
+						kind: "primary",
+						env: "sandbox-1",
 					}),
 				);
 
-				yield* sql`DELETE FROM project WHERE id = ${"project-1"}`;
-
-				const directories = yield* db.selectDirectories("project-1");
-				expect(directories).toEqual([]);
+				const exit = yield* sql`DELETE FROM project WHERE id = ${"project-1"}`.pipe(Effect.exit);
+				expect(exit._tag).toBe("Failure");
+				expect(yield* db.selectSpaces("project-1")).toHaveLength(1);
 			}),
 		);
 	});
@@ -240,7 +266,9 @@ describe("Database", () => {
 				const db = queries(sql);
 				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
-				yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" }));
+				yield* db.insertProject(
+					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
+				);
 
 				yield* sql.withTransaction(
 					Effect.gen(function* () {
@@ -248,7 +276,9 @@ describe("Database", () => {
 						// connection), so crossing an async boundary is fine — the
 						// old drizzle wrapper had to forbid this
 						yield* Effect.promise(() => Promise.resolve());
-						yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-2", name: "widget" }));
+						yield* db.insertProject(
+							yield* ProjectRow.insert.makeEffect({ id: "project-2", name: "widget", status: "active" }),
+						);
 					}),
 				);
 
@@ -264,14 +294,20 @@ describe("Database", () => {
 				const db = queries(sql);
 				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
 
-				yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework" }));
+				yield* db.insertProject(
+					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
+				);
 
 				const exit = yield* sql
 					.withTransaction(
 						Effect.gen(function* () {
-							yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-2", name: "widget" }));
+							yield* db.insertProject(
+								yield* ProjectRow.insert.makeEffect({ id: "project-2", name: "widget", status: "active" }),
+							);
 							// duplicate primary key forces the transaction to fail
-							yield* db.insertProject(yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "dupe" }));
+							yield* db.insertProject(
+								yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "dupe", status: "active" }),
+							);
 						}),
 					)
 					.pipe(Effect.exit);

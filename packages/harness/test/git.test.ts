@@ -5,8 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
-import { AppProcessError, type Interface, Service, WorktreeError, defaultLayer } from "../src/git/git.ts";
-import { AbsolutePath } from "../src/schema.ts";
+import { AppProcessError, type Interface, Service, defaultLayer } from "../src/git/git.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 
 const execFilePromise = promisify(execFile);
@@ -48,16 +47,6 @@ const withGit = <A>(effect: (git: Interface) => Effect.Effect<A, unknown>) =>
 			return yield* effect(yield* Service);
 		}).pipe(Effect.provide(defaultLayer("/"))),
 	);
-
-/**
- * Build a `Repo` value without going through `git.find`. Only `directory` is
- * consulted by `remote`/`roots`, so a synthetic `store` is good enough for
- * those call sites.
- */
-const repoAt = (directory: string): { directory: AbsolutePath; store: AbsolutePath } => ({
-	directory: AbsolutePath.make(directory),
-	store: AbsolutePath.make(path.join(directory, ".git")),
-});
 
 describe("Git", () => {
 	let tmp: { path: string; [Symbol.asyncDispose](): Promise<void> };
@@ -168,49 +157,12 @@ describe("Git", () => {
 		});
 	});
 
-	describe("find", () => {
-		it("discovers the repository from a nested subdirectory", async () => {
-			const dir = await cloneOf(bareRemote, "find-nested");
-			const realDir = await fs.realpath(dir);
-			const nested = path.join(dir, "packages");
-
-			const discovered = await withGit((git) => git.find(AbsolutePath.make(nested)));
-			expect(discovered).toEqual({
-				directory: realDir,
-				store: path.join(realDir, ".git"),
-			});
-		});
-
-		it("returns undefined outside of any working tree", async () => {
-			const outside = path.join(root, `not-a-repo-${randomUUID()}`);
-			await fs.mkdir(outside, { recursive: true });
-			expect(await withGit((git) => git.find(AbsolutePath.make(outside)))).toBeUndefined();
-		});
-
-		it("maps a linked worktree back to the shared store", async () => {
-			const dir = await cloneOf(bareRemote, "find-worktree");
-			const realDir = await fs.realpath(dir);
-			const repo = repoAt(realDir);
-			const worktreeDirectory = AbsolutePath.make(path.join(root, `find-wt-${randomUUID()}`));
-
-			await withGit((git) => git.worktreeCreate({ repo, directory: worktreeDirectory }));
-			const realWorktree = await fs.realpath(worktreeDirectory);
-
-			const discovered = await withGit((git) => git.find(worktreeDirectory));
-			expect(discovered).toEqual({
-				directory: AbsolutePath.make(realWorktree),
-				store: AbsolutePath.make(path.join(realDir, ".git")),
-			});
-		});
-	});
-
 	describe("introspection", () => {
 		it("reads the configured remote url, including a missing one", async () => {
 			const dir = await cloneOf(bareRemote, "remote");
-			const repo = repoAt(dir);
-			expect(await withGit((git) => git.remote(repo))).toBe(bareRemote);
-			expect(await withGit((git) => git.remote(repo, "origin"))).toBe(bareRemote);
-			expect(await withGit((git) => git.remote(repo, "upstream"))).toBeUndefined();
+			expect(await withGit((git) => git.remote(dir))).toBe(bareRemote);
+			expect(await withGit((git) => git.remote(dir, "origin"))).toBe(bareRemote);
+			expect(await withGit((git) => git.remote(dir, "upstream"))).toBeUndefined();
 		});
 
 		it("reads remote.origin.url and reports its absence", async () => {
@@ -224,7 +176,7 @@ describe("Git", () => {
 
 		it("returns the single root commit, sorted", async () => {
 			const dir = await cloneOf(bareRemote, "roots-single");
-			const roots = await withGit((git) => git.roots(repoAt(dir)));
+			const roots = await withGit((git) => git.roots(dir));
 			expect(roots).toHaveLength(1);
 			expect(roots[0]).toMatch(/^[0-9a-f]{40}$/);
 		});
@@ -238,7 +190,7 @@ describe("Git", () => {
 			await runGit(dir, "checkout", "main");
 			await runGit(dir, "merge", "--allow-unrelated-histories", "-m", "merge", "second");
 
-			const roots = await withGit((git) => git.roots(repoAt(dir)));
+			const roots = await withGit((git) => git.roots(dir));
 			expect(roots).toHaveLength(2);
 			expect(roots.every((sha) => /^[0-9a-f]{40}$/.test(sha))).toBe(true);
 			expect(roots).toEqual([...roots].sort());
@@ -260,10 +212,32 @@ describe("Git", () => {
 			// against the path it was handed, not the canonical realpath.
 			expect(await withGit((git) => git.dir(dir))).toBe(path.join(dir, ".git"));
 
-			const worktreeDirectory = AbsolutePath.make(path.join(root, `dir-wt-${randomUUID()}`));
-			await withGit((git) => git.worktreeCreate({ repo: repoAt(realDir), directory: worktreeDirectory }));
+			const worktreeDirectory = path.join(root, `dir-wt-${randomUUID()}`);
+			await runGit(realDir, "worktree", "add", "--detach", worktreeDirectory, "HEAD");
 			const gitDir = await withGit((git) => git.dir(worktreeDirectory));
 			expect(gitDir).toBe(path.join(realDir, ".git", "worktrees", path.basename(worktreeDirectory)));
+		});
+
+		it("rev-parses toplevel, git-dir and common-dir as absolute paths", async () => {
+			const dir = await cloneOf(bareRemote, "rev-parse");
+			const nested = path.join(dir, "nested");
+			await fs.mkdir(nested);
+			expect(await withGit((git) => git.revParse(nested, "--show-toplevel"))).toBe(await fs.realpath(dir));
+			expect(await withGit((git) => git.revParse(dir, "--git-dir"))).toBe(path.join(dir, ".git"));
+			expect(await withGit((git) => git.revParse(dir, "--git-common-dir"))).toBe(path.join(dir, ".git"));
+
+			const outside = path.join(root, `rev-parse-outside-${randomUUID()}`);
+			await fs.mkdir(outside, { recursive: true });
+			expect(await withGit((git) => git.revParse(outside, "--show-toplevel"))).toBeUndefined();
+		});
+
+		it("exec surfaces non-zero exits as results, not failures", async () => {
+			const dir = await cloneOf(bareRemote, "exec");
+			const ok = await withGit((git) => git.exec(dir, ["status", "--porcelain"]));
+			expect(ok.exitCode).toBe(0);
+			const bad = await withGit((git) => git.exec(dir, ["rev-parse", "no-such-ref"]));
+			expect(bad.exitCode).not.toBe(0);
+			expect(bad.stderr.length).toBeGreaterThan(0);
 		});
 
 		it("reports the current branch and undefined when detached", async () => {
@@ -372,76 +346,12 @@ describe("Git", () => {
 		});
 	});
 
-	describe("worktrees", () => {
-		it("creates a detached worktree and lists it", async () => {
-			const dir = await cloneOf(bareRemote, "wt-create");
-			const realDir = await fs.realpath(dir);
-			const repo = repoAt(realDir);
-			const worktreeDirectory = AbsolutePath.make(path.join(root, `wt-${randomUUID()}`));
-
-			expect(await withGit((git) => git.worktreeList(repo))).toEqual([AbsolutePath.make(realDir)]);
-
-			await withGit((git) => git.worktreeCreate({ repo, directory: worktreeDirectory }));
-			const realWorktree = AbsolutePath.make(await fs.realpath(worktreeDirectory));
-
-			expect(await withGit((git) => git.worktreeList(repo))).toEqual([AbsolutePath.make(realDir), realWorktree]);
-			// `--detach` leaves the worktree on a detached HEAD at the repo HEAD.
-			expect(await withGit((git) => git.branch(worktreeDirectory))).toBeUndefined();
-			expect(await withGit((git) => git.head(worktreeDirectory))).toBe(await withGit((git) => git.head(dir)));
-		});
-
-		it("force-removes a worktree even when it is dirty", async () => {
-			const dir = await cloneOf(bareRemote, "wt-remove");
-			const realDir = await fs.realpath(dir);
-			const repo = repoAt(realDir);
-			const worktreeDirectory = AbsolutePath.make(path.join(root, `wt-rm-${randomUUID()}`));
-
-			await withGit((git) => git.worktreeCreate({ repo, directory: worktreeDirectory }));
-			await fs.writeFile(path.join(worktreeDirectory, "dirty.txt"), "uncommitted\n");
-
-			await withGit((git) => git.worktreeRemove({ repo, directory: worktreeDirectory }));
-			expect(await exists(worktreeDirectory)).toBe(false);
-			expect(await withGit((git) => git.worktreeList(repo))).toEqual([AbsolutePath.make(realDir)]);
-		});
-
-		it("fails with a WorktreeError when creating over an existing path", async () => {
-			const dir = await cloneOf(bareRemote, "wt-create-err");
-			const repo = repoAt(await fs.realpath(dir));
-			const occupied = AbsolutePath.make(path.join(root, `wt-occupied-${randomUUID()}`));
-			await fs.mkdir(occupied, { recursive: true });
-			await fs.writeFile(path.join(occupied, "keep.txt"), "keep\n");
-
-			const error = await withGit((git) => git.worktreeCreate({ repo, directory: occupied }).pipe(Effect.flip));
-			expect(error).toBeInstanceOf(WorktreeError);
-			expect((error as WorktreeError).operation).toBe("create");
-			expect((error as WorktreeError).directory).toBe(occupied);
-			expect((error as WorktreeError).message.length).toBeGreaterThan(0);
-		});
-
-		it("fails with a WorktreeError when removing a non-worktree path", async () => {
-			const dir = await cloneOf(bareRemote, "wt-remove-err");
-			const repo = repoAt(await fs.realpath(dir));
-			const missing = AbsolutePath.make(path.join(root, `wt-missing-${randomUUID()}`));
-
-			const error = await withGit((git) => git.worktreeRemove({ repo, directory: missing }).pipe(Effect.flip));
-			expect(error).toBeInstanceOf(WorktreeError);
-			expect((error as WorktreeError).operation).toBe("remove");
-			expect((error as WorktreeError).directory).toBe(missing);
-		});
-	});
-
 	describe("errors", () => {
 		it("exposes a tagged AppProcessError type", () => {
 			const error = new AppProcessError({ command: "git status" });
 			expect(error).toBeInstanceOf(AppProcessError);
 			expect(error._tag).toBe("AppProcessError");
 			expect(error.command).toBe("git status");
-		});
-
-		it("tags WorktreeError under the Git namespace", () => {
-			const error = new WorktreeError({ operation: "list", message: "boom" });
-			expect(error._tag).toBe("Git.WorktreeError");
-			expect(error.operation).toBe("list");
 		});
 	});
 });

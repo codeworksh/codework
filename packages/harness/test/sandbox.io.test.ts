@@ -279,7 +279,7 @@ describe("SandboxIO identity", () => {
 		expect(() => SandboxIO.resolveMountCwd("workspace")).toThrow("Sandbox default cwd must be absolute");
 	});
 
-	// `cwd` is persisted, and `project_directory` is keyed on a hash of the path:
+	// `cwd` is persisted, and `space` is keyed on a hash of the path:
 	// a surviving trailing slash would be a second row for one directory. A
 	// provider default (`getWorkDir()`) or a config value may carry one.
 	it("canonicalizes a trailing slash out of the mount cwd", () => {

@@ -2,14 +2,12 @@ import "./utils/env.ts";
 
 import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
 import { Effect, Layer } from "effect";
-import { SqlClient } from "effect/unstable/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
 import { LLMEventPublisher } from "../src/runner/event.ts";
 import { LLM } from "../src/runner/llm.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { AbsolutePath } from "../src/schema.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { Session } from "../src/session/session.ts";
 import { testEffect } from "./utils/effect.ts";
@@ -18,16 +16,14 @@ const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.prov
 const { effect: it } = testEffect(layer);
 
 const setup = Effect.gen(function* () {
-	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local','local',0,0)`;
+	const { spaceId, location } = yield* seedSpace();
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
-		projectId: "local",
+		spaceId,
 		slug: `provider-${crypto.randomUUID()}`,
-		directory: AbsolutePath.make("/repo"),
+		directory: location,
 		title: "Provider test",
 		tag: "test",
-		sandboxInstanceId: SandboxInstance.ID.local,
 	});
 	return { sessionId: session.id, publisher: yield* LLMEventPublisher.make({ sessionId: session.id }) };
 });

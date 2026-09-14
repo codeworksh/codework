@@ -1,15 +1,19 @@
 import "./utils/env.ts";
 import { Settings } from "../src/settings/settings.ts";
 import { Effect, Option } from "effect";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { describe, expect } from "vite-plus/test";
 import { Harness } from "../src/effect/harness.ts";
 import { Sandbox } from "../src/effect/sandbox.ts";
 import { Session } from "../src/effect/session.ts";
 import { Global } from "../src/global.ts";
 import type { LLM } from "../src/runner/llm.ts";
+import { SandboxController } from "../src/sandbox/control.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
 import { Session as SessionStore } from "../src/session/session.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { it } from "./utils/effect.ts";
@@ -184,6 +188,48 @@ describe("Harness Effect SDK", () => {
 		),
 	);
 
+	it.effect("relinks a session to another checkout of the same project", () =>
+		Effect.acquireUseRelease(
+			Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "codework-relink-"))),
+			(base) =>
+				withHarness(
+					Effect.gen(function* () {
+						// Two checkouts of one project: the same origin yields the same
+						// project id, so a session may move between them.
+						const exec = promisify(execFile);
+						const a = path.join(base, "clone-a");
+						const b = path.join(base, "clone-b");
+						for (const dir of [a, b]) {
+							yield* Effect.promise(() => fs.mkdir(dir, { recursive: true }));
+							yield* Effect.promise(() => exec("git", ["init", "-q", "-b", "main"], { cwd: dir }));
+							yield* Effect.promise(() =>
+								exec("git", ["remote", "add", "origin", "git@example.com:org/repo.git"], { cwd: dir }),
+							);
+						}
+						const subA = path.join(a, "packages", "x");
+						yield* Effect.promise(() => fs.mkdir(subA, { recursive: true }));
+						const rootB = yield* Effect.promise(() => fs.realpath(b));
+
+						// The rebased path exists in the target: the session keeps its
+						// position under the new root.
+						yield* Effect.promise(() => fs.mkdir(path.join(b, "packages", "x"), { recursive: true }));
+						const session = yield* Session.create({ directory: subA });
+						const moved = yield* Session.relink({ sessionId: session.id, directory: b });
+						expect((yield* moved.info).directory).toBe(path.join(rootB, "packages", "x"));
+
+						// No counterpart under the new root: the session lands on the
+						// directory it was pointed at instead of stranding on a missing path.
+						const orphan = path.join(a, "only-in-a");
+						yield* Effect.promise(() => fs.mkdir(orphan, { recursive: true }));
+						const other = yield* Session.create({ directory: orphan });
+						const landed = yield* Session.relink({ sessionId: other.id, directory: b });
+						expect((yield* landed.info).directory).toBe(rootB);
+					}),
+				),
+			(base) => Effect.promise(() => fs.rm(base, { recursive: true, force: true })),
+		),
+	);
+
 	it.effect("derives Global children from Harness.layer home", () =>
 		Effect.acquireUseRelease(
 			Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "codework-sdk-home-"))),
@@ -202,11 +248,17 @@ describe("Harness Effect SDK", () => {
 			Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "codework-sdk-sandbox-"))),
 			(home) =>
 				Effect.gen(function* () {
+					const sandboxes = yield* SandboxController.Controller;
 					for (const driver of ["memory", "sqldb"] as const) {
 						const sandbox = yield* Sandbox.create({
 							driver,
 							config: { defaultCwd: "/provider-default", initializeCwd: "/provider-default" },
 						});
+						// A session cwd resolves into a space, so it has to exist in the sandbox.
+						yield* sandboxes.withMount(
+							sandbox.id,
+							Effect.flatMap(SandboxIO.FileSystem, (fs) => fs.mkdir("/session/repo", { recursive: true })),
+						);
 						const defaults = yield* Session.create({ sandbox });
 						const overridden = yield* Session.create({ sandbox, directory: "/session/repo" });
 						expect((yield* defaults.info).directory).toBe("/provider-default");

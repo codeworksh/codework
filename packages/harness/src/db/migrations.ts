@@ -38,8 +38,8 @@ export const migrations = {
 		yield* sql`CREATE UNIQUE INDEX event_aggregate_id_seq_idx ON event (aggregate_id, seq)`;
 		yield* sql`CREATE INDEX event_aggregate_id_type_seq_idx ON event (aggregate_id, type, seq)`;
 
-		// A durable filesystem namespace. Created before project_directory and
-		// session because both reference it. Reference counts are deliberately
+		// A durable filesystem namespace. Created before space because it
+		// references it. Reference counts are deliberately
 		// absent: they live in control-plane memory, since a persisted count cannot
 		// tell whether the process that took it is still running.
 		//
@@ -78,54 +78,71 @@ export const migrations = {
 			WHERE provider_resource_id IS NOT NULL AND status != 'removed'
 		`;
 
+		// A logical codebase, env-independent. Archived rather than deleted once
+		// it has no active space anywhere, so session history stays reachable.
 		yield* sql`
 			CREATE TABLE project (
 				id TEXT PRIMARY KEY,
 				name TEXT NOT NULL,
+				status TEXT NOT NULL CHECK (status IN ('active', 'archived')),
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL
 			)
 		`;
 
-		// Nullable, NULL = the host. RESTRICT, not CASCADE: destroying
-		// infrastructure tombstones the sandbox row rather than deleting it, so
-		// history keeps a valid reference. The FK is skipped on NULL, so a host
-		// directory can be written before any namespace is registered.
+		// One directory in one env. `id` is Hash.fast([env|'local', location]) —
+		// no project component, so re-pointing a space to another project keeps
+		// every session key intact. `env` NULL = host (same convention as
+		// sandbox_instance_id everywhere else); the FK is skipped on NULL.
+		// RESTRICT on both FKs: a space with sessions is archived, never deleted,
+		// and a destroyed sandbox is tombstoned, not removed.
 		yield* sql`
-			CREATE TABLE project_directory (
+			CREATE TABLE space (
 				id TEXT PRIMARY KEY,
-				project_id TEXT NOT NULL REFERENCES project(id) ON UPDATE CASCADE ON DELETE CASCADE,
-				directory TEXT NOT NULL,
-				type TEXT NOT NULL,
-				sandbox_instance_id TEXT
+				project_id TEXT NOT NULL REFERENCES project(id) ON UPDATE CASCADE ON DELETE RESTRICT,
+				location TEXT NOT NULL,
+				kind TEXT NOT NULL CHECK (kind IN ('primary', 'linked', 'copy', 'plain')),
+				env TEXT
 					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT
-					CHECK (sandbox_instance_id IS NULL OR sandbox_instance_id <> 'local'),
+					CHECK (env IS NULL OR env <> 'local'),
+				status TEXT NOT NULL CHECK (status IN ('active', 'archived')),
 				created_at INTEGER NOT NULL,
 				updated_at INTEGER NOT NULL
 			)
 		`;
 
-		// SQLite treats NULLs as distinct in a unique index, so (project, NULL, '/repo')
-		// would insert twice. Coalescing to the reserved id makes the
-		// index read as what it means.
+		// One place, one row. SQLite treats NULLs as distinct in a unique index,
+		// so (NULL, '/repo') would insert twice; coalescing to the reserved id
+		// makes the index read as what it means.
 		yield* sql`
-			CREATE UNIQUE INDEX project_directory_project_directory_idx
-			ON project_directory (project_id, COALESCE(sandbox_instance_id, 'local'), directory)
+			CREATE UNIQUE INDEX space_location_idx
+			ON space (COALESCE(env, 'local'), location)
 		`;
 
+		// Exactly one primary per (project, env). Partial: the other kinds are
+		// unbounded. Status is deliberately not part of the predicate — an
+		// archived primary must be demoted before another can be promoted.
+		yield* sql`
+			CREATE UNIQUE INDEX space_primary_idx
+			ON space (project_id, COALESCE(env, 'local')) WHERE kind = 'primary'
+		`;
+
+		yield* sql`CREATE INDEX space_project_idx ON space (project_id)`;
+
+		// A session belongs to a space; project and env are derived through it,
+		// never denormalised here. `directory` is the ABSOLUTE realpath of the
+		// session cwd, always equal to or under space.location (which is immutable).
+		// RESTRICT: sessions are history, a referenced space cannot go away.
 		yield* sql`
 			CREATE TABLE session (
 				id TEXT PRIMARY KEY,
-				project_id TEXT NOT NULL REFERENCES project(id) ON UPDATE CASCADE ON DELETE CASCADE,
+				space_id TEXT NOT NULL REFERENCES space(id) ON UPDATE CASCADE ON DELETE RESTRICT,
 				parent_id TEXT REFERENCES session(id) ON UPDATE CASCADE ON DELETE SET NULL,
 				slug TEXT NOT NULL,
 				directory TEXT NOT NULL,
 				title TEXT NOT NULL,
 				tag TEXT,
 				metadata TEXT,
-				sandbox_instance_id TEXT
-					REFERENCES sandbox_instance(id) ON UPDATE CASCADE ON DELETE RESTRICT
-					CHECK (sandbox_instance_id IS NULL OR sandbox_instance_id <> 'local'),
 				cost REAL NOT NULL DEFAULT 0,
 				tokens_input INTEGER NOT NULL DEFAULT 0,
 				tokens_output INTEGER NOT NULL DEFAULT 0,
@@ -136,6 +153,7 @@ export const migrations = {
 			)
 		`;
 
+		yield* sql`CREATE INDEX session_space_idx ON session (space_id)`;
 		yield* sql`CREATE UNIQUE INDEX session_slug_idx ON session (slug)`;
 		yield* sql`CREATE INDEX session_tag_idx ON session (tag)`;
 

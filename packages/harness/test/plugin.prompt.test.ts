@@ -1,6 +1,7 @@
 import "./utils/env.ts";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
+import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
@@ -50,7 +51,8 @@ describe("codework.prompt.default", () => {
 			expect(prompt.startsWith("You are an expert coding assistant")).toBe(true);
 			expect(prompt).toContain("Available tools:\n- bash: Execute bash commands");
 			expect(prompt).toContain("\n\nGuidelines:\n- Be concise.");
-			expect(prompt.endsWith(`Current working directory: ${root}`)).toBe(true);
+			// The directory is the session's realpath'd cwd, not the spelling it was given.
+			expect(prompt.endsWith(`Current working directory: ${await realpath(root)}`)).toBe(true);
 		}));
 
 	it("replaces the foundation with promptCustom and places promptSystemAppend before the directory line", () =>
@@ -67,7 +69,7 @@ describe("codework.prompt.default", () => {
 					"Available tools:\n(none)",
 					"Guidelines:\n- Be concise. Report what you did and what you found, not what you are about to do.\n- Quote exact paths and command output rather than paraphrasing them.\n- If a command fails, read the error before retrying.",
 					"Extra section.",
-					`Current working directory: ${root}`,
+					`Current working directory: ${await realpath(root)}`,
 				].join("\n\n"),
 			);
 		}));

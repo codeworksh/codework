@@ -1,7 +1,22 @@
 import { create, RealFSProvider } from "@platformatic/vfs";
 import { Layer } from "effect";
+// The VFS provider contract is Promise/sync-based, so Effect's FileSystem cannot back it.
+// @effect-diagnostics-next-line nodeBuiltinImport:off
+import fs from "node:fs";
 import { Process } from "../utils/process.ts";
 import { Local } from "./vfs.ts";
+
+// `RealFSProvider.realpath` mis-maps results for a `/` root (it looks for a
+// `//` prefix and falls back to echoing the input), so with provider paths
+// equal to OS paths, defer straight to the OS.
+class HostProvider extends RealFSProvider {
+	override realpath(path: string) {
+		return fs.promises.realpath(path);
+	}
+	override realpathSync(path: string) {
+		return fs.realpathSync(path);
+	}
+}
 
 /**
  * The host VFS: provider-rooted at `/`, and never `chdir`ed.
@@ -18,7 +33,7 @@ import { Local } from "./vfs.ts";
  * resolves them, and nothing here should.
  */
 export const layer = () => {
-	const vfs = create(new RealFSProvider("/"), {
+	const vfs = create(new HostProvider("/"), {
 		moduleHooks: false,
 		virtualCwd: true,
 	});

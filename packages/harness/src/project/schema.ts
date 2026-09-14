@@ -1,55 +1,19 @@
 import { Schema } from "effect";
-import { SandboxInstance } from "../sandbox/instance.ts";
-import { AbsolutePath, withStatics } from "../schema.ts";
+import { RepoSchema } from "../repo/schema.ts";
 
-// Represents the project ID type
-// defaults to local
-export const ID = Schema.String.pipe(
-	Schema.brand("Project.ID"),
-	withStatics((schema) => ({
-		local: schema.make("local"),
-	})),
-);
+// Env-independent project id: marker ?? remoteHash ?? rootCommit ?? provisional.
+export const ID = Schema.String.pipe(Schema.brand("Project.ID"));
 export type ID = typeof ID.Type;
 
-// Represents identified vcs type and path
-// Example:
-// ```
-// {
-//  store: "/app/code/.git",
-//  type: "git"
-// }
-// ```
-export const Vcs = Schema.Union([
-	Schema.Struct({
-		type: Schema.Literal("git"),
-		store: AbsolutePath,
-	}),
-]);
-export type Vcs = typeof Vcs.Type;
-
-export const DirectoriesInput = Schema.Struct({
-	projectId: ID,
-}).annotate({ identifier: "Project.DirectoriesInput" });
-export type DirectoriesInput = typeof DirectoriesInput.Type;
-
-export const Directories = Schema.Array(AbsolutePath).annotate({
-	identifier: "Project.Directories",
-});
-export type Directories = typeof Directories.Type;
-
-export const ProjectDirectory = Schema.Struct({
-	directory: AbsolutePath,
-	sandboxInstanceId: SandboxInstance.ID,
-	type: Schema.Union([Schema.Literal("main"), Schema.Literal("root"), Schema.Literal("gitworktree")]),
-});
-export type ProjectDirectory = typeof ProjectDirectory.Type;
+// A project is archived, never deleted, once it has no active space anywhere.
+export const Status = Schema.Literals(["active", "archived"]);
+export type Status = typeof Status.Type;
 
 export class Info extends Schema.Class<Info>("Project.Info")({
 	id: ID,
-	vcs: Schema.optional(Vcs),
 	name: Schema.String,
-	directory: AbsolutePath,
+	status: Status,
+	vcs: Schema.optional(RepoSchema.Vcs),
 }) {}
 
 export * as ProjectSchema from "./schema.ts";

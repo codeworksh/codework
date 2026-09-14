@@ -1,6 +1,7 @@
 import { Cause, Context, DateTime, type Duration, Effect, Layer, LayerMap, Option, Schema, Semaphore } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
+import { Space } from "../space/space.ts";
 import { SandboxDriver } from "./driver.ts";
 import { SandboxDriverRegistry } from "./registry.ts";
 import {
@@ -832,16 +833,25 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			),
 		);
 		const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-		yield* sql`
-			UPDATE sandbox_instance
-			SET
-				status = 'removed',
-				removed_at = ${now},
-				state_observed_at = ${now},
-				last_error = NULL,
-				updated_at = ${now}
-			WHERE id = ${id}
-		`.pipe(Effect.orDie);
+		// Tombstone and archive the env's spaces atomically (D-ENV). The UPDATE
+		// goes first so the DEFERRED transaction takes its write lock up front.
+		yield* sql
+			.withTransaction(
+				Effect.gen(function* () {
+					yield* sql`
+						UPDATE sandbox_instance
+						SET
+							status = 'removed',
+							removed_at = ${now},
+							state_observed_at = ${now},
+							last_error = NULL,
+							updated_at = ${now}
+						WHERE id = ${id}
+					`;
+					yield* Space.archiveEnv(id);
+				}),
+			)
+			.pipe(Effect.provideService(SqlClient.SqlClient, sql), Effect.orDie);
 	});
 
 	const createAndMount: Interface["createAndMount"] = (input, mountOptions) => {

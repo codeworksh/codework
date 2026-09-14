@@ -1,11 +1,12 @@
 import type { Model } from "@codeworksh/aikit";
-import { DateTime, Effect, Option, Stream } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { Effect, Option, Stream } from "effect";
 import * as Control from "../control.ts";
 import * as Event from "../event/event.ts";
 import type { EventSchema } from "../event/schema.ts";
+import { Location } from "../location/location.ts";
 import * as SandboxController from "../sandbox/control.ts";
 import { SandboxInstance as SandboxInstanceSchema } from "../sandbox/instance.ts";
+import { SandboxIO } from "../sandbox/io.ts";
 import { AbsolutePath } from "../schema.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { Delivery } from "../session/prompt/schema.ts";
@@ -46,6 +47,12 @@ export interface CreateInput extends RuntimeInput {
 
 export interface AttachInput extends RuntimeInput {
 	readonly sessionId: SessionSchema.ID;
+}
+
+export interface RelinkInput {
+	readonly sessionId: SessionSchema.ID;
+	readonly sandbox?: SandboxInfo;
+	readonly directory?: string;
 }
 
 export type PromptInput =
@@ -105,15 +112,18 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 		const found = yield* sessions.get(id);
 		if (Option.isNone(found)) return yield* new SessionStore.SessionNotFoundError({ sessionId: id });
 		const row = found.value;
-		const sandboxId = SandboxInstanceSchema.fromField(row.sandboxInstanceId);
+		// The env is the space's. A missing space or a destroyed env both read as
+		// "no sandbox": the handle stays readable (title, directory); running it
+		// is the mount's call, which refuses a removed instance.
+		const space = Option.getOrUndefined(yield* sessions.space(id));
 		const sandbox =
-			sandboxId === SandboxInstanceSchema.ID.local
+			space === undefined || space.env === SandboxInstanceSchema.ID.local
 				? undefined
-				: Option.getOrUndefined(yield* sandboxes.get(sandboxId));
+				: Option.getOrUndefined(yield* sandboxes.get(space.env));
 		return {
 			id,
 			title: row.title,
-			directory: AbsolutePath.make(row.directory),
+			directory: row.directory,
 			...(sandbox === undefined ? {} : { sandbox }),
 		};
 	}).pipe(Effect.withSpan("Session.info"));
@@ -135,34 +145,61 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 	} satisfies Handle;
 });
 
-const ensureLocalProject = Effect.fn("Session.ensureLocalProject")(function* () {
-	const sql = yield* SqlClient.SqlClient;
-	const now = DateTime.toEpochMillis(yield* DateTime.now);
-	yield* sql`
-		INSERT INTO project (id, name, created_at, updated_at)
-		VALUES ('local', 'local', ${now}, ${now})
-		ON CONFLICT(id) DO NOTHING
-	`.pipe(Effect.orDie);
-});
-
 export const create = Effect.fn("Session.create")(function* (input: CreateInput = {}) {
 	const sessions = yield* SessionStore.Service;
 	const runtime = yield* SessionRuntime.Service;
 	const sandboxes = yield* SandboxController.Controller;
 	const id = SessionSchema.ID.create();
 	const sandboxId = input.sandbox?.id ?? SandboxInstanceSchema.ID.local;
-	const directory = yield* sandboxes.resolveCwd(sandboxId, input.directory);
-	yield* ensureLocalProject();
+	// Mount, then resolve the cwd into its space. The mount is
+	// what makes the directory mean anything, so resolution happens inside it.
+	const location = yield* sandboxes.withMount(
+		sandboxId,
+		Effect.provide(Location.Service.use(Effect.succeed), Location.layerMounted()),
+		input.directory === undefined ? undefined : { cwd: input.directory },
+	);
 	yield* sessions.create({
 		id,
-		projectId: "local",
+		spaceId: location.space.id,
+		directory: location.directory,
 		slug: id,
 		title: input.title ?? "Session",
-		directory: AbsolutePath.make(directory),
-		sandboxInstanceId: sandboxId,
 	});
 	yield* runtime.set(id, runtimeBindings(input));
 	return yield* makeHandle(id);
+});
+
+/**
+ * Move a session to wherever a checkout of the same project now lives — the
+ * remote env died and the repo was cloned locally, say. `directory` is
+ * resolved into its space exactly like `create`; the session keeps its
+ * position under the new root when that absolute path exists there, else it
+ * lands on the resolved directory. The transcript is untouched.
+ */
+export const relink = Effect.fn("Session.relink")(function* (input: RelinkInput) {
+	const sessions = yield* SessionStore.Service;
+	const sandboxes = yield* SandboxController.Controller;
+	const sandboxId = input.sandbox?.id ?? SandboxInstanceSchema.ID.local;
+	return yield* sandboxes.withMount(
+		sandboxId,
+		Effect.gen(function* () {
+			const location = yield* Location.Service.use(Effect.succeed).pipe(Effect.provide(Location.layerMounted()));
+			const session = yield* sessions.get(input.sessionId);
+			const current = yield* sessions.space(input.sessionId);
+			const rebased =
+				Option.isSome(session) && Option.isSome(current)
+					? SessionStore.rebaseDirectory(current.value.location, location.space.location, session.value.directory)
+					: undefined;
+			const fs = yield* SandboxIO.FileSystem;
+			const directory =
+				rebased !== undefined && (yield* fs.exists(rebased).pipe(Effect.orElseSucceed(() => false)))
+					? rebased
+					: location.directory;
+			yield* sessions.relink({ sessionId: input.sessionId, spaceId: location.space.id, directory });
+			return yield* makeHandle(input.sessionId);
+		}),
+		input.directory === undefined ? undefined : { cwd: input.directory },
+	);
 });
 
 export const get = Effect.fn("Session.get")(function* (sessionId: SessionSchema.ID) {

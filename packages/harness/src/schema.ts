@@ -66,12 +66,6 @@ export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 export const NonNegativeCost = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
 
 /**
- * Relative file path (e.g., `src/components/Button.tsx`).
- */
-export const RelativePath = Schema.String.pipe(Schema.brand("RelativePath"));
-export type RelativePath = Schema.Schema.Type<typeof RelativePath>;
-
-/**
  * Absolute file path (e.g., `/home/user/projects/myapp/src/main.ts`).
  */
 export const AbsolutePath = Schema.String.pipe(Schema.brand("AbsolutePath"));

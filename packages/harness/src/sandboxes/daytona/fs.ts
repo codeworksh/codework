@@ -18,7 +18,7 @@ const resolvePath = (path: string, options?: Options) => {
 };
 
 /** Resolve provider paths without adding policy or mutable working-directory state. */
-export const make = (provider: Interface, options?: Options): Interface => {
+export const make = (provider: Interface, options?: Options): SandboxFileSystem.Provider => {
 	const resolve = (path: string) => resolvePath(path, options);
 
 	return {
@@ -31,6 +31,7 @@ export const make = (provider: Interface, options?: Options): Interface => {
 		exists: (path) => provider.exists(resolve(path)),
 		mkdir: (path, mkdirOptions) => provider.mkdir(resolve(path), mkdirOptions),
 		rm: (path, rmOptions) => provider.rm(resolve(path), rmOptions),
+		realpath: (path) => provider.realpath(resolve(path)),
 	};
 };
 

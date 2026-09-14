@@ -36,7 +36,7 @@ const resolvePath = (path: string, options?: Options) => {
  * which every backend passes through — putting them here would cover only the
  * backends that happen to use this wrapper.
  */
-export const make = (provider: Interface, options?: Options): Interface => {
+export const make = (provider: Interface, options?: Options): SandboxFileSystem.Provider => {
 	const resolve = (path: string) => resolvePath(path, options);
 
 	return {
@@ -50,6 +50,7 @@ export const make = (provider: Interface, options?: Options): Interface => {
 		mkdir: (path, mkdirOptions) => provider.mkdir(resolve(path), mkdirOptions),
 		// option validation happens in `fromProvider`, before any mutation
 		rm: (path, rmOptions) => provider.rm(resolve(path), rmOptions),
+		realpath: (path) => provider.realpath(resolve(path)),
 	};
 };
 

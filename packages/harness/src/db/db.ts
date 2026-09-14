@@ -12,9 +12,12 @@ export { SqlClient, SqlSchema } from "effect/unstable/sql";
 // client holds a single connection for the lifetime of the layer, so the settings
 // apply to every query and a `:memory:` database stays intact across
 // transactions — important for serverless deployments and transient sessions
-// where no writable disk is available. (WAL is enabled by the client itself.)
+// where no writable disk is available. WAL is stated explicitly even though the
+// client defaults to it: readers must never block the resolve/refresh writer.
+// A `:memory:` database ignores it and reports `memory`, which is fine.
 const setup = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
+	yield* sql`PRAGMA journal_mode = WAL`;
 	yield* sql`PRAGMA synchronous = NORMAL`;
 	yield* sql`PRAGMA busy_timeout = 5000`;
 	yield* sql`PRAGMA cache_size = -64000`;

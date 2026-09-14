@@ -12,6 +12,7 @@ import { SessionProjector } from "../src/session/projector.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 
 // `Option` has no `.value` on the union — these tests treat a missing row as a
@@ -33,11 +34,11 @@ const prompt = PromptSchema.Prompt.make({ text: "fix the bug" });
 
 const seedSessions = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local','local',0,0)`;
+	const { spaceId, location } = yield* seedSpace();
 	for (const id of [sessionId, other]) {
 		yield* sql`
-			INSERT INTO session (id, project_id, slug, directory, title, tag, sandbox_instance_id, created_at, updated_at)
-			VALUES (${id}, 'local', ${id}, '/repo', 'T', 'test', NULL, 0, 0)
+			INSERT INTO session (id, space_id, slug, directory, title, tag, created_at, updated_at)
+			VALUES (${id}, ${spaceId}, ${id}, ${location}, 'T', 'test', 0, 0)
 		`;
 	}
 });

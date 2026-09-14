@@ -66,6 +66,17 @@ export const isNotFoundError = (cause: unknown) => {
 };
 
 /**
+ * Shell forms of `realpath` for backends that only expose a process API.
+ * `pwd -P` is the portable primitive: directories resolve directly, anything
+ * else resolves its parent and keeps the final name as given. Run as
+ * `sh -c <script> _ <path>`; try the first, fall back to the second.
+ */
+export const realpathScripts = [
+	'cd -- "$1" && pwd -P',
+	'cd -- "$(dirname -- "$1")" && printf \'%s/%s\' "$(pwd -P)" "$(basename -- "$1")"',
+] as const;
+
+/**
  * The backend-facing contract. Backends author plain promises and let them
  * reject; {@link fromProvider} turns rejections into typed failures.
  */
@@ -82,6 +93,8 @@ export interface Provider {
 	readonly exists: (path: string) => Promise<boolean>;
 	readonly mkdir: (path: string, options?: { recursive?: boolean }) => Promise<void>;
 	readonly rm: (path: string, options?: RmOptions) => Promise<void>;
+	/** Canonical absolute path with symlinks resolved; rejects when the path does not exist. */
+	readonly realpath: (path: string) => Promise<string>;
 	/**
 	 * Metadata for the directory entry itself rather than a symlink's target.
 	 * Optional: a backend whose `stat` has mixed symlink semantics implements it
@@ -106,6 +119,8 @@ export interface Interface {
 	readonly exists: (path: string) => Effect.Effect<boolean, FileSystemError>;
 	readonly mkdir: (path: string, options?: { recursive?: boolean }) => Effect.Effect<void, FileSystemError>;
 	readonly rm: (path: string, options?: RmOptions) => Effect.Effect<void, FileSystemError | OperationUnsupportedError>;
+	/** Canonical absolute path with symlinks resolved; fails when the path does not exist. */
+	readonly realpath: (path: string) => Effect.Effect<string, FileSystemError>;
 	// `lstat` is present only when the backend supports it; check before calling.
 	readonly lstat?: (path: string) => Effect.Effect<FileStat, FileSystemError>;
 }
@@ -197,6 +212,9 @@ export const fromProvider = (provider: Provider): Interface => {
 		rm: Effect.fn("SandboxFileSystem.rm")((path: string, options?: RmOptions) =>
 			validateRmOptions(options).pipe(Effect.andThen(attempt("rm", path, () => provider.rm(path, options)))),
 		),
+		realpath: Effect.fn("SandboxFileSystem.realpath")((path: string) =>
+			attempt("realpath", path, () => provider.realpath(path)),
+		),
 	};
 };
 
@@ -219,6 +237,7 @@ export const withCwd = (fs: Interface, cwd: string): Interface => {
 		exists: (path) => fs.exists(at(path)),
 		mkdir: (path, options) => fs.mkdir(at(path), options),
 		rm: (path, options) => fs.rm(at(path), options),
+		realpath: (path) => fs.realpath(at(path)),
 		// carried through only when the backend implements it, so a caller can
 		// still detect absence by checking the property
 		...(fs.lstat === undefined ? {} : { lstat: (path: string) => fs.lstat!(at(path)) }),

@@ -18,8 +18,6 @@ import { LLM } from "../src/runner/llm.ts";
 import { Loop } from "../src/runner/loop.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { AbsolutePath } from "../src/schema.ts";
 import { SessionInput } from "../src/session/input/input.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { SessionProjector } from "../src/session/projector.ts";
@@ -29,6 +27,7 @@ import { SessionRuntime } from "../src/session/runtime.ts";
 import { State } from "../src/state/state.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { assistant, immediateOpen } from "./fixtures/llm.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 
 const runtime = (
@@ -75,15 +74,13 @@ const delivered = Effect.fnUntraced(function* (sessionId: string) {
 });
 
 const seedSession = Effect.fnUntraced(function* (slug = "runner-loop") {
-	const sql = yield* SqlClient.SqlClient;
 	const sessions = yield* Session.Service;
-	yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('p', 'p', 0, 0)`;
+	const { spaceId, location } = yield* seedSpace({ location: process.cwd(), projectId: "p" });
 	const session = yield* sessions.create({
-		projectId: "p",
+		spaceId,
 		slug: `${slug}-${crypto.randomUUID()}`,
-		directory: AbsolutePath.make(process.cwd()),
+		directory: location,
 		title: "runner loop",
-		sandboxInstanceId: SandboxInstance.ID.local,
 	});
 	return session.id;
 });
@@ -224,13 +221,16 @@ describe("runner loop — aikit input/output", () => {
 			const execution = yield* RunnerExecution.Service;
 			const sessions = yield* Session.Service;
 			const sql = yield* SqlClient.SqlClient;
-			yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('p', 'p', 0, 0)`;
-			const session = yield* sessions.create({
+			// The space row records where the directory was; the mount finds it gone.
+			const { spaceId, location } = yield* seedSpace({
+				location: `/definitely-missing-${crypto.randomUUID()}`,
 				projectId: "p",
+			});
+			const session = yield* sessions.create({
+				spaceId,
 				slug: `missing-sandbox-cwd-${crypto.randomUUID()}`,
-				directory: AbsolutePath.make(`/definitely-missing-${crypto.randomUUID()}`),
+				directory: location,
 				title: "missing sandbox cwd",
-				sandboxInstanceId: SandboxInstance.ID.local,
 			});
 
 			const exit = yield* execution.resume(session.id).pipe(Effect.exit);
@@ -241,6 +241,27 @@ describe("runner loop — aikit input/output", () => {
 			}
 			const durable = yield* sql`SELECT type FROM event WHERE aggregate_id = ${session.id}`;
 			expect(durable).toEqual([]);
+		}),
+	);
+
+	it(
+		"fails typed when the session's space row is gone",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const sql = yield* SqlClient.SqlClient;
+			const sessionId = yield* seedSession("no-space");
+			// Simulate the FK invariant being broken: the only way a session can
+			// outlive its space row.
+			yield* sql`PRAGMA foreign_keys = OFF`;
+			yield* sql`DELETE FROM space WHERE id = (SELECT space_id FROM session WHERE id = ${sessionId})`;
+			yield* sql`PRAGMA foreign_keys = ON`;
+
+			const exit = yield* execution.resume(sessionId).pipe(Effect.exit);
+			expect(Exit.isFailure(exit)).toBe(true);
+			if (Exit.isFailure(exit)) {
+				const failure = Cause.findErrorOption(exit.cause);
+				expect(Option.isSome(failure) && failure.value._tag).toBe("SessionLinkedSpaceNotFoundError");
+			}
 		}),
 	);
 });

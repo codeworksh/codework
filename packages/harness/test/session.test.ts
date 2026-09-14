@@ -8,10 +8,12 @@ import path from "node:path";
 import { beforeEach, describe, expect, it as vitestIt } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { ProjectSchema } from "../src/project/schema.ts";
 import { AbsolutePath, validateAikitMessage } from "../src/schema.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
+import { SpaceSchema } from "../src/space/schema.ts";
+import { seedSpace } from "./fixtures/space.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { testEffect } from "./utils/effect.ts";
 
@@ -44,18 +46,15 @@ beforeEach(() => seqCounters.clear());
 
 const createSession = (slug: string) =>
 	Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		// session.project_id references project(id)
-		yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local', 'local', 0, 0)`;
-
+		// session.space_id references space(id)
+		const { spaceId, location } = yield* seedSpace();
 		const session = yield* Session.Service;
 		return yield* session.create({
-			projectId: "local",
+			spaceId,
 			slug,
-			directory: AbsolutePath.make("/repo"),
+			directory: location,
 			title: "Test session",
 			tag: "test",
-			sandboxInstanceId: SandboxInstance.ID.local,
 		});
 	});
 
@@ -389,8 +388,12 @@ describe("session", () => {
 			expect(row.tokensInput).toBe(0);
 			expect(Option.isNone(row.leafEntryId)).toBe(true);
 
-			const listed = yield* session.list({ projectId: "local" });
-			expect(listed.map((r) => r.id)).toContain(created.id);
+			const byProject = yield* session.list({ projectId: ProjectSchema.ID.make("local") });
+			expect(byProject.map((r) => r.id)).toContain(created.id);
+			const bySpace = yield* session.list({ spaceId: SpaceSchema.ID.make(created.spaceId) });
+			expect(bySpace.map((r) => r.id)).toContain(created.id);
+			const space = yield* session.space(created.id);
+			expect(Option.map(space, (s) => s.location)).toEqual(Option.some("/repo"));
 		}),
 	);
 
@@ -1209,6 +1212,146 @@ describe("session", () => {
 		}),
 	);
 
+	describe("relink", () => {
+		// Two spaces of one project: the env move relinks between them.
+		const seedPair = Effect.fnUntraced(function* () {
+			const from = yield* seedSpace({ location: "/old/app", projectId: "p", kind: "primary" });
+			const to = yield* seedSpace({ location: "/new/app", projectId: "p", kind: "copy" });
+			return { from, to };
+		});
+
+		it.effect("keeps the session's position under the new root", () =>
+			Effect.gen(function* () {
+				const { from, to } = yield* seedPair();
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink",
+					directory: AbsolutePath.make("/old/app/packages/x"),
+					title: "t",
+				});
+
+				const moved = yield* session.relink({ sessionId: created.id, spaceId: to.spaceId });
+				expect(moved.spaceId).toBe(to.spaceId);
+				expect(moved.directory).toBe("/new/app/packages/x");
+
+				// Sitting at the old root lands on the new root.
+				const atRoot = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-root",
+					directory: from.location,
+					title: "t",
+				});
+				const movedRoot = yield* session.relink({ sessionId: atRoot.id, spaceId: to.spaceId });
+				expect(movedRoot.directory).toBe("/new/app");
+			}),
+		);
+
+		it.effect("a directory outside the old root lands on the new root", () =>
+			Effect.gen(function* () {
+				const { from, to } = yield* seedPair();
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-outside",
+					directory: AbsolutePath.make("/elsewhere"),
+					title: "t",
+				});
+				const moved = yield* session.relink({ sessionId: created.id, spaceId: to.spaceId });
+				expect(moved.directory).toBe("/new/app");
+			}),
+		);
+
+		it.effect("an explicit directory under the target wins; outside it is rejected", () =>
+			Effect.gen(function* () {
+				const { from, to } = yield* seedPair();
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-dir",
+					directory: AbsolutePath.make("/old/app/pkg"),
+					title: "t",
+				});
+
+				const explicit = yield* session.relink({
+					sessionId: created.id,
+					spaceId: to.spaceId,
+					directory: AbsolutePath.make("/new/app/other"),
+				});
+				expect(explicit.directory).toBe("/new/app/other");
+
+				const rejected = yield* session
+					.relink({ sessionId: created.id, spaceId: to.spaceId, directory: AbsolutePath.make("/nope") })
+					.pipe(Effect.flip);
+				expect(rejected).toMatchObject({ _tag: "RelinkError", reason: "directory_outside_space" });
+			}),
+		);
+
+		it.effect("rejects a space of another project without touching the session", () =>
+			Effect.gen(function* () {
+				const { from } = yield* seedPair();
+				const other = yield* seedSpace({ location: "/other", projectId: "q", kind: "primary" });
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-x",
+					directory: from.location,
+					title: "t",
+				});
+
+				const error = yield* session.relink({ sessionId: created.id, spaceId: other.spaceId }).pipe(Effect.flip);
+				expect(error).toMatchObject({ _tag: "RelinkError", reason: "project_scope_mismatch" });
+				const row = Option.getOrThrow(yield* session.get(created.id));
+				expect(row.spaceId).toBe(from.spaceId);
+			}),
+		);
+
+		it.effect("rejects missing and archived targets, and a missing session", () =>
+			Effect.gen(function* () {
+				const { from } = yield* seedPair();
+				const archived = yield* seedSpace({ location: "/gone", projectId: "p", kind: "copy", status: "archived" });
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-err",
+					directory: from.location,
+					title: "t",
+				});
+
+				const missingSpace = yield* session
+					.relink({ sessionId: created.id, spaceId: SpaceSchema.ID.make("nope") })
+					.pipe(Effect.flip);
+				expect(missingSpace).toMatchObject({ _tag: "RelinkError", reason: "space_not_found" });
+
+				const dead = yield* session.relink({ sessionId: created.id, spaceId: archived.spaceId }).pipe(Effect.flip);
+				expect(dead).toMatchObject({ _tag: "RelinkError", reason: "space_is_archived" });
+
+				const missingSession = yield* session
+					.relink({ sessionId: sid("nope"), spaceId: archived.spaceId })
+					.pipe(Effect.flip);
+				expect(missingSession._tag).toBe("SessionNotFoundError");
+			}),
+		);
+
+		it.effect("keeps the transcript across the move", () =>
+			Effect.gen(function* () {
+				const { from, to } = yield* seedPair();
+				const session = yield* Session.Service;
+				const created = yield* session.create({
+					spaceId: from.spaceId,
+					slug: "s-relink-tx",
+					directory: from.location,
+					title: "t",
+				});
+				yield* session.append(userEntry(created.id, "e1", "before the move"));
+				yield* session.append(assistantEntry(created.id, "e2"));
+
+				yield* session.relink({ sessionId: created.id, spaceId: to.spaceId });
+				expect((yield* session.path(created.id)).map(({ entry }) => entry.id)).toEqual(["e1", "e2"]);
+			}),
+		);
+	});
+
 	vitestIt("persists session entries across a file database reload", async () => {
 		await using tmp = await tmpdir();
 		const database = path.join(tmp.path, "session.db");
@@ -1219,18 +1362,15 @@ describe("session", () => {
 
 		await Effect.runPromise(
 			Effect.gen(function* () {
-				const sql = yield* SqlClient.SqlClient;
-				yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local', 'local', 0, 0)`;
-
+				const { spaceId, location } = yield* seedSpace();
 				const session = yield* Session.Service;
 				yield* session.create({
 					id: sid("persisted-session"),
-					projectId: "local",
+					spaceId,
 					slug: "s-file-reload",
-					directory: AbsolutePath.make("/repo"),
+					directory: location,
 					title: "Persisted session",
 					tag: "test",
-					sandboxInstanceId: SandboxInstance.ID.local,
 				});
 				yield* session.append(userEntry(sid("persisted-session"), "e1", "hello"));
 				yield* session.append(assistantEntry(sid("persisted-session"), "e2"));

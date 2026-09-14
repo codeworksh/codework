@@ -10,6 +10,7 @@ import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
 import { EventSchema } from "../src/event/schema.ts";
 import { prepare } from "../src/plugin/catalog.ts";
+import { fallback } from "../src/plugin/prompt/registry.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { immediateOpen, toolTurn } from "./fixtures/llm.ts";
@@ -144,40 +145,15 @@ describe("third-party plugins", () => {
 
 	it("honours an empty option selection over both the settings and the built-ins", () =>
 		withSettings(async ({ root, custom }) => {
+			// The broken plugin would fail preparation if settings still contributed.
 			await writeFile(
 				join(custom, "settings.json"),
 				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
 			);
-			let calls = 0;
-			const failure = await Effect.runPromise(
-				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: root });
-					yield* session.prompt("hello");
-					return yield* session.resume().pipe(Effect.flip);
-				}).pipe(
-					Effect.provide(
-						Harness.layer({
-							home: join(root, "home"),
-							database: ":memory:",
-							userConfigDir: custom,
-							plugins: [],
-							llm: (request, signal) => {
-								calls++;
-								return immediateOpen()(request, signal);
-							},
-						}),
-					),
-					Effect.scoped,
-				),
-			);
-			expect(failure).toMatchObject({
-				_tag: "State.SnapshotError",
-				cause: {
-					_tag: "Plugin.SetupError",
-					message: "plugin snapshot freeze failed: no prompt plugin set a system prompt",
-				},
-			});
-			expect(calls).toBe(0);
+			const { contexts, prompts } = await exchange({ root, userConfigDir: custom, plugins: [] });
+			expect(contexts[0]?.tools ?? []).toEqual([]);
+			// No plugin set a prompt, so the registry floor stands in for one.
+			expect(prompts[0]).toBe(fallback);
 		}));
 
 	it("reports preparation failures from settings before calling the model", () =>

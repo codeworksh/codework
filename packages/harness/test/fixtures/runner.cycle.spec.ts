@@ -5,6 +5,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Global } from "../../src/global.ts";
 import { withSettings } from "./settings.ts";
+import { seedSpace } from "./space.ts";
 
 import type { Message } from "@codeworksh/aikit";
 import { Effect, Layer, Queue, Schema } from "effect";
@@ -20,7 +21,6 @@ import { Loop } from "../../src/runner/loop.ts";
 import { SandboxController } from "../../src/sandbox/control.ts";
 import { SandboxDriverRegistry } from "../../src/sandbox/registry.ts";
 import * as VercelSandboxDriver from "../../src/sandboxes/vercel/index.ts";
-import { AbsolutePath } from "../../src/schema.ts";
 import { SessionLive } from "../../src/session/live.ts";
 import { SessionRuntime } from "../../src/session/runtime.ts";
 import type { SessionSchema } from "../../src/session/schema.ts";
@@ -142,14 +142,13 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 								metadata: { test: "runner-cycle" },
 							})).id;
 
-							yield* sql`INSERT OR IGNORE INTO project (id, name, created_at, updated_at) VALUES ('local','local',0,0)`;
+							const { spaceId, location } = yield* seedSpace({ location: "/tmp", env: sandboxInstanceId });
 							const session = yield* sessions.create({
-								projectId: "local",
+								spaceId,
 								slug: `runner-cycle-${crypto.randomUUID()}`,
-								directory: AbsolutePath.make("/tmp"),
+								directory: location,
 								title: "Live runner cycle",
 								tag: "test",
-								sandboxInstanceId,
 							});
 
 							const bindings = yield* SessionRuntime.Service;

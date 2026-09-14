@@ -150,7 +150,7 @@ export const statsFrom = (info: FileInfo): RemoteFileSystem.FileStat => {
 
 type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
-	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm"
+	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm" | "realpath"
 >;
 
 const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
@@ -205,6 +205,18 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 				if (rmOptions?.force && !(await filesystem.exists(path))) return;
 				throw cause;
 			}
+		},
+		realpath: async (path: string) => {
+			const run = async (script: string) => {
+				const command = quoteArgv(["sh", "-c", script, "_", path]);
+				const result = await sandbox.process.executeCommand(command, options.cwd, undefined, options.execTimeout);
+				return { command, result };
+			};
+			const asDirectory = await run(SandboxFileSystem.realpathScripts[0]);
+			if (asDirectory.result.exitCode === 0) return (asDirectory.result.result ?? "").trimEnd();
+			const asFile = await run(SandboxFileSystem.realpathScripts[1]);
+			assertCommandSucceeded(asFile.command, asFile.result);
+			return (asFile.result.result ?? "").trimEnd();
 		},
 	};
 

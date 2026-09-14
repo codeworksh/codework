@@ -193,13 +193,14 @@ export const statsFrom = (stats: Stats): RemoteFileSystem.FileStat => {
 
 type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
-	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm"
+	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm" | "realpath"
 >;
 
 // The Vercel `fs` surface is `node:fs/promises`-compatible, so the provider
 // maps almost directly. The `RemoteFileSystem.make` wrapper resolves relative
-// paths against `cwd` and guarantees parent creation on `writeFile`.
-const providerFrom = (sandbox: RemoteSandbox): RemoteFilesystemProvider => {
+// paths against `cwd` and guarantees parent creation on `writeFile`. Only
+// `realpath` has no fs counterpart and shells out.
+const providerFrom = (sandbox: RemoteSandbox, options: Options): RemoteFilesystemProvider => {
 	const filesystem: RemoteFilesystemProvider = {
 		readFile: (path: string) => sandbox.fs.readFile(path, "utf8"),
 		readFileBuffer: async (path: string) => new Uint8Array(await sandbox.fs.readFile(path)),
@@ -235,6 +236,14 @@ const providerFrom = (sandbox: RemoteSandbox): RemoteFilesystemProvider => {
 				...(rmOptions?.recursive === undefined ? {} : { recursive: rmOptions.recursive }),
 				...(rmOptions?.force === undefined ? {} : { force: rmOptions.force }),
 			}),
+		realpath: async (path: string) => {
+			for (const script of SandboxFileSystem.realpathScripts) {
+				const result = await (await spawnArgv(sandbox, options, ["sh", "-c", script, "_", path])).wait();
+				if (result.exitCode === 0) return (await result.stdout()).trimEnd();
+			}
+			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
+			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
+		},
 	};
 
 	return filesystem;
@@ -346,7 +355,10 @@ const filesystemLayer = (options: Options) =>
 		SandboxFileSystem.Service,
 		Effect.map(Remote, ({ sandbox }) =>
 			SandboxFileSystem.fromProvider(
-				RemoteFileSystem.make(providerFrom(sandbox), options.cwd === undefined ? undefined : { cwd: options.cwd }),
+				RemoteFileSystem.make(
+					providerFrom(sandbox, options),
+					options.cwd === undefined ? undefined : { cwd: options.cwd },
+				),
 			),
 		),
 	);
@@ -377,7 +389,7 @@ export const transport = (
 	Layer.merge(
 		Layer.succeed(
 			SandboxFileSystem.Service,
-			SandboxFileSystem.fromProvider(RemoteFileSystem.make(providerFrom(sandbox))),
+			SandboxFileSystem.fromProvider(RemoteFileSystem.make(providerFrom(sandbox, options))),
 		),
 		Layer.succeed(
 			Shell,

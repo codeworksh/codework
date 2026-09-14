@@ -80,4 +80,15 @@ export const readFileSafe = Effect.fn("SandboxFileSystem.readFileSafe")(function
 	return yield* fs.readFile(path).pipe(Effect.orElseSucceed(() => undefined));
 });
 
+/**
+ * Canonical path, or the normalized input when the backend cannot resolve it
+ * (missing path, no symlink support, transport failure). Best-effort by design.
+ */
+export const realpath = Effect.fn("SandboxFileSystem.realpath")(function* (
+	fs: SandboxFileSystem.Interface,
+	path: string,
+) {
+	return yield* fs.realpath(path).pipe(Effect.orElseSucceed(() => posix.normalize(path)));
+});
+
 export * as SandboxFs from "./util.ts";

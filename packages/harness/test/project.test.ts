@@ -1,858 +1,435 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { SandboxIO } from "../src/sandbox/io.ts";
-import { SandboxStore } from "../src/sandbox/store.ts";
-import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
 import { Git } from "../src/git/git.ts";
-import { ProjectCopy } from "../src/project/copy.ts";
-import { defaultLayer, layer, Service } from "../src/project/project.ts";
-import { ID, type ProjectDirectory } from "../src/project/schema.ts";
+import { Project } from "../src/project/project.ts";
+import { Repo } from "../src/repo/repo.ts";
+import { SandboxInstance } from "../src/sandbox/instance.ts";
+import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { AbsolutePath } from "../src/schema.ts";
+import { Space } from "../src/space/space.ts";
 import { Hash } from "../src/util/hash.ts";
+import { Worktree } from "../src/worktree/worktree.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { testEffect } from "./utils/effect.ts";
 
-// Keep the real Database/Global wiring (exercised through Project.defaultLayer)
-// off the user's disk: any layer built from path() lands in an in-memory db.
-process.env.CODEWORK_DB ??= ":memory:";
+// Real git, real filesystem, real migrated in-memory database — the S-matrix
+// from PROJECT.md §6 is end-to-end over temp repositories. A fresh layer (and
+// so a fresh database) is built per test.
+const layer = Project.layer.pipe(
+	Layer.provideMerge(Space.layer),
+	Layer.provide(Layer.mergeAll(Repo.layer, Worktree.layer)),
+	Layer.provide(Git.layer),
+	Layer.provideMerge(Layer.mergeAll(Database.layer(":memory:"), Sandbox.defaultLayer("/"))),
+);
+
+// `live`: real clock, so created_at ordering is meaningful.
+const { live: it } = testEffect(layer);
 
 const exec = promisify(execFile);
-const git = (cwd: string, ...args: string[]) => exec("git", args, { cwd });
+const git = (cwd: string, ...args: string[]) =>
+	Effect.promise(async () => (await exec("git", args, { cwd })).stdout.trim());
 
-const directory = AbsolutePath.make("/app/codeworksh/codework");
-const store = AbsolutePath.make(path.join(directory, ".git"));
-const repo = { directory, store } satisfies Git.Repo;
+const local = SandboxInstance.ID.local;
+const spaceId = (location: string) => Space.id(local, location);
+const abs = (location: string) => AbsolutePath.make(location);
 
-// A real migrated in-memory database, so the tests exercise the actual SQL
-// issued by the service (upserts, deletes, txns).
-const databaseLayer = () => Database.layer(":memory:");
+// Scoped temp root; realpath'd because macOS puts tmp under a /var symlink.
+const root = Effect.acquireRelease(
+	Effect.promise(async () => {
+		const dir = await tmpdir();
+		return { ...dir, path: await fs.realpath(dir.path) };
+	}),
+	(dir) => Effect.promise(() => dir[Symbol.asyncDispose]()),
+).pipe(Effect.map((dir) => dir.path));
 
-interface ProjectOptions {
-	// Contents of the `codework` marker file read from the repo store. When
-	// undefined the filesystem reports the file as missing.
-	cached?: string;
-	// Paths reported as missing on disk by the filesystem stub.
-	missing?: string[];
-	// What the Copy service reports for isGitWorktree.
-	worktree?: boolean;
-}
+const mkdir = (dir: string) => Effect.promise(() => fs.mkdir(dir, { recursive: true }));
 
-const projectLayer = (git: Partial<Git.Interface>, options: ProjectOptions = {}) => {
-	const readFile =
-		options.cached === undefined
-			? (path: string) =>
-					Effect.fail(
-						new SandboxFileSystem.FileSystemError({
-							method: "readFile",
-							path,
-							cause: "not found",
-						}),
-					)
-			: () => Effect.succeed(options.cached!);
-
-	const exists = (target: string) => Effect.succeed(!(options.missing ?? []).includes(target));
-
-	return layer.pipe(
-		Layer.provideMerge(
-			Layer.mergeAll(
-				databaseLayer(),
-				SandboxIO.hostLayer(),
-				Layer.succeed(
-					SandboxFileSystem.Service,
-					SandboxFileSystem.Service.of({
-						readFile,
-						exists,
-					} as unknown as SandboxFileSystem.Interface),
-				),
-				Layer.succeed(Git.Service, Git.Service.of(git as Git.Interface)),
-				Layer.succeed(
-					ProjectCopy.Service,
-					ProjectCopy.Service.of({
-						isGitWorktree: () => Effect.succeed(options.worktree ?? false),
-					}),
-				),
-			),
-		),
-	);
-};
-
-// Seed the project tables directly; `directories`/`fromDirectory` assertions
-// then go through the service like production code would. Raw inserts use
-// camelCase keys — the client maps them to snake_case columns.
-const seedProject = (project: { id: string; name: string; createdAt?: number; updatedAt?: number }) =>
-	Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`INSERT INTO project ${sql.insert({ createdAt: 0, updatedAt: 0, ...project })}`;
-	});
-
-const seedDirectory = (row: {
-	id: string;
-	projectId: string;
-	directory: string;
-	type: ProjectDirectory["type"];
-	sandboxInstanceId: string | null;
-}) =>
-	Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`INSERT INTO project_directory ${sql.insert({ createdAt: 0, updatedAt: 0, ...row })}`;
-	});
-
-// Seeds land in the environment the service under test is running in —
-// `projectLayer` provides `SandboxIO.hostLayer()` — since reads are scoped by
-// environment and rows from another one are deliberately invisible.
-const seedDirectories = (rows: Array<{ directory: string; type: ProjectDirectory["type"] }>) =>
-	Effect.gen(function* () {
-		yield* seedProject({ id: "project-1", name: "codework" });
-		for (const [index, row] of rows.entries()) {
-			yield* seedDirectory({
-				id: `directory-${index + 1}`,
-				projectId: "project-1",
-				directory: row.directory,
-				type: row.type,
-				sandboxInstanceId: null, // NULL is the host
-			});
-		}
-	});
-
-// A repo whose origin/roots/cache can be tweaked per test. Defaults model the
-// common "no remote, no cache, no root commits" shape so each test only states
-// the branch it cares about.
-const gitRepo = (overrides: Partial<Git.Interface> = {}): Partial<Git.Interface> => ({
-	find: () => Effect.succeed(repo),
-	remote: () => Effect.succeed(undefined),
-	roots: () => Effect.succeed([]),
-	...overrides,
+const initRepo = Effect.fnUntraced(function* (dir: string, options: { origin?: string; commit?: boolean } = {}) {
+	yield* mkdir(dir);
+	yield* git(dir, "init", "-q", "-b", "main");
+	yield* git(dir, "config", "user.email", "test@codework.sh");
+	yield* git(dir, "config", "user.name", "Codework Test");
+	if (options.origin) yield* git(dir, "remote", "add", "origin", options.origin);
+	if (options.commit ?? true) yield* commit(dir, "a.txt");
+	return dir;
 });
 
-describe("Project", () => {
-	describe("resolve", () => {
-		const { effect: localIt } = testEffect(
-			projectLayer({
-				find: () => Effect.succeed(undefined),
-			}),
-		);
-
-		localIt("uses the directory name outside a Git repository", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const result = yield* project.resolve(directory);
-
-				expect(result).toEqual({
-					id: ID.local,
-					directory,
-					name: "codework",
-				});
-			}),
-		);
-
-		for (const remote of ["https://github.com/codeworksh/codework.git", "git@github.com:codeworksh/codework.git"]) {
-			const { effect: gitIt } = testEffect(
-				projectLayer(gitRepo({ remote: () => Effect.succeed(remote), roots: () => Effect.succeed(["root"]) })),
-			);
-
-			gitIt(`derives the id and name from the remote ${remote}`, () =>
-				Effect.gen(function* () {
-					const project = yield* Service;
-					const result = yield* project.resolve(directory);
-
-					expect(result).toEqual({
-						id: ID.make(Hash.fast("git:github.com/codeworksh/codework")),
-						directory,
-						vcs: { type: "git", store },
-						name: "codework",
-					});
-				}),
-			);
-		}
-
-		// The remote wins over the root commit even when both are present.
-		const { effect: remoteOverRootIt } = testEffect(
-			projectLayer(
-				gitRepo({
-					remote: () => Effect.succeed("https://github.com/codeworksh/codework.git"),
-					roots: () => Effect.succeed(["00ffee"]),
-				}),
-			),
-		);
-
-		remoteOverRootIt("prefers the remote id over the root commit", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const result = yield* project.resolve(directory);
-
-				expect(result.id).toEqual(ID.make(Hash.fast("git:github.com/codeworksh/codework")));
-				expect(result).not.toHaveProperty("previous");
-			}),
-		);
-
-		// URL normalization: host casing, trailing slash, ".git" suffix and
-		// nested subgroups all collapse to a stable id, and the name is the last
-		// path segment.
-		for (const { remote, normalized, name } of [
-			{
-				remote: "https://GitHub.com/CodeworkSH/Codework/",
-				normalized: "github.com/CodeworkSH/Codework",
-				name: "Codework",
-			},
-			{
-				remote: "git@gitlab.com:group/sub/widget.git",
-				normalized: "gitlab.com/group/sub/widget",
-				name: "widget",
-			},
-			{
-				remote: "ssh://git@example.com:2222/team/app.git/",
-				normalized: "example.com/team/app",
-				name: "app",
-			},
-		]) {
-			const { effect: normalizeIt } = testEffect(projectLayer(gitRepo({ remote: () => Effect.succeed(remote) })));
-
-			normalizeIt(`normalizes the remote ${remote}`, () =>
-				Effect.gen(function* () {
-					const project = yield* Service;
-					const result = yield* project.resolve(directory);
-
-					expect(result.id).toEqual(ID.make(Hash.fast(`git:${normalized}`)));
-					expect(result.name).toBe(name);
-				}),
-			);
-		}
-
-		// A "file:" remote is local-only and must not produce a stable project id.
-		const { effect: fileRemoteIt } = testEffect(
-			projectLayer(
-				gitRepo({
-					remote: () => Effect.succeed("file:///tmp/mirror/codework.git"),
-					roots: () => Effect.succeed(["abc123"]),
-				}),
-			),
-		);
-
-		fileRemoteIt("ignores file:// remotes and falls back to the root commit", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const result = yield* project.resolve(directory);
-
-				expect(result).toEqual({
-					id: ID.make("abc123"),
-					directory,
-					vcs: { type: "git", store },
-					name: "codework",
-				});
-			}),
-		);
-
-		// The cached `codework` marker is reported as `previous`. With a remote
-		// present the remote still owns the id.
-		const { effect: cachedWithRemoteIt } = testEffect(
-			projectLayer(gitRepo({ remote: () => Effect.succeed("https://github.com/codeworksh/codework.git") }), {
-				cached: "old-project-id\n",
-			}),
-		);
-
-		cachedWithRemoteIt("reports the cached id as previous alongside the remote id", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const result = yield* project.resolve(directory);
-
-				expect(result).toEqual({
-					id: ID.make(Hash.fast("git:github.com/codeworksh/codework")),
-					previous: ID.make("old-project-id"),
-					directory,
-					vcs: { type: "git", store },
-					name: "codework",
-				});
-			}),
-		);
-
-		// Without a remote the cached id becomes both the current and previous id.
-		const { effect: cachedNoRemoteIt } = testEffect(
-			projectLayer(gitRepo({ roots: () => Effect.succeed(["root-sha"]) }), { cached: "cached-id" }),
-		);
-
-		cachedNoRemoteIt("falls back to the cached id when there is no remote", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const result = yield* project.resolve(directory);
-
-				expect(result).toEqual({
-					id: ID.make("cached-id"),
-					previous: ID.make("cached-id"),
-					directory,
-					vcs: { type: "git", store },
-					name: "codework",
-				});
-			}),
-		);
-
-		// A blank marker file is treated as absent (no `previous`).
-		const { effect: blankCacheIt } = testEffect(
-			projectLayer(gitRepo({ roots: () => Effect.succeed(["root-sha"]) }), { cached: "   \n" }),
-		);
-
-		blankCacheIt("ignores a blank cached marker and uses the root commit", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const result = yield* project.resolve(directory);
-
-				expect(result).toEqual({
-					id: ID.make("root-sha"),
-					directory,
-					vcs: { type: "git", store },
-					name: "codework",
-				});
-			}),
-		);
-
-		// No remote and no cache: the first root commit becomes the id.
-		const { effect: rootIt } = testEffect(projectLayer(gitRepo({ roots: () => Effect.succeed(["root-sha"]) })));
-
-		rootIt("derives the id from the root commit when there is no remote or cache", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const result = yield* project.resolve(directory);
-
-				expect(result).toEqual({
-					id: ID.make("root-sha"),
-					directory,
-					vcs: { type: "git", store },
-					name: "codework",
-				});
-			}),
-		);
-
-		// Inside a Git repo with nothing to identify it, fall back to the local id.
-		const { effect: localInRepoIt } = testEffect(projectLayer(gitRepo()));
-
-		localInRepoIt("falls back to the local id inside a Git repo with no remote, cache, or root", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const result = yield* project.resolve(directory);
-
-				expect(result).toEqual({
-					id: ID.local,
-					directory,
-					vcs: { type: "git", store },
-					name: "codework",
-				});
-			}),
-		);
-	});
-
-	describe("directories", () => {
-		const { effect: directoriesIt } = testEffect(projectLayer({}));
-
-		directoriesIt("returns project directories in lexical order", () =>
-			Effect.gen(function* () {
-				yield* seedDirectories([
-					{ directory: "/workspace/codework-z", type: "root" },
-					{ directory: "/workspace/codework", type: "main" },
-					{ directory: "/workspace/codework-a", type: "gitworktree" },
-				]);
-
-				const project = yield* Service;
-				const result = yield* project.directories({ projectId: ID.make("project-1") });
-
-				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
-					{ directory: "/workspace/codework-a", sandboxInstanceId: SandboxInstance.ID.local, type: "gitworktree" },
-					{ directory: "/workspace/codework-z", sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
-				]);
-			}),
-		);
-
-		directoriesIt("returns an empty list when the project has no directories", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const result = yield* project.directories({ projectId: ID.make("project-1") });
-
-				expect(result).toEqual([]);
-			}),
-		);
-
-		// Directories missing on disk are dropped from the result and their rows
-		// deleted, so the next read no longer pays for the existence check.
-		const { effect: staleIt } = testEffect(projectLayer({}, { missing: ["/workspace/gone"] }));
-
-		staleIt("drops and deletes directories that no longer exist on disk", () =>
-			Effect.gen(function* () {
-				yield* seedDirectories([
-					{ directory: "/workspace/codework", type: "main" },
-					{ directory: "/workspace/gone", type: "root" },
-				]);
-
-				const project = yield* Service;
-				const result = yield* project.directories({ projectId: ID.make("project-1") });
-				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
-				]);
-
-				const sql = yield* SqlClient.SqlClient;
-				const remaining = yield* sql`SELECT * FROM project_directory`;
-				expect(remaining).toHaveLength(1);
-				expect(remaining[0]?.directory).toBe("/workspace/codework");
-			}),
-		);
-
-		// Paths are only meaningful within their own sandbox: /workspace exists in
-		// many environments and means something different in each. A read must not
-		// see another environment's rows — and must never delete them for being
-		// absent from a filesystem they were never on.
-		const { effect: otherEnvIt } = testEffect(projectLayer({}, { missing: ["/workspace/elsewhere"] }));
-
-		otherEnvIt("ignores directories registered in a different sandbox", () =>
-			Effect.gen(function* () {
-				yield* seedDirectories([{ directory: "/workspace/codework", type: "main" }]);
-
-				// The foreign namespace has to exist before a directory can claim to
-				// live in it — project_directory.sandbox_instance_id is a foreign key.
-				const foreignId = SandboxInstance.ID.make("@codework/some-remote");
-				yield* Effect.flatMap(SandboxStore.make, (store) =>
-					store.register({ id: foreignId, driver: "vercel", kind: "remote", ownership: "external" }),
-				);
-
-				yield* seedDirectory({
-					id: "foreign-directory",
-					projectId: "project-1",
-					directory: "/workspace/elsewhere",
-					type: "main",
-					sandboxInstanceId: foreignId,
-				});
-
-				const project = yield* Service;
-				const result = yield* project.directories({ projectId: ID.make("project-1") });
-
-				expect(result).toEqual([
-					{ directory: "/workspace/codework", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
-				]);
-
-				// still on disk: invisible is not the same as stale
-				const sql = yield* SqlClient.SqlClient;
-				const foreign = yield* sql`SELECT * FROM project_directory WHERE id = 'foreign-directory'`;
-				expect(foreign).toHaveLength(1);
-			}),
-		);
-
-		// A backend that cannot answer must not be read as "absent" — an expired
-		// token or a timeout would otherwise delete a registration permanently.
-		const unreachable = (target: string) =>
-			layer.pipe(
-				Layer.provideMerge(
-					Layer.mergeAll(
-						databaseLayer(),
-						SandboxIO.hostLayer(),
-						Layer.succeed(
-							SandboxFileSystem.Service,
-							SandboxFileSystem.Service.of({
-								readFile: (path: string) =>
-									Effect.fail(new SandboxFileSystem.FileSystemError({ method: "readFile", path, cause: "x" })),
-								exists: (path: string) =>
-									path === target
-										? Effect.fail(
-												new SandboxFileSystem.FileSystemError({
-													method: "exists",
-													path,
-													cause: "connection reset",
-												}),
-											)
-										: Effect.succeed(true),
-							} as unknown as SandboxFileSystem.Interface),
-						),
-						Layer.succeed(Git.Service, Git.Service.of({} as Git.Interface)),
-						Layer.succeed(
-							ProjectCopy.Service,
-							ProjectCopy.Service.of({ isGitWorktree: () => Effect.succeed(false) }),
-						),
-					),
-				),
-			);
-
-		const { effect: unreachableIt } = testEffect(unreachable("/workspace/unreachable"));
-
-		unreachableIt("keeps a directory whose existence could not be determined", () =>
-			Effect.gen(function* () {
-				yield* seedDirectories([
-					{ directory: "/workspace/codework", type: "main" },
-					{ directory: "/workspace/unreachable", type: "root" },
-				]);
-
-				const project = yield* Service;
-				const result = yield* project.directories({ projectId: ID.make("project-1") });
-
-				// reported as present rather than silently dropped
-				expect(result.map((entry) => entry.directory).sort()).toEqual([
-					"/workspace/codework",
-					"/workspace/unreachable",
-				]);
-
-				// and, critically, still in the database
-				const sql = yield* SqlClient.SqlClient;
-				const remaining = yield* sql`SELECT * FROM project_directory`;
-				expect(remaining).toHaveLength(2);
-			}),
-		);
-	});
-
-	describe("fromDirectory", () => {
-		// `find` echoes the opened directory back so one layer can register
-		// several distinct directories under the same remote-derived project id.
-		const trackingGit = (): Partial<Git.Interface> => ({
-			find: (input) => Effect.succeed({ directory: input, store }),
-			remote: () => Effect.succeed("https://github.com/codeworksh/codework.git"),
-			roots: () => Effect.succeed([]),
-		});
-
-		const projectID = ID.make(Hash.fast("git:github.com/codeworksh/codework"));
-
-		const { effect: fromDirectoryIt } = testEffect(projectLayer(trackingGit()));
-
-		fromDirectoryIt("persists the project and registers its directory as main", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const info = yield* project.fromDirectory(directory);
-
-				expect(info).toEqual({
-					id: projectID,
-					name: "codework",
-					vcs: { type: "git", store },
-					directory,
-				});
-
-				const result = yield* project.directories({ projectId: info.id });
-				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" }]);
-			}),
-		);
-
-		fromDirectoryIt("registers later directories as root once a main exists", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const second = AbsolutePath.make("/app/codeworksh/codework-b");
-
-				const first = yield* project.fromDirectory(directory);
-				const result = yield* project.fromDirectory(second);
-				expect(result.id).toEqual(first.id);
-
-				const directories = yield* project.directories({ projectId: result.id });
-				expect(directories).toEqual([
-					{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
-					{ directory: second, sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
-				]);
-			}),
-		);
-
-		fromDirectoryIt("registers the same directory only once", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				yield* project.fromDirectory(directory);
-				yield* project.fromDirectory(directory);
-
-				const result = yield* project.directories({ projectId: projectID });
-				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "main" }]);
-			}),
-		);
-
-		const { effect: worktreeIt } = testEffect(projectLayer(trackingGit(), { worktree: true }));
-
-		worktreeIt("registers worktree directories with the gitworktree type", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const info = yield* project.fromDirectory(directory);
-
-				const result = yield* project.directories({ projectId: info.id });
-				expect(result).toEqual([{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "gitworktree" }]);
-			}),
-		);
-
-		const { effect: localIt } = testEffect(projectLayer({ find: () => Effect.succeed(undefined) }));
-
-		localIt("skips directory persistence for local projects", () =>
-			Effect.gen(function* () {
-				const project = yield* Service;
-				const info = yield* project.fromDirectory(directory);
-
-				expect(info).toEqual({
-					id: ID.local,
-					name: "codework",
-					vcs: undefined,
-					directory,
-				});
-
-				const result = yield* project.directories({ projectId: ID.local });
-				expect(result).toEqual([]);
-			}),
-		);
-
-		// A cached `codework` marker that differs from the resolved id triggers a
-		// migration: the project row and its directories move to the new id.
-		describe("migration", () => {
-			const remoteGit = () =>
-				gitRepo({ remote: () => Effect.succeed("https://github.com/codeworksh/codework.git") });
-
-			const { effect: migrateIt } = testEffect(projectLayer(remoteGit(), { cached: "old-project-id\n" }));
-
-			migrateIt("moves the project row and its directories to the resolved id", () =>
-				Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient;
-					yield* seedProject({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 });
-					yield* seedDirectory({
-						id: Hash.fast(JSON.stringify(["old-project-id", SandboxInstance.ID.local, "/workspace/legacy"])),
-						projectId: "old-project-id",
-						directory: "/workspace/legacy",
-						type: "main",
-						sandboxInstanceId: null, // NULL is the host
-					});
-
-					const project = yield* Service;
-					const info = yield* project.fromDirectory(directory);
-
-					// the migrated row keeps its name and creation time under the new id
-					expect(info.id).toEqual(projectID);
-					expect(info.name).toBe("legacy");
-
-					const projects = yield* sql`SELECT * FROM project`;
-					expect(projects).toHaveLength(1);
-					expect(projects[0]).toMatchObject({ id: projectID, name: "legacy", createdAt: 1111 });
-
-					// the opened directory registers as root because the migrated
-					// main already occupies the project
-					const directories = yield* project.directories({ projectId: projectID });
-					expect(directories).toEqual([
-						{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
-						{ directory: "/workspace/legacy", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
-					]);
-
-					// migrated rows are re-keyed off the new project id
-					const rows = yield* sql`SELECT * FROM project_directory`;
-					expect(rows.every((row) => row.projectId === projectID)).toBe(true);
-					const legacy = rows.find((row) => row.directory === "/workspace/legacy");
-					expect(legacy?.id).toBe(
-						Hash.fast(JSON.stringify([projectID, SandboxInstance.ID.local, "/workspace/legacy"])),
-					);
-				}),
-			);
-
-			const { effect: mergeIt } = testEffect(projectLayer(remoteGit(), { cached: "old-project-id\n" }));
-
-			mergeIt("merges into an existing project under the new id", () =>
-				Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient;
-					yield* seedProject({ id: "old-project-id", name: "legacy", createdAt: 1111, updatedAt: 1111 });
-					yield* seedProject({ id: projectID, name: "current", createdAt: 2222, updatedAt: 2222 });
-					// one directory unique to the old project, one already known to the new
-					yield* seedDirectory({
-						id: "old-unique",
-						projectId: "old-project-id",
-						directory: "/workspace/legacy",
-						type: "root",
-						sandboxInstanceId: null, // NULL is the host
-					});
-					yield* seedDirectory({
-						id: "old-shared",
-						projectId: "old-project-id",
-						directory: "/workspace/shared",
-						type: "root",
-						sandboxInstanceId: null, // NULL is the host
-					});
-					yield* seedDirectory({
-						id: Hash.fast(JSON.stringify([projectID, SandboxInstance.ID.local, "/workspace/shared"])),
-						projectId: projectID,
-						directory: "/workspace/shared",
-						type: "main",
-						sandboxInstanceId: null, // NULL is the host
-					});
-
-					const project = yield* Service;
-					const info = yield* project.fromDirectory(directory);
-
-					// the existing project wins; the old row is gone
-					expect(info.name).toBe("current");
-					const projects = yield* sql`SELECT * FROM project`;
-					expect(projects).toHaveLength(1);
-					expect(projects[0]).toMatchObject({ id: projectID, name: "current", createdAt: 2222 });
-
-					// the shared directory keeps the new project's registration
-					const directories = yield* project.directories({ projectId: projectID });
-					expect(directories).toEqual([
-						{ directory, sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
-						{ directory: "/workspace/legacy", sandboxInstanceId: SandboxInstance.ID.local, type: "root" },
-						{ directory: "/workspace/shared", sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
-					]);
-				}),
-			);
-
-			const { effect: missingOldIt } = testEffect(projectLayer(remoteGit(), { cached: "old-project-id\n" }));
-
-			missingOldIt("creates a fresh project when the cached id has no row to migrate", () =>
-				Effect.gen(function* () {
-					const project = yield* Service;
-					const info = yield* project.fromDirectory(directory);
-
-					expect(info.id).toEqual(projectID);
-					expect(info.name).toBe("codework");
-
-					const sql = yield* SqlClient.SqlClient;
-					const projects = yield* sql`SELECT * FROM project`;
-					expect(projects).toHaveLength(1);
-					expect(projects[0]?.id).toBe(projectID);
-				}),
-			);
-
-			const { effect: localCacheIt } = testEffect(projectLayer(remoteGit(), { cached: "local\n" }));
-
-			localCacheIt("never migrates the local project id", () =>
-				Effect.gen(function* () {
-					const sql = yield* SqlClient.SqlClient;
-					yield* seedProject({ id: "local", name: "local", createdAt: 1, updatedAt: 1 });
-
-					const project = yield* Service;
-					const info = yield* project.fromDirectory(directory);
-					expect(info.id).toEqual(projectID);
-
-					const local = yield* sql`SELECT * FROM project WHERE id = 'local'`;
-					expect(local).toHaveLength(1);
-				}),
-			);
-		});
-	});
-
-	describe("Project.defaultLayer", () => {
-		// End-to-end through the real FileSystem + Git + Database layers wired by
-		// defaultLayer, without touching the network: a local repo with a fake
-		// remote and a cached marker exercises remote derivation and `previous`.
-		it("resolves a local Git repository, deriving the id from its remote", async () => {
-			await using tmp = await tmpdir();
-			const repoDirectory = path.join(tmp.path, "widget");
-			await fs.mkdir(repoDirectory);
-			await git(repoDirectory, "init", "-q");
-			await git(repoDirectory, "config", "user.email", "test@codework.sh");
-			await git(repoDirectory, "config", "user.name", "Codework Test");
-			await git(repoDirectory, "remote", "add", "origin", "https://github.com/codeworksh/widget.git");
-			await fs.writeFile(path.join(repoDirectory, "README.md"), "hello");
-			await git(repoDirectory, "add", ".");
-			await git(repoDirectory, "commit", "-q", "-m", "init");
-			// Cached marker lives in the repo store and is surfaced as `previous`.
-			await fs.writeFile(path.join(repoDirectory, ".git", "codework"), "previous-id\n");
-
-			const result = await Effect.runPromise(
-				Effect.gen(function* () {
-					const project = yield* Service;
-					return yield* project.resolve(AbsolutePath.make(repoDirectory));
-				}).pipe(Effect.provide(defaultLayer("/"))),
-			);
-
-			const realDirectory = AbsolutePath.make(await fs.realpath(repoDirectory));
-			expect(result).toEqual({
-				id: ID.make(Hash.fast("git:github.com/codeworksh/widget")),
-				previous: ID.make("previous-id"),
-				directory: realDirectory,
-				vcs: { type: "git", store: AbsolutePath.make(path.join(realDirectory, ".git")) },
-				name: "widget",
+const commit = Effect.fnUntraced(function* (dir: string, file: string) {
+	yield* Effect.promise(() => fs.writeFile(path.join(dir, file), `${file}\n`));
+	yield* git(dir, "add", file);
+	yield* git(dir, "commit", "-q", "-m", `add ${file}`);
+});
+
+const rootCommit = (dir: string) => git(dir, "rev-list", "--max-parents=0", "HEAD");
+
+const readMarker = (dir: string) =>
+	Effect.promise(() => fs.readFile(path.join(dir, ".git", Repo.MARKER), "utf8").catch(() => undefined));
+
+const resolve = (dir: string) => Effect.flatMap(Project.Service, (project) => project.resolveOrCreate(abs(dir)));
+
+const seedSession = (id: string, space: string, directory: string) =>
+	Effect.flatMap(
+		SqlClient.SqlClient,
+		(sql) => sql`
+			INSERT INTO session (id, space_id, slug, directory, title, created_at, updated_at)
+			VALUES (${id}, ${space}, ${id}, ${directory}, ${id}, 0, 0)
+		`,
+	);
+
+const projects = Effect.flatMap(
+	SqlClient.SqlClient,
+	(sql) => sql<{ id: string; name: string; status: string }>`SELECT * FROM project ORDER BY id`,
+);
+const spaces = Effect.flatMap(
+	SqlClient.SqlClient,
+	(sql) => sql<{ id: string; projectId: string; location: string; kind: string; status: string }>`
+		SELECT * FROM space ORDER BY location
+	`,
+);
+const sessions = Effect.flatMap(
+	SqlClient.SqlClient,
+	(sql) => sql<{ id: string; spaceId: string; directory: string }>`SELECT * FROM session ORDER BY id`,
+);
+
+// §5.7 I1, I2 and I6, asserted after every scenario.
+const invariants = Effect.gen(function* () {
+	const sql = yield* SqlClient.SqlClient;
+	const primaries = yield* sql`
+		SELECT project_id FROM space GROUP BY project_id, COALESCE(env, 'local') HAVING sum(kind = 'primary') > 1
+	`;
+	expect(primaries, "I1: at most one primary per (project, env)").toEqual([]);
+	const orphans = yield* sql`
+		SELECT s.id FROM session s LEFT JOIN space p ON p.id = s.space_id WHERE p.id IS NULL
+	`;
+	expect(orphans, "I2: every session points at a space").toEqual([]);
+	const escaped = yield* sql`
+		SELECT s.id FROM session s JOIN space p ON p.id = s.space_id
+		WHERE NOT (s.directory = p.location OR s.directory LIKE p.location || '/%')
+	`;
+	expect(escaped, "I6: every session directory is at or under its space location").toEqual([]);
+});
+
+const remoteId = (normalized: string) => Hash.fast(`git:${normalized}`);
+
+describe("Project.resolveOrCreate", () => {
+	it("S1: a clone with an origin is identified by its remote and becomes the primary", () =>
+		Effect.gen(function* () {
+			const dir = yield* initRepo(path.join(yield* root, "repo"), { origin: "git@github.com:Org/Repo.git" });
+
+			const result = yield* resolve(dir);
+
+			expect(result.project).toMatchObject({
+				id: remoteId("github.com/org/repo"),
+				name: "repo",
+				status: "active",
+				vcs: { type: "git", store: path.join(dir, ".git") },
 			});
-		}, 30_000);
+			expect(result.space).toMatchObject({ id: spaceId(dir), location: dir, kind: "primary", env: local });
+			expect(result.directory).toBe(dir);
+			expect(result.isDefault).toBe(true);
+			expect(yield* readMarker(dir)).toBe(result.project.id);
+			expect(yield* spaces).toHaveLength(1);
+			yield* invariants;
+		}));
 
-		// Outside any repository defaultLayer still resolves to a local project.
-		it("resolves a plain directory to the local id", async () => {
-			await using tmp = await tmpdir();
-			const plain = path.join(tmp.path, "scratch");
-			await fs.mkdir(plain);
+	it("S2: opening a linked worktree first registers the whole family", () =>
+		Effect.gen(function* () {
+			const base = yield* root;
+			const dir = yield* initRepo(path.join(base, "repo"));
+			const feat = path.join(base, "repo-feat");
+			yield* git(dir, "worktree", "add", "-q", "--detach", feat);
 
-			const result = await Effect.runPromise(
-				Effect.gen(function* () {
-					const project = yield* Service;
-					return yield* project.resolve(AbsolutePath.make(plain));
-				}).pipe(Effect.provide(defaultLayer("/"))),
-			);
+			const result = yield* resolve(feat);
 
-			expect(result).toEqual({
-				id: ID.local,
-				directory: AbsolutePath.make(plain),
-				name: "scratch",
-			});
-		}, 30_000);
-
-		it("resolves a real GitHub repository cloned into a temporary directory", async () => {
-			await using tmp = await tmpdir();
-			const cloneDirectory = path.join(tmp.path, "69th");
-
-			const result = await Effect.runPromise(
-				Effect.gen(function* () {
-					const git = yield* Git.Service;
-					const clone = yield* git.clone({
-						remote: "https://github.com/codeworksh/69th",
-						target: cloneDirectory,
-						branch: "main",
-						depth: 1,
-					});
-					expect(clone.exitCode, clone.stderr).toBe(0);
-
-					const project = yield* Service;
-					return yield* project.resolve(AbsolutePath.make(cloneDirectory));
-				}).pipe(Effect.provide(Layer.mergeAll(defaultLayer("/"), Git.defaultLayer("/")))),
-			);
-
-			const realDirectory = AbsolutePath.make(await fs.realpath(cloneDirectory));
-			expect(result).toEqual({
-				id: ID.make(Hash.fast("git:github.com/codeworksh/69th")),
-				directory: realDirectory,
-				vcs: {
-					type: "git",
-					store: AbsolutePath.make(path.join(realDirectory, ".git")),
-				},
-				name: "69th",
-			});
-		}, 120_000);
-
-		// fromDirectory end-to-end through the full defaultLayer stack: a real
-		// repository plus a real linked worktree against the real migrated
-		// database wired by Database.defaultLayer (in-memory via CODEWORK_DB).
-		it("persists a repository and its linked worktree through fromDirectory", async () => {
-			await using tmp = await tmpdir();
-			const repoDirectory = path.join(tmp.path, "widget");
-			await fs.mkdir(repoDirectory);
-			await git(repoDirectory, "init", "-q");
-			await git(repoDirectory, "config", "user.email", "test@codework.sh");
-			await git(repoDirectory, "config", "user.name", "Codework Test");
-			await git(repoDirectory, "remote", "add", "origin", "https://github.com/codeworksh/widget.git");
-			await fs.writeFile(path.join(repoDirectory, "README.md"), "hello");
-			await git(repoDirectory, "add", ".");
-			await git(repoDirectory, "commit", "-q", "-m", "init");
-			const worktreeDirectory = path.join(tmp.path, "widget-feature");
-			await git(repoDirectory, "worktree", "add", "--detach", worktreeDirectory);
-
-			const { info, worktreeInfo, directories } = await Effect.runPromise(
-				Effect.gen(function* () {
-					const project = yield* Service;
-					const info = yield* project.fromDirectory(AbsolutePath.make(repoDirectory));
-					const worktreeInfo = yield* project.fromDirectory(AbsolutePath.make(worktreeDirectory));
-					// repeating a directory must not duplicate its row
-					yield* project.fromDirectory(AbsolutePath.make(repoDirectory));
-					const directories = yield* project.directories({ projectId: info.id });
-					return { info, worktreeInfo, directories };
-				}).pipe(Effect.provide(defaultLayer("/"))),
-			);
-
-			const realRepo = AbsolutePath.make(await fs.realpath(repoDirectory));
-			const realWorktree = AbsolutePath.make(await fs.realpath(worktreeDirectory));
-
-			expect(info).toEqual({
-				id: ID.make(Hash.fast("git:github.com/codeworksh/widget")),
-				name: "widget",
-				vcs: { type: "git", store: AbsolutePath.make(path.join(realRepo, ".git")) },
-				directory: realRepo,
-			});
-			expect(worktreeInfo.id).toEqual(info.id);
-			expect(worktreeInfo.directory).toBe(realWorktree);
-			expect(directories).toEqual([
-				{ directory: realRepo, sandboxInstanceId: SandboxInstance.ID.local, type: "main" },
-				{ directory: realWorktree, sandboxInstanceId: SandboxInstance.ID.local, type: "gitworktree" },
+			expect(result.space).toMatchObject({ location: feat, kind: "linked" });
+			expect(result.isDefault).toBe(false);
+			expect(yield* spaces).toMatchObject([
+				{ location: dir, kind: "primary", projectId: result.project.id },
+				{ location: feat, kind: "linked", projectId: result.project.id },
 			]);
-		}, 30_000);
-	});
+			yield* invariants;
+		}));
+
+	it("S3: plain directories are provisional projects; a subdirectory is a different one", () =>
+		Effect.gen(function* () {
+			const x = path.join(yield* root, "x");
+			const y = path.join(x, "y");
+			yield* mkdir(y);
+
+			const first = yield* resolve(x);
+			const second = yield* resolve(y);
+
+			expect(first.project).toMatchObject({ id: Project.provisional(local, x), name: "x" });
+			expect(first.project.vcs).toBeUndefined();
+			expect(first.space).toMatchObject({ location: x, kind: "plain" });
+			expect(first.isDefault).toBe(true);
+			expect(second.project.id).toBe(Project.provisional(local, y));
+			expect(second.project.id).not.toBe(first.project.id);
+			expect(second.space).toMatchObject({ location: y, kind: "plain" });
+			yield* invariants;
+		}));
+
+	it("S4: git init with an unborn HEAD keeps the provisional id and re-points the row to primary", () =>
+		Effect.gen(function* () {
+			const x = path.join(yield* root, "x");
+			yield* mkdir(x);
+			const plain = yield* resolve(x);
+
+			yield* initRepo(x, { commit: false });
+			const result = yield* resolve(x);
+
+			expect(result.project.id).toBe(plain.project.id);
+			expect(result.space).toMatchObject({ id: plain.space.id, kind: "primary" });
+			expect(result.isDefault).toBe(true);
+			expect(yield* readMarker(x)).toBeUndefined();
+			expect(yield* spaces).toHaveLength(1);
+			yield* invariants;
+		}));
+
+	it("S5: the first commit pins the root commit, re-points the worktree and absorbs the subdirectory", () =>
+		Effect.gen(function* () {
+			const x = path.join(yield* root, "x");
+			const y = path.join(x, "y");
+			yield* mkdir(y);
+			const plainX = yield* resolve(x);
+			const plainY = yield* resolve(y);
+			yield* seedSession("sx", plainX.space.id, x);
+			yield* seedSession("sy", plainY.space.id, y);
+			yield* initRepo(x, { commit: false });
+			yield* resolve(x); // S4 state
+
+			yield* commit(x, "a.txt");
+			const result = yield* resolve(x);
+
+			const pinned = yield* rootCommit(x);
+			expect(result.project.id).toBe(pinned);
+			expect(yield* readMarker(x)).toBe(pinned);
+			// same space id, new project, primary
+			expect(result.space).toMatchObject({ id: plainX.space.id, projectId: pinned, kind: "primary" });
+			// the subdirectory space is gone and its sessions re-pointed; directories are absolute and untouched
+			expect(yield* spaces).toMatchObject([{ id: plainX.space.id, location: x }]);
+			expect(yield* sessions).toMatchObject([
+				{ id: "sx", spaceId: plainX.space.id, directory: x },
+				{ id: "sy", spaceId: plainX.space.id, directory: y },
+			]);
+			// both provisional projects were deleted
+			expect((yield* projects).map((row) => row.id)).toEqual([pinned]);
+			yield* invariants;
+		}));
+
+	it("S6: adding an origin later does not move the id — the marker wins", () =>
+		Effect.gen(function* () {
+			const x = yield* initRepo(path.join(yield* root, "x"));
+			const before = yield* resolve(x);
+
+			yield* git(x, "remote", "add", "origin", "https://github.com/org/x.git");
+			const after = yield* resolve(x);
+
+			expect(after.project.id).toBe(before.project.id);
+			expect(after.project.id).toBe(yield* rootCommit(x));
+			expect(yield* projects).toHaveLength(1);
+			yield* invariants;
+		}));
+
+	it("S11: a symlink alias of a checkout resolves to one space at the real location", () =>
+		Effect.gen(function* () {
+			const base = yield* root;
+			const dir = yield* initRepo(path.join(base, "repo"));
+			const alias = path.join(base, "alias");
+			const linked = yield* Effect.promise(() =>
+				fs
+					.symlink(dir, alias)
+					.then(() => true)
+					.catch(() => false),
+			);
+			if (!linked) return; // no symlink support on this platform
+
+			const viaAlias = yield* resolve(alias);
+			const viaReal = yield* resolve(dir);
+
+			expect(viaAlias.space.location).toBe(dir);
+			expect(viaAlias.space.id).toBe(viaReal.space.id);
+			expect(viaAlias.directory).toBe(dir);
+			expect(yield* spaces).toHaveLength(1);
+			yield* invariants;
+		}));
+
+	it("S12: a nested repository stays its own project and is not adopted by the outer one", () =>
+		Effect.gen(function* () {
+			const outer = yield* initRepo(path.join(yield* root, "repo"));
+			// a different file, otherwise both repos get the same root commit (same tree, author, second)
+			const lib = yield* initRepo(path.join(outer, "vendor", "lib"), { commit: false });
+			yield* commit(lib, "lib.txt");
+
+			const inner = yield* resolve(lib);
+			const result = yield* resolve(outer);
+
+			expect(inner.project.id).not.toBe(result.project.id);
+			expect(yield* spaces).toMatchObject([
+				{ location: outer, projectId: result.project.id, kind: "primary" },
+				{ location: lib, projectId: inner.project.id, kind: "primary" },
+			]);
+			expect(yield* projects).toHaveLength(2);
+			yield* invariants;
+		}));
+
+	it("S13: two clones of one remote share a project; the second is a copy", () =>
+		Effect.gen(function* () {
+			const base = yield* root;
+			const origin = "https://github.com/org/repo";
+			const a = yield* initRepo(path.join(base, "a"), { origin });
+			const b = yield* initRepo(path.join(base, "b"), { origin });
+
+			const first = yield* resolve(a);
+			const second = yield* resolve(b);
+
+			expect(second.project.id).toBe(first.project.id);
+			expect(first.space.kind).toBe("primary");
+			expect(second.space.kind).toBe("copy");
+			expect(second.isDefault).toBe(false);
+			yield* invariants;
+		}));
+
+	it("S16: with several root commits the sorted first one is the id", () =>
+		Effect.gen(function* () {
+			const dir = yield* initRepo(path.join(yield* root, "repo"));
+			yield* git(dir, "checkout", "-q", "--orphan", "other");
+			yield* commit(dir, "b.txt");
+			yield* git(dir, "checkout", "-q", "main");
+			yield* git(dir, "merge", "-q", "--allow-unrelated-histories", "-m", "merge", "other");
+
+			const roots = (yield* rootCommit(dir)).split("\n").sort();
+			expect(roots).toHaveLength(2);
+
+			const result = yield* resolve(dir);
+			expect(result.project.id).toBe(roots[0]);
+			yield* invariants;
+		}));
+
+	it("S21: concurrent resolves of the same cwd serialize to one identical registration", () =>
+		Effect.gen(function* () {
+			const dir = yield* initRepo(path.join(yield* root, "repo"), { origin: "https://github.com/org/repo" });
+
+			const [a, b] = yield* Effect.all([resolve(dir), resolve(dir)], { concurrency: 2 });
+
+			expect(a).toEqual(b);
+			expect(yield* spaces).toHaveLength(1);
+			expect(yield* projects).toHaveLength(1);
+			yield* invariants;
+		}));
+
+	it("S23: a renamed remote does not rename the stored project", () =>
+		Effect.gen(function* () {
+			const dir = yield* initRepo(path.join(yield* root, "repo"), { origin: "https://github.com/org/old-name" });
+			const before = yield* resolve(dir);
+			expect(before.project.name).toBe("old-name");
+
+			yield* git(dir, "remote", "set-url", "origin", "https://github.com/org/new-name");
+			const after = yield* resolve(dir);
+
+			expect(after.project.id).toBe(before.project.id);
+			expect(after.project.name).toBe("old-name");
+			yield* invariants;
+		}));
+
+	it("S25: a monorepo subdirectory resolves to the worktree space with its absolute directory", () =>
+		Effect.gen(function* () {
+			const dir = yield* initRepo(path.join(yield* root, "repo"));
+			const pkg = path.join(dir, "packages", "x");
+			yield* mkdir(pkg);
+			const top = yield* resolve(dir);
+
+			const result = yield* resolve(pkg);
+
+			expect(result.space.id).toBe(top.space.id);
+			expect(result.directory).toBe(pkg);
+			expect(result.isDefault).toBe(true);
+			expect(yield* spaces).toHaveLength(1);
+			yield* invariants;
+		}));
+
+	it("S26: the same subdirectory resolve works before the worktree was ever seen", () =>
+		Effect.gen(function* () {
+			const dir = yield* initRepo(path.join(yield* root, "repo"));
+			const pkg = path.join(dir, "packages", "x");
+			yield* mkdir(pkg);
+
+			const result = yield* resolve(pkg);
+
+			expect(result.space).toMatchObject({ id: spaceId(dir), location: dir, kind: "primary" });
+			expect(result.directory).toBe(pkg);
+			expect(yield* spaces).toHaveLength(1);
+			yield* invariants;
+		}));
+
+	it("S27: sessions below an absorbed plain subdirectory move to the parent space with their directory unchanged", () =>
+		Effect.gen(function* () {
+			const x = path.join(yield* root, "x");
+			const y = path.join(x, "y");
+			const z = path.join(y, "z");
+			yield* mkdir(z);
+			const plainY = yield* resolve(y);
+			yield* seedSession("s", plainY.space.id, z);
+
+			yield* initRepo(x);
+			yield* resolve(x);
+
+			expect(yield* sessions).toMatchObject([{ id: "s", spaceId: spaceId(x), directory: z }]);
+			expect((yield* spaces).map((row) => row.location)).toEqual([x]);
+			yield* invariants;
+		}));
+
+	it("S28: a returning archived primary becomes a copy; the promoted copy stays primary", () =>
+		Effect.gen(function* () {
+			const base = yield* root;
+			const origin = "https://github.com/org/repo";
+			const a = yield* initRepo(path.join(base, "a"), { origin });
+			const b = yield* initRepo(path.join(base, "b"), { origin });
+			const first = yield* resolve(a);
+			yield* resolve(b);
+
+			yield* Effect.promise(() => fs.rm(a, { recursive: true, force: true }));
+			const service = yield* Space.Service;
+			const refreshed = yield* service.refresh(first.project.id);
+			expect(refreshed).toMatchObject([{ location: b, kind: "primary" }]);
+
+			yield* initRepo(a, { origin });
+			const back = yield* resolve(a);
+
+			expect(back.space).toMatchObject({ id: spaceId(a), kind: "copy", status: "active" });
+			expect(back.isDefault).toBe(false);
+			expect(yield* spaces).toMatchObject([
+				{ location: a, kind: "copy" },
+				{ location: b, kind: "primary" },
+			]);
+			yield* invariants;
+		}));
+
+	it("get and list read back registered projects", () =>
+		Effect.gen(function* () {
+			const dir = yield* initRepo(path.join(yield* root, "repo"), { origin: "https://github.com/org/repo" });
+			const resolved = yield* resolve(dir);
+			const project = yield* Project.Service;
+
+			const found = yield* project.get(resolved.project.id);
+			expect(Option.getOrThrow(found)).toMatchObject({ id: resolved.project.id, name: "repo", status: "active" });
+			expect(Option.isNone(yield* project.get(Project.provisional(local, "/nowhere")))).toBe(true);
+			expect(yield* project.list()).toHaveLength(1);
+		}));
+});
+
+describe("Repo.normalize", () => {
+	// S15: every origin spelling of one repository collapses to the same key.
+	for (const url of ["git@h:Org/Repo.git", "https://h/org/repo", "ssh://git@h/org/repo/"]) {
+		it(`S15: ${url}`, () =>
+			Effect.sync(() => {
+				expect(Repo.normalize(url)).toBe("h/org/repo");
+			}));
+	}
 });

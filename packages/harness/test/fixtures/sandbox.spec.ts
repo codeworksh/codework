@@ -35,6 +35,7 @@ const toPromise = (fs: SandboxFileSystem.Interface): PromiseFileSystem => ({
 	exists: (path) => Effect.runPromise(fs.exists(path)),
 	mkdir: (path, options) => Effect.runPromise(fs.mkdir(path, options)),
 	rm: (path, options) => Effect.runPromise(fs.rm(path, options)),
+	realpath: (path) => Effect.runPromise(fs.realpath(path)),
 });
 
 /**
