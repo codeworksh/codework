@@ -1283,7 +1283,7 @@ describe("session", () => {
 				const rejected = yield* session
 					.relink({ sessionId: created.id, spaceId: to.spaceId, directory: AbsolutePath.make("/nope") })
 					.pipe(Effect.flip);
-				expect(rejected).toMatchObject({ _tag: "RelinkError", reason: "directory-outside-space" });
+				expect(rejected).toMatchObject({ _tag: "RelinkError", reason: "directory_outside_space" });
 			}),
 		);
 
@@ -1300,7 +1300,7 @@ describe("session", () => {
 				});
 
 				const error = yield* session.relink({ sessionId: created.id, spaceId: other.spaceId }).pipe(Effect.flip);
-				expect(error).toMatchObject({ _tag: "RelinkError", reason: "project-mismatch" });
+				expect(error).toMatchObject({ _tag: "RelinkError", reason: "project_scope_mismatch" });
 				const row = Option.getOrThrow(yield* session.get(created.id));
 				expect(row.spaceId).toBe(from.spaceId);
 			}),
@@ -1321,10 +1321,10 @@ describe("session", () => {
 				const missingSpace = yield* session
 					.relink({ sessionId: created.id, spaceId: SpaceSchema.ID.make("nope") })
 					.pipe(Effect.flip);
-				expect(missingSpace).toMatchObject({ _tag: "RelinkError", reason: "space-not-found" });
+				expect(missingSpace).toMatchObject({ _tag: "RelinkError", reason: "space_not_found" });
 
 				const dead = yield* session.relink({ sessionId: created.id, spaceId: archived.spaceId }).pipe(Effect.flip);
-				expect(dead).toMatchObject({ _tag: "RelinkError", reason: "space-archived" });
+				expect(dead).toMatchObject({ _tag: "RelinkError", reason: "space_is_archived" });
 
 				const missingSession = yield* session
 					.relink({ sessionId: sid("nope"), spaceId: archived.spaceId })

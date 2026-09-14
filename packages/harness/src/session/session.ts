@@ -76,7 +76,12 @@ export class InvalidEntryDataError extends Schema.TaggedError<InvalidEntryDataEr
 export class RelinkError extends Schema.TaggedError<RelinkError>()("RelinkError", {
 	sessionId: Schema.String,
 	spaceId: Schema.String,
-	reason: Schema.Literals(["space-not-found", "space-archived", "project-mismatch", "directory-outside-space"]),
+	reason: Schema.Literals([
+		"space_not_found",
+		"space_is_archived",
+		"project_scope_mismatch",
+		"directory_outside_space",
+	]),
 }) {}
 export type RelinkReason = RelinkError["reason"];
 
@@ -1087,20 +1092,20 @@ export const layer = Layer.effect(
 			const session = yield* findSession(input.sessionId).pipe(Effect.orDie);
 			if (Option.isNone(session)) return yield* new SessionNotFoundError({ sessionId: input.sessionId });
 			const target = yield* findSpaceById(input.spaceId).pipe(Effect.orDie);
-			if (Option.isNone(target)) return yield* reject("space-not-found");
-			if (target.value.status !== "active") return yield* reject("space-archived");
+			if (Option.isNone(target)) return yield* reject("space_not_found");
+			if (target.value.status !== "active") return yield* reject("space_is_archived");
 			// Same-project guard. A missing current space means the FK invariant is
 			// already broken; there is nothing to compare, so the move is allowed.
 			const current = yield* findSpace(input.sessionId).pipe(Effect.orDie);
 			if (Option.isSome(current) && current.value.projectId !== target.value.projectId) {
-				return yield* reject("project-mismatch");
+				return yield* reject("project_scope_mismatch");
 			}
 			const directory =
 				input.directory ??
 				(Option.isSome(current)
 					? rebaseDirectory(current.value.location, target.value.location, session.value.directory)
 					: target.value.location);
-			if (!directoryWithin(target.value.location, directory)) return yield* reject("directory-outside-space");
+			if (!directoryWithin(target.value.location, directory)) return yield* reject("directory_outside_space");
 			const now = yield* epochNow;
 			yield* sql`
 				UPDATE session SET space_id = ${input.spaceId}, directory = ${directory}, updated_at = ${now}
