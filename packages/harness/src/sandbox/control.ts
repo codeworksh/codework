@@ -360,9 +360,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 	`.pipe(Effect.orDie);
 
 	const get: Interface["get"] = (id) =>
-		id === SandboxInstance.ID.local
-			? Effect.succeed(Option.some(hostInfo()))
-			: Effect.map(findRow(id), Option.map(toInfo));
+		id === SandboxInstance.ID.local ? Effect.succeedSome(hostInfo()) : Effect.map(findRow(id), Option.map(toInfo));
 
 	const list: Interface["list"] = (input = {}) =>
 		Effect.map(store.list, (rows) =>
@@ -670,11 +668,10 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		const observed = yield* attached.driver
 			.inspect(attached.input)
 			.pipe(
-				Effect.catch(
-					(error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
-						providerErrorIsNotFound(error)
-							? markUnavailable(id, error)
-							: persistProviderFailure(id, "faulted", error),
+				Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
+					providerErrorIsNotFound(error)
+						? markUnavailable(id, error)
+						: persistProviderFailure(id, "faulted", error),
 				),
 			);
 		yield* updateObservation({
@@ -708,11 +705,10 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		const observed = yield* attached.driver
 			.wake(attached.input)
 			.pipe(
-				Effect.catch(
-					(error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
-						providerErrorIsNotFound(error)
-							? markUnavailable(id, error)
-							: persistProviderFailure(id, "faulted", error),
+				Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
+					providerErrorIsNotFound(error)
+						? markUnavailable(id, error)
+						: persistProviderFailure(id, "faulted", error),
 				),
 			);
 		yield* updateObservation({
@@ -768,11 +764,8 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		const current = yield* requireRow(id);
 		const attached = yield* runtime(current, "stop");
 		const observed = yield* attached.driver.stop!(attached.input).pipe(
-			Effect.catch(
-				(error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
-					providerErrorIsNotFound(error)
-						? markUnavailable(id, error)
-						: persistProviderFailure(id, "faulted", error),
+			Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
+				providerErrorIsNotFound(error) ? markUnavailable(id, error) : persistProviderFailure(id, "faulted", error),
 			),
 		);
 		yield* updateObservation({

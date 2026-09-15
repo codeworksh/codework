@@ -11,7 +11,7 @@ const defaultHome = posix.join(os.homedir(), appConfigDir);
 
 const expandHome = (value: string) => posix.resolve(expandTilde(value, posix));
 
-export const homeConfig = Config.string("CODEWORK_HOME_DIR").pipe(
+export const homeConfig = Config.String("CODEWORK_HOME_DIR").pipe(
 	Config.withDefault(defaultHome),
 	Config.map(expandHome),
 );

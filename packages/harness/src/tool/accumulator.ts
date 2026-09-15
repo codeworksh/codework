@@ -1,7 +1,6 @@
-import { Effect, type FileSystem, type Scope } from "effect";
-import { randomBytes } from "node:crypto";
+import { Effect, Encoding, type FileSystem, type Scope } from "effect";
 import { tmpdir } from "node:os";
-import { fileSystem } from "../host.ts";
+import { crypto, fileSystem } from "../host.ts";
 import { posix } from "../util/posix.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail, type TruncationResult } from "./truncate.ts";
 
@@ -28,8 +27,8 @@ export interface OutputSnapshot {
 	readonly fullOutputPath?: string;
 }
 
-function defaultTempFilePath(prefix: string): string {
-	return posix.join(tmpdir(), `${prefix}-${randomBytes(8).toString("hex")}.log`);
+function defaultTempFilePath(prefix: string, suffix: string): string {
+	return posix.join(tmpdir(), `${prefix}-${suffix}.log`);
 }
 
 function byteLength(text: string): number {
@@ -192,7 +191,8 @@ export class Accumulator {
 	private ensureTempFile(): Effect.Effect<void, never, Scope.Scope> {
 		if (this.tempFile !== undefined) return Effect.void;
 		return Effect.gen({ self: this }, function* () {
-			this.tempFilePath = defaultTempFilePath(this.tempFilePrefix);
+			const suffix = Encoding.encodeHex(yield* crypto.randomBytes(8));
+			this.tempFilePath = defaultTempFilePath(this.tempFilePrefix, suffix);
 			this.tempFile = yield* fileSystem.open(this.tempFilePath, { flag: "w" });
 			for (const chunk of this.rawChunks) yield* this.tempFile.writeAll(chunk);
 			this.rawChunks = [];

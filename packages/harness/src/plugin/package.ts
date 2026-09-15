@@ -1,11 +1,10 @@
 import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node";
-import { Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
+import { Duration, Effect, Encoding, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { resolveModule } from "../util/module.ts";
-import { createHash } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import npa from "npm-package-arg";
-import { fileSystem as fs, hostPath as path } from "../host.ts";
+import { crypto, fileSystem as fs, hostPath as path } from "../host.ts";
 
 export interface Request {
 	readonly name: string;
@@ -101,23 +100,22 @@ const lock = Effect.fn("PluginPackage.lock")(function* (directory: string) {
 	const attempt = fs.makeDirectory(directory).pipe(
 		Effect.andThen(Ref.set(held, true)),
 		Effect.as(true),
-		Effect.catch((error) =>
-			error.reason._tag === "AlreadyExists"
-				? abandoned(directory).pipe(
-						Effect.flatMap((stale) =>
-							stale
-								? fs.remove(directory, { recursive: true, force: true }).pipe(Effect.as(false))
-								: Effect.succeed(false),
-						),
-					)
-				: Effect.fail(error),
+		Effect.catchIf(
+			(error) => error.reason._tag === "AlreadyExists",
+			() =>
+				abandoned(directory).pipe(
+					Effect.flatMap((stale) =>
+						stale
+							? fs.remove(directory, { recursive: true, force: true }).pipe(Effect.as(false))
+							: Effect.succeed(false),
+					),
+				),
 		),
 		Effect.uninterruptible,
 	);
 	const acquired = yield* attempt.pipe(
 		Effect.repeat({ schedule: Schedule.spaced("50 millis"), until: (owned) => owned }),
-		Effect.timeout(LOCK_TIMEOUT),
-		Effect.catchTag("TimeoutError", () => Effect.succeed(false)),
+		Effect.timeoutOrElse({ duration: LOCK_TIMEOUT, orElse: () => Effect.succeed(false) }),
 	);
 	if (!acquired)
 		return yield* new InstallError({
@@ -130,7 +128,7 @@ const lock = Effect.fn("PluginPackage.lock")(function* (directory: string) {
 export const install = Effect.fn("PluginPackage.install")(
 	function* (request: Request, cache: string, runner: Runner = run) {
 		const root = path.join(cache, "plugins");
-		const key = createHash("sha256").update(request.spec).digest("hex");
+		const key = Encoding.encodeHex(yield* crypto.digest("SHA-256", new TextEncoder().encode(request.spec)));
 		const directory = path.join(root, key);
 		const marker = path.join(directory, ".complete.json");
 		yield* fs.makeDirectory(root, { recursive: true });

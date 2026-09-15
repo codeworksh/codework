@@ -5,10 +5,10 @@ packages:
 # Effect TS-Go only ships patch artifacts for specific TypeScript versions.
 # Keep these versions aligned and bump them together.
 catalog:
-   "@effect/tsgo": 0.36.4
-   "@types/node": ^26.1.2
+   "@effect/tsgo": 0.45.0
+   "@types/node": ^26.5.1
    typescript: 7.0.2
-   vite-plus: 0.2.8
+   vite-plus: 0.3.1
 
 allowBuilds:
    "@mongodb-js/zstd": true

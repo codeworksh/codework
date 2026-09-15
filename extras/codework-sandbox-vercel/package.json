@@ -24,11 +24,11 @@
 	},
 	"devDependencies": {
 		"@types/node": "^25.9.5",
-		"effect": "4.0.0-beta.107"
+		"effect": "4.0.0-rc.115"
 	},
 	"peerDependencies": {
 		"@codeworksh/harness": "workspace:*",
-		"effect": "4.0.0-beta.107"
+		"effect": "4.0.0-rc.115"
 	},
 	"engines": {
 		"node": ">=24.14.1"
