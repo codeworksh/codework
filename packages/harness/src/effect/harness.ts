@@ -4,6 +4,7 @@ import { Control } from "../control.ts";
 import { Database } from "../db/db.ts";
 import { Event } from "../event/event.ts";
 import { Global } from "../global.ts";
+import { EventRegistry } from "../event/registry.ts";
 import { prepare, type PluginRef } from "../plugin/catalog.ts";
 import { builtins, defaultRefs } from "../plugin/internal.ts";
 import { RunnerExecute } from "../runner/execute.ts";
@@ -59,6 +60,9 @@ export const layer = (options: Options = {}) =>
 				cache: paths.cache,
 				hostCwd,
 			});
+			// Flattened before anything can publish: a plugin event type that collides
+			// or is not namespaced is a boot failure, not a surprise at first publish.
+			const definitions = yield* EventRegistry.flatten(plugins);
 			const configuredDatabase = options.database ?? (yield* Database.locationConfig);
 			const database = Database.layer(Database.resolveDatabaseLocation(configuredDatabase, paths.data));
 			const configured = yield* SandboxDriverLoader.loadAll(options.sandboxes ?? [], { hostCwd });
@@ -79,6 +83,7 @@ export const layer = (options: Options = {}) =>
 				Layer.provideMerge(Context.layer),
 				Layer.provideMerge(SessionLive.layer),
 				Layer.provideMerge(Event.layer),
+				Layer.provideMerge(EventRegistry.layer(definitions)),
 				Layer.provideMerge(database),
 				Layer.provideMerge(global),
 			);

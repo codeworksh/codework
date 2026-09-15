@@ -1,6 +1,7 @@
-import { Plugin, Runner } from "@codeworksh/harness/effect";
+import { Plugin, Runner, SandboxError } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
+import { Client } from "../server/client.ts";
 import { writeError } from "./output.ts";
 
 /** Bad flag or argument combinations the parser cannot express on its own. */
@@ -28,6 +29,9 @@ const isLLMStreamError = Schema.is(Runner.LLMStreamError);
 const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
 const isPluginPreparationError = Schema.is(Plugin.PreparationError);
 const isPluginInstallError = Schema.is(Plugin.InstallError);
+const isSandboxDriverNotRegisteredError = Schema.is(SandboxError.SandboxDriverNotRegisteredError);
+const isSandboxDriverRegistrationError = Schema.is(SandboxError.SandboxDriverRegistrationError);
+const isExecutionError = Schema.is(Client.ExecutionError);
 
 const providerCategory = (reason: Runner.ProviderFailureReason): string => {
 	switch (reason._tag) {
@@ -130,6 +134,12 @@ const pluginHint = (phase: Plugin.PreparationError["phase"]): string => {
 
 /** Render typed SDK errors for humans without exposing Effect causes or provider payloads. */
 export const renderError = (error: unknown): string => {
+	if (isSandboxDriverNotRegisteredError(error)) {
+		return `error: sandbox driver "${error.driver}" is not registered (available: ${error.registered?.join(", ") ?? "none"})\n`;
+	}
+	if (isSandboxDriverRegistrationError(error)) {
+		return `error: ${error.reason}\n`;
+	}
 	if (isInvalidInputError(error)) {
 		return `error: ${error.message}\n`;
 	}
@@ -200,6 +210,16 @@ export const renderError = (error: unknown): string => {
 	}
 	if (isLLMStreamError(error)) {
 		return `error[stream_protocol]: ${error.message}\n`;
+	}
+	// A remote run has only the category the server published; render it the same
+	// way a local typed error is rendered, minus the detail that stayed server-side.
+	if (isExecutionError(error)) {
+		return (
+			[
+				error.type === "aborted" ? `error: ${error.message}` : `error[${error.type}]: ${error.message}`,
+				...(error.status === undefined ? [] : [`status: ${error.status}`]),
+			].join("\n") + "\n"
+		);
 	}
 	return `error: ${unknownMessage(error)}\n`;
 };

@@ -158,6 +158,26 @@ describe("codework CLI", () => {
 		expect(result.stderr).toContain("traceback:\nSandboxProviderError\n");
 	});
 
+	it("documents remote runs and rejects server-owned flags on the client", () => {
+		expect(run("run", "--help").stdout).toContain("--server");
+		const result = run("run", "--server", "ws://127.0.0.1:1/rpc", "--database", ":memory:", "hello");
+		expect(result.status).toBe(1);
+		expect(result.stdout).toContain("belong on codework serve");
+	});
+
+	it("rejects out-of-range listening ports", () => {
+		const result = run("serve", "--port", "65536");
+		expect(result.status).toBe(1);
+	});
+
+	it("documents serve --host and --port", () => {
+		const result = run("serve", "--help");
+
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain("--host");
+		expect(result.stdout).toContain("--port");
+	});
+
 	it("documents models --provider and subcommands", () => {
 		const result = run("models", "--help");
 

@@ -12,6 +12,7 @@ import { Database } from "../src/db/db.ts";
 import { SessionInputRow } from "../src/db/schema.sql.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
+import type { EventSchema } from "../src/event/schema.ts";
 import { RunnerExecute } from "../src/runner/execute.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
 import { LLM } from "../src/runner/llm.ts";
@@ -480,9 +481,20 @@ describe("runner loop — tool interruption", () => {
 
 			const running = yield* execution.resume(sessionId).pipe(Effect.forkChild);
 			yield* Deferred.await(bothStarted);
-			yield* execution.interrupt(sessionId);
+			const lifecycle: EventSchema.Payload[] = [];
+			yield* events.listen((event) =>
+				Effect.sync(() => {
+					if (event.type === EventList.ExecutionInterrupted.type) lifecycle.push(event);
+				}),
+			);
+			yield* execution.interrupt(sessionId, "user", { awaitSettlement: true });
 			const exit = yield* Fiber.await(running);
 			expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+			// The reason is the caller's, not something inferred from the cause.
+			const interrupted = lifecycle[0];
+			expect(interrupted).toBeDefined();
+			if (interrupted !== undefined && Schema.is(EventList.ExecutionInterrupted)(interrupted))
+				expect(interrupted.data.reason).toBe("user");
 
 			const path = yield* sessions.path(sessionId);
 			expect(path[1]!.entry.state).toBe("committed");
@@ -615,6 +627,35 @@ describe("runner loop — provider failure", () => {
 				errorMessage: "provider failed",
 				failure: { _tag: "Authentication", reason: "missing", retryable: false },
 			});
+		}),
+	);
+
+	it(
+		"publishes the busy period as started then failed, with the failure's category",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const events = yield* Event.Service;
+			const lifecycle: EventSchema.Payload[] = [];
+			yield* events.listen((event) =>
+				Effect.sync(() => {
+					if (event.type.startsWith("session.execution.")) lifecycle.push(event);
+				}),
+			);
+			const sessionId = yield* seedSession();
+			yield* admit({ id: "msg_failed_lifecycle", sessionId, delivery: "steer" });
+
+			yield* execution.resume(sessionId).pipe(Effect.exit);
+
+			expect(lifecycle.map((event) => event.type)).toEqual([
+				EventList.ExecutionStarted.type,
+				EventList.ExecutionFailed.type,
+			]);
+			const failed = lifecycle[1]!;
+			expect(Schema.is(EventList.ExecutionFailed)(failed)).toBe(true);
+			if (Schema.is(EventList.ExecutionFailed)(failed)) {
+				expect(failed.data.error.type).toBe("provider.auth");
+				expect(failed.data.error.message).toContain("provider failed");
+			}
 		}),
 	);
 });

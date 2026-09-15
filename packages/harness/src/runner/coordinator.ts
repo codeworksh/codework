@@ -12,9 +12,18 @@ export interface Coordinator<Key, E, Reason = never> {
 	readonly run: (key: Key) => Effect.Effect<void, E>;
 	/** Rings the doorbell so newly recorded work is drained without waiting for it. */
 	readonly wake: (key: Key) => Effect.Effect<void>;
-	/** Accepts interruption of active work without waiting for cleanup to settle. */
-	readonly interrupt: (key: Key, reason?: Reason) => Effect.Effect<boolean>;
-	/** Resolves once no execution is active for the key. Never starts work. */
+	/**
+	 * Accepts interruption of active work. Resolves once the interruption is
+	 * accepted, not when cleanup settles; returns whether an active execution was
+	 * interrupted. `awaitSettlement` waits for this execution's cleanup and
+	 * settled hook only -- `awaitIdle` follows successors admitted during it.
+	 */
+	readonly interrupt: (
+		key: Key,
+		reason?: Reason,
+		options?: { readonly awaitSettlement?: boolean },
+	) => Effect.Effect<boolean>;
+	/** Resolves once no execution is active for the key, successors included. Never starts work. */
 	readonly awaitIdle: (key: Key) => Effect.Effect<void>;
 }
 
@@ -108,21 +117,29 @@ export const make = <Key, E, Reason = never>(options: {
 				start(key, false);
 			});
 
-		const interrupt = (key: Key, reason?: Reason): Effect.Effect<boolean> =>
-			Effect.sync(() => {
+		const interrupt = (
+			key: Key,
+			reason?: Reason,
+			options?: { readonly awaitSettlement?: boolean },
+		): Effect.Effect<boolean> =>
+			Effect.suspend(() => {
 				const execution = executions.get(key);
-				if (execution === undefined || execution.stopping) return false;
+				if (execution === undefined || execution.stopping) return Effect.succeed(false);
 				if (execution.owner === undefined) {
 					// The terminal exit is already decided. Claim earlier wakes so settlement
 					// does not restart work for the interrupted intent.
 					execution.pendingWake = false;
-					return false;
+					return Effect.succeed(false);
 				}
 				execution.stopping = true;
 				execution.pendingWake = false;
 				if (reason !== undefined) execution.interruptionReason = reason;
 				fork(Fiber.interrupt(execution.owner));
-				return true;
+				// This execution's own deferred, so waiting here never picks up work a
+				// different caller admitted while cleanup was running.
+				return options?.awaitSettlement === true
+					? Deferred.await(execution.done).pipe(Effect.as(true))
+					: Effect.succeed(true);
 			});
 
 		const awaitIdle = (key: Key): Effect.Effect<void> =>

@@ -25,6 +25,14 @@ export type ID = typeof ID.Type;
 
 export const IDFromDb = Schema.String.pipe(Schema.brand("Session.ID"));
 
+/**
+ * Why an execution stopped. Supplied by whoever asked for the interruption --
+ * a stop the user asked for and a stop the process imposed on shutdown are
+ * different facts, and inspecting the cause cannot tell them apart.
+ */
+export const InterruptReason = Schema.Literals(["user", "shutdown"]);
+export type InterruptReason = typeof InterruptReason.Type;
+
 // Shared persistence-boundary codecs. Append validates before writing; fork
 // decodes again because legacy/imported rows may predate that validation.
 export const JsonObject = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown));

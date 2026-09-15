@@ -5,6 +5,7 @@ import { expandTilde } from "../util/home.ts";
 import { importModule, resolveModule } from "../util/module.ts";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
 import * as Package from "./package.ts";
+import type { EventSchema } from "../event/schema.ts";
 import type { Plugin } from "./plugin.ts";
 
 /** `vendor.domain.context`, exactly three segments — a fourth would shadow a package name. */
@@ -12,6 +13,17 @@ export const idPattern = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*){2}$/;
 const Id = Schema.String.check(Schema.isPattern(idPattern));
 const Definition = Schema.Struct({
 	id: Id,
+	// Shape only. What the types mean -- namespace, collisions with the kernel or
+	// another plugin -- is `EventRegistry.flatten`'s call, since it is the only
+	// place that sees every plugin at once.
+	events: Schema.optional(
+		Schema.Array(
+			Schema.declare<EventSchema.Definition>(
+				(value): value is EventSchema.Definition =>
+					Predicate.hasProperty(value, "type") && Predicate.isString(value.type),
+			),
+		),
+	),
 	setup: Schema.declare<Plugin["setup"]>((value): value is Plugin["setup"] => Predicate.isFunction(value)),
 });
 

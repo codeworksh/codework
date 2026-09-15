@@ -1,0 +1,160 @@
+import {
+	Control,
+	Event,
+	optional,
+	PromptSchema,
+	Sandbox,
+	SandboxError,
+	Session,
+	SessionStore,
+} from "@codeworksh/harness/effect";
+import { Schema } from "effect";
+import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Model } from "@codeworksh/aikit";
+import { EncodingError, EventEnvelope } from "./envelope.ts";
+
+export const SandboxInfo = Schema.Struct({
+	id: Sandbox.SandboxInstance.ID,
+	driver: Schema.String,
+	kind: Sandbox.SandboxInstance.Kind,
+	providerResourceId: Schema.OptionFromNullOr(Schema.String),
+	ownership: Sandbox.SandboxInstance.Ownership,
+	status: Sandbox.SandboxInstance.Status,
+	usage: Sandbox.SandboxInstance.Usage,
+	refCount: Schema.Int,
+	createdAt: Schema.DateFromString,
+	updatedAt: Schema.DateFromString,
+});
+export type SandboxInfo = typeof SandboxInfo.Type;
+
+export const SessionInfo = Schema.Struct({
+	id: Session.SessionSchema.ID,
+	title: Schema.String,
+	directory: Schema.String,
+	sandbox: optional(SandboxInfo),
+});
+export type SessionInfo = typeof SessionInfo.Type;
+
+export const RuntimeConfig = Schema.Struct({
+	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	thinkingLevel: optional(Schema.Enum(Model.ThinkingLevelEnum)),
+});
+export type RuntimeConfig = typeof RuntimeConfig.Type;
+
+export const SandboxRef = Sandbox.Selection;
+
+const SessionErrors = Schema.Union([
+	SessionStore.SessionNotFoundError,
+	SessionStore.SessionLinkedSpaceNotFoundError,
+	SessionStore.RelinkError,
+]);
+
+// Every lifecycle error the sandbox control plane can raise; narrowing per
+// endpoint would misreport what `withMount` and `stop` actually fail with.
+const SandboxErrors = Schema.Union([
+	SandboxError.SandboxNotFoundError,
+	SandboxError.SandboxDriverNotRegisteredError,
+	SandboxError.SandboxDriverRegistrationError,
+	SandboxError.SandboxUnsupportedError,
+	SandboxError.SandboxProviderError,
+	SandboxError.SandboxUnavailError,
+	SandboxError.SandboxRemovedError,
+	SandboxError.SandboxTransitionConflictError,
+	SandboxError.SandboxBusyError,
+]);
+
+export const Api = RpcGroup.make(
+	Rpc.make("session.create", {
+		payload: {
+			title: optional(Schema.String),
+			directory: optional(Schema.String),
+			sandbox: optional(SandboxRef),
+			runtime: optional(RuntimeConfig),
+		},
+		success: SessionInfo,
+		error: Schema.Union([SessionErrors, SandboxErrors]),
+	}),
+	Rpc.make("session.list", {
+		payload: {},
+		success: Schema.Array(SessionInfo),
+	}),
+	Rpc.make("session.configure", {
+		payload: { sessionId: Session.SessionSchema.ID, runtime: RuntimeConfig },
+		success: SessionInfo,
+		error: SessionStore.SessionNotFoundError,
+	}),
+	Rpc.make("session.info", {
+		payload: { sessionId: Session.SessionSchema.ID },
+		success: SessionInfo,
+		error: SessionStore.SessionNotFoundError,
+	}),
+	Rpc.make("session.relink", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			sandbox: optional(SandboxRef),
+			directory: optional(Schema.String),
+		},
+		success: SessionInfo,
+		error: Schema.Union([SessionErrors, SandboxErrors]),
+	}),
+	Rpc.make("session.prompt", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			text: Schema.String,
+			delivery: optional(PromptSchema.Delivery),
+			id: optional(Session.SessionMessageSchema.ID),
+		},
+		success: Schema.Void,
+		error: Schema.Union([SessionStore.SessionNotFoundError, Control.PromptConflictError]),
+	}),
+	Rpc.make("session.interrupt", {
+		payload: { sessionId: Session.SessionSchema.ID },
+		success: Schema.Struct({ interrupted: Schema.Boolean }),
+	}),
+	/**
+	 * Whether a prompt materialized into the conversation. An admitted prompt
+	 * that is still queued has no entry yet, so this is the projection a client
+	 * reconciles against when the volatile stream left it unsure -- the same role
+	 * OpenCode's `message.list` reconcile plays.
+	 */
+	Rpc.make("session.message", {
+		payload: { sessionId: Session.SessionSchema.ID, messageId: Session.SessionMessageSchema.ID },
+		success: Schema.Struct({ found: Schema.Boolean }),
+	}),
+	Rpc.make("session.wait", {
+		payload: { sessionId: Session.SessionSchema.ID },
+		success: Schema.Void,
+		error: SessionStore.SessionNotFoundError,
+	}),
+	Rpc.make("sandbox.drivers", {
+		payload: {},
+		success: Schema.Array(Schema.Struct({ name: Schema.String, kind: Schema.String })),
+	}),
+	Rpc.make("sandbox.list", {
+		payload: {},
+		success: Schema.Array(SandboxInfo),
+	}),
+	Rpc.make("sandbox.create", {
+		payload: { driver: Schema.String },
+		success: SandboxInfo,
+		error: SandboxErrors,
+	}),
+	Rpc.make("sandbox.register", {
+		payload: { driver: Schema.String, providerResourceId: Schema.String },
+		success: SandboxInfo,
+		error: SandboxErrors,
+	}),
+	Rpc.make("sandbox.stop", {
+		payload: { sandboxId: Sandbox.SandboxInstance.ID },
+		success: Schema.Void,
+		error: SandboxErrors,
+	}),
+	Rpc.make("event.subscribe", {
+		payload: {},
+		success: EventEnvelope,
+		error: Schema.Union([Event.SubscriptionOverflowError, EncodingError]),
+		stream: true,
+	}),
+);
+
+export * as Contract from "./contract.ts";

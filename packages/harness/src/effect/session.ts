@@ -78,6 +78,7 @@ export interface Handle {
 	readonly run: (input: PromptInput) => ReturnType<Control.Interface["run"]>;
 	readonly wait: () => ReturnType<Control.Interface["wait"]>;
 	readonly resume: () => ReturnType<Control.Interface["resume"]>;
+	/** Stops active work and waits for its cleanup; idle is a no-op returning false. */
 	readonly interrupt: () => ReturnType<Control.Interface["interrupt"]>;
 	/** Live session notifications. Use Event.log for durable replay. */
 	readonly events: () => Stream.Stream<EventSchema.Payload, Event.SubscriptionOverflowError>;
@@ -136,7 +137,9 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 		run: (input) => control.run({ sessionId: id, ...promptInput(input) }),
 		wait: () => control.wait(id),
 		resume: () => control.resume(id),
-		interrupt: () => control.interrupt(id),
+		// The embedder API keeps its blocking contract: a caller that returns from
+		// `interrupt()` can assume the drain released its mount.
+		interrupt: () => control.interrupt(id, { awaitSettlement: true }),
 		events: () =>
 			events
 				.subscribe()

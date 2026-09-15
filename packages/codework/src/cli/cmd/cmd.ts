@@ -1,3 +1,5 @@
+import { Schema } from "effect";
+import { Model } from "@codeworksh/aikit";
 import { Argument, Flag } from "effect/unstable/cli";
 import { Spec } from "../../framework/spec.ts";
 
@@ -6,7 +8,7 @@ import { Spec } from "../../framework/spec.ts";
  * command's behaviour lives in `./handlers`, wired up in `src/index.ts`.
  */
 
-export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const thinkingLevels = Object.values(Model.ThinkingLevelEnum);
 
 export const Cmd = Spec.make("codework", {
 	description: "CodeWork Command Line Interface",
@@ -25,6 +27,10 @@ export const Cmd = Spec.make("codework", {
 		Spec.make("run", {
 			description: "Start or continue an agent session",
 			params: {
+				server: Flag.String("server").pipe(
+					Flag.withDescription("RPC server URL (ws://host:port/rpc)"),
+					Flag.optional,
+				),
 				prompt: Argument.String("prompt").pipe(Argument.withDescription("Prompt for the agent")),
 				session: Flag.String("session").pipe(
 					Flag.withAlias("s"),
@@ -38,6 +44,10 @@ export const Cmd = Spec.make("codework", {
 				),
 				sandbox: Flag.String("sandbox").pipe(
 					Flag.withDescription("Sandbox driver for a new session (default: local)"),
+					Flag.optional,
+				),
+				sandboxId: Flag.String("sandbox-id").pipe(
+					Flag.withDescription("Reuse an existing sandbox instance"),
 					Flag.optional,
 				),
 				sandboxProviderId: Flag.String("sandbox-provider-id").pipe(
@@ -69,6 +79,24 @@ export const Cmd = Spec.make("codework", {
 					command: 'codework run --session <id> --provider openai --model gpt-5.6-luna "Now fix them"',
 					description: "Continue a session with explicit model bindings",
 				},
+			],
+		}),
+		Spec.make("serve", {
+			description: "Start the CodeWork RPC server",
+			params: {
+				host: Flag.String("host").pipe(
+					Flag.withDescription("Host interface to bind"),
+					Flag.withDefault("127.0.0.1"),
+				),
+				port: Flag.Int("port").pipe(
+					Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 }))),
+					Flag.withDescription("Port to listen on (0 for an ephemeral port)"),
+					Flag.withDefault(7433),
+				),
+			},
+			examples: [
+				{ command: "codework serve", description: "Start the RPC server on 127.0.0.1:7433" },
+				{ command: "codework serve --port 0", description: "Choose an available local port" },
 			],
 		}),
 		Spec.make("models", {
