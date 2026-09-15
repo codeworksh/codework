@@ -55,8 +55,8 @@ export const encode = Effect.fn("Envelope.encode")(function* (payload: EventSche
 	};
 });
 
-export const decode = Effect.fn("Envelope.decode")(function* (envelope: EventEnvelope) {
-	const definition = Core(envelope.type);
+export const decode = Effect.fn("Envelope.decode")(function* (envelope: EventEnvelope, registry: Registry = Core) {
+	const definition = registry(envelope.type);
 	if (definition === undefined) {
 		return yield* new UnknownEventTypeError({ type: envelope.type });
 	}

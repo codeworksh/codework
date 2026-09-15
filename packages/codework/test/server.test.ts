@@ -121,6 +121,10 @@ describe("server", () => {
 			const envelope = yield* Queue.take(queue);
 			expect(envelope.type).toBe(Registered.type);
 			expect(envelope.data).toEqual({ value: "hello" });
+			const registry: Envelope.Registry = (type) => (type === Registered.type ? Registered : Envelope.Core(type));
+			const decoded = yield* Envelope.decode(envelope, registry);
+			expect(Schema.is(Registered)(decoded)).toBe(true);
+			if (Schema.is(Registered)(decoded)) expect(decoded.data.value).toBe("hello");
 		}).pipe(
 			Effect.scoped,
 			Effect.provide(layer({ plugins: [registrar] })),
