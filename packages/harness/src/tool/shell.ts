@@ -133,11 +133,10 @@ export const fromSandboxShell: Layer.Layer<ToolShell, never, Shell> = Layer.effe
 						...(options?.env ? { env: options.env } : {}),
 						...(options?.cwd ? { cwd: options.cwd } : {}),
 					}).pipe(
-						Stream.map(
-							(chunk): ToolShellEvent =>
-								chunk._tag === "exit"
-									? { _tag: "Exit", exitCode: chunk.exitCode }
-									: { _tag: "Output", bytes: chunk.bytes },
+						Stream.map((chunk): ToolShellEvent =>
+							chunk._tag === "exit"
+								? { _tag: "Exit", exitCode: chunk.exitCode }
+								: { _tag: "Output", bytes: chunk.bytes },
 						),
 						Stream.mapError((cause) => new ToolShellError({ command, cause })),
 					)

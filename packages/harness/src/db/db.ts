@@ -46,7 +46,7 @@ export function layer(location: string) {
 	);
 }
 
-export const locationConfig = Config.string("CODEWORK_DB").pipe(Config.withDefault("codework.db"));
+export const locationConfig = Config.String("CODEWORK_DB").pipe(Config.withDefault("codework.db"));
 
 export function resolveDatabaseLocation(configured: string, data: string) {
 	if (configured === ":memory:" || posix.isAbsolute(configured)) return configured;

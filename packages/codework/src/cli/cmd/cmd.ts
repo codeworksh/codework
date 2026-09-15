@@ -11,42 +11,42 @@ export const thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh
 export const Cmd = Spec.make("codework", {
 	description: "CodeWork Command Line Interface",
 	shared: {
-		userConfigDir: Flag.string("user-config-dir").pipe(
+		userConfigDir: Flag.String("user-config-dir").pipe(
 			Flag.withDescription("Directory containing user config overrides (e.g. settings.json)"),
 			Flag.optional,
 		),
-		home: Flag.string("home").pipe(
+		home: Flag.String("home").pipe(
 			Flag.withDescription("CodeWork data directory (default: ~/.codework)"),
 			Flag.optional,
 		),
-		database: Flag.string("database").pipe(Flag.withDescription("SQLite database path or :memory:"), Flag.optional),
+		database: Flag.String("database").pipe(Flag.withDescription("SQLite database path or :memory:"), Flag.optional),
 	},
 	commands: [
 		Spec.make("run", {
 			description: "Start or continue an agent session",
 			params: {
-				prompt: Argument.string("prompt").pipe(Argument.withDescription("Prompt for the agent")),
-				session: Flag.string("session").pipe(
+				prompt: Argument.String("prompt").pipe(Argument.withDescription("Prompt for the agent")),
+				session: Flag.String("session").pipe(
 					Flag.withAlias("s"),
 					Flag.withDescription("Continue an existing session"),
 					Flag.optional,
 				),
-				cwd: Flag.string("cwd").pipe(
+				cwd: Flag.String("cwd").pipe(
 					Flag.withAlias("C"),
 					Flag.withDescription("Working directory for a new session"),
 					Flag.optional,
 				),
-				sandbox: Flag.string("sandbox").pipe(
+				sandbox: Flag.String("sandbox").pipe(
 					Flag.withDescription("Sandbox driver for a new session (default: local)"),
 					Flag.optional,
 				),
-				sandboxProviderId: Flag.string("sandbox-provider-id").pipe(
+				sandboxProviderId: Flag.String("sandbox-provider-id").pipe(
 					Flag.withDescription("Provider ID of an existing remote sandbox"),
 					Flag.optional,
 				),
-				provider: Flag.string("provider").pipe(Flag.withDescription("Model catalog provider ID"), Flag.optional),
-				model: Flag.string("model").pipe(Flag.withDescription("Model ID"), Flag.optional),
-				thinking: Flag.choice("thinking", thinkingLevels).pipe(
+				provider: Flag.String("provider").pipe(Flag.withDescription("Model catalog provider ID"), Flag.optional),
+				model: Flag.String("model").pipe(Flag.withDescription("Model ID"), Flag.optional),
+				thinking: Flag.Literals("thinking", thinkingLevels).pipe(
 					Flag.withDescription("Reasoning effort the model uses before answering"),
 					Flag.optional,
 				),
@@ -74,7 +74,7 @@ export const Cmd = Spec.make("codework", {
 		Spec.make("models", {
 			description: "List or generate the model catalog",
 			params: {
-				provider: Flag.string("provider").pipe(Flag.withDescription("Model catalog provider ID"), Flag.optional),
+				provider: Flag.String("provider").pipe(Flag.withDescription("Model catalog provider ID"), Flag.optional),
 			},
 			examples: [
 				{ command: "codework models", description: "List all models from all providers" },
@@ -91,7 +91,7 @@ export const Cmd = Spec.make("codework", {
 				Spec.make("generate", {
 					description: "Generate or update the model catalog",
 					params: {
-						path: Argument.string("path").pipe(
+						path: Argument.String("path").pipe(
 							Argument.withDescription(
 								"Output file or directory; defaults to CODEWORK_MODELS_FILE or ./models.gen.json",
 							),

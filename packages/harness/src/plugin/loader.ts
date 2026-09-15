@@ -53,7 +53,8 @@ export type Source =
 
 export const classify = (source: string, hostCwd: string): Source => {
 	if (source.startsWith("!")) {
-		const id = Schema.decodeSync(Id)(source.slice(1));
+		const id = source.slice(1);
+		if (!Schema.is(Id)(id)) throw new Error(`Invalid plugin source: ${source}`);
 		return { kind: "disable", id };
 	}
 	if (source.startsWith("file:")) {

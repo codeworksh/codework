@@ -50,8 +50,8 @@ const aikitAssistantMessageDeclared = Schema.declare<Message.AssistantMessage>(i
  */
 export const AikitAssistantMessage = Schema.Unknown.pipe(
 	Schema.decodeTo(aikitAssistantMessageDeclared, {
-		decode: SchemaGetter.transformOrFail(decodeAikitAssistantMessage),
-		encode: SchemaGetter.transformOrFail(decodeAikitAssistantMessage),
+		decode: SchemaGetter.transformEffect(decodeAikitAssistantMessage),
+		encode: SchemaGetter.transformEffect(decodeAikitAssistantMessage),
 	}),
 );
 export type AikitAssistantMessage = typeof AikitAssistantMessage.Type;
@@ -68,8 +68,8 @@ const aikitToolCallTerminalPartDeclared = Schema.declare<Message.ToolCallTermina
 
 export const AikitToolCallTerminalPart = Schema.Unknown.pipe(
 	Schema.decodeTo(aikitToolCallTerminalPartDeclared, {
-		decode: SchemaGetter.transformOrFail(decodeAikitToolCallTerminalPart),
-		encode: SchemaGetter.transformOrFail(decodeAikitToolCallTerminalPart),
+		decode: SchemaGetter.transformEffect(decodeAikitToolCallTerminalPart),
+		encode: SchemaGetter.transformEffect(decodeAikitToolCallTerminalPart),
 	}),
 );
 export type AikitToolCallTerminalPart = typeof AikitToolCallTerminalPart.Type;

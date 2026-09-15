@@ -1,10 +1,15 @@
-import { createHash } from "crypto";
+import { Effect, Encoding } from "effect";
+import { crypto } from "../host.ts";
 
-export function fast(input: string | Buffer): string {
-	return createHash("sha1").update(input).digest("hex");
+const encoder = new TextEncoder();
+
+export function fast(input: string | Uint8Array): string {
+	const data = typeof input === "string" ? encoder.encode(input) : input;
+	return Encoding.encodeHex(Effect.runSync(crypto.digest("SHA-1", data)));
 }
 
-export function sha256(input: string | Buffer): string {
-	return createHash("sha256").update(input).digest("hex");
+export function sha256(input: string | Uint8Array): string {
+	const data = typeof input === "string" ? encoder.encode(input) : input;
+	return Encoding.encodeHex(Effect.runSync(crypto.digest("SHA-256", data)));
 }
 export * as Hash from "./hash.ts";

@@ -193,13 +193,13 @@ export const layer = (options: Options = {}) =>
 											.pipe(Effect.asVoid),
 								})
 								.pipe(
-									Effect.catchCause((cause) =>
-										Cause.hasInterrupts(cause)
-											? Effect.failCause(cause)
-											: Effect.map(
-													Effect.clockWith((clock) => clock.currentTimeMillis),
-													(now) => errorPart(call, cause, now),
-												),
+									Effect.catchCauseIf(
+										(cause) => !Cause.hasInterrupts(cause),
+										(cause) =>
+											Effect.map(
+												Effect.clockWith((clock) => clock.currentTimeMillis),
+												(now) => errorPart(call, cause, now),
+											),
 									),
 								);
 							// The durable settlement and the in-memory completion marker form one
