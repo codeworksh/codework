@@ -20,10 +20,10 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@vercel/sandbox": "^2.9.2"
+		"@vercel/sandbox": "^3.3.0"
 	},
 	"devDependencies": {
-		"@types/node": "^25.9.5",
+		"@types/node": "^26.5.1",
 		"effect": "4.0.0-rc.115"
 	},
 	"peerDependencies": {
