@@ -3,6 +3,7 @@ import { SqlClient, SqlSchema } from "effect/unstable/sql";
 import { Database } from "../db/db.ts";
 import { ProjectRow } from "../db/schema.sql.ts";
 import { Git } from "../git/git.ts";
+import { DirectoryNotFoundError, NotDirectoryError, type Error as LocationError } from "../location/error.ts";
 import { Repo } from "../repo/repo.ts";
 import type { RepoSchema } from "../repo/schema.ts";
 import { SandboxFs } from "../sandbox/fs/util.ts";
@@ -31,8 +32,7 @@ export interface Resolved {
 }
 
 export interface Interface {
-	/** PROJECT.md §5.1: discover, identify, register the whole worktree family, adopt strays. */
-	readonly resolveOrCreate: (cwd: AbsolutePath) => Effect.Effect<Resolved>;
+	readonly resolveOrCreate: (cwd: AbsolutePath) => Effect.Effect<Resolved, LocationError>;
 	readonly get: (id: ProjectSchema.ID) => Effect.Effect<Option.Option<ProjectSchema.Info>>;
 	readonly list: () => Effect.Effect<ProjectSchema.Info[]>;
 }
@@ -107,13 +107,12 @@ export const layer = Layer.effect(
 		});
 
 		const resolveOrCreate = Effect.fn("Project.resolveOrCreate")(function* (cwd: AbsolutePath) {
-			// PHASE 0
-			const location = AbsolutePath.make(yield* SandboxFs.realpath(fs, cwd));
-			if (!(yield* SandboxFs.isDirectory(fs, location))) {
-				return yield* Effect.die(new Error(`Project.resolveOrCreate: cwd is not a directory: ${cwd}`));
-			}
+			const exists = yield* fs.exists(cwd).pipe(Effect.orDie);
+			if (!exists) return yield* new DirectoryNotFoundError({ directory: cwd, sandboxInstanceId: env });
+			const stat = yield* fs.stat(cwd).pipe(Effect.orDie);
+			if (!stat.isDirectory) return yield* new NotDirectoryError({ directory: cwd, sandboxInstanceId: env });
+			const location = AbsolutePath.make(yield* fs.realpath(cwd).pipe(Effect.orDie));
 
-			// PHASE 1 + 2
 			const repo = yield* repos.find(location);
 			const ident = repo === undefined ? undefined : yield* repos.identity(repo);
 
@@ -124,7 +123,6 @@ export const layer = Layer.effect(
 			const members: ReadonlyArray<Member> =
 				repo === undefined ? [{ location: worktree, main: true }] : yield* family(repo);
 
-			// PHASE 3 probes — outside the transaction.
 			const candidates = yield* sql<{ id: string; projectId: string; location: string }>`
 				SELECT id, project_id, location FROM space WHERE env IS ${envColumn} AND project_id != ${projectId}
 			`.pipe(Effect.orDie);
@@ -156,8 +154,6 @@ export const layer = Layer.effect(
 
 			const worktreeSpaceId = Space.id(env, worktree);
 
-			// PHASE 3 tx: 3.1 project → 3.3 family → 3.2 adoption. Family goes before
-			// adoption so `into` exists when the first stray is absorbed.
 			yield* sql
 				.withTransaction(
 					Effect.gen(function* () {

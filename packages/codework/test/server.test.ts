@@ -2,22 +2,22 @@
 import { Event, EventList, EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
 import { DateTime, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Stream } from "effect";
 import { HttpServer } from "effect/unstable/http";
-import { Client } from "../src/server/client.ts";
-import { Server } from "../src/server/server.ts";
-import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
 import { RpcTest } from "effect/unstable/rpc";
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { fileURLToPath } from "node:url";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { define as definePlugin } from "../../harness/src/plugin/plugin.ts";
+import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
+import { Client } from "../src/server/client.ts";
 import { Contract } from "../src/server/contract.ts";
 import { Envelope } from "../src/server/envelope.ts";
 import { EventFeed } from "../src/server/feed.ts";
 import { Handlers } from "../src/server/handlers.ts";
+import { Server } from "../src/server/server.ts";
 
 process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 const exec = promisify(execFile);
@@ -72,6 +72,46 @@ describe("server", () => {
 			}).pipe(Effect.flip);
 			expect(failure._tag).toBe("SessionNotFoundError");
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
+
+	it("session.create and session.relink report invalid directories", () => {
+		const root = mkdtempSync(join(tmpdir(), "codework-server-directory-"));
+		homes.push(root);
+		const file = join(root, "file");
+		writeFileSync(file, "not a directory");
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const sandbox = yield* rpc["sandbox.create"]({ driver: "memory" });
+			const missingError = yield* rpc["session.create"]({
+				directory: "missing",
+				sandbox: { id: sandbox.id },
+			}).pipe(Effect.flip);
+			expect(missingError).toMatchObject({
+				_tag: "Location.DirectoryNotFoundError",
+				directory: "/missing",
+				sandboxInstanceId: sandbox.id,
+			});
+
+			const fileError = yield* rpc["session.create"]({ directory: file }).pipe(Effect.flip);
+			expect(fileError).toMatchObject({
+				_tag: "Location.NotDirectoryError",
+				directory: file,
+				sandboxInstanceId: Sandbox.SandboxInstance.ID.local,
+			});
+
+			const session = yield* rpc["session.create"]({ directory: root });
+			const relinkError = yield* rpc["session.relink"]({
+				sessionId: session.id,
+				directory: "missing",
+				sandbox: { id: sandbox.id },
+			}).pipe(Effect.flip);
+			expect(relinkError).toMatchObject({
+				_tag: "Location.DirectoryNotFoundError",
+				directory: "/missing",
+				sandboxInstanceId: sandbox.id,
+			});
+		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
+	});
 
 	it("event.subscribe streams envelopes that decode through the registry", () =>
 		Effect.gen(function* () {

@@ -1,6 +1,8 @@
+import { Model } from "@codeworksh/aikit";
 import {
 	Control,
 	Event,
+	Location,
 	optional,
 	PromptSchema,
 	Sandbox,
@@ -10,7 +12,6 @@ import {
 } from "@codeworksh/harness/effect";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/unstable/rpc";
-import { Model } from "@codeworksh/aikit";
 import { EncodingError, EventEnvelope } from "./envelope.ts";
 
 export const SandboxInfo = Schema.Struct({
@@ -63,6 +64,8 @@ const SandboxErrors = Schema.Union([
 	SandboxError.SandboxBusyError,
 ]);
 
+const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.NotDirectoryError]);
+
 export const Api = RpcGroup.make(
 	Rpc.make("session.create", {
 		payload: {
@@ -72,7 +75,7 @@ export const Api = RpcGroup.make(
 			runtime: optional(RuntimeConfig),
 		},
 		success: SessionInfo,
-		error: Schema.Union([SessionErrors, SandboxErrors]),
+		error: Schema.Union([SessionErrors, SandboxErrors, LocationErrors]),
 	}),
 	Rpc.make("session.list", {
 		payload: {},
@@ -95,7 +98,7 @@ export const Api = RpcGroup.make(
 			directory: optional(Schema.String),
 		},
 		success: SessionInfo,
-		error: Schema.Union([SessionErrors, SandboxErrors]),
+		error: Schema.Union([SessionErrors, SandboxErrors, LocationErrors]),
 	}),
 	Rpc.make("session.prompt", {
 		payload: {

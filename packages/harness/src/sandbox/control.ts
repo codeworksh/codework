@@ -3,7 +3,6 @@ import { SqlClient } from "effect/unstable/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
 import { Space } from "../space/space.ts";
 import { SandboxDriver } from "./driver.ts";
-import { SandboxDriverRegistry } from "./registry.ts";
 import {
 	providerError,
 	providerErrorIsNotFound,
@@ -32,6 +31,7 @@ import { EnvNodeJSDefault } from "./fs/nodejs.ts";
 import { Local } from "./fs/vfs.ts";
 import { SandboxInstance } from "./instance.ts";
 import { SandboxIO } from "./io.ts";
+import { SandboxDriverRegistry } from "./registry.ts";
 import { HostExe } from "./shell/host.ts";
 import { withCwd as shellWithCwd } from "./shell/shell.ts";
 import { SandboxStore } from "./store.ts";
@@ -106,7 +106,7 @@ export interface Options {
 	readonly provisioningTimeoutMs?: number;
 }
 
-const hostTransport = Layer.provide(Layer.merge(Local.layer, HostExe.layer()), EnvNodeJSDefault.layer());
+const hostTransport = Layer.provide(Layer.merge(Layer.fresh(Local.layer), HostExe.layer()), EnvNodeJSDefault.layer());
 
 const asDate = DateTime.toDateUtc;
 const optionalDate = Option.map(DateTime.toDateUtc);

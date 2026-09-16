@@ -102,7 +102,17 @@ export const layer = Layer.effect(
 						Layer.provide(Layer.succeedContext(mountContext)),
 						Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
 					);
-					const locationContext = yield* Layer.build(location);
+					const locationContext = yield* Layer.build(location).pipe(
+						Effect.catchTag(
+							["Location.DirectoryNotFoundError", "Location.NotDirectoryError"],
+							(error) =>
+								new Runner.SandboxDirectoryNotFoundError({
+									sessionId,
+									sandboxInstanceId: error.sandboxInstanceId,
+									directory: error.directory,
+								}),
+						),
+					);
 
 					return yield* runner
 						.run({ sessionId, force })
@@ -113,7 +123,7 @@ export const layer = Layer.effect(
 					Effect.scoped,
 					Effect.tapCause((cause) =>
 						Cause.hasDies(cause)
-							? Effect.logError("runner defect", cause).pipe(Effect.annotateLogs({ sessionId }))
+							? Effect.logError("defect", cause).pipe(Effect.annotateLogs({ sessionId }))
 							: Effect.void,
 					),
 				);
