@@ -107,15 +107,17 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
  * A reference is otherwise resolved against the host startup directory, which is right for
  * a project file sitting in it and meaningless for `~/.codework/settings.json`, where
  * `./plugins/x.ts` would name a different file in every project the process is started in.
- * IDs, `!id` disables, `file:` URLs, and package specs are left exactly as written.
+ * IDs, `file:` URLs, and package specs are left exactly as written.
  */
 const anchor = (patch: Patch, file: string): Patch => {
 	if (patch.plugins === undefined) return patch;
 	const directory = hostPath.dirname(file);
+	const resolve = (reference: string) =>
+		reference.startsWith("./") || reference.startsWith("../") ? hostPath.resolve(directory, reference) : reference;
 	return {
 		...patch,
 		plugins: patch.plugins.map((entry) =>
-			entry.startsWith("./") || entry.startsWith("../") ? hostPath.resolve(directory, entry) : entry,
+			typeof entry === "string" ? resolve(entry) : { ...entry, plugin: resolve(entry.plugin) },
 		),
 	};
 };

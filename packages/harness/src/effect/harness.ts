@@ -54,15 +54,16 @@ export const layer = (options: Options = {}) =>
 			const config = yield* Settings.load({ ...settingsOptions, home: paths.home });
 			// Settings entries extend the built-in selection rather than standing in for it, so
 			// naming a plugin cannot silently drop Bash or the default prompt. A built-in is turned
-			// off the same way as any other plugin, with a `!codework.tool.bash` entry.
-			const plugins = yield* prepare(options.plugins ?? [...defaultRefs, ...config.plugins], {
+			// off the same way as any other plugin, with a
+			// `{ "plugin": "codework.tool.bash", "enabled": false }` entry.
+			const selection = yield* prepare(options.plugins ?? [...defaultRefs, ...config.plugins], {
 				builtins,
 				cache: paths.cache,
 				hostCwd,
 			});
 			// Flattened before anything can publish: a plugin event type that collides
 			// or is not namespaced is a boot failure, not a surprise at first publish.
-			const definitions = yield* EventRegistry.flatten(plugins);
+			const definitions = yield* EventRegistry.flatten(selection.map((entry) => entry.plugin));
 			const configuredDatabase = options.database ?? (yield* Database.locationConfig);
 			const database = Database.layer(Database.resolveDatabaseLocation(configuredDatabase, paths.data));
 			const configured = yield* SandboxDriverLoader.loadAll(options.sandboxes ?? [], { hostCwd });
@@ -76,7 +77,7 @@ export const layer = (options: Options = {}) =>
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
-				Layer.provideMerge(State.layer({}, plugins)),
+				Layer.provideMerge(State.layer({}, selection)),
 				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),

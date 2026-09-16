@@ -37,7 +37,12 @@ const sandbox = SandboxController.layer().pipe(
 const runtime = (root: string, custom: string) =>
 	Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer()))),
-		Layer.provideMerge(State.layer({}, builtins)),
+		Layer.provideMerge(
+			State.layer(
+				{},
+				builtins.map((plugin) => ({ plugin, options: {} })),
+			),
+		),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Settings.layer({ cwd: root, userConfigDir: custom }).pipe(

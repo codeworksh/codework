@@ -17,7 +17,7 @@ import { Context, Effect, Layer, Option, Schema } from "effect";
 import { Event } from "../event/event.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
 import { run as setup } from "../plugin/host.ts";
-import type { Plugin } from "../plugin/plugin.ts";
+import type { Prepared } from "../plugin/catalog.ts";
 import { LLM } from "../runner/llm.ts";
 import type { Runner } from "../runner/run.ts";
 import { Location } from "../location/location.ts";
@@ -133,11 +133,11 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 const resolver = (input: string | PromptResolver): PromptResolver => (typeof input === "string" ? () => input : input);
 
 /**
- * `plugins` is the prepared, ordered list — resolved once during harness construction
+ * `selection` is the prepared, ordered list — resolved once during harness construction
  * (`plugin/catalog.ts`). State runs it as given: no insertion, reordering, or rerun, and no
  * default of its own.
  */
-export const layer = (options: Options, plugins: ReadonlyArray<Plugin>) => {
+export const layer = (options: Options, selection: ReadonlyArray<Prepared>) => {
 	return Layer.effect(
 		Service,
 		Effect.gen(function* () {
@@ -164,7 +164,7 @@ export const layer = (options: Options, plugins: ReadonlyArray<Plugin>) => {
 					const location = yield* Location.Service;
 
 					const resolvedModel = yield* LLM.resolve({ provider, model, settings: configured.block });
-					const contributions = yield* setup(plugins, {
+					const contributions = yield* setup(selection, {
 						sessionId,
 						sandbox,
 						location,

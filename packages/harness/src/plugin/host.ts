@@ -1,6 +1,6 @@
 import { Cause, Effect, Schema } from "effect";
+import type { Prepared } from "./catalog.ts";
 import type { SharedPluginContext } from "./context.ts";
-import type { Plugin } from "./plugin.ts";
 import { make } from "./registry.ts";
 
 export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupError", {
@@ -10,13 +10,15 @@ export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupEr
 }) {}
 
 export const run = Effect.fn("PluginHost.run")(function* (
-	plugins: ReadonlyArray<Plugin>,
-	input: Omit<SharedPluginContext, "plugin">,
+	selection: ReadonlyArray<Prepared>,
+	input: Omit<SharedPluginContext, "plugin" | "options">,
 ) {
 	const buckets = make();
-	const ctx = Object.freeze({ ...input, plugin: buckets.registry });
+	const shared = { ...input, plugin: buckets.registry };
 	const setup = Effect.gen(function* () {
-		for (const plugin of plugins) {
+		for (const { plugin, options } of selection) {
+			// One context per plugin: the registry and the exchange are shared, `options` is not.
+			const ctx = Object.freeze({ ...shared, options });
 			yield* Effect.suspend(() => {
 				const result = plugin.setup(ctx);
 				if (Effect.isEffect(result))

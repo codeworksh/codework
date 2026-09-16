@@ -58,17 +58,11 @@ export const validate = Effect.fn("PluginLoader.validate")(function* (input: unk
 });
 
 export type Source =
-	| { readonly kind: "disable"; readonly id: string }
 	| { readonly kind: "id"; readonly id: string }
 	| { readonly kind: "local"; readonly path: string }
 	| { readonly kind: "package"; readonly request: Package.Request };
 
 export const classify = (source: string, hostCwd: string): Source => {
-	if (source.startsWith("!")) {
-		const id = source.slice(1);
-		if (!Schema.is(Id)(id)) throw new Error(`Invalid plugin source: ${source}`);
-		return { kind: "disable", id };
-	}
 	if (source.startsWith("file:")) {
 		// Both `new URL` and `fileURLToPath` silently read a relative `file:./x` as `/x`. A file
 		// URL names an absolute path or it is not one.

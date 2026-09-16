@@ -6,14 +6,18 @@ import { homedir, tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { prepare } from "../src/plugin/catalog.ts";
+import { prepare, type Options, type PluginRef, type Prepared } from "../src/plugin/catalog.ts";
 import { classify, validate } from "../src/plugin/loader.ts";
 import { install, InstallError, parse, type Runner } from "../src/plugin/package.ts";
 import { define } from "../src/plugin/plugin.ts";
 
 const a = define({ id: "acme.tool.a", setup: () => {} });
 const b = define({ id: "acme.tool.b", setup: () => {} });
-const options = { builtins: [], cache: "/unused", hostCwd: "/project" };
+const options: Options = { builtins: [], cache: "/unused", hostCwd: "/project" };
+/** `prepare` pairs each selected plugin with its configuration; most assertions want the plugins. */
+const selected = (list: ReadonlyArray<Prepared>) => list.map((entry) => entry.plugin);
+const run = (references: ReadonlyArray<PluginRef>, overrides: Partial<Options> = {}) =>
+	Effect.runPromise(prepare(references, { ...options, ...overrides }));
 const withDirectory = async (body: (directory: string) => Promise<void>) => {
 	const directory = await mkdtemp(join(tmpdir(), "plugin-catalog-"));
 	try {
@@ -50,21 +54,42 @@ describe("plugin catalog and source resolution", () => {
 				calls++;
 			},
 		});
-		const result = await Effect.runPromise(prepare([a.id, a, b, latest, b.id], options));
-		expect(result.map((p) => p.id)).toEqual([a.id, b.id]);
-		expect(result[0]?.setup).toBe(latest.setup);
+		const result = await run([a.id, a, b, latest, b.id]);
+		expect(selected(result).map((p) => p.id)).toEqual([a.id, b.id]);
+		expect(result[0]?.plugin.setup).toBe(latest.setup);
+		expect(result[0]?.options).toEqual({});
 		expect(calls).toBe(0);
 	});
 	it("disables unknown IDs and re-enables known IDs", async () => {
-		expect(await Effect.runPromise(prepare([a, b, `!${a.id}`, "!acme.tool.unknown", a.id], options))).toEqual([b, a]);
-		expect(await Effect.runPromise(prepare([a, `!${a.id}`], options))).toEqual([]);
+		const disable = (id: string) => ({ plugin: id, enabled: false });
+		expect(selected(await run([a, b, disable(a.id), disable("acme.tool.unknown"), a.id]))).toEqual([b, a]);
+		expect(await run([a, disable(a.id)])).toEqual([]);
 		const error = await Effect.runPromise(prepare([a.id], options).pipe(Effect.flip));
 		expect(error).toMatchObject({ phase: "resolve", index: 0, reference: a.id, id: a.id });
+		// Nothing installs a package or imports a file just to turn it off.
+		expect(
+			await Effect.runPromise(prepare([disable("./plugins/local.ts")], options).pipe(Effect.flip)),
+		).toMatchObject({ phase: "source", index: 0, reference: "./plugins/local.ts" });
+	});
+	it("carries per-plugin options, merges repeated blocks and never reorders a patch", async () => {
+		const [first, second] = await run([
+			{ plugin: a, options: { one: 1, nested: { keep: true, replace: "old" } } },
+			b,
+			{ plugin: a.id, options: { two: 2, nested: { replace: "new" } } },
+		]);
+		// A bare mention moves a plugin; an `options` entry patches it where it already runs.
+		expect(first?.plugin).toBe(a);
+		expect(second?.plugin).toBe(b);
+		expect(first?.options).toEqual({ one: 1, two: 2, nested: { keep: true, replace: "new" } });
+		expect(second?.options).toEqual({});
+		expect(Object.isFrozen(first?.options)).toBe(true);
+		// The same ID listed bare afterwards does move it.
+		expect(selected(await run([a, b, a.id])).map((plugin) => plugin.id)).toEqual([b.id, a.id]);
 	});
 	it("seeds builtins without selecting them and reserves their namespace", async () => {
 		const builtin = define({ id: "codework.tool.fixture", setup: () => {} });
-		expect(await Effect.runPromise(prepare([], { ...options, builtins: [builtin] }))).toEqual([]);
-		expect(await Effect.runPromise(prepare([builtin.id], { ...options, builtins: [builtin] }))).toEqual([builtin]);
+		expect(await run([], { builtins: [builtin] })).toEqual([]);
+		expect(selected(await run([builtin.id], { builtins: [builtin] }))).toEqual([builtin]);
 		expect(await Effect.runPromise(prepare([builtin], options).pipe(Effect.flip))).toMatchObject({
 			phase: "definition",
 		});
@@ -96,9 +121,9 @@ describe("plugin catalog and source resolution", () => {
 				seen.push((this as { label: string }).label);
 			},
 		};
-		const [resolved] = await Effect.runPromise(prepare([plugin], options));
-		expect(resolved).toBe(plugin);
-		void resolved?.setup({} as never);
+		const [resolved] = await run([plugin]);
+		expect(resolved?.plugin).toBe(plugin);
+		void resolved?.plugin.setup({} as never);
 		expect(seen).toEqual(["kept"]);
 	});
 	it("normalizes package specs and classifies local sources", () => {
@@ -124,8 +149,6 @@ describe("plugin catalog and source resolution", () => {
 			path: join(homedir(), "plugins/one.ts"),
 		});
 		expect(classify("~", "/project")).toEqual({ kind: "local", path: homedir() });
-		expect(classify(`!${a.id}`, "/project")).toEqual({ kind: "disable", id: a.id });
-		expect(() => classify("!", "/project")).toThrow();
 		// `fileURLToPath` would silently turn this into `/rel.ts`.
 		expect(() => classify("file:./rel.ts", "/project")).toThrow();
 		expect(() => parse("https://example.com/plugin.tgz")).toThrow();
@@ -144,7 +167,9 @@ describe("plugin catalog and source resolution", () => {
 				return { default: a };
 			},
 		};
-		expect(await Effect.runPromise(prepare(["@acme/plugin", "@acme/plugin@latest", a.id], seams))).toEqual([a]);
+		expect(selected(await Effect.runPromise(prepare(["@acme/plugin", "@acme/plugin@latest", a.id], seams)))).toEqual([
+			a,
+		]);
 		expect(installs).toBe(1);
 		expect(imports).toBe(1);
 		expect(
@@ -162,9 +187,8 @@ describe("plugin catalog and source resolution", () => {
 			await writeFile(join(directory, "entry.js"), "");
 			let url = "";
 			expect(
-				await Effect.runPromise(
-					prepare([directory], {
-						...options,
+				selected(
+					await run([directory], {
 						import: async (input) => {
 							url = input;
 							return { default: a };
@@ -385,5 +409,5 @@ it("imports an actual local module default export", () =>
 		const source = join(directory, "plugin.mjs");
 		await writeFile(source, "export default { id: 'acme.tool.local', setup() {} }");
 		const plugins = await Effect.runPromise(prepare([source], options));
-		expect(plugins.map((plugin) => plugin.id)).toEqual(["acme.tool.local"]);
+		expect(selected(plugins).map((plugin) => plugin.id)).toEqual(["acme.tool.local"]);
 	}));

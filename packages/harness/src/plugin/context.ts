@@ -6,6 +6,7 @@ import type { Location } from "../location/location.ts";
 import type { SandboxIO } from "../sandbox/io.ts";
 import type { SessionSchema } from "../session/schema.ts";
 import type { Info } from "../settings/schema.ts";
+import type { PluginOptions } from "./catalog.ts";
 import type { PluginRegistry } from "./registry.ts";
 
 export type PromptResolver = (ctx: SharedPluginContext) => string | Promise<string>;
@@ -25,6 +26,11 @@ export interface SharedPluginContext {
 	readonly config: Config;
 	readonly events: Events;
 	readonly plugin: PluginRegistry;
+	/**
+	 * This plugin's own configuration block, `{}` when the entry carried none. Unvalidated:
+	 * the harness never looks inside it, so a plugin checks whatever shape it documents.
+	 */
+	readonly options: PluginOptions;
 }
 
 // Every kernel type, not just the durable ones: `EventRegistry.flatten` rejects

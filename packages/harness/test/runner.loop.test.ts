@@ -47,7 +47,12 @@ const runtime = (
 	);
 	return Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
-		Layer.provideMerge(State.layer(options.state ?? {}, options.plugins ?? plugins)),
+		Layer.provideMerge(
+			State.layer(
+				options.state ?? {},
+				(options.plugins ?? plugins).map((plugin) => ({ plugin, options: {} })),
+			),
+		),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(Layer.succeed(Settings.Service, { load: Effect.succeed(Settings.defaults) })),
 		Layer.provideMerge(sandbox),

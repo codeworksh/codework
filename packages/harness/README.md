@@ -61,18 +61,42 @@ Hooks belong to the tool registration. Sequential or parallel scheduling, select
 
 Prompt plugins use `ctx.plugin.prompt.get()` and `set(string)`. Each `set` replaces the entire prompt, including with an empty string. Place a prompt plugin after the tools or prompt contributors it needs. Contributions close after setup; plugins receive event publication but no subscription or background lifecycle.
 
-Omitting `plugins` selects Bash then the default prompt, followed by the host settings' `plugins` block. An explicit array replaces all of that, and an empty one runs nothing — which is not a usable harness: `freeze` requires a system prompt, so a selection without a prompt plugin fails every exchange with `SnapshotError("no prompt plugin set a system prompt")`. Every working selection ends with a prompt plugin, whether `codework.prompt.default` or your own. Entries may be plugin objects, IDs, `!vendor.domain.name` to disable an ID, local paths/file URLs, or package specs such as `@acme/codework-plugin@1.2.0`. Source modules must default-export one plugin object. Definitions load before selection; the last occurrence of each ID determines whether it runs and its position.
+Omitting `plugins` selects Bash then the default prompt, followed by the host settings' `plugins` block. An explicit array replaces all of that, and an empty one runs nothing — which is not a usable harness: `freeze` requires a system prompt, so a selection without a prompt plugin fails every exchange with `SnapshotError("no prompt plugin set a system prompt")`. Every working selection ends with a prompt plugin, whether `codework.prompt.default` or your own. Entries may be plugin objects, IDs, local paths/file URLs, or package specs such as `@acme/codework-plugin@1.2.0`. Source modules must default-export one plugin object. Definitions load before selection.
 
-Settings entries are strings only, and they extend the built-in selection instead of standing in for it, so naming one plugin cannot silently drop Bash or the prompt:
+Any entry can also be written in long form, `{ plugin, enabled?, options? }`, where `plugin` is any of the same references (or a definition object):
+
+```ts
+Harness.layer({
+	plugins: [
+		{ plugin: "codework.tool.bash", enabled: false },
+		{ plugin: "@acme/codework-plugin@1.2.0", options: { endpoint: "https://acme.test" } },
+		"codework.prompt.default",
+	],
+});
+```
+
+`options` arrives as `ctx.options` in that plugin's `setup`, `{}` when the entry carried none. The harness never looks inside it — a plugin validates whatever shape it documents. `"enabled": false` drops a plugin another entry selected and needs an ID: a path or package spec would have to be installed and imported to learn which plugin it names, and deleting the entry that added it says the same thing. Turning off an ID nothing selected is a no-op, not an error.
+
+A plugin may be named more than once — by the built-in list, then by a settings entry. Each mention updates its `enabled` flag and merges its `options`. Position belongs to the last _bare_ mention, so re-listing an ID moves it later, while an entry carrying `options` patches it where it already runs and never reorders it.
+
+Settings entries take the same two forms, and they extend the built-in selection instead of standing in for it, so naming one plugin cannot silently drop Bash or the prompt:
 
 ```jsonc
 // codework.json, ~/.codework/settings.json, or a --user-config-dir
-{ "plugins": ["codework-acme-plugin", "@acme/codework-plugin@1.2.0", "./plugins/local.ts", "!codework.tool.bash"] }
+{
+	"plugins": [
+		"codework-acme-plugin",
+		"@acme/codework-plugin@1.2.0",
+		"./plugins/local.ts",
+		{ "plugin": "acme.tool.example", "options": { "retries": 2 } },
+		{ "plugin": "codework.tool.bash", "enabled": false },
+	],
+}
 ```
 
-The array replaces across settings layers rather than concatenating, so the highest-priority file that names `plugins` owns the whole list. A leading `~` expands to the home directory. A `./` or `../` path resolves against the directory of the file that declared it — next to `codework.json`, inside `.codework/`, or beside `~/.codework/settings.json` — so one entry means one file in every project. IDs, `!id` disables, `file:` URLs, and package specs are taken as written.
+The array replaces across settings layers rather than concatenating, so the highest-priority file that names `plugins` owns the whole list. A leading `~` expands to the home directory. A `./` or `../` path resolves against the directory of the file that declared it — next to `codework.json`, inside `.codework/`, or beside `~/.codework/settings.json` — so one entry means one file in every project. IDs, `file:` URLs, and package specs are taken as written, in either form.
 
-Entries append after the built-ins, so a tool plugin added here registers after `codework.prompt.default` rendered its index — the usual ordering rule, not a special case for settings. Its tool reaches the provider with its own description but is absent from the system prompt's list. Re-list the prompt plugin to move it, since the last occurrence of an ID owns its position:
+Entries append after the built-ins, so a tool plugin added here registers after `codework.prompt.default` rendered its index — the usual ordering rule, not a special case for settings. Its tool reaches the provider with its own description but is absent from the system prompt's list. Re-list the prompt plugin to move it, since the last bare occurrence of an ID owns its position:
 
 ```jsonc
 { "plugins": ["./plugins/read.ts", "codework.prompt.default"] }

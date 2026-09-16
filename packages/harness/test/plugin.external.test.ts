@@ -2,15 +2,17 @@ import "./utils/env.ts";
 import type { Message } from "@codeworksh/aikit";
 import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect";
 import { join, relative } from "node:path";
-import { writeFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
+import { mkdir, writeFile } from "node:fs/promises";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
 import { EventSchema } from "../src/event/schema.ts";
-import { prepare } from "../src/plugin/catalog.ts";
+import { prepare, type PluginRef } from "../src/plugin/catalog.ts";
+import { builtins, defaultRefs } from "../src/plugin/internal.ts";
 import { fallback } from "../src/plugin/prompt/registry.ts";
+import { Settings } from "../src/settings/settings.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { immediateOpen, toolTurn } from "./fixtures/llm.ts";
@@ -27,7 +29,7 @@ const pluginPath = (name: string) => join(dir, name);
 /** One `Session.create` + one `run`, capturing every provider request. */
 const exchange = (input: {
 	readonly root: string;
-	readonly plugins?: ReadonlyArray<string>;
+	readonly plugins?: ReadonlyArray<PluginRef>;
 	readonly userConfigDir?: string;
 	readonly llm?: LLM.Open;
 	readonly prompt?: string;
@@ -120,12 +122,93 @@ describe("third-party plugins", () => {
 			expect(relisted.prompts[0]).toContain("- acme_echo: Echo a value back");
 		}));
 
-	it("disables a built-in named with a leading bang in settings", () =>
+	it("disables a built-in from settings", () =>
 		withSettings(async ({ root, custom }) => {
-			await writeFile(join(custom, "settings.json"), JSON.stringify({ plugins: ["!codework.tool.bash"] }));
+			await writeFile(
+				join(custom, "settings.json"),
+				JSON.stringify({ plugins: [{ plugin: "codework.tool.bash", enabled: false }] }),
+			);
 			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
 			expect(contexts[0]?.tools ?? []).toEqual([]);
 			expect(prompts[0]).toContain("Available tools:\n(none)");
+		}));
+
+	it("passes a settings options block to the plugin that entry names", () =>
+		withSettings(async ({ root, custom }) => {
+			await writeFile(
+				join(custom, "settings.json"),
+				JSON.stringify({
+					plugins: [{ plugin: pluginPath("prompt/acme-prompt.ts"), options: { marker: "configured" } }],
+				}),
+			);
+			const { prompts } = await exchange({ root, userConfigDir: custom });
+			expect(prompts[0]?.endsWith("\n\nconfigured")).toBe(true);
+		}));
+
+	it("configures a built-in without moving it out of the built-in order", () =>
+		withSettings(async ({ root, custom }) => {
+			// A bare re-list would move the prompt plugin after the settings tool; an options
+			// entry patches it in place, so the tool stays unindexed and the prompt stays first.
+			await writeFile(
+				join(custom, "settings.json"),
+				JSON.stringify({
+					plugins: [
+						{ plugin: "codework.prompt.default", options: { ignored: true } },
+						pluginPath("tool/acme-echo"),
+					],
+				}),
+			);
+			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
+			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash", "acme_echo"]);
+			expect(prompts[0]).not.toContain("acme_echo");
+		}));
+
+	it("prepares a settings block mixing package specs, an anchored path, options and a disable", () =>
+		withSettings(async ({ root, custom, global }) => {
+			// The composition `Harness.layer` performs, with real modules behind the two package
+			// specs: only the registry install is a seam, because reaching npm is not this suite's
+			// business. Imports, anchoring and ordering are the real ones.
+			const packaged = join(custom, "packages");
+			await mkdir(packaged, { recursive: true });
+			await mkdir(join(custom, "plugins"), { recursive: true });
+			await writeFile(join(packaged, "tool.mjs"), "export default { id: 'acme.tool.example', setup() {} }");
+			await writeFile(join(packaged, "prompt.mjs"), "export default { id: 'acme.prompt.example', setup() {} }");
+			await writeFile(join(custom, "plugins", "local.mjs"), "export default { id: 'acme.tool.local', setup() {} }");
+			await writeFile(
+				join(custom, "settings.json"),
+				JSON.stringify({
+					plugins: [
+						"codework-acme-plugin",
+						"@acme/codework-plugin@1.2.0",
+						"./plugins/local.mjs",
+						{ plugin: "acme.tool.example", options: { retries: 2 } },
+						{ plugin: "codework.tool.bash", enabled: false },
+					],
+				}),
+			);
+			const specs: string[] = [];
+			const config = await Effect.runPromise(Settings.load({ cwd: root, userConfigDir: custom, home: global }));
+			const prepared = await Effect.runPromise(
+				prepare([...defaultRefs, ...config.plugins], {
+					builtins,
+					cache: join(root, "cache"),
+					hostCwd: root,
+					install: (request) => {
+						specs.push(request.spec);
+						const module = request.name === "codework-acme-plugin" ? "tool.mjs" : "prompt.mjs";
+						return Effect.succeed({ url: pathToFileURL(join(packaged, module)).href, version: "1.2.0" });
+					},
+				}),
+			);
+			expect(specs).toEqual(["codework-acme-plugin@latest", "@acme/codework-plugin@1.2.0"]);
+			// Bash is gone, the options entry configured the package plugin without moving it, and
+			// the relative entry resolved against the settings file rather than the host cwd.
+			expect(prepared.map((entry) => [entry.plugin.id, entry.options])).toEqual([
+				["codework.prompt.default", {}],
+				["acme.tool.example", { retries: 2 }],
+				["acme.prompt.example", {}],
+				["acme.tool.local", {}],
+			]);
 		}));
 
 	it("lets an explicit option selection replace the settings plugins", () =>
@@ -184,7 +267,7 @@ describe("third-party plugins", () => {
 				hostCwd: "/project",
 			}),
 		);
-		expect(plugins.map((plugin) => plugin.id)).toEqual(["acme.tool.echo", "acme.prompt.marker"]);
+		expect(plugins.map((entry) => entry.plugin.id)).toEqual(["acme.tool.echo", "acme.prompt.marker"]);
 	});
 
 	it("rejects a malformed module and a reserved namespace through real imports", async () => {
@@ -449,7 +532,11 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { contexts, prompts, path } = await exchange({
 				root,
-				plugins: ["codework.tool.bash", "!codework.tool.bash", "codework.prompt.default"],
+				plugins: [
+					"codework.tool.bash",
+					{ plugin: "codework.tool.bash", enabled: false },
+					"codework.prompt.default",
+				],
 				llm: toolTurn(pendingCall("bash", { command: "echo hi" }, "call_bash")),
 			});
 			expect(contexts[0]?.tools).toEqual([]);

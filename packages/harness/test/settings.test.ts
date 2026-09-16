@@ -51,7 +51,12 @@ describe("host settings loader", () => {
 			const layer = Settings.layer({ cwd: root }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: global }))),
 			);
-			const entries = ["./plugins/one.ts", "../sibling/two.ts", "codework-acme-plugin", "!codework.tool.bash"];
+			const entries = [
+				"./plugins/one.ts",
+				{ plugin: "../sibling/two.ts", options: { deep: true } },
+				"codework-acme-plugin",
+				{ plugin: "codework.tool.bash", enabled: false },
+			];
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const settings = yield* Settings.Service;
@@ -60,10 +65,11 @@ describe("host settings loader", () => {
 					);
 					expect((yield* settings.load).plugins).toEqual([
 						join(global, "plugins/one.ts"),
-						join(root, "sibling/two.ts"),
-						// IDs, disables and package specs pass through untouched.
+						// The long form anchors its `plugin` and keeps the rest of the entry.
+						{ plugin: join(root, "sibling/two.ts"), options: { deep: true } },
+						// IDs and package specs pass through untouched.
 						"codework-acme-plugin",
-						"!codework.tool.bash",
+						{ plugin: "codework.tool.bash", enabled: false },
 					]);
 					// The project layer anchors to its own directory, which differs between the two layouts.
 					yield* Effect.promise(() =>
