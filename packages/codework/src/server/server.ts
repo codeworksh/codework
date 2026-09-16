@@ -19,9 +19,9 @@ const managedShutdown = Layer.unwrap(
 		yield* Effect.addFinalizer(() =>
 			Effect.gen(function* () {
 				// Release drain leases before stopping the server's managed sandboxes.
-				// A wedged drain must not hold shutdown open: past the timeout the stops
-				// proceed anyway, which is the same reconcile-on-next-boot case a crash
-				// leaves behind.
+				// Both phases are best effort and bounded so a provider cannot prevent
+				// process shutdown; an interrupted stop is persisted as faulted and can
+				// recover the next time that sandbox is mounted.
 				yield* Effect.forEach(
 					yield* control.active,
 					(id) =>
@@ -33,8 +33,16 @@ const managedShutdown = Layer.unwrap(
 				const infos = yield* Sandbox.list();
 				yield* Effect.forEach(
 					infos.filter((info) => info.ownership === "managed"),
-					(info) => Sandbox.stop(info.id).pipe(Effect.catchCause(Effect.logError)),
-					{ discard: true },
+					(info) =>
+						Sandbox.stop(info.id).pipe(
+							Effect.timeout("10 seconds"),
+							Effect.catchCause((cause) =>
+								Effect.logError("Failed to stop managed sandbox during shutdown", cause).pipe(
+									Effect.annotateLogs({ sandboxInstanceId: info.id }),
+								),
+							),
+						),
+					{ concurrency: "unbounded", discard: true },
 				);
 			}),
 		);

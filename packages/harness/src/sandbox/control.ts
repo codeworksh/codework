@@ -760,22 +760,41 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			}),
 		);
 		if (!claim.claimed) return toInfo(claim.row);
-		yield* transports.invalidate(id);
-		const current = yield* requireRow(id);
-		const attached = yield* runtime(current, "stop");
-		const observed = yield* attached.driver.stop!(attached.input).pipe(
-			Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
-				providerErrorIsNotFound(error) ? markUnavailable(id, error) : persistProviderFailure(id, "faulted", error),
-			),
+		return yield* Effect.uninterruptibleMask((restore) =>
+			Effect.gen(function* () {
+				yield* transports.invalidate(id);
+				const current = yield* requireRow(id);
+				const attached = yield* runtime(current, "stop");
+				const observed = yield* restore(
+					attached.driver.stop!(attached.input).pipe(
+						Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
+							providerErrorIsNotFound(error)
+								? markUnavailable(id, error)
+								: persistProviderFailure(id, "faulted", error),
+						),
+					),
+				).pipe(
+					Effect.onInterrupt(() =>
+						updateObservation({
+							id,
+							status: "faulted",
+							lastError: {
+								name: "SandboxStopInterrupted",
+								message: "sandbox stop was interrupted before the provider confirmed completion",
+							},
+						}),
+					),
+				);
+				yield* updateObservation({
+					id,
+					status: "offline",
+					providerStatus: observed.providerStatus,
+					metadata: observed.metadata,
+					clearError: true,
+				});
+				return yield* reload(id);
+			}),
 		);
-		yield* updateObservation({
-			id,
-			status: "offline",
-			providerStatus: observed.providerStatus,
-			metadata: observed.metadata,
-			clearError: true,
-		});
-		return yield* reload(id);
 	});
 
 	const destroy: Interface["destroy"] = Effect.fn("Sandbox.Controller.destroy")(function* (id, destroyOptions = {}) {

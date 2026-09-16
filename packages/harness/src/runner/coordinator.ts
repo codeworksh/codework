@@ -117,11 +117,7 @@ export const make = <Key, E, Reason = never>(options: {
 				start(key, false);
 			});
 
-		const interrupt = (
-			key: Key,
-			reason?: Reason,
-			options?: { readonly awaitSettlement?: boolean },
-		): Effect.Effect<boolean> =>
+		const requestInterrupt = (key: Key, reason?: Reason): Effect.Effect<boolean> =>
 			Effect.suspend(() => {
 				const execution = executions.get(key);
 				if (execution === undefined || execution.stopping) return Effect.succeed(false);
@@ -135,11 +131,25 @@ export const make = <Key, E, Reason = never>(options: {
 				execution.pendingWake = false;
 				if (reason !== undefined) execution.interruptionReason = reason;
 				fork(Fiber.interrupt(execution.owner));
-				// This execution's own deferred, so waiting here never picks up work a
-				// different caller admitted while cleanup was running.
-				return options?.awaitSettlement === true
-					? Deferred.await(execution.done).pipe(Effect.as(true))
-					: Effect.succeed(true);
+				return Effect.succeed(true);
+			});
+
+		const interrupt = (
+			key: Key,
+			reason?: Reason,
+			options?: { readonly awaitSettlement?: boolean },
+		): Effect.Effect<boolean> =>
+			Effect.suspend(() => {
+				// Capture before requesting the interrupt: an execution already stopping
+				// or inside its settled hook still has cleanup a caller may need to join.
+				const execution = executions.get(key);
+				return requestInterrupt(key, reason).pipe(
+					Effect.tap(() =>
+						options?.awaitSettlement === true && execution !== undefined
+							? Deferred.await(execution.done).pipe(Effect.ignoreCause)
+							: Effect.void,
+					),
+				);
 			});
 
 		const awaitIdle = (key: Key): Effect.Effect<void> =>

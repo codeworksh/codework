@@ -600,8 +600,13 @@ describe("RunCoordinator", () => {
 			yield* coordinator.wake("session");
 			yield* Deferred.await(settling);
 			yield* coordinator.wake("session");
-			expect(yield* coordinator.interrupt("session")).toBe(false);
+			const interrupted = yield* coordinator
+				.interrupt("session", undefined, { awaitSettlement: true })
+				.pipe(Effect.forkChild);
+			yield* settle;
+			expect(interrupted.pollUnsafe()).toBeUndefined();
 			yield* Deferred.succeed(release, undefined);
+			expect(yield* Fiber.join(interrupted)).toBe(false);
 			yield* coordinator.awaitIdle("session");
 
 			expect(drains).toBe(1);

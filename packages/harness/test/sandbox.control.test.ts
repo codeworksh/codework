@@ -324,6 +324,31 @@ describe("Sandbox.Controller", () => {
 	);
 
 	it(
+		"marks an interrupted stop faulted so a later mount can recover it",
+		Effect.gen(function* () {
+			const controller = yield* SandboxController.Controller;
+			const info = yield* create(controller);
+			const entered = yield* Deferred.make<void>();
+			fake.state.blockNext("stop", Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)));
+
+			const stopping = yield* controller.stop(info.id).pipe(Effect.forkChild);
+			yield* Deferred.await(entered);
+			expect(Option.getOrThrow(yield* controller.get(info.id)).status).toBe("suspending");
+			yield* Fiber.interrupt(stopping);
+
+			const faulted = Option.getOrThrow(yield* controller.get(info.id));
+			expect(faulted.status).toBe("faulted");
+			expect(Option.getOrThrow(faulted.lastError).name).toBe("SandboxStopInterrupted");
+
+			yield* Effect.flatMap(SandboxIO.Current, Effect.succeed).pipe(
+				Effect.provide(controller.mount(info.id)),
+				Effect.scoped,
+			);
+			expect(Option.getOrThrow(yield* controller.get(info.id)).status).toBe("online");
+		}),
+	);
+
+	it(
 		"never lets force bypass capability or the stopped requirement",
 		Effect.gen(function* () {
 			const controller = yield* SandboxController.Controller;
