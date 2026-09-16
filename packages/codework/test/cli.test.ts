@@ -88,14 +88,14 @@ describe("codework CLI", () => {
 		const result = run("run", "--help");
 
 		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("--sandbox string");
+		expect(result.stdout).toContain("--sandbox-driver string");
 		expect(result.stdout).toContain("default: local");
 		expect(result.stdout).toContain("Sandbox driver for a new session");
 		expect(result.stdout).toContain("--sandbox-provider-id string");
 	});
 
 	it("validates sandbox names against the harness registry", () => {
-		const result = runIsolated({}, "run", "--sandbox", "missing", "test");
+		const result = runIsolated({}, "run", "--sandbox-driver", "missing", "test");
 
 		expect(result.status).toBe(1);
 		expect(result.stderr).toContain('sandbox driver "missing" is not registered');
@@ -106,7 +106,7 @@ describe("codework CLI", () => {
 		const result = run("run", "--sandbox-provider-id", "existing-id", "test");
 
 		expect(result.status).toBe(1);
-		expect(result.stdout).toContain("--sandbox-provider-id requires a remote --sandbox");
+		expect(result.stdout).toContain("--sandbox-provider-id requires a remote --sandbox-driver");
 	});
 
 	it("reports a missing model catalog without an Effect stack", () => {
@@ -149,7 +149,7 @@ describe("codework CLI", () => {
 	});
 
 	it("reports the sanitized remote sandbox provider failure", () => {
-		const result = runIsolated({ VERCEL_OIDC_TOKEN: undefined }, "run", "--sandbox", "vercel", "test");
+		const result = runIsolated({ VERCEL_OIDC_TOKEN: undefined }, "run", "--sandbox-driver", "vercel", "test");
 
 		expect(result.status).toBe(1);
 		expect(result.stderr).toContain("error: SandboxProviderError - Could not get credentials from OIDC context.");

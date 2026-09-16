@@ -42,7 +42,7 @@ export const Cmd = Spec.make("codework", {
 					Flag.withDescription("Working directory for a new session"),
 					Flag.optional,
 				),
-				sandbox: Flag.String("sandbox").pipe(
+				sandboxDriver: Flag.String("sandbox-driver").pipe(
 					Flag.withDescription("Sandbox driver for a new session (default: local)"),
 					Flag.optional,
 				),
@@ -68,11 +68,11 @@ export const Cmd = Spec.make("codework", {
 					description: "Create a session with an explicit model",
 				},
 				{
-					command: 'codework run --sandbox daytona "Inspect the repository"',
+					command: 'codework run --sandbox-driver daytona "Inspect the repository"',
 					description: "Create a Daytona sandbox and session",
 				},
 				{
-					command: 'codework run --sandbox daytona --sandbox-provider-id <id> "Inspect the repository"',
+					command: 'codework run --sandbox-driver daytona --sandbox-provider-id <id> "Inspect the repository"',
 					description: "Use an existing remote sandbox",
 				},
 				{

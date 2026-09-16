@@ -43,8 +43,8 @@ codework run --provider openai --model gpt-5.5 --thinking high "Plan database mi
 codework run --session ses_01a070f0 "Now implement the migration script"
 
 # Run in an isolated sandbox (local, daytona, vercel, memory, sqldb)
-codework run --sandbox daytona "Inspect repository"
-codework run --sandbox daytona --sandbox-provider-id <remote-id> "Continue in sandbox"
+codework run --sandbox-driver daytona "Inspect repository"
+codework run --sandbox-driver daytona --sandbox-provider-id <remote-id> "Continue in sandbox"
 ```
 
 #### Flags:
@@ -52,7 +52,7 @@ codework run --sandbox daytona --sandbox-provider-id <remote-id> "Continue in sa
 - `--server <url>` — Connect to a running RPC server, e.g. `ws://127.0.0.1:7433/rpc`.
 - `-s, --session <id>` — Continue an existing session.
 - `-C, --cwd <path>` — Working directory for a new session.
-- `--sandbox <driver>` — Sandbox driver (`local`, `daytona`, `vercel`, `memory`, `sqldb`). Default: `local`.
+- `--sandbox-driver <driver>` — Sandbox driver (`local`, `daytona`, `vercel`, `memory`, `sqldb`). Default: `local`.
 - `--sandbox-id <id>` — Reuse an existing sandbox instance; mutually exclusive with driver/provider coordinates.
 - `--sandbox-provider-id <id>` — Provider ID of an existing remote sandbox.
 - `--provider <id>` — Model catalog provider ID.

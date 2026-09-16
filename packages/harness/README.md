@@ -197,7 +197,7 @@ export DAYTONA_API_KEY="..."
 
 pnpm dlx @codeworksh/harness@dev \
   --home .codework-beta \
-  run --sandbox daytona --provider openai --model gpt-5.5 \
+  run --sandbox-driver daytona --provider openai --model gpt-5.5 \
   "Inspect this repository"
 ```
 
@@ -206,13 +206,13 @@ Pass the provider's sandbox ID to connect a new Harness session to an existing D
 ```sh
 pnpm dlx @codeworksh/harness@dev \
   --home .codework-beta \
-  run --sandbox daytona --sandbox-provider-id <daytona-sandbox-id> \
+  run --sandbox-driver daytona --sandbox-provider-id <daytona-sandbox-id> \
   "Continue work in this sandbox"
 ```
 
 `--cwd` overrides the selected sandbox's default working directory. When continuing with `--session`, omit the sandbox flags: the durable session already references its sandbox.
 
-The same flags work with Vercel Sandbox by using `--sandbox vercel`; `--sandbox-provider-id` then accepts the existing Vercel sandbox name.
+The same flags work with Vercel Sandbox by using `--sandbox-driver vercel`; `--sandbox-provider-id` then accepts the existing Vercel sandbox name.
 
 Use `codework --help` or `pnpm dlx @codeworksh/harness@dev --help` for all options.
 

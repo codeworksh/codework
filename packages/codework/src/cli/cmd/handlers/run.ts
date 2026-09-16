@@ -81,7 +81,7 @@ export default Runtime.handler(
 		prompt,
 		session,
 		cwd,
-		sandbox,
+		sandboxDriver,
 		sandboxProviderId,
 		sandboxId,
 		provider,
@@ -92,18 +92,23 @@ export default Runtime.handler(
 		const shared = yield* Cmd.spec;
 		if (
 			Option.isSome(session) &&
-			(Option.isSome(cwd) || Option.isSome(sandbox) || Option.isSome(sandboxProviderId) || Option.isSome(sandboxId))
+			(Option.isSome(cwd) ||
+				Option.isSome(sandboxDriver) ||
+				Option.isSome(sandboxProviderId) ||
+				Option.isSome(sandboxId))
 		) {
 			return yield* new InvalidInputError({
 				message:
-					"--cwd, --sandbox, --sandbox-id, and --sandbox-provider-id can only be used when creating a new session",
+					"--cwd, --sandbox-driver, --sandbox-id, and --sandbox-provider-id can only be used when creating a new session",
 			});
 		}
 		if (Option.isSome(provider) !== Option.isSome(model)) {
 			return yield* new InvalidInputError({ message: "--provider and --model must be provided together" });
 		}
-		if (Option.isSome(sandboxProviderId) && Option.isNone(sandbox)) {
-			return yield* new InvalidInputError({ message: "--sandbox-provider-id requires a remote --sandbox" });
+		if (Option.isSome(sandboxProviderId) && Option.isNone(sandboxDriver)) {
+			return yield* new InvalidInputError({
+				message: "--sandbox-provider-id requires a remote --sandbox-driver",
+			});
 		}
 		if (Option.isSome(server) && [shared.home, shared.database, shared.userConfigDir].some(Option.isSome)) {
 			return yield* new InvalidInputError({
@@ -111,15 +116,15 @@ export default Runtime.handler(
 			});
 		}
 
-		if (Option.isSome(sandboxId) && (Option.isSome(sandbox) || Option.isSome(sandboxProviderId))) {
+		if (Option.isSome(sandboxId) && (Option.isSome(sandboxDriver) || Option.isSome(sandboxProviderId))) {
 			return yield* new InvalidInputError({
-				message: "--sandbox-id cannot be combined with --sandbox or --sandbox-provider-id",
+				message: "--sandbox-id cannot be combined with --sandbox-driver or --sandbox-provider-id",
 			});
 		}
 		const selection: Sandbox.Selection = Option.isSome(sandboxId)
 			? { id: Sandbox.SandboxInstance.ID.make(sandboxId.value) }
 			: {
-					driver: Option.getOrElse(sandbox, () => "local"),
+					driver: Option.getOrElse(sandboxDriver, () => "local"),
 					...(Option.isNone(sandboxProviderId) ? {} : { providerResourceId: sandboxProviderId.value }),
 				};
 
