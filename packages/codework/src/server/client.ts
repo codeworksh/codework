@@ -125,10 +125,7 @@ export const run = Effect.fn("Client.run")(function* <E, R>(
 	);
 
 	yield* Effect.raceFirst(consume, reconcile);
-	if (settled) {
-		yield* rpc["session.wait"]({ sessionId: input.sessionId });
-		return;
-	}
+	if (settled) return;
 	if (abandoned)
 		return yield* unattributed ?? new ExecutionError({ type: "unknown", message: "Prompt was not promoted" });
 	return yield* new ExecutionError({

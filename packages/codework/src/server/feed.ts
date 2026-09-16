@@ -21,8 +21,8 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
  * Failure is per-cause, not per-feed: a client that cannot keep up fails alone
  * with its own overflow, while an event that cannot be encoded is a server bug
  * that disconnects everyone currently attached -- the feed stays usable for
- * whoever connects next. Types outside the public registry (plugin events,
- * §12) are dropped before they can consume a client's capacity.
+ * whoever connects next. Types outside the server's registry are dropped
+ * before they can consume a client's capacity.
  */
 export const make = Effect.fn("EventFeed.make")(function* (
 	listen: (subscriber: Event.Subscriber) => Effect.Effect<Event.Unsubscribe>,
@@ -83,9 +83,7 @@ export const layer = Layer.effect(
 	Effect.gen(function* () {
 		const events = yield* Event.Service;
 		const registered = yield* EventRegistry.Service;
-		return yield* make(events.listen, {
-			registry: (type) => (type === Envelope.Connected.type ? Envelope.Connected : registered.get(type)),
-		});
+		return yield* make(events.listen, { registry: registered.get });
 	}),
 );
 
