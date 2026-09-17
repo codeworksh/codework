@@ -1,0 +1,12 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"allowImportingTsExtensions": true,
+		"paths": {
+			"@codeworksh/harness/effect": ["../../packages/harness/src/effect.ts"],
+			"@codeworksh/harness/sandbox": ["../../packages/harness/src/sandbox.ts"]
+		},
+		"tsBuildInfoFile": "../../.cache/typescript/codework-tool-proc.tsbuildinfo"
+	},
+	"include": ["src/**/*.ts"]
+}

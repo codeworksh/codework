@@ -1,0 +1,22 @@
+{
+	"name": "codework-local-plugins",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Example single-file codework plugins, loaded by path rather than installed.",
+	"type": "module",
+	"scripts": {
+		"check": "vp check",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^26.5.1",
+		"effect": "4.0.0-rc.115"
+	},
+	"peerDependencies": {
+		"@codeworksh/harness": "workspace:*",
+		"effect": "4.0.0-rc.115"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	}
+}
