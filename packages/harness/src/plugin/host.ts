@@ -1,6 +1,6 @@
 import { Cause, Effect, Schema } from "effect";
+import type { Prepared } from "./catalog.ts";
 import type { SharedPluginContext } from "./context.ts";
-import type { Plugin } from "./plugin.ts";
 import { make } from "./registry.ts";
 
 export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupError", {
@@ -10,15 +10,15 @@ export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupEr
 }) {}
 
 export const run = Effect.fn("PluginHost.run")(function* (
-	plugins: ReadonlyArray<Plugin>,
+	selection: ReadonlyArray<Prepared>,
 	input: Omit<SharedPluginContext, "plugin">,
 ) {
 	const buckets = make();
 	const ctx = Object.freeze({ ...input, plugin: buckets.registry });
 	const setup = Effect.gen(function* () {
-		for (const plugin of plugins) {
+		for (const { plugin, options } of selection) {
 			yield* Effect.suspend(() => {
-				const result = plugin.setup(ctx);
+				const result = plugin.setup(ctx, options);
 				if (Effect.isEffect(result))
 					// Plugin authors may fail with domain-specific errors; normalize them at this boundary.
 					// @effect-diagnostics-next-line anyUnknownInErrorContext:off

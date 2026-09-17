@@ -28,7 +28,7 @@ const Definition = Schema.Struct({
 });
 
 export class PreparationError extends Schema.TaggedError<PreparationError>()("PluginPreparationError", {
-	phase: Schema.Literals(["source", "install", "import", "definition", "resolve"]),
+	phase: Schema.Literals(["source", "install", "import", "definition"]),
 	index: Schema.Finite,
 	reference: Schema.String,
 	id: Schema.optional(Schema.String),
@@ -58,17 +58,15 @@ export const validate = Effect.fn("PluginLoader.validate")(function* (input: unk
 });
 
 export type Source =
-	| { readonly kind: "disable"; readonly id: string }
-	| { readonly kind: "id"; readonly id: string }
 	| { readonly kind: "local"; readonly path: string }
 	| { readonly kind: "package"; readonly request: Package.Request };
 
+/**
+ * A reference is a source and nothing else: a path, a `file:` URL, or a package spec. IDs are
+ * not spelled here — a bare `acme.tool.proc` is a package name, and the plugin it names is
+ * addressed by `{ plugin: "acme.tool.proc" }`, which resolves against what is already registered.
+ */
 export const classify = (source: string, hostCwd: string): Source => {
-	if (source.startsWith("!")) {
-		const id = source.slice(1);
-		if (!Schema.is(Id)(id)) throw new Error(`Invalid plugin source: ${source}`);
-		return { kind: "disable", id };
-	}
 	if (source.startsWith("file:")) {
 		// Both `new URL` and `fileURLToPath` silently read a relative `file:./x` as `/x`. A file
 		// URL names an absolute path or it is not one.
@@ -81,7 +79,6 @@ export const classify = (source: string, hostCwd: string): Source => {
 	if (expanded.startsWith("./") || expanded.startsWith("../") || path.isAbsolute(expanded)) {
 		return { kind: "local", path: path.resolve(hostCwd, expanded) };
 	}
-	if (Schema.is(Id)(source)) return { kind: "id", id: source };
 	return { kind: "package", request: Package.parse(source) };
 };
 
@@ -92,10 +89,11 @@ const Manifest = Schema.Struct({
 
 const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string, origin: Origin) {
 	const stat = yield* fs.stat(location);
-	if (stat.type !== "Directory") return yield* Effect.try(() => resolveModule(location, path.dirname(location)));
+	if (stat.type !== "Directory")
+		return { url: yield* Effect.try(() => resolveModule(location, path.dirname(location))) };
 	const manifestPath = path.join(location, "package.json");
 	if (!(yield* fs.exists(manifestPath))) {
-		return yield* Effect.try(() => resolveModule("./index", location));
+		return { url: yield* Effect.try(() => resolveModule("./index", location)) };
 	}
 	const manifest = yield* fs
 		.readFileString(manifestPath)
@@ -110,11 +108,12 @@ const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string,
 		const resolved = yield* fs.realPath(fileURLToPath(url));
 		if (path.relative(yield* fs.realPath(location), resolved).startsWith(".."))
 			return yield* failure(origin, "source", new Error("Package export escapes its root"));
-		return pathToFileURL(resolved).href;
+		return { url: pathToFileURL(resolved).href, name };
 	}
-	return yield* Effect.try(() =>
+	const url = yield* Effect.try(() =>
 		resolveModule(createRequire(pathToFileURL(manifestPath)).resolve(location), location),
 	);
+	return manifest.name === undefined ? { url } : { url, name: manifest.name };
 });
 
 export interface Options {
@@ -132,6 +131,8 @@ export interface Loaded {
 	readonly plugin: Plugin;
 	readonly source: string;
 	readonly version?: string;
+	/** The package name a local package declared, registered as one of its aliases. */
+	readonly name?: string;
 }
 
 export const load = Effect.fn("PluginLoader.load")(function* (
@@ -144,15 +145,13 @@ export const load = Effect.fn("PluginLoader.load")(function* (
 			? yield* (options.install ?? Package.install)(source.request, options.cache).pipe(
 					Effect.mapError((cause) => failure(origin, "install", cause)),
 				)
-			: {
-					url: yield* localUrl(source.path, origin).pipe(
-						// `localUrl` already reports its own source failures; only platform errors
-						// reaching here still need attribution.
-						Effect.mapError((cause) =>
-							Schema.is(PreparationError)(cause) ? cause : failure(origin, "source", cause),
-						),
+			: yield* localUrl(source.path, origin).pipe(
+					// `localUrl` already reports its own source failures; only platform errors
+					// reaching here still need attribution.
+					Effect.mapError((cause) =>
+						Schema.is(PreparationError)(cause) ? cause : failure(origin, "source", cause),
 					),
-				};
+				);
 	const module = yield* Effect.tryPromise({
 		try: () => (options.import ?? importModule)(installed.url),
 		catch: (cause) => failure(origin, "import", cause),
@@ -165,5 +164,8 @@ export const load = Effect.fn("PluginLoader.load")(function* (
 		plugin,
 		source: origin.reference,
 		...("version" in installed ? { version: installed.version } : {}),
+		// A local package answers to the name it declares, so a path entry can be configured by
+		// the package name its README documents.
+		...("name" in installed && installed.name !== undefined ? { name: installed.name } : {}),
 	} satisfies Loaded;
 });

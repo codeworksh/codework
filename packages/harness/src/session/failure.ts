@@ -64,6 +64,8 @@ const category = (tag: string): string => {
 			return "session.not-found";
 		case "SessionLinkedSpaceNotFoundError":
 			return "session.space-not-found";
+		case "SettingsError":
+			return "settings";
 		case "State.SnapshotError":
 			return "state.snapshot";
 		case "Runner.SandboxDirectoryNotFoundError":

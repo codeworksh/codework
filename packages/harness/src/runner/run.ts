@@ -11,6 +11,7 @@ import { SandboxFileSystem } from "../sandbox/fs/filesystem.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { optional } from "../schema.ts";
+import type { Settings } from "../settings/settings.ts";
 import type { ID as SessionId } from "../session/schema.ts";
 import type { SessionLinkedSpaceNotFoundError, SessionNotFoundError } from "../session/session.ts";
 import type { State } from "../state/state.ts";
@@ -176,6 +177,7 @@ export type RunError =
 	| ContextEncodeError
 	| SessionNotFoundError
 	| SessionLinkedSpaceNotFoundError
+	| Settings.SettingsError
 	| State.SnapshotError
 	| SandboxDirectoryNotFoundError
 	| SandboxMountError

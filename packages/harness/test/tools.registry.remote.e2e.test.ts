@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import * as EnvDaytona from "../src/sandboxes/daytona/provider.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
-import { bashTool } from "../src/plugin/internal/tool/bash.ts";
+import { bashTool } from "../src/plugin/builtin/tool/bash.ts";
 import * as Registry from "../src/tool/registry.ts";
 import { fromSandboxShell, ToolShell } from "../src/tool/shell.ts";
 import * as Tool from "../src/tool/tool.ts";

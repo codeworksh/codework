@@ -1,7 +1,7 @@
 import dedent from "dedent";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +11,9 @@ const harness = resolve(root, "packages/harness");
 const external = resolve(root, "extras/codework-sandbox-vercel");
 const envFile = resolve(harness, ".env.local");
 if (existsSync(envFile)) process.loadEnvFile(envFile);
+const manifest = JSON.parse(await readFile(resolve(harness, "package.json"), "utf8"));
+const effectVersion = manifest.dependencies?.effect;
+if (typeof effectVersion !== "string") throw new Error("harness package.json must declare an Effect dependency");
 
 const temporary = await mkdtemp(resolve(tmpdir(), "codework-sandbox-package-"));
 const artifacts = resolve(temporary, "artifacts");
@@ -53,7 +56,7 @@ try {
 				dependencies: {
 					"@codeworksh/harness": `file:${harnessTarball}`,
 					"@acme/codework-sandbox-vercel": `file:${externalTarball}`,
-					effect: "4.0.0-beta.107",
+					effect: effectVersion,
 				},
 			},
 			null,

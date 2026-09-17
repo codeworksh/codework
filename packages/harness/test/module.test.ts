@@ -84,7 +84,7 @@ describe("native module loading", () => {
 		expect(await importModule(resolved)).toBe(loaded);
 	});
 
-	it("exposes dynamic CommonJS object exports like OpenCode", async () => {
+	it("exposes dynamic CommonJS object exports", async () => {
 		await using temp = await tmpdir();
 		await writeFile(join(temp.path, "entry.cjs"), 'module.exports = Object.fromEntries([["value", 42]]);');
 		expect(await importModule(resolveModule("./entry.cjs", temp.path))).toMatchObject({

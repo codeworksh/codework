@@ -1,0 +1,25 @@
+{
+	"name": "@acme/codework-tool-proc",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Example third-party codework plugin: a tool that lists running processes.",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check": "vp check",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^26.5.1",
+		"effect": "4.0.0-rc.115"
+	},
+	"peerDependencies": {
+		"@codeworksh/harness": "workspace:*",
+		"effect": "4.0.0-rc.115"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	}
+}
