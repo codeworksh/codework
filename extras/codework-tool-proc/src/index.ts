@@ -84,6 +84,7 @@ const table = (rows: ReadonlyArray<typeof ProcessRow.Type>): string =>
 
 export default Plugin.define({
 	id: "acme.tool.proc",
+	kind: "tool",
 	setup: Effect.fn("ProcPlugin.setup")(function* (ctx, options) {
 		// The sandbox's shell, not `node:child_process`: the tool lists processes wherever the
 		// session actually runs — this machine, a container, or a remote sandbox.

@@ -28,7 +28,7 @@ const layer = (options: Harness.Options = {}) => {
 	homes.push(home);
 	return Handlers.layer.pipe(
 		Layer.provide(EventFeed.layer),
-		Layer.provideMerge(Harness.layer({ home, database: ":memory:", ...options })),
+		Layer.provideMerge(Harness.layer({ home, cwd: home, database: ":memory:", ...options })),
 	);
 };
 
@@ -37,7 +37,7 @@ const Registered = EventSchema.define({
 	type: "plugin.test.event.registrar.noticed",
 	schema: { value: Schema.String },
 });
-const registrar = definePlugin({ id: "test.event.registrar", events: [Registered], setup: () => {} });
+const registrar = definePlugin({ id: "test.event.registrar", kind: "tool", events: [Registered], setup: () => {} });
 
 afterAll(() => {
 	for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
@@ -240,7 +240,7 @@ const websocket = (options: Harness.Options = {}) => {
 	return Server.layer({
 		host: "127.0.0.1",
 		port: 0,
-		harness: { home, database: ":memory:", plugins: [], llm: immediateOpen(), ...options },
+		harness: { home, cwd: home, database: ":memory:", plugins: [], llm: immediateOpen(), ...options },
 	});
 };
 
@@ -497,7 +497,7 @@ describe("WebSocket client", () => {
 		Effect.gen(function* () {
 			const home = mkdtempSync(join(tmpdir(), "codework-shutdown-"));
 			homes.push(home);
-			const harness = { home, database: join(home, "codework.db"), plugins: [] };
+			const harness = { home, cwd: home, database: join(home, "codework.db"), plugins: [] };
 			const server = () => Server.layer({ host: "127.0.0.1", port: 0, harness });
 
 			const id = yield* Effect.gen(function* () {

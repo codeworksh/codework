@@ -1,6 +1,7 @@
 import { Effect, Predicate, Schema } from "effect";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { domains, type PluginKind } from "./plugin.ts";
 import { expandTilde } from "../util/home.ts";
 import { importModule, resolveModule } from "../util/module.ts";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
@@ -13,6 +14,7 @@ export const idPattern = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*){2}$/;
 const Id = Schema.String.check(Schema.isPattern(idPattern));
 const Definition = Schema.Struct({
 	id: Id,
+	kind: Schema.Literals(Object.keys(domains) as ReadonlyArray<PluginKind>),
 	// Shape only. What the types mean -- namespace, collisions with the kernel or
 	// another plugin -- is `EventRegistry.flatten`'s call, since it is the only
 	// place that sees every plugin at once.
@@ -134,6 +136,39 @@ export interface Loaded {
 	/** The package name a local package declared, registered as one of its aliases. */
 	readonly name?: string;
 }
+
+/**
+ * Install and import one reference, and report what it turned out to be, without selecting it.
+ * `codework plugin add` uses this to prove a package really is a plugin before it writes the
+ * reference into a settings file: the failure a user gets is the one they can act on — a bad
+ * spec, an install that did not resolve, a module that exports no plugin — rather than a broken
+ * configuration that only fails at the next run.
+ */
+export const inspect = Effect.fn("PluginLoader.inspect")(function* (reference: string, options: Options) {
+	const origin = { index: 0, reference };
+	const source = yield* Effect.try({
+		try: () => classify(reference, options.hostCwd),
+		catch: (cause) => failure(origin, "source", cause),
+	});
+	const loaded = yield* load(source, origin, options);
+	return {
+		id: loaded.plugin.id,
+		...(loaded.version === undefined ? {} : { version: loaded.version }),
+		...(loaded.name === undefined ? {} : { name: loaded.name }),
+	};
+});
+
+/**
+ * The version-free, location-anchored spelling of a module reference.
+ *
+ * Two references naming the same module compare equal through it: `@acme/x@1.2.0` and `@acme/x`
+ * are one package, and `./plugins/x.ts` is the file it resolves to from the directory that
+ * declared it. Pure -- nothing is installed, imported or read.
+ */
+export const canonical = (reference: string, hostCwd: string): string => {
+	const source = classify(reference, hostCwd);
+	return source.kind === "local" ? source.path : source.request.name;
+};
 
 export const load = Effect.fn("PluginLoader.load")(function* (
 	source: Extract<Source, { kind: "local" | "package" }>,

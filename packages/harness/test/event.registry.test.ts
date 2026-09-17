@@ -8,7 +8,7 @@ import { define as definePlugin, type Plugin } from "../src/plugin/plugin.ts";
 const define = (type: string) => EventSchema.define({ type, schema: { value: Schema.String } });
 
 const plugin = (id: string, ...events: ReadonlyArray<EventSchema.Definition>) =>
-	definePlugin({ id, events, setup: () => {} });
+	definePlugin({ id, kind: "tool", events, setup: () => {} });
 
 const reason = (plugins: ReadonlyArray<Plugin>) =>
 	EventRegistry.flatten(plugins).pipe(

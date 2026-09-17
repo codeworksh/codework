@@ -47,6 +47,7 @@ export const bashPluginSpec = (options: {
 			Effect.provide(
 				Harness.layer({
 					home: join(input.root, "home"),
+					cwd: input.root,
 					userConfigDir: input.custom,
 					database: ":memory:",
 					sandboxes: [options.driver],

@@ -46,6 +46,7 @@ describe("plugins built against another Effect instance", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							cwd: root,
 							database: ":memory:",
 							llm: (request, signal) => {
 								contexts.push(request.context);

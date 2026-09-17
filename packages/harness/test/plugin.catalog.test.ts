@@ -7,12 +7,12 @@ import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { prepare, type Options, type PluginRef, type Prepared } from "../src/plugin/catalog.ts";
-import { classify, validate } from "../src/plugin/loader.ts";
+import { canonical, classify, validate } from "../src/plugin/loader.ts";
 import { install, InstallError, parse, type Request, type Runner } from "../src/plugin/package.ts";
 import { define } from "../src/plugin/plugin.ts";
 
-const a = define({ id: "acme.tool.a", setup: () => {} });
-const b = define({ id: "acme.tool.b", setup: () => {} });
+const a = define({ id: "acme.tool.a", kind: "tool", setup: () => {} });
+const b = define({ id: "acme.tool.b", kind: "tool", setup: () => {} });
 const options: Options = { builtins: [], cache: "/unused", hostCwd: "/project" };
 /** `prepare` pairs each selected plugin with its configuration; most assertions want the plugins. */
 const selected = (list: ReadonlyArray<Prepared>) => list.map((entry) => entry.plugin);
@@ -40,16 +40,35 @@ const fixture: Runner = (request, directory) =>
 					exports: "./index.js",
 				}),
 			);
-			await writeFile(join(root, "index.js"), "export default { id: 'acme.tool.fixture', setup() {} }");
+			await writeFile(
+				join(root, "index.js"),
+				"export default { id: 'acme.tool.fixture', kind: 'tool', setup() {} }",
+			);
 		},
 		catch: (cause) => new InstallError({ cause }),
 	});
 
 describe("plugin catalog and source resolution", () => {
+	it("reduces every spelling of one module to a single canonical name", () => {
+		// What `plugin add` records and what `plugin remove` is given are rarely the same string:
+		// a version is pinned on the way in and dropped on the way out, and a relative path means
+		// nothing until it is anchored to the file that declared it.
+		expect(canonical("@acme/codework-tool-proc@1.2.0", "/project")).toBe("@acme/codework-tool-proc");
+		expect(canonical("@acme/codework-tool-proc", "/project")).toBe("@acme/codework-tool-proc");
+		expect(canonical("proc@^2", "/project")).toBe("proc");
+		expect(canonical("proc@latest", "/project")).toBe("proc");
+		expect(canonical("./plugins/x.ts", "/project")).toBe("/project/plugins/x.ts");
+		expect(canonical("/project/plugins/x.ts", "/elsewhere")).toBe("/project/plugins/x.ts");
+		expect(canonical("file:///project/plugins/x.ts", "/elsewhere")).toBe("/project/plugins/x.ts");
+		// A plugin ID is not a module reference; it has to survive unchanged to compare as itself.
+		expect(canonical("acme.tool.proc", "/project")).toBe("acme.tool.proc");
+	});
+
 	it("resolves last definitions and last module order without setup", async () => {
 		let calls = 0;
 		const latest = define({
 			id: a.id,
+			kind: "tool",
 			setup: () => {
 				calls++;
 			},
@@ -129,8 +148,8 @@ describe("plugin catalog and source resolution", () => {
 		// Two modules exporting one ID is the author's conflict to resolve, not the harness's to
 		// arbitrate. The ID is the key: the later definition wins, and configuration written
 		// against that key stays with it — including a name the replaced module was loaded under.
-		const fromA = define({ id: "acme.tool.same", setup: () => {} });
-		const fromB = define({ id: "acme.tool.same", setup: () => {} });
+		const fromA = define({ id: "acme.tool.same", kind: "tool", setup: () => {} });
+		const fromB = define({ id: "acme.tool.same", kind: "tool", setup: () => {} });
 		const seams = {
 			install: (request: Request) => Effect.succeed({ url: `file:///${request.name}.js`, version: "1.0.0" }),
 			import: async (url: string) => ({ default: url.includes("pkg-a") ? fromA : fromB }),
@@ -191,7 +210,7 @@ describe("plugin catalog and source resolution", () => {
 		expect(moved[1]?.options).toEqual({ one: 1 });
 	});
 	it("seeds builtins without selecting them and reserves their namespace", async () => {
-		const builtin = define({ id: "codework.tool.fixture", setup: () => {} });
+		const builtin = define({ id: "codework.tool.fixture", kind: "tool", setup: () => {} });
 		expect(await run([], { builtins: [builtin] })).toEqual([]);
 		// The registered definition itself selects it, and is not a redefinition of it.
 		expect(selected(await run([builtin], { builtins: [builtin] }))).toEqual([builtin]);
@@ -204,7 +223,7 @@ describe("plugin catalog and source resolution", () => {
 	it("reads a definition carrying its own `plugin` property as a definition", async () => {
 		// `Plugin` permits extra properties and the loader preserves them, so the entry check
 		// cannot be "has a `plugin` key".
-		const plugin = { id: "acme.tool.meta", plugin: "metadata", setup: () => {} };
+		const plugin = { id: "acme.tool.meta", kind: "tool", plugin: "metadata", setup: () => {} };
 		expect(selected(await run([plugin]))).toEqual([plugin]);
 	});
 	it.each([
@@ -212,6 +231,8 @@ describe("plugin catalog and source resolution", () => {
 		[],
 		() => a,
 		{ setup: () => {} },
+		{ id: a.id, setup: () => {} },
+		{ id: a.id, kind: "event", setup: () => {} },
 		{ id: "invalid", setup: () => {} },
 		{ id: a.id, setup: 1 },
 		null,
@@ -236,6 +257,7 @@ describe("plugin catalog and source resolution", () => {
 		const seen: string[] = [];
 		const plugin = {
 			id: "acme.tool.self",
+			kind: "tool" as const,
 			label: "kept",
 			setup() {
 				seen.push((this as { label: string }).label);
@@ -399,7 +421,7 @@ describe("plugin catalog and source resolution", () => {
 			const outside = join(directory, "outside.js");
 			const pkg = join(directory, "pkg");
 			await mkdir(pkg);
-			await writeFile(outside, "export default { id: 'acme.tool.escaped', setup() {} }");
+			await writeFile(outside, "export default { id: 'acme.tool.escaped', kind: 'tool', setup() {} }");
 			await writeFile(join(pkg, "package.json"), JSON.stringify({ name: "pkg", exports: "./entry.js" }));
 			await symlink(outside, join(pkg, "entry.js"));
 			const error = await Effect.runPromise(prepare([pkg], options).pipe(Effect.flip));
@@ -527,7 +549,7 @@ describe("plugin catalog and source resolution", () => {
 it("imports an actual local module default export", () =>
 	withDirectory(async (directory) => {
 		const source = join(directory, "plugin.mjs");
-		await writeFile(source, "export default { id: 'acme.tool.local', setup() {} }");
+		await writeFile(source, "export default { id: 'acme.tool.local', kind: 'tool', setup() {} }");
 		const plugins = await Effect.runPromise(prepare([source], options));
 		expect(selected(plugins).map((plugin) => plugin.id)).toEqual(["acme.tool.local"]);
 	}));

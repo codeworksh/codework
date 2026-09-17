@@ -5,18 +5,20 @@
  * that "no file anywhere" needs no special case -- zero patches over the defaults is a
  * valid result:
  *
- * 1. `<Global.home>/settings.json`            -- the user's own, `~/.codework` by default
- * 2. `<options.cwd>/codework.json` or, when absent, `<options.cwd>/.codework/settings.json`
- *                                             -- committed with the project; the single file
- *                                                wins, it is never merged with the directory
- * 3. `<--user-config-dir>/settings.json`      -- explicit override, `~` expanded, relative to cwd
+ * 1. `<Global.home>/settings.jsonc`            -- the user's own, `~/.codework` by default
+ * 2. `codework.jsonc` or `.codework/settings.jsonc` found from `<options.cwd>` upward
+ *                                              -- committed with the project; the nearest file
+ *                                                 wins, it is never merged with an outer one
+ * 3. `<--user-config-dir>/settings.jsonc`     -- explicit override, `~` expanded, relative to cwd
+ *
+ * Every layer falls back to the `.json` spelling when the `.jsonc` one is absent.
  *
  * **All three are host paths.** They are resolved from the process's startup directory and
  * `Global.home`, never from a session's `--cwd`, its working directory, or its sandbox
  * mount. A session running in a remote or in-memory sandbox reads the same host files as
- * every other session in the process; there is no per-session settings discovery
- * and no parent-directory search. The startup directory arrives as `options.cwd` and is
- * resolved once, so later `cd` or a session pointed elsewhere changes nothing.
+ * every other session in the process; there is no per-session settings discovery. The startup
+ * directory arrives as `options.cwd` and is resolved once, so later `cd` or a session pointed
+ * elsewhere changes nothing.
  *
  * `load` re-reads all layers on every call. There is no cache to invalidate and no reload
  * API: an edit lands at the next exchange capture because the next capture goes to disk.
@@ -34,7 +36,7 @@ import { Global } from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
 import { merge, normalize } from "./merge.ts";
-import { defaults, Patch, type Info } from "./schema.ts";
+import { defaults, Patch, type Info, type PluginEntry } from "./schema.ts";
 
 export interface Options {
 	readonly userConfigDir?: string;
@@ -47,18 +49,52 @@ export interface Options {
 	readonly cwd: string;
 }
 
+/** The layouts and spellings a project may use, in the order a directory is searched. */
+const project = (directory: string): ReadonlyArray<string> => [
+	hostPath.join(directory, "codework.jsonc"),
+	hostPath.join(directory, "codework.json"),
+	hostPath.join(directory, Global.appConfigDir, "settings.jsonc"),
+	hostPath.join(directory, Global.appConfigDir, "settings.json"),
+];
+
+/** The startup directory and every ancestor above it, nearest first. */
+const ancestors = (from: string): ReadonlyArray<string> => {
+	const chain: string[] = [];
+	for (let directory = from; ; directory = hostPath.dirname(directory)) {
+		chain.push(directory);
+		if (hostPath.dirname(directory) === directory) return chain;
+	}
+};
+
 /**
- * Ordered layers, each a group of candidates where the first file that exists is
- * selected -- a group never contributes more than one file. The project layer's
- * candidates are `codework.json` then `.codework/settings.json`, so a project can
- * pick either layout and the single file takes precedence.
+ * Ordered layers, each a group of candidates where the first file that exists is selected -- a
+ * group never contributes more than one file.
+ *
+ * `.jsonc` is the canonical spelling: these files are written by hand and read as JSONC, so the
+ * extension says what the file is and an editor validates it as such. `.json` remains a fallback
+ * everywhere, tried second, because the parser reads either and a file already named that must
+ * keep working.
+ *
+ * The project layer searches the startup directory and then its ancestors, so a command run from
+ * `packages/app` reads the repository's own `codework.jsonc` rather than silently falling back to
+ * defaults. Nearest wins: the search stops at the first directory that has a file, so an inner
+ * project is never merged with an outer one.
  */
 export function paths(home: string, cwd: string, custom?: string): ReadonlyArray<ReadonlyArray<string>> {
 	const expanded = custom === undefined ? undefined : expandTilde(custom, hostPath);
+	const explicit = expanded === undefined ? undefined : hostPath.resolve(cwd, expanded);
+	const user = [hostPath.join(home, "settings.jsonc"), hostPath.join(home, "settings.json")];
+	const userFiles = new Set(user.map((path) => hostPath.resolve(path)));
 	return [
-		[hostPath.join(home, "settings.json")],
-		[hostPath.join(cwd, "codework.json"), hostPath.join(cwd, Global.appConfigDir, "settings.json")],
-		...(expanded === undefined ? [] : [[hostPath.resolve(cwd, expanded, "settings.json")]]),
+		user,
+		// The global file can sit under an ancestor of the project (the default is
+		// `<user>/.codework`). It is already its own layer and must not re-enter here.
+		ancestors(cwd)
+			.flatMap(project)
+			.filter((path) => !userFiles.has(hostPath.resolve(path))),
+		...(explicit === undefined
+			? []
+			: [[hostPath.join(explicit, "settings.jsonc"), hostPath.join(explicit, "settings.json")]]),
 	];
 }
 
@@ -162,17 +198,24 @@ const attempt = (path: string) =>
 export const load = Effect.fn("Settings.load")(function* (options: Options & { readonly home: string }) {
 	const files = paths(options.home, hostPath.resolve(options.cwd), options.userConfigDir);
 	let settings = merge(defaults);
-	// `merge` copies through the same null-dropping walk as normalization, so the winning
-	// layer's entries are carried outside it. Arrays replace rather than merge, so the last
-	// layer that names `plugins` owns the list whole -- there is nothing to combine.
-	let plugins = defaults.plugins;
+	/*
+	 * Plugin entries accumulate across layers, in layer order, rather than the higher file
+	 * replacing the lower one. Every other key in the document merges, and a plugin list is no
+	 * different in kind: a user's own plugins are the defaults a project builds on. A project
+	 * that wants one gone says so in its own file, with `{ "plugin": "<id>", "enabled": false }`
+	 * -- the same entry it would use to turn off a built-in.
+	 *
+	 * They are carried outside `merge` for a second reason: that walk drops `null`, which inside
+	 * an opaque `options` block is a value the plugin may need.
+	 */
+	let plugins: ReadonlyArray<PluginEntry> = defaults.plugins;
 	for (const group of files) {
 		for (const path of group) {
 			const result = yield* Effect.result(attempt(path));
 			if (Result.isSuccess(result)) {
 				const patch = anchor(result.success, path);
 				settings = merge(settings, patch);
-				if (patch.plugins !== undefined) plugins = patch.plugins;
+				if (patch.plugins !== undefined) plugins = [...plugins, ...patch.plugins];
 				break;
 			}
 			// A missing candidate falls through to the next; anything else selects the file, and a

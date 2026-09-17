@@ -29,6 +29,12 @@ export interface Options {
 	 */
 	readonly plugins?: ReadonlyArray<PluginRef>;
 	readonly database?: string;
+	/**
+	 * The host directory the project settings layer is discovered from. Defaults to the OS
+	 * process's directory; a test or an embedder that runs somewhere other than where it wants
+	 * settings read from passes its own, rather than inheriting whatever launched the process.
+	 */
+	readonly cwd?: string;
 	readonly home?: string;
 	/** user provided directory containing the highest-priority config. */
 	readonly userConfigDir?: string;
@@ -40,10 +46,10 @@ export const layer = (options: Options = {}) =>
 	Layer.unwrap(
 		Effect.gen(function* () {
 			const paths = yield* Global.resolve(options.home === undefined ? {} : { home: options.home });
-			// The single sanctioned `process.cwd()` in the harness. Everything downstream
-			// takes the host directory as a required parameter, so no module can quietly
-			// fall back to the OS process's directory when it meant a session's mount.
-			const hostCwd = process.cwd();
+			// The single sanctioned `process.cwd()` in the harness, and only as the default.
+			// Everything downstream takes the host directory as a required parameter, so no module
+			// can quietly fall back to the OS process's directory when it meant a session's mount.
+			const hostCwd = options.cwd ?? process.cwd();
 			const global = Global.layerWith(paths);
 			const settingsOptions = {
 				cwd: hostCwd,

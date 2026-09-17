@@ -1,7 +1,7 @@
 import { Effect, Predicate } from "effect";
 import { isRecord } from "../settings/merge.ts";
 import * as Loader from "./loader.ts";
-import type { Plugin } from "./plugin.ts";
+import { type Plugin, rank } from "./plugin.ts";
 
 /** Opaque to the harness: a plugin reads and validates its own block. */
 export type PluginOptions = { readonly [key: string]: unknown };
@@ -14,8 +14,8 @@ interface PluginConfig {
 }
 /**
  * Configuration for a plugin something else already selected, naming it by ID (`plugin`) or by
- * the package it came from (`package`) — exactly one of the two. It loads nothing, so a name
- * matching nothing in the selection is ignored rather than fetched.
+ * the module string it was registered from (`package`) — exactly one of the two. It loads nothing,
+ * so a name matching nothing in the selection is ignored rather than fetched.
  */
 export type PluginPatch =
 	| (PluginConfig & { readonly plugin: string; readonly package?: never })
@@ -70,8 +70,8 @@ const isPatch = (reference: PluginRef): reference is PluginPatch =>
  * naming a module again moves it.
  *
  * An object entry is **configuration** for a plugin an earlier entry (or the built-in list)
- * already selected, addressed by its ID (`plugin`) or by the package it came from (`package`).
- * It never loads, installs or reorders anything, and a name matching nothing in the selection
+ * already selected, addressed by its ID (`plugin`) or the module string (`package`) that selected
+ * it. It never loads, installs or reorders anything, and a name matching nothing in the selection
  * is ignored rather than failing the boot — a typo costs a debug line, never a fetch.
  */
 export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
@@ -89,9 +89,8 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 			? Effect.logDebug(`plugin ${plugin.id} redefined by ${source}; the earlier definition is discarded`)
 			: Effect.void;
 	/**
-	 * Every name a loaded module answers to — its package name, the spec and path it came from,
-	 * and the reference as written — pointing at its ID. Built as the list is walked, so a
-	 * `package` entry can only address a module an earlier entry loaded.
+	 * Every string a loaded module was registered under, pointing at its ID. Built as the list is
+	 * walked, so a `package` entry can only address a module an earlier entry loaded.
 	 */
 	const aliases = new Map<string, string>();
 	const operations = new Map<string, { enabled: boolean; origin: Loader.Origin; options: PluginOptions }>();
@@ -123,7 +122,6 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 			if (invalid !== undefined) {
 				return yield* Loader.failure(origin, "definition", new Error(`plugin entry ${invalid}`));
 			}
-			// `plugin` is an ID, `package` is a name a module was loaded under; both end at an ID.
 			const id = reference.plugin === undefined ? aliases.get(reference.package) : reference.plugin;
 			const operation = id === undefined ? undefined : operations.get(id);
 			if (id === undefined || operation === undefined) {
@@ -170,8 +168,9 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 		loaded.set(key, definition);
 		yield* note(definition.plugin, definition.version === undefined ? key : `${key}@${definition.version}`);
 		catalog.add(definition.plugin, definition.source, definition.version);
-		// Every name this module can be configured by later: the reference as written, the package
-		// name and spec, the path on disk, and a local package's own manifest name.
+		// `package` configuration matches the registered module string. Keep its canonical package
+		// name/spec or local path too, so a versioned entry can be configured without repeating the
+		// version and a relative path remains anchored consistently.
 		const names =
 			source.kind === "package"
 				? [source.request.name, source.request.spec]
@@ -179,13 +178,20 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 		for (const name of [reference, ...names]) aliases.set(name, definition.plugin.id);
 		select(definition.plugin.id, origin);
 	}
-	const selection: Prepared[] = [];
-	for (const [id, operation] of [...operations].sort((a, b) => a[1].origin.index - b[1].origin.index)) {
+	const selection: Array<Prepared & { readonly index: number }> = [];
+	for (const [id, operation] of operations) {
 		// Disabled by a configuration entry. Every other operation was recorded beside the
 		// `catalog.add` that registered its definition, so the lookup below cannot miss.
 		if (!operation.enabled) continue;
 		const plugin = catalog.get(id);
-		if (plugin !== undefined) selection.push({ plugin, options: Object.freeze(operation.options) });
+		if (plugin !== undefined) {
+			selection.push({ plugin, options: Object.freeze(operation.options), index: operation.origin.index });
+		}
 	}
-	return Object.freeze(selection);
+	// Domain first, then where the entry was written. Comparing the index explicitly rather than
+	// leaning on a stable sort keeps the second half of the rule visible: composition inside one
+	// domain -- a plugin patching another's tool, or appending to the prompt it rendered -- still
+	// depends on the order those entries were written in.
+	selection.sort((a, b) => rank(a.plugin.kind) - rank(b.plugin.kind) || a.index - b.index);
+	return Object.freeze(selection.map(({ plugin, options }) => ({ plugin, options }) satisfies Prepared));
 });

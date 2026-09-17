@@ -16,6 +16,7 @@ export const Ready = EventSchema.define({
 
 export default define({
 	id: "acme.journal.writer",
+	kind: "tool",
 	setup: (ctx) =>
 		Effect.gen(function* () {
 			yield* ctx.events.publish(Ready, { sessionId: ctx.sessionId });

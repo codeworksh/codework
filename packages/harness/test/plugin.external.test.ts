@@ -31,6 +31,7 @@ const pluginPath = (name: string) => join(dir, name);
 /** One `Session.create` + one `run`, capturing every provider request. */
 const exchange = (input: {
 	readonly root: string;
+	readonly cwd?: string;
 	readonly plugins?: ReadonlyArray<PluginRef>;
 	readonly userConfigDir?: string;
 	readonly llm?: LLM.Open;
@@ -49,6 +50,7 @@ const exchange = (input: {
 		Effect.provide(
 			Harness.layer({
 				home: join(input.root, "home"),
+				cwd: input.cwd ?? input.root,
 				database: ":memory:",
 				llm: (request, signal) => {
 					contexts.push(request.context);
@@ -65,13 +67,33 @@ const exchange = (input: {
 };
 
 describe("third-party plugins", () => {
+	it("uses Harness.layer cwd and the nearest ancestor project file", () =>
+		withSettings(async ({ root }) => {
+			const nested = join(root, "packages", "app");
+			await mkdir(nested, { recursive: true });
+			await writeFile(join(root, "codework.jsonc"), JSON.stringify({ plugins: [pluginPath("tool/acme-echo")] }));
+			await writeFile(
+				join(root, "packages", "codework.jsonc"),
+				JSON.stringify({
+					plugins: [
+						pluginPath("prompt/acme-prompt.ts"),
+						{ plugin: "acme.prompt.marker", options: { marker: "nearest" } },
+					],
+				}),
+			);
+
+			const { contexts, prompts } = await exchange({ root, cwd: nested });
+			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
+			expect(prompts[0]?.endsWith("\n\nnearest")).toBe(true);
+		}));
+
 	it.each(["global", "custom"] as const)(
 		"adds %s settings plugins to the built-ins and executes their hooks",
 		(source) =>
 			withSettings(async ({ root, global, custom }) => {
 				const directory = source === "global" ? global : custom;
 				await writeFile(
-					join(directory, "settings.json"),
+					join(directory, "settings.jsonc"),
 					JSON.stringify({
 						// The relative entry anchors to this file's directory, not to the process cwd.
 						plugins: [
@@ -102,33 +124,26 @@ describe("third-party plugins", () => {
 
 	it("leaves the built-ins alone when no settings file asks for plugins", () =>
 		withSettings(async ({ root, custom }) => {
-			await writeFile(join(custom, "settings.json"), JSON.stringify({ model: { id: "gpt-5.6-luna" } }));
+			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model: { id: "gpt-5.6-luna" } }));
 			const { contexts } = await exchange({ root, userConfigDir: custom });
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
 		}));
 
-	it("registers a settings tool that the built-in prompt index cannot reach", () =>
+	it("indexes a settings tool in the built-in prompt, wherever its entry sits", () =>
 		withSettings(async ({ root, custom }) => {
-			// Settings entries append after the built-ins, and a prompt plugin sees only what
-			// registered before it. A settings file names modules and configures plugins; it
-			// cannot reorder the built-in selection, so the tool reaches the provider with its own
-			// description while staying out of the system prompt's list. An embedder that needs it
-			// listed owns the whole order through `Harness.layer({ plugins })`.
-			await writeFile(join(custom, "settings.json"), JSON.stringify({ plugins: [pluginPath("tool/acme-echo")] }));
-			const appended = await exchange({ root, userConfigDir: custom });
-			expect(appended.contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "acme_echo"]);
-			expect(appended.prompts[0]).not.toContain("acme_echo");
-			const ordered = await exchange({
-				root,
-				plugins: [bashPlugin, pluginPath("tool/acme-echo"), defaultPromptPlugin],
-			});
-			expect(ordered.prompts[0]).toContain("- acme_echo: Echo a value back");
+			// Settings entries land after the built-ins, so this tool's entry is written after the
+			// prompt plugin's. Domain order decides setup order, so the tool still registers first
+			// and the prompt that indexes tools sees it — which is the whole point of `kind`.
+			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ plugins: [pluginPath("tool/acme-echo")] }));
+			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
+			expect(contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "acme_echo"]);
+			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
 		}));
 
 	it("disables a built-in from settings", () =>
 		withSettings(async ({ root, custom }) => {
 			await writeFile(
-				join(custom, "settings.json"),
+				join(custom, "settings.jsonc"),
 				JSON.stringify({ plugins: [{ plugin: "codework.tool.bash", enabled: false }] }),
 			);
 			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
@@ -141,7 +156,7 @@ describe("third-party plugins", () => {
 			// One line names the module, the next configures it by the same path. The two keys keep
 			// those apart: `package` addresses something loaded, `plugin` addresses an ID.
 			await writeFile(
-				join(custom, "settings.json"),
+				join(custom, "settings.jsonc"),
 				JSON.stringify({
 					plugins: [
 						pluginPath("prompt/acme-prompt.ts"),
@@ -153,7 +168,7 @@ describe("third-party plugins", () => {
 			expect(prompts[0]?.endsWith("\n\nconfigured")).toBe(true);
 			// The plugin's own ID reaches it just as well.
 			await writeFile(
-				join(custom, "settings.json"),
+				join(custom, "settings.jsonc"),
 				JSON.stringify({
 					plugins: [
 						pluginPath("prompt/acme-prompt.ts"),
@@ -164,12 +179,10 @@ describe("third-party plugins", () => {
 			expect((await exchange({ root, userConfigDir: custom })).prompts[0]?.endsWith("\n\nby-id")).toBe(true);
 		}));
 
-	it("configures a built-in without moving it out of the built-in order", () =>
+	it("configures a built-in without disturbing the order its domain gives it", () =>
 		withSettings(async ({ root, custom }) => {
-			// Configuring a built-in is not selecting it: the prompt plugin keeps the position the
-			// built-in list gave it, so the settings tool below stays out of its index.
 			await writeFile(
-				join(custom, "settings.json"),
+				join(custom, "settings.jsonc"),
 				JSON.stringify({
 					plugins: [
 						{ plugin: "codework.prompt.default", options: { ignored: true } },
@@ -179,7 +192,9 @@ describe("third-party plugins", () => {
 			);
 			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash", "acme_echo"]);
-			expect(prompts[0]).not.toContain("acme_echo");
+			// Configuration never moves a plugin, and the prompt plugin runs after the tools
+			// regardless, so the tool is indexed either way.
+			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
 		}));
 
 	it("prepares a settings block mixing package specs, an anchored path, options and a disable", () =>
@@ -190,11 +205,20 @@ describe("third-party plugins", () => {
 			const packaged = join(custom, "packages");
 			await mkdir(packaged, { recursive: true });
 			await mkdir(join(custom, "plugins"), { recursive: true });
-			await writeFile(join(packaged, "tool.mjs"), "export default { id: 'acme.tool.example', setup() {} }");
-			await writeFile(join(packaged, "prompt.mjs"), "export default { id: 'acme.prompt.example', setup() {} }");
-			await writeFile(join(custom, "plugins", "local.mjs"), "export default { id: 'acme.tool.local', setup() {} }");
 			await writeFile(
-				join(custom, "settings.json"),
+				join(packaged, "tool.mjs"),
+				"export default { id: 'acme.tool.example', kind: 'tool', setup() {} }",
+			);
+			await writeFile(
+				join(packaged, "prompt.mjs"),
+				"export default { id: 'acme.prompt.example', kind: 'prompt', setup() {} }",
+			);
+			await writeFile(
+				join(custom, "plugins", "local.mjs"),
+				"export default { id: 'acme.tool.local', kind: 'tool', setup() {} }",
+			);
+			await writeFile(
+				join(custom, "settings.jsonc"),
 				JSON.stringify({
 					plugins: [
 						"codework-acme-plugin",
@@ -222,11 +246,12 @@ describe("third-party plugins", () => {
 			expect(specs).toEqual(["codework-acme-plugin@latest", "@acme/codework-plugin@1.2.0"]);
 			// Bash is gone, the options entry configured the package plugin without moving it, and
 			// the relative entry resolved against the settings file rather than the host cwd.
+			// Tools first, then prompts; within a domain, the order the entries were written in.
 			expect(prepared.map((entry) => [entry.plugin.id, entry.options])).toEqual([
-				["codework.prompt.default", {}],
 				["acme.tool.example", { retries: 2 }],
-				["acme.prompt.example", {}],
 				["acme.tool.local", {}],
+				["codework.prompt.default", {}],
+				["acme.prompt.example", {}],
 			]);
 		}));
 
@@ -234,7 +259,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root, custom }) => {
 			// The broken plugin would fail preparation if settings still contributed.
 			await writeFile(
-				join(custom, "settings.json"),
+				join(custom, "settings.jsonc"),
 				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
 			);
 			const { contexts } = await exchange({
@@ -249,7 +274,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root, custom }) => {
 			// The broken plugin would fail preparation if settings still contributed.
 			await writeFile(
-				join(custom, "settings.json"),
+				join(custom, "settings.jsonc"),
 				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
 			);
 			const { contexts, prompts } = await exchange({ root, userConfigDir: custom, plugins: [] });
@@ -261,7 +286,7 @@ describe("third-party plugins", () => {
 	it("reports preparation failures from settings before calling the model", () =>
 		withSettings(async ({ root, custom }) => {
 			await writeFile(
-				join(custom, "settings.json"),
+				join(custom, "settings.jsonc"),
 				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
 			);
 			let calls = 0;
@@ -403,6 +428,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							cwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							plugins: [pluginPath("event/acme-journal.ts"), defaultPromptPlugin],
@@ -432,6 +458,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							cwd: root,
 							database: ":memory:",
 							llm: (request, signal) => {
 								contexts.push(request.context);
@@ -461,6 +488,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							cwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							plugins: [pluginPath("tool/acme-bad-tool.ts"), defaultPromptPlugin],
@@ -484,6 +512,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							cwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							plugins: [pluginPath("host/acme-broken.ts")],
@@ -531,6 +560,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							cwd: root,
 							database: ":memory:",
 							llm: (request, signal) => {
 								contexts.push(request.context);

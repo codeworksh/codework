@@ -27,6 +27,7 @@ const readFacts = (options: Plugin.PluginOptions): Record<string, string> => {
 
 export default Plugin.define({
 	id: "local.tool.facts",
+	kind: "tool",
 	setup(ctx, options) {
 		const facts = readFacts(options);
 		const names = Object.keys(facts);

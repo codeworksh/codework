@@ -99,6 +99,53 @@ export const Cmd = Spec.make("codework", {
 				{ command: "codework serve --port 0", description: "Choose an available local port" },
 			],
 		}),
+		Spec.make("plugin", {
+			description: "Manage plugins",
+			commands: [
+				Spec.make("add", {
+					description: "Install a plugin and add it to a settings file",
+					params: {
+						package: Argument.String("package").pipe(
+							Argument.withDescription("Package spec, path, or file: URL"),
+						),
+						global: Flag.Boolean("global").pipe(
+							Flag.withAlias("g"),
+							Flag.withDescription("Write the user-wide settings file instead of this project's"),
+							Flag.withDefault(false),
+						),
+					},
+					examples: [
+						{
+							command: "codework plugin add @acme/codework-tool-proc@1.2.0",
+							description: "Install a published plugin into this project's settings",
+						},
+						{
+							command: "codework plugin add @acme/codework-tool-proc -g",
+							description: "Install it for every project this user runs",
+						},
+					],
+				}),
+				Spec.make("remove", {
+					description: "Remove a plugin from a settings file",
+					params: {
+						package: Argument.String("package").pipe(
+							Argument.withDescription("Configured package spec, path, or plugin ID"),
+						),
+						global: Flag.Boolean("global").pipe(
+							Flag.withAlias("g"),
+							Flag.withDescription("Edit the user-wide settings file instead of this project's"),
+							Flag.withDefault(false),
+						),
+					},
+					examples: [
+						{
+							command: "codework plugin remove @acme/codework-tool-proc",
+							description: "Drop a plugin and any configuration written against it",
+						},
+					],
+				}),
+			],
+		}),
 		Spec.make("models", {
 			description: "List or generate the model catalog",
 			params: {

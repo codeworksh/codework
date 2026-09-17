@@ -30,11 +30,45 @@ export interface Installed {
 	readonly version: string;
 }
 
+const cacheLocation = Effect.fn("PluginPackage.cacheLocation")(function* (request: Request, cache: string) {
+	const root = path.join(cache, "plugins");
+	const key = Encoding.encodeHex(yield* crypto.digest("SHA-256", new TextEncoder().encode(request.spec)));
+	const directory = path.join(root, key);
+	return { root, key, directory, marker: path.join(directory, ".complete.json") };
+});
+
+const readPublished = Effect.fn("PluginPackage.readPublished")(function* (
+	request: Request,
+	directory: string,
+	marker: string,
+) {
+	const saved = yield* fs
+		.readFileString(marker)
+		.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Cached))));
+	if (saved.spec !== request.spec)
+		return yield* new InstallError({ cause: new Error("Plugin package cache request mismatch") });
+	return {
+		url: pathToFileURL(path.resolve(directory, saved.entrypoint)).href,
+		version: saved.version,
+	} satisfies Installed;
+});
+
 /** Runs inside the isolated staging directory. Override only for deterministic tests. */
 export class InstallError extends Schema.TaggedError<InstallError>()("PluginInstallError", {
 	cause: Schema.Defect(),
 }) {}
 export type Runner = (request: Request, directory: string) => Effect.Effect<void, InstallError>;
+
+/** Resolve an already-published package without installing or waiting for an installer. */
+export const resolveCached = Effect.fn("PluginPackage.resolveCached")(
+	function* (request: Request, cache: string) {
+		const { directory, marker } = yield* cacheLocation(request, cache);
+		if (!(yield* fs.exists(marker)))
+			return yield* new InstallError({ cause: new Error(`Plugin package is not cached: ${request.spec}`) });
+		return yield* readPublished(request, directory, marker);
+	},
+	Effect.mapError((cause) => (Schema.is(InstallError)(cause) ? cause : new InstallError({ cause }))),
+);
 
 const run: Runner = Effect.fn("PluginPackage.run")(
 	function* (request, directory) {
@@ -127,10 +161,7 @@ const lock = Effect.fn("PluginPackage.lock")(function* (directory: string) {
 
 export const install = Effect.fn("PluginPackage.install")(
 	function* (request: Request, cache: string, runner: Runner = run) {
-		const root = path.join(cache, "plugins");
-		const key = Encoding.encodeHex(yield* crypto.digest("SHA-256", new TextEncoder().encode(request.spec)));
-		const directory = path.join(root, key);
-		const marker = path.join(directory, ".complete.json");
+		const { root, key, directory, marker } = yield* cacheLocation(request, cache);
 		yield* fs.makeDirectory(root, { recursive: true });
 		// A published entry is immutable, so reading one never contends with an installer.
 		// mkdir is atomic across processes; the scoped release also runs on interruption.
@@ -165,13 +196,7 @@ export const install = Effect.fn("PluginPackage.install")(
 			if (yield* fs.exists(directory)) yield* fs.remove(directory, { recursive: true });
 			yield* fs.rename(staging, directory);
 		}
-		const saved = yield* fs
-			.readFileString(marker)
-			.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Cached))));
-		if (saved.spec !== request.spec)
-			return yield* new InstallError({ cause: new Error("Plugin package cache request mismatch") });
-		const url = pathToFileURL(path.resolve(directory, saved.entrypoint)).href;
-		return { url, version: saved.version } satisfies Installed;
+		return yield* readPublished(request, directory, marker);
 	},
 	Effect.scoped,
 	Effect.mapError((cause) => (Schema.is(InstallError)(cause) ? cause : new InstallError({ cause }))),

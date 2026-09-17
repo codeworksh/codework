@@ -14,6 +14,7 @@ export { Runner } from "./runner/run.ts";
 export { Location } from "./location/location.ts";
 export * as Tool from "./tool/tool.ts";
 
+export { Global } from "./global.ts";
 export { Settings } from "./settings/settings.ts";
 
 export * as Plugin from "./plugin/index.ts";

@@ -241,6 +241,7 @@ export const bashTool = Tool.implement(bashDef, bashHandler);
 
 export const bashPlugin = define({
 	id: "codework.tool.bash",
+	kind: "tool",
 	setup: Effect.fn("BashPlugin.setup")(function* (ctx) {
 		const shell = yield* SandboxIO.Shell;
 		const mounted = fromSandboxShell.pipe(Layer.provide(Layer.succeed(SandboxIO.Shell, shell)));

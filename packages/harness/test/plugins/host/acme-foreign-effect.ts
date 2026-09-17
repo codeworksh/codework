@@ -19,6 +19,7 @@ const { Effect, Schema } = foreign;
 
 export default {
 	id: "acme.tool.foreign",
+	kind: "tool",
 	// A generator created by the foreign instance, yielding a service tag built by the harness's.
 	setup: Effect.fn("ForeignPlugin.setup")(function* (ctx: SharedPluginContext, options: PluginOptions) {
 		const shell = yield* SandboxIO.Shell;

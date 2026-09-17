@@ -18,7 +18,7 @@ import { withSettings } from "./fixtures/settings.ts";
 
 const file = (dir: string, thinkingLevel: string) =>
 	writeFile(
-		join(dir, "settings.json"),
+		join(dir, "settings.jsonc"),
 		JSON.stringify({ model: { thinkingLevel, options: { headers: { revision: thinkingLevel } } } }),
 	);
 
@@ -111,11 +111,12 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
+								cwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
 								plugins: [
-									{ id: "test.tool.wait", setup: (ctx) => ctx.plugin.tools.add(wait) },
+									{ id: "test.tool.wait", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(wait) },
 									defaultPromptPlugin,
 								],
 							}),
@@ -130,7 +131,7 @@ describe("settings at exchange boundaries", () => {
 		withSettings(async ({ root, custom }) => {
 			const configure = (toolExecution: string) =>
 				writeFile(
-					join(custom, "settings.json"),
+					join(custom, "settings.jsonc"),
 					JSON.stringify({
 						model: { toolExecution: "sequential", providerOptions: { openai: { "*": { toolExecution } } } },
 					}),
@@ -202,11 +203,12 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
+								cwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
 								plugins: [
-									{ id: "test.tool.pair", setup: (ctx) => ctx.plugin.tools.add(pair) },
+									{ id: "test.tool.pair", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(pair) },
 									defaultPromptPlugin,
 								],
 							}),
@@ -260,6 +262,7 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
+								cwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
@@ -291,14 +294,20 @@ describe("settings at exchange boundaries", () => {
 					// there rather than at construction.
 					yield* Effect.promise(() =>
 						writeFile(
-							join(custom, "settings.json"),
+							join(custom, "settings.jsonc"),
 							JSON.stringify({ model: { options: { timeoutMs: "wrong" } } }),
 						),
 					);
 					yield* handle.run("second");
 				}).pipe(
 					Effect.provide(
-						Harness.layer({ home: join(root, "home"), database: ":memory:", userConfigDir: custom, llm: open }),
+						Harness.layer({
+							home: join(root, "home"),
+							cwd: root,
+							database: ":memory:",
+							userConfigDir: custom,
+							llm: open,
+						}),
 					),
 					Effect.scoped,
 				),
@@ -309,7 +318,7 @@ describe("settings at exchange boundaries", () => {
 			// key, rather than an anonymous snapshot failure with an empty message.
 			expect(failures).toHaveLength(1);
 			expect(failures[0]?.data.error.type).toBe("settings");
-			expect(failures[0]?.data.error.message).toContain(join(custom, "settings.json"));
+			expect(failures[0]?.data.error.message).toContain(join(custom, "settings.jsonc"));
 			expect(failures[0]?.data.error.message).toContain("model.options.timeoutMs");
 		}));
 
@@ -356,11 +365,12 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
+								cwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
 								plugins: [
-									{ id: "test.tool.wait", setup: (ctx) => ctx.plugin.tools.add(wait) },
+									{ id: "test.tool.wait", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(wait) },
 									defaultPromptPlugin,
 								],
 							}),
@@ -381,7 +391,8 @@ describe("settings at exchange boundaries", () => {
 					return terminal(input, inputs.length);
 				});
 			const database = join(root, "sessions.db");
-			const runtime = () => Harness.layer({ home: join(root, "home"), database, userConfigDir: custom, llm: open });
+			const runtime = () =>
+				Harness.layer({ home: join(root, "home"), cwd: root, database, userConfigDir: custom, llm: open });
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const sessionId = yield* Effect.gen(function* () {
@@ -409,7 +420,7 @@ describe("settings at exchange boundaries", () => {
 	it("keeps turn failure behavior for an unselectable model and picks up a corrected selection", () =>
 		withSettings(async ({ root, custom }) => {
 			const select = (provider: string, id: string) =>
-				writeFile(join(custom, "settings.json"), JSON.stringify({ model: { provider, id } }));
+				writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model: { provider, id } }));
 			await select("openai", "no-such-model");
 			const inputs: LLM.Input[] = [];
 			const open: LLM.Open = (input, signal) => {
@@ -438,6 +449,7 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
+								cwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
@@ -451,7 +463,7 @@ describe("settings at exchange boundaries", () => {
 
 	it("tracks a settings file edited forward and reverted across successive runs", () =>
 		withSettings(async ({ root, custom }) => {
-			const write = (model: object) => writeFile(join(custom, "settings.json"), JSON.stringify({ model }));
+			const write = (model: object) => writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model }));
 			// A carries a header and a retry count that B does not mention at all.
 			const A = { thinkingLevel: "low", options: { maxRetries: 7, headers: { only: "a" } } };
 			const B = { thinkingLevel: "high", options: { headers: { shared: "b" } } };
@@ -491,6 +503,7 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
+								cwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,

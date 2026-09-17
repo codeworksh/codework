@@ -322,6 +322,7 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 				...plugins,
 				{
 					id: "test.tool.echo",
+					kind: "tool",
 					setup: (ctx) => {
 						snapshots += 1;
 						ctx.plugin.tools.add(echo);
@@ -378,6 +379,7 @@ describe("runner loop — crash healing", () => {
 				...plugins,
 				{
 					id: "test.prompt.count",
+					kind: "prompt",
 					setup: () => {
 						snapshots += 1;
 					},
@@ -458,7 +460,10 @@ describe("runner loop — tool interruption", () => {
 		runtime({
 			open,
 			state: { toolExecution: "parallel" },
-			plugins: [...plugins, { id: "test.tool.blocking", setup: (ctx) => ctx.plugin.tools.add(blocking) }],
+			plugins: [
+				...plugins,
+				{ id: "test.tool.blocking", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(blocking) },
+			],
 		}),
 	);
 

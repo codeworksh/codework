@@ -20,6 +20,7 @@ const readRules = (options: Plugin.PluginOptions): ReadonlyArray<string> => {
 
 export default Plugin.define({
 	id: "local.prompt.house-style",
+	kind: "prompt",
 	setup(ctx, options) {
 		const rules = readRules(options);
 		if (rules.length === 0) return;

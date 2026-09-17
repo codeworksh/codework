@@ -1,6 +1,6 @@
 import dedent from "dedent";
 import { Effect, Layer } from "effect";
-import { mkdir, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -13,15 +13,17 @@ describe("host settings loader", () => {
 	it.each(["codework-acme-plugin", [123], [{}], [""]])(
 		"rejects a plugins block that is not a string array: %j",
 		async (plugins) => {
-			const failure = await Effect.runPromise(parse("settings.json", JSON.stringify({ plugins })).pipe(Effect.flip));
+			const failure = await Effect.runPromise(
+				parse("settings.jsonc", JSON.stringify({ plugins })).pipe(Effect.flip),
+			);
 			expect(failure).toMatchObject({ reason: "decode" });
 			expect(failure.detail).toContain("plugins");
 		},
 	);
 
-	it("resolves plugin arrays by layer, replacing rather than concatenating", () =>
+	it("accumulates plugin entries across layers, lowest priority first", () =>
 		withSettings(async ({ root, global, local, custom }) => {
-			const write = (path: string, plugins: ReadonlyArray<string>) => writeFile(path, JSON.stringify({ plugins }));
+			const write = (path: string, plugins: ReadonlyArray<unknown>) => writeFile(path, JSON.stringify({ plugins }));
 			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: global }))),
 			);
@@ -29,20 +31,35 @@ describe("host settings loader", () => {
 				Effect.gen(function* () {
 					const settings = yield* Settings.Service;
 					expect((yield* settings.load).plugins).toEqual([]);
-					yield* Effect.promise(() => write(join(global, "settings.json"), ["codework-global-plugin"]));
+					// A user's plugins are the defaults a project builds on, so a project file adds
+					// to them rather than standing in for them.
+					yield* Effect.promise(() => write(join(global, "settings.jsonc"), ["codework-global-plugin"]));
 					expect((yield* settings.load).plugins).toEqual(["codework-global-plugin"]);
-					yield* Effect.promise(() => write(join(local, "settings.json"), ["codework-local-plugin"]));
-					expect((yield* settings.load).plugins).toEqual(["codework-local-plugin"]);
+					yield* Effect.promise(() => write(join(local, "settings.jsonc"), ["codework-local-plugin"]));
+					expect((yield* settings.load).plugins).toEqual(["codework-global-plugin", "codework-local-plugin"]);
+					// One file per layer: `codework.jsonc` is the project layer once it exists, and
+					// `.codework/settings.jsonc` stops contributing.
+					yield* Effect.promise(() => write(join(root, "codework.jsonc"), ["codework-acme-plugin"]));
+					expect((yield* settings.load).plugins).toEqual(["codework-global-plugin", "codework-acme-plugin"]);
+					yield* Effect.promise(() => write(join(custom, "settings.jsonc"), ["codework-custom-plugin"]));
+					expect((yield* settings.load).plugins).toEqual([
+						"codework-global-plugin",
+						"codework-acme-plugin",
+						"codework-custom-plugin",
+					]);
+					// A project drops an inherited plugin the same way it drops a built-in.
 					yield* Effect.promise(() =>
-						write(join(root, "codework.json"), ["codework-acme-plugin", "codework-other-plugin"]),
+						write(join(root, "codework.jsonc"), [{ package: "codework-global-plugin", enabled: false }]),
 					);
-					expect((yield* settings.load).plugins).toEqual(["codework-acme-plugin", "codework-other-plugin"]);
-					yield* Effect.promise(() => writeFile(join(root, "codework.json"), "{}"));
-					expect((yield* settings.load).plugins).toEqual(["codework-global-plugin"]);
-					yield* Effect.promise(() => write(join(root, "codework.json"), []));
-					expect((yield* settings.load).plugins).toEqual([]);
-					yield* Effect.promise(() => write(join(custom, "settings.json"), ["codework-custom-plugin"]));
-					expect((yield* settings.load).plugins).toEqual(["codework-custom-plugin"]);
+					expect((yield* settings.load).plugins).toEqual([
+						"codework-global-plugin",
+						{ package: "codework-global-plugin", enabled: false },
+						"codework-custom-plugin",
+					]);
+					// A layer that names no `plugins` key contributes nothing, and an empty array is
+					// a layer that contributes nothing either -- neither erases what came before.
+					yield* Effect.promise(() => writeFile(join(root, "codework.jsonc"), "{}"));
+					expect((yield* settings.load).plugins).toEqual(["codework-global-plugin", "codework-custom-plugin"]);
 				}).pipe(Effect.provide(layer)),
 			);
 		}));
@@ -62,14 +79,14 @@ describe("host settings loader", () => {
 				Effect.gen(function* () {
 					const settings = yield* Settings.Service;
 					yield* Effect.promise(() =>
-						writeFile(join(global, "settings.json"), JSON.stringify({ plugins: [entry] })),
+						writeFile(join(global, "settings.jsonc"), JSON.stringify({ plugins: [entry] })),
 					);
 					expect((yield* settings.load).plugins).toEqual([entry]);
-					// And through a second layer merging on top of the first.
+					// And through a second layer, whose entries are appended to the first's.
 					yield* Effect.promise(() =>
-						writeFile(join(custom, "settings.json"), JSON.stringify({ plugins: [entry] })),
+						writeFile(join(custom, "settings.jsonc"), JSON.stringify({ plugins: [entry] })),
 					);
-					expect((yield* settings.load).plugins).toEqual([entry]);
+					expect((yield* settings.load).plugins).toEqual([entry, entry]);
 				}).pipe(Effect.provide(layer)),
 			);
 		}));
@@ -89,7 +106,7 @@ describe("host settings loader", () => {
 				Effect.gen(function* () {
 					const settings = yield* Settings.Service;
 					yield* Effect.promise(() =>
-						writeFile(join(global, "settings.json"), JSON.stringify({ plugins: entries })),
+						writeFile(join(global, "settings.jsonc"), JSON.stringify({ plugins: entries })),
 					);
 					expect((yield* settings.load).plugins).toEqual([
 						join(global, "plugins/one.ts"),
@@ -100,22 +117,29 @@ describe("host settings loader", () => {
 						"codework-acme-plugin",
 						{ plugin: "codework.tool.bash", enabled: false },
 					]);
-					// The project layer anchors to its own directory, which differs between the two layouts.
+					// The project layer anchors to its own directory, which differs between the two
+					// layouts, and its entries follow the user layer's rather than replacing them.
+					const user = [
+						join(global, "plugins/one.ts"),
+						{ package: join(root, "sibling/two.ts"), options: { deep: true } },
+						"codework-acme-plugin",
+						{ plugin: "codework.tool.bash", enabled: false },
+					];
 					yield* Effect.promise(() =>
-						writeFile(join(local, "settings.json"), JSON.stringify({ plugins: ["./plugins/one.ts"] })),
+						writeFile(join(local, "settings.jsonc"), JSON.stringify({ plugins: ["./plugins/one.ts"] })),
 					);
-					expect((yield* settings.load).plugins).toEqual([join(local, "plugins/one.ts")]);
+					expect((yield* settings.load).plugins).toEqual([...user, join(local, "plugins/one.ts")]);
 					yield* Effect.promise(() =>
-						writeFile(join(root, "codework.json"), JSON.stringify({ plugins: ["./plugins/one.ts"] })),
+						writeFile(join(root, "codework.jsonc"), JSON.stringify({ plugins: ["./plugins/one.ts"] })),
 					);
-					expect((yield* settings.load).plugins).toEqual([join(root, "plugins/one.ts")]);
+					expect((yield* settings.load).plugins).toEqual([...user, join(root, "plugins/one.ts")]);
 				}).pipe(Effect.provide(layer)),
 			);
 		}));
 
 	it("requires exactly one of `plugin` and `package` on a configuration entry", async () => {
 		const decode = (entry: unknown) =>
-			Effect.runPromise(parse("settings.json", JSON.stringify({ plugins: [entry] })).pipe(Effect.result));
+			Effect.runPromise(parse("settings.jsonc", JSON.stringify({ plugins: [entry] })).pipe(Effect.result));
 		// Naming a plugin two ways at once says two different things, and an entry naming it no
 		// way at all says nothing; neither is quietly reinterpreted.
 		for (const entry of [
@@ -151,7 +175,7 @@ describe("host settings loader", () => {
 				],
 			}
 		`;
-		const patch = await Effect.runPromise(parse("codework.json", source));
+		const patch = await Effect.runPromise(parse("codework.jsonc", source));
 		expect(patch.model).toMatchObject({ id: "gpt-5.6-luna", thinkingLevel: "low" });
 		expect(patch.plugins).toEqual([
 			"./plugins/local.ts",
@@ -173,59 +197,72 @@ describe("host settings loader", () => {
 		expect(invalid.detail).not.toContain("do-not-print");
 	});
 
-	it("fails on a layer it cannot read and never searches the startup directory's parents", () =>
+	it("fails on a layer it cannot read", () =>
 		withSettings(async ({ root, local, global, custom }) => {
-			await mkdir(join(global, "settings.json"));
-			await writeFile(join(local, "settings.json"), JSON.stringify({ model: { thinkingLevel: "max" } }));
-			await writeFile(join(custom, "settings.json"), JSON.stringify({ model: { options: { maxRetries: 4 } } }));
-			const provide = (cwd: string) =>
-				Settings.layer({ cwd, userConfigDir: custom }).pipe(
-					Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
-				);
+			await mkdir(join(global, "settings.jsonc"));
+			await writeFile(join(local, "settings.jsonc"), JSON.stringify({ model: { thinkingLevel: "max" } }));
+			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model: { options: { maxRetries: 4 } } }));
+			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
+			);
 			// A path that exists and cannot be read is the user's to fix, not a layer to skip.
 			const error = await Effect.runPromise(
-				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(provide(root)), Effect.flip),
+				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(layer), Effect.flip),
 			);
-			expect(error).toMatchObject({ path: join(global, "settings.json"), reason: "read" });
-			await rm(join(global, "settings.json"), { recursive: true });
-			// The project layer is read from the startup directory only; a parent's file is not found.
-			const result = await Effect.runPromise(
-				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(provide(join(root, "subdirectory")))),
-			);
-			expect(result.model.thinkingLevel).toBe(Settings.defaults.model.thinkingLevel);
-			expect(result.model.options?.maxRetries).toBe(4);
+			expect(error).toMatchObject({ path: join(global, "settings.jsonc"), reason: "read" });
 		}));
 
-	it("uses global, startup-local, custom paths and expands home", () => {
-		expect(paths("/home", "/startup", "relative")).toEqual([
-			["/home/settings.json"],
-			["/startup/codework.json", "/startup/.codework/settings.json"],
-			["/startup/relative/settings.json"],
+	it("lists both spellings per layout, searching up the directory chain", () => {
+		const [user, project, custom] = paths("/home", "/repo/packages/app", "relative");
+		// `.jsonc` is the canonical name and is tried first; `.json` still resolves.
+		expect(user).toEqual(["/home/settings.jsonc", "/home/settings.json"]);
+		expect(custom).toEqual([
+			"/repo/packages/app/relative/settings.jsonc",
+			"/repo/packages/app/relative/settings.json",
 		]);
-		expect(paths("/home", "/startup", "~/custom").at(-1)).toEqual([join(homedir(), "custom/settings.json")]);
+		// The project layer searches the startup directory, then its ancestors, nearest first, so
+		// a command run inside a package reads the repository's own file.
+		expect(project?.slice(0, 5)).toEqual([
+			"/repo/packages/app/codework.jsonc",
+			"/repo/packages/app/codework.json",
+			"/repo/packages/app/.codework/settings.jsonc",
+			"/repo/packages/app/.codework/settings.json",
+			"/repo/packages/codework.jsonc",
+		]);
+		expect(project?.slice(-1)).toEqual(["/.codework/settings.json"]);
+		expect(paths("/home", "/startup", "~/custom").at(-1)?.[0]).toBe(join(homedir(), "custom/settings.jsonc"));
+
+		const [global, beneathHome] = paths("/users/me/.codework", "/users/me/project");
+		expect(beneathHome).not.toContain(global?.[0]);
+		expect(beneathHome).not.toContain(global?.[1]);
 	});
 
-	it("loads codework.json as the project layer", () =>
+	it("loads the project .json fallback and prefers .jsonc when both exist", () =>
 		withSettings(async ({ root, custom }) => {
 			await writeFile(join(root, "codework.json"), JSON.stringify({ model: { thinkingLevel: "low" } }));
 			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
 			);
-			const result = await Effect.runPromise(
-				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(layer)),
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const settings = yield* Settings.Service;
+					expect((yield* settings.load).model.thinkingLevel).toBe("low");
+					yield* Effect.promise(() =>
+						writeFile(join(root, "codework.jsonc"), JSON.stringify({ model: { thinkingLevel: "max" } })),
+					);
+					expect((yield* settings.load).model.thinkingLevel).toBe("max");
+				}).pipe(Effect.provide(layer)),
 			);
-			expect(result.model.thinkingLevel).toBe("low");
-			expect(result.model.options?.maxRetries).toBe(3);
 		}));
 
 	it("prefers codework.json over .codework/settings.json when both exist", () =>
 		withSettings(async ({ root, local, custom }) => {
 			await writeFile(
-				join(root, "codework.json"),
+				join(root, "codework.jsonc"),
 				JSON.stringify({ model: { thinkingLevel: "max", options: { maxRetries: 2 } } }),
 			);
 			await writeFile(
-				join(local, "settings.json"),
+				join(local, "settings.jsonc"),
 				JSON.stringify({ model: { thinkingLevel: "low", options: { maxRetries: 9, timeoutMs: 123 } } }),
 			);
 			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
@@ -240,10 +277,10 @@ describe("host settings loader", () => {
 			expect(result.model.options?.timeoutMs).toBe(Settings.defaults.model.options?.timeoutMs);
 		}));
 
-	it("merges global, codework.json, and custom settings without using global codework.json", () =>
+	it("loads global and custom .json fallbacks while ignoring global codework.json", () =>
 		withSettings(async ({ root, global, custom }) => {
 			await writeFile(
-				join(global, "codework.json"),
+				join(global, "codework.jsonc"),
 				JSON.stringify({ model: { options: { headers: { excluded: "yes" } } } }),
 			);
 			await writeFile(
@@ -251,7 +288,7 @@ describe("host settings loader", () => {
 				JSON.stringify({ model: { thinkingLevel: "low", options: { maxRetries: 2, timeoutMs: 100 } } }),
 			);
 			await writeFile(
-				join(root, "codework.json"),
+				join(root, "codework.jsonc"),
 				JSON.stringify({ model: { thinkingLevel: "high", options: { timeoutMs: 200 } } }),
 			);
 			await writeFile(join(custom, "settings.json"), JSON.stringify({ model: { thinkingLevel: "max" } }));
@@ -268,7 +305,7 @@ describe("host settings loader", () => {
 			expect(result.model.options?.headers).toEqual(Settings.defaults.model.options?.headers);
 		}));
 
-	it("falls back to .codework/settings.json only when codework.json is missing", () =>
+	it("falls back to .codework/settings.json only when the root project file is missing", () =>
 		withSettings(async ({ root, local, custom }) => {
 			await writeFile(join(local, "settings.json"), JSON.stringify({ model: { thinkingLevel: "low" } }));
 			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
@@ -279,10 +316,10 @@ describe("host settings loader", () => {
 					const settings = yield* Settings.Service;
 					expect((yield* settings.load).model.thinkingLevel).toBe("low");
 					yield* Effect.promise(() =>
-						writeFile(join(root, "codework.json"), JSON.stringify({ model: { thinkingLevel: "max" } })),
+						writeFile(join(root, "codework.jsonc"), JSON.stringify({ model: { thinkingLevel: "max" } })),
 					);
 					expect((yield* settings.load).model.thinkingLevel).toBe("max");
-					yield* Effect.promise(() => unlink(join(root, "codework.json")));
+					yield* Effect.promise(() => unlink(join(root, "codework.jsonc")));
 					expect((yield* settings.load).model.thinkingLevel).toBe("low");
 				}).pipe(Effect.provide(layer)),
 			);
@@ -290,23 +327,24 @@ describe("host settings loader", () => {
 
 	it("fails on a malformed codework.json rather than falling back to the directory file", () =>
 		withSettings(async ({ root, local, custom }) => {
-			await writeFile(join(root, "codework.json"), '{"model":');
-			await writeFile(join(local, "settings.json"), JSON.stringify({ model: { thinkingLevel: "low" } }));
+			await writeFile(join(root, "codework.jsonc"), '{"model":');
+			await writeFile(join(local, "settings.jsonc"), JSON.stringify({ model: { thinkingLevel: "low" } }));
 			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
 			);
-			// Skipping the layer would silently run this session on `.codework/settings.json`, which
+			// Skipping the layer would silently run this session on `.codework/settings.jsonc`, which
 			// is a different configuration than the one the project committed.
 			const error = await Effect.runPromise(
 				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(layer), Effect.flip),
 			);
-			expect(error).toMatchObject({ path: join(root, "codework.json"), reason: "parse" });
+			expect(error).toMatchObject({ path: join(root, "codework.jsonc"), reason: "parse" });
 			expect(error.detail).toMatch(/^ValueExpected at 1:\d+$/);
 		}));
 
 	it("loads fresh files for each exchange with no shared cache or mutations", () =>
 		withSettings(async ({ root, local, global, custom }) => {
-			const write = (dir: string, model: object) => writeFile(join(dir, "settings.json"), JSON.stringify({ model }));
+			const write = (dir: string, model: object) =>
+				writeFile(join(dir, "settings.jsonc"), JSON.stringify({ model }));
 			const layer = Settings.layer({ cwd: root, userConfigDir: "custom" }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
 			);
@@ -326,15 +364,15 @@ describe("host settings loader", () => {
 					const second = yield* settings.load;
 					expect(second.model).toMatchObject({ thinkingLevel: "off", options: { timeoutMs: 200 } });
 					expect(first.model.thinkingLevel).toBe("low");
-					yield* Effect.promise(() => unlink(join(custom, "settings.json")));
+					yield* Effect.promise(() => unlink(join(custom, "settings.jsonc")));
 					expect((yield* settings.load).model.thinkingLevel).toBe("high");
 					// An edit that breaks a file reaches the next capture like any other edit. A broken
 					// middle layer fails the load rather than handing the session to the layers
 					// around it, which would run it on a configuration nobody wrote.
-					yield* Effect.promise(() => writeFile(join(local, "settings.json"), '{"model":'));
+					yield* Effect.promise(() => writeFile(join(local, "settings.jsonc"), '{"model":'));
 					yield* Effect.promise(() => write(custom, { thinkingLevel: "medium" }));
 					const broken = yield* settings.load.pipe(Effect.flip);
-					expect(broken).toMatchObject({ path: join(local, "settings.json"), reason: "parse" });
+					expect(broken).toMatchObject({ path: join(local, "settings.jsonc"), reason: "parse" });
 					// Repaired, the next capture reads it, and an invalid value names the key it is on.
 					yield* Effect.promise(() => write(local, { options: { timeoutMs: 200 } }));
 					expect((yield* settings.load).model).toMatchObject({

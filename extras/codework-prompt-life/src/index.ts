@@ -30,6 +30,7 @@ const section = (answer: number) =>
 
 export default Plugin.define({
 	id: "acme.prompt.life",
+	kind: "prompt",
 	setup(ctx, options) {
 		const existing = ctx.plugin.prompt.get();
 		// `set` replaces the whole prompt, so compose on what is already there rather than

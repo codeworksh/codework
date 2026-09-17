@@ -112,7 +112,7 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 				withSettings(async ({ root, custom }) => {
 					const configure = (thinkingLevel: "low" | "off") =>
 						writeFile(
-							join(custom, "settings.json"),
+							join(custom, "settings.jsonc"),
 							JSON.stringify({
 								model: {
 									provider: "openai",

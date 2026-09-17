@@ -9,7 +9,7 @@
  *
  * A key routes by its *name*, never by where it was written, which is what lets the same
  * key appear at global, provider, pattern, or exact-id scope. Names split four ways:
- * `contextWindow` corrects the catalog entry, request fields reach `stream()`, `extras`
+ * `contextWindow` and `protocol` correct the catalog entry, request fields reach `stream()`, `extras`
  * reaches the provider constructor, and anything unrecognised falls through to the
  * per-request provider bag. That last rule is why a provider option aikit has never heard
  * of needs no registration here.
@@ -51,8 +51,18 @@ export function collect(settings: Info, provider: string, id: string): Block {
 	);
 }
 
-export const resolveOverrides = (block: Block): Partial<Model.Info> =>
-	block.contextWindow === undefined ? {} : { contextWindow: block.contextWindow };
+/**
+ * Corrections to the catalog entry itself, applied before lookup.
+ *
+ * `protocol` is here rather than in the request bag because it is model shape: it decides which
+ * wire protocol aikit speaks, and through `Model.optionsKey` which namespace the provider bag is
+ * keyed by. A catalog cannot know it for a local OpenAI-compatible server, and the person
+ * pointing at one does.
+ */
+export const resolveOverrides = (block: Block): Partial<Model.Info> => ({
+	...(block.contextWindow === undefined ? {} : { contextWindow: block.contextWindow }),
+	...(block.protocol === undefined ? {} : { protocol: block.protocol }),
+});
 
 /** Protocol-independent request attributes can already be captured by State. */
 export function resolveOptions(block: Block): State.RequestOptions {
@@ -66,7 +76,7 @@ export function resolveRequest(block: Block, model: Model.Info): State.RequestOp
 		Object.entries(block).filter(
 			([key]) =>
 				!Object.hasOwn(requestFields, key) &&
-				!["thinkingLevel", "toolExecution", "contextWindow", "extras"].includes(key),
+				!["thinkingLevel", "toolExecution", "contextWindow", "protocol", "extras"].includes(key),
 		),
 	);
 	return {

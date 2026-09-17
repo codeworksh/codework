@@ -44,12 +44,15 @@ const reserved = new Set([
 	"providerOptionsKey",
 	"compat",
 	"thinkingLevelMap",
-	"protocol",
 ]);
+
+/** The wire protocol a model speaks, which a catalog entry may have wrong for a local endpoint. */
+export const ModelProtocol = Schema.Literals(Object.values(AikitModel.KnownProviderEnum));
 
 export const Block = Schema.StructWithRest(
 	Schema.Struct({
 		...requestFields,
+		protocol: Schema.optional(ModelProtocol),
 		thinkingLevel: Schema.optional(ThinkingLevel),
 		toolExecution: Schema.optional(ToolExecution),
 		contextWindow: Schema.optional(Schema.Finite),
@@ -76,8 +79,8 @@ export const Model = Schema.Struct({
 const PluginReference = Schema.String.check(Schema.isNonEmpty());
 /**
  * Configuration for a plugin something else already selected, named by its ID (`plugin`) or by
- * the package it was installed from (`package`). It never loads anything: an entry naming a
- * plugin that is not in the selection is ignored.
+ * its registered module string (`package`). It never loads anything: an entry naming a plugin
+ * that is not in the selection is ignored.
  */
 const config = {
 	enabled: Schema.optional(Schema.Boolean),
@@ -101,8 +104,8 @@ export type Patch = typeof Patch.Type;
 
 export interface Info {
 	/**
-	 * Plugin references added to the harness selection, in order. Like every array in a
-	 * patch this replaces rather than concatenates, so one layer owns the whole list.
+	 * Plugin entries added to the harness selection, in order: every layer's entries, lowest
+	 * priority first, so a project's list extends the user's rather than replacing it.
 	 */
 	readonly plugins: ReadonlyArray<PluginEntry>;
 	readonly model: typeof Model.Type & {
