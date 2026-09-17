@@ -1,6 +1,6 @@
 import "./utils/env.ts";
 import type { Plugin } from "../src/plugin/plugin.ts";
-import { builtins as plugins } from "../src/plugin/internal.ts";
+import { builtins as plugins } from "../src/plugin/builtin.ts";
 import { Settings } from "../src/settings/settings.ts";
 import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";

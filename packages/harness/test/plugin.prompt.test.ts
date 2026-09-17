@@ -5,7 +5,7 @@ import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
-import { defaultPromptPlugin } from "../src/plugin/internal/prompt/default.ts";
+import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 

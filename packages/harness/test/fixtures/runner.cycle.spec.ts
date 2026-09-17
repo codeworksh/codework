@@ -25,7 +25,7 @@ import { SessionLive } from "../../src/session/live.ts";
 import { SessionRuntime } from "../../src/session/runtime.ts";
 import type { SessionSchema } from "../../src/session/schema.ts";
 import { Session } from "../../src/session/session.ts";
-import { builtins } from "../../src/plugin/internal.ts";
+import { builtins } from "../../src/plugin/builtin.ts";
 import { State } from "../../src/state/state.ts";
 
 const database = Database.layer(":memory:");

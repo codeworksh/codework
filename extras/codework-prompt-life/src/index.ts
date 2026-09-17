@@ -3,8 +3,8 @@
  * whatever an earlier one set, so it belongs *after* the tool plugins and prompt plugins it
  * builds on — `ctx.plugin.prompt.get()` sees only contributions made before it ran:
  *
- *   { "plugins": ["codework-prompt-life",
- *                 { "package": "codework-prompt-life", "options": { "answer": 42 } }] }
+ *   { "plugins": ["@acme/codework-prompt-life",
+ *                 { "package": "@acme/codework-prompt-life", "options": { "answer": 42 } }] }
  */
 import { Plugin } from "@codeworksh/harness/effect";
 

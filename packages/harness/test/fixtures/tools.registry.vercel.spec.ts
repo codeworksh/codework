@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
 import * as EnvVercel from "../../src/sandboxes/vercel/provider.ts";
-import { bashTool } from "../../src/plugin/internal/tool/bash.ts";
+import { bashTool } from "../../src/plugin/builtin/tool/bash.ts";
 import * as Registry from "../../src/tool/registry.ts";
 import { fromSandboxShell, ToolShell } from "../../src/tool/shell.ts";
 import * as Tool from "../../src/tool/tool.ts";

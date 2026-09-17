@@ -23,6 +23,12 @@ importers:
 
   .:
     devDependencies:
+      '@acme/codework-local-plugins':
+        specifier: workspace:*
+        version: link:extras/plugins
+      '@acme/codework-prompt-life':
+        specifier: workspace:*
+        version: link:extras/codework-prompt-life
       '@acme/codework-sandbox-vercel':
         specifier: workspace:*
         version: link:extras/codework-sandbox-vercel
@@ -35,12 +41,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.5.1
-      codework-local-plugins:
-        specifier: workspace:*
-        version: link:extras/plugins
-      codework-prompt-life:
-        specifier: workspace:*
-        version: link:extras/codework-prompt-life
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

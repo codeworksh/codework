@@ -7,8 +7,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import type { PluginRef } from "../src/plugin/catalog.ts";
-import { defaultPromptPlugin } from "../src/plugin/internal/prompt/default.ts";
-import { bashPlugin } from "../src/plugin/internal/tool/bash.ts";
+import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
+import { bashPlugin } from "../src/plugin/builtin/tool/bash.ts";
 import { immediateOpen, toolTurn } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 import { pendingCall } from "./tools.fixture.ts";
@@ -53,7 +53,7 @@ const selection: ReadonlyArray<PluginRef> = [
 	defaultPromptPlugin,
 	example("codework-prompt-life"),
 	// The README's second line: configure by the package name, not the path it was loaded from.
-	{ package: "codework-prompt-life", options: { answer: 43 } },
+	{ package: "@acme/codework-prompt-life", options: { answer: 43 } },
 	example("plugins/house-style.ts"),
 	{ package: example("plugins/house-style.ts"), options: { rules: ["No `any` in TypeScript."] } },
 ];

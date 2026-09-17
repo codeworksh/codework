@@ -1,5 +1,5 @@
-import { defaultPromptPlugin } from "./internal/prompt/default.ts";
-import { bashPlugin } from "./internal/tool/bash.ts";
+import { defaultPromptPlugin } from "./builtin/prompt/default.ts";
+import { bashPlugin } from "./builtin/tool/bash.ts";
 
 /**
  * Every plugin the harness ships, and the selection a caller who passes no `plugins` gets. Tool

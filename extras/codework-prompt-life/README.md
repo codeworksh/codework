@@ -1,16 +1,16 @@
-# codework-prompt-life
+# @acme/codework-prompt-life
 
 An example third-party **prompt plugin**: it appends a short section on the meaning of life to
 the system prompt.
 
-The package name is deliberately unscoped, so it shows the other spelling a settings entry can
-take — `codework-prompt-life` alongside `@acme/codework-tool-proc`.
+The package uses the example `@acme` namespace to demonstrate how a third-party scoped plugin is
+loaded and then configured by package name.
 
 ## Using it
 
 ```jsonc
 {
-	"plugins": ["codework-prompt-life", { "package": "codework-prompt-life", "options": { "answer": 42 } }],
+	"plugins": ["@acme/codework-prompt-life", { "package": "@acme/codework-prompt-life", "options": { "answer": 42 } }],
 }
 ```
 

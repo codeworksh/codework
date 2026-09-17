@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { type ExecChunk, Shell } from "../src/sandbox/shell/shell.ts";
-import { bashTool } from "../src/plugin/internal/tool/bash.ts";
+import { bashTool } from "../src/plugin/builtin/tool/bash.ts";
 import * as Executor from "../src/tool/executor.ts";
 import { noop as progressNoop } from "../src/tool/progress.ts";
 import { fromSandboxShell, local, ToolShell, ToolShellTimeout } from "../src/tool/shell.ts";

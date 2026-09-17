@@ -12,7 +12,7 @@ import { EventList } from "../src/event/list.ts";
 import { LLM } from "../src/runner/llm.ts";
 import { defaults } from "../src/settings/schema.ts";
 import * as Tool from "../src/tool/tool.ts";
-import { defaultPromptPlugin } from "../src/plugin/internal/prompt/default.ts";
+import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { assistant } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 

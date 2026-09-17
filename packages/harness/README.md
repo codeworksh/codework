@@ -121,7 +121,7 @@ Settings entries take the same two forms, and they extend the built-in selection
 // codework.json, ~/.codework/settings.json, or a --user-config-dir
 {
 	"plugins": [
-		"codework-prompt-life",
+		"@acme/codework-prompt-life",
 		"@acme/codework-tool-proc@1.2.0",
 		"./plugins/local.ts",
 		{ "package": "@acme/codework-tool-proc", "options": { "limit": 20 } },

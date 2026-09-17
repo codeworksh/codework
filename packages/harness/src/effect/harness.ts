@@ -6,7 +6,7 @@ import { Event } from "../event/event.ts";
 import { Global } from "../global.ts";
 import { EventRegistry } from "../event/registry.ts";
 import { prepare, type PluginRef } from "../plugin/catalog.ts";
-import { builtins } from "../plugin/internal.ts";
+import { builtins } from "../plugin/builtin.ts";
 import { RunnerExecute } from "../runner/execute.ts";
 import { LLM } from "../runner/llm.ts";
 import { Loop } from "../runner/loop.ts";

@@ -9,7 +9,7 @@ import type { SharedPluginContext } from "../src/plugin/context.ts";
 import { fallback } from "../src/plugin/prompt/registry.ts";
 import { make } from "../src/plugin/registry.ts";
 import * as Tool from "../src/tool/tool.ts";
-import { defaultPromptPlugin } from "../src/plugin/internal/prompt/default.ts";
+import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { pendingCall } from "./tools.fixture.ts";
 import { assistant, immediateOpen } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";

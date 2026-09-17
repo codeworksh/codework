@@ -2,7 +2,7 @@ import { Effect, Exit, Layer, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { type ExecChunk, fromExec, Shell as SandboxShell } from "../src/sandbox/shell/shell.ts";
-import { bashTool } from "../src/plugin/internal/tool/bash.ts";
+import { bashTool } from "../src/plugin/builtin/tool/bash.ts";
 import * as Executor from "../src/tool/executor.ts";
 import { make as makeProgress, noop as progressNoop } from "../src/tool/progress.ts";
 import * as Tool from "../src/tool/tool.ts";

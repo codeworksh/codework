@@ -1,5 +1,5 @@
 {
-	"name": "codework-prompt-life",
+	"name": "@acme/codework-prompt-life",
 	"version": "0.0.0",
 	"private": true,
 	"description": "Example third-party codework plugin: a prompt section on the meaning of life.",
