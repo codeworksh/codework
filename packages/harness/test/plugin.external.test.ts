@@ -10,11 +10,13 @@ import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
 import { EventSchema } from "../src/event/schema.ts";
 import { prepare, type PluginRef } from "../src/plugin/catalog.ts";
-import { builtins, defaultRefs } from "../src/plugin/internal.ts";
+import { builtins } from "../src/plugin/internal.ts";
 import { fallback } from "../src/plugin/prompt/registry.ts";
 import { Settings } from "../src/settings/settings.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { SessionSchema } from "../src/session/schema.ts";
+import { bashPlugin } from "../src/plugin/internal/tool/bash.ts";
+import { defaultPromptPlugin } from "../src/plugin/internal/prompt/default.ts";
 import { immediateOpen, toolTurn } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 import { pendingCall } from "./tools.fixture.ts";
@@ -105,21 +107,22 @@ describe("third-party plugins", () => {
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
 		}));
 
-	it("indexes a settings tool in the prompt only when the prompt plugin is re-listed after it", () =>
+	it("registers a settings tool that the built-in prompt index cannot reach", () =>
 		withSettings(async ({ root, custom }) => {
-			const write = (plugins: ReadonlyArray<string>) =>
-				writeFile(join(custom, "settings.json"), JSON.stringify({ plugins }));
-			const tool = pluginPath("tool/acme-echo");
-			// Appended after the built-in prompt plugin, the tool is registered but unlisted:
-			// a prompt plugin sees only earlier contributions, from settings as from anywhere.
-			await write([tool]);
+			// Settings entries append after the built-ins, and a prompt plugin sees only what
+			// registered before it. A settings file names modules and configures plugins; it
+			// cannot reorder the built-in selection, so the tool reaches the provider with its own
+			// description while staying out of the system prompt's list. An embedder that needs it
+			// listed owns the whole order through `Harness.layer({ plugins })`.
+			await writeFile(join(custom, "settings.json"), JSON.stringify({ plugins: [pluginPath("tool/acme-echo")] }));
 			const appended = await exchange({ root, userConfigDir: custom });
 			expect(appended.contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "acme_echo"]);
 			expect(appended.prompts[0]).not.toContain("acme_echo");
-			// Re-listing the prompt plugin moves it, since the last occurrence owns the position.
-			await write([tool, "codework.prompt.default"]);
-			const relisted = await exchange({ root, userConfigDir: custom });
-			expect(relisted.prompts[0]).toContain("- acme_echo: Echo a value back");
+			const ordered = await exchange({
+				root,
+				plugins: [bashPlugin, pluginPath("tool/acme-echo"), defaultPromptPlugin],
+			});
+			expect(ordered.prompts[0]).toContain("- acme_echo: Echo a value back");
 		}));
 
 	it("disables a built-in from settings", () =>
@@ -133,22 +136,38 @@ describe("third-party plugins", () => {
 			expect(prompts[0]).toContain("Available tools:\n(none)");
 		}));
 
-	it("passes a settings options block to the plugin that entry names", () =>
+	it("passes a settings options block to the module that loaded the plugin", () =>
 		withSettings(async ({ root, custom }) => {
+			// One line names the module, the next configures it by the same path. The two keys keep
+			// those apart: `package` addresses something loaded, `plugin` addresses an ID.
 			await writeFile(
 				join(custom, "settings.json"),
 				JSON.stringify({
-					plugins: [{ plugin: pluginPath("prompt/acme-prompt.ts"), options: { marker: "configured" } }],
+					plugins: [
+						pluginPath("prompt/acme-prompt.ts"),
+						{ package: pluginPath("prompt/acme-prompt.ts"), options: { marker: "configured" } },
+					],
 				}),
 			);
 			const { prompts } = await exchange({ root, userConfigDir: custom });
 			expect(prompts[0]?.endsWith("\n\nconfigured")).toBe(true);
+			// The plugin's own ID reaches it just as well.
+			await writeFile(
+				join(custom, "settings.json"),
+				JSON.stringify({
+					plugins: [
+						pluginPath("prompt/acme-prompt.ts"),
+						{ plugin: "acme.prompt.marker", options: { marker: "by-id" } },
+					],
+				}),
+			);
+			expect((await exchange({ root, userConfigDir: custom })).prompts[0]?.endsWith("\n\nby-id")).toBe(true);
 		}));
 
 	it("configures a built-in without moving it out of the built-in order", () =>
 		withSettings(async ({ root, custom }) => {
-			// A bare re-list would move the prompt plugin after the settings tool; an options
-			// entry patches it in place, so the tool stays unindexed and the prompt stays first.
+			// Configuring a built-in is not selecting it: the prompt plugin keeps the position the
+			// built-in list gave it, so the settings tool below stays out of its index.
 			await writeFile(
 				join(custom, "settings.json"),
 				JSON.stringify({
@@ -189,7 +208,7 @@ describe("third-party plugins", () => {
 			const specs: string[] = [];
 			const config = await Effect.runPromise(Settings.load({ cwd: root, userConfigDir: custom, home: global }));
 			const prepared = await Effect.runPromise(
-				prepare([...defaultRefs, ...config.plugins], {
+				prepare([...builtins, ...config.plugins], {
 					builtins,
 					cache: join(root, "cache"),
 					hostCwd: root,
@@ -221,7 +240,7 @@ describe("third-party plugins", () => {
 			const { contexts } = await exchange({
 				root,
 				userConfigDir: custom,
-				plugins: ["codework.tool.bash", "codework.prompt.default"],
+				plugins: [bashPlugin, defaultPromptPlugin],
 			});
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
 		}));
@@ -285,7 +304,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { contexts, prompts, path } = await exchange({
 				root,
-				plugins: [pluginPath("tool/acme-echo"), "codework.prompt.default"],
+				plugins: [pluginPath("tool/acme-echo"), defaultPromptPlugin],
 				llm: toolTurn(pendingCall("acme_echo", { value: "hello" }, "call_echo")),
 			});
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["acme_echo"]);
@@ -312,7 +331,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { path } = await exchange({
 				root,
-				plugins: [pluginPath("tool/acme-guarded.ts"), "codework.prompt.default"],
+				plugins: [pluginPath("tool/acme-guarded.ts"), defaultPromptPlugin],
 				llm: toolTurn(
 					pendingCall("acme_secret", { value: "deny" }, "call_blocked"),
 					pendingCall("acme_secret", { value: "allow" }, "call_allowed"),
@@ -335,7 +354,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { prompts, path } = await exchange({
 				root,
-				plugins: ["codework.tool.bash", pluginPath("tool/acme-bash-override.ts"), "codework.prompt.default"],
+				plugins: [bashPlugin, pluginPath("tool/acme-bash-override.ts"), defaultPromptPlugin],
 				llm: toolTurn(pendingCall("bash", { command: "echo hi" }, "call_bash")),
 			});
 			expect(prompts[0]).toContain("- bash: Run a command through the acme shell");
@@ -350,7 +369,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { prompts } = await exchange({
 				root,
-				plugins: [pluginPath("tool/acme-echo"), "codework.prompt.default", pluginPath("prompt/acme-prompt.ts")],
+				plugins: [pluginPath("tool/acme-echo"), defaultPromptPlugin, pluginPath("prompt/acme-prompt.ts")],
 			});
 			expect(prompts[0]).toContain("You are an expert coding assistant");
 			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
@@ -386,7 +405,7 @@ describe("third-party plugins", () => {
 							home: join(root, "home"),
 							database: ":memory:",
 							llm: immediateOpen(),
-							plugins: [pluginPath("event/acme-journal.ts"), "codework.prompt.default"],
+							plugins: [pluginPath("event/acme-journal.ts"), defaultPromptPlugin],
 						}),
 					),
 					Effect.scoped,
@@ -418,7 +437,7 @@ describe("third-party plugins", () => {
 								contexts.push(request.context);
 								return immediateOpen()(request, signal);
 							},
-							plugins: [pluginPath("host/acme-throws.ts"), "codework.prompt.default"],
+							plugins: [pluginPath("host/acme-throws.ts"), defaultPromptPlugin],
 						}),
 					),
 					Effect.scoped,
@@ -444,7 +463,7 @@ describe("third-party plugins", () => {
 							home: join(root, "home"),
 							database: ":memory:",
 							llm: immediateOpen(),
-							plugins: [pluginPath("tool/acme-bad-tool.ts"), "codework.prompt.default"],
+							plugins: [pluginPath("tool/acme-bad-tool.ts"), defaultPromptPlugin],
 						}),
 					),
 					Effect.scoped,
@@ -484,7 +503,7 @@ describe("third-party plugins", () => {
 			// default prompt (placed after both) indexes the patched description.
 			const { contexts, prompts, path } = await exchange({
 				root,
-				plugins: [pluginPath("tool/acme-echo"), pluginPath("tool/acme-relabel.ts"), "codework.prompt.default"],
+				plugins: [pluginPath("tool/acme-echo"), pluginPath("tool/acme-relabel.ts"), defaultPromptPlugin],
 				llm: toolTurn(pendingCall("acme_echo", { value: "hi" }, "call_echo")),
 			});
 			expect(contexts[0]?.tools?.[0]).toMatchObject({ name: "acme_echo", description: "Echo, relabelled by acme" });
@@ -517,7 +536,7 @@ describe("third-party plugins", () => {
 								contexts.push(request.context);
 								return immediateOpen()(request, signal);
 							},
-							plugins: [pluginPath("host/acme-hangs.ts"), "codework.prompt.default"],
+							plugins: [pluginPath("host/acme-hangs.ts"), defaultPromptPlugin],
 						}),
 					),
 					Effect.scoped,
@@ -532,11 +551,7 @@ describe("third-party plugins", () => {
 		withSettings(async ({ root }) => {
 			const { contexts, prompts, path } = await exchange({
 				root,
-				plugins: [
-					"codework.tool.bash",
-					{ plugin: "codework.tool.bash", enabled: false },
-					"codework.prompt.default",
-				],
+				plugins: [bashPlugin, { plugin: "codework.tool.bash", enabled: false }, defaultPromptPlugin],
 				llm: toolTurn(pendingCall("bash", { command: "echo hi" }, "call_bash")),
 			});
 			expect(contexts[0]?.tools).toEqual([]);

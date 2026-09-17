@@ -1,7 +1,7 @@
 /* @effect-diagnostics cryptoRandomUUID:off -- fixtures only need distinct message IDs. */
 import { Message } from "@codeworksh/aikit";
 import { describe, expect, it } from "vite-plus/test";
-import { Plugin, Runner } from "@codeworksh/harness/effect";
+import { Plugin, Runner, Settings } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { renderError } from "../src/cli/error.ts";
 import { addUsage, emptyUsage, header, usage } from "../src/cli/output.ts";
@@ -122,19 +122,33 @@ describe("CLI output", () => {
 		expect(output).not.toContain("PluginPreparationError");
 	});
 
-	it("names the unknown ID when a selection enables one nothing defines", () => {
+	it("names the file, the reason and the key when settings cannot be used", () => {
+		const output = renderError(
+			new Settings.SettingsError({
+				path: "/project/codework.json",
+				reason: "decode",
+				detail: "model.options.timeoutMs: invalid value",
+			}),
+		);
+
+		expect(output).toContain("error[settings]: /project/codework.json");
+		expect(output).toContain("detail: model.options.timeoutMs: invalid value");
+		expect(output).toContain("hint: the key above holds a value this setting does not accept");
+	});
+
+	it("names the plugin when a module fails to define one", () => {
 		const output = renderError(
 			new Plugin.PreparationError({
-				phase: "resolve",
+				phase: "definition",
 				index: 2,
-				reference: "acme.tool.missing",
+				reference: "./plugins/broken.ts",
 				id: "acme.tool.missing",
-				cause: new Error("Unknown plugin ID: acme.tool.missing"),
+				cause: new Error("codework namespace is reserved for builtins"),
 			}),
 		);
 
 		expect(output).toContain("id: acme.tool.missing");
-		expect(output).toContain("hint: the selection enables an ID that no entry defines");
+		expect(output).toContain("hint: a plugin module must default-export one object");
 	});
 
 	it("renders a plugin install failure without the tag", () => {

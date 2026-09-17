@@ -85,7 +85,11 @@ export class SnapshotError extends Schema.TaggedError<SnapshotError>()("State.Sn
 	sessionId: Schema.String,
 	reason: Schema.String,
 	cause: Schema.Defect(),
-}) {}
+}) {
+	override get message(): string {
+		return this.reason;
+	}
+}
 
 /**
  * Immutable runtime state for one exchange.
@@ -123,7 +127,11 @@ export interface Interface {
 		sessionId: SessionId,
 	) => Effect.Effect<
 		Snapshot,
-		SnapshotError | Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError,
+		| SnapshotError
+		| Settings.SettingsError
+		| Runner.ModelCatalogError
+		| Runner.ModelNotFoundError
+		| Runner.ProviderError,
 		SandboxIO.Provides | Location.Service
 	>;
 }
@@ -147,6 +155,8 @@ export const layer = (options: Options, selection: ReadonlyArray<Prepared>) => {
 			return Service.of({
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
 					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
+					// Not wrapped: a file the user can fix is more useful to a client as a settings
+					// failure carrying its path and key than as an anonymous snapshot failure.
 					const loadedSettings = yield* settings.load;
 					const configured = compose(loadedSettings, options, sessionOptions);
 					const {

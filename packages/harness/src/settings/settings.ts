@@ -20,11 +20,15 @@
  *
  * `load` re-reads all layers on every call. There is no cache to invalidate and no reload
  * API: an edit lands at the next exchange capture because the next capture goes to disk.
- * A missing file is ordinary. A malformed or unreadable one warns and contributes nothing,
- * so a typo in one layer cannot stop the layers around it from applying.
+ *
+ * A missing file is ordinary; a file that exists and cannot be used is not. An unreadable,
+ * unparseable or invalid file fails the read with the path, the reason and the offending key.
+ * The alternative -- warn and skip the layer -- discards everything else that file configured,
+ * so one typo in `plugins` silently moves a session onto a different model, and the only signal
+ * is a log line. Failing is what gets it fixed.
  */
 
-import { Context, Effect, Layer, Result, Schema, SchemaIssue } from "effect";
+import { Context, Effect, Layer, Predicate, Result, Schema, SchemaIssue } from "effect";
 import { Global } from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
@@ -61,7 +65,11 @@ export class SettingsError extends Schema.TaggedError<SettingsError>()("Settings
 	path: Schema.String,
 	reason: Schema.Literals(["read", "parse", "decode"]),
 	detail: Schema.String,
-}) {}
+}) {
+	override get message(): string {
+		return `${this.path}: ${this.reason}: ${this.detail}`;
+	}
+}
 
 export const parse = Effect.fn("Settings.parse")(function* (path: string, source: string) {
 	const json = yield* Effect.try({
@@ -78,7 +86,14 @@ export const parse = Effect.fn("Settings.parse")(function* (path: string, source
 			return new SettingsError({ path, reason: "parse", detail: `Invalid JSON${location}` });
 		},
 	});
-	return yield* Schema.decodeUnknownEffect(Patch)(normalize(json)).pipe(
+	// Normalization reads a `null` as "absent", which is right for a settings patch and wrong
+	// inside a plugin's `options`: that block is opaque, and `{ "endpoint": null }` is a value
+	// its plugin may need. The `plugins` array is therefore decoded exactly as written.
+	const document = normalize(json);
+	if (Predicate.isObject(document) && Predicate.isObject(json) && "plugins" in json) {
+		Object.assign(document, { plugins: json.plugins });
+	}
+	return yield* Schema.decodeUnknownEffect(Patch)(document).pipe(
 		Effect.mapError(
 			(error) =>
 				new SettingsError({
@@ -96,8 +111,11 @@ export const parse = Effect.fn("Settings.parse")(function* (path: string, source
 });
 
 export interface Interface {
-	/** Await fresh host files at each exchange. No cache, mutation, or reload API. */
-	readonly load: Effect.Effect<Info>;
+	/**
+	 * Await fresh host files at each exchange. No cache, mutation, or reload API. Fails when a
+	 * file exists and cannot be used, including on an edit made mid-session.
+	 */
+	readonly load: Effect.Effect<Info, SettingsError>;
 }
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/settings/settings/Service") {}
 
@@ -107,7 +125,9 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
  * A reference is otherwise resolved against the host startup directory, which is right for
  * a project file sitting in it and meaningless for `~/.codework/settings.json`, where
  * `./plugins/x.ts` would name a different file in every project the process is started in.
- * IDs, `file:` URLs, and package specs are left exactly as written.
+ * `file:` URLs, package specs and package names are left exactly as written, and a `plugin`
+ * key is an ID rather than a location. A configuration entry's `package` is anchored like a
+ * module entry, so a relative path names the same module in both spellings.
  */
 const anchor = (patch: Patch, file: string): Patch => {
 	if (patch.plugins === undefined) return patch;
@@ -116,9 +136,10 @@ const anchor = (patch: Patch, file: string): Patch => {
 		reference.startsWith("./") || reference.startsWith("../") ? hostPath.resolve(directory, reference) : reference;
 	return {
 		...patch,
-		plugins: patch.plugins.map((entry) =>
-			typeof entry === "string" ? resolve(entry) : { ...entry, plugin: resolve(entry.plugin) },
-		),
+		plugins: patch.plugins.map((entry) => {
+			if (typeof entry === "string") return resolve(entry);
+			return "package" in entry ? { ...entry, package: resolve(entry.package) } : entry;
+		}),
 	};
 };
 
@@ -135,22 +156,27 @@ const attempt = (path: string) =>
 export const load = Effect.fn("Settings.load")(function* (options: Options & { readonly home: string }) {
 	const files = paths(options.home, hostPath.resolve(options.cwd), options.userConfigDir);
 	let settings = merge(defaults);
+	// `merge` copies through the same null-dropping walk as normalization, so the winning
+	// layer's entries are carried outside it. Arrays replace rather than merge, so the last
+	// layer that names `plugins` owns the list whole -- there is nothing to combine.
+	let plugins = defaults.plugins;
 	for (const group of files) {
 		for (const path of group) {
 			const result = yield* Effect.result(attempt(path));
 			if (Result.isSuccess(result)) {
-				settings = merge(settings, anchor(result.success, path));
+				const patch = anchor(result.success, path);
+				settings = merge(settings, patch);
+				if (patch.plugins !== undefined) plugins = patch.plugins;
 				break;
 			}
+			// A missing candidate falls through to the next; anything else selects the file, and a
+			// file this layer selected has to be usable.
 			const error = result.failure;
-			// A missing candidate falls through to the next; anything else selects
-			// the file, warns, and the group contributes nothing.
 			if (error.reason === "read" && error.detail === "NotFound") continue;
-			yield* Effect.logWarning(`Settings: ${error.path}: ${error.reason}: ${error.detail}`);
-			break;
+			return yield* error;
 		}
 	}
-	return settings;
+	return { ...settings, plugins };
 });
 
 export const layer = (options: Options) =>

@@ -8,6 +8,8 @@ import { Harness } from "../../src/effect/harness.ts";
 import { Sandbox } from "../../src/effect/sandbox.ts";
 import { Session } from "../../src/effect/session.ts";
 import type { SandboxDriver } from "../../src/sandbox/driver.ts";
+import { bashPlugin } from "../../src/plugin/internal/tool/bash.ts";
+import { defaultPromptPlugin } from "../../src/plugin/internal/prompt/default.ts";
 import { pendingCall } from "../tools.fixture.ts";
 import { toolTurn } from "./llm.ts";
 import { remoteSuite } from "./live.ts";
@@ -48,7 +50,7 @@ export const bashPluginSpec = (options: {
 					userConfigDir: input.custom,
 					database: ":memory:",
 					sandboxes: [options.driver],
-					plugins: ["codework.tool.bash", "codework.prompt.default"],
+					plugins: [bashPlugin, defaultPromptPlugin],
 					...(live
 						? {}
 						: { llm: toolTurn(pendingCall("bash", { command, ...(timeout === undefined ? {} : { timeout }) })) }),

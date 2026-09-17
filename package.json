@@ -39,8 +39,11 @@
 	},
 	"devDependencies": {
 		"@acme/codework-sandbox-vercel": "workspace:*",
+		"@acme/codework-tool-proc": "workspace:*",
 		"@effect/tsgo": "catalog:",
 		"@types/node": "catalog:",
+		"codework-local-plugins": "workspace:*",
+		"codework-prompt-life": "workspace:*",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	},

@@ -5,6 +5,7 @@ import { realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
+import { defaultPromptPlugin } from "../src/plugin/internal/prompt/default.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 
@@ -59,7 +60,7 @@ describe("codework.prompt.default", () => {
 		withSettings(async ({ root }) => {
 			const { observed } = await prompts(
 				root,
-				{ plugins: ["codework.prompt.default"] },
+				{ plugins: [defaultPromptPlugin] },
 				{ systemPrompt: { custom: "Only this.", append: "  Extra section.  " } },
 			);
 			// No tool plugin ran, the append is trimmed, and the directory line stays last.
@@ -78,7 +79,7 @@ describe("codework.prompt.default", () => {
 		withSettings(async ({ root }) => {
 			const { observed, path } = await prompts(
 				root,
-				{ plugins: ["codework.prompt.default"] },
+				{ plugins: [defaultPromptPlugin] },
 				{
 					systemPrompt: {
 						custom: () => {

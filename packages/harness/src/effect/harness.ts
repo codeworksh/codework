@@ -6,7 +6,7 @@ import { Event } from "../event/event.ts";
 import { Global } from "../global.ts";
 import { EventRegistry } from "../event/registry.ts";
 import { prepare, type PluginRef } from "../plugin/catalog.ts";
-import { builtins, defaultRefs } from "../plugin/internal.ts";
+import { builtins } from "../plugin/internal.ts";
 import { RunnerExecute } from "../runner/execute.ts";
 import { LLM } from "../runner/llm.ts";
 import { Loop } from "../runner/loop.ts";
@@ -54,9 +54,8 @@ export const layer = (options: Options = {}) =>
 			const config = yield* Settings.load({ ...settingsOptions, home: paths.home });
 			// Settings entries extend the built-in selection rather than standing in for it, so
 			// naming a plugin cannot silently drop Bash or the default prompt. A built-in is turned
-			// off the same way as any other plugin, with a
-			// `{ "plugin": "codework.tool.bash", "enabled": false }` entry.
-			const selection = yield* prepare(options.plugins ?? [...defaultRefs, ...config.plugins], {
+			// off by name, with a `{ "plugin": "codework.tool.bash", "enabled": false }` entry.
+			const selection = yield* prepare(options.plugins ?? [...builtins, ...config.plugins], {
 				builtins,
 				cache: paths.cache,
 				hostCwd,

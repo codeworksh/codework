@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { prepare, type Options, type PluginRef, type Prepared } from "../src/plugin/catalog.ts";
 import { classify, validate } from "../src/plugin/loader.ts";
-import { install, InstallError, parse, type Runner } from "../src/plugin/package.ts";
+import { install, InstallError, parse, type Request, type Runner } from "../src/plugin/package.ts";
 import { define } from "../src/plugin/plugin.ts";
 
 const a = define({ id: "acme.tool.a", setup: () => {} });
@@ -46,7 +46,7 @@ const fixture: Runner = (request, directory) =>
 	});
 
 describe("plugin catalog and source resolution", () => {
-	it("resolves forward IDs, last definitions and last operation order without setup", async () => {
+	it("resolves last definitions and last module order without setup", async () => {
 		let calls = 0;
 		const latest = define({
 			id: a.id,
@@ -54,57 +54,177 @@ describe("plugin catalog and source resolution", () => {
 				calls++;
 			},
 		});
-		const result = await run([a.id, a, b, latest, b.id]);
-		expect(selected(result).map((p) => p.id)).toEqual([a.id, b.id]);
-		expect(result[0]?.plugin.setup).toBe(latest.setup);
-		expect(result[0]?.options).toEqual({});
+		const result = await run([a, b, latest]);
+		// The last definition of an ID wins, and moves it: a module entry owns its position.
+		expect(selected(result).map((p) => p.id)).toEqual([b.id, a.id]);
+		expect(result[1]?.plugin.setup).toBe(latest.setup);
+		expect(result[1]?.options).toEqual({});
 		expect(calls).toBe(0);
 	});
-	it("disables unknown IDs and re-enables known IDs", async () => {
-		const disable = (id: string) => ({ plugin: id, enabled: false });
-		expect(selected(await run([a, b, disable(a.id), disable("acme.tool.unknown"), a.id]))).toEqual([b, a]);
-		expect(await run([a, disable(a.id)])).toEqual([]);
-		const error = await Effect.runPromise(prepare([a.id], options).pipe(Effect.flip));
-		expect(error).toMatchObject({ phase: "resolve", index: 0, reference: a.id, id: a.id });
-		// Nothing installs a package or imports a file just to turn it off.
+	it("ignores configuration for a plugin nothing selected", async () => {
+		const ignored = [
+			{ plugin: "acme.tool.missing", options: { one: 1 } },
+			{ plugin: "acme.tool.missing", enabled: false },
+			{ package: "@acme/never-installed", options: { one: 1 } },
+			{ package: "./plugins/local.ts", enabled: false },
+			// The right name under the wrong key is just another name nothing answers to.
+			{ package: a.id, options: { one: 1 } },
+			{ plugin: "@acme/plugin", options: { one: 1 } },
+		];
+		// Nothing fails, nothing installs, nothing imports — a build that does not ship a plugin
+		// reads a file configuring it and carries on.
+		const installs: string[] = [];
 		expect(
-			await Effect.runPromise(prepare([disable("./plugins/local.ts")], options).pipe(Effect.flip)),
-		).toMatchObject({ phase: "source", index: 0, reference: "./plugins/local.ts" });
+			selected(
+				await run([a, ...ignored], {
+					install: (request) => {
+						installs.push(request.spec);
+						return Effect.succeed({ url: "file:///x.js", version: "1.0.0" });
+					},
+				}),
+			),
+		).toEqual([a]);
+		expect(installs).toEqual([]);
+		// Configuration addresses the selection as it stands, so an entry preceding its module
+		// has nothing to apply to either.
+		expect((await run([{ plugin: a.id, options: { one: 1 } }, a]))[0]?.options).toEqual({});
 	});
-	it("carries per-plugin options, merges repeated blocks and never reorders a patch", async () => {
+	it("disables a selected plugin by ID or by the package it came from", async () => {
+		const seams = {
+			install: () => Effect.succeed({ url: "file:///fixture.js", version: "1.0.0" }),
+			import: async () => ({ default: b }),
+		};
+		expect(selected(await run([a, b, { plugin: a.id, enabled: false }]))).toEqual([b]);
+		expect(await run([a, { plugin: a.id, enabled: false }])).toEqual([]);
+		// Re-listing the module selects it again, at its new position.
+		expect(selected(await run([a, b, { plugin: a.id, enabled: false }, a]))).toEqual([b, a]);
+		expect(
+			selected(await run(["@acme/plugin@1.2.0", a, { package: "@acme/plugin", enabled: false }], seams)),
+		).toEqual([a]);
+	});
+	it("addresses a loaded module by its package name, its spec or its path", async () => {
+		const seams = {
+			install: () => Effect.succeed({ url: "file:///fixture.js", version: "1.0.0" }),
+			import: async () => ({ default: a }),
+		};
+		const [byName] = await run(["@acme/plugin@1.2.0", { package: "@acme/plugin", options: { one: 1 } }], seams);
+		expect(byName?.plugin).toBe(a);
+		expect(byName?.options).toEqual({ one: 1 });
+		const [bySpec] = await run(["@acme/plugin@1.2.0", { package: "@acme/plugin@1.2.0", enabled: false }], seams);
+		expect(bySpec).toBeUndefined();
+		const [byId] = await run(["@acme/plugin@1.2.0", { plugin: a.id, options: { two: 2 } }], seams);
+		expect(byId?.options).toEqual({ two: 2 });
+		// A module entry is always a source, so a second spec of the same package loads again.
+		let installs = 0;
+		await run(["@acme/plugin@1.2.0", "@acme/plugin@2.0.0"], {
+			...seams,
+			install: () => {
+				installs++;
+				return Effect.succeed({ url: "file:///fixture.js", version: "1.0.0" });
+			},
+		});
+		expect(installs).toBe(2);
+	});
+	it("treats an ID as a key: the last module owns it, and the configuration written against it", async () => {
+		// Two modules exporting one ID is the author's conflict to resolve, not the harness's to
+		// arbitrate. The ID is the key: the later definition wins, and configuration written
+		// against that key stays with it — including a name the replaced module was loaded under.
+		const fromA = define({ id: "acme.tool.same", setup: () => {} });
+		const fromB = define({ id: "acme.tool.same", setup: () => {} });
+		const seams = {
+			install: (request: Request) => Effect.succeed({ url: `file:///${request.name}.js`, version: "1.0.0" }),
+			import: async (url: string) => ({ default: url.includes("pkg-a") ? fromA : fromB }),
+		};
+		const [replaced] = await run(["pkg-a@1.0.0", { package: "pkg-a", options: { one: 1 } }, "pkg-b@1.0.0"], seams);
+		expect(replaced?.plugin).toBe(fromB);
+		expect(replaced?.options).toEqual({ one: 1 });
+		// And the last block written against the key wins, whichever name addressed it.
+		const [configured] = await run(
+			[
+				"pkg-a@1.0.0",
+				"pkg-b@1.0.0",
+				{ package: "pkg-a", options: { one: 1 } },
+				{ plugin: "acme.tool.same", options: { two: 2 } },
+			],
+			seams,
+		);
+		expect(configured?.plugin).toBe(fromB);
+		expect(configured?.options).toEqual({ two: 2 });
+	});
+	it("rejects a contradictory configuration entry", async () => {
+		// A settings file is decoded before it reaches `prepare`; an embedder's array is not, so
+		// the entry shape is checked here for both.
+		for (const entry of [
+			{ plugin: a.id, package: "@acme/x" },
+			{ options: { one: 1 } },
+			{ plugin: "", options: {} },
+			{ plugin: a.id, enabled: "yes" },
+			{ plugin: a.id, options: "nope" },
+			// An object to `typeof`, but not the string-keyed record `options` is documented to be.
+			// `Object.freeze` throws on a typed array, which would defect past this error handling.
+			{ plugin: a.id, options: new Uint8Array([1]) },
+			{ plugin: a.id, options: new Map([["one", 1]]) },
+			{ plugin: a.id, options: [1, 2] },
+		]) {
+			const error = await Effect.runPromise(prepare([a, entry as never], options).pipe(Effect.flip));
+			expect(error).toMatchObject({ phase: "definition", index: 1 });
+		}
+	});
+	it("carries per-plugin options, replaces repeated blocks and never reorders", async () => {
 		const [first, second] = await run([
-			{ plugin: a, options: { one: 1, nested: { keep: true, replace: "old" } } },
+			a,
 			b,
-			{ plugin: a.id, options: { two: 2, nested: { replace: "new" } } },
+			{ plugin: a.id, options: { one: 1, endpoint: "old" } },
+			{ plugin: a.id, options: { two: 2, endpoint: null } },
 		]);
-		// A bare mention moves a plugin; an `options` entry patches it where it already runs.
+		// Configuration leaves position alone: `a` still runs where its module entry put it.
 		expect(first?.plugin).toBe(a);
 		expect(second?.plugin).toBe(b);
-		expect(first?.options).toEqual({ one: 1, two: 2, nested: { keep: true, replace: "new" } });
+		// The block is opaque, so the last one owns it whole — including values a settings-style
+		// merge would drop, such as an explicit null.
+		expect(first?.options).toEqual({ two: 2, endpoint: null });
 		expect(second?.options).toEqual({});
 		expect(Object.isFrozen(first?.options)).toBe(true);
-		// The same ID listed bare afterwards does move it.
-		expect(selected(await run([a, b, a.id])).map((plugin) => plugin.id)).toEqual([b.id, a.id]);
+		// Re-listing the module moves it and keeps the configuration it was given.
+		const moved = await run([a, { plugin: a.id, options: { one: 1 } }, b, a]);
+		expect(selected(moved).map((plugin) => plugin.id)).toEqual([b.id, a.id]);
+		expect(moved[1]?.options).toEqual({ one: 1 });
 	});
 	it("seeds builtins without selecting them and reserves their namespace", async () => {
 		const builtin = define({ id: "codework.tool.fixture", setup: () => {} });
 		expect(await run([], { builtins: [builtin] })).toEqual([]);
-		expect(selected(await run([builtin.id], { builtins: [builtin] }))).toEqual([builtin]);
+		// The registered definition itself selects it, and is not a redefinition of it.
+		expect(selected(await run([builtin], { builtins: [builtin] }))).toEqual([builtin]);
+		// Configuration cannot select: a built-in nothing listed stays unselected.
+		expect(await run([{ plugin: builtin.id, options: { one: 1 } }], { builtins: [builtin] })).toEqual([]);
 		expect(await Effect.runPromise(prepare([builtin], options).pipe(Effect.flip))).toMatchObject({
 			phase: "definition",
 		});
 	});
-	it.each([{}, [], () => a, { setup: () => {} }, { id: "invalid", setup: () => {} }, { id: a.id, setup: 1 }])(
-		"rejects malformed definitions: %j",
-		async (input) => {
-			expect(
-				await Effect.runPromise(validate(input, { index: 2, reference: "fixture" }).pipe(Effect.flip)),
-			).toMatchObject({ phase: "definition", index: 2 });
-		},
-	);
+	it("reads a definition carrying its own `plugin` property as a definition", async () => {
+		// `Plugin` permits extra properties and the loader preserves them, so the entry check
+		// cannot be "has a `plugin` key".
+		const plugin = { id: "acme.tool.meta", plugin: "metadata", setup: () => {} };
+		expect(selected(await run([plugin]))).toEqual([plugin]);
+	});
+	it.each([
+		{},
+		[],
+		() => a,
+		{ setup: () => {} },
+		{ id: "invalid", setup: () => {} },
+		{ id: a.id, setup: 1 },
+		null,
+		undefined,
+	])("rejects malformed definitions: %j", async (input) => {
+		expect(
+			await Effect.runPromise(validate(input, { index: 2, reference: "fixture" }).pipe(Effect.flip)),
+		).toMatchObject({ phase: "definition", index: 2 });
+	});
 	it("reports a malformed supplied object as a typed definition failure", async () => {
-		// Nothing has validated the entry yet, so `origin.reference` cannot read an `id` off it.
-		for (const input of [{}, [], () => a, { id: 123, setup: () => {} }]) {
+		// Nothing has validated the entry yet, so `origin.reference` cannot read an `id` off it --
+		// and a JavaScript caller can pass a value that has no properties to read at all.
+		for (const input of [{}, [], () => a, { id: 123, setup: () => {} }, null, undefined]) {
 			const error = await Effect.runPromise(prepare([b, input as never], options).pipe(Effect.flip));
 			expect(error).toMatchObject({ phase: "definition", index: 1 });
 			expect(typeof error.reference).toBe("string");
@@ -123,7 +243,7 @@ describe("plugin catalog and source resolution", () => {
 		};
 		const [resolved] = await run([plugin]);
 		expect(resolved?.plugin).toBe(plugin);
-		void resolved?.plugin.setup({} as never);
+		void resolved?.plugin.setup({} as never, {});
 		expect(seen).toEqual(["kept"]);
 	});
 	it("normalizes package specs and classifies local sources", () => {
@@ -138,10 +258,10 @@ describe("plugin catalog and source resolution", () => {
 			kind: "local",
 			path: "/project/plugin.ts",
 		});
-		expect(classify(a.id, "/project")).toEqual({ kind: "id", id: a.id });
-		// A dotted package name needs an explicit version to be read as a package.
+		// A reference is a source and nothing else: an ID-shaped string is a package name here,
+		// and the plugin it names is addressed by `{ plugin: "acme.tool.a" }` instead.
+		expect(classify(a.id, "/project")).toEqual({ kind: "package", request: parse(a.id) });
 		expect(classify(`${a.id}@latest`, "/project")).toEqual({ kind: "package", request: parse(`${a.id}@latest`) });
-		// An ID is exactly three segments; a fourth belongs to a package name.
 		expect(classify("acme.tool.deep.name", "/project").kind).toBe("package");
 		// A `~` reference is a path: npa would read `~` as a package and `~/x` as a bad spec.
 		expect(classify("~/plugins/one.ts", "/project")).toEqual({
@@ -167,9 +287,9 @@ describe("plugin catalog and source resolution", () => {
 				return { default: a };
 			},
 		};
-		expect(selected(await Effect.runPromise(prepare(["@acme/plugin", "@acme/plugin@latest", a.id], seams)))).toEqual([
-			a,
-		]);
+		expect(
+			selected(await Effect.runPromise(prepare(["@acme/plugin", "@acme/plugin@latest", { plugin: a.id }], seams))),
+		).toEqual([a]);
 		expect(installs).toBe(1);
 		expect(imports).toBe(1);
 		expect(

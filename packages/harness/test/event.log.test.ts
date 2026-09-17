@@ -341,8 +341,7 @@ describe("Event.log", () => {
 			yield* events.publish(Foreign, { topic, note: "one" });
 
 			// `EventSchema.durable` drops non-durable definitions, so only a hand-built manifest
-			// can key one under a stored type. The row is skipped, as in opencode's Bus, rather
-			// than decoded with a version nothing wrote.
+			// can key one under a stored type.
 			const Ephemeral = EventSchema.define({
 				type: "test.foreign.happened",
 				schema: { topic: Schema.String, note: Schema.String },

@@ -8,9 +8,11 @@ import { Harness } from "../src/effect/harness.ts";
 import { Sandbox } from "../src/effect/sandbox.ts";
 import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
+import { EventList } from "../src/event/list.ts";
 import { LLM } from "../src/runner/llm.ts";
 import { defaults } from "../src/settings/schema.ts";
 import * as Tool from "../src/tool/tool.ts";
+import { defaultPromptPlugin } from "../src/plugin/internal/prompt/default.ts";
 import { assistant } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 
@@ -114,7 +116,7 @@ describe("settings at exchange boundaries", () => {
 								llm: open,
 								plugins: [
 									{ id: "test.tool.wait", setup: (ctx) => ctx.plugin.tools.add(wait) },
-									"codework.prompt.default",
+									defaultPromptPlugin,
 								],
 							}),
 						),
@@ -205,7 +207,7 @@ describe("settings at exchange boundaries", () => {
 								llm: open,
 								plugins: [
 									{ id: "test.tool.pair", setup: (ctx) => ctx.plugin.tools.add(pair) },
-									"codework.prompt.default",
+									defaultPromptPlugin,
 								],
 							}),
 						),
@@ -269,6 +271,48 @@ describe("settings at exchange boundaries", () => {
 			);
 		}));
 
+	it("fails the next exchange with the settings path and key when a file breaks mid-session", () =>
+		withSettings(async ({ root, custom }) => {
+			await file(custom, "low");
+			const inputs: LLM.Input[] = [];
+			const failures: EventList.ExecutionFailed[] = [];
+			const open: LLM.Open = (input) => Effect.sync(() => (inputs.push(input), terminal(input, inputs.length)));
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const handle = yield* Session.create({ directory: root });
+					const events = yield* Event.Service;
+					yield* events.listen((event) =>
+						Effect.sync(() => {
+							if (Schema.is(EventList.ExecutionFailed)(event)) failures.push(event);
+						}),
+					);
+					yield* handle.run("first");
+					// The file is read again at the next capture, so an edit that breaks it surfaces
+					// there rather than at construction.
+					yield* Effect.promise(() =>
+						writeFile(
+							join(custom, "settings.json"),
+							JSON.stringify({ model: { options: { timeoutMs: "wrong" } } }),
+						),
+					);
+					yield* handle.run("second");
+				}).pipe(
+					Effect.provide(
+						Harness.layer({ home: join(root, "home"), database: ":memory:", userConfigDir: custom, llm: open }),
+					),
+					Effect.scoped,
+				),
+			);
+			// One exchange ran; the second never reached the provider.
+			expect(inputs).toHaveLength(1);
+			// The diagnosis survives to the client as a settings failure carrying the file and the
+			// key, rather than an anonymous snapshot failure with an empty message.
+			expect(failures).toHaveLength(1);
+			expect(failures[0]?.data.error.type).toBe("settings");
+			expect(failures[0]?.data.error.message).toContain(join(custom, "settings.json"));
+			expect(failures[0]?.data.error.message).toContain("model.options.timeoutMs");
+		}));
+
 	it("applies a session binding change at the next capture, not inside the running exchange", () =>
 		withSettings(async ({ root, custom }) => {
 			await file(custom, "low");
@@ -317,7 +361,7 @@ describe("settings at exchange boundaries", () => {
 								llm: open,
 								plugins: [
 									{ id: "test.tool.wait", setup: (ctx) => ctx.plugin.tools.add(wait) },
-									"codework.prompt.default",
+									defaultPromptPlugin,
 								],
 							}),
 						),

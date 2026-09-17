@@ -1,5 +1,5 @@
-import { Effect, Layer, Logger } from "effect";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
+import { Effect, Layer } from "effect";
+import { mkdir, rm, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -46,6 +46,33 @@ describe("host settings loader", () => {
 			);
 		}));
 
+	it("carries a plugin options block through decode and merge exactly as written", () =>
+		withSettings(async ({ root, global, custom }) => {
+			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: global }))),
+			);
+			// Everywhere else in the document a null means "absent". A plugin's block is opaque,
+			// so a null inside it is a value, and the plugin -- not settings -- decides what it means.
+			const entry = {
+				plugin: "acme.tool.x",
+				options: { endpoint: null, nested: { value: null, keep: 1 }, list: [1, null] },
+			};
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const settings = yield* Settings.Service;
+					yield* Effect.promise(() =>
+						writeFile(join(global, "settings.json"), JSON.stringify({ plugins: [entry] })),
+					);
+					expect((yield* settings.load).plugins).toEqual([entry]);
+					// And through a second layer merging on top of the first.
+					yield* Effect.promise(() =>
+						writeFile(join(custom, "settings.json"), JSON.stringify({ plugins: [entry] })),
+					);
+					expect((yield* settings.load).plugins).toEqual([entry]);
+				}).pipe(Effect.provide(layer)),
+			);
+		}));
+
 	it("anchors relative plugin entries to the file that declared them", () =>
 		withSettings(async ({ root, global, local }) => {
 			const layer = Settings.layer({ cwd: root }).pipe(
@@ -53,7 +80,7 @@ describe("host settings loader", () => {
 			);
 			const entries = [
 				"./plugins/one.ts",
-				{ plugin: "../sibling/two.ts", options: { deep: true } },
+				{ package: "../sibling/two.ts", options: { deep: true } },
 				"codework-acme-plugin",
 				{ plugin: "codework.tool.bash", enabled: false },
 			];
@@ -65,9 +92,10 @@ describe("host settings loader", () => {
 					);
 					expect((yield* settings.load).plugins).toEqual([
 						join(global, "plugins/one.ts"),
-						// The long form anchors its `plugin` and keeps the rest of the entry.
-						{ plugin: join(root, "sibling/two.ts"), options: { deep: true } },
-						// IDs and package specs pass through untouched.
+						// A configuration entry anchors its `package`, so a relative path names the
+						// same module in both spellings, and keeps the rest of the entry.
+						{ package: join(root, "sibling/two.ts"), options: { deep: true } },
+						// Package specs pass through untouched, and `plugin` is an ID, not a location.
 						"codework-acme-plugin",
 						{ plugin: "codework.tool.bash", enabled: false },
 					]);
@@ -84,6 +112,29 @@ describe("host settings loader", () => {
 			);
 		}));
 
+	it("requires exactly one of `plugin` and `package` on a configuration entry", async () => {
+		const decode = (entry: unknown) =>
+			Effect.runPromise(parse("settings.json", JSON.stringify({ plugins: [entry] })).pipe(Effect.result));
+		// Naming a plugin two ways at once says two different things, and an entry naming it no
+		// way at all says nothing; neither is quietly reinterpreted.
+		for (const entry of [
+			{ plugin: "acme.tool.x", package: "@acme/x" },
+			{ options: { one: 1 } },
+			{ plugin: "", options: {} },
+			{ plugin: "acme.tool.x", enabled: "yes" },
+		]) {
+			expect((await decode(entry))._tag).toBe("Failure");
+		}
+		for (const entry of [
+			"@acme/x@1.2.0",
+			{ plugin: "acme.tool.x" },
+			{ package: "@acme/x", enabled: false },
+			{ package: "./plugins/local.ts", options: { one: 1 } },
+		]) {
+			expect((await decode(entry))._tag).toBe("Success");
+		}
+	});
+
 	it("reports syntax locations and decode paths without exposing values", async () => {
 		const malformed = '{\n"model": {"options": {"timeoutMs": 2,, "secret": "do-not-print"}}}';
 		const syntax = await Effect.runPromise(parse("broken.json", malformed).pipe(Effect.flip));
@@ -97,16 +148,24 @@ describe("host settings loader", () => {
 		expect(invalid.detail).not.toContain("do-not-print");
 	});
 
-	it("skips an unreadable layer and never searches the startup directory's parents", () =>
+	it("fails on a layer it cannot read and never searches the startup directory's parents", () =>
 		withSettings(async ({ root, local, global, custom }) => {
 			await mkdir(join(global, "settings.json"));
 			await writeFile(join(local, "settings.json"), JSON.stringify({ model: { thinkingLevel: "max" } }));
 			await writeFile(join(custom, "settings.json"), JSON.stringify({ model: { options: { maxRetries: 4 } } }));
-			const layer = Settings.layer({ cwd: join(root, "subdirectory"), userConfigDir: custom }).pipe(
-				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
+			const provide = (cwd: string) =>
+				Settings.layer({ cwd, userConfigDir: custom }).pipe(
+					Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
+				);
+			// A path that exists and cannot be read is the user's to fix, not a layer to skip.
+			const error = await Effect.runPromise(
+				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(provide(root)), Effect.flip),
 			);
+			expect(error).toMatchObject({ path: join(global, "settings.json"), reason: "read" });
+			await rm(join(global, "settings.json"), { recursive: true });
+			// The project layer is read from the startup directory only; a parent's file is not found.
 			const result = await Effect.runPromise(
-				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(layer)),
+				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(provide(join(root, "subdirectory")))),
 			);
 			expect(result.model.thinkingLevel).toBe(Settings.defaults.model.thinkingLevel);
 			expect(result.model.options?.maxRetries).toBe(4);
@@ -204,30 +263,20 @@ describe("host settings loader", () => {
 			);
 		}));
 
-	it("warns on a malformed codework.json without falling back to the directory file", () =>
+	it("fails on a malformed codework.json rather than falling back to the directory file", () =>
 		withSettings(async ({ root, local, custom }) => {
 			await writeFile(join(root, "codework.json"), '{"model":');
 			await writeFile(join(local, "settings.json"), JSON.stringify({ model: { thinkingLevel: "low" } }));
 			const layer = Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
 			);
-			const logs: Array<{ level: string; message: unknown }> = [];
-			const logger = Logger.make((entry) => {
-				logs.push({ level: entry.logLevel, message: entry.message });
-			});
-			const result = await Effect.runPromise(
-				Settings.Service.use((settings) => settings.load).pipe(
-					Effect.provide(layer),
-					Effect.provide(Logger.layer([logger])),
-				),
+			// Skipping the layer would silently run this session on `.codework/settings.json`, which
+			// is a different configuration than the one the project committed.
+			const error = await Effect.runPromise(
+				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(layer), Effect.flip),
 			);
-			expect(result.model.thinkingLevel).toBe(Settings.defaults.model.thinkingLevel);
-			expect(logs).toEqual([
-				{
-					level: "Warn",
-					message: [expect.stringContaining(`Settings: ${join(root, "codework.json")}: parse: Invalid JSON`)],
-				},
-			]);
+			expect(error).toMatchObject({ path: join(root, "codework.json"), reason: "parse" });
+			expect(error.detail).toContain("Invalid JSON");
 		}));
 
 	it("loads fresh files for each exchange with no shared cache or mutations", () =>
@@ -254,15 +303,23 @@ describe("host settings loader", () => {
 					expect(first.model.thinkingLevel).toBe("low");
 					yield* Effect.promise(() => unlink(join(custom, "settings.json")));
 					expect((yield* settings.load).model.thinkingLevel).toBe("high");
-					// A malformed middle layer must not prevent a valid higher layer from applying.
+					// An edit that breaks a file reaches the next capture like any other edit. A broken
+					// middle layer fails the load rather than handing the session to the layers
+					// around it, which would run it on a configuration nobody wrote.
 					yield* Effect.promise(() => writeFile(join(local, "settings.json"), '{"model":'));
 					yield* Effect.promise(() => write(custom, { thinkingLevel: "medium" }));
+					const broken = yield* settings.load.pipe(Effect.flip);
+					expect(broken).toMatchObject({ path: join(local, "settings.json"), reason: "parse" });
+					// Repaired, the next capture reads it, and an invalid value names the key it is on.
+					yield* Effect.promise(() => write(local, { options: { timeoutMs: 200 } }));
 					expect((yield* settings.load).model).toMatchObject({
 						thinkingLevel: "medium",
-						options: { timeoutMs: 100 },
+						options: { timeoutMs: 200 },
 					});
 					yield* Effect.promise(() => write(custom, { options: { timeoutMs: "wrong" } }));
-					expect((yield* settings.load).model.options?.timeoutMs).toBe(100);
+					const invalid = yield* settings.load.pipe(Effect.flip);
+					expect(invalid).toMatchObject({ reason: "decode" });
+					expect(invalid.detail).toContain("model.options.timeoutMs");
 				}).pipe(Effect.provide(layer)),
 			);
 		}));

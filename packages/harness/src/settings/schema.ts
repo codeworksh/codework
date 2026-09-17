@@ -72,21 +72,24 @@ export const Model = Schema.Struct({
 	options: Schema.optional(Block),
 	providerOptions: Schema.optional(Schema.Record(Schema.String, Schema.Record(Schema.String, Block))),
 });
-/** An ID, a path, a `file:` URL, or a package spec. Classified by `plugin/loader.ts`. */
+/** A module to load: a path, a `file:` URL, or a package spec. */
 const PluginReference = Schema.String.check(Schema.isNonEmpty());
 /**
- * Shorthand or long form, one entry per plugin. The long form configures a plugin
- * (`options`, untyped here because only the plugin knows its shape) or drops one the
- * built-in selection carries (`"enabled": false`, which needs an ID).
+ * Configuration for a plugin something else already selected, named by its ID (`plugin`) or by
+ * the package it was installed from (`package`). It never loads anything: an entry naming a
+ * plugin that is not in the selection is ignored.
  */
-export const PluginEntry = Schema.Union([
-	PluginReference,
-	Schema.Struct({
-		plugin: PluginReference,
-		enabled: Schema.optional(Schema.Boolean),
-		options: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
-	}),
-]);
+const config = {
+	enabled: Schema.optional(Schema.Boolean),
+	options: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+};
+export const PluginPatch = Schema.Union(
+	[Schema.Struct({ plugin: PluginReference, ...config }), Schema.Struct({ package: PluginReference, ...config })],
+	// `oneOf`, so an entry carrying both keys is a decode failure rather than one of them being
+	// quietly dropped -- naming a plugin two ways at once says two different things.
+	{ mode: "oneOf" },
+);
+export const PluginEntry = Schema.Union([PluginReference, PluginPatch]);
 export type PluginEntry = typeof PluginEntry.Type;
 
 export const Patch = Schema.Struct({

@@ -46,7 +46,7 @@ export async function importModule(specifier: string): Promise<unknown> {
 	return Object.assign({}, module, exports);
 }
 
-/** Node resolution scoped synchronously to the caller, following OpenCode's runtime importer. */
+/** Node resolution scoped synchronously to the caller. */
 export function resolveModule(specifier: string, directory: string, conditions?: ReadonlyArray<string>): string {
 	const hook = registerHooks({
 		resolve(target, context, nextResolve) {

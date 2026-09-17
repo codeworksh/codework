@@ -117,8 +117,7 @@ export const Api = RpcGroup.make(
 	/**
 	 * Whether a prompt materialized into the conversation. An admitted prompt
 	 * that is still queued has no entry yet, so this is the projection a client
-	 * reconciles against when the volatile stream left it unsure -- the same role
-	 * OpenCode's `message.list` reconcile plays.
+	 * reconciles against when the volatile stream left it unsure
 	 */
 	Rpc.make("session.message", {
 		payload: { sessionId: Session.SessionSchema.ID, messageId: Session.SessionMessageSchema.ID },

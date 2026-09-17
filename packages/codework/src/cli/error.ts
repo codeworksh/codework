@@ -1,4 +1,4 @@
-import { Plugin, Runner, SandboxError } from "@codeworksh/harness/effect";
+import { Plugin, Runner, SandboxError, Settings } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
 import { Client } from "../server/client.ts";
@@ -29,6 +29,7 @@ const isLLMStreamError = Schema.is(Runner.LLMStreamError);
 const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
 const isPluginPreparationError = Schema.is(Plugin.PreparationError);
 const isPluginInstallError = Schema.is(Plugin.InstallError);
+const isSettingsError = Schema.is(Settings.SettingsError);
 const isSandboxDriverNotRegisteredError = Schema.is(SandboxError.SandboxDriverNotRegisteredError);
 const isSandboxDriverRegistrationError = Schema.is(SandboxError.SandboxDriverRegistrationError);
 const isExecutionError = Schema.is(Client.ExecutionError);
@@ -127,8 +128,17 @@ const pluginHint = (phase: Plugin.PreparationError["phase"]): string => {
 			return "the module failed to load; import it directly to see its own error";
 		case "definition":
 			return "a plugin module must default-export one object with a `setup` and a `vendor.domain.name` id";
-		case "resolve":
-			return "the selection enables an ID that no entry defines; check for a typo or a missing source";
+	}
+};
+
+const settingsHint = (reason: Settings.SettingsError["reason"]): string => {
+	switch (reason) {
+		case "read":
+			return "the file exists but could not be read; check that it is a file and readable";
+		case "parse":
+			return "the file is not valid JSON; the location above is where parsing stopped";
+		case "decode":
+			return "the key above holds a value this setting does not accept";
 	}
 };
 
@@ -169,6 +179,16 @@ export const renderError = (error: unknown): string => {
 				...(error.id === undefined ? [] : [`id: ${error.id}`]),
 				`detail: ${unknownMessage(error.cause)}`,
 				`hint: ${pluginHint(error.phase)}`,
+			].join("\n") + "\n"
+		);
+	}
+	if (isSettingsError(error)) {
+		return (
+			[
+				`error[settings]: ${error.path}`,
+				`reason: ${error.reason}`,
+				`detail: ${error.detail}`,
+				`hint: ${settingsHint(error.reason)}`,
 			].join("\n") + "\n"
 		);
 	}

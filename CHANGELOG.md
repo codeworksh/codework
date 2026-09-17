@@ -11,6 +11,21 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- A settings file that exists and cannot be used now fails instead of being skipped with a warning: unreadable, unparseable and invalid files fail `Harness.layer` construction, and an edit that breaks one fails the next exchange. `Settings.Service.load` gains a `SettingsError` error channel, which reaches clients as the `settings` failure category carrying the path, reason and offending key, and the CLI renders the same. A missing file is still ordinary.
+
+- A plugin entry is either a **module** or a **configuration object**, and the `"!id"` disable syntax is gone. A module is a definition, a path, a `file:` URL, or a package spec; it is loaded and takes the position it is written at. A configuration object is `{ "plugin": "<id>" }` or `{ "package": "<name>" }` plus `enabled`/`options`; it never loads, installs or reorders anything, and a name matching nothing in the selection is ignored rather than failing the boot.
+- A bare string is a module only, so a built-in is no longer selected by ID. A settings file addresses built-ins through `{ "plugin": "codework.tool.bash", … }`, and an embedder composing its own order passes its whole selection, prompt plugin included.
+- `Plugin.setup` takes the plugin's configuration block as a second argument, `setup(ctx, options)`.
+- A configuration entry naming both `plugin` and `package`, naming neither, or carrying a non-boolean `enabled` or an `options` that is not a plain record, now fails plugin preparation. Settings files were already rejected at decode; this closes the same hole for `Harness.layer({ plugins })`.
+
+### Added
+
+- Plugin entries accept an `options` block in `settings.json` and in `Harness.layer({ plugins })`, handed to that plugin's `setup`. The block is opaque, so a `null` inside it reaches the plugin instead of being dropped the way a `null` elsewhere in a settings file is.
+- A configuration entry can name a plugin by the package it came from — its package name, its spec, the path it was loaded from, or the name a local package's manifest declares — so `{ "package": "@acme/codework-tool-proc", "enabled": false }` works without knowing the plugin's ID.
+- Example plugins under `extras/`: `@acme/codework-tool-proc` (a tool package), `codework-prompt-life` (a prompt package), and two single-file plugins in `extras/plugins/`.
+
 ## [@codeworksh/aikit@0.8.0]
 
 ### Added

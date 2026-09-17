@@ -11,16 +11,14 @@ export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupEr
 
 export const run = Effect.fn("PluginHost.run")(function* (
 	selection: ReadonlyArray<Prepared>,
-	input: Omit<SharedPluginContext, "plugin" | "options">,
+	input: Omit<SharedPluginContext, "plugin">,
 ) {
 	const buckets = make();
-	const shared = { ...input, plugin: buckets.registry };
+	const ctx = Object.freeze({ ...input, plugin: buckets.registry });
 	const setup = Effect.gen(function* () {
 		for (const { plugin, options } of selection) {
-			// One context per plugin: the registry and the exchange are shared, `options` is not.
-			const ctx = Object.freeze({ ...shared, options });
 			yield* Effect.suspend(() => {
-				const result = plugin.setup(ctx);
+				const result = plugin.setup(ctx, options);
 				if (Effect.isEffect(result))
 					// Plugin authors may fail with domain-specific errors; normalize them at this boundary.
 					// @effect-diagnostics-next-line anyUnknownInErrorContext:off
