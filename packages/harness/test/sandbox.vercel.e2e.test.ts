@@ -115,7 +115,7 @@ suite("Sandbox.EnvVercel (fresh sandbox)", () => {
 		reattach,
 		resourceId,
 		timeout: PROVISION_TIMEOUT,
-		githubPat,
+		...(githubPat === undefined ? {} : { githubPat }),
 	});
 
 	// Vercel spawns detached commands and registers `kill("SIGKILL")` as a scope

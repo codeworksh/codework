@@ -143,9 +143,7 @@ const appendMessage = (sessionId: SessionSchema.ID, message: Message.Message) =>
 		data: JSON.stringify(envelope),
 		parts: parts.map((part) => ({
 			type: part.type,
-			status: part.type === "toolCall" ? part.status : undefined,
-			callId: part.type === "toolCall" ? part.callID : undefined,
-			toolName: part.type === "toolCall" ? part.name : undefined,
+			...(part.type === "toolCall" ? { status: part.status, callId: part.callID, toolName: part.name } : {}),
 			data: JSON.stringify(part),
 		})),
 	} satisfies Session.AppendEntry;
@@ -345,7 +343,7 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 		expect(settledPart?.result.content[0]).toMatchObject({ type: "text", text: expect.stringContaining("72 F") });
 
 		const finalContext: Message.Context = {
-			systemPrompt: toolRequestContext.systemPrompt,
+			...(toolRequestContext.systemPrompt === undefined ? {} : { systemPrompt: toolRequestContext.systemPrompt }),
 			messages: (yield* session.path(created.id)).map(messageFromEntry),
 			tools: [weatherTool],
 		};
@@ -1396,7 +1394,12 @@ describe("session", () => {
 				if (!model) return yield* Effect.die(new Error("aikit did not resolve the Anthropic test model"));
 				yield* liveConversation(
 					model,
-					{ apiKey: anthropicKey, maxTokens: 96, temperature: 0, maxRetries: 1 },
+					{
+						...(anthropicKey === undefined ? {} : { apiKey: anthropicKey }),
+						maxTokens: 96,
+						temperature: 0,
+						maxRetries: 1,
+					},
 					"s-live-anthropic",
 				);
 			}),
@@ -1411,7 +1414,12 @@ describe("session", () => {
 				if (!model) return yield* Effect.die(new Error("aikit did not resolve the OpenAI test model"));
 				yield* liveConversation(
 					model,
-					{ apiKey: openaiKey, maxTokens: 96, temperature: 0, maxRetries: 1 },
+					{
+						...(openaiKey === undefined ? {} : { apiKey: openaiKey }),
+						maxTokens: 96,
+						temperature: 0,
+						maxRetries: 1,
+					},
 					"s-live-openai",
 				);
 			}),
@@ -1426,7 +1434,12 @@ describe("session", () => {
 				if (!model) return yield* Effect.die(new Error("aikit did not resolve the Anthropic test model"));
 				yield* liveToolConversation(
 					model,
-					{ apiKey: anthropicKey, maxTokens: 128, temperature: 0, maxRetries: 1 },
+					{
+						...(anthropicKey === undefined ? {} : { apiKey: anthropicKey }),
+						maxTokens: 128,
+						temperature: 0,
+						maxRetries: 1,
+					},
 					"s-live-tool-anthropic",
 				);
 			}),
@@ -1441,7 +1454,12 @@ describe("session", () => {
 				if (!model) return yield* Effect.die(new Error("aikit did not resolve the OpenAI test model"));
 				yield* liveToolConversation(
 					model,
-					{ apiKey: openaiKey, maxTokens: 128, temperature: 0, maxRetries: 1 },
+					{
+						...(openaiKey === undefined ? {} : { apiKey: openaiKey }),
+						maxTokens: 128,
+						temperature: 0,
+						maxRetries: 1,
+					},
 					"s-live-tool-openai",
 				);
 			}),

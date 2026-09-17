@@ -16,6 +16,8 @@ import { labels, makeRemoteOwner } from "./fixtures/remote-owner.ts";
 import "./utils/env.ts";
 
 const apiKey = process.env.DAYTONA_API_KEY;
+/** The SDK's `apiKey` is optional; absent is not the same as `undefined` under exactOptionalPropertyTypes. */
+const config = apiKey === undefined ? {} : { apiKey };
 const githubPat = process.env.GITHUB_PAT;
 const suite = remoteSuite("DAYTONA_API_KEY", Boolean(apiKey?.trim()));
 
@@ -31,7 +33,7 @@ suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 
 	beforeAll(async () => {
 		const instanceId = SandboxInstance.ID.create();
-		const sdk = new Daytona({ apiKey });
+		const sdk = new Daytona(config);
 		const sandbox = await sdk.create({
 			language: "typescript",
 			envVars: { CW_ENV: BAKED_ENV },
@@ -52,7 +54,7 @@ suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 		() =>
 			owner.cleanup({
 				destroy: async (id) => {
-					const sdk = new Daytona({ apiKey });
+					const sdk = new Daytona(config);
 					await sdk.delete(await sdk.get(id));
 				},
 				dispose: () => runtime?.dispose() ?? Promise.resolve(),
@@ -95,7 +97,7 @@ suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 		// stdout rather than inventing a split. See §16.5 of the Sandbox IO spec.
 		combinesOutput: true,
 		timeout: PROVISION_TIMEOUT,
-		githubPat,
+		...(githubPat === undefined ? {} : { githubPat }),
 	});
 
 	// `executeCommand(command, cwd?, env?, timeout?)` takes no abort signal — not

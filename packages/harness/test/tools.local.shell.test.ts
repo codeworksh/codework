@@ -188,7 +188,11 @@ describe("ToolShell.fromSandboxShell (options pass-through)", () => {
 	const recorder = () => {
 		const seen: Array<{ command: string; cwd?: string; env?: Record<string, string> }> = [];
 		const record = (command: string, options?: { cwd?: string; env?: Record<string, string> }) => {
-			seen.push({ command, cwd: options?.cwd, env: options?.env });
+			seen.push({
+				command,
+				...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+				...(options?.env === undefined ? {} : { env: options.env }),
+			});
 		};
 		const layer = Layer.succeed(
 			Shell,

@@ -78,7 +78,7 @@ describe("Shell.fromExec", () => {
 		const seen: Array<{ command: string; cwd?: string }> = [];
 		const shell = fromExec({
 			exec: (command, options) => {
-				seen.push({ command, cwd: options?.cwd });
+				seen.push({ command, ...(options?.cwd === undefined ? {} : { cwd: options.cwd }) });
 				return Effect.succeed({ stdout: "", stderr: "", exitCode: 0 });
 			},
 		});

@@ -254,7 +254,12 @@ describe("Event store", () => {
 				let after: number | undefined;
 				let guard = 0;
 				for (;;) {
-					const page = yield* events.readAggregate({ aggregateId: A, after, limit: 2, manifest });
+					const page = yield* events.readAggregate({
+						aggregateId: A,
+						...(after === undefined ? {} : { after }),
+						limit: 2,
+						manifest,
+					});
 					seen.push(...page.events.map((e) => e.data.text));
 					after = page.events.at(-1)?.durable?.seq;
 					if (!page.hasMore || (guard += 1) > 5) break;

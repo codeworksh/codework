@@ -130,9 +130,18 @@ Settings entries take the same two forms, and they extend the built-in selection
 }
 ```
 
-The array replaces across settings layers rather than concatenating, so the highest-priority file that names `plugins` owns the whole list. A leading `~` expands to the home directory. A `./` or `../` path resolves against the directory of the file that declared it — next to `codework.json`, inside `.codework/`, or beside `~/.codework/settings.json` — so one entry means one file in every project; a `package` naming a relative path is anchored the same way. `file:` URLs, absolute paths and package specs are taken as written.
+Settings files are JSONC: comments and a trailing comma are part of the format, and a syntax error names what the parser expected and where (`PropertyNameExpected at 2:38`). The array replaces across settings layers rather than concatenating, so the highest-priority file that names `plugins` owns the whole list. A leading `~` expands to the home directory. A `./` or `../` path resolves against the directory of the file that declared it — next to `codework.json`, inside `.codework/`, or beside `~/.codework/settings.json` — so one entry means one file in every project; a `package` naming a relative path is anchored the same way. `file:` URLs, absolute paths and package specs are taken as written.
 
 Settings entries append after the built-ins, and a prompt plugin sees only what registered before it, so a tool plugin added from settings reaches the provider with its own description but is **absent from the system prompt's tool list**. A settings file names modules and configures plugins; it cannot reorder the built-in selection, and the built-in definitions are not exported — an embedder that needs a different order passes its own complete selection to `Harness.layer({ plugins })`, prompt plugin included.
+
+A plugin package declares `@codeworksh/harness` and `effect` as **exact peer dependencies**, never as dependencies:
+
+```jsonc
+"peerDependencies": { "@codeworksh/harness": "0.0.1", "effect": "4.0.0-rc.115" },
+"devDependencies":  { "effect": "4.0.0-rc.115" }
+```
+
+A plugin is installed into its own directory, so its Effect is a separate module instance from the harness's. Two instances of the _same_ version interoperate completely — service tags resolve by their string id, and schemas, generators and handlers all cross the boundary. Two different _versions_ do not: a tool's schema then encodes a result the harness cannot commit. Declaring the peer moves that from a runtime failure to a line during `npm install`, and `test/plugin.foreign.test.ts` holds the interop itself in place.
 
 Package sources install with pnpm, with lifecycle scripts disabled, under the harness home cache. The installer inherits stderr, so a first install prints pnpm's own progress and errors to the terminal — and a `plugins` entry in a settings file means that can happen during `Harness.layer` construction, before any session exists. An omitted version means `latest` on the first installation; subsequent constructions reuse that completed installation. The selection is read once per `Harness.layer`, so an edited `plugins` block applies at the next construction; hot reload and daemon lifecycles are not implemented.
 

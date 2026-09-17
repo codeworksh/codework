@@ -29,6 +29,7 @@
  */
 
 import { Context, Effect, Layer, Predicate, Result, Schema, SchemaIssue } from "effect";
+import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 import { Global } from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
@@ -71,21 +72,26 @@ export class SettingsError extends Schema.TaggedError<SettingsError>()("Settings
 	}
 }
 
+/** `line:column`, 1-based, for a parser offset into the source. */
+const at = (source: string, offset: number): string => {
+	const before = source.slice(0, offset).split("\n");
+	return `${before.length}:${(before.at(-1)?.length ?? 0) + 1}`;
+};
+
 export const parse = Effect.fn("Settings.parse")(function* (path: string, source: string) {
-	const json = yield* Effect.try({
-		// Native parsing preserves syntax offsets; Schema validates the normalized value below.
-		// oxlint-disable-next-line effecttsgo/prefer-schema-over-json
-		// @effect-diagnostics-next-line preferSchemaOverJson:off
-		try: (): unknown => JSON.parse(source),
-		catch: (error) => {
-			const message = error instanceof SyntaxError ? error.message : "";
-			const position = /position (\d+)/.exec(message);
-			const offset = position === null ? undefined : Number(position[1]);
-			const before = offset === undefined ? undefined : source.slice(0, offset).split("\n");
-			const location = before === undefined ? "" : ` at ${before.length}:${(before.at(-1)?.length ?? 0) + 1}`;
-			return new SettingsError({ path, reason: "parse", detail: `Invalid JSON${location}` });
-		},
-	});
+	// JSONC: a settings file is written by hand, so comments and a trailing comma are part of
+	// the format rather than mistakes. The parser reports offsets, which become `line:column`
+	// below; Schema validates the normalized value after that.
+	const errors: ParseError[] = [];
+	const json: unknown = parseJsonc(source, errors, { allowTrailingComma: true, disallowComments: false });
+	const first = errors[0];
+	if (first !== undefined) {
+		return yield* new SettingsError({
+			path,
+			reason: "parse",
+			detail: `${printParseErrorCode(first.error)} at ${at(source, first.offset)}`,
+		});
+	}
 	// Normalization reads a `null` as "absent", which is right for a settings patch and wrong
 	// inside a plugin's `options`: that block is opaque, and `{ "endpoint": null }` is a value
 	// its plugin may need. The `plugins` array is therefore decoded exactly as written.

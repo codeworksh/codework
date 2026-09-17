@@ -1,4 +1,4 @@
-import { Effect, Fiber, Layer, Option } from "effect";
+import { Effect, Fiber, Layer, Option, Schema } from "effect";
 import { Buffer } from "node:buffer";
 import { posix as path } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -334,8 +334,9 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 					}),
 				);
 
-				expect(result.timedOut).toBeInstanceOf(ToolShellTimeout);
-				expect((result.timedOut as ToolShellTimeout).timeoutMillis).toBe(200);
+				expect(Schema.is(ToolShellTimeout)(result.timedOut)).toBe(true);
+				if (!Schema.is(ToolShellTimeout)(result.timedOut)) throw result.timedOut;
+				expect(result.timedOut.timeoutMillis).toBe(200);
 				// returned on the timeout, not after the command's own 30s
 				expect(result.elapsed).toBeLessThan(20_000);
 				expect(result.started).toBe(false);

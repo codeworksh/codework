@@ -43,9 +43,46 @@
 					"globalTimersInEffect": "error",
 					"globalFetch": "error",
 					"globalFetchInEffect": "error"
-				}
+				},
+				/*
+				 * Tests are the host boundary: they build temp directories, read fixture JSON, and
+				 * need wall-clock values and distinct ids, so the rules that push production code
+				 * onto Effect's own APIs do not apply to them. Nor do the ergonomic ones: a case
+				 * subscribes for its own duration and lets the scope close rather than threading an
+				 * unsubscribe handle, wires layers per assertion, and fabricates plain errors to
+				 * fail on purpose. What stays on is everything that would make a test lie —
+				 * type assertions, `instanceof` on schemas, and a generator without a definite exit.
+				 */
+				"overrides": [
+					{
+						"include": ["test/**/*.ts"],
+						"options": {
+							"diagnosticSeverity": {
+								"nodeBuiltinImport": "off",
+								"preferSchemaOverJson": "off",
+								"globalDate": "off",
+								"globalDateInEffect": "off",
+								"cryptoRandomUUID": "off",
+								"cryptoRandomUUIDInEffect": "off",
+								"globalTimers": "off",
+								"globalTimersInEffect": "off",
+								"globalRandom": "off",
+								"globalRandomInEffect": "off",
+								"preferTypedSchemaDecoder": "off",
+								"floatingEffect": "off",
+								"multipleEffectProvide": "off",
+								"unnecessaryEffectGen": "off",
+								"acquireReleaseDisposable": "off",
+								"globalErrorInEffectFailure": "off",
+								"layerMergeAllWithDependencies": "off",
+								"anyUnknownInErrorContext": "off",
+								"schemaNumber": "off"
+							}
+						}
+					}
+				]
 			}
 		]
 	},
-	"include": ["src"]
+	"include": ["src", "test"]
 }

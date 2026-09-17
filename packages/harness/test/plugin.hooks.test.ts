@@ -275,7 +275,7 @@ describe("per-tool hooks", () => {
 					Effect.gen(function* () {
 						count++;
 						yield* Deferred.succeed(entered, undefined);
-						yield* Effect.never;
+						return yield* Effect.never;
 					}),
 			});
 			const fiber = yield* run.handle(call, options).pipe(Effect.forkChild);

@@ -1,3 +1,4 @@
+import dedent from "dedent";
 import { Effect, Layer } from "effect";
 import { mkdir, rm, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -135,11 +136,35 @@ describe("host settings loader", () => {
 		}
 	});
 
+	it("reads a settings file as JSONC: comments and a trailing comma are the format, not mistakes", async () => {
+		const source = dedent`
+			{
+				// The model this project works against.
+				"model": {
+					"id": "gpt-5.6-luna", /* inline */
+					"thinkingLevel": "low",
+				},
+				"plugins": [
+					"./plugins/local.ts",
+					// Configuration blocks keep their own values verbatim, comments around them and all.
+					{ "package": "./plugins/local.ts", "options": { "endpoint": null } },
+				],
+			}
+		`;
+		const patch = await Effect.runPromise(parse("codework.json", source));
+		expect(patch.model).toMatchObject({ id: "gpt-5.6-luna", thinkingLevel: "low" });
+		expect(patch.plugins).toEqual([
+			"./plugins/local.ts",
+			{ package: "./plugins/local.ts", options: { endpoint: null } },
+		]);
+	});
+
 	it("reports syntax locations and decode paths without exposing values", async () => {
 		const malformed = '{\n"model": {"options": {"timeoutMs": 2,, "secret": "do-not-print"}}}';
 		const syntax = await Effect.runPromise(parse("broken.json", malformed).pipe(Effect.flip));
 		expect(syntax).toMatchObject({ path: "broken.json", reason: "parse" });
-		expect(syntax.detail).toMatch(/Invalid JSON at 2:\d+/);
+		// The parser names what it expected and where, which a hand-written file needs.
+		expect(syntax.detail).toMatch(/^PropertyNameExpected at 2:\d+$/);
 		expect(syntax.detail).not.toContain("do-not-print");
 		const invalid = await Effect.runPromise(
 			parse("invalid.json", '{"model":{"options":{"timeoutMs":"do-not-print"}}}').pipe(Effect.flip),
@@ -276,7 +301,7 @@ describe("host settings loader", () => {
 				Settings.Service.use((settings) => settings.load).pipe(Effect.provide(layer), Effect.flip),
 			);
 			expect(error).toMatchObject({ path: join(root, "codework.json"), reason: "parse" });
-			expect(error.detail).toContain("Invalid JSON");
+			expect(error.detail).toMatch(/^ValueExpected at 1:\d+$/);
 		}));
 
 	it("loads fresh files for each exchange with no shared cache or mutations", () =>

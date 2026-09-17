@@ -24,6 +24,8 @@ import "./utils/env.ts";
 // contract shares that file's single free-tier resource.
 
 const daytonaKey = process.env.DAYTONA_API_KEY;
+/** The SDK's `apiKey` is optional; absent is not the same as `undefined` here. */
+const daytonaConfig = daytonaKey === undefined ? {} : { apiKey: daytonaKey };
 const daytonaSuite = remoteSuite("DAYTONA_API_KEY", Boolean(daytonaKey?.trim()));
 
 const PROVISION_TIMEOUT = 180_000;
@@ -52,7 +54,7 @@ daytonaSuite("ToolRegistry × real Daytona sandbox — buffered bash (no streami
 	const owner = makeRemoteOwner("tools.registry.daytona");
 	beforeAll(async () => {
 		const instanceId = SandboxInstance.ID.create();
-		const sdk = new Daytona({ apiKey: daytonaKey });
+		const sdk = new Daytona(daytonaConfig);
 		const sandbox = await sdk.create({
 			language: "typescript",
 			autoDeleteInterval: -1,
@@ -65,7 +67,7 @@ daytonaSuite("ToolRegistry × real Daytona sandbox — buffered bash (no streami
 		() =>
 			owner.cleanup({
 				destroy: async (id) => {
-					const sdk = new Daytona({ apiKey: daytonaKey });
+					const sdk = new Daytona(daytonaConfig);
 					await sdk.delete(await sdk.get(id));
 				},
 				dispose: () => runtime?.dispose() ?? Promise.resolve(),

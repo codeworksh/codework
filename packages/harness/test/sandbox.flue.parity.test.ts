@@ -1,4 +1,4 @@
-import { Effect, Fiber, Layer } from "effect";
+import { Effect, Fiber, Layer, Schema } from "effect";
 import fs from "node:fs/promises";
 import { realpath } from "node:fs/promises";
 import { posix as path } from "node:path";
@@ -329,8 +329,8 @@ const paritySpec = (backend: Backend) => {
 					}),
 				);
 
-				expect(error).toBeInstanceOf(ToolShellTimeout);
-				if (!(error instanceof ToolShellTimeout)) throw error;
+				expect(Schema.is(ToolShellTimeout)(error)).toBe(true);
+				if (!Schema.is(ToolShellTimeout)(error)) throw error;
 				expect(error.timeoutMillis).toBe(200);
 				expect(Date.now() - started).toBeLessThan(5_000);
 			},
