@@ -14,7 +14,7 @@ const workspaceMap = new Map([
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.mjs <aikit|harness|@codeworksh/aikit|@codeworksh/harness> [npm publish args]",
+		"Usage: node scripts/publish.mjs <aikit|harness|@codeworksh/aikit|@codeworksh/harness> [--stage] [npm publish args]",
 	);
 	process.exit(1);
 }
@@ -36,13 +36,20 @@ function optionValue(args, flag) {
 function parsePublishOptions(args) {
 	const forwardArgs = [];
 	let dev = false;
+	let stage = false;
 	let publishVersion;
 
 	for (let index = 0; index < args.length; index++) {
 		const arg = args[index];
+		if (arg === "--") continue;
 
 		if (arg === "--dev") {
 			dev = true;
+			continue;
+		}
+
+		if (arg === "--stage") {
+			stage = true;
 			continue;
 		}
 
@@ -70,7 +77,7 @@ function parsePublishOptions(args) {
 		process.exit(1);
 	}
 
-	return { dev, forwardArgs, publishVersion };
+	return { dev, forwardArgs, publishVersion, stage };
 }
 
 async function readJSON(path) {
@@ -343,7 +350,7 @@ if (manifest.private) {
 	process.exit(1);
 }
 
-const publishArgs = ["publish"];
+const publishArgs = publishOptions.stage ? ["stage", "publish", "."] : ["publish"];
 const publishVersion =
 	publishOptions.publishVersion ?? (publishOptions.dev ? createDevVersion(manifest.version) : manifest.version);
 
