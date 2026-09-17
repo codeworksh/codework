@@ -1,7 +1,7 @@
 import { EventList, type EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
 import { Effect, Exit, Fiber, Option, Queue, Ref, Schema, Stream } from "effect";
-import { Client } from "../../../server/client.ts";
 import { Runtime } from "../../../framework/runtime.ts";
+import { Client } from "../../../server/client.ts";
 import { InvalidInputError, renderError } from "../../error.ts";
 import { harnessOptions } from "../../harness.ts";
 import {

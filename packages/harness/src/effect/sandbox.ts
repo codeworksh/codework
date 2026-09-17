@@ -2,9 +2,9 @@ import { Effect, Option, Schema } from "effect";
 import { SandboxController } from "../sandbox/control.ts";
 import { SandboxDriver } from "../sandbox/driver.ts";
 import {
+	SandboxDriverNotRegisteredError,
 	SandboxDriverRegistrationError,
 	SandboxNotFoundError,
-	SandboxDriverNotRegisteredError,
 } from "../sandbox/errors.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";
 import { SandboxDriverLoader } from "../sandbox/loader.ts";

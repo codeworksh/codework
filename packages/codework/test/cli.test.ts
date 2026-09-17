@@ -48,7 +48,7 @@ describe("codework CLI", () => {
 			expect(result.status).toBe(1);
 			expect(result.stderr).toContain("settings-test-provider");
 			expect(result.stderr).toContain("settings-test-model");
-			expect(result.stderr).toContain("error[model_not_found]");
+			expect(result.stderr).toContain("error[model-not-found]");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
@@ -121,7 +121,7 @@ describe("codework CLI", () => {
 		);
 
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("error[model_catalog]: model catalog not found");
+		expect(result.stderr).toContain("error[model-catalog]: model catalog not found");
 		expect(result.stderr).toContain("hint: run `codework models generate`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");
@@ -228,7 +228,7 @@ describe("codework CLI", () => {
 		);
 
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("error[model_catalog]: model catalog not found");
+		expect(result.stderr).toContain("error[model-catalog]: model catalog not found");
 		expect(result.stderr).toContain("hint: run `codework models generate`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");

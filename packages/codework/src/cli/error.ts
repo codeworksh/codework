@@ -145,7 +145,7 @@ export const renderError = (error: unknown): string => {
 	}
 	if (isModelgenError(error)) {
 		return (
-			["error[model_catalog]: failed to generate the model catalog", "hint: check the output path and retry"].join(
+			["error[model-catalog]: failed to generate the model catalog", "hint: check the output path and retry"].join(
 				"\n",
 			) + "\n"
 		);
@@ -175,7 +175,7 @@ export const renderError = (error: unknown): string => {
 	if (isPluginInstallError(error)) {
 		return (
 			[
-				`error[plugin_install]: ${unknownMessage(error.cause)}`,
+				`error[plugin-install]: ${unknownMessage(error.cause)}`,
 				"hint: check the package name and version, and that the registry is reachable",
 			].join("\n") + "\n"
 		);
@@ -195,7 +195,7 @@ export const renderError = (error: unknown): string => {
 	if (isModelCatalogError(error)) {
 		return (
 			[
-				`error[model_catalog]: ${error.message}`,
+				`error[model-catalog]: ${error.message}`,
 				"hint: run `codework models generate` or set CODEWORK_MODELS_FILE to a generated catalog",
 			].join("\n") + "\n"
 		);
@@ -203,13 +203,13 @@ export const renderError = (error: unknown): string => {
 	if (isModelNotFoundError(error)) {
 		return (
 			[
-				`error[model_not_found]: ${error.message}`,
+				`error[model-not-found]: ${error.message}`,
 				"hint: check the provider/model IDs in models.gen.json or regenerate the catalog",
 			].join("\n") + "\n"
 		);
 	}
 	if (isLLMStreamError(error)) {
-		return `error[stream_protocol]: ${error.message}\n`;
+		return `error[stream]: ${error.message}\n`;
 	}
 	// A remote run has only the category the server published; render it the same
 	// way a local typed error is rendered, minus the detail that stayed server-side.

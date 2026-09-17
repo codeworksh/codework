@@ -181,7 +181,7 @@ describe("SessionInput promotion", () => {
 			yield* input.promoteSteers(sessionId, yield* events.latestSequence(sessionId));
 
 			const promoted = some(yield* input.find(admitted.id));
-			const prompted = yield* sql`SELECT * FROM event WHERE type = 'session.next.prompt.promoted.1'`;
+			const prompted = yield* sql`SELECT * FROM event WHERE type = 'session.prompt.promoted.1'`;
 			expect(prompted.length).toBe(1);
 			expect(promoted.promotedSeq).toBe(prompted[0]!.seq);
 			// Delivery order lives in the same space as everything else durable.
@@ -249,7 +249,7 @@ describe("SessionInput promotion", () => {
 			expect(yield* input.promoteSteers(sessionId, yield* events.latestSequence(sessionId))).toBe(0);
 
 			expect(some(yield* input.find(admitted.id)).promotedSeq).toBe(promotedSeq);
-			expect((yield* sql`SELECT * FROM event WHERE type = 'session.next.prompt.promoted.1'`).length).toBe(1);
+			expect((yield* sql`SELECT * FROM event WHERE type = 'session.prompt.promoted.1'`).length).toBe(1);
 		}));
 
 	it("keeps lanes and sessions apart when promoting", () =>
@@ -370,7 +370,7 @@ describe("SessionInput projections", () => {
 					timeCreated: before.timeCreated,
 				};
 				const seq = row.seq as number;
-				if (row.type === "session.next.prompt.admitted.1") {
+				if (row.type === "session.prompt.admitted.1") {
 					yield* input.projectAdmitted({ ...shared, admittedSeq: seq });
 					continue;
 				}

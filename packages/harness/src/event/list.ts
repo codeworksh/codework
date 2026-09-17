@@ -24,17 +24,15 @@ const PromptFields = {
 	delivery: PromptSchema.Delivery,
 };
 
-// confirmed
 export const PromptAdmitted = EventSchema.define({
-	type: "session.next.prompt.admitted",
+	type: "session.prompt.admitted",
 	...durableOptions,
 	schema: PromptFields,
 });
 export type PromptAdmitted = typeof PromptAdmitted.Type;
 
-// confirmed
 export const Prompted = EventSchema.define({
-	type: "session.next.prompt.promoted",
+	type: "session.prompt.promoted",
 	...durableOptions,
 	schema: PromptFields,
 });
