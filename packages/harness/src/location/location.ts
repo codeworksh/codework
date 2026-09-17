@@ -10,6 +10,7 @@ import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 import { Space } from "../space/space.ts";
 import { Worktree } from "../worktree/worktree.ts";
+export { DirectoryNotFoundError, NotDirectoryError, type Error } from "./error.ts";
 
 /**
  * Where work happens: a directory inside a space.

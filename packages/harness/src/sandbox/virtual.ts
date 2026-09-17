@@ -12,7 +12,7 @@ type Primitives = Local.Vfs | ChildProcessSpawner.ChildProcessSpawner;
 export const transportLayer = <E, R>(
 	primitives: Layer.Layer<Primitives, E, R>,
 ): Layer.Layer<SandboxFileSystem.Service | Shell, E, R> =>
-	Layer.provideMerge(Layer.merge(Local.layer, EnvBash.transport(primitives)), primitives);
+	Layer.provideMerge(Layer.merge(Layer.fresh(Local.layer), EnvBash.transport(primitives)), primitives);
 
 /** A cwd-neutral FileSystem + just-bash transport over one retained VFS. */
 export const transport = (vfs: VirtualFileSystem): Layer.Layer<SandboxFileSystem.Service | Shell> => {

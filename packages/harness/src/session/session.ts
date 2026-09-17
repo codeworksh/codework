@@ -214,7 +214,8 @@ export interface Interface {
 	readonly get: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SessionRow>>;
 	/** The space a session attaches to — its env and absolute location. None when the session is unknown. */
 	readonly space: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SpaceSchema.Info>>;
-	readonly list: (input: ListInput) => Effect.Effect<SessionRow[]>;
+	/** Sessions newest first, across the whole database when no scope is given. */
+	readonly list: (input?: ListInput) => Effect.Effect<SessionRow[]>;
 	readonly entry: (entryId: string) => Effect.Effect<Option.Option<HydratedEntry>>;
 	/** Active root→leaf path with parts attached. */
 	readonly path: (sessionId: SessionSchema.ID) => Effect.Effect<HydratedEntry[]>;
@@ -312,6 +313,12 @@ export const layer = Layer.effect(
 			Request: Schema.String,
 			Result: SessionRow,
 			execute: (spaceId) => sql`SELECT * FROM session WHERE space_id = ${spaceId} ORDER BY updated_at DESC`,
+		});
+
+		const selectAll = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: SessionRow,
+			execute: () => sql`SELECT * FROM session ORDER BY updated_at DESC`,
 		});
 
 		const insertSession = SqlSchema.void({
@@ -474,10 +481,14 @@ export const layer = Layer.effect(
 			return Option.map(yield* findSpace(sessionId).pipe(Effect.orDie), Space.fromRow);
 		});
 
-		const list = Effect.fn("Session.list")(function* (input: ListInput) {
-			return yield* ("spaceId" in input ? selectBySpace(input.spaceId) : selectByProject(input.projectId)).pipe(
-				Effect.orDie,
-			);
+		const list = Effect.fn("Session.list")(function* (input?: ListInput) {
+			const rows =
+				input === undefined
+					? selectAll()
+					: "spaceId" in input
+						? selectBySpace(input.spaceId)
+						: selectByProject(input.projectId);
+			return yield* rows.pipe(Effect.orDie);
 		});
 
 		const entry = Effect.fn("Session.entry")(function* (entryId: string) {

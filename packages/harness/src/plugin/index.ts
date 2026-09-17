@@ -1,4 +1,4 @@
-export type { PluginRef } from "./catalog.ts";
+export type { PluginOptions, PluginRef } from "./catalog.ts";
 export type { Config, Events, PromptResolver, SharedPluginContext } from "./context.ts";
 export { SetupError } from "./host.ts";
 export { PreparationError } from "./loader.ts";

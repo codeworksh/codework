@@ -72,9 +72,29 @@ export const Model = Schema.Struct({
 	options: Schema.optional(Block),
 	providerOptions: Schema.optional(Schema.Record(Schema.String, Schema.Record(Schema.String, Block))),
 });
+/** A module to load: a path, a `file:` URL, or a package spec. */
+const PluginReference = Schema.String.check(Schema.isNonEmpty());
+/**
+ * Configuration for a plugin something else already selected, named by its ID (`plugin`) or by
+ * the package it was installed from (`package`). It never loads anything: an entry naming a
+ * plugin that is not in the selection is ignored.
+ */
+const config = {
+	enabled: Schema.optional(Schema.Boolean),
+	options: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+};
+export const PluginPatch = Schema.Union(
+	[Schema.Struct({ plugin: PluginReference, ...config }), Schema.Struct({ package: PluginReference, ...config })],
+	// `oneOf`, so an entry carrying both keys is a decode failure rather than one of them being
+	// quietly dropped -- naming a plugin two ways at once says two different things.
+	{ mode: "oneOf" },
+);
+export const PluginEntry = Schema.Union([PluginReference, PluginPatch]);
+export type PluginEntry = typeof PluginEntry.Type;
+
 export const Patch = Schema.Struct({
 	$schema: Schema.optional(Schema.String),
-	plugins: Schema.optional(Schema.Array(Schema.String.check(Schema.isNonEmpty()))),
+	plugins: Schema.optional(Schema.Array(PluginEntry)),
 	model: Schema.optional(Model),
 });
 export type Patch = typeof Patch.Type;
@@ -84,7 +104,7 @@ export interface Info {
 	 * Plugin references added to the harness selection, in order. Like every array in a
 	 * patch this replaces rather than concatenates, so one layer owns the whole list.
 	 */
-	readonly plugins: ReadonlyArray<string>;
+	readonly plugins: ReadonlyArray<PluginEntry>;
 	readonly model: typeof Model.Type & {
 		readonly provider: string;
 		readonly id: string;

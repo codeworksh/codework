@@ -23,9 +23,18 @@ importers:
 
   .:
     devDependencies:
+      '@acme/codework-local-plugins':
+        specifier: workspace:*
+        version: link:extras/plugins
+      '@acme/codework-prompt-life':
+        specifier: workspace:*
+        version: link:extras/codework-prompt-life
       '@acme/codework-sandbox-vercel':
         specifier: workspace:*
         version: link:extras/codework-sandbox-vercel
+      '@acme/codework-tool-proc':
+        specifier: workspace:*
+        version: link:extras/codework-tool-proc
       '@effect/tsgo':
         specifier: 'catalog:'
         version: 0.45.0
@@ -39,6 +48,19 @@ importers:
         specifier: 'catalog:'
         version: 0.3.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(msw@2.13.4(@types/node@26.5.1)(typescript@7.0.2))(tsx@4.23.13)(typescript@7.0.2)(unrun@0.2.36)(yaml@2.9.1)
 
+  extras/codework-prompt-life:
+    dependencies:
+      '@codeworksh/harness':
+        specifier: workspace:*
+        version: link:../../packages/harness
+    devDependencies:
+      '@types/node':
+        specifier: ^26.5.1
+        version: 26.5.1
+      effect:
+        specifier: 4.0.0-rc.115
+        version: 4.0.0-rc.115
+
   extras/codework-sandbox-vercel:
     dependencies:
       '@codeworksh/harness':
@@ -47,6 +69,32 @@ importers:
       '@vercel/sandbox':
         specifier: ^3.3.0
         version: 3.3.0
+    devDependencies:
+      '@types/node':
+        specifier: ^26.5.1
+        version: 26.5.1
+      effect:
+        specifier: 4.0.0-rc.115
+        version: 4.0.0-rc.115
+
+  extras/codework-tool-proc:
+    dependencies:
+      '@codeworksh/harness':
+        specifier: workspace:*
+        version: link:../../packages/harness
+    devDependencies:
+      '@types/node':
+        specifier: ^26.5.1
+        version: 26.5.1
+      effect:
+        specifier: 4.0.0-rc.115
+        version: 4.0.0-rc.115
+
+  extras/plugins:
+    dependencies:
+      '@codeworksh/harness':
+        specifier: workspace:*
+        version: link:../../packages/harness
     devDependencies:
       '@types/node':
         specifier: ^26.5.1

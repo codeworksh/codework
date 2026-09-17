@@ -656,7 +656,7 @@ export const layer = Layer.effect(
 					// commits. So a follower never sees a bumped sequence whose row is not
 					// there yet, and never emits an event a failing projector rolls back.
 					// A connection pool would take that guarantee away and need its own
-					// per-aggregate lock -- what OpenCode's KeyedMutex is doing.
+					// per-aggregate lock.
 					const head = yield* latestSequence(input.aggregateId);
 					const marker: Synced = {
 						type: "log.synced",

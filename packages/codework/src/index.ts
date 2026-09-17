@@ -11,6 +11,7 @@ import { Runtime } from "./framework/runtime.ts";
 
 const Handlers = Runtime.handlers(Cmd, {
 	run: () => import("./cli/cmd/handlers/run.ts"),
+	serve: () => import("./cli/cmd/handlers/serve.ts"),
 	models: {
 		$: () => import("./cli/cmd/handlers/models/list.ts"),
 		providers: () => import("./cli/cmd/handlers/models/providers.ts"),

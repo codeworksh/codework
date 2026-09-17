@@ -1,6 +1,7 @@
-import { Plugin, Runner } from "@codeworksh/harness/effect";
+import { Plugin, Runner, SandboxError, Settings } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
+import { Client } from "../server/client.ts";
 import { writeError } from "./output.ts";
 
 /** Bad flag or argument combinations the parser cannot express on its own. */
@@ -28,6 +29,10 @@ const isLLMStreamError = Schema.is(Runner.LLMStreamError);
 const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
 const isPluginPreparationError = Schema.is(Plugin.PreparationError);
 const isPluginInstallError = Schema.is(Plugin.InstallError);
+const isSettingsError = Schema.is(Settings.SettingsError);
+const isSandboxDriverNotRegisteredError = Schema.is(SandboxError.SandboxDriverNotRegisteredError);
+const isSandboxDriverRegistrationError = Schema.is(SandboxError.SandboxDriverRegistrationError);
+const isExecutionError = Schema.is(Client.ExecutionError);
 
 const providerCategory = (reason: Runner.ProviderFailureReason): string => {
 	switch (reason._tag) {
@@ -123,19 +128,34 @@ const pluginHint = (phase: Plugin.PreparationError["phase"]): string => {
 			return "the module failed to load; import it directly to see its own error";
 		case "definition":
 			return "a plugin module must default-export one object with a `setup` and a `vendor.domain.name` id";
-		case "resolve":
-			return "the selection enables an ID that no entry defines; check for a typo or a missing source";
+	}
+};
+
+const settingsHint = (reason: Settings.SettingsError["reason"]): string => {
+	switch (reason) {
+		case "read":
+			return "the file exists but could not be read; check that it is a file and readable";
+		case "parse":
+			return "the file is not valid JSON; the location above is where parsing stopped";
+		case "decode":
+			return "the key above holds a value this setting does not accept";
 	}
 };
 
 /** Render typed SDK errors for humans without exposing Effect causes or provider payloads. */
 export const renderError = (error: unknown): string => {
+	if (isSandboxDriverNotRegisteredError(error)) {
+		return `error: sandbox driver "${error.driver}" is not registered (available: ${error.registered?.join(", ") ?? "none"})\n`;
+	}
+	if (isSandboxDriverRegistrationError(error)) {
+		return `error: ${error.reason}\n`;
+	}
 	if (isInvalidInputError(error)) {
 		return `error: ${error.message}\n`;
 	}
 	if (isModelgenError(error)) {
 		return (
-			["error[model_catalog]: failed to generate the model catalog", "hint: check the output path and retry"].join(
+			["error[model-catalog]: failed to generate the model catalog", "hint: check the output path and retry"].join(
 				"\n",
 			) + "\n"
 		);
@@ -162,10 +182,20 @@ export const renderError = (error: unknown): string => {
 			].join("\n") + "\n"
 		);
 	}
+	if (isSettingsError(error)) {
+		return (
+			[
+				`error[settings]: ${error.path}`,
+				`reason: ${error.reason}`,
+				`detail: ${error.detail}`,
+				`hint: ${settingsHint(error.reason)}`,
+			].join("\n") + "\n"
+		);
+	}
 	if (isPluginInstallError(error)) {
 		return (
 			[
-				`error[plugin_install]: ${unknownMessage(error.cause)}`,
+				`error[plugin-install]: ${unknownMessage(error.cause)}`,
 				"hint: check the package name and version, and that the registry is reachable",
 			].join("\n") + "\n"
 		);
@@ -185,7 +215,7 @@ export const renderError = (error: unknown): string => {
 	if (isModelCatalogError(error)) {
 		return (
 			[
-				`error[model_catalog]: ${error.message}`,
+				`error[model-catalog]: ${error.message}`,
 				"hint: run `codework models generate` or set CODEWORK_MODELS_FILE to a generated catalog",
 			].join("\n") + "\n"
 		);
@@ -193,13 +223,23 @@ export const renderError = (error: unknown): string => {
 	if (isModelNotFoundError(error)) {
 		return (
 			[
-				`error[model_not_found]: ${error.message}`,
+				`error[model-not-found]: ${error.message}`,
 				"hint: check the provider/model IDs in models.gen.json or regenerate the catalog",
 			].join("\n") + "\n"
 		);
 	}
 	if (isLLMStreamError(error)) {
-		return `error[stream_protocol]: ${error.message}\n`;
+		return `error[stream]: ${error.message}\n`;
+	}
+	// A remote run has only the category the server published; render it the same
+	// way a local typed error is rendered, minus the detail that stayed server-side.
+	if (isExecutionError(error)) {
+		return (
+			[
+				error.type === "aborted" ? `error: ${error.message}` : `error[${error.type}]: ${error.message}`,
+				...(error.status === undefined ? [] : [`status: ${error.status}`]),
+			].join("\n") + "\n"
+		);
 	}
 	return `error: ${unknownMessage(error)}\n`;
 };

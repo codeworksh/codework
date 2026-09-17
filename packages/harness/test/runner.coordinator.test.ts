@@ -600,8 +600,13 @@ describe("RunCoordinator", () => {
 			yield* coordinator.wake("session");
 			yield* Deferred.await(settling);
 			yield* coordinator.wake("session");
-			expect(yield* coordinator.interrupt("session")).toBe(false);
+			const interrupted = yield* coordinator
+				.interrupt("session", undefined, { awaitSettlement: true })
+				.pipe(Effect.forkChild);
+			yield* settle;
+			expect(interrupted.pollUnsafe()).toBeUndefined();
 			yield* Deferred.succeed(release, undefined);
+			expect(yield* Fiber.join(interrupted)).toBe(false);
 			yield* coordinator.awaitIdle("session");
 
 			expect(drains).toBe(1);
@@ -708,6 +713,58 @@ describe("RunCoordinator", () => {
 			yield* coordinator.awaitIdle("session");
 
 			expect(calls).toBe(limit);
+		}),
+	);
+
+	it.effect(
+		"awaitSettlement waits for the interrupted execution only, not its successors",
+		Effect.gen(function* () {
+			const started = yield* Deferred.make<void>();
+			const cleanupStarted = yield* Deferred.make<void>();
+			const cleanupGate = yield* Deferred.make<void>();
+			const successorGate = yield* Deferred.make<void>();
+			let drains = 0;
+			const coordinator = yield* RunCoordinator.make<string, never>({
+				drain: () =>
+					Effect.suspend(() => {
+						drains += 1;
+						// The first drain blocks until interrupted; the successor a fresh
+						// wake starts during cleanup blocks on its own gate.
+						return drains === 1
+							? Deferred.succeed(started, undefined).pipe(
+									Effect.andThen(Effect.never),
+									Effect.onInterrupt(() =>
+										Deferred.succeed(cleanupStarted, undefined).pipe(
+											Effect.andThen(Deferred.await(cleanupGate)),
+										),
+									),
+								)
+							: Deferred.await(successorGate);
+					}),
+			});
+
+			yield* coordinator.wake("session");
+			yield* Deferred.await(started);
+			const settled = yield* Effect.forkChild(
+				coordinator.interrupt("session", undefined, { awaitSettlement: true }),
+			);
+			// Work admitted while the interrupted execution is still cleaning up. The
+			// wake has to land after the interrupt was accepted, since an earlier one
+			// is deliberately claimed by the interrupted intent.
+			yield* Deferred.await(cleanupStarted);
+			yield* coordinator.wake("session");
+			expect(settled.pollUnsafe()).toBeUndefined();
+
+			yield* Deferred.succeed(cleanupGate, undefined);
+			// Resolves on the interrupted execution's own settlement; the successor is
+			// still parked on its gate, so `awaitIdle` would still be blocked here.
+			expect(yield* Fiber.join(settled)).toBe(true);
+			const idle = yield* Effect.forkChild(coordinator.awaitIdle("session"));
+			expect(idle.pollUnsafe()).toBeUndefined();
+
+			yield* Deferred.succeed(successorGate, undefined);
+			yield* Fiber.join(idle);
+			expect(drains).toBe(2);
 		}),
 	);
 });

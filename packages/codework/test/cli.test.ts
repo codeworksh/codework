@@ -48,7 +48,7 @@ describe("codework CLI", () => {
 			expect(result.status).toBe(1);
 			expect(result.stderr).toContain("settings-test-provider");
 			expect(result.stderr).toContain("settings-test-model");
-			expect(result.stderr).toContain("error[model_not_found]");
+			expect(result.stderr).toContain("error[model-not-found]");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
@@ -88,14 +88,14 @@ describe("codework CLI", () => {
 		const result = run("run", "--help");
 
 		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("--sandbox string");
+		expect(result.stdout).toContain("--sandbox-driver string");
 		expect(result.stdout).toContain("default: local");
 		expect(result.stdout).toContain("Sandbox driver for a new session");
 		expect(result.stdout).toContain("--sandbox-provider-id string");
 	});
 
 	it("validates sandbox names against the harness registry", () => {
-		const result = runIsolated({}, "run", "--sandbox", "missing", "test");
+		const result = runIsolated({}, "run", "--sandbox-driver", "missing", "test");
 
 		expect(result.status).toBe(1);
 		expect(result.stderr).toContain('sandbox driver "missing" is not registered');
@@ -106,7 +106,7 @@ describe("codework CLI", () => {
 		const result = run("run", "--sandbox-provider-id", "existing-id", "test");
 
 		expect(result.status).toBe(1);
-		expect(result.stdout).toContain("--sandbox-provider-id requires a remote --sandbox");
+		expect(result.stdout).toContain("--sandbox-provider-id requires a remote --sandbox-driver");
 	});
 
 	it("reports a missing model catalog without an Effect stack", () => {
@@ -121,7 +121,7 @@ describe("codework CLI", () => {
 		);
 
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("error[model_catalog]: model catalog not found");
+		expect(result.stderr).toContain("error[model-catalog]: model catalog not found");
 		expect(result.stderr).toContain("hint: run `codework models generate`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");
@@ -149,13 +149,33 @@ describe("codework CLI", () => {
 	});
 
 	it("reports the sanitized remote sandbox provider failure", () => {
-		const result = runIsolated({ VERCEL_OIDC_TOKEN: undefined }, "run", "--sandbox", "vercel", "test");
+		const result = runIsolated({ VERCEL_OIDC_TOKEN: undefined }, "run", "--sandbox-driver", "vercel", "test");
 
 		expect(result.status).toBe(1);
 		expect(result.stderr).toContain("error: SandboxProviderError - Could not get credentials from OIDC context.");
 		expect(result.stderr).toContain("driver: vercel");
 		expect(result.stderr).toContain("operation: create");
 		expect(result.stderr).toContain("traceback:\nSandboxProviderError\n");
+	});
+
+	it("documents remote runs and rejects server-owned flags on the client", () => {
+		expect(run("run", "--help").stdout).toContain("--server");
+		const result = run("run", "--server", "ws://127.0.0.1:1/rpc", "--database", ":memory:", "hello");
+		expect(result.status).toBe(1);
+		expect(result.stdout).toContain("belong on codework serve");
+	});
+
+	it("rejects out-of-range listening ports", () => {
+		const result = run("serve", "--port", "65536");
+		expect(result.status).toBe(1);
+	});
+
+	it("documents serve --host and --port", () => {
+		const result = run("serve", "--help");
+
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain("--host");
+		expect(result.stdout).toContain("--port");
 	});
 
 	it("documents models --provider and subcommands", () => {
@@ -208,7 +228,7 @@ describe("codework CLI", () => {
 		);
 
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("error[model_catalog]: model catalog not found");
+		expect(result.stderr).toContain("error[model-catalog]: model catalog not found");
 		expect(result.stderr).toContain("hint: run `codework models generate`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");
