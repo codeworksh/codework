@@ -27,7 +27,10 @@ export interface SharedPluginContext {
 	readonly plugin: PluginRegistry;
 }
 
-const reserved = new Set<string>(EventList.DurableDefinitions.map((definition) => definition.type));
+// Every kernel type, not just the durable ones: `EventRegistry.flatten` rejects
+// these at boot, and this stays as the backstop for anything that reaches
+// publish without going through registration.
+const reserved = new Set<string>(EventList.Definitions.map((definition) => definition.type));
 export const makeEvents = (events: Events): Events =>
 	Object.freeze<Events>({
 		publish: (definition, data, options) =>

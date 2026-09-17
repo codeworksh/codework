@@ -1,9 +1,9 @@
 import { EventList, type EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
-import DaytonaSandbox from "@codeworksh/harness/sandboxes/daytona";
-import VercelSandbox from "@codeworksh/harness/sandboxes/vercel";
 import { Effect, Exit, Fiber, Option, Queue, Ref, Schema, Stream } from "effect";
 import { Runtime } from "../../../framework/runtime.ts";
+import { Client } from "../../../server/client.ts";
 import { InvalidInputError, renderError } from "../../error.ts";
+import { harnessOptions } from "../../harness.ts";
 import {
 	addUsage,
 	emptyUsage,
@@ -32,7 +32,7 @@ const isTextDelta = Schema.is(EventList.LLMTextDelta);
 const isLLMEnded = Schema.is(EventList.LLMEnded);
 const isTurnEnded = Schema.is(EventList.TurnEnded);
 
-const render = (ended: Queue.Queue<string>, state: Ref.Ref<RenderState>) =>
+const render = (state: Ref.Ref<RenderState>, ended?: Queue.Queue<string>) =>
 	Effect.fn("CLI.render")(function* (event: EventSchema.Payload) {
 		if (isTextDelta(event)) {
 			yield* writeOut(event.data.delta);
@@ -49,10 +49,16 @@ const render = (ended: Queue.Queue<string>, state: Ref.Ref<RenderState>) =>
 			yield* Ref.update(state, (current) => ({ ...current, usage: addUsage(current.usage, event.data.message) }));
 			return;
 		}
-		if (isTurnEnded(event)) {
+		if (ended !== undefined && isTurnEnded(event)) {
 			yield* Queue.offer(ended, event.data.messageId);
 		}
 	});
+
+const finish = Effect.fn("CLI.finish")(function* (state: Ref.Ref<RenderState>, columns: number) {
+	const rendered = yield* Ref.get(state);
+	if (rendered.textSeen && !rendered.textEndsWithNewline) yield* writeOut("\n");
+	yield* writeError(usage(rendered.usage, columns));
+});
 
 const awaitMessage = Effect.fn("CLI.awaitMessage")(function* (ended: Queue.Queue<string>, messageId: string) {
 	while ((yield* Queue.take(ended)) !== messageId) {
@@ -60,72 +66,108 @@ const awaitMessage = Effect.fn("CLI.awaitMessage")(function* (ended: Queue.Queue
 	}
 });
 
-const selectSandbox = Effect.fn("CLI.selectSandbox")(function* (driver: string, providerResourceId?: string) {
-	if (driver === "local") {
-		if (providerResourceId !== undefined) {
-			return yield* new InvalidInputError({
-				message: "--sandbox-provider-id requires a remote --sandbox",
-			});
-		}
-		return undefined;
+const selectSandbox = Effect.fn("CLI.selectSandbox")(function* (input: Sandbox.Selection) {
+	const selection = yield* Sandbox.resolve(input);
+	if (selection.created && selection.info !== undefined) {
+		const id = selection.info.id;
+		yield* Effect.addFinalizer(() => Effect.ignore(Sandbox.stop(id)));
 	}
-	const drivers = yield* Sandbox.drivers();
-	const registered = drivers.find((candidate) => candidate.name === driver);
-	if (registered === undefined) {
-		return yield* new InvalidInputError({
-			message: `sandbox driver "${driver}" is not registered (available: local, ${drivers.map(({ name }) => name).join(", ")})`,
-		});
-	}
-	if (providerResourceId !== undefined && registered.kind !== "remote") {
-		return yield* new InvalidInputError({
-			message: "--sandbox-provider-id requires a remote --sandbox",
-		});
-	}
-	return providerResourceId === undefined
-		? yield* Sandbox.create({ driver }).pipe(
-				Effect.tap((created) =>
-					// A managed sandbox was provisioned for this invocation; stop it when
-					// the command's scope closes so a finished run doesn't leave a VM
-					// running. External sandboxes are someone else's — never stopped.
-					created.ownership === "managed"
-						? Effect.addFinalizer(() => Effect.ignore(Sandbox.stop(created.id)))
-						: Effect.void,
-				),
-			)
-		: yield* Sandbox.register({ driver, providerResourceId });
+	return selection.info;
 });
 
 export default Runtime.handler(
 	Cmd.commands.run,
-	Effect.fn("CLI.run")(function* ({ prompt, session, cwd, sandbox, sandboxProviderId, provider, model, thinking }) {
+	Effect.fn("CLI.run")(function* ({
+		prompt,
+		session,
+		cwd,
+		sandboxDriver,
+		sandboxProviderId,
+		sandboxId,
+		provider,
+		model,
+		thinking,
+		server,
+	}) {
 		const shared = yield* Cmd.spec;
 		if (
 			Option.isSome(session) &&
-			(Option.isSome(cwd) || Option.isSome(sandbox) || Option.isSome(sandboxProviderId))
+			(Option.isSome(cwd) ||
+				Option.isSome(sandboxDriver) ||
+				Option.isSome(sandboxProviderId) ||
+				Option.isSome(sandboxId))
 		) {
 			return yield* new InvalidInputError({
-				message: "--cwd, --sandbox, and --sandbox-provider-id can only be used when creating a new session",
+				message:
+					"--cwd, --sandbox-driver, --sandbox-id, and --sandbox-provider-id can only be used when creating a new session",
 			});
 		}
 		if (Option.isSome(provider) !== Option.isSome(model)) {
 			return yield* new InvalidInputError({ message: "--provider and --model must be provided together" });
 		}
-		if (Option.isSome(sandboxProviderId) && Option.isNone(sandbox)) {
-			return yield* new InvalidInputError({ message: "--sandbox-provider-id requires a remote --sandbox" });
+		if (Option.isSome(sandboxProviderId) && Option.isNone(sandboxDriver)) {
+			return yield* new InvalidInputError({
+				message: "--sandbox-provider-id requires a remote --sandbox-driver",
+			});
 		}
+		if (Option.isSome(server) && [shared.home, shared.database, shared.userConfigDir].some(Option.isSome)) {
+			return yield* new InvalidInputError({
+				message: "--home, --database, and --user-config-dir belong on codework serve when using --server",
+			});
+		}
+
+		if (Option.isSome(sandboxId) && (Option.isSome(sandboxDriver) || Option.isSome(sandboxProviderId))) {
+			return yield* new InvalidInputError({
+				message: "--sandbox-id cannot be combined with --sandbox-driver or --sandbox-provider-id",
+			});
+		}
+		const selection: Sandbox.Selection = Option.isSome(sandboxId)
+			? { id: Sandbox.SandboxInstance.ID.make(sandboxId.value) }
+			: {
+					driver: Option.getOrElse(sandboxDriver, () => "local"),
+					...(Option.isNone(sandboxProviderId) ? {} : { providerResourceId: sandboxProviderId.value }),
+				};
+
+		const runtime = {
+			...(Option.isNone(provider) || Option.isNone(model)
+				? {}
+				: { model: { provider: provider.value, id: model.value } }),
+			...(Option.isNone(thinking) ? {} : { thinkingLevel: thinking.value }),
+		};
+		const remote = Effect.gen(function* () {
+			const rpc = yield* Client.make;
+			const info = Option.isSome(session)
+				? yield* rpc["session.configure"]({ sessionId: Session.SessionSchema.ID.make(session.value), runtime })
+				: yield* rpc["session.create"]({
+						title: "CLI",
+						runtime,
+						...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
+						sandbox: selection,
+					});
+			const state = yield* Ref.make(initialRenderState);
+			const columns = terminalColumns();
+			yield* writeError(
+				header({
+					sessionId: info.id,
+					sandbox: info.sandbox?.driver ?? "local",
+					directory: info.directory,
+					columns,
+				}),
+			);
+			if (info.sandbox !== undefined) yield* writeError(`sandbox-id: ${info.sandbox.id}\n`);
+			yield* Client.run(rpc, { sessionId: info.id, text: prompt }, render(state)).pipe(
+				Effect.onInterrupt(() =>
+					rpc["session.interrupt"]({ sessionId: info.id }).pipe(Effect.timeout("5 seconds"), Effect.ignore),
+				),
+			);
+			yield* finish(state, columns);
+		});
 		const program = Effect.gen(function* () {
-			const runtime = {
-				...(Option.isNone(provider) || Option.isNone(model)
-					? {}
-					: { model: { provider: provider.value, id: model.value } }),
-				...(Option.isNone(thinking) ? {} : { thinkingLevel: thinking.value }),
-			};
 			let handle: Session.Handle;
 			if (Option.isSome(session)) {
 				handle = yield* Session.attach({ sessionId: Session.SessionSchema.ID.make(session.value), ...runtime });
 			} else {
-				const selectedSandbox = Option.getOrElse(sandbox, () => "local" as const);
-				const selected = yield* selectSandbox(selectedSandbox, Option.getOrUndefined(sandboxProviderId));
+				const selected = yield* selectSandbox(selection);
 				handle = yield* Session.create({
 					title: "CLI",
 					...runtime,
@@ -137,7 +179,7 @@ export default Runtime.handler(
 			const renderState = yield* Ref.make(initialRenderState);
 			const printer = yield* handle
 				.events()
-				.pipe(Stream.runForEach(render(ended, renderState)), Effect.forkScoped({ startImmediately: true }));
+				.pipe(Stream.runForEach(render(renderState, ended)), Effect.forkScoped({ startImmediately: true }));
 
 			const info = yield* handle.info;
 			const columns = terminalColumns();
@@ -149,11 +191,7 @@ export default Runtime.handler(
 					columns,
 				}),
 			);
-			// noninteractive client gets typed failures from execution
-			// lifecycle events while `wait` only observes idleness. Harness does not
-			// publish those lifecycle events yet, so this exclusive process joins the
-			// execution started by `prompt`, waits through successors, then restores
-			// the joined exit for the existing human-friendly error renderer.
+			// The local command joins execution to retain typed error details.
 			const execution = yield* handle
 				.prompt({ text: prompt, delivery: "followUp" })
 				.pipe(Effect.andThen(handle.resume()), Effect.exit);
@@ -163,20 +201,14 @@ export default Runtime.handler(
 			const leaf = path.at(-1);
 			if (leaf !== undefined) yield* awaitMessage(ended, leaf.entry.id);
 			yield* Fiber.interrupt(printer);
-			const rendered = yield* Ref.get(renderState);
-			if (rendered.textSeen && !rendered.textEndsWithNewline) yield* writeOut("\n");
-			yield* writeError(usage(rendered.usage, columns));
+			yield* finish(renderState, columns);
 		});
 
-		return yield* program.pipe(
-			Effect.provide(
-				Harness.layer({
-					...(Option.isNone(shared.userConfigDir) ? {} : { userConfigDir: shared.userConfigDir.value }),
-					...(Option.isNone(shared.home) ? {} : { home: shared.home.value }),
-					...(Option.isNone(shared.database) ? {} : { database: shared.database.value }),
-					sandboxes: [DaytonaSandbox.make({}), VercelSandbox.make({})],
-				}),
-			),
+		const execute = Effect.gen(function* () {
+			if (Option.isSome(server)) return yield* remote.pipe(Effect.provide(Client.layer(server.value)));
+			return yield* program.pipe(Effect.provide(Harness.layer(harnessOptions(shared))));
+		});
+		return yield* execute.pipe(
 			Effect.scoped,
 			Effect.catch((error) =>
 				writeError(renderError(error)).pipe(

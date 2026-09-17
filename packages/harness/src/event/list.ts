@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { DateTimeUtcFromMillis, NonNegativeInt } from "../schema.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import { PromptSchema } from "../session/prompt/schema.ts";
+import { SessionFailure } from "../session/failure.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { EventSchema } from "./schema.ts";
 
@@ -23,17 +24,15 @@ const PromptFields = {
 	delivery: PromptSchema.Delivery,
 };
 
-// confirmed
 export const PromptAdmitted = EventSchema.define({
-	type: "session.next.prompt.admitted",
+	type: "session.prompt.admitted",
 	...durableOptions,
 	schema: PromptFields,
 });
 export type PromptAdmitted = typeof PromptAdmitted.Type;
 
-// confirmed
 export const Prompted = EventSchema.define({
-	type: "session.next.prompt.promoted",
+	type: "session.prompt.promoted",
 	...durableOptions,
 	schema: PromptFields,
 });
@@ -202,6 +201,73 @@ export const SessionForked = EventSchema.define({
 	},
 });
 export type SessionForked = typeof SessionForked.Type;
+
+/**
+ * Lifecycle of a process-owned busy period. One `started` and exactly one
+ * terminal per period, covering every drain the period coalesced. The terminals
+ * are separate types rather than one event with a status, so each carries only
+ * what its outcome actually has: a failure has an error, an interruption has a
+ * reason, and a success has neither.
+ */
+export const ExecutionStarted = EventSchema.define({
+	type: "session.execution.started",
+	schema: baseOptions,
+});
+export type ExecutionStarted = typeof ExecutionStarted.Type;
+
+export const ExecutionSucceeded = EventSchema.define({
+	type: "session.execution.succeeded",
+	schema: baseOptions,
+});
+export type ExecutionSucceeded = typeof ExecutionSucceeded.Type;
+
+export const ExecutionFailed = EventSchema.define({
+	type: "session.execution.failed",
+	schema: { ...baseOptions, error: SessionFailure.Error },
+});
+export type ExecutionFailed = typeof ExecutionFailed.Type;
+
+export const ExecutionInterrupted = EventSchema.define({
+	type: "session.execution.interrupted",
+	schema: { ...baseOptions, reason: SessionSchema.InterruptReason },
+});
+export type ExecutionInterrupted = typeof ExecutionInterrupted.Type;
+
+/**
+ * Everything the kernel can publish. `PublicDefinitions` is the narrower set
+ * that reaches clients -- adding an event here does not publish it.
+ */
+export const Definitions = EventSchema.inventory(
+	ExecutionStarted,
+	ExecutionSucceeded,
+	ExecutionFailed,
+	ExecutionInterrupted,
+	PromptAdmitted,
+	Prompted,
+	SessionForked,
+	TurnStarted,
+	TurnEnded,
+	TurnAborted,
+	LLMStarted,
+	LLMTextStart,
+	LLMTextDelta,
+	LLMTextEnd,
+	LLMThinkingStart,
+	LLMThinkingDelta,
+	LLMThinkingEnd,
+	LLMEnded,
+	LLMFailed,
+	ToolStarted,
+	ToolProgress,
+	ToolSettled,
+);
+
+/**
+ * The wire contract: what a client is allowed to receive. Identical to
+ * `Definitions` today, and separate so that adding a kernel event is not by
+ * itself a decision to publish it.
+ */
+export const PublicDefinitions = Definitions;
 
 export const DurableDefinitions = EventSchema.inventory(
 	PromptAdmitted,

@@ -142,7 +142,7 @@ describe("CLI output", () => {
 			new Plugin.InstallError({ cause: new Error("pnpm installation failed with exit code 1") }),
 		);
 
-		expect(output).toContain("error[plugin_install]: pnpm installation failed with exit code 1");
+		expect(output).toContain("error[plugin-install]: pnpm installation failed with exit code 1");
 		expect(output).not.toContain("PluginInstallError");
 	});
 

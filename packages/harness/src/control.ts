@@ -62,8 +62,16 @@ export interface Interface {
 	readonly resume: (
 		sessionId: SessionSchema.ID,
 	) => Effect.Effect<void, Session.SessionNotFoundError | Runner.RunError>;
-	/** Stops work owned by this process, waiting for its cleanup. Idle is a no-op. */
-	readonly interrupt: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
+	/**
+	 * Stops work owned by this process. Idle is a no-op. Resolves once the
+	 * interruption is accepted and returns whether there was work to accept it;
+	 * `awaitSettlement` additionally waits for that execution's cleanup, without
+	 * following work another caller admits in the meantime.
+	 */
+	readonly interrupt: (
+		sessionId: SessionSchema.ID,
+		options?: { readonly reason?: SessionSchema.InterruptReason; readonly awaitSettlement?: boolean },
+	) => Effect.Effect<boolean>;
 	/** Sessions this process is currently draining. */
 	readonly active: Effect.Effect<ReadonlySet<SessionSchema.ID>>;
 }
@@ -140,10 +148,11 @@ export const layer = Layer.effect(
 			yield* execution.resume(sessionId);
 		});
 
-		// A Control interrupt preserves the blocking SDK contract even though the
-		// coordinator acknowledges interruption as soon as the owner accepts it.
-		const interrupt = Effect.fn("Control.interrupt")((sessionId: SessionSchema.ID) =>
-			Effect.uninterruptible(execution.interrupt(sessionId).pipe(Effect.andThen(execution.awaitIdle(sessionId)))),
+		const interrupt = Effect.fn("Control.interrupt")(
+			(
+				sessionId: SessionSchema.ID,
+				options?: { readonly reason?: SessionSchema.InterruptReason; readonly awaitSettlement?: boolean },
+			) => Effect.uninterruptible(execution.interrupt(sessionId, options?.reason ?? "user", options)),
 		);
 
 		return Service.of({ prompt, run, wait, resume, interrupt, active: execution.active });

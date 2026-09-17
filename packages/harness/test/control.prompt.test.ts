@@ -123,7 +123,7 @@ describe("Control.prompt", () => {
 			expect(both[1]).toEqual(both[0]);
 			expect(yield* admittedCount).toBe(1);
 			// The loser's event rolled back with its projector, so only one exists.
-			expect(yield* eventCount("session.next.prompt.admitted.1")).toBe(1);
+			expect(yield* eventCount("session.prompt.admitted.1")).toBe(1);
 		}));
 
 	it("refuses a prompt for a session that does not exist", () =>
@@ -154,7 +154,7 @@ describe("Control.prompt", () => {
 			// Exactly one caller won it. A count is "work this caller promoted", so
 			// the loser reporting 1 would have both of them answer the same prompt.
 			expect(counts[0] + counts[1]).toBe(1);
-			expect(yield* eventCount("session.next.prompt.promoted.1")).toBe(1);
+			expect(yield* eventCount("session.prompt.promoted.1")).toBe(1);
 			const promoted = some(yield* inputs.find(admitted.id));
 			expect(promoted.promotedSeq).toBeDefined();
 
@@ -180,7 +180,7 @@ describe("Control.prompt", () => {
 			});
 
 			expect(won.filter(Boolean).length).toBe(1);
-			expect(yield* eventCount("session.next.prompt.promoted.1")).toBe(1);
+			expect(yield* eventCount("session.prompt.promoted.1")).toBe(1);
 			expect(yield* inputs.hasPending(sessionId, "followUp")).toBe(false);
 		}));
 

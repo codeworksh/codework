@@ -3,8 +3,10 @@
  * Connects the process coordinator to the durable input/output loop.
  */
 
-import { Cause, Context, Effect, Layer, Option } from "effect";
+import { Cause, Context, DateTime, Effect, Exit, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
+import { Event } from "../event/event.ts";
+import { EventList } from "../event/list.ts";
 import { Location } from "../location/location.ts";
 import { SandboxController } from "../sandbox/control.ts";
 import { SandboxIO } from "../sandbox/io.ts";
@@ -13,7 +15,9 @@ import { RunnerExecution } from "./execution.ts";
 import { Runner } from "./run.ts";
 
 // session
+import { SessionFailure } from "../session/failure.ts";
 import type { ID as SessionId } from "../session/schema.ts";
+import { SessionSchema } from "../session/schema.ts";
 import { Session } from "../session/session.ts";
 
 export const layer = Layer.effect(
@@ -26,7 +30,51 @@ export const layer = Layer.effect(
 		// requires the drain's `R` channel to be `never`, and a `Runner.Service.use`
 		// in the callback would leave the tag in it.
 		const runner = yield* Runner.Service;
-		const coordinator = yield* RunCoordinator.make<SessionId, Runner.RunError>({
+		const events = yield* Event.Service;
+		// A lifecycle publish that fails is reported, never thrown back into the
+		// coordinator: losing the observation must not change how the drain ends.
+		const reportLifecycle = (sessionId: SessionId, publish: Effect.Effect<unknown>) =>
+			publish.pipe(
+				Effect.tapCause((cause) =>
+					Cause.hasInterruptsOnly(cause)
+						? Effect.void
+						: Effect.logError("Failed to publish session execution lifecycle", cause).pipe(
+								Effect.annotateLogs({ sessionId }),
+							),
+				),
+				Effect.ignore,
+			);
+
+		const coordinator = yield* RunCoordinator.make<SessionId, Runner.RunError, SessionSchema.InterruptReason>({
+			started: (sessionId) =>
+				reportLifecycle(
+					sessionId,
+					DateTime.now.pipe(
+						Effect.andThen((timestamp) => events.publish(EventList.ExecutionStarted, { sessionId, timestamp })),
+					),
+				),
+			// One terminal per busy period, covering every drain it coalesced.
+			settled: (sessionId, exit, reason) =>
+				reportLifecycle(
+					sessionId,
+					Effect.gen(function* () {
+						const timestamp = yield* DateTime.now;
+						if (Exit.isSuccess(exit))
+							return yield* events.publish(EventList.ExecutionSucceeded, { sessionId, timestamp });
+						if (Cause.hasInterruptsOnly(exit.cause))
+							// Nobody named a reason, so the process took the decision itself.
+							return yield* events.publish(EventList.ExecutionInterrupted, {
+								sessionId,
+								timestamp,
+								reason: reason ?? "shutdown",
+							});
+						return yield* events.publish(EventList.ExecutionFailed, {
+							sessionId,
+							timestamp,
+							error: SessionFailure.fromCause(Cause.squash(exit.cause)),
+						});
+					}),
+				),
 			drain: Effect.fnUntraced(function* (sessionId: SessionId, force) {
 				const session = yield* store.get(sessionId);
 				if (Option.isNone(session)) return yield* new Session.SessionNotFoundError({ sessionId });
@@ -54,7 +102,17 @@ export const layer = Layer.effect(
 						Layer.provide(Layer.succeedContext(mountContext)),
 						Layer.provide(Layer.succeed(SqlClient.SqlClient, sql)),
 					);
-					const locationContext = yield* Layer.build(location);
+					const locationContext = yield* Layer.build(location).pipe(
+						Effect.catchTag(
+							["Location.DirectoryNotFoundError", "Location.NotDirectoryError"],
+							(error) =>
+								new Runner.SandboxDirectoryNotFoundError({
+									sessionId,
+									sandboxInstanceId: error.sandboxInstanceId,
+									directory: error.directory,
+								}),
+						),
+					);
 
 					return yield* runner
 						.run({ sessionId, force })
@@ -65,7 +123,7 @@ export const layer = Layer.effect(
 					Effect.scoped,
 					Effect.tapCause((cause) =>
 						Cause.hasDies(cause)
-							? Effect.logError("runner defect", cause).pipe(Effect.annotateLogs({ sessionId }))
+							? Effect.logError("defect", cause).pipe(Effect.annotateLogs({ sessionId }))
 							: Effect.void,
 					),
 				);

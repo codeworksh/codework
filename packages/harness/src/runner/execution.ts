@@ -14,8 +14,15 @@ export interface Interface {
 	readonly resume: (sessionId: SessionSchema.ID) => Effect.Effect<void, Runner.RunError>;
 	/** Registers newly recorded work. Repeated wakeups may coalesce. */
 	readonly wake: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
-	/** Accepts interruption of active work. Idle interruption returns false. */
-	readonly interrupt: (sessionId: SessionSchema.ID) => Effect.Effect<boolean>;
+	/**
+	 * Accepts interruption of active work. Idle interruption returns false.
+	 * `awaitSettlement` waits for the interrupted execution's cleanup only.
+	 */
+	readonly interrupt: (
+		sessionId: SessionSchema.ID,
+		reason?: SessionSchema.InterruptReason,
+		options?: { readonly awaitSettlement?: boolean },
+	) => Effect.Effect<boolean>;
 	/** Waits until this process owns no execution for the session. */
 	readonly awaitIdle: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
 }
