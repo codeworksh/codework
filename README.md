@@ -10,17 +10,9 @@ Toolkit for building AI agents.
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/codeworksh/codework)
 
-## Get Started
-
-```bash
-npm install @codeworksh/aikit
-```
-
-[`@codeworksh/aikit`](./packages/aikit/README.md)
-
 ## Acknowledgements
 
-This project was heavily inspired by the great work of Mario Zechner on [Pi-Mono](https://github.com/badlogic/pi-mono).
+The curiosity for building was inspired by by the great work of Mario Zechner on [Pi-Mono](https://github.com/badlogic/pi-mono).
 
 ## License
 
