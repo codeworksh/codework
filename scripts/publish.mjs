@@ -8,13 +8,16 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceMap = new Map([
 	["aikit", "packages/aikit"],
 	["@codeworksh/aikit", "packages/aikit"],
+	["codework", "packages/codework"],
+	["cli", "packages/codework"],
+	["@codeworksh/cli", "packages/codework"],
 	["harness", "packages/harness"],
 	["@codeworksh/harness", "packages/harness"],
 ]);
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.mjs <aikit|harness|@codeworksh/aikit|@codeworksh/harness> [--stage] [npm publish args]",
+		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness> [--dev] [--stage] [npm publish args]",
 	);
 	process.exit(1);
 }
