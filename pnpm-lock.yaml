@@ -172,6 +172,9 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-rc.115
         version: 4.0.0-rc.115(effect@4.0.0-rc.115)(redis@6.2.1(@opentelemetry/api@1.9.1))
+      '@effect/platform-node-shared':
+        specifier: 4.0.0-rc.115
+        version: 4.0.0-rc.115(effect@4.0.0-rc.115)
       '@effect/sql-sqlite-node':
         specifier: 4.0.0-rc.115
         version: 4.0.0-rc.115(effect@4.0.0-rc.115)
@@ -181,9 +184,15 @@ importers:
       effect:
         specifier: 4.0.0-rc.115
         version: 4.0.0-rc.115
+      jsonc-parser:
+        specifier: 3.3.1
+        version: 3.3.1
       just-bash:
         specifier: ^3.4.2
         version: 3.4.2
+      npm-package-arg:
+        specifier: ^14.0.0
+        version: 14.0.0
       tslib:
         specifier: ^2.8.1
         version: 2.8.1
