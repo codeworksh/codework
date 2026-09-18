@@ -48,6 +48,9 @@
 		"check": "vp check",
 		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
 		"lint": "vp lint",
+		"release": "node ../../scripts/publish.mjs cli",
+		"release:dev": "node ../../scripts/publish.mjs cli --dev",
+		"release:dry": "node ../../scripts/publish.mjs cli --dry-run",
 		"test": "vp test",
 		"start": "node --conditions=development src/index.ts",
 		"typecheck": "tsc --noEmit"
