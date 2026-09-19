@@ -1,10 +1,11 @@
 import "./utils/env.ts";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { load, select, type PluginRef } from "../src/plugin/catalog.ts";
+import { follow, load, select, type PluginRef, type Pool } from "../src/plugin/catalog.ts";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import { define } from "../src/plugin/plugin.ts";
@@ -27,6 +28,15 @@ const marker = (id: string) =>
 	});
 
 const options = { builtins: [], cache: "/unused", hostDir: "/project" };
+
+/**
+ * A resolve-only installer, which is all `follow` may ever be given: it answers from what is
+ * already filed and can never reach a registry.
+ */
+const filedAt = (generation: number) => ({
+	...options,
+	install: () => Effect.succeed({ url: "file:///filed.js", generation }),
+});
 
 describe("the two passes", () => {
 	it("loads a module once however many entries name it", async () => {
@@ -162,5 +172,161 @@ describe("a running session", () => {
 			expect(prompts[1]?.endsWith("after")).toBe(true);
 			// The module was imported once, at boot, and never again.
 			expect((globalThis as { __markerImports?: number }).__markerImports).toBe(imports);
+		}));
+});
+
+describe("following the store at an exchange boundary", () => {
+	it("does nothing when the store has not moved", async () => {
+		const first = marker("acme.prompt.a");
+		const base = await Effect.runPromise(load([first], options));
+		// Filed at the generation it was loaded at, so there is nothing to follow.
+		const moved = await Effect.runPromise(follow([first], base, filedAt(1), () => Effect.succeedNone));
+		expect(Option.isNone(moved)).toBe(true);
+	});
+
+	it("loads an entry the store holds but the pool does not", async () => {
+		const base = await Effect.runPromise(load([], options));
+		const arrived = {
+			...filedAt(1),
+			import: () => Promise.resolve({ default: marker("acme.prompt.new") }),
+		};
+		const moved = await Effect.runPromise(
+			// Configured, not loaded, and the bytes are already here: exactly the case the
+			// exchange boundary settles without anyone asking.
+			follow(["@acme/new"], base, arrived, () => Effect.succeedSome({ generation: 1 })),
+		);
+		expect(Option.isSome(moved)).toBe(true);
+		expect(Option.getOrThrow(moved).plugins.has("acme.prompt.new")).toBe(true);
+	});
+
+	it("leaves an entry the store does not hold, rather than fetching it", async () => {
+		const base = await Effect.runPromise(load([], options));
+		// Not filed, so nothing to follow. Reported by the config pass, never fetched here: an
+		// exchange must not be able to block on a registry.
+		const moved = await Effect.runPromise(
+			follow(["@acme/never-installed"], base, filedAt(1), () => Effect.succeedNone),
+		);
+		expect(Option.isNone(moved)).toBe(true);
+	});
+
+	it("follows a newer generation of a module it already holds", async () => {
+		// A pool that believes it is on generation 1.
+		const base: Pool = {
+			plugins: new Map([["acme.prompt.moved", marker("acme.prompt.moved")]]),
+			aliases: new Map([["@acme/moved", "acme.prompt.moved"]]),
+			versions: new Map(),
+			origins: new Map([["acme.prompt.moved", { reference: "@acme/moved", generation: 1 }]]),
+		};
+		const replacement = marker("acme.prompt.moved");
+		const reloaded = {
+			...filedAt(2),
+			import: () => Promise.resolve({ default: replacement }),
+		};
+
+		// Same generation: `plugin update` found nothing, so neither does this.
+		expect(
+			Option.isNone(
+				await Effect.runPromise(
+					follow(["@acme/moved"], base, reloaded, () => Effect.succeedSome({ generation: 1 })),
+				),
+			),
+		).toBe(true);
+
+		// Newer generation. Without this check the question is "is this entry loaded?", the answer
+		// after an update is still yes, and the bytes just fetched would sit on disk unused.
+		const moved = await Effect.runPromise(
+			follow(["@acme/moved"], base, reloaded, () => Effect.succeedSome({ generation: 2 })),
+		);
+		expect(Option.isSome(moved)).toBe(true);
+		expect(Option.getOrThrow(moved).origins.get("acme.prompt.moved")?.generation).toBe(2);
+	});
+
+	it("never follows a local source, which has no generation to compare", async () => {
+		const base: Pool = {
+			plugins: new Map([["acme.prompt.local", marker("acme.prompt.local")]]),
+			aliases: new Map([["./local.ts", "acme.prompt.local"]]),
+			versions: new Map(),
+			// A local plugin is never copied into the store, so it has no generation at all --
+			// which is why `plugin reload` exists and is the only thing that covers it.
+			origins: new Map([["acme.prompt.local", { reference: "./local.ts" }]]),
+		};
+		const moved = await Effect.runPromise(
+			follow(["./local.ts"], base, filedAt(99), () => Effect.succeedSome({ generation: 99 })),
+		);
+		expect(Option.isNone(moved)).toBe(true);
+	});
+});
+
+describe("a running session and the store", () => {
+	it("picks up a plugin added to settings mid-session, from the store, at the next exchange", () =>
+		withProject(async ({ root, project }) => {
+			const home = join(root, "home");
+			const cache = join(home, "cache");
+			// Publish a store entry by hand: `plugin install` is the verb that would normally do
+			// this, and it is a separate process. What matters here is that an exchange finds it.
+			const spec = "fixture-codework-plugin@1.0.0";
+			const digest = createHash("sha256").update(spec).digest("hex");
+			const entry = join(cache, "plugins", "v1", "fixture-codework-plugin", digest, "1000");
+			await mkdir(entry, { recursive: true });
+			await writeFile(
+				join(entry, "index.mjs"),
+				[
+					"export default {",
+					"  id: 'acme.prompt.arrived',",
+					"  kind: 'prompt',",
+					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}arrived`),",
+					"};",
+				].join("\n"),
+			);
+			await writeFile(
+				join(entry, ".complete.json"),
+				JSON.stringify({
+					spec,
+					name: "fixture-codework-plugin",
+					version: "1.0.0",
+					entrypoint: "index.mjs",
+					createdAt: 1000,
+				}),
+			);
+
+			const file = join(project, ".codework", "settings.jsonc");
+			await writeFile(file, JSON.stringify({ plugins: [] }));
+
+			const prompts: string[] = [];
+			const open = immediateOpen();
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const session = yield* Session.create({ directory: project, hostDir: project });
+					yield* session.prompt({ text: "one", delivery: "followUp" });
+					yield* session.resume();
+					yield* session.wait();
+
+					// The entry appears in settings between exchanges. Its bytes are already on
+					// disk, so nothing has to be fetched -- and nothing was watching.
+					yield* Effect.promise(() => writeFile(file, JSON.stringify({ plugins: [spec] })));
+
+					yield* session.prompt({ text: "two", delivery: "followUp" });
+					yield* session.resume();
+					yield* session.wait();
+				}).pipe(
+					Effect.provide(
+						Harness.layer({
+							home,
+							hostCwd: project,
+							database: ":memory:",
+							llm: (request, signal) => {
+								prompts.push(request.context.systemPrompt ?? "");
+								return open(request, signal);
+							},
+						}),
+					),
+					Effect.scoped,
+					Effect.timeout("20 seconds"),
+					Effect.orDie,
+				),
+			);
+			expect(prompts).toHaveLength(2);
+			expect(prompts[0]).not.toContain("arrived");
+			expect(prompts[1]?.endsWith("arrived")).toBe(true);
 		}));
 });

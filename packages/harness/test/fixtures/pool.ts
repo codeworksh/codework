@@ -1,4 +1,4 @@
-import { Ref } from "effect";
+import { Effect, Option, Ref } from "effect";
 import type { PluginRef, Pool } from "../../src/plugin/catalog.ts";
 import type { Plugin } from "../../src/plugin/plugin.ts";
 
@@ -14,7 +14,13 @@ export const pooled = (plugins: ReadonlyArray<Plugin>) => {
 		plugins: new Map(plugins.map((plugin) => [plugin.id, plugin])),
 		aliases: new Map(plugins.map((plugin) => [plugin.id, plugin.id])),
 		versions: new Map(),
+		origins: new Map(),
 	};
 	const references: ReadonlyArray<PluginRef> = plugins.map((plugin) => plugin.id);
-	return { ref: Ref.makeUnsafe(pool), references: () => references };
+	return {
+		ref: Ref.makeUnsafe(pool),
+		references: () => references,
+		// No store behind these plugins, so nothing can move under them.
+		follow: (): Effect.Effect<Option.Option<Pool>> => Effect.succeedNone,
+	};
 };

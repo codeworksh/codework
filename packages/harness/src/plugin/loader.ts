@@ -112,6 +112,11 @@ export interface Installed {
 	readonly url: string;
 	readonly version?: string | undefined;
 	/**
+	 * Which store generation this came from. Absent for a built-in, a supplied object and a local
+	 * source -- none of which are filed, so none of which can be superseded.
+	 */
+	readonly generation?: number | undefined;
+	/**
 	 * Set when the installer already imported and checked the module -- which the default one
 	 * does, because the store validates a staged artifact before publishing it (§7.7). Carrying
 	 * the result back means it is not imported a second time from the published path.
@@ -150,6 +155,7 @@ const install = Effect.fn("PluginLoader.install")(function* (
 	return {
 		url: added.entry.url,
 		...(added.entry.version === undefined ? {} : { version: added.entry.version }),
+		generation: added.entry.generation,
 		...(added.validated === undefined ? {} : { plugin: added.validated }),
 	} satisfies Installed;
 });
@@ -177,6 +183,8 @@ export interface Loaded {
 	readonly plugin: Plugin;
 	readonly source: string;
 	readonly version?: string;
+	/** The store generation this module came from, when it came from the store. */
+	readonly generation?: number;
 	/** The package name a local package declared, registered as one of its aliases. */
 	readonly name?: string;
 }
@@ -224,6 +232,7 @@ export const load = Effect.fn("PluginLoader.load")(function* (target: Target, or
 		plugin,
 		source: origin.reference,
 		...("version" in installed && installed.version !== undefined ? { version: installed.version } : {}),
+		...("generation" in installed && installed.generation !== undefined ? { generation: installed.generation } : {}),
 		// A local package answers to the name it declares, so a path entry can be configured by
 		// the package name its README documents.
 		...("name" in installed && installed.name !== undefined ? { name: installed.name } : {}),

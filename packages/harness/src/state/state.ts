@@ -161,6 +161,14 @@ export const layer = (
 	options: Options,
 	pool: Ref.Ref<Pool>,
 	references: (settings: Info) => ReadonlyArray<PluginRef>,
+	/**
+	 * The exchange-boundary check: the new pool when the store has moved, `undefined` when it has
+	 * not. State does not know what a store is, so whoever built the pool answers this.
+	 */
+	follow: (
+		refs: ReadonlyArray<PluginRef>,
+		current: Pool,
+	) => Effect.Effect<Option.Option<Pool>, { readonly message: string }>,
 ) => {
 	return Layer.effect(
 		Service,
@@ -199,15 +207,26 @@ export const layer = (
 
 					const resolvedModel = yield* LLM.resolve({ provider, model, settings: configured.block });
 
+					const refs = references(loadedSettings);
+					// Read once, at the top, so a reload or a store update cannot land halfway
+					// through a snapshot. An exchange already running is unaffected either way.
+					const before = yield* Ref.get(pool);
+					const failed = (cause: { readonly message: string }) =>
+						new SnapshotError({ sessionId, reason: cause.message, cause });
+
+					// Follow the store: load an entry whose bytes are already here, and move to a
+					// newer generation of one that is. Never a fetch -- `plugin install` stays the
+					// verb that puts bytes on disk.
+					const moved = yield* follow(refs, before).pipe(Effect.mapError(failed));
+					if (Option.isSome(moved)) yield* Ref.set(pool, moved.value);
+					const loaded = Option.getOrElse(moved, () => before);
+
 					// The config pass: pure data over what is already loaded, so it runs every
-					// exchange. Read once, at the top, so a reload cannot land mid-snapshot.
-					const loaded = yield* Ref.get(pool);
-					const chosen = yield* select(references(loadedSettings), loaded).pipe(
-						Effect.mapError((cause) => new SnapshotError({ sessionId, reason: cause.message, cause })),
-					);
+					// exchange.
+					const chosen = yield* select(refs, loaded).pipe(Effect.mapError(failed));
 					// An entry naming a module the pool does not hold is the one case the pass
 					// cannot satisfy, so it is free to report -- which is what a watcher was
-					// buying, minus the watcher.
+					// buying, minus the watcher. Reported once per snapshot that finds it.
 					for (const reference of chosen.missing) {
 						yield* Effect.logWarning(
 							`plugin ${reference} is configured but not loaded — run \`codework plugin install\``,

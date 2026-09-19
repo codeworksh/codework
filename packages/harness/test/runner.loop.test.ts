@@ -49,7 +49,7 @@ const runtime = (
 	return Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
 		Layer.provideMerge(
-			((seeded) => State.layer(options.state ?? {}, seeded.ref, seeded.references))(
+			((seeded) => State.layer(options.state ?? {}, seeded.ref, seeded.references, seeded.follow))(
 				pooled(options.plugins ?? plugins),
 			),
 		),

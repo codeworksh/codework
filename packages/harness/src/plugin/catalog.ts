@@ -1,4 +1,4 @@
-import { Effect, Predicate } from "effect";
+import { Effect, Option, Predicate } from "effect";
 import { isRecord } from "../settings/merge.ts";
 import * as Loader from "./loader.ts";
 import { PluginSource } from "./source.ts";
@@ -57,9 +57,27 @@ export interface Pool {
 	readonly aliases: ReadonlyMap<string, string>;
 	/** By ID, for diagnostics. Absent for a built-in and for a local source. */
 	readonly versions: ReadonlyMap<string, string>;
+	/** What each loaded module was loaded from, which is how {@link follow} tells it has moved. */
+	readonly origins: ReadonlyMap<string, Origin>;
 }
 
-const emptyPool: Pool = { plugins: new Map(), aliases: new Map(), versions: new Map() };
+/** Where a loaded module came from. */
+export interface Origin {
+	/** The reference as written, so it can be re-resolved against the store. */
+	readonly reference: string;
+	/**
+	 * The store generation it was loaded from. Absent for a built-in, a supplied object and a
+	 * local source -- none of which are filed, so none of which can be superseded.
+	 */
+	readonly generation?: number;
+}
+
+const emptyPool: Pool = {
+	plugins: new Map(),
+	aliases: new Map(),
+	versions: new Map(),
+	origins: new Map(),
+};
 
 /**
  * The **load pass**: store lookup and ESM import, never the network.
@@ -74,13 +92,19 @@ export const load = Effect.fn("PluginCatalog.load")(function* (references: Reado
 	const plugins = new Map<string, Plugin>();
 	const aliases = new Map<string, string>();
 	const versions = new Map<string, string>();
+	const origins = new Map<string, Origin>();
 	const seen = new Map<string, string>();
 
-	const remember = (plugin: Plugin, names: ReadonlyArray<string>, version?: string) => {
+	const remember = (
+		plugin: Plugin,
+		names: ReadonlyArray<string>,
+		from?: { readonly version?: string; readonly origin: Origin },
+	) => {
 		plugins.set(plugin.id, plugin);
 		aliases.set(plugin.id, plugin.id);
 		for (const name of names) aliases.set(name, plugin.id);
-		if (version !== undefined) versions.set(plugin.id, version);
+		if (from?.version !== undefined) versions.set(plugin.id, from.version);
+		if (from !== undefined) origins.set(plugin.id, from.origin);
 	};
 
 	/** Source metadata exists for diagnostics; a silent ID replacement is where it earns that. */
@@ -132,11 +156,17 @@ export const load = Effect.fn("PluginCatalog.load")(function* (references: Reado
 			target.kind === "local"
 				? [target.path, ...(definition.name === undefined ? [] : [definition.name])]
 				: [PluginSource.canonical(target), target.spec];
-		remember(definition.plugin, [reference, ...names], definition.version);
+		remember(definition.plugin, [reference, ...names], {
+			...(definition.version === undefined ? {} : { version: definition.version }),
+			origin: {
+				reference,
+				...(definition.generation === undefined ? {} : { generation: definition.generation }),
+			},
+		});
 		seen.set(key, definition.plugin.id);
 	}
 
-	return { plugins, aliases, versions } satisfies Pool;
+	return { plugins, aliases, versions, origins } satisfies Pool;
 });
 
 /** What the config pass could not satisfy, for §12.5's drift report. */
@@ -234,6 +264,71 @@ export const select = Effect.fn("PluginCatalog.select")(function* (references: R
 		selection: Object.freeze(selection.map(({ plugin, options }) => ({ plugin, options }) satisfies Prepared)),
 		missing,
 	} satisfies Selected;
+});
+
+/**
+ * The exchange-boundary check: has the store moved under this pool?
+ *
+ * Every exchange already re-reads every settings layer from disk, and the config pass already
+ * walks those entries against the loaded set. Two things can be settled right there, and they are
+ * the same question asked twice:
+ *
+ * 1. a settings entry names a module that is not loaded, and the store holds it;
+ * 2. a loaded module is not the newest generation the store has.
+ *
+ * The second is what makes `plugin update` finish. Without it the question is "is this entry
+ * loaded?", the answer after an update is still yes, and the bytes just fetched sit on disk until
+ * something else forces an import.
+ *
+ * Returns the new pool, or nothing when nothing moved -- which is the common case, and costs one
+ * store lookup per filed module.
+ *
+ * **This is not a watcher.** Nothing polls and no fiber exists; it is the observation that we were
+ * already paying for the I/O that would tell us, and discarding the answer. Three bounds keep it
+ * safe: the store only and never the network, so an exchange cannot block on a registry;
+ * resolve-only, so it cannot install; and once, at the top of a snapshot, so an exchange already
+ * running is unaffected.
+ */
+export const follow = Effect.fn("PluginCatalog.follow")(function* (
+	references: ReadonlyArray<PluginRef>,
+	pool: Pool,
+	/**
+	 * `install` is required and must be resolve-only. Making it non-optional is how "an exchange
+	 * follows the store, it does not fill it" becomes a fact of the signature rather than a rule
+	 * someone has to remember: the default installer fetches, and there is no way to reach it here.
+	 */
+	options: Options & { readonly install: NonNullable<Options["install"]> },
+	/** What the store already holds for a reference. Never a fetch. */
+	filed: (reference: string) => Effect.Effect<Option.Option<{ readonly generation: number }>>,
+) {
+	let moved = false;
+
+	for (const reference of references) {
+		if (typeof reference !== "string" || pool.aliases.has(reference)) continue;
+		// Configured but not loaded. Reported by `select` either way; acted on only when the
+		// bytes are already here.
+		if (Option.isSome(yield* filed(reference))) {
+			moved = true;
+			break;
+		}
+	}
+
+	if (!moved) {
+		for (const origin of pool.origins.values()) {
+			if (origin.generation === undefined) continue;
+			const current = yield* filed(origin.reference);
+			if (Option.isSome(current) && current.value.generation > origin.generation) {
+				moved = true;
+				break;
+			}
+		}
+	}
+
+	if (!moved) return Option.none<Pool>();
+	// A full load pass, which is cheap for everything that did not move: an unchanged module
+	// resolves to the same URL, and the module registry hands back the instance it already has
+	// without re-evaluating it. Only a new generation is a new URL, and only that is re-imported.
+	return Option.some(yield* load(references, options));
 });
 
 /** Both passes, for a caller that wants the selection and has no reason to hold the pool. */

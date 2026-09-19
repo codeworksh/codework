@@ -1,11 +1,13 @@
-import { Effect, Layer, Ref } from "effect";
+import { Effect, Layer, Option, Ref } from "effect";
 import { Context } from "../context/context.ts";
 import { Control } from "../control.ts";
 import { Database } from "../db/db.ts";
 import { Event } from "../event/event.ts";
 import { Global } from "../global.ts";
 import { EventRegistry } from "../event/registry.ts";
-import { load, type PluginRef, type Pool } from "../plugin/catalog.ts";
+import { follow, load, type PluginRef, type Pool } from "../plugin/catalog.ts";
+import { PluginSource } from "../plugin/source.ts";
+import { PluginStore } from "../plugin/store.ts";
 import { builtins } from "../plugin/builtin.ts";
 import { RunnerExecute } from "../runner/execute.ts";
 import { LLM } from "../runner/llm.ts";
@@ -74,11 +76,32 @@ export const layer = (options: Options = {}) =>
 			const references = (settings: SettingsInfo): ReadonlyArray<PluginRef> =>
 				options.plugins ?? [...builtins, ...settings.plugins];
 
+			const catalogOptions = { builtins, cache: paths.cache, hostDir: hostCwd };
 			// The load pass, once, at boot: a store lookup and an ESM import per module. Every
 			// later exchange runs only the config pass over what this produced.
-			const pool = yield* Ref.make<Pool>(
-				yield* load(references(config), { builtins, cache: paths.cache, hostDir: hostCwd }),
-			);
+			const pool = yield* Ref.make<Pool>(yield* load(references(config), catalogOptions));
+
+			/*
+			 * What the store already holds for a reference, and nothing else.
+			 *
+			 * Resolve-only by construction: `Store.resolve` never opens a socket, so an exchange
+			 * asking this question cannot block on a registry, and `plugin install` stays the only
+			 * verb that puts bytes on disk. A reference that does not parse, or names a local
+			 * path, is simply not filed.
+			 */
+			const filed = (reference: string): Effect.Effect<Option.Option<PluginStore.Entry>> =>
+				PluginSource.parse(reference, hostCwd).pipe(
+					Effect.flatMap((target) =>
+						target.kind === "local"
+							? Effect.succeedNone
+							: PluginStore.resolve(target, paths.cache).pipe(Effect.map(Option.fromUndefinedOr)),
+					),
+					Effect.orElseSucceed(() => Option.none<PluginStore.Entry>()),
+				);
+
+			// Resolve-only for the same reason: an exchange follows the store, it does not fill it.
+			const followStore = (refs: ReadonlyArray<PluginRef>, current: Pool) =>
+				follow(refs, current, { ...catalogOptions, install: PluginStore.required }, filed);
 			// Flattened before anything can publish: a plugin event type that collides
 			// or is not namespaced is a boot failure, not a surprise at first publish.
 			const definitions = yield* EventRegistry.flatten([...(yield* Ref.get(pool)).plugins.values()]);
@@ -95,7 +118,7 @@ export const layer = (options: Options = {}) =>
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
-				Layer.provideMerge(State.layer({}, pool, references)),
+				Layer.provideMerge(State.layer({}, pool, references, followStore)),
 				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),
