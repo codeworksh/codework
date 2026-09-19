@@ -80,6 +80,15 @@ export interface Info {
 	readonly directory: AbsolutePath;
 	/** Absent when the session has no host project; see {@link CreateInput.hostDir}. */
 	readonly hostDir?: AbsolutePath;
+	/**
+	 * Whether this session has a host project at all.
+	 *
+	 * Not new state -- it is `hostDir !== undefined` -- but it is the question callers actually
+	 * ask, and asking it by name keeps "has a project" from being spelled four different ways at
+	 * four call sites. It is deliberately absent from the wire contract, where `hostDir` is right
+	 * there and a second derived field could only ever disagree with it.
+	 */
+	readonly hasHostLink: boolean;
 	readonly sandbox?: SandboxInfo;
 }
 
@@ -140,6 +149,7 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 			title: row.title,
 			directory: row.directory,
 			...(hostDir === undefined ? {} : { hostDir }),
+			hasHostLink: hostDir !== undefined,
 			...(sandbox === undefined ? {} : { sandbox }),
 		};
 	}).pipe(Effect.withSpan("Session.info"));

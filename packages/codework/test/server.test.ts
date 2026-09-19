@@ -18,6 +18,7 @@ import { Envelope } from "../src/server/envelope.ts";
 import { EventFeed } from "../src/server/feed.ts";
 import { Handlers } from "../src/server/handlers.ts";
 import { Server } from "../src/server/server.ts";
+import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
 
 process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 const exec = promisify(execFile);
@@ -101,6 +102,29 @@ describe("server", () => {
 			const cleared = yield* rpc["session.link"]({ sessionId: created.id });
 			expect(cleared.hostDir).toBeUndefined();
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
+	});
+
+	it("refuses to write a project for a session that has none", () => {
+		// The session exists and is perfectly usable; it just has no project to write into. That
+		// is a normal state, and the one `session link` exists to fix.
+		const home = mkdtempSync(join(tmpdir(), "codework-server-unlinked-"));
+		homes.push(home);
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const created = yield* rpc["session.create"]({});
+			const failure = yield* linkedDirectory(created.id, Option.some(home)).pipe(Effect.flip);
+			expect(failure).toMatchObject({ _tag: "SessionNotLinkedError", reason: "session-not-linked" });
+
+			// Linked, the same lookup answers with the directory.
+			yield* rpc["session.link"]({ sessionId: created.id, hostDir: realpathSync(home) });
+			expect(yield* linkedDirectory(created.id, Option.some(home))).toBe(realpathSync(home));
+		}).pipe(
+			Effect.scoped,
+			// A file database, because the lookup opens its own connection the way the CLI does.
+			Effect.provide(layer({ home, database: join(home, "data", "codework.db") })),
+			Effect.runPromise,
+		);
 	});
 
 	it("plugin.reload reports the loaded set", () =>

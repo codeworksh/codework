@@ -2,6 +2,7 @@ export { Harness } from "./effect/harness.ts";
 export { Sandbox } from "./effect/sandbox.ts";
 export { Session } from "./effect/session.ts";
 export { Control } from "./control.ts";
+export { Database } from "./db/db.ts";
 export { Event } from "./event/event.ts";
 export { EventList } from "./event/list.ts";
 export { EventRegistry } from "./event/registry.ts";

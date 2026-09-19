@@ -1,4 +1,4 @@
-import { Plugin, Runner, SandboxError, Settings } from "@codeworksh/harness/effect";
+import { Plugin, Runner, SandboxError, SessionStore, Settings } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
 import { Client } from "../server/client.ts";
@@ -31,6 +31,7 @@ const isPluginInstallError = Schema.is(Plugin.InstallError);
 const isPluginSourceError = Schema.is(Plugin.SourceError);
 const isPluginStoreError = Schema.is(Plugin.StoreError);
 const isPluginLoadError = Schema.is(Plugin.LoadError);
+const isSessionNotLinkedError = Schema.is(SessionStore.SessionNotLinkedError);
 const isSettingsError = Schema.is(Settings.SettingsError);
 const isSandboxDriverNotRegisteredError = Schema.is(SandboxError.SandboxDriverNotRegisteredError);
 const isSandboxDriverRegistrationError = Schema.is(SandboxError.SandboxDriverRegistrationError);
@@ -198,6 +199,15 @@ export const renderError = (error: unknown): string => {
 				`operation: ${error.operation}`,
 				...(error.sanitized.code === undefined ? [] : [`code: ${error.sanitized.code}`]),
 				...(error.stack === undefined ? [] : ["traceback:", error.stack]),
+			].join("\n") + "\n"
+		);
+	}
+	if (isSessionNotLinkedError(error)) {
+		return (
+			[
+				`error[${error.reason}]: ${error.message}`,
+				`session: ${error.sessionId}`,
+				"hint: run `codework session link <session-id>` from the project directory",
 			].join("\n") + "\n"
 		);
 	}

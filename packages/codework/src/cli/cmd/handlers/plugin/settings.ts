@@ -224,10 +224,21 @@ export const writePlugins = Effect.fn("CLI.plugin.writePlugins")(function* (
  * There is nothing to warn about between layers: plugin entries from every layer accumulate, so a
  * user-wide entry still applies inside a project that declares its own.
  */
-export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (shared: Shared, global: boolean) {
+export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (
+	shared: Shared,
+	global: boolean,
+	/**
+	 * Where to discover the project from, when it is not the shell's directory.
+	 *
+	 * A session's host directory is the only other honest answer: it is a declared host path. The
+	 * session's *space* is not, and neither is its project -- a `Project` is env-independent by
+	 * design, so it has no host directory to offer.
+	 */
+	from?: string,
+) {
 	const fs = yield* FileSystem.FileSystem;
 	const nodePath = yield* Path.Path;
-	const cwd = nodePath.resolve(".");
+	const cwd = from ?? nodePath.resolve(".");
 	const home = yield* Global.resolve(Option.isNone(shared.home) ? {} : { home: shared.home.value });
 	const root = global ? undefined : yield* Settings.projectRoot(cwd, home.home);
 	// `paths` is ordered lowest priority first: user-wide, then project, then an explicit directory.

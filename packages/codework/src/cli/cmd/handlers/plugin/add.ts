@@ -4,11 +4,12 @@ import { Runtime } from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
+import { linkedDirectory } from "./session.ts";
 import { identify, matches, readPlugins, resolveTarget, spellings, writePlugins, written } from "./settings.ts";
 
 export default Runtime.handler(
 	Cmd.commands.plugin.commands.add,
-	Effect.fn("CLI.plugin.add")(function* ({ package: reference, global: userWide }) {
+	Effect.fn("CLI.plugin.add")(function* ({ package: reference, global: userWide, session }) {
 		const program = Effect.gen(function* () {
 			const shared = yield* Cmd.spec;
 			const path = yield* Path.Path;
@@ -19,7 +20,12 @@ export default Runtime.handler(
 			// then has to repair by hand.
 			const plugin = yield* Plugin.inspect(reference, { cache: paths.cache, hostDir: path.resolve(".") });
 
-			const target = yield* resolveTarget(shared, userWide);
+			// A session names the project to write into when the shell's directory is not it --
+			// a server or a UI acting on a session's behalf, rather than a person standing in the
+			// repository. It fails when that session has no project, which is a state `session
+			// link` exists to fix.
+			const linked = Option.isNone(session) ? undefined : yield* linkedDirectory(session.value, shared.home);
+			const target = yield* resolveTarget(shared, userWide, linked);
 			// Said before the entry is written, because it is the more consequential of the two
 			// facts: it decides where every future plugin entry lands, and it shadows any outer
 			// project from now on.
@@ -27,7 +33,7 @@ export default Runtime.handler(
 			// What goes in the file, which is not always what was typed: a relative path anchors to
 			// the settings file being written, not to the directory the command ran in.
 			const entry = yield* written(reference, {
-				cwd: path.resolve("."),
+				cwd: linked ?? path.resolve("."),
 				file: target.path,
 				root: target.root,
 			});

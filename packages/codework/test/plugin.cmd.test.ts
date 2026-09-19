@@ -267,6 +267,37 @@ describe("codework plugin add/remove", () => {
 			expect(existsSync(settings(root))).toBe(false);
 		}));
 
+	it("refuses a session it cannot resolve, rather than falling back to the shell's directory", () =>
+		withProject(({ root, home }) => {
+			// A session's host directory is the only other honest answer to "which project": a
+			// `Project` is env-independent by design and has no host path to offer, and a space's
+			// location means something inside an env that may not be this machine.
+			const elsewhere = join(realpathSync(root), "elsewhere");
+			mkdirSync(elsewhere, { recursive: true });
+
+			const added = spawnSync(
+				process.execPath,
+				[
+					"--conditions=development",
+					cli,
+					"plugin",
+					"add",
+					plugin("codework-tool-proc"),
+					"--session",
+					"ses_00000000-0000-7000-8000-000000000000",
+					"--home",
+					home,
+				],
+				{ encoding: "utf8", cwd: elsewhere, timeout: 60_000 },
+			);
+
+			// Falling back to the directory the command ran in would write a project nobody asked
+			// for, which is the failure mode naming a session is meant to avoid.
+			expect(added.status).toBe(1);
+			expect(added.stderr).toContain("SessionNotFound");
+			expect(existsSync(settings(elsewhere))).toBe(false);
+		}));
+
 	it("does not treat the global settings file as a project file", () =>
 		withProject(({ root }) => {
 			// macOS spells the temporary directory through `/var` while `cwd` resolves through

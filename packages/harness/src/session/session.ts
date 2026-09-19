@@ -102,6 +102,22 @@ export const rebaseDirectory = (from: AbsolutePath, to: AbsolutePath, directory:
 	return AbsolutePath.make(relative === "" ? to : posix.join(to, relative));
 };
 
+/**
+ * An operation needed a session's host project and the session has none.
+ *
+ * Distinct from `SessionNotFoundError`: the session is there and is perfectly usable, it just has
+ * no project to write into. That is a normal state, not corruption -- `session link` is the remedy,
+ * and naming it is most of what this error is for.
+ */
+export class SessionNotLinkedError extends Schema.TaggedError<SessionNotLinkedError>()("SessionNotLinkedError", {
+	reason: Schema.tag("session-not-linked"),
+	sessionId: SessionSchema.IDFromDb,
+}) {
+	override get message(): string {
+		return `session ${this.sessionId} is not linked to a host directory`;
+	}
+}
+
 export interface CreateSession {
 	readonly id?: SessionSchema.ID;
 	/** The space (one directory in one env) this session attaches to; must exist. */

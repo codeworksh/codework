@@ -146,11 +146,19 @@ export const Cmd = Spec.make("codework", {
 							Flag.withDescription("Write the user-wide settings file instead of this project's"),
 							Flag.withDefault(false),
 						),
+						session: Flag.String("session").pipe(
+							Flag.withDescription("Write the project a session is linked to, rather than this directory's"),
+							Flag.optional,
+						),
 					},
 					examples: [
 						{
 							command: "codework plugin add @acme/codework-tool-proc@1.2.0",
 							description: "Install a published plugin into this project's settings",
+						},
+						{
+							command: "codework plugin add @acme/codework-tool-proc --session ses_01h9",
+							description: "Write the project that session is linked to, from anywhere",
 						},
 						{
 							command: "codework plugin add @acme/codework-tool-proc -g",

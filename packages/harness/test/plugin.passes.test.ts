@@ -501,7 +501,9 @@ describe("linking a session to a host directory", () => {
 					// No host directory: this session has no project layer, which is a normal
 					// state rather than a missing value.
 					const created = yield* Session.create({ directory: project });
-					expect((yield* created.info).hostDir).toBeUndefined();
+					// The key is absent rather than undefined, which is exactly why callers get to
+					// ask the question by name instead of knowing that.
+					expect((yield* created.info).hasHostLink).toBe(false);
 
 					const run = () =>
 						created
@@ -510,7 +512,7 @@ describe("linking a session to a host directory", () => {
 					yield* run();
 
 					yield* Session.link({ sessionId: created.id, hostDir: project });
-					expect((yield* created.info).hostDir).toBe(project);
+					expect(yield* created.info).toMatchObject({ hostDir: project, hasHostLink: true });
 
 					// Settings are re-read every exchange, so the project layer simply starts
 					// being read -- and its plugin is local, so its bytes were always here.
@@ -565,7 +567,7 @@ describe("linking a session to a host directory", () => {
 					yield* run();
 
 					yield* Session.link({ sessionId: created.id, hostDir: null });
-					expect((yield* created.info).hostDir).toBeUndefined();
+					expect((yield* created.info).hasHostLink).toBe(false);
 					// The module stays loaded in the pool; it is simply no longer selected, which
 					// is the config pass doing its job rather than anything being unloaded.
 					yield* run();
