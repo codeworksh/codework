@@ -13,11 +13,11 @@
  */
 
 import type { Model, Protocol } from "@codeworksh/aikit";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Ref, Schema } from "effect";
 import { Event } from "../event/event.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
 import { run as setup } from "../plugin/host.ts";
-import type { Prepared } from "../plugin/catalog.ts";
+import { select, type Pool, type PluginRef } from "../plugin/catalog.ts";
 import { LLM } from "../runner/llm.ts";
 import type { Runner } from "../runner/run.ts";
 import { Location } from "../location/location.ts";
@@ -27,7 +27,7 @@ import type { ID as SessionId } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
 import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
-import type { Block } from "../settings/schema.ts";
+import type { Block, Info } from "../settings/schema.ts";
 import { Settings } from "../settings/settings.ts";
 import type { Resolved } from "../tool/registry.ts";
 
@@ -142,11 +142,26 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 const resolver = (input: string | PromptResolver): PromptResolver => (typeof input === "string" ? () => input : input);
 
 /**
- * `selection` is the prepared, ordered list — resolved once during harness construction
- * (`plugin/catalog.ts`). State runs it as given: no insertion, reordering, or rerun, and no
- * default of its own.
+ * `pool` is the loaded module set, behind a `Ref` rather than a frozen array.
+ *
+ * The split it enables: **loading** a module costs a store lookup and an ESM import, so it happens
+ * at boot and at `reload`; **configuring** one -- `enabled`, `options`, order -- is pure data over
+ * modules already in memory, so it happens at every exchange. That is why editing `options` in a
+ * settings file takes effect at the next turn without anything being re-imported.
+ *
+ * `snapshot` reads the `Ref` once, at the top, so a reload lands on the next exchange and never
+ * mid-turn. Combined with generations, a reload that brings new bytes for a loaded plugin imports
+ * a genuinely different URL, so the module registry cannot hand back the old one.
+ *
+ * `references` says which entries the config pass walks. It is a function of the settings that
+ * exchange read, so a caller that pinned an explicit list keeps it and everyone else follows the
+ * files.
  */
-export const layer = (options: Options, selection: ReadonlyArray<Prepared>) => {
+export const layer = (
+	options: Options,
+	pool: Ref.Ref<Pool>,
+	references: (settings: Info) => ReadonlyArray<PluginRef>,
+) => {
 	return Layer.effect(
 		Service,
 		Effect.gen(function* () {
@@ -183,7 +198,23 @@ export const layer = (options: Options, selection: ReadonlyArray<Prepared>) => {
 					const location = yield* Location.Service;
 
 					const resolvedModel = yield* LLM.resolve({ provider, model, settings: configured.block });
-					const contributions = yield* setup(selection, {
+
+					// The config pass: pure data over what is already loaded, so it runs every
+					// exchange. Read once, at the top, so a reload cannot land mid-snapshot.
+					const loaded = yield* Ref.get(pool);
+					const chosen = yield* select(references(loadedSettings), loaded).pipe(
+						Effect.mapError((cause) => new SnapshotError({ sessionId, reason: cause.message, cause })),
+					);
+					// An entry naming a module the pool does not hold is the one case the pass
+					// cannot satisfy, so it is free to report -- which is what a watcher was
+					// buying, minus the watcher.
+					for (const reference of chosen.missing) {
+						yield* Effect.logWarning(
+							`plugin ${reference} is configured but not loaded — run \`codework plugin install\``,
+						);
+					}
+
+					const contributions = yield* setup(chosen.selection, {
 						sessionId,
 						sandbox,
 						location,

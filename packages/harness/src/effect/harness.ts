@@ -1,11 +1,11 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Ref } from "effect";
 import { Context } from "../context/context.ts";
 import { Control } from "../control.ts";
 import { Database } from "../db/db.ts";
 import { Event } from "../event/event.ts";
 import { Global } from "../global.ts";
 import { EventRegistry } from "../event/registry.ts";
-import { prepare, type PluginRef } from "../plugin/catalog.ts";
+import { load, type PluginRef, type Pool } from "../plugin/catalog.ts";
 import { builtins } from "../plugin/builtin.ts";
 import { RunnerExecute } from "../runner/execute.ts";
 import { LLM } from "../runner/llm.ts";
@@ -18,6 +18,7 @@ import { SandboxDriverLoader } from "../sandbox/loader.ts";
 import { SandboxDriverRegistry } from "../sandbox/registry.ts";
 import { SessionLive } from "../session/live.ts";
 import { SessionRuntime } from "../session/runtime.ts";
+import type { Info as SettingsInfo } from "../settings/schema.ts";
 import { Settings } from "../settings/settings.ts";
 import { State } from "../state/state.ts";
 
@@ -60,17 +61,27 @@ export const layer = (options: Options = {}) =>
 			// root available -- and the right one: it is what decides which plugins this process
 			// loads at all. Which of them a given session *runs* is the per-session question.
 			const config = yield* Settings.load({ ...settingsOptions, home: paths.home, hostDir: hostCwd });
-			// Settings entries extend the built-in selection rather than standing in for it, so
-			// naming a plugin cannot silently drop Bash or the default prompt. A built-in is turned
-			// off by name, with a `{ "plugin": "codework.tool.bash", "enabled": false }` entry.
-			const selection = yield* prepare(options.plugins ?? [...builtins, ...config.plugins], {
-				builtins,
-				cache: paths.cache,
-				hostDir: hostCwd,
-			});
+			/*
+			 * Which entries this process configures from, per exchange.
+			 *
+			 * Settings entries extend the built-in selection rather than standing in for it, so
+			 * naming a plugin cannot silently drop Bash or the default prompt. A built-in is turned
+			 * off by name, with a `{ "plugin": "codework.tool.bash", "enabled": false }` entry.
+			 *
+			 * An embedder that supplied its own list keeps it verbatim: it asked for exactly this
+			 * selection, and the files must not add to it behind its back.
+			 */
+			const references = (settings: SettingsInfo): ReadonlyArray<PluginRef> =>
+				options.plugins ?? [...builtins, ...settings.plugins];
+
+			// The load pass, once, at boot: a store lookup and an ESM import per module. Every
+			// later exchange runs only the config pass over what this produced.
+			const pool = yield* Ref.make<Pool>(
+				yield* load(references(config), { builtins, cache: paths.cache, hostDir: hostCwd }),
+			);
 			// Flattened before anything can publish: a plugin event type that collides
 			// or is not namespaced is a boot failure, not a surprise at first publish.
-			const definitions = yield* EventRegistry.flatten(selection.map((entry) => entry.plugin));
+			const definitions = yield* EventRegistry.flatten([...(yield* Ref.get(pool)).plugins.values()]);
 			const configuredDatabase = options.database ?? (yield* Database.locationConfig);
 			const database = Database.layer(Database.resolveDatabaseLocation(configuredDatabase, paths.data));
 			const configured = yield* SandboxDriverLoader.loadAll(options.sandboxes ?? [], { hostCwd });
@@ -84,7 +95,7 @@ export const layer = (options: Options = {}) =>
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
-				Layer.provideMerge(State.layer({}, selection)),
+				Layer.provideMerge(State.layer({}, pool, references)),
 				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),

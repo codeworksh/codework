@@ -41,7 +41,10 @@ const exchange = (input: {
 	const prompts: string[] = [];
 	const open = input.llm ?? immediateOpen();
 	return Effect.gen(function* () {
-		const session = yield* Session.create({ directory: input.root });
+		// The session is placed in the project under test. Since the config pass runs against the
+		// settings *that session* reads, a session with no host directory would load the project's
+		// plugins into the pool at boot and then select none of them.
+		const session = yield* Session.create({ directory: input.root, hostDir: input.cwd ?? input.root });
 		yield* session.run(input.prompt ?? "hello");
 		// Read inside the scope: the memory database closes with the layer.
 		const path = yield* session.path();

@@ -1,0 +1,20 @@
+import { Ref } from "effect";
+import type { PluginRef, Pool } from "../../src/plugin/catalog.ts";
+import type { Plugin } from "../../src/plugin/plugin.ts";
+
+/**
+ * A loaded pool holding exactly these plugins, and references that select all of them in order.
+ *
+ * `State.layer` takes the two separately because they refresh at different rates -- the pool at
+ * boot and at reload, the references at every exchange. A test that only wants "run these plugins"
+ * needs neither distinction, so this collapses them.
+ */
+export const pooled = (plugins: ReadonlyArray<Plugin>) => {
+	const pool: Pool = {
+		plugins: new Map(plugins.map((plugin) => [plugin.id, plugin])),
+		aliases: new Map(plugins.map((plugin) => [plugin.id, plugin.id])),
+		versions: new Map(),
+	};
+	const references: ReadonlyArray<PluginRef> = plugins.map((plugin) => plugin.id);
+	return { ref: Ref.makeUnsafe(pool), references: () => references };
+};

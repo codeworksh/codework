@@ -26,28 +26,6 @@ export interface Prepared {
 	readonly plugin: Plugin;
 	readonly options: PluginOptions;
 }
-export interface Catalog {
-	readonly add: (plugin: Plugin, source?: string, version?: string) => void;
-	readonly get: (id: string) => Plugin | undefined;
-	readonly has: (id: string) => boolean;
-}
-
-/** Catalogs belong to one harness configuration. Definitions never execute here. */
-export const make = (): Catalog => {
-	const entries = new Map<string, { plugin: Plugin; source?: string; version?: string }>();
-	return {
-		add: (plugin, source, version) => {
-			entries.set(plugin.id, {
-				plugin,
-				...(source === undefined ? {} : { source }),
-				...(version === undefined ? {} : { version }),
-			});
-		},
-		get: (id) => entries.get(id)?.plugin,
-		has: (id) => entries.has(id),
-	};
-};
-
 export interface Options extends Loader.Options {
 	readonly builtins: ReadonlyArray<Plugin>;
 }
@@ -64,45 +42,130 @@ const isPatch = (reference: PluginRef): reference is PluginPatch =>
 	("plugin" in reference || "package" in reference);
 
 /**
- * Resolve every reference to the ordered selection the harness runs.
+ * Everything that has been loaded, and every string that addresses it.
+ *
+ * This is what the **load pass** produces and the **config pass** consumes. Built-ins are in it
+ * from the start: they are objects the harness already holds, with no spec, digest or generation,
+ * and from here the config pass cannot tell them apart from a loaded package -- which is what lets
+ * `{ "plugin": "codework.tool.bash", "enabled": false }` go through the same code path as
+ * disabling anything else.
+ */
+export interface Pool {
+	/** By plugin ID. An ID is a key: the last module to claim it owns it. */
+	readonly plugins: ReadonlyMap<string, Plugin>;
+	/** Every string a loaded module answers to -- its reference, spec, path, package name -- to its ID. */
+	readonly aliases: ReadonlyMap<string, string>;
+	/** By ID, for diagnostics. Absent for a built-in and for a local source. */
+	readonly versions: ReadonlyMap<string, string>;
+}
+
+const emptyPool: Pool = { plugins: new Map(), aliases: new Map(), versions: new Map() };
+
+/**
+ * The **load pass**: store lookup and ESM import, never the network.
+ *
+ * Runs at boot, at `reload`, and at any exchange that finds a reference it cannot satisfy. It
+ * deliberately knows nothing about `enabled`, options or order -- those are data over modules that
+ * are already loaded, they cost a walk of a short array, and they belong to every exchange.
+ *
+ * Loading is keyed by what a reference resolves to, so naming one module twice imports it once.
+ */
+export const load = Effect.fn("PluginCatalog.load")(function* (references: ReadonlyArray<PluginRef>, options: Options) {
+	const plugins = new Map<string, Plugin>();
+	const aliases = new Map<string, string>();
+	const versions = new Map<string, string>();
+	const seen = new Map<string, string>();
+
+	const remember = (plugin: Plugin, names: ReadonlyArray<string>, version?: string) => {
+		plugins.set(plugin.id, plugin);
+		aliases.set(plugin.id, plugin.id);
+		for (const name of names) aliases.set(name, plugin.id);
+		if (version !== undefined) versions.set(plugin.id, version);
+	};
+
+	/** Source metadata exists for diagnostics; a silent ID replacement is where it earns that. */
+	const note = (plugin: Plugin, source: string) =>
+		plugins.has(plugin.id)
+			? Effect.logDebug(`plugin ${plugin.id} redefined by ${source}; the earlier definition is discarded`)
+			: Effect.void;
+
+	for (const builtin of options.builtins) {
+		const plugin = yield* Loader.validate(builtin, { index: -1, reference: builtin.id }, true);
+		remember(plugin, []);
+	}
+
+	for (const [index, reference] of references.entries()) {
+		if (isPatch(reference)) continue; // configuration loads nothing.
+
+		// An entry reaching here is unvalidated and may be anything a JavaScript caller passed,
+		// including `null`: read an `id` off it only once it is known to have properties, or
+		// `PreparationError.reference` throws instead of reporting the bad entry.
+		const declared =
+			typeof reference === "string" ? reference : Predicate.hasProperty(reference, "id") ? reference.id : undefined;
+		const origin = { index, reference: typeof declared === "string" ? declared : `<plugin object #${index}>` };
+
+		if (typeof reference !== "string") {
+			// The very definition the pool already holds -- a built-in named by the default
+			// selection. Selecting one is not redefining it, so the reserved namespace stands.
+			if (typeof declared === "string" && plugins.get(declared) === reference) continue;
+			const plugin = yield* Loader.validate(reference, origin);
+			yield* note(plugin, "a supplied object");
+			remember(plugin, []);
+			continue;
+		}
+
+		const target = yield* PluginSource.parse(reference, options.hostDir).pipe(
+			Effect.mapError((cause) => Loader.failure(origin, "source", cause)),
+		);
+		const key = target.kind === "local" ? target.path : target.spec;
+		const already = seen.get(key);
+		if (already !== undefined) {
+			aliases.set(reference, already);
+			continue;
+		}
+		const definition = yield* Loader.load(target, origin, options);
+		yield* note(definition.plugin, definition.version === undefined ? key : `${key}@${definition.version}`);
+		// `package` configuration matches the registered module string. Keep its canonical name
+		// and spec, or its local path, too, so a versioned entry can be configured without
+		// repeating the version and a relative path stays anchored consistently.
+		const names =
+			target.kind === "local"
+				? [target.path, ...(definition.name === undefined ? [] : [definition.name])]
+				: [PluginSource.canonical(target), target.spec];
+		remember(definition.plugin, [reference, ...names], definition.version);
+		seen.set(key, definition.plugin.id);
+	}
+
+	return { plugins, aliases, versions } satisfies Pool;
+});
+
+/** What the config pass could not satisfy, for §12.5's drift report. */
+export interface Selected {
+	readonly selection: ReadonlyArray<Prepared>;
+	/** References naming a module the pool does not hold. Reported, never fetched. */
+	readonly missing: ReadonlyArray<string>;
+}
+
+/**
+ * The **config pass**: pure data over modules that are already loaded, run at every exchange.
  *
  * An array entry is a **module** — a definition object, a path, a `file:` URL, or a package
- * spec. It is loaded if it is not already, and it takes the position it is written at, so
- * naming a module again moves it.
+ * spec. It takes the position it is written at, so naming a module again moves it.
  *
  * An object entry is **configuration** for a plugin an earlier entry (or the built-in list)
  * already selected, addressed by its ID (`plugin`) or the module string (`package`) that selected
  * it. It never loads, installs or reorders anything, and a name matching nothing in the selection
  * is ignored rather than failing the boot — a typo costs a debug line, never a fetch.
+ *
+ * Nothing here touches the disk, which is the whole point of the split: an `options` edit, an
+ * `enabled` flip or a reordering applies at the next exchange without importing anything.
  */
-export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
-	references: ReadonlyArray<PluginRef>,
-	options: Options,
-) {
-	const catalog = make();
-	const hostDir = options.hostDir;
-	for (const builtin of options.builtins) {
-		catalog.add(yield* Loader.validate(builtin, { index: -1, reference: builtin.id }, true), "builtin");
-	}
-	/** Source metadata exists for diagnostics; a silent ID replacement is where it earns that. */
-	const note = (plugin: Plugin, source: string) =>
-		catalog.has(plugin.id)
-			? Effect.logDebug(`plugin ${plugin.id} redefined by ${source}; the earlier definition is discarded`)
-			: Effect.void;
-	/**
-	 * Every string a loaded module was registered under, pointing at its ID. Built as the list is
-	 * walked, so a `package` entry can only address a module an earlier entry loaded.
-	 */
-	const aliases = new Map<string, string>();
-	const operations = new Map<string, { enabled: boolean; origin: Loader.Origin; options: PluginOptions }>();
-	const loaded = new Map<string, Loader.Loaded>();
-	/**
-	 * An ID is a key: the last module to claim it owns it, and the configuration written against
-	 * it stays with the key rather than with whichever module is currently behind it. Two modules
-	 * exporting one ID is the author's conflict to resolve; the replacement is logged.
-	 */
-	const select = (id: string, origin: Loader.Origin) =>
-		operations.set(id, { enabled: true, origin, options: operations.get(id)?.options ?? {} });
+export const select = Effect.fn("PluginCatalog.select")(function* (references: ReadonlyArray<PluginRef>, pool: Pool) {
+	const operations = new Map<string, { enabled: boolean; index: number; options: PluginOptions }>();
+	const missing: string[] = [];
+	const choose = (id: string, index: number) =>
+		operations.set(id, { enabled: true, index, options: operations.get(id)?.options ?? {} });
+
 	for (const [index, reference] of references.entries()) {
 		if (isPatch(reference)) {
 			// A settings file is decoded before it reaches here; an embedder's array is not, so the
@@ -123,7 +186,7 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 			if (invalid !== undefined) {
 				return yield* Loader.failure(origin, "definition", new Error(`plugin entry ${invalid}`));
 			}
-			const id = reference.plugin === undefined ? aliases.get(reference.package) : reference.plugin;
+			const id = reference.plugin === undefined ? pool.aliases.get(reference.package) : reference.plugin;
 			const operation = id === undefined ? undefined : operations.get(id);
 			if (id === undefined || operation === undefined) {
 				// Misspelled, not installed, or not shipped by this build: there is nothing to
@@ -134,58 +197,32 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 			operations.set(id, {
 				enabled: reference.enabled ?? operation.enabled,
 				// Position stays with the entry that selected it: configuring never moves a plugin.
-				origin: operation.origin,
+				index: operation.index,
 				// The block is opaque, so the last entry owns it whole rather than merging into
 				// values the harness cannot interpret.
 				options: reference.options ?? operation.options,
 			});
 			continue;
 		}
-		// An entry reaching here is unvalidated and may be anything a JavaScript caller passed,
-		// including `null`: read an `id` off it only once it is known to have properties, or
-		// `PreparationError.reference` throws instead of reporting the bad entry.
-		const declared =
-			typeof reference === "string" ? reference : Predicate.hasProperty(reference, "id") ? reference.id : undefined;
-		const origin = { index, reference: typeof declared === "string" ? declared : `<plugin object #${index}>` };
+
 		if (typeof reference !== "string") {
-			// The very definition the catalog already holds — a built-in named by the default
-			// selection. Selecting one is not redefining it, so the reserved namespace stands.
-			if (typeof declared === "string" && catalog.get(declared) === reference) {
-				select(declared, origin);
-				continue;
-			}
-			const plugin = yield* Loader.validate(reference, origin);
-			yield* note(plugin, "a supplied object");
-			catalog.add(plugin, "object");
-			select(plugin.id, origin);
+			const declared = Predicate.hasProperty(reference, "id") ? reference.id : undefined;
+			if (typeof declared === "string" && pool.plugins.has(declared)) choose(declared, index);
 			continue;
 		}
-		const target = yield* PluginSource.parse(reference, hostDir).pipe(
-			Effect.mapError((cause) => Loader.failure(origin, "source", cause)),
-		);
-		const key = target.kind === "local" ? target.path : target.spec;
-		const definition = loaded.get(key) ?? (yield* Loader.load(target, origin, options));
-		loaded.set(key, definition);
-		yield* note(definition.plugin, definition.version === undefined ? key : `${key}@${definition.version}`);
-		catalog.add(definition.plugin, definition.source, definition.version);
-		// `package` configuration matches the registered module string. Keep its canonical name
-		// and spec, or its local path, too, so a versioned entry can be configured without
-		// repeating the version and a relative path stays anchored consistently.
-		const names =
-			target.kind === "local"
-				? [target.path, ...(definition.name === undefined ? [] : [definition.name])]
-				: [PluginSource.canonical(target), target.spec];
-		for (const name of [reference, ...names]) aliases.set(name, definition.plugin.id);
-		select(definition.plugin.id, origin);
+		const id = pool.aliases.get(reference);
+		// The one case the pass cannot satisfy, which is what makes drift free to report: the
+		// entry is there, the module is not, and nothing here will fetch it.
+		if (id === undefined) missing.push(reference);
+		else choose(id, index);
 	}
+
 	const selection: Array<Prepared & { readonly index: number }> = [];
 	for (const [id, operation] of operations) {
-		// Disabled by a configuration entry. Every other operation was recorded beside the
-		// `catalog.add` that registered its definition, so the lookup below cannot miss.
 		if (!operation.enabled) continue;
-		const plugin = catalog.get(id);
+		const plugin = pool.plugins.get(id);
 		if (plugin !== undefined) {
-			selection.push({ plugin, options: Object.freeze(operation.options), index: operation.origin.index });
+			selection.push({ plugin, options: Object.freeze(operation.options), index: operation.index });
 		}
 	}
 	// Domain first, then where the entry was written. Comparing the index explicitly rather than
@@ -193,5 +230,19 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 	// domain -- a plugin patching another's tool, or appending to the prompt it rendered -- still
 	// depends on the order those entries were written in.
 	selection.sort((a, b) => rank(a.plugin.kind) - rank(b.plugin.kind) || a.index - b.index);
-	return Object.freeze(selection.map(({ plugin, options }) => ({ plugin, options }) satisfies Prepared));
+	return {
+		selection: Object.freeze(selection.map(({ plugin, options }) => ({ plugin, options }) satisfies Prepared)),
+		missing,
+	} satisfies Selected;
 });
+
+/** Both passes, for a caller that wants the selection and has no reason to hold the pool. */
+export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
+	references: ReadonlyArray<PluginRef>,
+	options: Options,
+) {
+	const pool = yield* load(references, options);
+	return (yield* select(references, pool)).selection;
+});
+
+export { emptyPool };

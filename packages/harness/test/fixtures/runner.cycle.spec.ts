@@ -27,6 +27,7 @@ import type { SessionSchema } from "../../src/session/schema.ts";
 import { Session } from "../../src/session/session.ts";
 import { builtins } from "../../src/plugin/builtin.ts";
 import { State } from "../../src/state/state.ts";
+import { pooled } from "./pool.ts";
 
 const database = Database.layer(":memory:");
 const vercel = VercelSandboxDriver.make();
@@ -37,12 +38,7 @@ const sandbox = SandboxController.layer().pipe(
 const runtime = (root: string, custom: string) =>
 	Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer()))),
-		Layer.provideMerge(
-			State.layer(
-				{},
-				builtins.map((plugin) => ({ plugin, options: {} })),
-			),
-		),
+		Layer.provideMerge(((seeded) => State.layer({}, seeded.ref, seeded.references))(pooled(builtins))),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Settings.layer({ userConfigDir: custom }).pipe(

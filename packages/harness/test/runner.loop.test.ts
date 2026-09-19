@@ -26,6 +26,7 @@ import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { SessionRuntime } from "../src/session/runtime.ts";
 import { State } from "../src/state/state.ts";
+import { pooled } from "./fixtures/pool.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { assistant, immediateOpen } from "./fixtures/llm.ts";
 import { seedSpace } from "./fixtures/space.ts";
@@ -48,9 +49,8 @@ const runtime = (
 	return Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
 		Layer.provideMerge(
-			State.layer(
-				options.state ?? {},
-				(options.plugins ?? plugins).map((plugin) => ({ plugin, options: {} })),
+			((seeded) => State.layer(options.state ?? {}, seeded.ref, seeded.references))(
+				pooled(options.plugins ?? plugins),
 			),
 		),
 		Layer.provideMerge(SessionRuntime.layer),
