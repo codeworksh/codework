@@ -241,7 +241,6 @@ describe("third-party plugins", () => {
 				prepare([...builtins, ...config.plugins], {
 					builtins,
 					cache: join(root, "cache"),
-					home: global,
 					hostDir: root,
 					install: (target) => {
 						specs.push(target.spec);
@@ -315,7 +314,6 @@ describe("third-party plugins", () => {
 			prepare([pluginPath("tool/acme-echo"), `file://${pluginPath("prompt/acme-prompt.ts")}`], {
 				builtins: [],
 				cache: "/unused",
-				home: "/unused-home",
 				hostDir: "/project",
 			}),
 		);
@@ -327,7 +325,6 @@ describe("third-party plugins", () => {
 			prepare([pluginPath("host/acme-broken.ts")], {
 				builtins: [],
 				cache: "/unused",
-				home: "/unused-home",
 				hostDir: "/project",
 			}).pipe(Effect.flip),
 		);
@@ -436,7 +433,6 @@ describe("third-party plugins", () => {
 				}).pipe(
 					Effect.provide(
 						Harness.layer({
-							home: join(root, "home"),
 							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
@@ -466,7 +462,6 @@ describe("third-party plugins", () => {
 				}).pipe(
 					Effect.provide(
 						Harness.layer({
-							home: join(root, "home"),
 							hostCwd: root,
 							database: ":memory:",
 							llm: (request, signal) => {
@@ -496,7 +491,6 @@ describe("third-party plugins", () => {
 				}).pipe(
 					Effect.provide(
 						Harness.layer({
-							home: join(root, "home"),
 							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
@@ -520,7 +514,6 @@ describe("third-party plugins", () => {
 				}).pipe(
 					Effect.provide(
 						Harness.layer({
-							home: join(root, "home"),
 							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
@@ -568,7 +561,6 @@ describe("third-party plugins", () => {
 				}).pipe(
 					Effect.provide(
 						Harness.layer({
-							home: join(root, "home"),
 							hostCwd: root,
 							database: ":memory:",
 							llm: (request, signal) => {

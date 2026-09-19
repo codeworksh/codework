@@ -18,7 +18,7 @@ export default Runtime.handler(
 			// Both the module entry and any configuration written against it: the package it was
 			// added as, the path or version it was written with, and the ID it declares all name
 			// the one plugin being removed.
-			const entries = yield* identify(plugins, target.path, paths.cache, paths.home);
+			const entries = yield* identify(plugins, target.path, paths.cache);
 			const selected = matching(entries, yield* spellings(reference, path.resolve(".")));
 			const kept = entries.filter((entry) => !selected.has(entry)).map((entry) => entry.value);
 			if (kept.length === plugins.length) {

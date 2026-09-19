@@ -3,9 +3,9 @@ export type { Config, Events, PromptResolver, SharedPluginContext } from "./cont
 export { InstallError, SourceError, StoreError } from "./error.ts";
 export { SetupError } from "./host.ts";
 export { canonical, inspect, PreparationError } from "./loader.ts";
-export { resolveCached } from "./package.ts";
 export { define, type Mount, type Plugin } from "./plugin.ts";
 export * as Prompt from "./prompt/schema.ts";
 export type { PluginRegistry } from "./registry.ts";
-export { parse, type Target } from "./source.ts";
+export { parse, type Fetchable, type Target } from "./source.ts";
+export { type Entry, required as resolveCached } from "./store.ts";
 export * as Tool from "./tool/schema.ts";

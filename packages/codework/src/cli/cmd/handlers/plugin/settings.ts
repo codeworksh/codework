@@ -81,7 +81,6 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 	plugins: ReadonlyArray<unknown>,
 	file: string,
 	cache: string,
-	home: string,
 ) {
 	const nodePath = yield* Path.Path;
 	const directory = nodePath.dirname(file);
@@ -95,7 +94,6 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 			for (const alias of yield* aliases(module, directory)) answers.add(alias);
 			const declared = yield* Plugin.inspect(module, {
 				cache,
-				home,
 				hostDir: directory,
 				install: Plugin.resolveCached,
 			}).pipe(Effect.option);

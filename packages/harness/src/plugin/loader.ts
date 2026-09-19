@@ -4,9 +4,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { domains, type PluginKind } from "./plugin.ts";
 import { importModule, resolveModule } from "../util/module.ts";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
-import type { InstallError, SourceError, StoreError } from "./error.ts";
-import * as Package from "./package.ts";
+import { InstallError, type SourceError, type StoreError } from "./error.ts";
+import { url } from "./npm.ts";
 import { canonical as canonicalOf, type Fetchable, parse, type Target } from "./source.ts";
+import * as Store from "./store.ts";
 import type { EventSchema } from "../event/schema.ts";
 import type { Plugin } from "./plugin.ts";
 
@@ -96,17 +97,81 @@ const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string,
 
 export interface Options {
 	readonly cache: string;
-	/** Where `--home` points, which the npm cache lives under. */
-	readonly home: string;
 	/** The host directory a relative reference anchors to. Never read here. */
 	readonly hostDir: string;
 	readonly import?: (url: string) => Promise<unknown>;
-	readonly install?: (
-		target: Fetchable,
-		cache: string,
-		home: string,
-	) => Effect.Effect<Package.Installed, InstallError | StoreError>;
+	/**
+	 * How a package reaches the disk. The default installs; `plugin remove` passes a resolve-only
+	 * one so it can identify an entry without fetching anything.
+	 */
+	readonly install?: (target: Fetchable, cache: string) => Effect.Effect<Installed, InstallError | StoreError>;
 }
+
+/** Enough of a store entry to import it. */
+export interface Installed {
+	readonly url: string;
+	readonly version?: string | undefined;
+	/**
+	 * Set when the installer already imported and checked the module -- which the default one
+	 * does, because the store validates a staged artifact before publishing it (§7.7). Carrying
+	 * the result back means it is not imported a second time from the published path.
+	 */
+	readonly plugin?: Plugin | undefined;
+}
+
+/**
+ * Install a package into the store, importing and validating it **while it is still staged**.
+ *
+ * The validation is passed down rather than done afterwards for one reason: the store publishes by
+ * rename, so a package that turns out not to be a plugin must be rejected before it is published.
+ * Publishing first would make the broken generation the newest marked one, which `resolve` returns
+ * forever after -- and re-running `add` would hit the fast path and return it again.
+ */
+const install = Effect.fn("PluginLoader.install")(function* (
+	target: Fetchable,
+	cache: string,
+	origin: Origin,
+	options: Options,
+) {
+	const added = yield* Store.add(target, cache, {
+		validate: (fetched) =>
+			imported(url(fetched.entrypoint), origin, options).pipe(
+				Effect.mapError(
+					(cause) =>
+						new InstallError({
+							reason: "plugin-no-entrypoint",
+							reference: target.spec,
+							message: `${target.spec} is not a plugin`,
+							cause,
+						}),
+				),
+			),
+	});
+	return {
+		url: added.entry.url,
+		...(added.entry.version === undefined ? {} : { version: added.entry.version }),
+		...(added.validated === undefined ? {} : { plugin: added.validated }),
+	} satisfies Installed;
+});
+
+/** The default installer, or the one the caller injected. */
+const installer = (
+	target: Fetchable,
+	origin: Origin,
+	options: Options,
+): Effect.Effect<Installed, InstallError | StoreError | PreparationError> =>
+	options.install === undefined
+		? install(target, options.cache, origin, options)
+		: options.install(target, options.cache);
+
+/** Import a module and confirm it default-exports a plugin. */
+const imported = Effect.fn("PluginLoader.imported")(function* (url: string, origin: Origin, options: Options) {
+	const module = yield* Effect.tryPromise({
+		try: () => (options.import ?? importModule)(url),
+		catch: (cause) => failure(origin, "import", cause),
+	});
+	return yield* validate(Predicate.isObject(module) && "default" in module ? module.default : undefined, origin);
+});
 
 export interface Loaded {
 	readonly plugin: Plugin;
@@ -146,17 +211,15 @@ export const load = Effect.fn("PluginLoader.load")(function* (target: Target, or
 						Schema.is(PreparationError)(cause) ? cause : failure(origin, "source", cause),
 					),
 				)
-			: yield* (options.install ?? Package.install)(target, options.cache, options.home).pipe(
-					Effect.mapError((cause) => failure(origin, "install", cause)),
+			: yield* installer(target, origin, options).pipe(
+					Effect.mapError((cause) =>
+						Schema.is(PreparationError)(cause) ? cause : failure(origin, "install", cause),
+					),
 				);
-	const module = yield* Effect.tryPromise({
-		try: () => (options.import ?? importModule)(installed.url),
-		catch: (cause) => failure(origin, "import", cause),
-	});
-	const plugin = yield* validate(
-		Predicate.isObject(module) && "default" in module ? module.default : undefined,
-		origin,
-	);
+	// Already checked while staged, in the common case; a local source and an injected installer
+	// still have to be imported here.
+	const checked = "plugin" in installed ? installed.plugin : undefined;
+	const plugin = checked ?? (yield* imported(installed.url, origin, options));
 	return {
 		plugin,
 		source: origin.reference,

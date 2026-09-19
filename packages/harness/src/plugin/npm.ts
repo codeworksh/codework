@@ -68,10 +68,12 @@ const Lockfile = Schema.Struct({
  * token in its own `.npmrc` cannot install its own plugin otherwise.
  *
  * `--cache` is ours and is passed on `argv`, which outranks every `.npmrc`. npm's `flatten`
- * derives `_cacache`, `_npx` and `_tuf` from it, so naming the parent is enough and writing into
- * the user's `~/.npm` is not something we do by accident.
+ * derives `_cacache`, `_npx` and `_tuf` from that one value, so naming the parent is enough --
+ * and overriding `flat.cache` afterwards would redirect one of the three and leave `_tuf` pointing
+ * at the user's home. `--home` exists to make a run self-contained; anything reached by an ambient
+ * default is a test reading the developer's real machine.
  */
-export const options = (dir: string, home: string): Effect.Effect<Record<string, unknown>> =>
+export const options = (dir: string, cache: string): Effect.Effect<Record<string, unknown>> =>
 	Effect.tryPromise(async () => {
 		const { default: Config } = await import("@npmcli/config");
 		const { definitions, flatten, nerfDarts, shorthands } = (await import("@npmcli/config/lib/definitions/index.js"))
@@ -80,7 +82,7 @@ export const options = (dir: string, home: string): Effect.Effect<Record<string,
 			npmPath: fileURLToPath(new URL("..", import.meta.url)),
 			cwd: dir,
 			env: { ...process.env },
-			argv: [process.execPath, process.execPath, "--prefix", dir, "--cache", path.join(home, "cache", "npm")],
+			argv: [process.execPath, process.execPath, "--prefix", dir, "--cache", path.join(cache, "npm")],
 			execPath: process.execPath,
 			platform: process.platform,
 			definitions,
@@ -195,11 +197,11 @@ interface Tree {
 export type Runner = (input: {
 	readonly target: Fetchable;
 	readonly into: string;
-	readonly home: string;
+	readonly cache: string;
 }) => Effect.Effect<Tree, InstallError>;
 
-export const reify: Runner = Effect.fn("PluginNpm.reify")(function* ({ target, into, home }) {
-	const flat = yield* options(into, home);
+export const reify: Runner = Effect.fn("PluginNpm.reify")(function* ({ target, into, cache }) {
+	const flat = yield* options(into, cache);
 	const { Arborist } = yield* Effect.promise(() => import("@npmcli/arborist"));
 	const settings = {
 		...flat,
@@ -241,7 +243,7 @@ export const reify: Runner = Effect.fn("PluginNpm.reify")(function* ({ target, i
 export const download = Effect.fn("PluginNpm.download")(function* (
 	target: Target,
 	into: string,
-	home: string,
+	cache: string,
 	runner: Runner = reify,
 ) {
 	if (target.kind === "local") {
@@ -272,7 +274,7 @@ export const download = Effect.fn("PluginNpm.download")(function* (
 				}),
 		),
 	);
-	const tree = yield* runner({ target, into: root, home });
+	const tree = yield* runner({ target, into: root, cache });
 	// What was actually added, named by the tree rather than inferred from the spec.
 	const node = tree.edgesOut.values().next().value?.to;
 	if (node === undefined) {
@@ -320,9 +322,9 @@ const noCommit = (spec: string) =>
  * metadata cache, and a staleness check that reads a cache is not a staleness check. An immutable
  * target skips the call entirely -- a version and a SHA cannot move.
  */
-export const probe = Effect.fn("PluginNpm.probe")(function* (target: Target, home: string) {
+export const probe = Effect.fn("PluginNpm.probe")(function* (target: Target, cache: string) {
 	if (target.kind === "local" || !target.mutable) return undefined;
-	const flat = yield* options(home, home);
+	const flat = yield* options(cache, cache);
 	// `_isRoot` is what `allowGit: "root"` keys on: this spec is the one the person asked about,
 	// not a dependency of something else.
 	const opts = { ...flat, preferOnline: true, noGitRevCache: true, _isRoot: true };

@@ -3,7 +3,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { download, probe } from "../src/plugin/npm.ts";
+import { add, resolve } from "../src/plugin/store.ts";
 import { parse, type Fetchable } from "../src/plugin/source.ts";
 
 /*
@@ -97,6 +100,25 @@ describe("the npm toolchain, against the real registry", () => {
 				Effect.flip(download(fetchable("@codeworksh/definitely-not-a-real-plugin@1.0.0"), into, home)),
 			);
 			expect(failure.reason).toBe("plugin-fetch-failed");
+		}),
+	);
+});
+
+describe("the store, against the real registry", () => {
+	it("installs, publishes and resolves a real package end to end", { timeout: 180_000 }, async () =>
+		withStaging(async ({ home }) => {
+			const target = fetchable("is-number@7.0.0");
+			const added = await Effect.runPromise(add(target, home, { validate: () => Effect.succeed("ok" as const) }));
+			expect(added.entry.version).toBe("7.0.0");
+			expect(added.validated).toBe("ok");
+			expect(existsSync(fileURLToPath(added.entry.url))).toBe(true);
+
+			// Filed, so the next lookup needs neither the lock nor the network.
+			const found = await Effect.runPromise(resolve(target, home));
+			expect(found?.url).toBe(added.entry.url);
+
+			// And the tarball landed in our npm cache, not the developer's `~/.npm`.
+			expect(existsSync(join(home, "npm", "_cacache"))).toBe(true);
 		}),
 	);
 });

@@ -42,6 +42,9 @@ const withProject = (body: (project: { root: string; home: string; run: Run }) =
 };
 type Run = (...args: ReadonlyArray<string>) => SpawnSyncReturns<string>;
 
+/** A fixed generation number, so a published fixture is byte-identical between runs. */
+const GENERATION = 1789564800000;
+
 /** The one project settings file: `<root>/.codework/settings.jsonc`. */
 const settings = (root: string) => join(root, ".codework", "settings.jsonc");
 
@@ -127,7 +130,17 @@ describe("codework plugin add/remove", () => {
 	it("removes a cached registry package by its declared ID without fetching", () =>
 		withProject(({ root, home, run }) => {
 			const spec = "fixture-codework-plugin@1.2.0";
-			const directory = join(home, "cache", "plugins", createHash("sha256").update(spec).digest("hex"));
+			// A published store entry, laid out the way the store lays one out: slug, full
+			// digest, then a generation whose marker is what makes it exist.
+			const directory = join(
+				home,
+				"cache",
+				"plugins",
+				"v1",
+				"fixture-codework-plugin",
+				createHash("sha256").update(spec).digest("hex"),
+				String(GENERATION),
+			);
 			mkdirSync(directory, { recursive: true });
 			writeFileSync(
 				join(directory, "index.mjs"),
@@ -135,7 +148,13 @@ describe("codework plugin add/remove", () => {
 			);
 			writeFileSync(
 				join(directory, ".complete.json"),
-				JSON.stringify({ spec, version: "1.2.0", entrypoint: "index.mjs" }),
+				JSON.stringify({
+					spec,
+					name: "fixture-codework-plugin",
+					version: "1.2.0",
+					entrypoint: "index.mjs",
+					createdAt: GENERATION,
+				}),
 			);
 			writeFileSync(
 				settings(root),
@@ -155,12 +174,26 @@ describe("codework plugin add/remove", () => {
 			// last and discards the first, so the file would say one thing and the run do another.
 			const publish = (version: string, id: string) => {
 				const spec = `fixture-codework-plugin@${version}`;
-				const directory = join(home, "cache", "plugins", createHash("sha256").update(spec).digest("hex"));
+				const directory = join(
+					home,
+					"cache",
+					"plugins",
+					"v1",
+					"fixture-codework-plugin",
+					createHash("sha256").update(spec).digest("hex"),
+					String(GENERATION),
+				);
 				mkdirSync(directory, { recursive: true });
 				writeFileSync(join(directory, "index.mjs"), `export default { id: '${id}', kind: 'tool', setup() {} }`);
 				writeFileSync(
 					join(directory, ".complete.json"),
-					JSON.stringify({ spec, version, entrypoint: "index.mjs" }),
+					JSON.stringify({
+						spec,
+						name: "fixture-codework-plugin",
+						version,
+						entrypoint: "index.mjs",
+						createdAt: GENERATION,
+					}),
 				);
 				return spec;
 			};

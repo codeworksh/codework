@@ -1,29 +1,23 @@
-import { Deferred, Effect, Exit, Fiber } from "effect";
-import { createHash } from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
-import { mkdtemp, mkdir, writeFile, rm, readdir, symlink, utimes } from "node:fs/promises";
+import { Effect } from "effect";
+import { realpathSync } from "node:fs";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, relative } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { prepare, type Options, type PluginRef, type Prepared } from "../src/plugin/catalog.ts";
-import { InstallError } from "../src/plugin/error.ts";
 import { canonical, validate } from "../src/plugin/loader.ts";
-import type { Runner } from "../src/plugin/npm.ts";
-import { install } from "../src/plugin/package.ts";
 import { canonical as canonicalOf, type Fetchable, parse, type Target } from "../src/plugin/source.ts";
 import { define } from "../src/plugin/plugin.ts";
 
 const a = define({ id: "acme.tool.a", kind: "tool", setup: () => {} });
 const b = define({ id: "acme.tool.b", kind: "tool", setup: () => {} });
-const options: Options = { builtins: [], cache: "/unused", home: "/unused-home", hostDir: "/project" };
+const options: Options = { builtins: [], cache: "/unused", hostDir: "/project" };
 
 /** `parse` is pure behind its Effect, so a test can read the Target out directly. */
 const target = (spec: string, from = "/project"): Target => Effect.runSync(parse(spec, from));
 const fetchable = (spec: string) => target(spec) as Exclude<Target, { kind: "local" }>;
 const named = (spec: string, from = "/project") => Effect.runSync(canonical(spec, from));
-/** Where the npm cache would live. The fixture runner never reaches for it. */
-const home = "/unused-home";
 /** `prepare` pairs each selected plugin with its configuration; most assertions want the plugins. */
 const selected = (list: ReadonlyArray<Prepared>) => list.map((entry) => entry.plugin);
 const run = (references: ReadonlyArray<PluginRef>, overrides: Partial<Options> = {}) =>
@@ -36,40 +30,6 @@ const withDirectory = async (body: (directory: string) => Promise<void>) => {
 		await rm(directory, { recursive: true, force: true });
 	}
 };
-/**
- * Stands in for arborist: writes a package into the staging directory and reports the tree
- * arborist would have returned. No test reaches the network.
- */
-const fixture: Runner = ({ target, into }) =>
-	Effect.tryPromise({
-		try: async () => {
-			const name = target.kind === "registry" ? target.name : target.slug;
-			const root = join(into, "node_modules", name);
-			await mkdir(root, { recursive: true });
-			await writeFile(
-				join(root, "package.json"),
-				JSON.stringify({
-					name,
-					version: target.spec.endsWith("2.0.0") ? "2.0.0" : "1.0.0",
-					type: "module",
-					exports: "./index.js",
-				}),
-			);
-			await writeFile(
-				join(root, "index.js"),
-				"export default { id: 'acme.tool.fixture', kind: 'tool', setup() {} }",
-			);
-			return { edgesOut: new Map([[name, { to: { name, path: root } }]]) };
-		},
-		catch: (cause) =>
-			new InstallError({
-				reason: "plugin-fetch-failed",
-				reference: target.spec,
-				message: "fixture install failed",
-				cause,
-			}),
-	});
-
 describe("plugin catalog and source resolution", () => {
 	it("reduces every spelling of one module to a single canonical name", () => {
 		// What `plugin add` records and what `plugin remove` is given are rarely the same string:
@@ -491,128 +451,6 @@ describe("plugin catalog and source resolution", () => {
 			const error = await Effect.runPromise(prepare([pkg], options).pipe(Effect.flip));
 			expect(error).toMatchObject({ _tag: "PluginPreparationError", phase: "source" });
 			expect(String(error.cause)).toContain("escapes its root");
-		}));
-	it("stages installs, reuses complete cache and isolates explicit versions", () =>
-		withDirectory(async (cache) => {
-			let runs = 0;
-			const runner: Runner = (input) => {
-				runs++;
-				return fixture(input);
-			};
-			const first = await Effect.runPromise(install(fetchable("fixture@1.0.0"), cache, home, runner));
-			const again = await Effect.runPromise(install(fetchable("fixture@1.0.0"), cache, home, runner));
-			const second = await Effect.runPromise(install(fetchable("fixture@2.0.0"), cache, home, runner));
-			expect(first).toEqual(again);
-			expect(first.version).toBe("1.0.0");
-			expect(second.version).toBe("2.0.0");
-			expect(first.url).not.toBe(second.url);
-			expect(runs).toBe(2);
-			expect(first.url).toContain("/plugins/");
-			expect(await readdir(cache)).toEqual(["plugins"]);
-		}));
-	it("records an entrypoint inside the published installation", () =>
-		withDirectory(async (cache) => {
-			// Node resolution realpaths its answer while the staging directory is not
-			// realpathed, so a symlinked cache root used to record a path outside the entry.
-			const installed = await Effect.runPromise(install(fetchable("fixture"), cache, home, fixture));
-			const file = fileURLToPath(installed.url);
-			expect(existsSync(file)).toBe(true);
-			expect(relative(join(cache, "plugins"), file).startsWith("..")).toBe(false);
-		}));
-	it("reads a complete cache without waiting on a leftover lock", () =>
-		withDirectory(async (cache) => {
-			const first = await Effect.runPromise(install(fetchable("fixture"), cache, home, fixture));
-			// A killed installer leaves its lock directory behind; a cache hit must not block on it.
-			const stale = (await readdir(join(cache, "plugins"))).map((entry) => join(cache, "plugins", `${entry}.lock`));
-			await Promise.all(stale.map((lock) => mkdir(lock, { recursive: true })));
-			expect(
-				await Effect.runPromise(
-					install(fetchable("fixture"), cache, home, fixture).pipe(Effect.timeout("2 seconds"), Effect.orDie),
-				),
-			).toEqual(first);
-		}));
-	it("reclaims a lock abandoned by a crashed installer instead of timing out", () =>
-		withDirectory(async (cache) => {
-			// The crash left a lock but no published entry, so the only way forward is to take
-			// the lock over. Age it past the timeout; a fresh one would still be waited on.
-			const key = createHash("sha256").update("fixture@latest").digest("hex");
-			const lock = join(cache, "plugins", `${key}.lock`);
-			await mkdir(lock, { recursive: true });
-			const old = new Date(Date.now() - 3 * 60_000);
-			await utimes(lock, old, old);
-			const installed = await Effect.runPromise(
-				install(fetchable("fixture"), cache, home, fixture).pipe(Effect.timeout("2 seconds"), Effect.orDie),
-			);
-			expect(installed.version).toBe("1.0.0");
-			expect(existsSync(lock)).toBe(false);
-		}));
-	it("keeps waiting on a live lock rather than stealing it", () =>
-		withDirectory(async (cache) => {
-			const key = createHash("sha256").update("fixture@latest").digest("hex");
-			await mkdir(join(cache, "plugins", `${key}.lock`), { recursive: true });
-			const exit = await Effect.runPromiseExit(
-				install(fetchable("fixture"), cache, home, fixture).pipe(Effect.timeout("300 millis")),
-			);
-			expect(Exit.isFailure(exit)).toBe(true);
-			expect(await readdir(join(cache, "plugins"))).toEqual([`${key}.lock`]);
-		}));
-	it("leaves neither staging nor lock behind when interrupted mid-install", () =>
-		withDirectory(async (cache) => {
-			await Effect.runPromise(
-				Effect.gen(function* () {
-					const entered = yield* Deferred.make<void>();
-					const runner: Runner = () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never));
-					const fiber = yield* install(fetchable("fixture"), cache, home, runner).pipe(Effect.forkChild);
-					yield* Deferred.await(entered);
-					yield* Fiber.interrupt(fiber);
-				}).pipe(Effect.scoped),
-			);
-			expect(await readdir(join(cache, "plugins"))).toEqual([]);
-			// And the next installer finds a clean slate rather than a lock to wait on.
-			expect((await Effect.runPromise(install(fetchable("fixture"), cache, home, fixture))).version).toBe("1.0.0");
-		}));
-	it("does not reuse failed installations", () =>
-		withDirectory(async (cache) => {
-			const failed = await Effect.runPromise(
-				install(fetchable("fixture"), cache, home, () =>
-					Effect.fail(
-						new InstallError({
-							reason: "plugin-fetch-failed",
-							reference: "fixture@latest",
-							message: "offline",
-						}),
-					),
-				).pipe(Effect.flip),
-			);
-			expect(failed._tag).toBe("PluginInstallError");
-			expect(await readdir(join(cache, "plugins"))).toEqual([]);
-			expect((await Effect.runPromise(install(fetchable("fixture"), cache, home, fixture))).version).toBe("1.0.0");
-		}));
-	it("serializes concurrent installs and permits cancellation while waiting for the lock", () =>
-		withDirectory(async (cache) => {
-			await Effect.runPromise(
-				Effect.gen(function* () {
-					const entered = yield* Deferred.make<void>();
-					const release = yield* Deferred.make<void>();
-					let runs = 0;
-					const runner: Runner = (input) =>
-						Effect.gen(function* () {
-							runs++;
-							yield* Deferred.succeed(entered, undefined);
-							yield* Deferred.await(release);
-							return yield* fixture(input);
-						});
-					const first = yield* install(fetchable("fixture"), cache, home, runner).pipe(Effect.forkChild);
-					yield* Deferred.await(entered);
-					const waiting = yield* install(fetchable("fixture"), cache, home, runner).pipe(Effect.forkChild);
-					yield* Effect.yieldNow;
-					yield* Fiber.interrupt(waiting);
-					const second = yield* install(fetchable("fixture"), cache, home, runner).pipe(Effect.forkChild);
-					yield* Deferred.succeed(release, undefined);
-					expect(yield* Fiber.join(first)).toEqual(yield* Fiber.join(second));
-					expect(runs).toBe(1);
-				}).pipe(Effect.scoped),
-			);
 		}));
 });
 
