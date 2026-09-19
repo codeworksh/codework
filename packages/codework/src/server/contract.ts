@@ -108,6 +108,25 @@ export const Api = RpcGroup.make(
 		success: SessionInfo,
 		error: SessionStore.SessionNotFoundError,
 	}),
+	/**
+	 * Point an existing session at a host directory, or clear it with `null`.
+	 *
+	 * Not `session.relink`: that moves where the *work* happens, this changes where *settings* are
+	 * discovered. Conflating them would recreate exactly the `cwd`/`hostDir` confusion the split
+	 * exists to remove, which is why they sound alike and stay apart.
+	 *
+	 * The project layer starts being read at the session's next exchange -- settings are re-read
+	 * every exchange, so nothing has to be reloaded or restarted.
+	 */
+	Rpc.make("session.link", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			/** Absent unlinks, returning the session to the user layer alone. */
+			hostDir: optional(Schema.String),
+		},
+		success: SessionInfo,
+		error: SessionStore.SessionNotFoundError,
+	}),
 	Rpc.make("session.relink", {
 		payload: {
 			sessionId: Session.SessionSchema.ID,

@@ -4,6 +4,7 @@ import { Control } from "../control.ts";
 import { Database } from "../db/db.ts";
 import { Event } from "../event/event.ts";
 import { Global } from "../global.ts";
+import { fileSystem } from "../host.ts";
 import { EventRegistry } from "../event/registry.ts";
 import { follow, load, type PluginRef, type Pool } from "../plugin/catalog.ts";
 import { PluginSource } from "../plugin/source.ts";
@@ -98,14 +99,22 @@ export const layer = (options: Options = {}) =>
 			 * verb that puts bytes on disk. A reference that does not parse, or names a local
 			 * path, is simply not filed.
 			 */
-			const filed = (reference: string): Effect.Effect<Option.Option<PluginStore.Entry>> =>
+			type Here = Option.Option<{ readonly generation?: number }>;
+			const filed = (reference: string): Effect.Effect<Here> =>
 				PluginSource.parse(reference, hostCwd).pipe(
-					Effect.flatMap((target) =>
+					Effect.flatMap((target): Effect.Effect<Here, unknown> =>
 						target.kind === "local"
-							? Effect.succeedNone
-							: PluginStore.resolve(target, paths.cache).pipe(Effect.map(Option.fromUndefinedOr)),
+							? // On disk by definition, so it can be loaded now -- but never filed, so it
+								// has no generation and can never be found superseded. That is what
+								// leaves `reload` as the only way to pick up an edit to one.
+								fileSystem
+									.exists(target.path)
+									.pipe(Effect.map((there): Here => (there ? Option.some({}) : Option.none())))
+							: PluginStore.resolve(target, paths.cache).pipe(
+									Effect.map((entry): Here => Option.fromUndefinedOr(entry)),
+								),
 					),
-					Effect.orElseSucceed(() => Option.none<PluginStore.Entry>()),
+					Effect.orElseSucceed((): Here => Option.none()),
 				);
 
 			/*

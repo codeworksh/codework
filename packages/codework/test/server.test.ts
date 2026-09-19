@@ -4,7 +4,7 @@ import { DateTime, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Stream
 import { HttpServer } from "effect/unstable/http";
 import { RpcTest } from "effect/unstable/rpc";
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,6 +80,26 @@ describe("server", () => {
 			// rather than quietly adopting the server's own startup directory.
 			const unplaced = yield* rpc["session.create"]({});
 			expect(unplaced.hostDir).toBeUndefined();
+		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
+	});
+
+	it("session.link sets and clears a session's host directory", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-link-")));
+		homes.push(root);
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const created = yield* rpc["session.create"]({});
+			expect(created.hostDir).toBeUndefined();
+
+			const linked = yield* rpc["session.link"]({ sessionId: created.id, hostDir: root });
+			expect(linked.hostDir).toBe(root);
+			// Stored, not held in the call: a later reader sees it too.
+			expect((yield* rpc["session.info"]({ sessionId: created.id })).hostDir).toBe(root);
+
+			// Omitting the field unlinks, returning the session to the user layer alone.
+			const cleared = yield* rpc["session.link"]({ sessionId: created.id });
+			expect(cleared.hostDir).toBeUndefined();
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
 	});
 

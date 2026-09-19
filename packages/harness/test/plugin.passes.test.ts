@@ -472,3 +472,122 @@ describe("reload", () => {
 			expect(prompts.at(-1)?.endsWith("before")).toBe(true);
 		}));
 });
+
+describe("linking a session to a host directory", () => {
+	it("starts reading the project's plugins at the next exchange", () =>
+		withProject(async ({ root, project }) => {
+			// A plugin the project declares, which nothing has any reason to load yet.
+			const module = join(project, "linked.mjs");
+			await writeFile(
+				module,
+				[
+					"export default {",
+					"  id: 'acme.prompt.linked',",
+					"  kind: 'prompt',",
+					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}linked`),",
+					"};",
+				].join("\n"),
+			);
+			await writeFile(join(project, ".codework", "settings.jsonc"), JSON.stringify({ plugins: [module] }));
+
+			// The process boots somewhere else entirely, so the project is not its own.
+			const elsewhere = join(root, "elsewhere");
+			await mkdir(elsewhere, { recursive: true });
+
+			const prompts: string[] = [];
+			const open = immediateOpen();
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					// No host directory: this session has no project layer, which is a normal
+					// state rather than a missing value.
+					const created = yield* Session.create({ directory: project });
+					expect((yield* created.info).hostDir).toBeUndefined();
+
+					const run = () =>
+						created
+							.prompt({ text: "go", delivery: "followUp" })
+							.pipe(Effect.andThen(created.resume()), Effect.andThen(created.wait()));
+					yield* run();
+
+					yield* Session.link({ sessionId: created.id, hostDir: project });
+					expect((yield* created.info).hostDir).toBe(project);
+
+					// Settings are re-read every exchange, so the project layer simply starts
+					// being read -- and its plugin is local, so its bytes were always here.
+					yield* run();
+				}).pipe(
+					Effect.provide(
+						Harness.layer({
+							home: join(root, "home"),
+							hostCwd: elsewhere,
+							database: ":memory:",
+							llm: (request, signal) => {
+								prompts.push(request.context.systemPrompt ?? "");
+								return open(request, signal);
+							},
+						}),
+					),
+					Effect.scoped,
+					Effect.timeout("20 seconds"),
+					Effect.orDie,
+				),
+			);
+
+			expect(prompts).toHaveLength(2);
+			expect(prompts[0]).not.toContain("linked");
+			expect(prompts[1]?.endsWith("linked")).toBe(true);
+		}));
+
+	it("returns a session to the user layer when unlinked", () =>
+		withProject(async ({ root, project }) => {
+			const module = join(project, "linked.mjs");
+			await writeFile(
+				module,
+				[
+					"export default {",
+					"  id: 'acme.prompt.linked',",
+					"  kind: 'prompt',",
+					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}linked`),",
+					"};",
+				].join("\n"),
+			);
+			await writeFile(join(project, ".codework", "settings.jsonc"), JSON.stringify({ plugins: [module] }));
+
+			const prompts: string[] = [];
+			const open = immediateOpen();
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const created = yield* Session.create({ directory: project, hostDir: project });
+					const run = () =>
+						created
+							.prompt({ text: "go", delivery: "followUp" })
+							.pipe(Effect.andThen(created.resume()), Effect.andThen(created.wait()));
+					yield* run();
+
+					yield* Session.link({ sessionId: created.id, hostDir: null });
+					expect((yield* created.info).hostDir).toBeUndefined();
+					// The module stays loaded in the pool; it is simply no longer selected, which
+					// is the config pass doing its job rather than anything being unloaded.
+					yield* run();
+				}).pipe(
+					Effect.provide(
+						Harness.layer({
+							home: join(root, "home"),
+							hostCwd: project,
+							database: ":memory:",
+							llm: (request, signal) => {
+								prompts.push(request.context.systemPrompt ?? "");
+								return open(request, signal);
+							},
+						}),
+					),
+					Effect.scoped,
+					Effect.timeout("20 seconds"),
+					Effect.orDie,
+				),
+			);
+
+			expect(prompts[0]?.endsWith("linked")).toBe(true);
+			expect(prompts[1]).not.toContain("linked");
+		}));
+});

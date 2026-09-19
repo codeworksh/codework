@@ -99,6 +99,39 @@ export const Cmd = Spec.make("codework", {
 				{ command: "codework serve --port 0", description: "Choose an available local port" },
 			],
 		}),
+		Spec.make("session", {
+			description: "Manage sessions",
+			commands: [
+				Spec.make("link", {
+					description: "Point a session at the host directory its settings come from",
+					params: {
+						session: Argument.String("session-id").pipe(Argument.withDescription("The session to link")),
+						path: Argument.String("path").pipe(
+							Argument.withDescription("Project directory; defaults to the shell's"),
+							Argument.optional,
+						),
+						unlink: Flag.Boolean("unlink").pipe(
+							Flag.withDescription("Clear it, returning the session to the user layer alone"),
+							Flag.withDefault(false),
+						),
+						server: Flag.String("server").pipe(
+							Flag.withDescription("Base URL of the running codework server"),
+							Flag.withDefault("http://127.0.0.1:7433"),
+						),
+					},
+					examples: [
+						{
+							command: "codework session link ses_01h9",
+							description: "Link it to the directory you are standing in",
+						},
+						{
+							command: "codework session link ses_01h9 --unlink",
+							description: "Return it to the user layer alone",
+						},
+					],
+				}),
+			],
+		}),
 		Spec.make("plugin", {
 			description: "Manage plugins",
 			commands: [

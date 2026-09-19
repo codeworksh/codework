@@ -80,6 +80,10 @@ export const layer = Contract.Api.toLayer(
 			"session.info": Effect.fnUntraced(function* ({ sessionId }) {
 				return yield* sessionInfo(sessionId);
 			}),
+			"session.link": Effect.fnUntraced(function* ({ sessionId, hostDir }) {
+				const handle = yield* Session.link({ sessionId, hostDir: hostDir ?? null });
+				return toSessionInfo(yield* handle.info);
+			}),
 			"session.relink": Effect.fnUntraced(function* ({ sessionId, sandbox, directory }) {
 				const selection = sandbox === undefined ? undefined : yield* Sandbox.resolve(sandbox);
 				const selected = selection?.info;

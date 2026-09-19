@@ -303,15 +303,23 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	 * someone has to remember: the default installer fetches, and there is no way to reach it here.
 	 */
 	options: Options & { readonly install: NonNullable<Options["install"]> },
-	/** What the store already holds for a reference. Never a fetch. */
-	filed: (reference: string) => Effect.Effect<Option.Option<{ readonly generation: number }>>,
+	/**
+	 * Whether a reference's bytes are already on this machine, and at which generation.
+	 *
+	 * A local path answers yes with no generation: it is on disk by definition, and it is never
+	 * filed, so nothing can supersede it. That is the difference between "can be loaded now" and
+	 * "has moved" -- a local plugin is the first and never the second, which is why `reload`
+	 * exists and covers only it.
+	 */
+	filed: (reference: string) => Effect.Effect<Option.Option<{ readonly generation?: number }>>,
 ) {
 	let moved = false;
 
 	for (const reference of references) {
 		if (typeof reference !== "string" || pool.aliases.has(reference)) continue;
 		// Configured but not loaded. Reported by `select` either way; acted on only when the
-		// bytes are already here.
+		// bytes are already here -- which covers a package the store holds and a local path that
+		// exists, and excludes anything that would have to be fetched.
 		if (Option.isSome(yield* filed(reference))) {
 			moved = true;
 			break;
@@ -322,7 +330,11 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 		for (const origin of pool.origins.values()) {
 			if (origin.generation === undefined) continue;
 			const current = yield* filed(origin.reference);
-			if (Option.isSome(current) && current.value.generation > origin.generation) {
+			if (
+				Option.isSome(current) &&
+				current.value.generation !== undefined &&
+				current.value.generation > origin.generation
+			) {
 				moved = true;
 				break;
 			}
