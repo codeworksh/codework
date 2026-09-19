@@ -279,8 +279,17 @@ export const layer = (
 					// cannot satisfy, so it is free to report -- which is what a watcher was
 					// buying, minus the watcher. Reported once per snapshot that finds it.
 					for (const reference of chosen.missing) {
+						// Naming the file is most of the value: with several layers accumulating
+						// entries, "which one of my settings files says this" is the question.
+						const where = loadedSettings.declared.find((one) =>
+							typeof one.entry === "string"
+								? one.entry === reference
+								: "package" in one.entry && one.entry.package === reference,
+						);
 						yield* Effect.logWarning(
-							`plugin ${reference} is configured but not loaded — run \`codework plugin install\``,
+							`plugin ${reference} is configured but not loaded — run \`codework plugin install\`${
+								where === undefined ? "" : ` (declared in ${where.file})`
+							}`,
 						);
 					}
 

@@ -46,7 +46,7 @@ export default Runtime.handler(
 				return;
 			}
 
-			const rows: Array<{ reference: string; state: string; detail?: string }> = [];
+			const rows: Array<{ written: string; file: string; state: string; detail?: string }> = [];
 			for (const entry of entries) {
 				// Resolve-only: listing what is configured must never install anything.
 				const inspected = yield* Plugin.inspect(entry.reference, {
@@ -56,19 +56,25 @@ export default Runtime.handler(
 				}).pipe(Effect.result);
 				rows.push(
 					inspected._tag === "Success"
-						? { reference: entry.reference, state: inspected.success.id }
+						? { written: entry.written, file: entry.file, state: inspected.success.id }
 						: {
-								reference: entry.reference,
+								written: entry.written,
+								file: entry.file,
 								state: reasonOf(inspected.failure).reason,
 								detail: reasonOf(inspected.failure).message,
 							},
 				);
 			}
 
-			const width = Math.max(...rows.map((row) => row.reference.length));
+			// The left column is the reference exactly as the entry spells it, because that is the
+			// string a person will search their settings for.
+			const width = Math.max(...rows.map((row) => row.written.length));
 			for (const row of rows) {
-				yield* writeOut(`${row.reference.padEnd(width)}  ${row.state}\n`);
-				if (verbose && row.detail !== undefined) yield* writeOut(`${" ".repeat(width)}  ${row.detail}\n`);
+				yield* writeOut(`${row.written.padEnd(width)}  ${row.state}\n`);
+				if (verbose) {
+					if (row.detail !== undefined) yield* writeOut(`${" ".repeat(width)}  ${row.detail}\n`);
+					yield* writeOut(`${" ".repeat(width)}  declared in: ${row.file}\n`);
+				}
 			}
 		});
 

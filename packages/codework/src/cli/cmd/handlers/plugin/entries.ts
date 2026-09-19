@@ -10,8 +10,12 @@ import type { Shared } from "./settings.ts";
  * what is already there and act on the store.
  */
 export interface Entry {
-	/** The reference as the settings files resolved it. */
+	/** The reference as the settings file spells it: the string a person will search for. */
+	readonly written: string;
+	/** The same reference, anchored to the file that declared it. This is what resolves. */
 	readonly reference: string;
+	/** Which settings file declared it. */
+	readonly file: string;
 	/** Absent for a plugin entry that only configures something else, and for a local path. */
 	readonly target: Plugin.Target | undefined;
 }
@@ -37,15 +41,20 @@ export const read = Effect.fn("CLI.plugin.entries")(function* (shared: Shared) {
 
 	const seen = new Set<string>();
 	const entries: Entry[] = [];
-	for (const value of config.plugins) {
-		const reference = moduleOf(value);
+	for (const one of config.declared) {
+		const reference = moduleOf(one.entry);
 		// Loading is keyed by the module, so the same one named twice is one entry here too.
 		if (reference === undefined || seen.has(reference)) continue;
 		seen.add(reference);
-		// `Settings.load` has already anchored a relative path to the file that declared it, so
-		// `cwd` here only affects a reference no settings file produced.
+		// Already anchored to the file that declared it, so `cwd` here only affects a reference
+		// no settings file produced.
 		const target = yield* Plugin.parse(reference, cwd).pipe(Effect.option);
-		entries.push({ reference, target: Option.getOrUndefined(target) });
+		entries.push({
+			written: moduleOf(one.written) ?? reference,
+			reference,
+			file: one.file,
+			target: Option.getOrUndefined(target),
+		});
 	}
 	return { entries: entries as ReadonlyArray<Entry>, cache: paths.cache, home: paths.home, hostDir: cwd };
 });

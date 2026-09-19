@@ -38,7 +38,7 @@ import { Global } from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
 import { merge, normalize } from "./merge.ts";
-import { defaults, Patch, type Info, type PluginEntry } from "./schema.ts";
+import { defaults, Patch, type Declared, type Info, type PluginEntry } from "./schema.ts";
 
 export interface Options {
 	readonly userConfigDir?: string;
@@ -217,19 +217,16 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
  * key is an ID rather than a location. A configuration entry's `package` is anchored like a
  * module entry, so a relative path names the same module in both spellings.
  */
-const anchor = (patch: Patch, file: string): Patch => {
-	if (patch.plugins === undefined) return patch;
+const anchored = (entry: PluginEntry, file: string): PluginEntry => {
 	const directory = hostPath.dirname(file);
 	const resolve = (reference: string) =>
 		reference.startsWith("./") || reference.startsWith("../") ? hostPath.resolve(directory, reference) : reference;
-	return {
-		...patch,
-		plugins: patch.plugins.map((entry) => {
-			if (typeof entry === "string") return resolve(entry);
-			return "package" in entry ? { ...entry, package: resolve(entry.package) } : entry;
-		}),
-	};
+	if (typeof entry === "string") return resolve(entry);
+	return "package" in entry ? { ...entry, package: resolve(entry.package) } : entry;
 };
+
+const anchor = (patch: Patch, file: string): Patch =>
+	patch.plugins === undefined ? patch : { ...patch, plugins: patch.plugins.map((entry) => anchored(entry, file)) };
 
 const attempt = (path: string) =>
 	fileSystem.readFileString(path).pipe(
@@ -260,14 +257,25 @@ export const load = Effect.fn("Settings.load")(function* (options: Options & { r
 	 * They are carried outside `merge` for a second reason: that walk drops `null`, which inside
 	 * an opaque `options` block is a value the plugin may need.
 	 */
-	let plugins: ReadonlyArray<PluginEntry> = defaults.plugins;
+	let declared: ReadonlyArray<Declared> = defaults.declared;
 	for (const group of files) {
 		for (const path of group) {
 			const result = yield* Effect.result(attempt(path));
 			if (Result.isSuccess(result)) {
 				const patch = anchor(result.success, path);
 				settings = merge(settings, patch);
-				if (patch.plugins !== undefined) plugins = [...plugins, ...patch.plugins];
+				// Each entry keeps the file that declared it: it is what anchors a relative path,
+				// what `plugin list` names, and what the missing-plugin diagnostic points at.
+				if (result.success.plugins !== undefined) {
+					declared = [
+						...declared,
+						...result.success.plugins.map((written) => ({
+							written,
+							entry: anchored(written, path),
+							file: path,
+						})),
+					];
+				}
 				break;
 			}
 			// A missing candidate falls through to the next; anything else selects the file, and a
@@ -277,7 +285,7 @@ export const load = Effect.fn("Settings.load")(function* (options: Options & { r
 			return yield* error;
 		}
 	}
-	return { ...settings, plugins };
+	return { ...settings, plugins: declared.map((one) => one.entry), declared };
 });
 
 export const layer = (options: Omit<Options, "hostDir"> = {}) =>

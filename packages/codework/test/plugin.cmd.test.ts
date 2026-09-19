@@ -372,6 +372,25 @@ describe("codework plugin install/list/check", () => {
 			expect(listed.stdout).toContain("plugin-not-installed");
 		}));
 
+	it("lists the reference as written, and names the file that declared it", () =>
+		withProject(({ root, run }) => {
+			// Written relative, so the anchored form differs from what the person typed -- and it
+			// is the typed form they will search their settings for.
+			mkdirSync(join(root, ".codework", "plugins"), { recursive: true });
+			writeFileSync(
+				join(root, ".codework", "plugins", "house.mjs"),
+				"export default { id: 'acme.tool.house', kind: 'tool', setup() {} }",
+			);
+			writeFileSync(settings(root), JSON.stringify({ plugins: ["./plugins/house.mjs"] }));
+
+			const listed = run("plugin", "list", "--verbose");
+			expect(listed.status).toBe(0);
+			expect(listed.stdout).toContain("./plugins/house.mjs");
+			expect(listed.stdout).toContain("acme.tool.house");
+			// With several layers accumulating entries, "which file says this" is the question.
+			expect(listed.stdout).toContain(`declared in: ${settings(realpathSync(root))}`);
+		}));
+
 	it("reports an empty configuration rather than printing nothing", () =>
 		withProject(({ root, run }) => {
 			writeFileSync(settings(root), JSON.stringify({ plugins: [] }));

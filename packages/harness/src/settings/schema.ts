@@ -102,12 +102,35 @@ export const Patch = Schema.Struct({
 });
 export type Patch = typeof Patch.Type;
 
+/**
+ * One plugin entry, and where it came from.
+ *
+ * Flattening every layer's `plugins` into one array loses the file that declared each entry, and
+ * that cannot be recovered afterwards: two layers may declare the same string, so attribution is
+ * genuinely gone rather than merely inconvenient. Three things need it -- anchoring a relative
+ * path, naming the declaring layer in `plugin list`, and the missing-plugin diagnostic -- so the
+ * loaded shape carries it from the start.
+ */
+export interface Declared {
+	/** The entry exactly as the file spells it, which is the string a person will search for. */
+	readonly written: PluginEntry;
+	/** The same entry with any relative path anchored to the directory of its declaring file. */
+	readonly entry: PluginEntry;
+	/** The settings file that declared it. */
+	readonly file: string;
+}
+
 export interface Info {
 	/**
 	 * Plugin entries added to the harness selection, in order: every layer's entries, lowest
 	 * priority first, so a project's list extends the user's rather than replacing it.
+	 *
+	 * Anchored, and stripped of provenance: this is the list the loader consumes. {@link Info.declared}
+	 * is the same list with the file each entry came from.
 	 */
 	readonly plugins: ReadonlyArray<PluginEntry>;
+	/** {@link Info.plugins}, with the origin of each entry. Same order, same length. */
+	readonly declared: ReadonlyArray<Declared>;
 	readonly model: typeof Model.Type & {
 		readonly provider: string;
 		readonly id: string;
@@ -119,6 +142,7 @@ export interface Info {
 /** Let aikit supply model-aware generation defaults. */
 export const defaults: Info = {
 	plugins: [],
+	declared: [],
 	model: {
 		provider: "openai",
 		id: "gpt-5.6-luna",

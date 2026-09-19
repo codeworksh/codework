@@ -249,6 +249,41 @@ describe("host settings loader", () => {
 		expect(paths({ home: "/home", from: "/repo" })[1]).toEqual([]);
 	});
 
+	it("keeps the file that declared each plugin entry, and the string it was written as", () =>
+		withSettings(async ({ root, local, global, custom }) => {
+			await writeFile(join(global, "settings.jsonc"), JSON.stringify({ plugins: ["./plugins/user.ts"] }));
+			await writeFile(join(local, "settings.jsonc"), JSON.stringify({ plugins: ["./plugins/project.ts"] }));
+			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ plugins: ["@acme/explicit"] }));
+			const layer = Settings.layer({ userConfigDir: custom }).pipe(
+				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: global }))),
+			);
+			const loaded = await Effect.runPromise(
+				Settings.Service.use((settings) => settings.load(root)).pipe(Effect.provide(layer)),
+			);
+
+			// Two layers can declare the same string, so attribution is genuinely gone once the
+			// lists are flattened -- which is why it is carried rather than recovered.
+			expect(loaded.declared.map((one) => one.file)).toEqual([
+				join(global, "settings.jsonc"),
+				join(local, "settings.jsonc"),
+				join(custom, "settings.jsonc"),
+			]);
+			// What the file says, and what it resolves to, are both kept: the first is what a
+			// person searches for, the second is what loads.
+			expect(loaded.declared.map((one) => one.written)).toEqual([
+				"./plugins/user.ts",
+				"./plugins/project.ts",
+				"@acme/explicit",
+			]);
+			expect(loaded.declared.map((one) => one.entry)).toEqual([
+				join(global, "plugins/user.ts"),
+				join(local, "plugins/project.ts"),
+				"@acme/explicit",
+			]);
+			// The flat list stays what the loader consumes, in the same order.
+			expect(loaded.plugins).toEqual(loaded.declared.map((one) => one.entry));
+		}));
+
 	it("finds the nearest project root, and never the user config directory", () =>
 		withSettings(async ({ root, global }) => {
 			const inner = join(root, "packages/app");
