@@ -24,6 +24,10 @@ const plugin = (name: string) => fileURLToPath(new URL(`../../../extras/${name}`
 const withProject = (body: (project: { root: string; home: string; run: Run }) => void) => {
 	const root = mkdtempSync(join(tmpdir(), "codework-plugin-"));
 	const home = join(root, "home");
+	// A project is a directory holding `.codework/`. Most of these tests are about editing a
+	// project that already exists, so the marker is created here; the two that are about
+	// *finding* a project make their own.
+	mkdirSync(join(root, ".codework"), { recursive: true });
 	const run: Run = (...args) =>
 		spawnSync(process.execPath, ["--conditions=development", cli, ...args, "--home", home], {
 			encoding: "utf8",
@@ -38,40 +42,43 @@ const withProject = (body: (project: { root: string; home: string; run: Run }) =
 };
 type Run = (...args: ReadonlyArray<string>) => SpawnSyncReturns<string>;
 
+/** The one project settings file: `<root>/.codework/settings.jsonc`. */
+const settings = (root: string) => join(root, ".codework", "settings.jsonc");
+
 describe("codework plugin add/remove", () => {
 	it("adds a plugin to the project file, keeping its comments and formatting", () =>
 		withProject(({ root, run }) => {
 			// A settings file is written by hand; an edit from the CLI must leave it recognisable.
 			writeFileSync(
-				join(root, "codework.jsonc"),
+				settings(root),
 				["{", "\t// The model this project works against.", '\t"model": { "thinkingLevel": "low" },', "}", ""].join(
 					"\n",
 				),
 			);
-			chmodSync(join(root, "codework.jsonc"), 0o640);
+			chmodSync(settings(root), 0o640);
 			const added = run("plugin", "add", plugin("codework-tool-proc"));
 			expect(added.status).toBe(0);
 			// The reported ID comes from importing the module, not from the spec the user typed.
 			expect(added.stdout).toContain("Added acme.tool.proc");
 
-			const file = readFileSync(join(root, "codework.jsonc"), "utf8");
+			const file = readFileSync(settings(root), "utf8");
 			expect(file).toContain("// The model this project works against.");
 			expect(file).toContain('"thinkingLevel": "low"');
 			expect(file).toContain(plugin("codework-tool-proc"));
-			expect(statSync(join(root, "codework.jsonc")).mode & 0o777).toBe(0o640);
+			expect(statSync(settings(root)).mode & 0o777).toBe(0o640);
 
 			// Adding it twice says so instead of writing a duplicate entry.
 			const again = run("plugin", "add", plugin("codework-tool-proc"));
 			expect(again.status).toBe(0);
 			expect(again.stdout).toContain("already configured");
-			expect(readFileSync(join(root, "codework.jsonc"), "utf8")).toBe(file);
+			expect(readFileSync(settings(root), "utf8")).toBe(file);
 		}));
 
 	it("removes the module entry and the configuration written against it", () =>
 		withProject(({ root, run }) => {
 			const target = plugin("codework-tool-proc");
 			writeFileSync(
-				join(root, "codework.jsonc"),
+				settings(root),
 				JSON.stringify({
 					plugins: ["./plugins/keep.ts", target, { plugin: "acme.tool.proc", options: { limit: 5 } }],
 				}),
@@ -79,7 +86,7 @@ describe("codework plugin add/remove", () => {
 			const removed = run("plugin", "remove", target);
 			expect(removed.status).toBe(0);
 			expect(removed.stdout).toContain("Removed 2 entries");
-			expect(JSON.parse(readFileSync(join(root, "codework.jsonc"), "utf8")).plugins).toEqual(["./plugins/keep.ts"]);
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual(["./plugins/keep.ts"]);
 
 			// Removing what is not there is not a failure, and changes nothing.
 			const twice = run("plugin", "remove", target);
@@ -94,14 +101,11 @@ describe("codework plugin add/remove", () => {
 				{ package: target, options: { limit: 5 } },
 				{ plugin: "acme.tool.proc", options: { limit: 3 } },
 			];
-			writeFileSync(join(root, "codework.jsonc"), JSON.stringify({ plugins: configured }));
+			writeFileSync(settings(root), JSON.stringify({ plugins: configured }));
 
 			const added = run("plugin", "add", target);
 			expect(added.status).toBe(0);
-			expect(JSON.parse(readFileSync(join(root, "codework.jsonc"), "utf8")).plugins).toEqual([
-				target,
-				...configured,
-			]);
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual([target, ...configured]);
 		}));
 
 	it("removes by the ID the module declares, whichever spelling the entry used", () =>
@@ -111,13 +115,13 @@ describe("codework plugin add/remove", () => {
 			// or the plugin keeps loading with its configuration gone.
 			const target = plugin("codework-tool-proc");
 			writeFileSync(
-				join(root, "codework.jsonc"),
+				settings(root),
 				JSON.stringify({ plugins: [target, { plugin: "acme.tool.proc", options: { limit: 5 } }, "./keep.ts"] }),
 			);
 			const removed = run("plugin", "remove", "acme.tool.proc");
 			expect(removed.status).toBe(0);
 			expect(removed.stdout).toContain("Removed 2 entries");
-			expect(JSON.parse(readFileSync(join(root, "codework.jsonc"), "utf8")).plugins).toEqual(["./keep.ts"]);
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual(["./keep.ts"]);
 		}));
 
 	it("removes a cached registry package by its declared ID without fetching", () =>
@@ -134,14 +138,14 @@ describe("codework plugin add/remove", () => {
 				JSON.stringify({ spec, version: "1.2.0", entrypoint: "index.mjs" }),
 			);
 			writeFileSync(
-				join(root, "codework.jsonc"),
+				settings(root),
 				JSON.stringify({ plugins: [spec, { plugin: "acme.tool.cached", options: { limit: 5 } }, "./keep.ts"] }),
 			);
 
 			const removed = run("plugin", "remove", "acme.tool.cached");
 			expect(removed.status).toBe(0);
 			expect(removed.stdout).toContain("Removed 2 entries");
-			expect(JSON.parse(readFileSync(join(root, "codework.jsonc"), "utf8")).plugins).toEqual(["./keep.ts"]);
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual(["./keep.ts"]);
 		}));
 
 	it("rewrites the entry in place when the same plugin is added under a new version", () =>
@@ -163,7 +167,7 @@ describe("codework plugin add/remove", () => {
 			const before = publish("1.2.0", "acme.tool.pinned");
 			const after = publish("2.0.0", "acme.tool.pinned");
 			writeFileSync(
-				join(root, "codework.jsonc"),
+				settings(root),
 				JSON.stringify({ plugins: [before, { plugin: "acme.tool.pinned", options: { limit: 5 } }] }),
 			);
 
@@ -171,7 +175,7 @@ describe("codework plugin add/remove", () => {
 			expect(updated.status).toBe(0);
 			expect(updated.stdout).toContain("Updated acme.tool.pinned");
 			// The configuration written against it is left exactly where it was.
-			expect(JSON.parse(readFileSync(join(root, "codework.jsonc"), "utf8")).plugins).toEqual([
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual([
 				after,
 				{ plugin: "acme.tool.pinned", options: { limit: 5 } },
 			]);
@@ -186,7 +190,7 @@ describe("codework plugin add/remove", () => {
 		withProject(({ root }) => {
 			// Discovery walks up, so the file that is read from `packages/app` is the repository's.
 			// Writing a new one next to the command would leave an edit the harness never reads.
-			writeFileSync(join(root, "codework.jsonc"), JSON.stringify({ plugins: [] }));
+			writeFileSync(settings(root), JSON.stringify({ plugins: [] }));
 			const nested = join(root, "packages", "app");
 			mkdirSync(nested, { recursive: true });
 			const added = spawnSync(
@@ -203,11 +207,31 @@ describe("codework plugin add/remove", () => {
 				{ encoding: "utf8", cwd: nested, timeout: 60_000 },
 			);
 			expect(added.status).toBe(0);
-			expect(added.stdout).toContain(join(root, "codework.jsonc"));
-			expect(existsSync(join(nested, "codework.jsonc"))).toBe(false);
-			expect(JSON.parse(readFileSync(join(root, "codework.jsonc"), "utf8")).plugins).toEqual([
-				plugin("codework-tool-proc"),
-			]);
+			expect(added.stdout).toContain(settings(root));
+			expect(existsSync(settings(nested))).toBe(false);
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual([plugin("codework-tool-proc")]);
+		}));
+
+	it("starts a project where the command ran when no ancestor is one, and says so", () =>
+		withProject(({ root, home }) => {
+			// No marker anywhere above this directory, so `add` decides a project begins here.
+			// That decision shadows any outer project from now on and sends every future entry
+			// to this file, which is why it is printed rather than done quietly.
+			// macOS spells the temporary directory through `/var` while `cwd` resolves through
+			// `/private/var`; the command reports the path it resolved, so compare against that.
+			const loose = join(realpathSync(root), "loose");
+			mkdirSync(loose, { recursive: true });
+			rmSync(join(root, ".codework"), { recursive: true, force: true });
+			const added = spawnSync(
+				process.execPath,
+				["--conditions=development", cli, "plugin", "add", plugin("codework-tool-proc"), "--home", home],
+				{ encoding: "utf8", cwd: loose, timeout: 60_000 },
+			);
+			expect(added.status).toBe(0);
+			expect(added.stdout).toContain(`Created ${join(loose, ".codework")}/`);
+			expect(JSON.parse(readFileSync(settings(loose), "utf8")).plugins).toEqual([plugin("codework-tool-proc")]);
+			// And nothing was written above it.
+			expect(existsSync(settings(root))).toBe(false);
 		}));
 
 	it("does not treat the global settings file as a project file", () =>
@@ -227,26 +251,24 @@ describe("codework plugin add/remove", () => {
 				{ encoding: "utf8", cwd: project, timeout: 60_000 },
 			);
 			expect(added.status).toBe(0);
-			expect(added.stdout).toContain(join(project, "codework.jsonc"));
+			expect(added.stdout).toContain(settings(project));
 			expect(JSON.parse(readFileSync(join(home, "settings.jsonc"), "utf8")).plugins).toEqual([]);
-			expect(JSON.parse(readFileSync(join(project, "codework.jsonc"), "utf8")).plugins).toEqual([
-				plugin("codework-tool-proc"),
-			]);
+			expect(JSON.parse(readFileSync(settings(project), "utf8")).plugins).toEqual([plugin("codework-tool-proc")]);
 		}));
 
 	it("refuses a module that is not a plugin, before touching the file", () =>
 		withProject(({ root, run }) => {
-			writeFileSync(join(root, "codework.jsonc"), JSON.stringify({ plugins: [] }));
+			writeFileSync(settings(root), JSON.stringify({ plugins: [] }));
 			const notAPlugin = fileURLToPath(new URL("../../../vite.config.ts", import.meta.url));
 			const failed = run("plugin", "add", notAPlugin);
 			expect(failed.status).toBe(1);
 			expect(failed.stderr).toContain("phase: definition");
-			expect(JSON.parse(readFileSync(join(root, "codework.jsonc"), "utf8")).plugins).toEqual([]);
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual([]);
 		}));
 
 	it("adds a user-wide plugin with -g, alongside what the project declares", () =>
 		withProject(({ root, home, run }) => {
-			writeFileSync(join(root, "codework.jsonc"), JSON.stringify({ plugins: ["./plugins/project.ts"] }));
+			writeFileSync(settings(root), JSON.stringify({ plugins: ["./plugins/project.ts"] }));
 			const added = run("plugin", "add", plugin("codework-prompt-life"), "-g");
 			expect(added.status).toBe(0);
 			expect(added.stdout).toContain(join(home, "settings.jsonc"));
@@ -255,8 +277,6 @@ describe("codework plugin add/remove", () => {
 			expect(JSON.parse(readFileSync(join(home, "settings.jsonc"), "utf8")).plugins).toEqual([
 				plugin("codework-prompt-life"),
 			]);
-			expect(JSON.parse(readFileSync(join(root, "codework.jsonc"), "utf8")).plugins).toEqual([
-				"./plugins/project.ts",
-			]);
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual(["./plugins/project.ts"]);
 		}));
 });

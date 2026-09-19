@@ -54,7 +54,7 @@ const runtime = (
 			),
 		),
 		Layer.provideMerge(SessionRuntime.layer),
-		Layer.provideMerge(Layer.succeed(Settings.Service, { load: Effect.succeed(Settings.defaults) })),
+		Layer.provideMerge(Layer.succeed(Settings.Service, { load: () => Effect.succeed(Settings.defaults) })),
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionProjector.layer),

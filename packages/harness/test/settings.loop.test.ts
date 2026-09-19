@@ -111,7 +111,7 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
-								cwd: root,
+								hostCwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
@@ -203,7 +203,7 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
-								cwd: root,
+								hostCwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
@@ -262,7 +262,7 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
-								cwd: root,
+								hostCwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
@@ -303,7 +303,7 @@ describe("settings at exchange boundaries", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							userConfigDir: custom,
 							llm: open,
@@ -365,7 +365,7 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
-								cwd: root,
+								hostCwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
@@ -392,7 +392,7 @@ describe("settings at exchange boundaries", () => {
 				});
 			const database = join(root, "sessions.db");
 			const runtime = () =>
-				Harness.layer({ home: join(root, "home"), cwd: root, database, userConfigDir: custom, llm: open });
+				Harness.layer({ home: join(root, "home"), hostCwd: root, database, userConfigDir: custom, llm: open });
 			await Effect.runPromise(
 				Effect.gen(function* () {
 					const sessionId = yield* Effect.gen(function* () {
@@ -449,7 +449,7 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
-								cwd: root,
+								hostCwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,
@@ -503,7 +503,7 @@ describe("settings at exchange boundaries", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
-								cwd: root,
+								hostCwd: root,
 								database: ":memory:",
 								userConfigDir: custom,
 								llm: open,

@@ -32,6 +32,8 @@ export const SessionInfo = Schema.Struct({
 	id: Session.SessionSchema.ID,
 	title: Schema.String,
 	directory: Schema.String,
+	/** The host directory this session's settings and plugins are read from; absent when it has none. */
+	hostDir: optional(Schema.String),
 	sandbox: optional(SandboxInfo),
 });
 export type SessionInfo = typeof SessionInfo.Type;
@@ -71,6 +73,21 @@ export const Api = RpcGroup.make(
 		payload: {
 			title: optional(Schema.String),
 			directory: optional(Schema.String),
+			/**
+			 * A directory on the *server's* machine, which this session's settings and project
+			 * plugins are read from. Unrelated to `directory`, which names a place inside the
+			 * session's space.
+			 *
+			 * Optional and honoured as given. Omitting it is normal, not a failure: the session
+			 * simply has no project layer until `session.link` assigns one. Honouring a path the
+			 * client names is safe for the deployment that exists -- a local server whose client
+			 * owns the machine, where naming a host path is no more privilege than running
+			 * `codework` in it. It stops being safe the day the server is reachable by someone who
+			 * is not that person, because this path selects a settings file and that file names
+			 * code the server imports into its own process; constraining it to configured roots is
+			 * the answer then, and is a change to this one handler.
+			 */
+			hostDir: optional(Schema.String),
 			sandbox: optional(SandboxRef),
 			runtime: optional(RuntimeConfig),
 		},

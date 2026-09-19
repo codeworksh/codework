@@ -13,7 +13,7 @@ import { define } from "../src/plugin/plugin.ts";
 
 const a = define({ id: "acme.tool.a", kind: "tool", setup: () => {} });
 const b = define({ id: "acme.tool.b", kind: "tool", setup: () => {} });
-const options: Options = { builtins: [], cache: "/unused", hostCwd: "/project" };
+const options: Options = { builtins: [], cache: "/unused", hostDir: "/project" };
 /** `prepare` pairs each selected plugin with its configuration; most assertions want the plugins. */
 const selected = (list: ReadonlyArray<Prepared>) => list.map((entry) => entry.plugin);
 const run = (references: ReadonlyArray<PluginRef>, overrides: Partial<Options> = {}) =>

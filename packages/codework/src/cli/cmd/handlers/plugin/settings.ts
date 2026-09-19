@@ -19,6 +19,8 @@ export interface Shared {
 
 export interface Target {
 	readonly path: string;
+	/** Set when this command had to create the project directory, so the caller can say so. */
+	readonly created?: string;
 }
 
 /** The module an entry names: a bare loader string, or the `package` of a config object. */
@@ -88,7 +90,7 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 			for (const alias of aliases(module, directory)) answers.add(alias);
 			const declared = yield* Plugin.inspect(module, {
 				cache,
-				hostCwd: directory,
+				hostDir: directory,
 				install: Plugin.resolveCached,
 			}).pipe(Effect.option);
 			if (Option.isSome(declared)) {
@@ -169,9 +171,11 @@ export const writePlugins = Effect.fn("CLI.plugin.writePlugins")(function* (
  * instead, the way `npm -g` installs outside a package. An explicit `--user-config-dir` outranks
  * both, since naming a settings directory is already a decision about where settings live.
  *
- * The project file is found the way the harness finds it: the startup directory first, then its
- * ancestors, so a command run from `packages/app` edits the repository's own file rather than
- * creating a second one beside it. Only when no ancestor has one is a new file written here.
+ * The project is found the way the harness finds it: the nearest ancestor holding a `.codework`
+ * directory, so a command run from `packages/app` edits the repository's own file rather than
+ * creating a second one beside it. When no ancestor has one, the project begins here -- the
+ * directory is created and the caller is told, because that decision changes where every future
+ * plugin entry lands, and a mistyped `cd` is the way it goes wrong.
  *
  * There is nothing to warn about between layers: plugin entries from every layer accumulate, so a
  * user-wide entry still applies inside a project that declares its own.
@@ -181,11 +185,24 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (sh
 	const nodePath = yield* Path.Path;
 	const cwd = nodePath.resolve(".");
 	const home = yield* Global.resolve(Option.isNone(shared.home) ? {} : { home: shared.home.value });
-	const groups = Settings.paths(home.home, cwd, Option.getOrUndefined(shared.userConfigDir));
+	const root = global ? undefined : yield* Settings.projectRoot(cwd, home.home);
 	// `paths` is ordered lowest priority first: user-wide, then project, then an explicit directory.
+	const groups = Settings.paths({
+		home: home.home,
+		...(root === undefined ? {} : { root }),
+		from: cwd,
+		...(Option.isNone(shared.userConfigDir) ? {} : { custom: shared.userConfigDir.value }),
+	});
 	const chosen = Option.isSome(shared.userConfigDir) ? groups.length - 1 : global ? 0 : 1;
-	const candidates = groups[chosen] ?? [];
-	const existing = yield* Effect.findFirst(candidates, (candidate) => fs.exists(candidate));
-	const path = Option.getOrElse(existing, () => candidates[0] ?? nodePath.join(home.home, "settings.jsonc"));
-	return { path } satisfies Target;
+	// An empty group is the project layer saying there is no project above this directory. Then
+	// this directory becomes one -- reported, not silent, because the marker shadows any outer
+	// project from now on, so a `.codework/` created by a mistyped `cd` is worth spotting at once.
+	const found = groups[chosen] ?? [];
+	if (found.length > 0) {
+		const existing = yield* Effect.findFirst(found, (candidate) => fs.exists(candidate));
+		return { path: Option.getOrElse(existing, () => found[0]!) } satisfies Target;
+	}
+	const marker = nodePath.join(cwd, ".codework");
+	yield* fs.makeDirectory(marker, { recursive: true });
+	return { path: nodePath.join(marker, "settings.jsonc"), created: marker } satisfies Target;
 });

@@ -95,7 +95,7 @@ describe("plugin domains and exchange host", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							llm: (input, signal) => {
 								models.push(input.resolvedModel);
@@ -140,7 +140,7 @@ describe("plugin domains and exchange host", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							llm: (input, signal) => {
 								prompts.push(input.context.systemPrompt ?? "");
@@ -178,7 +178,7 @@ describe("plugin domains and exchange host", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							// A malformed entry after a valid one: nothing may run, not even the
@@ -209,7 +209,7 @@ describe("plugin domains and exchange host", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							plugins: [
@@ -252,7 +252,7 @@ describe("plugin domains and exchange host", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
-								cwd: root,
+								hostCwd: root,
 								database: ":memory:",
 								llm: () => {
 									requested = true;
@@ -301,7 +301,7 @@ describe("plugin domains and exchange host", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
-								cwd: root,
+								hostCwd: root,
 								database: ":memory:",
 								llm: immediateOpen(),
 								plugins: [
@@ -370,7 +370,7 @@ describe("plugin pipelines in the kernel loop", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
-								cwd: root,
+								hostCwd: root,
 								database: ":memory:",
 								plugins: [
 									{

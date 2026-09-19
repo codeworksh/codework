@@ -120,7 +120,7 @@ Source modules must default-export one plugin object.
 Settings entries take the same two forms, and they extend the built-in selection instead of standing in for it, so naming one plugin cannot silently drop Bash or the prompt:
 
 ```jsonc
-// codework.jsonc, ~/.codework/settings.jsonc, or a --user-config-dir
+// <project>/.codework/settings.jsonc, ~/.codework/settings.jsonc, or a --user-config-dir
 {
 	"plugins": [
 		"@acme/codework-prompt-life",
@@ -132,7 +132,7 @@ Settings entries take the same two forms, and they extend the built-in selection
 }
 ```
 
-Settings files are JSONC: comments and a trailing comma are part of the format, and a syntax error names what the parser expected and where (`PropertyNameExpected at 2:38`). Entries accumulate across settings layers, lowest priority first: a project's list extends the user's rather than standing in for it, the way every other key in the document merges. A project drops an inherited plugin the same way it drops a built-in, with `{ "plugin": "<id>", "enabled": false }`. A leading `~` expands to the home directory. A `./` or `../` path resolves against the directory of the file that declared it — next to `codework.jsonc`, inside `.codework/`, or beside `~/.codework/settings.jsonc` — so one entry means one file in every project; a `package` naming a relative path is anchored the same way. `file:` URLs, absolute paths and package specs are taken as written.
+Settings files are JSONC: comments and a trailing comma are part of the format, and a syntax error names what the parser expected and where (`PropertyNameExpected at 2:38`). Entries accumulate across settings layers, lowest priority first: a project's list extends the user's rather than standing in for it, the way every other key in the document merges. A project drops an inherited plugin the same way it drops a built-in, with `{ "plugin": "<id>", "enabled": false }`. A leading `~` expands to the home directory. A `./` or `../` path resolves against the directory of the file that declared it — inside `<project>/.codework/`, or beside `~/.codework/settings.jsonc` — so one entry means one file in every project; a `package` naming a relative path is anchored the same way. `file:` URLs, absolute paths and package specs are taken as written.
 
 Setup order comes from the **domain a plugin declares**, not from where its entry sits. Every `kind: "tool"` plugin is set up before any `kind: "prompt"` plugin, so a prompt plugin always sees the complete tool set — including tools added from a settings file, which land after the built-ins in the array. Within one domain, entries keep the order they were written in, which is where composition actually happens: a plugin patching another's tool, or appending to the prompt a previous one rendered, is written after it on purpose.
 

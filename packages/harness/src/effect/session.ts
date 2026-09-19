@@ -3,6 +3,7 @@ import { Effect, Option, Stream } from "effect";
 import * as Control from "../control.ts";
 import * as Event from "../event/event.ts";
 import type { EventSchema } from "../event/schema.ts";
+import { hostPath } from "../host.ts";
 import { Location } from "../location/location.ts";
 import * as SandboxController from "../sandbox/control.ts";
 import { SandboxInstance as SandboxInstanceSchema } from "../sandbox/instance.ts";
@@ -43,6 +44,16 @@ export interface CreateInput extends RuntimeInput {
 	readonly title?: string;
 	readonly sandbox?: SandboxInfo;
 	readonly directory?: string;
+	/**
+	 * The host directory this session belongs to: where its settings and its project plugins are
+	 * discovered from. A host path on the machine the harness runs on, unrelated to
+	 * {@link CreateInput.directory}, which names a place inside the session's space.
+	 *
+	 * Optional, with no fallback. Omitting it gives a session no project layer, which is normal
+	 * for a client that has no host project to name; it does *not* silently adopt the process's
+	 * own directory. {@link link} assigns one afterwards.
+	 */
+	readonly hostDir?: string;
 }
 
 export interface AttachInput extends RuntimeInput {
@@ -67,6 +78,8 @@ export interface Info {
 	readonly id: SessionSchema.ID;
 	readonly title: string;
 	readonly directory: AbsolutePath;
+	/** Absent when the session has no host project; see {@link CreateInput.hostDir}. */
+	readonly hostDir?: AbsolutePath;
 	readonly sandbox?: SandboxInfo;
 }
 
@@ -121,10 +134,12 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 			space === undefined || space.env === SandboxInstanceSchema.ID.local
 				? undefined
 				: Option.getOrUndefined(yield* sandboxes.get(space.env));
+		const hostDir = Option.getOrUndefined(row.hostDir);
 		return {
 			id,
 			title: row.title,
 			directory: row.directory,
+			...(hostDir === undefined ? {} : { hostDir }),
 			...(sandbox === undefined ? {} : { sandbox }),
 		};
 	}).pipe(Effect.withSpan("Session.info"));
@@ -167,9 +182,31 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 		directory: location.directory,
 		slug: id,
 		title: input.title ?? "Session",
+		...(input.hostDir === undefined ? {} : { hostDir: AbsolutePath.make(hostPath.resolve(input.hostDir)) }),
 	});
 	yield* runtime.set(id, runtimeBindings(input));
 	return yield* makeHandle(id);
+});
+
+/**
+ * Point an existing session at a host directory, or clear it with `null`.
+ *
+ * The settings and plugin layers it reads change at the next exchange, because every exchange
+ * discovers from the session's current value rather than from one captured at creation.
+ *
+ * Distinct from {@link relink}, which moves the session's *work* to another space. A session can
+ * move machines and keep its host project, or stay where it is and be given one it never had.
+ */
+export const link = Effect.fn("Session.link")(function* (input: {
+	readonly sessionId: SessionSchema.ID;
+	readonly hostDir: string | null;
+}) {
+	const sessions = yield* SessionStore.Service;
+	yield* sessions.link({
+		sessionId: input.sessionId,
+		hostDir: input.hostDir === null ? null : AbsolutePath.make(hostPath.resolve(input.hostDir)),
+	});
+	return yield* makeHandle(input.sessionId);
 });
 
 /**

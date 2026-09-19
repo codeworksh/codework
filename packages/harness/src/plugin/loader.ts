@@ -68,7 +68,7 @@ export type Source =
  * not spelled here — a bare `acme.tool.proc` is a package name, and the plugin it names is
  * addressed by `{ plugin: "acme.tool.proc" }`, which resolves against what is already registered.
  */
-export const classify = (source: string, hostCwd: string): Source => {
+export const classify = (source: string, hostDir: string): Source => {
 	if (source.startsWith("file:")) {
 		// Both `new URL` and `fileURLToPath` silently read a relative `file:./x` as `/x`. A file
 		// URL names an absolute path or it is not one.
@@ -79,7 +79,7 @@ export const classify = (source: string, hostCwd: string): Source => {
 	// read `~` as a package and `~/x` as an unsupported spec, reporting a path as a bad package.
 	const expanded = expandTilde(source, path);
 	if (expanded.startsWith("./") || expanded.startsWith("../") || path.isAbsolute(expanded)) {
-		return { kind: "local", path: path.resolve(hostCwd, expanded) };
+		return { kind: "local", path: path.resolve(hostDir, expanded) };
 	}
 	return { kind: "package", request: Package.parse(source) };
 };
@@ -121,7 +121,7 @@ const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string,
 export interface Options {
 	readonly cache: string;
 	/** The OS process's directory, that constructor-relative references resolve against. Never read here. */
-	readonly hostCwd: string;
+	readonly hostDir: string;
 	readonly import?: (url: string) => Promise<unknown>;
 	readonly install?: (
 		request: Package.Request,
@@ -147,7 +147,7 @@ export interface Loaded {
 export const inspect = Effect.fn("PluginLoader.inspect")(function* (reference: string, options: Options) {
 	const origin = { index: 0, reference };
 	const source = yield* Effect.try({
-		try: () => classify(reference, options.hostCwd),
+		try: () => classify(reference, options.hostDir),
 		catch: (cause) => failure(origin, "source", cause),
 	});
 	const loaded = yield* load(source, origin, options);
@@ -165,8 +165,8 @@ export const inspect = Effect.fn("PluginLoader.inspect")(function* (reference: s
  * are one package, and `./plugins/x.ts` is the file it resolves to from the directory that
  * declared it. Pure -- nothing is installed, imported or read.
  */
-export const canonical = (reference: string, hostCwd: string): string => {
-	const source = classify(reference, hostCwd);
+export const canonical = (reference: string, hostDir: string): string => {
+	const source = classify(reference, hostDir);
 	return source.kind === "local" ? source.path : source.request.name;
 };
 

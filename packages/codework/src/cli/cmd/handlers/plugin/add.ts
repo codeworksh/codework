@@ -17,9 +17,13 @@ export default Runtime.handler(
 			// Install and import before touching the file: a spec that turns out not to be a plugin
 			// should fail here, with its own error, rather than at the next run from a file the user
 			// then has to repair by hand.
-			const plugin = yield* Plugin.inspect(reference, { cache: paths.cache, hostCwd: path.resolve(".") });
+			const plugin = yield* Plugin.inspect(reference, { cache: paths.cache, hostDir: path.resolve(".") });
 
 			const target = yield* resolveTarget(shared, userWide);
+			// Said before the entry is written, because it is the more consequential of the two
+			// facts: it decides where every future plugin entry lands, and it shadows any outer
+			// project from now on.
+			if (target.created !== undefined) yield* writeOut(`Created ${target.created}/\n`);
 			const { source, plugins } = yield* readPlugins(target.path);
 			const entries = yield* identify(plugins, target.path, paths.cache);
 			// Configured already if any spelling of an existing entry names this plugin -- the same

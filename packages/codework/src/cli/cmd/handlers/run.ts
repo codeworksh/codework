@@ -128,6 +128,12 @@ export default Runtime.handler(
 					...(Option.isNone(sandboxProviderId) ? {} : { providerResourceId: sandboxProviderId.value }),
 				};
 
+		// The session's host directory, with no flag to set it: a person running a command is always
+		// somewhere, and that somewhere is what they mean by "this project". `--cwd` is a different
+		// thing entirely -- where the work runs inside the session's space, which may be a sandbox
+		// on another machine.
+		const hostDir = process.cwd();
+
 		const runtime = {
 			...(Option.isNone(provider) || Option.isNone(model)
 				? {}
@@ -142,6 +148,7 @@ export default Runtime.handler(
 						title: "CLI",
 						runtime,
 						...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
+						hostDir,
 						sandbox: selection,
 					});
 			const state = yield* Ref.make(initialRenderState);
@@ -173,6 +180,7 @@ export default Runtime.handler(
 					...runtime,
 					...(selected === undefined ? {} : { sandbox: selected }),
 					...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
+					hostDir,
 				});
 			}
 			const ended = yield* Queue.unbounded<string>();

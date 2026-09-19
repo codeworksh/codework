@@ -10,7 +10,7 @@ object, which is what the loader imports.
 ## Using it
 
 ```jsonc
-// codework.json, ~/.codework/settings.json, or a --user-config-dir
+// <project>/.codework/settings.json, ~/.codework/settings.json, or a --user-config-dir
 {
 	"plugins": ["@acme/codework-tool-proc@1.2.0", { "package": "@acme/codework-tool-proc", "options": { "limit": 40 } }],
 }

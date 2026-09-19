@@ -34,7 +34,7 @@ export interface Options {
 	 * process's directory; a test or an embedder that runs somewhere other than where it wants
 	 * settings read from passes its own, rather than inheriting whatever launched the process.
 	 */
-	readonly cwd?: string;
+	readonly hostCwd?: string;
 	readonly home?: string;
 	/** user provided directory containing the highest-priority config. */
 	readonly userConfigDir?: string;
@@ -49,22 +49,24 @@ export const layer = (options: Options = {}) =>
 			// The single sanctioned `process.cwd()` in the harness, and only as the default.
 			// Everything downstream takes the host directory as a required parameter, so no module
 			// can quietly fall back to the OS process's directory when it meant a session's mount.
-			const hostCwd = options.cwd ?? process.cwd();
+			const hostCwd = options.hostCwd ?? process.cwd();
 			const global = Global.layerWith(paths);
-			const settingsOptions = {
-				cwd: hostCwd,
-				...(options.userConfigDir === undefined ? {} : { userConfigDir: options.userConfigDir }),
-			};
+			const settingsOptions = options.userConfigDir === undefined ? {} : { userConfigDir: options.userConfigDir };
 			// Settings are read once here because the plugin selection has to be prepared before
-			// any layer that depends on it; every later read goes through `Settings.Service`.
-			const config = yield* Settings.load({ ...settingsOptions, home: paths.home });
+			// any layer that depends on it; every later read goes through `Settings.Service`,
+			// which discovers from the session's own `hostDir` rather than from this one.
+			//
+			// This read happens before any session exists, so the process's directory is the only
+			// root available -- and the right one: it is what decides which plugins this process
+			// loads at all. Which of them a given session *runs* is the per-session question.
+			const config = yield* Settings.load({ ...settingsOptions, home: paths.home, hostDir: hostCwd });
 			// Settings entries extend the built-in selection rather than standing in for it, so
 			// naming a plugin cannot silently drop Bash or the default prompt. A built-in is turned
 			// off by name, with a `{ "plugin": "codework.tool.bash", "enabled": false }` entry.
 			const selection = yield* prepare(options.plugins ?? [...builtins, ...config.plugins], {
 				builtins,
 				cache: paths.cache,
-				hostCwd,
+				hostDir: hostCwd,
 			});
 			// Flattened before anything can publish: a plugin event type that collides
 			// or is not namespaced is a boot failure, not a surprise at first publish.

@@ -79,7 +79,7 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 	options: Options,
 ) {
 	const catalog = make();
-	const hostCwd = options.hostCwd;
+	const hostDir = options.hostDir;
 	for (const builtin of options.builtins) {
 		catalog.add(yield* Loader.validate(builtin, { index: -1, reference: builtin.id }, true), "builtin");
 	}
@@ -160,7 +160,7 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 			continue;
 		}
 		const source = yield* Effect.try({
-			try: () => Loader.classify(reference, hostCwd),
+			try: () => Loader.classify(reference, hostDir),
 			catch: (cause) => Loader.failure(origin, "source", cause),
 		});
 		const key = source.kind === "package" ? source.request.spec : source.path;

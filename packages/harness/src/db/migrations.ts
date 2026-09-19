@@ -245,4 +245,19 @@ export const migrations = {
 			ON session_input (session_id, promoted_seq)
 		`;
 	}),
+
+	"202609190001_session_host_dir": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+
+		// The host directory this session belongs to, which its settings and plugins are
+		// discovered from. Distinct from `directory`: that is a path inside the session's
+		// space, possibly on another machine, whereas this one is always on the machine the
+		// harness runs on.
+		//
+		// Nullable, with no default. A session may legitimately have no host project -- one
+		// created over RPC by a client that did not name one -- and NULL is that fact. It is
+		// never filled in from the process's own directory: the project layer is simply not
+		// read. A session can be given one later without being re-created.
+		yield* sql`ALTER TABLE session ADD COLUMN host_dir TEXT`;
+	}),
 };

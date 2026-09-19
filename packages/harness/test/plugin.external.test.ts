@@ -50,7 +50,7 @@ const exchange = (input: {
 		Effect.provide(
 			Harness.layer({
 				home: join(input.root, "home"),
-				cwd: input.cwd ?? input.root,
+				hostCwd: input.cwd ?? input.root,
 				database: ":memory:",
 				llm: (request, signal) => {
 					contexts.push(request.context);
@@ -70,10 +70,15 @@ describe("third-party plugins", () => {
 	it("uses Harness.layer cwd and the nearest ancestor project file", () =>
 		withSettings(async ({ root }) => {
 			const nested = join(root, "packages", "app");
+			await mkdir(join(root, "packages", ".codework"), { recursive: true });
 			await mkdir(nested, { recursive: true });
-			await writeFile(join(root, "codework.jsonc"), JSON.stringify({ plugins: [pluginPath("tool/acme-echo")] }));
+			// The outer project, which the nearest one shadows outright rather than merging with.
 			await writeFile(
-				join(root, "packages", "codework.jsonc"),
+				join(root, ".codework", "settings.jsonc"),
+				JSON.stringify({ plugins: [pluginPath("tool/acme-echo")] }),
+			);
+			await writeFile(
+				join(root, "packages", ".codework", "settings.jsonc"),
 				JSON.stringify({
 					plugins: [
 						pluginPath("prompt/acme-prompt.ts"),
@@ -83,6 +88,7 @@ describe("third-party plugins", () => {
 			);
 
 			const { contexts, prompts } = await exchange({ root, cwd: nested });
+			// `acme-echo` came from the outer file, which is not read at all.
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
 			expect(prompts[0]?.endsWith("\n\nnearest")).toBe(true);
 		}));
@@ -230,12 +236,12 @@ describe("third-party plugins", () => {
 				}),
 			);
 			const specs: string[] = [];
-			const config = await Effect.runPromise(Settings.load({ cwd: root, userConfigDir: custom, home: global }));
+			const config = await Effect.runPromise(Settings.load({ hostDir: root, userConfigDir: custom, home: global }));
 			const prepared = await Effect.runPromise(
 				prepare([...builtins, ...config.plugins], {
 					builtins,
 					cache: join(root, "cache"),
-					hostCwd: root,
+					hostDir: root,
 					install: (request) => {
 						specs.push(request.spec);
 						const module = request.name === "codework-acme-plugin" ? "tool.mjs" : "prompt.mjs";
@@ -308,7 +314,7 @@ describe("third-party plugins", () => {
 			prepare([pluginPath("tool/acme-echo"), `file://${pluginPath("prompt/acme-prompt.ts")}`], {
 				builtins: [],
 				cache: "/unused",
-				hostCwd: "/project",
+				hostDir: "/project",
 			}),
 		);
 		expect(plugins.map((entry) => entry.plugin.id)).toEqual(["acme.tool.echo", "acme.prompt.marker"]);
@@ -319,7 +325,7 @@ describe("third-party plugins", () => {
 			prepare([pluginPath("host/acme-broken.ts")], {
 				builtins: [],
 				cache: "/unused",
-				hostCwd: "/project",
+				hostDir: "/project",
 			}).pipe(Effect.flip),
 		);
 		expect(failure).toMatchObject({ _tag: "PluginPreparationError", phase: "definition", index: 0 });
@@ -428,7 +434,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							plugins: [pluginPath("event/acme-journal.ts"), defaultPromptPlugin],
@@ -458,7 +464,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							llm: (request, signal) => {
 								contexts.push(request.context);
@@ -488,7 +494,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							plugins: [pluginPath("tool/acme-bad-tool.ts"), defaultPromptPlugin],
@@ -512,7 +518,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							plugins: [pluginPath("host/acme-broken.ts")],
@@ -560,7 +566,7 @@ describe("third-party plugins", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
-							cwd: root,
+							hostCwd: root,
 							database: ":memory:",
 							llm: (request, signal) => {
 								contexts.push(request.context);

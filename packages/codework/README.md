@@ -122,7 +122,7 @@ Install a plugin and record it in a settings file, or take it back out. Scoping 
 project is the default, `-g` is user-wide.
 
 ```bash
-# This project: edits the settings file it already has, else writes ./codework.jsonc
+# This project: edits .codework/settings.jsonc, creating .codework/ here if no ancestor has one
 codework plugin add @acme/codework-tool-proc@1.2.0
 
 # Every project this user runs: writes ~/.codework/settings.jsonc
@@ -132,10 +132,12 @@ codework plugin add @acme/codework-tool-proc@1.2.0 -g
 codework plugin remove @acme/codework-tool-proc
 ```
 
-The project file is found the way the harness finds it: the startup directory first, then each
-ancestor, nearest wins. Run from `packages/app`, the command edits the repository's own
-`codework.jsonc` rather than starting a second file beside it. Only when no ancestor has one is a
-file created in the directory you are in.
+The project is found the way the harness finds it, and the way git finds a repository: the
+nearest ancestor holding a `.codework` directory. Run from `packages/app`, the command edits the
+repository's own `.codework/settings.jsonc` rather than starting a second project beside it. An
+empty `.codework/` is enough — the marker is the directory, so creating it is how you say a
+project begins here. When no ancestor has one, `add` creates `.codework/` in the directory you are
+in and prints the path, because that decides where every later plugin entry lands.
 
 `add` installs and imports the module before writing anything, so a spec that is not a plugin
 fails with its own error and leaves the file untouched; the line it prints names the plugin ID the

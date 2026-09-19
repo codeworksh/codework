@@ -94,7 +94,12 @@ describe("settings against a live provider", () => {
 					}
 				}).pipe(
 					Effect.provide(
-						Harness.layer({ home: join(root, "home"), cwd: root, database: ":memory:", userConfigDir: custom }),
+						Harness.layer({
+							home: join(root, "home"),
+							hostCwd: root,
+							database: ":memory:",
+							userConfigDir: custom,
+						}),
 					),
 					Effect.scoped,
 					Effect.timeout("240 seconds"),

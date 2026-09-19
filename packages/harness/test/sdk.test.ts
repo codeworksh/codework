@@ -24,7 +24,7 @@ const withHarness = <A, E, R>(effect: Effect.Effect<A, E, R>, llm?: LLM.Open) =>
 		(home) =>
 			effect.pipe(
 				Effect.provide(
-					Harness.layer({ database: ":memory:", home, cwd: home, ...(llm === undefined ? {} : { llm }) }),
+					Harness.layer({ database: ":memory:", home, hostCwd: home, ...(llm === undefined ? {} : { llm }) }),
 				),
 				Effect.scoped,
 			),
@@ -124,7 +124,7 @@ describe("Harness Effect SDK", () => {
 					inputs.push(input);
 					return open(input, signal);
 				};
-				const runtime = () => Harness.layer({ database, home, cwd: home, llm });
+				const runtime = () => Harness.layer({ database, home, hostCwd: home, llm });
 				return Effect.gen(function* () {
 					const sessionId = yield* Effect.gen(function* () {
 						const session = yield* Session.create({
@@ -240,7 +240,7 @@ describe("Harness Effect SDK", () => {
 					const global = yield* Global.Service;
 					expect(global.home).toBe(home);
 					expect(global.data).toBe(path.join(home, "data"));
-				}).pipe(Effect.provide(Harness.layer({ database: ":memory:", home, cwd: home })), Effect.scoped),
+				}).pipe(Effect.provide(Harness.layer({ database: ":memory:", home, hostCwd: home })), Effect.scoped),
 			(home) => Effect.promise(() => fs.rm(home, { recursive: true, force: true })),
 		),
 	);
@@ -271,7 +271,7 @@ describe("Harness Effect SDK", () => {
 						Harness.layer({
 							database: ":memory:",
 							home,
-							cwd: home,
+							hostCwd: home,
 						}),
 					),
 					Effect.scoped,

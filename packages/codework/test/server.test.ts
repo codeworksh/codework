@@ -28,7 +28,7 @@ const layer = (options: Harness.Options = {}) => {
 	homes.push(home);
 	return Handlers.layer.pipe(
 		Layer.provide(EventFeed.layer),
-		Layer.provideMerge(Harness.layer({ home, cwd: home, database: ":memory:", ...options })),
+		Layer.provideMerge(Harness.layer({ home, hostCwd: home, database: ":memory:", ...options })),
 	);
 };
 
@@ -63,6 +63,25 @@ describe("server", () => {
 			const listed = yield* rpc["session.list"]({});
 			expect(listed.some(({ id }) => id === created.id)).toBe(true);
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
+
+	it("session.create honours a client-supplied hostDir, and omits it when the client named none", () => {
+		const root = mkdtempSync(join(tmpdir(), "codework-server-hostdir-"));
+		homes.push(root);
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			// Passed through as given. The client is the owner of this machine, so naming a host
+			// path is no more privilege than running `codework` in it.
+			const placed = yield* rpc["session.create"]({ hostDir: root });
+			expect(placed.hostDir).toBe(root);
+			expect((yield* rpc["session.info"]({ sessionId: placed.id })).hostDir).toBe(root);
+
+			// And nothing fills it in: a session the client did not place has no host project,
+			// rather than quietly adopting the server's own startup directory.
+			const unplaced = yield* rpc["session.create"]({});
+			expect(unplaced.hostDir).toBeUndefined();
+		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
+	});
 
 	it("session.info fails with SessionNotFoundError for a bogus id", () =>
 		Effect.gen(function* () {
@@ -240,7 +259,7 @@ const websocket = (options: Harness.Options = {}) => {
 	return Server.layer({
 		host: "127.0.0.1",
 		port: 0,
-		harness: { home, cwd: home, database: ":memory:", plugins: [], llm: immediateOpen(), ...options },
+		harness: { home, hostCwd: home, database: ":memory:", plugins: [], llm: immediateOpen(), ...options },
 	});
 };
 
@@ -497,7 +516,7 @@ describe("WebSocket client", () => {
 		Effect.gen(function* () {
 			const home = mkdtempSync(join(tmpdir(), "codework-shutdown-"));
 			homes.push(home);
-			const harness = { home, cwd: home, database: join(home, "codework.db"), plugins: [] };
+			const harness = { home, hostCwd: home, database: join(home, "codework.db"), plugins: [] };
 			const server = () => Server.layer({ host: "127.0.0.1", port: 0, harness });
 
 			const id = yield* Effect.gen(function* () {

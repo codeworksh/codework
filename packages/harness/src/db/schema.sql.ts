@@ -128,6 +128,10 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	slug: Schema.String,
 	// Absolute realpath of the session cwd; always equal to or under `space.location`.
 	directory: AbsolutePath,
+	// The host directory this session belongs to, and the only thing its settings and plugins
+	// are discovered from. None is a normal state, not a missing value to be filled in: such a
+	// session reads the user layer only.
+	hostDir: Model.FieldOption(AbsolutePath),
 	title: Schema.String,
 	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),

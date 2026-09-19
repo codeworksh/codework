@@ -24,6 +24,7 @@ import { Location } from "../location/location.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { SessionRuntime } from "../session/runtime.ts";
 import type { ID as SessionId } from "../session/schema.ts";
+import { Session as SessionStore } from "../session/session.ts";
 import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
 import type { Block } from "../settings/schema.ts";
@@ -150,14 +151,22 @@ export const layer = (options: Options, selection: ReadonlyArray<Prepared>) => {
 		Service,
 		Effect.gen(function* () {
 			const runtime = yield* SessionRuntime.Service;
+			const sessions = yield* SessionStore.Service;
 			const settings = yield* Settings.Service;
 			const events = makeEvents(yield* Event.Service);
 			return Service.of({
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
 					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
+					// Read per exchange, not captured at creation, so `Session.link` takes effect at
+					// the next one. A session with none discovers no project layer: there is no
+					// fallback to the process's directory, which would hand it a stranger's project
+					// (it is a long-running server; one process serves sessions in many projects, or
+					// in none).
+					const session = yield* sessions.get(sessionId);
+					const hostDir = Option.isNone(session) ? undefined : Option.getOrUndefined(session.value.hostDir);
 					// Not wrapped: a file the user can fix is more useful to a client as a settings
 					// failure carrying its path and key than as an anonymous snapshot failure.
-					const loadedSettings = yield* settings.load;
+					const loadedSettings = yield* settings.load(hostDir);
 					const configured = compose(loadedSettings, options, sessionOptions);
 					const {
 						promptCustom,

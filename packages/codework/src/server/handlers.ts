@@ -21,6 +21,7 @@ const toSessionInfo = (info: Session.Info): SessionInfo => ({
 	id: info.id,
 	title: info.title,
 	directory: info.directory,
+	...(info.hostDir === undefined ? {} : { hostDir: info.hostDir }),
 	...(info.sandbox === undefined ? {} : { sandbox: toSandboxInfo(info.sandbox) }),
 });
 
@@ -49,12 +50,15 @@ export const layer = Contract.Api.toLayer(
 		const sessions = yield* SessionStore.Service;
 
 		return Contract.Api.of({
-			"session.create": Effect.fnUntraced(function* ({ title, directory, sandbox, runtime }) {
+			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime }) {
 				const selection = sandbox === undefined ? undefined : yield* Sandbox.resolve(sandbox);
 				const selected = selection?.info;
 				const handle = yield* Session.create({
 					...(title === undefined ? {} : { title }),
 					...(directory === undefined ? {} : { directory }),
+					// Passed through as given, never defaulted to the server's own directory: a
+					// session the client did not place has no project, which is a normal state.
+					...(hostDir === undefined ? {} : { hostDir }),
 					...(selected === undefined ? {} : { sandbox: selected }),
 					...runtimeInput(runtime),
 				}).pipe(Effect.onError(() => releaseOnFailure(selection)));

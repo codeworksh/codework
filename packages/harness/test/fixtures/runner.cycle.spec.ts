@@ -45,7 +45,7 @@ const runtime = (root: string, custom: string) =>
 		),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
-			Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+			Settings.layer({ userConfigDir: custom }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
 			),
 		),
