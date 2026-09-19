@@ -83,6 +83,15 @@ describe("server", () => {
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
 	});
 
+	it("plugin.reload reports the loaded set", () =>
+		Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const reloaded = yield* rpc["plugin.reload"]({});
+			// The built-ins alone are a set, so a server with no configured plugins still reloads.
+			expect(reloaded.plugins).toBeGreaterThan(0);
+			expect(reloaded.failure).toBeUndefined();
+		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
+
 	it("session.info fails with SessionNotFoundError for a bogus id", () =>
 		Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);

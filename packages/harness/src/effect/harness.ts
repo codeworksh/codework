@@ -100,8 +100,25 @@ export const layer = (options: Options = {}) =>
 				);
 
 			// Resolve-only for the same reason: an exchange follows the store, it does not fill it.
+			const resolveOnly = { ...catalogOptions, install: PluginStore.required };
 			const followStore = (refs: ReadonlyArray<PluginRef>, current: Pool) =>
-				follow(refs, current, { ...catalogOptions, install: PluginStore.required }, filed);
+				follow(refs, current, resolveOnly, filed);
+
+			/*
+			 * A reload re-imports everything, including the local plugins nothing else can notice
+			 * have changed. The counter is what makes that possible: a local plugin's URL never
+			 * moves, so without a query string the module registry would hand back what it already
+			 * has. Resolve-only, like the boundary check -- reload re-reads disk, it never fetches.
+			 */
+			let reloads = 0;
+			const rebuild = () =>
+				Effect.gen(function* () {
+					reloads += 1;
+					// Re-read from the same root this process booted with, so the rebuilt pool
+					// holds what the old one did plus whatever was added since.
+					const current = yield* Settings.load({ ...settingsOptions, home: paths.home, hostDir: hostCwd });
+					return yield* load(references(current), { ...resolveOnly, reload: reloads });
+				});
 			// Flattened before anything can publish: a plugin event type that collides
 			// or is not namespaced is a boot failure, not a surprise at first publish.
 			const definitions = yield* EventRegistry.flatten([...(yield* Ref.get(pool)).plugins.values()]);
@@ -118,7 +135,7 @@ export const layer = (options: Options = {}) =>
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
-				Layer.provideMerge(State.layer({}, pool, references, followStore)),
+				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild)),
 				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),

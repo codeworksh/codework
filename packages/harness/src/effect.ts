@@ -16,5 +16,6 @@ export * as Tool from "./tool/tool.ts";
 
 export { Global } from "./global.ts";
 export { Settings } from "./settings/settings.ts";
+export { State } from "./state/state.ts";
 
 export * as Plugin from "./plugin/index.ts";

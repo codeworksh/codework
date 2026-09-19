@@ -137,6 +137,20 @@ export interface Options {
 	readonly cache: string;
 	/** The host directory a relative reference anchors to. Never read here. */
 	readonly hostDir: string;
+	/**
+	 * Bumped by every reload, and appended to a **local** plugin's URL.
+	 *
+	 * A local plugin has no store entry and therefore no generation, so its URL never changes and
+	 * the module registry -- keyed by URL and never evicting -- hands back the module it already
+	 * has. A query string it has not seen is a different key, so the file is read again.
+	 *
+	 * Every reload re-evaluates every local plugin, changed or not: no digest map and no `stat`
+	 * cache, because reload is human-scale. The cost is one leaked module instance per reload,
+	 * bounded by how often a person types the command.
+	 *
+	 * A fetched plugin needs none of this. A new generation is already a new path.
+	 */
+	readonly reload?: number;
 	readonly import?: (url: string) => Promise<unknown>;
 	/**
 	 * How a package reaches the disk. The default installs; `plugin remove` passes a resolve-only
@@ -256,9 +270,13 @@ export const load = Effect.fn("PluginLoader.load")(function* (target: Target, or
 				// wrapping it would bury the reason a caller is meant to act on.
 				installer(target, origin, options);
 	const installed = yield* resolved;
+	const address =
+		target.kind === "local" && options.reload !== undefined && options.reload > 0
+			? `${installed.url}?reload=${options.reload}`
+			: installed.url;
 	// Already checked while staged, in the common case; a local source and an injected installer
 	// still have to be imported here.
-	const plugin = installed.plugin ?? (yield* imported(installed.url, origin, options.import));
+	const plugin = installed.plugin ?? (yield* imported(address, origin, options.import));
 	return {
 		plugin,
 		source: origin.reference,

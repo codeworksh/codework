@@ -20,7 +20,9 @@ export const pooled = (plugins: ReadonlyArray<Plugin>) => {
 	return {
 		ref: Ref.makeUnsafe(pool),
 		references: () => references,
-		// No store behind these plugins, so nothing can move under them.
+		// No store behind these plugins, so nothing can move under them, and a reload has nothing
+		// to re-read.
 		follow: (): Effect.Effect<Option.Option<Pool>> => Effect.succeedNone,
+		rebuild: (): Effect.Effect<Pool> => Effect.succeed(pool),
 	};
 };

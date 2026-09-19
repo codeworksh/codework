@@ -155,6 +155,21 @@ export const Cmd = Spec.make("codework", {
 					params: {},
 					examples: [{ command: "codework plugin update", description: "Take whatever `check` found" }],
 				}),
+				Spec.make("reload", {
+					description: "Re-import configured plugins in a running server",
+					params: {
+						server: Flag.String("server").pipe(
+							Flag.withDescription("Base URL of the running codework server"),
+							Flag.withDefault("http://127.0.0.1:7433"),
+						),
+					},
+					examples: [
+						{
+							command: "codework plugin reload",
+							description: "Pick up edits to a local plugin without restarting",
+						},
+					],
+				}),
 				Spec.make("remove", {
 					description: "Remove a plugin from a settings file",
 					params: {

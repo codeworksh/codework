@@ -38,7 +38,9 @@ const sandbox = SandboxController.layer().pipe(
 const runtime = (root: string, custom: string) =>
 	Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer()))),
-		Layer.provideMerge(((seeded) => State.layer({}, seeded.ref, seeded.references, seeded.follow))(pooled(builtins))),
+		Layer.provideMerge(
+			((seeded) => State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild))(pooled(builtins)),
+		),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Settings.layer({ userConfigDir: custom }).pipe(

@@ -17,6 +17,7 @@ const Handlers = Runtime.handlers(Cmd, {
 		check: () => import("./cli/cmd/handlers/plugin/check.ts"),
 		install: () => import("./cli/cmd/handlers/plugin/install.ts"),
 		list: () => import("./cli/cmd/handlers/plugin/list.ts"),
+		reload: () => import("./cli/cmd/handlers/plugin/reload.ts"),
 		remove: () => import("./cli/cmd/handlers/plugin/remove.ts"),
 		update: () => import("./cli/cmd/handlers/plugin/update.ts"),
 	},

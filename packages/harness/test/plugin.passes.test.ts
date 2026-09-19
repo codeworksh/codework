@@ -8,6 +8,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { follow, load, select, type PluginRef, type Pool } from "../src/plugin/catalog.ts";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
+import { State } from "../src/state/state.ts";
 import { define } from "../src/plugin/plugin.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 
@@ -328,5 +329,119 @@ describe("a running session and the store", () => {
 			expect(prompts).toHaveLength(2);
 			expect(prompts[0]).not.toContain("arrived");
 			expect(prompts[1]?.endsWith("arrived")).toBe(true);
+		}));
+});
+
+describe("reload", () => {
+	/** A local plugin whose contents change while its path does not. */
+	const write = (file: string, suffix: string) =>
+		writeFile(
+			file,
+			[
+				"export default {",
+				"  id: 'acme.prompt.edited',",
+				"  kind: 'prompt',",
+				`  setup: (ctx) => ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ''}${suffix}\`),`,
+				"};",
+			].join("\n"),
+		);
+
+	const session = (input: {
+		readonly root: string;
+		readonly project: string;
+		readonly prompts: string[];
+		readonly body: (state: State.Interface, run: () => Effect.Effect<void, unknown>) => Effect.Effect<void, unknown>;
+	}) => {
+		const open = immediateOpen();
+		return Effect.runPromise(
+			Effect.gen(function* () {
+				const created = yield* Session.create({ directory: input.project, hostDir: input.project });
+				const state = yield* State.Service;
+				const run = () =>
+					created
+						.prompt({ text: "go", delivery: "followUp" })
+						.pipe(Effect.andThen(created.resume()), Effect.andThen(created.wait()), Effect.asVoid);
+				yield* input.body(state, run);
+			}).pipe(
+				Effect.provide(
+					Harness.layer({
+						home: join(input.root, "home"),
+						hostCwd: input.project,
+						database: ":memory:",
+						llm: (request, signal) => {
+							input.prompts.push(request.context.systemPrompt ?? "");
+							return open(request, signal);
+						},
+					}),
+				),
+				Effect.scoped,
+				Effect.timeout("20 seconds"),
+				Effect.orDie,
+			) as Effect.Effect<void>,
+		);
+	};
+
+	it("re-imports a local plugin edited in place, which nothing else can notice", () =>
+		withProject(async ({ root, project }) => {
+			const file = join(project, "edited.mjs");
+			await write(file, "before");
+			await writeFile(join(project, ".codework", "settings.jsonc"), JSON.stringify({ plugins: [file] }));
+
+			const prompts: string[] = [];
+			await session({
+				root,
+				project,
+				prompts,
+				body: (state, run) =>
+					Effect.gen(function* () {
+						yield* run();
+						// Same path, same settings, no generation -- a local source is never filed,
+						// so neither exchange-boundary check can fire. Without the cache-buster the
+						// module registry hands back the module it already has.
+						yield* Effect.promise(() => write(file, "after"));
+						yield* run();
+						expect(prompts[1]?.endsWith("before")).toBe(true);
+
+						const reloaded = yield* state.reload;
+						expect(reloaded.failure).toBeUndefined();
+						yield* run();
+					}),
+			});
+			// Two exchanges see the old module against an unchanged URL; the reload is what makes
+			// the third see the edit.
+			expect(prompts.map((prompt) => (prompt.endsWith("after") ? "after" : "before"))).toEqual([
+				"before",
+				"before",
+				"after",
+			]);
+		}));
+
+	it("keeps the last good set when a reload fails, rather than emptying the registry", () =>
+		withProject(async ({ root, project }) => {
+			const file = join(project, "edited.mjs");
+			await write(file, "before");
+			await writeFile(join(project, ".codework", "settings.jsonc"), JSON.stringify({ plugins: [file] }));
+
+			const prompts: string[] = [];
+			await session({
+				root,
+				project,
+				prompts,
+				body: (state, run) =>
+					Effect.gen(function* () {
+						yield* run();
+						// Broken in a way only an import can discover.
+						yield* Effect.promise(() => writeFile(file, "export default { nope: true };"));
+
+						const reloaded = yield* state.reload;
+						expect(reloaded.failure).toBeDefined();
+						expect(reloaded.plugins).toBeGreaterThan(0);
+
+						// A server that emptied its tool registry over a typo would be worse than
+						// one that keeps working and says so, so the previous set is still live.
+						yield* run();
+					}),
+			});
+			expect(prompts.at(-1)?.endsWith("before")).toBe(true);
 		}));
 });

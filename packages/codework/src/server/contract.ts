@@ -145,6 +145,19 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 		error: SessionStore.SessionNotFoundError,
 	}),
+	/**
+	 * Re-import every configured plugin, for the whole server.
+	 *
+	 * The one thing an exchange cannot notice on its own: a local plugin whose contents changed
+	 * while its path did not. A failure keeps the previous set and is reported here rather than
+	 * emptying a running server's tool registry.
+	 */
+	Rpc.make("plugin.reload", {
+		payload: {},
+		// No error channel: a reload that fails keeps the previous set and reports why, because a
+		// server that empties its tool registry over a typo is worse than one that says so.
+		success: Schema.Struct({ plugins: Schema.Int, failure: optional(Schema.String) }),
+	}),
 	Rpc.make("sandbox.drivers", {
 		payload: {},
 		success: Schema.Array(Schema.Struct({ name: Schema.String, kind: Schema.String })),

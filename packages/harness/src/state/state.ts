@@ -119,7 +119,34 @@ export interface Snapshot {
 	readonly toolExecution: ToolExecutionMode;
 }
 
+export interface Reloaded {
+	/** How many plugins the new set holds, when it swapped. */
+	readonly plugins: number;
+	/** Why the swap did not happen. The previous set is still the one in use. */
+	readonly failure?: string;
+}
+
 export interface Interface {
+	/**
+	 * Re-import every configured plugin, and swap the loaded set if it works.
+	 *
+	 * This covers exactly one case the exchange boundary cannot: a **local** plugin whose contents
+	 * changed while its path did not. Nothing in settings changed and no generation moved -- there
+	 * is none, because a local source is never copied into the store -- so neither boundary check
+	 * fires, and the module registry holds the old module against an unchanged URL.
+	 *
+	 * Which settles what reload *is*: not a way to reach the store, but a way to say "re-import
+	 * even though nothing looks different". The store is reached by `install` and `update`.
+	 *
+	 * **A failure here is not fatal**, deliberately unlike boot. At boot a broken plugin entry
+	 * fails fast, matching the settings loader. At reload the last good set stays and the failure
+	 * is reported: a long-running server that empties its tool registry because someone typo'd a
+	 * settings file is worse than one that keeps working and says so.
+	 *
+	 * A reload lands at the next exchange, never inside one, because `snapshot` reads the loaded
+	 * set once at its top.
+	 */
+	readonly reload: Effect.Effect<Reloaded>;
 	/**
 	 * Capture runtime state for one exchange. Called inside a session drain,
 	 * where the mount it reads is already open.
@@ -162,13 +189,23 @@ export const layer = (
 	pool: Ref.Ref<Pool>,
 	references: (settings: Info) => ReadonlyArray<PluginRef>,
 	/**
-	 * The exchange-boundary check: the new pool when the store has moved, `undefined` when it has
-	 * not. State does not know what a store is, so whoever built the pool answers this.
+	 * The exchange-boundary check: the new pool when the store has moved, nothing when it has not.
+	 * State does not know what a store is, so whoever built the pool answers this.
 	 */
 	follow: (
 		refs: ReadonlyArray<PluginRef>,
 		current: Pool,
 	) => Effect.Effect<Option.Option<Pool>, { readonly message: string }>,
+	/**
+	 * A full load pass, told to re-import even where nothing looks different. Resolve-only, like
+	 * `follow`: reload re-imports what is on disk, it does not fetch.
+	 *
+	 * It takes no references and reads its own settings, because the set it must produce is the
+	 * *process's* -- every module any session might name -- and State only ever sees one session's
+	 * view. Handing it `references` from here would quietly narrow the pool to whatever the
+	 * caller's project declares, and drop every other project's plugins on the floor.
+	 */
+	rebuild: () => Effect.Effect<Pool, { readonly message: string }>,
 ) => {
 	return Layer.effect(
 		Service,
@@ -178,6 +215,20 @@ export const layer = (
 			const settings = yield* Settings.Service;
 			const events = makeEvents(yield* Event.Service);
 			return Service.of({
+				reload: Effect.gen(function* () {
+					// Swaps the module set for the whole process. Which of those a given session
+					// runs stays that session's own question, answered by its config pass at the
+					// next exchange.
+					const rebuilt = yield* rebuild().pipe(Effect.result);
+					if (rebuilt._tag === "Failure") {
+						yield* Effect.logWarning(
+							`plugin reload failed, keeping the previous set: ${rebuilt.failure.message}`,
+						);
+						return { plugins: (yield* Ref.get(pool)).plugins.size, failure: rebuilt.failure.message };
+					}
+					yield* Ref.set(pool, rebuilt.success);
+					return { plugins: rebuilt.success.plugins.size };
+				}),
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
 					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
 					// Read per exchange, not captured at creation, so `Session.link` takes effect at

@@ -1,4 +1,4 @@
-import { Control, EventSchema, PromptSchema, Sandbox, Session, SessionStore } from "@codeworksh/harness/effect";
+import { Control, EventSchema, PromptSchema, Sandbox, Session, SessionStore, State } from "@codeworksh/harness/effect";
 import { Effect, Option, Stream } from "effect";
 import { Contract, type RuntimeConfig, type SandboxInfo, type SessionInfo } from "./contract.ts";
 import { Envelope } from "./envelope.ts";
@@ -48,6 +48,7 @@ export const layer = Contract.Api.toLayer(
 		const control = yield* Control.Service;
 		const feed = yield* EventFeed.Service;
 		const sessions = yield* SessionStore.Service;
+		const state = yield* State.Service;
 
 		return Contract.Api.of({
 			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime }) {
@@ -63,6 +64,10 @@ export const layer = Contract.Api.toLayer(
 					...runtimeInput(runtime),
 				}).pipe(Effect.onError(() => releaseOnFailure(selection)));
 				return toSessionInfo(yield* handle.info);
+			}),
+			"plugin.reload": Effect.fnUntraced(function* () {
+				// One handler onto the swap, because the seam was built before this surface was.
+				return yield* state.reload;
 			}),
 			"session.list": Effect.fnUntraced(function* () {
 				const rows = yield* sessions.list();
