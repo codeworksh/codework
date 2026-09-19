@@ -4,7 +4,7 @@ import { Runtime } from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
-import { identify, matches, readPlugins, resolveTarget, writePlugins } from "./settings.ts";
+import { identify, matches, readPlugins, resolveTarget, spellings, writePlugins } from "./settings.ts";
 
 export default Runtime.handler(
 	Cmd.commands.plugin.commands.add,
@@ -17,7 +17,11 @@ export default Runtime.handler(
 			// Install and import before touching the file: a spec that turns out not to be a plugin
 			// should fail here, with its own error, rather than at the next run from a file the user
 			// then has to repair by hand.
-			const plugin = yield* Plugin.inspect(reference, { cache: paths.cache, hostDir: path.resolve(".") });
+			const plugin = yield* Plugin.inspect(reference, {
+				cache: paths.cache,
+				home: paths.home,
+				hostDir: path.resolve("."),
+			});
 
 			const target = yield* resolveTarget(shared, userWide);
 			// Said before the entry is written, because it is the more consequential of the two
@@ -25,13 +29,13 @@ export default Runtime.handler(
 			// project from now on.
 			if (target.created !== undefined) yield* writeOut(`Created ${target.created}/\n`);
 			const { source, plugins } = yield* readPlugins(target.path);
-			const entries = yield* identify(plugins, target.path, paths.cache);
+			const entries = yield* identify(plugins, target.path, paths.cache, paths.home);
+			const spelled = yield* spellings(reference, path.resolve("."));
 			// Configured already if any spelling of an existing entry names this plugin -- the same
 			// package under a different version, the path it was added by, or the ID it declares. A
 			// `{ plugin }` and `{ package }` entries only configure an existing loader, so neither
 			// can satisfy `add` alone.
-			const names = (entry: (typeof entries)[number]) =>
-				matches(entry, reference, path.resolve(".")) || entry.answers.has(plugin.id);
+			const names = (entry: (typeof entries)[number]) => matches(entry, spelled) || entry.answers.has(plugin.id);
 			const version = plugin.version === undefined ? "" : `@${plugin.version}`;
 
 			// A loader for this plugin is already there. Adding it under a different spelling -- a

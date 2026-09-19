@@ -151,13 +151,30 @@ describe("CLI output", () => {
 		expect(output).toContain("hint: a plugin module must default-export one object");
 	});
 
-	it("renders a plugin install failure without the tag", () => {
+	it("renders a plugin failure by its reason, without the tag", () => {
 		const output = renderError(
-			new Plugin.InstallError({ cause: new Error("pnpm installation failed with exit code 1") }),
+			new Plugin.InstallError({
+				reason: "plugin-no-commit",
+				reference: "github:acme/plugins#main",
+				message: "cannot resolve a commit for github:acme/plugins#main",
+			}),
 		);
 
-		expect(output).toContain("error[plugin-install]: pnpm installation failed with exit code 1");
+		expect(output).toContain("error[plugin-no-commit]: cannot resolve a commit for github:acme/plugins#main");
+		expect(output).toContain("reference: github:acme/plugins#main");
 		expect(output).not.toContain("PluginInstallError");
+	});
+
+	it("renders a missing local path as a source failure, not a store one", () => {
+		const output = renderError(
+			new Plugin.SourceError({
+				reason: "plugin-not-found",
+				reference: "./plugins/x.ts",
+				message: "./plugins/x.ts does not exist",
+			}),
+		);
+
+		expect(output).toContain("error[plugin-not-found]: ./plugins/x.ts does not exist");
 	});
 
 	it("renders the sanitized sandbox provider failure", () => {

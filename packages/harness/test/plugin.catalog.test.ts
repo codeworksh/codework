@@ -7,13 +7,23 @@ import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { prepare, type Options, type PluginRef, type Prepared } from "../src/plugin/catalog.ts";
-import { canonical, classify, validate } from "../src/plugin/loader.ts";
-import { install, InstallError, parse, type Request, type Runner } from "../src/plugin/package.ts";
+import { InstallError } from "../src/plugin/error.ts";
+import { canonical, validate } from "../src/plugin/loader.ts";
+import type { Runner } from "../src/plugin/npm.ts";
+import { install } from "../src/plugin/package.ts";
+import { canonical as canonicalOf, type Fetchable, parse, type Target } from "../src/plugin/source.ts";
 import { define } from "../src/plugin/plugin.ts";
 
 const a = define({ id: "acme.tool.a", kind: "tool", setup: () => {} });
 const b = define({ id: "acme.tool.b", kind: "tool", setup: () => {} });
-const options: Options = { builtins: [], cache: "/unused", hostDir: "/project" };
+const options: Options = { builtins: [], cache: "/unused", home: "/unused-home", hostDir: "/project" };
+
+/** `parse` is pure behind its Effect, so a test can read the Target out directly. */
+const target = (spec: string, from = "/project"): Target => Effect.runSync(parse(spec, from));
+const fetchable = (spec: string) => target(spec) as Exclude<Target, { kind: "local" }>;
+const named = (spec: string, from = "/project") => Effect.runSync(canonical(spec, from));
+/** Where the npm cache would live. The fixture runner never reaches for it. */
+const home = "/unused-home";
 /** `prepare` pairs each selected plugin with its configuration; most assertions want the plugins. */
 const selected = (list: ReadonlyArray<Prepared>) => list.map((entry) => entry.plugin);
 const run = (references: ReadonlyArray<PluginRef>, overrides: Partial<Options> = {}) =>
@@ -26,16 +36,21 @@ const withDirectory = async (body: (directory: string) => Promise<void>) => {
 		await rm(directory, { recursive: true, force: true });
 	}
 };
-const fixture: Runner = (request, directory) =>
+/**
+ * Stands in for arborist: writes a package into the staging directory and reports the tree
+ * arborist would have returned. No test reaches the network.
+ */
+const fixture: Runner = ({ target, into }) =>
 	Effect.tryPromise({
 		try: async () => {
-			const root = join(directory, "node_modules", request.name);
+			const name = target.kind === "registry" ? target.name : target.slug;
+			const root = join(into, "node_modules", name);
 			await mkdir(root, { recursive: true });
 			await writeFile(
 				join(root, "package.json"),
 				JSON.stringify({
-					name: request.name,
-					version: request.spec.endsWith("2.0.0") ? "2.0.0" : "1.0.0",
+					name,
+					version: target.spec.endsWith("2.0.0") ? "2.0.0" : "1.0.0",
 					type: "module",
 					exports: "./index.js",
 				}),
@@ -44,8 +59,15 @@ const fixture: Runner = (request, directory) =>
 				join(root, "index.js"),
 				"export default { id: 'acme.tool.fixture', kind: 'tool', setup() {} }",
 			);
+			return { edgesOut: new Map([[name, { to: { name, path: root } }]]) };
 		},
-		catch: (cause) => new InstallError({ cause }),
+		catch: (cause) =>
+			new InstallError({
+				reason: "plugin-fetch-failed",
+				reference: target.spec,
+				message: "fixture install failed",
+				cause,
+			}),
 	});
 
 describe("plugin catalog and source resolution", () => {
@@ -53,15 +75,15 @@ describe("plugin catalog and source resolution", () => {
 		// What `plugin add` records and what `plugin remove` is given are rarely the same string:
 		// a version is pinned on the way in and dropped on the way out, and a relative path means
 		// nothing until it is anchored to the file that declared it.
-		expect(canonical("@acme/codework-tool-proc@1.2.0", "/project")).toBe("@acme/codework-tool-proc");
-		expect(canonical("@acme/codework-tool-proc", "/project")).toBe("@acme/codework-tool-proc");
-		expect(canonical("proc@^2", "/project")).toBe("proc");
-		expect(canonical("proc@latest", "/project")).toBe("proc");
-		expect(canonical("./plugins/x.ts", "/project")).toBe("/project/plugins/x.ts");
-		expect(canonical("/project/plugins/x.ts", "/elsewhere")).toBe("/project/plugins/x.ts");
-		expect(canonical("file:///project/plugins/x.ts", "/elsewhere")).toBe("/project/plugins/x.ts");
+		expect(named("@acme/codework-tool-proc@1.2.0", "/project")).toBe("@acme/codework-tool-proc");
+		expect(named("@acme/codework-tool-proc", "/project")).toBe("@acme/codework-tool-proc");
+		expect(named("proc@^2", "/project")).toBe("proc");
+		expect(named("proc@latest", "/project")).toBe("proc");
+		expect(named("./plugins/x.ts", "/project")).toBe("/project/plugins/x.ts");
+		expect(named("/project/plugins/x.ts", "/elsewhere")).toBe("/project/plugins/x.ts");
+		expect(named("file:///project/plugins/x.ts", "/elsewhere")).toBe("/project/plugins/x.ts");
 		// A plugin ID is not a module reference; it has to survive unchanged to compare as itself.
-		expect(canonical("acme.tool.proc", "/project")).toBe("acme.tool.proc");
+		expect(named("acme.tool.proc", "/project")).toBe("acme.tool.proc");
 	});
 
 	it("resolves last definitions and last module order without setup", async () => {
@@ -151,7 +173,7 @@ describe("plugin catalog and source resolution", () => {
 		const fromA = define({ id: "acme.tool.same", kind: "tool", setup: () => {} });
 		const fromB = define({ id: "acme.tool.same", kind: "tool", setup: () => {} });
 		const seams = {
-			install: (request: Request) => Effect.succeed({ url: `file:///${request.name}.js`, version: "1.0.0" }),
+			install: (target: Fetchable) => Effect.succeed({ url: `file:///${canonicalOf(target)}.js`, version: "1.0.0" }),
 			import: async (url: string) => ({ default: url.includes("pkg-a") ? fromA : fromB }),
 		};
 		const [replaced] = await run(["pkg-a@1.0.0", { package: "pkg-a", options: { one: 1 } }, "pkg-b@1.0.0"], seams);
@@ -268,33 +290,75 @@ describe("plugin catalog and source resolution", () => {
 		void resolved?.plugin.setup({} as never, {});
 		expect(seen).toEqual(["kept"]);
 	});
-	it("normalizes package specs and classifies local sources", () => {
-		expect(parse("@acme/plugin")).toEqual({ name: "@acme/plugin", spec: "@acme/plugin@latest" });
-		expect(parse("@acme/plugin@latest")).toEqual(parse("@acme/plugin"));
-		expect(parse("@acme/plugin@1.2.0").spec).toBe("@acme/plugin@1.2.0");
-		expect(parse("plugin@*").spec).toBe("plugin@*");
+	it("normalizes package specs and tells a path from a package from a git source", () => {
+		expect(target("@acme/plugin")).toEqual({
+			kind: "registry",
+			name: "@acme/plugin",
+			spec: "@acme/plugin@latest",
+			mutable: true,
+		});
+		// `@acme/x` and `@acme/x@latest` must become one string before anything hashes them, or
+		// they file as two store entries holding identical bytes.
+		expect(target("@acme/plugin@latest")).toEqual(target("@acme/plugin"));
+		expect(fetchable("@acme/plugin@1.2.0").spec).toBe("@acme/plugin@1.2.0");
+		expect(fetchable("plugin@*").spec).toBe("plugin@*");
 		// A trailing bare `@` is no version at all, not the `*` range npa reports for it.
-		expect(parse("plugin@")).toEqual(parse("plugin"));
-		expect(classify("./plugin.ts", "/project")).toEqual({ kind: "local", path: "/project/plugin.ts" });
-		expect(classify("file:///project/plugin.ts", "/elsewhere")).toEqual({
+		expect(target("plugin@")).toEqual(target("plugin"));
+
+		// Mutability decides whether `check` has anything to do, and is the only thing that
+		// justifies a network call.
+		expect(fetchable("@acme/plugin@1.2.0").mutable).toBe(false);
+		expect(fetchable("@acme/plugin@^1").mutable).toBe(true);
+
+		expect(target("./plugin.ts", "/project")).toEqual({ kind: "local", path: "/project/plugin.ts" });
+		expect(target("file:///project/plugin.ts", "/elsewhere")).toEqual({
 			kind: "local",
 			path: "/project/plugin.ts",
 		});
 		// A reference is a source and nothing else: an ID-shaped string is a package name here,
 		// and the plugin it names is addressed by `{ plugin: "acme.tool.a" }` instead.
-		expect(classify(a.id, "/project")).toEqual({ kind: "package", request: parse(a.id) });
-		expect(classify(`${a.id}@latest`, "/project")).toEqual({ kind: "package", request: parse(`${a.id}@latest`) });
-		expect(classify("acme.tool.deep.name", "/project").kind).toBe("package");
+		expect(target(a.id).kind).toBe("registry");
+		expect(target(`${a.id}@latest`)).toEqual(target(a.id));
+		expect(target("acme.tool.deep.name").kind).toBe("registry");
 		// A `~` reference is a path: npa would read `~` as a package and `~/x` as a bad spec.
-		expect(classify("~/plugins/one.ts", "/project")).toEqual({
-			kind: "local",
-			path: join(homedir(), "plugins/one.ts"),
-		});
-		expect(classify("~", "/project")).toEqual({ kind: "local", path: homedir() });
+		expect(target("~/plugins/one.ts")).toEqual({ kind: "local", path: join(homedir(), "plugins/one.ts") });
+		expect(target("~")).toEqual({ kind: "local", path: homedir() });
 		// `fileURLToPath` would silently turn this into `/rel.ts`.
-		expect(() => classify("file:./rel.ts", "/project")).toThrow();
-		expect(() => parse("https://example.com/plugin.tgz")).toThrow();
+		expect(Effect.runSync(Effect.flip(parse("file:./rel.ts", "/project"))).reason).toBe("plugin-unsupported-source");
+		// Unversioned, unauthenticated, no update story. npa parses it, so the refusal is explicit.
+		expect(Effect.runSync(Effect.flip(parse("https://example.com/plugin.tgz", "/project"))).reason).toBe(
+			"plugin-unsupported-source",
+		);
 	});
+
+	it("reads a git source's committish, subdirectory and mutability", () => {
+		const branch = target("github:acme/plugins#main");
+		expect(branch).toMatchObject({ kind: "git", slug: "plugins", committish: "main", mutable: true });
+
+		// A commit SHA names one artifact, so it can never go stale and is never re-probed.
+		const sha = "a".repeat(40);
+		expect(target(`git+https://example.com/acme/p.git#${sha}`)).toMatchObject({ kind: "git", mutable: false });
+		// An abbreviated one is not a commit: it is a ref that could resolve elsewhere later.
+		expect(fetchable("git+https://example.com/acme/p.git#a1b2c3d").mutable).toBe(true);
+
+		// `::path:` selects a package inside a monorepo, which the installer handles for us.
+		expect(target("github:acme/plugins#main::path:packages/tool-proc")).toMatchObject({
+			kind: "git",
+			subdir: "/packages/tool-proc",
+		});
+
+		// The slug is for a human reading `ls`, never an identity -- the digest separates two
+		// remotes that happen to end in the same name.
+		const ssh = target("git+ssh://git@github.com/acme/plugins.git#main");
+		expect(ssh.kind === "git" && ssh.slug).toBe("plugins");
+	});
+
+	it("reduces a git source to its slug and a package to its name", () => {
+		expect(named("@acme/codework-tool-proc@1.2.0")).toBe("@acme/codework-tool-proc");
+		expect(named("github:acme/plugins#main")).toBe("plugins");
+		expect(named("./plugins/x.ts", "/project")).toBe("/project/plugins/x.ts");
+	});
+
 	it("loads each normalized source once and validates default exports", async () => {
 		let installs = 0;
 		let imports = 0;
@@ -431,13 +495,13 @@ describe("plugin catalog and source resolution", () => {
 	it("stages installs, reuses complete cache and isolates explicit versions", () =>
 		withDirectory(async (cache) => {
 			let runs = 0;
-			const runner: Runner = (request, directory) => {
+			const runner: Runner = (input) => {
 				runs++;
-				return fixture(request, directory);
+				return fixture(input);
 			};
-			const first = await Effect.runPromise(install(parse("fixture@1.0.0"), cache, runner));
-			const again = await Effect.runPromise(install(parse("fixture@1.0.0"), cache, runner));
-			const second = await Effect.runPromise(install(parse("fixture@2.0.0"), cache, runner));
+			const first = await Effect.runPromise(install(fetchable("fixture@1.0.0"), cache, home, runner));
+			const again = await Effect.runPromise(install(fetchable("fixture@1.0.0"), cache, home, runner));
+			const second = await Effect.runPromise(install(fetchable("fixture@2.0.0"), cache, home, runner));
 			expect(first).toEqual(again);
 			expect(first.version).toBe("1.0.0");
 			expect(second.version).toBe("2.0.0");
@@ -450,20 +514,20 @@ describe("plugin catalog and source resolution", () => {
 		withDirectory(async (cache) => {
 			// Node resolution realpaths its answer while the staging directory is not
 			// realpathed, so a symlinked cache root used to record a path outside the entry.
-			const installed = await Effect.runPromise(install(parse("fixture"), cache, fixture));
+			const installed = await Effect.runPromise(install(fetchable("fixture"), cache, home, fixture));
 			const file = fileURLToPath(installed.url);
 			expect(existsSync(file)).toBe(true);
 			expect(relative(join(cache, "plugins"), file).startsWith("..")).toBe(false);
 		}));
 	it("reads a complete cache without waiting on a leftover lock", () =>
 		withDirectory(async (cache) => {
-			const first = await Effect.runPromise(install(parse("fixture"), cache, fixture));
+			const first = await Effect.runPromise(install(fetchable("fixture"), cache, home, fixture));
 			// A killed installer leaves its lock directory behind; a cache hit must not block on it.
 			const stale = (await readdir(join(cache, "plugins"))).map((entry) => join(cache, "plugins", `${entry}.lock`));
 			await Promise.all(stale.map((lock) => mkdir(lock, { recursive: true })));
 			expect(
 				await Effect.runPromise(
-					install(parse("fixture"), cache, fixture).pipe(Effect.timeout("2 seconds"), Effect.orDie),
+					install(fetchable("fixture"), cache, home, fixture).pipe(Effect.timeout("2 seconds"), Effect.orDie),
 				),
 			).toEqual(first);
 		}));
@@ -477,7 +541,7 @@ describe("plugin catalog and source resolution", () => {
 			const old = new Date(Date.now() - 3 * 60_000);
 			await utimes(lock, old, old);
 			const installed = await Effect.runPromise(
-				install(parse("fixture"), cache, fixture).pipe(Effect.timeout("2 seconds"), Effect.orDie),
+				install(fetchable("fixture"), cache, home, fixture).pipe(Effect.timeout("2 seconds"), Effect.orDie),
 			);
 			expect(installed.version).toBe("1.0.0");
 			expect(existsSync(lock)).toBe(false);
@@ -487,7 +551,7 @@ describe("plugin catalog and source resolution", () => {
 			const key = createHash("sha256").update("fixture@latest").digest("hex");
 			await mkdir(join(cache, "plugins", `${key}.lock`), { recursive: true });
 			const exit = await Effect.runPromiseExit(
-				install(parse("fixture"), cache, fixture).pipe(Effect.timeout("300 millis")),
+				install(fetchable("fixture"), cache, home, fixture).pipe(Effect.timeout("300 millis")),
 			);
 			expect(Exit.isFailure(exit)).toBe(true);
 			expect(await readdir(join(cache, "plugins"))).toEqual([`${key}.lock`]);
@@ -498,25 +562,31 @@ describe("plugin catalog and source resolution", () => {
 				Effect.gen(function* () {
 					const entered = yield* Deferred.make<void>();
 					const runner: Runner = () => Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never));
-					const fiber = yield* install(parse("fixture"), cache, runner).pipe(Effect.forkChild);
+					const fiber = yield* install(fetchable("fixture"), cache, home, runner).pipe(Effect.forkChild);
 					yield* Deferred.await(entered);
 					yield* Fiber.interrupt(fiber);
 				}).pipe(Effect.scoped),
 			);
 			expect(await readdir(join(cache, "plugins"))).toEqual([]);
 			// And the next installer finds a clean slate rather than a lock to wait on.
-			expect((await Effect.runPromise(install(parse("fixture"), cache, fixture))).version).toBe("1.0.0");
+			expect((await Effect.runPromise(install(fetchable("fixture"), cache, home, fixture))).version).toBe("1.0.0");
 		}));
 	it("does not reuse failed installations", () =>
 		withDirectory(async (cache) => {
 			const failed = await Effect.runPromise(
-				install(parse("fixture"), cache, () => Effect.fail(new InstallError({ cause: new Error("offline") }))).pipe(
-					Effect.flip,
-				),
+				install(fetchable("fixture"), cache, home, () =>
+					Effect.fail(
+						new InstallError({
+							reason: "plugin-fetch-failed",
+							reference: "fixture@latest",
+							message: "offline",
+						}),
+					),
+				).pipe(Effect.flip),
 			);
 			expect(failed._tag).toBe("PluginInstallError");
 			expect(await readdir(join(cache, "plugins"))).toEqual([]);
-			expect((await Effect.runPromise(install(parse("fixture"), cache, fixture))).version).toBe("1.0.0");
+			expect((await Effect.runPromise(install(fetchable("fixture"), cache, home, fixture))).version).toBe("1.0.0");
 		}));
 	it("serializes concurrent installs and permits cancellation while waiting for the lock", () =>
 		withDirectory(async (cache) => {
@@ -525,19 +595,19 @@ describe("plugin catalog and source resolution", () => {
 					const entered = yield* Deferred.make<void>();
 					const release = yield* Deferred.make<void>();
 					let runs = 0;
-					const runner: Runner = (request, directory) =>
+					const runner: Runner = (input) =>
 						Effect.gen(function* () {
 							runs++;
 							yield* Deferred.succeed(entered, undefined);
 							yield* Deferred.await(release);
-							yield* fixture(request, directory);
+							return yield* fixture(input);
 						});
-					const first = yield* install(parse("fixture"), cache, runner).pipe(Effect.forkChild);
+					const first = yield* install(fetchable("fixture"), cache, home, runner).pipe(Effect.forkChild);
 					yield* Deferred.await(entered);
-					const waiting = yield* install(parse("fixture"), cache, runner).pipe(Effect.forkChild);
+					const waiting = yield* install(fetchable("fixture"), cache, home, runner).pipe(Effect.forkChild);
 					yield* Effect.yieldNow;
 					yield* Fiber.interrupt(waiting);
-					const second = yield* install(parse("fixture"), cache, runner).pipe(Effect.forkChild);
+					const second = yield* install(fetchable("fixture"), cache, home, runner).pipe(Effect.forkChild);
 					yield* Deferred.succeed(release, undefined);
 					expect(yield* Fiber.join(first)).toEqual(yield* Fiber.join(second));
 					expect(runs).toBe(1);

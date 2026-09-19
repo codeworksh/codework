@@ -29,6 +29,8 @@ const isLLMStreamError = Schema.is(Runner.LLMStreamError);
 const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
 const isPluginPreparationError = Schema.is(Plugin.PreparationError);
 const isPluginInstallError = Schema.is(Plugin.InstallError);
+const isPluginSourceError = Schema.is(Plugin.SourceError);
+const isPluginStoreError = Schema.is(Plugin.StoreError);
 const isSettingsError = Schema.is(Settings.SettingsError);
 const isSandboxDriverNotRegisteredError = Schema.is(SandboxError.SandboxDriverNotRegisteredError);
 const isSandboxDriverRegistrationError = Schema.is(SandboxError.SandboxDriverRegistrationError);
@@ -131,6 +133,37 @@ const pluginHint = (phase: Plugin.PreparationError["phase"]): string => {
 	}
 };
 
+/** One hint per reason. Lowercase, like everything else a plugin failure prints. */
+const pluginReasonHint = (
+	reason: Plugin.SourceError["reason"] | Plugin.InstallError["reason"] | Plugin.StoreError["reason"],
+): string => {
+	switch (reason) {
+		case "plugin-unsupported-source":
+			return "a path entry starts with `./`, `../`, `~/` or `/`; anything else is a package or a git spec, and a remote tarball is not supported";
+		case "plugin-not-found":
+			return "the path does not exist; check the spelling, remembering it anchors to the settings file that declares it";
+		case "plugin-escapes-root":
+			return "a plugin path must stay inside the project it is declared in";
+		case "plugin-resolve-failed":
+			return "check that the registry or git remote is reachable, and that your credentials are current";
+		case "plugin-fetch-failed":
+			return "check the package name and version, and that the registry is reachable";
+		case "plugin-no-commit":
+			return "the git source installed but no commit could be recovered; name a branch, tag or commit explicitly";
+		case "plugin-no-entrypoint":
+			return "the package installed but exports no module to import; check its `exports` and `main`";
+		case "plugin-not-installed":
+			return "run `codework plugin install` to fetch what the settings files name";
+		case "plugin-lock-timeout":
+			return "another install is holding this entry; wait for it to finish, or remove the stale `.lock` directory";
+		case "plugin-marker-invalid":
+		case "plugin-index-invalid":
+			return "the store entry is damaged; remove it and install again";
+		case "plugin-collect-failed":
+			return "the store could not be tidied; check the permissions on the plugin cache";
+	}
+};
+
 const settingsHint = (reason: Settings.SettingsError["reason"]): string => {
 	switch (reason) {
 		case "read":
@@ -192,11 +225,14 @@ export const renderError = (error: unknown): string => {
 			].join("\n") + "\n"
 		);
 	}
-	if (isPluginInstallError(error)) {
+	// One shape for all three plugin domains: the reason is the slug, the message is the sentence,
+	// and the reference is the string the person recognises from their settings file.
+	if (isPluginSourceError(error) || isPluginInstallError(error) || isPluginStoreError(error)) {
 		return (
 			[
-				`error[plugin-install]: ${unknownMessage(error.cause)}`,
-				"hint: check the package name and version, and that the registry is reachable",
+				`error[${error.reason}]: ${error.message}`,
+				...(error.reference === "" ? [] : [`reference: ${error.reference}`]),
+				`hint: ${pluginReasonHint(error.reason)}`,
 			].join("\n") + "\n"
 		);
 	}

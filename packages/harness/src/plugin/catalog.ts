@@ -1,6 +1,7 @@
 import { Effect, Predicate } from "effect";
 import { isRecord } from "../settings/merge.ts";
 import * as Loader from "./loader.ts";
+import { PluginSource } from "./source.ts";
 import { type Plugin, rank } from "./plugin.ts";
 
 /** Opaque to the harness: a plugin reads and validates its own block. */
@@ -159,22 +160,21 @@ export const prepare = Effect.fn("PluginCatalog.prepare")(function* (
 			select(plugin.id, origin);
 			continue;
 		}
-		const source = yield* Effect.try({
-			try: () => Loader.classify(reference, hostDir),
-			catch: (cause) => Loader.failure(origin, "source", cause),
-		});
-		const key = source.kind === "package" ? source.request.spec : source.path;
-		const definition = loaded.get(key) ?? (yield* Loader.load(source, origin, options));
+		const target = yield* PluginSource.parse(reference, hostDir).pipe(
+			Effect.mapError((cause) => Loader.failure(origin, "source", cause)),
+		);
+		const key = target.kind === "local" ? target.path : target.spec;
+		const definition = loaded.get(key) ?? (yield* Loader.load(target, origin, options));
 		loaded.set(key, definition);
 		yield* note(definition.plugin, definition.version === undefined ? key : `${key}@${definition.version}`);
 		catalog.add(definition.plugin, definition.source, definition.version);
-		// `package` configuration matches the registered module string. Keep its canonical package
-		// name/spec or local path too, so a versioned entry can be configured without repeating the
-		// version and a relative path remains anchored consistently.
+		// `package` configuration matches the registered module string. Keep its canonical name
+		// and spec, or its local path, too, so a versioned entry can be configured without
+		// repeating the version and a relative path stays anchored consistently.
 		const names =
-			source.kind === "package"
-				? [source.request.name, source.request.spec]
-				: [source.path, ...(definition.name === undefined ? [] : [definition.name])];
+			target.kind === "local"
+				? [target.path, ...(definition.name === undefined ? [] : [definition.name])]
+				: [PluginSource.canonical(target), target.spec];
 		for (const name of [reference, ...names]) aliases.set(name, definition.plugin.id);
 		select(definition.plugin.id, origin);
 	}

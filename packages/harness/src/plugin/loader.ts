@@ -2,10 +2,11 @@ import { Effect, Predicate, Schema } from "effect";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { domains, type PluginKind } from "./plugin.ts";
-import { expandTilde } from "../util/home.ts";
 import { importModule, resolveModule } from "../util/module.ts";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
+import type { InstallError, SourceError, StoreError } from "./error.ts";
 import * as Package from "./package.ts";
+import { canonical as canonicalOf, type Fetchable, parse, type Target } from "./source.ts";
 import type { EventSchema } from "../event/schema.ts";
 import type { Plugin } from "./plugin.ts";
 
@@ -59,31 +60,6 @@ export const validate = Effect.fn("PluginLoader.validate")(function* (input: unk
 	return plugin;
 });
 
-export type Source =
-	| { readonly kind: "local"; readonly path: string }
-	| { readonly kind: "package"; readonly request: Package.Request };
-
-/**
- * A reference is a source and nothing else: a path, a `file:` URL, or a package spec. IDs are
- * not spelled here — a bare `acme.tool.proc` is a package name, and the plugin it names is
- * addressed by `{ plugin: "acme.tool.proc" }`, which resolves against what is already registered.
- */
-export const classify = (source: string, hostDir: string): Source => {
-	if (source.startsWith("file:")) {
-		// Both `new URL` and `fileURLToPath` silently read a relative `file:./x` as `/x`. A file
-		// URL names an absolute path or it is not one.
-		if (!source.startsWith("file:///")) throw new Error(`not an absolute file URL: ${source}`);
-		return { kind: "local", path: fileURLToPath(source) };
-	}
-	// `~` before the package branch: npm names cannot start with it, and `npa` would otherwise
-	// read `~` as a package and `~/x` as an unsupported spec, reporting a path as a bad package.
-	const expanded = expandTilde(source, path);
-	if (expanded.startsWith("./") || expanded.startsWith("../") || path.isAbsolute(expanded)) {
-		return { kind: "local", path: path.resolve(hostDir, expanded) };
-	}
-	return { kind: "package", request: Package.parse(source) };
-};
-
 const Manifest = Schema.Struct({
 	name: Schema.optional(Schema.String),
 	exports: Schema.optional(Schema.Unknown),
@@ -120,13 +96,16 @@ const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string,
 
 export interface Options {
 	readonly cache: string;
-	/** The OS process's directory, that constructor-relative references resolve against. Never read here. */
+	/** Where `--home` points, which the npm cache lives under. */
+	readonly home: string;
+	/** The host directory a relative reference anchors to. Never read here. */
 	readonly hostDir: string;
 	readonly import?: (url: string) => Promise<unknown>;
 	readonly install?: (
-		request: Package.Request,
+		target: Fetchable,
 		cache: string,
-	) => Effect.Effect<Package.Installed, Package.InstallError>;
+		home: string,
+	) => Effect.Effect<Package.Installed, InstallError | StoreError>;
 }
 
 export interface Loaded {
@@ -146,11 +125,10 @@ export interface Loaded {
  */
 export const inspect = Effect.fn("PluginLoader.inspect")(function* (reference: string, options: Options) {
 	const origin = { index: 0, reference };
-	const source = yield* Effect.try({
-		try: () => classify(reference, options.hostDir),
-		catch: (cause) => failure(origin, "source", cause),
-	});
-	const loaded = yield* load(source, origin, options);
+	const target = yield* parse(reference, options.hostDir).pipe(
+		Effect.mapError((cause) => failure(origin, "source", cause)),
+	);
+	const loaded = yield* load(target, origin, options);
 	return {
 		id: loaded.plugin.id,
 		...(loaded.version === undefined ? {} : { version: loaded.version }),
@@ -158,34 +136,18 @@ export const inspect = Effect.fn("PluginLoader.inspect")(function* (reference: s
 	};
 });
 
-/**
- * The version-free, location-anchored spelling of a module reference.
- *
- * Two references naming the same module compare equal through it: `@acme/x@1.2.0` and `@acme/x`
- * are one package, and `./plugins/x.ts` is the file it resolves to from the directory that
- * declared it. Pure -- nothing is installed, imported or read.
- */
-export const canonical = (reference: string, hostDir: string): string => {
-	const source = classify(reference, hostDir);
-	return source.kind === "local" ? source.path : source.request.name;
-};
-
-export const load = Effect.fn("PluginLoader.load")(function* (
-	source: Extract<Source, { kind: "local" | "package" }>,
-	origin: Origin,
-	options: Options,
-) {
+export const load = Effect.fn("PluginLoader.load")(function* (target: Target, origin: Origin, options: Options) {
 	const installed =
-		source.kind === "package"
-			? yield* (options.install ?? Package.install)(source.request, options.cache).pipe(
-					Effect.mapError((cause) => failure(origin, "install", cause)),
-				)
-			: yield* localUrl(source.path, origin).pipe(
+		target.kind === "local"
+			? yield* localUrl(target.path, origin).pipe(
 					// `localUrl` already reports its own source failures; only platform errors
 					// reaching here still need attribution.
 					Effect.mapError((cause) =>
 						Schema.is(PreparationError)(cause) ? cause : failure(origin, "source", cause),
 					),
+				)
+			: yield* (options.install ?? Package.install)(target, options.cache, options.home).pipe(
+					Effect.mapError((cause) => failure(origin, "install", cause)),
 				);
 	const module = yield* Effect.tryPromise({
 		try: () => (options.import ?? importModule)(installed.url),
@@ -198,9 +160,21 @@ export const load = Effect.fn("PluginLoader.load")(function* (
 	return {
 		plugin,
 		source: origin.reference,
-		...("version" in installed ? { version: installed.version } : {}),
+		...("version" in installed && installed.version !== undefined ? { version: installed.version } : {}),
 		// A local package answers to the name it declares, so a path entry can be configured by
 		// the package name its README documents.
 		...("name" in installed && installed.name !== undefined ? { name: installed.name } : {}),
 	} satisfies Loaded;
 });
+
+/**
+ * The version-free, location-anchored spelling of a reference.
+ *
+ * Two references naming the same module compare equal through it: `@acme/x@1.2.0` and `@acme/x`
+ * are one package, and `./plugins/x.ts` is the file it resolves to from the directory that
+ * declared it. Pure -- nothing is installed, imported or read.
+ */
+export const canonical = (reference: string, hostDir: string): Effect.Effect<string, SourceError> =>
+	Effect.map(parse(reference, hostDir), canonicalOf);
+
+export * as PluginLoader from "./loader.ts";

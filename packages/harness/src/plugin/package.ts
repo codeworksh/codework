@@ -1,93 +1,92 @@
-import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node";
-import { Duration, Effect, Encoding, Layer, Option, Ref, Schedule, Schema } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { resolveModule } from "../util/module.ts";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import npa from "npm-package-arg";
+/*
+ * @file The store, as it stands before Domain 2 replaces it.
+ *
+ * One directory per canonical spec under `<cache>/plugins`, published by an atomic rename and
+ * proved by a `.complete.json` marker. What fills the staging directory is `PluginNpm.download`:
+ * arborist in process, never a package manager binary.
+ *
+ * Domain 1 knows nothing about any of this. The split is what lets it be tested against a temp
+ * directory with no store, and this file against a runner that copies a fixture.
+ */
+
+import { Duration, Effect, Encoding, Option, Ref, Schedule, Schema } from "effect";
 import { crypto, fileSystem as fs, hostPath as path } from "../host.ts";
+import { InstallError, StoreError } from "./error.ts";
+import { download, type Runner, url } from "./npm.ts";
+import type { Fetchable } from "./source.ts";
 
-export interface Request {
-	readonly name: string;
-	readonly spec: string;
-}
-
-export const parse = (source: string): Request => {
-	const parsed = npa(source);
-	if (!parsed.name || !["version", "range", "tag"].includes(parsed.type)) {
-		throw new Error(`Unsupported plugin package source: ${source}`);
-	}
-	// npa turns a trailing bare `@` into the `*` range, which would give "no version" a second
-	// cache key. An explicit `plugin@*` keeps its own meaning.
-	const omitted = parsed.raw === parsed.name || parsed.raw === `${parsed.name}@`;
-	return { name: parsed.name, spec: `${parsed.name}@${omitted ? "latest" : parsed.rawSpec}` };
-};
-
-const Manifest = Schema.Struct({ version: Schema.String });
-const Cached = Schema.Struct({ version: Schema.String, spec: Schema.String, entrypoint: Schema.String });
+const Cached = Schema.Struct({
+	spec: Schema.String,
+	version: Schema.optional(Schema.String),
+	revision: Schema.optional(Schema.String),
+	/** Relative to the entry directory, so the marker survives the publishing rename. */
+	entrypoint: Schema.String,
+});
 
 export interface Installed {
 	readonly url: string;
-	readonly version: string;
+	readonly version?: string;
+	readonly revision?: string;
 }
 
-const cacheLocation = Effect.fn("PluginPackage.cacheLocation")(function* (request: Request, cache: string) {
+/** A marker that cannot be read, or does not describe what was asked for. */
+const unreadable =
+	(target: Fetchable) =>
+	(cause: unknown): StoreError =>
+		Schema.is(StoreError)(cause)
+			? cause
+			: new StoreError({
+					reason: "plugin-marker-invalid",
+					reference: target.spec,
+					message: `cannot read what is filed for ${target.spec}`,
+					cause,
+				});
+
+const mismatched = (target: Fetchable, marker: string) =>
+	new StoreError({
+		reason: "plugin-marker-invalid",
+		reference: target.spec,
+		message: `${marker} was filed under a different spec`,
+	});
+
+const location = Effect.fn("PluginPackage.location")(function* (target: Fetchable, cache: string) {
 	const root = path.join(cache, "plugins");
-	const key = Encoding.encodeHex(yield* crypto.digest("SHA-256", new TextEncoder().encode(request.spec)));
+	// The full digest of the canonical spec. Truncating it would make a collision return the
+	// wrong package silently, because the fast path proves a hit by the marker *existing*.
+	const key = Encoding.encodeHex(yield* crypto.digest("SHA-256", new TextEncoder().encode(target.spec)));
 	const directory = path.join(root, key);
 	return { root, key, directory, marker: path.join(directory, ".complete.json") };
 });
 
 const readPublished = Effect.fn("PluginPackage.readPublished")(function* (
-	request: Request,
+	target: Fetchable,
 	directory: string,
 	marker: string,
 ) {
 	const saved = yield* fs
 		.readFileString(marker)
 		.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Cached))));
-	if (saved.spec !== request.spec)
-		return yield* new InstallError({ cause: new Error("Plugin package cache request mismatch") });
+	if (saved.spec !== target.spec) return yield* mismatched(target, marker);
 	return {
-		url: pathToFileURL(path.resolve(directory, saved.entrypoint)).href,
-		version: saved.version,
+		url: url(path.resolve(directory, saved.entrypoint)),
+		...(saved.version === undefined ? {} : { version: saved.version }),
+		...(saved.revision === undefined ? {} : { revision: saved.revision }),
 	} satisfies Installed;
 });
 
-/** Runs inside the isolated staging directory. Override only for deterministic tests. */
-export class InstallError extends Schema.TaggedError<InstallError>()("PluginInstallError", {
-	cause: Schema.Defect(),
-}) {}
-export type Runner = (request: Request, directory: string) => Effect.Effect<void, InstallError>;
-
 /** Resolve an already-published package without installing or waiting for an installer. */
-export const resolveCached = Effect.fn("PluginPackage.resolveCached")(
-	function* (request: Request, cache: string) {
-		const { directory, marker } = yield* cacheLocation(request, cache);
-		if (!(yield* fs.exists(marker)))
-			return yield* new InstallError({ cause: new Error(`Plugin package is not cached: ${request.spec}`) });
-		return yield* readPublished(request, directory, marker);
-	},
-	Effect.mapError((cause) => (Schema.is(InstallError)(cause) ? cause : new InstallError({ cause }))),
-);
-
-const run: Runner = Effect.fn("PluginPackage.run")(
-	function* (request, directory) {
-		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-		const process = yield* spawner.spawn(
-			ChildProcess.make("pnpm", ["add", "--ignore-scripts", "--ignore-workspace", "--save-exact", request.spec], {
-				cwd: directory,
-				stdout: "ignore",
-				stderr: "inherit",
-			}),
-		);
-		const code = yield* process.exitCode;
-		if (code !== 0)
-			return yield* new InstallError({ cause: new Error(`pnpm installation failed with exit code ${code}`) });
-	},
-	Effect.scoped,
-	Effect.provide(NodeChildProcessSpawner.layer.pipe(Layer.provide(Layer.merge(NodeFileSystem.layer, NodePath.layer)))),
-	Effect.mapError((cause) => (Schema.is(InstallError)(cause) ? cause : new InstallError({ cause }))),
-);
+export const resolveCached = Effect.fn("PluginPackage.resolveCached")(function* (target: Fetchable, cache: string) {
+	const { directory, marker } = yield* location(target, cache).pipe(Effect.mapError(unreadable(target)));
+	const filed = yield* fs.exists(marker).pipe(Effect.mapError(unreadable(target)));
+	if (!filed) {
+		return yield* new StoreError({
+			reason: "plugin-not-installed",
+			reference: target.spec,
+			message: `${target.spec} is not installed`,
+		});
+	}
+	return yield* readPublished(target, directory, marker).pipe(Effect.mapError(unreadable(target)));
+});
 
 /** How long to wait for another installer of the same spec before giving up. */
 const LOCK_TIMEOUT = Duration.minutes(2);
@@ -121,7 +120,7 @@ const heartbeat = (directory: string) =>
  * behind; an abandoned one is reclaimed rather than waited on forever, and the wait itself
  * is bounded. While held, the lock is heartbeated so waiters can tell live from dead.
  */
-const lock = Effect.fn("PluginPackage.lock")(function* (directory: string) {
+const lock = Effect.fn("PluginPackage.lock")(function* (target: Fetchable, directory: string) {
 	const held = yield* Ref.make(false);
 	yield* Effect.acquireRelease(Effect.void, () =>
 		Ref.get(held).pipe(
@@ -151,21 +150,39 @@ const lock = Effect.fn("PluginPackage.lock")(function* (directory: string) {
 		Effect.repeat({ schedule: Schedule.spaced("50 millis"), until: (owned) => owned }),
 		Effect.timeoutOrElse({ duration: LOCK_TIMEOUT, orElse: () => Effect.succeed(false) }),
 	);
-	if (!acquired)
-		return yield* new InstallError({
-			cause: new Error(`Timed out waiting for another plugin installation to release ${directory}`),
+	if (!acquired) {
+		return yield* new StoreError({
+			reason: "plugin-lock-timeout",
+			reference: target.spec,
+			message: `timed out waiting for another installation to release ${directory}`,
 		});
+	}
 	// Scoped to the install: the heartbeat dies with the scope, before the lock is removed.
 	yield* Effect.forkScoped(heartbeat(directory));
 });
 
-export const install = Effect.fn("PluginPackage.install")(
-	function* (request: Request, cache: string, runner: Runner = run) {
-		const { root, key, directory, marker } = yield* cacheLocation(request, cache);
+export const install = Effect.fn("PluginPackage.install")(function* (
+	target: Fetchable,
+	cache: string,
+	home: string,
+	runner?: Runner,
+) {
+	const failure = (cause: unknown): InstallError | StoreError =>
+		Schema.is(InstallError)(cause) || Schema.is(StoreError)(cause)
+			? cause
+			: new InstallError({
+					reason: "plugin-fetch-failed",
+					reference: target.spec,
+					message: `cannot install ${target.spec}`,
+					cause,
+				});
+
+	return yield* Effect.gen(function* () {
+		const { root, key, directory, marker } = yield* location(target, cache);
 		yield* fs.makeDirectory(root, { recursive: true });
 		// A published entry is immutable, so reading one never contends with an installer.
 		// mkdir is atomic across processes; the scoped release also runs on interruption.
-		if (!(yield* fs.exists(marker))) yield* lock(`${directory}.lock`);
+		if (!(yield* fs.exists(marker))) yield* lock(target, `${directory}.lock`);
 		// Re-check under the lock: the installer we waited for may have just published.
 		if (!(yield* fs.exists(marker))) {
 			const staging = yield* Effect.acquireRelease(
@@ -173,31 +190,31 @@ export const install = Effect.fn("PluginPackage.install")(
 				(staging) => fs.remove(staging, { recursive: true, force: true }).pipe(Effect.orDie),
 			);
 			yield* fs.writeFileString(path.join(staging, "package.json"), '{"private":true,"type":"module"}');
-			yield* runner(request, staging);
-			const manifest = yield* fs.readFileString(path.join(staging, "node_modules", request.name, "package.json"));
-			const installed = yield* Schema.decodeEffect(Schema.fromJsonString(Manifest))(manifest);
-			// Validate root resolution before marking this installation complete.
-			const entrypoint = yield* Effect.try(() => resolveModule(request.name, staging));
-			// `resolve` realpaths its answer while `makeTempDirectory` does not, so relate the
-			// two through the realpath or a symlinked cache root escapes the published entry.
-			const entry = path.relative(yield* fs.realPath(staging), fileURLToPath(entrypoint));
-			if (entry.startsWith("..") || path.isAbsolute(entry))
+			const fetched = yield* download(target, staging, home, runner);
+			// `resolveModule` realpaths its answer while `makeTempDirectory` does not, so relate
+			// the two through the realpath or a symlinked cache root escapes the published entry.
+			const entry = path.relative(yield* fs.realPath(staging), fetched.entrypoint);
+			if (entry.startsWith("..") || path.isAbsolute(entry)) {
 				return yield* new InstallError({
-					cause: new Error(`Plugin entrypoint escapes its installation: ${entry}`),
+					reason: "plugin-no-entrypoint",
+					reference: target.spec,
+					message: `entrypoint escapes its installation: ${entry}`,
 				});
+			}
 			yield* fs.writeFileString(
 				path.join(staging, ".complete.json"),
 				yield* Schema.encodeEffect(Schema.fromJsonString(Cached))({
-					spec: request.spec,
-					version: installed.version,
+					spec: target.spec,
+					...(fetched.version === undefined ? {} : { version: fetched.version }),
+					...(fetched.revision === undefined ? {} : { revision: fetched.revision }),
 					entrypoint: entry,
 				}),
 			);
 			if (yield* fs.exists(directory)) yield* fs.remove(directory, { recursive: true });
 			yield* fs.rename(staging, directory);
 		}
-		return yield* readPublished(request, directory, marker);
-	},
-	Effect.scoped,
-	Effect.mapError((cause) => (Schema.is(InstallError)(cause) ? cause : new InstallError({ cause }))),
-);
+		return yield* readPublished(target, directory, marker);
+	}).pipe(Effect.scoped, Effect.mapError(failure));
+});
+
+export * as PluginPackage from "./package.ts";

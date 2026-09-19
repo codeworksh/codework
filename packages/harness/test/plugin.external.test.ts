@@ -241,10 +241,11 @@ describe("third-party plugins", () => {
 				prepare([...builtins, ...config.plugins], {
 					builtins,
 					cache: join(root, "cache"),
+					home: global,
 					hostDir: root,
-					install: (request) => {
-						specs.push(request.spec);
-						const module = request.name === "codework-acme-plugin" ? "tool.mjs" : "prompt.mjs";
+					install: (target) => {
+						specs.push(target.spec);
+						const module = target.spec.startsWith("codework-acme-plugin") ? "tool.mjs" : "prompt.mjs";
 						return Effect.succeed({ url: pathToFileURL(join(packaged, module)).href, version: "1.2.0" });
 					},
 				}),
@@ -314,6 +315,7 @@ describe("third-party plugins", () => {
 			prepare([pluginPath("tool/acme-echo"), `file://${pluginPath("prompt/acme-prompt.ts")}`], {
 				builtins: [],
 				cache: "/unused",
+				home: "/unused-home",
 				hostDir: "/project",
 			}),
 		);
@@ -325,6 +327,7 @@ describe("third-party plugins", () => {
 			prepare([pluginPath("host/acme-broken.ts")], {
 				builtins: [],
 				cache: "/unused",
+				home: "/unused-home",
 				hostDir: "/project",
 			}).pipe(Effect.flip),
 		);

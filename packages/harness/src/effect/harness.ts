@@ -66,6 +66,7 @@ export const layer = (options: Options = {}) =>
 			const selection = yield* prepare(options.plugins ?? [...builtins, ...config.plugins], {
 				builtins,
 				cache: paths.cache,
+				home: paths.home,
 				hostDir: hostCwd,
 			});
 			// Flattened before anything can publish: a plugin event type that collides

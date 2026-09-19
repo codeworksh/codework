@@ -45,13 +45,17 @@ const idOf = (entry: unknown): string | undefined => {
  * it, so `@acme/x@1.2.0` and `@acme/x` are one name. The literal string is kept alongside it
  * because a plugin ID is not a module reference and survives `canonical` unchanged.
  */
-const aliases = (reference: string, directory: string): ReadonlyArray<string> => {
-	try {
-		return [reference, Plugin.canonical(reference, directory)];
-	} catch {
-		return [reference];
-	}
-};
+const aliases = (reference: string, directory: string): Effect.Effect<ReadonlyArray<string>> =>
+	Plugin.canonical(reference, directory).pipe(
+		Effect.map((canonical) => [reference, canonical] as ReadonlyArray<string>),
+		// A reference that does not parse still answers to itself: a plugin ID is not a module
+		// reference, and it has to keep matching an entry that names it.
+		Effect.orElseSucceed(() => [reference] as ReadonlyArray<string>),
+	);
+
+/** Every spelling `reference` answers to, computed once for a whole command. */
+export const spellings = (reference: string, directory: string): Effect.Effect<ReadonlySet<string>> =>
+	Effect.map(aliases(reference, directory), (found) => new Set(found));
 
 export interface Entry {
 	readonly value: unknown;
@@ -77,6 +81,7 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 	plugins: ReadonlyArray<unknown>,
 	file: string,
 	cache: string,
+	home: string,
 ) {
 	const nodePath = yield* Path.Path;
 	const directory = nodePath.dirname(file);
@@ -87,9 +92,10 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 		if (id !== undefined) answers.add(id);
 		const module = moduleOf(value);
 		if (module !== undefined) {
-			for (const alias of aliases(module, directory)) answers.add(alias);
+			for (const alias of yield* aliases(module, directory)) answers.add(alias);
 			const declared = yield* Plugin.inspect(module, {
 				cache,
+				home,
 				hostDir: directory,
 				install: Plugin.resolveCached,
 			}).pipe(Effect.option);
@@ -104,12 +110,12 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 });
 
 /** `reference` selects `entry` when any spelling of one is a spelling of the other. */
-export const matches = (entry: Entry, reference: string, directory: string) =>
-	aliases(reference, directory).some((alias) => entry.answers.has(alias));
+export const matches = (entry: Entry, spelled: ReadonlySet<string>) =>
+	[...spelled].some((alias) => entry.answers.has(alias));
 
 /** Every entry connected to a reference through a package spelling or declared plugin ID. */
-export const matching = (entries: ReadonlyArray<Entry>, reference: string, directory: string) => {
-	const answers = new Set(aliases(reference, directory));
+export const matching = (entries: ReadonlyArray<Entry>, spelled: ReadonlySet<string>) => {
+	const answers = new Set(spelled);
 	const found = new Set<Entry>();
 	for (;;) {
 		const next = entries.filter(

@@ -4,7 +4,7 @@ import { Runtime } from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
-import { identify, matching, readPlugins, resolveTarget, writePlugins } from "./settings.ts";
+import { identify, matching, readPlugins, resolveTarget, spellings, writePlugins } from "./settings.ts";
 
 export default Runtime.handler(
 	Cmd.commands.plugin.commands.remove,
@@ -18,8 +18,8 @@ export default Runtime.handler(
 			// Both the module entry and any configuration written against it: the package it was
 			// added as, the path or version it was written with, and the ID it declares all name
 			// the one plugin being removed.
-			const entries = yield* identify(plugins, target.path, paths.cache);
-			const selected = matching(entries, reference, path.resolve("."));
+			const entries = yield* identify(plugins, target.path, paths.cache, paths.home);
+			const selected = matching(entries, yield* spellings(reference, path.resolve(".")));
 			const kept = entries.filter((entry) => !selected.has(entry)).map((entry) => entry.value);
 			if (kept.length === plugins.length) {
 				yield* writeOut(`Plugin "${reference}" is not configured in ${target.path}\n`);
