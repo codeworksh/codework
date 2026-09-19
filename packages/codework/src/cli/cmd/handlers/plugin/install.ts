@@ -42,7 +42,7 @@ export default Runtime.handler(
 				// `inspect` installs, imports and validates, so a spec that turns out not to be a
 				// plugin fails here rather than at the next run. The reported ID comes from the
 				// module, never from the spec.
-				const plugin = yield* Plugin.inspect(entry.reference, { cache, hostDir });
+				const plugin = yield* Plugin.inspect(entry.reference, { cache, hostDir, file: entry.file });
 				installed += 1;
 				yield* writeOut(`Installed ${entry.reference} (${plugin.id})\n`);
 			}

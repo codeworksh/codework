@@ -332,6 +332,33 @@ describe("a running session and the store", () => {
 		}));
 });
 
+describe("boot", () => {
+	it("reports a configured plugin whose bytes are missing, rather than fetching it", () =>
+		withProject(async ({ root, project }) => {
+			await writeFile(
+				join(project, ".codework", "settings.jsonc"),
+				JSON.stringify({ plugins: ["@acme/never-published-anywhere"] }),
+			);
+
+			const failure = await Effect.runPromise(
+				Effect.gen(function* () {
+					yield* Session.create({ directory: project, hostDir: project });
+				}).pipe(
+					Effect.provide(Harness.layer({ home: join(root, "home"), hostCwd: project, database: ":memory:" })),
+					Effect.scoped,
+					Effect.flip,
+					Effect.timeout("20 seconds"),
+					Effect.orDie,
+				),
+			);
+
+			// Not a registry round-trip: a start that fetches can wait on the network, fail
+			// offline, and let network timing decide which code runs. `plugin install` is the verb
+			// that puts bytes on disk, and this is the error that names it.
+			expect(failure).toMatchObject({ _tag: "PluginStoreError", reason: "plugin-not-installed" });
+		}));
+});
+
 describe("reload", () => {
 	/** A local plugin whose contents change while its path does not. */
 	const write = (file: string, suffix: string) =>

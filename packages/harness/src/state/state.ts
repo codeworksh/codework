@@ -13,7 +13,7 @@
  */
 
 import type { Model, Protocol } from "@codeworksh/aikit";
-import { Context, Effect, Layer, Option, Ref, Schema } from "effect";
+import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
 import { Event } from "../event/event.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
 import { run as setup } from "../plugin/host.ts";
@@ -214,6 +214,19 @@ export const layer = (
 			const sessions = yield* SessionStore.Service;
 			const settings = yield* Settings.Service;
 			const events = makeEvents(yield* Event.Service);
+			/*
+			 * One load pass at a time, for the whole process.
+			 *
+			 * Two sessions can reach an exchange boundary together and both find the same entry
+			 * unloaded -- someone ran `plugin add` in a directory they share. Without this they
+			 * both run a load pass and both swap the pool, so the work happens twice and the
+			 * loser's result is discarded.
+			 *
+			 * Deliberately *not* the cross-process filesystem lock of the store: that one answers
+			 * "two machines installing", this one answers "two fibers importing". It belongs to
+			 * the load pass, and it is cheap because it is only ever taken when something moved.
+			 */
+			const loading = yield* Semaphore.make(1);
 			return Service.of({
 				reload: Effect.gen(function* () {
 					// Swaps the module set for the whole process. Which of those a given session
@@ -259,18 +272,21 @@ export const layer = (
 					const resolvedModel = yield* LLM.resolve({ provider, model, settings: configured.block });
 
 					const refs = references(loadedSettings);
-					// Read once, at the top, so a reload or a store update cannot land halfway
-					// through a snapshot. An exchange already running is unaffected either way.
-					const before = yield* Ref.get(pool);
 					const failed = (cause: { readonly message: string }) =>
 						new SnapshotError({ sessionId, reason: cause.message, cause });
 
 					// Follow the store: load an entry whose bytes are already here, and move to a
 					// newer generation of one that is. Never a fetch -- `plugin install` stays the
 					// verb that puts bytes on disk.
-					const moved = yield* follow(refs, before).pipe(Effect.mapError(failed));
-					if (Option.isSome(moved)) yield* Ref.set(pool, moved.value);
-					const loaded = Option.getOrElse(moved, () => before);
+					const loaded = yield* Effect.gen(function* () {
+						// Re-read inside the permit: whoever held it may have just done this exact
+						// work, and adopting their result is the point.
+						const current = yield* Ref.get(pool);
+						const moved = yield* follow(refs, current);
+						if (Option.isNone(moved)) return current;
+						yield* Ref.set(pool, moved.value);
+						return moved.value;
+					}).pipe(loading.withPermits(1), Effect.mapError(failed));
 
 					// The config pass: pure data over what is already loaded, so it runs every
 					// exchange.

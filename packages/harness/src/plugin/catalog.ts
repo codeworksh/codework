@@ -28,6 +28,12 @@ export interface Prepared {
 }
 export interface Options extends Loader.Options {
 	readonly builtins: ReadonlyArray<Plugin>;
+	/**
+	 * Which settings file declared each reference, so a failure can say where to go and edit.
+	 *
+	 * Absent for an embedder's own list, which came from code rather than from a file.
+	 */
+	readonly declared?: ReadonlyMap<string, string> | undefined;
 }
 
 /**
@@ -126,7 +132,8 @@ export const load = Effect.fn("PluginCatalog.load")(function* (references: Reado
 		// `PreparationError.reference` throws instead of reporting the bad entry.
 		const declared =
 			typeof reference === "string" ? reference : Predicate.hasProperty(reference, "id") ? reference.id : undefined;
-		const origin = { index, reference: typeof declared === "string" ? declared : `<plugin object #${index}>` };
+		const named = typeof declared === "string" ? declared : `<plugin object #${index}>`;
+		const origin = { index, reference: named, file: options.declared?.get(named) };
 
 		if (typeof reference !== "string") {
 			// The very definition the pool already holds -- a built-in named by the default

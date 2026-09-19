@@ -223,6 +223,7 @@ export const renderError = (error: unknown): string => {
 			[
 				`error[${error.reason}]: ${error.message}`,
 				...(error.reference === "" ? [] : [`reference: ${error.reference}`]),
+				...(error.file === undefined ? [] : [`declared in: ${error.file}`]),
 				...(isPluginLoadError(error) && error.id !== undefined ? [`id: ${error.id}`] : []),
 				`hint: ${pluginReasonHint(error.reason)}`,
 			].join("\n") + "\n"

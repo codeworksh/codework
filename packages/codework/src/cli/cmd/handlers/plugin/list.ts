@@ -52,6 +52,7 @@ export default Runtime.handler(
 				const inspected = yield* Plugin.inspect(entry.reference, {
 					cache,
 					hostDir,
+					file: entry.file,
 					install: Plugin.resolveCached,
 				}).pipe(Effect.result);
 				rows.push(

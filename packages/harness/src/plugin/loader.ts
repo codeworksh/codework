@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { domains, type PluginKind } from "./plugin.ts";
 import { importModule, resolveModule } from "../util/module.ts";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
-import { InstallError, LoadError, SourceError, type StoreError } from "./error.ts";
+import { declaredIn, InstallError, LoadError, SourceError, type StoreError } from "./error.ts";
 import { url } from "./npm.ts";
 import { canonical as canonicalOf, type Fetchable, parse, type Target } from "./source.ts";
 import * as Store from "./store.ts";
@@ -34,7 +34,12 @@ const Definition = Schema.Struct({
 export interface Origin {
 	readonly index: number;
 	readonly reference: string;
+	/** The settings file that declared this entry, when one did. */
+	readonly file?: string | undefined;
 }
+
+/** Every plugin failure says which file to go and edit, when there is one. */
+const where = (origin: Origin) => (origin.file === undefined ? {} : { file: origin.file });
 
 const detail = (cause: unknown): string =>
 	cause instanceof Error ? cause.message : typeof cause === "string" ? cause : String(cause);
@@ -46,6 +51,7 @@ export const sourceFailure = (origin: Origin, cause: unknown) =>
 		: new SourceError({
 				reason: "plugin-not-found",
 				reference: origin.reference,
+				...where(origin),
 				message: detail(cause),
 			});
 
@@ -62,6 +68,7 @@ export const importFailure = (origin: Origin, cause: unknown) =>
 			? "plugin-missing-dependency"
 			: "plugin-import-failed",
 		reference: origin.reference,
+		...where(origin),
 		message: detail(cause),
 		cause,
 	});
@@ -71,6 +78,7 @@ export const definitionFailure = (origin: Origin, cause: unknown, id?: string) =
 	new LoadError({
 		reason: "plugin-invalid-definition",
 		reference: origin.reference,
+		...where(origin),
 		message: detail(cause),
 		...(id === undefined ? {} : { id }),
 		cause,
@@ -103,7 +111,7 @@ interface Resolved extends Installed {
 
 const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string, origin: Origin) {
 	const escapes = (message: string) =>
-		new SourceError({ reason: "plugin-escapes-root", reference: origin.reference, message });
+		new SourceError({ reason: "plugin-escapes-root", reference: origin.reference, ...where(origin), message });
 	const stat = yield* fs.stat(location);
 	if (stat.type !== "Directory") {
 		return { url: yield* Effect.try(() => resolveModule(location, path.dirname(location))) } satisfies Resolved;
@@ -151,6 +159,11 @@ export interface Options {
 	 * A fetched plugin needs none of this. A new generation is already a new path.
 	 */
 	readonly reload?: number;
+	/**
+	 * The settings file this reference came from, for a caller inspecting one entry at a time.
+	 * The catalog's load pass looks it up per reference instead.
+	 */
+	readonly file?: string | undefined;
 	readonly import?: (url: string) => Promise<unknown>;
 	/**
 	 * How a package reaches the disk. The default installs; `plugin remove` passes a resolve-only
@@ -252,7 +265,7 @@ export interface Loaded {
  * configuration that only fails at the next run.
  */
 export const inspect = Effect.fn("PluginLoader.inspect")(function* (reference: string, options: Options) {
-	const origin = { index: 0, reference };
+	const origin = { index: 0, reference, file: options.file };
 	const target = yield* parse(reference, options.hostDir);
 	const loaded = yield* load(target, origin, options);
 	return {
@@ -266,9 +279,12 @@ export const load = Effect.fn("PluginLoader.load")(function* (target: Target, or
 	const resolved: Effect.Effect<Resolved, SourceError | InstallError | StoreError | LoadError> =
 		target.kind === "local"
 			? localUrl(target.path, origin).pipe(Effect.mapError((cause) => sourceFailure(origin, cause)))
-			: // An installer already speaks the taxonomy, so its failure passes through untouched:
-				// wrapping it would bury the reason a caller is meant to act on.
-				installer(target, origin, options);
+			: // An installer already speaks the taxonomy, so its reason passes through untouched:
+				// wrapping it would bury the thing a caller is meant to act on. Only the declaring
+				// file is added, because the installer had no way to know it.
+				installer(target, origin, options).pipe(
+					Effect.mapError((cause) => (origin.file === undefined ? cause : declaredIn(cause, origin.file))),
+				);
 	const installed = yield* resolved;
 	const address =
 		target.kind === "local" && options.reload !== undefined && options.reload > 0

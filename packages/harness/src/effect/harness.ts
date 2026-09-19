@@ -76,10 +76,19 @@ export const layer = (options: Options = {}) =>
 			const references = (settings: SettingsInfo): ReadonlyArray<PluginRef> =>
 				options.plugins ?? [...builtins, ...settings.plugins];
 
+			/** Reference to the file that declared it, for failures that should name one. */
+			const declaredIn = (settings: SettingsInfo): ReadonlyMap<string, string> =>
+				new Map(
+					settings.declared.flatMap((one) =>
+						typeof one.entry === "string"
+							? [[one.entry, one.file] as const]
+							: "package" in one.entry
+								? [[one.entry.package, one.file] as const]
+								: [],
+					),
+				);
+
 			const catalogOptions = { builtins, cache: paths.cache, hostDir: hostCwd };
-			// The load pass, once, at boot: a store lookup and an ESM import per module. Every
-			// later exchange runs only the config pass over what this produced.
-			const pool = yield* Ref.make<Pool>(yield* load(references(config), catalogOptions));
 
 			/*
 			 * What the store already holds for a reference, and nothing else.
@@ -99,8 +108,23 @@ export const layer = (options: Options = {}) =>
 					Effect.orElseSucceed(() => Option.none<PluginStore.Entry>()),
 				);
 
-			// Resolve-only for the same reason: an exchange follows the store, it does not fill it.
+			/*
+			 * Resolve-only, everywhere the harness loads.
+			 *
+			 * Boot included, and that is the point: an entry whose bytes are missing is reported
+			 * as `plugin-not-installed` with `codework plugin install` as the remedy, rather than
+			 * silently becoming a registry round-trip on every start. Otherwise a fresh process
+			 * can wait on the network, fail offline, and let network timing decide which code
+			 * runs. Freshness is opt-in -- `plugin install`, `check`, `update` -- and this is what
+			 * makes that true rather than aspirational.
+			 */
 			const resolveOnly = { ...catalogOptions, install: PluginStore.required };
+
+			// The load pass, once, at boot: a store lookup and an ESM import per module, never a
+			// fetch. Every later exchange runs only the config pass over what this produced.
+			const pool = yield* Ref.make<Pool>(
+				yield* load(references(config), { ...resolveOnly, declared: declaredIn(config) }),
+			);
 			const followStore = (refs: ReadonlyArray<PluginRef>, current: Pool) =>
 				follow(refs, current, resolveOnly, filed);
 
@@ -117,7 +141,11 @@ export const layer = (options: Options = {}) =>
 					// Re-read from the same root this process booted with, so the rebuilt pool
 					// holds what the old one did plus whatever was added since.
 					const current = yield* Settings.load({ ...settingsOptions, home: paths.home, hostDir: hostCwd });
-					return yield* load(references(current), { ...resolveOnly, reload: reloads });
+					return yield* load(references(current), {
+						...resolveOnly,
+						declared: declaredIn(current),
+						reload: reloads,
+					});
 				});
 			// Flattened before anything can publish: a plugin event type that collides
 			// or is not namespaced is a boot failure, not a surprise at first publish.

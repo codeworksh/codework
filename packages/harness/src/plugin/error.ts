@@ -29,6 +29,15 @@ import { Schema } from "effect";
 const Reference = Schema.String;
 
 /**
+ * The settings file that declared the entry, when one did.
+ *
+ * Absent for an embedder's own list and for anything the CLI was handed directly -- in both cases
+ * the caller already knows where the string came from. It is the settings path that needs saying,
+ * because several layers accumulate entries and "which file says this" is the question.
+ */
+const File = Schema.optional(Schema.String);
+
+/**
  * A spec that cannot be installed at all.
  *
  * `plugin-not-found` is a local path with nothing at it; `plugin-not-installed` (the store's) is a
@@ -38,6 +47,7 @@ const Reference = Schema.String;
 export class SourceError extends Schema.TaggedError<SourceError>()("PluginSourceError", {
 	reason: Schema.Literals(["plugin-unsupported-source", "plugin-not-found", "plugin-escapes-root"]),
 	reference: Reference,
+	file: File,
 	message: Schema.String,
 }) {}
 
@@ -50,6 +60,7 @@ export class InstallError extends Schema.TaggedError<InstallError>()("PluginInst
 		"plugin-no-entrypoint",
 	]),
 	reference: Reference,
+	file: File,
 	message: Schema.String,
 	cause: Schema.optional(Schema.Defect()),
 }) {}
@@ -64,6 +75,7 @@ export class InstallError extends Schema.TaggedError<InstallError>()("PluginInst
 export class LoadError extends Schema.TaggedError<LoadError>()("PluginLoadError", {
 	reason: Schema.Literals(["plugin-import-failed", "plugin-missing-dependency", "plugin-invalid-definition"]),
 	reference: Reference,
+	file: File,
 	message: Schema.String,
 	/** The ID the module declared, when it got far enough to declare one. */
 	id: Schema.optional(Schema.String),
@@ -80,8 +92,36 @@ export class StoreError extends Schema.TaggedError<StoreError>()("PluginStoreErr
 		"plugin-collect-failed",
 	]),
 	reference: Reference,
+	file: File,
 	message: Schema.String,
 	cause: Schema.optional(Schema.Defect()),
 }) {}
+
+export type Any = SourceError | InstallError | LoadError | StoreError;
+
+/**
+ * Note which settings file declared the entry a failure came from.
+ *
+ * The store and the installer raise their own failures without knowing that, because neither is
+ * told: they are handed a spec, not a settings layer. The loader knows, and this is where it says
+ * so -- leaving an existing answer alone, since a more specific one is already better.
+ */
+export const declaredIn = <E extends Any>(error: E, file: string): E => {
+	if (error.file !== undefined) return error;
+	// Named field by field rather than spread: an error instance also carries `name`, `stack` and
+	// the rest of `Error`, none of which the schema accepts.
+	const shared = { reference: error.reference, message: error.message, file };
+	if (Schema.is(SourceError)(error)) return new SourceError({ ...shared, reason: error.reason }) as E;
+	if (Schema.is(InstallError)(error)) {
+		return new InstallError({ ...shared, reason: error.reason, cause: error.cause }) as E;
+	}
+	if (Schema.is(LoadError)(error)) {
+		return new LoadError({ ...shared, reason: error.reason, id: error.id, cause: error.cause }) as E;
+	}
+	if (Schema.is(StoreError)(error)) {
+		return new StoreError({ ...shared, reason: error.reason, cause: error.cause }) as E;
+	}
+	return error;
+};
 
 export * as PluginError from "./error.ts";
