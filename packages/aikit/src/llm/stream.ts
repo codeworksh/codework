@@ -64,7 +64,7 @@ function cacheProviderOptions(model: Model.Info, options: RuntimeOptions): Provi
 		return Object.keys(openai).length > 0 ? { [key]: openai } : {};
 	}
 
-	if ((key === "anthropic" || key === "google-vertex-anthropic") && retention) {
+	if (Thinking.isAnthropicMessagesModel(model) && retention) {
 		return {
 			[key]: {
 				cacheControl: {
@@ -367,8 +367,7 @@ export function resolveMaxOutputTokens(model: Model.Info, plan: Thinking.Plan): 
 	if (key === "openai-codex") return undefined;
 	if (plan.maxTokens === undefined) return undefined;
 
-	const sendsBudget =
-		(key === "anthropic" || key === "google-vertex-anthropic") && !model.compat?.forceAdaptiveThinking;
+	const sendsBudget = Thinking.isAnthropicMessagesModel(model) && !model.compat?.forceAdaptiveThinking;
 	return sendsBudget ? plan.maxTokens - plan.budget : plan.maxTokens;
 }
 

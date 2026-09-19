@@ -11,6 +11,7 @@ export const AI_SDK_PACKAGE_TO_PROTOCOL = {
 	"@ai-sdk/openai": Model.KnownProviderEnum.openai,
 	"@ai-sdk/openai-compatible": Model.KnownProviderEnum.openaiCompatible,
 	"@codeworksh/ai-sdk-openai-codex": Model.KnownProviderEnum.openaiCodex, // custom provider npm ID
+	"@codeworksh/ai-sdk-github-copilot": Model.KnownProviderEnum.githubCopilot, // custom provider npm ID
 	"@openrouter/ai-sdk-provider": Model.KnownProviderEnum.openrouter,
 	"@ai-sdk/xai": Model.KnownProviderEnum.xai,
 } as const;
@@ -36,6 +37,10 @@ const PROVIDER_LOADERS: Record<AISDKPackage, () => Promise<ProviderFactory>> = {
 	// name is virtual and resolves to src/providers/openai-codex.
 	"@codeworksh/ai-sdk-openai-codex": () =>
 		import("../providers/openai-codex/index.ts").then((m) => m.createOpenAICodex as ProviderFactory),
+	// Local provider for GitHub Copilot; the package name is virtual and resolves
+	// to src/providers/github-copilot.
+	"@codeworksh/ai-sdk-github-copilot": () =>
+		import("../providers/github-copilot/index.ts").then((m) => m.createGitHubCopilot as ProviderFactory),
 };
 
 export function isAISDKPackage(value: string): value is AISDKPackage {

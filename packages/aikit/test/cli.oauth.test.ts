@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { OAuthCommand } from "../src/cli/oauth.ts";
+import { JsonGitHubCopilotAuthStorage } from "../src/oauth/github/copilot.ts";
 import { JsonOpenAICodexAuthStorage, type OpenAICodexOAuthCredentials } from "../src/oauth/openai/codex.ts";
 
 type OAuthHandlerArgs = Parameters<typeof OAuthCommand.handler>[0];
@@ -102,5 +103,40 @@ describe("OAuthCommand", () => {
 
 		await expect(storage.get()).resolves.toBeUndefined();
 		expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain("Cleared OpenAI Codex credentials");
+	});
+
+	it("prints Copilot status without exposing stored tokens", async () => {
+		const copilotStorage = new JsonGitHubCopilotAuthStorage({ path });
+		await copilotStorage.set({
+			access: "ghu_secret",
+			refresh: "ghu_secret",
+			expires: 0,
+			apiEndpoint: "https://api.individual.githubcopilot.com",
+			availableModelIds: ["gpt-4.1", "gpt-5.4"],
+		});
+
+		await OAuthCommand.handler(args(path, { openaiCodex: false, githubCopilot: true, status: true }));
+
+		const output = vi.mocked(console.log).mock.calls.flat().join("\n");
+		expect(output).toContain("api.individual.githubcopilot.com");
+		expect(output).toContain("Available models: 2");
+		expect(output).not.toContain("ghu_secret");
+	});
+
+	it("reports missing Copilot credentials and fails the status check", async () => {
+		await OAuthCommand.handler(args(path, { openaiCodex: false, githubCopilot: true, status: true }));
+
+		expect(process.exitCode).toBe(1);
+		expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain("No GitHub Copilot credentials found");
+	});
+
+	it("logs out and clears stored Copilot credentials", async () => {
+		const copilotStorage = new JsonGitHubCopilotAuthStorage({ path });
+		await copilotStorage.set({ access: "ghu_secret", refresh: "ghu_secret", expires: 0 });
+
+		await OAuthCommand.handler(args(path, { openaiCodex: false, githubCopilot: true, logout: true }));
+
+		await expect(copilotStorage.get()).resolves.toBeUndefined();
+		expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain("Cleared GitHub Copilot credentials");
 	});
 });

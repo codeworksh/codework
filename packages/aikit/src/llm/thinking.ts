@@ -41,9 +41,15 @@ const ANTHROPIC_MIN_THINKING_BUDGET = 1024;
  * Adaptive models are exempt: they are sent an effort level and no budget, so
  * there is no floor to fall under.
  */
-function minimumThinkingBudget(model: Model.Info): number {
+/** Whether the model talks Anthropic Messages — directly, or via Copilot's `/v1/messages` route. */
+export function isAnthropicMessagesModel(model: Model.Info): boolean {
 	const key = Model.optionsKey(model);
-	if (key !== "anthropic" && key !== "google-vertex-anthropic") return 0;
+	if (key === "anthropic" || key === "google-vertex-anthropic") return true;
+	return key === "github-copilot" && model.api?.method === Model.APIMethodEnum.messages;
+}
+
+function minimumThinkingBudget(model: Model.Info): number {
+	if (!isAnthropicMessagesModel(model)) return 0;
 	return model.compat?.forceAdaptiveThinking ? 0 : ANTHROPIC_MIN_THINKING_BUDGET;
 }
 
@@ -123,6 +129,16 @@ export function disabledProviderOptions(model: Model.Info): ProviderOptionBag {
 		return { [key]: { thinking: { type: "disabled" } } };
 	}
 
+	if (key === "github-copilot") {
+		// Copilot accepts `thinking: {type:"disabled"}` on the Messages route; on
+		// Responses it rejects `reasoningEffort: "none"`, and the chat route has no
+		// reasoning control at all.
+		if (model.api?.method === Model.APIMethodEnum.messages) {
+			return { [key]: { thinking: { type: "disabled" } } };
+		}
+		return {};
+	}
+
 	if (key === "google" || key === "google-vertex") {
 		if (model.thinkingLevelMap?.off === null) return {};
 		return { [key]: { thinkingConfig: googleDisabledThinkingConfig(model) } };
@@ -189,6 +205,34 @@ export function reasoningProviderOptions(model: Model.Info, plan: Plan): Provide
 
 	if (key === "openai" || key === "xai" || key === "openai-codex") {
 		return { [key]: { reasoningEffort: mapped } };
+	}
+
+	if (key === "github-copilot") {
+		const method = model.api?.method;
+		if (method === Model.APIMethodEnum.responses) {
+			return { [key]: { reasoningEffort: mapped } };
+		}
+		if (method === Model.APIMethodEnum.messages) {
+			if (model.compat?.forceAdaptiveThinking) {
+				return {
+					[key]: {
+						thinking: { type: "adaptive", display: "summarized" },
+						effort: anthropicEffort(model, level),
+					},
+				};
+			}
+			return {
+				[key]: {
+					thinking: {
+						type: "enabled",
+						budgetTokens: budget,
+					},
+				},
+			};
+		}
+		// The chat route has no generic reasoning control; catalog models carry
+		// `compat.supportsThinkingTokenBudget` when they take a budget field.
+		return {};
 	}
 
 	if (key === "openrouter") {

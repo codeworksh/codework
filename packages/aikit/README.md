@@ -147,20 +147,25 @@ pnpm aikit modelgen [path]
 
 ### OAuth Providers
 
-Manage OAuth credentials for providers that require it, such as OpenAI Codex.
+Manage OAuth credentials for providers that require it, such as OpenAI Codex and GitHub Copilot.
 
 ```bash
 # Start an OAuth login flow in your browser
 pnpm aikit auth --openai-codex
 
+# GitHub Copilot uses the device flow; add --enterprise <domain> for GitHub Enterprise
+pnpm aikit auth --github-copilot
+
 # Check the status of your stored credentials
 pnpm aikit auth --openai-codex --status
+pnpm aikit auth --github-copilot --status
 
 # Refresh your current credentials
 pnpm aikit auth --openai-codex --refresh
 
 # Clear stored credentials
 pnpm aikit auth --openai-codex --logout
+pnpm aikit auth --github-copilot --logout
 ```
 
 ## Contribute

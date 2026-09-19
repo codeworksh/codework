@@ -17,6 +17,7 @@ import type { XaiLanguageModelChatOptions, XaiLanguageModelResponsesOptions, Xai
 import type { OpenRouterProviderOptions, OpenRouterProviderSettings } from "@openrouter/ai-sdk-provider";
 import { Type, type Static } from "typebox";
 import * as Model from "../model/model.ts";
+import type { GitHubCopilotProviderSettings } from "../providers/github-copilot/index.ts";
 import type { OpenAICodexLanguageModelOptions, OpenAICodexProviderSettings } from "../providers/openai-codex/index.ts";
 import type * as Protocol from "./protocol.ts";
 import { SharedOptions, ThinkingBudgets } from "./shared.ts";
@@ -64,6 +65,10 @@ type OpenAICompatibleLanguageOptions =
 	| OpenAICompatibleLanguageModelChatOptions
 	| OpenAICompatibleLanguageModelCompletionOptions;
 type XaiLanguageOptions = XaiLanguageModelResponsesOptions | XaiLanguageModelChatOptions;
+type GitHubCopilotLanguageOptions =
+	| AnthropicLanguageModelOptions
+	| OpenAILanguageModelResponsesOptions
+	| OpenAICompatibleLanguageModelChatOptions;
 
 export type OpenAIOptions = AISDKOptions<OpenAIProviderSettings, { openai?: OpenAILanguageOptions }>;
 export type AnthropicOptions = AISDKOptions<AnthropicProviderSettings, { anthropic?: AnthropicLanguageModelOptions }>;
@@ -77,6 +82,10 @@ export type OpenAICompatibleOptions = AISDKOptions<
 export type OpenAICodexOptions = AISDKOptions<
 	OpenAICodexProviderSettings,
 	{ "openai-codex"?: OpenAICodexLanguageModelOptions }
+>;
+export type GitHubCopilotOptions = AISDKOptions<
+	GitHubCopilotProviderSettings,
+	{ "github-copilot"?: GitHubCopilotLanguageOptions }
 >;
 export type OpenRouterOptions = AISDKOptions<OpenRouterProviderSettings, { openrouter?: OpenRouterProviderOptions }>;
 export type XaiOptions = AISDKOptions<XaiProviderSettings, { xai?: XaiLanguageOptions }>;
