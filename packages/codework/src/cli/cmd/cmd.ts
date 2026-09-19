@@ -125,6 +125,36 @@ export const Cmd = Spec.make("codework", {
 						},
 					],
 				}),
+				Spec.make("install", {
+					description: "Install every plugin the settings files name",
+					params: {},
+					examples: [
+						{
+							command: "codework plugin install",
+							description: "Materialise what a fresh checkout already declares",
+						},
+					],
+				}),
+				Spec.make("list", {
+					description: "List configured plugins and what each one resolved to",
+					params: {
+						verbose: Flag.Boolean("verbose").pipe(
+							Flag.withDescription("Show the message behind a failure, not only its reason"),
+							Flag.withDefault(false),
+						),
+					},
+					examples: [{ command: "codework plugin list", description: "Show every configured plugin" }],
+				}),
+				Spec.make("check", {
+					description: "Report which configured plugins have a newer revision available",
+					params: {},
+					examples: [{ command: "codework plugin check", description: "Ask the registry what has moved" }],
+				}),
+				Spec.make("update", {
+					description: "Fetch a newer revision of every plugin that has one",
+					params: {},
+					examples: [{ command: "codework plugin update", description: "Take whatever `check` found" }],
+				}),
 				Spec.make("remove", {
 					description: "Remove a plugin from a settings file",
 					params: {

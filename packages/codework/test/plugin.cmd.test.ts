@@ -13,7 +13,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -295,7 +295,7 @@ describe("codework plugin add/remove", () => {
 			const notAPlugin = fileURLToPath(new URL("../../../vite.config.ts", import.meta.url));
 			const failed = run("plugin", "add", notAPlugin);
 			expect(failed.status).toBe(1);
-			expect(failed.stderr).toContain("phase: definition");
+			expect(failed.stderr).toContain("error[plugin-invalid-definition]");
 			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual([]);
 		}));
 
@@ -311,5 +311,90 @@ describe("codework plugin add/remove", () => {
 				plugin("codework-prompt-life"),
 			]);
 			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual(["./plugins/project.ts"]);
+		}));
+});
+
+describe("codework plugin install/list/check", () => {
+	it("re-anchors a local path to the settings file it is written into", () =>
+		withProject(({ root, home }) => {
+			// The defect this fixes is silent: a relative path on the command line means one file,
+			// and the same string in a settings file means another the moment the command was not
+			// run from the directory holding that file.
+			const physical = realpathSync(root);
+			const nested = join(physical, "packages", "app");
+			mkdirSync(join(nested, "plugins"), { recursive: true });
+			const target = join(nested, "plugins", "house.mjs");
+			writeFileSync(target, "export default { id: 'acme.tool.house', kind: 'tool', setup() {} }");
+
+			// Typed relative to where the command runs, which is not where the file lives.
+			const typed = "./plugins/house.mjs";
+			const added = spawnSync(
+				process.execPath,
+				["--conditions=development", cli, "plugin", "add", typed, "--home", home],
+				{ encoding: "utf8", cwd: nested, timeout: 60_000 },
+			);
+			expect(added.status).toBe(0);
+
+			// Both ends are inside one project, so the entry is written relative to the settings
+			// file -- portable to any checkout of the repository, which is what makes it worth
+			// committing.
+			const written: string = JSON.parse(readFileSync(settings(physical), "utf8")).plugins[0];
+			expect(written.startsWith("./") || written.startsWith("../")).toBe(true);
+			// Written verbatim, this would have named `<root>/.codework/plugins/house.mjs`.
+			expect(written).not.toBe(typed);
+			expect(realpathSync(resolve(join(physical, ".codework"), written))).toBe(realpathSync(target));
+		}));
+
+	it("writes an absolute path when the target sits outside the project", () =>
+		withProject(({ root, home, run }) => {
+			const outside = join(realpathSync(root), "..", "elsewhere");
+			// `-g` writes the user-wide file, so a relative entry would be a lie: it would be read
+			// from `<home>` rather than from this project.
+			const added = run("plugin", "add", plugin("codework-tool-proc"), "-g");
+			expect(added.status).toBe(0);
+			const written: string = JSON.parse(readFileSync(join(home, "settings.jsonc"), "utf8")).plugins[0];
+			expect(isAbsolute(written)).toBe(true);
+			expect(existsSync(outside)).toBe(false);
+		}));
+
+	it("lists what each entry resolved to, and the reason when it did not", () =>
+		withProject(({ root, run }) => {
+			writeFileSync(
+				settings(root),
+				JSON.stringify({ plugins: [plugin("codework-tool-proc"), "./missing.ts", "@acme/never-installed"] }),
+			);
+			const listed = run("plugin", "list");
+			expect(listed.status).toBe(0);
+			// An ID is proof the whole chain worked: it cannot be known without importing.
+			expect(listed.stdout).toContain("acme.tool.proc");
+			// A path with nothing at it, and a package with no store entry, are different failures.
+			expect(listed.stdout).toContain("plugin-not-found");
+			expect(listed.stdout).toContain("plugin-not-installed");
+		}));
+
+	it("reports an empty configuration rather than printing nothing", () =>
+		withProject(({ root, run }) => {
+			writeFileSync(settings(root), JSON.stringify({ plugins: [] }));
+			const listed = run("plugin", "list");
+			expect(listed.status).toBe(0);
+			expect(listed.stdout).toContain("No plugins are configured.");
+		}));
+
+	it("installs what the settings already declare, and says so when there is nothing to do", () =>
+		withProject(({ root, run }) => {
+			// A local entry is loaded where it lies, so `install` has nothing to fetch for it.
+			writeFileSync(settings(root), JSON.stringify({ plugins: [plugin("codework-tool-proc")] }));
+			const installed = run("plugin", "install");
+			expect(installed.status).toBe(0);
+			expect(installed.stdout).toContain("1 local");
+		}));
+
+	it("skips local entries when checking for updates", () =>
+		withProject(({ root, run }) => {
+			// No revision to compare, so `check` reports nothing rather than calling it current.
+			writeFileSync(settings(root), JSON.stringify({ plugins: [plugin("codework-tool-proc")] }));
+			const checked = run("plugin", "check");
+			expect(checked.status).toBe(0);
+			expect(checked.stdout).toContain("Everything is up to date.");
 		}));
 });

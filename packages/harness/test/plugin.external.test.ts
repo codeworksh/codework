@@ -308,7 +308,7 @@ describe("third-party plugins", () => {
 						return immediateOpen()(request, signal);
 					},
 				}),
-			).rejects.toMatchObject({ _tag: "PluginPreparationError", phase: "definition" });
+			).rejects.toMatchObject({ _tag: "PluginLoadError", reason: "plugin-invalid-definition" });
 			expect(calls).toBe(0);
 		}));
 
@@ -331,7 +331,7 @@ describe("third-party plugins", () => {
 				hostDir: "/project",
 			}).pipe(Effect.flip),
 		);
-		expect(failure).toMatchObject({ _tag: "PluginPreparationError", phase: "definition", index: 0 });
+		expect(failure).toMatchObject({ _tag: "PluginLoadError", reason: "plugin-invalid-definition" });
 	});
 
 	it("runs a package tool through the loop, with its after hook applied", () =>
@@ -527,7 +527,7 @@ describe("third-party plugins", () => {
 					Effect.flip,
 				),
 			);
-			expect(failure).toMatchObject({ _tag: "PluginPreparationError", phase: "definition" });
+			expect(failure).toMatchObject({ _tag: "PluginLoadError", reason: "plugin-invalid-definition" });
 		}));
 
 	it("relabels an overridden tool on the winner, keeping its hooks", () =>

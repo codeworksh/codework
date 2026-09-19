@@ -190,7 +190,7 @@ describe("plugin domains and exchange host", () => {
 					Effect.flip,
 				),
 			);
-			expect(failure).toMatchObject({ _tag: "PluginPreparationError", phase: "definition", index: 1 });
+			expect(failure).toMatchObject({ _tag: "PluginLoadError", reason: "plugin-invalid-definition" });
 			expect(setups).toBe(0);
 		}));
 	it("runs no setup when model resolution fails", () =>

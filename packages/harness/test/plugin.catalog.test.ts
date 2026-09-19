@@ -168,7 +168,7 @@ describe("plugin catalog and source resolution", () => {
 			{ plugin: a.id, options: [1, 2] },
 		]) {
 			const error = await Effect.runPromise(prepare([a, entry as never], options).pipe(Effect.flip));
-			expect(error).toMatchObject({ phase: "definition", index: 1 });
+			expect(error).toMatchObject({ reason: "plugin-invalid-definition" });
 		}
 	});
 	it("carries per-plugin options, replaces repeated blocks and never reorders", async () => {
@@ -199,7 +199,7 @@ describe("plugin catalog and source resolution", () => {
 		// Configuration cannot select: a built-in nothing listed stays unselected.
 		expect(await run([{ plugin: builtin.id, options: { one: 1 } }], { builtins: [builtin] })).toEqual([]);
 		expect(await Effect.runPromise(prepare([builtin], options).pipe(Effect.flip))).toMatchObject({
-			phase: "definition",
+			reason: "plugin-invalid-definition",
 		});
 	});
 	it("reads a definition carrying its own `plugin` property as a definition", async () => {
@@ -222,14 +222,14 @@ describe("plugin catalog and source resolution", () => {
 	])("rejects malformed definitions: %j", async (input) => {
 		expect(
 			await Effect.runPromise(validate(input, { index: 2, reference: "fixture" }).pipe(Effect.flip)),
-		).toMatchObject({ phase: "definition", index: 2 });
+		).toMatchObject({ reason: "plugin-invalid-definition" });
 	});
 	it("reports a malformed supplied object as a typed definition failure", async () => {
 		// Nothing has validated the entry yet, so `origin.reference` cannot read an `id` off it --
 		// and a JavaScript caller can pass a value that has no properties to read at all.
 		for (const input of [{}, [], () => a, { id: 123, setup: () => {} }, null, undefined]) {
 			const error = await Effect.runPromise(prepare([b, input as never], options).pipe(Effect.flip));
-			expect(error).toMatchObject({ phase: "definition", index: 1 });
+			expect(error).toMatchObject({ reason: "plugin-invalid-definition" });
 			expect(typeof error.reference).toBe("string");
 		}
 	});
@@ -342,7 +342,7 @@ describe("plugin catalog and source resolution", () => {
 			await Effect.runPromise(
 				prepare(["@acme/plugin"], { ...seams, import: async () => ({ plugin: a }) }).pipe(Effect.flip),
 			),
-		).toMatchObject({ phase: "definition", reference: "@acme/plugin" });
+		).toMatchObject({ reason: "plugin-invalid-definition", reference: "@acme/plugin" });
 	});
 	it("resolves local directory import conditions and reports broken exports as source errors", () =>
 		withDirectory(async (directory) => {
@@ -372,8 +372,7 @@ describe("plugin catalog and source resolution", () => {
 				JSON.stringify({ name: "broken", exports: { "./other": "./entry.js" } }),
 			);
 			expect(await Effect.runPromise(prepare([broken], options).pipe(Effect.flip))).toMatchObject({
-				phase: "source",
-				index: 0,
+				reason: "plugin-not-found",
 				reference: broken,
 			});
 		}));
@@ -382,7 +381,7 @@ describe("plugin catalog and source resolution", () => {
 			const empty = join(directory, "empty");
 			await mkdir(empty);
 			expect(await Effect.runPromise(prepare([empty], options).pipe(Effect.flip))).toMatchObject({
-				phase: "source",
+				reason: "plugin-not-found",
 				reference: empty,
 			});
 			await writeFile(join(empty, "index.js"), "");
@@ -418,8 +417,8 @@ describe("plugin catalog and source resolution", () => {
 			await writeFile(join(directory, "package.json"), JSON.stringify({ exports: "./entry.js" }));
 			await writeFile(join(directory, "entry.js"), "");
 			const error = await Effect.runPromise(prepare([directory], options).pipe(Effect.flip));
-			expect(error.phase).toBe("source");
-			expect(String(error.cause)).toContain("must declare its name");
+			expect(error).toMatchObject({ _tag: "PluginSourceError", reason: "plugin-escapes-root" });
+			expect(error.message).toContain("must declare its name");
 		}));
 	it("resolves a manifest without exports through legacy main", () =>
 		withDirectory(async (directory) => {
@@ -449,8 +448,8 @@ describe("plugin catalog and source resolution", () => {
 			await writeFile(join(pkg, "package.json"), JSON.stringify({ name: "pkg", exports: "./entry.js" }));
 			await symlink(outside, join(pkg, "entry.js"));
 			const error = await Effect.runPromise(prepare([pkg], options).pipe(Effect.flip));
-			expect(error).toMatchObject({ _tag: "PluginPreparationError", phase: "source" });
-			expect(String(error.cause)).toContain("escapes its root");
+			expect(error).toMatchObject({ _tag: "PluginSourceError", reason: "plugin-escapes-root" });
+			expect(error.message).toContain("escapes its root");
 		}));
 });
 

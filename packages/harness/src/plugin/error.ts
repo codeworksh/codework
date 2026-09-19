@@ -54,6 +54,22 @@ export class InstallError extends Schema.TaggedError<InstallError>()("PluginInst
 	cause: Schema.optional(Schema.Defect()),
 }) {}
 
+/**
+ * A module that reached the import and did not come back as a plugin.
+ *
+ * Distinct from {@link InstallError}: the bytes are here and are fine as *bytes*. What failed is
+ * evaluating them, or what they turned out to export -- which is the distinction a caller acts on,
+ * because one is fixed by installing and the other by editing code.
+ */
+export class LoadError extends Schema.TaggedError<LoadError>()("PluginLoadError", {
+	reason: Schema.Literals(["plugin-import-failed", "plugin-missing-dependency", "plugin-invalid-definition"]),
+	reference: Reference,
+	message: Schema.String,
+	/** The ID the module declared, when it got far enough to declare one. */
+	id: Schema.optional(Schema.String),
+	cause: Schema.optional(Schema.Defect()),
+}) {}
+
 /** The store's own failures: what is filed, what is not, and what could not be claimed. */
 export class StoreError extends Schema.TaggedError<StoreError>()("PluginStoreError", {
 	reason: Schema.Literals([

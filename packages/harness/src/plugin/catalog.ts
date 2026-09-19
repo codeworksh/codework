@@ -138,9 +138,7 @@ export const load = Effect.fn("PluginCatalog.load")(function* (references: Reado
 			continue;
 		}
 
-		const target = yield* PluginSource.parse(reference, options.hostDir).pipe(
-			Effect.mapError((cause) => Loader.failure(origin, "source", cause)),
-		);
+		const target = yield* PluginSource.parse(reference, options.hostDir);
 		const key = target.kind === "local" ? target.path : target.spec;
 		const already = seen.get(key);
 		if (already !== undefined) {
@@ -214,7 +212,7 @@ export const select = Effect.fn("PluginCatalog.select")(function* (references: R
 								? "`options` is not a plain object"
 								: undefined;
 			if (invalid !== undefined) {
-				return yield* Loader.failure(origin, "definition", new Error(`plugin entry ${invalid}`));
+				return yield* Loader.definitionFailure(origin, new Error(`plugin entry ${invalid}`));
 			}
 			const id = reference.plugin === undefined ? pool.aliases.get(reference.package) : reference.plugin;
 			const operation = id === undefined ? undefined : operations.get(id);

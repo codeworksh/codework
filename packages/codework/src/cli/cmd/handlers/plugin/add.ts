@@ -4,7 +4,7 @@ import { Runtime } from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
-import { identify, matches, readPlugins, resolveTarget, spellings, writePlugins } from "./settings.ts";
+import { identify, matches, readPlugins, resolveTarget, spellings, writePlugins, written } from "./settings.ts";
 
 export default Runtime.handler(
 	Cmd.commands.plugin.commands.add,
@@ -24,6 +24,13 @@ export default Runtime.handler(
 			// facts: it decides where every future plugin entry lands, and it shadows any outer
 			// project from now on.
 			if (target.created !== undefined) yield* writeOut(`Created ${target.created}/\n`);
+			// What goes in the file, which is not always what was typed: a relative path anchors to
+			// the settings file being written, not to the directory the command ran in.
+			const entry = yield* written(reference, {
+				cwd: path.resolve("."),
+				file: target.path,
+				root: target.root,
+			});
 			const { source, plugins } = yield* readPlugins(target.path);
 			const entries = yield* identify(plugins, target.path, paths.cache);
 			const spelled = yield* spellings(reference, path.resolve("."));
@@ -42,24 +49,24 @@ export default Runtime.handler(
 			const existing = entries.findIndex((entry) => entry.loads && names(entry));
 			if (existing >= 0) {
 				const current = entries[existing]?.value;
-				if (current === reference) {
+				if (current === entry) {
 					yield* writeOut(`Plugin "${reference}" is already configured in ${target.path}\n`);
 					return;
 				}
 				const replaced = [...plugins];
-				replaced[existing] = reference;
+				replaced[existing] = entry;
 				yield* writePlugins(target.path, source, replaced);
-				yield* writeOut(`Updated ${plugin.id} (${String(current)} -> ${reference}${version}) in ${target.path}\n`);
+				yield* writeOut(`Updated ${plugin.id} (${String(current)} -> ${entry}${version}) in ${target.path}\n`);
 				return;
 			}
 
 			// Put the loader before existing configuration so its options apply to the module.
 			const configured = entries.findIndex((entry) => !entry.loads && names(entry));
 			const updated = [...plugins];
-			updated.splice(configured < 0 ? updated.length : configured, 0, reference);
+			updated.splice(configured < 0 ? updated.length : configured, 0, entry);
 			yield* writePlugins(target.path, source, updated);
 
-			yield* writeOut(`Added ${plugin.id} (${reference}${version}) to ${target.path}\n`);
+			yield* writeOut(`Added ${plugin.id} (${entry}${version}) to ${target.path}\n`);
 		});
 
 		return yield* program.pipe(Effect.catch(reportFailure));

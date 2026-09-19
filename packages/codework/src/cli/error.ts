@@ -27,10 +27,10 @@ const isModelCatalogError = Schema.is(Runner.ModelCatalogError);
 const isModelNotFoundError = Schema.is(Runner.ModelNotFoundError);
 const isLLMStreamError = Schema.is(Runner.LLMStreamError);
 const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
-const isPluginPreparationError = Schema.is(Plugin.PreparationError);
 const isPluginInstallError = Schema.is(Plugin.InstallError);
 const isPluginSourceError = Schema.is(Plugin.SourceError);
 const isPluginStoreError = Schema.is(Plugin.StoreError);
+const isPluginLoadError = Schema.is(Plugin.LoadError);
 const isSettingsError = Schema.is(Settings.SettingsError);
 const isSandboxDriverNotRegisteredError = Schema.is(SandboxError.SandboxDriverNotRegisteredError);
 const isSandboxDriverRegistrationError = Schema.is(SandboxError.SandboxDriverRegistrationError);
@@ -120,22 +120,13 @@ const unknownMessage = (error: unknown): string => {
  * What the reader can do about a reference that failed to prepare. A plugin list is
  * usually hand-written in a settings file, so the phase is worth translating.
  */
-const pluginHint = (phase: Plugin.PreparationError["phase"]): string => {
-	switch (phase) {
-		case "source":
-			return "check the spelling; a path entry starts with `./`, `../`, `~/`, or `/`, and anything else is a package";
-		case "install":
-			return "check the package name and version, and that the registry is reachable";
-		case "import":
-			return "the module failed to load; import it directly to see its own error";
-		case "definition":
-			return "a plugin module must default-export one object with a `setup` and a `vendor.domain.name` id";
-	}
-};
-
 /** One hint per reason. Lowercase, like everything else a plugin failure prints. */
 const pluginReasonHint = (
-	reason: Plugin.SourceError["reason"] | Plugin.InstallError["reason"] | Plugin.StoreError["reason"],
+	reason:
+		| Plugin.SourceError["reason"]
+		| Plugin.InstallError["reason"]
+		| Plugin.StoreError["reason"]
+		| Plugin.LoadError["reason"],
 ): string => {
 	switch (reason) {
 		case "plugin-unsupported-source":
@@ -161,6 +152,12 @@ const pluginReasonHint = (
 			return "the store entry is damaged; remove it and install again";
 		case "plugin-collect-failed":
 			return "the store could not be tidied; check the permissions on the plugin cache";
+		case "plugin-import-failed":
+			return "the module failed to load; import it directly to see its own error";
+		case "plugin-missing-dependency":
+			return "the plugin's own dependencies are missing; install them where the plugin lives";
+		case "plugin-invalid-definition":
+			return "a plugin module must default-export one object with a `setup` and a `vendor.domain.name` id";
 	}
 };
 
@@ -204,17 +201,6 @@ export const renderError = (error: unknown): string => {
 			].join("\n") + "\n"
 		);
 	}
-	if (isPluginPreparationError(error)) {
-		return (
-			[
-				`error[plugin]: failed to prepare plugin "${error.reference}"`,
-				`phase: ${error.phase}`,
-				...(error.id === undefined ? [] : [`id: ${error.id}`]),
-				`detail: ${unknownMessage(error.cause)}`,
-				`hint: ${pluginHint(error.phase)}`,
-			].join("\n") + "\n"
-		);
-	}
 	if (isSettingsError(error)) {
 		return (
 			[
@@ -227,11 +213,17 @@ export const renderError = (error: unknown): string => {
 	}
 	// One shape for all three plugin domains: the reason is the slug, the message is the sentence,
 	// and the reference is the string the person recognises from their settings file.
-	if (isPluginSourceError(error) || isPluginInstallError(error) || isPluginStoreError(error)) {
+	if (
+		isPluginSourceError(error) ||
+		isPluginInstallError(error) ||
+		isPluginStoreError(error) ||
+		isPluginLoadError(error)
+	) {
 		return (
 			[
 				`error[${error.reason}]: ${error.message}`,
 				...(error.reference === "" ? [] : [`reference: ${error.reference}`]),
+				...(isPluginLoadError(error) && error.id !== undefined ? [`id: ${error.id}`] : []),
 				`hint: ${pluginReasonHint(error.reason)}`,
 			].join("\n") + "\n"
 		);

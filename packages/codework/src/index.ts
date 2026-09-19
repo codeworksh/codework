@@ -14,7 +14,11 @@ const Handlers = Runtime.handlers(Cmd, {
 	serve: () => import("./cli/cmd/handlers/serve.ts"),
 	plugin: {
 		add: () => import("./cli/cmd/handlers/plugin/add.ts"),
+		check: () => import("./cli/cmd/handlers/plugin/check.ts"),
+		install: () => import("./cli/cmd/handlers/plugin/install.ts"),
+		list: () => import("./cli/cmd/handlers/plugin/list.ts"),
 		remove: () => import("./cli/cmd/handlers/plugin/remove.ts"),
+		update: () => import("./cli/cmd/handlers/plugin/update.ts"),
 	},
 	models: {
 		$: () => import("./cli/cmd/handlers/models/list.ts"),

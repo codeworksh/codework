@@ -97,6 +97,22 @@ export const put = Effect.fn("PluginIndex.put")(function* (root: string, digest:
 	yield* write(root, entries).pipe(Effect.ignore);
 });
 
+/**
+ * Merge fields into one record, if it is there.
+ *
+ * Unlocked, like every write here but the one that publishes a generation. Two processes checking
+ * at once both read the whole file and both rewrite it, so one update is lost and a record added
+ * in between can vanish -- and neither matters, because a lost `checkedAt` costs one network call
+ * and a vanished record is a miss a scan repairs.
+ */
+export const patch = Effect.fn("PluginIndex.patch")(function* (root: string, digest: string, fields: Partial<Record_>) {
+	const entries = yield* read(root);
+	const existing = entries.get(digest);
+	if (existing === undefined) return;
+	entries.set(digest, { ...existing, ...fields });
+	yield* write(root, entries).pipe(Effect.ignore);
+});
+
 /** Forget one entry, for a store entry that has been removed. */
 export const drop = Effect.fn("PluginIndex.drop")(function* (root: string, digest: string) {
 	const entries = yield* read(root);

@@ -21,6 +21,8 @@ export interface Target {
 	readonly path: string;
 	/** Set when this command had to create the project directory, so the caller can say so. */
 	readonly created?: string;
+	/** The project this file belongs to, which a local entry is written relative to. */
+	readonly root?: string;
 }
 
 /** The module an entry names: a bare loader string, or the `package` of a config object. */
@@ -105,6 +107,44 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 		entries.push({ value, answers, loads: typeof value === "string" });
 	}
 	return entries as ReadonlyArray<Entry>;
+});
+
+/**
+ * What a local reference should be *written* as, which is rarely what was typed.
+ *
+ * A relative path on the command line is relative to `cwd`; in a settings file it is relative to
+ * that file's own directory. Those differ the moment the command runs anywhere but the directory
+ * holding the file, and writing the string verbatim produces a silently wrong entry:
+ *
+ * ```
+ * $ cd ~/workspace/app/packages/fubar
+ * $ codework plugin add ./plugins/x.ts        # means packages/fubar/plugins/x.ts
+ *   → the project is ~/workspace/app, so the entry lands in app/.codework/settings.jsonc
+ *   → written verbatim, the harness loads app/.codework/plugins/x.ts   ← a different file
+ * ```
+ *
+ * With both ends inside one project the entry is written relative to the file, which is portable
+ * to any checkout of that repository and therefore worth committing. Otherwise -- a `-g` write
+ * into `<home>`, a `--user-config-dir` elsewhere, or a target outside the project -- relative
+ * would be a lie, and an absolute path means the same thing read from anywhere.
+ *
+ * A package spec is returned untouched: it names no location.
+ */
+export const written = Effect.fn("CLI.plugin.written")(function* (
+	reference: string,
+	input: { readonly cwd: string; readonly file: string; readonly root: string | undefined },
+) {
+	const nodePath = yield* Path.Path;
+	const target = yield* Plugin.parse(reference, input.cwd).pipe(Effect.option);
+	if (Option.isNone(target) || target.value.kind !== "local") return reference;
+
+	const absolute = target.value.path;
+	const inside = (root: string, path: string) => path === root || path.startsWith(`${root}${nodePath.sep}`);
+	if (input.root !== undefined && inside(input.root, input.file) && inside(input.root, absolute)) {
+		const relative = nodePath.relative(nodePath.dirname(input.file), absolute);
+		return relative.startsWith("..") ? relative : `./${relative}`;
+	}
+	return absolute;
 });
 
 /** `reference` selects `entry` when any spelling of one is a spelling of the other. */
@@ -204,9 +244,12 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (sh
 	const found = groups[chosen] ?? [];
 	if (found.length > 0) {
 		const existing = yield* Effect.findFirst(found, (candidate) => fs.exists(candidate));
-		return { path: Option.getOrElse(existing, () => found[0]!) } satisfies Target;
+		return {
+			path: Option.getOrElse(existing, () => found[0]!),
+			...(root === undefined ? {} : { root }),
+		} satisfies Target;
 	}
 	const marker = nodePath.join(cwd, ".codework");
 	yield* fs.makeDirectory(marker, { recursive: true });
-	return { path: nodePath.join(marker, "settings.jsonc"), created: marker } satisfies Target;
+	return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: cwd } satisfies Target;
 });

@@ -104,22 +104,20 @@ describe("CLI output", () => {
 		expect(output).not.toContain("Runner.ProviderError");
 	});
 
-	it("renders a plugin preparation failure with its reference and a phase hint", () => {
+	it("renders a misspelled plugin source by its reason", () => {
 		const output = renderError(
-			new Plugin.PreparationError({
-				phase: "source",
-				index: 3,
+			new Plugin.SourceError({
+				reason: "plugin-unsupported-source",
 				reference: "codework-acme-plugn",
-				cause: new Error("Unsupported plugin package source: codework-acme-plugn"),
+				message: "unsupported plugin source: codework-acme-plugn",
 			}),
 		);
 
-		expect(output).toContain('error[plugin]: failed to prepare plugin "codework-acme-plugn"');
-		expect(output).toContain("phase: source");
-		expect(output).toContain("detail: Unsupported plugin package source: codework-acme-plugn");
-		expect(output).toContain("hint: check the spelling;");
-		// The bare tag is what a settings typo used to print on its own.
-		expect(output).not.toContain("PluginPreparationError");
+		expect(output).toContain("error[plugin-unsupported-source]: unsupported plugin source: codework-acme-plugn");
+		expect(output).toContain("reference: codework-acme-plugn");
+		expect(output).toContain("hint: a path entry starts with");
+		// One vocabulary: the tag is for code, the reason is what a person and a log line see.
+		expect(output).not.toContain("PluginSourceError");
 	});
 
 	it("names the file, the reason and the key when settings cannot be used", () => {
@@ -138,15 +136,15 @@ describe("CLI output", () => {
 
 	it("names the plugin when a module fails to define one", () => {
 		const output = renderError(
-			new Plugin.PreparationError({
-				phase: "definition",
-				index: 2,
+			new Plugin.LoadError({
+				reason: "plugin-invalid-definition",
 				reference: "./plugins/broken.ts",
 				id: "acme.tool.missing",
-				cause: new Error("codework namespace is reserved for builtins"),
+				message: "codework namespace is reserved for builtins",
 			}),
 		);
 
+		expect(output).toContain("error[plugin-invalid-definition]: codework namespace is reserved for builtins");
 		expect(output).toContain("id: acme.tool.missing");
 		expect(output).toContain("hint: a plugin module must default-export one object");
 	});

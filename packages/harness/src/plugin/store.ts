@@ -31,7 +31,7 @@
 
 import { Effect, Encoding, Option, Schema } from "effect";
 import { crypto, fileSystem as fs, hostPath as path } from "../host.ts";
-import { InstallError, StoreError } from "./error.ts";
+import { InstallError, LoadError, StoreError } from "./error.ts";
 import { download, type Fetched, type Runner, url } from "./npm.ts";
 import { canonical, type Fetchable, type Target } from "./source.ts";
 import { PluginIndex } from "./index.store.ts";
@@ -208,7 +208,7 @@ export const required = Effect.fn("PluginStore.required")(function* (target: Fet
  * (a marker holding `id: "acme.tool.proc"` would make the on-disk format encode the result of
  * executing code the store should be indifferent to).
  */
-export type Validate<A> = (fetched: Fetched) => Effect.Effect<A, InstallError>;
+export type Validate<A> = (fetched: Fetched) => Effect.Effect<A, InstallError | LoadError>;
 
 export interface Added<A> {
 	readonly entry: Entry;
@@ -314,7 +314,7 @@ export const add = Effect.fn("PluginStore.add")(function* <A>(
 		// so a caller sees two kinds of error -- "could not fetch" and "the store is damaged" --
 		// rather than every platform error this file can touch.
 		Effect.mapError((cause) =>
-			Schema.is(InstallError)(cause) || Schema.is(StoreError)(cause)
+			Schema.is(InstallError)(cause) || Schema.is(StoreError)(cause) || Schema.is(LoadError)(cause)
 				? cause
 				: failure(target, "plugin-marker-invalid", `cannot write the store entry for ${target.spec}`, cause),
 		),
@@ -353,6 +353,110 @@ export const collect = Effect.fn("PluginStore.collect")(function* (directory: st
 
 const HOUR = 60 * 60 * 1000;
 const WEEK = 7 * 24 * HOUR;
+
+/**
+ * How long a network answer is reused before `check` asks again.
+ *
+ * Persisted in the index rather than held in memory, because the thing that benefits is a command
+ * that exits: an in-memory staleness cache is worthless to `codework plugin check`.
+ */
+const CHECK_TTL = 60 * 60 * 1000;
+
+/** What the network says a mutable target points at now. Supplied, so the store stays offline. */
+export type Probe = (target: Fetchable) => Effect.Effect<string | undefined, InstallError>;
+
+export type Checked =
+	/** Nothing can move: an exact version, a commit SHA, or a local path. */
+	| { readonly _tag: "immutable" }
+	/** `add` is the verb for this; answering "outdated" would make `update` refresh a ghost. */
+	| { readonly _tag: "not-installed" }
+	| { readonly _tag: "current"; readonly revision?: string }
+	| { readonly _tag: "outdated"; readonly filed?: string; readonly available: string };
+
+/**
+ * Is a newer revision available?
+ *
+ * The only network call in the store's vocabulary, and it is the caller's to make. A `probe` that
+ * fails -- offline, registry down, a remote that refuses -- propagates rather than answering
+ * `current`: an outage must not read as "you are up to date".
+ */
+export const check = Effect.fn("PluginStore.check")(function* (
+	target: Fetchable,
+	cache: string,
+	options: { readonly refresh?: boolean; readonly probe: Probe },
+) {
+	if (!target.mutable) return { _tag: "immutable" } as const;
+
+	const entry = yield* resolve(target, cache);
+	if (entry === undefined) return { _tag: "not-installed" } as const;
+
+	const key = yield* digest(target).pipe(
+		Effect.mapError((cause) => failure(target, "plugin-marker-invalid", `cannot address ${target.spec}`, cause)),
+	);
+	const base = root(cache);
+	const record = (yield* PluginIndex.read(base)).get(key);
+	const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+
+	if (options.refresh !== true && record?.checkedAt !== undefined && now - record.checkedAt < CHECK_TTL) {
+		return record.outdated === true
+			? ({
+					_tag: "outdated",
+					available: record.revision ?? "",
+					...(entry.revision === undefined ? {} : { filed: entry.revision }),
+				} as const)
+			: ({ _tag: "current", ...(entry.revision === undefined ? {} : { revision: entry.revision }) } as const);
+	}
+
+	const available = yield* options.probe(target);
+	if (available === undefined) {
+		return { _tag: "current", ...(entry.revision === undefined ? {} : { revision: entry.revision }) } as const;
+	}
+	const outdated = available !== entry.revision;
+	yield* PluginIndex.patch(base, key, { checkedAt: now, outdated });
+	return outdated
+		? ({ _tag: "outdated", available, ...(entry.revision === undefined ? {} : { filed: entry.revision }) } as const)
+		: ({ _tag: "current", ...(entry.revision === undefined ? {} : { revision: entry.revision }) } as const);
+});
+
+export type Updated<A> =
+	| { readonly _tag: "not-installed" }
+	| { readonly _tag: "unchanged"; readonly entry: Entry }
+	| { readonly _tag: "updated"; readonly entry: Entry; readonly validated?: A };
+
+/**
+ * Refresh a mutable target, if the network says there is anything to refresh.
+ *
+ * `add` with `refresh` is what does the work; this is the guard in front of it, so an `update`
+ * that finds nothing new neither stages nor publishes.
+ */
+export const update = Effect.fn("PluginStore.update")(function* <A>(
+	target: Fetchable,
+	cache: string,
+	options: { readonly validate: Validate<A>; readonly runner?: Runner; readonly probe: Probe },
+) {
+	const current = yield* resolve(target, cache);
+	// "not installed" is not "outdated": `add` is the verb for that, and refreshing something that
+	// was never there would install it under a command that says it updates.
+	if (current === undefined) return { _tag: "not-installed" } as const;
+
+	const state = yield* check(target, cache, { refresh: true, probe: options.probe });
+	if (state._tag !== "outdated") return { _tag: "unchanged", entry: current } as const;
+
+	const added = yield* add(target, cache, {
+		refresh: true,
+		validate: options.validate,
+		...(options.runner === undefined ? {} : { runner: options.runner }),
+	});
+	// `add` throws away a refresh that found the same revision, so this can still be unchanged --
+	// a branch whose manifest moved but whose commit did not, say.
+	return added.entry.generation === current.generation
+		? ({ _tag: "unchanged", entry: current } as const)
+		: ({
+				_tag: "updated",
+				entry: added.entry,
+				...(added.validated === undefined ? {} : { validated: added.validated }),
+			} as const);
+});
 
 /**
  * Drop a store entry entirely.

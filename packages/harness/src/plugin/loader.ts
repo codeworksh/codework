@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { domains, type PluginKind } from "./plugin.ts";
 import { importModule, resolveModule } from "../util/module.ts";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
-import { InstallError, type SourceError, type StoreError } from "./error.ts";
+import { InstallError, LoadError, SourceError, type StoreError } from "./error.ts";
 import { url } from "./npm.ts";
 import { canonical as canonicalOf, type Fetchable, parse, type Target } from "./source.ts";
 import * as Store from "./store.ts";
@@ -31,32 +31,61 @@ const Definition = Schema.Struct({
 	setup: Schema.declare<Plugin["setup"]>((value): value is Plugin["setup"] => Predicate.isFunction(value)),
 });
 
-export class PreparationError extends Schema.TaggedError<PreparationError>()("PluginPreparationError", {
-	phase: Schema.Literals(["source", "install", "import", "definition"]),
-	index: Schema.Finite,
-	reference: Schema.String,
-	id: Schema.optional(Schema.String),
-	cause: Schema.Defect(),
-}) {}
-
 export interface Origin {
 	readonly index: number;
 	readonly reference: string;
 }
 
-export const failure = (origin: Origin, phase: PreparationError["phase"], cause: unknown, id?: string) =>
-	new PreparationError({ ...origin, phase, cause, ...(id === undefined ? {} : { id }) });
+const detail = (cause: unknown): string =>
+	cause instanceof Error ? cause.message : typeof cause === "string" ? cause : String(cause);
+
+/** A reference that does not name anything loadable. */
+export const sourceFailure = (origin: Origin, cause: unknown) =>
+	Schema.is(SourceError)(cause)
+		? cause
+		: new SourceError({
+				reason: "plugin-not-found",
+				reference: origin.reference,
+				message: detail(cause),
+			});
+
+/**
+ * A module that would not import.
+ *
+ * A missing dependency gets its own reason because the remedy is different: the plugin is fine and
+ * its `node_modules` is not, which is a thing a person fixes in the package rather than in their
+ * settings.
+ */
+export const importFailure = (origin: Origin, cause: unknown) =>
+	new LoadError({
+		reason: /cannot find (package|module)/i.test(detail(cause))
+			? "plugin-missing-dependency"
+			: "plugin-import-failed",
+		reference: origin.reference,
+		message: detail(cause),
+		cause,
+	});
+
+/** A module that imported and is not a plugin. */
+export const definitionFailure = (origin: Origin, cause: unknown, id?: string) =>
+	new LoadError({
+		reason: "plugin-invalid-definition",
+		reference: origin.reference,
+		message: detail(cause),
+		...(id === undefined ? {} : { id }),
+		cause,
+	});
 
 export const validate = Effect.fn("PluginLoader.validate")(function* (input: unknown, origin: Origin, builtin = false) {
 	yield* Schema.decodeUnknownEffect(Definition)(input).pipe(
-		Effect.mapError((cause) => failure(origin, "definition", cause)),
+		Effect.mapError((cause) => definitionFailure(origin, cause)),
 	);
 	// The author's own object, not the decoded copy: a `Struct` decode keeps only the
 	// declared keys, which would strip a plugin's other properties and leave `this`
 	// pointing at a clone inside the documented `setup() {}` shorthand.
 	const plugin = input as Plugin;
 	if (!builtin && plugin.id.startsWith("codework.")) {
-		return yield* failure(origin, "definition", new Error("codework namespace is reserved for builtins"), plugin.id);
+		return yield* definitionFailure(origin, new Error("codework namespace is reserved for builtins"), plugin.id);
 	}
 	return plugin;
 });
@@ -66,33 +95,42 @@ const Manifest = Schema.Struct({
 	exports: Schema.optional(Schema.Unknown),
 });
 
+/** What either path produced: a URL to import, plus whatever it could say about it. */
+interface Resolved extends Installed {
+	/** The package name a local package declared. Only a local source has one. */
+	readonly name?: string | undefined;
+}
+
 const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string, origin: Origin) {
+	const escapes = (message: string) =>
+		new SourceError({ reason: "plugin-escapes-root", reference: origin.reference, message });
 	const stat = yield* fs.stat(location);
-	if (stat.type !== "Directory")
-		return { url: yield* Effect.try(() => resolveModule(location, path.dirname(location))) };
+	if (stat.type !== "Directory") {
+		return { url: yield* Effect.try(() => resolveModule(location, path.dirname(location))) } satisfies Resolved;
+	}
 	const manifestPath = path.join(location, "package.json");
 	if (!(yield* fs.exists(manifestPath))) {
-		return { url: yield* Effect.try(() => resolveModule("./index", location)) };
+		return { url: yield* Effect.try(() => resolveModule("./index", location)) } satisfies Resolved;
 	}
 	const manifest = yield* fs
 		.readFileString(manifestPath)
 		.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Manifest))));
 	if (manifest.exports !== undefined) {
 		const name = manifest.name;
-		if (!name)
-			return yield* failure(origin, "source", new Error("A local package with exports must declare its name"));
+		if (!name) return yield* escapes("a local package with exports must declare its name");
 		const url = yield* Effect.try(() => resolveModule(name, location));
 		// Compare real paths: a symlinked target (or root) can point outside while the
 		// string paths still nest.
 		const resolved = yield* fs.realPath(fileURLToPath(url));
-		if (path.relative(yield* fs.realPath(location), resolved).startsWith(".."))
-			return yield* failure(origin, "source", new Error("Package export escapes its root"));
-		return { url: pathToFileURL(resolved).href, name };
+		if (path.relative(yield* fs.realPath(location), resolved).startsWith("..")) {
+			return yield* escapes("package export escapes its root");
+		}
+		return { url: pathToFileURL(resolved).href, name } satisfies Resolved;
 	}
 	const url = yield* Effect.try(() =>
 		resolveModule(createRequire(pathToFileURL(manifestPath)).resolve(location), location),
 	);
-	return manifest.name === undefined ? { url } : { url, name: manifest.name };
+	return (manifest.name === undefined ? { url } : { url, name: manifest.name }) satisfies Resolved;
 });
 
 export interface Options {
@@ -138,19 +176,10 @@ const install = Effect.fn("PluginLoader.install")(function* (
 	origin: Origin,
 	options: Options,
 ) {
+	// The validation failure passes through as itself: "installed, and is not a plugin" is a load
+	// failure, and calling it an install failure would send the reader to the registry.
 	const added = yield* Store.add(target, cache, {
-		validate: (fetched) =>
-			imported(url(fetched.entrypoint), origin, options).pipe(
-				Effect.mapError(
-					(cause) =>
-						new InstallError({
-							reason: "plugin-no-entrypoint",
-							reference: target.spec,
-							message: `${target.spec} is not a plugin`,
-							cause,
-						}),
-				),
-			),
+		validate: (fetched) => imported(url(fetched.entrypoint), origin, options.import),
 	});
 	return {
 		url: added.entry.url,
@@ -165,19 +194,31 @@ const installer = (
 	target: Fetchable,
 	origin: Origin,
 	options: Options,
-): Effect.Effect<Installed, InstallError | StoreError | PreparationError> =>
+): Effect.Effect<Installed, InstallError | StoreError | LoadError> =>
 	options.install === undefined
 		? install(target, options.cache, origin, options)
 		: options.install(target, options.cache);
 
 /** Import a module and confirm it default-exports a plugin. */
-const imported = Effect.fn("PluginLoader.imported")(function* (url: string, origin: Origin, options: Options) {
+const imported = Effect.fn("PluginLoader.imported")(function* (
+	url: string,
+	origin: Origin,
+	load?: (url: string) => Promise<unknown>,
+) {
 	const module = yield* Effect.tryPromise({
-		try: () => (options.import ?? importModule)(url),
-		catch: (cause) => failure(origin, "import", cause),
+		try: () => (load ?? importModule)(url),
+		catch: (cause) => importFailure(origin, cause),
 	});
 	return yield* validate(Predicate.isObject(module) && "default" in module ? module.default : undefined, origin);
 });
+
+/**
+ * Import one entrypoint and confirm it is a plugin, without touching the store.
+ *
+ * This is what a caller hands the store as its `validate`: the artifact is checked while it is
+ * still staged, so a package that turns out not to be a plugin is never published.
+ */
+export const definition = (entrypoint: string, reference: string) => imported(url(entrypoint), { index: 0, reference });
 
 export interface Loaded {
 	readonly plugin: Plugin;
@@ -198,9 +239,7 @@ export interface Loaded {
  */
 export const inspect = Effect.fn("PluginLoader.inspect")(function* (reference: string, options: Options) {
 	const origin = { index: 0, reference };
-	const target = yield* parse(reference, options.hostDir).pipe(
-		Effect.mapError((cause) => failure(origin, "source", cause)),
-	);
+	const target = yield* parse(reference, options.hostDir);
 	const loaded = yield* load(target, origin, options);
 	return {
 		id: loaded.plugin.id,
@@ -210,24 +249,16 @@ export const inspect = Effect.fn("PluginLoader.inspect")(function* (reference: s
 });
 
 export const load = Effect.fn("PluginLoader.load")(function* (target: Target, origin: Origin, options: Options) {
-	const installed =
+	const resolved: Effect.Effect<Resolved, SourceError | InstallError | StoreError | LoadError> =
 		target.kind === "local"
-			? yield* localUrl(target.path, origin).pipe(
-					// `localUrl` already reports its own source failures; only platform errors
-					// reaching here still need attribution.
-					Effect.mapError((cause) =>
-						Schema.is(PreparationError)(cause) ? cause : failure(origin, "source", cause),
-					),
-				)
-			: yield* installer(target, origin, options).pipe(
-					Effect.mapError((cause) =>
-						Schema.is(PreparationError)(cause) ? cause : failure(origin, "install", cause),
-					),
-				);
+			? localUrl(target.path, origin).pipe(Effect.mapError((cause) => sourceFailure(origin, cause)))
+			: // An installer already speaks the taxonomy, so its failure passes through untouched:
+				// wrapping it would bury the reason a caller is meant to act on.
+				installer(target, origin, options);
+	const installed = yield* resolved;
 	// Already checked while staged, in the common case; a local source and an injected installer
 	// still have to be imported here.
-	const checked = "plugin" in installed ? installed.plugin : undefined;
-	const plugin = checked ?? (yield* imported(installed.url, origin, options));
+	const plugin = installed.plugin ?? (yield* imported(installed.url, origin, options.import));
 	return {
 		plugin,
 		source: origin.reference,
@@ -235,7 +266,7 @@ export const load = Effect.fn("PluginLoader.load")(function* (target: Target, or
 		...("generation" in installed && installed.generation !== undefined ? { generation: installed.generation } : {}),
 		// A local package answers to the name it declares, so a path entry can be configured by
 		// the package name its README documents.
-		...("name" in installed && installed.name !== undefined ? { name: installed.name } : {}),
+		...(installed.name === undefined ? {} : { name: installed.name }),
 	} satisfies Loaded;
 });
 
