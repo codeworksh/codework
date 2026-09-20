@@ -681,9 +681,15 @@ describe("reload", () => {
 				root,
 				project,
 				prompts,
-				body: (state, _run) =>
+				body: (state, run) =>
 					Effect.gen(function* () {
-						const seen: Array<{ status?: string; id?: string; reference?: string; file?: string }> = [];
+						const seen: Array<{
+							status?: string;
+							id?: string;
+							reference?: string;
+							file?: string;
+							sessionId?: string;
+						}> = [];
 						yield* (yield* Event.Service).listen((event) =>
 							event.type === "plugin.updated"
 								? Effect.sync(() => {
@@ -704,10 +710,18 @@ describe("reload", () => {
 						yield* Effect.promise(() => writeFile(settings, JSON.stringify({ plugins: [file] })));
 						yield* Effect.promise(() => writeFile(file, "export default { nope: true };"));
 						yield* state.reload;
+						// An exchange failure on a path the module registry has never seen names
+						// the session that ran it; a `reload` failure belongs to no session.
+						const broken = join(project, "broken.mjs");
+						yield* Effect.promise(() => writeFile(settings, JSON.stringify({ plugins: [broken] })));
+						yield* Effect.promise(() => writeFile(broken, "export default { nope: true };"));
+						yield* run().pipe(Effect.ignore);
 
-						expect(seen.map((event) => event.status)).toEqual(["loaded", "dropped", "failed"]);
+						expect(seen.map((event) => event.status)).toEqual(["loaded", "dropped", "failed", "failed"]);
 						expect(seen[0]).toMatchObject({ id: "acme.prompt.edited", reference: file, file: settings });
 						expect(seen[1]).toMatchObject({ id: "acme.prompt.edited", reference: file, file: settings });
+						expect(seen[2]?.sessionId).toBeUndefined();
+						expect(seen[3]?.sessionId).toBeDefined();
 					}),
 			});
 			expect(prompts.length).toBe(0);

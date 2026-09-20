@@ -250,6 +250,12 @@ export const PluginUpdated = EventSchema.define({
 		id: optional(Schema.String),
 		file: optional(Schema.String),
 		error: optional(Schema.String),
+		/**
+		 * The session whose exchange triggered the event, when one did -- `failed` from a
+		 * session's own `follow` names it. Absent on `reload` and boot, which no session owns:
+		 * the pool is process-wide, so this is the trigger, never an attribution of ownership.
+		 */
+		sessionId: optional(SessionSchema.ID),
 	},
 });
 export type PluginUpdated = typeof PluginUpdated.Type;

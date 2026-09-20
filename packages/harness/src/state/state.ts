@@ -264,11 +264,12 @@ export const layer = (
 			for (const [id, origin] of (yield* Ref.get(pool)).origins) {
 				yield* updated(origin, id, "loaded");
 			}
-			const publishFailed = (cause: { readonly message: string }) =>
+			const publishFailed = (cause: { readonly message: string }, sessionId?: SessionId) =>
 				eventService.publish(EventList.PluginUpdated, {
 					status: "failed",
 					error: cause.message,
 					...("reference" in cause && typeof cause.reference === "string" ? { reference: cause.reference } : {}),
+					...(sessionId === undefined ? {} : { sessionId }),
 				});
 			return Service.of({
 				reload: Effect.gen(function* () {
@@ -325,7 +326,9 @@ export const layer = (
 						// Re-read inside the permit: whoever held it may have just done this exact
 						// work, and adopting their result is the point.
 						const current = yield* Ref.get(pool);
-						const moved = yield* follow(refs, current, loadedSettings).pipe(Effect.tapError(publishFailed));
+						const moved = yield* follow(refs, current, loadedSettings).pipe(
+							Effect.tapError((cause) => publishFailed(cause, sessionId)),
+						);
 						if (Option.isNone(moved)) return current;
 						return yield* activate(moved.value);
 					}).pipe(loading.withPermits(1), Effect.mapError(failed));
