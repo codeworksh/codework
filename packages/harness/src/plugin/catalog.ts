@@ -359,12 +359,29 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	// so far; `load` deduplicates unchanged modules by their resolved key.
 	// Retained origins come first so the current session's explicit reference wins when two specs
 	// declare the same plugin ID (for example `pkg@1` followed by `pkg@2`).
-	const accumulated = [...Array.from(pool.origins.values(), (origin) => origin.reference), ...references];
+	//
+	// A retained origin's source may have vanished since it loaded -- a file deleted, a store
+	// entry removed. It is nobody's declaration now, so it drops out of the pool with a warning
+	// rather than failing the exchange for plugins nothing was wrong with. A reference the
+	// session itself still configures stays strict: the drift check above covered it, and `load`
+	// still fails on it.
+	const retained: Origin[] = [];
+	for (const origin of pool.origins.values()) {
+		if (
+			references.includes(origin.reference) ||
+			Option.isSome(yield* filed(origin.reference, Loader.anchor(origin.file, options.hostDir)))
+		) {
+			retained.push(origin);
+			continue;
+		}
+		yield* Effect.logWarning(`plugin ${origin.reference} no longer resolves; it is dropped from the loaded set`);
+	}
+	const accumulated = [...Array.from(retained, (origin) => origin.reference), ...references];
 	// A retained module keeps its declaring file -- it is what the union of `references` does not
 	// know. The session's own declarations win where both name one reference, because the entry
 	// it just wrote is the anchor its `plugin install` used.
 	const known = new Map<string, string>();
-	for (const origin of pool.origins.values()) if (origin.file !== undefined) known.set(origin.reference, origin.file);
+	for (const origin of retained) if (origin.file !== undefined) known.set(origin.reference, origin.file);
 	for (const [reference, file] of options.declared ?? new Map<string, string>()) known.set(reference, file);
 	// A full load pass, which is cheap for everything that did not move: an unchanged module
 	// resolves to the same URL, and the module registry hands back the instance it already has

@@ -263,7 +263,8 @@ describe("following the store at an exchange boundary", () => {
 					import: (url: string) =>
 						Promise.resolve({ default: marker(url === "virtual:a@1" ? "acme.prompt.a" : "acme.prompt.b") }),
 				},
-				(reference) => (reference === "b" ? Effect.succeedSome({ generation: 1 }) : Effect.succeedNone),
+				// `a@1` is installed, so it is filed: `b` moving is what triggers the rebuild.
+				() => Effect.succeedSome({ generation: 1 }),
 			),
 		);
 		// The union load re-resolves the retained module under *its* declaring file's chain, and
@@ -275,6 +276,36 @@ describe("following the store at an exchange boundary", () => {
 		const pool = Option.getOrThrow(moved);
 		expect(pool.origins.get("acme.prompt.a")?.file).toBe("/project-a/.codework/settings.jsonc");
 		expect(pool.origins.get("acme.prompt.b")?.file).toBe("/project-b/.codework/settings.jsonc");
+	});
+
+	it("drops a retained origin whose source vanished instead of failing the rebuild", async () => {
+		const base = await Effect.runPromise(
+			load(["a@1"], {
+				...options,
+				declared: new Map([["a@1", "/project-a/.codework/settings.jsonc"]]),
+				install: () => Effect.succeed({ url: "virtual:a@1", generation: 1 }),
+				import: () => Promise.resolve({ default: marker("acme.prompt.a") }),
+			}),
+		);
+		// `a@1` was loaded for another session and its source is gone now -- a deleted file or a
+		// removed store entry. It is nobody's declaration, so it leaves the pool with a warning
+		// rather than failing `b`'s exchange.
+		const moved = await Effect.runPromise(
+			follow(
+				["b"],
+				base,
+				{
+					...options,
+					declared: new Map([["b", "/project-b/.codework/settings.jsonc"]]),
+					install: () => Effect.succeed({ url: "virtual:b@latest", generation: 1 }),
+					import: () => Promise.resolve({ default: marker("acme.prompt.b") }),
+				},
+				(reference) => (reference === "b" ? Effect.succeedSome({ generation: 1 }) : Effect.succeedNone),
+			),
+		);
+		const pool = Option.getOrThrow(moved);
+		expect([...pool.plugins.keys()]).toEqual(["acme.prompt.b"]);
+		expect([...pool.origins.keys()]).toEqual(["acme.prompt.b"]);
 	});
 
 	it("keeps other session modules while the current reference replaces an earlier spec", async () => {

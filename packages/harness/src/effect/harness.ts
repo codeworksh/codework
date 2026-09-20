@@ -6,7 +6,8 @@ import { Event } from "../event/event.ts";
 import { Global } from "../global.ts";
 import { fileSystem } from "../host.ts";
 import { EventRegistry } from "../event/registry.ts";
-import { follow, load, type PluginRef, type Pool } from "../plugin/catalog.ts";
+import { follow, load, type Origin, type PluginRef, type Pool } from "../plugin/catalog.ts";
+import { anchor } from "../plugin/loader.ts";
 import { PluginSource } from "../plugin/source.ts";
 import { PluginStore } from "../plugin/store.ts";
 import { builtins } from "../plugin/builtin.ts";
@@ -155,15 +156,30 @@ export const layer = (options: Options = {}) =>
 					// session, not only the project the server happened to start in.
 					// The current root comes last so an edited spec replaces an older origin with
 					// the same plugin ID while unrelated session plugins remain loaded.
-					const accumulated = [
-						...Array.from(loaded.origins.values(), (origin) => origin.reference),
-						...references(current),
-					];
+					//
+					// `follow` applies the same rule: a retained origin whose source has vanished
+					// since it loaded drops out of the reload with a warning instead of failing it
+					// -- otherwise one deleted file would keep every later rebuild from succeeding.
+					const retained: Origin[] = [];
+					const configured = references(current);
+					for (const origin of loaded.origins.values()) {
+						if (
+							configured.includes(origin.reference) ||
+							Option.isSome(yield* filed(origin.reference, anchor(origin.file, hostCwd)))
+						) {
+							retained.push(origin);
+							continue;
+						}
+						yield* Effect.logWarning(
+							`plugin ${origin.reference} no longer resolves; it is dropped from the loaded set`,
+						);
+					}
+					const accumulated = [...Array.from(retained, (origin) => origin.reference), ...configured];
 					// A retained module re-resolves under the registry its declaring file named, so
 					// the reload finds the entry `plugin install` filed for it. The current
 					// declarations win where both name one reference.
 					const known = new Map<string, string>();
-					for (const origin of loaded.origins.values()) {
+					for (const origin of retained) {
 						if (origin.file !== undefined) known.set(origin.reference, origin.file);
 					}
 					for (const [reference, file] of declaredIn(current)) known.set(reference, file);
