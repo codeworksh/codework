@@ -128,6 +128,26 @@ describe("server", () => {
 		);
 	});
 
+	it("refuses a relative host directory rather than resolving it against its own", () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-server-relative-"));
+		homes.push(home);
+
+		return expect(
+			Effect.gen(function* () {
+				const rpc = yield* RpcTest.makeClient(Contract.Api);
+				const created = yield* rpc["session.create"]({});
+				/*
+				 * A client means *its own* `my-project`. The only directory the server could
+				 * resolve that against is the one it was started in, which would store a real path
+				 * on the wrong machine's filesystem -- branded absolute, persisted, and used to
+				 * pick the settings file whose plugins this process then imports. Measured before
+				 * it was fixed: `my-project` came back as `<the server's repository>/my-project`.
+				 */
+				yield* rpc["session.link"]({ sessionId: created.id, hostDir: "my-project" });
+			}).pipe(Effect.scoped, Effect.provide(layer({ home, hostCwd: home })), Effect.runPromise),
+		).rejects.toThrow(/absolute path/);
+	});
+
 	it("anchors a plugin reference to the session's project, not the directory the CLI ran in", () => {
 		const home = mkdtempSync(join(tmpdir(), "codework-server-linked-"));
 		homes.push(home);

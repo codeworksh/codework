@@ -34,7 +34,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
 import { resolveModule } from "../util/module.ts";
 import { InstallError } from "./error.ts";
-import { rooted, type Fetchable, type Target } from "./source.ts";
+import { rooted } from "../util/path.ts";
+import type { Fetchable, Target } from "./source.ts";
 
 /** What an install produced, and everything downstream needs to file it. */
 export interface Fetched {

@@ -23,6 +23,7 @@ import npa from "npm-package-arg";
 import { fileURLToPath } from "node:url";
 import { hostPath as path } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
+import { rooted } from "../util/path.ts";
 import { SourceError } from "./error.ts";
 
 export type Target =
@@ -40,32 +41,6 @@ export type Target =
 
 /** Only a fetched target has a store entry; a local one is loaded where it lies. */
 export type Fetchable = Exclude<Target, { kind: "local" }>;
-
-/**
- * A directory this module is given is absolute, and a relative one is a **defect** rather than an
- * error.
- *
- * Both consumers resolve a relative directory against `process.cwd()` without a word. `parse`
- * would anchor `./plugin.ts` there, and npm does the same for a relative `cwd` or `--cache`:
- * measured, not assumed, `cwd: "some/relative/dir"` comes back with a `localPrefix` of the
- * *developer's own repository*. For a long-running server the process directory is nobody's
- * project, so the result is a plausible answer to a question no one asked -- the same silent
- * wrong-directory failure as T7 and T10. An absolute path is simply the one spelling neither of
- * them can quietly reinterpret.
- *
- * A defect rather than a typed error because nothing a user types reaches here. Every reference
- * goes through `parse`, and every directory comes from `Global.resolve`, a resolved `cwd` or a
- * session's `hostDir`, all of them already absolute. A relative one means a new call site got it
- * wrong, and a stack trace names that call site; a typed error would ask every caller to handle a
- * case none of them can cause.
- *
- * It does not make a wrong directory right -- `/tmp/staging` is absolute and was still the wrong
- * answer for three months. It only removes the spelling that is wrong *silently*.
- */
-export const rooted = (directory: string, role: string): string => {
-	if (path.isAbsolute(directory)) return directory;
-	throw new Error(`${role} must be an absolute path, got ${JSON.stringify(directory)}`);
-};
 
 /** A committish that names one artifact rather than a moving branch: an unabbreviated SHA. */
 const isCommit = (committish: string | null | undefined): boolean =>

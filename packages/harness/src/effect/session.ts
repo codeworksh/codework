@@ -3,12 +3,12 @@ import { Effect, Option, Stream } from "effect";
 import * as Control from "../control.ts";
 import * as Event from "../event/event.ts";
 import type { EventSchema } from "../event/schema.ts";
-import { hostPath } from "../host.ts";
 import { Location } from "../location/location.ts";
 import * as SandboxController from "../sandbox/control.ts";
 import { SandboxInstance as SandboxInstanceSchema } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { AbsolutePath } from "../schema.ts";
+import { rooted } from "../util/path.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { Delivery } from "../session/prompt/schema.ts";
 import { PromptSchema } from "../session/prompt/schema.ts";
@@ -192,11 +192,29 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 		directory: location.directory,
 		slug: id,
 		title: input.title ?? "Session",
-		...(input.hostDir === undefined ? {} : { hostDir: AbsolutePath.make(hostPath.resolve(input.hostDir)) }),
+		...(input.hostDir === undefined ? {} : { hostDir: declaredHostDir(input.hostDir) }),
 	});
 	yield* runtime.set(id, runtimeBindings(input));
 	return yield* makeHandle(id);
 });
+
+/**
+ * A session's host directory, as the caller declared it.
+ *
+ * `resolve` here would be worse than useless. The CLI already resolves against the shell's
+ * directory before it sends anything, because that is where the person is standing; every other
+ * caller reaches this over RPC, where the only directory available to resolve against is the
+ * *server's*. A client asking to be linked to `my-project` would be linked to
+ * `<wherever the server was started>/my-project` -- a real directory on the wrong machine's
+ * filesystem, branded `AbsolutePath` and persisted, with nothing anywhere reporting a problem.
+ *
+ * That field then selects a settings file, and that file names plugins the server imports into
+ * its own process, so an invented path is not merely wrong configuration.
+ *
+ * Declared means declared: absolute, or the caller has not said which directory it means.
+ */
+const declaredHostDir = (hostDir: string): AbsolutePath =>
+	AbsolutePath.make(rooted(hostDir, "a session's host directory"));
 
 /**
  * Point an existing session at a host directory, or clear it with `null`.
@@ -214,7 +232,7 @@ export const link = Effect.fn("Session.link")(function* (input: {
 	const sessions = yield* SessionStore.Service;
 	yield* sessions.link({
 		sessionId: input.sessionId,
-		hostDir: input.hostDir === null ? null : AbsolutePath.make(hostPath.resolve(input.hostDir)),
+		hostDir: input.hostDir === null ? null : declaredHostDir(input.hostDir),
 	});
 	return yield* makeHandle(input.sessionId);
 });
