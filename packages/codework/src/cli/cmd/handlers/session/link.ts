@@ -27,7 +27,9 @@ export default Runtime.handler(
 			const nodePath = yield* Path.Path;
 			const rpc = yield* Client.make;
 			const sessionId = Session.SessionSchema.ID.make(session);
-			const hostDir = unlink ? undefined : nodePath.resolve(Option.getOrElse(path, () => "."));
+			const hostDir = unlink
+				? undefined
+				: Session.AbsolutePath.make(nodePath.resolve(Option.getOrElse(path, () => ".")));
 
 			const info = yield* rpc["session.link"]({
 				sessionId,

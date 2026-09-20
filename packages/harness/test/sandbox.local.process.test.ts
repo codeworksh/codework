@@ -18,7 +18,10 @@ const processLocalLifecycle = <CreateConfig, RuntimeConfig extends SandboxDriver
 	},
 ) => {
 	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(fixture.driver));
-	const runtime = Layer.provideMerge(SandboxController.layer({ transportIdleTimeToLive: "1 hour" }), dependencies);
+	const runtime = Layer.provideMerge(
+		SandboxController.layer({ hostCwd: "/", transportIdleTimeToLive: "1 hour" }),
+		dependencies,
+	);
 	const { effect: it } = testEffect(runtime);
 
 	describe(name, () => {

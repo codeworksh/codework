@@ -123,7 +123,7 @@ describe("the store, against the real registry", () => {
 			expect(existsSync(fileURLToPath(added.entry.url))).toBe(true);
 
 			// Filed, so the next lookup needs neither the lock nor the network.
-			const found = await Effect.runPromise(resolve(target, home));
+			const found = await Effect.runPromise(resolve(target, home, home));
 			expect(found?.url).toBe(added.entry.url);
 
 			// And the tarball landed in our npm cache, not the developer's `~/.npm`.

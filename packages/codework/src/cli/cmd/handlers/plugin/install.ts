@@ -35,7 +35,7 @@ export default Runtime.handler(
 					local += 1;
 					continue;
 				}
-				if ((yield* Plugin.resolve(target, cache)) !== undefined) {
+				if ((yield* Plugin.resolve(target, cache, hostDir)) !== undefined) {
 					present += 1;
 					continue;
 				}

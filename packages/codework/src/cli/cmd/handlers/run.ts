@@ -132,7 +132,7 @@ export default Runtime.handler(
 		// somewhere, and that somewhere is what they mean by "this project". `--cwd` is a different
 		// thing entirely -- where the work runs inside the session's space, which may be a sandbox
 		// on another machine.
-		const hostDir = process.cwd();
+		const hostDir = Session.AbsolutePath.make(process.cwd());
 
 		const runtime = {
 			...(Option.isNone(provider) || Option.isNone(model)

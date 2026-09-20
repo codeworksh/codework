@@ -23,7 +23,7 @@ import { testEffect } from "./utils/effect.ts";
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("control-fake"));
 const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(fake.driver));
 const controllerLayer = Layer.provideMerge(
-	SandboxController.layer({ transportIdleTimeToLive: "1 hour" }),
+	SandboxController.layer({ hostCwd: "/", transportIdleTimeToLive: "1 hour" }),
 	dependencies,
 );
 const { effect: it } = testEffect(controllerLayer);
@@ -92,7 +92,7 @@ describe("Sandbox.Controller", () => {
 
 			expect(yield* controller.resolveCwd(info.id)).toBe("/provider-default");
 			expect(yield* controller.resolveCwd(info.id, "/session/repo")).toBe("/session/repo");
-			expect(yield* controller.resolveCwd(SandboxInstance.ID.local)).toBe(process.cwd());
+			expect(yield* controller.resolveCwd(SandboxInstance.ID.local)).toBe("/");
 			expect(fake.state.calls.attach).toHaveLength(attachCalls);
 			expect(fake.state.calls.wake).toHaveLength(wakeCalls);
 		}),
@@ -373,7 +373,7 @@ describe("Sandbox.Controller", () => {
 		"reports references as process-local",
 		Effect.gen(function* () {
 			const first = yield* SandboxController.Controller;
-			const second = yield* SandboxController.make({ transportIdleTimeToLive: "1 hour" });
+			const second = yield* SandboxController.make({ hostCwd: "/", transportIdleTimeToLive: "1 hour" });
 			const info = yield* create(first);
 
 			yield* Effect.gen(function* () {
@@ -458,7 +458,7 @@ describe("Sandbox.Controller", () => {
 			});
 			yield* sql`UPDATE sandbox_instance SET state_observed_at = -1000 WHERE id = ${instanceId}`;
 
-			const restarted = yield* SandboxController.make({ provisioningTimeoutMs: 1 });
+			const restarted = yield* SandboxController.make({ hostCwd: "/", provisioningTimeoutMs: 1 });
 			const swept = Option.getOrThrow(yield* restarted.get(instanceId));
 			expect(swept.status).toBe("faulted");
 			expect(Option.getOrThrow(swept.lastError).name).toBe("SandboxCreationInterrupted");

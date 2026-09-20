@@ -68,7 +68,9 @@ export const NonNegativeCost = Schema.Finite.check(Schema.isGreaterThanOrEqualTo
 /**
  * Absolute file path (e.g., `/home/user/projects/myapp/src/main.ts`).
  */
-export const AbsolutePath = Schema.String.pipe(Schema.brand("AbsolutePath"));
+export const AbsolutePath = Schema.String.check(
+	Schema.isPattern(/^(?:\/|[a-zA-Z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)/),
+).pipe(Schema.brand("AbsolutePath"));
 export type AbsolutePath = Schema.Schema.Type<typeof AbsolutePath>;
 
 /**

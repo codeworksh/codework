@@ -110,7 +110,7 @@ export const layer = (options: Options = {}) =>
 								fileSystem
 									.exists(target.path)
 									.pipe(Effect.map((there): Here => (there ? Option.some({}) : Option.none())))
-							: PluginStore.resolve(target, paths.cache).pipe(
+							: PluginStore.resolve(target, paths.cache, hostCwd).pipe(
 									Effect.map((entry): Here => Option.fromUndefinedOr(entry)),
 								),
 					),
@@ -176,7 +176,10 @@ export const layer = (options: Options = {}) =>
 				SandboxDriver.withSource(SqldbSandboxDriver.make().driver, "core"),
 				...configured,
 			);
-			const sandboxes = SandboxController.layer().pipe(Layer.provideMerge(drivers), Layer.provideMerge(database));
+			const sandboxes = SandboxController.layer({ hostCwd }).pipe(
+				Layer.provideMerge(drivers),
+				Layer.provideMerge(database),
+			);
 			const loop = options.llm === undefined ? Loop.layer() : Loop.layer({ request: LLM.make(options.llm) });
 
 			return Control.layer.pipe(

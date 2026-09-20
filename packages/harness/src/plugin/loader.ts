@@ -172,7 +172,11 @@ export interface Options {
 	 * How a package reaches the disk. The default installs; `plugin remove` passes a resolve-only
 	 * one so it can identify an entry without fetching anything.
 	 */
-	readonly install?: (target: Fetchable, cache: string) => Effect.Effect<Installed, InstallError | StoreError>;
+	readonly install?: (
+		target: Fetchable,
+		cache: string,
+		from: string,
+	) => Effect.Effect<Installed, InstallError | StoreError>;
 }
 
 /** Enough of a store entry to import it. */
@@ -230,7 +234,7 @@ const installer = (
 ): Effect.Effect<Installed, InstallError | StoreError | LoadError> =>
 	options.install === undefined
 		? install(target, options.cache, origin, options)
-		: options.install(target, options.cache);
+		: options.install(target, options.cache, options.hostDir);
 
 /** Import a module and confirm it default-exports a plugin. */
 const imported = Effect.fn("PluginLoader.imported")(function* (

@@ -290,8 +290,8 @@ describe("a running session and the store", () => {
 			// Publish a store entry by hand: `plugin install` is the verb that would normally do
 			// this, and it is a separate process. What matters here is that an exchange finds it.
 			const spec = "fixture-codework-plugin@1.0.0";
-			const digest = createHash("sha256").update(spec).digest("hex");
-			const entry = join(cache, "plugins", "v1", "fixture-codework-plugin", digest, "1000");
+			const digest = createHash("sha256").update(`https://registry.npmjs.org/\0${spec}`).digest("hex");
+			const entry = join(cache, "plugins", "v2", "fixture-codework-plugin", digest, "1000");
 			await mkdir(entry, { recursive: true });
 			await writeFile(
 				join(entry, "index.mjs"),

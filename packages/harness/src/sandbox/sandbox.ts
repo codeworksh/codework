@@ -1,7 +1,6 @@
 import { Effect, Layer } from "effect";
 import type { ChildProcessSpawner } from "effect/unstable/process";
 import { Database } from "../db/db.ts";
-import { posix as path } from "../util/posix.ts";
 import { SandboxController } from "./control.ts";
 import { SandboxDriver } from "./driver.ts";
 import { SandboxDriverRegistry } from "./registry.ts";
@@ -12,6 +11,7 @@ import { Local } from "./fs/vfs.ts";
 import { SandboxInstance } from "./instance.ts";
 import { SandboxIO } from "./io.ts";
 import { HostExe } from "./shell/host.ts";
+import { AbsolutePath } from "../schema.ts";
 
 // re-export from sandbox
 export { SandboxController } from "./control.ts";
@@ -71,11 +71,11 @@ export const services = <E, RIn>(backend: LocalBackend<E, RIn>, identity: Sandbo
 
 const controllerLayer = (...drivers: ReadonlyArray<SandboxDriver.Registration>) => {
 	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(...drivers));
-	return Layer.provide(SandboxController.layer(), dependencies);
+	return Layer.provide(SandboxController.layer({ hostCwd: "/" }), dependencies);
 };
 
 /** Default sandbox: the real OS filesystem and processes, mounted at `cwd`. */
-export const defaultLayer = (cwd?: string) => services(EnvNodeJSDefault.layer(), SandboxIO.host(cwd));
+export const defaultLayer = (cwd: string) => services(EnvNodeJSDefault.layer(), SandboxIO.host(cwd));
 
 // Named constructors choose backend and identity together. Low-level assemblers
 // require an explicit id because a custom backend's namespace cannot be inferred.
@@ -84,7 +84,7 @@ export const defaultLayer = (cwd?: string) => services(EnvNodeJSDefault.layer(),
  * The host machine: real filesystem, real processes. Identity is always `local`;
  * cwd defaults to the host process directory, matching Flue's local adapter.
  */
-export const local = (cwd?: string) => defaultLayer(cwd);
+export const local = (cwd: string) => defaultLayer(cwd);
 
 /**
  * An in-process VFS with just-bash over it — no host disk, no host processes.
@@ -122,7 +122,7 @@ export const sqldb = (options?: {
 	readonly instanceId?: SandboxInstance.ID;
 	readonly cwd?: string;
 }) => {
-	const location = options?.location === undefined ? undefined : path.resolve(options.location);
+	const location = options?.location === undefined ? undefined : AbsolutePath.make(options.location);
 	const sqldb = SqldbSandboxDriver.make();
 	const mountCwd = SandboxIO.resolveMountCwd("/", options?.cwd);
 	return Layer.unwrap(

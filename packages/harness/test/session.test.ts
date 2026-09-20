@@ -372,6 +372,13 @@ const liveToolConversation = <TProtocol extends Protocol.ProtocolWithOptions>(
 		);
 	});
 
+describe("AbsolutePath", () => {
+	vitestIt("rejects relative paths before branding", () => {
+		expect(() => AbsolutePath.make("relative/path")).toThrow();
+		expect(AbsolutePath.make("/absolute/path")).toBe("/absolute/path");
+	});
+});
+
 describe("session", () => {
 	it.effect("create + get round-trips the session row", () =>
 		Effect.gen(function* () {

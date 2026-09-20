@@ -54,7 +54,7 @@ const accept = () => Effect.succeed("checked" as const);
 const install = (spec: string, cache: string, runner: Runner = fixture(), refresh = false) =>
 	add(fetchable(spec), cache, { validate: accept, runner, from: cache, ...(refresh ? { refresh: true } : {}) });
 
-const digestOf = (spec: string) => createHash("sha256").update(spec).digest("hex");
+const digestOf = (spec: string) => createHash("sha256").update(`https://registry.npmjs.org/\0${spec}`).digest("hex");
 const entryDir = (cache: string, slug: string, spec: string) => join(root(cache), slug, digestOf(spec));
 
 describe("the store", () => {
@@ -149,7 +149,7 @@ describe("the store", () => {
 			// Validating after publishing would make the broken generation the newest marked one,
 			// which `resolve` returns forever after -- and the claimed rollback would have nothing
 			// to roll back to.
-			expect(await Effect.runPromise(resolve(fetchable("fixture"), cache))).toBeUndefined();
+			expect(await Effect.runPromise(resolve(fetchable("fixture"), cache, cache))).toBeUndefined();
 			// And the next install is not blocked by the wreckage of the last.
 			expect((await Effect.runPromise(install("fixture", cache))).entry.version).toBe("1.0.0");
 		}));
@@ -166,7 +166,7 @@ describe("the store", () => {
 			// The previous generation survives, so an exchange already holding URLs into it is
 			// not disturbed.
 			expect(existsSync(fileURLToPath(first.entry.url))).toBe(true);
-			expect((await Effect.runPromise(resolve(fetchable("fixture"), cache)))?.version).toBe("1.1.0");
+			expect((await Effect.runPromise(resolve(fetchable("fixture"), cache, cache)))?.version).toBe("1.1.0");
 		}));
 
 	it("throws away a refresh that found the same revision", () =>
@@ -191,8 +191,8 @@ describe("the store", () => {
 				return Effect.succeed("1.1.0");
 			};
 
-			const first = await Effect.runPromise(check(target, cache, { probe }));
-			const cached = await Effect.runPromise(check(target, cache, { probe }));
+			const first = await Effect.runPromise(check(target, cache, { probe, from: cache }));
+			const cached = await Effect.runPromise(check(target, cache, { probe, from: cache }));
 
 			expect(first).toEqual({ _tag: "outdated", filed: "1.0.0", available: "1.1.0" });
 			expect(cached).toEqual(first);
@@ -208,7 +208,7 @@ describe("the store", () => {
 			// Deleting the accelerator must always be safe: the markers are the truth it is
 			// derived from, so a scan rebuilds it.
 			await rm(index);
-			const scanned = await Effect.runPromise(resolve(fetchable("fixture@1.0.0"), cache));
+			const scanned = await Effect.runPromise(resolve(fetchable("fixture@1.0.0"), cache, cache));
 			expect(scanned?.url).toBe(added.entry.url);
 			expect(existsSync(index)).toBe(true);
 
@@ -231,14 +231,18 @@ describe("the store", () => {
 					},
 				}),
 			);
-			expect((await Effect.runPromise(resolve(fetchable("fixture@1.0.0"), cache)))?.url).toBe(added.entry.url);
+			expect((await Effect.runPromise(resolve(fetchable("fixture@1.0.0"), cache, cache)))?.url).toBe(
+				added.entry.url,
+			);
 		}));
 
 	it("treats an unreadable index as a cold cache rather than a failure", () =>
 		withCache(async (cache) => {
 			const added = await Effect.runPromise(install("fixture@1.0.0", cache));
 			await writeFile(join(root(cache), "index.json"), "{ not json");
-			expect((await Effect.runPromise(resolve(fetchable("fixture@1.0.0"), cache)))?.url).toBe(added.entry.url);
+			expect((await Effect.runPromise(resolve(fetchable("fixture@1.0.0"), cache, cache)))?.url).toBe(
+				added.entry.url,
+			);
 		}));
 
 	it("keeps the two newest generations and expires what is older", () =>
@@ -269,10 +273,10 @@ describe("the store", () => {
 	it("drops a whole entry on remove, and forgets it in the index", () =>
 		withCache(async (cache) => {
 			await Effect.runPromise(install("fixture@1.0.0", cache));
-			expect(await Effect.runPromise(remove(fetchable("fixture@1.0.0"), cache))).toBe(true);
-			expect(await Effect.runPromise(resolve(fetchable("fixture@1.0.0"), cache))).toBeUndefined();
+			expect(await Effect.runPromise(remove(fetchable("fixture@1.0.0"), cache, cache))).toBe(true);
+			expect(await Effect.runPromise(resolve(fetchable("fixture@1.0.0"), cache, cache))).toBeUndefined();
 			// Removing something that was never there is not an error.
-			expect(await Effect.runPromise(remove(fetchable("fixture@1.0.0"), cache))).toBe(false);
+			expect(await Effect.runPromise(remove(fetchable("fixture@1.0.0"), cache, cache))).toBe(false);
 		}));
 
 	it("lists what is filed, without importing anything", () =>

@@ -30,14 +30,17 @@ export interface Registry {
 export const NAME = "@fixture/plugin";
 
 /** A package the loader will accept, optionally with a lifecycle script that must never run. */
-const pack = async (directory: string, version: string, scripts: Record<string, string>) => {
+const pack = async (directory: string, version: string, scripts: Record<string, string>, pluginId: string) => {
 	const root = join(directory, version, "package");
 	await mkdir(root, { recursive: true });
 	await writeFile(
 		join(root, "package.json"),
 		JSON.stringify({ name: NAME, version, type: "module", exports: "./index.js", scripts }),
 	);
-	await writeFile(join(root, "index.js"), `export default { id: "fixture.plugin", version: "${version}" };\n`);
+	await writeFile(
+		join(root, "index.js"),
+		`export default { id: ${JSON.stringify(pluginId)}, version: "${version}" };\n`,
+	);
 	await run("tar", ["-czf", "package.tgz", "package"], { cwd: join(directory, version) });
 	return readFile(join(directory, version, "package.tgz"));
 };
@@ -45,12 +48,17 @@ const pack = async (directory: string, version: string, scripts: Record<string, 
 export const withRegistry = async (
 	directory: string,
 	body: (registry: Registry) => Promise<void>,
-	options: { readonly scripts?: Record<string, string> } = {},
+	options: { readonly scripts?: Record<string, string>; readonly pluginId?: string } = {},
 ) => {
 	const versions = ["1.0.0", "1.1.0"];
 	const scripted = Object.keys(options.scripts ?? {}).length > 0;
 	const tarballs = new Map<string, Buffer>();
-	for (const version of versions) tarballs.set(version, await pack(directory, version, options.scripts ?? {}));
+	for (const version of versions) {
+		tarballs.set(
+			version,
+			await pack(directory, version, options.scripts ?? {}, options.pluginId ?? "fixture.plugin"),
+		);
+	}
 
 	let latest = "1.0.0";
 	let audits = 0;

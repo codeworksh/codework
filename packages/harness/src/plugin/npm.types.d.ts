@@ -28,6 +28,13 @@ declare module "@npmcli/config" {
 		constructor(options: Record<string, unknown>);
 		load(): Promise<void>;
 		readonly flat: Record<string, unknown>;
+		readonly data: Map<
+			string,
+			{
+				readonly source?: string;
+				readonly loadError?: Error & { readonly code?: string };
+			}
+		>;
 	}
 }
 

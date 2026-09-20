@@ -89,55 +89,115 @@ const Lockfile = Schema.Struct({
  * a copy of `process.env` -- would be a standing invitation to prune it later and break private
  * git silently, months from the change. §15 Q2.
  */
-export const options = (dir: string, cache: string): Effect.Effect<Record<string, unknown>> =>
-	// Outside `tryPromise`, so the guard below cannot be mistaken for npm being unreachable and
-	// swallowed by the `orElseSucceed` at the bottom.
+export const options = (
+	dir: string,
+	cache: string,
+	reference = dir,
+): Effect.Effect<Record<string, unknown>, InstallError> =>
 	Effect.suspend(() => {
 		const root = rooted(dir, "the directory a plugin install reads its .npmrc chain from");
 		const store = rooted(cache, "the npm cache");
-		return npmOptions(root, store);
+		return npmOptions(root, store, reference);
 	});
 
-const npmOptions = (dir: string, cache: string): Effect.Effect<Record<string, unknown>> =>
-	Effect.tryPromise(async () => {
-		const { default: Config } = await import("@npmcli/config");
-		const { definitions, flatten, nerfDarts, shorthands } = (await import("@npmcli/config/lib/definitions/index.js"))
-			.default;
-		const config = new Config({
-			npmPath: fileURLToPath(new URL("..", import.meta.url)),
-			cwd: dir,
-			env: { ...process.env },
-			argv: [process.execPath, process.execPath, "--cache", path.join(cache, "npm")],
-			execPath: process.execPath,
-			platform: process.platform,
-			definitions,
-			flatten,
-			nerfDarts,
-			shorthands,
-			warn: false,
+const npmOptions = (
+	dir: string,
+	cache: string,
+	reference: string,
+): Effect.Effect<Record<string, unknown>, InstallError> =>
+	Effect.tryPromise({
+		try: async () => {
+			const { default: Config } = await import("@npmcli/config");
+			const { definitions, flatten, nerfDarts, shorthands } = (
+				await import("@npmcli/config/lib/definitions/index.js")
+			).default;
+			const config = new Config({
+				npmPath: fileURLToPath(new URL("..", import.meta.url)),
+				cwd: dir,
+				env: { ...process.env },
+				argv: [process.execPath, process.execPath, "--cache", path.join(cache, "npm")],
+				execPath: process.execPath,
+				platform: process.platform,
+				definitions,
+				flatten,
+				nerfDarts,
+				shorthands,
+				warn: false,
+			});
+			await config.load();
+			for (const kind of ["project", "user", "global"] as const) {
+				const loaded = config.data.get(kind);
+				if (loaded?.loadError !== undefined && loaded.loadError.code !== "ENOENT") {
+					throw new InstallError({
+						reason: "plugin-resolve-failed",
+						reference,
+						message: `cannot read npm configuration ${loaded.source ?? kind}`,
+						cause: loaded.loadError,
+					});
+				}
+			}
+			return {
+				...(config.flat as Record<string, unknown>),
+				/*
+				 * npm 12 defaults `allow-git` to `none`, so a git plugin source fails with `EALLOWGIT`
+				 * before a socket is opened. We support git sources deliberately (a plugin published
+				 * straight from a repository is a normal thing to want), so the opt-in is ours to make.
+				 *
+				 * `root`, not `all`. It permits the git source the person named -- a direct dependency
+				 * of the staging package, and the `_isRoot` spec a `probe` asks about -- while still
+				 * refusing a git dependency that some *other* package drags in transitively. That is
+				 * the case npm's default exists to stop: a remote repo whose `.gitconfig` and hooks
+				 * the project does not control, pulled in by something the user never named.
+				 */
+				allowGit: "root",
+			} satisfies Record<string, unknown>;
+		},
+		catch: (cause) =>
+			Schema.is(InstallError)(cause)
+				? cause
+				: new InstallError({
+						reason: "plugin-resolve-failed",
+						reference,
+						message: `cannot load npm configuration from ${dir}`,
+						cause,
+					}),
+	});
+
+const PUBLIC_REGISTRY = "https://registry.npmjs.org/";
+
+/** Stable, credential-free registry identity used to address registry artifacts in the store. */
+export const registry = Effect.fn("PluginNpm.registry")(function* (
+	target: Extract<Fetchable, { readonly kind: "registry" }>,
+	cache: string,
+	from: string,
+) {
+	const flat = yield* options(from, cache, target.spec);
+	const scope = target.name.startsWith("@") ? target.name.slice(0, target.name.indexOf("/")) : undefined;
+	const configured = (scope === undefined ? undefined : flat[`${scope}:registry`]) ?? flat.registry ?? PUBLIC_REGISTRY;
+	if (typeof configured !== "string") {
+		return yield* new InstallError({
+			reason: "plugin-resolve-failed",
+			reference: target.spec,
+			message: `npm registry for ${target.name} is not a URL`,
 		});
-		await config.load();
-		return {
-			...(config.flat as Record<string, unknown>),
-			/*
-			 * npm 12 defaults `allow-git` to `none`, so a git plugin source fails with `EALLOWGIT`
-			 * before a socket is opened. We support git sources deliberately (a plugin published
-			 * straight from a repository is a normal thing to want), so the opt-in is ours to make.
-			 *
-			 * `root`, not `all`. It permits the git source the person named -- a direct dependency
-			 * of the staging package, and the `_isRoot` spec a `probe` asks about -- while still
-			 * refusing a git dependency that some *other* package drags in transitively. That is
-			 * the case npm's default exists to stop: a remote repo whose `.gitconfig` and hooks
-			 * the project does not control, pulled in by something the user never named.
-			 */
-			allowGit: "root",
-		} satisfies Record<string, unknown>;
-	}).pipe(
-		// A missing or unreadable `.npmrc` chain is not a reason to refuse to install: npm's own
-		// defaults are a working configuration. A registry that then rejects the request fails
-		// with its own error, which says more than this one could.
-		Effect.orElseSucceed(() => ({}) as Record<string, unknown>),
-	);
+	}
+	return yield* Effect.try({
+		try: () => {
+			const value = new URL(configured);
+			value.username = "";
+			value.password = "";
+			value.hash = "";
+			return value.href;
+		},
+		catch: (cause) =>
+			new InstallError({
+				reason: "plugin-resolve-failed",
+				reference: target.spec,
+				message: `npm registry for ${target.name} is not a valid URL: ${configured}`,
+				cause,
+			}),
+	});
+});
 
 /** A 40- or 64-hex commit out of the `resolved` URL arborist writes into the lockfile. */
 const commitIn = (resolved: string | undefined): string | undefined =>
@@ -228,7 +288,7 @@ export type Runner = (input: {
 }) => Effect.Effect<Tree, InstallError>;
 
 export const reify: Runner = Effect.fn("PluginNpm.reify")(function* ({ target, into, cache, from }) {
-	const flat = yield* options(from, cache);
+	const flat = yield* options(from, cache, target.spec);
 	const { Arborist } = yield* Effect.promise(() => import("@npmcli/arborist"));
 	const settings = {
 		...flat,

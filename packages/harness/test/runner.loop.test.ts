@@ -43,7 +43,7 @@ const runtime = (
 ) => {
 	const database = Database.layer(":memory:");
 	const request = LLM.make(options.open ?? immediateOpen(options.contexts));
-	const sandbox = SandboxController.layer().pipe(
+	const sandbox = SandboxController.layer({ hostCwd: "/" }).pipe(
 		Layer.provideMerge(SandboxDriverRegistry.layer()),
 		Layer.provideMerge(database),
 	);

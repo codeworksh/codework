@@ -2,7 +2,7 @@
  * @file Domain 2: the store. Owns the disk, never opens a socket.
  *
  * ```
- * <cache>/plugins/v1/
+ * <cache>/plugins/v2/
  *   index.json                          an accelerator, never the truth
  *   <slug>/                             readable: acme-codework-tool-proc, or a git slug
  *     <digest>/                         sha256 of the canonical spec, full 64 hex
@@ -19,7 +19,8 @@
  * parameter every method would have to be told, a cache inside a repository, and a per-project
  * reinstall of a plugin ten projects share.
  *
- * `v1` lets the layout change by writing to `v2` rather than migrating; a miss costs one reinstall.
+ * `v2` includes the effective registry in registry-package identity. Older entries are left in
+ * `v1`; a miss costs one reinstall and avoids serving bytes fetched from a different registry.
  *
  * **A generation is immutable.** Installing never mutates a published one: it stages elsewhere and
  * renames into place. Three problems that solves, and nothing simpler solves all three -- a
@@ -32,7 +33,7 @@
 import { Effect, Encoding, Option, Schema } from "effect";
 import { crypto, fileSystem as fs, hostPath as path } from "../host.ts";
 import { InstallError, LoadError, StoreError } from "./error.ts";
-import { download, type Fetched, type Runner, url } from "./npm.ts";
+import { download, type Fetched, registry, type Runner, url } from "./npm.ts";
 import { canonical, type Fetchable, type Target } from "./source.ts";
 import { PluginIndex } from "./index.store.ts";
 import { lock } from "./lock.ts";
@@ -61,7 +62,7 @@ export interface Entry extends Marker {
 	readonly url: string;
 }
 
-export const root = (cache: string) => path.join(cache, "plugins", "v1");
+export const root = (cache: string) => path.join(cache, "plugins", "v2");
 
 /**
  * A readable label, never an identity: two specs that slug alike share a parent directory and
@@ -77,18 +78,20 @@ const slugOf = (target: Fetchable): string =>
 				.replace(/^-+|-+$/g, "") || "package";
 
 /**
- * The **full** SHA-256 of the canonical spec.
+ * The **full** SHA-256 of the source identity: canonical spec plus effective registry for a
+ * registry package, and the canonical spec alone for git.
  *
  * Not truncated. The fast path proves a hit by checking that a marker *exists* rather than by
  * decoding it, and the index is keyed by digest alone, so a truncated digest would let a collision
  * return the wrong package silently.
  */
-export const digest = Effect.fn("PluginStore.digest")(function* (target: Fetchable) {
-	return Encoding.encodeHex(yield* crypto.digest("SHA-256", new TextEncoder().encode(target.spec)));
+export const digest = Effect.fn("PluginStore.digest")(function* (target: Fetchable, cache: string, from: string) {
+	const source = target.kind === "registry" ? `${yield* registry(target, cache, from)}\0${target.spec}` : target.spec;
+	return Encoding.encodeHex(yield* crypto.digest("SHA-256", new TextEncoder().encode(source)));
 });
 
-const entryDir = Effect.fn("PluginStore.entryDir")(function* (target: Fetchable, cache: string) {
-	const key = yield* digest(target);
+const entryDir = Effect.fn("PluginStore.entryDir")(function* (target: Fetchable, cache: string, from: string) {
+	const key = yield* digest(target, cache, from);
 	return { key, directory: path.join(root(cache), slugOf(target), key) };
 });
 
@@ -149,8 +152,8 @@ const record = (target: Fetchable, entry: Entry, installedAt: number): PluginInd
  * existing, and anything else falls through to a scan that repairs the index on the way past.
  */
 export const resolve = Effect.fn("PluginStore.resolve")(
-	function* (target: Fetchable, cache: string) {
-		const { key, directory } = yield* entryDir(target, cache);
+	function* (target: Fetchable, cache: string, from: string) {
+		const { key, directory } = yield* entryDir(target, cache, from);
 		const base = root(cache);
 
 		const hinted = (yield* PluginIndex.read(base)).get(key);
@@ -174,7 +177,7 @@ export const resolve = Effect.fn("PluginStore.resolve")(
 	// A lookup answers "what is filed", so a filesystem it cannot read is the store being damaged
 	// rather than a failure of whatever asked.
 	Effect.mapError((cause) =>
-		Schema.is(StoreError)(cause)
+		Schema.is(StoreError)(cause) || Schema.is(InstallError)(cause)
 			? cause
 			: new StoreError({
 					reason: "plugin-marker-invalid",
@@ -192,8 +195,8 @@ export const resolve = Effect.fn("PluginStore.resolve")(
  * fetching anything, and a spec with nothing filed is a real answer there -- the command reports
  * it and moves on.
  */
-export const required = Effect.fn("PluginStore.required")(function* (target: Fetchable, cache: string) {
-	const found = yield* resolve(target, cache);
+export const required = Effect.fn("PluginStore.required")(function* (target: Fetchable, cache: string, from: string) {
+	const found = yield* resolve(target, cache, from);
 	if (found === undefined) {
 		return yield* failure(target, "plugin-not-installed", `${target.spec} is not installed`);
 	}
@@ -234,11 +237,11 @@ export const add = Effect.fn("PluginStore.add")(function* <A>(
 	},
 ) {
 	return yield* Effect.gen(function* () {
-		const { key, directory } = yield* entryDir(target, cache);
+		const { key, directory } = yield* entryDir(target, cache, options.from);
 
 		// ── Fast path: no lock, no network, no staging. The common case. ──
 		if (options.refresh !== true) {
-			const found = yield* resolve(target, cache);
+			const found = yield* resolve(target, cache, options.from);
 			if (found !== undefined) return { entry: found } satisfies Added<A>;
 		}
 
@@ -395,14 +398,14 @@ export type Checked =
 export const check = Effect.fn("PluginStore.check")(function* (
 	target: Fetchable,
 	cache: string,
-	options: { readonly refresh?: boolean; readonly probe: Probe },
+	options: { readonly refresh?: boolean; readonly probe: Probe; readonly from: string },
 ) {
 	if (!target.mutable) return { _tag: "immutable" } as const;
 
-	const entry = yield* resolve(target, cache);
+	const entry = yield* resolve(target, cache, options.from);
 	if (entry === undefined) return { _tag: "not-installed" } as const;
 
-	const key = yield* digest(target).pipe(
+	const key = yield* digest(target, cache, options.from).pipe(
 		Effect.mapError((cause) => failure(target, "plugin-marker-invalid", `cannot address ${target.spec}`, cause)),
 	);
 	const base = root(cache);
@@ -451,12 +454,12 @@ export const update = Effect.fn("PluginStore.update")(function* <A>(
 	cache: string,
 	options: { readonly validate: Validate<A>; readonly runner?: Runner; readonly probe: Probe; readonly from: string },
 ) {
-	const current = yield* resolve(target, cache);
+	const current = yield* resolve(target, cache, options.from);
 	// "not installed" is not "outdated": `add` is the verb for that, and refreshing something that
 	// was never there would install it under a command that says it updates.
 	if (current === undefined) return { _tag: "not-installed" } as const;
 
-	const state = yield* check(target, cache, { refresh: true, probe: options.probe });
+	const state = yield* check(target, cache, { refresh: true, probe: options.probe, from: options.from });
 	if (state._tag !== "outdated") return { _tag: "unchanged", entry: current } as const;
 
 	const added = yield* add(target, cache, {
@@ -482,8 +485,8 @@ export const update = Effect.fn("PluginStore.update")(function* <A>(
  * Nothing in the CLI calls this: `plugin remove` deletes a settings entry and leaves the bytes
  * alone, so removing a plugin today and adding it back tomorrow costs nothing.
  */
-export const remove = Effect.fn("PluginStore.remove")(function* (target: Fetchable, cache: string) {
-	const { key, directory } = yield* entryDir(target, cache);
+export const remove = Effect.fn("PluginStore.remove")(function* (target: Fetchable, cache: string, from: string) {
+	const { key, directory } = yield* entryDir(target, cache, from);
 	const existed = yield* fs.exists(directory).pipe(Effect.orElseSucceed(() => false));
 	yield* fs.remove(directory, { recursive: true, force: true }).pipe(Effect.ignore);
 	yield* PluginIndex.drop(root(cache), key);

@@ -32,7 +32,7 @@ import { pooled } from "./pool.ts";
 
 const database = Database.layer(":memory:");
 const vercel = VercelSandboxDriver.make();
-const sandbox = SandboxController.layer().pipe(
+const sandbox = SandboxController.layer({ hostCwd: "/" }).pipe(
 	Layer.provideMerge(SandboxDriverRegistry.layer(vercel)),
 	Layer.provideMerge(database),
 );

@@ -31,9 +31,9 @@ export type SandboxInfo = typeof SandboxInfo.Type;
 export const SessionInfo = Schema.Struct({
 	id: Session.SessionSchema.ID,
 	title: Schema.String,
-	directory: Schema.String,
+	directory: Session.AbsolutePath,
 	/** The host directory this session's settings and plugins are read from; absent when it has none. */
-	hostDir: optional(Schema.String),
+	hostDir: optional(Session.AbsolutePath),
 	sandbox: optional(SandboxInfo),
 });
 export type SessionInfo = typeof SessionInfo.Type;
@@ -87,7 +87,7 @@ export const Api = RpcGroup.make(
 			 * code the server imports into its own process; constraining it to configured roots is
 			 * the answer then, and is a change to this one handler.
 			 */
-			hostDir: optional(Schema.String),
+			hostDir: optional(Session.AbsolutePath),
 			sandbox: optional(SandboxRef),
 			runtime: optional(RuntimeConfig),
 		},
@@ -122,7 +122,7 @@ export const Api = RpcGroup.make(
 		payload: {
 			sessionId: Session.SessionSchema.ID,
 			/** Absent unlinks, returning the session to the user layer alone. */
-			hostDir: optional(Schema.String),
+			hostDir: optional(Session.AbsolutePath),
 		},
 		success: SessionInfo,
 		error: SessionStore.SessionNotFoundError,

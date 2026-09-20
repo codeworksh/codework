@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { probe } from "../src/plugin/npm.ts";
@@ -37,6 +37,60 @@ const fetchable = (spec: string) => Effect.runSync(parse(spec, "/unused")) as Fe
 const accept = () => Effect.succeed("ok" as const);
 
 describe("an install against a private registry", () => {
+	it("fails before resolution when the project .npmrc is unreadable", () =>
+		withDirectory(async (directory) => {
+			if (process.getuid?.() === 0) return;
+			await withRegistry(join(directory, "packages"), async (registry) => {
+				const host = join(directory, "project");
+				const config = join(host, ".npmrc");
+				await npmrc(host, registry);
+				await chmod(config, 0o000);
+				try {
+					const failure = await Effect.runPromise(
+						add(fetchable(`${NAME}@1.0.0`), join(directory, "cache"), {
+							from: host,
+							validate: accept,
+						}).pipe(Effect.flip),
+					);
+					expect(failure.reason).toBe("plugin-resolve-failed");
+					expect(failure.message).toContain(config);
+					expect(registry.paths()).toEqual([]);
+				} finally {
+					await chmod(config, 0o600);
+				}
+			});
+		}));
+
+	it("files the same spec separately when projects resolve it through different registries", () =>
+		withDirectory(async (directory) =>
+			withRegistry(
+				join(directory, "registry-a"),
+				async (firstRegistry) =>
+					withRegistry(
+						join(directory, "registry-b"),
+						async (secondRegistry) => {
+							const firstHost = join(directory, "project-a");
+							const secondHost = join(directory, "project-b");
+							const cache = join(directory, "cache");
+							const target = fetchable(`${NAME}@1.0.0`);
+							await npmrc(firstHost, firstRegistry);
+							await npmrc(secondHost, secondRegistry);
+
+							const first = await Effect.runPromise(add(target, cache, { from: firstHost, validate: accept }));
+							const second = await Effect.runPromise(add(target, cache, { from: secondHost, validate: accept }));
+
+							expect(first.entry.digest).not.toBe(second.entry.digest);
+							expect(await readFile(fileURLToPath(first.entry.url), "utf8")).toContain("fixture.registry-a");
+							expect(await readFile(fileURLToPath(second.entry.url), "utf8")).toContain("fixture.registry-b");
+							expect(firstRegistry.paths()).toContain(`/${NAME}`);
+							expect(secondRegistry.paths()).toContain(`/${NAME}`);
+						},
+						{ pluginId: "fixture.registry-b" },
+					),
+				{ pluginId: "fixture.registry-a" },
+			),
+		));
+
 	it("resolves through the .npmrc the host directory declares, not the one where it stages", () =>
 		withDirectory(async (directory) =>
 			withRegistry(join(directory, "packages"), async (registry) => {

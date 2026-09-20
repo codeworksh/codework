@@ -120,7 +120,7 @@ export const mount = (identity: Identity): EffectLayer.Layer<Provides, never, Sa
 export const identityLayer = (identity: Identity) => EffectLayer.succeed(Current, identity);
 
 /** The host identity alone. See {@link identityLayer}. */
-export const hostLayer = (cwd?: string) => identityLayer(host(cwd));
+export const hostLayer = (cwd: string) => identityLayer(host(cwd));
 
 /**
  * The host, rooted at `cwd`. Always `SandboxInstance.ID.local`: the working
@@ -128,15 +128,14 @@ export const hostLayer = (cwd?: string) => identityLayer(host(cwd));
  * namespace — two mounts rooted at different directories still agree on absolute
  * paths.
  *
- * The host adapter defaults to `process.cwd()`, matching the OS process it wraps.
- * This is the one namespace where that coordinate is intrinsically valid; remote
- * and virtual adapters must never inherit it.
+ * The host coordinate is explicit so a caller cannot accidentally substitute ambient process
+ * state for the application or session directory it owns.
  */
-export const host = (cwd?: string): Identity => ({
+export const host = (cwd: string): Identity => ({
 	id: SandboxInstance.ID.local,
 	driver: "local" as SandboxDriver.Name,
 	kind: "local",
-	cwd: resolveMountCwd(process.cwd(), cwd),
+	cwd: resolveMountCwd(cwd),
 });
 
 /**

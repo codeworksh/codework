@@ -177,9 +177,9 @@ describe("codework plugin add/remove", () => {
 				home,
 				"cache",
 				"plugins",
-				"v1",
+				"v2",
 				"fixture-codework-plugin",
-				createHash("sha256").update(spec).digest("hex"),
+				createHash("sha256").update(`https://registry.npmjs.org/\0${spec}`).digest("hex"),
 				String(GENERATION),
 			);
 			mkdirSync(directory, { recursive: true });
@@ -219,9 +219,9 @@ describe("codework plugin add/remove", () => {
 					home,
 					"cache",
 					"plugins",
-					"v1",
+					"v2",
 					"fixture-codework-plugin",
-					createHash("sha256").update(spec).digest("hex"),
+					createHash("sha256").update(`https://registry.npmjs.org/\0${spec}`).digest("hex"),
 					String(GENERATION),
 				);
 				mkdirSync(directory, { recursive: true });

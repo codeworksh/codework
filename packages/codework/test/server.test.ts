@@ -66,6 +66,16 @@ describe("server", () => {
 			expect(listed.some(({ id }) => id === created.id)).toBe(true);
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 
+	it("uses the harness hostCwd for a local session when the client omits directory", () => {
+		const hostCwd = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-cwd-")));
+		homes.push(hostCwd);
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const created = yield* rpc["session.create"]({});
+			expect(created.directory).toBe(hostCwd);
+		}).pipe(Effect.scoped, Effect.provide(layer({ hostCwd })), Effect.runPromise);
+	});
+
 	it("session.create honours a client-supplied hostDir, and omits it when the client named none", () => {
 		const root = mkdtempSync(join(tmpdir(), "codework-server-hostdir-"));
 		homes.push(root);
@@ -74,7 +84,7 @@ describe("server", () => {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			// Passed through as given. The client is the owner of this machine, so naming a host
 			// path is no more privilege than running `codework` in it.
-			const placed = yield* rpc["session.create"]({ hostDir: root });
+			const placed = yield* rpc["session.create"]({ hostDir: Session.AbsolutePath.make(root) });
 			expect(placed.hostDir).toBe(root);
 			expect((yield* rpc["session.info"]({ sessionId: placed.id })).hostDir).toBe(root);
 
@@ -94,7 +104,10 @@ describe("server", () => {
 			const created = yield* rpc["session.create"]({});
 			expect(created.hostDir).toBeUndefined();
 
-			const linked = yield* rpc["session.link"]({ sessionId: created.id, hostDir: root });
+			const linked = yield* rpc["session.link"]({
+				sessionId: created.id,
+				hostDir: Session.AbsolutePath.make(root),
+			});
 			expect(linked.hostDir).toBe(root);
 			// Stored, not held in the call: a later reader sees it too.
 			expect((yield* rpc["session.info"]({ sessionId: created.id })).hostDir).toBe(root);
@@ -118,7 +131,10 @@ describe("server", () => {
 			expect(failure).toMatchObject({ _tag: "SessionNotLinkedError", reason: "session-not-linked" });
 
 			// Linked, the same lookup answers with the directory.
-			yield* rpc["session.link"]({ sessionId: created.id, hostDir: realpathSync(home) });
+			yield* rpc["session.link"]({
+				sessionId: created.id,
+				hostDir: Session.AbsolutePath.make(realpathSync(home)),
+			});
 			expect(yield* linkedDirectory(created.id, Option.some(home))).toBe(realpathSync(home));
 		}).pipe(
 			Effect.scoped,
@@ -143,9 +159,13 @@ describe("server", () => {
 				 * pick the settings file whose plugins this process then imports. Measured before
 				 * it was fixed: `my-project` came back as `<the server's repository>/my-project`.
 				 */
-				yield* rpc["session.link"]({ sessionId: created.id, hostDir: "my-project" });
+				yield* rpc["session.link"]({
+					sessionId: created.id,
+					// Deliberately bypass the client type to prove the wire decoder rejects malformed input.
+					hostDir: "my-project" as Session.AbsolutePath,
+				});
 			}).pipe(Effect.scoped, Effect.provide(layer({ home, hostCwd: home })), Effect.runPromise),
-		).rejects.toThrow(/absolute path/);
+		).rejects.toThrow(/Schema validation failed/);
 	});
 
 	it("anchors a plugin reference to the session's project, not the directory the CLI ran in", () => {
@@ -168,7 +188,7 @@ describe("server", () => {
 		return Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);
 			const created = yield* rpc["session.create"]({});
-			yield* rpc["session.link"]({ sessionId: created.id, hostDir: project });
+			yield* rpc["session.link"]({ sessionId: created.id, hostDir: Session.AbsolutePath.make(project) });
 
 			/*
 			 * `--session` exists for a server or a UI acting on a session's behalf, so the shell's

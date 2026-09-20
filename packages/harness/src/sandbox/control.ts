@@ -102,6 +102,8 @@ export class Controller extends Context.Service<Controller, Interface>()(
 ) {}
 
 export interface Options {
+	/** Absolute host cwd used by the local instance. Never inferred from ambient process state. */
+	readonly hostCwd: string;
 	readonly transportIdleTimeToLive?: Duration.Input;
 	readonly provisioningTimeoutMs?: number;
 }
@@ -124,13 +126,13 @@ const isSandboxProviderError = Schema.is(SandboxProviderError);
 const parseJson = (driver: SandboxDriver.Name, operation: string, value: string) =>
 	decodeUnknownJson(value).pipe(Effect.mapError((cause) => providerError({ driver, operation, cause })));
 
-export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Options = {}) {
+export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Options) {
 	const sql = yield* SqlClient.SqlClient;
 	const registry = yield* SandboxDriverRegistry.Registry;
 	const store = yield* SandboxStore.make;
 	const gate = yield* Semaphore.make(1);
 	const refs = new Map<SandboxInstance.ID, number>();
-	const hostDefaultCwd = process.cwd();
+	const hostDefaultCwd = SandboxIO.resolveMountCwd(options.hostCwd);
 	const hostCreatedAt = asDate(yield* DateTime.now);
 
 	const refCount = (id: SandboxInstance.ID) => refs.get(id) ?? 0;
@@ -897,6 +899,6 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 	});
 });
 
-export const layer = (options?: Options) => Layer.effect(Controller, make(options));
+export const layer = (options: Options) => Layer.effect(Controller, make(options));
 
 export * as SandboxController from "./control.ts";
