@@ -22,7 +22,7 @@ export default Runtime.handler(
 	Effect.fn("CLI.plugin.install")(function* () {
 		const program = Effect.gen(function* () {
 			const shared = yield* Cmd.spec;
-			const { entries, cache, hostDir } = yield* read(shared);
+			const { entries, cache } = yield* read(shared);
 
 			let installed = 0;
 			let present = 0;
@@ -35,14 +35,14 @@ export default Runtime.handler(
 					local += 1;
 					continue;
 				}
-				if ((yield* Plugin.resolve(target, cache, hostDir)) !== undefined) {
+				if ((yield* Plugin.resolve(target, cache, entry.from)) !== undefined) {
 					present += 1;
 					continue;
 				}
 				// `inspect` installs, imports and validates, so a spec that turns out not to be a
 				// plugin fails here rather than at the next run. The reported ID comes from the
 				// module, never from the spec.
-				const plugin = yield* Plugin.inspect(entry.reference, { cache, hostDir, file: entry.file });
+				const plugin = yield* Plugin.inspect(entry.reference, { cache, hostDir: entry.from, file: entry.file });
 				installed += 1;
 				yield* writeOut(`Installed ${entry.reference} (${plugin.id})\n`);
 			}

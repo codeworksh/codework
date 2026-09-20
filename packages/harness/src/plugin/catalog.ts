@@ -76,6 +76,12 @@ export interface Origin {
 	 * local source -- none of which are filed, so none of which can be superseded.
 	 */
 	readonly generation?: number;
+	/**
+	 * The settings file that declared the reference, which {@link Loader.anchor} turns into the
+	 * `.npmrc` context the entry was filed under. Carried on the origin so a retained module
+	 * re-resolves through the same registry on a later load pass, whatever session asked.
+	 */
+	readonly file?: string;
 }
 
 const emptyPool: Pool = {
@@ -166,6 +172,7 @@ export const load = Effect.fn("PluginCatalog.load")(function* (references: Reado
 			origin: {
 				reference,
 				...(definition.generation === undefined ? {} : { generation: definition.generation }),
+				...(origin.file === undefined ? {} : { file: origin.file }),
 			},
 		});
 		seen.set(key, definition.plugin.id);
@@ -310,8 +317,12 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	 * filed, so nothing can supersede it. That is the difference between "can be loaded now" and
 	 * "has moved" -- a local plugin is the first and never the second, which is why `reload`
 	 * exists and covers only it.
+	 *
+	 * `from` is the `.npmrc` anchor the lookup computes the store key under: the project that
+	 * declared the reference, so an exchange answers about the same artifact `plugin install`
+	 * filed rather than the one the server's own directory would name.
 	 */
-	filed: (reference: string) => Effect.Effect<Option.Option<{ readonly generation?: number }>>,
+	filed: (reference: string, from: string) => Effect.Effect<Option.Option<{ readonly generation?: number }>>,
 ) {
 	let moved = false;
 
@@ -320,7 +331,7 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 		// Configured but not loaded. Reported by `select` either way; acted on only when the
 		// bytes are already here -- which covers a package the store holds and a local path that
 		// exists, and excludes anything that would have to be fetched.
-		if (Option.isSome(yield* filed(reference))) {
+		if (Option.isSome(yield* filed(reference, Loader.anchor(options.declared?.get(reference), options.hostDir)))) {
 			moved = true;
 			break;
 		}
@@ -329,7 +340,7 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	if (!moved) {
 		for (const origin of pool.origins.values()) {
 			if (origin.generation === undefined) continue;
-			const current = yield* filed(origin.reference);
+			const current = yield* filed(origin.reference, Loader.anchor(origin.file, options.hostDir));
 			if (
 				Option.isSome(current) &&
 				current.value.generation !== undefined &&
@@ -349,10 +360,16 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	// Retained origins come first so the current session's explicit reference wins when two specs
 	// declare the same plugin ID (for example `pkg@1` followed by `pkg@2`).
 	const accumulated = [...Array.from(pool.origins.values(), (origin) => origin.reference), ...references];
+	// A retained module keeps its declaring file -- it is what the union of `references` does not
+	// know. The session's own declarations win where both name one reference, because the entry
+	// it just wrote is the anchor its `plugin install` used.
+	const known = new Map<string, string>();
+	for (const origin of pool.origins.values()) if (origin.file !== undefined) known.set(origin.reference, origin.file);
+	for (const [reference, file] of options.declared ?? new Map<string, string>()) known.set(reference, file);
 	// A full load pass, which is cheap for everything that did not move: an unchanged module
 	// resolves to the same URL, and the module registry hands back the instance it already has
 	// without re-evaluating it. Only a new generation is a new URL, and only that is re-imported.
-	return Option.some(yield* load(accumulated, options));
+	return Option.some(yield* load(accumulated, { ...options, declared: known }));
 });
 
 /** Both passes, for a caller that wants the selection and has no reason to hold the pool. */

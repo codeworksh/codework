@@ -6,8 +6,8 @@ import type { Shared } from "./settings.ts";
  * Every plugin entry the settings files name, across every layer, in the order they accumulate.
  *
  * This is what `install`, `list`, `check` and `update` all operate on: unlike `add` and `remove`,
- * none of them writes an entry, so none of them needs to know which file declared one. They read
- * what is already there and act on the store.
+ * none of them writes an entry. They read what is already there and act on the store -- each one
+ * under the `.npmrc` context of the file that declared it, which is what keys the artifact.
  */
 export interface Entry {
 	/** The reference as the settings file spells it: the string a person will search for. */
@@ -16,6 +16,11 @@ export interface Entry {
 	readonly reference: string;
 	/** Which settings file declared it. */
 	readonly file: string;
+	/**
+	 * The `.npmrc` anchor for the entry's store identity: the project that declared it, so the
+	 * registry context is the same wherever this command happens to run.
+	 */
+	readonly from: string;
 	/** Absent for an unparseable entry and for a local path. */
 	readonly target: Plugin.Target | undefined;
 }
@@ -48,10 +53,11 @@ export const read = Effect.fn("CLI.plugin.entries")(function* (shared: Shared) {
 			written: moduleOf(one.written) ?? reference,
 			reference,
 			file: one.file,
+			from: Plugin.anchor(one.file, cwd),
 			target: Option.getOrUndefined(target),
 		});
 	}
-	return { entries: entries as ReadonlyArray<Entry>, cache: paths.cache, home: paths.home, hostDir: cwd };
+	return { entries: entries as ReadonlyArray<Entry>, cache: paths.cache };
 });
 
 /**

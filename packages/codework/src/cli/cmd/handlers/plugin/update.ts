@@ -18,7 +18,7 @@ export default Runtime.handler(
 	Effect.fn("CLI.plugin.update")(function* () {
 		const program = Effect.gen(function* () {
 			const shared = yield* Cmd.spec;
-			const { entries, cache, hostDir } = yield* read(shared);
+			const { entries, cache } = yield* read(shared);
 
 			let updated = 0;
 			let failed = 0;
@@ -28,8 +28,8 @@ export default Runtime.handler(
 				if (target === undefined) continue;
 
 				const result = yield* Plugin.update(target, cache, {
-					probe: probe(cache, hostDir),
-					from: hostDir,
+					probe: probe(cache, entry.from),
+					from: entry.from,
 					// Validated while staged, so a refresh that fetches something broken leaves
 					// the generation already in use as the answer. Preserve the loader's reason:
 					// an import failure or invalid definition is not a missing entrypoint.

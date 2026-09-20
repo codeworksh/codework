@@ -213,9 +213,10 @@ const install = Effect.fn("PluginLoader.install")(function* (
 	// The validation failure passes through as itself: "installed, and is not a plugin" is a load
 	// failure, and calling it an install failure would send the reader to the registry.
 	const added = yield* Store.add(target, cache, {
-		// The `.npmrc` chain is read where the person is, so a private registry named in the
-		// repository's own `.npmrc` is the one this install resolves against. §15 Q2.
-		from: options.hostDir,
+		// The `.npmrc` chain is read beside the file that declared the entry, so a private
+		// registry named in the repository's own `.npmrc` is the one this install resolves
+		// against -- and the one every later resolve of this entry re-derives. §15 Q2.
+		from: anchor(origin.file, options.hostDir),
 		validate: (fetched) => imported(url(fetched.entrypoint), origin, options.import),
 	});
 	return {
@@ -226,6 +227,18 @@ const install = Effect.fn("PluginLoader.install")(function* (
 	} satisfies Installed;
 });
 
+/**
+ * The directory whose `.npmrc` chain names the artifact a reference resolves to: the project that
+ * declared it. A settings file sits in `<root>/.codework/`, but npm reads a project `.npmrc` at the
+ * package boundary discovered upward from the chain's start -- the root itself -- so anchoring at
+ * the file's own directory would miss it. Absent a declaring file the host context stands in.
+ */
+export const anchor = (file: string | undefined, fallback: string): string => {
+	if (file === undefined) return fallback;
+	const directory = path.dirname(file);
+	return path.basename(directory) === ".codework" ? path.dirname(directory) : directory;
+};
+
 /** The default installer, or the one the caller injected. */
 const installer = (
 	target: Fetchable,
@@ -234,7 +247,7 @@ const installer = (
 ): Effect.Effect<Installed, InstallError | StoreError | LoadError> =>
 	options.install === undefined
 		? install(target, options.cache, origin, options)
-		: options.install(target, options.cache, options.hostDir);
+		: options.install(target, options.cache, anchor(origin.file, options.hostDir));
 
 /** Import a module and confirm it default-exports a plugin. */
 const imported = Effect.fn("PluginLoader.imported")(function* (

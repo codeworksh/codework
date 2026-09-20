@@ -201,6 +201,82 @@ describe("following the store at an exchange boundary", () => {
 		expect(Option.getOrThrow(moved).plugins.has("acme.prompt.new")).toBe(true);
 	});
 
+	it("checks the store under each reference's declaring directory, not the process's", async () => {
+		const base = await Effect.runPromise(
+			load(["a@1"], {
+				...options,
+				hostDir: "/server",
+				declared: new Map([["a@1", "/project-a/.codework/settings.jsonc"]]),
+				install: () => Effect.succeed({ url: "virtual:a@1", generation: 1 }),
+				import: () => Promise.resolve({ default: marker("acme.prompt.a") }),
+			}),
+		);
+		// The origin remembers which file declared it, because the file's directory is the
+		// `.npmrc` anchor its store entry was filed under.
+		expect(base.origins.get("acme.prompt.a")?.file).toBe("/project-a/.codework/settings.jsonc");
+
+		const seen: Array<readonly [string, string]> = [];
+		const moved = await Effect.runPromise(
+			follow(
+				["b"],
+				base,
+				{
+					...options,
+					hostDir: "/server",
+					declared: new Map([["b", "/project-b/.codework/settings.jsonc"]]),
+					install: () => Effect.succeed({ url: "virtual:b", generation: 1 }),
+				},
+				(reference, from) => {
+					seen.push([reference, from]);
+					return Effect.succeedNone;
+				},
+			),
+		);
+		expect(moved._tag).toBe("None");
+		expect(seen).toEqual([
+			["b", "/project-b"],
+			["a@1", "/project-a"],
+		]);
+	});
+
+	it("a rebuilt pool keeps each module's declaring file as its registry anchor", async () => {
+		const base = await Effect.runPromise(
+			load(["a@1"], {
+				...options,
+				declared: new Map([["a@1", "/project-a/.codework/settings.jsonc"]]),
+				install: () => Effect.succeed({ url: "virtual:a@1", generation: 1 }),
+				import: () => Promise.resolve({ default: marker("acme.prompt.a") }),
+			}),
+		);
+		const seen: Array<readonly [string, string]> = [];
+		const moved = await Effect.runPromise(
+			follow(
+				["b"],
+				base,
+				{
+					...options,
+					declared: new Map([["b", "/project-b/.codework/settings.jsonc"]]),
+					install: (target: Fetchable, _cache: string, from: string) => {
+						seen.push([target.spec, from]);
+						return Effect.succeed({ url: `virtual:${target.spec}`, generation: 1 });
+					},
+					import: (url: string) =>
+						Promise.resolve({ default: marker(url === "virtual:a@1" ? "acme.prompt.a" : "acme.prompt.b") }),
+				},
+				(reference) => (reference === "b" ? Effect.succeedSome({ generation: 1 }) : Effect.succeedNone),
+			),
+		);
+		// The union load re-resolves the retained module under *its* declaring file's chain, and
+		// the new one under its own -- one `hostDir` could not answer both.
+		expect(seen).toEqual([
+			["a@1", "/project-a"],
+			["b@latest", "/project-b"],
+		]);
+		const pool = Option.getOrThrow(moved);
+		expect(pool.origins.get("acme.prompt.a")?.file).toBe("/project-a/.codework/settings.jsonc");
+		expect(pool.origins.get("acme.prompt.b")?.file).toBe("/project-b/.codework/settings.jsonc");
+	});
+
 	it("keeps other session modules while the current reference replaces an earlier spec", async () => {
 		const first = marker("acme.prompt.a");
 		const second = marker("acme.prompt.a");

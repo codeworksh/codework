@@ -40,7 +40,7 @@ export default Runtime.handler(
 	Effect.fn("CLI.plugin.list")(function* ({ verbose }) {
 		const program = Effect.gen(function* () {
 			const shared = yield* Cmd.spec;
-			const { entries, cache, hostDir } = yield* read(shared);
+			const { entries, cache } = yield* read(shared);
 			if (entries.length === 0) {
 				yield* writeOut("No plugins are configured.\n");
 				return;
@@ -51,7 +51,7 @@ export default Runtime.handler(
 				// Resolve-only: listing what is configured must never install anything.
 				const inspected = yield* Plugin.inspect(entry.reference, {
 					cache,
-					hostDir,
+					hostDir: entry.from,
 					file: entry.file,
 					install: Plugin.resolveCached,
 				}).pipe(Effect.result);

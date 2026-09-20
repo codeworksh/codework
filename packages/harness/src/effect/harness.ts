@@ -100,7 +100,7 @@ export const layer = (options: Options = {}) =>
 			 * path, is simply not filed.
 			 */
 			type Here = Option.Option<{ readonly generation?: number }>;
-			const filed = (reference: string): Effect.Effect<Here> =>
+			const filed = (reference: string, from: string): Effect.Effect<Here> =>
 				PluginSource.parse(reference, hostCwd).pipe(
 					Effect.flatMap((target): Effect.Effect<Here, unknown> =>
 						target.kind === "local"
@@ -110,7 +110,7 @@ export const layer = (options: Options = {}) =>
 								fileSystem
 									.exists(target.path)
 									.pipe(Effect.map((there): Here => (there ? Option.some({}) : Option.none())))
-							: PluginStore.resolve(target, paths.cache, hostCwd).pipe(
+							: PluginStore.resolve(target, paths.cache, from).pipe(
 									Effect.map((entry): Here => Option.fromUndefinedOr(entry)),
 								),
 					),
@@ -159,9 +159,17 @@ export const layer = (options: Options = {}) =>
 						...Array.from(loaded.origins.values(), (origin) => origin.reference),
 						...references(current),
 					];
+					// A retained module re-resolves under the registry its declaring file named, so
+					// the reload finds the entry `plugin install` filed for it. The current
+					// declarations win where both name one reference.
+					const known = new Map<string, string>();
+					for (const origin of loaded.origins.values()) {
+						if (origin.file !== undefined) known.set(origin.reference, origin.file);
+					}
+					for (const [reference, file] of declaredIn(current)) known.set(reference, file);
 					return yield* load(accumulated, {
 						...resolveOnly,
-						declared: declaredIn(current),
+						declared: known,
 						reload: reloads,
 					});
 				});

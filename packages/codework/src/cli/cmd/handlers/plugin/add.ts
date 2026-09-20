@@ -42,16 +42,16 @@ export default Runtime.handler(
 			 */
 			const from = linked ?? path.resolve(".");
 
+			// The file the entry will land in decides the install's registry identity: it is named
+			// here -- without creating the marker -- so the store keys the artifact under the same
+			// `.npmrc` chain every later resolve of this entry re-derives, and a bad reference
+			// still leaves nothing behind.
+			const target = yield* resolveTarget(shared, userWide, linked, false);
+
 			// Install and import before touching the file: a spec that turns out not to be a plugin
 			// should fail here, with its own error, rather than at the next run from a file the user
 			// then has to repair by hand.
-			const plugin = yield* Plugin.inspect(reference, { cache: paths.cache, hostDir: from });
-
-			const target = yield* resolveTarget(shared, userWide, linked);
-			// Said before the entry is written, because it is the more consequential of the two
-			// facts: it decides where every future plugin entry lands, and it shadows any outer
-			// project from now on.
-			if (target.created !== undefined) yield* writeOut(`Created ${target.created}/\n`);
+			const plugin = yield* Plugin.inspect(reference, { cache: paths.cache, hostDir: from, file: target.path });
 			// What goes in the file, which is not always what was typed: a relative path anchors to
 			// the settings file being written, not to the directory the command ran in.
 			const entry = yield* written(reference, {
@@ -94,6 +94,9 @@ export default Runtime.handler(
 					yield* writeOut(`Added ${plugin.id} (${entry}${version}) to ${target.path}\n`);
 				}),
 			);
+			// Said after the write, because `resolveTarget` only named the marker: the lock's
+			// write is what made it, and "created" should be true by the time it is printed.
+			if (target.created !== undefined) yield* writeOut(`Created ${target.created}/\n`);
 		});
 
 		return yield* program.pipe(Effect.catch(reportFailure));

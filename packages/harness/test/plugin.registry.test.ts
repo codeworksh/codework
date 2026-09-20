@@ -7,8 +7,10 @@ import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
-import { probe } from "../src/plugin/npm.ts";
-import { add } from "../src/plugin/store.ts";
+import { probe, registry as npmRegistry } from "../src/plugin/npm.ts";
+import { load } from "../src/plugin/catalog.ts";
+import { define } from "../src/plugin/plugin.ts";
+import { add, required } from "../src/plugin/store.ts";
 import { parse, type Fetchable } from "../src/plugin/source.ts";
 import { NAME, npmrc, withRegistry } from "./fixtures/registry.ts";
 
@@ -37,29 +39,80 @@ const fetchable = (spec: string) => Effect.runSync(parse(spec, "/unused")) as Fe
 const accept = () => Effect.succeed("ok" as const);
 
 describe("an install against a private registry", () => {
-	it("fails before resolution when the project .npmrc is unreadable", () =>
+	it("warns and falls back to npm defaults when the project .npmrc is unreadable", () =>
 		withDirectory(async (directory) => {
 			if (process.getuid?.() === 0) return;
-			await withRegistry(join(directory, "packages"), async (registry) => {
-				const host = join(directory, "project");
-				const config = join(host, ".npmrc");
-				await npmrc(host, registry);
-				await chmod(config, 0o000);
-				try {
-					const failure = await Effect.runPromise(
-						add(fetchable(`${NAME}@1.0.0`), join(directory, "cache"), {
-							from: host,
-							validate: accept,
-						}).pipe(Effect.flip),
-					);
-					expect(failure.reason).toBe("plugin-resolve-failed");
-					expect(failure.message).toContain(config);
-					expect(registry.paths()).toEqual([]);
-				} finally {
-					await chmod(config, 0o600);
-				}
-			});
+			const host = join(directory, "project");
+			const config = join(host, ".npmrc");
+			await mkdir(host, { recursive: true });
+			await writeFile(
+				config,
+				"registry=https://private.example.test/\n@fixture:registry=https://private.example.test/\n",
+			);
+			await chmod(config, 0o000);
+			try {
+				// npm warns and continues on a config it cannot read, and so do we: the resolved
+				// registry is the public default, not a `plugin-resolve-failed`, and the warning
+				// -- not a refusal -- is the signal.
+				const resolved = await Effect.runPromise(
+					npmRegistry(
+						fetchable(`${NAME}@1.0.0`) as Extract<Fetchable, { kind: "registry" }>,
+						join(directory, "cache"),
+						host,
+					),
+				);
+				expect(resolved).toBe("https://registry.npmjs.org/");
+			} finally {
+				await chmod(config, 0o600);
+			}
 		}));
+
+	it("a session resolves an entry through the file that declared it, not the server's directory", () =>
+		withDirectory(async (directory) =>
+			withRegistry(join(directory, "registry"), async (registry) => {
+				const project = join(directory, "project");
+				const server = join(directory, "server");
+				await mkdir(join(project, ".codework"), { recursive: true });
+				await mkdir(server, { recursive: true });
+				await npmrc(project, registry);
+				const cache = join(directory, "cache");
+				const spec = `${NAME}@1.0.0`;
+				// The declaring file, whose directory is the `.npmrc` anchor.
+				const file = join(project, ".codework", "settings.jsonc");
+				await writeFile(file, JSON.stringify({ plugins: [spec] }));
+
+				// `plugin install` run in the project keys the artifact under its private registry.
+				await Effect.runPromise(add(fetchable(spec), cache, { from: project, validate: accept }));
+
+				const marker = define({ id: "fixture.plugin.marked", kind: "prompt", setup: () => {} });
+				const found = await Effect.runPromise(
+					load([spec], {
+						builtins: [],
+						cache,
+						// The server's own directory: no `.npmrc` here, so an exchange keyed by it
+						// would look under the public registry and see nothing.
+						hostDir: server,
+						declared: new Map([[spec, file]]),
+						install: required,
+						import: () => Promise.resolve({ default: marker }),
+					}),
+				);
+				expect(found.plugins.has("fixture.plugin.marked")).toBe(true);
+
+				// Without the declaring file the lookup falls back to the host context and misses --
+				// rather than silently serving a package a different registry produced.
+				const missed = await Effect.runPromise(
+					load([spec], {
+						builtins: [],
+						cache,
+						hostDir: server,
+						install: required,
+						import: () => Promise.resolve({ default: marker }),
+					}).pipe(Effect.result),
+				);
+				expect(missed._tag).toBe("Failure");
+			}),
+		));
 
 	it("files the same spec separately when projects resolve it through different registries", () =>
 		withDirectory(async (directory) =>

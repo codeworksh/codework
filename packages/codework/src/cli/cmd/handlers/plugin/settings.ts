@@ -97,6 +97,7 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 			const declared = yield* Plugin.inspect(module, {
 				cache,
 				hostDir: directory,
+				file,
 				install: Plugin.resolveCached,
 			}).pipe(Effect.option);
 			if (Option.isSome(declared)) {
@@ -281,7 +282,9 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (
 		} satisfies Target;
 	}
 	const marker = nodePath.join(cwd, ".codework");
-	if (!create) return { path: nodePath.join(marker, "settings.jsonc"), root: cwd } satisfies Target;
+	// `created` is reported either way: with `create` unset the marker is named, not made, so a
+	// caller can say what its write is about to establish without establishing it early.
+	if (!create) return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: cwd } satisfies Target;
 	yield* fs.makeDirectory(marker, { recursive: true });
 	return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: cwd } satisfies Target;
 });
