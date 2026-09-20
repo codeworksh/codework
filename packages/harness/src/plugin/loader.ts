@@ -143,7 +143,10 @@ const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string,
 
 export interface Options {
 	readonly cache: string;
-	/** The host directory a relative reference anchors to. Never read here. */
+	/**
+	 * The host directory a relative reference anchors to, and the directory whose `.npmrc` chain
+	 * governs an install made from it.
+	 */
 	readonly hostDir: string;
 	/**
 	 * Bumped by every reload, and appended to a **local** plugin's URL.
@@ -206,6 +209,9 @@ const install = Effect.fn("PluginLoader.install")(function* (
 	// The validation failure passes through as itself: "installed, and is not a plugin" is a load
 	// failure, and calling it an install failure would send the reader to the registry.
 	const added = yield* Store.add(target, cache, {
+		// The `.npmrc` chain is read where the person is, so a private registry named in the
+		// repository's own `.npmrc` is the one this install resolves against. §15 Q2.
+		from: options.hostDir,
 		validate: (fetched) => imported(url(fetched.entrypoint), origin, options.import),
 	});
 	return {

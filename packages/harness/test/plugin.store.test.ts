@@ -52,7 +52,7 @@ const fixture =
 const accept = () => Effect.succeed("checked" as const);
 
 const install = (spec: string, cache: string, runner: Runner = fixture(), refresh = false) =>
-	add(fetchable(spec), cache, { validate: accept, runner, ...(refresh ? { refresh: true } : {}) });
+	add(fetchable(spec), cache, { validate: accept, runner, from: cache, ...(refresh ? { refresh: true } : {}) });
 
 const digestOf = (spec: string) => createHash("sha256").update(spec).digest("hex");
 const entryDir = (cache: string, slug: string, spec: string) => join(root(cache), slug, digestOf(spec));
@@ -133,6 +133,7 @@ describe("the store", () => {
 			const rejected = await Effect.runPromise(
 				add(fetchable("fixture"), cache, {
 					runner: fixture(),
+					from: cache,
 					validate: () =>
 						Effect.fail(
 							new InstallError({

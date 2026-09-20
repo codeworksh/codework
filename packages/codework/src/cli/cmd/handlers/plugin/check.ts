@@ -18,7 +18,7 @@ export default Runtime.handler(
 	Effect.fn("CLI.plugin.check")(function* () {
 		const program = Effect.gen(function* () {
 			const shared = yield* Cmd.spec;
-			const { entries, cache } = yield* read(shared);
+			const { entries, cache, hostDir } = yield* read(shared);
 
 			let outdated = 0;
 			let failed = 0;
@@ -28,7 +28,7 @@ export default Runtime.handler(
 				// than reporting it as current.
 				if (target === undefined) continue;
 
-				const state = yield* Plugin.check(target, cache, { probe: probe(cache) }).pipe(Effect.result);
+				const state = yield* Plugin.check(target, cache, { probe: probe(cache, hostDir) }).pipe(Effect.result);
 				if (state._tag === "Failure") {
 					failed += 1;
 					yield* writeOut(`${entry.reference}  error[${state.failure.reason}]: ${state.failure.message}\n`);

@@ -63,15 +63,30 @@ const Lockfile = Schema.Struct({
  * Built in one place, because two call sites deriving it separately is how the cache location
  * drifts between an install and the staleness check that is supposed to describe it.
  *
- * `dir` is where the `.npmrc` chain is read from, and it is the host directory the caller belongs
- * to rather than the staging directory -- a company repo with a private registry and a scoped
- * token in its own `.npmrc` cannot install its own plugin otherwise.
+ * `dir` is where the `.npmrc` chain is read from, and it is the **host directory the caller
+ * belongs to** -- never the staging directory and never the cache. A company repo keeps its
+ * private registry and its scoped token in its own `.npmrc`, so a chain read anywhere else
+ * resolves the plugin against the public registry and fails 404, or worse, installs a public
+ * package of the same name. This is the registry half of auth; the git half is below.
+ *
+ * No `--prefix`. npm pins its local prefix to a `--prefix` on `argv` and stops walking, so
+ * passing one would look up exactly `<dir>/.npmrc` and nothing above it -- wrong for a person
+ * standing in `packages/x` whose token lives at the repository root. Without it npm walks up from
+ * `cwd` to the nearest `package.json` or `node_modules` exactly as `npm` itself would if it were
+ * run there, which is the only rule a user can predict.
  *
  * `--cache` is ours and is passed on `argv`, which outranks every `.npmrc`. npm's `flatten`
  * derives `_cacache`, `_npx` and `_tuf` from that one value, so naming the parent is enough --
  * and overriding `flat.cache` afterwards would redirect one of the three and leave `_tuf` pointing
  * at the user's home. `--home` exists to make a run self-contained; anything reached by an ambient
  * default is a test reading the developer's real machine.
+ *
+ * **Nothing here names an `env`.** npm hands git `opts.env` when one is present and falls back to
+ * `{ ...gitDefaults, ...process.env }` when it is not, so leaving it out is what lets a git source
+ * reach a private remote at all: `SSH_AUTH_SOCK` finds the agent, `HOME` finds the `~/.gitconfig`
+ * that names the credential helper, and `PATH` finds `git`. Setting `env` to anything -- even to
+ * a copy of `process.env` -- would be a standing invitation to prune it later and break private
+ * git silently, months from the change. §15 Q2.
  */
 export const options = (dir: string, cache: string): Effect.Effect<Record<string, unknown>> =>
 	Effect.tryPromise(async () => {
@@ -82,7 +97,7 @@ export const options = (dir: string, cache: string): Effect.Effect<Record<string
 			npmPath: fileURLToPath(new URL("..", import.meta.url)),
 			cwd: dir,
 			env: { ...process.env },
-			argv: [process.execPath, process.execPath, "--prefix", dir, "--cache", path.join(cache, "npm")],
+			argv: [process.execPath, process.execPath, "--cache", path.join(cache, "npm")],
 			execPath: process.execPath,
 			platform: process.platform,
 			definitions,
@@ -198,10 +213,12 @@ export type Runner = (input: {
 	readonly target: Fetchable;
 	readonly into: string;
 	readonly cache: string;
+	/** Where the `.npmrc` chain is read from: the host directory, never `into`. */
+	readonly from: string;
 }) => Effect.Effect<Tree, InstallError>;
 
-export const reify: Runner = Effect.fn("PluginNpm.reify")(function* ({ target, into, cache }) {
-	const flat = yield* options(into, cache);
+export const reify: Runner = Effect.fn("PluginNpm.reify")(function* ({ target, into, cache, from }) {
+	const flat = yield* options(from, cache);
 	const { Arborist } = yield* Effect.promise(() => import("@npmcli/arborist"));
 	const settings = {
 		...flat,
@@ -240,12 +257,16 @@ export const reify: Runner = Effect.fn("PluginNpm.reify")(function* ({ target, i
  * A local target downloads nothing: the files on disk are already the answer, and a local plugin
  * is never copied into the store.
  */
-export const download = Effect.fn("PluginNpm.download")(function* (
-	target: Target,
-	into: string,
-	cache: string,
-	runner: Runner = reify,
-) {
+export const download = Effect.fn("PluginNpm.download")(function* (input: {
+	readonly target: Target;
+	/** The staging directory the package is installed into. */
+	readonly into: string;
+	readonly cache: string;
+	/** The host directory whose `.npmrc` chain governs this install. */
+	readonly from: string;
+	readonly runner?: Runner;
+}) {
+	const { target, into, cache, from, runner = reify } = input;
 	if (target.kind === "local") {
 		return {
 			directory: target.path,
@@ -274,7 +295,7 @@ export const download = Effect.fn("PluginNpm.download")(function* (
 				}),
 		),
 	);
-	const tree = yield* runner({ target, into: root, cache });
+	const tree = yield* runner({ target, into: root, cache, from });
 	// What was actually added, named by the tree rather than inferred from the spec.
 	const node = tree.edgesOut.values().next().value?.to;
 	if (node === undefined) {
@@ -322,9 +343,11 @@ const noCommit = (spec: string) =>
  * metadata cache, and a staleness check that reads a cache is not a staleness check. An immutable
  * target skips the call entirely -- a version and a SHA cannot move.
  */
-export const probe = Effect.fn("PluginNpm.probe")(function* (target: Target, cache: string) {
+export const probe = Effect.fn("PluginNpm.probe")(function* (target: Target, cache: string, from: string) {
 	if (target.kind === "local" || !target.mutable) return undefined;
-	const flat = yield* options(cache, cache);
+	// The same chain the install will use. A probe that reads a different `.npmrc` answers about a
+	// different registry than the one `update` then fetches from.
+	const flat = yield* options(from, cache);
 	// `_isRoot` is what `allowGit: "root"` keys on: this spec is the one the person asked about,
 	// not a dependency of something else.
 	const opts = { ...flat, preferOnline: true, noGitRevCache: true, _isRoot: true };

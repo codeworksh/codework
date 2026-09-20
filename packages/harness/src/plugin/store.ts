@@ -225,7 +225,13 @@ export interface Added<A> {
 export const add = Effect.fn("PluginStore.add")(function* <A>(
 	target: Fetchable,
 	cache: string,
-	options: { readonly refresh?: boolean; readonly validate: Validate<A>; readonly runner?: Runner },
+	options: {
+		readonly refresh?: boolean;
+		readonly validate: Validate<A>;
+		readonly runner?: Runner;
+		/** The host directory whose `.npmrc` chain governs this install. */
+		readonly from: string;
+	},
 ) {
 	return yield* Effect.gen(function* () {
 		const { key, directory } = yield* entryDir(target, cache);
@@ -255,7 +261,13 @@ export const add = Effect.fn("PluginStore.add")(function* <A>(
 		);
 		yield* fs.writeFileString(path.join(staging, "package.json"), '{"private":true,"type":"module"}');
 
-		const fetched = yield* download(target, staging, cache, options.runner);
+		const fetched = yield* download({
+			target,
+			into: staging,
+			cache,
+			from: options.from,
+			...(options.runner === undefined ? {} : { runner: options.runner }),
+		});
 
 		// Nothing moved. Throw the work away rather than publish a redundant generation, or every
 		// update on an unchanged branch grows the store and Node's never-evicting module registry.
@@ -432,7 +444,7 @@ export type Updated<A> =
 export const update = Effect.fn("PluginStore.update")(function* <A>(
 	target: Fetchable,
 	cache: string,
-	options: { readonly validate: Validate<A>; readonly runner?: Runner; readonly probe: Probe },
+	options: { readonly validate: Validate<A>; readonly runner?: Runner; readonly probe: Probe; readonly from: string },
 ) {
 	const current = yield* resolve(target, cache);
 	// "not installed" is not "outdated": `add` is the verb for that, and refreshing something that
@@ -445,6 +457,7 @@ export const update = Effect.fn("PluginStore.update")(function* <A>(
 	const added = yield* add(target, cache, {
 		refresh: true,
 		validate: options.validate,
+		from: options.from,
 		...(options.runner === undefined ? {} : { runner: options.runner }),
 	});
 	// `add` throws away a refresh that found the same revision, so this can still be unchanged --

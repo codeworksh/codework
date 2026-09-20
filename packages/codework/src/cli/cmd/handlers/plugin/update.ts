@@ -18,7 +18,7 @@ export default Runtime.handler(
 	Effect.fn("CLI.plugin.update")(function* () {
 		const program = Effect.gen(function* () {
 			const shared = yield* Cmd.spec;
-			const { entries, cache } = yield* read(shared);
+			const { entries, cache, hostDir } = yield* read(shared);
 
 			let updated = 0;
 			let failed = 0;
@@ -28,7 +28,8 @@ export default Runtime.handler(
 				if (target === undefined) continue;
 
 				const result = yield* Plugin.update(target, cache, {
-					probe: probe(cache),
+					probe: probe(cache, hostDir),
+					from: hostDir,
 					// Validated while staged, so a refresh that fetches something broken leaves
 					// the generation already in use as the answer.
 					validate: (fetched) =>

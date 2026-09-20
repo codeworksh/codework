@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { download, entrypoint, type Runner } from "../src/plugin/npm.ts";
+import { download, entrypoint, options, type Runner } from "../src/plugin/npm.ts";
 import { InstallError } from "../src/plugin/error.ts";
 import { parse, type Fetchable } from "../src/plugin/source.ts";
 
@@ -52,7 +52,9 @@ describe("download", () => {
 	it("reports a registry install's version as its revision", () =>
 		withDirectory(async (directory) => {
 			const into = await staging(directory);
-			const fetched = await Effect.runPromise(download(fetchable("acme@^1"), into, directory, runner()));
+			const fetched = await Effect.runPromise(
+				download({ target: fetchable("acme@^1"), into, cache: directory, from: directory, runner: runner() }),
+			);
 			expect(fetched).toMatchObject({ name: "acme", version: "1.4.2", revision: "1.4.2" });
 			expect(fetched.entrypoint.endsWith("index.js")).toBe(true);
 		}));
@@ -62,12 +64,13 @@ describe("download", () => {
 			const into = await staging(directory);
 			const sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
 			const fetched = await Effect.runPromise(
-				download(
-					fetchable("github:acme/plugins#main"),
+				download({
+					target: fetchable("github:acme/plugins#main"),
 					into,
-					directory,
-					runner({ lockfile: lock("plugins", `git+ssh://git@github.com/acme/plugins.git#${sha}`) }),
-				),
+					cache: directory,
+					from: directory,
+					runner: runner({ lockfile: lock("plugins", `git+ssh://git@github.com/acme/plugins.git#${sha}`) }),
+				}),
 			);
 			expect(fetched.revision).toBe(sha);
 			// The version is still reported, and is still not the revision: a branch that moves
@@ -80,7 +83,15 @@ describe("download", () => {
 			const into = await staging(directory);
 			// No lockfile at all: nothing to recover the commit from.
 			const failure = await Effect.runPromise(
-				Effect.flip(download(fetchable("github:acme/plugins#main"), into, directory, runner())),
+				Effect.flip(
+					download({
+						target: fetchable("github:acme/plugins#main"),
+						into,
+						cache: directory,
+						from: directory,
+						runner: runner(),
+					}),
+				),
 			);
 			// Falling back to "1.4.2" here would make `check` report an update forever and `add`
 			// discard the bytes it just fetched, because version would always equal version.
@@ -104,7 +115,9 @@ describe("download", () => {
 				seen.push(input.into);
 				return runner()(input);
 			};
-			await Effect.runPromise(download(fetchable("acme@1.0.0"), link, directory, spy));
+			await Effect.runPromise(
+				download({ target: fetchable("acme@1.0.0"), into: link, cache: directory, from: directory, runner: spy }),
+			);
 			// The whole chain is resolved, not just the last link.
 			expect(seen).toEqual([realpathSync(real)]);
 		}));
@@ -117,9 +130,13 @@ describe("download", () => {
 			await writeFile(join(local, "index.js"), "export default {}");
 
 			const fetched = await Effect.runPromise(
-				download({ kind: "local", path: local }, "/unused", directory, () =>
-					Effect.die(new Error("a local target must never be installed")),
-				),
+				download({
+					target: { kind: "local", path: local },
+					into: "/unused",
+					cache: directory,
+					from: directory,
+					runner: () => Effect.die(new Error("a local target must never be installed")),
+				}),
 			);
 			expect(fetched.directory).toBe(local);
 			// Nothing to compare a re-resolve against: a local plugin is never filed.
@@ -161,5 +178,59 @@ describe("entrypoint", () => {
 			await writeFile(join(root, "package.json"), JSON.stringify({ name: "acme", exports: {} }));
 			const failure = await Effect.runPromise(Effect.flip(entrypoint(directory, "acme")));
 			expect(failure.reason).toBe("plugin-no-entrypoint");
+		}));
+});
+
+/*
+ * Where auth comes from. Neither half of it is visible in an install's result, so both are
+ * asserted on the config that produces them -- see §15 Q2.
+ */
+describe("options", () => {
+	const project = async (directory: string) => {
+		const from = join(directory, "project", "packages", "app");
+		await mkdir(from, { recursive: true });
+		// The token lives at the repository root, not in the directory the person is standing in.
+		const root = join(directory, "project");
+		await writeFile(join(root, "package.json"), '{"name":"acme-project"}');
+		await writeFile(
+			join(root, ".npmrc"),
+			"@acme:registry=https://registry.acme.invalid/\n//registry.acme.invalid/:_authToken=s3cret\n",
+		);
+		return { root, from };
+	};
+
+	it("reads the .npmrc chain where the person is, walking up as npm would", () =>
+		withDirectory(async (directory) => {
+			const { from } = await project(directory);
+			const flat = await Effect.runPromise(options(from, join(directory, "cache")));
+			// A private registry and its token, from a file two directories above `from`. Pinning
+			// npm's local prefix would find neither.
+			expect(flat["//registry.acme.invalid/:_authToken"]).toBe("s3cret");
+			expect(flat["allowGit"]).toBe("root");
+		}));
+
+	it("does not read it from the staging directory the package is installed into", () =>
+		withDirectory(async (directory) => {
+			await project(directory);
+			// Staging lives inside the store, under the cache. It is where the bytes land and it
+			// has nothing to do with the repository whose plugin is being installed -- a chain
+			// read here resolves a private scope against the public registry.
+			const staging = join(directory, "cache", "plugins", "v1", "acme", "staging");
+			await mkdir(staging, { recursive: true });
+			const flat = await Effect.runPromise(options(staging, join(directory, "cache")));
+			expect(flat["//registry.acme.invalid/:_authToken"]).toBeUndefined();
+		}));
+
+	it("names no env, so git keeps the ambient agent and credential helper", () =>
+		withDirectory(async (directory) => {
+			const flat = await Effect.runPromise(options(directory, join(directory, "cache")));
+			/*
+			 * npm hands git `opts.env` when one is present and falls back to
+			 * `{ ...gitDefaults, ...process.env }` when it is not. An `env` here -- even a copy of
+			 * `process.env` -- would put private git auth one careless prune away from breaking,
+			 * with no error to read: `SSH_AUTH_SOCK` is how the agent is found, `HOME` is how
+			 * `~/.gitconfig` names the credential helper, and `PATH` is how `git` itself is found.
+			 */
+			expect("env" in flat).toBe(false);
 		}));
 });

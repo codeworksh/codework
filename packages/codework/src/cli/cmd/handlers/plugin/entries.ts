@@ -63,12 +63,13 @@ export const read = Effect.fn("CLI.plugin.entries")(function* (shared: Shared) {
  * The network half, handed to the store so the store itself never opens a socket.
  *
  * `probe` bypasses pacote's own metadata cache, because a staleness check that reads a cache is
- * not a staleness check.
+ * not a staleness check. `from` is the host directory: a probe that read a different `.npmrc`
+ * chain than the install would answer about a registry nothing is ever fetched from.
  */
 export const probe =
-	(cache: string): Plugin.Probe =>
+	(cache: string, from: string): Plugin.Probe =>
 	(target) =>
-		Plugin.probe(target, cache);
+		Plugin.probe(target, cache, from);
 
 /** Only a fetched target has a store entry; a local one is loaded where it lies. */
 export const fetchable = (target: Plugin.Target | undefined): Plugin.Fetchable | undefined =>
