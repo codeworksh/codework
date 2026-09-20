@@ -1,5 +1,5 @@
 import { Global } from "@codeworksh/harness/effect";
-import { Effect, Option, Path } from "effect";
+import { Effect, FileSystem, Option, Path } from "effect";
 import { Runtime } from "../../../../framework/runtime.ts";
 import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
@@ -20,8 +20,15 @@ export default Runtime.handler(
 		const program = Effect.gen(function* () {
 			const shared = yield* Cmd.spec;
 			const path = yield* Path.Path;
+			const fs = yield* FileSystem.FileSystem;
 			const paths = yield* Global.resolve(Option.isNone(shared.home) ? {} : { home: shared.home.value });
-			const target = yield* resolveTarget(shared, userWide);
+			const target = yield* resolveTarget(shared, userWide, undefined, false);
+			// Removing from a directory that is not a project is a read-only no-op. In particular, it
+			// must not create the marker that would make this directory shadow a real project later.
+			if (!(yield* fs.exists(path.dirname(target.path)))) {
+				yield* writeOut(`Plugin "${reference}" is not configured in ${target.path}\n`);
+				return;
+			}
 			const spelled = yield* spellings(reference, path.resolve("."));
 			yield* withPluginsLock(
 				target.path,

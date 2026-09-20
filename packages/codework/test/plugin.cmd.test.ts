@@ -121,6 +121,23 @@ describe("codework plugin add/remove", () => {
 			expect(twice.stdout).toContain("is not configured");
 		}));
 
+	it("does not create a project when removing from an unconfigured directory", () => {
+		const root = mkdtempSync(join(tmpdir(), "codework-plugin-remove-"));
+		const home = join(root, "home");
+		try {
+			const removed = spawnSync(
+				process.execPath,
+				["--conditions=development", cli, "plugin", "remove", "@acme/missing", "--home", home],
+				{ encoding: "utf8", cwd: root, timeout: 60_000 },
+			);
+			expect(removed.status).toBe(0);
+			expect(removed.stdout).toContain("is not configured");
+			expect(existsSync(join(root, ".codework"))).toBe(false);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("adds a loader before configuration that already names the plugin", () =>
 		withProject(({ root, run }) => {
 			const target = plugin("codework-tool-proc");
@@ -452,6 +469,22 @@ describe("codework plugin install/list/check", () => {
 			const listed = run("plugin", "list");
 			expect(listed.status).toBe(0);
 			expect(listed.stdout).toContain("No plugins are configured.");
+		}));
+
+	it("does not treat a package configuration patch as a module to install", () =>
+		withProject(({ root, run }) => {
+			writeFileSync(
+				settings(root),
+				JSON.stringify({ plugins: [{ package: "@acme/never-installed", options: { limit: 5 } }] }),
+			);
+
+			const listed = run("plugin", "list");
+			expect(listed.status).toBe(0);
+			expect(listed.stdout).toContain("No plugins are configured.");
+
+			const installed = run("plugin", "install");
+			expect(installed.status).toBe(0);
+			expect(installed.stdout).toContain("0 installed");
 		}));
 
 	it("installs what the settings already declare, and says so when there is nothing to do", () =>

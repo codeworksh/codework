@@ -196,6 +196,7 @@ export const layer = (
 	follow: (
 		refs: ReadonlyArray<PluginRef>,
 		current: Pool,
+		settings: Info,
 	) => Effect.Effect<Option.Option<Pool>, { readonly message: string }>,
 	/**
 	 * A full load pass, told to re-import even where nothing looks different. Resolve-only, like
@@ -290,7 +291,7 @@ export const layer = (
 						// Re-read inside the permit: whoever held it may have just done this exact
 						// work, and adopting their result is the point.
 						const current = yield* Ref.get(pool);
-						const moved = yield* follow(refs, current);
+						const moved = yield* follow(refs, current, loadedSettings);
 						if (Option.isNone(moved)) return current;
 						return yield* activate(moved.value);
 					}).pipe(loading.withPermits(1), Effect.mapError(failed));

@@ -6,7 +6,7 @@
  * valid result:
  *
  * 1. `<Global.home>/settings.jsonc`            -- the user's own, `~/.codework` by default
- * 2. `codework.jsonc` or `.codework/settings.jsonc` found from `<hostDir>` upward
+ * 2. `.codework/settings.jsonc` found from `<hostDir>` upward
  *                                              -- committed with the project; the nearest file
  *                                                 wins, it is never merged with an outer one
  * 3. `<--user-config-dir>/settings.jsonc`     -- explicit override, `~` expanded, relative to `hostDir`

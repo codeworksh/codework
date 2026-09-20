@@ -313,9 +313,10 @@ describe("plugin catalog and source resolution", () => {
 		expect(ssh.kind === "git" && ssh.slug).toBe("plugins");
 	});
 
-	it("reduces a git source to its slug and a package to its name", () => {
+	it("keeps a git source collision-free and reduces a package to its name", () => {
 		expect(named("@acme/codework-tool-proc@1.2.0")).toBe("@acme/codework-tool-proc");
-		expect(named("github:acme/plugins#main")).toBe("plugins");
+		expect(named("github:acme/plugins#main")).toBe("github:acme/plugins#main");
+		expect(named("gitlab:other/plugins#main")).not.toBe(named("github:acme/plugins#main"));
 		expect(named("./plugins/x.ts", "/project")).toBe("/project/plugins/x.ts");
 	});
 

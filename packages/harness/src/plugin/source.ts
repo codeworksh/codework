@@ -155,7 +155,9 @@ export const canonical = (target: Target): string => {
 		case "registry":
 			return target.name;
 		case "git":
-			return target.slug;
+			// A slug is only a readable store-directory label. Two remotes can end in the same
+			// repository name, so the full spec is the only collision-free configuration identity.
+			return target.spec;
 	}
 };
 

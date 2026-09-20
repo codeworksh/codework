@@ -134,8 +134,8 @@ export const layer = (options: Options = {}) =>
 			const pool = yield* Ref.make<Pool>(
 				yield* load(references(config), { ...resolveOnly, declared: declaredIn(config) }),
 			);
-			const followStore = (refs: ReadonlyArray<PluginRef>, current: Pool) =>
-				follow(refs, current, resolveOnly, filed);
+			const followStore = (refs: ReadonlyArray<PluginRef>, current: Pool, settings: SettingsInfo) =>
+				follow(refs, current, { ...resolveOnly, declared: declaredIn(settings) }, filed);
 
 			/*
 			 * A reload re-imports everything, including the local plugins nothing else can notice

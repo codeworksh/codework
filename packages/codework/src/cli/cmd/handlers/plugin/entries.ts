@@ -16,17 +16,12 @@ export interface Entry {
 	readonly reference: string;
 	/** Which settings file declared it. */
 	readonly file: string;
-	/** Absent for a plugin entry that only configures something else, and for a local path. */
+	/** Absent for an unparseable entry and for a local path. */
 	readonly target: Plugin.Target | undefined;
 }
 
-/** A settings entry names a module as a bare string or as `package`; `plugin` configures one. */
-const moduleOf = (entry: unknown): string | undefined => {
-	if (typeof entry === "string") return entry;
-	if (typeof entry !== "object" || entry === null) return undefined;
-	const value = (entry as { readonly package?: unknown }).package;
-	return typeof value === "string" ? value : undefined;
-};
+/** Only a string entry loads a module; `{ package }` is configuration for one already selected. */
+const moduleOf = (entry: unknown): string | undefined => (typeof entry === "string" ? entry : undefined);
 
 export const read = Effect.fn("CLI.plugin.entries")(function* (shared: Shared) {
 	const nodePath = yield* Path.Path;

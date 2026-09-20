@@ -31,20 +31,9 @@ export default Runtime.handler(
 					probe: probe(cache, hostDir),
 					from: hostDir,
 					// Validated while staged, so a refresh that fetches something broken leaves
-					// the generation already in use as the answer.
-					validate: (fetched) =>
-						Plugin.definition(fetched.entrypoint, entry.reference).pipe(
-							Effect.asVoid,
-							Effect.mapError(
-								(cause) =>
-									new Plugin.InstallError({
-										reason: "plugin-no-entrypoint",
-										reference: entry.reference,
-										message: `${entry.reference} is not a plugin`,
-										cause,
-									}),
-							),
-						),
+					// the generation already in use as the answer. Preserve the loader's reason:
+					// an import failure or invalid definition is not a missing entrypoint.
+					validate: (fetched) => Plugin.definition(fetched.entrypoint, entry.reference).pipe(Effect.asVoid),
 				}).pipe(Effect.result);
 
 				if (result._tag === "Failure") {

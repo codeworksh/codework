@@ -253,6 +253,8 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (
 	 * design, so it has no host directory to offer.
 	 */
 	from?: string,
+	/** Only `plugin add` may establish a project marker when no project exists yet. */
+	create = true,
 ) {
 	const fs = yield* FileSystem.FileSystem;
 	const nodePath = yield* Path.Path;
@@ -279,6 +281,7 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (
 		} satisfies Target;
 	}
 	const marker = nodePath.join(cwd, ".codework");
+	if (!create) return { path: nodePath.join(marker, "settings.jsonc"), root: cwd } satisfies Target;
 	yield* fs.makeDirectory(marker, { recursive: true });
 	return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: cwd } satisfies Target;
 });
