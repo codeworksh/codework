@@ -234,3 +234,34 @@ describe("options", () => {
 			expect("env" in flat).toBe(false);
 		}));
 });
+
+/*
+ * The one spelling that is wrong *silently*.
+ *
+ * Every other wrong-directory bug in this module -- T7, T9, T10 -- was a perfectly valid absolute
+ * path that answered about the wrong tree, and no assertion can catch those. A relative one is
+ * different in kind: node and npm both resolve it against `process.cwd()` without a word, so the
+ * answer comes from whatever directory the process was started in. That is worth refusing.
+ */
+describe("a relative directory", () => {
+	it("is refused where a plugin reference would anchor to it", async () => {
+		// `./plugin.ts` against `packages/x` would resolve under the *process* directory, which
+		// for a server is nobody's project.
+		await expect(Effect.runPromise(parse("./plugin.ts", "packages/x"))).rejects.toThrow(/absolute path/);
+	});
+
+	it("is refused where npm would read the .npmrc chain from it", async () => {
+		// Measured: npm answers a relative `cwd` with a `localPrefix` of whatever repository the
+		// process happens to be inside, and reports no problem at all.
+		await expect(Effect.runPromise(options("some/relative/dir", "/tmp/cache"))).rejects.toThrow(/absolute path/);
+		await expect(Effect.runPromise(options("/tmp/project", "relative-cache"))).rejects.toThrow(/absolute path/);
+	});
+
+	it("is not confused with a directory that is merely wrong", () =>
+		withDirectory(async (directory) => {
+			// An absolute path that names the wrong tree is indistinguishable from the right one,
+			// which is the whole lesson: this guard removes a spelling, not a class of mistake.
+			const flat = await Effect.runPromise(options(directory, join(directory, "cache")));
+			expect(flat["allowGit"]).toBe("root");
+		}));
+});

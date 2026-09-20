@@ -34,7 +34,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
 import { resolveModule } from "../util/module.ts";
 import { InstallError } from "./error.ts";
-import type { Fetchable, Target } from "./source.ts";
+import { rooted, type Fetchable, type Target } from "./source.ts";
 
 /** What an install produced, and everything downstream needs to file it. */
 export interface Fetched {
@@ -89,6 +89,15 @@ const Lockfile = Schema.Struct({
  * git silently, months from the change. §15 Q2.
  */
 export const options = (dir: string, cache: string): Effect.Effect<Record<string, unknown>> =>
+	// Outside `tryPromise`, so the guard below cannot be mistaken for npm being unreachable and
+	// swallowed by the `orElseSucceed` at the bottom.
+	Effect.suspend(() => {
+		const root = rooted(dir, "the directory a plugin install reads its .npmrc chain from");
+		const store = rooted(cache, "the npm cache");
+		return npmOptions(root, store);
+	});
+
+const npmOptions = (dir: string, cache: string): Effect.Effect<Record<string, unknown>> =>
 	Effect.tryPromise(async () => {
 		const { default: Config } = await import("@npmcli/config");
 		const { definitions, flatten, nerfDarts, shorthands } = (await import("@npmcli/config/lib/definitions/index.js"))
