@@ -409,11 +409,16 @@ export const check = Effect.fn("PluginStore.check")(function* (
 	const record = (yield* PluginIndex.read(base)).get(key);
 	const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 
-	if (options.refresh !== true && record?.checkedAt !== undefined && now - record.checkedAt < CHECK_TTL) {
+	if (
+		options.refresh !== true &&
+		record?.checkedAt !== undefined &&
+		now - record.checkedAt < CHECK_TTL &&
+		(record.outdated !== true || record.available !== undefined)
+	) {
 		return record.outdated === true
 			? ({
 					_tag: "outdated",
-					available: record.revision ?? "",
+					available: record.available!,
 					...(entry.revision === undefined ? {} : { filed: entry.revision }),
 				} as const)
 			: ({ _tag: "current", ...(entry.revision === undefined ? {} : { revision: entry.revision }) } as const);
@@ -424,7 +429,7 @@ export const check = Effect.fn("PluginStore.check")(function* (
 		return { _tag: "current", ...(entry.revision === undefined ? {} : { revision: entry.revision }) } as const;
 	}
 	const outdated = available !== entry.revision;
-	yield* PluginIndex.patch(base, key, { checkedAt: now, outdated });
+	yield* PluginIndex.patch(base, key, { checkedAt: now, outdated, available });
 	return outdated
 		? ({ _tag: "outdated", available, ...(entry.revision === undefined ? {} : { filed: entry.revision }) } as const)
 		: ({ _tag: "current", ...(entry.revision === undefined ? {} : { revision: entry.revision }) } as const);

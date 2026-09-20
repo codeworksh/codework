@@ -150,7 +150,16 @@ export const layer = (options: Options = {}) =>
 					// Re-read from the same root this process booted with, so the rebuilt pool
 					// holds what the old one did plus whatever was added since.
 					const current = yield* Settings.load({ ...settingsOptions, home: paths.home, hostDir: hostCwd });
-					return yield* load(references(current), {
+					const loaded = yield* Ref.get(pool);
+					// Reload is process-wide. Include modules discovered lazily from every linked
+					// session, not only the project the server happened to start in.
+					// The current root comes last so an edited spec replaces an older origin with
+					// the same plugin ID while unrelated session plugins remain loaded.
+					const accumulated = [
+						...Array.from(loaded.origins.values(), (origin) => origin.reference),
+						...references(current),
+					];
+					return yield* load(accumulated, {
 						...resolveOnly,
 						declared: declaredIn(current),
 						reload: reloads,

@@ -9,7 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { InstallError } from "../src/plugin/error.ts";
 import type { Runner } from "../src/plugin/npm.ts";
 import { parse, type Fetchable } from "../src/plugin/source.ts";
-import { add, all, collect, remove, resolve, root } from "../src/plugin/store.ts";
+import { add, all, check, collect, remove, resolve, root } from "../src/plugin/store.ts";
 
 /** Domain 2 against a fixture downloader. Nothing here reaches the network. */
 
@@ -179,6 +179,24 @@ describe("the store", () => {
 			expect(same.entry.generation).toBe(first.entry.generation);
 			const directory = entryDir(cache, "fixture", "fixture@latest");
 			expect((await readdir(directory)).filter((name) => /^\d+$/.test(name))).toHaveLength(1);
+		}));
+
+	it("keeps the available revision when an outdated check is served from the TTL cache", () =>
+		withCache(async (cache) => {
+			const target = fetchable("fixture");
+			await Effect.runPromise(install("fixture", cache, fixture("1.0.0")));
+			let probes = 0;
+			const probe = () => {
+				probes++;
+				return Effect.succeed("1.1.0");
+			};
+
+			const first = await Effect.runPromise(check(target, cache, { probe }));
+			const cached = await Effect.runPromise(check(target, cache, { probe }));
+
+			expect(first).toEqual({ _tag: "outdated", filed: "1.0.0", available: "1.1.0" });
+			expect(cached).toEqual(first);
+			expect(probes).toBe(1);
 		}));
 
 	it("answers from the index, and repairs it when it disagrees with disk", () =>

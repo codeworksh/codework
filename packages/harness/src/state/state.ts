@@ -15,6 +15,7 @@
 import type { Model, Protocol } from "@codeworksh/aikit";
 import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
 import { Event } from "../event/event.ts";
+import { EventRegistry } from "../event/registry.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
 import { run as setup } from "../plugin/host.ts";
 import { select, type Pool, type PluginRef } from "../plugin/catalog.ts";
@@ -213,6 +214,7 @@ export const layer = (
 			const runtime = yield* SessionRuntime.Service;
 			const sessions = yield* SessionStore.Service;
 			const settings = yield* Settings.Service;
+			const eventRegistry = yield* EventRegistry.Service;
 			const events = makeEvents(yield* Event.Service);
 			/*
 			 * One load pass at a time, for the whole process.
@@ -227,19 +229,25 @@ export const layer = (
 			 * the load pass, and it is cheap because it is only ever taken when something moved.
 			 */
 			const loading = yield* Semaphore.make(1);
+			const activate = Effect.fn("State.activatePlugins")(function* (next: Pool) {
+				// Validation and the pool swap are one uninterruptible operation: a bad event definition
+				// never becomes runnable, and the registry cannot describe a different pool than State holds.
+				yield* eventRegistry.replace([...next.plugins.values()]);
+				yield* Ref.set(pool, next);
+				return next;
+			}, Effect.uninterruptible);
 			return Service.of({
 				reload: Effect.gen(function* () {
 					// Swaps the module set for the whole process. Which of those a given session
 					// runs stays that session's own question, answered by its config pass at the
 					// next exchange.
-					const rebuilt = yield* rebuild().pipe(Effect.result);
+					const rebuilt = yield* rebuild().pipe(Effect.flatMap(activate), loading.withPermits(1), Effect.result);
 					if (rebuilt._tag === "Failure") {
 						yield* Effect.logWarning(
 							`plugin reload failed, keeping the previous set: ${rebuilt.failure.message}`,
 						);
 						return { plugins: (yield* Ref.get(pool)).plugins.size, failure: rebuilt.failure.message };
 					}
-					yield* Ref.set(pool, rebuilt.success);
 					return { plugins: rebuilt.success.plugins.size };
 				}),
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
@@ -284,8 +292,7 @@ export const layer = (
 						const current = yield* Ref.get(pool);
 						const moved = yield* follow(refs, current);
 						if (Option.isNone(moved)) return current;
-						yield* Ref.set(pool, moved.value);
-						return moved.value;
+						return yield* activate(moved.value);
 					}).pipe(loading.withPermits(1), Effect.mapError(failed));
 
 					// The config pass: pure data over what is already loaded, so it runs every

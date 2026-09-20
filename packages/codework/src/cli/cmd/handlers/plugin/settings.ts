@@ -208,6 +208,24 @@ export const writePlugins = Effect.fn("CLI.plugin.writePlugins")(function* (
 });
 
 /**
+ * Serialize one settings read-modify-rename across CLI processes.
+ *
+ * The install or inspection that precedes an edit stays outside this scope; only the local edit is
+ * locked, so unrelated downloads do not wait behind one another.
+ */
+export const withPluginsLock = <A, E, R>(path: string, edit: Effect.Effect<A, E, R>) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const nodePath = yield* Path.Path;
+		yield* fs.makeDirectory(nodePath.dirname(path), { recursive: true });
+		yield* Plugin.settingsLock(
+			`${path}.lock`,
+			() => new InvalidInputError({ message: `timed out waiting to edit ${path}` }),
+		);
+		return yield* edit;
+	}).pipe(Effect.scoped);
+
+/**
  * Which file the edit lands in.
  *
  * A plugin belongs to a project by default — it is part of how that repository is worked on, so

@@ -12,6 +12,7 @@ import { Database } from "../src/db/db.ts";
 import { SessionInputRow } from "../src/db/schema.sql.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
+import { EventRegistry } from "../src/event/registry.ts";
 import type { EventSchema } from "../src/event/schema.ts";
 import { RunnerExecute } from "../src/runner/execute.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
@@ -60,6 +61,7 @@ const runtime = (
 		Layer.provideMerge(SessionProjector.layer),
 		Layer.provideMerge(Session.layer),
 		Layer.provideMerge(Event.layer),
+		Layer.provideMerge(EventRegistry.layer()),
 		Layer.provideMerge(database),
 	);
 };

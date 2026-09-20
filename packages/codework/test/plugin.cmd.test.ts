@@ -1,5 +1,5 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- this suite spawns the CLI as a child process. */
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { spawn, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	chmodSync,
@@ -21,7 +21,7 @@ const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const plugin = (name: string) => fileURLToPath(new URL(`../../../extras/${name}`, import.meta.url));
 
 /** One temp project with its own home, so nothing here reads or writes the developer's settings. */
-const withProject = (body: (project: { root: string; home: string; run: Run }) => void) => {
+const withProject = async (body: (project: { root: string; home: string; run: Run }) => void | Promise<void>) => {
 	const root = mkdtempSync(join(tmpdir(), "codework-plugin-"));
 	const home = join(root, "home");
 	// A project is a directory holding `.codework/`. Most of these tests are about editing a
@@ -35,12 +35,18 @@ const withProject = (body: (project: { root: string; home: string; run: Run }) =
 			timeout: 60_000,
 		});
 	try {
-		body({ root, home, run });
+		await body({ root, home, run });
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
 };
 type Run = (...args: ReadonlyArray<string>) => SpawnSyncReturns<string>;
+
+const runAsync = (cwd: string, ...args: ReadonlyArray<string>) =>
+	new Promise<number | null>((resolve) => {
+		const child = spawn(process.execPath, ["--conditions=development", cli, ...args], { cwd, stdio: "ignore" });
+		child.on("exit", resolve);
+	});
 
 /** A fixed generation number, so a published fixture is byte-identical between runs. */
 const GENERATION = 1789564800000;
@@ -75,6 +81,24 @@ describe("codework plugin add/remove", () => {
 			expect(again.status).toBe(0);
 			expect(again.stdout).toContain("already configured");
 			expect(readFileSync(settings(root), "utf8")).toBe(file);
+		}));
+
+	it("serializes concurrent additions so neither successful edit is lost", () =>
+		withProject(async ({ root, home }) => {
+			for (const name of ["a", "b"]) {
+				writeFileSync(
+					join(root, `${name}.mjs`),
+					`export default { id: "acme.tool.${name}", kind: "tool", setup() {} };\n`,
+				);
+			}
+			writeFileSync(settings(root), JSON.stringify({ plugins: [] }));
+
+			const statuses = await Promise.all(
+				["a", "b"].map((name) => runAsync(root, "plugin", "add", `./${name}.mjs`, "--home", home)),
+			);
+
+			expect(statuses).toEqual([0, 0]);
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins.sort()).toEqual(["../a.mjs", "../b.mjs"]);
 		}));
 
 	it("removes the module entry and the configuration written against it", () =>

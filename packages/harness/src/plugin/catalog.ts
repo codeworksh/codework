@@ -342,10 +342,17 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	}
 
 	if (!moved) return Option.none<Pool>();
+	// The pool belongs to the process, while `references` belongs to one session. Rebuilding from
+	// only that session would evict modules loaded for every other project and make alternating
+	// sessions reload one another forever. Origins are the process-level reference set accumulated
+	// so far; `load` deduplicates unchanged modules by their resolved key.
+	// Retained origins come first so the current session's explicit reference wins when two specs
+	// declare the same plugin ID (for example `pkg@1` followed by `pkg@2`).
+	const accumulated = [...Array.from(pool.origins.values(), (origin) => origin.reference), ...references];
 	// A full load pass, which is cheap for everything that did not move: an unchanged module
 	// resolves to the same URL, and the module registry hands back the instance it already has
 	// without re-evaluating it. Only a new generation is a new URL, and only that is re-imported.
-	return Option.some(yield* load(references, options));
+	return Option.some(yield* load(accumulated, options));
 });
 
 /** Both passes, for a caller that wants the selection and has no reason to hold the pool. */

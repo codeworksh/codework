@@ -10,6 +10,7 @@ import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import { State } from "../src/state/state.ts";
 import { define } from "../src/plugin/plugin.ts";
+import type { Fetchable } from "../src/plugin/source.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 
 /*
@@ -200,6 +201,29 @@ describe("following the store at an exchange boundary", () => {
 		expect(Option.getOrThrow(moved).plugins.has("acme.prompt.new")).toBe(true);
 	});
 
+	it("keeps other session modules while the current reference replaces an earlier spec", async () => {
+		const first = marker("acme.prompt.a");
+		const second = marker("acme.prompt.a");
+		const other = marker("acme.prompt.b");
+		const modules = new Map([
+			["virtual:a@1", first],
+			["virtual:a@2", second],
+			["virtual:b@latest", other],
+		]);
+		const shared = {
+			...options,
+			install: (target: Fetchable) => Effect.succeed({ url: `virtual:${target.spec}`, generation: 1 }),
+			import: (url: string) => Promise.resolve({ default: modules.get(url) }),
+		};
+		const base = await Effect.runPromise(load(["a@1", "b"], shared));
+		const moved = await Effect.runPromise(follow(["a@2"], base, shared, () => Effect.succeedSome({ generation: 1 })));
+		const pool = Option.getOrThrow(moved);
+
+		expect([...pool.plugins.keys()].sort()).toEqual(["acme.prompt.a", "acme.prompt.b"]);
+		expect(pool.plugins.get("acme.prompt.a")).toBe(second);
+		expect(pool.aliases.has("b")).toBe(true);
+	});
+
 	it("leaves an entry the store does not hold, rather than fetching it", async () => {
 		const base = await Effect.runPromise(load([], options));
 		// Not filed, so nothing to follow. Reported by the config pass, never fetched here: an
@@ -376,6 +400,7 @@ describe("reload", () => {
 	const session = (input: {
 		readonly root: string;
 		readonly project: string;
+		readonly hostCwd?: string;
 		readonly prompts: string[];
 		readonly body: (state: State.Interface, run: () => Effect.Effect<void, unknown>) => Effect.Effect<void, unknown>;
 	}) => {
@@ -393,7 +418,7 @@ describe("reload", () => {
 				Effect.provide(
 					Harness.layer({
 						home: join(input.root, "home"),
-						hostCwd: input.project,
+						hostCwd: input.hostCwd ?? input.project,
 						database: ":memory:",
 						llm: (request, signal) => {
 							input.prompts.push(request.context.systemPrompt ?? "");
@@ -466,6 +491,67 @@ describe("reload", () => {
 
 						// A server that emptied its tool registry over a typo would be worse than
 						// one that keeps working and says so, so the previous set is still live.
+						yield* run();
+					}),
+			});
+			expect(prompts.at(-1)?.endsWith("before")).toBe(true);
+		}));
+
+	it("reloads a local plugin discovered from a linked session outside the startup project", () =>
+		withProject(async ({ root, project }) => {
+			const elsewhere = join(root, "elsewhere");
+			await mkdir(elsewhere, { recursive: true });
+			const file = join(project, "edited.mjs");
+			await write(file, "before");
+			await writeFile(join(project, ".codework", "settings.jsonc"), JSON.stringify({ plugins: [file] }));
+
+			const prompts: string[] = [];
+			await session({
+				root,
+				project,
+				hostCwd: elsewhere,
+				prompts,
+				body: (state, run) =>
+					Effect.gen(function* () {
+						yield* run();
+						yield* Effect.promise(() => write(file, "after"));
+						const reloaded = yield* state.reload;
+						expect(reloaded.failure).toBeUndefined();
+						yield* run();
+					}),
+			});
+			expect(prompts.map((prompt) => (prompt.endsWith("after") ? "after" : "before"))).toEqual(["before", "after"]);
+		}));
+
+	it("rejects an event definition on reload that the boot registry would reject", () =>
+		withProject(async ({ root, project }) => {
+			const file = join(project, "edited.mjs");
+			await write(file, "before");
+			await writeFile(join(project, ".codework", "settings.jsonc"), JSON.stringify({ plugins: [file] }));
+
+			const prompts: string[] = [];
+			await session({
+				root,
+				project,
+				prompts,
+				body: (state, run) =>
+					Effect.gen(function* () {
+						yield* run();
+						yield* Effect.promise(() =>
+							writeFile(
+								file,
+								[
+									"export default {",
+									"  id: 'acme.prompt.edited',",
+									"  kind: 'prompt',",
+									"  events: [{ type: 'session.created' }],",
+									"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}after`),",
+									"};",
+								].join("\n"),
+							),
+						);
+						const reloaded = yield* state.reload;
+						expect(reloaded.failure).toBeDefined();
 						yield* run();
 					}),
 			});

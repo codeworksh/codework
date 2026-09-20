@@ -5,7 +5,16 @@ import { reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
 import { linkedDirectory } from "./session.ts";
-import { identify, matches, readPlugins, resolveTarget, spellings, writePlugins, written } from "./settings.ts";
+import {
+	identify,
+	matches,
+	readPlugins,
+	resolveTarget,
+	spellings,
+	withPluginsLock,
+	writePlugins,
+	written,
+} from "./settings.ts";
 
 export default Runtime.handler(
 	Cmd.commands.plugin.commands.add,
@@ -50,42 +59,41 @@ export default Runtime.handler(
 				file: target.path,
 				root: target.root,
 			});
-			const { source, plugins } = yield* readPlugins(target.path);
-			const entries = yield* identify(plugins, target.path, paths.cache);
 			const spelled = yield* spellings(reference, from);
-			// Configured already if any spelling of an existing entry names this plugin -- the same
-			// package under a different version, the path it was added by, or the ID it declares. A
-			// `{ plugin }` and `{ package }` entries only configure an existing loader, so neither
-			// can satisfy `add` alone.
-			const names = (entry: (typeof entries)[number]) => matches(entry, spelled) || entry.answers.has(plugin.id);
 			const version = plugin.version === undefined ? "" : `@${plugin.version}`;
+			yield* withPluginsLock(
+				target.path,
+				Effect.gen(function* () {
+					const { source, plugins } = yield* readPlugins(target.path);
+					const entries = yield* identify(plugins, target.path, paths.cache);
+					// Configured already if any spelling of an existing entry names this plugin -- the same
+					// package under a different version, the path it was added by, or the ID it declares.
+					const names = (candidate: (typeof entries)[number]) =>
+						matches(candidate, spelled) || candidate.answers.has(plugin.id);
+					const existing = entries.findIndex((candidate) => candidate.loads && names(candidate));
+					if (existing >= 0) {
+						const current = entries[existing]?.value;
+						if (current === entry) {
+							yield* writeOut(`Plugin "${reference}" is already configured in ${target.path}\n`);
+							return;
+						}
+						const replaced = [...plugins];
+						replaced[existing] = entry;
+						yield* writePlugins(target.path, source, replaced);
+						yield* writeOut(
+							`Updated ${plugin.id} (${String(current)} -> ${entry}${version}) in ${target.path}\n`,
+						);
+						return;
+					}
 
-			// A loader for this plugin is already there. Adding it under a different spelling -- a
-			// new version, or the path instead of the package -- is a request to load that one
-			// instead, so the entry is rewritten in place rather than duplicated: two loaders for
-			// one plugin is a state the harness resolves by discarding the first, which is exactly
-			// the confusion the user was trying to avoid by running `add` again.
-			const existing = entries.findIndex((entry) => entry.loads && names(entry));
-			if (existing >= 0) {
-				const current = entries[existing]?.value;
-				if (current === entry) {
-					yield* writeOut(`Plugin "${reference}" is already configured in ${target.path}\n`);
-					return;
-				}
-				const replaced = [...plugins];
-				replaced[existing] = entry;
-				yield* writePlugins(target.path, source, replaced);
-				yield* writeOut(`Updated ${plugin.id} (${String(current)} -> ${entry}${version}) in ${target.path}\n`);
-				return;
-			}
-
-			// Put the loader before existing configuration so its options apply to the module.
-			const configured = entries.findIndex((entry) => !entry.loads && names(entry));
-			const updated = [...plugins];
-			updated.splice(configured < 0 ? updated.length : configured, 0, entry);
-			yield* writePlugins(target.path, source, updated);
-
-			yield* writeOut(`Added ${plugin.id} (${entry}${version}) to ${target.path}\n`);
+					// Put the loader before existing configuration so its options apply to the module.
+					const configured = entries.findIndex((candidate) => !candidate.loads && names(candidate));
+					const updated = [...plugins];
+					updated.splice(configured < 0 ? updated.length : configured, 0, entry);
+					yield* writePlugins(target.path, source, updated);
+					yield* writeOut(`Added ${plugin.id} (${entry}${version}) to ${target.path}\n`);
+				}),
+			);
 		});
 
 		return yield* program.pipe(Effect.catch(reportFailure));

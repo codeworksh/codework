@@ -44,6 +44,8 @@ export const Record_ = Schema.Struct({
 	// resets it to "never checked", which costs one call on the next check.
 	checkedAt: Schema.optional(Schema.Finite),
 	outdated: Schema.optional(Schema.Boolean),
+	/** The remote revision observed at `checkedAt`; distinct from the installed `revision`. */
+	available: Schema.optional(Schema.String),
 });
 export type Record_ = typeof Record_.Type;
 

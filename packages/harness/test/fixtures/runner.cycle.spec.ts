@@ -16,6 +16,7 @@ import { Context } from "../../src/context/context.ts";
 import { Control } from "../../src/control.ts";
 import { Database } from "../../src/db/db.ts";
 import { Event } from "../../src/event/event.ts";
+import { EventRegistry } from "../../src/event/registry.ts";
 import { RunnerExecute } from "../../src/runner/execute.ts";
 import { Loop } from "../../src/runner/loop.ts";
 import { SandboxController } from "../../src/sandbox/control.ts";
@@ -51,6 +52,7 @@ const runtime = (root: string, custom: string) =>
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionLive.layer),
 		Layer.provideMerge(Event.layer),
+		Layer.provideMerge(EventRegistry.layer()),
 		Layer.provideMerge(database),
 	);
 
