@@ -15,16 +15,29 @@ export default Runtime.handler(
 			const path = yield* Path.Path;
 			const paths = yield* Global.resolve(Option.isNone(shared.home) ? {} : { home: shared.home.value });
 
-			// Install and import before touching the file: a spec that turns out not to be a plugin
-			// should fail here, with its own error, rather than at the next run from a file the user
-			// then has to repair by hand.
-			const plugin = yield* Plugin.inspect(reference, { cache: paths.cache, hostDir: path.resolve(".") });
-
 			// A session names the project to write into when the shell's directory is not it --
 			// a server or a UI acting on a session's behalf, rather than a person standing in the
 			// repository. It fails when that session has no project, which is a state `session
 			// link` exists to fix.
 			const linked = Option.isNone(session) ? undefined : yield* linkedDirectory(session.value, shared.home);
+			/*
+			 * One directory answers every question this command asks about the reference, and it
+			 * is resolved before any of them.
+			 *
+			 * A relative spec anchors here, the `.npmrc` chain governing the install is read from
+			 * here, and the entry is written anchored here. Splitting them is not a cosmetic
+			 * inconsistency: under `--session` the shell's directory is a server's, so validating
+			 * `./plugins/x.ts` against it imports one file and writes a reference to another, and
+			 * reading the `.npmrc` chain from it installs from the wrong registry -- a private
+			 * scope's token lives in the project being written to, not wherever the server runs.
+			 */
+			const from = linked ?? path.resolve(".");
+
+			// Install and import before touching the file: a spec that turns out not to be a plugin
+			// should fail here, with its own error, rather than at the next run from a file the user
+			// then has to repair by hand.
+			const plugin = yield* Plugin.inspect(reference, { cache: paths.cache, hostDir: from });
+
 			const target = yield* resolveTarget(shared, userWide, linked);
 			// Said before the entry is written, because it is the more consequential of the two
 			// facts: it decides where every future plugin entry lands, and it shadows any outer
@@ -33,13 +46,13 @@ export default Runtime.handler(
 			// What goes in the file, which is not always what was typed: a relative path anchors to
 			// the settings file being written, not to the directory the command ran in.
 			const entry = yield* written(reference, {
-				cwd: linked ?? path.resolve("."),
+				cwd: from,
 				file: target.path,
 				root: target.root,
 			});
 			const { source, plugins } = yield* readPlugins(target.path);
 			const entries = yield* identify(plugins, target.path, paths.cache);
-			const spelled = yield* spellings(reference, path.resolve("."));
+			const spelled = yield* spellings(reference, from);
 			// Configured already if any spelling of an existing entry names this plugin -- the same
 			// package under a different version, the path it was added by, or the ID it declares. A
 			// `{ plugin }` and `{ package }` entries only configure an existing loader, so neither

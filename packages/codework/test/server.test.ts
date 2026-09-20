@@ -4,7 +4,7 @@ import { DateTime, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Stream
 import { HttpServer } from "effect/unstable/http";
 import { RpcTest } from "effect/unstable/rpc";
 import { execFile } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
 
 process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 const exec = promisify(execFile);
+const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 
 const homes: string[] = [];
 const layer = (options: Harness.Options = {}) => {
@@ -126,6 +127,56 @@ describe("server", () => {
 			Effect.runPromise,
 		);
 	});
+
+	it("anchors a plugin reference to the session's project, not the directory the CLI ran in", () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-server-linked-"));
+		homes.push(home);
+		const project = join(realpathSync(home), "project");
+		const elsewhere = join(realpathSync(home), "elsewhere");
+		mkdirSync(join(project, ".codework"), { recursive: true });
+		mkdirSync(join(project, "tool"), { recursive: true });
+		mkdirSync(elsewhere, { recursive: true });
+		writeFileSync(
+			join(project, "tool", "package.json"),
+			JSON.stringify({ name: "local-tool", type: "module", exports: "./index.js" }),
+		);
+		writeFileSync(
+			join(project, "tool", "index.js"),
+			'export default { id: "acme.tool.local", kind: "tool", setup() {} };\n',
+		);
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const created = yield* rpc["session.create"]({});
+			yield* rpc["session.link"]({ sessionId: created.id, hostDir: project });
+
+			/*
+			 * `--session` exists for a server or a UI acting on a session's behalf, so the shell's
+			 * directory is not the project and often is not a project at all. Every question this
+			 * command asks about the reference has to be asked of the same directory: `./tool`
+			 * exists under the session's project and nowhere near `elsewhere`, so a command that
+			 * anchored to its own cwd would fail to find it -- and one that anchored `parse` and
+			 * the written entry differently would import one file and record another.
+			 */
+			yield* Effect.promise(() =>
+				exec(
+					process.execPath,
+					["--conditions=development", cli, "plugin", "add", "./tool", "--session", created.id, "--home", home],
+					{
+						cwd: elsewhere,
+					},
+				),
+			);
+
+			const written = readFileSync(join(project, ".codework", "settings.jsonc"), "utf8");
+			// Relative to the settings file that holds it, which is `<project>/.codework/`.
+			expect(written).toContain('"../tool"');
+		}).pipe(
+			Effect.scoped,
+			Effect.provide(layer({ home, database: join(home, "data", "codework.db") })),
+			Effect.runPromise,
+		);
+	}, 120_000);
 
 	it("plugin.reload reports the loaded set", () =>
 		Effect.gen(function* () {
