@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { follow, load, select, type PluginRef, type Pool } from "../src/plugin/catalog.ts";
+import { Event } from "../src/event/event.ts";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import { State } from "../src/state/state.ts";
@@ -509,7 +510,10 @@ describe("reload", () => {
 		readonly project: string;
 		readonly hostCwd?: string;
 		readonly prompts: string[];
-		readonly body: (state: State.Interface, run: () => Effect.Effect<void, unknown>) => Effect.Effect<void, unknown>;
+		readonly body: (
+			state: State.Interface,
+			run: () => Effect.Effect<void, unknown>,
+		) => Effect.Effect<void, unknown, Event.Service>;
 	}) => {
 		const open = immediateOpen();
 		return Effect.runPromise(
@@ -663,6 +667,50 @@ describe("reload", () => {
 					}),
 			});
 			expect(prompts.at(-1)?.endsWith("before")).toBe(true);
+		}));
+
+	it("publishes a plugin.updated notice for each lifecycle transition", () =>
+		withProject(async ({ root, project }) => {
+			const file = join(project, "edited.mjs");
+			const settings = join(project, ".codework", "settings.jsonc");
+			await write(file, "before");
+			await writeFile(settings, JSON.stringify({ plugins: [file] }));
+
+			const prompts: string[] = [];
+			await session({
+				root,
+				project,
+				prompts,
+				body: (state, _run) =>
+					Effect.gen(function* () {
+						const seen: Array<{ status?: string; id?: string; reference?: string; file?: string }> = [];
+						yield* (yield* Event.Service).listen((event) =>
+							event.type === "plugin.updated"
+								? Effect.sync(() => {
+										seen.push(event.data as (typeof seen)[number]);
+									})
+								: Effect.void,
+						);
+
+						// The boot load ran before `listen` attached, so the first notice is the reload's
+						// re-import -- a changed module instance is what `loaded` reports.
+						yield* state.reload;
+						// The plugin leaves settings and its file is gone: the next rebuild drops the
+						// retained origin rather than failing on it.
+						yield* Effect.promise(() => writeFile(settings, JSON.stringify({ plugins: [] })));
+						yield* Effect.promise(() => rm(file));
+						yield* state.reload;
+						// Back in settings, but the module cannot be imported now.
+						yield* Effect.promise(() => writeFile(settings, JSON.stringify({ plugins: [file] })));
+						yield* Effect.promise(() => writeFile(file, "export default { nope: true };"));
+						yield* state.reload;
+
+						expect(seen.map((event) => event.status)).toEqual(["loaded", "dropped", "failed"]);
+						expect(seen[0]).toMatchObject({ id: "acme.prompt.edited", reference: file, file: settings });
+						expect(seen[1]).toMatchObject({ id: "acme.prompt.edited", reference: file, file: settings });
+					}),
+			});
+			expect(prompts.length).toBe(0);
 		}));
 });
 

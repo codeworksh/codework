@@ -15,10 +15,11 @@
 import type { Model, Protocol } from "@codeworksh/aikit";
 import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
 import { Event } from "../event/event.ts";
+import { EventList } from "../event/list.ts";
 import { EventRegistry } from "../event/registry.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
 import { run as setup } from "../plugin/host.ts";
-import { select, type Pool, type PluginRef } from "../plugin/catalog.ts";
+import { select, type Origin, type Pool, type PluginRef } from "../plugin/catalog.ts";
 import { LLM } from "../runner/llm.ts";
 import type { Runner } from "../runner/run.ts";
 import { Location } from "../location/location.ts";
@@ -216,7 +217,8 @@ export const layer = (
 			const sessions = yield* SessionStore.Service;
 			const settings = yield* Settings.Service;
 			const eventRegistry = yield* EventRegistry.Service;
-			const events = makeEvents(yield* Event.Service);
+			const eventService = yield* Event.Service;
+			const events = makeEvents(eventService);
 			/*
 			 * One load pass at a time, for the whole process.
 			 *
@@ -230,13 +232,44 @@ export const layer = (
 			 * the load pass, and it is cheap because it is only ever taken when something moved.
 			 */
 			const loading = yield* Semaphore.make(1);
+			const updated = (origin: Origin, id: string, status: "loaded" | "dropped") =>
+				eventService.publish(EventList.PluginUpdated, {
+					status,
+					reference: origin.reference,
+					id,
+					...(origin.file === undefined ? {} : { file: origin.file }),
+				});
 			const activate = Effect.fn("State.activatePlugins")(function* (next: Pool) {
+				const previous = yield* Ref.get(pool);
 				// Validation and the pool swap are one uninterruptible operation: a bad event definition
 				// never becomes runnable, and the registry cannot describe a different pool than State holds.
 				yield* eventRegistry.replace([...next.plugins.values()]);
 				yield* Ref.set(pool, next);
+				// One ephemeral notice per transition, published only after the swap lands so a
+				// listener always reads the pool the notice describes. A changed module instance is
+				// the load signal: it covers a new plugin, a superseding generation, and a
+				// re-imported local file alike.
+				for (const [id, origin] of next.origins) {
+					if (next.plugins.get(id) === previous.plugins.get(id)) continue;
+					yield* updated(origin, id, "loaded");
+				}
+				for (const [id, origin] of previous.origins) {
+					if (next.origins.has(id)) continue;
+					yield* updated(origin, id, "dropped");
+				}
 				return next;
 			}, Effect.uninterruptible);
+			// The boot set goes through the same shape; ephemeral means only a listener already
+			// attached sees it.
+			for (const [id, origin] of (yield* Ref.get(pool)).origins) {
+				yield* updated(origin, id, "loaded");
+			}
+			const publishFailed = (cause: { readonly message: string }) =>
+				eventService.publish(EventList.PluginUpdated, {
+					status: "failed",
+					error: cause.message,
+					...("reference" in cause && typeof cause.reference === "string" ? { reference: cause.reference } : {}),
+				});
 			return Service.of({
 				reload: Effect.gen(function* () {
 					// Swaps the module set for the whole process. Which of those a given session
@@ -247,6 +280,7 @@ export const layer = (
 						yield* Effect.logWarning(
 							`plugin reload failed, keeping the previous set: ${rebuilt.failure.message}`,
 						);
+						yield* publishFailed(rebuilt.failure);
 						return { plugins: (yield* Ref.get(pool)).plugins.size, failure: rebuilt.failure.message };
 					}
 					return { plugins: rebuilt.success.plugins.size };
@@ -291,7 +325,7 @@ export const layer = (
 						// Re-read inside the permit: whoever held it may have just done this exact
 						// work, and adopting their result is the point.
 						const current = yield* Ref.get(pool);
-						const moved = yield* follow(refs, current, loadedSettings);
+						const moved = yield* follow(refs, current, loadedSettings).pipe(Effect.tapError(publishFailed));
 						if (Option.isNone(moved)) return current;
 						return yield* activate(moved.value);
 					}).pipe(loading.withPermits(1), Effect.mapError(failed));
