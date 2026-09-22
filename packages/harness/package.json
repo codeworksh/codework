@@ -73,7 +73,7 @@
 		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
 		"lint": "vp lint",
 		"release": "node ../../scripts/publish.mjs harness",
-		"release:dev": "node ../../scripts/publish.mjs harness --dev",
+		"release:dev": "node ../../scripts/publish.mjs harness --dev --latest",
 		"release:dry": "node ../../scripts/publish.mjs harness --dry-run",
 		"test": "vp test",
 		"test:sandbox:package": "node test/scripts/codework-sandbox-vercel-smoke.mjs",

@@ -19,7 +19,7 @@ const workspaceMap = new Map([
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness|@codeworksh/plugin> [--dev] [--stage] [npm publish args]",
+		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness|@codeworksh/plugin> [--dev] [--latest] [--stage] [npm publish args]",
 	);
 	process.exit(1);
 }
@@ -42,6 +42,7 @@ function parsePublishOptions(args) {
 	const forwardArgs = [];
 	let dev = false;
 	let stage = false;
+	let latest = false;
 	let publishVersion;
 
 	for (let index = 0; index < args.length; index++) {
@@ -55,6 +56,11 @@ function parsePublishOptions(args) {
 
 		if (arg === "--stage") {
 			stage = true;
+			continue;
+		}
+
+		if (arg === "--latest") {
+			latest = true;
 			continue;
 		}
 
@@ -82,7 +88,7 @@ function parsePublishOptions(args) {
 		process.exit(1);
 	}
 
-	return { dev, forwardArgs, publishVersion, stage };
+	return { dev, forwardArgs, latest, publishVersion, stage };
 }
 
 async function readJSON(path) {
@@ -114,6 +120,19 @@ function run(command, args, cwd, envOverrides = {}, replaceEnv = false) {
 
 		proc.on("close", (code) => resolveExit(code ?? 1));
 		proc.on("error", () => resolveExit(1));
+	});
+}
+
+/** Run a command and return its stdout, or undefined when it fails. For asking npm a question. */
+function capture(command, args) {
+	return new Promise((resolveOutput) => {
+		const proc = spawn(command, args, { stdio: ["ignore", "pipe", "ignore"] });
+		let out = "";
+		proc.stdout.on("data", (chunk) => {
+			out += chunk;
+		});
+		proc.on("close", (code) => resolveOutput(code === 0 ? out.trim() : undefined));
+		proc.on("error", () => resolveOutput(undefined));
 	});
 }
 
@@ -221,6 +240,22 @@ function rewritePublishValue(value) {
 	return value;
 }
 
+/**
+ * The version of a workspace dependency to write into the published manifest.
+ *
+ * The manifest version is the right answer only when that version was actually released. A
+ * package published exclusively as a prerelease has none: `@codeworksh/plugin`'s manifest says
+ * `0.0.1` while the registry holds only `0.0.1-dev.*`, so writing the manifest version verbatim
+ * ships a dependency that resolves to nothing and every install fails with ETARGET.
+ *
+ * So ask the registry. Prefer the manifest version when it exists, and fall back to whatever the
+ * dependency's `dev` tag points at. That needs no per-package configuration and stays correct as
+ * packages move between prerelease and stable: `@codeworksh/aikit@0.8.0` is a real release and
+ * resolves to itself, while a dev-only package resolves to its newest dev build.
+ *
+ * The range is exact, which matters here: a caret never matches a prerelease, so `^0.0.1` would
+ * not select `0.0.1-dev.5` even once it exists.
+ */
 async function resolveWorkspaceVersion(packageName) {
 	const workspaceDir = workspaceMap.get(packageName);
 	if (!workspaceDir) {
@@ -232,7 +267,18 @@ async function resolveWorkspaceVersion(packageName) {
 		throw new Error(`Workspace package version missing for ${packageName}`);
 	}
 
-	return workspaceManifest.version;
+	const declared = workspaceManifest.version;
+	if (await capture("npm", ["view", `${packageName}@${declared}`, "version"])) return declared;
+
+	const dev = await capture("npm", ["view", `${packageName}@dev`, "version"]);
+	if (dev) {
+		console.error(`  ${packageName}: ${declared} is unpublished; depending on ${dev} (its dev tag)`);
+		return dev;
+	}
+
+	throw new Error(
+		`Cannot depend on ${packageName}: neither ${declared} nor a dev tag is published. Publish it first.`,
+	);
 }
 
 function rewriteWorkspaceRange(range, version) {
@@ -417,5 +463,24 @@ const exitCode = await run(
 );
 await rm(publishDir, { recursive: true, force: true });
 await rm(npmCacheDir, { recursive: true, force: true });
+
+/*
+ * `latest` is assigned once, on a package's first publish, and never moves again on its own --
+ * `npm publish --tag dev` sets `dev` and leaves `latest` on whatever went up first. For a package
+ * released only as prereleases that means `npm install <pkg>` keeps serving the oldest build ever
+ * published, which is how a known-broken one stayed on `latest` here.
+ *
+ * Opt in rather than implied by `--dev`: a package with a real release (`@codeworksh/aikit@0.8.0`)
+ * must not have `latest` dragged onto a prerelease by a routine dev publish.
+ */
+if (exitCode === 0 && publishOptions.latest && !hasFlag(forwardArgs, "--dry-run")) {
+	const target = `${manifest.name}@${publishVersion}`;
+	console.error(`Pointing latest at ${target}`);
+	const tagExit = await run("npm", ["dist-tag", "add", target, "latest"], repoRoot);
+	if (tagExit !== 0) {
+		console.error(`Published ${target}, but could not move the latest tag; do it by hand.`);
+		process.exit(tagExit);
+	}
+}
 
 process.exit(exitCode);
