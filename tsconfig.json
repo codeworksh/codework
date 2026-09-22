@@ -22,7 +22,7 @@
 			"@codeworksh/harness/effect": ["./packages/harness/src/effect.ts"],
 			"@codeworksh/harness/sandbox": ["./packages/harness/src/sandbox.ts"],
 			"@codeworksh/harness/sandboxes/daytona": ["./packages/harness/src/sandboxes/daytona/index.ts"],
-			"@codeworksh/harness/sandboxes/vercel": ["./packages/harness/src/sandboxes/vercel/index.ts"],
+			"@codeworksh/harness/sandboxes/vercel": ["./packages/harness/src/sandboxes/vercel/index.ts"]
 		},
 		"types": ["node"],
 		"strict": true,
@@ -35,7 +35,7 @@
 		"skipLibCheck": true,
 		"incremental": true,
 		"noEmit": true,
-		"tsBuildInfoFile": "./.cache/typescript/root.tsbuildinfo",
+		"tsBuildInfoFile": "./.cache/typescript/root.tsbuildinfo"
 	},
-	"include": ["vite.config.ts"],
+	"include": ["vite.config.ts"]
 }
