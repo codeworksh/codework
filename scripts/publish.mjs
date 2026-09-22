@@ -442,6 +442,12 @@ if (publishTag === "dev" && !isPrereleaseVersion(publishVersion)) {
 
 publishArgs.push(...forwardArgs);
 
+// State the plan before doing any of it: which version goes up, under which tag, and whether
+// `latest` moves. These are exactly the three things a mis-publish gets wrong.
+console.error(
+	`Publishing ${manifest.name}@${publishVersion} under tag "${publishTag ?? "latest"}"` +
+		`${publishOptions.latest && publishTag !== undefined ? ", and moving latest to it" : ""}`,
+);
 console.error(`Building ${manifest.name}@${manifest.version} in ${packageDir}`);
 
 const buildExitCode = await run("pnpm", ["run", "build"], packageDir);
