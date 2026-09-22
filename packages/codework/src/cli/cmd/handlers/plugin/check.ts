@@ -15,7 +15,7 @@ import { fetchable, probe, read } from "./entries.ts";
  */
 export default Runtime.handler(
 	Cmd.commands.plugin.commands.check,
-	Effect.fn("CLI.plugin.check")(function* () {
+	Effect.fn("CLI.plugin.check")(function* ({ refresh }) {
 		const program = Effect.gen(function* () {
 			const shared = yield* Cmd.spec;
 			const { entries, cache } = yield* read(shared);
@@ -29,6 +29,7 @@ export default Runtime.handler(
 				if (target === undefined) continue;
 
 				const state = yield* Plugin.check(target, cache, {
+					refresh,
 					probe: probe(cache, entry.from),
 					from: entry.from,
 				}).pipe(Effect.result);

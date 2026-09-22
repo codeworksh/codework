@@ -188,8 +188,23 @@ export const Cmd = Spec.make("codework", {
 				}),
 				Spec.make("check", {
 					description: "Report which configured plugins have a newer revision available",
-					params: {},
-					examples: [{ command: "codework plugin check", description: "Ask the registry what has moved" }],
+					params: {
+						// An answer is reused for an hour, which is right for a command someone may
+						// run repeatedly and wrong for the minute after they pushed a plugin. Without
+						// this there is no way to say "ask again", and `check` reports a moving branch
+						// as current while `update` — which always refreshes — moves it.
+						refresh: Flag.Boolean("refresh").pipe(
+							Flag.withDescription("Ask the remote again instead of reusing a recent answer"),
+							Flag.withDefault(false),
+						),
+					},
+					examples: [
+						{ command: "codework plugin check", description: "Ask the registry what has moved" },
+						{
+							command: "codework plugin check --refresh",
+							description: "Ignore the cached answer, after pushing a plugin",
+						},
+					],
 				}),
 				Spec.make("update", {
 					description: "Fetch a newer revision of every plugin that has one",
