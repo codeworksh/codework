@@ -49,11 +49,22 @@ declare module "@npmcli/config/lib/definitions/index.js" {
 }
 
 declare module "pacote" {
-	/** The manifest a spec resolves to right now. */
-	export function manifest(
-		spec: string,
-		options?: Record<string, unknown>,
-	): Promise<{ readonly version?: string; readonly name?: string }>;
-	/** The resolved URL a spec points at; for git it carries `#<sha>`. */
-	export function resolve(spec: string, options?: Record<string, unknown>): Promise<string>;
+	/**
+	 * Declared as a default export because that is what `import("pacote")` actually hands back.
+	 * pacote is CommonJS and builds `module.exports` in a way Node's named-export detection does
+	 * not see through, so `manifest` and `resolve` exist only on `default`. Declaring them as
+	 * named exports type-checks and then throws "pacote.resolve is not a function" at runtime --
+	 * where `probe` catches it and reports `cannot reach <spec>`, blaming the network.
+	 */
+	interface Pacote {
+		/** The manifest a spec resolves to right now. */
+		readonly manifest: (
+			spec: string,
+			options?: Record<string, unknown>,
+		) => Promise<{ readonly version?: string; readonly name?: string }>;
+		/** The resolved URL a spec points at; for git it carries `#<sha>`. */
+		readonly resolve: (spec: string, options?: Record<string, unknown>) => Promise<string>;
+	}
+	const pacote: Pacote;
+	export default pacote;
 }

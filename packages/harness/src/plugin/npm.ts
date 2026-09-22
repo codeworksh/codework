@@ -415,7 +415,7 @@ export const probe = Effect.fn("PluginNpm.probe")(function* (target: Target, cac
 	// `_isRoot` is what `allowGit: "root"` keys on: this spec is the one the person asked about,
 	// not a dependency of something else.
 	const opts = { ...flat, preferOnline: true, noGitRevCache: true, _isRoot: true };
-	const pacote = yield* Effect.promise(() => import("pacote"));
+	const { default: pacote } = yield* Effect.promise(() => import("pacote"));
 	return yield* Effect.tryPromise({
 		try: async () =>
 			target.kind === "registry"
