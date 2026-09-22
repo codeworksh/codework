@@ -92,6 +92,20 @@ export async function resolveAISDKLanguageModel(
 		};
 	}
 
+	if (npm === "@codeworksh/ai-sdk-github-copilot") {
+		// Copilot uses the session id for X-Interaction-Id request grouping.
+		if (options.sessionId) factoryOptions.sessionId ??= options.sessionId;
+
+		const budgetField = Model.thinkingTokenBudgetField(model);
+		if (budgetField && thinkingTokenBudget !== undefined && thinkingTokenBudget > 0) {
+			factoryOptions.transformRequestBody = thinkingTokenBudgetTransform(
+				budgetField,
+				thinkingTokenBudget,
+				factoryOptions.transformRequestBody,
+			);
+		}
+	}
+
 	const provider = createProvider(factoryOptions);
 	return resolveLanguageModel(provider, model, options.method);
 }

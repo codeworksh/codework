@@ -9,6 +9,8 @@
 
 import { stream as aikitStream, llm, type Event as AikitEvent, type Message, type Model } from "@codeworksh/aikit";
 import * as AikitFailure from "@codeworksh/aikit/failure";
+import { getGitHubCopilotApiKey, JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
+import { getOpenAICodexApiKey, JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Duration, Effect, Exit, Fiber, Scope, Stream } from "effect";
 import type { SessionSchema } from "../session/schema.ts";
 import type { State } from "../state/state.ts";
@@ -40,6 +42,14 @@ export type Open = (
 	AsyncIterable<AikitEvent.LLMMessageEvent>,
 	Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError
 >;
+
+export interface OpenOptions {
+	/**
+	 * `auth.json` holding OAuth credentials for providers that have no API key
+	 * environment variable. Omitted, aikit resolves its own default location.
+	 */
+	readonly authFile?: string;
+}
 
 export type Request = (
 	input: RequestInput,
@@ -175,14 +185,65 @@ export const resolve: Resolve = Effect.fn("LLM.resolve")(function* (input) {
 	return model;
 });
 
+/**
+ * Fill in what an OAuth provider needs and the model catalog cannot carry: the
+ * stored access token, and for Copilot the plan-specific inference host chosen
+ * at login. Anything the request already pins is left alone, and a provider
+ * with no stored login resolves to `{}` so aikit reports the missing key.
+ */
+// oxlint-disable-next-line effecttsgo/async-function -- aikit's OAuth clients are Promise-based.
+const oauthCredentials = async (
+	protocol: string,
+	options: OpenOptions,
+): Promise<{ apiKey?: string; baseURL?: string }> => {
+	const storage = options.authFile === undefined ? {} : { path: options.authFile };
+
+	if (protocol === "openai-codex") {
+		const apiKey = await getOpenAICodexApiKey({ storage: new JsonOpenAICodexAuthStorage(storage) });
+		return apiKey === undefined ? {} : { apiKey };
+	}
+
+	if (protocol === "github-copilot") {
+		const store = new JsonGitHubCopilotAuthStorage(storage);
+		const stored = await store.get();
+		const apiKey = await getGitHubCopilotApiKey({ storage: store });
+		if (apiKey === undefined) return {};
+		// The plan-specific host belongs to the account the login was issued for,
+		// so it only travels with that credential -- an environment token may be a
+		// different account entirely, and routing it to this host would 401.
+		const apiEndpoint = apiKey === stored?.access ? stored.apiEndpoint : undefined;
+		return { apiKey, ...(apiEndpoint === undefined ? {} : { baseURL: apiEndpoint }) };
+	}
+
+	return {};
+};
+
 /** Start a provider stream using the model pinned by State. */
-export const open: Open = Effect.fn("LLM.open")(function* (input, signal) {
-	const model = input.resolvedModel;
-	return yield* Effect.try({
-		try: () => aikitStream(model, input.context, runtimeOptions(input, model, signal)),
-		catch: (cause) => providerErrorFromUnknown(input, cause),
+export const openWith = (options: OpenOptions = {}): Open =>
+	Effect.fn("LLM.open")(function* (input, signal) {
+		const model = input.resolvedModel;
+		const configured = runtimeOptions(input, model, signal);
+
+		const resolved =
+			configured.apiKey === undefined
+				? yield* Effect.tryPromise({
+						try: () => oauthCredentials(model.protocol, options),
+						catch: (cause) => providerErrorFromUnknown(input, cause),
+					})
+				: {};
+		const request = {
+			...configured,
+			...resolved,
+			...(configured.baseURL === undefined ? {} : { baseURL: configured.baseURL }),
+		};
+
+		return yield* Effect.try({
+			try: () => aikitStream(model, input.context, request),
+			catch: (cause) => providerErrorFromUnknown(input, cause),
+		});
 	});
-});
+
+export const open: Open = openWith();
 
 /**
  * Build a provider request from an opener. Tests use this with deterministic

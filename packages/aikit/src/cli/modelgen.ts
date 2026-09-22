@@ -4,6 +4,7 @@ import type { CommandModule } from "yargs";
 import { DEFAULT_AI_SDK_FALLBACK, isAISDKPackage, protocolForPackage } from "../llm/registry.ts";
 import * as ModelCatalog from "../model/catalog.ts";
 import * as Model from "../model/model.ts";
+import { GITHUB_COPILOT_STATIC_HEADERS } from "../providers/github-copilot/copilot-headers.ts";
 import * as Filesystem from "../utils/filesystem.ts";
 import { lazy } from "../utils/lazy.ts";
 
@@ -37,7 +38,21 @@ interface ModelsDevModel {
 		output?: number;
 		cache_read?: number;
 		cache_write?: number;
+		tiers?: Array<{
+			input?: number;
+			output?: number;
+			cache_read?: number;
+			cache_write?: number;
+			tier?: { type?: string; size?: number };
+		}>;
 	};
+	reasoning_options?: Array<{
+		type?: string;
+		values?: string[];
+		min?: number;
+		max?: number;
+	}>;
+	status?: string;
 	limit?: {
 		context?: number;
 		output?: number;
@@ -180,32 +195,6 @@ function mergeThinkingLevelMap(model: Model.Info, map: ThinkingLevelMap): void {
 	model.thinkingLevelMap = { ...model.thinkingLevelMap, ...map };
 }
 
-/**
- * Claude models that decide their own thinking depth.
- *
- * These take an `effort` level and let the model size each turn's reasoning; the
- * older models take a fixed `budget_tokens` instead. Sending a budget to an
- * adaptive model pins it to one depth for every turn, which is the thing adaptive
- * thinking exists to avoid.
- */
-function isAnthropicAdaptiveThinkingModel(modelId: string): boolean {
-	return [
-		"opus-4-6",
-		"opus-4.6",
-		"opus-4-7",
-		"opus-4.7",
-		"opus-4-8",
-		"opus-4.8",
-		"opus-5",
-		"opus.5",
-		"sonnet-4-6",
-		"sonnet-4.6",
-		"sonnet-5",
-		"sonnet.5",
-		"fable-5",
-	].some((needle) => modelId.includes(needle));
-}
-
 function mergeCompat(model: Model.Info, compat: Model.Compatibility): void {
 	model.compat = { ...model.compat, ...compat };
 }
@@ -251,7 +240,7 @@ function applyModelMetadata(model: Model.Info): void {
 	if (
 		(model.protocol === Model.KnownProviderEnum.anthropic ||
 			model.protocol === Model.KnownProviderEnum.googleVertexAnthropic) &&
-		isAnthropicAdaptiveThinkingModel(model.id)
+		Model.isAnthropicAdaptiveThinkingModel(model.id)
 	) {
 		mergeCompat(model, { forceAdaptiveThinking: true });
 	}
@@ -420,12 +409,189 @@ export function openAICodexBuiltInModels(): Record<string, Model.Info> {
 	return models;
 }
 
+//
+// GitHub Copilot models.
+// Sourced from models.dev, then rewritten onto the bundled provider: one
+// `github-copilot` protocol whose `api.method` selects between Chat
+// Completions, Responses, and Anthropic Messages.
+const GITHUB_COPILOT_PROVIDER_ID = "github-copilot";
+const GITHUB_COPILOT_NPM = "@codeworksh/ai-sdk-github-copilot";
+const GITHUB_COPILOT_BASE_URL = "https://api.githubcopilot.com";
+const GITHUB_COPILOT_EXTENDED_CONTEXT = 1_000_000;
+
+// GitHub's "Models with extended capabilities" table lists these Copilot
+// models as supporting the extended 1 million token context window (pi).
+const GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS = new Set([
+	"claude-fable-5",
+	"claude-opus-4.6",
+	"claude-opus-4.7",
+	"claude-opus-4.8",
+	"claude-opus-5",
+	"claude-sonnet-4.6",
+	"claude-sonnet-5",
+	"gpt-5.3-codex",
+	"gpt-5.4",
+	"gpt-5.5",
+]);
+
+// Checked manually against the authenticated GitHub Copilot /models endpoint
+// (pi). Narrow corrections over models.dev metadata, not a catalog snapshot.
+const GITHUB_COPILOT_THINKING_LEVEL_OVERRIDES: Record<string, ThinkingLevelMap> = {
+	"claude-opus-4.7": { minimal: "low" },
+	"claude-opus-4.8": { minimal: "low" },
+	"claude-opus-5": { minimal: "low" },
+	"claude-sonnet-4.6": { minimal: "low", max: "max" },
+};
+
+/**
+ * The offline routing approximation (pi). The live `/models` response's
+ * `supported_endpoints` is authoritative at runtime.
+ *
+ * - `claude-(haiku|sonnet|opus|fable)-[45]` → Anthropic Messages
+ * - `gpt-*`, `grok-*`, `oswe*`, `mai-*` → OpenAI Responses
+ * - everything else → OpenAI Chat Completions
+ */
+export function githubCopilotApiMethod(modelId: string): Model.APIMethodEnum {
+	if (/^claude-(haiku|sonnet|opus|fable)-[45]([.-]|$)/.test(modelId)) {
+		return Model.APIMethodEnum.messages;
+	}
+	const gpt = /^gpt-(\d+)/.exec(modelId);
+	if (
+		(gpt !== null && Number(gpt[1]) >= 5) ||
+		modelId.startsWith("grok-") ||
+		modelId.startsWith("oswe") ||
+		modelId.startsWith("mai-")
+	) {
+		return Model.APIMethodEnum.responses;
+	}
+	return Model.APIMethodEnum.chat;
+}
+
+/** Effort values models.dev advertises for a model, when it lists any. */
+function githubCopilotEffortValues(model: ModelsDevModel): Set<string> | undefined {
+	for (const option of model.reasoning_options ?? []) {
+		if (option.type === "effort" && Array.isArray(option.values)) return new Set(option.values);
+	}
+	return undefined;
+}
+
+/**
+ * Derive the level map from models.dev `reasoning_options`: a level maps to
+ * itself only when the endpoint actually advertises it. `minimal` degrades to
+ * `low` — the lowest effort every reasoning model accepts.
+ */
+function githubCopilotThinkingLevels(model: ModelsDevModel, method: Model.APIMethodEnum): ThinkingLevelMap | undefined {
+	const efforts = githubCopilotEffortValues(model);
+	const map: ThinkingLevelMap = {};
+	// Copilot rejects `reasoningEffort: "none"` (pi), and the chat route has no
+	// reasoning control, so only Messages models can disable thinking.
+	if (method !== Model.APIMethodEnum.messages) map.off = null;
+	if (!efforts) return Object.keys(map).length > 0 ? map : undefined;
+
+	if (efforts.has("minimal")) map.minimal = "minimal";
+	else if (efforts.has("low")) map.minimal = "low";
+	for (const level of ["low", "medium", "high", "xhigh", "max"] as const) {
+		map[level] = efforts.has(level) ? level : null;
+	}
+	return map;
+}
+
+function githubCopilotCostTiers(model: ModelsDevModel): Model.Info["cost"]["tiers"] | undefined {
+	const tiers = model.cost?.tiers?.flatMap((tier) => {
+		const context = tier.tier;
+		if (context?.type !== "context" || context.size === undefined) return [];
+		return [
+			{
+				inputTokensAbove: context.size,
+				input: tier.input ?? 0,
+				output: tier.output ?? 0,
+				cacheRead: tier.cache_read ?? 0,
+				cacheWrite: tier.cache_write ?? 0,
+			},
+		];
+	});
+	return tiers && tiers.length > 0 ? tiers : undefined;
+}
+
+export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefined): Record<string, Model.Info> {
+	const models: Record<string, Model.Info> = {};
+	if (!provider) return models;
+	for (const [id, source] of Object.entries(provider.models)) {
+		if (source.tool_call !== true) continue;
+		if (source.status === "deprecated") continue;
+		// The chat-latest alias races the Responses route for gpt-5 models.
+		if (id === "gpt-5-chat-latest") continue;
+
+		const base = applyModification(GITHUB_COPILOT_PROVIDER_ID, provider, source);
+		if (!base) continue;
+
+		const method = githubCopilotApiMethod(id);
+		const tiers = githubCopilotCostTiers(source);
+		const info: Model.Info = {
+			...base,
+			provider: {
+				id: GITHUB_COPILOT_PROVIDER_ID,
+				name: "GitHub Copilot",
+				source: "custom",
+				env: ["COPILOT_GITHUB_TOKEN"],
+			},
+			baseUrl: GITHUB_COPILOT_BASE_URL,
+			headers: { ...GITHUB_COPILOT_STATIC_HEADERS },
+			cost: { ...base.cost, ...(tiers ? { tiers } : {}) },
+			npm: GITHUB_COPILOT_NPM,
+			api: { id, url: GITHUB_COPILOT_BASE_URL, method },
+			providerOptionsKey: GITHUB_COPILOT_PROVIDER_ID,
+			protocol: Model.KnownProviderEnum.githubCopilot,
+			// Copilot's Responses route requires store=false + encrypted reasoning
+			// content for thinking to round-trip.
+			...(method === Model.APIMethodEnum.responses
+				? {
+						providerOptions: {
+							...base.providerOptions,
+							[GITHUB_COPILOT_PROVIDER_ID]: {
+								store: false,
+								include: ["reasoning.encrypted_content"],
+							},
+						},
+					}
+				: {}),
+		};
+
+		if (GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS.has(id)) info.contextWindow = GITHUB_COPILOT_EXTENDED_CONTEXT;
+		if (method === Model.APIMethodEnum.messages && Model.isAnthropicAdaptiveThinkingModel(id)) {
+			mergeCompat(info, { forceAdaptiveThinking: true });
+		}
+		// Copilot's Responses endpoint passes OpenAI custom grammar tools through
+		// for GPT-5+ (verified by pi).
+		const gpt = /^gpt-(\d+)/.exec(id);
+		if (method === Model.APIMethodEnum.responses && gpt !== null && Number(gpt[1]) >= 5) {
+			mergeCompat(info, { supportsOpenAIGrammarTools: true });
+		}
+		if (id.startsWith("gpt-5")) mergeThinkingLevelMap(info, { off: null, minimal: "low" });
+		if (id.includes("fable-5")) mergeThinkingLevelMap(info, { off: null, xhigh: "xhigh", max: "max" });
+
+		const levels = githubCopilotThinkingLevels(source, method);
+		if (levels) mergeThinkingLevelMap(info, levels);
+		const override = GITHUB_COPILOT_THINKING_LEVEL_OVERRIDES[id];
+		if (override) mergeThinkingLevelMap(info, override);
+
+		models[id] = info;
+	}
+	return models;
+}
+
 export async function generateModels(args: { path?: string | undefined } = {}): Promise<string> {
 	const path = resolve(args.path ?? ModelCatalog.path());
+	const catalog = await pullModelsDevData();
 	const modelsDev = await loadBuiltInFromModelsDev();
 	const customCodexModels = openAICodexBuiltInModels();
+	const copilotProvider = catalog[GITHUB_COPILOT_PROVIDER_ID];
 
-	const allModels = { ...modelsDev, [OPENAI_CODEX_PROVIDER_ID]: customCodexModels };
+	const allModels = {
+		...modelsDev,
+		[OPENAI_CODEX_PROVIDER_ID]: customCodexModels,
+		...(copilotProvider ? { [GITHUB_COPILOT_PROVIDER_ID]: githubCopilotBuiltInModels(copilotProvider) } : {}),
+	};
 	await Filesystem.writeJson(path, allModels);
 	return path;
 }

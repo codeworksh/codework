@@ -18,14 +18,23 @@
 
 import dedent from "dedent";
 
+import { pollDeviceCode } from "../devcode.ts";
+import { JsonAuthStorage, isObject, readEnv } from "../storage.ts";
+
 const CODEWORK_OAUTH_CALLBACK_HOST = "CODEWORK_OAUTH_CALLBACK_HOST";
-const CODEWORK_CREDENTIALS = "CODEWORK_CREDENTIALS";
-const CODEWORK_HOME_DIR = "CODEWORK_HOME_DIR";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const DEFAULT_REDIRECT_URI = "http://localhost:1455/auth/callback";
+// Device code: no local port, so it works over SSH, in a container, and when
+// something else already holds 1455. The server mints the PKCE verifier and
+// redeems the code against its own callback.
+const DEVICE_USER_CODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
+const DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token";
+const DEVICE_VERIFICATION_URI = "https://auth.openai.com/codex/device";
+const DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback";
+const DEVICE_TIMEOUT_SECONDS = 15 * 60;
 const DEFAULT_SCOPE = "openid profile email offline_access";
 const DEFAULT_ORIGINATOR = "codework";
 const DEFAULT_PROVIDER_ID = "openai-codex";
@@ -73,11 +82,20 @@ export type OpenAICodexLoginPrompt = {
 	allowEmpty?: boolean;
 };
 
+export type OpenAICodexDeviceAuth = {
+	deviceAuthId: string;
+	userCode: string;
+	verificationUri: string;
+	intervalSeconds: number;
+};
+
 export type OpenAICodexLoginOptions = OpenAICodexAuthorizationOptions & {
-	onAuth: (info: { url: string; instructions?: string }) => void;
+	/** Use the device-code flow instead of the localhost browser callback. */
+	device?: boolean | undefined;
+	signal?: AbortSignal | undefined;
+	onAuth: (info: { url: string; userCode?: string | undefined; instructions?: string | undefined }) => void;
 	onPrompt: (prompt: OpenAICodexLoginPrompt) => Promise<string>;
 	onProgress?: (message: string) => void;
-	onManualCodeInput?: () => Promise<string>;
 };
 
 export interface OpenAICodexAuthStorage {
@@ -100,58 +118,16 @@ type JwtPayload = {
 
 type OAuthServerInfo = {
 	close: () => Promise<void>;
-	cancelWait: () => void;
 	waitForCode: () => Promise<{ code: string } | null>;
+	/** Set when the callback port could not be bound; login falls back to pasting. */
+	listenError?: Error;
 };
-
-type AuthFile = Record<string, unknown>;
 
 type TokenEndpointPayload = {
 	access_token?: string;
 	refresh_token?: string;
 	expires_in?: number;
 };
-
-function readEnv(name: string): string | undefined {
-	if (typeof process === "undefined") return undefined;
-	return process.env[name];
-}
-
-function joinPath(...parts: string[]): string {
-	return parts.filter(Boolean).join("/").replaceAll(/\/+/g, "/");
-}
-
-function expandHome(path: string): string {
-	if (path === "~") return homeDirectory();
-	if (path.startsWith("~/")) return joinPath(homeDirectory(), path.slice(2));
-	return path;
-}
-
-function homeDirectory(): string {
-	const home = readEnv("HOME") ?? readEnv("USERPROFILE");
-	if (!home) {
-		throw new Error("unable to resolve home directory for OpenAI Codex auth storage");
-	}
-	return home;
-}
-
-function codeworkHomeDirectory(): string {
-	const override = readEnv(CODEWORK_HOME_DIR);
-	if (override) return expandHome(override);
-	return joinPath(homeDirectory(), ".codework");
-}
-
-// Internal: the resolved location is exposed as `JsonOpenAICodexAuthStorage#path`.
-function defaultOpenAICodexAuthFilePath(): string {
-	const authFile = readEnv(CODEWORK_CREDENTIALS);
-	if (authFile) return expandHome(authFile);
-
-	return joinPath(codeworkHomeDirectory(), "aikit", "auth.json");
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isOpenAICodexCredentials(value: unknown): value is OpenAICodexOAuthCredentials {
 	if (!isObject(value)) return false;
@@ -456,7 +432,12 @@ function oauthErrorHtml(message: string, details?: string): string {
 	});
 }
 
-async function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
+async function startLocalOAuthServer(state: string, redirectUri: string): Promise<OAuthServerInfo> {
+	// The port and path are the ones the authorization server will redirect to:
+	// binding anything else means the callback arrives somewhere we are not.
+	const callback = new URL(redirectUri);
+	const port = Number(callback.port || (callback.protocol === "https:" ? 443 : 80));
+
 	const http = await import("node:http").catch(() => undefined);
 	if (!http) {
 		throw new Error("openAI codex OAuth callback server is only available in Node.js environments");
@@ -475,7 +456,7 @@ async function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
 	const server = http.createServer((req, res) => {
 		try {
 			const url = new URL(req.url || "", "http://localhost");
-			if (url.pathname !== "/auth/callback") {
+			if (url.pathname !== callback.pathname) {
 				res.statusCode = 404;
 				res.setHeader("Content-Type", "text/html; charset=utf-8");
 				res.end(oauthErrorHtml("Callback route not found."));
@@ -522,21 +503,18 @@ async function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
 
 	return new Promise((resolve) => {
 		server
-			.listen(1455, readEnv(CODEWORK_OAUTH_CALLBACK_HOST) || "127.0.0.1", () => {
+			.listen(port, readEnv(CODEWORK_OAUTH_CALLBACK_HOST) || "127.0.0.1", () => {
 				resolve({
 					close,
-					cancelWait: () => {
-						settleWait?.(null);
-					},
 					waitForCode: () => waitForCodePromise,
 				});
 			})
-			.on("error", () => {
+			.on("error", (error: Error) => {
 				settleWait?.(null);
 				resolve({
 					close,
-					cancelWait: () => {},
 					waitForCode: async () => null,
+					listenError: error,
 				});
 			});
 	});
@@ -546,55 +524,34 @@ async function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
 // which persists the credentials. Server integrations should use the
 // storage-free authorization helpers instead of this localhost-callback flow.
 async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promise<OpenAICodexOAuthCredentials> {
+	if (options.device) return loginOpenAICodexDeviceCode(options);
+
 	const flow = await createOpenAICodexAuthorizationFlow(options);
-	const server = await startLocalOAuthServer(flow.state);
+	const server = await startLocalOAuthServer(flow.state, flow.redirectUri);
 
 	options.onAuth({
 		url: flow.url,
 		instructions: "Complete the browser login to finish OpenAI Codex authentication.",
 	});
 
+	if (server.listenError) {
+		// The redirect URI is registered against the OAuth client, so the port
+		// cannot move. Whatever holds it -- usually another Codex login already in
+		// progress -- will receive this callback instead of us.
+		options.onProgress?.(
+			`Could not listen on ${flow.redirectUri}: ${server.listenError.message}. ` +
+				"Another sign-in is probably already running on that port and would receive the callback. " +
+				"Finish the login in the browser, then paste the redirect URL here.",
+		);
+	}
+
 	let code: string | undefined;
 	try {
-		if (options.onManualCodeInput) {
-			let manualCode: string | undefined;
-			let manualError: Error | undefined;
-			const manualPromise = options
-				.onManualCodeInput()
-				.then((input) => {
-					manualCode = input;
-					if (input.trim()) server.cancelWait();
-				})
-				.catch((error) => {
-					manualError = error instanceof Error ? error : new Error(String(error));
-					server.cancelWait();
-				});
+		const result = await server.waitForCode();
+		if (result?.code) code = result.code;
 
-			const result = await server.waitForCode();
-			if (manualError) throw manualError;
-
-			if (result?.code) {
-				code = result.code;
-			} else if (manualCode) {
-				const parsed = parseOpenAICodexAuthorizationInput(manualCode);
-				if (parsed.state && parsed.state !== flow.state) throw new Error("state mismatch");
-				code = parsed.code;
-			}
-
-			if (!code) {
-				await manualPromise;
-				if (manualError) throw manualError;
-				if (manualCode) {
-					const parsed = parseOpenAICodexAuthorizationInput(manualCode);
-					if (parsed.state && parsed.state !== flow.state) throw new Error("state mismatch");
-					code = parsed.code;
-				}
-			}
-		} else {
-			const result = await server.waitForCode();
-			if (result?.code) code = result.code;
-		}
-
+		// The callback never arrived -- the port was taken, or the browser could
+		// not reach us. Ask for the redirect URL instead.
 		if (!code) {
 			const input = await options.onPrompt({
 				message: "Paste the authorization code or full redirect URL:",
@@ -606,21 +563,142 @@ async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promise<OpenA
 
 		if (!code) throw new Error("missing authorization code");
 
-		const tokenResult = await exchangeOpenAICodexAuthorizationCode(code, flow.verifier, flow.redirectUri);
-		if (tokenResult.type !== "success") throw new Error(tokenResult.message);
-
-		const accountId = getOpenAICodexAccountId(tokenResult.access);
-		if (!accountId) throw new Error("failed to extract accountId from token");
-
-		return {
-			access: tokenResult.access,
-			refresh: tokenResult.refresh,
-			expires: tokenResult.expires,
-			accountId,
-		};
+		return await credentialsFromCode(code, flow.verifier, flow.redirectUri);
 	} finally {
 		await server.close();
 	}
+}
+
+/** The step both flows share: redeem the code, then read the account off the JWT. */
+async function credentialsFromCode(
+	code: string,
+	verifier: string,
+	redirectUri: string,
+): Promise<OpenAICodexOAuthCredentials> {
+	const tokenResult = await exchangeOpenAICodexAuthorizationCode(code, verifier, redirectUri);
+	if (tokenResult.type !== "success") throw new Error(tokenResult.message);
+
+	const accountId = getOpenAICodexAccountId(tokenResult.access);
+	if (!accountId) throw new Error("failed to extract accountId from token");
+
+	return {
+		access: tokenResult.access,
+		refresh: tokenResult.refresh,
+		expires: tokenResult.expires,
+		accountId,
+	};
+}
+
+/** Ask for a user code to type at {@link DEVICE_VERIFICATION_URI}. */
+export async function createOpenAICodexDeviceAuth(
+	options: { signal?: AbortSignal | undefined } = {},
+): Promise<OpenAICodexDeviceAuth> {
+	const response = await fetch(DEVICE_USER_CODE_URL, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ client_id: CLIENT_ID }),
+		signal: options.signal ?? null,
+	});
+	if (!response.ok) {
+		if (response.status === 404) {
+			throw new Error(
+				"OpenAI Codex device code login is not available for this account. Use the browser login instead.",
+			);
+		}
+		const body = await response.text().catch(() => "");
+		throw new Error(
+			`OpenAI Codex device code request failed (${response.status})${body ? `: ${redactOAuthSecrets(body)}` : ""}`,
+		);
+	}
+
+	const data: unknown = await response.json();
+	if (!isObject(data)) throw new Error("Invalid OpenAI Codex device code response");
+	const interval = typeof data.interval === "string" ? Number(data.interval.trim()) : data.interval;
+	if (
+		typeof data.device_auth_id !== "string" ||
+		typeof data.user_code !== "string" ||
+		typeof interval !== "number" ||
+		!Number.isFinite(interval) ||
+		interval < 0
+	) {
+		throw new Error("Invalid OpenAI Codex device code response fields");
+	}
+
+	return {
+		deviceAuthId: data.device_auth_id,
+		userCode: data.user_code,
+		verificationUri: DEVICE_VERIFICATION_URI,
+		intervalSeconds: interval,
+	};
+}
+
+/** Wait for the code to be approved; the server returns the code and its verifier. */
+export async function pollOpenAICodexDeviceAuth(
+	device: OpenAICodexDeviceAuth,
+	options: { signal?: AbortSignal | undefined } = {},
+): Promise<{ authorizationCode: string; codeVerifier: string }> {
+	return pollDeviceCode({
+		intervalSeconds: device.intervalSeconds,
+		expiresInSeconds: DEVICE_TIMEOUT_SECONDS,
+		...(options.signal !== undefined && { signal: options.signal }),
+		poll: async () => {
+			const response = await fetch(DEVICE_TOKEN_URL, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ device_auth_id: device.deviceAuthId, user_code: device.userCode }),
+				signal: options.signal ?? null,
+			});
+
+			if (response.ok) {
+				const data: unknown = await response.json();
+				if (
+					!isObject(data) ||
+					typeof data.authorization_code !== "string" ||
+					typeof data.code_verifier !== "string"
+				) {
+					return { status: "failed", message: "Invalid OpenAI Codex device auth token response" };
+				}
+				return {
+					status: "complete",
+					value: { authorizationCode: data.authorization_code, codeVerifier: data.code_verifier },
+				};
+			}
+
+			// The endpoint answers 403/404 while the code is still unclaimed.
+			if (response.status === 403 || response.status === 404) return { status: "pending" };
+
+			const body = await response.text().catch(() => "");
+			let errorCode: unknown;
+			try {
+				const parsed: unknown = JSON.parse(body);
+				const error = isObject(parsed) ? parsed.error : undefined;
+				errorCode = isObject(error) ? error.code : error;
+			} catch {
+				// Not JSON; fall through to the generic failure below.
+			}
+			if (errorCode === "deviceauth_authorization_pending") return { status: "pending" };
+			if (errorCode === "slow_down") return { status: "slow_down" };
+
+			return {
+				status: "failed",
+				message: `OpenAI Codex device authorization failed (${response.status})${
+					body ? `: ${redactOAuthSecrets(body)}` : ""
+				}`,
+			};
+		},
+	});
+}
+
+async function loginOpenAICodexDeviceCode(options: OpenAICodexLoginOptions): Promise<OpenAICodexOAuthCredentials> {
+	const device = await createOpenAICodexDeviceAuth(options);
+	options.onAuth({
+		url: device.verificationUri,
+		userCode: device.userCode,
+		instructions: "Open the URL and enter the code to finish OpenAI Codex authentication.",
+	});
+
+	const { authorizationCode, codeVerifier } = await pollOpenAICodexDeviceAuth(device, options);
+	return credentialsFromCode(authorizationCode, codeVerifier, DEVICE_REDIRECT_URI);
 }
 
 export async function refreshOpenAICodexToken(refreshToken: string): Promise<OpenAICodexOAuthCredentials> {
@@ -651,73 +729,34 @@ export function openAICodexHeaders(credentials: OpenAICodexOAuthCredentials): Re
 }
 
 export class JsonOpenAICodexAuthStorage implements OpenAICodexAuthStorage {
-	readonly path: string;
-	readonly providerId: string;
+	private readonly storage: JsonAuthStorage<OpenAICodexOAuthCredentials>;
 
 	constructor(options: JsonOpenAICodexAuthStorageOptions = {}) {
-		this.path = options.path ? expandHome(options.path) : defaultOpenAICodexAuthFilePath();
-		this.providerId = options.providerId ?? DEFAULT_PROVIDER_ID;
+		this.storage = new JsonAuthStorage({
+			providerId: options.providerId ?? DEFAULT_PROVIDER_ID,
+			isCredentials: isOpenAICodexCredentials,
+			...(options.path !== undefined && { path: options.path }),
+		});
 	}
 
-	async get(): Promise<OpenAICodexOAuthCredentials | undefined> {
-		const file = await this.readFile();
-		if (!file) return undefined;
-
-		if (isOpenAICodexCredentials(file)) return file;
-
-		const direct = file[this.providerId];
-		if (isOpenAICodexCredentials(direct)) return direct;
-
-		const providers = file.providers;
-		if (isObject(providers) && isOpenAICodexCredentials(providers[this.providerId])) {
-			return providers[this.providerId] as OpenAICodexOAuthCredentials;
-		}
-
-		return undefined;
+	get path(): string {
+		return this.storage.path;
 	}
 
-	async set(credentials: OpenAICodexOAuthCredentials): Promise<void> {
-		const current = await this.readFile();
-		const next = isObject(current) && !isOpenAICodexCredentials(current) ? current : {};
-		next[this.providerId] = credentials;
-		await this.writeFile(next);
+	get providerId(): string {
+		return this.storage.providerId;
 	}
 
-	async clear(): Promise<void> {
-		const current = await this.readFile();
-		if (!current) return;
-
-		if (isOpenAICodexCredentials(current)) {
-			await this.writeFile({});
-			return;
-		}
-
-		delete current[this.providerId];
-		const providers = current.providers;
-		if (isObject(providers)) delete providers[this.providerId];
-		await this.writeFile(current);
+	get(): Promise<OpenAICodexOAuthCredentials | undefined> {
+		return this.storage.get();
 	}
 
-	private async readFile(): Promise<AuthFile | undefined> {
-		const fs = await import("node:fs/promises");
-		try {
-			const text = await fs.readFile(this.path, "utf8");
-			const parsed = JSON.parse(text) as unknown;
-			return isObject(parsed) ? parsed : undefined;
-		} catch (error) {
-			if (isObject(error) && error.code === "ENOENT") return undefined;
-			throw error;
-		}
+	set(credentials: OpenAICodexOAuthCredentials): Promise<void> {
+		return this.storage.set(credentials);
 	}
 
-	private async writeFile(value: AuthFile): Promise<void> {
-		const fs = await import("node:fs/promises");
-		const path = await import("node:path");
-		await fs.mkdir(path.dirname(this.path), { recursive: true });
-		const tempPath = `${this.path}.${process.pid}.${Date.now()}.tmp`;
-		await fs.writeFile(tempPath, `${JSON.stringify(value, null, "\t")}\n`, { encoding: "utf8", mode: 0o600 });
-		await fs.chmod(tempPath, 0o600);
-		await fs.rename(tempPath, this.path);
+	clear(): Promise<void> {
+		return this.storage.clear();
 	}
 }
 

@@ -13,15 +13,21 @@ export class ModelgenError extends Schema.TaggedError<ModelgenError>()("CLI.Mode
 	cause: Schema.Defect(),
 }) {}
 
+export class OAuthError extends Schema.TaggedError<OAuthError>()("CLI.OAuthError", {
+	message: Schema.String,
+	cause: Schema.optional(Schema.Defect()),
+}) {}
+
 /**
  * Every failure a command handler may surface to the runtime. Harness failures are
  * rendered inside the handler that owns them, so only the CLI's own errors reach
  * the top-level renderer.
  */
-export type CommandError = InvalidInputError | ModelgenError;
+export type CommandError = InvalidInputError | ModelgenError | OAuthError;
 
 const isInvalidInputError = Schema.is(InvalidInputError);
 const isModelgenError = Schema.is(ModelgenError);
+const isOAuthError = Schema.is(OAuthError);
 const isProviderError = Schema.is(Runner.ProviderError);
 const isModelCatalogError = Schema.is(Runner.ModelCatalogError);
 const isModelNotFoundError = Schema.is(Runner.ModelNotFoundError);
@@ -74,6 +80,10 @@ const credentialHint = (provider: string): string => {
 			return "set OPENROUTER_API_KEY and retry";
 		case "openai":
 			return "set OPENAI_API_KEY and retry";
+		case "openai-codex":
+			return "run `codework auth login --openai-codex` and retry";
+		case "github-copilot":
+			return "run `codework auth login --github-copilot` and retry";
 		case "anthropic":
 			return "set ANTHROPIC_API_KEY and retry";
 		case "google":
@@ -191,6 +201,14 @@ export const renderError = (error: unknown): string => {
 			["error[model-catalog]: failed to generate the model catalog", "hint: check the output path and retry"].join(
 				"\n",
 			) + "\n"
+		);
+	}
+	if (isOAuthError(error)) {
+		return (
+			[
+				`error[oauth]: ${error.message}`,
+				...(error.cause === undefined ? [] : [`detail: ${unknownMessage(error.cause)}`]),
+			].join("\n") + "\n"
 		);
 	}
 	if (isSandboxProviderError(error)) {

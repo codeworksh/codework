@@ -147,7 +147,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function encodeOpenAIReasoningSignature(providerMetadata: unknown): string | undefined {
 	if (!isRecord(providerMetadata)) return;
-	const metadata = providerMetadata.openai;
+	// Copilot's Responses adapter is named "github-copilot", so its reasoning
+	// metadata lands under that key rather than "openai".
+	const metadata = providerMetadata.openai ?? providerMetadata["github-copilot"];
 	if (!isRecord(metadata) || typeof metadata.itemId !== "string") return;
 
 	const signature: OpenAIReasoningMetadata = { itemId: metadata.itemId };
@@ -220,6 +222,35 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 		if (part.type === "thinking") {
 			const thinking = sanitizeSurrogates(part.thinking);
 			if (thinking.trim().length === 0 && !part.thinkingSignature) continue;
+
+			if (message.protocol === Model.KnownProviderEnum.githubCopilot) {
+				/*
+				 * Copilot signs reasoning differently per endpoint family: Responses
+				 * models round-trip encoded item metadata, Messages models carry
+				 * Anthropic signatures, and the chat endpoint cannot replay thinking
+				 * at all. A signature from the wrong family is foreign material, so
+				 * the text survives as plain text instead of going out unsigned.
+				 */
+				const method = model.api?.method;
+				const openai = part.thinkingSignature ? decodeOpenAIReasoningSignature(part.thinkingSignature) : undefined;
+				if (method === Model.APIMethodEnum.responses && openai) {
+					assistantContent.push({
+						type: "reasoning",
+						text: thinking,
+						providerOptions: { "github-copilot": openai },
+					} as (typeof assistantContent)[number]);
+				} else if (method === Model.APIMethodEnum.messages && part.thinkingSignature && !openai) {
+					assistantContent.push({
+						type: "reasoning",
+						text: thinking,
+						providerOptions: { anthropic: { signature: part.thinkingSignature } },
+					} as (typeof assistantContent)[number]);
+				} else if (thinking.trim().length > 0) {
+					assistantContent.push({ type: "text", text: thinking });
+				}
+				continue;
+			}
+
 			const reasoning: Record<string, unknown> = { type: "reasoning", text: thinking };
 			// OpenAI Responses only accepts native reasoning items with encoded metadata.
 			if (message.protocol === Model.KnownProviderEnum.openai) {

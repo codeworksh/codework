@@ -46,6 +46,24 @@
 			"import": "./dist/pack/oauth/openai/codex.mjs",
 			"default": "./dist/pack/oauth/openai/codex.mjs"
 		},
+		"./oauth/github/copilot": {
+			"development": "./src/oauth/github/copilot.ts",
+			"types": "./dist/pack/oauth/github/copilot.d.mts",
+			"import": "./dist/pack/oauth/github/copilot.mjs",
+			"default": "./dist/pack/oauth/github/copilot.mjs"
+		},
+		"./oauth/summary": {
+			"development": "./src/oauth/summary.ts",
+			"types": "./dist/pack/oauth/summary.d.mts",
+			"import": "./dist/pack/oauth/summary.mjs",
+			"default": "./dist/pack/oauth/summary.mjs"
+		},
+		"./oauth/interactive": {
+			"development": "./src/oauth/interactive.ts",
+			"types": "./dist/pack/oauth/interactive.d.mts",
+			"import": "./dist/pack/oauth/interactive.mjs",
+			"default": "./dist/pack/oauth/interactive.mjs"
+		},
 		"./modelgen": {
 			"development": "./src/modelgen.ts",
 			"types": "./dist/pack/modelgen.d.mts",

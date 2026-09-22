@@ -25,6 +25,7 @@ export function registerAISDKProtocols(): void {
 	Protocol.registerProtocolProvider(createAISDKProtocol(Model.KnownProviderEnum.openai));
 	Protocol.registerProtocolProvider(createAISDKProtocol(Model.KnownProviderEnum.openaiCompatible));
 	Protocol.registerProtocolProvider(createAISDKProtocol(Model.KnownProviderEnum.openaiCodex));
+	Protocol.registerProtocolProvider(createAISDKProtocol(Model.KnownProviderEnum.githubCopilot));
 	Protocol.registerProtocolProvider(createAISDKProtocol(Model.KnownProviderEnum.openrouter));
 	Protocol.registerProtocolProvider(createAISDKProtocol(Model.KnownProviderEnum.xai));
 }

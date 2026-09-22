@@ -46,6 +46,50 @@ export type RuntimeConfig = typeof RuntimeConfig.Type;
 
 export const SandboxRef = Sandbox.Selection;
 
+export class OAuthError extends Schema.TaggedError<OAuthError>()("Server.OAuthError", {
+	message: Schema.String,
+}) {}
+
+/** OAuth providers whose credentials this server stores. */
+export const OAuthProvider = Schema.Literals(["openai-codex", "github-copilot"]);
+export type OAuthProvider = typeof OAuthProvider.Type;
+
+/**
+ * Credentials as the provider's aikit module persists them. The union is
+ * discriminated by `provider` so one set of RPCs serves every login.
+ */
+export const OAuthCredentials = Schema.Union([
+	Schema.Struct({
+		provider: Schema.Literal("openai-codex"),
+		access: Schema.String,
+		refresh: Schema.String,
+		expires: Schema.Finite,
+		accountId: Schema.String,
+	}),
+	Schema.Struct({
+		provider: Schema.Literal("github-copilot"),
+		access: Schema.String,
+		refresh: Schema.String,
+		expires: Schema.Finite,
+		enterpriseUrl: optional(Schema.String),
+		apiEndpoint: optional(Schema.String),
+		availableModelIds: optional(Schema.Array(Schema.String)),
+	}),
+]);
+export type OAuthCredentials = typeof OAuthCredentials.Type;
+
+/** What a login looks like from the outside: never the tokens themselves. */
+export const OAuthInfo = Schema.Struct({
+	provider: OAuthProvider,
+	/** Epoch millis, or 0 for a credential that does not expire. */
+	expires: Schema.Finite,
+	accountId: optional(Schema.String),
+	apiEndpoint: optional(Schema.String),
+	enterpriseUrl: optional(Schema.String),
+	availableModels: optional(Schema.Int),
+});
+export type OAuthInfo = typeof OAuthInfo.Type;
+
 const SessionErrors = Schema.Union([
 	SessionStore.SessionNotFoundError,
 	SessionStore.SessionLinkedSpaceNotFoundError,
@@ -69,6 +113,26 @@ const SandboxErrors = Schema.Union([
 const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.NotDirectoryError]);
 
 export const Api = RpcGroup.make(
+	Rpc.make("auth.save", {
+		payload: { credentials: OAuthCredentials },
+		success: OAuthInfo,
+		error: OAuthError,
+	}),
+	Rpc.make("auth.status", {
+		payload: { provider: OAuthProvider },
+		success: Schema.NullOr(OAuthInfo),
+		error: OAuthError,
+	}),
+	Rpc.make("auth.refresh", {
+		payload: { provider: OAuthProvider },
+		success: Schema.NullOr(OAuthInfo),
+		error: OAuthError,
+	}),
+	Rpc.make("auth.logout", {
+		payload: { provider: OAuthProvider },
+		success: Schema.Void,
+		error: OAuthError,
+	}),
 	Rpc.make("session.create", {
 		payload: {
 			title: optional(Schema.String),

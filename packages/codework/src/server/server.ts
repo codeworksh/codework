@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 import { Contract } from "./contract.ts";
 import { EventFeed } from "./feed.ts";
 import { Handlers } from "./handlers.ts";
+import { OAuth } from "./oauth.ts";
 
 const WsProtocol = RpcServer.layerProtocolWebsocket({ path: "/rpc" }).pipe(Layer.provide(HttpRouter.layer));
 
@@ -64,10 +65,11 @@ export const layer = (options: { host: string; port: number; harness: Harness.Op
 		Layer.provideMerge(WsProtocol),
 		Layer.provide(HttpRouter.serve(WsProtocol, { disableListenLog: true })),
 		Layer.provideMerge(managedShutdown),
+		Layer.provide(OAuth.layer(options.harness.home === undefined ? {} : { home: options.harness.home })),
 	);
 	return app.pipe(
 		Layer.provideMerge(listenLog),
-		Layer.provideMerge(NodeHttpServer.layer(() => createServer(), { host: options.host, port: options.port })),
+		Layer.provideMerge(NodeHttpServer.layer(createServer, { host: options.host, port: options.port })),
 		Layer.provide(RpcSerialization.layerNdjson),
 		Layer.provide(Harness.layer(options.harness)),
 	);

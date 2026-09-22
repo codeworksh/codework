@@ -35,6 +35,18 @@ export function make(input: Partial<Interface> = {}): Interface {
 	};
 }
 
+/**
+ * Where a Codework home keeps its OAuth credentials, or undefined to let aikit
+ * resolve them (`CODEWORK_CREDENTIALS`, then the default home).
+ *
+ * Callers pass a home only when the user actually chose one, so an explicit
+ * `--home` pins the file and everything else defers to aikit. The harness and
+ * the RPC server both go through here: if they disagreed, a login stored by one
+ * would be invisible to the other.
+ */
+export const authFile = (home: string | undefined): string | undefined =>
+	home === undefined ? undefined : posix.join(home, "aikit", "auth.json");
+
 export const resolve = Effect.fn("Global.resolve")(function* (input: Partial<Interface> = {}) {
 	const home = input.home === undefined ? yield* homeConfig : expandHome(input.home);
 	return make({ ...input, home });

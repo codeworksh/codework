@@ -8,7 +8,9 @@
 			"@codeworksh/plugin/*": ["../plugin/src/*.ts"],
 			"@codeworksh/aikit": ["../aikit/dist/pack/index.d.mts"],
 			"@codeworksh/aikit/failure": ["../aikit/src/llm/failure.ts"],
-			"@codeworksh/aikit/modelgen": ["../aikit/dist/pack/modelgen.d.mts"]
+			"@codeworksh/aikit/modelgen": ["../aikit/dist/pack/modelgen.d.mts"],
+			"@codeworksh/aikit/oauth/openai/codex": ["../aikit/dist/pack/oauth/openai/codex.d.mts"],
+			"@codeworksh/aikit/oauth/github/copilot": ["../aikit/dist/pack/oauth/github/copilot.d.mts"]
 		},
 		"plugins": [
 			{

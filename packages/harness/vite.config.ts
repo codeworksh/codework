@@ -32,6 +32,10 @@ const aliases = [
 		find: "@codeworksh/aikit/failure",
 		replacement: fileURLToPath(new URL("../aikit/src/llm/failure.ts", import.meta.url)),
 	},
+	{
+		find: /^@codeworksh\/aikit\/(oauth\/.+)$/,
+		replacement: fileURLToPath(new URL("../aikit/src/$1.ts", import.meta.url)),
+	},
 	{ find: "@codeworksh/aikit", replacement: fileURLToPath(new URL("../aikit/src/index.ts", import.meta.url)) },
 ];
 

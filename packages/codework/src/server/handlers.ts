@@ -3,6 +3,7 @@ import { Effect, Option, Stream } from "effect";
 import { Contract, type RuntimeConfig, type SandboxInfo, type SessionInfo } from "./contract.ts";
 import { Envelope } from "./envelope.ts";
 import { EventFeed } from "./feed.ts";
+import { OAuth } from "./oauth.ts";
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -49,8 +50,13 @@ export const layer = Contract.Api.toLayer(
 		const feed = yield* EventFeed.Service;
 		const sessions = yield* SessionStore.Service;
 		const state = yield* State.Service;
+		const oauth = yield* OAuth.Service;
 
 		return Contract.Api.of({
+			"auth.save": ({ credentials }) => oauth.save(credentials),
+			"auth.status": ({ provider }) => oauth.status(provider),
+			"auth.refresh": ({ provider }) => oauth.refresh(provider),
+			"auth.logout": ({ provider }) => oauth.logout(provider),
 			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime }) {
 				const selection = sandbox === undefined ? undefined : yield* Sandbox.resolve(sandbox);
 				const selected = selection?.info;

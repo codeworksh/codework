@@ -1,4 +1,7 @@
 import "./utils/env.ts";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { llm, Model, Message } from "@codeworksh/aikit";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
@@ -9,6 +12,218 @@ import { merge } from "../src/settings/merge.ts";
 import { defaults } from "../src/settings/schema.ts";
 
 describe("settings at the LLM boundary", () => {
+	it("uses stored OpenAI Codex OAuth credentials from the harness auth file", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "codework-harness-oauth-"));
+		const authFile = join(directory, "auth.json");
+		const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value)).toString("base64url");
+		const access = `${encode({ alg: "none", typ: "JWT" })}.${encode({
+			"https://api.openai.com/auth": { chatgpt_account_id: "acct_harness" },
+		})}.signature`;
+		const previous = process.env.OPENAI_CODEX_API_KEY;
+		Reflect.deleteProperty(process.env, "OPENAI_CODEX_API_KEY");
+
+		try {
+			await writeFile(
+				authFile,
+				JSON.stringify({
+					"openai-codex": {
+						access,
+						refresh: "refresh-token",
+						expires: Date.now() + 60 * 60 * 1_000,
+						accountId: "acct_harness",
+					},
+				}),
+			);
+			let authorization: string | null = null;
+			const fetch = async (_url: string | URL | Request, init?: RequestInit) => {
+				authorization = new Headers(init?.headers).get("authorization");
+				const events = [
+					{ type: "response.created", response: { id: "resp_1", model: "gpt-5.4" } },
+					{
+						type: "response.output_item.added",
+						item: { type: "message", id: "msg_1", role: "assistant", status: "in_progress", content: [] },
+					},
+					{
+						type: "response.output_item.done",
+						item: {
+							type: "message",
+							id: "msg_1",
+							role: "assistant",
+							status: "completed",
+							content: [{ type: "output_text", text: "ok", annotations: [] }],
+						},
+					},
+					{
+						type: "response.completed",
+						response: {
+							id: "resp_1",
+							model: "gpt-5.4",
+							status: "completed",
+							usage: {
+								input_tokens: 1,
+								output_tokens: 1,
+								total_tokens: 2,
+								input_tokens_details: { cached_tokens: 0 },
+								output_tokens_details: { reasoning_tokens: 0 },
+							},
+						},
+					},
+				];
+				return new Response(
+					`${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`,
+					{
+						headers: { "content-type": "text/event-stream" },
+					},
+				);
+			};
+			const model = await llm("openai-codex", "gpt-5.4");
+			expect(model).toBeDefined();
+			if (!model) return;
+
+			const events = await Effect.runPromise(
+				LLM.openWith({ authFile })(
+					{
+						sessionId: SessionSchema.ID.create(),
+						provider: "openai-codex",
+						model: model.id,
+						resolvedModel: model,
+						context: {
+							messages: [
+								Message.createUserMessage({
+									role: "user",
+									time: { created: 1 },
+									parts: [{ type: "text", text: "hello" }],
+								}),
+							],
+						},
+						options: { maxRetries: 0, factoryOptions: { fetch } },
+					},
+					new AbortController().signal,
+				),
+			);
+			for await (const _event of events) {
+				// Drain the response so the provider performs the authenticated request.
+			}
+
+			expect(authorization).toBe(`Bearer ${access}`);
+		} finally {
+			if (previous === undefined) Reflect.deleteProperty(process.env, "OPENAI_CODEX_API_KEY");
+			else process.env.OPENAI_CODEX_API_KEY = previous;
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("uses stored GitHub Copilot credentials and the plan-specific host", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "codework-harness-copilot-"));
+		const authFile = join(directory, "auth.json");
+		const saved = { COPILOT_GITHUB_TOKEN: process.env.COPILOT_GITHUB_TOKEN };
+		for (const name of Object.keys(saved)) Reflect.deleteProperty(process.env, name);
+
+		try {
+			await writeFile(
+				authFile,
+				JSON.stringify({
+					"github-copilot": {
+						access: "ghu_stored",
+						refresh: "ghu_stored",
+						expires: 0,
+						apiEndpoint: "https://api.individual.githubcopilot.com",
+					},
+				}),
+			);
+
+			let authorization: string | null = null;
+			let requested = "";
+			const fetch = async (url: string | URL | Request, init?: RequestInit) => {
+				requested = url instanceof URL ? url.href : typeof url === "string" ? url : url.url;
+				authorization = new Headers(init?.headers).get("authorization");
+				const chunk = (delta: Record<string, unknown>, finish: string | null) =>
+					`data: ${JSON.stringify({
+						id: "1",
+						object: "chat.completion.chunk",
+						created: 1,
+						model: "gemini-3.6-flash",
+						choices: [{ index: 0, delta, finish_reason: finish }],
+					})}\n\n`;
+				return new Response(
+					`${chunk({ role: "assistant", content: "ok" }, null)}${chunk({}, "stop")}data: [DONE]\n\n`,
+					{
+						headers: { "content-type": "text/event-stream" },
+					},
+				);
+			};
+
+			const model = await llm("github-copilot", "gemini-3.6-flash");
+			expect(model).toBeDefined();
+			if (!model) return;
+
+			const events = await Effect.runPromise(
+				LLM.openWith({ authFile })(
+					{
+						sessionId: SessionSchema.ID.create(),
+						provider: "github-copilot",
+						model: model.id,
+						resolvedModel: model,
+						context: {
+							messages: [
+								Message.createUserMessage({
+									role: "user",
+									time: { created: 1 },
+									parts: [{ type: "text", text: "hello" }],
+								}),
+							],
+						},
+						options: { maxRetries: 0, factoryOptions: { fetch } },
+					},
+					new AbortController().signal,
+				),
+			);
+			for await (const _event of events) {
+				// Drain the response so the provider performs the authenticated request.
+			}
+
+			expect(authorization).toBe("Bearer ghu_stored");
+			// The login-time endpoint wins over the catalog's generic host.
+			expect(requested).toContain("https://api.individual.githubcopilot.com");
+
+			// An environment token may be another account, so it does not inherit
+			// the stored login's plan-specific host.
+			process.env.COPILOT_GITHUB_TOKEN = "ghu_from_env";
+			const fromEnv = await Effect.runPromise(
+				LLM.openWith({ authFile })(
+					{
+						sessionId: SessionSchema.ID.create(),
+						provider: "github-copilot",
+						model: model.id,
+						resolvedModel: model,
+						context: {
+							messages: [
+								Message.createUserMessage({
+									role: "user",
+									time: { created: 1 },
+									parts: [{ type: "text", text: "hello" }],
+								}),
+							],
+						},
+						options: { maxRetries: 0, factoryOptions: { fetch } },
+					},
+					new AbortController().signal,
+				),
+			);
+			for await (const _event of fromEnv) {
+				// Drain so the request is made.
+			}
+			expect(authorization).toBe("Bearer ghu_from_env");
+			expect(requested).toContain("https://api.githubcopilot.com/");
+		} finally {
+			for (const [name, value] of Object.entries(saved)) {
+				if (value === undefined) Reflect.deleteProperty(process.env, name);
+				else process.env[name] = value;
+			}
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
 	it("routes provider options under the resolved key and gives runtime maps final precedence", async () => {
 		const model = await llm("lmstudio", "qwen/qwen3-coder-30b");
 		expect(model).toBeDefined();

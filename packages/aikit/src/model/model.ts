@@ -101,6 +101,7 @@ const SupportedProtocolsSchema = Type.Partial(
 		google: KnownProviderEnumSchema,
 		googleVertex: KnownProviderEnumSchema,
 		googleVertexAnthropic: KnownProviderEnumSchema,
+		githubCopilot: KnownProviderEnumSchema,
 		openai: KnownProviderEnumSchema,
 		openaiCompatible: KnownProviderEnumSchema,
 		openaiCodex: KnownProviderEnumSchema,
@@ -157,6 +158,32 @@ export const CompatibilitySchema = Type.Object({
 	thinkingTokenBudgetField: Type.Optional(Type.String()),
 });
 export type Compatibility = Static<typeof CompatibilitySchema>;
+
+/**
+ * Claude models that decide their own thinking depth.
+ *
+ * These take an `effort` level and let the model size each turn's reasoning; the
+ * older models take a fixed `budget_tokens` instead. Sending a budget to an
+ * adaptive model pins it to one depth for every turn, which is the thing adaptive
+ * thinking exists to avoid.
+ */
+export function isAnthropicAdaptiveThinkingModel(modelId: string): boolean {
+	return [
+		"opus-4-6",
+		"opus-4.6",
+		"opus-4-7",
+		"opus-4.7",
+		"opus-4-8",
+		"opus-4.8",
+		"opus-5",
+		"opus.5",
+		"sonnet-4-6",
+		"sonnet-4.6",
+		"sonnet-5",
+		"sonnet.5",
+		"fable-5",
+	].some((needle) => modelId.includes(needle));
+}
 
 export const Schema = Type.Object({
 	id: Type.String(),

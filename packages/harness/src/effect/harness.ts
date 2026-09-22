@@ -215,7 +215,9 @@ export const layer = (options: Options = {}) =>
 				Layer.provideMerge(drivers),
 				Layer.provideMerge(database),
 			);
-			const loop = options.llm === undefined ? Loop.layer() : Loop.layer({ request: LLM.make(options.llm) });
+			const authFile = Global.authFile(options.home === undefined ? undefined : paths.home);
+			const open = options.llm ?? LLM.openWith(authFile === undefined ? {} : { authFile });
+			const loop = Loop.layer({ request: LLM.make(open) });
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
