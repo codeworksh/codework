@@ -2,8 +2,6 @@
 	"name": "codework",
 	"version": "0.0.0",
 	"private": true,
-	"description": "AI toolkit and coding agents for building AI agents.",
-	"homepage": "https://github.com/codeworksh/codework",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
 	},
