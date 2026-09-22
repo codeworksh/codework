@@ -15,9 +15,17 @@ export type {
 	OpenAICodexProvider,
 	OpenAICodexProviderSettings,
 } from "./providers/openai-codex/index.ts";
+export { createGitHubCopilot, githubCopilot } from "./providers/github-copilot/index.ts";
+export type {
+	GitHubCopilotApiKey,
+	GitHubCopilotInteractionType,
+	GitHubCopilotProvider,
+	GitHubCopilotProviderSettings,
+} from "./providers/github-copilot/index.ts";
 
 export type {
 	AnthropicOptions,
+	GitHubCopilotOptions,
 	GoogleOptions,
 	GoogleVertexAnthropicOptions,
 	GoogleVertexOptions,

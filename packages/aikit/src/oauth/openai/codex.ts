@@ -17,10 +17,9 @@
  */
 
 import dedent from "dedent";
+import { JsonAuthStorage, isObject, readEnv } from "../storage.ts";
 
 const CODEWORK_OAUTH_CALLBACK_HOST = "CODEWORK_OAUTH_CALLBACK_HOST";
-const CODEWORK_CREDENTIALS = "CODEWORK_CREDENTIALS";
-const CODEWORK_HOME_DIR = "CODEWORK_HOME_DIR";
 
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const AUTHORIZE_URL = "https://auth.openai.com/oauth/authorize";
@@ -104,54 +103,11 @@ type OAuthServerInfo = {
 	waitForCode: () => Promise<{ code: string } | null>;
 };
 
-type AuthFile = Record<string, unknown>;
-
 type TokenEndpointPayload = {
 	access_token?: string;
 	refresh_token?: string;
 	expires_in?: number;
 };
-
-function readEnv(name: string): string | undefined {
-	if (typeof process === "undefined") return undefined;
-	return process.env[name];
-}
-
-function joinPath(...parts: string[]): string {
-	return parts.filter(Boolean).join("/").replaceAll(/\/+/g, "/");
-}
-
-function expandHome(path: string): string {
-	if (path === "~") return homeDirectory();
-	if (path.startsWith("~/")) return joinPath(homeDirectory(), path.slice(2));
-	return path;
-}
-
-function homeDirectory(): string {
-	const home = readEnv("HOME") ?? readEnv("USERPROFILE");
-	if (!home) {
-		throw new Error("unable to resolve home directory for OpenAI Codex auth storage");
-	}
-	return home;
-}
-
-function codeworkHomeDirectory(): string {
-	const override = readEnv(CODEWORK_HOME_DIR);
-	if (override) return expandHome(override);
-	return joinPath(homeDirectory(), ".codework");
-}
-
-// Internal: the resolved location is exposed as `JsonOpenAICodexAuthStorage#path`.
-function defaultOpenAICodexAuthFilePath(): string {
-	const authFile = readEnv(CODEWORK_CREDENTIALS);
-	if (authFile) return expandHome(authFile);
-
-	return joinPath(codeworkHomeDirectory(), "aikit", "auth.json");
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isOpenAICodexCredentials(value: unknown): value is OpenAICodexOAuthCredentials {
 	if (!isObject(value)) return false;
@@ -651,73 +607,34 @@ export function openAICodexHeaders(credentials: OpenAICodexOAuthCredentials): Re
 }
 
 export class JsonOpenAICodexAuthStorage implements OpenAICodexAuthStorage {
-	readonly path: string;
-	readonly providerId: string;
+	private readonly storage: JsonAuthStorage<OpenAICodexOAuthCredentials>;
 
 	constructor(options: JsonOpenAICodexAuthStorageOptions = {}) {
-		this.path = options.path ? expandHome(options.path) : defaultOpenAICodexAuthFilePath();
-		this.providerId = options.providerId ?? DEFAULT_PROVIDER_ID;
+		this.storage = new JsonAuthStorage({
+			providerId: options.providerId ?? DEFAULT_PROVIDER_ID,
+			isCredentials: isOpenAICodexCredentials,
+			...(options.path !== undefined && { path: options.path }),
+		});
 	}
 
-	async get(): Promise<OpenAICodexOAuthCredentials | undefined> {
-		const file = await this.readFile();
-		if (!file) return undefined;
-
-		if (isOpenAICodexCredentials(file)) return file;
-
-		const direct = file[this.providerId];
-		if (isOpenAICodexCredentials(direct)) return direct;
-
-		const providers = file.providers;
-		if (isObject(providers) && isOpenAICodexCredentials(providers[this.providerId])) {
-			return providers[this.providerId] as OpenAICodexOAuthCredentials;
-		}
-
-		return undefined;
+	get path(): string {
+		return this.storage.path;
 	}
 
-	async set(credentials: OpenAICodexOAuthCredentials): Promise<void> {
-		const current = await this.readFile();
-		const next = isObject(current) && !isOpenAICodexCredentials(current) ? current : {};
-		next[this.providerId] = credentials;
-		await this.writeFile(next);
+	get providerId(): string {
+		return this.storage.providerId;
 	}
 
-	async clear(): Promise<void> {
-		const current = await this.readFile();
-		if (!current) return;
-
-		if (isOpenAICodexCredentials(current)) {
-			await this.writeFile({});
-			return;
-		}
-
-		delete current[this.providerId];
-		const providers = current.providers;
-		if (isObject(providers)) delete providers[this.providerId];
-		await this.writeFile(current);
+	get(): Promise<OpenAICodexOAuthCredentials | undefined> {
+		return this.storage.get();
 	}
 
-	private async readFile(): Promise<AuthFile | undefined> {
-		const fs = await import("node:fs/promises");
-		try {
-			const text = await fs.readFile(this.path, "utf8");
-			const parsed = JSON.parse(text) as unknown;
-			return isObject(parsed) ? parsed : undefined;
-		} catch (error) {
-			if (isObject(error) && error.code === "ENOENT") return undefined;
-			throw error;
-		}
+	set(credentials: OpenAICodexOAuthCredentials): Promise<void> {
+		return this.storage.set(credentials);
 	}
 
-	private async writeFile(value: AuthFile): Promise<void> {
-		const fs = await import("node:fs/promises");
-		const path = await import("node:path");
-		await fs.mkdir(path.dirname(this.path), { recursive: true });
-		const tempPath = `${this.path}.${process.pid}.${Date.now()}.tmp`;
-		await fs.writeFile(tempPath, `${JSON.stringify(value, null, "\t")}\n`, { encoding: "utf8", mode: 0o600 });
-		await fs.chmod(tempPath, 0o600);
-		await fs.rename(tempPath, this.path);
+	clear(): Promise<void> {
+		return this.storage.clear();
 	}
 }
 

@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Value from "typebox/value";
 import { describe, expect, it } from "vite-plus/test";
-import { generateModels as generateModelsImplementation, openAICodexBuiltInModels } from "../src/cli/modelgen.ts";
+import {
+	generateModels as generateModelsImplementation,
+	githubCopilotApiMethod,
+	githubCopilotBuiltInModels,
+	openAICodexBuiltInModels,
+} from "../src/cli/modelgen.ts";
 import * as Model from "../src/model/model.ts";
 import * as ModelCatalog from "../src/model/catalog.ts";
 import * as Thinking from "../src/llm/thinking.ts";
@@ -20,6 +25,64 @@ const CODEX_MODEL_IDS = [
 	"gpt-5.6-terra",
 ] as const;
 const GPT_56_MODEL_IDS = ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"] as const;
+
+function copilotModelsDevProvider(): Parameters<typeof githubCopilotBuiltInModels>[0] {
+	const base = {
+		family: "test",
+		attachment: true,
+		tool_call: true,
+		temperature: true,
+		release_date: "2026-01-01",
+		last_updated: "2026-01-01",
+		modalities: { input: ["text", "image"], output: ["text"] },
+		open_weights: false,
+		cost: { input: 1, output: 4 },
+		limit: { context: 400_000, output: 128_000 },
+	};
+	return {
+		id: "github-copilot",
+		name: "GitHub Copilot",
+		env: ["GITHUB_TOKEN"],
+		npm: "@ai-sdk/openai-compatible",
+		api: "https://api.githubcopilot.com",
+		models: {
+			"claude-opus-4.8": {
+				...base,
+				id: "claude-opus-4.8",
+				name: "Claude Opus 4.8",
+				reasoning: true,
+				reasoning_options: [{ type: "effort", values: ["low", "medium", "high", "xhigh", "max"] }],
+			},
+			"gpt-5.4": {
+				...base,
+				id: "gpt-5.4",
+				name: "GPT-5.4",
+				reasoning: true,
+				reasoning_options: [{ type: "effort", values: ["none", "low", "medium", "high", "xhigh"] }],
+			},
+			"gemini-3.6-flash": {
+				...base,
+				id: "gemini-3.6-flash",
+				name: "Gemini 3.6 Flash",
+				reasoning: true,
+				reasoning_options: [{ type: "effort", values: ["minimal", "low", "medium", "high"] }],
+			},
+			"gpt-5-chat-latest": {
+				...base,
+				id: "gpt-5-chat-latest",
+				name: "GPT-5 Chat Latest",
+				reasoning: false,
+			},
+			deprecated: {
+				...base,
+				id: "gpt-4o",
+				name: "GPT-4o",
+				reasoning: false,
+				status: "deprecated",
+			},
+		},
+	};
+}
 
 describe("openAICodexBuiltInModels", () => {
 	it("exposes catalog generation through the public modelgen entry", () => {
@@ -250,5 +313,94 @@ describe("generateModels", () => {
 			else process.env.OPENCODE_MODELS_DEV_FILE = configuredModelsDevPath;
 			await rm(directory, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("githubCopilotApiMethod", () => {
+	it("routes Claude 4.x/5.x to Anthropic Messages", () => {
+		for (const id of [
+			"claude-haiku-4.5",
+			"claude-sonnet-4.6",
+			"claude-opus-4.8",
+			"claude-opus-5",
+			"claude-fable-5",
+		]) {
+			expect(githubCopilotApiMethod(id)).toBe(Model.APIMethodEnum.messages);
+		}
+	});
+
+	it("routes GPT-5+, Grok, OSWE, and MAI to Responses", () => {
+		for (const id of [
+			"gpt-5.4",
+			"gpt-5-mini",
+			"gpt-6-astra",
+			"grok-4.6",
+			"oswe-vscode-prime",
+			"mai-code-1.1-flash",
+		]) {
+			expect(githubCopilotApiMethod(id)).toBe(Model.APIMethodEnum.responses);
+		}
+	});
+
+	it("defaults everything else to Chat Completions", () => {
+		for (const id of ["gpt-4.1", "gpt-4o", "gemini-3.6-flash", "kimi-k3", "o3-mini"]) {
+			expect(githubCopilotApiMethod(id)).toBe(Model.APIMethodEnum.chat);
+		}
+	});
+});
+
+describe("githubCopilotBuiltInModels", () => {
+	it("rewrites the models.dev provider onto the bundled Copilot provider", () => {
+		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
+		for (const model of Object.values(models)) {
+			expect(Value.Check(Model.Info, model)).toBe(true);
+			expect(model.protocol).toBe(Model.KnownProviderEnum.githubCopilot);
+			expect(model.provider.id).toBe("github-copilot");
+			expect(model.provider.env).toEqual(["COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN"]);
+			expect(model.npm).toBe("@codeworksh/ai-sdk-github-copilot");
+			expect(model.baseUrl).toBe("https://api.githubcopilot.com");
+			expect(model.api?.url).toBe("https://api.githubcopilot.com");
+			expect(model.providerOptionsKey).toBe("github-copilot");
+			expect(model.headers?.["Copilot-Integration-Id"]).toBe("vscode-chat");
+		}
+	});
+
+	it("assigns the right method per model family", () => {
+		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
+		expect(models["claude-opus-4.8"]?.api?.method).toBe(Model.APIMethodEnum.messages);
+		expect(models["gpt-5.4"]?.api?.method).toBe(Model.APIMethodEnum.responses);
+		expect(models["gemini-3.6-flash"]?.api?.method).toBe(Model.APIMethodEnum.chat);
+	});
+
+	it("skips deprecated and chat-alias models", () => {
+		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
+		expect(models["gpt-4o"]).toBeUndefined();
+		expect(models["gpt-5-chat-latest"]).toBeUndefined();
+	});
+
+	it("marks adaptive Claude and stores reasoning options for Responses models", () => {
+		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
+		const claude = models["claude-opus-4.8"]!;
+		expect(claude.compat?.forceAdaptiveThinking).toBe(true);
+		expect(claude.thinkingLevelMap).toMatchObject({ minimal: "low", xhigh: "xhigh", max: "max" });
+
+		const gpt = models["gpt-5.4"]!;
+		expect(gpt.providerOptions?.["github-copilot"]).toEqual({
+			store: false,
+			include: ["reasoning.encrypted_content"],
+		});
+		expect(gpt.compat?.supportsOpenAIGrammarTools).toBe(true);
+		expect(gpt.thinkingLevelMap).toMatchObject({ off: null, minimal: "low", xhigh: "xhigh", max: null });
+	});
+
+	it("keeps chat-route reasoning metadata informational only", () => {
+		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
+		const gemini = models["gemini-3.6-flash"]!;
+		expect(gemini.api?.method).toBe(Model.APIMethodEnum.chat);
+		expect(gemini.thinkingLevelMap).toMatchObject({ off: null, minimal: "minimal", high: "high", xhigh: null });
+	});
+
+	it("returns an empty catalog when the provider is absent", () => {
+		expect(githubCopilotBuiltInModels(undefined)).toEqual({});
 	});
 });

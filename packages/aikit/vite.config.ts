@@ -14,7 +14,14 @@ const ignoredPaths = [
 
 export default defineConfig({
 	pack: {
-		entry: ["src/index.ts", "src/cli.ts", "src/modelgen.ts", "src/llm/failure.ts", "src/oauth/openai/codex.ts"],
+		entry: [
+			"src/index.ts",
+			"src/cli.ts",
+			"src/modelgen.ts",
+			"src/llm/failure.ts",
+			"src/oauth/openai/codex.ts",
+			"src/oauth/github/copilot.ts",
+		],
 		format: ["esm"],
 		outDir: "dist/pack",
 		deps: {

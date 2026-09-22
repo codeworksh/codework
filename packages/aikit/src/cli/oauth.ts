@@ -1,5 +1,11 @@
 import type { CommandModule } from "yargs";
 import {
+	GitHubCopilotOAuthClient,
+	type GitHubCopilotOAuthCredentials,
+	JsonGitHubCopilotAuthStorage,
+	gitHubCopilotHeaders,
+} from "../oauth/github/copilot.ts";
+import {
 	JsonOpenAICodexAuthStorage,
 	OpenAICodexOAuthClient,
 	type OpenAICodexOAuthCredentials,
@@ -10,6 +16,7 @@ import {
 // which a bare optional property no longer accepts under `exactOptionalPropertyTypes`.
 type AuthArgs = {
 	openaiCodex?: boolean | undefined;
+	githubCopilot?: boolean | undefined;
 	authFile?: string | undefined;
 	browser?: boolean | undefined;
 	manual?: boolean | undefined;
@@ -19,6 +26,8 @@ type AuthArgs = {
 	json?: boolean | undefined;
 	printHeaders?: boolean | undefined;
 	originator?: string | undefined;
+	enterprise?: string | undefined;
+	enableModels?: boolean | undefined;
 };
 
 async function promptLine(message: string): Promise<string> {
@@ -138,6 +147,82 @@ async function runOpenAICodexAuth(args: AuthArgs): Promise<void> {
 	printCredentials(credentials, args);
 }
 
+function printCopilotCredentials(
+	credentials: GitHubCopilotOAuthCredentials,
+	options: { json?: boolean | undefined; printHeaders?: boolean | undefined },
+) {
+	if (options.json) {
+		console.log(
+			JSON.stringify(
+				{
+					enterpriseUrl: credentials.enterpriseUrl,
+					apiEndpoint: credentials.apiEndpoint,
+					availableModelIds: credentials.availableModelIds,
+					headers: options.printHeaders ? gitHubCopilotHeaders(credentials) : undefined,
+				},
+				null,
+				2,
+			),
+		);
+		return;
+	}
+
+	console.log(`API endpoint: ${credentials.apiEndpoint ?? "https://api.githubcopilot.com"}`);
+	if (credentials.enterpriseUrl) console.log(`Enterprise: ${credentials.enterpriseUrl}`);
+	if (credentials.availableModelIds) console.log(`Available models: ${credentials.availableModelIds.length}`);
+	console.log("Expires: never (re-login only on persistent 401s)");
+	if (options.printHeaders) {
+		console.log("Headers:");
+		for (const [name, value] of Object.entries(gitHubCopilotHeaders(credentials))) {
+			console.log(`${name}: ${value}`);
+		}
+	}
+}
+
+async function runGitHubCopilotAuth(args: AuthArgs): Promise<void> {
+	const storage = new JsonGitHubCopilotAuthStorage({
+		...(args.authFile !== undefined && { path: args.authFile }),
+	});
+	const client = new GitHubCopilotOAuthClient({ storage });
+
+	if (args.logout) {
+		await client.logout();
+		console.log(`Cleared GitHub Copilot credentials from ${storage.path}`);
+		return;
+	}
+
+	if (args.status) {
+		const credentials = await storage.get();
+		if (!credentials) {
+			console.log(`No GitHub Copilot credentials found at ${storage.path}`);
+			process.exitCode = 1;
+			return;
+		}
+		printCopilotCredentials(credentials, args);
+		return;
+	}
+
+	// GitHub OAuth tokens never expire; there is no refresh path.
+	const credentials = await client.login({
+		...(args.enterprise !== undefined && { enterpriseUrl: args.enterprise }),
+		enableModels: args.enableModels === true,
+		onAuth: (info) => {
+			console.log(info.instructions ?? "Complete GitHub Copilot authentication in your browser.");
+			console.log(`Enter code: ${info.userCode}`);
+			console.log(info.url);
+			if (args.browser !== false) {
+				void openBrowser(info.url).catch((error) => {
+					console.warn(`Failed to open browser: ${error instanceof Error ? error.message : String(error)}`);
+				});
+			}
+		},
+		onProgress: (message) => console.log(message),
+	});
+
+	console.log(`Saved GitHub Copilot credentials to ${storage.path}`);
+	printCopilotCredentials(credentials, args);
+}
+
 export const OAuthCommand: CommandModule<object, AuthArgs> = {
 	command: "auth",
 	describe: "manage OAuth credentials",
@@ -146,6 +231,18 @@ export const OAuthCommand: CommandModule<object, AuthArgs> = {
 			.option("openai-codex", {
 				type: "boolean",
 				describe: "use OpenAI Codex OAuth",
+			})
+			.option("github-copilot", {
+				type: "boolean",
+				describe: "use GitHub Copilot OAuth (device flow)",
+			})
+			.option("enterprise", {
+				type: "string",
+				describe: "GitHub Enterprise domain for GitHub Copilot login",
+			})
+			.option("enable-models", {
+				type: "boolean",
+				describe: "enable unconfigured Copilot catalog models after login",
 			})
 			.option("auth-file", {
 				type: "string",
@@ -187,12 +284,32 @@ export const OAuthCommand: CommandModule<object, AuthArgs> = {
 				describe: "print request headers for Codex API calls",
 			})
 			.check((args) => {
-				if (!args.openaiCodex) throw new Error("choose an auth provider, for example: auth --openai-codex");
+				if (!args.openaiCodex && !args.githubCopilot) {
+					throw new Error("choose an auth provider, for example: auth --openai-codex or auth --github-copilot");
+				}
+				if (args.openaiCodex && args.githubCopilot) {
+					throw new Error("choose only one of --openai-codex or --github-copilot");
+				}
+				if (args.githubCopilot && args.refresh) {
+					throw new Error(
+						"GitHub Copilot tokens do not expire; there is no --refresh, re-login on persistent 401s",
+					);
+				}
+				if (args.enterprise && !args.githubCopilot) {
+					throw new Error("--enterprise only applies to --github-copilot");
+				}
+				if (args.enableModels && !args.githubCopilot) {
+					throw new Error("--enable-models only applies to --github-copilot");
+				}
 				const actions = [args.status, args.refresh, args.logout].filter(Boolean).length;
 				if (actions > 1) throw new Error("choose only one of --status, --refresh, or --logout");
 				return true;
 			}),
 	handler: async (args) => {
+		if (args.githubCopilot) {
+			await runGitHubCopilotAuth(args);
+			return;
+		}
 		await runOpenAICodexAuth(args);
 	},
 };

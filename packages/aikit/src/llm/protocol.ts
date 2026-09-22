@@ -6,6 +6,7 @@ import { NamedError } from "../utils/error.ts";
 import type { AssistantMessageEventStream } from "../utils/eventstream.ts";
 import type {
 	AnthropicOptions,
+	GitHubCopilotOptions,
 	GoogleOptions,
 	GoogleVertexAnthropicOptions,
 	GoogleVertexOptions,
@@ -54,6 +55,7 @@ export interface OptionsByProtocol {
 	[Model.KnownProviderEnum.googleVertexAnthropic]: GoogleVertexAnthropicOptions;
 	[Model.KnownProviderEnum.openaiCompatible]: OpenAICompatibleOptions;
 	[Model.KnownProviderEnum.openaiCodex]: OpenAICodexOptions;
+	[Model.KnownProviderEnum.githubCopilot]: GitHubCopilotOptions;
 	[Model.KnownProviderEnum.openrouter]: OpenRouterOptions;
 	[Model.KnownProviderEnum.xai]: XaiOptions;
 }

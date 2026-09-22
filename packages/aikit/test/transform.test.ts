@@ -661,6 +661,73 @@ describe("encodeOpenAIReasoningSignature", () => {
 		expect(encodeOpenAIReasoningSignature({})).toBeUndefined();
 		expect(encodeOpenAIReasoningSignature({ openai: { itemId: 1 } })).toBeUndefined();
 	});
+
+	it("reads the github-copilot Responses metadata namespace", () => {
+		expect(
+			encodeOpenAIReasoningSignature({
+				"github-copilot": { itemId: "rs_2", reasoningEncryptedContent: "enc" },
+			}),
+		).toBe(JSON.stringify({ itemId: "rs_2", reasoningEncryptedContent: "enc" }));
+	});
+});
+
+describe("GitHub Copilot thinking replay", () => {
+	const copilotModel = (method: Model.APIMethodEnum) =>
+		makeModel({
+			id: "copilot-model",
+			provider: { id: "github-copilot", name: "GitHub Copilot", source: "custom", env: [] },
+			protocol: Model.KnownProviderEnum.githubCopilot,
+			api: { id: "copilot-model", method },
+		});
+	const openaiSignature = JSON.stringify({ itemId: "rs_9", reasoningEncryptedContent: "enc-9" });
+
+	it("round-trips Responses signatures under the github-copilot key", () => {
+		const model = copilotModel(Model.APIMethodEnum.responses);
+		const message = makeAssistantMessage(model, {
+			parts: [{ type: "thinking", thinking: "reasoned", thinkingSignature: openaiSignature }],
+		});
+		const converted = convertMessages({ messages: [message] }, model);
+		expect(converted[0]?.content).toEqual([
+			{
+				type: "reasoning",
+				text: "reasoned",
+				providerOptions: { "github-copilot": { itemId: "rs_9", reasoningEncryptedContent: "enc-9" } },
+			},
+		]);
+	});
+
+	it("replays Anthropic signatures on the Messages route", () => {
+		const model = copilotModel(Model.APIMethodEnum.messages);
+		const message = makeAssistantMessage(model, {
+			parts: [{ type: "thinking", thinking: "reasoned", thinkingSignature: "sig_anthropic" }],
+		});
+		const converted = convertMessages({ messages: [message] }, model);
+		expect(converted[0]?.content).toEqual([
+			{
+				type: "reasoning",
+				text: "reasoned",
+				providerOptions: { anthropic: { signature: "sig_anthropic" } },
+			},
+		]);
+	});
+
+	it("does not hand a foreign signature to the wrong Copilot endpoint", () => {
+		const model = copilotModel(Model.APIMethodEnum.messages);
+		const message = makeAssistantMessage(model, {
+			parts: [{ type: "thinking", thinking: "reasoned", thinkingSignature: openaiSignature }],
+		});
+		const converted = convertMessages({ messages: [message] }, model);
+		expect(converted[0]?.content).toEqual([{ type: "text", text: "reasoned" }]);
+	});
+
+	it("keeps unsigned chat-route thinking as plain text", () => {
+		const model = copilotModel(Model.APIMethodEnum.chat);
+		const message = makeAssistantMessage(model, {
+			parts: [{ type: "thinking", thinking: "reasoned" }],
+		});
+		const converted = convertMessages({ messages: [message] }, model);
+		expect(converted[0]?.content).toEqual([{ type: "text", text: "reasoned" }]);
+	});
 });
 
 /**

@@ -46,6 +46,12 @@
 			"import": "./dist/pack/oauth/openai/codex.mjs",
 			"default": "./dist/pack/oauth/openai/codex.mjs"
 		},
+		"./oauth/github/copilot": {
+			"development": "./src/oauth/github/copilot.ts",
+			"types": "./dist/pack/oauth/github/copilot.d.mts",
+			"import": "./dist/pack/oauth/github/copilot.mjs",
+			"default": "./dist/pack/oauth/github/copilot.mjs"
+		},
 		"./modelgen": {
 			"development": "./src/modelgen.ts",
 			"types": "./dist/pack/modelgen.d.mts",
