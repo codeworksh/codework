@@ -1,8 +1,8 @@
 /* @effect-diagnostics cryptoRandomUUID:off -- fixtures only need distinct message IDs. */
 import { Message } from "@codeworksh/aikit";
-import { describe, expect, it } from "vite-plus/test";
 import { Plugin, Runner, Settings } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
+import { describe, expect, it } from "vite-plus/test";
 import { renderError } from "../src/cli/error.ts";
 import { addUsage, emptyUsage, header, usage } from "../src/cli/output.ts";
 
@@ -116,7 +116,7 @@ describe("CLI output", () => {
 		expect(output).toContain("error[plugin-unsupported-source]: unsupported plugin source: codework-acme-plugn");
 		expect(output).toContain("reference: codework-acme-plugn");
 		expect(output).toContain("hint: a path entry starts with");
-		// One vocabulary: the tag is for code, the reason is what a person and a log line see.
+		// One vocabulary: the tag is for code, the reason for a human.
 		expect(output).not.toContain("PluginSourceError");
 	});
 

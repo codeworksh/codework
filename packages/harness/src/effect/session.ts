@@ -8,7 +8,6 @@ import * as SandboxController from "../sandbox/control.ts";
 import { SandboxInstance as SandboxInstanceSchema } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { AbsolutePath } from "../schema.ts";
-import { rooted } from "../util/path.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { Delivery } from "../session/prompt/schema.ts";
 import { PromptSchema } from "../session/prompt/schema.ts";
@@ -16,6 +15,7 @@ import * as SessionRuntime from "../session/runtime.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
 import type { State } from "../state/state.ts";
+import { rooted } from "../util/path.ts";
 import type { Info as SandboxInfo } from "./sandbox.ts";
 
 export interface ModelConfig {
@@ -45,8 +45,9 @@ export interface CreateInput extends RuntimeInput {
 	readonly sandbox?: SandboxInfo;
 	readonly directory?: string;
 	/**
-	 * The host directory this session belongs to: where its settings and its project plugins are
-	 * discovered from. A host path on the machine the harness runs on, unrelated to
+	 * The host directory anchor this session belongs to: also the place where its
+	 * settings are discovered from.
+	 * A host path on the machine the harness runs on, unrelated to
 	 * {@link CreateInput.directory}, which names a place inside the session's space.
 	 *
 	 * Optional, with no fallback. Omitting it gives a session no project layer, which is normal
@@ -78,15 +79,10 @@ export interface Info {
 	readonly id: SessionSchema.ID;
 	readonly title: string;
 	readonly directory: AbsolutePath;
-	/** Absent when the session has no host project; see {@link CreateInput.hostDir}. */
+	/** Absent when the session has no host anchor; see {@link CreateInput.hostDir}. */
 	readonly hostDir?: AbsolutePath;
 	/**
-	 * Whether this session has a host project at all.
-	 *
-	 * Not new state -- it is `hostDir !== undefined` -- but it is the question callers actually
-	 * ask, and asking it by name keeps "has a project" from being spelled four different ways at
-	 * four call sites. It is deliberately absent from the wire contract, where `hostDir` is right
-	 * there and a second derived field could only ever disagree with it.
+	 * Whether this session has a host anchor at all.
 	 */
 	readonly hasHostLink: boolean;
 	readonly sandbox?: SandboxInfo;
@@ -218,9 +214,6 @@ const declaredHostDir = (hostDir: string): AbsolutePath =>
 
 /**
  * Point an existing session at a host directory, or clear it with `null`.
- *
- * The settings and plugin layers it reads change at the next exchange, because every exchange
- * discovers from the session's current value rather than from one captured at creation.
  *
  * Distinct from {@link relink}, which moves the session's *work* to another space. A session can
  * move machines and keep its host project, or stay where it is and be given one it never had.

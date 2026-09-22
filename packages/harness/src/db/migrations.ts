@@ -249,8 +249,8 @@ export const migrations = {
 	"202609190001_session_host_dir": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 
-		// The host directory this session belongs to, which its settings and plugins are
-		// discovered from. Distinct from `directory`: that is a path inside the session's
+		// The host directory anchor this session belongs to.
+		// Distinct from `directory`: that is a path inside the session's
 		// space, possibly on another machine, whereas this one is always on the machine the
 		// harness runs on.
 		//

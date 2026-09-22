@@ -1,8 +1,8 @@
 import { Effect, Option, Predicate } from "effect";
 import { isRecord } from "../settings/merge.ts";
 import * as Loader from "./loader.ts";
-import { PluginSource } from "./source.ts";
 import { type Plugin, rank } from "./plugin.ts";
+import { PluginSource } from "./source.ts";
 
 /** Opaque to the harness: a plugin reads and validates its own block. */
 export type PluginOptions = { readonly [key: string]: unknown };
@@ -40,12 +40,21 @@ export interface Options extends Loader.Options {
  * A definition carries `setup`; a patch carries `plugin` or `package` and no `setup`. Checking
  * `setup` first matters because `Plugin` permits extra properties, so a definition holding its
  * own `plugin` property must not be read as configuration.
+ *
+ * e.g
+ * "acme/tool@1.2.0"                    → module (load me)
+ * define({id, kind, setup, ...})       → module (I AM the definition — embedder code only)
+ * { plugin: "x", enabled: false }      → config (don't load — adjust something already loaded)
+ *
+ * setup present → definition, always (even with a stray plugin: key)
+ * setup absent + plugin:/package: present → config patch
+ * setup absent + neither key → malformed
  */
 const isPatch = (reference: PluginRef): reference is PluginPatch =>
-	Predicate.isObject(reference) &&
-	!Predicate.isFunction(reference) &&
-	!("setup" in reference) &&
-	("plugin" in reference || "package" in reference);
+	Predicate.isObject(reference) && // 1. objects only — rules out strings, null
+	!Predicate.isFunction(reference) && // 2. Effect's isObject counts functions as objects — exclude them
+	!("setup" in reference) && // 3. a definition has setup
+	("plugin" in reference || "package" in reference); // 4. a patch must name what it configures
 
 /**
  * Everything that has been loaded, and every string that addresses it.
@@ -181,7 +190,7 @@ export const load = Effect.fn("PluginCatalog.load")(function* (references: Reado
 	return { plugins, aliases, versions, origins } satisfies Pool;
 });
 
-/** What the config pass could not satisfy, for §12.5's drift report. */
+/** What the config pass could not satisfy */
 export interface Selected {
 	readonly selection: ReadonlyArray<Prepared>;
 	/** References naming a module the pool does not hold. Reported, never fetched. */
@@ -210,6 +219,7 @@ export const select = Effect.fn("PluginCatalog.select")(function* (references: R
 
 	for (const [index, reference] of references.entries()) {
 		if (isPatch(reference)) {
+			// TODO(sanchitrk): should we do some schema validation of sorts? - this feels hacky
 			// A settings file is decoded before it reaches here; an embedder's array is not, so the
 			// entry shape is checked once for both. A contradictory entry is a mistake worth a
 			// failure, unlike a name that simply matches nothing.

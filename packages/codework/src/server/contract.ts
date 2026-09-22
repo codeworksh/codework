@@ -32,7 +32,7 @@ export const SessionInfo = Schema.Struct({
 	id: Session.SessionSchema.ID,
 	title: Schema.String,
 	directory: Session.AbsolutePath,
-	/** The host directory this session's settings and plugins are read from; absent when it has none. */
+	/** The host directory anchor this session belongs to. Typically this is where your configuration belongs to and read. Absent when it has none. */
 	hostDir: optional(Session.AbsolutePath),
 	sandbox: optional(SandboxInfo),
 });
@@ -74,18 +74,10 @@ export const Api = RpcGroup.make(
 			title: optional(Schema.String),
 			directory: optional(Schema.String),
 			/**
-			 * A directory on the *server's* machine, which this session's settings and project
-			 * plugins are read from. Unrelated to `directory`, which names a place inside the
-			 * session's space.
+			 * The host directory anchor this session belongs to. Also which this session's settings and project
+			 * plugins are read from. Unrelated to `directory`, which names a place inside the session's space.
 			 *
-			 * Optional and honoured as given. Omitting it is normal, not a failure: the session
-			 * simply has no project layer until `session.link` assigns one. Honouring a path the
-			 * client names is safe for the deployment that exists -- a local server whose client
-			 * owns the machine, where naming a host path is no more privilege than running
-			 * `codework` in it. It stops being safe the day the server is reachable by someone who
-			 * is not that person, because this path selects a settings file and that file names
-			 * code the server imports into its own process; constraining it to configured roots is
-			 * the answer then, and is a change to this one handler.
+			 * Optional and honoured as given. Omitting it is normal, not a failure.
 			 */
 			hostDir: optional(Session.AbsolutePath),
 			sandbox: optional(SandboxRef),
@@ -114,9 +106,6 @@ export const Api = RpcGroup.make(
 	 * Not `session.relink`: that moves where the *work* happens, this changes where *settings* are
 	 * discovered. Conflating them would recreate exactly the `cwd`/`hostDir` confusion the split
 	 * exists to remove, which is why they sound alike and stay apart.
-	 *
-	 * The project layer starts being read at the session's next exchange -- settings are re-read
-	 * every exchange, so nothing has to be reloaded or restarted.
 	 */
 	Rpc.make("session.link", {
 		payload: {

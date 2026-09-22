@@ -1,17 +1,17 @@
 import { Effect } from "effect";
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
-import { probe, registry as npmRegistry } from "../src/plugin/npm.ts";
 import { load } from "../src/plugin/catalog.ts";
+import { registry as npmRegistry, probe } from "../src/plugin/npm.ts";
 import { define } from "../src/plugin/plugin.ts";
-import { add, required } from "../src/plugin/store.ts";
 import { parse, type Fetchable } from "../src/plugin/source.ts";
+import { add, required } from "../src/plugin/store.ts";
 import { NAME, npmrc, withRegistry } from "./fixtures/registry.ts";
 
 /*

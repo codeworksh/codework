@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 import { DateTimeUtcFromMillis, NonNegativeInt, optional } from "../schema.ts";
+import { SessionFailure } from "../session/failure.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import { PromptSchema } from "../session/prompt/schema.ts";
-import { SessionFailure } from "../session/failure.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { EventSchema } from "./schema.ts";
 
@@ -234,13 +234,8 @@ export const ExecutionInterrupted = EventSchema.define({
 export type ExecutionInterrupted = typeof ExecutionInterrupted.Type;
 
 /**
- * Kernel lifecycle notice for one plugin module: which reference moved, and how. `loaded` covers
- * a first load, a superseding generation, and a re-imported module; `dropped` covers a module
- * leaving the pool (its source vanished, or no settings still name it); `failed` reports a load
- * or resolve error. `id` and `file` are known once a module loads, so only `failed` can lack
- * them. Ephemeral -- settings and the store are the durable record; replaying these would only
- * restate what the pool already says. The `plugin.<id>.` namespace belongs to plugin-declared
- * types, so this kernel type can never collide with one.
+ * Kernel lifecycle notice for one plugin module.
+ * The `plugin.<id>.` namespace belongs to plugin-declared types, so this kernel type can never collide with one.
  */
 export const PluginUpdated = EventSchema.define({
 	type: "plugin.updated",

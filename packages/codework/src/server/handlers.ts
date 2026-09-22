@@ -66,7 +66,6 @@ export const layer = Contract.Api.toLayer(
 				return toSessionInfo(yield* handle.info);
 			}),
 			"plugin.reload": Effect.fnUntraced(function* () {
-				// One handler onto the swap, because the seam was built before this surface was.
 				return yield* state.reload;
 			}),
 			"session.list": Effect.fnUntraced(function* () {

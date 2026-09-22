@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 import { realpathSync } from "node:fs";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { download, entrypoint, options, type Runner } from "../src/plugin/npm.ts";
 import { InstallError } from "../src/plugin/error.ts";
+import { download, entrypoint, options, type Runner } from "../src/plugin/npm.ts";
 import { parse, type Fetchable } from "../src/plugin/source.ts";
 
 /** Domain 1 against a temp directory, with a runner that copies a fixture. Nothing is installed. */

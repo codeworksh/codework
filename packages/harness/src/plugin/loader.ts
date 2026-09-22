@@ -1,15 +1,15 @@
 import { Effect, Predicate, Schema } from "effect";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { domains, type PluginKind } from "./plugin.ts";
-import { importModule, resolveModule } from "../util/module.ts";
+import type { EventSchema } from "../event/schema.ts";
 import { fileSystem as fs, hostPath as path } from "../host.ts";
+import { importModule, resolveModule } from "../util/module.ts";
 import { declaredIn, InstallError, LoadError, SourceError, type StoreError } from "./error.ts";
 import { url } from "./npm.ts";
+import type { Plugin } from "./plugin.ts";
+import { domains, type PluginKind } from "./plugin.ts";
 import { canonical as canonicalOf, type Fetchable, parse, type Target } from "./source.ts";
 import * as Store from "./store.ts";
-import type { EventSchema } from "../event/schema.ts";
-import type { Plugin } from "./plugin.ts";
 
 /** `vendor.domain.context`, exactly three segments — a fourth would shadow a package name. */
 export const idPattern = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*){2}$/;
@@ -64,7 +64,7 @@ export const sourceFailure = (origin: Origin, cause: unknown) =>
  */
 export const importFailure = (origin: Origin, cause: unknown) =>
 	new LoadError({
-		reason: /cannot find (package|module)/i.test(detail(cause))
+		reason: /cannot find (package|module)/i.test(detail(cause)) // never trust the regex, always double check.
 			? "plugin-missing-dependency"
 			: "plugin-import-failed",
 		reference: origin.reference,
