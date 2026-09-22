@@ -24,6 +24,23 @@ process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 
+const execCli = async (args: ReadonlyArray<string>, cwd?: string) => {
+	try {
+		const result = await exec(process.execPath, ["--conditions=development", cli, ...args], {
+			...(cwd === undefined ? {} : { cwd }),
+			timeout: 10_000,
+		});
+		return { status: 0, stdout: result.stdout, stderr: result.stderr };
+	} catch (error) {
+		const failure = error as { readonly code?: number; readonly stdout?: string; readonly stderr?: string };
+		return {
+			status: failure.code ?? 1,
+			stdout: failure.stdout ?? "",
+			stderr: failure.stderr ?? "",
+		};
+	}
+};
+
 const homes: string[] = [];
 const layer = (options: Harness.Options = {}) => {
 	const home = mkdtempSync(join(tmpdir(), "codework-server-"));
@@ -415,6 +432,60 @@ const connectedClient = Effect.gen(function* () {
 });
 
 describe("WebSocket client", () => {
+	it("runs session link and unlink through the CLI", () => {
+		const project = realpathSync(mkdtempSync(join(tmpdir(), "codework-cli-link-")));
+		homes.push(project);
+		return Effect.gen(function* () {
+			const server = yield* HttpServer.HttpServer;
+			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
+			const url = `ws://127.0.0.1:${server.address.port}/rpc`;
+			const rpc = yield* connectedClient;
+			const session = yield* rpc["session.create"]({});
+
+			const linked = yield* Effect.promise(() =>
+				execCli(["session", "link", session.id, project, "--server", url], project),
+			);
+			expect(linked.status).toBe(0);
+			expect(linked.stdout).toContain(`Linked ${session.id} to ${project}`);
+			expect((yield* rpc["session.info"]({ sessionId: session.id })).hostDir).toBe(project);
+
+			const unlinked = yield* Effect.promise(() =>
+				execCli(["session", "link", session.id, "--unlink", "--server", url], project),
+			);
+			expect(unlinked.status).toBe(0);
+			expect(unlinked.stdout).toContain(`Unlinked ${session.id}`);
+			expect((yield* rpc["session.info"]({ sessionId: session.id })).hostDir).toBeUndefined();
+		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("20 seconds"), Effect.runPromise);
+	});
+
+	it("reports plugin reload success and failure through the CLI", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-cli-reload-")));
+		homes.push(root);
+		const module = join(root, "plugin.mjs");
+		writeFileSync(module, 'export default { id: "acme.tool.reload", kind: "tool", setup() {} };\n');
+
+		return Effect.gen(function* () {
+			const server = yield* HttpServer.HttpServer;
+			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
+			const url = `ws://127.0.0.1:${server.address.port}/rpc`;
+
+			const succeeded = yield* Effect.promise(() => execCli(["plugin", "reload", "--server", url], root));
+			expect(succeeded.status).toBe(0);
+			expect(succeeded.stdout).toMatch(/^Reloaded \d+ plugins?\.\n$/);
+
+			yield* Effect.sync(() => writeFileSync(module, "export default { nope: true };\n"));
+			const failed = yield* Effect.promise(() => execCli(["plugin", "reload", "--server", url], root));
+			expect(failed.status).toBe(1);
+			expect(failed.stdout).toContain("Reload failed, keeping");
+			expect(failed.stdout).toContain("Missing key");
+		}).pipe(
+			Effect.scoped,
+			Effect.provide(websocket({ plugins: [module] })),
+			Effect.timeout("20 seconds"),
+			Effect.runPromise,
+		);
+	});
+
 	it("subscribes before a fast prompt and renders through completion, including continuation", () =>
 		Effect.gen(function* () {
 			const rpc = yield* connectedClient;

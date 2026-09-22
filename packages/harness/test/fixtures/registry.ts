@@ -1,3 +1,4 @@
+/* @effect-diagnostics nodeBuiltinImport:off -- this fixture is a loopback registry backed by Node APIs. */
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -39,7 +40,7 @@ const pack = async (directory: string, version: string, scripts: Record<string, 
 	);
 	await writeFile(
 		join(root, "index.js"),
-		`export default { id: ${JSON.stringify(pluginId)}, version: "${version}" };\n`,
+		`export default { id: ${JSON.stringify(pluginId)}, version: "${version}", kind: "tool", setup() {} };\n`,
 	);
 	await run("tar", ["-czf", "package.tgz", "package"], { cwd: join(directory, version) });
 	return readFile(join(directory, version, "package.tgz"));

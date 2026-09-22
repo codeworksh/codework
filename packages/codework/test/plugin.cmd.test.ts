@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
+import { NAME, npmrc, withRegistry } from "../../harness/test/fixtures/registry.ts";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const plugin = (name: string) => fileURLToPath(new URL(`../../../extras/${name}`, import.meta.url));
@@ -42,11 +43,23 @@ const withProject = async (body: (project: { root: string; home: string; run: Ru
 };
 type Run = (...args: ReadonlyArray<string>) => SpawnSyncReturns<string>;
 
+const runAsyncResult = (cwd: string, ...args: ReadonlyArray<string>) =>
+	new Promise<{ readonly status: number | null; readonly stdout: string; readonly stderr: string }>(
+		(resolve, reject) => {
+			const child = spawn(process.execPath, ["--conditions=development", cli, ...args], { cwd });
+			let stdout = "";
+			let stderr = "";
+			child.stdout.setEncoding("utf8");
+			child.stderr.setEncoding("utf8");
+			child.stdout.on("data", (chunk: string) => (stdout += chunk));
+			child.stderr.on("data", (chunk: string) => (stderr += chunk));
+			child.on("error", reject);
+			child.on("close", (status) => resolve({ status, stdout, stderr }));
+		},
+	);
+
 const runAsync = (cwd: string, ...args: ReadonlyArray<string>) =>
-	new Promise<number | null>((resolve) => {
-		const child = spawn(process.execPath, ["--conditions=development", cli, ...args], { cwd, stdio: "ignore" });
-		child.on("exit", resolve);
-	});
+	runAsyncResult(cwd, ...args).then(({ status }) => status);
 
 /** A fixed generation number, so a published fixture is byte-identical between runs. */
 const GENERATION = 1789564800000;
@@ -384,6 +397,24 @@ describe("codework plugin add/remove", () => {
 			]);
 			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual(["./plugins/project.ts"]);
 		}));
+
+	it("lets --user-config-dir outrank both the project and --global targets", () =>
+		withProject(({ root, home, run }) => {
+			writeFileSync(settings(root), JSON.stringify({ plugins: ["./project.ts"] }));
+			mkdirSync(home, { recursive: true });
+			writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ plugins: ["./global.ts"] }));
+
+			const added = run("plugin", "add", plugin("codework-tool-proc"), "-g", "--user-config-dir", "override");
+			expect(added.status).toBe(0);
+			const override = join(root, "override", "settings.jsonc");
+			expect(JSON.parse(readFileSync(override, "utf8")).plugins).toEqual([plugin("codework-tool-proc")]);
+			expect(JSON.parse(readFileSync(settings(root), "utf8")).plugins).toEqual(["./project.ts"]);
+			expect(JSON.parse(readFileSync(join(home, "settings.jsonc"), "utf8")).plugins).toEqual(["./global.ts"]);
+
+			const removed = run("plugin", "remove", plugin("codework-tool-proc"), "-g", "--user-config-dir", "override");
+			expect(removed.status).toBe(0);
+			expect(JSON.parse(readFileSync(override, "utf8")).plugins).toEqual([]);
+		}));
 });
 
 describe("codework plugin install/list/check", () => {
@@ -496,6 +527,59 @@ describe("codework plugin install/list/check", () => {
 			expect(installed.stdout).toContain("1 local");
 		}));
 
+	it(
+		"installs and reports mutable plugin states through the CLI",
+		() =>
+			withProject(async ({ root, home }) => {
+				const spec = `${NAME}@^1.0.0`;
+				await withRegistry(
+					join(root, "registry"),
+					async (registry) => {
+						await npmrc(root, registry);
+						writeFileSync(settings(root), JSON.stringify({ plugins: [spec] }));
+
+						const missing = await runAsyncResult(root, "plugin", "check", "--home", home);
+						expect(missing.status).toBe(0);
+						expect(missing.stdout).toContain(`${spec}  plugin-not-installed`);
+
+						const installed = await runAsyncResult(root, "plugin", "install", "--home", home);
+						expect(installed.status, installed.stderr).toBe(0);
+						expect(installed.stdout).toContain(`Installed ${spec} (fixture.tool.cli)`);
+						expect(installed.stdout).toContain("1 installed");
+
+						const present = await runAsyncResult(root, "plugin", "install", "--home", home);
+						expect(present.status).toBe(0);
+						expect(present.stdout).toContain("0 installed, 1 already present");
+					},
+					{ pluginId: "fixture.tool.cli" },
+				);
+
+				// Persist the result a successful remote check would have written. `check` must render
+				// that cross-process cache without opening the now-closed fixture registry.
+				const indexPath = join(home, "cache", "plugins", "v2", "index.json");
+				const index = JSON.parse(readFileSync(indexPath, "utf8")) as {
+					entries: Record<string, Record<string, unknown>>;
+				};
+				const record = Object.values(index.entries)[0];
+				expect(record).toBeDefined();
+				Object.assign(record ?? {}, { checkedAt: statSync(indexPath).mtimeMs, outdated: true, available: "1.1.0" });
+				writeFileSync(indexPath, JSON.stringify(index));
+
+				const checked = await runAsyncResult(root, "plugin", "check", "--home", home);
+				expect(checked.status, JSON.stringify(checked)).toBe(0);
+				expect(checked.stdout).toContain(`${spec}  1.0.0 -> 1.1.0`);
+				expect(checked.stdout).toContain("1 update available");
+
+				// `update` always refreshes the remote answer. The fixture is deliberately closed, so
+				// this covers per-entry failure reporting and the command's non-zero exit contract.
+				const updated = await runAsyncResult(root, "plugin", "update", "--home", home);
+				expect(updated.status).toBe(1);
+				expect(updated.stdout).toContain(`error[plugin-resolve-failed]`);
+				expect(updated.stdout).toContain("Nothing to update.");
+			}),
+		120_000,
+	);
+
 	it("skips local entries when checking for updates", () =>
 		withProject(({ root, run }) => {
 			// No revision to compare, so `check` reports nothing rather than calling it current.
@@ -503,5 +587,8 @@ describe("codework plugin install/list/check", () => {
 			const checked = run("plugin", "check");
 			expect(checked.status).toBe(0);
 			expect(checked.stdout).toContain("Everything is up to date.");
+			const updated = run("plugin", "update");
+			expect(updated.status).toBe(0);
+			expect(updated.stdout).toContain("Nothing to update.");
 		}));
 });

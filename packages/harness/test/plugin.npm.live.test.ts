@@ -23,8 +23,11 @@ import { parse, type Fetchable } from "../src/plugin/source.ts";
  *    that reads a cache is not a staleness check.
  *
  * Both reach the npm registry and github, so this file fails when they are unreachable. The
- * packages are chosen to be tiny and long-stable.
+ * packages are chosen to be tiny and long-stable. Opt in with `CODEWORK_PLUGIN_LIVE=1` so the
+ * default suite stays hermetic.
  */
+
+const live = process.env.CODEWORK_PLUGIN_LIVE === "1" ? describe : describe.skip;
 
 const withStaging = (body: (input: { into: string; home: string }) => Promise<void>) =>
 	Effect.runPromise(
@@ -49,7 +52,7 @@ const withStaging = (body: (input: { into: string; home: string }) => Promise<vo
 
 const fetchable = (spec: string) => Effect.runSync(parse(spec, "/unused")) as Fetchable;
 
-describe("the npm toolchain, against the real registry", () => {
+live("the npm toolchain, against the real registry", () => {
 	it("installs an exact version and reports it as the revision", { timeout: 120_000 }, async () =>
 		withStaging(async ({ into, home }) => {
 			const target = fetchable("is-number@7.0.0");
@@ -111,7 +114,7 @@ describe("the npm toolchain, against the real registry", () => {
 	);
 });
 
-describe("the store, against the real registry", () => {
+live("the store, against the real registry", () => {
 	it("installs, publishes and resolves a real package end to end", { timeout: 180_000 }, async () =>
 		withStaging(async ({ home }) => {
 			const target = fetchable("is-number@7.0.0");
@@ -150,7 +153,7 @@ describe("the store, against the real registry", () => {
  * fetcher and the same `@npmcli/git` spawn, so an authenticated `probe` is an authenticated
  * install.
  */
-describe("a git remote the ambient credentials cannot reach", () => {
+live("a git remote the ambient credentials cannot reach", () => {
 	it("fails instead of waiting for a password", { timeout: 120_000 }, async () =>
 		withStaging(async ({ into, home }) => {
 			/*
