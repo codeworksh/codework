@@ -5,6 +5,7 @@ import { Effect, Schema } from "effect";
 
 export default define({
 	id: "acme.tool.guarded",
+	kind: "tool",
 	setup(ctx) {
 		ctx.plugin.tools.add(
 			Tool.register(

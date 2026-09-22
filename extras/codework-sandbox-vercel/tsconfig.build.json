@@ -9,7 +9,7 @@
 		"rootDir": "src",
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
-			"@codeworksh/harness/sandbox": ["../../packages/harness/dist/pack/sandbox.d.mts"]
+			"@codeworksh/plugin/sandbox": ["../../packages/plugin/dist/pack/sandbox.d.mts"]
 		},
 		"noEmitOnError": true
 	}

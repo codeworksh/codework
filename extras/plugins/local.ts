@@ -11,7 +11,7 @@
  * It has no dependencies beyond the plugin surface: everything it reports comes from its own
  * configuration block, which makes it the shortest complete example of `setup(ctx, options)`.
  */
-import { Plugin, Tool } from "@codeworksh/harness/effect";
+import { Plugin, Tool } from "@codeworksh/plugin";
 import { Effect, Schema } from "effect";
 
 /** The harness hands the block over untouched, so shape-check it here and ignore the rest. */
@@ -27,6 +27,7 @@ const readFacts = (options: Plugin.PluginOptions): Record<string, string> => {
 
 export default Plugin.define({
 	id: "local.tool.facts",
+	kind: "tool",
 	setup(ctx, options) {
 		const facts = readFacts(options);
 		const names = Object.keys(facts);

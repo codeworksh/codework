@@ -15,12 +15,25 @@ const ignoredPaths = [
 	".vercel/**",
 	"**/.vercel/**",
 ];
-const aliases = {
-	"@codeworksh/harness/sandbox": fileURLToPath(new URL("src/sandbox.ts", import.meta.url)),
-	"@codeworksh/aikit/modelgen": fileURLToPath(new URL("../aikit/src/modelgen.ts", import.meta.url)),
-	"@codeworksh/aikit/failure": fileURLToPath(new URL("../aikit/src/llm/failure.ts", import.meta.url)),
-	"@codeworksh/aikit": fileURLToPath(new URL("../aikit/src/index.ts", import.meta.url)),
-};
+const aliases = [
+	// `@codeworksh/plugin` is the published plugin SDK; in this repo it resolves to source,
+	// so a change to the contract is visible to the harness and the example plugins at once.
+	{ find: /^@codeworksh\/plugin$/, replacement: fileURLToPath(new URL("../plugin/src/index.ts", import.meta.url)) },
+	{
+		find: /^@codeworksh\/plugin\/(.*)$/,
+		replacement: fileURLToPath(new URL("../plugin/src/$1.ts", import.meta.url)),
+	},
+	{ find: "@codeworksh/harness/sandbox", replacement: fileURLToPath(new URL("src/sandbox.ts", import.meta.url)) },
+	{
+		find: "@codeworksh/aikit/modelgen",
+		replacement: fileURLToPath(new URL("../aikit/src/modelgen.ts", import.meta.url)),
+	},
+	{
+		find: "@codeworksh/aikit/failure",
+		replacement: fileURLToPath(new URL("../aikit/src/llm/failure.ts", import.meta.url)),
+	},
+	{ find: "@codeworksh/aikit", replacement: fileURLToPath(new URL("../aikit/src/index.ts", import.meta.url)) },
+];
 
 export default defineConfig({
 	resolve: {

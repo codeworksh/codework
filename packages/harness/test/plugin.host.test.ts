@@ -95,6 +95,7 @@ describe("plugin domains and exchange host", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							hostCwd: root,
 							database: ":memory:",
 							llm: (input, signal) => {
 								models.push(input.resolvedModel);
@@ -104,6 +105,7 @@ describe("plugin domains and exchange host", () => {
 							plugins: [
 								{
 									id: "acme.tool.echo",
+									kind: "tool",
 									setup: (ctx) => {
 										contexts.push(ctx);
 										ctx.plugin.tools.add(echo("test"));
@@ -112,6 +114,7 @@ describe("plugin domains and exchange host", () => {
 								defaultPromptPlugin,
 								{
 									id: "acme.prompt.wrap",
+									kind: "prompt",
 									setup: async (ctx) => {
 										await Promise.resolve();
 										ctx.plugin.prompt.set(`${ctx.plugin.prompt.get()}\nwrapped`);
@@ -124,7 +127,7 @@ describe("plugin domains and exchange host", () => {
 				),
 			);
 		}));
-	it("lets prompt plugins observe only earlier tool registrations", () =>
+	it("lets a prompt plugin see every tool, wherever its entry sits", () =>
 		withSettings(async ({ root }) => {
 			const prompts: string[] = [];
 			const open = immediateOpen();
@@ -132,11 +135,12 @@ describe("plugin domains and exchange host", () => {
 				Effect.gen(function* () {
 					const session = yield* Session.create({ directory: root });
 					yield* session.run("hello");
-					expect(prompts).toEqual(["0"]);
+					expect(prompts).toEqual(["1"]);
 				}).pipe(
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							hostCwd: root,
 							database: ":memory:",
 							llm: (input, signal) => {
 								prompts.push(input.context.systemPrompt ?? "");
@@ -145,9 +149,10 @@ describe("plugin domains and exchange host", () => {
 							plugins: [
 								{
 									id: "acme.prompt.count",
+									kind: "prompt",
 									setup: (ctx) => ctx.plugin.prompt.set(String(ctx.plugin.tools.list().length)),
 								},
-								{ id: "acme.tool.echo", setup: (ctx) => ctx.plugin.tools.add(echo("test")) },
+								{ id: "acme.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo("test")) },
 							],
 						}),
 					),
@@ -160,6 +165,7 @@ describe("plugin domains and exchange host", () => {
 			let setups = 0;
 			const counted = {
 				id: "acme.prompt.counted",
+				kind: "prompt" as const,
 				setup: () => {
 					setups++;
 				},
@@ -172,6 +178,7 @@ describe("plugin domains and exchange host", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							// A malformed entry after a valid one: nothing may run, not even the
@@ -183,7 +190,7 @@ describe("plugin domains and exchange host", () => {
 					Effect.flip,
 				),
 			);
-			expect(failure).toMatchObject({ _tag: "PluginPreparationError", phase: "definition", index: 1 });
+			expect(failure).toMatchObject({ _tag: "PluginLoadError", reason: "plugin-invalid-definition" });
 			expect(setups).toBe(0);
 		}));
 	it("runs no setup when model resolution fails", () =>
@@ -202,11 +209,13 @@ describe("plugin domains and exchange host", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							hostCwd: root,
 							database: ":memory:",
 							llm: immediateOpen(),
 							plugins: [
 								{
 									id: "acme.prompt.count",
+									kind: "prompt",
 									setup: (ctx) => {
 										setups++;
 										ctx.plugin.prompt.set("");
@@ -243,6 +252,7 @@ describe("plugin domains and exchange host", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
+								hostCwd: root,
 								database: ":memory:",
 								llm: () => {
 									requested = true;
@@ -251,6 +261,7 @@ describe("plugin domains and exchange host", () => {
 								plugins: [
 									{
 										id: "acme.prompt.fail",
+										kind: "prompt",
 										setup: (ctx) => {
 											retained = ctx;
 											return failure();
@@ -258,6 +269,7 @@ describe("plugin domains and exchange host", () => {
 									},
 									{
 										id: "acme.prompt.later",
+										kind: "prompt",
 										setup: () => {
 											later = true;
 										},
@@ -289,11 +301,13 @@ describe("plugin domains and exchange host", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
+								hostCwd: root,
 								database: ":memory:",
 								llm: immediateOpen(),
 								plugins: [
 									{
 										id: "acme.prompt.wait",
+										kind: "prompt",
 										setup: (ctx) => {
 											retained = ctx;
 											return Deferred.succeed(entered, undefined).pipe(
@@ -356,10 +370,12 @@ describe("plugin pipelines in the kernel loop", () => {
 						Effect.provide(
 							Harness.layer({
 								home: join(root, "home"),
+								hostCwd: root,
 								database: ":memory:",
 								plugins: [
 									{
 										id: "acme.tool.pipeline",
+										kind: "tool",
 										setup: (ctx) =>
 											ctx.plugin.tools.add(pipeline, {
 												beforeToolCall: ({ callID }) => {

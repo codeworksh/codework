@@ -293,7 +293,7 @@ describe("SandboxIO identity", () => {
 	});
 
 	it("defaults the host to its process working directory", () => {
-		const identity = SandboxIO.host();
+		const identity = SandboxIO.host(process.cwd());
 
 		expect(identity.cwd).toBe(process.cwd());
 		expect(identity.id).toBe(SandboxInstance.ID.local);
@@ -301,7 +301,7 @@ describe("SandboxIO identity", () => {
 	});
 
 	it("resolves a relative host cwd from its process working directory", () => {
-		expect(SandboxIO.host("repo").cwd).toBe(`${process.cwd()}/repo`);
+		expect(() => SandboxIO.host("repo")).toThrow("Sandbox default cwd must be absolute");
 	});
 
 	it("mints a distinct id per virtual namespace unless one is named", () => {

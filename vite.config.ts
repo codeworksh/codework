@@ -13,17 +13,39 @@ const ignoredPaths = [
 	".vercel/**",
 	"**/.vercel/**",
 ];
-const aliases = {
-	"@codeworksh/harness/effect": fileURLToPath(new URL("./packages/harness/src/effect.ts", import.meta.url)),
-	"@codeworksh/harness/sandbox": fileURLToPath(new URL("./packages/harness/src/sandbox.ts", import.meta.url)),
-	"@codeworksh/aikit/failure": fileURLToPath(new URL("./packages/aikit/src/llm/failure.ts", import.meta.url)),
-	"@codeworksh/aikit": fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)),
-	"@codeworksh/harness": fileURLToPath(new URL("./packages/harness/src/index.ts", import.meta.url)),
-};
+const aliases = [
+	// `@codeworksh/plugin` is the published plugin SDK; in this repo it resolves to source,
+	// so a change to the contract is visible to the harness and the example plugins at once.
+	{
+		find: /^@codeworksh\/plugin$/,
+		replacement: fileURLToPath(new URL("./packages/plugin/src/index.ts", import.meta.url)),
+	},
+	{
+		find: /^@codeworksh\/plugin\/(.*)$/,
+		replacement: fileURLToPath(new URL("./packages/plugin/src/$1.ts", import.meta.url)),
+	},
+	{
+		find: "@codeworksh/harness/effect",
+		replacement: fileURLToPath(new URL("./packages/harness/src/effect.ts", import.meta.url)),
+	},
+	{
+		find: "@codeworksh/harness/sandbox",
+		replacement: fileURLToPath(new URL("./packages/harness/src/sandbox.ts", import.meta.url)),
+	},
+	{
+		find: "@codeworksh/aikit/failure",
+		replacement: fileURLToPath(new URL("./packages/aikit/src/llm/failure.ts", import.meta.url)),
+	},
+	{ find: "@codeworksh/aikit", replacement: fileURLToPath(new URL("./packages/aikit/src/index.ts", import.meta.url)) },
+	{
+		find: "@codeworksh/harness",
+		replacement: fileURLToPath(new URL("./packages/harness/src/index.ts", import.meta.url)),
+	},
+];
 
 // Packages written against Effect. Kept as a list so lint overrides and the
 // Effect rule set stay in one place as more Effect packages land.
-const effectPackages = ["packages/harness/src/**/*.ts", "packages/codework/src/**/*.ts"];
+const effectPackages = ["packages/harness/src/**/*.ts", "packages/plugin/src/**/*.ts", "packages/codework/src/**/*.ts"];
 
 const effectRules = {
 	...recommended.rules,

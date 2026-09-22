@@ -7,6 +7,7 @@ import { providerError } from "../errors.ts";
 import { SandboxInstance } from "../instance.ts";
 import { EnvSqldb } from "../fs/sqldb.ts";
 import { transport, transportLayer } from "../virtual.ts";
+import { AbsolutePath } from "../../schema.ts";
 
 export interface RuntimeConfig extends SandboxDriver.RuntimeConfigBase {
 	readonly location?: string | undefined;
@@ -16,13 +17,13 @@ export interface RuntimeConfig extends SandboxDriver.RuntimeConfigBase {
 export const CreateConfig = Schema.Struct({
 	defaultCwd: Schema.optional(SandboxDriver.AbsolutePath),
 	initializeCwd: Schema.optional(SandboxDriver.AbsolutePath),
-	location: Schema.optional(Schema.String),
+	location: Schema.optional(AbsolutePath),
 });
 export type CreateConfig = typeof CreateConfig.Type;
 
 export const RuntimeConfig = Schema.Struct({
 	defaultCwd: SandboxDriver.AbsolutePath,
-	location: Schema.optional(Schema.String),
+	location: Schema.optional(AbsolutePath),
 	inMemory: Schema.Boolean,
 });
 
@@ -77,7 +78,7 @@ export const make = () => {
 		runtimeConfigCodec: RuntimeConfig,
 		create: ({ instanceId, config }) => {
 			const defaultCwd = config.defaultCwd ?? SandboxDriver.AbsolutePath.make("/");
-			const location = config.location === undefined ? undefined : posix.resolve(config.location);
+			const location = config.location;
 			return EnvSqldb.make(location, { cwd: config.initializeCwd ?? defaultCwd }).pipe(
 				Effect.mapError((cause) => providerError({ driver: name, operation: "create", cause })),
 				Effect.map((namespace) => {

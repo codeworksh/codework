@@ -116,6 +116,57 @@ codework models generate ./path/to/custom-models.json
 
 ---
 
+### `codework plugin add` / `codework plugin remove`
+
+Install a plugin and record it in a settings file, or take it back out. Scoping follows npm: the
+project is the default, `-g` is user-wide.
+
+```bash
+# This project: edits .codework/settings.jsonc, creating .codework/ here if no ancestor has one
+codework plugin add @acme/codework-tool-proc@1.2.0
+
+# Every project this user runs: writes ~/.codework/settings.jsonc
+codework plugin add @acme/codework-tool-proc@1.2.0 -g
+
+# Remove it, along with any configuration written against it
+codework plugin remove @acme/codework-tool-proc
+```
+
+The project is found the way the harness finds it, and the way git finds a repository: the
+nearest ancestor holding a `.codework` directory. Run from `packages/app`, the command edits the
+repository's own `.codework/settings.jsonc` rather than starting a second project beside it. An
+empty `.codework/` is enough — the marker is the directory, so creating it is how you say a
+project begins here. When no ancestor has one, `add` creates `.codework/` in the directory you are
+in and prints the path, because that decides where every later plugin entry lands.
+
+`add` installs and imports the module before writing anything, so a spec that is not a plugin
+fails with its own error and leaves the file untouched; the line it prints names the plugin ID the
+module actually declared. Adding a plugin that is already configured under another spelling — a
+different version, or the path instead of the package — rewrites that entry in place rather than
+leaving a second loader behind, the way `npm install pkg@2` updates the spec already recorded.
+Configuration written against the plugin is left where it is. Edits preserve comments, key order and formatting, and are written
+through a temp file so an interrupted run cannot truncate your settings.
+
+`remove` drops the module entry and any configuration object naming the same plugin, whichever
+spelling each was written with: the version it was added with is not part of its identity, and the
+ID a module declares removes the entry that loads it. Resolving an ID reads what is installed and
+never fetches anything. A plugin can also be kept but switched off without removing it, with
+`{ "plugin": "acme.tool.proc", "enabled": false }`.
+
+#### Flags:
+
+| Flag                | Description                                                                        |
+| :------------------ | :--------------------------------------------------------------------------------- |
+| `-g`, `--global`    | Edit the user-wide settings file instead of this project's                         |
+| `--home`            | Where that user-wide file lives (default: `CODEWORK_HOME_DIR`, else `~/.codework`) |
+| `--user-config-dir` | Edit `<dir>/settings.jsonc`; outranks both of the above                            |
+
+Plugin entries accumulate across settings layers, so a user-wide plugin still applies inside a
+project that declares its own. A project that wants an inherited plugin gone says so in its own
+file, with `{ "plugin": "<id>", "enabled": false }`.
+
+---
+
 ## Environment Variables
 
 | Variable                       | Description                                          |

@@ -4,7 +4,7 @@ import { DateTime, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Stream
 import { HttpServer } from "effect/unstable/http";
 import { RpcTest } from "effect/unstable/rpc";
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,9 +18,28 @@ import { Envelope } from "../src/server/envelope.ts";
 import { EventFeed } from "../src/server/feed.ts";
 import { Handlers } from "../src/server/handlers.ts";
 import { Server } from "../src/server/server.ts";
+import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
 
 process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 const exec = promisify(execFile);
+const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
+
+const execCli = async (args: ReadonlyArray<string>, cwd?: string) => {
+	try {
+		const result = await exec(process.execPath, ["--conditions=development", cli, ...args], {
+			...(cwd === undefined ? {} : { cwd }),
+			timeout: 10_000,
+		});
+		return { status: 0, stdout: result.stdout, stderr: result.stderr };
+	} catch (error) {
+		const failure = error as { readonly code?: number; readonly stdout?: string; readonly stderr?: string };
+		return {
+			status: failure.code ?? 1,
+			stdout: failure.stdout ?? "",
+			stderr: failure.stderr ?? "",
+		};
+	}
+};
 
 const homes: string[] = [];
 const layer = (options: Harness.Options = {}) => {
@@ -28,7 +47,7 @@ const layer = (options: Harness.Options = {}) => {
 	homes.push(home);
 	return Handlers.layer.pipe(
 		Layer.provide(EventFeed.layer),
-		Layer.provideMerge(Harness.layer({ home, database: ":memory:", ...options })),
+		Layer.provideMerge(Harness.layer({ home, hostCwd: home, database: ":memory:", ...options })),
 	);
 };
 
@@ -37,7 +56,7 @@ const Registered = EventSchema.define({
 	type: "plugin.test.event.registrar.noticed",
 	schema: { value: Schema.String },
 });
-const registrar = definePlugin({ id: "test.event.registrar", events: [Registered], setup: () => {} });
+const registrar = definePlugin({ id: "test.event.registrar", kind: "tool", events: [Registered], setup: () => {} });
 
 afterAll(() => {
 	for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
@@ -62,6 +81,167 @@ describe("server", () => {
 
 			const listed = yield* rpc["session.list"]({});
 			expect(listed.some(({ id }) => id === created.id)).toBe(true);
+		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
+
+	it("uses the harness hostCwd for a local session when the client omits directory", () => {
+		const hostCwd = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-cwd-")));
+		homes.push(hostCwd);
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const created = yield* rpc["session.create"]({});
+			expect(created.directory).toBe(hostCwd);
+		}).pipe(Effect.scoped, Effect.provide(layer({ hostCwd })), Effect.runPromise);
+	});
+
+	it("session.create honours a client-supplied hostDir, and omits it when the client named none", () => {
+		const root = mkdtempSync(join(tmpdir(), "codework-server-hostdir-"));
+		homes.push(root);
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			// Passed through as given. The client is the owner of this machine, so naming a host
+			// path is no more privilege than running `codework` in it.
+			const placed = yield* rpc["session.create"]({ hostDir: Session.AbsolutePath.make(root) });
+			expect(placed.hostDir).toBe(root);
+			expect((yield* rpc["session.info"]({ sessionId: placed.id })).hostDir).toBe(root);
+
+			// And nothing fills it in: a session the client did not place has no host project,
+			// rather than quietly adopting the server's own startup directory.
+			const unplaced = yield* rpc["session.create"]({});
+			expect(unplaced.hostDir).toBeUndefined();
+		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
+	});
+
+	it("session.link sets and clears a session's host directory", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-link-")));
+		homes.push(root);
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const created = yield* rpc["session.create"]({});
+			expect(created.hostDir).toBeUndefined();
+
+			const linked = yield* rpc["session.link"]({
+				sessionId: created.id,
+				hostDir: Session.AbsolutePath.make(root),
+			});
+			expect(linked.hostDir).toBe(root);
+			// Stored, not held in the call: a later reader sees it too.
+			expect((yield* rpc["session.info"]({ sessionId: created.id })).hostDir).toBe(root);
+
+			// Omitting the field clears the anchor, leaving the session with no host directory.
+			const cleared = yield* rpc["session.link"]({ sessionId: created.id });
+			expect(cleared.hostDir).toBeUndefined();
+		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);
+	});
+
+	it("refuses to write a project for a session that has none", () => {
+		// The session exists and is perfectly usable; it just has no project to write into. That
+		// is a normal state, and the one `session link` exists to fix.
+		const home = mkdtempSync(join(tmpdir(), "codework-server-unlinked-"));
+		homes.push(home);
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const created = yield* rpc["session.create"]({});
+			const failure = yield* linkedDirectory(created.id, Option.some(home)).pipe(Effect.flip);
+			expect(failure).toMatchObject({ _tag: "SessionNotLinkedError", reason: "session-not-linked" });
+
+			// Linked, the same lookup answers with the directory.
+			yield* rpc["session.link"]({
+				sessionId: created.id,
+				hostDir: Session.AbsolutePath.make(realpathSync(home)),
+			});
+			expect(yield* linkedDirectory(created.id, Option.some(home))).toBe(realpathSync(home));
+		}).pipe(
+			Effect.scoped,
+			// A file database, because the lookup opens its own connection the way the CLI does.
+			Effect.provide(layer({ home, database: join(home, "data", "codework.db") })),
+			Effect.runPromise,
+		);
+	});
+
+	it("refuses a relative host directory rather than resolving it against its own", () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-server-relative-"));
+		homes.push(home);
+
+		return expect(
+			Effect.gen(function* () {
+				const rpc = yield* RpcTest.makeClient(Contract.Api);
+				const created = yield* rpc["session.create"]({});
+				/*
+				 * A client means *its own* `my-project`. The only directory the server could
+				 * resolve that against is the one it was started in, which would store a real path
+				 * on the wrong machine's filesystem -- branded absolute, persisted, and used to
+				 * pick the settings file whose plugins this process then imports. Measured before
+				 * it was fixed: `my-project` came back as `<the server's repository>/my-project`.
+				 */
+				yield* rpc["session.link"]({
+					sessionId: created.id,
+					// Deliberately bypass the client type to prove the wire decoder rejects malformed input.
+					hostDir: "my-project" as Session.AbsolutePath,
+				});
+			}).pipe(Effect.scoped, Effect.provide(layer({ home, hostCwd: home })), Effect.runPromise),
+		).rejects.toThrow(/Schema validation failed/);
+	});
+
+	it("anchors a plugin reference to the session's project, not the directory the CLI ran in", () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-server-linked-"));
+		homes.push(home);
+		const project = join(realpathSync(home), "project");
+		const elsewhere = join(realpathSync(home), "elsewhere");
+		mkdirSync(join(project, ".codework"), { recursive: true });
+		mkdirSync(join(project, "tool"), { recursive: true });
+		mkdirSync(elsewhere, { recursive: true });
+		writeFileSync(
+			join(project, "tool", "package.json"),
+			JSON.stringify({ name: "local-tool", type: "module", exports: "./index.js" }),
+		);
+		writeFileSync(
+			join(project, "tool", "index.js"),
+			'export default { id: "acme.tool.local", kind: "tool", setup() {} };\n',
+		);
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const created = yield* rpc["session.create"]({});
+			yield* rpc["session.link"]({ sessionId: created.id, hostDir: Session.AbsolutePath.make(project) });
+
+			/*
+			 * `--session` exists for a server or a UI acting on a session's behalf, so the shell's
+			 * directory is not the project and often is not a project at all. Every question this
+			 * command asks about the reference has to be asked of the same directory: `./tool`
+			 * exists under the session's project and nowhere near `elsewhere`, so a command that
+			 * anchored to its own cwd would fail to find it -- and one that anchored `parse` and
+			 * the written entry differently would import one file and record another.
+			 */
+			yield* Effect.promise(() =>
+				exec(
+					process.execPath,
+					["--conditions=development", cli, "plugin", "add", "./tool", "--session", created.id, "--home", home],
+					{
+						cwd: elsewhere,
+					},
+				),
+			);
+
+			const written = readFileSync(join(project, ".codework", "settings.jsonc"), "utf8");
+			// Relative to the settings file that holds it, which is `<project>/.codework/`.
+			expect(written).toContain('"../tool"');
+		}).pipe(
+			Effect.scoped,
+			Effect.provide(layer({ home, database: join(home, "data", "codework.db") })),
+			Effect.runPromise,
+		);
+	}, 120_000);
+
+	it("plugin.reload reports the loaded set", () =>
+		Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const reloaded = yield* rpc["plugin.reload"]({});
+			// The built-ins alone are a set, so a server with no configured plugins still reloads.
+			expect(reloaded.plugins).toBeGreaterThan(0);
+			expect(reloaded.failure).toBeUndefined();
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 
 	it("session.info fails with SessionNotFoundError for a bogus id", () =>
@@ -240,7 +420,7 @@ const websocket = (options: Harness.Options = {}) => {
 	return Server.layer({
 		host: "127.0.0.1",
 		port: 0,
-		harness: { home, database: ":memory:", plugins: [], llm: immediateOpen(), ...options },
+		harness: { home, hostCwd: home, database: ":memory:", plugins: [], llm: immediateOpen(), ...options },
 	});
 };
 
@@ -252,6 +432,60 @@ const connectedClient = Effect.gen(function* () {
 });
 
 describe("WebSocket client", () => {
+	it("runs session link and unlink through the CLI", () => {
+		const project = realpathSync(mkdtempSync(join(tmpdir(), "codework-cli-link-")));
+		homes.push(project);
+		return Effect.gen(function* () {
+			const server = yield* HttpServer.HttpServer;
+			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
+			const url = `ws://127.0.0.1:${server.address.port}/rpc`;
+			const rpc = yield* connectedClient;
+			const session = yield* rpc["session.create"]({});
+
+			const linked = yield* Effect.promise(() =>
+				execCli(["session", "link", session.id, project, "--server", url], project),
+			);
+			expect(linked.status).toBe(0);
+			expect(linked.stdout).toContain(`Linked ${session.id} to ${project}`);
+			expect((yield* rpc["session.info"]({ sessionId: session.id })).hostDir).toBe(project);
+
+			const unlinked = yield* Effect.promise(() =>
+				execCli(["session", "link", session.id, "--unlink", "--server", url], project),
+			);
+			expect(unlinked.status).toBe(0);
+			expect(unlinked.stdout).toContain(`Unlinked ${session.id}`);
+			expect((yield* rpc["session.info"]({ sessionId: session.id })).hostDir).toBeUndefined();
+		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("20 seconds"), Effect.runPromise);
+	});
+
+	it("reports plugin reload success and failure through the CLI", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-cli-reload-")));
+		homes.push(root);
+		const module = join(root, "plugin.mjs");
+		writeFileSync(module, 'export default { id: "acme.tool.reload", kind: "tool", setup() {} };\n');
+
+		return Effect.gen(function* () {
+			const server = yield* HttpServer.HttpServer;
+			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
+			const url = `ws://127.0.0.1:${server.address.port}/rpc`;
+
+			const succeeded = yield* Effect.promise(() => execCli(["plugin", "reload", "--server", url], root));
+			expect(succeeded.status).toBe(0);
+			expect(succeeded.stdout).toMatch(/^Reloaded \d+ plugins?\.\n$/);
+
+			yield* Effect.sync(() => writeFileSync(module, "export default { nope: true };\n"));
+			const failed = yield* Effect.promise(() => execCli(["plugin", "reload", "--server", url], root));
+			expect(failed.status).toBe(1);
+			expect(failed.stdout).toContain("Reload failed, keeping");
+			expect(failed.stdout).toContain("Missing key");
+		}).pipe(
+			Effect.scoped,
+			Effect.provide(websocket({ plugins: [module] })),
+			Effect.timeout("20 seconds"),
+			Effect.runPromise,
+		);
+	});
+
 	it("subscribes before a fast prompt and renders through completion, including continuation", () =>
 		Effect.gen(function* () {
 			const rpc = yield* connectedClient;
@@ -497,7 +731,7 @@ describe("WebSocket client", () => {
 		Effect.gen(function* () {
 			const home = mkdtempSync(join(tmpdir(), "codework-shutdown-"));
 			homes.push(home);
-			const harness = { home, database: join(home, "codework.db"), plugins: [] };
+			const harness = { home, hostCwd: home, database: join(home, "codework.db"), plugins: [] };
 			const server = () => Server.layer({ host: "127.0.0.1", port: 0, harness });
 
 			const id = yield* Effect.gen(function* () {

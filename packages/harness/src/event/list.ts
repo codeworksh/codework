@@ -1,8 +1,8 @@
 import { Schema } from "effect";
-import { DateTimeUtcFromMillis, NonNegativeInt } from "../schema.ts";
+import { DateTimeUtcFromMillis, NonNegativeInt, optional } from "../schema.ts";
+import { SessionFailure } from "../session/failure.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import { PromptSchema } from "../session/prompt/schema.ts";
-import { SessionFailure } from "../session/failure.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { EventSchema } from "./schema.ts";
 
@@ -234,6 +234,28 @@ export const ExecutionInterrupted = EventSchema.define({
 export type ExecutionInterrupted = typeof ExecutionInterrupted.Type;
 
 /**
+ * Kernel lifecycle notice for one plugin module.
+ * The `plugin.<id>.` namespace belongs to plugin-declared types, so this kernel type can never collide with one.
+ */
+export const PluginUpdated = EventSchema.define({
+	type: "plugin.updated",
+	schema: {
+		status: Schema.Literals(["loaded", "dropped", "failed"]),
+		reference: optional(Schema.String),
+		id: optional(Schema.String),
+		file: optional(Schema.String),
+		error: optional(Schema.String),
+		/**
+		 * The session whose exchange triggered the event, when one did -- `failed` from a
+		 * session's own `follow` names it. Absent on `reload` and boot, which no session owns:
+		 * the pool is process-wide, so this is the trigger, never an attribution of ownership.
+		 */
+		sessionId: optional(SessionSchema.ID),
+	},
+});
+export type PluginUpdated = typeof PluginUpdated.Type;
+
+/**
  * Everything the kernel can publish. `PublicDefinitions` is the narrower set
  * that reaches clients -- adding an event here does not publish it.
  */
@@ -260,6 +282,7 @@ export const Definitions = EventSchema.inventory(
 	ToolStarted,
 	ToolProgress,
 	ToolSettled,
+	PluginUpdated,
 );
 
 /**

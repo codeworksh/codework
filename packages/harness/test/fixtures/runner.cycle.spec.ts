@@ -16,6 +16,7 @@ import { Context } from "../../src/context/context.ts";
 import { Control } from "../../src/control.ts";
 import { Database } from "../../src/db/db.ts";
 import { Event } from "../../src/event/event.ts";
+import { EventRegistry } from "../../src/event/registry.ts";
 import { RunnerExecute } from "../../src/runner/execute.ts";
 import { Loop } from "../../src/runner/loop.ts";
 import { SandboxController } from "../../src/sandbox/control.ts";
@@ -27,10 +28,11 @@ import type { SessionSchema } from "../../src/session/schema.ts";
 import { Session } from "../../src/session/session.ts";
 import { builtins } from "../../src/plugin/builtin.ts";
 import { State } from "../../src/state/state.ts";
+import { pooled } from "./pool.ts";
 
 const database = Database.layer(":memory:");
 const vercel = VercelSandboxDriver.make();
-const sandbox = SandboxController.layer().pipe(
+const sandbox = SandboxController.layer({ hostCwd: "/" }).pipe(
 	Layer.provideMerge(SandboxDriverRegistry.layer(vercel)),
 	Layer.provideMerge(database),
 );
@@ -38,14 +40,11 @@ const runtime = (root: string, custom: string) =>
 	Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer()))),
 		Layer.provideMerge(
-			State.layer(
-				{},
-				builtins.map((plugin) => ({ plugin, options: {} })),
-			),
+			((seeded) => State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild))(pooled(builtins)),
 		),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
-			Settings.layer({ cwd: root, userConfigDir: custom }).pipe(
+			Settings.layer({ userConfigDir: custom }).pipe(
 				Layer.provide(Layer.succeed(Global.Service, Global.make({ home: join(root, "home") }))),
 			),
 		),
@@ -53,6 +52,7 @@ const runtime = (root: string, custom: string) =>
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionLive.layer),
 		Layer.provideMerge(Event.layer),
+		Layer.provideMerge(EventRegistry.layer()),
 		Layer.provideMerge(database),
 	);
 
@@ -112,7 +112,7 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 				withSettings(async ({ root, custom }) => {
 					const configure = (thinkingLevel: "low" | "off") =>
 						writeFile(
-							join(custom, "settings.json"),
+							join(custom, "settings.jsonc"),
 							JSON.stringify({
 								model: {
 									provider: "openai",

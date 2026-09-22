@@ -1,27 +1,9 @@
 import { Schema } from "effect";
-import { uuidv7 } from "uuidv7";
-import { NonNegativeCost, NonNegativeInt, withStatics } from "../schema.ts";
+import { NonNegativeCost, NonNegativeInt } from "../schema.ts";
 
-// Session identity. Branded so a session ID is not interchangeable with an
-// entry, part, or workspace ID at the type level — service signatures take
-// `SessionSchema.ID`, never a bare `string`.
-//
-// `create` mints a new one; `ascending` adopts an ID that came from outside
-// (a persisted row, a request payload) and rejects a foreign prefix rather
-// than branding it silently. uuidv7 keeps IDs lexicographically sortable by
-// creation time, so `ORDER BY id` is `ORDER BY created`.
-export const ID = Schema.String.check(Schema.isStartsWith("ses")).pipe(
-	Schema.brand("Session.ID"),
-	withStatics((schema) => ({
-		ascending: (id?: string) => {
-			if (!id) return schema.make("ses_" + uuidv7());
-			if (!id.startsWith("ses")) throw new Error(`ID ${id} does not start with ses`);
-			return schema.make(id);
-		},
-		create: () => schema.make("ses_" + uuidv7()),
-	})),
-);
-export type ID = typeof ID.Type;
+// Session identity lives in `@codeworksh/plugin`: it is on every plugin context and every
+// tool call, so the brand a plugin holds has to be the one the harness mints.
+export { SessionID as ID } from "@codeworksh/plugin/ids";
 
 export const IDFromDb = Schema.String.pipe(Schema.brand("Session.ID"));
 

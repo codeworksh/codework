@@ -1,51 +1,31 @@
-import { Context, Effect, Layer, Schema } from "effect";
+import { Effect, Layer } from "effect";
 import { Database } from "../db/db.ts";
 import { Git } from "../git/git.ts";
 import { Project } from "../project/project.ts";
-import { ProjectSchema } from "../project/schema.ts";
 import { Repo } from "../repo/repo.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { Sandbox } from "../sandbox/sandbox.ts";
 import { AbsolutePath } from "../schema.ts";
-import { SpaceSchema } from "../space/schema.ts";
 import { Space } from "../space/space.ts";
 import { Worktree } from "../worktree/worktree.ts";
-export { DirectoryNotFoundError, NotDirectoryError, type Error } from "./error.ts";
+import { Info, type Ref, Service } from "@codeworksh/plugin/location";
 
 /**
  * Where work happens: a directory inside a space.
  *
- * The pair (space, directory) is the key. A path alone does not name a place —
- * `/app/repo` on the host and `/app/repo` inside a remote sandbox are different
- * trees wearing the same spelling — so the space carries the env and the
- * root it lives under (`space.location`), and `directory` is the absolute cwd
- * equal to or beneath that root. Sessions sharing a space share the project;
- * worktree relationships stay a Project concern beneath it.
- *
- * **Both halves come from the mount, so `Ref` is overrides and nothing else.**
- * A Location is a directory *within* a mounted namespace — the mount has to be
- * resolved first, the way a volume is mounted before any path on it means
- * anything — and once it is, the namespace and the working directory are already
- * in scope. Re-declaring them would be two spellings of one value, free to drift;
- * a Location pointing somewhere its own shell is not becomes unrepresentable
- * rather than merely avoided by discipline.
+ * The shape (`Ref`, `Info`) and the service tag live in `@codeworksh/plugin`, because a resolved
+ * `Info` is on every plugin context and `Service` is half of a plugin's `Mount`. Resolving one
+ * needs Project, Space, Repo, Worktree and Git, so the layers stay here.
  */
-export const Ref = Schema.Struct({
-	/** Defaults to the mount's cwd. Set it to work in a subdirectory of the mount. */
-	directory: Schema.optional(AbsolutePath),
-}).annotate({ identifier: "Location.Ref" });
-export type Ref = typeof Ref.Type;
-
-export class Info extends Schema.Class<Info>("Location.Info")({
-	/** The absolute cwd tools run in; `space.location` is the root it lives under. */
-	directory: AbsolutePath,
-	space: SpaceSchema.Info,
-	project: ProjectSchema.Info,
-}) {}
-
-export interface Interface extends Info {}
-
-export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/location/location/Service") {}
+export {
+	DirectoryNotFoundError,
+	type Error,
+	Info,
+	type Interface,
+	NotDirectoryError,
+	Ref,
+	Service,
+} from "@codeworksh/plugin/location";
 
 // `SandboxIO.Current` in the requirements is what makes "mount first" a
 // type-level fact rather than a convention: this Layer cannot be built outside a

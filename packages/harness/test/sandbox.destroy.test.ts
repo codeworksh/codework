@@ -11,7 +11,7 @@ import { testEffect } from "./utils/effect.ts";
 
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("destroy-fake"));
 const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(fake.driver));
-const { effect: it } = testEffect(Layer.provideMerge(SandboxController.layer(), dependencies));
+const { effect: it } = testEffect(Layer.provideMerge(SandboxController.layer({ hostCwd: "/" }), dependencies));
 
 const createStopped = Effect.gen(function* () {
 	const controller = yield* SandboxController.Controller;

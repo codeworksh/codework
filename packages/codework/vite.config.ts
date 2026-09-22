@@ -30,11 +30,18 @@ const aliases = {
 	"@codeworksh/aikit/failure": fileURLToPath(new URL("../aikit/src/llm/failure.ts", import.meta.url)),
 	"@codeworksh/aikit": fileURLToPath(new URL("../aikit/src/index.ts", import.meta.url)),
 };
+// `@codeworksh/plugin` is the published plugin SDK, resolved to source in this repo so the CLI,
+// the harness and the example plugins all compile against one copy of the contract.
+const pluginAliases = [
+	{ find: /^@codeworksh\/plugin$/, replacement: fileURLToPath(new URL("../plugin/src/index.ts", import.meta.url)) },
+	{ find: /^@codeworksh\/plugin\/(.*)$/, replacement: fileURLToPath(new URL("../plugin/src/$1.ts", import.meta.url)) },
+	...Object.entries(aliases).map(([find, replacement]) => ({ find, replacement })),
+];
 const bundledWorkspaceDeps = ["@codeworksh/harness"];
 
 export default defineConfig({
 	resolve: {
-		alias: aliases,
+		alias: pluginAliases,
 	},
 	pack: {
 		entry: ["src/index.ts"],

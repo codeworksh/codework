@@ -11,8 +11,8 @@
  * refuses to strip types under `node_modules`. A plugin package published for real ships built
  * JavaScript; see the README.
  */
-import { Plugin, Tool } from "@codeworksh/harness/effect";
-import { SandboxIO } from "@codeworksh/harness/sandbox";
+import { Plugin, Tool } from "@codeworksh/plugin";
+import { SandboxIO } from "@codeworksh/plugin/sandbox";
 import { Effect, Schema } from "effect";
 
 /** Rows to return when the entry carries no `limit`. */
@@ -84,6 +84,7 @@ const table = (rows: ReadonlyArray<typeof ProcessRow.Type>): string =>
 
 export default Plugin.define({
 	id: "acme.tool.proc",
+	kind: "tool",
 	setup: Effect.fn("ProcPlugin.setup")(function* (ctx, options) {
 		// The sandbox's shell, not `node:child_process`: the tool lists processes wherever the
 		// session actually runs — this machine, a container, or a remote sandbox.

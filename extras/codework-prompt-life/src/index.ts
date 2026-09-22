@@ -6,7 +6,7 @@
  *   { "plugins": ["@acme/codework-prompt-life",
  *                 { "package": "@acme/codework-prompt-life", "options": { "answer": 42 } }] }
  */
-import { Plugin } from "@codeworksh/harness/effect";
+import { Plugin } from "@codeworksh/plugin";
 
 const DEFAULT_ANSWER = 42;
 const HEADING = "## On the meaning of life";
@@ -30,6 +30,7 @@ const section = (answer: number) =>
 
 export default Plugin.define({
 	id: "acme.prompt.life",
+	kind: "prompt",
 	setup(ctx, options) {
 		const existing = ctx.plugin.prompt.get();
 		// `set` replaces the whole prompt, so compose on what is already there rather than

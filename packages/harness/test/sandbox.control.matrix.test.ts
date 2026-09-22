@@ -29,7 +29,7 @@ import { testEffect } from "./utils/effect.ts";
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("matrix-fake"));
 const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(fake.driver));
 const controllerLayer = Layer.provideMerge(
-	SandboxController.layer({ transportIdleTimeToLive: "1 hour" }),
+	SandboxController.layer({ hostCwd: "/", transportIdleTimeToLive: "1 hour" }),
 	dependencies,
 );
 const { effect: it } = testEffect(controllerLayer);
@@ -276,7 +276,10 @@ describe("Sandbox.Controller matrix", () => {
 
 			const instanceId = yield* Effect.scoped(
 				Effect.gen(function* () {
-					const controller = yield* SandboxController.make({ transportIdleTimeToLive: "1 hour" });
+					const controller = yield* SandboxController.make({
+						hostCwd: "/",
+						transportIdleTimeToLive: "1 hour",
+					});
 					const info = yield* create(controller);
 					yield* Effect.flatMap(SandboxIO.FileSystem, (fs) =>
 						fs.writeFile("/workspace/survivor.txt", "kept"),
@@ -307,7 +310,7 @@ describe("Sandbox.Controller matrix", () => {
 				capabilities: { ...rest.capabilities, inspect: false },
 			});
 
-			const controller = yield* SandboxController.make({ transportIdleTimeToLive: "1 hour" }).pipe(
+			const controller = yield* SandboxController.make({ hostCwd: "/", transportIdleTimeToLive: "1 hour" }).pipe(
 				Effect.provide(SandboxDriverRegistry.layer(noInspect)),
 			);
 			const info = yield* controller.create({
@@ -360,7 +363,7 @@ describe("Sandbox.Controller matrix", () => {
 	it(
 		"evicts an idle transport after its time-to-live and reattaches on the next mount",
 		Effect.gen(function* () {
-			const controller = yield* SandboxController.make({ transportIdleTimeToLive: "5 seconds" });
+			const controller = yield* SandboxController.make({ hostCwd: "/", transportIdleTimeToLive: "5 seconds" });
 			const info = yield* create(controller);
 			const before = fake.state.calls.attach.length;
 

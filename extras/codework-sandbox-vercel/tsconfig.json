@@ -3,7 +3,8 @@
 	"compilerOptions": {
 		"allowImportingTsExtensions": true,
 		"paths": {
-			"@codeworksh/harness/sandbox": ["../../packages/harness/src/sandbox.ts"]
+			"@codeworksh/plugin": ["../../packages/plugin/src/index.ts"],
+			"@codeworksh/plugin/*": ["../../packages/plugin/src/*.ts"]
 		},
 		"tsBuildInfoFile": "../../.cache/typescript/sandbox-vercel-smoke.tsbuildinfo"
 	},

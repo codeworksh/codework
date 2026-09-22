@@ -17,7 +17,12 @@ The initial public surface is the Effect SDK at `@codeworksh/harness/effect`.
 
 ## Plugins
 
-Pass an ordered plugin list when constructing the harness. Each plugin has a required ID and contributes tools or a prompt during setup. Setup runs once per exchange, after model resolution; its tools, hooks, and prompt remain pinned through tool continuations.
+Third-party plugins build against [`@codeworksh/plugin`](../plugin/README.md), the published SDK
+that owns the plugin, tool and sandbox contract this package consumes — a plugin package depends
+on it rather than on the whole harness. The same types are re-exported here as `Plugin` and `Tool`
+for embedders who already hold the harness.
+
+Pass a plugin list when constructing the harness. Each plugin declares an ID and the domain it extends — `tool` or `prompt` — and contributes during setup. Setup runs once per exchange, after model resolution; its tools, hooks, and prompt remain pinned through tool continuations.
 
 ```ts
 import { Effect, Schema } from "effect";
@@ -25,6 +30,7 @@ import { Harness, Plugin, Tool } from "@codeworksh/harness/effect";
 
 const echo = Plugin.define({
 	id: "acme.tool.echo",
+	kind: "tool",
 	setup(ctx) {
 		ctx.plugin.tools.add(
 			Tool.register(
@@ -53,6 +59,7 @@ const echo = Plugin.define({
 // A prompt plugin renders the system prompt, and indexes every tool registered before it.
 const prompt = Plugin.define({
 	id: "acme.prompt.main",
+	kind: "prompt",
 	setup(ctx) {
 		ctx.plugin.prompt.set(
 			`You have: ${ctx.plugin.tools
@@ -70,7 +77,7 @@ const runtime = Harness.layer({ plugins: [echo, prompt] });
 
 Hooks belong to the tool registration. Sequential or parallel scheduling, selected with `Session.create({ tools: { execution: "parallel" } })`, covers the entire hook/handler pipeline. After runs for a started, interrupted tool if it has not already started, with a one-second cooperative cleanup grace period. The kernel owns result settlement.
 
-`ctx.plugin.tools.update(name, patch)` rewrites a registration's model-facing prose without replacing the tool or its hooks. A read sees only earlier contributions, so a plugin patching `promptSnippet` or `promptGuidelines` must run _before_ the prompt plugin that indexes them — after it, the patch still reaches the wire description but no longer the system prompt.
+`ctx.plugin.tools.update(name, patch)` rewrites a registration's model-facing prose without replacing the tool or its hooks. A read sees only earlier contributions, so a plugin patching `promptSnippet` or `promptGuidelines` must run _before_ the tool it patches is indexed. Declaring `kind: "tool"` puts it ahead of every prompt plugin already; what it still has to get right is its position among the other tool plugins, which is the order their entries are written in.
 
 Prompt plugins use `ctx.plugin.prompt.get()` and `set(string)`. Each `set` replaces the entire prompt, including with an empty string. Place a prompt plugin after the tools or prompt contributors it needs. Contributions close after setup; plugins receive event publication but no subscription or background lifecycle.
 
@@ -118,7 +125,7 @@ Source modules must default-export one plugin object.
 Settings entries take the same two forms, and they extend the built-in selection instead of standing in for it, so naming one plugin cannot silently drop Bash or the prompt:
 
 ```jsonc
-// codework.json, ~/.codework/settings.json, or a --user-config-dir
+// <project>/.codework/settings.jsonc, ~/.codework/settings.jsonc, or a --user-config-dir
 {
 	"plugins": [
 		"@acme/codework-prompt-life",
@@ -130,9 +137,11 @@ Settings entries take the same two forms, and they extend the built-in selection
 }
 ```
 
-Settings files are JSONC: comments and a trailing comma are part of the format, and a syntax error names what the parser expected and where (`PropertyNameExpected at 2:38`). The array replaces across settings layers rather than concatenating, so the highest-priority file that names `plugins` owns the whole list. A leading `~` expands to the home directory. A `./` or `../` path resolves against the directory of the file that declared it — next to `codework.json`, inside `.codework/`, or beside `~/.codework/settings.json` — so one entry means one file in every project; a `package` naming a relative path is anchored the same way. `file:` URLs, absolute paths and package specs are taken as written.
+Settings files are JSONC: comments and a trailing comma are part of the format, and a syntax error names what the parser expected and where (`PropertyNameExpected at 2:38`). Entries accumulate across settings layers, lowest priority first: a project's list extends the user's rather than standing in for it, the way every other key in the document merges. A project drops an inherited plugin the same way it drops a built-in, with `{ "plugin": "<id>", "enabled": false }`. A leading `~` expands to the home directory. A `./` or `../` path resolves against the directory of the file that declared it — inside `<project>/.codework/`, or beside `~/.codework/settings.jsonc` — so one entry means one file in every project; a `package` naming a relative path is anchored the same way. `file:` URLs, absolute paths and package specs are taken as written.
 
-Settings entries append after the built-ins, and a prompt plugin sees only what registered before it, so a tool plugin added from settings reaches the provider with its own description but is **absent from the system prompt's tool list**. A settings file names modules and configures plugins; it cannot reorder the built-in selection, and the built-in definitions are not exported — an embedder that needs a different order passes its own complete selection to `Harness.layer({ plugins })`, prompt plugin included.
+Setup order comes from the **domain a plugin declares**, not from where its entry sits. Every `kind: "tool"` plugin is set up before any `kind: "prompt"` plugin, so a prompt plugin always sees the complete tool set — including tools added from a settings file, which land after the built-ins in the array. Within one domain, entries keep the order they were written in, which is where composition actually happens: a plugin patching another's tool, or appending to the prompt a previous one rendered, is written after it on purpose.
+
+That is the reason `kind` is part of the definition rather than something the harness guesses. A user's settings file and a project's are edited by different people at different times, and neither can see the other's ordering; what each plugin _is_ remains knowable in both.
 
 A plugin package declares `@codeworksh/harness` and `effect` as **exact peer dependencies**, never as dependencies:
 

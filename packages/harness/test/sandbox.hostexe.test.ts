@@ -21,7 +21,7 @@ describe("Sandbox.defaultLayer — shell and filesystem share a cwd", () => {
 					cwd: current.cwd,
 					pwd: (yield* shell.exec("pwd")).stdout.trim(),
 				};
-			}).pipe(Effect.scoped, Effect.provide(Sandbox.local())),
+			}).pipe(Effect.scoped, Effect.provide(Sandbox.local(process.cwd()))),
 		);
 
 		expect(result.cwd).toBe(process.cwd());

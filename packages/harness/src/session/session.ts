@@ -102,6 +102,22 @@ export const rebaseDirectory = (from: AbsolutePath, to: AbsolutePath, directory:
 	return AbsolutePath.make(relative === "" ? to : posix.join(to, relative));
 };
 
+/**
+ * An operation needed a session's host project and the session has none.
+ *
+ * Distinct from `SessionNotFoundError`: the session is there and is perfectly usable, it just has
+ * no project to write into. That is a normal state, not corruption -- `session link` is the remedy,
+ * and naming it is most of what this error is for.
+ */
+export class SessionNotLinkedError extends Schema.TaggedError<SessionNotLinkedError>()("SessionNotLinkedError", {
+	reason: Schema.tag("session-not-linked"),
+	sessionId: SessionSchema.IDFromDb,
+}) {
+	override get message(): string {
+		return `session ${this.sessionId} is not linked to a host directory`;
+	}
+}
+
 export interface CreateSession {
 	readonly id?: SessionSchema.ID;
 	/** The space (one directory in one env) this session attaches to; must exist. */
@@ -110,6 +126,12 @@ export interface CreateSession {
 	readonly slug: string;
 	/** Absolute realpath of the cwd; equal to or under `space.location`. */
 	readonly directory: AbsolutePath;
+	/**
+	 * The host directory this session belongs to, which its settings and plugins are discovered
+	 * from. Optional, with no fallback: a session created without one has no project layer, which
+	 * is a normal outcome. `link` assigns one later.
+	 */
+	readonly hostDir?: AbsolutePath;
 	readonly title: string;
 	readonly tag?: string;
 	readonly metadata?: Readonly<Record<string, string>>;
@@ -211,6 +233,18 @@ export interface HydratedEntry {
 
 export interface Interface {
 	readonly create: (input: CreateSession) => Effect.Effect<SessionRow>;
+	/**
+	 * Point an existing session at a host directory, or clear it with `null`.
+	 *
+	 * Separate from `relink`, which moves a session between spaces: this changes nothing about
+	 * where the work happens, only which host project's settings and plugins the session reads.
+	 * The two are independent -- a session can move machines and keep its host project, or stay
+	 * put and be given one it never had.
+	 */
+	readonly link: (input: {
+		sessionId: SessionSchema.ID;
+		hostDir: AbsolutePath | null;
+	}) => Effect.Effect<SessionRow, SessionNotFoundError>;
 	readonly get: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SessionRow>>;
 	/** The space a session attaches to — its env and absolute location. None when the session is unknown. */
 	readonly space: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SpaceSchema.Info>>;
@@ -459,6 +493,7 @@ export const layer = Layer.effect(
 					parentId: Option.fromUndefinedOr(input.parentId),
 					slug: input.slug,
 					directory: input.directory,
+					hostDir: Option.fromUndefinedOr(input.hostDir),
 					title: input.title,
 					tag: Option.fromUndefinedOr(input.tag),
 					metadata: Option.fromUndefinedOr(input.metadata as Record<string, string> | undefined),
@@ -979,6 +1014,8 @@ export const layer = Layer.effect(
 							parentId: Option.some(source.value.id), // fork lineage
 							slug: input.slug,
 							directory: source.value.directory,
+							// A fork continues the same work, so it reads the same project.
+							hostDir: source.value.hostDir,
 							title: input.title ?? source.value.title,
 							tag: input.tag === undefined ? source.value.tag : Option.some(input.tag),
 							metadata: source.value.metadata,
@@ -1097,6 +1134,22 @@ export const layer = Layer.effect(
 			}
 		});
 
+		const link = Effect.fn("Session.link")(function* (input: {
+			sessionId: SessionSchema.ID;
+			hostDir: AbsolutePath | null;
+		}) {
+			const session = yield* findSession(input.sessionId).pipe(Effect.orDie);
+			if (Option.isNone(session)) return yield* new SessionNotFoundError({ sessionId: input.sessionId });
+			const now = yield* epochNow;
+			yield* sql`
+				UPDATE session SET host_dir = ${input.hostDir}, updated_at = ${now}
+				WHERE id = ${input.sessionId}
+			`.pipe(Effect.orDie);
+			const updated = yield* findSession(input.sessionId).pipe(Effect.orDie);
+			if (Option.isNone(updated)) return yield* Effect.die(new Error("session link did not persist"));
+			return updated.value;
+		});
+
 		const relink = Effect.fn("Session.relink")(function* (input: RelinkInput) {
 			const reject = (reason: RelinkReason) =>
 				new RelinkError({ sessionId: input.sessionId, spaceId: input.spaceId, reason });
@@ -1179,6 +1232,7 @@ export const layer = Layer.effect(
 
 		return Service.of({
 			create,
+			link,
 			get,
 			space,
 			list,

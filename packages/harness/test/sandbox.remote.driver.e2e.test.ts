@@ -39,7 +39,7 @@ const lifecycle = async (input: {
 	readonly expectedCancels: boolean;
 }) => {
 	const dependencies = Layer.merge(Database.layer(":memory:"), SandboxDriverRegistry.layer(input.remote));
-	const application = SandboxController.layer({ transportIdleTimeToLive: "1 hour" }).pipe(
+	const application = SandboxController.layer({ hostCwd: "/", transportIdleTimeToLive: "1 hour" }).pipe(
 		Layer.provideMerge(dependencies),
 		Layer.orDie,
 	);

@@ -1,12 +1,6 @@
 /* Vendored example of a third-party sandbox package; it only uses the public driver SDK. */
 /* oxlint-disable effecttsgo/async-function -- Vercel's SDK boundary is Promise-based. */
-import {
-	SandboxDriver,
-	SandboxFileSystem,
-	SandboxIO,
-	SandboxProvider,
-	SandboxShell,
-} from "@codeworksh/harness/sandbox";
+import { SandboxDriver, SandboxFileSystem, SandboxIO, SandboxProvider, SandboxShell } from "@codeworksh/plugin/sandbox";
 import { Effect, Layer, Option, Schema } from "effect";
 import { Buffer } from "node:buffer";
 

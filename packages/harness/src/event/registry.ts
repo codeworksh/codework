@@ -5,14 +5,15 @@ import { EventSchema } from "./schema.ts";
 
 /**
  * Every event definition this harness knows: the kernel's, plus whatever the
- * configured plugins registered. Built once at boot, because a definition that
- * arrives after the first publish cannot be validated against the ones already
- * in flight.
+ * configured plugins registered. A validated replacement lands with each new
+ * plugin generation; published events retain the schema they were encoded with.
  */
 export interface Interface {
 	readonly definitions: ReadonlyArray<EventSchema.Definition>;
 	/** The latest definition for a type, or `undefined` when nothing declares it. */
 	readonly get: (type: string) => EventSchema.Definition | undefined;
+	/** Validate and atomically replace the definitions for a newly loaded plugin pool. */
+	readonly replace: (plugins: ReadonlyArray<Plugin>) => Effect.Effect<void, EventRegistrationError>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/event/registry/Service") {}
@@ -69,8 +70,20 @@ export const flatten = Effect.fn("EventRegistry.flatten")(function* (plugins: Re
 
 export const layer = (definitions: ReadonlyArray<EventSchema.Definition> = EventList.Definitions) =>
 	Layer.sync(Service, () => {
-		const latest = EventSchema.latest(definitions);
-		return Service.of({ definitions, get: (type) => latest.get(type) });
+		let current = definitions;
+		let latest = EventSchema.latest(current);
+		const replace = Effect.fn("EventRegistry.replace")(function* (plugins: ReadonlyArray<Plugin>) {
+			const next = yield* flatten(plugins);
+			current = next;
+			latest = EventSchema.latest(next);
+		});
+		return Service.of({
+			get definitions() {
+				return current;
+			},
+			get: (type) => latest.get(type),
+			replace,
+		});
 	});
 
 export * as EventRegistry from "./registry.ts";

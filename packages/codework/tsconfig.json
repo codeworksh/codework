@@ -4,6 +4,8 @@
 	"compilerOptions": {
 		"tsBuildInfoFile": "../../.cache/typescript/codework.tsbuildinfo",
 		"paths": {
+			"@codeworksh/plugin": ["../plugin/src/index.ts"],
+			"@codeworksh/plugin/*": ["../plugin/src/*.ts"],
 			"@codeworksh/harness": ["../harness/src/index.ts"],
 			"@codeworksh/harness/effect": ["../harness/src/effect.ts"],
 			"@codeworksh/harness/sandbox": ["../harness/src/sandbox.ts"],
