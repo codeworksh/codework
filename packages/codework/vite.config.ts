@@ -30,6 +30,11 @@ const aliases = {
 	"@codeworksh/aikit/oauth/openai/codex": fileURLToPath(
 		new URL("../aikit/src/oauth/openai/codex.ts", import.meta.url),
 	),
+	"@codeworksh/aikit/oauth/github/copilot": fileURLToPath(
+		new URL("../aikit/src/oauth/github/copilot.ts", import.meta.url),
+	),
+	"@codeworksh/aikit/oauth/interactive": fileURLToPath(new URL("../aikit/src/oauth/interactive.ts", import.meta.url)),
+	"@codeworksh/aikit/oauth/summary": fileURLToPath(new URL("../aikit/src/oauth/summary.ts", import.meta.url)),
 	"@codeworksh/aikit/failure": fileURLToPath(new URL("../aikit/src/llm/failure.ts", import.meta.url)),
 	"@codeworksh/aikit": fileURLToPath(new URL("../aikit/src/index.ts", import.meta.url)),
 };

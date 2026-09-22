@@ -21,6 +21,8 @@ export default defineConfig({
 			"src/llm/failure.ts",
 			"src/oauth/openai/codex.ts",
 			"src/oauth/github/copilot.ts",
+			"src/oauth/interactive.ts",
+			"src/oauth/summary.ts",
 		],
 		format: ["esm"],
 		outDir: "dist/pack",

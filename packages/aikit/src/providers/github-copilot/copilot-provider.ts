@@ -42,8 +42,7 @@ export interface GitHubCopilotProviderSettings {
 	baseURL?: string;
 	/**
 	 * GitHub OAuth token (`ghu_`/`gho_`) or an async resolver, e.g.
-	 * `() => getGitHubCopilotApiKey()`. Falls back to `COPILOT_GITHUB_TOKEN`,
-	 * then `GITHUB_TOKEN`/`GH_TOKEN`.
+	 * `() => getGitHubCopilotApiKey()`. Falls back to `COPILOT_GITHUB_TOKEN`.
 	 */
 	apiKey?: GitHubCopilotApiKey;
 	/** Extra headers merged into every request. */

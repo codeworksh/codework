@@ -215,13 +215,8 @@ export const layer = (options: Options = {}) =>
 				Layer.provideMerge(drivers),
 				Layer.provideMerge(database),
 			);
-			const open =
-				options.llm ??
-				LLM.openWith(
-					options.home === undefined
-						? {}
-						: { openAICodexAuthFile: hostPath.join(paths.home, "aikit", "auth.json") },
-				);
+			const authFile = Global.authFile(options.home === undefined ? undefined : paths.home);
+			const open = options.llm ?? LLM.openWith(authFile === undefined ? {} : { authFile });
 			const loop = Loop.layer({ request: LLM.make(open) });
 
 			return Control.layer.pipe(

@@ -200,14 +200,136 @@ describe("codework CLI", () => {
 		expect(result.stdout).toContain("generate");
 	});
 
-	it("documents OpenAI Codex OAuth management", () => {
+	it("documents OAuth management as subcommands", () => {
 		const result = run("auth", "--help");
 
 		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("--openai-codex");
-		expect(result.stdout).toContain("--status");
-		expect(result.stdout).toContain("--refresh");
-		expect(result.stdout).toContain("--logout");
+		for (const command of ["login", "status", "refresh", "logout"]) {
+			expect(result.stdout).toContain(command);
+		}
+
+		const login = run("auth", "login", "--help");
+		expect(login.stdout).toContain("--openai-codex");
+		expect(login.stdout).toContain("--github-copilot");
+		expect(login.stdout).toContain("--device");
+
+		// Login-only options stay off the read commands.
+		const status = run("auth", "status", "--help");
+		expect(status.stdout).not.toContain("--device");
+		expect(status.stdout).not.toContain("--enable-models");
+	});
+
+	it("requires exactly one auth provider", () => {
+		expect(run("auth", "login").status).toBe(1);
+		expect(run("auth", "login", "--openai-codex", "--github-copilot").stderr).toContain(
+			"choose exactly one provider",
+		);
+	});
+
+	it("rejects Copilot-only flags on the Codex login", () => {
+		const result = run("auth", "login", "--openai-codex", "--enterprise", "github.acme.com");
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("only apply to --github-copilot");
+	});
+
+	it("reads GitHub Copilot status without exposing the token", () => {
+		const dir = mkdtempSync(join(tmpdir(), "codework-auth-copilot-"));
+		const authFile = join(dir, "auth.json");
+		try {
+			writeFileSync(
+				authFile,
+				JSON.stringify({
+					"github-copilot": {
+						access: "ghu_secret",
+						refresh: "ghu_secret",
+						expires: 0,
+						apiEndpoint: "https://api.individual.githubcopilot.com",
+						availableModelIds: ["gpt-5.4", "claude-opus-5"],
+					},
+				}),
+			);
+
+			const result = run("auth", "status", "--github-copilot", "--auth-file", authFile);
+
+			expect(result.status).toBe(0);
+			expect(result.stdout).toContain("API endpoint: https://api.individual.githubcopilot.com");
+			expect(result.stdout).toContain("Available models: 2");
+			expect(result.stdout).toContain("Expires: never");
+			expect(result.stdout).not.toContain("ghu_secret");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("reads an expired login without refreshing it", () => {
+		const dir = mkdtempSync(join(tmpdir(), "codework-auth-expired-"));
+		const authFile = join(dir, "auth.json");
+		try {
+			writeFileSync(
+				authFile,
+				JSON.stringify({
+					"openai-codex": {
+						access: "stale-access",
+						refresh: "stale-refresh",
+						expires: 1,
+						accountId: "acct_stale",
+					},
+				}),
+			);
+
+			// --status is a read: it must not reach the network to renew this.
+			const result = run("auth", "status", "--openai-codex", "--auth-file", authFile);
+
+			expect(result.status).toBe(0);
+			expect(result.stdout).toContain("Account: acct_stale");
+			expect(result.stdout).not.toContain("stale-access");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps --json stdout parseable", () => {
+		const dir = mkdtempSync(join(tmpdir(), "codework-auth-json-"));
+		const authFile = join(dir, "auth.json");
+		try {
+			writeFileSync(
+				authFile,
+				JSON.stringify({
+					"github-copilot": {
+						access: "ghu_secret",
+						refresh: "ghu_secret",
+						expires: 0,
+						apiEndpoint: "https://api.individual.githubcopilot.com",
+					},
+				}),
+			);
+
+			const result = run("auth", "status", "--github-copilot", "--json", "--auth-file", authFile);
+
+			expect(result.status).toBe(0);
+			expect(JSON.parse(result.stdout)).toMatchObject({
+				provider: "github-copilot",
+				apiEndpoint: "https://api.individual.githubcopilot.com",
+			});
+			expect(result.stdout).not.toContain("ghu_secret");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("offers a device-code login for Codex only", () => {
+		// Copilot has no other flow, so the flag would be meaningless there.
+		const result = run("auth", "login", "--github-copilot", "--device");
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("always uses the device-code flow");
+	});
+
+	it("has no refresh path for GitHub Copilot", () => {
+		const result = run("auth", "refresh", "--github-copilot");
+
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("do not expire");
 	});
 
 	it("reads OAuth status without exposing stored tokens", () => {
@@ -226,7 +348,7 @@ describe("codework CLI", () => {
 				}),
 			);
 
-			const result = run("auth", "--openai-codex", "--status", "--auth-file", authFile);
+			const result = run("auth", "status", "--openai-codex", "--auth-file", authFile);
 
 			expect(result.status).toBe(0);
 			expect(result.stdout).toContain("Account: acct_cli");
@@ -240,7 +362,7 @@ describe("codework CLI", () => {
 	it("reports the selected home when OAuth credentials are missing", () => {
 		const home = mkdtempSync(join(tmpdir(), "codework-auth-home-"));
 		try {
-			const result = run("--home", home, "auth", "--openai-codex", "--status");
+			const result = run("--home", home, "auth", "status", "--openai-codex");
 
 			expect(result.status).toBe(1);
 			expect(result.stderr).toContain(`no OpenAI Codex credentials found at ${join(home, "aikit/auth.json")}`);

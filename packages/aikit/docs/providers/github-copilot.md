@@ -15,13 +15,16 @@ pnpm aikit auth --github-copilot --enterprise your.ghe.domain
 
 Credentials are stored in `~/.codework/aikit/auth.json` under the `github-copilot` key. Login records the plan-specific API endpoint (individual vs. business) and the account's available model ids.
 
-The provider also picks up existing credentials without a separate login:
+A token can also be supplied directly, instead of logging in:
 
 ```bash
-export COPILOT_GITHUB_TOKEN="ghu_..."   # or GITHUB_TOKEN / GH_TOKEN
+export COPILOT_GITHUB_TOKEN="ghu_..."
 ```
 
-It reads `~/.config/github-copilot/hosts.json` (fallback `apps.json`) — the file VS Code, JetBrains, and Neovim Copilot clients already persist — so an editor sign-in is enough.
+Precedence is `COPILOT_GITHUB_TOKEN` → `auth.json`, and nothing else. Two sources are deliberately excluded:
+
+- `GITHUB_TOKEN` / `GH_TOKEN` — usually set for git or `gh` and carrying no Copilot access; in GitHub Actions `GITHUB_TOKEN` is a workflow token. Reading them would turn a working login into an unexplained 401.
+- Credentials another application stored for itself, such as an editor's Copilot sign-in in `~/.config/github-copilot/hosts.json`. A token codework was never given should not silently become the identity its runs bill and act as — least of all invisibly, since `auth --status` only reports what is in `auth.json`.
 
 GitHub OAuth tokens are used directly as the `Authorization: Bearer` credential. They do not expire; re-run `auth --github-copilot` if calls start returning persistent `401`s.
 

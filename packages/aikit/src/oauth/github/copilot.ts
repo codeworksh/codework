@@ -4,19 +4,18 @@
  * The device flow yields a plain GitHub OAuth token (`ghu_`/`gho_`), which the
  * Copilot API accepts directly as a Bearer credential — no session-token
  * exchange and no refresh path. `getGitHubCopilotApiKey` resolves a token from
- * the environment, from credentials other Copilot clients persist
- * (`~/.config/github-copilot/hosts.json` / `apps.json`), or from the codework
- * auth.json store; `GitHubCopilotOAuthClient#login` performs the device flow.
+ * `COPILOT_GITHUB_TOKEN` or the codework auth.json store, and nothing else;
+ * `GitHubCopilotOAuthClient#login` performs the device flow.
  */
 
 import {
 	GITHUB_COPILOT_API_VERSION,
 	GITHUB_COPILOT_STATIC_HEADERS,
 } from "../../providers/github-copilot/copilot-headers.ts";
-import { JsonAuthStorage, homeDirectory, isObject, joinPath, readEnv } from "../storage.ts";
+import { pollDeviceCode } from "../devcode.ts";
+import { JsonAuthStorage, isObject, readEnv } from "../storage.ts";
 
 export const GITHUB_COPILOT_API_KEY_ENV = "COPILOT_GITHUB_TOKEN";
-export const GITHUB_COPILOT_API_KEY_ENV_FALLBACKS = ["GITHUB_TOKEN", "GH_TOKEN"] as const;
 
 // The official GitHub Copilot OAuth client id — the same one copilot.vim,
 // copilot.lua, and pi use, so the consent screen shows "GitHub Copilot".
@@ -27,9 +26,6 @@ const DEFAULT_BASE_URL = "https://api.githubcopilot.com";
 const USER_API_VERSION = "2025-04-01";
 const DEFAULT_PROVIDER_ID = "github-copilot";
 export const GITHUB_COPILOT_PROVIDER_ID = DEFAULT_PROVIDER_ID;
-const MIN_POLL_INTERVAL_MS = 1000;
-const SLOW_DOWN_INCREMENT_MS = 5000;
-const POLLING_SAFETY_MARGIN_MS = 3000;
 const DEFAULT_MODELS_RETRY = { maxRetries: 2, maxElapsedMs: 5000 };
 
 export type GitHubCopilotOAuthCredentials = {
@@ -210,52 +206,50 @@ export async function pollGitHubCopilotDeviceToken(
 ): Promise<string> {
 	const domain = options.domain ?? DEFAULT_DOMAIN;
 	const send = fetchWith(options);
-	const deadline =
-		typeof flow.expiresInSeconds === "number" ? Date.now() + flow.expiresInSeconds * 1000 : Number.POSITIVE_INFINITY;
-	let intervalMs = Math.max(MIN_POLL_INTERVAL_MS, Math.floor(flow.intervalSeconds * 1000));
 
-	const poll = async (): Promise<string | undefined> => {
-		const response = await send(`https://${domain}/login/oauth/access_token`, {
-			method: "POST",
-			headers: { Accept: "application/json", "Content-Type": "application/json" },
-			body: JSON.stringify({
-				client_id: CLIENT_ID,
-				device_code: flow.deviceCode,
-				grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-			}),
-			signal: options.signal ?? null,
-		});
-		if (!response.ok) {
-			throw new Error(`GitHub device token poll failed (${response.status})`);
-		}
-		const data: unknown = await response.json();
-		if (!isObject(data)) throw new Error("Invalid GitHub device token response");
+	return pollDeviceCode<string>({
+		intervalSeconds: flow.intervalSeconds,
+		...(flow.expiresInSeconds !== undefined && { expiresInSeconds: flow.expiresInSeconds }),
+		waitBeforeFirstPoll: true,
+		...(options.signal !== undefined && { signal: options.signal }),
+		poll: async () => {
+			const response = await send(`https://${domain}/login/oauth/access_token`, {
+				method: "POST",
+				headers: { Accept: "application/json", "Content-Type": "application/json" },
+				body: JSON.stringify({
+					client_id: CLIENT_ID,
+					device_code: flow.deviceCode,
+					grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+				}),
+				signal: options.signal ?? null,
+			});
+			if (!response.ok) {
+				return { status: "failed", message: `GitHub device token poll failed (${response.status})` };
+			}
 
-		if (typeof data.access_token === "string" && data.access_token) return data.access_token;
+			const data: unknown = await response.json();
+			if (!isObject(data)) return { status: "failed", message: "Invalid GitHub device token response" };
 
-		const error = typeof data.error === "string" ? data.error : undefined;
-		if (error === "authorization_pending") {
-			await sleep(intervalMs + POLLING_SAFETY_MARGIN_MS, options.signal);
-			return undefined;
-		}
-		if (error === "slow_down") {
-			const serverInterval =
-				typeof data.interval === "number" && data.interval > 0 ? data.interval * 1000 : undefined;
-			intervalMs = serverInterval ?? intervalMs + SLOW_DOWN_INCREMENT_MS;
-			await sleep(intervalMs + POLLING_SAFETY_MARGIN_MS, options.signal);
-			return undefined;
-		}
-		const description = typeof data.error_description === "string" ? `: ${data.error_description}` : "";
-		throw new Error(`GitHub device authorization failed: ${error ?? "unknown error"}${description}`);
-	};
+			if (typeof data.access_token === "string" && data.access_token) {
+				return { status: "complete", value: data.access_token };
+			}
 
-	// RFC 8628: wait `interval` before the first poll.
-	await sleep(Math.min(intervalMs, deadline - Date.now()), options.signal);
-	while (Date.now() < deadline) {
-		const token = await poll();
-		if (token) return token;
-	}
-	throw new Error("GitHub device authorization timed out");
+			const error = typeof data.error === "string" ? data.error : undefined;
+			if (error === "authorization_pending") return { status: "pending" };
+			if (error === "slow_down") {
+				return {
+					status: "slow_down",
+					...(typeof data.interval === "number" && data.interval > 0 && { intervalSeconds: data.interval }),
+				};
+			}
+
+			const description = typeof data.error_description === "string" ? `: ${data.error_description}` : "";
+			return {
+				status: "failed",
+				message: `GitHub device authorization failed: ${error ?? "unknown error"}${description}`,
+			};
+		},
+	});
 }
 
 /**
@@ -463,43 +457,6 @@ export class JsonGitHubCopilotAuthStorage implements GitHubCopilotAuthStorage {
 	}
 }
 
-/**
- * The token other Copilot clients persist for the user
- * (`~/.config/github-copilot/hosts.json`, fallback `apps.json`; on Windows
- * `%LOCALAPPDATA%\github-copilot`). Any `ghu_`/`gho_` token works directly
- * against the Copilot API, so an editor's token is usable as-is.
- */
-async function readEditorCopilotToken(domain?: string): Promise<string | undefined> {
-	const directories =
-		typeof process !== "undefined" && process.platform === "win32"
-			? [readEnv("LOCALAPPDATA") && joinPath(readEnv("LOCALAPPDATA")!, "github-copilot")].filter(
-					(dir): dir is string => Boolean(dir),
-				)
-			: [joinPath(readEnv("XDG_CONFIG_HOME") ?? joinPath(homeDirectory(), ".config"), "github-copilot")];
-
-	const fs = await import("node:fs/promises");
-	for (const directory of directories) {
-		for (const filename of ["hosts.json", "apps.json"]) {
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(await fs.readFile(joinPath(directory, filename), "utf8"));
-			} catch {
-				continue;
-			}
-			if (!isObject(parsed)) continue;
-			// Enterprise hosts are keyed by their domain; github.com is the default.
-			const preferred =
-				(domain !== undefined && isObject(parsed[domain]) ? parsed[domain] : undefined) ??
-				(isObject(parsed["github.com"]) ? parsed["github.com"] : undefined) ??
-				Object.values(parsed).find(isObject);
-			if (preferred && typeof preferred.oauth_token === "string" && preferred.oauth_token) {
-				return preferred.oauth_token;
-			}
-		}
-	}
-	return undefined;
-}
-
 export type GitHubCopilotOAuthClientOptions = {
 	storage?: GitHubCopilotAuthStorage;
 };
@@ -619,24 +576,24 @@ export function gitHubCopilotHeaders(credentials: GitHubCopilotOAuthCredentials)
 }
 
 /**
- * Resolve the GitHub Copilot API credential: `COPILOT_GITHUB_TOKEN` first
- * (`GITHUB_TOKEN`/`GH_TOKEN` after it — note GitHub Actions sets `GITHUB_TOKEN`
- * to a workflow token without Copilot access), then the token VS
- * Code/JetBrains/Neovim Copilot clients persist, then codework auth.json.
- * Returns undefined when nothing is stored; device flow only runs via
+ * Resolve the GitHub Copilot API credential: `COPILOT_GITHUB_TOKEN` first, then
+ * an explicit `auth --github-copilot` login from codework auth.json.
+ *
+ * Nothing else is consulted, by design. `GITHUB_TOKEN` and `GH_TOKEN` are
+ * usually set for git or `gh` and carry no Copilot access — in GitHub Actions
+ * `GITHUB_TOKEN` is a workflow token — so reading them turns a working login
+ * into an unexplained 401. Credentials another application stored for itself
+ * (an editor's Copilot sign-in) are not consulted either: a token codework was
+ * never given should not silently become the identity its runs bill and act as.
+ *
+ * Returns undefined when nothing is available; the device flow only runs via
  * `GitHubCopilotOAuthClient#login`.
  */
 export async function getGitHubCopilotApiKey(
-	options: GitHubCopilotOAuthClientOptions & { enterpriseUrl?: string | undefined } = {},
+	options: GitHubCopilotOAuthClientOptions = {},
 ): Promise<string | undefined> {
-	for (const name of [GITHUB_COPILOT_API_KEY_ENV, ...GITHUB_COPILOT_API_KEY_ENV_FALLBACKS]) {
-		const value = readEnv(name);
-		if (value) return value;
-	}
-
-	const domain = normalizeGitHubDomain(options.enterpriseUrl);
-	const editor = await readEditorCopilotToken(domain).catch(() => undefined);
-	if (editor) return editor;
+	const dedicated = readEnv(GITHUB_COPILOT_API_KEY_ENV);
+	if (dedicated) return dedicated;
 
 	return new GitHubCopilotOAuthClient(options).getApiKey();
 }

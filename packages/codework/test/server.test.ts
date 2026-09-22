@@ -19,7 +19,7 @@ import { Contract } from "../src/server/contract.ts";
 import { Envelope } from "../src/server/envelope.ts";
 import { EventFeed } from "../src/server/feed.ts";
 import { Handlers } from "../src/server/handlers.ts";
-import { OpenAICodexAuth } from "../src/server/oauth-openai-codex.ts";
+import { OAuth } from "../src/server/oauth.ts";
 import { Server } from "../src/server/server.ts";
 import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
 
@@ -50,7 +50,7 @@ const layer = (options: Harness.Options = {}) => {
 	homes.push(home);
 	return Handlers.layer.pipe(
 		Layer.provide(EventFeed.layer),
-		Layer.provide(OpenAICodexAuth.layer),
+		Layer.provide(OAuth.layer({ home })),
 		Layer.provideMerge(Harness.layer({ home, hostCwd: home, database: ":memory:", ...options })),
 	);
 };
@@ -439,21 +439,60 @@ describe("WebSocket client", () => {
 	it("stores OpenAI Codex credentials explicitly over RPC", () =>
 		Effect.gen(function* () {
 			const rpc = yield* connectedClient;
-			expect(yield* rpc["openaiCodex.auth.status"]({})).toBeNull();
+			const provider = "openai-codex" as const;
+			expect(yield* rpc["auth.status"]({ provider })).toBeNull();
 			expect(
-				yield* rpc["openaiCodex.auth.save"]({
+				yield* rpc["auth.save"]({
 					credentials: {
+						provider,
 						access: "access-token",
 						refresh: "refresh-token",
 						expires: 4_102_444_800_000,
 						accountId: "acct_server",
 					},
 				}),
-			).toEqual({ accountId: "acct_server", expires: 4_102_444_800_000 });
-			expect(yield* rpc["openaiCodex.auth.status"]({})).toEqual({
+			).toMatchObject({ provider, accountId: "acct_server", expires: 4_102_444_800_000 });
+			expect(yield* rpc["auth.status"]({ provider })).toMatchObject({
+				provider,
 				accountId: "acct_server",
 				expires: 4_102_444_800_000,
 			});
+		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("10 seconds"), Effect.runPromise));
+
+	it("keeps GitHub Copilot and OpenAI Codex logins side by side", () =>
+		Effect.gen(function* () {
+			const rpc = yield* connectedClient;
+			yield* rpc["auth.save"]({
+				credentials: {
+					provider: "openai-codex",
+					access: "codex-token",
+					refresh: "codex-refresh",
+					expires: 4_102_444_800_000,
+					accountId: "acct_server",
+				},
+			});
+			expect(
+				yield* rpc["auth.save"]({
+					credentials: {
+						provider: "github-copilot",
+						access: "ghu_token",
+						refresh: "ghu_token",
+						expires: 0,
+						apiEndpoint: "https://api.individual.githubcopilot.com",
+						availableModelIds: ["gpt-5.4", "claude-opus-5"],
+					},
+				}),
+			).toMatchObject({
+				provider: "github-copilot",
+				expires: 0,
+				apiEndpoint: "https://api.individual.githubcopilot.com",
+				availableModels: 2,
+			});
+
+			// One auth.json holds both providers; clearing one leaves the other.
+			yield* rpc["auth.logout"]({ provider: "github-copilot" });
+			expect(yield* rpc["auth.status"]({ provider: "github-copilot" })).toBeNull();
+			expect(yield* rpc["auth.status"]({ provider: "openai-codex" })).toMatchObject({ accountId: "acct_server" });
 		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("10 seconds"), Effect.runPromise));
 
 	it("refreshes server OpenAI Codex credentials", () => {
@@ -472,10 +511,16 @@ describe("WebSocket client", () => {
 
 		return Effect.gen(function* () {
 			const rpc = yield* connectedClient;
-			yield* rpc["openaiCodex.auth.save"]({
-				credentials: { access: "expired", refresh: "old-refresh", expires: 0, accountId: "acct_old" },
+			yield* rpc["auth.save"]({
+				credentials: {
+					provider: "openai-codex",
+					access: "expired",
+					refresh: "old-refresh",
+					expires: 0,
+					accountId: "acct_old",
+				},
 			});
-			expect(yield* rpc["openaiCodex.auth.refresh"]({})).toMatchObject({
+			expect(yield* rpc["auth.refresh"]({ provider: "openai-codex" })).toMatchObject({
 				accountId: "acct_server",
 			});
 		}).pipe(
@@ -493,11 +538,11 @@ describe("WebSocket client", () => {
 			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
 			const port = server.address.port;
 			const result = yield* Effect.promise(() =>
-				execCli(["auth", "--openai-codex", "--status", "--server", `ws://127.0.0.1:${port}/rpc`], process.cwd()),
+				execCli(["auth", "status", "--openai-codex", "--server", `ws://127.0.0.1:${port}/rpc`], process.cwd()),
 			);
 
 			expect(result.status).toBe(1);
-			expect(result.stderr).toContain("no OpenAI Codex credentials found on the server");
+			expect(result.stderr).toContain("no OpenAI Codex credentials found at the server");
 		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("20 seconds"), Effect.runPromise));
 
 	it("runs session link and unlink through the CLI", () => {

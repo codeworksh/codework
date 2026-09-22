@@ -81,7 +81,7 @@ describe("settings at the LLM boundary", () => {
 			if (!model) return;
 
 			const events = await Effect.runPromise(
-				LLM.openWith({ openAICodexAuthFile: authFile })(
+				LLM.openWith({ authFile })(
 					{
 						sessionId: SessionSchema.ID.create(),
 						provider: "openai-codex",
@@ -109,6 +109,117 @@ describe("settings at the LLM boundary", () => {
 		} finally {
 			if (previous === undefined) Reflect.deleteProperty(process.env, "OPENAI_CODEX_API_KEY");
 			else process.env.OPENAI_CODEX_API_KEY = previous;
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("uses stored GitHub Copilot credentials and the plan-specific host", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "codework-harness-copilot-"));
+		const authFile = join(directory, "auth.json");
+		const saved = { COPILOT_GITHUB_TOKEN: process.env.COPILOT_GITHUB_TOKEN };
+		for (const name of Object.keys(saved)) Reflect.deleteProperty(process.env, name);
+
+		try {
+			await writeFile(
+				authFile,
+				JSON.stringify({
+					"github-copilot": {
+						access: "ghu_stored",
+						refresh: "ghu_stored",
+						expires: 0,
+						apiEndpoint: "https://api.individual.githubcopilot.com",
+					},
+				}),
+			);
+
+			let authorization: string | null = null;
+			let requested = "";
+			const fetch = async (url: string | URL | Request, init?: RequestInit) => {
+				requested = url instanceof URL ? url.href : typeof url === "string" ? url : url.url;
+				authorization = new Headers(init?.headers).get("authorization");
+				const chunk = (delta: Record<string, unknown>, finish: string | null) =>
+					`data: ${JSON.stringify({
+						id: "1",
+						object: "chat.completion.chunk",
+						created: 1,
+						model: "gemini-3.6-flash",
+						choices: [{ index: 0, delta, finish_reason: finish }],
+					})}\n\n`;
+				return new Response(
+					`${chunk({ role: "assistant", content: "ok" }, null)}${chunk({}, "stop")}data: [DONE]\n\n`,
+					{
+						headers: { "content-type": "text/event-stream" },
+					},
+				);
+			};
+
+			const model = await llm("github-copilot", "gemini-3.6-flash");
+			expect(model).toBeDefined();
+			if (!model) return;
+
+			const events = await Effect.runPromise(
+				LLM.openWith({ authFile })(
+					{
+						sessionId: SessionSchema.ID.create(),
+						provider: "github-copilot",
+						model: model.id,
+						resolvedModel: model,
+						context: {
+							messages: [
+								Message.createUserMessage({
+									role: "user",
+									time: { created: 1 },
+									parts: [{ type: "text", text: "hello" }],
+								}),
+							],
+						},
+						options: { maxRetries: 0, factoryOptions: { fetch } },
+					},
+					new AbortController().signal,
+				),
+			);
+			for await (const _event of events) {
+				// Drain the response so the provider performs the authenticated request.
+			}
+
+			expect(authorization).toBe("Bearer ghu_stored");
+			// The login-time endpoint wins over the catalog's generic host.
+			expect(requested).toContain("https://api.individual.githubcopilot.com");
+
+			// An environment token may be another account, so it does not inherit
+			// the stored login's plan-specific host.
+			process.env.COPILOT_GITHUB_TOKEN = "ghu_from_env";
+			const fromEnv = await Effect.runPromise(
+				LLM.openWith({ authFile })(
+					{
+						sessionId: SessionSchema.ID.create(),
+						provider: "github-copilot",
+						model: model.id,
+						resolvedModel: model,
+						context: {
+							messages: [
+								Message.createUserMessage({
+									role: "user",
+									time: { created: 1 },
+									parts: [{ type: "text", text: "hello" }],
+								}),
+							],
+						},
+						options: { maxRetries: 0, factoryOptions: { fetch } },
+					},
+					new AbortController().signal,
+				),
+			);
+			for await (const _event of fromEnv) {
+				// Drain so the request is made.
+			}
+			expect(authorization).toBe("Bearer ghu_from_env");
+			expect(requested).toContain("https://api.githubcopilot.com/");
+		} finally {
+			for (const [name, value] of Object.entries(saved)) {
+				if (value === undefined) Reflect.deleteProperty(process.env, name);
+				else process.env[name] = value;
+			}
 			await rm(directory, { recursive: true, force: true });
 		}
 	});

@@ -13,18 +13,17 @@ export type CopilotFetchOptions = {
 	interactionType?: GitHubCopilotInteractionType;
 };
 
-const API_KEY_ENVS = ["COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"];
+// Only the Copilot-specific variable: GITHUB_TOKEN and GH_TOKEN are usually set
+// for git or `gh` and have no Copilot access.
+const API_KEY_ENV = "COPILOT_GITHUB_TOKEN";
 
 async function resolveToken(apiKey: GitHubCopilotApiKey | undefined): Promise<string> {
 	const resolved = typeof apiKey === "function" ? await apiKey() : apiKey;
 	if (resolved) return resolved;
-	for (const name of API_KEY_ENVS) {
-		const value = typeof process === "undefined" ? undefined : process.env[name];
-		if (value) return value;
-	}
+	const fromEnv = typeof process === "undefined" ? undefined : process.env[API_KEY_ENV];
+	if (fromEnv) return fromEnv;
 	throw new LoadAPIKeyError({
-		message:
-			"GitHub Copilot API key is missing. Set COPILOT_GITHUB_TOKEN (or GITHUB_TOKEN/GH_TOKEN), pass an apiKey, or authenticate with `aikit auth --github-copilot`.",
+		message: `GitHub Copilot API key is missing. Set ${API_KEY_ENV}, pass an apiKey, or authenticate with \`aikit auth --github-copilot\`.`,
 	});
 }
 

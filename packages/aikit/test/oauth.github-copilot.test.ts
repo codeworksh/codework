@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -123,16 +123,37 @@ describe("JsonGitHubCopilotAuthStorage", () => {
 		const storage = new JsonGitHubCopilotAuthStorage({ path });
 		expect(await storage.get()).toBeUndefined();
 	});
+
+	it("refuses to overwrite a file it could not read", async () => {
+		const dir = await scratchDir();
+		const path = join(dir, "auth.json");
+		await writeFile(path, "{not json", "utf8");
+		const storage = new JsonGitHubCopilotAuthStorage({ path });
+
+		// A write rebuilds the whole file, so treating an unreadable one as empty
+		// would silently drop every other provider's credentials.
+		await expect(storage.set({ access: "ghu_x", refresh: "ghu_x", expires: 0 })).rejects.toThrow("not valid JSON");
+		expect(await readFile(path, "utf8")).toBe("{not json");
+	});
+
+	it("leaves other providers alone when writing and clearing", async () => {
+		const dir = await scratchDir();
+		const path = join(dir, "auth.json");
+		await writeFile(path, JSON.stringify({ "openai-codex": { access: "codex" } }), "utf8");
+		const storage = new JsonGitHubCopilotAuthStorage({ path });
+
+		await storage.set({ access: "ghu_x", refresh: "ghu_x", expires: 0 });
+		expect(JSON.parse(await readFile(path, "utf8"))["openai-codex"]).toEqual({ access: "codex" });
+
+		await storage.clear();
+		expect(JSON.parse(await readFile(path, "utf8"))["openai-codex"]).toEqual({ access: "codex" });
+	});
 });
 
 describe("getGitHubCopilotApiKey", () => {
 	it("prefers COPILOT_GITHUB_TOKEN over every other source", async () => {
 		const dir = await scratchDir();
 		vi.stubEnv("COPILOT_GITHUB_TOKEN", "ghu_env");
-		vi.stubEnv("GITHUB_TOKEN", "gho_wrong");
-		vi.stubEnv("XDG_CONFIG_HOME", join(dir, "config"));
-		await mkdir(join(dir, "config", "github-copilot"), { recursive: true });
-		await writeFile(join(dir, "config", "github-copilot", "hosts.json"), JSON.stringify(oauthFixture()), "utf8");
 		vi.stubEnv("CODEWORK_CREDENTIALS", join(dir, "auth.json"));
 		await writeFile(
 			join(dir, "auth.json"),
@@ -142,36 +163,53 @@ describe("getGitHubCopilotApiKey", () => {
 		expect(await getGitHubCopilotApiKey()).toBe("ghu_env");
 	});
 
-	it("falls back to GITHUB_TOKEN then editor hosts.json then storage", async () => {
+	it("ignores GITHUB_TOKEN and GH_TOKEN entirely", async () => {
 		const dir = await scratchDir();
-		vi.stubEnv("XDG_CONFIG_HOME", join(dir, "config"));
 		vi.stubEnv("CODEWORK_CREDENTIALS", join(dir, "auth.json"));
 
-		vi.stubEnv("GITHUB_TOKEN", "gho_secondary");
-		expect(await getGitHubCopilotApiKey()).toBe("gho_secondary");
-		vi.stubEnv("GITHUB_TOKEN", "");
-
-		await mkdir(join(dir, "config", "github-copilot"), { recursive: true });
-		await writeFile(
-			join(dir, "config", "github-copilot", "hosts.json"),
-			JSON.stringify(oauthFixture({ "ghe.example.com": { oauth_token: "gho_ghe" } })),
-			"utf8",
-		);
-		expect(await getGitHubCopilotApiKey()).toBe("gho_editor");
-		expect(await getGitHubCopilotApiKey({ enterpriseUrl: "ghe.example.com" })).toBe("gho_ghe");
-		expect(await getGitHubCopilotApiKey({ enterpriseUrl: "other.ghe.com" })).toBe("gho_editor");
-
-		// apps.json is the legacy fallback
-		await rm(join(dir, "config", "github-copilot", "hosts.json"));
-		await writeFile(join(dir, "config", "github-copilot", "apps.json"), JSON.stringify(oauthFixture()), "utf8");
-		expect(await getGitHubCopilotApiKey()).toBe("gho_editor");
+		// Both are usually set for git or `gh` and carry no Copilot access, so
+		// they are not a credential source at all -- not even a last resort.
+		vi.stubEnv("GITHUB_TOKEN", "gho_ambient");
+		vi.stubEnv("GH_TOKEN", "gho_ambient_2");
+		expect(await getGitHubCopilotApiKey()).toBeUndefined();
 
 		await writeFile(
 			join(dir, "auth.json"),
 			JSON.stringify({ [GITHUB_COPILOT_PROVIDER_ID]: { access: "ghu_stored", refresh: "ghu_stored", expires: 0 } }),
 			"utf8",
 		);
-		await rm(join(dir, "config", "github-copilot", "apps.json"));
+		expect(await getGitHubCopilotApiKey()).toBe("ghu_stored");
+
+		// The Copilot-specific variable still overrides everything.
+		vi.stubEnv("COPILOT_GITHUB_TOKEN", "ghu_env");
+		expect(await getGitHubCopilotApiKey()).toBe("ghu_env");
+	});
+
+	it("never reads credentials another application stored for itself", async () => {
+		const dir = await scratchDir();
+		vi.stubEnv("XDG_CONFIG_HOME", join(dir, "config"));
+		vi.stubEnv("CODEWORK_CREDENTIALS", join(dir, "auth.json"));
+		await mkdir(join(dir, "config", "github-copilot"), { recursive: true });
+
+		// An editor's Copilot sign-in lives here. Treating it as a credential
+		// source would let a run bill and act as an account codework was never
+		// given, invisibly to `auth --status`.
+		await writeFile(
+			join(dir, "config", "github-copilot", "hosts.json"),
+			JSON.stringify(oauthFixture({ "ghe.example.com": { oauth_token: "gho_ghe" } })),
+			"utf8",
+		);
+		expect(await getGitHubCopilotApiKey()).toBeUndefined();
+
+		await writeFile(join(dir, "config", "github-copilot", "apps.json"), JSON.stringify(oauthFixture()), "utf8");
+		expect(await getGitHubCopilotApiKey()).toBeUndefined();
+
+		// Only a login codework was actually given counts.
+		await writeFile(
+			join(dir, "auth.json"),
+			JSON.stringify({ [GITHUB_COPILOT_PROVIDER_ID]: { access: "ghu_stored", refresh: "ghu_stored", expires: 0 } }),
+			"utf8",
+		);
 		expect(await getGitHubCopilotApiKey()).toBe("ghu_stored");
 	});
 });

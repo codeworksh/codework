@@ -343,6 +343,99 @@ describe("OpenAICodexOAuthClient", () => {
 		).rejects.toThrow();
 	});
 
+	it("signs in with a device code and never opens a local port", async () => {
+		const { createServer } = await import("node:http");
+		// Hold 1455: the device flow must not want it.
+		const blocker = createServer((_req, res) => res.end("busy"));
+		await new Promise<void>((resolve, reject) => {
+			blocker.listen(1455, "127.0.0.1", resolve).on("error", reject);
+		});
+
+		try {
+			const access = makeJwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acct_device" } });
+			const calls: string[] = [];
+			let polls = 0;
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+					const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+					calls.push(url);
+					if (url.endsWith("/deviceauth/usercode")) {
+						return Response.json({ device_auth_id: "dev_1", user_code: "WDJB-MJHT", interval: 0 });
+					}
+					if (url.endsWith("/deviceauth/token")) {
+						polls += 1;
+						// Unclaimed codes answer 403 until the user approves.
+						if (polls === 1) return new Response("", { status: 403 });
+						return Response.json({ authorization_code: "dev-code", code_verifier: "dev-verifier" });
+					}
+					expect(url).toBe("https://auth.openai.com/oauth/token");
+					const body = init?.body instanceof URLSearchParams ? init.body.toString() : "";
+					expect(body).toContain("code=dev-code");
+					expect(body).toContain("code_verifier=dev-verifier");
+					// The code is redeemed against the server's own callback, not 1455.
+					expect(body).toContain(encodeURIComponent("https://auth.openai.com/deviceauth/callback"));
+					return Response.json({ access_token: access, refresh_token: "refresh-device", expires_in: 3600 });
+				}),
+			);
+
+			const storage = new MemoryStorage();
+			let announced: { url: string; userCode?: string | undefined } | undefined;
+			const credentials = await new OpenAICodexOAuthClient({ storage }).login({
+				device: true,
+				onAuth: (info) => {
+					announced = info;
+				},
+				onPrompt: async () => {
+					throw new Error("the device flow must not prompt for a pasted code");
+				},
+			});
+
+			expect(credentials.accountId).toBe("acct_device");
+			expect(storage.credentials?.access).toBe(access);
+			expect(announced).toEqual({
+				url: "https://auth.openai.com/codex/device",
+				userCode: "WDJB-MJHT",
+				instructions: "Open the URL and enter the code to finish OpenAI Codex authentication.",
+			});
+			expect(polls).toBe(2);
+			expect(calls.some((url) => url.includes("1455"))).toBe(false);
+		} finally {
+			await new Promise<void>((resolve) => blocker.close(() => resolve()));
+		}
+	});
+
+	it("explains a busy callback port instead of silently asking for a paste", async () => {
+		const { createServer } = await import("node:http");
+		const blocker = createServer((_req, res) => res.end("busy"));
+		await new Promise<void>((resolve, reject) => {
+			blocker.listen(1455, "127.0.0.1", resolve).on("error", reject);
+		});
+
+		try {
+			const access = makeJwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acct_busy" } });
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => Response.json({ access_token: access, refresh_token: "refresh-busy", expires_in: 3600 })),
+			);
+
+			const progress: string[] = [];
+			let state: string | null = null;
+			const credentials = await new OpenAICodexOAuthClient({ storage: new MemoryStorage() }).login({
+				onAuth: ({ url }) => {
+					state = new URL(url).searchParams.get("state");
+				},
+				onProgress: (message) => progress.push(message),
+				onPrompt: async () => `http://localhost:1455/auth/callback?code=pasted-code&state=${state}`,
+			});
+
+			expect(credentials.accountId).toBe("acct_busy");
+			expect(progress.join("\n")).toContain("Could not listen on http://localhost:1455/auth/callback");
+		} finally {
+			await new Promise<void>((resolve) => blocker.close(() => resolve()));
+		}
+	});
+
 	it("refreshes credentials that are within the expiry skew", async () => {
 		const storage = new MemoryStorage();
 		storage.credentials = makeCredentials({ expires: Date.now() + 1000 });

@@ -50,17 +50,45 @@ export class OAuthError extends Schema.TaggedError<OAuthError>()("Server.OAuthEr
 	message: Schema.String,
 }) {}
 
-export const OpenAICodexCredentials = Schema.Struct({
-	access: Schema.String,
-	refresh: Schema.String,
-	expires: Schema.Finite,
-	accountId: Schema.String,
-});
+/** OAuth providers whose credentials this server stores. */
+export const OAuthProvider = Schema.Literals(["openai-codex", "github-copilot"]);
+export type OAuthProvider = typeof OAuthProvider.Type;
 
-export const OpenAICodexCredentialInfo = Schema.Struct({
-	accountId: Schema.String,
+/**
+ * Credentials as the provider's aikit module persists them. The union is
+ * discriminated by `provider` so one set of RPCs serves every login.
+ */
+export const OAuthCredentials = Schema.Union([
+	Schema.Struct({
+		provider: Schema.Literal("openai-codex"),
+		access: Schema.String,
+		refresh: Schema.String,
+		expires: Schema.Finite,
+		accountId: Schema.String,
+	}),
+	Schema.Struct({
+		provider: Schema.Literal("github-copilot"),
+		access: Schema.String,
+		refresh: Schema.String,
+		expires: Schema.Finite,
+		enterpriseUrl: optional(Schema.String),
+		apiEndpoint: optional(Schema.String),
+		availableModelIds: optional(Schema.Array(Schema.String)),
+	}),
+]);
+export type OAuthCredentials = typeof OAuthCredentials.Type;
+
+/** What a login looks like from the outside: never the tokens themselves. */
+export const OAuthInfo = Schema.Struct({
+	provider: OAuthProvider,
+	/** Epoch millis, or 0 for a credential that does not expire. */
 	expires: Schema.Finite,
+	accountId: optional(Schema.String),
+	apiEndpoint: optional(Schema.String),
+	enterpriseUrl: optional(Schema.String),
+	availableModels: optional(Schema.Int),
 });
+export type OAuthInfo = typeof OAuthInfo.Type;
 
 const SessionErrors = Schema.Union([
 	SessionStore.SessionNotFoundError,
@@ -85,23 +113,23 @@ const SandboxErrors = Schema.Union([
 const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.NotDirectoryError]);
 
 export const Api = RpcGroup.make(
-	Rpc.make("openaiCodex.auth.save", {
-		payload: { credentials: OpenAICodexCredentials },
-		success: OpenAICodexCredentialInfo,
+	Rpc.make("auth.save", {
+		payload: { credentials: OAuthCredentials },
+		success: OAuthInfo,
 		error: OAuthError,
 	}),
-	Rpc.make("openaiCodex.auth.status", {
-		payload: {},
-		success: Schema.NullOr(OpenAICodexCredentialInfo),
+	Rpc.make("auth.status", {
+		payload: { provider: OAuthProvider },
+		success: Schema.NullOr(OAuthInfo),
 		error: OAuthError,
 	}),
-	Rpc.make("openaiCodex.auth.refresh", {
-		payload: {},
-		success: Schema.NullOr(OpenAICodexCredentialInfo),
+	Rpc.make("auth.refresh", {
+		payload: { provider: OAuthProvider },
+		success: Schema.NullOr(OAuthInfo),
 		error: OAuthError,
 	}),
-	Rpc.make("openaiCodex.auth.logout", {
-		payload: {},
+	Rpc.make("auth.logout", {
+		payload: { provider: OAuthProvider },
 		success: Schema.Void,
 		error: OAuthError,
 	}),

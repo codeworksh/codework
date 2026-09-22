@@ -68,7 +68,9 @@ export class JsonAuthStorage<T> {
 	}
 
 	async get(): Promise<T | undefined> {
-		const file = await this.readFile();
+		// A read falls through to the next credential source, so an unreadable
+		// file is simply "no credentials here". A write must not: see readFile.
+		const file = await this.readFile().catch(() => undefined);
 		if (!file) return undefined;
 
 		if (this.isCredentials(file)) return file;
@@ -107,17 +109,31 @@ export class JsonAuthStorage<T> {
 		await this.writeFile(current);
 	}
 
+	/**
+	 * Undefined means the file is genuinely absent or holds no credential map.
+	 * Anything else -- unparseable JSON, a permission error -- throws, because
+	 * `set` and `clear` rewrite the whole file: treating an unreadable file as
+	 * empty would drop every other provider's credentials on the next login.
+	 */
 	private async readFile(): Promise<AuthFile | undefined> {
 		const fs = await import("node:fs/promises");
+		let text: string;
 		try {
-			const text = await fs.readFile(this.path, "utf8");
-			const parsed: unknown = JSON.parse(text);
-			return isObject(parsed) ? parsed : undefined;
-		} catch {
-			// A missing or corrupt credentials file reads as "no credentials";
-			// callers fall through to the next credential source or re-login.
-			return undefined;
+			text = await fs.readFile(this.path, "utf8");
+		} catch (error) {
+			if (isObject(error) && error.code === "ENOENT") return undefined;
+			throw error;
 		}
+
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(text);
+		} catch (error) {
+			throw new Error(
+				`credentials file ${this.path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+		return isObject(parsed) ? parsed : undefined;
 	}
 
 	private async writeFile(value: AuthFile): Promise<void> {

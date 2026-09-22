@@ -32,13 +32,10 @@ function args(path: string, overrides: Partial<OAuthHandlerArgs>): OAuthHandlerA
 		openaiCodex: true,
 		authFile: path,
 		browser: false,
-		manual: false,
 		status: false,
 		refresh: false,
 		logout: false,
 		json: false,
-		printHeaders: false,
-		originator: "codework",
 		...overrides,
 	};
 }
@@ -48,6 +45,12 @@ describe("OAuthCommand", () => {
 	let path: string;
 	let storage: JsonOpenAICodexAuthStorage;
 	let previousExitCode: typeof process.exitCode;
+	// The summary is the command's result and goes to stdout; notices are
+	// progress and go to stderr, so `--json` stdout stays parseable.
+	let out: string[];
+	let notices: string[];
+	const stdout = () => out.join("");
+	const stderr = () => notices.join("\n");
 
 	beforeEach(async () => {
 		dir = await mkdtemp(join(tmpdir(), "aikit-oauth-cli-test-"));
@@ -55,7 +58,14 @@ describe("OAuthCommand", () => {
 		storage = new JsonOpenAICodexAuthStorage({ path });
 		previousExitCode = process.exitCode;
 		process.exitCode = undefined;
-		vi.spyOn(console, "log").mockImplementation(() => {});
+		out = [];
+		notices = [];
+		vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+			out.push(String(chunk));
+			return true;
+		});
+		vi.spyOn(console, "warn").mockImplementation((...parts: unknown[]) => notices.push(parts.join(" ")));
+		vi.spyOn(console, "error").mockImplementation((...parts: unknown[]) => notices.push(parts.join(" ")));
 	});
 
 	afterEach(async () => {
@@ -70,10 +80,10 @@ describe("OAuthCommand", () => {
 
 		await OAuthCommand.handler(args(path, { status: true }));
 
-		const output = vi.mocked(console.log).mock.calls.flat().join("\n");
-		expect(output).toContain("Account: acct_cli");
-		expect(output).not.toContain("access-secret");
-		expect(output).not.toContain("refresh-secret");
+		expect(stdout()).toContain("Provider: OpenAI Codex");
+		expect(stdout()).toContain("Account: acct_cli");
+		expect(stdout()).not.toContain("access-secret");
+		expect(stdout()).not.toContain("refresh-secret");
 	});
 
 	it("refreshes expired credentials and persists the replacement", async () => {
@@ -93,7 +103,7 @@ describe("OAuthCommand", () => {
 			refresh: "new-refresh-secret",
 			accountId: "acct_refreshed_cli",
 		});
-		expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain("Refreshed OpenAI Codex credentials");
+		expect(stderr()).toContain("Refreshed OpenAI Codex credentials");
 	});
 
 	it("logs out and clears stored Codex credentials", async () => {
@@ -102,7 +112,7 @@ describe("OAuthCommand", () => {
 		await OAuthCommand.handler(args(path, { logout: true }));
 
 		await expect(storage.get()).resolves.toBeUndefined();
-		expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain("Cleared OpenAI Codex credentials");
+		expect(stderr()).toContain("Cleared OpenAI Codex credentials");
 	});
 
 	it("prints Copilot status without exposing stored tokens", async () => {
@@ -117,17 +127,17 @@ describe("OAuthCommand", () => {
 
 		await OAuthCommand.handler(args(path, { openaiCodex: false, githubCopilot: true, status: true }));
 
-		const output = vi.mocked(console.log).mock.calls.flat().join("\n");
-		expect(output).toContain("api.individual.githubcopilot.com");
-		expect(output).toContain("Available models: 2");
-		expect(output).not.toContain("ghu_secret");
+		expect(stdout()).toContain("Provider: GitHub Copilot");
+		expect(stdout()).toContain("api.individual.githubcopilot.com");
+		expect(stdout()).toContain("Available models: 2");
+		expect(stdout()).not.toContain("ghu_secret");
 	});
 
 	it("reports missing Copilot credentials and fails the status check", async () => {
 		await OAuthCommand.handler(args(path, { openaiCodex: false, githubCopilot: true, status: true }));
 
 		expect(process.exitCode).toBe(1);
-		expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain("No GitHub Copilot credentials found");
+		expect(stderr()).toContain("no GitHub Copilot credentials found");
 	});
 
 	it("logs out and clears stored Copilot credentials", async () => {
@@ -137,6 +147,6 @@ describe("OAuthCommand", () => {
 		await OAuthCommand.handler(args(path, { openaiCodex: false, githubCopilot: true, logout: true }));
 
 		await expect(copilotStorage.get()).resolves.toBeUndefined();
-		expect(vi.mocked(console.log).mock.calls.flat().join("\n")).toContain("Cleared GitHub Copilot credentials");
+		expect(stderr()).toContain("Cleared GitHub Copilot credentials");
 	});
 });

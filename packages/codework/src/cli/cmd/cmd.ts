@@ -10,6 +10,31 @@ import { Spec } from "../../framework/spec.ts";
 
 export const thinkingLevels = Object.values(Model.ThinkingLevelEnum);
 
+/**
+ * Every `auth` subcommand answers the same three questions: which provider,
+ * whose credentials, and where they live. Only `login` needs anything more.
+ */
+const AuthParams = {
+	openaiCodex: Flag.Boolean("openai-codex").pipe(
+		Flag.withDescription("Use OpenAI Codex OAuth"),
+		Flag.withDefault(false),
+	),
+	githubCopilot: Flag.Boolean("github-copilot").pipe(
+		Flag.withDescription("Use GitHub Copilot OAuth (device flow)"),
+		Flag.withDefault(false),
+	),
+	server: Flag.String("server").pipe(Flag.withDescription("RPC server URL (ws://host:port/rpc)"), Flag.optional),
+	authFile: Flag.String("auth-file").pipe(
+		Flag.withDescription("Credential file (defaults to <home>/aikit/auth.json)"),
+		Flag.optional,
+	),
+};
+
+const JsonFlag = Flag.Boolean("json").pipe(
+	Flag.withDescription("Print machine-readable output"),
+	Flag.withDefault(false),
+);
+
 export const Cmd = Spec.make("codework", {
 	description: "CodeWork Command Line Interface",
 	shared: {
@@ -26,60 +51,57 @@ export const Cmd = Spec.make("codework", {
 	commands: [
 		Spec.make("auth", {
 			description: "Manage OAuth credentials",
-			params: {
-				server: Flag.String("server").pipe(
-					Flag.withDescription("RPC server URL (ws://host:port/rpc)"),
-					Flag.optional,
-				),
-				openaiCodex: Flag.Boolean("openai-codex").pipe(
-					Flag.withDescription("Use OpenAI Codex OAuth"),
-					Flag.withDefault(false),
-				),
-				authFile: Flag.String("auth-file").pipe(
-					Flag.withDescription("Credential file (defaults to <home>/aikit/auth.json)"),
-					Flag.optional,
-				),
-				browser: Flag.Boolean("browser").pipe(
-					Flag.withDescription("Open the authorization URL in the default browser"),
-					Flag.withDefault(true),
-				),
-				manual: Flag.Boolean("manual").pipe(
-					Flag.withDescription("Also accept a pasted redirect URL or authorization code"),
-					Flag.withDefault(false),
-				),
-				originator: Flag.String("originator").pipe(
-					Flag.withDescription("OAuth originator value"),
-					Flag.withDefault("codework"),
-				),
-				status: Flag.Boolean("status").pipe(
-					Flag.withDescription("Show stored credential status without refreshing"),
-					Flag.withDefault(false),
-				),
-				refresh: Flag.Boolean("refresh").pipe(
-					Flag.withDescription("Refresh stored credentials if expired"),
-					Flag.withDefault(false),
-				),
-				logout: Flag.Boolean("logout").pipe(
-					Flag.withDescription("Clear stored credentials"),
-					Flag.withDefault(false),
-				),
-				json: Flag.Boolean("json").pipe(
-					Flag.withDescription("Print machine-readable output"),
-					Flag.withDefault(false),
-				),
-				printHeaders: Flag.Boolean("print-headers").pipe(
-					Flag.withDescription("Print request headers for Codex API calls"),
-					Flag.withDefault(false),
-				),
-			},
-			examples: [
-				{ command: "codework auth --openai-codex", description: "Sign in with ChatGPT" },
-				{
-					command: "codework auth --openai-codex --server ws://127.0.0.1:7433/rpc",
-					description: "Sign in the running server",
-				},
-				{ command: "codework auth --openai-codex --status", description: "Show the stored login" },
-				{ command: "codework auth --openai-codex --logout", description: "Clear the stored login" },
+			commands: [
+				Spec.make("login", {
+					description: "Sign in to a provider",
+					params: {
+						...AuthParams,
+						browser: Flag.Boolean("browser").pipe(
+							Flag.withDescription("Open the authorization URL in the default browser"),
+							Flag.withDefault(true),
+						),
+						device: Flag.Boolean("device").pipe(
+							Flag.withDescription("Use the device-code flow instead of a localhost browser callback"),
+							Flag.withDefault(false),
+						),
+						enterprise: Flag.String("enterprise").pipe(
+							Flag.withDescription("GitHub Enterprise domain for GitHub Copilot login"),
+							Flag.optional,
+						),
+						enableModels: Flag.Boolean("enable-models").pipe(
+							Flag.withDescription("Enable unconfigured Copilot catalog models after login"),
+							Flag.withDefault(false),
+						),
+						json: JsonFlag,
+					},
+					examples: [
+						{ command: "codework auth login --openai-codex", description: "Sign in with ChatGPT" },
+						{ command: "codework auth login --github-copilot", description: "Sign in with GitHub Copilot" },
+						{
+							command: "codework auth login --openai-codex --device",
+							description: "Sign in with a device code, no local port",
+						},
+						{
+							command: "codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc",
+							description: "Sign in the running server",
+						},
+					],
+				}),
+				Spec.make("status", {
+					description: "Show a stored login without refreshing it",
+					params: { ...AuthParams, json: JsonFlag },
+					examples: [{ command: "codework auth status --openai-codex", description: "Show the stored login" }],
+				}),
+				Spec.make("refresh", {
+					description: "Refresh a stored login if it has expired",
+					params: { ...AuthParams, json: JsonFlag },
+					examples: [{ command: "codework auth refresh --openai-codex", description: "Renew an expired login" }],
+				}),
+				Spec.make("logout", {
+					description: "Clear a stored login",
+					params: AuthParams,
+					examples: [{ command: "codework auth logout --github-copilot", description: "Clear the stored login" }],
+				}),
 			],
 		}),
 		Spec.make("run", {

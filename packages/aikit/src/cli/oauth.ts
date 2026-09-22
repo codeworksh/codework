@@ -3,14 +3,22 @@ import {
 	GitHubCopilotOAuthClient,
 	type GitHubCopilotOAuthCredentials,
 	JsonGitHubCopilotAuthStorage,
-	gitHubCopilotHeaders,
 } from "../oauth/github/copilot.ts";
 import {
 	JsonOpenAICodexAuthStorage,
 	OpenAICodexOAuthClient,
 	type OpenAICodexOAuthCredentials,
-	openAICodexHeaders,
 } from "../oauth/openai/codex.ts";
+import { openBrowser, promptLine } from "../oauth/interactive.ts";
+import {
+	checkOAuthProvider,
+	formatOAuthSummary,
+	oauthLoginIssue,
+	oauthRefreshIssue,
+	oauthNotice,
+	summarizeGitHubCopilot,
+	summarizeOpenAICodex,
+} from "../oauth/summary.ts";
 
 // `?: T | undefined` rather than plain `?: T`: yargs hands these through as explicit `undefined`,
 // which a bare optional property no longer accepts under `exactOptionalPropertyTypes`.
@@ -19,76 +27,14 @@ type AuthArgs = {
 	githubCopilot?: boolean | undefined;
 	authFile?: string | undefined;
 	browser?: boolean | undefined;
-	manual?: boolean | undefined;
+	device?: boolean | undefined;
 	status?: boolean | undefined;
 	refresh?: boolean | undefined;
 	logout?: boolean | undefined;
 	json?: boolean | undefined;
-	printHeaders?: boolean | undefined;
-	originator?: string | undefined;
 	enterprise?: string | undefined;
 	enableModels?: boolean | undefined;
 };
-
-async function promptLine(message: string): Promise<string> {
-	const readline = await import("node:readline/promises");
-	const rl = readline.createInterface({
-		input: process.stdin,
-		output: process.stdout,
-	});
-
-	try {
-		return await rl.question(`${message} `);
-	} finally {
-		rl.close();
-	}
-}
-
-async function openBrowser(url: string): Promise<void> {
-	const { spawn } = await import("node:child_process");
-	const command =
-		process.platform === "darwin"
-			? { file: "open", args: [url] }
-			: process.platform === "win32"
-				? { file: "cmd", args: ["/c", "start", "", url] }
-				: { file: "xdg-open", args: [url] };
-
-	const child = spawn(command.file, command.args, {
-		detached: true,
-		stdio: "ignore",
-	});
-	child.unref();
-}
-
-function printCredentials(
-	credentials: OpenAICodexOAuthCredentials,
-	options: { json?: boolean | undefined; printHeaders?: boolean | undefined },
-) {
-	if (options.json) {
-		console.log(
-			JSON.stringify(
-				{
-					accountId: credentials.accountId,
-					expires: credentials.expires,
-					expiresAt: new Date(credentials.expires).toISOString(),
-					headers: options.printHeaders ? openAICodexHeaders(credentials) : undefined,
-				},
-				null,
-				2,
-			),
-		);
-		return;
-	}
-
-	console.log(`Account: ${credentials.accountId}`);
-	console.log(`Expires: ${new Date(credentials.expires).toLocaleString()}`);
-	if (options.printHeaders) {
-		console.log("Headers:");
-		for (const [name, value] of Object.entries(openAICodexHeaders(credentials))) {
-			console.log(`${name}: ${value}`);
-		}
-	}
-}
 
 async function runOpenAICodexAuth(args: AuthArgs): Promise<void> {
 	const storage = new JsonOpenAICodexAuthStorage({
@@ -96,87 +42,45 @@ async function runOpenAICodexAuth(args: AuthArgs): Promise<void> {
 	});
 	const client = new OpenAICodexOAuthClient({ storage });
 
+	const show = (credentials: OpenAICodexOAuthCredentials) =>
+		process.stdout.write(formatOAuthSummary(summarizeOpenAICodex(credentials), { json: args.json === true }));
+
 	if (args.logout) {
 		await client.logout();
-		console.log(`Cleared OpenAI Codex credentials from ${storage.path}`);
+		console.warn(oauthNotice("cleared", "openai-codex", storage.path));
 		return;
 	}
 
-	if (args.status) {
-		const credentials = await storage.get();
+	if (args.status || args.refresh) {
+		// --status is a read: asking the client for headers would refresh behind it.
+		const credentials = args.refresh ? await client.getCredentials() : await storage.get();
 		if (!credentials) {
-			console.log(`No OpenAI Codex credentials found at ${storage.path}`);
+			console.error(oauthNotice("missing", "openai-codex", storage.path));
 			process.exitCode = 1;
 			return;
 		}
-		printCredentials(credentials, args);
-		return;
-	}
-
-	if (args.refresh) {
-		const credentials = await client.getCredentials();
-		if (!credentials) {
-			console.log(`No OpenAI Codex credentials found at ${storage.path}`);
-			process.exitCode = 1;
-			return;
-		}
-		console.log(`Refreshed OpenAI Codex credentials in ${storage.path}`);
-		printCredentials(credentials, args);
+		if (args.refresh) console.warn(oauthNotice("refreshed", "openai-codex", storage.path));
+		show(credentials);
 		return;
 	}
 
 	const credentials = await client.login({
-		...(args.originator !== undefined && { originator: args.originator }),
-		...(args.manual && {
-			onManualCodeInput: async () =>
-				promptLine("Paste the redirect URL or authorization code, or wait for browser callback:"),
-		}),
+		device: args.device === true,
+		// stderr, so `--json` stdout stays parseable.
 		onAuth: (info) => {
-			console.log(info.instructions ?? "Complete OpenAI Codex authentication in your browser.");
-			console.log(info.url);
+			console.warn(info.instructions ?? "Complete OpenAI Codex authentication in your browser.");
+			if (info.userCode) console.warn(`Enter code: ${info.userCode}`);
+			console.warn(info.url);
 			if (args.browser !== false) {
-				void openBrowser(info.url).catch((error) => {
-					console.warn(`Failed to open browser: ${error instanceof Error ? error.message : String(error)}`);
-				});
+				void openBrowser(info.url, (error) => console.warn(`Failed to open browser: ${error.message}`));
 			}
 		},
+		onProgress: (message) => console.warn(message),
 		onPrompt: async (prompt) => promptLine(prompt.message),
 	});
 
-	console.log(`Saved OpenAI Codex credentials to ${storage.path}`);
-	printCredentials(credentials, args);
-}
-
-function printCopilotCredentials(
-	credentials: GitHubCopilotOAuthCredentials,
-	options: { json?: boolean | undefined; printHeaders?: boolean | undefined },
-) {
-	if (options.json) {
-		console.log(
-			JSON.stringify(
-				{
-					enterpriseUrl: credentials.enterpriseUrl,
-					apiEndpoint: credentials.apiEndpoint,
-					availableModelIds: credentials.availableModelIds,
-					headers: options.printHeaders ? gitHubCopilotHeaders(credentials) : undefined,
-				},
-				null,
-				2,
-			),
-		);
-		return;
-	}
-
-	console.log(`API endpoint: ${credentials.apiEndpoint ?? "https://api.githubcopilot.com"}`);
-	if (credentials.enterpriseUrl) console.log(`Enterprise: ${credentials.enterpriseUrl}`);
-	if (credentials.availableModelIds) console.log(`Available models: ${credentials.availableModelIds.length}`);
-	console.log("Expires: never (re-login only on persistent 401s)");
-	if (options.printHeaders) {
-		console.log("Headers:");
-		for (const [name, value] of Object.entries(gitHubCopilotHeaders(credentials))) {
-			console.log(`${name}: ${value}`);
-		}
-	}
+	console.warn(oauthNotice("saved", "openai-codex", storage.path));
+	show(credentials);
 }
 
 async function runGitHubCopilotAuth(args: AuthArgs): Promise<void> {
@@ -185,20 +89,23 @@ async function runGitHubCopilotAuth(args: AuthArgs): Promise<void> {
 	});
 	const client = new GitHubCopilotOAuthClient({ storage });
 
+	const show = (credentials: GitHubCopilotOAuthCredentials) =>
+		process.stdout.write(formatOAuthSummary(summarizeGitHubCopilot(credentials), { json: args.json === true }));
+
 	if (args.logout) {
 		await client.logout();
-		console.log(`Cleared GitHub Copilot credentials from ${storage.path}`);
+		console.warn(oauthNotice("cleared", "github-copilot", storage.path));
 		return;
 	}
 
 	if (args.status) {
 		const credentials = await storage.get();
 		if (!credentials) {
-			console.log(`No GitHub Copilot credentials found at ${storage.path}`);
+			console.error(oauthNotice("missing", "github-copilot", storage.path));
 			process.exitCode = 1;
 			return;
 		}
-		printCopilotCredentials(credentials, args);
+		show(credentials);
 		return;
 	}
 
@@ -206,21 +113,20 @@ async function runGitHubCopilotAuth(args: AuthArgs): Promise<void> {
 	const credentials = await client.login({
 		...(args.enterprise !== undefined && { enterpriseUrl: args.enterprise }),
 		enableModels: args.enableModels === true,
+		// stderr, so `--json` stdout stays parseable.
 		onAuth: (info) => {
-			console.log(info.instructions ?? "Complete GitHub Copilot authentication in your browser.");
-			console.log(`Enter code: ${info.userCode}`);
-			console.log(info.url);
+			console.warn(info.instructions ?? "Complete GitHub Copilot authentication in your browser.");
+			console.warn(`Enter code: ${info.userCode}`);
+			console.warn(info.url);
 			if (args.browser !== false) {
-				void openBrowser(info.url).catch((error) => {
-					console.warn(`Failed to open browser: ${error instanceof Error ? error.message : String(error)}`);
-				});
+				void openBrowser(info.url, (error) => console.warn(`Failed to open browser: ${error.message}`));
 			}
 		},
-		onProgress: (message) => console.log(message),
+		onProgress: (message) => console.warn(message),
 	});
 
-	console.log(`Saved GitHub Copilot credentials to ${storage.path}`);
-	printCopilotCredentials(credentials, args);
+	console.warn(oauthNotice("saved", "github-copilot", storage.path));
+	show(credentials);
 }
 
 export const OAuthCommand: CommandModule<object, AuthArgs> = {
@@ -253,15 +159,10 @@ export const OAuthCommand: CommandModule<object, AuthArgs> = {
 				default: true,
 				describe: "open the authorization URL in the default browser",
 			})
-			.option("manual", {
+			.option("device", {
 				type: "boolean",
 				default: false,
-				describe: "also prompt for a pasted redirect URL or authorization code",
-			})
-			.option("originator", {
-				type: "string",
-				default: "codework",
-				describe: "OAuth originator value",
+				describe: "use the device-code flow instead of a localhost browser callback",
 			})
 			.option("status", {
 				type: "boolean",
@@ -279,30 +180,23 @@ export const OAuthCommand: CommandModule<object, AuthArgs> = {
 				type: "boolean",
 				describe: "print machine-readable output",
 			})
-			.option("print-headers", {
-				type: "boolean",
-				describe: "print request headers for Codex API calls",
-			})
+			// yargs types this callback with the kebab-case keys, so read those.
 			.check((args) => {
-				if (!args.openaiCodex && !args.githubCopilot) {
-					throw new Error("choose an auth provider, for example: auth --openai-codex or auth --github-copilot");
+				const checked = checkOAuthProvider({
+					openaiCodex: args["openai-codex"],
+					githubCopilot: args["github-copilot"],
+				});
+				if (!checked.ok) throw new Error(checked.message);
+				if ([args.status, args.refresh, args.logout].filter(Boolean).length > 1) {
+					throw new Error("choose only one of --status, --refresh, or --logout");
 				}
-				if (args.openaiCodex && args.githubCopilot) {
-					throw new Error("choose only one of --openai-codex or --github-copilot");
-				}
-				if (args.githubCopilot && args.refresh) {
-					throw new Error(
-						"GitHub Copilot tokens do not expire; there is no --refresh, re-login on persistent 401s",
-					);
-				}
-				if (args.enterprise && !args.githubCopilot) {
-					throw new Error("--enterprise only applies to --github-copilot");
-				}
-				if (args.enableModels && !args.githubCopilot) {
-					throw new Error("--enable-models only applies to --github-copilot");
-				}
-				const actions = [args.status, args.refresh, args.logout].filter(Boolean).length;
-				if (actions > 1) throw new Error("choose only one of --status, --refresh, or --logout");
+				const issue =
+					oauthLoginIssue(checked.provider, {
+						device: args.device,
+						enterprise: args.enterprise,
+						enableModels: args["enable-models"],
+					}) ?? (args.refresh ? oauthRefreshIssue(checked.provider) : undefined);
+				if (issue) throw new Error(issue);
 				return true;
 			}),
 	handler: async (args) => {

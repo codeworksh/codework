@@ -533,7 +533,7 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 				id: GITHUB_COPILOT_PROVIDER_ID,
 				name: "GitHub Copilot",
 				source: "custom",
-				env: ["COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN"],
+				env: ["COPILOT_GITHUB_TOKEN"],
 			},
 			baseUrl: GITHUB_COPILOT_BASE_URL,
 			headers: { ...GITHUB_COPILOT_STATIC_HEADERS },

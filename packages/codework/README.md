@@ -82,30 +82,46 @@ The v0 endpoint has no authentication; its default binding is loopback. Plugins 
 
 ---
 
-### `codework auth`
+### `codework auth login|status|refresh|logout`
 
-Sign in to OpenAI Codex with your ChatGPT account. Credentials are stored under the selected Codework home and are
-loaded and refreshed automatically when a run uses an `openai-codex` model.
+Sign in to OpenAI Codex with your ChatGPT account, or to GitHub Copilot with your GitHub account. Credentials are
+stored under the selected Codework home and are loaded automatically when a run uses an `openai-codex` or
+`github-copilot` model.
 
 ```bash
-# Start the browser login flow
-codework auth --openai-codex
+# Sign in
+codework auth login --openai-codex
+codework auth login --github-copilot
+
+# Codex without a local callback port (SSH, containers, port 1455 in use)
+codework auth login --openai-codex --device
 
 # Inspect credential metadata without printing tokens
-codework auth --openai-codex --status
+codework auth status --openai-codex
+codework auth status --github-copilot
 
-# Refresh expired credentials or clear the login
-codework auth --openai-codex --refresh
-codework auth --openai-codex --logout
+# Renew an expired login, or clear one
+codework auth refresh --openai-codex
+codework auth logout --github-copilot
 
 # Authenticate the home owned by a running RPC server
-codework auth --openai-codex --server ws://127.0.0.1:7433/rpc
+codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc
 ```
 
-Use `--manual` when the browser callback cannot reach the CLI. `--home` keeps authentication alongside the rest of
-that Codework installation; `--auth-file` overrides the credential file directly. OpenAI Codex login keeps Aikit's
-registered `http://localhost:1455/auth/callback` redirect. With `--server`, the CLI completes that native flow locally
-and sends the resulting credentials to the RPC server for storage.
+`--home` keeps authentication alongside the rest of that Codework installation; `--auth-file` overrides the credential
+file directly. Both providers share one `auth.json`, keyed by provider, so signing out of one leaves the other alone.
+With `--server`, the CLI runs the interactive login locally -- a browser callback and a device prompt both need this
+terminal -- and sends only the resulting credentials to the RPC server for storage.
+
+**OpenAI Codex** has two flows. The default keeps Aikit's registered `http://localhost:1455/auth/callback` redirect,
+and falls back to asking for the redirect URL if the callback never arrives. `--device` instead prints a code to enter
+at `auth.openai.com/codex/device` and needs no local port at all — use it over SSH, inside a container, or when another
+sign-in already holds 1455. That port is fixed by the redirect registered against the OAuth client, so it cannot move.
+
+**GitHub Copilot** uses the GitHub device flow: the CLI prints a user code, opens `github.com/login/device`, and waits.
+The token does not expire, so there is no `--refresh` -- sign in again on persistent 401s. `--enterprise <domain>`
+logs into a GitHub Enterprise host, and `--enable-models` turns on catalog models the account has left unconfigured.
+Login records the plan-specific Copilot API host, which later runs use in place of the catalog default.
 
 ---
 

@@ -153,6 +153,10 @@ Manage OAuth credentials for providers that require it, such as OpenAI Codex and
 # Start an OAuth login flow in your browser
 pnpm aikit auth --openai-codex
 
+# Codex with a device code instead: no localhost callback port, so it works
+# over SSH, in containers, and when something else holds port 1455
+pnpm aikit auth --openai-codex --device
+
 # GitHub Copilot uses the device flow; add --enterprise <domain> for GitHub Enterprise
 pnpm aikit auth --github-copilot
 

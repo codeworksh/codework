@@ -81,7 +81,9 @@ const credentialHint = (provider: string): string => {
 		case "openai":
 			return "set OPENAI_API_KEY and retry";
 		case "openai-codex":
-			return "run `codework auth --openai-codex` and retry";
+			return "run `codework auth login --openai-codex` and retry";
+		case "github-copilot":
+			return "run `codework auth login --github-copilot` and retry";
 		case "anthropic":
 			return "set ANTHROPIC_API_KEY and retry";
 		case "google":

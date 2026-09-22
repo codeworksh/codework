@@ -10,7 +10,12 @@ import type { CommandError } from "./cli/error.ts";
 import { Runtime } from "./framework/runtime.ts";
 
 const Handlers = Runtime.handlers(Cmd, {
-	auth: () => import("./cli/cmd/handlers/auth.ts"),
+	auth: {
+		login: () => import("./cli/cmd/handlers/auth/login.ts"),
+		status: () => import("./cli/cmd/handlers/auth/status.ts"),
+		refresh: () => import("./cli/cmd/handlers/auth/refresh.ts"),
+		logout: () => import("./cli/cmd/handlers/auth/logout.ts"),
+	},
 	run: () => import("./cli/cmd/handlers/run.ts"),
 	serve: () => import("./cli/cmd/handlers/serve.ts"),
 	session: {

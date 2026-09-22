@@ -356,7 +356,7 @@ describe("githubCopilotBuiltInModels", () => {
 			expect(Value.Check(Model.Info, model)).toBe(true);
 			expect(model.protocol).toBe(Model.KnownProviderEnum.githubCopilot);
 			expect(model.provider.id).toBe("github-copilot");
-			expect(model.provider.env).toEqual(["COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN"]);
+			expect(model.provider.env).toEqual(["COPILOT_GITHUB_TOKEN"]);
 			expect(model.npm).toBe("@codeworksh/ai-sdk-github-copilot");
 			expect(model.baseUrl).toBe("https://api.githubcopilot.com");
 			expect(model.api?.url).toBe("https://api.githubcopilot.com");
