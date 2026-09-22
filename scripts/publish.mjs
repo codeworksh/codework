@@ -19,7 +19,7 @@ const workspaceMap = new Map([
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness|@codeworksh/plugin> [--dev] [--latest] [--stage] [npm publish args]",
+		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness|@codeworksh/plugin> [--dev] [--stage] [npm publish args]",
 	);
 	process.exit(1);
 }
@@ -42,7 +42,6 @@ function parsePublishOptions(args) {
 	const forwardArgs = [];
 	let dev = false;
 	let stage = false;
-	let latest = false;
 	let publishVersion;
 
 	for (let index = 0; index < args.length; index++) {
@@ -56,11 +55,6 @@ function parsePublishOptions(args) {
 
 		if (arg === "--stage") {
 			stage = true;
-			continue;
-		}
-
-		if (arg === "--latest") {
-			latest = true;
 			continue;
 		}
 
@@ -88,7 +82,7 @@ function parsePublishOptions(args) {
 		process.exit(1);
 	}
 
-	return { dev, forwardArgs, latest, publishVersion, stage };
+	return { dev, forwardArgs, publishVersion, stage };
 }
 
 async function readJSON(path) {
@@ -434,9 +428,26 @@ if (publishOptions.dev && !hasFlag(forwardArgs, "--tag")) {
 	publishArgs.push("--tag", "dev");
 }
 
+/*
+ * `latest` means stable, and a prerelease never reaches it.
+ *
+ * It is what `npm install <pkg>` hands someone who expressed no opinion, so a prerelease there
+ * gives unstable code to everyone who did not ask for it. A developer wanting a dev build says so
+ * with `@dev`, and that is the whole signal -- no flag can override this, because the only reason
+ * to want one is a mistake.
+ *
+ * Guarded both ways: a stable version does not belong under `dev` either, or `npm install <pkg>`
+ * and `@dev` start serving the same thing and the distinction stops meaning anything.
+ */
 const publishTag = optionValue([...publishArgs, ...forwardArgs], "--tag");
 if (publishTag === "dev" && !isPrereleaseVersion(publishVersion)) {
 	console.error(`Refusing to publish stable version ${publishVersion} with the dev dist-tag`);
+	process.exit(1);
+}
+if (publishTag === undefined && isPrereleaseVersion(publishVersion)) {
+	console.error(
+		`Refusing to publish prerelease ${publishVersion} to latest; publish it with --dev, or release a stable version`,
+	);
 	process.exit(1);
 }
 
@@ -444,10 +455,7 @@ publishArgs.push(...forwardArgs);
 
 // State the plan before doing any of it: which version goes up, under which tag, and whether
 // `latest` moves. These are exactly the three things a mis-publish gets wrong.
-console.error(
-	`Publishing ${manifest.name}@${publishVersion} under tag "${publishTag ?? "latest"}"` +
-		`${publishOptions.latest && publishTag !== undefined ? ", and moving latest to it" : ""}`,
-);
+console.error(`Publishing ${manifest.name}@${publishVersion} under tag "${publishTag ?? "latest"}"`);
 console.error(`Building ${manifest.name}@${manifest.version} in ${packageDir}`);
 
 const buildExitCode = await run("pnpm", ["run", "build"], packageDir);
@@ -469,24 +477,5 @@ const exitCode = await run(
 );
 await rm(publishDir, { recursive: true, force: true });
 await rm(npmCacheDir, { recursive: true, force: true });
-
-/*
- * `latest` is assigned once, on a package's first publish, and never moves again on its own --
- * `npm publish --tag dev` sets `dev` and leaves `latest` on whatever went up first. For a package
- * released only as prereleases that means `npm install <pkg>` keeps serving the oldest build ever
- * published, which is how a known-broken one stayed on `latest` here.
- *
- * Opt in rather than implied by `--dev`: a package with a real release (`@codeworksh/aikit@0.8.0`)
- * must not have `latest` dragged onto a prerelease by a routine dev publish.
- */
-if (exitCode === 0 && publishOptions.latest && !hasFlag(forwardArgs, "--dry-run")) {
-	const target = `${manifest.name}@${publishVersion}`;
-	console.error(`Pointing latest at ${target}`);
-	const tagExit = await run("npm", ["dist-tag", "add", target, "latest"], repoRoot);
-	if (tagExit !== 0) {
-		console.error(`Published ${target}, but could not move the latest tag; do it by hand.`);
-		process.exit(tagExit);
-	}
-}
 
 process.exit(exitCode);
