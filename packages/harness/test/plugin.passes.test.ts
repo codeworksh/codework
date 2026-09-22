@@ -1,7 +1,7 @@
 import "./utils/env.ts";
 import { Effect, Option } from "effect";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -465,10 +465,12 @@ describe("a running session and the store", () => {
 });
 
 describe("boot", () => {
-	it("reports a configured plugin whose bytes are missing, rather than fetching it", () =>
+	it("fails on a user-layer plugin whose bytes are missing, rather than fetching it", () =>
 		withProject(async ({ root, project }) => {
+			// The user layer is the process's own selection: an entry it cannot resolve fails the
+			// boot, never a fetch.
 			await writeFile(
-				join(project, ".codework", "settings.jsonc"),
+				join(root, "home", "settings.jsonc"),
 				JSON.stringify({ plugins: ["@acme/never-published-anywhere"] }),
 			);
 
@@ -488,6 +490,155 @@ describe("boot", () => {
 			// offline, and let network timing decide which code runs. `plugin install` is the verb
 			// that puts bytes on disk, and this is the error that names it.
 			expect(failure).toMatchObject({ _tag: "PluginStoreError", reason: "plugin-not-installed" });
+		}));
+
+	it("leaves a project-layer entry to its session -- boot does not see it", () =>
+		withProject(async ({ root, project }) => {
+			await writeFile(
+				join(project, ".codework", "settings.jsonc"),
+				JSON.stringify({ plugins: ["@acme/never-published-anywhere"] }),
+			);
+
+			// The process starts in the project but reads no project layer: boot succeeds, and the
+			// entry is the session's drift report -- a warning at its exchange, not a startup
+			// failure and never a fetch.
+			const prompts: string[] = [];
+			const open = immediateOpen();
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const session = yield* Session.create({ directory: project, hostDir: project });
+					yield* session.prompt({ text: "go", delivery: "followUp" });
+					yield* session.resume();
+					yield* session.wait();
+				}).pipe(
+					Effect.provide(
+						Harness.layer({
+							home: join(root, "home"),
+							hostCwd: project,
+							database: ":memory:",
+							llm: (request, signal) => {
+								prompts.push(request.context.systemPrompt ?? "");
+								return open(request, signal);
+							},
+						}),
+					),
+					Effect.scoped,
+					Effect.timeout("20 seconds"),
+					Effect.orDie,
+				),
+			);
+			expect(prompts).toHaveLength(1);
+		}));
+
+	it("does not read a `.codework` found above the directory the process started in", () =>
+		withProject(async ({ root, project }) => {
+			// `project` holds the marker; the process launches from deep inside it, the way an
+			// installed binary in /var/usr would. Its ancestors must not configure the process.
+			const bin = join(project, "var", "usr", "bin");
+			await mkdir(bin, { recursive: true });
+			const sentinel = join(root, "imported.sentinel");
+			const module = join(project, "marker.mjs");
+			// A prompt marker alone would not prove the point: a boot that loaded the module into
+			// the process pool would still leave it out of this session's selection. The import
+			// side effect is the observation that matters -- if boot ever evaluates the module,
+			// the sentinel exists.
+			await writeFile(
+				module,
+				[
+					`import { writeFileSync } from "node:fs";`,
+					`writeFileSync(${JSON.stringify(sentinel)}, "loaded");`,
+					"export default {",
+					"  id: 'acme.prompt.marker',",
+					"  kind: 'prompt',",
+					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}marker`),",
+					"};",
+				].join("\n"),
+			);
+			await writeFile(join(project, ".codework", "settings.jsonc"), JSON.stringify({ plugins: [module] }));
+
+			// A session in a plain directory gets only the user layer: nothing of the startup
+			// directory's project leaks into either the boot pool or the exchange.
+			const plain = join(root, "plain");
+			await mkdir(plain);
+			const prompts: string[] = [];
+			const open = immediateOpen();
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const session = yield* Session.create({ directory: plain, hostDir: plain });
+					yield* session.prompt({ text: "go", delivery: "followUp" });
+					yield* session.resume();
+					yield* session.wait();
+				}).pipe(
+					Effect.provide(
+						Harness.layer({
+							home: join(root, "home"),
+							hostCwd: bin,
+							database: ":memory:",
+							llm: (request, signal) => {
+								prompts.push(request.context.systemPrompt ?? "");
+								return open(request, signal);
+							},
+						}),
+					),
+					Effect.scoped,
+					Effect.timeout("20 seconds"),
+					Effect.orDie,
+				),
+			);
+			expect(prompts).toHaveLength(1);
+			expect(prompts[0]).not.toContain("marker");
+			await expect(access(sentinel)).rejects.toThrow();
+		}));
+
+	it("resolves a relative --user-config-dir against the process directory, not the session's", () =>
+		withProject(async ({ root, project }) => {
+			// The process launches from `launch`; the override is `<launch>/myconf`. The session
+			// anchors at `project`, a different directory entirely -- if the flag resolved
+			// against the session's host, `project/myconf` would be read instead and the plugin
+			// would never appear.
+			const launch = join(root, "launch");
+			const custom = join(launch, "myconf");
+			await mkdir(custom, { recursive: true });
+			const module = join(root, "confplugin.mjs");
+			await writeFile(
+				module,
+				[
+					"export default {",
+					"  id: 'acme.prompt.conf',",
+					"  kind: 'prompt',",
+					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}conf`),",
+					"};",
+				].join("\n"),
+			);
+			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ plugins: [module] }));
+
+			const prompts: string[] = [];
+			const open = immediateOpen();
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const session = yield* Session.create({ directory: project, hostDir: project });
+					yield* session.prompt({ text: "go", delivery: "followUp" });
+					yield* session.resume();
+					yield* session.wait();
+				}).pipe(
+					Effect.provide(
+						Harness.layer({
+							home: join(root, "home"),
+							hostCwd: launch,
+							userConfigDir: "myconf",
+							database: ":memory:",
+							llm: (request, signal) => {
+								prompts.push(request.context.systemPrompt ?? "");
+								return open(request, signal);
+							},
+						}),
+					),
+					Effect.scoped,
+					Effect.timeout("20 seconds"),
+					Effect.orDie,
+				),
+			);
+			expect(prompts[0]?.endsWith("conf")).toBe(true);
 		}));
 });
 
@@ -698,23 +849,25 @@ describe("reload", () => {
 								: Effect.void,
 						);
 
-						// The boot load ran before `listen` attached, so the first notice is the reload's
-						// re-import -- a changed module instance is what `loaded` reports.
-						yield* state.reload;
+						// A project plugin is not a boot plugin: it loads at the session's first
+						// exchange, through `follow`'s union -- that is the `loaded` notice.
+						yield* run();
 						// The plugin leaves settings and its file is gone: the next rebuild drops the
 						// retained origin rather than failing on it.
 						yield* Effect.promise(() => writeFile(settings, JSON.stringify({ plugins: [] })));
 						yield* Effect.promise(() => rm(file));
 						yield* state.reload;
-						// Back in settings, but the module cannot be imported now.
-						yield* Effect.promise(() => writeFile(settings, JSON.stringify({ plugins: [file] })));
-						yield* Effect.promise(() => writeFile(file, "export default { nope: true };"));
+						// A process-level failure names no session: the broken entry sits in the user
+						// layer, which is the only layer `reload` reads.
+						const broken = join(project, "broken.mjs");
+						yield* Effect.promise(() =>
+							writeFile(join(root, "home", "settings.jsonc"), JSON.stringify({ plugins: [broken] })),
+						);
+						yield* Effect.promise(() => writeFile(broken, "export default { nope: true };"));
 						yield* state.reload;
 						// An exchange failure on a path the module registry has never seen names
-						// the session that ran it; a `reload` failure belongs to no session.
-						const broken = join(project, "broken.mjs");
+						// the session that ran it.
 						yield* Effect.promise(() => writeFile(settings, JSON.stringify({ plugins: [broken] })));
-						yield* Effect.promise(() => writeFile(broken, "export default { nope: true };"));
 						yield* run().pipe(Effect.ignore);
 
 						expect(seen.map((event) => event.status)).toEqual(["loaded", "dropped", "failed", "failed"]);
@@ -724,7 +877,8 @@ describe("reload", () => {
 						expect(seen[3]?.sessionId).toBeDefined();
 					}),
 			});
-			expect(prompts.length).toBe(0);
+			// The first exchange's lazy load ran the plugin: its marker made the prompt.
+			expect(prompts[0]?.endsWith("before")).toBe(true);
 		}));
 });
 

@@ -4,7 +4,7 @@ import { Control } from "../control.ts";
 import { Database } from "../db/db.ts";
 import { Event } from "../event/event.ts";
 import { Global } from "../global.ts";
-import { fileSystem } from "../host.ts";
+import { fileSystem, hostPath } from "../host.ts";
 import { EventRegistry } from "../event/registry.ts";
 import { follow, load, type Origin, type PluginRef, type Pool } from "../plugin/catalog.ts";
 import { anchor } from "../plugin/loader.ts";
@@ -25,6 +25,7 @@ import { SessionRuntime } from "../session/runtime.ts";
 import type { Info as SettingsInfo } from "../settings/schema.ts";
 import { Settings } from "../settings/settings.ts";
 import { State } from "../state/state.ts";
+import { expandTilde } from "../util/home.ts";
 
 export interface Options {
 	/**
@@ -35,9 +36,10 @@ export interface Options {
 	readonly plugins?: ReadonlyArray<PluginRef>;
 	readonly database?: string;
 	/**
-	 * The host directory the project settings layer is discovered from. Defaults to the OS
-	 * process's directory; a test or an embedder that runs somewhere other than where it wants
-	 * settings read from passes its own, rather than inheriting whatever launched the process.
+	 * The process-level host directory: the default sandbox mount, the `.npmrc`/parse fallback
+	 * for plugin references no file declared, and the base a relative `--user-config-dir`
+	 * resolves against. Defaults to the OS process's directory. It is never a project-settings
+	 * root -- that discovery belongs to a session's `hostDir`.
 	 */
 	readonly hostCwd?: string;
 	readonly home?: string;
@@ -56,15 +58,23 @@ export const layer = (options: Options = {}) =>
 			// can quietly fall back to the OS process's directory when it meant a session's mount.
 			const hostCwd = options.hostCwd ?? process.cwd();
 			const global = Global.layerWith(paths);
-			const settingsOptions = options.userConfigDir === undefined ? {} : { userConfigDir: options.userConfigDir };
+			// `--user-config-dir` is a process-level flag: `~` expands to the user's home, and a
+			// relative spelling resolves against the process's own directory. A session's
+			// `hostDir` has no claim on it.
+			const settingsOptions =
+				options.userConfigDir === undefined
+					? {}
+					: { userConfigDir: hostPath.resolve(hostCwd, expandTilde(options.userConfigDir, hostPath)) };
 			// Settings are read once here because the plugin selection has to be prepared before
-			// any layer that depends on it; every later read goes through `Settings.Service`,
-			// which discovers from the session's own `hostDir` rather than from this one.
+			// any layer that depends on it; every later read goes through `Settings.Service`.
 			//
-			// This read happens before any session exists, so the process's directory is the only
-			// root available -- and the right one: it is what decides which plugins this process
-			// loads at all. Which of them a given session *runs* is the per-session question.
-			const config = yield* Settings.load({ ...settingsOptions, home: paths.home, hostDir: hostCwd });
+			// No `hostDir` is passed: that parameter is a property of a session, and a process
+			// has none. Boot reads the user layer and the explicit override only -- a server can
+			// start anywhere, so it must never walk ancestors of the directory it happened to
+			// launch in for a `.codework/`, which would hand it a stranger's project settings.
+			// A project's plugins still load: lazily, at the session's first exchange, through
+			// `follow`.
+			const config = yield* Settings.load({ ...settingsOptions, home: paths.home });
 			/*
 			 * Which entries this process configures from, per exchange.
 			 *
@@ -148,9 +158,10 @@ export const layer = (options: Options = {}) =>
 			const rebuild = () =>
 				Effect.gen(function* () {
 					reloads += 1;
-					// Re-read from the same root this process booted with, so the rebuilt pool
-					// holds what the old one did plus whatever was added since.
-					const current = yield* Settings.load({ ...settingsOptions, home: paths.home, hostDir: hostCwd });
+					// Re-read the process's layers -- the user layer and the explicit override, as
+					// at boot. Project layers belong to sessions and come back through the
+					// retained origins below, never through a process-level discovery walk.
+					const current = yield* Settings.load({ ...settingsOptions, home: paths.home });
 					const loaded = yield* Ref.get(pool);
 					// Reload is process-wide. Include modules discovered lazily from every linked
 					// session, not only the project the server happened to start in.
