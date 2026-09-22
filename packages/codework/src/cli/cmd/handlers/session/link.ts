@@ -17,8 +17,13 @@ import { Cmd } from "../../cmd.ts";
  * question about naming host paths is about remote clients, not about a local shell's own cwd.
  *
  * Not `session relink`, which moves a session to another checkout of the same project. Different
- * axes -- `relink` changes where the *work* happens, `link` changes where *settings* are
- * discovered -- and conflating them would recreate the confusion the two names exist to avoid.
+ * axes -- `relink` changes where the *work* happens, `link` changes which host directory the
+ * session is *anchored to* -- and conflating them would recreate the confusion the two names
+ * exist to avoid.
+ *
+ * The anchor is not a settings mechanism. Settings discovery reads it, so do plugin installs, and
+ * so will whatever needs a host-side directory next; naming any one of them in the description is
+ * what made this read like a settings flag.
  */
 export default Runtime.handler(
 	Cmd.commands.session.commands.link,

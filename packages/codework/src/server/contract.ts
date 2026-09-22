@@ -32,7 +32,7 @@ export const SessionInfo = Schema.Struct({
 	id: Session.SessionSchema.ID,
 	title: Schema.String,
 	directory: Session.AbsolutePath,
-	/** The host directory anchor this session belongs to. Typically this is where your configuration belongs to and read. Absent when it has none. */
+	/** The host directory this session is anchored to. Absent when it has none. */
 	hostDir: optional(Session.AbsolutePath),
 	sandbox: optional(SandboxInfo),
 });
@@ -74,8 +74,12 @@ export const Api = RpcGroup.make(
 			title: optional(Schema.String),
 			directory: optional(Schema.String),
 			/**
-			 * The host directory anchor this session belongs to. Also which this session's settings and project
-			 * plugins are read from. Unrelated to `directory`, which names a place inside the session's space.
+			 * The host directory this session is anchored to, usually the caller's project root.
+			 * Unrelated to `directory`, which names a place inside the session's space.
+			 *
+			 * It is an anchor and nothing more: whatever needs a host-side directory resolves from
+			 * here rather than from wherever the server happens to be running. What reads it is the
+			 * reader's business, not this field's.
 			 *
 			 * Optional and honoured as given. Omitting it is normal, not a failure.
 			 */
@@ -103,14 +107,14 @@ export const Api = RpcGroup.make(
 	/**
 	 * Point an existing session at a host directory, or clear it with `null`.
 	 *
-	 * Not `session.relink`: that moves where the *work* happens, this changes where *settings* are
-	 * discovered. Conflating them would recreate exactly the `cwd`/`hostDir` confusion the split
-	 * exists to remove, which is why they sound alike and stay apart.
+	 * Not `session.relink`: that moves where the *work* happens, this changes which host directory
+	 * the session is *anchored to*. Conflating them would recreate exactly the `cwd`/`hostDir`
+	 * confusion the split exists to remove, which is why they sound alike and stay apart.
 	 */
 	Rpc.make("session.link", {
 		payload: {
 			sessionId: Session.SessionSchema.ID,
-			/** Absent unlinks, returning the session to the user layer alone. */
+			/** Absent clears the anchor, leaving the session with no host directory. */
 			hostDir: optional(Session.AbsolutePath),
 		},
 		success: SessionInfo,

@@ -209,7 +209,7 @@ export const renderError = (error: unknown): string => {
 			[
 				`error[${error.reason}]: ${error.message}`,
 				`session: ${error.sessionId}`,
-				"hint: run `codework session link <session-id>` from the project directory",
+				"hint: run `codework session link <session-id>` from the directory to anchor it to",
 			].join("\n") + "\n"
 		);
 	}

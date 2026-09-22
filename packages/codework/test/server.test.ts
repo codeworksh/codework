@@ -129,7 +129,7 @@ describe("server", () => {
 			// Stored, not held in the call: a later reader sees it too.
 			expect((yield* rpc["session.info"]({ sessionId: created.id })).hostDir).toBe(root);
 
-			// Omitting the field unlinks, returning the session to the user layer alone.
+			// Omitting the field clears the anchor, leaving the session with no host directory.
 			const cleared = yield* rpc["session.link"]({ sessionId: created.id });
 			expect(cleared.hostDir).toBeUndefined();
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise);

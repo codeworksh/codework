@@ -103,15 +103,17 @@ export const Cmd = Spec.make("codework", {
 			description: "Manage sessions",
 			commands: [
 				Spec.make("link", {
-					description: "Point a session at the host directory its settings come from",
+					description: "Anchor a session to a host directory",
 					params: {
 						session: Argument.String("session-id").pipe(Argument.withDescription("The session to link")),
 						path: Argument.String("path").pipe(
-							Argument.withDescription("Project directory; defaults to the shell's"),
+							Argument.withDescription(
+								"Host directory to anchor to, usually your project root holding .codework; defaults to the shell's",
+							),
 							Argument.optional,
 						),
 						unlink: Flag.Boolean("unlink").pipe(
-							Flag.withDescription("Clear it, returning the session to the user layer alone"),
+							Flag.withDescription("Clear the anchor, leaving the session with no host directory"),
 							Flag.withDefault(false),
 						),
 						server: Flag.String("server").pipe(
@@ -126,7 +128,7 @@ export const Cmd = Spec.make("codework", {
 						},
 						{
 							command: "codework session link ses_01h9 --unlink",
-							description: "Return it to the user layer alone",
+							description: "Clear the anchor",
 						},
 					],
 				}),
