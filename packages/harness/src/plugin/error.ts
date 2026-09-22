@@ -73,7 +73,12 @@ export class InstallError extends Schema.TaggedError<InstallError>()("PluginInst
  * because one is fixed by installing and the other by editing code.
  */
 export class LoadError extends Schema.TaggedError<LoadError>()("PluginLoadError", {
-	reason: Schema.Literals(["plugin-import-failed", "plugin-missing-dependency", "plugin-invalid-definition"]),
+	reason: Schema.Literals([
+		"plugin-import-failed",
+		"plugin-missing-dependency",
+		"plugin-not-compiled",
+		"plugin-invalid-definition",
+	]),
 	reference: Reference,
 	file: File,
 	message: Schema.String,

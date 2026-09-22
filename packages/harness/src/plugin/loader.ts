@@ -55,18 +55,33 @@ export const sourceFailure = (origin: Origin, cause: unknown) =>
 				message: detail(cause),
 			});
 
+/** Node's own code for a failure, when it set one. */
+const codeOf = (cause: unknown): string | undefined =>
+	Predicate.hasProperty(cause, "code") && Predicate.isString(cause.code) ? cause.code : undefined;
+
 /**
  * A module that would not import.
  *
- * A missing dependency gets its own reason because the remedy is different: the plugin is fine and
- * its `node_modules` is not, which is a thing a person fixes in the package rather than in their
- * settings.
+ * Two of these get their own reason, because the remedy differs and that is the whole value of a
+ * slug. A missing dependency means the plugin is fine and its `node_modules` is not, which a
+ * person fixes in the package rather than in their settings. An uncompiled one means the plugin
+ * shipped its sources: Node refuses to strip types under `node_modules`, and installing a plugin
+ * runs no lifecycle scripts, so a `prepare` build never happens either -- the author has to ship
+ * the build output, and nothing the user can do to their settings will help.
+ *
+ * `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` is matched by code rather than by message: it is
+ * Node's documented identifier and exact, where the wording is free to change under us. Only an
+ * installed plugin can reach it -- a local path lives outside `node_modules`, where Node strips
+ * types happily, which is what keeps the single-file dev workflow working.
  */
 export const importFailure = (origin: Origin, cause: unknown) =>
 	new LoadError({
-		reason: /cannot find (package|module)/i.test(detail(cause)) // never trust the regex, always double check.
-			? "plugin-missing-dependency"
-			: "plugin-import-failed",
+		reason:
+			codeOf(cause) === "ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING"
+				? "plugin-not-compiled"
+				: /cannot find (package|module)/i.test(detail(cause)) // never trust the regex, always double check.
+					? "plugin-missing-dependency"
+					: "plugin-import-failed",
 		reference: origin.reference,
 		...where(origin),
 		message: detail(cause),

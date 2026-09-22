@@ -157,6 +157,8 @@ const pluginReasonHint = (
 			return "the module failed to load; import it directly to see its own error";
 		case "plugin-missing-dependency":
 			return "the plugin's own dependencies are missing; install them where the plugin lives";
+		case "plugin-not-compiled":
+			return "a plugin installed from git or npm must ship compiled javascript; build it and commit or publish the output";
 		case "plugin-invalid-definition":
 			return "a plugin module must default-export one object with a `setup` and a `vendor.domain.name` id";
 	}
