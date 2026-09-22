@@ -107,8 +107,10 @@ export const Cmd = Spec.make("codework", {
 					params: {
 						session: Argument.String("session-id").pipe(Argument.withDescription("The session to link")),
 						path: Argument.String("path").pipe(
+							// The anchor is not a configuration mechanism, but `.codework` is the landmark
+							// a person recognises, so the help names it to make the directory concrete.
 							Argument.withDescription(
-								"Host directory to anchor to, usually your project root holding .codework; defaults to the shell's",
+								"Host directory to anchor to — typically the directory holding your .codework configuration; defaults to the shell's",
 							),
 							Argument.optional,
 						),
@@ -125,6 +127,10 @@ export const Cmd = Spec.make("codework", {
 						{
 							command: "codework session link ses_01h9",
 							description: "Link it to the directory you are standing in",
+						},
+						{
+							command: "codework session link ses_01h9 ~/work/api",
+							description: "Link it to a project elsewhere on this machine",
 						},
 						{
 							command: "codework session link ses_01h9 --unlink",
