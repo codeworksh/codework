@@ -3,8 +3,8 @@
 	"compilerOptions": {
 		"allowImportingTsExtensions": true,
 		"paths": {
-			"@codeworksh/harness/effect": ["../../packages/harness/src/effect.ts"],
-			"@codeworksh/harness/sandbox": ["../../packages/harness/src/sandbox.ts"]
+			"@codeworksh/plugin": ["../../packages/plugin/src/index.ts"],
+			"@codeworksh/plugin/*": ["../../packages/plugin/src/*.ts"]
 		},
 		"tsBuildInfoFile": "../../.cache/typescript/codework-prompt-life.tsbuildinfo"
 	},

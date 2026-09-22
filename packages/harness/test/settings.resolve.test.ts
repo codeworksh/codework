@@ -38,7 +38,7 @@ describe("settings resolution", () => {
 	it("ignores nulls at every object level, replaces arrays, and keeps inputs unchanged", async () => {
 		const patch = await Effect.runPromise(
 			parse(
-				"settings.json",
+				"settings.jsonc",
 				JSON.stringify({
 					model: {
 						provider: null,
@@ -149,7 +149,7 @@ describe("settings resolution", () => {
 				{ options: block },
 				...["*", "gpt-*", "gpt-5.5"].map((pattern) => ({ providerOptions: { openai: { [pattern]: block } } })),
 			]) {
-				const error = await Effect.runPromise(parse("settings.json", JSON.stringify({ model })).pipe(Effect.flip));
+				const error = await Effect.runPromise(parse("settings.jsonc", JSON.stringify({ model })).pipe(Effect.flip));
 				expect(error.reason).toBe("decode");
 			}
 		}
@@ -159,7 +159,8 @@ describe("settings resolution", () => {
 		for (const options of [
 			{ timeoutMs: "slow" },
 			{ thinkingLevel: "extreme" },
-			{ protocol: "openai" },
+			// A protocol aikit does not implement, unlike the ones it does.
+			{ protocol: "smoke-signals" },
 			{ apiKey: "secret" },
 		]) {
 			await expect(Effect.runPromise(parse("bad.json", JSON.stringify({ model: { options } })))).rejects.toThrow();
@@ -170,5 +171,20 @@ describe("settings resolution", () => {
 			thinkingBudgets: { high: 123 },
 			metadata: { user: "test" },
 		});
+	});
+
+	it("applies `protocol` to the catalog entry rather than to the request", async () => {
+		// A local OpenAI-compatible server is exactly the case the catalog cannot know: the entry
+		// says one protocol, the endpoint speaks another, and the person pointing at it decides.
+		const patch = await Effect.runPromise(
+			parse("ok.jsonc", '{"model":{"providerOptions":{"lmstudio":{"*":{"protocol":"openai-compatible"}}}}}'),
+		);
+		expect(patch.model?.providerOptions?.lmstudio?.["*"]?.protocol).toBe("openai-compatible");
+		// It corrects the model before lookup...
+		expect(resolveOverrides({ protocol: "openai-compatible" })).toEqual({ protocol: "openai-compatible" });
+		// ...and never travels to the provider as a request option.
+		const resolved = { protocol: Model.KnownProviderEnum.openaiCompatible } as Model.Info;
+		const request = resolveRequest({ protocol: "openai-compatible", serviceTier: "auto" }, resolved);
+		expect(request.providerOptions).toEqual({ [Model.optionsKey(resolved)]: { serviceTier: "auto" } });
 	});
 });

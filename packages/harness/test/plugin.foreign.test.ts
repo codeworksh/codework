@@ -2,6 +2,7 @@ import "./utils/env.ts";
 import type { Message } from "@codeworksh/aikit";
 import { Effect, Schema } from "effect";
 import { glob, readFile } from "node:fs/promises";
+import { registerHooks } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
@@ -13,18 +14,32 @@ import { withSettings } from "./fixtures/settings.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
 /**
- * A plugin installed from npm gets its own `node_modules`, so its `effect` is a different module
- * instance than the harness's. The whole plugin model rests on that working: a plugin's `setup`
- * is a generator from its copy, and it resolves harness services through tags built by ours.
- * Effect's `Context` is keyed by the tag's string id (`Context.ts`, `mapUnsafe.get(key.key)`)
- * rather than by object identity, which is what makes it work. This is the guard on that: a
- * change there breaks every installed plugin at once, and nothing else in the suite would notice.
+ * Why an installed plugin has to share the harness's Effect instance.
  *
- * Instances of the *same version* interoperate completely — services, schemas and all. Two
- * different *versions* do not: the same fixture against effect@4.0.0-beta.107 registers its tool
- * and reaches the provider, then dies committing the result with `SchemaError: Expected JSON
- * value at ["data"]["part"]`. One pinned Effect version is therefore the thing that makes
- * installed plugins safe, which the second test here guards.
+ * A plugin installed from npm or git gets its own `node_modules`, so its `effect` is a separate
+ * module instance even at the same version. This file is the evidence for what that costs, and
+ * therefore for the deduplication `util/module.ts` performs at resolution.
+ *
+ * Registration survives the crossing: a foreign generator runs, a foreign `setup` signature is
+ * called, an options block arrives, and a service tag resolves -- Effect's `Context` is keyed by
+ * the tag's string id (`Context.ts`, `mapUnsafe.get(key.key)`) rather than by object identity.
+ * The tool reaches the provider intact. Nothing after that works: the turn dies committing the
+ * assistant part with `SchemaError: Expected JSON value at ["data"]["part"]`, and a schema
+ * carrying a check rejects every value.
+ *
+ * Two corrections are worth recording, because both were believed here before and both were wrong.
+ *
+ * 1. This file used to claim instances of one version "interoperate completely -- services,
+ *    schemas and all". They do not. The fixture took its second instance by re-importing `effect`
+ *    under a query string, and `effect`'s entry re-exports from submodules whose specifiers carry
+ *    no query -- so they resolved to the modules already loaded and `foreign.Schema === Schema`.
+ *    There was no second instance and the test proved nothing. The fixture now tags the whole
+ *    subgraph, which is what a separate install actually produces.
+ * 2. The commit failure was attributed to effect@4.0.0-beta.107, i.e. to a version difference. It
+ *    reproduces at the pinned version with only the instance separated, so the variable was never
+ *    the version -- a different version simply implies a different directory, hence a separate
+ *    instance. The pin is still worth keeping and the second test still guards it, but for
+ *    ordinary compatibility reasons rather than as the thing that makes plugins safe.
  */
 /** Only the three dependency groups matter here; everything else in a manifest is noise. */
 const Group = Schema.optional(Schema.Record(Schema.String, Schema.String));
@@ -34,7 +49,7 @@ type Manifest = typeof Manifest.Type;
 const foreign = fileURLToPath(new URL("./plugins/host/acme-foreign-effect.ts", import.meta.url));
 
 describe("plugins built against another Effect instance", () => {
-	it("resolves harness services and runs its tool", () =>
+	it("registers across instances and then cannot finish the turn, which is what dedupe prevents", () =>
 		withSettings(async ({ root }) => {
 			const contexts: Message.Context[] = [];
 			const { path } = await Effect.runPromise(
@@ -46,6 +61,7 @@ describe("plugins built against another Effect instance", () => {
 					Effect.provide(
 						Harness.layer({
 							home: join(root, "home"),
+							hostCwd: root,
 							database: ":memory:",
 							llm: (request, signal) => {
 								contexts.push(request.context);
@@ -57,21 +73,27 @@ describe("plugins built against another Effect instance", () => {
 					Effect.scoped,
 				),
 			);
-			// Registered by a foreign-copy generator, and indexed by the built-in prompt plugin.
+
+			// Everything up to the provider works, which is exactly why this is dangerous: a
+			// foreign generator ran, an options block arrived, a service tag resolved, and the
+			// built-in prompt plugin indexed the tool.
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["foreign_echo"]);
-			// `shell:` proves `yield* SandboxIO.Shell` resolved across the copies; `configured`
-			// proves the options block reached the second argument of a foreign `setup`.
-			const settled = JSON.parse(path[1]?.parts[0]?.data ?? "{}");
-			expect(settled).toMatchObject({ status: "completed" });
-			expect(settled.result.content[0].text).toBe("shell:configured:ok");
+
+			// And then the turn cannot be committed. The plugin is not at fault and nothing it
+			// could do would help -- only the host sharing its instance does, which is what the
+			// loader now arranges for a plugin that imports `effect` by name.
+			const assistant = path.at(-1);
+			expect(assistant?.entry.type).toBe("assistant");
+			expect(assistant?.entry.state).toBe("aborted");
+			expect(assistant?.parts).toEqual([]);
 		}));
 
 	it("pins one Effect version, declared and resolved alike, across the workspace", async () => {
-		// The interop above holds between instances of one version, not across versions. A second
-		// version reaching the tree — a package upgraded on its own, or a transitive dependency —
-		// puts a plugin and the harness on incompatible schemas, so the pin is the guarantee and
-		// this is its guard. The expected version is read from this package rather than written
-		// here, so an upgrade is a one-line change and a partial one fails instead.
+		// One version across the workspace, so the dedupe above has a single copy to point every
+		// plugin at. A second version reaching the tree — a package upgraded on its own, or a
+		// transitive dependency — gives it two candidates and puts some plugin on the wrong one,
+		// with the failure above as the result. The expected version is read from this package
+		// rather than written here, so an upgrade is a one-line change and a partial one fails.
 		const root = new URL("../../../", import.meta.url);
 		const manifest = async (path: string): Promise<Manifest> =>
 			Schema.decodeUnknownSync(Schema.fromJsonString(Manifest))(await readFile(new URL(path, root), "utf8"));
@@ -97,5 +119,40 @@ describe("plugins built against another Effect instance", () => {
 		const lockfile = await readFile(new URL("pnpm-lock.yaml", root), "utf8");
 		const resolved = new Set([...lockfile.matchAll(/^ {2}effect@(\S+):$/gm)].map((match) => match[1]));
 		expect([...resolved]).toEqual([pinned]);
+	});
+
+	it("does not carry a schema's checks between instances, which is why they are deduplicated", async () => {
+		// The same second instance the fixture builds: every module in the subgraph re-evaluated
+		// under a tagged URL, which is what a separate install produces.
+		const tag = "checks-instance";
+		const hook = registerHooks({
+			resolve(specifier, context, nextResolve) {
+				const resolved = nextResolve(specifier, context);
+				return (context.parentURL ?? "").includes(tag) &&
+					resolved.url.startsWith("file:") &&
+					!resolved.url.includes(tag)
+					? { ...resolved, url: `${resolved.url}?${tag}` }
+					: resolved;
+			},
+		});
+		const foreignEffect: typeof import("effect") = await import(`${import.meta.resolve("effect")}?${tag}`).finally(
+			() => hook.deregister(),
+		);
+
+		expect(foreignEffect.Schema).not.toBe(Schema);
+
+		const encode = async (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
+			(await Effect.runPromiseExit(Schema.encodeUnknownEffect(schema)(value)))._tag;
+
+		// An unrefined schema crosses freely, which is why the plugin above works.
+		expect(await encode(foreignEffect.Schema.Struct({ v: foreignEffect.Schema.String }), { v: "ok" })).toBe(
+			"Success",
+		);
+
+		// A check does not. If this ever starts succeeding, Effect has made checks portable and the
+		// dedupe hook is worth revisiting rather than left in place unexamined.
+		expect(await encode(foreignEffect.Schema.Struct({ v: foreignEffect.Schema.Finite }), { v: 22800 })).toBe(
+			"Failure",
+		);
 	});
 });

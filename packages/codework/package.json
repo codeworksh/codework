@@ -1,16 +1,19 @@
 {
 	"name": "@codeworksh/cli",
 	"version": "0.0.1",
-	"description": "CLI for running CodeWork coding-agent sessions.",
+	"description": "CLI for running CodeWork coding agent harness.",
 	"keywords": [
 		"agent",
 		"ai",
-		"cli",
-		"codework",
-		"coding-agent",
-		"typescript"
+		"ai-sdk",
+		"anthropic",
+		"grok",
+		"harness",
+		"llm",
+		"node",
+		"openai"
 	],
-	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/codework",
+	"homepage": "https://www.codework.sh",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
 	},
@@ -57,6 +60,7 @@
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",
+		"@codeworksh/plugin": "workspace:*",
 		"@effect/platform-node": "4.0.0-rc.115",
 		"@effect/platform-node-shared": "4.0.0-rc.115",
 		"@effect/sql-sqlite-node": "4.0.0-rc.115",

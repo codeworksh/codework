@@ -14,7 +14,7 @@ adding an empty tool or an empty prompt section.
 ## Using them
 
 ```jsonc
-// <project>/codework.json — `./` anchors to the directory of the file that declares it
+// <project>/.codework/settings.json — `./` anchors to the directory of the file that declares it
 {
 	"plugins": [
 		"./plugins/local.ts",

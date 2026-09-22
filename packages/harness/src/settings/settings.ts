@@ -5,18 +5,22 @@
  * that "no file anywhere" needs no special case -- zero patches over the defaults is a
  * valid result:
  *
- * 1. `<Global.home>/settings.json`            -- the user's own, `~/.codework` by default
- * 2. `<options.cwd>/codework.json` or, when absent, `<options.cwd>/.codework/settings.json`
- *                                             -- committed with the project; the single file
- *                                                wins, it is never merged with the directory
- * 3. `<--user-config-dir>/settings.json`      -- explicit override, `~` expanded, relative to cwd
+ * 1. `<Global.home>/settings.jsonc`            -- the user's own, `~/.codework` by default
+ * 2. `.codework/settings.jsonc` found from `<hostDir>` upward
+ *                                              -- committed with the project; the nearest file
+ *                                                 wins, it is never merged with an outer one
+ * 3. `<--user-config-dir>/settings.jsonc`     -- explicit override, `~` expanded, relative to `hostDir`
  *
- * **All three are host paths.** They are resolved from the process's startup directory and
- * `Global.home`, never from a session's `--cwd`, its working directory, or its sandbox
- * mount. A session running in a remote or in-memory sandbox reads the same host files as
- * every other session in the process; there is no per-session settings discovery
- * and no parent-directory search. The startup directory arrives as `options.cwd` and is
- * resolved once, so later `cd` or a session pointed elsewhere changes nothing.
+ * Every layer falls back to the `.json` spelling when the `.jsonc` one is absent.
+ *
+ * **All three are host paths.** The project layer is discovered from `hostDir` -- the host
+ * directory a session belongs to -- and never from the session's `--cwd`, its working
+ * directory, or its sandbox mount. Those name a place inside a mount that may not exist on this
+ * machine, and a path that happens to exist here too would silently select a stranger's project.
+ *
+ * `hostDir` is per call, because one process serves sessions in different projects, or in none.
+ * A session with none reads the user layer only: there is no fallback to the process's own
+ * directory, because that would answer with the wrong project rather than with no project.
  *
  * `load` re-reads all layers on every call. There is no cache to invalidate and no reload
  * API: an edit lands at the next exchange capture because the next capture goes to disk.
@@ -34,31 +38,104 @@ import { Global } from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
 import { merge, normalize } from "./merge.ts";
-import { defaults, Patch, type Info } from "./schema.ts";
+import { defaults, Patch, type Declared, type Info, type PluginEntry } from "./schema.ts";
 
 export interface Options {
 	readonly userConfigDir?: string;
 	/**
-	 * Host startup directory, supplied by the caller -- never `process.cwd()` read
-	 * here. The distinction it protects is between the OS process's directory and a
-	 * session's sandbox mount, which are unrelated and easy to confuse; requiring it
-	 * means a caller cannot get the host layer by forgetting to say which it meant.
+	 * The host directory this load discovers the project layer from, supplied by the caller --
+	 * never `process.cwd()` read here. The distinction it protects is between the OS process's
+	 * directory and a session's sandbox mount, which are unrelated and easy to confuse.
+	 *
+	 * Absent means the caller has no host directory, not "use a sensible one": the project layer
+	 * is skipped entirely and only the user layer is read. There is deliberately no fallback --
+	 * a fallback would hand a session the *wrong* project (whatever the process happened to start
+	 * in, walked upward, possibly matching a `.codework/` in a base image), which is an invisible
+	 * wrong answer. No project is a visible missing one, and a missing plugin is something a
+	 * person notices and can diagnose.
 	 */
-	readonly cwd: string;
+	readonly hostDir?: string | undefined;
 }
 
+/** The settings files a directory may hold, in the order it is searched. */
+const settingsIn = (directory: string): ReadonlyArray<string> => [
+	hostPath.join(directory, "settings.jsonc"),
+	hostPath.join(directory, "settings.json"),
+];
+
+/** A directory and every ancestor above it, nearest first. */
+const ancestors = (from: string): ReadonlyArray<string> => {
+	const chain: string[] = [];
+	for (let directory = from; ; directory = hostPath.dirname(directory)) {
+		chain.push(directory);
+		if (hostPath.dirname(directory) === directory) return chain;
+	}
+};
+
+const isDirectory = (path: string) =>
+	fileSystem.stat(path).pipe(
+		Effect.map((info) => info.type === "Directory"),
+		Effect.orElseSucceed(() => false),
+	);
+
 /**
- * Ordered layers, each a group of candidates where the first file that exists is
- * selected -- a group never contributes more than one file. The project layer's
- * candidates are `codework.json` then `.codework/settings.json`, so a project can
- * pick either layout and the single file takes precedence.
+ * The project a directory is in: the nearest ancestor holding a `.codework` **directory**.
+ *
+ * This is git's rule. `~/workspace/app/.codework` makes `~/workspace/app` a project, and
+ * `~/workspace/app/packages/fubar` is inside it. Nearest wins outright -- the walk stops at the
+ * first marker, so an inner project is never merged with an outer one.
+ *
+ * The marker is the directory, not a file in it. An empty `.codework/` is still a project root,
+ * which is the point: creating the directory is how a person says "a project begins here", and it
+ * has to mean that before any settings exist. It also makes the question one `stat` per ancestor
+ * whose answer does not change as files come and go inside.
+ *
+ * `<home>` is skipped. `~/.codework` is the user layer, not a project; without this, running
+ * anywhere under `$HOME` would find it as one and read the user layer twice -- and since plugin
+ * entries accumulate across layers, every user plugin would load twice.
  */
-export function paths(home: string, cwd: string, custom?: string): ReadonlyArray<ReadonlyArray<string>> {
-	const expanded = custom === undefined ? undefined : expandTilde(custom, hostPath);
+export const projectRoot = Effect.fn("Settings.projectRoot")(function* (from: string, home: string) {
+	const userConfig = hostPath.resolve(home);
+	for (const directory of ancestors(hostPath.resolve(from))) {
+		const marker = hostPath.join(directory, Global.appConfigDir);
+		if (hostPath.resolve(marker) === userConfig) continue;
+		if (yield* isDirectory(marker)) return directory;
+	}
+	return undefined;
+});
+
+/**
+ * Ordered layers, each a group of candidates where the first file that exists is selected -- a
+ * group never contributes more than one file.
+ *
+ * `.jsonc` is the canonical spelling: these files are written by hand and read as JSONC, so the
+ * extension says what the file is and an editor validates it as such. `.json` remains a fallback
+ * everywhere, tried second, because the parser reads either and a file already named that must
+ * keep working.
+ *
+ * `root` is an already-discovered project root ({@link projectRoot}), not a directory to search
+ * from: the walk is a `stat` per ancestor and belongs with the other I/O. `undefined` contributes
+ * no project layer at all, which is what a session with no host directory gets.
+ */
+export function paths(input: {
+	readonly home: string;
+	/** The project root, from {@link projectRoot}. */
+	readonly root?: string | undefined;
+	/** What a relative `--user-config-dir` is resolved against. */
+	readonly from?: string | undefined;
+	readonly custom?: string | undefined;
+}): ReadonlyArray<ReadonlyArray<string>> {
+	const expanded = input.custom === undefined ? undefined : expandTilde(input.custom, hostPath);
+	// Anchored to the caller's directory when there is one. With none, an absolute or `~` path
+	// still resolves; a relative one has nothing to be relative to, which is the caller's error.
+	const explicit =
+		expanded === undefined ? undefined : input.from === undefined ? expanded : hostPath.resolve(input.from, expanded);
 	return [
-		[hostPath.join(home, "settings.json")],
-		[hostPath.join(cwd, "codework.json"), hostPath.join(cwd, Global.appConfigDir, "settings.json")],
-		...(expanded === undefined ? [] : [[hostPath.resolve(cwd, expanded, "settings.json")]]),
+		settingsIn(input.home),
+		// No project root, no project layer -- an empty group contributes nothing, so this needs
+		// no branch downstream.
+		input.root === undefined ? [] : settingsIn(hostPath.join(input.root, Global.appConfigDir)),
+		...(explicit === undefined ? [] : [settingsIn(explicit)]),
 	];
 }
 
@@ -120,8 +197,13 @@ export interface Interface {
 	/**
 	 * Await fresh host files at each exchange. No cache, mutation, or reload API. Fails when a
 	 * file exists and cannot be used, including on an edit made mid-session.
+	 *
+	 * The discovery root is an argument rather than a property of the layer because it is a
+	 * property of the *session*: one process serves sessions in different projects, or in none,
+	 * and a layer-level directory could not express that. `undefined` is the honest answer for a
+	 * session that was never given one -- the user layer alone, with no walk (see {@link Options}).
 	 */
-	readonly load: Effect.Effect<Info, SettingsError>;
+	readonly load: (hostDir: string | undefined) => Effect.Effect<Info, SettingsError>;
 }
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/settings/settings/Service") {}
 
@@ -135,19 +217,16 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
  * key is an ID rather than a location. A configuration entry's `package` is anchored like a
  * module entry, so a relative path names the same module in both spellings.
  */
-const anchor = (patch: Patch, file: string): Patch => {
-	if (patch.plugins === undefined) return patch;
+const anchored = (entry: PluginEntry, file: string): PluginEntry => {
 	const directory = hostPath.dirname(file);
 	const resolve = (reference: string) =>
 		reference.startsWith("./") || reference.startsWith("../") ? hostPath.resolve(directory, reference) : reference;
-	return {
-		...patch,
-		plugins: patch.plugins.map((entry) => {
-			if (typeof entry === "string") return resolve(entry);
-			return "package" in entry ? { ...entry, package: resolve(entry.package) } : entry;
-		}),
-	};
+	if (typeof entry === "string") return resolve(entry);
+	return "package" in entry ? { ...entry, package: resolve(entry.package) } : entry;
 };
+
+const anchor = (patch: Patch, file: string): Patch =>
+	patch.plugins === undefined ? patch : { ...patch, plugins: patch.plugins.map((entry) => anchored(entry, file)) };
 
 const attempt = (path: string) =>
 	fileSystem.readFileString(path).pipe(
@@ -160,19 +239,43 @@ const attempt = (path: string) =>
  * selection before any layer is built; everything else goes through `Service`.
  */
 export const load = Effect.fn("Settings.load")(function* (options: Options & { readonly home: string }) {
-	const files = paths(options.home, hostPath.resolve(options.cwd), options.userConfigDir);
+	const root = options.hostDir === undefined ? undefined : yield* projectRoot(options.hostDir, options.home);
+	const files = paths({
+		home: options.home,
+		root,
+		...(options.hostDir === undefined ? {} : { from: hostPath.resolve(options.hostDir) }),
+		...(options.userConfigDir === undefined ? {} : { custom: options.userConfigDir }),
+	});
 	let settings = merge(defaults);
-	// `merge` copies through the same null-dropping walk as normalization, so the winning
-	// layer's entries are carried outside it. Arrays replace rather than merge, so the last
-	// layer that names `plugins` owns the list whole -- there is nothing to combine.
-	let plugins = defaults.plugins;
+	/*
+	 * Plugin entries accumulate across layers, in layer order, rather than the higher file
+	 * replacing the lower one. Every other key in the document merges, and a plugin list is no
+	 * different in kind: a user's own plugins are the defaults a project builds on. A project
+	 * that wants one gone says so in its own file, with `{ "plugin": "<id>", "enabled": false }`
+	 * -- the same entry it would use to turn off a built-in.
+	 *
+	 * They are carried outside `merge` for a second reason: that walk drops `null`, which inside
+	 * an opaque `options` block is a value the plugin may need.
+	 */
+	let declared: ReadonlyArray<Declared> = defaults.declared;
 	for (const group of files) {
 		for (const path of group) {
 			const result = yield* Effect.result(attempt(path));
 			if (Result.isSuccess(result)) {
 				const patch = anchor(result.success, path);
 				settings = merge(settings, patch);
-				if (patch.plugins !== undefined) plugins = patch.plugins;
+				// Each entry keeps the file that declared it: it is what anchors a relative path,
+				// what `plugin list` names, and what the missing-plugin diagnostic points at.
+				if (result.success.plugins !== undefined) {
+					declared = [
+						...declared,
+						...result.success.plugins.map((written) => ({
+							written,
+							entry: anchored(written, path),
+							file: path,
+						})),
+					];
+				}
 				break;
 			}
 			// A missing candidate falls through to the next; anything else selects the file, and a
@@ -182,15 +285,17 @@ export const load = Effect.fn("Settings.load")(function* (options: Options & { r
 			return yield* error;
 		}
 	}
-	return { ...settings, plugins };
+	return { ...settings, plugins: declared.map((one) => one.entry), declared };
 });
 
-export const layer = (options: Options) =>
+export const layer = (options: Omit<Options, "hostDir"> = {}) =>
 	Layer.effect(
 		Service,
 		Effect.gen(function* () {
 			const global = yield* Global.Service;
-			return Service.of({ load: load({ ...options, home: global.home }) });
+			return Service.of({
+				load: (hostDir) => load({ ...options, home: global.home, hostDir }),
+			});
 		}),
 	);
 

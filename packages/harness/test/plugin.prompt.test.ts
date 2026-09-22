@@ -32,6 +32,7 @@ describe("codework.prompt.default", () => {
 				Effect.provide(
 					Harness.layer({
 						home: join(root, "home"),
+						hostCwd: root,
 						database: ":memory:",
 						llm: (input, signal) => {
 							observed.push(input.context.systemPrompt ?? "");

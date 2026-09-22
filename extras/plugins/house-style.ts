@@ -9,7 +9,7 @@
  * appends to the prompt it rendered — which is where a prompt plugin wants to be. A settings
  * file cannot reorder the built-ins; `Harness.layer({ plugins })` owns the order when it matters.
  */
-import { Plugin } from "@codeworksh/harness/effect";
+import { Plugin } from "@codeworksh/plugin";
 
 const HEADING = "## House style";
 
@@ -20,6 +20,7 @@ const readRules = (options: Plugin.PluginOptions): ReadonlyArray<string> => {
 
 export default Plugin.define({
 	id: "local.prompt.house-style",
+	kind: "prompt",
 	setup(ctx, options) {
 		const rules = readRules(options);
 		if (rules.length === 0) return;

@@ -93,6 +93,7 @@ const slot = (ctx: SharedPluginContext, resolver: PromptResolver | undefined) =>
 
 export const defaultPromptPlugin = define({
 	id: "codework.prompt.default",
+	kind: "prompt",
 	setup: Effect.fn("DefaultPromptPlugin.setup")(function* (ctx) {
 		const custom = yield* slot(ctx, ctx.config.promptCustom);
 		const append = yield* slot(ctx, ctx.config.promptSystemAppend);

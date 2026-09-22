@@ -30,7 +30,7 @@ describe("settings against a live provider", () => {
 	 */
 	live("applies edited settings to each real turn, including a revert", { timeout: 300_000 }, () =>
 		withSettings(async ({ root, custom }) => {
-			const write = (model: object) => writeFile(join(custom, "settings.json"), JSON.stringify({ model }));
+			const write = (model: object) => writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model }));
 			// A names a budget, a summary mode and a header. B names none of them.
 			const selection = { provider: "openai", id: "gpt-5.6-luna" };
 			const catalog = await llm(selection.provider, selection.id);
@@ -93,7 +93,14 @@ describe("settings against a live provider", () => {
 						);
 					}
 				}).pipe(
-					Effect.provide(Harness.layer({ home: join(root, "home"), database: ":memory:", userConfigDir: custom })),
+					Effect.provide(
+						Harness.layer({
+							home: join(root, "home"),
+							hostCwd: root,
+							database: ":memory:",
+							userConfigDir: custom,
+						}),
+					),
 					Effect.scoped,
 					Effect.timeout("240 seconds"),
 				),

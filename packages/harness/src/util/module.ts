@@ -33,11 +33,54 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { Script, constants } from "node:vm";
 
+/**
+ * Packages a plugin must share with the harness instead of using the copy installed beside it.
+ *
+ * A plugin is installed into the store as its own npm tree, so `effect` and the plugin SDK land
+ * there a second time. Two copies of the *same version* are still two module instances, and
+ * Effect Schema's checks do not survive the crossing: a schema built by one copy and evaluated by
+ * the other reports every check as failed, so a tool whose success type is `Schema.Finite` dies
+ * on "Expected a finite number" for `22800`. Nothing about that is visible at registration --
+ * `Schema.isSchema` passes, the JSON Schema is derived correctly, and the tool reaches the model
+ * -- so it surfaces on the first call rather than at boot.
+ *
+ * Resolution is the right place to fix it. A symlink into the store cannot be: a generation is
+ * immutable and shared by every project on the machine, while the harness doing the loading is
+ * whichever one is running now, and two applications embedding the harness need not agree on
+ * where their `effect` lives.
+ */
+const sharedPackages: ReadonlySet<string> = new Set(["effect", "@codeworksh/plugin"]);
+
+/** The package a bare specifier names: `effect/Schema` -> `effect`, `@a/b/c` -> `@a/b`. */
+function packageOf(specifier: string): string {
+	if (specifier.startsWith(".") || specifier.startsWith("/") || specifier.includes(":")) return "";
+	const segments = specifier.split("/");
+	return specifier.startsWith("@") ? segments.slice(0, 2).join("/") : (segments[0] ?? "");
+}
+
+/**
+ * Resolve the shared packages as though this module had imported them, for as long as `run`
+ * takes. Anything else resolves exactly as it would have.
+ */
+function withSharedModules<A>(run: () => Promise<A>): Promise<A> {
+	const hook = registerHooks({
+		resolve(specifier, context, nextResolve) {
+			return sharedPackages.has(packageOf(specifier))
+				? nextResolve(specifier, { ...context, parentURL: import.meta.url })
+				: nextResolve(specifier, context);
+		},
+	});
+	return run().finally(() => hook.deregister());
+}
+
 /** Use Node's main loader even when the caller runs inside a bundler or test VM. */
 export async function importModule(specifier: string): Promise<unknown> {
-	const imported: unknown = await new Script(`import(${JSON.stringify(specifier)})`, {
-		importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
-	}).runInThisContext();
+	const imported: unknown = await withSharedModules(
+		() =>
+			new Script(`import(${JSON.stringify(specifier)})`, {
+				importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+			}).runInThisContext() as Promise<unknown>,
+	);
 	if (typeof imported !== "object" || imported === null) return imported;
 	const module = imported as Record<string, unknown>;
 	const exports = module["module.exports"];

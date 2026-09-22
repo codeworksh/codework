@@ -8,7 +8,7 @@ import { define as definePlugin, type Plugin } from "../src/plugin/plugin.ts";
 const define = (type: string) => EventSchema.define({ type, schema: { value: Schema.String } });
 
 const plugin = (id: string, ...events: ReadonlyArray<EventSchema.Definition>) =>
-	definePlugin({ id, events, setup: () => {} });
+	definePlugin({ id, kind: "tool", events, setup: () => {} });
 
 const reason = (plugins: ReadonlyArray<Plugin>) =>
 	EventRegistry.flatten(plugins).pipe(
@@ -54,5 +54,24 @@ describe("event registry", () => {
 		expect(await Effect.runPromise(EventRegistry.flatten([plugin("acme.test.events")]))).toEqual([
 			...EventList.Definitions,
 		]);
+	});
+
+	it("replaces definitions atomically and keeps the previous set when validation fails", async () => {
+		const first = define("plugin.acme.test.events.first");
+		const second = define("plugin.acme.test.events.second");
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const registry = yield* EventRegistry.Service;
+				yield* registry.replace([plugin("acme.test.events", first)]);
+				expect(registry.get(first.type)).toBe(first);
+
+				const rejected = yield* registry
+					.replace([plugin("acme.test.events", second), plugin("other.test.events", second)])
+					.pipe(Effect.result);
+				expect(rejected._tag).toBe("Failure");
+				expect(registry.get(first.type)).toBe(first);
+				expect(registry.get(second.type)).toBeUndefined();
+			}).pipe(Effect.provide(EventRegistry.layer()), Effect.scoped),
+		);
 	});
 });

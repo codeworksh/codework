@@ -5,14 +5,15 @@
 	"keywords": [
 		"agent",
 		"ai",
+		"ai-sdk",
 		"anthropic",
-		"coding-agent",
-		"nodejs",
-		"streaming",
-		"toolkit",
-		"typescript"
+		"grok",
+		"harness",
+		"llm",
+		"node",
+		"openai"
 	],
-	"homepage": "https://codeworksh.github.io/aikit/",
+	"homepage": "https://www.codework.sh",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
 	},

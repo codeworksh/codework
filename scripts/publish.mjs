@@ -13,11 +13,13 @@ const workspaceMap = new Map([
 	["@codeworksh/cli", "packages/codework"],
 	["harness", "packages/harness"],
 	["@codeworksh/harness", "packages/harness"],
+	["plugin", "packages/plugin"],
+	["@codeworksh/plugin", "packages/plugin"],
 ]);
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness> [--dev] [--stage] [npm publish args]",
+		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness|@codeworksh/plugin> [--dev] [--stage] [npm publish args]",
 	);
 	process.exit(1);
 }
@@ -115,6 +117,19 @@ function run(command, args, cwd, envOverrides = {}, replaceEnv = false) {
 	});
 }
 
+/** Run a command and return its stdout, or undefined when it fails. For asking npm a question. */
+function capture(command, args) {
+	return new Promise((resolveOutput) => {
+		const proc = spawn(command, args, { stdio: ["ignore", "pipe", "ignore"] });
+		let out = "";
+		proc.stdout.on("data", (chunk) => {
+			out += chunk;
+		});
+		proc.on("close", (code) => resolveOutput(code === 0 ? out.trim() : undefined));
+		proc.on("error", () => resolveOutput(undefined));
+	});
+}
+
 function createSanitizedPublishEnv() {
 	const env = { ...process.env };
 
@@ -182,6 +197,27 @@ function rewritePublishPath(value) {
 	return `./${value.slice("./dist/pack/".length)}`;
 }
 
+/**
+ * Drop the `development` condition from a published exports map.
+ *
+ * It points at `./src/*.ts`, and the tarball is built from `dist/pack` -- no sources are in it.
+ * A consumer resolving under that condition (vite dev, vitest, or this repo's own `start` script,
+ * which passes `--conditions=development`) therefore gets ERR_MODULE_NOT_FOUND for a package that
+ * installed cleanly. Publishing a condition the artifact cannot satisfy is never right, so it is
+ * removed here rather than repointed.
+ */
+function stripDevelopmentConditions(value) {
+	if (Array.isArray(value)) return value.map((entry) => stripDevelopmentConditions(entry));
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value)
+				.filter(([key]) => key !== "development")
+				.map(([key, entry]) => [key, stripDevelopmentConditions(entry)]),
+		);
+	}
+	return value;
+}
+
 function rewritePublishValue(value) {
 	if (typeof value === "string") {
 		return rewritePublishPath(value);
@@ -198,6 +234,22 @@ function rewritePublishValue(value) {
 	return value;
 }
 
+/**
+ * The version of a workspace dependency to write into the published manifest.
+ *
+ * The manifest version is the right answer only when that version was actually released. A
+ * package published exclusively as a prerelease has none: `@codeworksh/plugin`'s manifest says
+ * `0.0.1` while the registry holds only `0.0.1-dev.*`, so writing the manifest version verbatim
+ * ships a dependency that resolves to nothing and every install fails with ETARGET.
+ *
+ * So ask the registry. Prefer the manifest version when it exists, and fall back to whatever the
+ * dependency's `dev` tag points at. That needs no per-package configuration and stays correct as
+ * packages move between prerelease and stable: `@codeworksh/aikit@0.8.0` is a real release and
+ * resolves to itself, while a dev-only package resolves to its newest dev build.
+ *
+ * The range is exact, which matters here: a caret never matches a prerelease, so `^0.0.1` would
+ * not select `0.0.1-dev.5` even once it exists.
+ */
 async function resolveWorkspaceVersion(packageName) {
 	const workspaceDir = workspaceMap.get(packageName);
 	if (!workspaceDir) {
@@ -209,7 +261,18 @@ async function resolveWorkspaceVersion(packageName) {
 		throw new Error(`Workspace package version missing for ${packageName}`);
 	}
 
-	return workspaceManifest.version;
+	const declared = workspaceManifest.version;
+	if (await capture("npm", ["view", `${packageName}@${declared}`, "version"])) return declared;
+
+	const dev = await capture("npm", ["view", `${packageName}@dev`, "version"]);
+	if (dev) {
+		console.error(`  ${packageName}: ${declared} is unpublished; depending on ${dev} (its dev tag)`);
+		return dev;
+	}
+
+	throw new Error(
+		`Cannot depend on ${packageName}: neither ${declared} nor a dev tag is published. Publish it first.`,
+	);
 }
 
 function rewriteWorkspaceRange(range, version) {
@@ -279,7 +342,7 @@ async function createPublishManifest(manifest, version) {
 			}
 			return rewritten;
 		})(),
-		exports: rewritePublishValue(manifest.exports) ?? {
+		exports: stripDevelopmentConditions(rewritePublishValue(manifest.exports)) ?? {
 			".": {
 				types: rewritePublishPath(manifest.types),
 				import: rewritePublishPath(manifest.module),
@@ -365,14 +428,34 @@ if (publishOptions.dev && !hasFlag(forwardArgs, "--tag")) {
 	publishArgs.push("--tag", "dev");
 }
 
+/*
+ * `latest` means stable, and a prerelease never reaches it.
+ *
+ * It is what `npm install <pkg>` hands someone who expressed no opinion, so a prerelease there
+ * gives unstable code to everyone who did not ask for it. A developer wanting a dev build says so
+ * with `@dev`, and that is the whole signal -- no flag can override this, because the only reason
+ * to want one is a mistake.
+ *
+ * Guarded both ways: a stable version does not belong under `dev` either, or `npm install <pkg>`
+ * and `@dev` start serving the same thing and the distinction stops meaning anything.
+ */
 const publishTag = optionValue([...publishArgs, ...forwardArgs], "--tag");
 if (publishTag === "dev" && !isPrereleaseVersion(publishVersion)) {
 	console.error(`Refusing to publish stable version ${publishVersion} with the dev dist-tag`);
 	process.exit(1);
 }
+if (publishTag === undefined && isPrereleaseVersion(publishVersion)) {
+	console.error(
+		`Refusing to publish prerelease ${publishVersion} to latest; publish it with --dev, or release a stable version`,
+	);
+	process.exit(1);
+}
 
 publishArgs.push(...forwardArgs);
 
+// State the plan before doing any of it: which version goes up, under which tag, and whether
+// `latest` moves. These are exactly the three things a mis-publish gets wrong.
+console.error(`Publishing ${manifest.name}@${publishVersion} under tag "${publishTag ?? "latest"}"`);
 console.error(`Building ${manifest.name}@${manifest.version} in ${packageDir}`);
 
 const buildExitCode = await run("pnpm", ["run", "build"], packageDir);

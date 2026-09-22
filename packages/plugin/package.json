@@ -1,0 +1,216 @@
+{
+	"name": "@codeworksh/plugin",
+	"version": "0.0.1",
+	"description": "SDK for building CodeWork plugins — the plugin, tool, and sandbox contracts shared with @codeworksh/harness.",
+	"keywords": [
+		"agent",
+		"ai",
+		"codework",
+		"harness",
+		"llm",
+		"plugin",
+		"sdk",
+		"tool"
+	],
+	"homepage": "https://www.codework.sh",
+	"bugs": {
+		"url": "https://github.com/codeworksh/codework/issues"
+	},
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/plugin"
+	},
+	"files": [
+		"dist",
+		"src"
+	],
+	"type": "module",
+	"types": "./dist/pack/index.d.mts",
+	"exports": {
+		".": {
+			"development": "./src/index.ts",
+			"types": "./dist/pack/index.d.mts",
+			"import": "./dist/pack/index.mjs",
+			"default": "./dist/pack/index.mjs"
+		},
+		"./plugin": {
+			"development": "./src/plugin.ts",
+			"types": "./dist/pack/plugin.d.mts",
+			"import": "./dist/pack/plugin.mjs",
+			"default": "./dist/pack/plugin.mjs"
+		},
+		"./plugin/tool": {
+			"development": "./src/plugin/tool.ts",
+			"types": "./dist/pack/plugin/tool.d.mts",
+			"import": "./dist/pack/plugin/tool.mjs",
+			"default": "./dist/pack/plugin/tool.mjs"
+		},
+		"./plugin/prompt": {
+			"development": "./src/plugin/prompt.ts",
+			"types": "./dist/pack/plugin/prompt.d.mts",
+			"import": "./dist/pack/plugin/prompt.mjs",
+			"default": "./dist/pack/plugin/prompt.mjs"
+		},
+		"./sandbox": {
+			"development": "./src/sandbox.ts",
+			"types": "./dist/pack/sandbox.d.mts",
+			"import": "./dist/pack/sandbox.mjs",
+			"default": "./dist/pack/sandbox.mjs"
+		},
+		"./sandbox/io": {
+			"development": "./src/sandbox/io.ts",
+			"types": "./dist/pack/sandbox/io.d.mts",
+			"import": "./dist/pack/sandbox/io.mjs",
+			"default": "./dist/pack/sandbox/io.mjs"
+		},
+		"./sandbox/driver": {
+			"development": "./src/sandbox/driver.ts",
+			"types": "./dist/pack/sandbox/driver.d.mts",
+			"import": "./dist/pack/sandbox/driver.mjs",
+			"default": "./dist/pack/sandbox/driver.mjs"
+		},
+		"./sandbox/errors": {
+			"development": "./src/sandbox/errors.ts",
+			"types": "./dist/pack/sandbox/errors.d.mts",
+			"import": "./dist/pack/sandbox/errors.mjs",
+			"default": "./dist/pack/sandbox/errors.mjs"
+		},
+		"./sandbox/error": {
+			"development": "./src/sandbox/error.ts",
+			"types": "./dist/pack/sandbox/error.d.mts",
+			"import": "./dist/pack/sandbox/error.mjs",
+			"default": "./dist/pack/sandbox/error.mjs"
+		},
+		"./sandbox/instance": {
+			"development": "./src/sandbox/instance.ts",
+			"types": "./dist/pack/sandbox/instance.d.mts",
+			"import": "./dist/pack/sandbox/instance.mjs",
+			"default": "./dist/pack/sandbox/instance.mjs"
+		},
+		"./sandbox/filesystem": {
+			"development": "./src/sandbox/filesystem.ts",
+			"types": "./dist/pack/sandbox/filesystem.d.mts",
+			"import": "./dist/pack/sandbox/filesystem.mjs",
+			"default": "./dist/pack/sandbox/filesystem.mjs"
+		},
+		"./sandbox/shell": {
+			"development": "./src/sandbox/shell.ts",
+			"types": "./dist/pack/sandbox/shell.d.mts",
+			"import": "./dist/pack/sandbox/shell.mjs",
+			"default": "./dist/pack/sandbox/shell.mjs"
+		},
+		"./sandbox/resource": {
+			"development": "./src/sandbox/resource.ts",
+			"types": "./dist/pack/sandbox/resource.d.mts",
+			"import": "./dist/pack/sandbox/resource.mjs",
+			"default": "./dist/pack/sandbox/resource.mjs"
+		},
+		"./tool": {
+			"development": "./src/tool.ts",
+			"types": "./dist/pack/tool.d.mts",
+			"import": "./dist/pack/tool.mjs",
+			"default": "./dist/pack/tool.mjs"
+		},
+		"./tool/error": {
+			"development": "./src/tool/error.ts",
+			"types": "./dist/pack/tool/error.d.mts",
+			"import": "./dist/pack/tool/error.mjs",
+			"default": "./dist/pack/tool/error.mjs"
+		},
+		"./tool/progress": {
+			"development": "./src/tool/progress.ts",
+			"types": "./dist/pack/tool/progress.d.mts",
+			"import": "./dist/pack/tool/progress.mjs",
+			"default": "./dist/pack/tool/progress.mjs"
+		},
+		"./event": {
+			"development": "./src/event.ts",
+			"types": "./dist/pack/event.d.mts",
+			"import": "./dist/pack/event.mjs",
+			"default": "./dist/pack/event.mjs"
+		},
+		"./ids": {
+			"development": "./src/ids.ts",
+			"types": "./dist/pack/ids.d.mts",
+			"import": "./dist/pack/ids.mjs",
+			"default": "./dist/pack/ids.mjs"
+		},
+		"./location": {
+			"development": "./src/location.ts",
+			"types": "./dist/pack/location.d.mts",
+			"import": "./dist/pack/location.mjs",
+			"default": "./dist/pack/location.mjs"
+		},
+		"./project": {
+			"development": "./src/project.ts",
+			"types": "./dist/pack/project.d.mts",
+			"import": "./dist/pack/project.mjs",
+			"default": "./dist/pack/project.mjs"
+		},
+		"./repo": {
+			"development": "./src/repo.ts",
+			"types": "./dist/pack/repo.d.mts",
+			"import": "./dist/pack/repo.mjs",
+			"default": "./dist/pack/repo.mjs"
+		},
+		"./space": {
+			"development": "./src/space.ts",
+			"types": "./dist/pack/space.d.mts",
+			"import": "./dist/pack/space.mjs",
+			"default": "./dist/pack/space.mjs"
+		},
+		"./settings": {
+			"development": "./src/settings.ts",
+			"types": "./dist/pack/settings.d.mts",
+			"import": "./dist/pack/settings.mjs",
+			"default": "./dist/pack/settings.mjs"
+		},
+		"./schema": {
+			"development": "./src/schema.ts",
+			"types": "./dist/pack/schema.d.mts",
+			"import": "./dist/pack/schema.mjs",
+			"default": "./dist/pack/schema.mjs"
+		},
+		"./posix": {
+			"development": "./src/posix.ts",
+			"types": "./dist/pack/posix.d.mts",
+			"import": "./dist/pack/posix.mjs",
+			"default": "./dist/pack/posix.mjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"bump": "bumpp",
+		"check": "vp check",
+		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
+		"lint": "vp lint",
+		"release": "node ../../scripts/publish.mjs plugin",
+		"release:dev": "node ../../scripts/publish.mjs plugin --dev",
+		"release:dry": "node ../../scripts/publish.mjs plugin --dry-run",
+		"test": "vp test",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@codeworksh/aikit": "workspace:*",
+		"tslib": "^2.8.1",
+		"typebox": "^1.3.30",
+		"uuidv7": "^1.2.1"
+	},
+	"devDependencies": {
+		"@types/node": "^26.5.1",
+		"bumpp": "^12.3.0",
+		"effect": "4.0.0-rc.115"
+	},
+	"peerDependencies": {
+		"effect": "4.0.0-rc.115"
+	},
+	"engines": {
+		"node": ">=24.14.1"
+	}
+}

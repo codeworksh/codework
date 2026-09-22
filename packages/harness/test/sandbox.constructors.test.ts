@@ -27,7 +27,7 @@ import { testEffect } from "./utils/effect.ts";
 const memory = MemorySandboxDriver.make();
 const database = Database.layer(":memory:");
 const infrastructure = Layer.provideMerge(
-	SandboxController.layer().pipe(Layer.provide(SandboxDriverRegistry.layer(memory.driver))),
+	SandboxController.layer({ hostCwd: "/" }).pipe(Layer.provide(SandboxDriverRegistry.layer(memory.driver))),
 	database,
 );
 const runtime = Session.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(infrastructure));

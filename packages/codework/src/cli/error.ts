@@ -1,4 +1,4 @@
-import { Plugin, Runner, SandboxError, Settings } from "@codeworksh/harness/effect";
+import { Plugin, Runner, SandboxError, SessionStore, Settings } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
 import { Client } from "../server/client.ts";
@@ -27,8 +27,11 @@ const isModelCatalogError = Schema.is(Runner.ModelCatalogError);
 const isModelNotFoundError = Schema.is(Runner.ModelNotFoundError);
 const isLLMStreamError = Schema.is(Runner.LLMStreamError);
 const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
-const isPluginPreparationError = Schema.is(Plugin.PreparationError);
 const isPluginInstallError = Schema.is(Plugin.InstallError);
+const isPluginSourceError = Schema.is(Plugin.SourceError);
+const isPluginStoreError = Schema.is(Plugin.StoreError);
+const isPluginLoadError = Schema.is(Plugin.LoadError);
+const isSessionNotLinkedError = Schema.is(SessionStore.SessionNotLinkedError);
 const isSettingsError = Schema.is(Settings.SettingsError);
 const isSandboxDriverNotRegisteredError = Schema.is(SandboxError.SandboxDriverNotRegisteredError);
 const isSandboxDriverRegistrationError = Schema.is(SandboxError.SandboxDriverRegistrationError);
@@ -118,15 +121,45 @@ const unknownMessage = (error: unknown): string => {
  * What the reader can do about a reference that failed to prepare. A plugin list is
  * usually hand-written in a settings file, so the phase is worth translating.
  */
-const pluginHint = (phase: Plugin.PreparationError["phase"]): string => {
-	switch (phase) {
-		case "source":
-			return "check the spelling; a path entry starts with `./`, `../`, `~/`, or `/`, and anything else is a package";
-		case "install":
+/** One hint per reason. Lowercase, like everything else a plugin failure prints. */
+const pluginReasonHint = (
+	reason:
+		| Plugin.SourceError["reason"]
+		| Plugin.InstallError["reason"]
+		| Plugin.StoreError["reason"]
+		| Plugin.LoadError["reason"],
+): string => {
+	switch (reason) {
+		case "plugin-unsupported-source":
+			return "a path entry starts with `./`, `../`, `~/` or `/`; anything else is a package or a git spec, and a remote tarball is not supported";
+		case "plugin-not-found":
+			return "the path does not exist; check the spelling, remembering it anchors to the settings file that declares it";
+		case "plugin-escapes-root":
+			return "a plugin path must stay inside the project it is declared in";
+		case "plugin-resolve-failed":
+			return "check that the registry or git remote is reachable, and that your credentials are current";
+		case "plugin-fetch-failed":
 			return "check the package name and version, and that the registry is reachable";
-		case "import":
+		case "plugin-no-commit":
+			return "the git source installed but no commit could be recovered; name a branch, tag or commit explicitly";
+		case "plugin-no-entrypoint":
+			return "the package installed but exports no module to import; check its `exports` and `main`";
+		case "plugin-not-installed":
+			return "run `codework plugin install` to fetch what the settings files name";
+		case "plugin-lock-timeout":
+			return "another install is holding this entry; wait for it to finish, or remove the stale `.lock` directory";
+		case "plugin-marker-invalid":
+		case "plugin-index-invalid":
+			return "the store entry is damaged; remove it and install again";
+		case "plugin-collect-failed":
+			return "the store could not be tidied; check the permissions on the plugin cache";
+		case "plugin-import-failed":
 			return "the module failed to load; import it directly to see its own error";
-		case "definition":
+		case "plugin-missing-dependency":
+			return "the plugin's own dependencies are missing; install them where the plugin lives";
+		case "plugin-not-compiled":
+			return "a plugin installed from git or npm must ship compiled javascript; build it and commit or publish the output";
+		case "plugin-invalid-definition":
 			return "a plugin module must default-export one object with a `setup` and a `vendor.domain.name` id";
 	}
 };
@@ -171,14 +204,12 @@ export const renderError = (error: unknown): string => {
 			].join("\n") + "\n"
 		);
 	}
-	if (isPluginPreparationError(error)) {
+	if (isSessionNotLinkedError(error)) {
 		return (
 			[
-				`error[plugin]: failed to prepare plugin "${error.reference}"`,
-				`phase: ${error.phase}`,
-				...(error.id === undefined ? [] : [`id: ${error.id}`]),
-				`detail: ${unknownMessage(error.cause)}`,
-				`hint: ${pluginHint(error.phase)}`,
+				`error[${error.reason}]: ${error.message}`,
+				`session: ${error.sessionId}`,
+				"hint: run `codework session link <session-id>` from the directory to anchor it to",
 			].join("\n") + "\n"
 		);
 	}
@@ -192,11 +223,21 @@ export const renderError = (error: unknown): string => {
 			].join("\n") + "\n"
 		);
 	}
-	if (isPluginInstallError(error)) {
+	// One shape for all three plugin domains: the reason is the slug, the message is the sentence,
+	// and the reference is the string the person recognises from their settings file.
+	if (
+		isPluginSourceError(error) ||
+		isPluginInstallError(error) ||
+		isPluginStoreError(error) ||
+		isPluginLoadError(error)
+	) {
 		return (
 			[
-				`error[plugin-install]: ${unknownMessage(error.cause)}`,
-				"hint: check the package name and version, and that the registry is reachable",
+				`error[${error.reason}]: ${error.message}`,
+				...(error.reference === "" ? [] : [`reference: ${error.reference}`]),
+				...(error.file === undefined ? [] : [`declared in: ${error.file}`]),
+				...(isPluginLoadError(error) && error.id !== undefined ? [`id: ${error.id}`] : []),
+				`hint: ${pluginReasonHint(error.reason)}`,
 			].join("\n") + "\n"
 		);
 	}

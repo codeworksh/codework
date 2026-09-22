@@ -31,7 +31,9 @@ export type SandboxInfo = typeof SandboxInfo.Type;
 export const SessionInfo = Schema.Struct({
 	id: Session.SessionSchema.ID,
 	title: Schema.String,
-	directory: Schema.String,
+	directory: Session.AbsolutePath,
+	/** The host directory this session is anchored to. Absent when it has none. */
+	hostDir: optional(Session.AbsolutePath),
 	sandbox: optional(SandboxInfo),
 });
 export type SessionInfo = typeof SessionInfo.Type;
@@ -71,6 +73,17 @@ export const Api = RpcGroup.make(
 		payload: {
 			title: optional(Schema.String),
 			directory: optional(Schema.String),
+			/**
+			 * The host directory this session is anchored to, usually the caller's project root.
+			 * Unrelated to `directory`, which names a place inside the session's space.
+			 *
+			 * It is an anchor and nothing more: whatever needs a host-side directory resolves from
+			 * here rather than from wherever the server happens to be running. What reads it is the
+			 * reader's business, not this field's.
+			 *
+			 * Optional and honoured as given. Omitting it is normal, not a failure.
+			 */
+			hostDir: optional(Session.AbsolutePath),
 			sandbox: optional(SandboxRef),
 			runtime: optional(RuntimeConfig),
 		},
@@ -88,6 +101,22 @@ export const Api = RpcGroup.make(
 	}),
 	Rpc.make("session.info", {
 		payload: { sessionId: Session.SessionSchema.ID },
+		success: SessionInfo,
+		error: SessionStore.SessionNotFoundError,
+	}),
+	/**
+	 * Point an existing session at a host directory, or clear it with `null`.
+	 *
+	 * Not `session.relink`: that moves where the *work* happens, this changes which host directory
+	 * the session is *anchored to*. Conflating them would recreate exactly the `cwd`/`hostDir`
+	 * confusion the split exists to remove, which is why they sound alike and stay apart.
+	 */
+	Rpc.make("session.link", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			/** Absent clears the anchor, leaving the session with no host directory. */
+			hostDir: optional(Session.AbsolutePath),
+		},
 		success: SessionInfo,
 		error: SessionStore.SessionNotFoundError,
 	}),
@@ -127,6 +156,19 @@ export const Api = RpcGroup.make(
 		payload: { sessionId: Session.SessionSchema.ID },
 		success: Schema.Void,
 		error: SessionStore.SessionNotFoundError,
+	}),
+	/**
+	 * Re-import every configured plugin, for the whole server.
+	 *
+	 * The one thing an exchange cannot notice on its own: a local plugin whose contents changed
+	 * while its path did not. A failure keeps the previous set and is reported here rather than
+	 * emptying a running server's tool registry.
+	 */
+	Rpc.make("plugin.reload", {
+		payload: {},
+		// No error channel: a reload that fails keeps the previous set and reports why, because a
+		// server that empties its tool registry over a typo is worse than one that says so.
+		success: Schema.Struct({ plugins: Schema.Int, failure: optional(Schema.String) }),
 	}),
 	Rpc.make("sandbox.drivers", {
 		payload: {},

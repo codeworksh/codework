@@ -16,6 +16,8 @@
 			"@codeworksh/aikit": ["./packages/aikit/src/index.ts"],
 			"@codeworksh/aikit/modelgen": ["./packages/aikit/src/modelgen.ts"],
 			"@codeworksh/aikit/failure": ["./packages/aikit/src/llm/failure.ts"],
+			"@codeworksh/plugin": ["./packages/plugin/src/index.ts"],
+			"@codeworksh/plugin/*": ["./packages/plugin/src/*.ts"],
 			"@codeworksh/harness": ["./packages/harness/src/index.ts"],
 			"@codeworksh/harness/effect": ["./packages/harness/src/effect.ts"],
 			"@codeworksh/harness/sandbox": ["./packages/harness/src/sandbox.ts"],

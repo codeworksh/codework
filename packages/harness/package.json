@@ -1,16 +1,20 @@
 {
 	"name": "@codeworksh/harness",
 	"version": "0.0.1",
-	"description": "AI agent harness — agent loop, tools, and code execution sandbox.",
+	"description": "AI agent harness — agent loop, tools, plugins, sandbox, and more.",
 	"keywords": [
 		"agent",
 		"ai",
-		"coding-agent",
+		"ai-sdk",
+		"anthropic",
+		"grok",
 		"harness",
-		"tool-execution",
-		"typescript"
+		"llm",
+		"node",
+		"openai",
+		"sandbox"
 	],
-	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/harness",
+	"homepage": "https://www.codework.sh",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
 	},
@@ -79,13 +83,17 @@
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",
+		"@codeworksh/plugin": "workspace:*",
 		"@effect/platform-node": "4.0.0-rc.115",
 		"@effect/platform-node-shared": "4.0.0-rc.115",
 		"@effect/sql-sqlite-node": "4.0.0-rc.115",
+		"@npmcli/arborist": "^10.0.2",
+		"@npmcli/config": "^11.0.1",
 		"@platformatic/vfs": "^0.4.0",
 		"jsonc-parser": "3.3.1",
 		"just-bash": "^3.4.2",
 		"npm-package-arg": "^14.0.0",
+		"pacote": "^22.0.0",
 		"tslib": "^2.8.1",
 		"typebox": "^1.3.30",
 		"uuid": "^14.0.2",

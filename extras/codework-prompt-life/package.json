@@ -16,7 +16,7 @@
 		"effect": "4.0.0-rc.115"
 	},
 	"peerDependencies": {
-		"@codeworksh/harness": "workspace:*",
+		"@codeworksh/plugin": "workspace:*",
 		"effect": "4.0.0-rc.115"
 	},
 	"engines": {

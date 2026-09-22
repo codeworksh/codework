@@ -12,6 +12,7 @@ import { Database } from "../src/db/db.ts";
 import { SessionInputRow } from "../src/db/schema.sql.ts";
 import { Event } from "../src/event/event.ts";
 import { EventList } from "../src/event/list.ts";
+import { EventRegistry } from "../src/event/registry.ts";
 import type { EventSchema } from "../src/event/schema.ts";
 import { RunnerExecute } from "../src/runner/execute.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
@@ -26,6 +27,7 @@ import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { SessionRuntime } from "../src/session/runtime.ts";
 import { State } from "../src/state/state.ts";
+import { pooled } from "./fixtures/pool.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { assistant, immediateOpen } from "./fixtures/llm.ts";
 import { seedSpace } from "./fixtures/space.ts";
@@ -41,25 +43,25 @@ const runtime = (
 ) => {
 	const database = Database.layer(":memory:");
 	const request = LLM.make(options.open ?? immediateOpen(options.contexts));
-	const sandbox = SandboxController.layer().pipe(
+	const sandbox = SandboxController.layer({ hostCwd: "/" }).pipe(
 		Layer.provideMerge(SandboxDriverRegistry.layer()),
 		Layer.provideMerge(database),
 	);
 	return Control.layer.pipe(
 		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
 		Layer.provideMerge(
-			State.layer(
-				options.state ?? {},
-				(options.plugins ?? plugins).map((plugin) => ({ plugin, options: {} })),
+			((seeded) => State.layer(options.state ?? {}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild))(
+				pooled(options.plugins ?? plugins),
 			),
 		),
 		Layer.provideMerge(SessionRuntime.layer),
-		Layer.provideMerge(Layer.succeed(Settings.Service, { load: Effect.succeed(Settings.defaults) })),
+		Layer.provideMerge(Layer.succeed(Settings.Service, { load: () => Effect.succeed(Settings.defaults) })),
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionProjector.layer),
 		Layer.provideMerge(Session.layer),
 		Layer.provideMerge(Event.layer),
+		Layer.provideMerge(EventRegistry.layer()),
 		Layer.provideMerge(database),
 	);
 };
@@ -322,6 +324,7 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 				...plugins,
 				{
 					id: "test.tool.echo",
+					kind: "tool",
 					setup: (ctx) => {
 						snapshots += 1;
 						ctx.plugin.tools.add(echo);
@@ -378,6 +381,7 @@ describe("runner loop — crash healing", () => {
 				...plugins,
 				{
 					id: "test.prompt.count",
+					kind: "prompt",
 					setup: () => {
 						snapshots += 1;
 					},
@@ -458,7 +462,10 @@ describe("runner loop — tool interruption", () => {
 		runtime({
 			open,
 			state: { toolExecution: "parallel" },
-			plugins: [...plugins, { id: "test.tool.blocking", setup: (ctx) => ctx.plugin.tools.add(blocking) }],
+			plugins: [
+				...plugins,
+				{ id: "test.tool.blocking", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(blocking) },
+			],
 		}),
 	);
 

@@ -3,6 +3,7 @@ import { define } from "../../../src/plugin/plugin.ts";
 // its own configuration block — unvalidated by the harness, checked here like any plugin.
 export default define({
 	id: "acme.prompt.marker",
+	kind: "prompt",
 	setup(ctx, options) {
 		const marker = typeof options.marker === "string" ? options.marker : "acme-marker";
 		ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ""}\n\n${marker}`);

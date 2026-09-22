@@ -32,6 +32,7 @@ const run = (root: string, plugins: ReadonlyArray<PluginRef>, llm = immediateOpe
 		Effect.provide(
 			Harness.layer({
 				home: join(root, "home"),
+				hostCwd: root,
 				database: ":memory:",
 				llm: (request, signal) => {
 					contexts.push(request.context);

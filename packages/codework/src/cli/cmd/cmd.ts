@@ -99,6 +99,162 @@ export const Cmd = Spec.make("codework", {
 				{ command: "codework serve --port 0", description: "Choose an available local port" },
 			],
 		}),
+		Spec.make("session", {
+			description: "Manage sessions",
+			commands: [
+				Spec.make("link", {
+					description: "Anchor a session to a host directory",
+					params: {
+						session: Argument.String("session-id").pipe(Argument.withDescription("The session to link")),
+						path: Argument.String("path").pipe(
+							// The anchor is not a configuration mechanism, but `.codework` is the landmark
+							// a person recognises, so the help names it to make the directory concrete.
+							Argument.withDescription(
+								"Host directory to anchor to — typically the directory holding your .codework configuration; defaults to the shell's",
+							),
+							Argument.optional,
+						),
+						unlink: Flag.Boolean("unlink").pipe(
+							Flag.withDescription("Clear the anchor, leaving the session with no host directory"),
+							Flag.withDefault(false),
+						),
+						server: Flag.String("server").pipe(
+							Flag.withDescription("Base URL of the running codework server"),
+							Flag.withDefault("http://127.0.0.1:7433"),
+						),
+					},
+					examples: [
+						{
+							command: "codework session link ses_01h9",
+							description: "Link it to the directory you are standing in",
+						},
+						{
+							command: "codework session link ses_01h9 ~/work/api",
+							description: "Link it to a project elsewhere on this machine",
+						},
+						{
+							command: "codework session link ses_01h9 --unlink",
+							description: "Clear the anchor",
+						},
+					],
+				}),
+			],
+		}),
+		Spec.make("plugin", {
+			description: "Manage plugins",
+			commands: [
+				Spec.make("add", {
+					description: "Install a plugin and add it to a settings file",
+					params: {
+						package: Argument.String("package").pipe(
+							Argument.withDescription("Package spec, path, or file: URL"),
+						),
+						global: Flag.Boolean("global").pipe(
+							Flag.withAlias("g"),
+							Flag.withDescription("Write the user-wide settings file instead of this project's"),
+							Flag.withDefault(false),
+						),
+						session: Flag.String("session").pipe(
+							Flag.withDescription("Write the project a session is linked to, rather than this directory's"),
+							Flag.optional,
+						),
+					},
+					examples: [
+						{
+							command: "codework plugin add @acme/codework-tool-proc@1.2.0",
+							description: "Install a published plugin into this project's settings",
+						},
+						{
+							command: "codework plugin add @acme/codework-tool-proc --session ses_01h9",
+							description: "Write the project that session is linked to, from anywhere",
+						},
+						{
+							command: "codework plugin add @acme/codework-tool-proc -g",
+							description: "Install it for every project this user runs",
+						},
+					],
+				}),
+				Spec.make("install", {
+					description: "Install every plugin the settings files name",
+					params: {},
+					examples: [
+						{
+							command: "codework plugin install",
+							description: "Materialise what a fresh checkout already declares",
+						},
+					],
+				}),
+				Spec.make("list", {
+					description: "List configured plugins and what each one resolved to",
+					params: {
+						verbose: Flag.Boolean("verbose").pipe(
+							Flag.withDescription("Show the message behind a failure, not only its reason"),
+							Flag.withDefault(false),
+						),
+					},
+					examples: [{ command: "codework plugin list", description: "Show every configured plugin" }],
+				}),
+				Spec.make("check", {
+					description: "Report which configured plugins have a newer revision available",
+					params: {
+						// An answer is reused for an hour, which is right for a command someone may
+						// run repeatedly and wrong for the minute after they pushed a plugin. Without
+						// this there is no way to say "ask again", and `check` reports a moving branch
+						// as current while `update` — which always refreshes — moves it.
+						refresh: Flag.Boolean("refresh").pipe(
+							Flag.withDescription("Ask the remote again instead of reusing a recent answer"),
+							Flag.withDefault(false),
+						),
+					},
+					examples: [
+						{ command: "codework plugin check", description: "Ask the registry what has moved" },
+						{
+							command: "codework plugin check --refresh",
+							description: "Ignore the cached answer, after pushing a plugin",
+						},
+					],
+				}),
+				Spec.make("update", {
+					description: "Fetch a newer revision of every plugin that has one",
+					params: {},
+					examples: [{ command: "codework plugin update", description: "Take whatever `check` found" }],
+				}),
+				Spec.make("reload", {
+					description: "Re-import configured plugins in a running server",
+					params: {
+						server: Flag.String("server").pipe(
+							Flag.withDescription("Base URL of the running codework server"),
+							Flag.withDefault("http://127.0.0.1:7433"),
+						),
+					},
+					examples: [
+						{
+							command: "codework plugin reload",
+							description: "Pick up edits to a local plugin without restarting",
+						},
+					],
+				}),
+				Spec.make("remove", {
+					description: "Remove a plugin from a settings file",
+					params: {
+						package: Argument.String("package").pipe(
+							Argument.withDescription("Configured package spec, path, or plugin ID"),
+						),
+						global: Flag.Boolean("global").pipe(
+							Flag.withAlias("g"),
+							Flag.withDescription("Edit the user-wide settings file instead of this project's"),
+							Flag.withDefault(false),
+						),
+					},
+					examples: [
+						{
+							command: "codework plugin remove @acme/codework-tool-proc",
+							description: "Drop a plugin and any configuration written against it",
+						},
+					],
+				}),
+			],
+		}),
 		Spec.make("models", {
 			description: "List or generate the model catalog",
 			params: {

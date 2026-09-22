@@ -10,8 +10,19 @@ import { describe, expect, it } from "vite-plus/test";
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 
-const run = (...args: ReadonlyArray<string>) =>
-	spawnSync(process.execPath, ["--conditions=development", cli, ...args], { encoding: "utf8" });
+/**
+ * The CLI discovers project settings from the directory it runs in, and searches upward, so a
+ * child spawned in this repository would read the repository's own file. Every spawn below runs
+ * in a temp directory instead, which is what "isolated" has to mean once discovery walks up.
+ */
+const run = (...args: ReadonlyArray<string>) => {
+	const cwd = mkdtempSync(join(tmpdir(), "codework-cli-cwd-"));
+	try {
+		return spawnSync(process.execPath, ["--conditions=development", cli, ...args], { encoding: "utf8", cwd });
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
+};
 
 const runIsolated = (env: NodeJS.ProcessEnv, ...args: ReadonlyArray<string>) => {
 	const home = mkdtempSync(join(tmpdir(), "codework-cli-"));
@@ -28,6 +39,7 @@ const runIsolated = (env: NodeJS.ProcessEnv, ...args: ReadonlyArray<string>) => 
 			{
 				encoding: "utf8",
 				env: childEnv,
+				cwd: home,
 				timeout: 20_000,
 			},
 		);
@@ -41,7 +53,7 @@ describe("codework CLI", () => {
 		const dir = mkdtempSync(join(tmpdir(), "codework-cli-settings-"));
 		try {
 			writeFileSync(
-				join(dir, "settings.json"),
+				join(dir, "settings.jsonc"),
 				JSON.stringify({ model: { provider: "settings-test-provider", id: "settings-test-model" } }),
 			);
 			const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "--user-config-dir", dir, "run", "test");
@@ -56,7 +68,7 @@ describe("codework CLI", () => {
 
 	it("rereads --user-config-dir settings on every invocation, including a revert", () => {
 		const dir = mkdtempSync(join(tmpdir(), "codework-cli-settings-cycle-"));
-		const write = (settings: object) => writeFileSync(join(dir, "settings.json"), JSON.stringify(settings));
+		const write = (settings: object) => writeFileSync(join(dir, "settings.jsonc"), JSON.stringify(settings));
 		const select = (stderr: string) => [/provider[^a-z0-9]+([a-z0-9-]+)/i.exec(stderr)?.[1] ?? "", stderr];
 		try {
 			// A: a selection plus a key that only A carries.

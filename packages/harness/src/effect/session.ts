@@ -15,6 +15,7 @@ import * as SessionRuntime from "../session/runtime.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
 import type { State } from "../state/state.ts";
+import { rooted } from "../util/path.ts";
 import type { Info as SandboxInfo } from "./sandbox.ts";
 
 export interface ModelConfig {
@@ -43,6 +44,17 @@ export interface CreateInput extends RuntimeInput {
 	readonly title?: string;
 	readonly sandbox?: SandboxInfo;
 	readonly directory?: string;
+	/**
+	 * The host directory anchor this session belongs to: also the place where its
+	 * settings are discovered from.
+	 * A host path on the machine the harness runs on, unrelated to
+	 * {@link CreateInput.directory}, which names a place inside the session's space.
+	 *
+	 * Optional, with no fallback. Omitting it gives a session no project layer, which is normal
+	 * for a client that has no host project to name; it does *not* silently adopt the process's
+	 * own directory. {@link link} assigns one afterwards.
+	 */
+	readonly hostDir?: string;
 }
 
 export interface AttachInput extends RuntimeInput {
@@ -67,6 +79,12 @@ export interface Info {
 	readonly id: SessionSchema.ID;
 	readonly title: string;
 	readonly directory: AbsolutePath;
+	/** Absent when the session has no host anchor; see {@link CreateInput.hostDir}. */
+	readonly hostDir?: AbsolutePath;
+	/**
+	 * Whether this session has a host anchor at all.
+	 */
+	readonly hasHostLink: boolean;
 	readonly sandbox?: SandboxInfo;
 }
 
@@ -121,10 +139,13 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 			space === undefined || space.env === SandboxInstanceSchema.ID.local
 				? undefined
 				: Option.getOrUndefined(yield* sandboxes.get(space.env));
+		const hostDir = Option.getOrUndefined(row.hostDir);
 		return {
 			id,
 			title: row.title,
 			directory: row.directory,
+			...(hostDir === undefined ? {} : { hostDir }),
+			hasHostLink: hostDir !== undefined,
 			...(sandbox === undefined ? {} : { sandbox }),
 		};
 	}).pipe(Effect.withSpan("Session.info"));
@@ -167,9 +188,46 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 		directory: location.directory,
 		slug: id,
 		title: input.title ?? "Session",
+		...(input.hostDir === undefined ? {} : { hostDir: declaredHostDir(input.hostDir) }),
 	});
 	yield* runtime.set(id, runtimeBindings(input));
 	return yield* makeHandle(id);
+});
+
+/**
+ * A session's host directory, as the caller declared it.
+ *
+ * `resolve` here would be worse than useless. The CLI already resolves against the shell's
+ * directory before it sends anything, because that is where the person is standing; every other
+ * caller reaches this over RPC, where the only directory available to resolve against is the
+ * *server's*. A client asking to be linked to `my-project` would be linked to
+ * `<wherever the server was started>/my-project` -- a real directory on the wrong machine's
+ * filesystem, branded `AbsolutePath` and persisted, with nothing anywhere reporting a problem.
+ *
+ * That field then selects a settings file, and that file names plugins the server imports into
+ * its own process, so an invented path is not merely wrong configuration.
+ *
+ * Declared means declared: absolute, or the caller has not said which directory it means.
+ */
+const declaredHostDir = (hostDir: string): AbsolutePath =>
+	AbsolutePath.make(rooted(hostDir, "a session's host directory"));
+
+/**
+ * Point an existing session at a host directory, or clear it with `null`.
+ *
+ * Distinct from {@link relink}, which moves the session's *work* to another space. A session can
+ * move machines and keep its host project, or stay where it is and be given one it never had.
+ */
+export const link = Effect.fn("Session.link")(function* (input: {
+	readonly sessionId: SessionSchema.ID;
+	readonly hostDir: string | null;
+}) {
+	const sessions = yield* SessionStore.Service;
+	yield* sessions.link({
+		sessionId: input.sessionId,
+		hostDir: input.hostDir === null ? null : declaredHostDir(input.hostDir),
+	});
+	return yield* makeHandle(input.sessionId);
 });
 
 /**

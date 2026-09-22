@@ -1,4 +1,4 @@
-import { Control, EventSchema, PromptSchema, Sandbox, Session, SessionStore } from "@codeworksh/harness/effect";
+import { Control, EventSchema, PromptSchema, Sandbox, Session, SessionStore, State } from "@codeworksh/harness/effect";
 import { Effect, Option, Stream } from "effect";
 import { Contract, type RuntimeConfig, type SandboxInfo, type SessionInfo } from "./contract.ts";
 import { Envelope } from "./envelope.ts";
@@ -21,6 +21,7 @@ const toSessionInfo = (info: Session.Info): SessionInfo => ({
 	id: info.id,
 	title: info.title,
 	directory: info.directory,
+	...(info.hostDir === undefined ? {} : { hostDir: info.hostDir }),
 	...(info.sandbox === undefined ? {} : { sandbox: toSandboxInfo(info.sandbox) }),
 });
 
@@ -47,18 +48,25 @@ export const layer = Contract.Api.toLayer(
 		const control = yield* Control.Service;
 		const feed = yield* EventFeed.Service;
 		const sessions = yield* SessionStore.Service;
+		const state = yield* State.Service;
 
 		return Contract.Api.of({
-			"session.create": Effect.fnUntraced(function* ({ title, directory, sandbox, runtime }) {
+			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime }) {
 				const selection = sandbox === undefined ? undefined : yield* Sandbox.resolve(sandbox);
 				const selected = selection?.info;
 				const handle = yield* Session.create({
 					...(title === undefined ? {} : { title }),
 					...(directory === undefined ? {} : { directory }),
+					// Passed through as given, never defaulted to the server's own directory: a
+					// session the client did not place has no project, which is a normal state.
+					...(hostDir === undefined ? {} : { hostDir }),
 					...(selected === undefined ? {} : { sandbox: selected }),
 					...runtimeInput(runtime),
 				}).pipe(Effect.onError(() => releaseOnFailure(selection)));
 				return toSessionInfo(yield* handle.info);
+			}),
+			"plugin.reload": Effect.fnUntraced(function* () {
+				return yield* state.reload;
 			}),
 			"session.list": Effect.fnUntraced(function* () {
 				const rows = yield* sessions.list();
@@ -70,6 +78,10 @@ export const layer = Contract.Api.toLayer(
 			}),
 			"session.info": Effect.fnUntraced(function* ({ sessionId }) {
 				return yield* sessionInfo(sessionId);
+			}),
+			"session.link": Effect.fnUntraced(function* ({ sessionId, hostDir }) {
+				const handle = yield* Session.link({ sessionId, hostDir: hostDir ?? null });
+				return toSessionInfo(yield* handle.info);
 			}),
 			"session.relink": Effect.fnUntraced(function* ({ sessionId, sandbox, directory }) {
 				const selection = sandbox === undefined ? undefined : yield* Sandbox.resolve(sandbox);
