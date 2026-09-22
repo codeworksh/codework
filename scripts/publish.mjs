@@ -13,11 +13,13 @@ const workspaceMap = new Map([
 	["@codeworksh/cli", "packages/codework"],
 	["harness", "packages/harness"],
 	["@codeworksh/harness", "packages/harness"],
+	["plugin", "packages/plugin"],
+	["@codeworksh/plugin", "packages/plugin"],
 ]);
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness> [--dev] [--stage] [npm publish args]",
+		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness|@codeworksh/plugin> [--dev] [--stage] [npm publish args]",
 	);
 	process.exit(1);
 }

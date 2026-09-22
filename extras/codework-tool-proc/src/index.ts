@@ -11,8 +11,8 @@
  * refuses to strip types under `node_modules`. A plugin package published for real ships built
  * JavaScript; see the README.
  */
-import { Plugin, Tool } from "@codeworksh/harness/effect";
-import { SandboxIO } from "@codeworksh/harness/sandbox";
+import { Plugin, Tool } from "@codeworksh/plugin";
+import { SandboxIO } from "@codeworksh/plugin/sandbox";
 import { Effect, Schema } from "effect";
 
 /** Rows to return when the entry carries no `limit`. */

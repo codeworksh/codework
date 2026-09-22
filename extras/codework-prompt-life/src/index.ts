@@ -6,7 +6,7 @@
  *   { "plugins": ["@acme/codework-prompt-life",
  *                 { "package": "@acme/codework-prompt-life", "options": { "answer": 42 } }] }
  */
-import { Plugin } from "@codeworksh/harness/effect";
+import { Plugin } from "@codeworksh/plugin";
 
 const DEFAULT_ANSWER = 42;
 const HEADING = "## On the meaning of life";

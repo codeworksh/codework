@@ -17,6 +17,11 @@ The initial public surface is the Effect SDK at `@codeworksh/harness/effect`.
 
 ## Plugins
 
+Third-party plugins build against [`@codeworksh/plugin`](../plugin/README.md), the published SDK
+that owns the plugin, tool and sandbox contract this package consumes — a plugin package depends
+on it rather than on the whole harness. The same types are re-exported here as `Plugin` and `Tool`
+for embedders who already hold the harness.
+
 Pass a plugin list when constructing the harness. Each plugin declares an ID and the domain it extends — `tool` or `prompt` — and contributes during setup. Setup runs once per exchange, after model resolution; its tools, hooks, and prompt remain pinned through tool continuations.
 
 ```ts

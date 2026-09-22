@@ -5,13 +5,13 @@
 	"keywords": [
 		"agent",
 		"ai",
-		"anthropic",
-		"openai",
-		"grok",
 		"ai-sdk",
-		"llm",
+		"anthropic",
+		"grok",
 		"harness",
-		"node"
+		"llm",
+		"node",
+		"openai"
 	],
 	"homepage": "https://www.codework.sh",
 	"bugs": {
@@ -60,6 +60,7 @@
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:*",
+		"@codeworksh/plugin": "workspace:*",
 		"@effect/platform-node": "4.0.0-rc.115",
 		"@effect/platform-node-shared": "4.0.0-rc.115",
 		"@effect/sql-sqlite-node": "4.0.0-rc.115",

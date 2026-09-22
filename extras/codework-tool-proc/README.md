@@ -3,8 +3,8 @@
 An example third-party **tool plugin**: it registers `list_processes`, which runs `ps` in the
 session's sandbox and returns the busiest processes.
 
-It exists to be read. It uses only the public surfaces — `@codeworksh/harness/effect` for
-`Plugin`/`Tool` and `@codeworksh/harness/sandbox` for the shell — and default-exports one plugin
+It exists to be read. It uses only the public surfaces — `@codeworksh/plugin` for
+`Plugin`/`Tool` and `@codeworksh/plugin/sandbox` for the shell — and default-exports one plugin
 object, which is what the loader imports.
 
 ## Using it

@@ -1,27 +1,15 @@
+import type { PluginOptions, PluginPatch, PluginRef } from "@codeworksh/plugin/plugin";
 import { Effect, Option, Predicate } from "effect";
 import { isRecord } from "../settings/merge.ts";
 import * as Loader from "./loader.ts";
 import { type Plugin, rank } from "./plugin.ts";
 import { PluginSource } from "./source.ts";
 
-/** Opaque to the harness: a plugin reads and validates its own block. */
-export type PluginOptions = { readonly [key: string]: unknown };
-/** A module to load: a path, a `file:` URL, or a package spec. Definitions are passed directly. */
-export type PluginSpec = Plugin | string;
-interface PluginConfig {
-	/** `false` drops the plugin from the selection. */
-	readonly enabled?: boolean | undefined;
-	readonly options?: PluginOptions | undefined;
-}
 /**
- * Configuration for a plugin something else already selected, naming it by ID (`plugin`) or by
- * the module string it was registered from (`package`) — exactly one of the two. It loads nothing,
- * so a name matching nothing in the selection is ignored rather than fetched.
+ * How a `plugins` entry is spelled. Declared in `@codeworksh/plugin`, because the shapes are what
+ * a plugin author writes into a settings file; what the entries *mean* is this module's job.
  */
-export type PluginPatch =
-	| (PluginConfig & { readonly plugin: string; readonly package?: never })
-	| (PluginConfig & { readonly package: string; readonly plugin?: never });
-export type PluginRef = PluginSpec | PluginPatch;
+export type { PluginOptions, PluginPatch, PluginRef, PluginSpec } from "@codeworksh/plugin/plugin";
 export interface Prepared {
 	readonly plugin: Plugin;
 	readonly options: PluginOptions;
