@@ -11,6 +11,32 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.9.0]
+
+### Added
+
+- Added a GitHub Copilot provider, exported as `createGitHubCopilot` / `githubCopilot`. Copilot serves three inference protocols on one host, so the provider routes each model to the one it actually speaks — OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages — and applies Copilot's client identity to every request.
+- Added the `github-copilot` protocol to the catalog, options, registry, and thinking paths, so Copilot models are selected and configured like any other provider's.
+- Added per-route reasoning control for Copilot models, which do not share one: the Messages route takes a thinking budget or an adaptive effort level, the Responses route takes a reasoning effort, and the chat route has no generic control and relies on `compat.supportsThinkingTokenBudget`.
+- Added GitHub Copilot OAuth. `aikit auth --github-copilot` runs the GitHub device flow, checks that the account can use Copilot, and records the plan-specific API host and the models the account can actually see. `--enterprise <domain>` targets a GitHub Enterprise host, and `--enable-models` turns on catalog models the account has left unconfigured.
+- Added `getGitHubCopilotApiKey`, which resolves a Copilot token from `COPILOT_GITHUB_TOKEN` or the `auth.json` store, and from nothing else. `GITHUB_TOKEN` and `GH_TOKEN` are deliberately not consulted — they are usually set for git or `gh` and carry no Copilot access, and in GitHub Actions `GITHUB_TOKEN` is a workflow token — and neither is a token another application stored for itself, such as an editor's Copilot sign-in.
+- Added Copilot entries to `models generate`, carrying each model's endpoint routing, thinking-level map, extended context window where GitHub documents one, and compatibility flags.
+- Added device-code login for OpenAI Codex, `aikit auth --openai-codex --device`. It needs no local callback port, so it works over SSH, inside a container, and when another sign-in already holds port 1455.
+- Added the `oauth/github/copilot`, `oauth/summary`, and `oauth/interactive` subpath exports, covering Copilot credentials, how a login is described to a user, and the terminal helpers an interactive login needs.
+
+### Changed
+
+- Changed the Codex callback server to bind the port and path its redirect URI names, rather than a second hardcoded copy of them, so a caller-supplied `redirectUri` now works.
+- Changed a failed callback bind from silence to an explanation. Port 1455 is usually held by another Codex sign-in, which would receive the callback, so the login now says so before falling back to asking for the redirect URL.
+- Changed `aikit auth` to print credential metadata on stdout and every notice on stderr, so `--json` output is parseable.
+- Changed an unreadable `auth.json` to fail with the path and the parse error, rather than whatever the underlying reader raised.
+- Updated the AI SDK provider packages and `typebox` to current releases.
+
+### Breaking Changes
+
+- Removed `--originator`, `--print-headers`, and `--manual` from `aikit auth`. The first two had no caller behind them, and `--device` now covers what `--manual` was for without needing a callback port at all.
+- Removed `onManualCodeInput` from the Codex login options. A callback that never arrives already falls back to `onPrompt`, which is what that option raced against.
+
 ## [@codeworksh/aikit@0.8.0]
 
 ### Added
