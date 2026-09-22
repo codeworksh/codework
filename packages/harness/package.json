@@ -1,16 +1,20 @@
 {
 	"name": "@codeworksh/harness",
 	"version": "0.0.1",
-	"description": "AI agent harness — agent loop, tools, and code execution sandbox.",
+	"description": "AI agent harness — agent loop, tools, plugins, sandbox, and more.",
 	"keywords": [
 		"agent",
 		"ai",
-		"coding-agent",
+		"anthropic",
+		"openai",
+		"grok",
+		"ai-sdk",
+		"llm",
 		"harness",
-		"tool-execution",
-		"typescript"
+		"sandbox",
+		"node"
 	],
-	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/harness",
+	"homepage": "https://www.codework.sh",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
 	},

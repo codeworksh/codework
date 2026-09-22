@@ -1,16 +1,19 @@
 {
 	"name": "@codeworksh/cli",
 	"version": "0.0.1",
-	"description": "CLI for running CodeWork coding-agent sessions.",
+	"description": "CLI for running CodeWork coding agent harness.",
 	"keywords": [
 		"agent",
 		"ai",
-		"cli",
-		"codework",
-		"coding-agent",
-		"typescript"
+		"anthropic",
+		"openai",
+		"grok",
+		"ai-sdk",
+		"llm",
+		"harness",
+		"node"
 	],
-	"homepage": "https://github.com/codeworksh/codework/tree/main/packages/codework",
+	"homepage": "https://www.codework.sh",
 	"bugs": {
 		"url": "https://github.com/codeworksh/codework/issues"
 	},
