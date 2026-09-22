@@ -184,6 +184,27 @@ function rewritePublishPath(value) {
 	return `./${value.slice("./dist/pack/".length)}`;
 }
 
+/**
+ * Drop the `development` condition from a published exports map.
+ *
+ * It points at `./src/*.ts`, and the tarball is built from `dist/pack` -- no sources are in it.
+ * A consumer resolving under that condition (vite dev, vitest, or this repo's own `start` script,
+ * which passes `--conditions=development`) therefore gets ERR_MODULE_NOT_FOUND for a package that
+ * installed cleanly. Publishing a condition the artifact cannot satisfy is never right, so it is
+ * removed here rather than repointed.
+ */
+function stripDevelopmentConditions(value) {
+	if (Array.isArray(value)) return value.map((entry) => stripDevelopmentConditions(entry));
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value)
+				.filter(([key]) => key !== "development")
+				.map(([key, entry]) => [key, stripDevelopmentConditions(entry)]),
+		);
+	}
+	return value;
+}
+
 function rewritePublishValue(value) {
 	if (typeof value === "string") {
 		return rewritePublishPath(value);
@@ -281,7 +302,7 @@ async function createPublishManifest(manifest, version) {
 			}
 			return rewritten;
 		})(),
-		exports: rewritePublishValue(manifest.exports) ?? {
+		exports: stripDevelopmentConditions(rewritePublishValue(manifest.exports)) ?? {
 			".": {
 				types: rewritePublishPath(manifest.types),
 				import: rewritePublishPath(manifest.module),
