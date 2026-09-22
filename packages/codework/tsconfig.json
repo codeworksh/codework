@@ -13,7 +13,8 @@
 			"@codeworksh/harness/sandboxes/vercel": ["../harness/src/sandboxes/vercel/index.ts"],
 			"@codeworksh/aikit": ["../aikit/dist/pack/index.d.mts"],
 			"@codeworksh/aikit/failure": ["../aikit/src/llm/failure.ts"],
-			"@codeworksh/aikit/modelgen": ["../aikit/dist/pack/modelgen.d.mts"]
+			"@codeworksh/aikit/modelgen": ["../aikit/dist/pack/modelgen.d.mts"],
+			"@codeworksh/aikit/oauth/openai/codex": ["../aikit/dist/pack/oauth/openai/codex.d.mts"]
 		},
 		"plugins": [
 			{

@@ -210,7 +210,8 @@ Vercel and Daytona are the first remote drivers. More providers can be added beh
 ## Requirements
 
 - Node.js 24.14.1 or newer
-- An API key for the model provider you select
+- An API key for the model provider you select, or OpenAI Codex OAuth credentials created with
+  `codework auth --openai-codex`
 - A generated Aikit model catalog; run `codework models generate` from the project you want to use
 
 ## CLI

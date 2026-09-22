@@ -16,6 +16,7 @@
 			"@codeworksh/aikit": ["./packages/aikit/src/index.ts"],
 			"@codeworksh/aikit/modelgen": ["./packages/aikit/src/modelgen.ts"],
 			"@codeworksh/aikit/failure": ["./packages/aikit/src/llm/failure.ts"],
+			"@codeworksh/aikit/oauth/openai/codex": ["./packages/aikit/src/oauth/openai/codex.ts"],
 			"@codeworksh/plugin": ["./packages/plugin/src/index.ts"],
 			"@codeworksh/plugin/*": ["./packages/plugin/src/*.ts"],
 			"@codeworksh/harness": ["./packages/harness/src/index.ts"],

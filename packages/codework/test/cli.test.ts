@@ -200,6 +200,55 @@ describe("codework CLI", () => {
 		expect(result.stdout).toContain("generate");
 	});
 
+	it("documents OpenAI Codex OAuth management", () => {
+		const result = run("auth", "--help");
+
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain("--openai-codex");
+		expect(result.stdout).toContain("--status");
+		expect(result.stdout).toContain("--refresh");
+		expect(result.stdout).toContain("--logout");
+	});
+
+	it("reads OAuth status without exposing stored tokens", () => {
+		const dir = mkdtempSync(join(tmpdir(), "codework-auth-"));
+		const authFile = join(dir, "auth.json");
+		try {
+			writeFileSync(
+				authFile,
+				JSON.stringify({
+					"openai-codex": {
+						access: "access-secret",
+						refresh: "refresh-secret",
+						expires: 4_102_444_800_000,
+						accountId: "acct_cli",
+					},
+				}),
+			);
+
+			const result = run("auth", "--openai-codex", "--status", "--auth-file", authFile);
+
+			expect(result.status).toBe(0);
+			expect(result.stdout).toContain("Account: acct_cli");
+			expect(result.stdout).not.toContain("access-secret");
+			expect(result.stdout).not.toContain("refresh-secret");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("reports the selected home when OAuth credentials are missing", () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-auth-home-"));
+		try {
+			const result = run("--home", home, "auth", "--openai-codex", "--status");
+
+			expect(result.status).toBe(1);
+			expect(result.stderr).toContain(`no OpenAI Codex credentials found at ${join(home, "aikit/auth.json")}`);
+		} finally {
+			rmSync(home, { recursive: true, force: true });
+		}
+	});
+
 	it("lists all models with models command", () => {
 		const result = runIsolated({ CODEWORK_MODELS_FILE: models }, "models");
 

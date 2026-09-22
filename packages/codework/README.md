@@ -82,6 +82,33 @@ The v0 endpoint has no authentication; its default binding is loopback. Plugins 
 
 ---
 
+### `codework auth`
+
+Sign in to OpenAI Codex with your ChatGPT account. Credentials are stored under the selected Codework home and are
+loaded and refreshed automatically when a run uses an `openai-codex` model.
+
+```bash
+# Start the browser login flow
+codework auth --openai-codex
+
+# Inspect credential metadata without printing tokens
+codework auth --openai-codex --status
+
+# Refresh expired credentials or clear the login
+codework auth --openai-codex --refresh
+codework auth --openai-codex --logout
+
+# Authenticate the home owned by a running RPC server
+codework auth --openai-codex --server ws://127.0.0.1:7433/rpc
+```
+
+Use `--manual` when the browser callback cannot reach the CLI. `--home` keeps authentication alongside the rest of
+that Codework installation; `--auth-file` overrides the credential file directly. OpenAI Codex login keeps Aikit's
+registered `http://localhost:1455/auth/callback` redirect. With `--server`, the CLI completes that native flow locally
+and sends the resulting credentials to the RPC server for storage.
+
+---
+
 ### `codework models`
 
 List catalog models as `provider/model`, one per line.

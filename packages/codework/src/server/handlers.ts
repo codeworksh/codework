@@ -3,6 +3,7 @@ import { Effect, Option, Stream } from "effect";
 import { Contract, type RuntimeConfig, type SandboxInfo, type SessionInfo } from "./contract.ts";
 import { Envelope } from "./envelope.ts";
 import { EventFeed } from "./feed.ts";
+import { OpenAICodexAuth } from "./oauth-openai-codex.ts";
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -49,8 +50,13 @@ export const layer = Contract.Api.toLayer(
 		const feed = yield* EventFeed.Service;
 		const sessions = yield* SessionStore.Service;
 		const state = yield* State.Service;
+		const openAICodexAuth = yield* OpenAICodexAuth.Service;
 
 		return Contract.Api.of({
+			"openaiCodex.auth.save": ({ credentials }) => openAICodexAuth.save(credentials),
+			"openaiCodex.auth.status": () => openAICodexAuth.status,
+			"openaiCodex.auth.refresh": () => openAICodexAuth.refresh,
+			"openaiCodex.auth.logout": () => openAICodexAuth.logout,
 			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime }) {
 				const selection = sandbox === undefined ? undefined : yield* Sandbox.resolve(sandbox);
 				const selected = selection?.info;

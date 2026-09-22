@@ -24,6 +24,64 @@ export const Cmd = Spec.make("codework", {
 		database: Flag.String("database").pipe(Flag.withDescription("SQLite database path or :memory:"), Flag.optional),
 	},
 	commands: [
+		Spec.make("auth", {
+			description: "Manage OAuth credentials",
+			params: {
+				server: Flag.String("server").pipe(
+					Flag.withDescription("RPC server URL (ws://host:port/rpc)"),
+					Flag.optional,
+				),
+				openaiCodex: Flag.Boolean("openai-codex").pipe(
+					Flag.withDescription("Use OpenAI Codex OAuth"),
+					Flag.withDefault(false),
+				),
+				authFile: Flag.String("auth-file").pipe(
+					Flag.withDescription("Credential file (defaults to <home>/aikit/auth.json)"),
+					Flag.optional,
+				),
+				browser: Flag.Boolean("browser").pipe(
+					Flag.withDescription("Open the authorization URL in the default browser"),
+					Flag.withDefault(true),
+				),
+				manual: Flag.Boolean("manual").pipe(
+					Flag.withDescription("Also accept a pasted redirect URL or authorization code"),
+					Flag.withDefault(false),
+				),
+				originator: Flag.String("originator").pipe(
+					Flag.withDescription("OAuth originator value"),
+					Flag.withDefault("codework"),
+				),
+				status: Flag.Boolean("status").pipe(
+					Flag.withDescription("Show stored credential status without refreshing"),
+					Flag.withDefault(false),
+				),
+				refresh: Flag.Boolean("refresh").pipe(
+					Flag.withDescription("Refresh stored credentials if expired"),
+					Flag.withDefault(false),
+				),
+				logout: Flag.Boolean("logout").pipe(
+					Flag.withDescription("Clear stored credentials"),
+					Flag.withDefault(false),
+				),
+				json: Flag.Boolean("json").pipe(
+					Flag.withDescription("Print machine-readable output"),
+					Flag.withDefault(false),
+				),
+				printHeaders: Flag.Boolean("print-headers").pipe(
+					Flag.withDescription("Print request headers for Codex API calls"),
+					Flag.withDefault(false),
+				),
+			},
+			examples: [
+				{ command: "codework auth --openai-codex", description: "Sign in with ChatGPT" },
+				{
+					command: "codework auth --openai-codex --server ws://127.0.0.1:7433/rpc",
+					description: "Sign in the running server",
+				},
+				{ command: "codework auth --openai-codex --status", description: "Show the stored login" },
+				{ command: "codework auth --openai-codex --logout", description: "Clear the stored login" },
+			],
+		}),
 		Spec.make("run", {
 			description: "Start or continue an agent session",
 			params: {

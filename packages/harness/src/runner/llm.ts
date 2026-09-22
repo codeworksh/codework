@@ -9,6 +9,7 @@
 
 import { stream as aikitStream, llm, type Event as AikitEvent, type Message, type Model } from "@codeworksh/aikit";
 import * as AikitFailure from "@codeworksh/aikit/failure";
+import { getOpenAICodexApiKey, JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Duration, Effect, Exit, Fiber, Scope, Stream } from "effect";
 import type { SessionSchema } from "../session/schema.ts";
 import type { State } from "../state/state.ts";
@@ -40,6 +41,10 @@ export type Open = (
 	AsyncIterable<AikitEvent.LLMMessageEvent>,
 	Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError
 >;
+
+export interface OpenOptions {
+	readonly openAICodexAuthFile?: string;
+}
 
 export type Request = (
 	input: RequestInput,
@@ -176,13 +181,31 @@ export const resolve: Resolve = Effect.fn("LLM.resolve")(function* (input) {
 });
 
 /** Start a provider stream using the model pinned by State. */
-export const open: Open = Effect.fn("LLM.open")(function* (input, signal) {
-	const model = input.resolvedModel;
-	return yield* Effect.try({
-		try: () => aikitStream(model, input.context, runtimeOptions(input, model, signal)),
-		catch: (cause) => providerErrorFromUnknown(input, cause),
+export const openWith = (options: OpenOptions = {}): Open =>
+	Effect.fn("LLM.open")(function* (input, signal) {
+		const model = input.resolvedModel;
+		let request = runtimeOptions(input, model, signal);
+
+		if (model.protocol === "openai-codex" && request.apiKey === undefined) {
+			const apiKey = yield* Effect.tryPromise({
+				try: () =>
+					getOpenAICodexApiKey(
+						options.openAICodexAuthFile === undefined
+							? {}
+							: { storage: new JsonOpenAICodexAuthStorage({ path: options.openAICodexAuthFile }) },
+					),
+				catch: (cause) => providerErrorFromUnknown(input, cause),
+			});
+			if (apiKey !== undefined) request = { ...request, apiKey };
+		}
+
+		return yield* Effect.try({
+			try: () => aikitStream(model, input.context, request),
+			catch: (cause) => providerErrorFromUnknown(input, cause),
+		});
 	});
-});
+
+export const open: Open = openWith();
 
 /**
  * Build a provider request from an opener. Tests use this with deterministic

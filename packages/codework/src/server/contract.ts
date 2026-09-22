@@ -46,6 +46,22 @@ export type RuntimeConfig = typeof RuntimeConfig.Type;
 
 export const SandboxRef = Sandbox.Selection;
 
+export class OAuthError extends Schema.TaggedError<OAuthError>()("Server.OAuthError", {
+	message: Schema.String,
+}) {}
+
+export const OpenAICodexCredentials = Schema.Struct({
+	access: Schema.String,
+	refresh: Schema.String,
+	expires: Schema.Finite,
+	accountId: Schema.String,
+});
+
+export const OpenAICodexCredentialInfo = Schema.Struct({
+	accountId: Schema.String,
+	expires: Schema.Finite,
+});
+
 const SessionErrors = Schema.Union([
 	SessionStore.SessionNotFoundError,
 	SessionStore.SessionLinkedSpaceNotFoundError,
@@ -69,6 +85,26 @@ const SandboxErrors = Schema.Union([
 const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.NotDirectoryError]);
 
 export const Api = RpcGroup.make(
+	Rpc.make("openaiCodex.auth.save", {
+		payload: { credentials: OpenAICodexCredentials },
+		success: OpenAICodexCredentialInfo,
+		error: OAuthError,
+	}),
+	Rpc.make("openaiCodex.auth.status", {
+		payload: {},
+		success: Schema.NullOr(OpenAICodexCredentialInfo),
+		error: OAuthError,
+	}),
+	Rpc.make("openaiCodex.auth.refresh", {
+		payload: {},
+		success: Schema.NullOr(OpenAICodexCredentialInfo),
+		error: OAuthError,
+	}),
+	Rpc.make("openaiCodex.auth.logout", {
+		payload: {},
+		success: Schema.Void,
+		error: OAuthError,
+	}),
 	Rpc.make("session.create", {
 		payload: {
 			title: optional(Schema.String),
