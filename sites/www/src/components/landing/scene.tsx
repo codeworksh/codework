@@ -1,10 +1,73 @@
 import { useEffect, useRef, useState } from "react";
 import shader from "./scene.wgsl?raw";
+import { DEFAULT_THEME, THEME_EVENT, THEMES, readTheme } from "./theme";
 
 const IMAGE = "/images/workspace.webp";
 const SIZE = [1322, 920] as const;
 /** Where the window cat looks when there is no pointer: straight out of the picture. */
 const LOOK_AT_VIEWER: [number, number] = [188, 700];
+
+type Rgb = [number, number, number];
+const SHADES = ["shade0", "shade1", "shade2", "shade3", "shade4", "shade5"] as const;
+const GLOWS = ["glow0", "glow1", "glow2"] as const;
+type Ramp = Record<(typeof SHADES)[number] | (typeof GLOWS)[number], Rgb> & { strength: number };
+
+const mix = (a: Rgb, b: Rgb, t: number): Rgb => [
+	a[0] + (b[0] - a[0]) * t,
+	a[1] + (b[1] - a[1]) * t,
+	a[2] + (b[2] - a[2]) * t,
+];
+const BLACK: Rgb = [0, 0, 0];
+
+/** Any CSS colour as 0..1 RGB, resolved by painting it on a 1px canvas. */
+function rgbOf(color: string, probe: CanvasRenderingContext2D): Rgb {
+	probe.clearRect(0, 0, 1, 1);
+	probe.fillStyle = color;
+	probe.fillRect(0, 0, 1, 1);
+	const [r = 0, g = 0, b = 0] = probe.getImageData(0, 0, 1, 1).data;
+	return [r / 255, g / 255, b / 255];
+}
+
+/**
+ * The active theme as the ramp scene.wgsl remaps the illustration onto. The art is a night scene,
+ * so it stays dark on every theme: dark themes use their own grounds and inks; light themes build
+ * the dark end from their text colour and keep their page colour for the highlights. CodeWork is
+ * the palette the art was drawn in, so it shows as painted.
+ */
+function rampOf(probe: CanvasRenderingContext2D): Ramp {
+	const style = getComputedStyle(document.documentElement);
+	const token = (name: string) => rgbOf(style.getPropertyValue(`--t-${name}`).trim(), probe);
+	const id = readTheme();
+	const light = THEMES.find((t) => t.id === id)?.light === true;
+	const [bg, text, brand] = [token("bg"), token("text"), token("brand")];
+	const shades: Rgb[] = light
+		? [mix(text, BLACK, 0.6), mix(text, BLACK, 0.4), mix(text, BLACK, 0.15), text, mix(text, bg, 0.5), bg]
+		: [token("field-bg"), bg, token("surface-2"), token("border-strong"), token("text-muted"), text];
+	const glows: Rgb[] = light
+		? [mix(brand, BLACK, 0.3), brand, mix(brand, bg, 0.55)]
+		: [token("field-mid"), token("field-lit"), token("field-crest")];
+	return {
+		...(Object.fromEntries(SHADES.map((name, i) => [name, shades[i]!])) as Record<(typeof SHADES)[number], Rgb>),
+		...(Object.fromEntries(GLOWS.map((name, i) => [name, glows[i]!])) as Record<(typeof GLOWS)[number], Rgb>),
+		strength: id === DEFAULT_THEME ? 0 : light ? 0.85 : 0.9,
+	};
+}
+
+/** Frames a theme change takes to fade into the scene; at 15% a frame, 30 frames close all but 1%. */
+const FADE_FRAMES = 30;
+
+/** Eases one ramp toward another, so a theme change fades into the scene rather than cutting. */
+function approach(from: Ramp, to: Ramp, t: number): Ramp {
+	const next = { ...from, strength: from.strength + (to.strength - from.strength) * t };
+	for (const name of [...SHADES, ...GLOWS]) next[name] = mix(from[name], to[name], t);
+	return next;
+}
+
+/** The ramp as the palette uniform wants it: each colour a vec4f. */
+const uniformOf = (ramp: Ramp) => ({
+	...Object.fromEntries([...SHADES, ...GLOWS].map((name) => [name, [...ramp[name], 1]])),
+	strength: ramp.strength,
+});
 
 /**
  * The workspace illustration, animated by a WebGPU shader (scene.wgsl). The still image is the
@@ -38,9 +101,14 @@ export function Scene() {
 			bitmap.close();
 
 			const target = surface(gpu, canvas, { dpr: [1, 2] });
+			const probe = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+			if (!probe) return gpu.dispose();
+			let wanted = rampOf(probe);
+			let shown = wanted;
 			const scene = effect(gpu, shader, {
 				set: {
 					params: { time: 0, pointer: LOOK_AT_VIEWER },
+					palette: uniformOf(shown),
 					scene: image,
 					samp: sampler(gpu, { minFilter: "linear", magFilter: "linear" }),
 				},
@@ -62,6 +130,14 @@ export function Scene() {
 			};
 			window.addEventListener("pointermove", onPointer, { passive: true });
 
+			// A new theme fades in over FADE_FRAMES frames, then lands exactly on its ramp.
+			let fading = 0;
+			const onTheme = () => {
+				wanted = rampOf(probe);
+				fading = FADE_FRAMES;
+			};
+			window.addEventListener(THEME_EVENT, onTheme);
+
 			// Ambient animation: 30fps is plenty, and nothing runs while the scene is off screen.
 			let loop: { stop(): void } | null = null;
 			const visibility = new IntersectionObserver(([entry]) => {
@@ -70,6 +146,11 @@ export function Scene() {
 						gpu,
 						(frame) => {
 							scene.set({ params: { time: time.time, pointer } });
+							if (fading > 0) {
+								fading--;
+								shown = fading === 0 ? wanted : approach(shown, wanted, 0.15);
+								scene.set({ palette: uniformOf(shown) });
+							}
 							frame.pass(target, scene);
 							setLive(true);
 						},
@@ -85,6 +166,7 @@ export function Scene() {
 			teardown = () => {
 				visibility.disconnect();
 				window.removeEventListener("pointermove", onPointer);
+				window.removeEventListener(THEME_EVENT, onTheme);
 				loop?.stop();
 				gpu.dispose();
 			};

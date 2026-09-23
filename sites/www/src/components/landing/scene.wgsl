@@ -7,9 +7,27 @@ struct Params {
 	pointer: vec2f,
 }
 
+// The active theme, as a ramp the illustration is remapped onto (see recolor).
+struct Palette {
+	// Neutrals, darkest to lightest, for the room itself.
+	shade0: vec4f,
+	shade1: vec4f,
+	shade2: vec4f,
+	shade3: vec4f,
+	shade4: vec4f,
+	shade5: vec4f,
+	// Accents, dim to bright, for everything that glows or carries colour.
+	glow0: vec4f,
+	glow1: vec4f,
+	glow2: vec4f,
+	// 0 keeps the original art, 1 is fully in the theme.
+	strength: f32,
+}
+
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var scene: texture_2d<f32>;
 @group(0) @binding(2) var samp: sampler;
+@group(0) @binding(3) var<uniform> palette: Palette;
 
 const SIZE = vec2f(1322.0, 920.0);
 const MOON = vec2f(205.5, 215.5);
@@ -93,6 +111,34 @@ fn catEye(p: vec2f, centre: vec2f, open: f32, look: i32) -> vec4f {
 		return vec4f(0.04, 0.04, 0.05, 1.0);
 	}
 	return vec4f(EYE_AMBER * select(1.0, 0.82, c.y == 2), 1.0);
+}
+
+/** The neutral ramp at brightness `l`, stops placed where this mostly dark art actually sits. */
+fn shadeAt(l: f32) -> vec3f {
+	var c = palette.shade0.rgb;
+	c = mix(c, palette.shade1.rgb, clamp(l / 0.05, 0.0, 1.0));
+	c = mix(c, palette.shade2.rgb, clamp((l - 0.05) / 0.07, 0.0, 1.0));
+	c = mix(c, palette.shade3.rgb, clamp((l - 0.12) / 0.13, 0.0, 1.0));
+	c = mix(c, palette.shade4.rgb, clamp((l - 0.25) / 0.2, 0.0, 1.0));
+	return mix(c, palette.shade5.rgb, clamp((l - 0.45) / 0.25, 0.0, 1.0));
+}
+
+/** The accent ramp at brightness `l`. */
+fn glowAt(l: f32) -> vec3f {
+	let c = mix(palette.glow0.rgb, palette.glow1.rgb, clamp((l - 0.2) / 0.25, 0.0, 1.0));
+	return mix(c, palette.glow2.rgb, clamp((l - 0.45) / 0.3, 0.0, 1.0));
+}
+
+/**
+ * Remaps a colour onto the theme: brightness picks a point on the neutral ramp, and anything
+ * saturated and lit - windows, moon, screen text, the cats' eyes - moves to the accent ramp.
+ */
+fn recolor(c: vec3f) -> vec3f {
+	let l = luma(c);
+	let chroma = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+	let glowing = smoothstep(0.1, 0.3, chroma) * smoothstep(0.12, 0.3, l);
+	let themed = mix(shadeAt(l), glowAt(l), glowing);
+	return mix(c, themed, palette.strength);
 }
 
 // The sleeping cat's Zs: three at a time, each rising and fading over ZZZ_LIFE seconds.
@@ -254,5 +300,5 @@ const ZZZ_FROM = vec2f(1128.0, 762.0);
 		}
 	}
 
-	return vec4f(col, 1.0);
+	return vec4f(recolor(col), 1.0);
 }
