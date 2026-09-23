@@ -10,7 +10,7 @@ const LOOK_AT_VIEWER: [number, number] = [188, 700];
 type Rgb = [number, number, number];
 const SHADES = ["shade0", "shade1", "shade2", "shade3", "shade4", "shade5"] as const;
 const GLOWS = ["glow0", "glow1", "glow2"] as const;
-type Ramp = Record<(typeof SHADES)[number] | (typeof GLOWS)[number], Rgb> & { strength: number };
+type Ramp = Record<(typeof SHADES)[number] | (typeof GLOWS)[number], Rgb> & { strength: number; daylight: number };
 
 const mix = (a: Rgb, b: Rgb, t: number): Rgb => [
 	a[0] + (b[0] - a[0]) * t,
@@ -29,10 +29,10 @@ function rgbOf(color: string, probe: CanvasRenderingContext2D): Rgb {
 }
 
 /**
- * The active theme as the ramp scene.wgsl remaps the illustration onto. The art is a night scene,
- * so it stays dark on every theme: dark themes use their own grounds and inks; light themes build
- * the dark end from their text colour and keep their page colour for the highlights. CodeWork is
- * the palette the art was drawn in, so it shows as painted.
+ * The active theme as the ramp scene.wgsl remaps the illustration onto. Dark themes keep the night
+ * and use their own grounds and inks; light themes relight the room as day (see `day` in the
+ * shader), running from their text colour to their page colour. CodeWork is the palette the art
+ * was drawn in, so it shows as painted.
  */
 function rampOf(probe: CanvasRenderingContext2D): Ramp {
 	const style = getComputedStyle(document.documentElement);
@@ -50,6 +50,8 @@ function rampOf(probe: CanvasRenderingContext2D): Ramp {
 		...(Object.fromEntries(SHADES.map((name, i) => [name, shades[i]!])) as Record<(typeof SHADES)[number], Rgb>),
 		...(Object.fromEntries(GLOWS.map((name, i) => [name, glows[i]!])) as Record<(typeof GLOWS)[number], Rgb>),
 		strength: id === DEFAULT_THEME ? 0 : light ? 0.85 : 0.9,
+		// Light themes see the room by day.
+		daylight: light ? 1 : 0,
 	};
 }
 
@@ -58,7 +60,11 @@ const FADE_FRAMES = 30;
 
 /** Eases one ramp toward another, so a theme change fades into the scene rather than cutting. */
 function approach(from: Ramp, to: Ramp, t: number): Ramp {
-	const next = { ...from, strength: from.strength + (to.strength - from.strength) * t };
+	const next = {
+		...from,
+		strength: from.strength + (to.strength - from.strength) * t,
+		daylight: from.daylight + (to.daylight - from.daylight) * t,
+	};
 	for (const name of [...SHADES, ...GLOWS]) next[name] = mix(from[name], to[name], t);
 	return next;
 }
@@ -67,6 +73,7 @@ function approach(from: Ramp, to: Ramp, t: number): Ramp {
 const uniformOf = (ramp: Ramp) => ({
 	...Object.fromEntries([...SHADES, ...GLOWS].map((name) => [name, [...ramp[name], 1]])),
 	strength: ramp.strength,
+	daylight: ramp.daylight,
 });
 
 /**

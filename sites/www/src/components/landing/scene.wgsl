@@ -22,6 +22,8 @@ struct Palette {
 	glow2: vec4f,
 	// 0 keeps the original art, 1 is fully in the theme.
 	strength: f32,
+	// 0 is the night the art was drawn in, 1 relights it as day (light themes).
+	daylight: f32,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -141,6 +143,77 @@ fn recolor(c: vec3f) -> vec3f {
 	return mix(c, themed, palette.strength);
 }
 
+fn valueNoise(x: vec2f) -> f32 {
+	let i = floor(x);
+	let f = fract(x);
+	let u = f * f * (3.0 - 2.0 * f);
+	let top = mix(hash(i), hash(i + vec2f(1.0, 0.0)), u.x);
+	let bottom = mix(hash(i + vec2f(0.0, 1.0)), hash(i + vec2f(1.0, 1.0)), u.x);
+	return mix(top, bottom, u.y);
+}
+
+// Daylight: the window panes, the screens that stay dark by day, and the cat that stays a silhouette.
+const LEFT_PANE_LO = vec2f(132.0, 88.0);
+const LEFT_PANE_HI = vec2f(320.0, 622.0);
+const MID_PANE_LO = vec2f(344.0, 88.0);
+const MID_PANE_HI = vec2f(780.0, 422.0);
+const SUN = MOON;
+
+fn inPanes(p: vec2f) -> bool {
+	return inside(p, LEFT_PANE_LO, LEFT_PANE_HI) || inside(p, MID_PANE_LO, MID_PANE_HI);
+}
+
+fn inScreens(p: vec2f) -> bool {
+	return inside(p, vec2f(386.0, 476.0), vec2f(1102.0, 772.0)) || inside(p, vec2f(488.0, 205.0), vec2f(752.0, 390.0));
+}
+
+/** A day sky: pale toward the horizon, with slow pixel clouds. */
+fn daySky(p: vec2f, t: f32) -> vec3f {
+	let q = floor(p / 3.0) * 3.0;
+	let height = clamp((q.y - 88.0) / 480.0, 0.0, 1.0);
+	var sky = mix(vec3f(0.55, 0.74, 0.92), vec3f(0.85, 0.92, 0.98), height);
+	let cloud = valueNoise(q / vec2f(70.0, 24.0) + vec2f(t * 0.03, 0.0)) * 0.7 + valueNoise(q / vec2f(28.0, 12.0) - vec2f(t * 0.05, 0.0)) * 0.3;
+	return mix(sky, vec3f(0.97, 0.98, 1.0), smoothstep(0.58, 0.72, cloud));
+}
+
+/**
+ * The same room by day. Through the panes, sky becomes day sky, the moon a sun, and the city
+ * catches the light with its windows dark. Indoors, shadows lift under the window light and a
+ * sunbeam falls across the desk, while the screens stay dark and the window cat stays in silhouette.
+ */
+fn day(p: vec2f, base: vec3f, col: vec3f, t: f32) -> vec3f {
+	let l = luma(base);
+	let catBody = inside(p, vec2f(88.0, 498.0), vec2f(232.0, 642.0)) && l < 0.06;
+	// Screens stay dark by day; the wall panel hangs in front of the glass, so this comes first.
+	if (inScreens(p)) {
+		return col * 0.85 + vec3f(0.04);
+	}
+	if (inPanes(p) && !catBody) {
+		let fromSun = distance(p, SUN);
+		if (fromSun < 29.0) {
+			return vec3f(1.0, 0.96, 0.8);
+		}
+		let halo = vec3f(1.0, 0.95, 0.75) * exp(-(fromSun - 29.0) / 26.0) * 0.5;
+		let sky = base.b - base.r > 0.03 && l > 0.045 && l < 0.2;
+		if (sky) {
+			return daySky(p, t) + halo;
+		}
+		// Buildings and frames: sunlit concrete, the warm windows now glass that holds the sky.
+		let warm = base.r - base.b > 0.2 && l > 0.3;
+		let facade = vec3f(0.5, 0.56, 0.64) * (0.85 + l * 1.6);
+		return select(facade, vec3f(0.66, 0.78, 0.88), warm) + halo * 0.4;
+	}
+	if (catBody) {
+		return col;
+	}
+	// Window light: the room lifts toward the panes, and a slanted beam crosses the desk.
+	let lit = 0.3 + col * 0.95;
+	let nearWindow = 1.0 - clamp(distance(p, vec2f(420.0, 330.0)) / 1100.0, 0.0, 1.0);
+	let beam = smoothstep(0.0, 30.0, p.x - 0.55 * (p.y - 600.0) - 120.0) * smoothstep(0.0, 30.0, 470.0 - (p.x - 0.55 * (p.y - 600.0)));
+	let floorBeam = select(0.0, beam * 0.07, p.y > 610.0);
+	return lit * vec3f(1.0, 0.98, 0.94) * (0.9 + 0.1 * nearWindow) + floorBeam;
+}
+
 // The sleeping cat's Zs: three at a time, each rising and fading over ZZZ_LIFE seconds.
 const ZZZ_LIFE = 3.6;
 const ZZZ_FROM = vec2f(1128.0, 762.0);
@@ -160,7 +233,9 @@ const ZZZ_FROM = vec2f(1128.0, 762.0);
 		p.y = 840.0 - (840.0 - p.y) / rise;
 	}
 
-	var col = tap(p);
+	let base = tap(p);
+	var col = base;
+	let night = 1.0 - palette.daylight;
 
 	// City windows: warm cells switch off and on at their own pace, and shimmer a little.
 	let warm = col.r > 0.55 && col.r - col.b > 0.27 && col.g > 0.35;
@@ -179,14 +254,14 @@ const ZZZ_FROM = vec2f(1128.0, 762.0);
 		let seed = hash(cell + vec2f(7.0, 3.0));
 		let centred = all(abs(fract(p / 6.0) - 0.5) < vec2f(0.2));
 		if (seed > 0.985 && centred) {
-			col += vec3f(0.8, 0.85, 1.0) * pow(0.5 + 0.5 * sin(t * 2.0 + seed * 100.0), 6.0) * 0.7;
+			col += vec3f(0.8, 0.85, 1.0) * pow(0.5 + 0.5 * sin(t * 2.0 + seed * 100.0), 6.0) * 0.7 * night;
 		}
 	}
 
 	// The moon breathes a soft halo.
 	let fromMoon = distance(p, MOON);
 	if (fromMoon > 27.0 && inside(p, vec2f(130.0, 90.0), vec2f(480.0, 340.0))) {
-		col += vec3f(0.95, 0.88, 0.7) * exp(-(fromMoon - 27.0) / 18.0) * 0.09 * (0.85 + 0.15 * sin(t * 0.8));
+		col += vec3f(0.95, 0.88, 0.7) * exp(-(fromMoon - 27.0) / 18.0) * 0.09 * (0.85 + 0.15 * sin(t * 0.8)) * night;
 	}
 
 	// The terminal types `codework run`, then runs each step in turn.
@@ -300,5 +375,8 @@ const ZZZ_FROM = vec2f(1128.0, 762.0);
 		}
 	}
 
+	if (palette.daylight > 0.0) {
+		col = mix(col, day(p, base, col, t), palette.daylight);
+	}
 	return vec4f(recolor(col), 1.0);
 }
