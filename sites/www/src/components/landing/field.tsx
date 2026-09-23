@@ -58,6 +58,61 @@ const ENTRANCE_SWEEP = 0.8;
 const ENTRANCE_SCATTER = 0.35;
 const ENTRANCE_FLASH = 0.16;
 
+/**
+ * File-extension tiles in the hero's lower U: bigger pixels, a whole number of cells, lit and dithered
+ * like the rest. Tiles are TILE_W x TILE_H units; a unit grows past one cell on small screens so the
+ * label stays legible.
+ */
+const EXTENSIONS = [
+	".py",
+	".js",
+	".ts",
+	".java",
+	".cs",
+	".cpp",
+	".go",
+	".rs",
+	".rb",
+	".php",
+	".c",
+	".kt",
+	".swift",
+	".scala",
+	".dart",
+	".lua",
+	".r",
+	".jl",
+	".hs",
+	".ex",
+	".erl",
+	".clj",
+	".ml",
+	".elm",
+	".zig",
+	".nim",
+	".sh",
+	".sql",
+	".sol",
+	".mojo",
+	".gleam",
+	".asm",
+];
+/** Tiles walk the list in steps of this, which must not divide its length, so every extension shows before one repeats. */
+const EXTENSION_STEP = 7;
+const TILE_W = 4;
+const TILE_H = 2;
+/** Narrowest a tile may draw, in css px. */
+const TILE_MIN_CSS = 40;
+/** Share of the eligible slots that hold a tile, so the band stays scattered. */
+const TILE_ODDS = 0.45;
+/** Tiles start below this point of the hero (-1 top, 1 bottom) and need this much field under them. */
+const TILE_FROM_Y = 0.15;
+const TILE_MIN_SHADE = 0.3;
+/** Css px a tile keeps clear of copy and controls. */
+const TILE_CLEARANCE = 16;
+/** A tile is one pixel standing in for many, so the drift lights it more often than a single cell. */
+const TILE_GAIN = 2.4;
+
 /** The slotless footer field lines up with the hero's lattice. */
 const SLOT_INSET = 48;
 const SLOT_FRACTION = 0.88;
@@ -67,6 +122,7 @@ type Ping = { x: number; y: number; born: number; from: number; to: number; life
 type Charge = { x: number; y: number; start: number };
 type Glow = { x: number; y: number; strength: number; reach: number };
 type Stamp = { x: number; y: number; cellPx: number; amp: number };
+type Tile = { col: number; row: number; w: number; h: number; shade: number; ext: string };
 
 function lcg(seed: number) {
 	let state = seed >>> 0;
@@ -142,6 +198,8 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 		const noise = buildNoise(0x7fb4dc);
 		const jitter = new Float32Array(64 * 64).map(lcg(0x0a1f14));
+		// Only a few dozen tiles fit, so each visit starts the walk somewhere else in the list.
+		const firstExtension = Math.floor(Math.random() * EXTENSIONS.length);
 		const palette = readPalette();
 		const restInks = glyph.rows.map((_, row) => palette[bandOf(row, glyph.height)]);
 
@@ -158,6 +216,9 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		let cols = 0;
 		let rows = 0;
 		let ramp = new Float32Array(0);
+		let tiles: Tile[] = [];
+		/** Cells a tile sits on, which the plain field leaves empty. */
+		let covered = new Uint8Array(0);
 
 		const quiet = isHero
 			? [
@@ -274,7 +335,44 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					ramp[r * cols + c] = (isHero ? eased * eased : 1) * clear * clearOf(x, y);
 				}
 			}
+			layTiles(box);
 			return true;
+		};
+
+		/** Tiles on a lattice aligned to the word's grid, kept to the lower U and clear of the copy. */
+		const layTiles = (box: DOMRect) => {
+			tiles = [];
+			covered = new Uint8Array(cols * rows);
+			if (!isHero) return;
+			const unit = Math.max(1, Math.ceil((TILE_MIN_CSS * dpr) / (TILE_W * cell)));
+			const w = TILE_W * unit;
+			const h = TILE_H * unit;
+			const stepX = w + 1;
+			const stepY = h + 1;
+			for (let row = Math.ceil(rMin / stepY) * stepY; row + h <= rMin + rows; row += stepY) {
+				for (let col = Math.ceil(cMin / stepX) * stepX; col + w <= cMin + cols; col += stepX) {
+					if (row < glyph.height && row + h > 0 && col < glyph.width && col + w > 0) continue;
+					const x = wmX + (col + w / 2) * cell;
+					const y = wmY + (row + h / 2) * cell;
+					if ((y / height) * 2 - 1 < TILE_FROM_Y) continue;
+					const shade = ramp[(row + (h >> 1) - rMin) * cols + (col + (w >> 1) - cMin)] ?? 0;
+					if (shade < TILE_MIN_SHADE) continue;
+					if (jitter[(row * 29 + col * 13) & 4095]! > TILE_ODDS) continue;
+					const halfW = (w * cell) / 2 / dpr + TILE_CLEARANCE;
+					const halfH = (h * cell) / 2 / dpr + TILE_CLEARANCE;
+					if (nearest(quiet, box.left + x / dpr, box.top + y / dpr) < Math.hypot(halfW, halfH)) continue;
+					tiles.push({
+						col,
+						row,
+						w,
+						h,
+						shade,
+						ext: EXTENSIONS[(firstExtension + tiles.length * EXTENSION_STEP) % EXTENSIONS.length]!,
+					});
+					for (let r = row; r < row + h; r++)
+						covered.fill(1, (r - rMin) * cols + col - cMin, (r - rMin) * cols + col - cMin + w);
+				}
+			}
 		};
 
 		const draw = (time: number) => {
@@ -361,6 +459,28 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				return amp;
 			};
 
+			/** How lit a spot of the field is, and how much of that is the glow or a stamp. */
+			const light = (col: number, row: number, shade: number, cx: number, cy: number, gain = 1) => {
+				let lum = 0;
+				if (shade > 0.002) {
+					const u = col / CELLS_PER_NOISE;
+					const v = row / CELLS_PER_NOISE;
+					const base =
+						0.6 * sample(noise, u + t * 0.14, v - t * 0.055) +
+						0.4 * sample(noise, u * 0.55 - t * 0.08, v * 0.55 + t * 0.06);
+					const twinkle =
+						0.5 + 0.5 * Math.sin(t * 1.1 + jitter[(Math.floor(row) * 37 + Math.floor(col) * 11) & 4095]! * 6.283);
+					lum = shade * (0.3 + 0.52 * base * base + 0.18 * twinkle) * 0.62 * gain;
+				}
+				const glow = glows.length > 0 ? glowAt(cx, cy) : 0;
+				const wave = stamps.length > 0 ? stampAt(cx, cy) : 0;
+				return { lum: lum + glow * 0.6 + wave * 1.15, heat: Math.max(glow, wave) };
+			};
+			// Bayer alone reads as a lattice at this density; a fixed per-cell offset scatters it.
+			const threshold = (col: number, row: number) =>
+				0.78 * ((BAYER[(row & 7) * 8 + (col & 7)]! + 0.5) / 64) + 0.22 * jitter[(row & 63) * 64 + (col & 63)]!;
+			const inkOf = (heat: number) => (heat > 0.34 ? palette.lit : heat > 0.1 ? palette.mid : palette.dim);
+
 			for (let r = 0; r < rows; r++) {
 				const row = rMin + r;
 				const yTop = wmY + row * cell;
@@ -369,37 +489,41 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				const cy = yTop + cell / 2;
 				for (let c = 0; c < cols; c++) {
 					const col = cMin + c;
+					if (covered[r * cols + c] === 1) continue;
 					if (isHero && glyph.rows[row]?.[col] === "1") continue;
-
-					const shade = ramp[r * cols + c]!;
-					let lum = 0;
-					if (shade > 0.002) {
-						const u = col / CELLS_PER_NOISE;
-						const v = row / CELLS_PER_NOISE;
-						const base =
-							0.6 * sample(noise, u + t * 0.14, v - t * 0.055) +
-							0.4 * sample(noise, u * 0.55 - t * 0.08, v * 0.55 + t * 0.06);
-						const twinkle = 0.5 + 0.5 * Math.sin(t * 1.1 + jitter[(row * 37 + col * 11) & 4095]! * 6.283);
-						lum = shade * (0.3 + 0.52 * base * base + 0.18 * twinkle) * 0.62;
-					}
-
 					const xLeft = wmX + col * cell;
-					const cx = xLeft + cell / 2;
-					const glow = glows.length > 0 ? glowAt(cx, cy) : 0;
-					const wave = stamps.length > 0 ? stampAt(cx, cy) : 0;
-					lum += glow * 0.6 + wave * 1.15;
-
-					// Bayer alone reads as a lattice at this density; a fixed per-cell offset scatters it.
-					const threshold =
-						0.78 * ((BAYER[(row & 7) * 8 + (col & 7)]! + 0.5) / 64) +
-						0.22 * jitter[(row & 63) * 64 + (col & 63)]!;
-					if (lum <= threshold) continue;
-
-					const heat = Math.max(glow, wave);
-					ctx.fillStyle = heat > 0.34 ? palette.lit : heat > 0.1 ? palette.mid : palette.dim;
+					const { lum, heat } = light(col, row, ramp[r * cols + c]!, xLeft + cell / 2, cy);
+					if (lum <= threshold(col, row)) continue;
+					ctx.fillStyle = inkOf(heat);
 					const x = Math.round(xLeft);
 					ctx.fillRect(x, y, Math.round(xLeft + cell) - x, cellH);
 				}
+			}
+
+			// Extension tiles: one big pixel each, lit by the same light, the label cut out of the ink.
+			if (tiles.length > 0) {
+				ctx.textAlign = "center";
+				ctx.textBaseline = "middle";
+				ctx.font = `700 ${Math.round(tiles[0]!.h * cell * 0.5)}px "JetBrains Mono Variable", monospace`;
+			}
+			for (const tile of tiles) {
+				const x = Math.round(wmX + tile.col * cell);
+				const y = Math.round(wmY + tile.row * cell);
+				const cx = wmX + (tile.col + tile.w / 2) * cell;
+				const cy = wmY + (tile.row + tile.h / 2) * cell;
+				const { lum, heat } = light(tile.col + tile.w / 2, tile.row + tile.h / 2, tile.shade, cx, cy, TILE_GAIN);
+				const floor = threshold(tile.col, tile.row);
+				if (lum <= floor) continue;
+				// A tile well past its threshold rests a shade brighter, so its label reads.
+				ctx.fillStyle = inkOf(Math.max(heat, (lum - floor) * 0.5));
+				ctx.fillRect(
+					x,
+					y,
+					Math.round(wmX + (tile.col + tile.w) * cell) - x,
+					Math.round(wmY + (tile.row + tile.h) * cell) - y,
+				);
+				ctx.fillStyle = palette.bg;
+				ctx.fillText(tile.ext, cx, cy, tile.w * cell * 0.9);
 			}
 
 			// The word: resting band ink, lifted to hover/crest by a stamp or a glow passing over it.
