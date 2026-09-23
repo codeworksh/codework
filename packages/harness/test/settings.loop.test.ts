@@ -317,7 +317,7 @@ describe("settings at exchange boundaries", () => {
 			// The diagnosis survives to the client as a settings failure carrying the file and the
 			// key, rather than an anonymous snapshot failure with an empty message.
 			expect(failures).toHaveLength(1);
-			expect(failures[0]?.data.error.type).toBe("settings");
+			expect(failures[0]?.data.error.type).toBe("settings-error");
 			expect(failures[0]?.data.error.message).toContain(join(custom, "settings.jsonc"));
 			expect(failures[0]?.data.error.message).toContain("model.options.timeoutMs");
 		}));

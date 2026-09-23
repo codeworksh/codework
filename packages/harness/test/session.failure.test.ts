@@ -18,24 +18,24 @@ describe("session failure projection", () => {
 			}),
 		);
 
-		expect(failure.type).toBe("provider.rate-limit");
+		expect(failure.type).toBe("provider-rate-limit-error");
 		expect(failure.status).toBe(429);
 		expect(failure.message).toContain("too many requests");
 	});
 
 	it("maps non-provider drain failures onto their own categories", () => {
 		expect(SessionFailure.fromCause(new Session.SessionNotFoundError({ sessionId: "ses_x" })).type).toBe(
-			"session.not-found",
+			"session-not-found-error",
 		);
 		expect(
 			SessionFailure.fromCause(new Runner.ModelNotFoundError({ provider: "openai", model: "gpt-5.5" })).type,
-		).toBe("model.not-found");
+		).toBe("model-not-found-error");
 	});
 
 	it("degrades unknown causes instead of leaking their shape", () => {
-		expect(SessionFailure.fromCause(new Error("boom"))).toEqual({ type: "unknown", message: "boom" });
+		expect(SessionFailure.fromCause(new Error("boom"))).toEqual({ type: "unknown-error", message: "boom" });
 		expect(SessionFailure.fromCause({ weird: true })).toEqual({
-			type: "unknown",
+			type: "unknown-error",
 			message: "Session execution failed",
 		});
 	});
@@ -43,7 +43,7 @@ describe("session failure projection", () => {
 	it("encodes for the wire", async () => {
 		const failure = SessionFailure.fromCause(new Runner.LLMStreamError({ sessionId: "ses_x", reason: "truncated" }));
 		expect(Schema.encodeUnknownSync(SessionFailure.Error)(failure)).toEqual({
-			type: "llm.stream",
+			type: "llm-stream-error",
 			message: "invalid provider event stream: truncated",
 		});
 	});
