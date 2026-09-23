@@ -3,6 +3,8 @@ import shader from "./scene.wgsl?raw";
 
 const IMAGE = "/images/workspace.webp";
 const SIZE = [1322, 920] as const;
+/** Where the window cat looks when there is no pointer: straight out of the picture. */
+const LOOK_AT_VIEWER: [number, number] = [188, 700];
 
 /**
  * The workspace illustration, animated by a WebGPU shader (scene.wgsl). The still image is the
@@ -38,7 +40,7 @@ export function Scene() {
 			const target = surface(gpu, canvas, { dpr: [1, 2] });
 			const scene = effect(gpu, shader, {
 				set: {
-					params: { time: 0 },
+					params: { time: 0, pointer: LOOK_AT_VIEWER },
 					scene: image,
 					samp: sampler(gpu, { minFilter: "linear", magFilter: "linear" }),
 				},
@@ -49,6 +51,17 @@ export function Scene() {
 			if (cancelled) return gpu.dispose();
 			const time = clock(gpu);
 
+			// The pointer in image pixels, anywhere on the page, so the cat watches you scroll and point.
+			let pointer = LOOK_AT_VIEWER;
+			const onPointer = (event: PointerEvent) => {
+				const box = canvas.getBoundingClientRect();
+				pointer = [
+					((event.clientX - box.left) / box.width) * SIZE[0],
+					((event.clientY - box.top) / box.height) * SIZE[1],
+				];
+			};
+			window.addEventListener("pointermove", onPointer, { passive: true });
+
 			// Ambient animation: 30fps is plenty, and nothing runs while the scene is off screen.
 			let loop: { stop(): void } | null = null;
 			const visibility = new IntersectionObserver(([entry]) => {
@@ -56,7 +69,7 @@ export function Scene() {
 					loop = frameLoop(
 						gpu,
 						(frame) => {
-							scene.set({ params: { time: time.time } });
+							scene.set({ params: { time: time.time, pointer } });
 							frame.pass(target, scene);
 							setLive(true);
 						},
@@ -71,6 +84,7 @@ export function Scene() {
 
 			teardown = () => {
 				visibility.disconnect();
+				window.removeEventListener("pointermove", onPointer);
 				loop?.stop();
 				gpu.dispose();
 			};

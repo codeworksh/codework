@@ -3,6 +3,8 @@
 
 struct Params {
 	time: f32,
+	// The viewer's pointer, in image pixels; the window cat's eyes follow it.
+	pointer: vec2f,
 }
 
 @group(0) @binding(0) var<uniform> params: Params;
@@ -46,6 +48,56 @@ fn typed(line: vec4f, start: f32, duration: f32, tau: f32) -> f32 {
 fn lift(col: vec3f, amount: f32) -> vec3f {
 	return col + (col - TERM_BG) * amount * smoothstep(0.12, 0.3, luma(col));
 }
+
+/** Whether cell `c` of a 5-wide pixel glyph is set; bit 4 is the leftmost column. */
+fn glyph(rows: array<u32, 5>, c: vec2i) -> bool {
+	if (any(c < vec2i(0)) || any(c > vec2i(4))) {
+		return false;
+	}
+	return ((rows[c.y] >> u32(4 - c.x)) & 1u) == 1u;
+}
+
+// The window cat turns from the glass to watch you, then turns back: 12s per visit.
+const CAT_TURN = 12.0;
+const CAT_HEAD = vec2f(188.0, 526.0);
+const EYE_AMBER = vec3f(0.93, 0.78, 0.36);
+const EYE_CELL = 2.4;
+
+/** 0 while facing the window, 1 with eyes wide open, 0.5 mid-blink or mid-turn. */
+fn catOpen(t: f32) -> f32 {
+	let c = t % CAT_TURN;
+	if (c < 2.5 || c >= 11.15) {
+		return 0.0;
+	}
+	let blinking = abs(c - 5.5) < 0.07 || abs(c - 8.7) < 0.07;
+	if (c < 2.65 || c >= 11.0 || blinking) {
+		return 0.5;
+	}
+	return 1.0;
+}
+
+/** A cat's eye on a 2.4px grid: an almond, 5x3 cells, with a slit pupil `look` cells off centre. */
+fn catEye(p: vec2f, centre: vec2f, open: f32, look: i32) -> vec4f {
+	let c = vec2i(floor((p - centre) / EYE_CELL + vec2f(2.5, 1.5)));
+	if (any(c < vec2i(0)) || c.x > 4 || c.y > 2) {
+		return vec4f(0.0);
+	}
+	// Half open is a lid-thin line; full open is the almond.
+	if (open < 1.0) {
+		return select(vec4f(0.0), vec4f(EYE_AMBER * 0.45, 1.0), c.y == 1 && c.x > 0 && c.x < 4);
+	}
+	if (c.y != 1 && (c.x == 0 || c.x == 4)) {
+		return vec4f(0.0);
+	}
+	if (c.x == 2 + look) {
+		return vec4f(0.04, 0.04, 0.05, 1.0);
+	}
+	return vec4f(EYE_AMBER * select(1.0, 0.82, c.y == 2), 1.0);
+}
+
+// The sleeping cat's Zs: three at a time, each rising and fading over ZZZ_LIFE seconds.
+const ZZZ_LIFE = 3.6;
+const ZZZ_FROM = vec2f(1128.0, 762.0);
 
 @fragment fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
 	let t = params.time;
@@ -171,6 +223,35 @@ fn lift(col: vec3f, amount: f32) -> vec3f {
 			steam += smoothstep(width, 0.0, abs(q.x - x)) * (0.6 + 0.4 * sin(q.y * 0.2 - t * 3.0 + lane));
 		}
 		col += vec3f(0.62, 0.64, 0.68) * steam * (1.0 - rise) * smoothstep(0.0, 0.15, rise) * 0.2;
+	}
+
+	// The window cat looks back over its shoulder, eyes following the pointer.
+	let open = catOpen(t);
+	if (open > 0.0 && inside(p, CAT_HEAD - vec2f(24.0, 10.0), CAT_HEAD + vec2f(24.0, 10.0))) {
+		let look = i32(round(clamp((params.pointer.x - CAT_HEAD.x) / 220.0, -1.0, 1.0)));
+		let left = catEye(p, CAT_HEAD - vec2f(12.0, 0.0), open, look);
+		let right = catEye(p, CAT_HEAD + vec2f(12.0, 0.0), open, look);
+		col = mix(col, left.rgb, left.a);
+		col = mix(col, right.rgb, right.a);
+	}
+	// A faint glow says the eyes are catching the light.
+	if (open == 1.0) {
+		let glow = exp(-distance(p, CAT_HEAD - vec2f(12.0, 0.0)) / 5.0) + exp(-distance(p, CAT_HEAD + vec2f(12.0, 0.0)) / 5.0);
+		col += EYE_AMBER * glow * 0.12;
+	}
+
+	// Zzz: pixel Zs drift up and to the left of the sleeping cat, growing as they fade.
+	if (inside(p, ZZZ_FROM - vec2f(60.0, 90.0), ZZZ_FROM + vec2f(20.0, 8.0))) {
+		let z = array<u32, 5>(31u, 2u, 4u, 8u, 31u);
+		for (var k = 0; k < 3; k++) {
+			let age = fract(t / ZZZ_LIFE + f32(k) / 3.0);
+			let at = ZZZ_FROM + vec2f(-26.0 * age + 5.0 * sin(age * 6.0 + f32(k)), -72.0 * age);
+			let cell = 2.2 + 1.8 * age;
+			if (glyph(z, vec2i(floor((p - at) / cell)))) {
+				let alpha = smoothstep(0.0, 0.12, age) * (1.0 - smoothstep(0.6, 1.0, age));
+				col = mix(col, vec3f(0.92, 0.88, 0.78), alpha * 0.85);
+			}
+		}
 	}
 
 	return vec4f(col, 1.0);
