@@ -1,7 +1,9 @@
+import { Palette } from "lucide-react";
 import { useEffect, useState } from "react";
 import { GITHUB_URL, nav } from "./content";
 import { GithubIcon } from "./github";
 import { Pixels } from "./pixels";
+import { OPEN_PICKER_EVENT } from "./theme";
 import { MARK } from "./wordmark";
 
 /** Sits transparent over the hero, and picks up a ground once the hero has scrolled under it. */
@@ -45,6 +47,21 @@ export function Header() {
 					))}
 				</nav>
 				<div className="ml-auto flex items-center gap-2.5">
+					<button
+						type="button"
+						aria-label="Change the theme"
+						title="Change the theme (T)"
+						onClick={() => window.dispatchEvent(new CustomEvent(OPEN_PICKER_EVENT))}
+						className="flex h-8 items-center gap-1.5 px-1.5 text-text-secondary transition-colors hover:text-text"
+					>
+						<Palette className="size-5" />
+						<kbd
+							aria-hidden="true"
+							className="hidden border border-border-strong px-1 text-[11px] leading-4 sm:block"
+						>
+							T
+						</kbd>
+					</button>
 					<a
 						href={GITHUB_URL}
 						aria-label="GitHub"

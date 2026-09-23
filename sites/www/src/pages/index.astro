@@ -6,6 +6,7 @@ import { Field } from "@/components/landing/field";
 import { GithubIcon } from "@/components/landing/github";
 import { Header } from "@/components/landing/header";
 import { Hero } from "@/components/landing/hero";
+import { Picker } from "@/components/landing/picker";
 import { Pixels } from "@/components/landing/pixels";
 import { Scene } from "@/components/landing/scene";
 import { Typewriter } from "@/components/landing/typewriter";
@@ -23,6 +24,7 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 
 <Layout title="CodeWork" description="CodeWork">
 	<Header client:load />
+	<Picker client:load />
 	<main>
 		<Hero client:load />
 

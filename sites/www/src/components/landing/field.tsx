@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { THEME_EVENT } from "./theme";
 import { bandOf, MARK, WORDMARK, type Ink } from "./wordmark";
 
 /**
@@ -200,8 +201,8 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		const jitter = new Float32Array(64 * 64).map(lcg(0x0a1f14));
 		// Only a few dozen tiles fit, so each visit starts the walk somewhere else in the list.
 		const firstExtension = Math.floor(Math.random() * EXTENSIONS.length);
-		const palette = readPalette();
-		const restInks = glyph.rows.map((_, row) => palette[bandOf(row, glyph.height)]);
+		let palette = readPalette();
+		let restInks = glyph.rows.map((_, row) => palette[bandOf(row, glyph.height)]);
 
 		// Device-pixel geometry. One grid for everything, anchored on the wordmark slot: the
 		// word occupies cells 0..width, 0..height and the field runs into negative indices around it.
@@ -657,6 +658,14 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		resize.observe(host);
 		if (slot) resize.observe(slot);
 
+		// A new theme brings new inks.
+		const onTheme = () => {
+			palette = readPalette();
+			restInks = glyph.rows.map((_, row) => palette[bandOf(row, glyph.height)]);
+			if (reducedMotion) draw(0);
+		};
+		window.addEventListener(THEME_EVENT, onTheme);
+
 		if (finePointer) window.addEventListener("pointermove", onPointerMove, { passive: true });
 		window.addEventListener("pointerdown", onPointerDown, { passive: true });
 		window.addEventListener("pointerup", onPointerUp, { passive: true });
@@ -667,6 +676,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 			cancelAnimationFrame(frame);
 			resize.disconnect();
 			visibility.disconnect();
+			window.removeEventListener(THEME_EVENT, onTheme);
 			window.removeEventListener("pointermove", onPointerMove);
 			window.removeEventListener("pointerdown", onPointerDown);
 			window.removeEventListener("pointerup", onPointerUp);
