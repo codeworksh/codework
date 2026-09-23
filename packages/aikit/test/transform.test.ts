@@ -1085,8 +1085,6 @@ describe("convertMessages", () => {
 		]);
 	});
 
-	// FIXME: incoming:
-	// - COD-40
 	it("does not put Google thoughtSignature on the wire", () => {
 		const toolCall: Message.ToolCallCompletedPart = {
 			...makeCompletedToolCall("call-1", "search", [{ type: "text", text: "ok" }], { query: "x" }),
