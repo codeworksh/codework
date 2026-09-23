@@ -1,0 +1,37 @@
+---
+import { render, type CollectionEntry } from "astro:content";
+import type { TOCItemType } from "fumadocs-core/toc";
+import defaultMdxComponents from "fumadocs-ui/mdx";
+import { Docs } from "@/components/docs";
+import Layout from "@/components/layout.astro";
+import { source } from "@/lib/source";
+
+interface Props {
+	page: CollectionEntry<"docs">;
+}
+
+export function getStaticPaths() {
+	return source.getPages().map((page) => ({
+		params: { slug: page.slugs.length > 0 ? page.slugs.join("/") : undefined },
+		props: { page: page.data._raw },
+	}));
+}
+
+const { page } = Astro.props;
+const { Content, headings } = await render(page);
+const toc: TOCItemType[] = headings.map((heading) => ({
+	depth: heading.depth,
+	title: heading.text,
+	url: `#${heading.slug}`,
+}));
+---
+
+<Layout title={`${page.data.title} | CodeWork`} description={page.data.description}>
+	<Docs tree={source.getPageTree()} pathname={Astro.url.pathname} params={Astro.params} page={{ toc }} client:load>
+		<h1 class="text-3xl font-semibold">{page.data.title}</h1>
+		{page.data.description && <p class="mb-8 text-lg text-fd-muted-foreground">{page.data.description}</p>}
+		<div class="prose flex-1">
+			<Content components={defaultMdxComponents} />
+		</div>
+	</Docs>
+</Layout>
