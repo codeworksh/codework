@@ -13,12 +13,15 @@ catalog:
 
 allowBuilds:
    "@mongodb-js/zstd": true
+   # vgpu's Node adapter; the site renders in the browser only.
+   "@vgpu/adapter-node": false
    esbuild: true
    lmdb: true
    msgpackr-extract: true
    msw: true
    node-liblzma: true
    protobufjs: true
+   webgpu: false
 
 onlyBuiltDependencies:
    - "@mongodb-js/zstd"

@@ -348,10 +348,10 @@ importers:
         version: 7.3.3(@astrojs/markdown-remark@7.3.1)(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.3)(@types/node@26.5.1)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)
       fumadocs-core:
         specifier: ^16.15.13
-        version: 16.15.13(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
+        version: 16.15.13(@mdx-js/mdx@3.1.1)(@modelcontextprotocol/server@2.0.0)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
       fumadocs-ui:
         specifier: ^16.15.13
-        version: 16.15.13(@types/mdx@2.0.14)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(fumadocs-core@16.15.13(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tailwindcss@4.3.3)
+        version: 16.15.13(@types/mdx@2.0.14)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(fumadocs-core@16.15.13(@mdx-js/mdx@3.1.1)(@modelcontextprotocol/server@2.0.0)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tailwindcss@4.3.3)
       lucide-react:
         specifier: ^1.47.0
         version: 1.47.0(react@19.3.0)
@@ -364,6 +364,9 @@ importers:
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
+      vgpu:
+        specifier: ^0.5.0
+        version: 0.5.0
     devDependencies:
       '@types/mdx':
         specifier: ^2.0.14
@@ -1327,6 +1330,14 @@ packages:
 
   '@mixmark-io/domino@2.2.0':
     resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
+
+  '@modelcontextprotocol/core@2.0.0':
+    resolution: {integrity: sha512-pJCEwGG7Lfr/+PQp9ZTwKXNeO5wzbfKL7H3MYpCorM4oFBoQrdjnBgEoqG+RjhsvS1FKrDbKux+M1HhlnGWqcA==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/server@2.0.0':
+    resolution: {integrity: sha512-YhHWdHfpFMQfd0prsEnxKeS3Qz3ytIGmsS0sth4KDjnacIT7hxk6hXHkJ9KysxlkvTM+WZAtQbbcUhdoP4Hvtw==}
+    engines: {node: '>=20'}
 
   '@mongodb-js/zstd@7.0.0':
     resolution: {integrity: sha512-mQ2s0pYYiav+tzCDR05Zptem8Ey2v8s11lri5RKGhTtL4COVCvVCk5vtyRYNT+9L8qSfyOqqefF9UtnW8mC5jA==}
@@ -2983,6 +2994,26 @@ packages:
   '@vercel/sandbox@3.3.0':
     resolution: {integrity: sha512-TclqRD2joExyECTrrHsioi3Onw20X2YfpOYEzs3JpJUtAjOKYw2bMeXldKrUg+TB/TT7tPdDu8uKNxj9NE7QUg==}
 
+  '@vgpu/adapter-mock@0.5.0':
+    resolution: {integrity: sha512-YtgXOFn1qI+8oTJenG2wWbQPA28V0CfE5UJs5Xqbt6qyR/xaZ5LHH2XWTwFcjnqn2b1xQCyTatJCMyyOdweUnw==}
+
+  '@vgpu/adapter-node@0.5.0':
+    resolution: {integrity: sha512-lgzqFcLDejwRgwlaNStzkwLNU9b4aN2OoPpWqT1UyPmK521BSw2OIQKzAuDIkzNlREla6KNC12G6bthhOzZKzw==}
+
+  '@vgpu/core@0.5.0':
+    resolution: {integrity: sha512-z80DHRHViv6+FKKkPzggEtT1ZZs/WCKRQbzJuwYdA135DZaSbCMoRK4anhM+I/nOHuDpf7H3xjkwE6rfolWZUw==}
+
+  '@vgpu/wgsl-std@0.5.0':
+    resolution: {integrity: sha512-NjMyJxwy4evFNCSqFQy4EqAbZ7iU+NUyJYyG9tLUhbdDLzBmfZlk1S3PyRZ9olBFFfEiVW2JNVw10maPKLEs1A==}
+
+  '@vgpu/wgsl@0.5.0':
+    resolution: {integrity: sha512-PDlDJem7J28C9bk+vPy2kYZEoW8+nYIx2oN4nu7/WF2V7ETx32BtmWcawwMbhiu/CVsobFafML0h0eqLRBNa3Q==}
+    peerDependencies:
+      '@vgpu/adapter-node': '>=0.1.6 <1.0.0 || ^0.5.0-rc.0'
+    peerDependenciesMeta:
+      '@vgpu/adapter-node':
+        optional: true
+
   '@vitejs/plugin-react@5.2.0':
     resolution: {integrity: sha512-YmKkfhOAi3wsB1PhJq5Scj3GXMn3WvtQ/JC0xoopuHoXSdmtdStOpFrYaT1kie2YgFBcIe64ROzMYRjCrYOdYw==}
     engines: {node: ^20.19.0 || >=22.12.0}
@@ -3136,6 +3167,9 @@ packages:
     engines: {node: '>=20.0.0'}
     cpu: [x64]
     os: [win32]
+
+  '@webgpu/types@0.1.74':
+    resolution: {integrity: sha512-lgiI4hbuLcI9unnm2cL/tvCaQU45dp0xcLWJh5uB/9MBGvIA4F8XIk7nSiBeg+K4xWGYwgZKn80LmERI5CxoTA==}
 
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
@@ -5082,6 +5116,10 @@ packages:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
 
+  pixelmatch@7.2.0:
+    resolution: {integrity: sha512-xhcb4yHu9sM/G7foGzoLtXYcC0zHEaOXXjRKhGup0fw78Nf2Tkiapv4EQyMzrbcmQPsllAI7DbFY2UT7PlI9Pg==}
+    hasBin: true
+
   pngjs@7.0.0:
     resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
     engines: {node: '>=14.19.0'}
@@ -5853,6 +5891,15 @@ packages:
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
 
+  vgpu@0.5.0:
+    resolution: {integrity: sha512-isQfMHRTysYFfT8UWTzqQI/ROw2L7lVkj7xoUJlvIF6FjYxBNS/YNG7qp3tZ7ZvZZ3uwYjso+geQv/bEq5Hl3w==}
+    hasBin: true
+    peerDependencies:
+      three: '>=0.180.0 <0.200.0'
+    peerDependenciesMeta:
+      three:
+        optional: true
+
   vite-plus@0.3.1:
     resolution: {integrity: sha512-U8KZ3c3mbX0qLfigx9rW2W9J73w9wjdf4s/s91H77ff5afqSYEdZd8Or41Jl99kD42a+UCL3LFXzb5b+bIBCpQ==}
     engines: {node: ^20.19.0 || ^22.18.0 || >=24.11.0}
@@ -5968,6 +6015,12 @@ packages:
   web-streams-polyfill@3.3.3:
     resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
     engines: {node: '>= 8'}
+
+  webgpu@0.4.0:
+    resolution: {integrity: sha512-F5pimn3Aoi0zWjuRdiVs5TnrUwSzD2lESBohsIUsqyitWkGRQlXU2fhV6ycXlQTa1bvAf3sjqiUpBEpmSQ5ptA==}
+
+  wgpu-matrix@3.4.2:
+    resolution: {integrity: sha512-IfZFbG7olEYBD76VCZy2TzqM57GKy3LT++AZh37tMHPPByO6R2h61zXGBZFNPi2IzxNivNi8y5dvze5PjaczjA==}
 
   which@7.0.0:
     resolution: {integrity: sha512-RancgH2dmbLdHl6LRhEqvklWMgl/Hdnun0Y90KhBOLkMefg8Qa7/Zel8Sm+8HEcP6DEjzsWzpkuBQEZok58isA==}
@@ -7134,6 +7187,15 @@ snapshots:
       - supports-color
 
   '@mixmark-io/domino@2.2.0': {}
+
+  '@modelcontextprotocol/core@2.0.0':
+    dependencies:
+      zod: 4.6.5
+
+  '@modelcontextprotocol/server@2.0.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.0.0
+      zod: 4.6.5
 
   '@mongodb-js/zstd@7.0.0':
     dependencies:
@@ -8635,6 +8697,33 @@ snapshots:
       - bare-abort-controller
       - react-native-b4a
 
+  '@vgpu/adapter-mock@0.5.0(@vgpu/adapter-node@0.5.0)':
+    dependencies:
+      '@vgpu/core': 0.5.0(@vgpu/adapter-node@0.5.0)
+    transitivePeerDependencies:
+      - '@vgpu/adapter-node'
+
+  '@vgpu/adapter-node@0.5.0':
+    dependencies:
+      '@vgpu/core': 0.5.0(@vgpu/adapter-node@0.5.0)
+      webgpu: 0.4.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@vgpu/core@0.5.0(@vgpu/adapter-node@0.5.0)':
+    dependencies:
+      '@vgpu/wgsl': 0.5.0(@vgpu/adapter-node@0.5.0)
+    transitivePeerDependencies:
+      - '@vgpu/adapter-node'
+
+  '@vgpu/wgsl-std@0.5.0': {}
+
+  '@vgpu/wgsl@0.5.0(@vgpu/adapter-node@0.5.0)':
+    dependencies:
+      '@vgpu/wgsl-std': 0.5.0
+    optionalDependencies:
+      '@vgpu/adapter-node': 0.5.0
+
   '@vitejs/plugin-react@5.2.0(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))':
     dependencies:
       '@babel/core': 7.29.7
@@ -8767,6 +8856,8 @@ snapshots:
 
   '@voidzero-dev/vite-plus-win32-x64-msvc@0.3.1':
     optional: true
+
+  '@webgpu/types@0.1.74': {}
 
   '@workflow/serde@4.1.0': {}
 
@@ -9592,7 +9683,7 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
-  fumadocs-core@16.15.13(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5):
+  fumadocs-core@16.15.13(@mdx-js/mdx@3.1.1)(@modelcontextprotocol/server@2.0.0)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5):
     dependencies:
       '@fumari/image-size': 0.1.1
       estree-util-value-to-estree: 3.5.0
@@ -9615,6 +9706,7 @@ snapshots:
       zbsearch: 4.0.0
     optionalDependencies:
       '@mdx-js/mdx': 3.1.1
+      '@modelcontextprotocol/server': 2.0.0
       '@types/estree-jsx': 1.0.5
       '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
@@ -9626,7 +9718,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fumadocs-ui@16.15.13(@types/mdx@2.0.14)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(fumadocs-core@16.15.13(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tailwindcss@4.3.3):
+  fumadocs-ui@16.15.13(@types/mdx@2.0.14)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(fumadocs-core@16.15.13(@mdx-js/mdx@3.1.1)(@modelcontextprotocol/server@2.0.0)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tailwindcss@4.3.3):
     dependencies:
       '@fuma-translate/react': 1.0.2(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@fumadocs/tailwind': 0.1.2(tailwindcss@4.3.3)
@@ -9642,7 +9734,7 @@ snapshots:
       '@radix-ui/react-tabs': 1.1.21(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       class-variance-authority: 0.7.1
       cn: 0.3.3
-      fumadocs-core: 16.15.13(@mdx-js/mdx@3.1.1)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
+      fumadocs-core: 16.15.13(@mdx-js/mdx@3.1.1)(@modelcontextprotocol/server@2.0.0)(@types/estree-jsx@1.0.5)(@types/hast@3.0.5)(@types/mdast@4.0.4)(@types/react@19.3.0)(lucide-react@1.47.0(react@19.3.0))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(zod@4.6.5)
       lucide-react: 1.47.0(react@19.3.0)
       motion: 13.4.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       next-themes: 0.4.6(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -11085,6 +11177,10 @@ snapshots:
 
   picomatch@4.0.7: {}
 
+  pixelmatch@7.2.0:
+    dependencies:
+      pngjs: 7.0.0
+
   pngjs@7.0.0: {}
 
   postcss-selector-parser@7.1.6:
@@ -12026,6 +12122,22 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
+  vgpu@0.5.0:
+    dependencies:
+      '@modelcontextprotocol/server': 2.0.0
+      '@vgpu/adapter-mock': 0.5.0(@vgpu/adapter-node@0.5.0)
+      '@vgpu/adapter-node': 0.5.0
+      '@vgpu/core': 0.5.0(@vgpu/adapter-node@0.5.0)
+      '@vgpu/wgsl': 0.5.0(@vgpu/adapter-node@0.5.0)
+      '@vgpu/wgsl-std': 0.5.0
+      '@webgpu/types': 0.1.74
+      pixelmatch: 7.2.0
+      pngjs: 7.0.0
+      wgpu-matrix: 3.4.2
+      zod: 4.6.5
+    transitivePeerDependencies:
+      - supports-color
+
   vite-plus@0.3.1(@edge-runtime/vm@3.2.0)(@opentelemetry/api@1.9.1)(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(msw@2.13.4(@types/node@26.5.1)(typescript@7.0.2))(tsx@4.23.13)(typescript@7.0.2)(unrun@0.2.36)(yaml@2.9.1):
     dependencies:
       '@oxc-project/types': 0.148.0
@@ -12137,6 +12249,15 @@ snapshots:
   web-namespaces@2.0.1: {}
 
   web-streams-polyfill@3.3.3: {}
+
+  webgpu@0.4.0:
+    dependencies:
+      '@webgpu/types': 0.1.74
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
+
+  wgpu-matrix@3.4.2: {}
 
   which@7.0.0:
     dependencies:

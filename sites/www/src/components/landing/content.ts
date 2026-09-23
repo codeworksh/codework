@@ -19,6 +19,11 @@ export const hero = {
 	secondary: { label: "View on GitHub", href: GITHUB_URL },
 };
 
+export const workspace = {
+	title: "Section title placeholder",
+	description: "Placeholder: a sentence about building with CodeWork.",
+};
+
 export const about = {
 	lead: "Headline placeholder for ",
 	phrases: ["the first idea.", " second idea.", " third idea."],

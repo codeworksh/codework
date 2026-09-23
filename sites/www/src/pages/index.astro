@@ -1,12 +1,13 @@
 ---
 import { ArrowRight, BookOpen, Box, GitBranch, Layers, Play, Rocket, Sparkles, Users } from "lucide-react";
 import Layout from "@/components/layout.astro";
-import { about, community, features, footer, showcase, start } from "@/components/landing/content";
+import { about, community, features, footer, showcase, start, workspace } from "@/components/landing/content";
 import { Field } from "@/components/landing/field";
 import { GithubIcon } from "@/components/landing/github";
 import { Header } from "@/components/landing/header";
 import { Hero } from "@/components/landing/hero";
 import { Pixels } from "@/components/landing/pixels";
+import { Scene } from "@/components/landing/scene";
 import { Typewriter } from "@/components/landing/typewriter";
 import { WORDMARK } from "@/components/landing/wordmark";
 import "@/styles/site.css";
@@ -24,6 +25,16 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 	<Header client:load />
 	<main>
 		<Hero client:load />
+
+		<section id="workspace" class="border-b border-border-subtle">
+			<div class={section}>
+				<h2 class={heading}>{workspace.title}</h2>
+				<p class={lede}>{workspace.description}</p>
+				<div class="mt-6 border border-border-subtle lg:mt-10">
+					<Scene client:visible />
+				</div>
+			</div>
+		</section>
 
 		<section id="about">
 			<div class={section}>

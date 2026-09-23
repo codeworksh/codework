@@ -22,7 +22,8 @@
 		"lucide-react": "^1.47.0",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0",
-		"tailwindcss": "^4.3.3"
+		"tailwindcss": "^4.3.3",
+		"vgpu": "^0.5.0"
 	},
 	"devDependencies": {
 		"@types/mdx": "^2.0.14",
