@@ -27,9 +27,20 @@ const run = (...args: ReadonlyArray<string>) => {
 const runIsolated = (env: NodeJS.ProcessEnv, ...args: ReadonlyArray<string>) => {
 	const home = mkdtempSync(join(tmpdir(), "codework-cli-"));
 	try {
+		return runIn(home, env, ...args);
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+	}
+};
+
+/** `runIsolated` against a home the caller owns, for commands whose effect outlives one spawn. */
+const runIn = (home: string, env: NodeJS.ProcessEnv, ...args: ReadonlyArray<string>) => {
+	{
 		// HOME too: provider SDKs cache credentials under it (e.g. Vercel's OIDC
 		// token in ~/Library/Application Support), so "isolated" must hide them.
-		const childEnv: NodeJS.ProcessEnv = { ...process.env, HOME: home, ...env };
+		// The catalog is pinned to the workspace's unless a case says otherwise, so no
+		// spawn downloads one into its throwaway home.
+		const childEnv: NodeJS.ProcessEnv = { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models, ...env };
 		for (const [key, value] of Object.entries(env)) {
 			if (value === undefined) delete childEnv[key];
 		}
@@ -43,8 +54,6 @@ const runIsolated = (env: NodeJS.ProcessEnv, ...args: ReadonlyArray<string>) => 
 				timeout: 20_000,
 			},
 		);
-	} finally {
-		rmSync(home, { recursive: true, force: true });
 	}
 };
 
@@ -60,7 +69,7 @@ describe("codework CLI", () => {
 			expect(result.status).toBe(1);
 			expect(result.stderr).toContain("settings-test-provider");
 			expect(result.stderr).toContain("settings-test-model");
-			expect(result.stderr).toContain("error[model-not-found]");
+			expect(result.stderr).toContain("error[model-not-found-error]");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
@@ -133,8 +142,8 @@ describe("codework CLI", () => {
 		);
 
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("error[model-catalog]: model catalog not found");
-		expect(result.stderr).toContain("hint: run `codework models generate`");
+		expect(result.stderr).toContain("error[model-catalog-missing]: model catalog not found");
+		expect(result.stderr).toContain("hint: run `codework models refresh`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");
 	});
@@ -151,7 +160,7 @@ describe("codework CLI", () => {
 		);
 
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("error[authentication]");
+		expect(result.stderr).toContain("error[provider-authentication-error]");
 		expect(result.stderr).toContain("openrouter API key is missing");
 		expect(result.stderr).toContain("hint: set OPENROUTER_API_KEY and retry");
 		expect(result.stderr).not.toContain("Runner.TurnError");
@@ -197,7 +206,7 @@ describe("codework CLI", () => {
 		expect(result.stdout).toContain("--provider");
 		expect(result.stdout).toContain("Model catalog provider ID");
 		expect(result.stdout).toContain("providers");
-		expect(result.stdout).toContain("generate");
+		expect(result.stdout).toContain("refresh");
 	});
 
 	it("documents OAuth management as subcommands", () => {
@@ -411,39 +420,50 @@ describe("codework CLI", () => {
 		);
 
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("error[model-catalog]: model catalog not found");
-		expect(result.stderr).toContain("hint: run `codework models generate`");
+		expect(result.stderr).toContain("error[model-catalog-missing]: model catalog not found");
+		expect(result.stderr).toContain("hint: run `codework models refresh`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");
 	});
 
-	it("generates model catalog to specified path with models generate", () => {
-		const targetDir = mkdtempSync(join(tmpdir(), "codework-gen-"));
-		const targetFile = join(targetDir, "custom-models.json");
+	it("refreshes the catalog in the home only when it is stale or forced", () => {
+		const home = mkdtempSync(join(tmpdir(), "codework-refresh-"));
+		const snapshot = join(home, "modelsdev.json");
+		const catalog = join(home, "models.gen.json");
+		const env = { CODEWORK_MODELS_FILE: undefined, OPENCODE_MODELS_DEV_FILE: snapshot };
+		writeFileSync(snapshot, JSON.stringify({}));
 		try {
-			const result = runIsolated({}, "models", "generate", targetFile);
+			const first = runIn(home, env, "models", "refresh");
+			expect(first.status).toBe(0);
+			expect(first.stdout).toBe(`${catalog}\n`);
+			expect(first.stderr).toContain(`Refreshed model catalog at ${catalog}`);
+			expect(existsSync(catalog)).toBe(true);
 
-			expect(result.status).toBe(0);
-			expect(result.stdout).toBe(`${targetFile}\n`);
-			expect(result.stderr).toContain(`Generated model catalog at ${targetFile}`);
-			expect(existsSync(targetFile)).toBe(true);
+			const second = runIn(home, env, "models", "refresh");
+			expect(second.status).toBe(0);
+			expect(second.stderr).toContain("is fresh; pass --force");
+
+			const forced = runIn(home, env, "models", "refresh", "--force");
+			expect(forced.status).toBe(0);
+			expect(forced.stderr).toContain(`Refreshed model catalog at ${catalog}`);
+
+			const listed = runIn(home, env, "models", "providers");
+			expect(listed.status).toBe(0);
+			expect(listed.stdout).toContain("openai-codex\n");
 		} finally {
-			rmSync(targetDir, { recursive: true, force: true });
+			rmSync(home, { recursive: true, force: true });
 		}
 	});
 
-	it("resolves directory target with models generate <dir>", () => {
-		const targetDir = mkdtempSync(join(tmpdir(), "codework-gen-"));
-		const targetFile = join(targetDir, "models.gen.json");
-		try {
-			const result = runIsolated({}, "models", "generate", targetDir);
+	it("reports a failed refresh", () => {
+		const result = runIsolated(
+			{ CODEWORK_MODELS_FILE: undefined, OPENCODE_MODELS_URL: "http://127.0.0.1:1" },
+			"models",
+			"refresh",
+		);
 
-			expect(result.status).toBe(0);
-			expect(result.stdout).toBe(`${targetFile}\n`);
-			expect(result.stderr).toContain(`Generated model catalog at ${targetFile}`);
-			expect(existsSync(targetFile)).toBe(true);
-		} finally {
-			rmSync(targetDir, { recursive: true, force: true });
-		}
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain("error[catalog-refresh-failed]: failed to refresh the model catalog at");
+		expect(result.stderr).toContain("hint: check the network connection and retry");
 	});
 });

@@ -1,4 +1,4 @@
-import { Plugin, Runner, SandboxError, SessionStore, Settings } from "@codeworksh/harness/effect";
+import { ModelCatalog, Plugin, Runner, SandboxError, SessionStore, Settings } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { Duration, Effect, Schema } from "effect";
 import { Client } from "../server/client.ts";
@@ -7,10 +7,6 @@ import { writeError } from "./output.ts";
 /** Bad flag or argument combinations the parser cannot express on its own. */
 export class InvalidInputError extends Schema.TaggedError<InvalidInputError>()("CLI.InvalidInputError", {
 	message: Schema.String,
-}) {}
-
-export class ModelgenError extends Schema.TaggedError<ModelgenError>()("CLI.ModelgenError", {
-	cause: Schema.Defect(),
 }) {}
 
 export class OAuthError extends Schema.TaggedError<OAuthError>()("CLI.OAuthError", {
@@ -23,13 +19,13 @@ export class OAuthError extends Schema.TaggedError<OAuthError>()("CLI.OAuthError
  * rendered inside the handler that owns them, so only the CLI's own errors reach
  * the top-level renderer.
  */
-export type CommandError = InvalidInputError | ModelgenError | OAuthError;
+export type CommandError = InvalidInputError | OAuthError;
 
 const isInvalidInputError = Schema.is(InvalidInputError);
-const isModelgenError = Schema.is(ModelgenError);
 const isOAuthError = Schema.is(OAuthError);
 const isProviderError = Schema.is(Runner.ProviderError);
 const isModelCatalogError = Schema.is(Runner.ModelCatalogError);
+const isModelCatalogRefreshError = Schema.is(ModelCatalog.RefreshError);
 const isModelNotFoundError = Schema.is(Runner.ModelNotFoundError);
 const isLLMStreamError = Schema.is(Runner.LLMStreamError);
 const isSandboxProviderError = Schema.is(SandboxProvider.SandboxProviderError);
@@ -42,37 +38,6 @@ const isSettingsError = Schema.is(Settings.SettingsError);
 const isSandboxDriverNotRegisteredError = Schema.is(SandboxError.SandboxDriverNotRegisteredError);
 const isSandboxDriverRegistrationError = Schema.is(SandboxError.SandboxDriverRegistrationError);
 const isExecutionError = Schema.is(Client.ExecutionError);
-
-const providerCategory = (reason: Runner.ProviderFailureReason): string => {
-	switch (reason._tag) {
-		case "Runner.ProviderAuthenticationError":
-			return "authentication";
-		case "Runner.ProviderConfigurationError":
-			return "configuration";
-		case "Runner.ProviderAuthorizationError":
-			return "authorization";
-		case "Runner.ProviderModelUnavailableError":
-			return "model_unavailable";
-		case "Runner.ProviderRateLimitError":
-			return "rate_limited";
-		case "Runner.ProviderQuotaError":
-			return "quota";
-		case "Runner.ProviderInvalidRequestError":
-			return "invalid_request";
-		case "Runner.ProviderContentPolicyError":
-			return "content_policy";
-		case "Runner.ProviderTimeoutError":
-			return "timeout";
-		case "Runner.ProviderTransportError":
-			return "transport";
-		case "Runner.ProviderUnavailableError":
-			return "provider_unavailable";
-		case "Runner.ProviderInvalidResponseError":
-			return "invalid_response";
-		case "Runner.ProviderUnknownError":
-			return "provider";
-	}
-};
 
 const credentialHint = (provider: string): string => {
 	switch (provider) {
@@ -132,6 +97,37 @@ const unknownMessage = (error: unknown): string => {
  * usually hand-written in a settings file, so the phase is worth translating.
  */
 /** One hint per reason. Lowercase, like everything else a plugin failure prints. */
+const providerCategory = (reason: Runner.ProviderFailureReason): string => {
+	switch (reason._tag) {
+		case "Runner.ProviderAuthenticationError":
+			return "provider-authentication-error";
+		case "Runner.ProviderConfigurationError":
+			return "provider-configuration-error";
+		case "Runner.ProviderAuthorizationError":
+			return "provider-authorization-error";
+		case "Runner.ProviderModelUnavailableError":
+			return "provider-model-unavailable-error";
+		case "Runner.ProviderRateLimitError":
+			return "provider-rate-limit-error";
+		case "Runner.ProviderQuotaError":
+			return "provider-quota-error";
+		case "Runner.ProviderInvalidRequestError":
+			return "provider-invalid-request-error";
+		case "Runner.ProviderContentPolicyError":
+			return "provider-content-filter-error";
+		case "Runner.ProviderTimeoutError":
+			return "provider-timeout-error";
+		case "Runner.ProviderTransportError":
+			return "provider-transport-error";
+		case "Runner.ProviderUnavailableError":
+			return "provider-unavailable-error";
+		case "Runner.ProviderInvalidResponseError":
+			return "provider-invalid-response-error";
+		case "Runner.ProviderUnknownError":
+			return "provider-unknown-error";
+	}
+};
+
 const pluginReasonHint = (
 	reason:
 		| Plugin.SourceError["reason"]
@@ -196,17 +192,10 @@ export const renderError = (error: unknown): string => {
 	if (isInvalidInputError(error)) {
 		return `error: ${error.message}\n`;
 	}
-	if (isModelgenError(error)) {
-		return (
-			["error[model-catalog]: failed to generate the model catalog", "hint: check the output path and retry"].join(
-				"\n",
-			) + "\n"
-		);
-	}
 	if (isOAuthError(error)) {
 		return (
 			[
-				`error[oauth]: ${error.message}`,
+				`error[oauth-credential-error]: ${error.message}`,
 				...(error.cause === undefined ? [] : [`detail: ${unknownMessage(error.cause)}`]),
 			].join("\n") + "\n"
 		);
@@ -234,8 +223,7 @@ export const renderError = (error: unknown): string => {
 	if (isSettingsError(error)) {
 		return (
 			[
-				`error[settings]: ${error.path}`,
-				`reason: ${error.reason}`,
+				`error[settings-${error.reason}-failed]: ${error.path}`,
 				`detail: ${error.detail}`,
 				`hint: ${settingsHint(error.reason)}`,
 			].join("\n") + "\n"
@@ -273,22 +261,27 @@ export const renderError = (error: unknown): string => {
 	}
 	if (isModelCatalogError(error)) {
 		return (
-			[
-				`error[model-catalog]: ${error.message}`,
-				"hint: run `codework models generate` or set CODEWORK_MODELS_FILE to a generated catalog",
-			].join("\n") + "\n"
+			[`error[model-catalog-${error.reason}]: ${error.message}`, "hint: run `codework models refresh`"].join("\n") +
+			"\n"
+		);
+	}
+	if (isModelCatalogRefreshError(error)) {
+		return (
+			[`error[catalog-refresh-failed]: ${error.message}`, "hint: check the network connection and retry"].join(
+				"\n",
+			) + "\n"
 		);
 	}
 	if (isModelNotFoundError(error)) {
 		return (
 			[
-				`error[model-not-found]: ${error.message}`,
+				`error[model-not-found-error]: ${error.message}`,
 				"hint: check the provider/model IDs in models.gen.json or regenerate the catalog",
 			].join("\n") + "\n"
 		);
 	}
 	if (isLLMStreamError(error)) {
-		return `error[stream]: ${error.message}\n`;
+		return `error[llm-stream-error]: ${error.message}\n`;
 	}
 	// A remote run has only the category the server published; render it the same
 	// way a local typed error is rendered, minus the detail that stayed server-side.

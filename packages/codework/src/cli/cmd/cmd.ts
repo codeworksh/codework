@@ -336,7 +336,7 @@ export const Cmd = Spec.make("codework", {
 			],
 		}),
 		Spec.make("models", {
-			description: "List or generate the model catalog",
+			description: "List or refresh the model catalog",
 			params: {
 				provider: Flag.String("provider").pipe(Flag.withDescription("Model catalog provider ID"), Flag.optional),
 			},
@@ -352,26 +352,17 @@ export const Cmd = Spec.make("codework", {
 				Spec.make("providers", {
 					description: "List available model providers in the catalog",
 				}),
-				Spec.make("generate", {
-					description: "Generate or update the model catalog",
+				Spec.make("refresh", {
+					description: "Download the model catalog into the home if it is stale",
 					params: {
-						path: Argument.String("path").pipe(
-							Argument.withDescription(
-								"Output file or directory; defaults to CODEWORK_MODELS_FILE or ./models.gen.json",
-							),
-							Argument.optional,
+						force: Flag.Boolean("force").pipe(
+							Flag.withDescription("Download it even if it is still fresh"),
+							Flag.withDefault(false),
 						),
 					},
 					examples: [
-						{ command: "codework models generate", description: "Generate models.gen.json" },
-						{
-							command: "codework models generate .",
-							description: "Generate models.gen.json in the current directory",
-						},
-						{
-							command: "codework models generate /path/to/models.gen.json",
-							description: "Generate the catalog at an explicit path",
-						},
+						{ command: "codework models refresh", description: "Refresh a catalog older than 15 minutes" },
+						{ command: "codework models refresh --force", description: "Download the catalog now" },
 					],
 				}),
 			],

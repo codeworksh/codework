@@ -13,6 +13,7 @@ export { PromptSchema } from "./session/prompt/schema.ts";
 export { Session as SessionStore } from "./session/session.ts";
 export { Runner } from "./runner/run.ts";
 export { Location } from "./location/location.ts";
+export { ModelCatalog } from "./model/catalog.ts";
 export * as Tool from "./tool/tool.ts";
 
 export { Global } from "./global.ts";

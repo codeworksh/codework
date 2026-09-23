@@ -212,7 +212,7 @@ Vercel and Daytona are the first remote drivers. More providers can be added beh
 - Node.js 24.14.1 or newer
 - An API key for the model provider you select, or OAuth credentials created with
   `codework auth login --openai-codex` / `codework auth login --github-copilot`
-- A generated Aikit model catalog; run `codework models generate` from the project you want to use
+- Network access to models.dev the first time: the model catalog is downloaded into `<home>/models.gen.json` on demand
 
 ## CLI
 
@@ -220,8 +220,6 @@ Run the current development release without installing it globally:
 
 ```sh
 export OPENAI_API_KEY="..."
-
-pnpm dlx @codeworksh/harness@dev models generate
 
 pnpm dlx @codeworksh/harness@dev \
   --home .codework-beta \
@@ -244,7 +242,7 @@ cache    9,600 read · 0 write
 cost     $0.014200 · 1 turn
 ```
 
-`codework models generate [path]` uses Aikit's model generator and writes `./models.gen.json` by default. Set `CODEWORK_MODELS_FILE` or pass a path when you keep the catalog elsewhere.
+The model catalog lives at `<home>/models.gen.json` and is refreshed once it is older than 15 minutes; `codework models refresh --force` downloads it now. Set `CODEWORK_MODELS_FILE` to pin a catalog you manage yourself.
 
 The CLI prints the session ID to stderr. Provider, model, and thinking settings are stored with the session, so use the same home directory and session ID to continue it:
 
