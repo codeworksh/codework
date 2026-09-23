@@ -443,7 +443,9 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 				delete (block as StreamingToolCallBlock).partialJson;
 			}
 			output.time.completed = Date.now();
-			output.stopReason = runtimeOptions.signal?.aborted || output.stopReason === "aborted" ? "aborted" : "error";
+			// Only the caller's signal means "stop". An abort from inside the SDK, such as its
+			// `timeoutMs` timer, is a failure the caller did not ask for.
+			output.stopReason = runtimeOptions.signal?.aborted ? "aborted" : "error";
 			if (output.stopReason === "aborted") {
 				output.errorMessage = formatThrownError(error);
 			} else {
