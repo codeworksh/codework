@@ -3,14 +3,15 @@ import { Context } from "../context/context.ts";
 import { Control } from "../control.ts";
 import { Database } from "../db/db.ts";
 import { Event } from "../event/event.ts";
+import { EventRegistry } from "../event/registry.ts";
 import { Global } from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
-import { EventRegistry } from "../event/registry.ts";
+import { ModelCatalog } from "../model/catalog.ts";
+import { builtins } from "../plugin/builtin.ts";
 import { follow, load, type Origin, type PluginRef, type Pool } from "../plugin/catalog.ts";
 import { anchor } from "../plugin/loader.ts";
 import { PluginSource } from "../plugin/source.ts";
 import { PluginStore } from "../plugin/store.ts";
-import { builtins } from "../plugin/builtin.ts";
 import { RunnerExecute } from "../runner/execute.ts";
 import { LLM } from "../runner/llm.ts";
 import { Loop } from "../runner/loop.ts";
@@ -47,6 +48,11 @@ export interface Options {
 	readonly userConfigDir?: string;
 	readonly sandboxes?: ReadonlyArray<SandboxDriverLoader.Entry>;
 	readonly llm?: LLM.Open;
+	/**
+	 * Keep `<home>/models.gen.json` fresh for the life of the process, as a server does.
+	 * Otherwise it is checked once, at boot.
+	 */
+	readonly watchModels?: boolean;
 }
 
 export const layer = (options: Options = {}) =>
@@ -231,6 +237,7 @@ export const layer = (options: Options = {}) =>
 				Layer.provideMerge(EventRegistry.layer(definitions)),
 				Layer.provideMerge(database),
 				Layer.provideMerge(global),
+				Layer.provideMerge(ModelCatalog.layer({ home: paths.home, watch: options.watchModels ?? false })),
 			);
 		}),
 	);

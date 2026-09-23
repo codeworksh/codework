@@ -10,7 +10,7 @@ export default Runtime.handler(
 	Cmd.commands.serve,
 	Effect.fn("CLI.serve")(function* ({ host, port }) {
 		const shared = yield* Cmd.spec;
-		yield* Layer.launch(Server.layer({ host, port, harness: harnessOptions(shared) })).pipe(
+		yield* Layer.launch(Server.layer({ host, port, harness: { ...harnessOptions(shared), watchModels: true } })).pipe(
 			Effect.catch((error) =>
 				writeError(renderError(error)).pipe(
 					Effect.andThen(

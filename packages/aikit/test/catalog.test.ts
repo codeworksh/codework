@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import * as ModelCatalog from "../src/model/catalog.ts";
+import * as Model from "../src/model/model.ts";
 
 describe("ModelCatalog.path", () => {
 	const configuredPath = process.env.CODEWORK_MODELS_FILE;
@@ -15,6 +16,46 @@ describe("ModelCatalog.path", () => {
 	it("resolves an explicit catalog path", () => {
 		process.env.CODEWORK_MODELS_FILE = "fixtures/models.json";
 		expect(ModelCatalog.path()).toBe(join(process.cwd(), "fixtures/models.json"));
+	});
+
+	it("reads a configured path unless CODEWORK_MODELS_FILE is set", () => {
+		delete process.env.CODEWORK_MODELS_FILE;
+		Model.configureCatalog("configured/models.json");
+		expect(Model.catalogPath()).toBe(join(process.cwd(), "configured/models.json"));
+
+		process.env.CODEWORK_MODELS_FILE = "fixtures/models.json";
+		expect(Model.catalogPath()).toBe(join(process.cwd(), "fixtures/models.json"));
+	});
+});
+
+describe("Model.reloadCatalog", () => {
+	const configuredPath = process.env.CODEWORK_MODELS_FILE;
+	let directory: string;
+
+	beforeEach(async () => {
+		directory = await mkdtemp(join(tmpdir(), "aikit-catalog-"));
+		delete process.env.CODEWORK_MODELS_FILE;
+	});
+
+	afterEach(async () => {
+		if (configuredPath === undefined) delete process.env.CODEWORK_MODELS_FILE;
+		else process.env.CODEWORK_MODELS_FILE = configuredPath;
+		await rm(directory, { recursive: true, force: true });
+	});
+
+	it("re-reads a catalog that was missing or has since changed", async () => {
+		const catalogPath = join(directory, "models.json");
+		Model.configureCatalog(catalogPath);
+		await expect(Model.getProviders()).rejects.toMatchObject({ name: "ModelCatalogLoadError" });
+
+		await writeFile(catalogPath, JSON.stringify({ anthropic: {} }));
+		Model.reloadCatalog();
+		await expect(Model.getProviders()).resolves.toEqual(["anthropic"]);
+
+		await writeFile(catalogPath, JSON.stringify({ anthropic: {}, openai: {} }));
+		await expect(Model.getProviders()).resolves.toEqual(["anthropic"]);
+		Model.reloadCatalog();
+		await expect(Model.getProviders()).resolves.toEqual(["anthropic", "openai"]);
 	});
 });
 

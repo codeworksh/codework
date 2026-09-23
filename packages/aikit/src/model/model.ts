@@ -266,6 +266,21 @@ export function normalizeInput(input?: string[]): Array<"text" | "image"> {
 	return [...normalized];
 }
 
+/** Where the catalog is read from: `CODEWORK_MODELS_FILE`, the configured path, or `./models.gen.json`. */
+export const catalogPath = ModelCatalog.path;
+
+/** Read the catalog from `path` from now on, dropping whatever was already loaded. */
+export function configureCatalog(path: string): void {
+	ModelCatalog.configure(path);
+	registry.reset();
+}
+
+/** Drop the loaded catalog, so the next lookup re-reads the file -- after it was regenerated. */
+export function reloadCatalog(): void {
+	ModelCatalog.data.reset();
+	registry.reset();
+}
+
 export async function getBuiltInModels(): Promise<BuiltInModels> {
 	return (await ModelCatalog.get()) as BuiltInModels;
 }

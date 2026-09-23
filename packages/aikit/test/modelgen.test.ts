@@ -316,6 +316,50 @@ describe("generateModels", () => {
 	});
 });
 
+describe("generateModels refetch", () => {
+	it("reads models.dev again on every call, for a process that regenerates", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "aikit-modelgen-"));
+		const modelsDevPath = join(directory, "modelsdev.json");
+		const outputPath = join(directory, "models.gen.json");
+		const configuredModelsDevPath = process.env.OPENCODE_MODELS_DEV_FILE;
+		const provider = (id: string) => ({
+			id,
+			name: id,
+			env: [],
+			npm: "@ai-sdk/anthropic",
+			models: {
+				"claude-test": {
+					id: "claude-test",
+					name: "Claude Test",
+					family: "claude",
+					attachment: true,
+					tool_call: true,
+					release_date: "2026-01-01",
+					last_updated: "2026-01-01",
+					modalities: { input: ["text"], output: ["text"] },
+					open_weights: false,
+				},
+			},
+		});
+		try {
+			process.env.OPENCODE_MODELS_DEV_FILE = modelsDevPath;
+			await writeFile(modelsDevPath, JSON.stringify({ first: provider("first") }));
+			await generateModels({ path: outputPath });
+			expect(Object.keys(await ModelCatalog.load(outputPath))).toContain("first");
+
+			await writeFile(modelsDevPath, JSON.stringify({ second: provider("second") }));
+			await generateModels({ path: outputPath });
+			const catalog = await ModelCatalog.load(outputPath);
+			expect(Object.keys(catalog)).toContain("second");
+			expect(Object.keys(catalog)).not.toContain("first");
+		} finally {
+			if (configuredModelsDevPath === undefined) delete process.env.OPENCODE_MODELS_DEV_FILE;
+			else process.env.OPENCODE_MODELS_DEV_FILE = configuredModelsDevPath;
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+});
+
 describe("githubCopilotApiMethod", () => {
 	it("routes Claude 4.x/5.x to Anthropic Messages", () => {
 		for (const id of [

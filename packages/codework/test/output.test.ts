@@ -1,6 +1,6 @@
 /* @effect-diagnostics cryptoRandomUUID:off -- fixtures only need distinct message IDs. */
 import { Message } from "@codeworksh/aikit";
-import { Plugin, Runner, Settings } from "@codeworksh/harness/effect";
+import { ModelCatalog, Plugin, Runner, Settings } from "@codeworksh/harness/effect";
 import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { describe, expect, it } from "vite-plus/test";
 import { renderError } from "../src/cli/error.ts";
@@ -98,7 +98,9 @@ describe("CLI output", () => {
 			}),
 		);
 
-		expect(output).toContain("error[authentication]: openrouter/stealth/ox-alpha: provider credentials are missing");
+		expect(output).toContain(
+			"error[provider-authentication-error]: openrouter/stealth/ox-alpha: provider credentials are missing",
+		);
 		expect(output).toContain("provider: openrouter");
 		expect(output).toContain("hint: set OPENROUTER_API_KEY and retry");
 		expect(output).not.toContain("Runner.ProviderError");
@@ -120,6 +122,32 @@ describe("CLI output", () => {
 		expect(output).not.toContain("PluginSourceError");
 	});
 
+	it("tags each provider failure reason", () => {
+		const fields = { message: "failed", isRetryable: false };
+		for (const [reason, tag] of [
+			[new Runner.ProviderRateLimitError(fields), "provider-rate-limit-error"],
+			[new Runner.ProviderContentPolicyError(fields), "provider-content-filter-error"],
+			[new Runner.ProviderInvalidResponseError(fields), "provider-invalid-response-error"],
+			[new Runner.ProviderUnavailableError(fields), "provider-unavailable-error"],
+		] as const) {
+			const output = renderError(new Runner.ProviderError({ provider: "openai", model: "gpt-5.5", reason }));
+			expect(output).toContain(`error[${tag}]: `);
+		}
+	});
+
+	it("tags model catalog failures by reason, and a failed refresh apart from them", () => {
+		expect(
+			renderError(
+				new Runner.ModelCatalogError({ path: "/home/models.gen.json", reason: "invalid", detail: "bad json" }),
+			),
+		).toBe("error[model-catalog-invalid]: bad json\nhint: run `codework models refresh`\n");
+		expect(
+			renderError(new ModelCatalog.RefreshError({ path: "/home/models.gen.json", detail: "offline" })),
+		).toContain(
+			"error[catalog-refresh-failed]: failed to refresh the model catalog at /home/models.gen.json: offline",
+		);
+	});
+
 	it("names the file, the reason and the key when settings cannot be used", () => {
 		const output = renderError(
 			new Settings.SettingsError({
@@ -129,7 +157,7 @@ describe("CLI output", () => {
 			}),
 		);
 
-		expect(output).toContain("error[settings]: /project/codework.json");
+		expect(output).toContain("error[settings-decode-failed]: /project/codework.json");
 		expect(output).toContain("detail: model.options.timeoutMs: invalid value");
 		expect(output).toContain("hint: the key above holds a value this setting does not accept");
 	});

@@ -698,7 +698,7 @@ describe("WebSocket client", () => {
 			expect(error._tag).toBe("Client.ExecutionError");
 			expect(error.message).toContain("missing-test-provider");
 			// The category survives the wire, so a client can branch on it.
-			if (error._tag === "Client.ExecutionError") expect(error.type).toBe("model.not-found");
+			if (error._tag === "Client.ExecutionError") expect(error.type).toBe("model-not-found-error");
 		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("10 seconds"), Effect.runPromise));
 
 	it("runs the CLI against the server without booting a local harness", () =>

@@ -12,12 +12,13 @@ import * as AikitFailure from "@codeworksh/aikit/failure";
 import { getGitHubCopilotApiKey, JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
 import { getOpenAICodexApiKey, JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Duration, Effect, Exit, Fiber, Scope, Stream } from "effect";
+import { ModelCatalog } from "../model/catalog.ts";
 import type { SessionSchema } from "../session/schema.ts";
+import { merge } from "../settings/merge.ts";
+import { resolveOverrides, resolveRequest } from "../settings/resolve.ts";
+import type { Block } from "../settings/schema.ts";
 import type { State } from "../state/state.ts";
 import { LLMEventPublisher } from "./event.ts";
-import { resolveOverrides, resolveRequest } from "../settings/resolve.ts";
-import { merge } from "../settings/merge.ts";
-import type { Block } from "../settings/schema.ts";
 import { Runner } from "./run.ts";
 
 export interface Input {
@@ -120,36 +121,6 @@ export const providerError = (
 const providerErrorFromUnknown = (input: Pick<Input, "provider" | "model">, cause: unknown) =>
 	providerError(input, AikitFailure.normalize(cause));
 
-const modelCatalogFailure = (
-	cause: unknown,
-):
-	| {
-			readonly path: string;
-			readonly reason: "missing" | "unreadable" | "empty" | "invalid";
-			readonly message: string;
-	  }
-	| undefined => {
-	if (typeof cause !== "object" || cause === null || !("name" in cause) || cause.name !== "ModelCatalogLoadError") {
-		return undefined;
-	}
-	if (!("data" in cause) || typeof cause.data !== "object" || cause.data === null) return undefined;
-	const data = cause.data;
-	if (
-		!("path" in data) ||
-		typeof data.path !== "string" ||
-		!("message" in data) ||
-		typeof data.message !== "string" ||
-		!("reason" in data) ||
-		(data.reason !== "missing" &&
-			data.reason !== "unreadable" &&
-			data.reason !== "empty" &&
-			data.reason !== "invalid")
-	) {
-		return undefined;
-	}
-	return { path: data.path, reason: data.reason, message: data.message };
-};
-
 /** Read structured terminal data while remaining compatible with older Aikit messages. */
 export const messageFailure = (message: Message.AssistantMessage): AikitFailure.Failure => {
 	const candidate = (message as Message.AssistantMessage & { readonly failure?: unknown }).failure;
@@ -167,16 +138,7 @@ export type Resolve = (
 export const resolve: Resolve = Effect.fn("LLM.resolve")(function* (input) {
 	const model = yield* Effect.tryPromise({
 		try: () => llm(input.provider, input.model, resolveOverrides(input.settings ?? {})),
-		catch: (cause) => {
-			const catalog = modelCatalogFailure(cause);
-			return catalog === undefined
-				? providerErrorFromUnknown(input, cause)
-				: new Runner.ModelCatalogError({
-						path: catalog.path,
-						reason: catalog.reason,
-						detail: catalog.message,
-					});
-		},
+		catch: (cause) => ModelCatalog.loadError(cause) ?? providerErrorFromUnknown(input, cause),
 	});
 	if (model === undefined) {
 		return yield* new Runner.ModelNotFoundError({ provider: input.provider, model: input.model });

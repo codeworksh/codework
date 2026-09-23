@@ -1,15 +1,17 @@
+import { ModelCatalog } from "@codeworksh/harness/effect";
 import { Effect, Option } from "effect";
 import { Runtime } from "../../../../framework/runtime.ts";
 import { InvalidInputError, reportFailure } from "../../../error.ts";
 import { writeOut } from "../../../output.ts";
 import { Cmd } from "../../cmd.ts";
-import { loadCatalog } from "./catalog.ts";
+import { synced } from "./catalog.ts";
 
 export default Runtime.handler(
 	Cmd.commands.models,
 	Effect.fn("CLI.models.list")(function* ({ provider }) {
 		const program = Effect.gen(function* () {
-			const catalog = yield* loadCatalog;
+			yield* synced;
+			const catalog = yield* ModelCatalog.models;
 			if (Option.isSome(provider)) {
 				const providerId = provider.value;
 				if (!Object.hasOwn(catalog, providerId)) {

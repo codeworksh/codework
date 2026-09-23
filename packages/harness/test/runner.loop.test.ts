@@ -665,7 +665,7 @@ describe("runner loop — provider failure", () => {
 			const failed = lifecycle[1]!;
 			expect(Schema.is(EventList.ExecutionFailed)(failed)).toBe(true);
 			if (Schema.is(EventList.ExecutionFailed)(failed)) {
-				expect(failed.data.error.type).toBe("provider.auth");
+				expect(failed.data.error.type).toBe("provider-authentication-error");
 				expect(failed.data.error.message).toContain("provider failed");
 			}
 		}),

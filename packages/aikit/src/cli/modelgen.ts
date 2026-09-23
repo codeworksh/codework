@@ -6,7 +6,6 @@ import * as ModelCatalog from "../model/catalog.ts";
 import * as Model from "../model/model.ts";
 import { GITHUB_COPILOT_STATIC_HEADERS } from "../providers/github-copilot/copilot-headers.ts";
 import * as Filesystem from "../utils/filesystem.ts";
-import { lazy } from "../utils/lazy.ts";
 
 const DEFAULT_PROVIDER_BASE_URLS: Partial<Record<Model.KnownProviderEnum, string>> = {
 	[Model.KnownProviderEnum.anthropic]: "https://api.anthropic.com/v1",
@@ -82,7 +81,6 @@ export type BuiltInModels = Model.BuiltInModels;
 // Doesn't represent the full spec from models.dev.
 // Represents the provider entries on a best-effort basis.
 type ModelsDevCatalog = Record<string, ModelsDevProvider>;
-type LazyModelsDevCatalog = ReturnType<typeof lazy<Promise<ModelsDevCatalog>>>;
 
 function modelsDevURL(): string {
 	return process.env.OPENCODE_MODELS_URL || "https://models.dev";
@@ -92,27 +90,23 @@ function modelsDevPath(): string | undefined {
 	return process.env.OPENCODE_MODELS_DEV_FILE;
 }
 
-const modelsDevData: LazyModelsDevCatalog = lazy(async () => {
+async function pullModelsDevData(): Promise<ModelsDevCatalog> {
 	const path = modelsDevPath();
 	if (path) {
 		const result = await Filesystem.readJson<ModelsDevCatalog>(path).catch(() => undefined);
 		if (result) return result;
 	}
 
-	const json = await fetch(`${modelsDevURL()}/api.json`).then((x) => x.text());
-	return JSON.parse(json) as ModelsDevCatalog;
-});
-
-async function pullModelsDevData(): Promise<ModelsDevCatalog> {
-	return modelsDevData();
+	const response = await fetch(`${modelsDevURL()}/api.json`);
+	if (!response.ok) throw new Error(`models.dev responded ${response.status} ${response.statusText}`);
+	return (await response.json()) as ModelsDevCatalog;
 }
 
 function toModelValue(providerId: string, provider: ModelsDevProvider, model: ModelsDevModel): Model.Info | undefined {
 	return applyModification(providerId, provider, model);
 }
 
-async function loadBuiltInFromModelsDev() {
-	const catalog = await pullModelsDevData();
+function loadBuiltInFromModelsDev(catalog: ModelsDevCatalog) {
 	return pipe(
 		catalog,
 		pickBy((provider) =>
@@ -583,7 +577,7 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 export async function generateModels(args: { path?: string | undefined } = {}): Promise<string> {
 	const path = resolve(args.path ?? ModelCatalog.path());
 	const catalog = await pullModelsDevData();
-	const modelsDev = await loadBuiltInFromModelsDev();
+	const modelsDev = loadBuiltInFromModelsDev(catalog);
 	const customCodexModels = openAICodexBuiltInModels();
 	const copilotProvider = catalog[GITHUB_COPILOT_PROVIDER_ID];
 
@@ -592,7 +586,7 @@ export async function generateModels(args: { path?: string | undefined } = {}): 
 		[OPENAI_CODEX_PROVIDER_ID]: customCodexModels,
 		...(copilotProvider ? { [GITHUB_COPILOT_PROVIDER_ID]: githubCopilotBuiltInModels(copilotProvider) } : {}),
 	};
-	await Filesystem.writeJson(path, allModels);
+	await Filesystem.writeJsonAtomic(path, allModels);
 	return path;
 }
 

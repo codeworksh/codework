@@ -76,7 +76,7 @@ codework run --server ws://127.0.0.1:7433/rpc --sandbox-id <sandbox-id> "Start a
 
 The default address is `127.0.0.1:7433`; `--port 0` picks an available port and prints the actual URL. Set `--home`, `--database`, and `--user-config-dir` on the server. Model credentials, plugins, and working directories are resolved by the server. A remote run does not boot a local harness.
 
-Events are live and not replayed. The client subscribes before admitting its prompt and waits for execution completion after rendering. Lost connections and overflow fail the command; disconnecting leaves server work running. Ctrl-C sends `session.interrupt`, which interrupts the shared session. Remote runs print the sandbox ID for reuse. `session.interrupt` returns `{ interrupted }` as soon as the stop is accepted; `session.wait` is the separate cleanup barrier. A busy period reports itself as `session.execution.started` followed by exactly one of `succeeded`, `failed`, or `interrupted` -- a failure carries a namespaced category (`provider.auth`, `model.not-found`, `sandbox.mount`, ...) that the client renders, and an interruption carries whether it was the user or a server shutdown. Managed sandboxes remain available until explicitly stopped or server shutdown; external sandboxes are not stopped.
+Events are live and not replayed. The client subscribes before admitting its prompt and waits for execution completion after rendering. Lost connections and overflow fail the command; disconnecting leaves server work running. Ctrl-C sends `session.interrupt`, which interrupts the shared session. Remote runs print the sandbox ID for reuse. `session.interrupt` returns `{ interrupted }` as soon as the stop is accepted; `session.wait` is the separate cleanup barrier. A busy period reports itself as `session.execution.started` followed by exactly one of `succeeded`, `failed`, or `interrupted` -- a failure carries a category (`provider-authentication-error`, `model-not-found-error`, `sandbox-mount-error`, ...) that the client renders, and an interruption carries whether it was the user or a server shutdown. Managed sandboxes remain available until explicitly stopped or server shutdown; external sandboxes are not stopped.
 
 The v0 endpoint has no authentication; its default binding is loopback. Plugins publish their own event types by declaring them (`Plugin.define({ events: [...] })`, namespaced `plugin.<plugin-id>.*`); the feed carries those and skips types nothing declared. Invalid payloads for declared types fail with a typed encoding error.
 
@@ -142,19 +142,16 @@ codework models providers
 
 ---
 
-### `codework models generate`
+### `codework models refresh`
 
-Generate or update the `models.gen.json` catalog from model registries.
+The model catalog lives at `<home>/models.gen.json` (`~/.codework` unless `--home` says otherwise). Every local command checks it before use and downloads a new one once it is older than 15 minutes (`CODEWORK_MODELS_TTL`, e.g. `"1 hour"`); `codework serve` also re-checks every minute and reloads the file whenever it changes. A failed download keeps the previous catalog.
 
 ```bash
-# Generate to CODEWORK_MODELS_FILE or ./models.gen.json
-codework models generate
+# Download the catalog if it is missing or stale; no network call otherwise
+codework models refresh
 
-# Generate into a specific directory (resolves to ./models.gen.json)
-codework models generate .
-
-# Generate to an explicit file path
-codework models generate ./path/to/custom-models.json
+# Download it now
+codework models refresh --force
 ```
 
 ---
@@ -212,14 +209,15 @@ file, with `{ "plugin": "<id>", "enabled": false }`.
 
 ## Environment Variables
 
-| Variable                       | Description                                          |
-| :----------------------------- | :--------------------------------------------------- |
-| `CODEWORK_MODELS_FILE`         | Path to the generated `models.gen.json` catalog file |
-| `OPENAI_API_KEY`               | API key for OpenAI models                            |
-| `ANTHROPIC_API_KEY`            | API key for Anthropic models                         |
-| `OPENROUTER_API_KEY`           | API key for OpenRouter models                        |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | API key for Google models                            |
-| `XAI_API_KEY`                  | API key for xAI models                               |
+| Variable                       | Description                                                         |
+| :----------------------------- | :------------------------------------------------------------------ |
+| `CODEWORK_MODELS_FILE`         | Pin the catalog to a file you manage; never refreshed automatically |
+| `CODEWORK_MODELS_TTL`          | How old the catalog may get before a refresh (default `15 minutes`) |
+| `OPENAI_API_KEY`               | API key for OpenAI models                                           |
+| `ANTHROPIC_API_KEY`            | API key for Anthropic models                                        |
+| `OPENROUTER_API_KEY`           | API key for OpenRouter models                                       |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | API key for Google models                                           |
+| `XAI_API_KEY`                  | API key for xAI models                                              |
 
 ---
 

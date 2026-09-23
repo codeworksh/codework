@@ -11,6 +11,17 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Added
+
+- Added `Model.configureCatalog(path)`, `Model.catalogPath()`, and `Model.reloadCatalog()`. An embedder can keep `models.gen.json` somewhere other than the working directory (`CODEWORK_MODELS_FILE` still wins), and a long-running process can pick up a regenerated catalog without restarting.
+
+### Fixed
+
+- Fixed `generateModels` reusing the first models.dev download for the life of the process. Every call now fetches again, so a process that regenerates its catalog gets current data.
+- Fixed a catalog that failed to load, for example because the file did not exist yet, staying failed for the life of the process. `Model.reloadCatalog()` now clears the failure along with the loaded catalog.
+- Fixed `generateModels` writing the catalog in place, where a concurrent reader could see a partial file. It now writes a temp file and renames it over the catalog.
+- Fixed an error response from models.dev surfacing as a JSON parse error. It now fails with the HTTP status.
+
 ## [@codeworksh/aikit@0.9.1]
 
 ### Fixed

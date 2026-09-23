@@ -55,8 +55,20 @@ export function projectRoot(): string {
 }
 
 export const filename = "models.gen.json";
+
+let configured: string | undefined;
+
+/**
+ * Read the catalog from `catalogPath` instead of `./models.gen.json`, for an
+ * embedder that keeps it elsewhere. `CODEWORK_MODELS_FILE` still wins.
+ */
+export function configure(catalogPath: string): void {
+	configured = resolve(catalogPath);
+	data.reset();
+}
+
 export function path(): string {
-	return resolve(process.env.CODEWORK_MODELS_FILE ?? join(projectRoot(), filename));
+	return resolve(process.env.CODEWORK_MODELS_FILE ?? configured ?? join(projectRoot(), filename));
 }
 
 export async function load(catalogPath = path()): Promise<GeneratedCatalog> {
