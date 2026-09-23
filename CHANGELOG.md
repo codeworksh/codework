@@ -11,6 +11,12 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.9.1]
+
+### Fixed
+
+- Fixed a request that hit `timeoutMs` being reported as if the caller had cancelled it. Only the caller's own `signal` now ends a stream with `stopReason: "aborted"`; an abort raised inside the AI SDK, such as its timeout timer, ends it with `stopReason: "error"` and a `Timeout` failure. Callers can now tell a timeout from a cancel and retry it, and `codework run` prints `error[timeout]` instead of exiting silently as if Ctrl+C had been pressed.
+
 ## [@codeworksh/aikit@0.9.0]
 
 ### Added
