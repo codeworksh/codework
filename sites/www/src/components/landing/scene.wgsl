@@ -195,10 +195,10 @@ const ZZZ_FROM = vec2f(1128.0, 762.0);
 		col = lift(col, 0.55);
 	}
 
-	// The poster reads itself: BUILD, TWEAK, EXTEND, REPEAT.
+	// The poster reads itself: BUILD, BREATHE, EXERCISE, REPEAT.
 	let word = i32(t * 0.8) % 4;
 	var words = array<vec2f, 4>(vec2f(175.0, 201.0), vec2f(219.0, 244.0), vec2f(261.0, 286.0), vec2f(303.0, 328.0));
-	if (inside(p, vec2f(1108.0, words[word].x), vec2f(1240.0, words[word].y))) {
+	if (inside(p, vec2f(1108.0, words[word].x), vec2f(1264.0, words[word].y))) {
 		col = lift(col, 0.6);
 	}
 	// And its cursor blinks.
