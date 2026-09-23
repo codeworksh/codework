@@ -1,7 +1,7 @@
 ---
 import { ArrowRight, BookOpen, Box, GitBranch, Layers, Play, Rocket, Sparkles, Users } from "lucide-react";
 import Layout from "@/components/layout.astro";
-import { about, community, features, footer, showcase, start, workspace } from "@/components/landing/content";
+import { about, community, features, footer, showcase, start } from "@/components/landing/content";
 import { Field } from "@/components/landing/field";
 import { GithubIcon } from "@/components/landing/github";
 import { Header } from "@/components/landing/header";
@@ -26,19 +26,9 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 	<main>
 		<Hero client:load />
 
-		<section id="workspace" class="border-b border-border-subtle">
-			<div class={section}>
-				<h2 class={heading}>{workspace.title}</h2>
-				<p class={lede}>{workspace.description}</p>
-				<div class="mt-6 border border-border-subtle lg:mt-10">
-					<Scene client:visible />
-				</div>
-			</div>
-		</section>
-
 		<section id="about">
 			<div class={section}>
-				<div class="grid gap-8 lg:grid-cols-[1.35fr_1fr] lg:gap-20">
+				<div class="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
 					<div>
 						<h2 class={heading}>
 							<span class="sr-only">{about.lead}{about.phrases[0]}</span>
@@ -46,17 +36,9 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 						</h2>
 						{about.paragraphs.map((text) => <p class="mt-5 max-w-[35.5rem] text-[15px] leading-relaxed text-text-secondary text-pretty first-of-type:mt-6">{text}</p>)}
 					</div>
-					<figure class="relative max-w-md self-center border border-border-subtle bg-surface p-5 transition-colors hover:border-border-strong lg:justify-self-end lg:p-7">
-						<div aria-hidden="true" class="h-10 font-sans text-6xl leading-none font-bold text-brand">&ldquo;</div>
-						<blockquote class="font-sans text-xl leading-snug font-medium text-balance text-text">{about.quote.text}</blockquote>
-						<figcaption class="mt-6 flex items-center gap-3.5">
-							<span class="size-12 shrink-0 border border-border-subtle bg-surface-2"></span>
-							<span class="flex flex-col leading-snug">
-								<span class="text-[15px] font-medium text-text">{about.quote.name}</span>
-								<span class="text-[13px] text-text-muted">{about.quote.role}</span>
-							</span>
-						</figcaption>
-					</figure>
+					<div class="overflow-hidden border border-border-subtle">
+						<Scene client:visible />
+					</div>
 				</div>
 			</div>
 		</section>
