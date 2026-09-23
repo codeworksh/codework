@@ -23,4 +23,4 @@ $ npx aikit modelgen src/models.gen.json
 Generated model catalog at /path/to/project/src/models.gen.json
 ```
 
-**Note:** If you are running your application in a different directory structure, you might need to ensure `models.gen.json` is located in the root of your project or specify the exact location via `CODEWORK_MODELS_FILE` during runtime so AiKit can discover it.
+**Note:** If you are running your application in a different directory structure, you might need to ensure `models.gen.json` is located in the root of your project or specify the exact location via `CODEWORK_MODELS_FILE` during runtime so AiKit can discover it. An embedder can also call `Model.configureCatalog(path)` to read the catalog from its own location (`CODEWORK_MODELS_FILE` still wins), and `Model.reloadCatalog()` after regenerating it in a long-running process.
