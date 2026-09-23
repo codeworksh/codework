@@ -5,6 +5,7 @@ import defaultMdxComponents from "fumadocs-ui/mdx";
 import { Docs } from "@/components/docs";
 import Layout from "@/components/layout.astro";
 import { source } from "@/lib/source";
+import "@/styles/docs.css";
 
 interface Props {
 	page: CollectionEntry<"docs">;
@@ -26,7 +27,7 @@ const toc: TOCItemType[] = headings.map((heading) => ({
 }));
 ---
 
-<Layout title={`${page.data.title} | CodeWork`} description={page.data.description}>
+<Layout title={`${page.data.title} | CodeWork`} description={page.data.description} docs>
 	<Docs tree={source.getPageTree()} pathname={Astro.url.pathname} params={Astro.params} page={{ toc }} client:load>
 		<h1 class="text-3xl font-semibold">{page.data.title}</h1>
 		{page.data.description && <p class="mb-8 text-lg text-fd-muted-foreground">{page.data.description}</p>}

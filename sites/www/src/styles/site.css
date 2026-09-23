@@ -1,0 +1,114 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme inline {
+	--font-sans: "Geist Variable", sans-serif;
+	--font-mono: "JetBrains Mono Variable", monospace;
+
+	--color-bg: var(--t-bg);
+	--color-surface: var(--t-surface);
+	--color-surface-2: var(--t-surface-2);
+	--color-border-subtle: var(--t-border-subtle);
+	--color-border-strong: var(--t-border-strong);
+	--color-text: var(--t-text);
+	--color-text-secondary: var(--t-text-secondary);
+	--color-text-muted: var(--t-text-muted);
+	--color-brand: var(--t-brand);
+	--color-brand-ink: var(--t-brand-ink);
+	--color-field: var(--t-field-bg);
+}
+
+/* The field's inks double as the wordmark's bands; the canvas reads them at runtime. */
+:root {
+	--t-bg: #11151b;
+	--t-surface: #161b22;
+	--t-surface-2: #1c232c;
+	--t-border-subtle: #222a34;
+	--t-border-strong: #3a4655;
+	--t-text: #d8e1ea;
+	--t-text-secondary: #aab6c3;
+	--t-text-muted: #7f8b99;
+	--t-brand: #7fb4dc;
+	--t-brand-ink: #0b0f14;
+	--t-field-bg: #0d1117;
+	--t-field-dim: #1f3346;
+	--t-field-mid: #35597a;
+	--t-field-lit: #7fb4dc;
+	--t-field-hover: #a9cdea;
+	--t-field-crest: #d4e8f7;
+	--nav-h: 3.5rem;
+	color-scheme: dark;
+}
+
+body {
+	background: var(--color-bg);
+	color: var(--color-text);
+	font-family: var(--font-mono);
+	-webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+	font-family: var(--font-sans);
+	text-wrap: balance;
+}
+
+[id] {
+	scroll-margin-top: var(--nav-h);
+}
+
+/* The wordmark spans 88% of the padded hero, capped at 896px, so its cell size is known in CSS. */
+.pixel-container {
+	container-type: inline-size;
+}
+.pixel-container > * {
+	--pxc: calc(min((100cqw - 48px) * 0.88, 896px) / 85);
+}
+
+@keyframes field-in {
+	from {
+		opacity: 0;
+	}
+}
+.field-in {
+	animation: field-in 900ms ease-out both;
+}
+
+@keyframes hero-rise {
+	from {
+		opacity: 0;
+		transform: translateY(14px);
+	}
+}
+[data-hero-stagger] {
+	animation: hero-rise 550ms cubic-bezier(0.21, 0.47, 0.32, 0.98) both;
+	animation-delay: calc(var(--stagger, 0) * 90ms + 300ms);
+}
+
+.typed-caret {
+	display: inline-block;
+	width: 0.1em;
+	height: 1em;
+	margin-left: 0.1em;
+	vertical-align: -0.16em;
+	background: var(--color-brand);
+	animation: typed-blink 1.06s step-end infinite;
+}
+[data-typing="1"] .typed-caret {
+	animation: none;
+}
+@keyframes typed-blink {
+	50% {
+		opacity: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.field-in,
+	[data-hero-stagger],
+	.typed-caret {
+		animation: none;
+	}
+}
