@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./fonts.css";
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
 @import "./themes.css";
@@ -33,4 +34,55 @@
 	--color-fd-muted: var(--t-surface-2);
 	--color-fd-secondary: var(--t-surface-2);
 	--color-fd-muted-foreground: var(--t-text-secondary);
+}
+
+/*
+ * Flat navigation: rows are plain text, the active page is picked out by the brand colour alone,
+ * and section separators read as quiet labels. Drops Fumadocs' pills and guide lines.
+ */
+:is(#nd-sidebar, #nd-sidebar-mobile) p {
+	font-size: 0.8125rem;
+	color: var(--t-text-muted);
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) :is(a[data-active], button[data-state]) {
+	padding-block: 0.3125rem;
+	font-size: 0.9375rem;
+	color: var(--t-text);
+	background: none;
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) :is(a[data-active], button[data-state]):hover {
+	color: var(--t-text-secondary);
+}
+
+:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active="true"],
+:is(#nd-sidebar, #nd-sidebar-mobile) a[data-active="true"]:hover {
+	color: var(--t-brand);
+}
+
+/* Active-row marker and the folder guide line. */
+:is(#nd-sidebar, #nd-sidebar-mobile) :is(a[data-active], [data-state] > div)::before {
+	content: none;
+}
+
+/* Reading type, after the Omarchy manual: compact body copy under Geist headings. */
+.prose {
+	font-size: 15px;
+	line-height: 1.65;
+	color: var(--t-text-secondary);
+}
+
+.prose :is(h2, h3) {
+	color: var(--t-text);
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.prose h2 {
+	font-size: 1.25rem;
+}
+
+.prose h3 {
+	font-size: 1.05rem;
 }

@@ -1,13 +1,9 @@
 @import "tailwindcss";
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/jetbrains-mono";
+@import "./fonts.css";
 @import "./themes.css";
 @import "./wipe.css";
 
 @theme inline {
-	--font-sans: "Geist Variable", sans-serif;
-	--font-mono: "JetBrains Mono Variable", monospace;
-
 	--color-bg: var(--t-bg);
 	--color-surface: var(--t-surface);
 	--color-surface-2: var(--t-surface-2);
@@ -28,15 +24,6 @@
 body {
 	background: var(--color-bg);
 	color: var(--color-text);
-	font-family: var(--font-mono);
-	-webkit-font-smoothing: antialiased;
-}
-
-h1,
-h2,
-h3 {
-	font-family: var(--font-sans);
-	text-wrap: balance;
 }
 
 [id] {

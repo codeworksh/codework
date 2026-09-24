@@ -28,7 +28,11 @@ const toc: TOCItemType[] = headings.map((heading) => ({
 ---
 
 <Layout title={`${page.data.title} | CodeWork`} description={page.data.description} docs>
-	<Docs tree={source.getPageTree()} pathname={Astro.url.pathname} params={Astro.params} page={{ toc }} client:load>
+	<Docs tree={source.getPageTree()} pathname={Astro.url.pathname} params={Astro.params} page={{
+		toc,
+		className: "md:px-12 xl:px-16",
+		breadcrumb: { includeSeparator: true, className: "*:text-fd-muted-foreground! *:font-normal!" },
+	}} client:load>
 		<h1 class="text-3xl font-semibold">{page.data.title}</h1>
 		{page.data.description && <p class="mb-8 text-lg text-fd-muted-foreground">{page.data.description}</p>}
 		<div class="prose flex-1">

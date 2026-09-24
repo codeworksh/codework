@@ -1,4 +1,34 @@
 ---
-title: Coming soon
-description: CodeWork documentation is on its way.
+title: CodeWork Documentation
+sidebarTitle: Welcome
+description: CodeWork is a coding agent for code and work. Use it to understand your codebase, plan, build features, fix bugs, and much more. Hell, it'll even clear out your pending Linear issues.
 ---
+
+![CodeWork workspace](/images/workspace.webp)
+
+## Start here
+
+<Cards>
+	<Card title="Quickstart" href="/docs/quickstart">
+		Install the CLI, connect a model, and make your first change.
+	</Card>
+	<Card title="Models & Pricing" href="/docs/models">
+		Sign in with a subscription or bring your own API key.
+	</Card>
+	<Card title="Changelog" href="/docs/changelog">
+		See what's new in each release.
+	</Card>
+</Cards>
+
+## Providers
+
+CodeWork supports subscription-based providers via OAuth and API key providers via environment variables.
+
+| Provider                                                | Access                           |
+| ------------------------------------------------------- | -------------------------------- |
+| [OpenAI Codex](/docs/models/openai-codex)               | ChatGPT Plus or Pro subscription |
+| [GitHub Copilot](/docs/models/github-copilot)           | GitHub Copilot subscription      |
+| [OpenRouter](/docs/models/openrouter)                   | `OPENROUTER_API_KEY`             |
+| [Anthropic, OpenAI, Gemini, xAI](/docs/models#api-keys) | API key                          |
+
+See [Models & Pricing](/docs/models) for the full list.

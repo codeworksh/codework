@@ -6,6 +6,8 @@ const docs = defineCollection({
 	loader: glob({ pattern: "**/*.{md,mdx}", base: "./content/docs" }),
 	schema: z.object({
 		title: z.string(),
+		/** Shorter label for the sidebar and search when the page title is too long for them. */
+		sidebarTitle: z.string().optional(),
 		description: z.string().optional(),
 		icon: z.string().optional(),
 	}),
