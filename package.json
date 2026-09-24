@@ -10,10 +10,6 @@
 		"type": "git",
 		"url": "git+https://github.com/codeworksh/codework.git"
 	},
-	"workspaces": [
-		"packages/*",
-		"extras/*"
-	],
 	"type": "module",
 	"scripts": {
 		"build": "vp run -r build",

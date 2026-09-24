@@ -23,7 +23,7 @@
 		"@vercel/sandbox": "^3.3.0"
 	},
 	"devDependencies": {
-		"@types/node": "^26.5.1",
+		"@types/node": "catalog:",
 		"effect": "4.0.0-rc.115"
 	},
 	"peerDependencies": {
