@@ -64,7 +64,7 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 					{showcase.items.map((title) => (
 						<div>
 							<div class="flex aspect-video items-center justify-center border border-border-subtle bg-surface-2 text-text-muted">
-								<Play class="size-8" />
+								<Play className="size-8" />
 							</div>
 							<p class="mt-3 text-sm text-text">{title}</p>
 							<p class="text-[13px] text-text-muted">Channel placeholder</p>
@@ -81,12 +81,12 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 				<div class="mt-6 grid gap-4 lg:mt-10 lg:grid-cols-2">
 					{start.cards.map((item) => (
 						<a href="/docs/" class={`${card} p-6 lg:p-8`}>
-							<Box class="size-6 text-brand" />
+							<Box className="size-6 text-brand" />
 							<h3 class="mt-4 text-lg font-medium text-text">{item.title}</h3>
 							<p class="mt-2 text-sm leading-relaxed text-text-secondary">{item.body}</p>
 							<span class={cta}>
 								{item.cta}
-								<ArrowRight class="size-4 transition-transform group-hover:translate-x-0.5" />
+								<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
 							</span>
 						</a>
 					))}
@@ -104,7 +104,7 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 						return (
 							<div class={card}>
 								<div class="flex aspect-[4/3] items-center justify-center bg-surface-2 text-text-muted">
-									<Icon class="size-8" />
+									<Icon className="size-8" />
 								</div>
 								<h3 class="mt-4 text-[15px] font-medium text-text">{item.title}</h3>
 								<p class="mt-1.5 text-[13px] leading-relaxed text-text-secondary">{item.body}</p>
@@ -129,7 +129,7 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 								<p class="mt-1.5 text-[13px] leading-relaxed text-text-secondary">{item.body}</p>
 								<span class={cta}>
 									{item.cta}
-									<ArrowRight class="size-4 transition-transform group-hover:translate-x-0.5" />
+									<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
 								</span>
 							</a>
 						);
