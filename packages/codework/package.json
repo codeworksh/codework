@@ -59,6 +59,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@agentclientprotocol/sdk": "^1.5.0",
 		"@codeworksh/aikit": "workspace:*",
 		"@codeworksh/plugin": "workspace:*",
 		"@effect/platform-node": "4.0.0-rc.115",

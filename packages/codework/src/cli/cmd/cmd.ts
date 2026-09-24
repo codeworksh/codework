@@ -1,5 +1,5 @@
-import { Schema } from "effect";
 import { Model } from "@codeworksh/aikit";
+import { Schema } from "effect";
 import { Argument, Flag } from "effect/unstable/cli";
 import { Spec } from "../../framework/spec.ts";
 
@@ -366,6 +366,10 @@ export const Cmd = Spec.make("codework", {
 					],
 				}),
 			],
+		}),
+		Spec.make("acp", {
+			description: "Start the CodeWork Agent Client Protocol (ACP) server over stdio",
+			examples: [{ command: "codework acp", description: "Start the ACP server on stdio" }],
 		}),
 	],
 });
