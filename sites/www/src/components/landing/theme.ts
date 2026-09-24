@@ -44,10 +44,16 @@ export const OPEN_PICKER_EVENT = "codework-open-picker";
 export const previewOf = (id: string) =>
 	id === DEFAULT_THEME ? "/images/workspace.webp" : `https://omarchy.org/assets/images/theme-previews/${id}.webp`;
 
-/** Inlined in <head> so the saved theme is on the page before it first paints. */
-export const themeInitScript = `(function(){try{var t=localStorage.getItem(${JSON.stringify(THEME_KEY)});if(${JSON.stringify(
-	THEMES.map((t) => t.id),
-)}.indexOf(t)>=0)document.documentElement.dataset.theme=t}catch(e){}})()`;
+/**
+ * Inlined in <head> so the saved theme is on the page before it first paints. It also sets the
+ * `dark` class Fumadocs keys its dark styles on, and re-applies both after each docs navigation,
+ * since Astro's client router replaces <html>'s attributes with the incoming page's.
+ */
+export const themeInitScript = `(function(){var ids=${JSON.stringify(THEMES.map((t) => t.id))},light=${JSON.stringify(
+	THEMES.filter((t) => t.light).map((t) => t.id),
+)};function apply(){var t=${JSON.stringify(DEFAULT_THEME)};try{var s=localStorage.getItem(${JSON.stringify(
+	THEME_KEY,
+)});if(ids.indexOf(s)>=0)t=s}catch(e){}var r=document.documentElement;r.dataset.theme=t;r.classList.toggle("dark",light.indexOf(t)<0)}apply();document.addEventListener("astro:after-swap",apply)})()`;
 
 export function readTheme(): string {
 	const current = document.documentElement.dataset.theme;
@@ -58,6 +64,7 @@ function applyTheme(id: string) {
 	const root = document.documentElement;
 	root.classList.add("no-transitions");
 	root.dataset.theme = id;
+	root.classList.toggle("dark", !THEMES.find((t) => t.id === id)?.light);
 	try {
 		localStorage.setItem(THEME_KEY, id);
 	} catch {

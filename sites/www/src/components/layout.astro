@@ -12,14 +12,14 @@ interface Props {
 const { title, description, docs = false } = Astro.props;
 ---
 
-<html lang="en" class={docs ? "dark" : undefined}>
+<html lang="en" class="dark">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>{title}</title>
 		{description && <meta name="description" content={description} />}
 		{docs && <ClientRouter />}
-		{!docs && <script is:inline set:html={themeInitScript} />}
+		<script is:inline set:html={themeInitScript} />
 	</head>
 	{
 		docs ? (
