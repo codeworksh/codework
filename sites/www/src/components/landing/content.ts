@@ -13,8 +13,11 @@ export const nav = [
 
 export const hero = {
 	callout: { text: "Announcement placeholder: something new in CodeWork", href: "#" },
-	title: "Tagline placeholder for CodeWork",
-	lines: ["A supporting line about what CodeWork is.", "A second line about why it matters."],
+	title: "Make Code Work for You",
+	lines: [
+		"An open source agent that helps you write code, so you can have more fun shipping software.",
+		"Extend it with plugins that bundle tools, prompts, and skills, then share them via npm or git.",
+	],
 	primary: { label: "Get started", href: "/docs/" },
 	secondary: { label: "View on GitHub", href: GITHUB_URL },
 };
