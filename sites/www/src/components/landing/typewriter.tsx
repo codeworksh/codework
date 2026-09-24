@@ -25,6 +25,25 @@ export function Typewriter({ phrases }: { phrases: readonly string[] }) {
 			while (i < a.length && i < b.length && a[i] === b[i]) i++;
 			return i;
 		};
+		// Hold the heading at its tallest phrase, so the copy below never moves as phrases change length.
+		const block = el.closest<HTMLElement>("[data-typed-block]");
+		const reserve = () => {
+			if (!block) return;
+			const shown = el.textContent;
+			block.style.minHeight = "";
+			let tallest = 0;
+			for (const phrase of phrases) {
+				el.textContent = phrase;
+				tallest = Math.max(tallest, block.getBoundingClientRect().height);
+			}
+			el.textContent = shown;
+			block.style.minHeight = `${Math.ceil(tallest)}px`;
+		};
+		reserve();
+		window.addEventListener("resize", reserve);
+		// Measured against the web font, once it has loaded.
+		void document.fonts?.ready.then(reserve);
+
 		let timer = 0;
 		let index = 0;
 		let length = 0;
@@ -66,6 +85,8 @@ export function Typewriter({ phrases }: { phrases: readonly string[] }) {
 		return () => {
 			observer.disconnect();
 			window.clearTimeout(timer);
+			window.removeEventListener("resize", reserve);
+			if (block) block.style.minHeight = "";
 		};
 	}, [phrases]);
 

@@ -33,14 +33,16 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 			<div class={section}>
 				<div class="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
 					<div>
-						<h2 class={heading}>
+						<h2 data-typed-block class={heading}>
 							<span class="sr-only">
-								{about.lead}
-								{about.phrases[0]}
+								{about.lead.trim()}: {about.phrases.map((phrase) => phrase.replace(/\.$/, "")).join("; ")}.
 							</span>
+							{/* The lead holds its own line and the options type on the line below, so nothing reflows. */}
 							<span aria-hidden="true">
-								{about.lead}
-								<Typewriter phrases={about.phrases} client:visible />
+								<span class="block">{about.lead.trim()}</span>
+								<span class="block text-brand">
+									<Typewriter phrases={about.phrases} client:visible />
+								</span>
 							</span>
 						</h2>
 						{about.paragraphs.map((text) => (

@@ -12,19 +12,28 @@ export const nav = [
 ] as const;
 
 export const hero = {
-	callout: { text: "Announcement placeholder: something new in CodeWork", href: "#" },
+	callout: { text: "Adds support for ACP, agent client protocol", href: "#" },
 	title: "Make Code Work for You",
 	lines: [
-		"An open source agent that helps you write code, so you can have fun shipping great software.",
-		"Extend it with plugins that bundle tools, prompts, and skills, then share them via npm or git.",
+		"An open source coding agent that makes shipping great software fun.",
+		"Extend it with plugins of tools, prompts, skills & more, shared via npm or git.",
 	],
 	primary: { label: "Get started", href: "/docs/" },
 	secondary: { label: "View on GitHub", href: GITHUB_URL },
 };
 
 export const about = {
-	lead: "Headline placeholder for ",
-	phrases: ["the first idea.", " second idea.", " third idea."],
+	lead: "An agent harness that ",
+	// The typewriter cycles through these, backspacing only as far as the next one differs.
+	phrases: [
+		"has hundreds of models.",
+		"steers rather than terminates.",
+		"is minimal, yet extensible.",
+		"supports sandboxed fs & shell.",
+		"works with ChatGPT Plus/Pro.",
+		"works with GitHub Copilot.",
+		"is not bloated.",
+	],
 	paragraphs: [
 		"Intro paragraph placeholder. Describe the problem CodeWork solves and who it is for, in two or three sentences.",
 		"Second paragraph placeholder. Describe the approach: what CodeWork picks for you, and what stays in your hands.",
