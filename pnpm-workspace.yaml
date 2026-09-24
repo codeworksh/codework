@@ -16,31 +16,9 @@ allowBuilds:
    # vgpu's Node adapter; the site renders in the browser only.
    "@vgpu/adapter-node": false
    esbuild: true
-   lmdb: true
-   msgpackr-extract: true
    msw: true
    node-liblzma: true
    protobufjs: true
    webgpu: false
 
-onlyBuiltDependencies:
-   - "@mongodb-js/zstd"
-   - esbuild
-   - lmdb
-   - msgpackr-extract
-   - msw
-   - node-liblzma
-
 storeDir: .pnpm-store
-
-minimumReleaseAgeExclude:
-   - "@vercel/rust@1.4.0"
-   - vercel@54.18.7
-   - "@effect/tsgo-darwin-arm64@0.36.4"
-   - "@effect/tsgo-darwin-x64@0.36.4"
-   - "@effect/tsgo-linux-arm64@0.36.4"
-   - "@effect/tsgo-linux-arm@0.36.4"
-   - "@effect/tsgo-linux-x64@0.36.4"
-   - "@effect/tsgo-win32-arm64@0.36.4"
-   - "@effect/tsgo-win32-x64@0.36.4"
-   - "@effect/tsgo@0.36.4"
