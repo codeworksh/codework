@@ -188,7 +188,7 @@ export function Scene() {
 	}, []);
 
 	return (
-		<div className="relative aspect-[1322/920] w-full overflow-hidden bg-field">
+		<div className="relative aspect-1322/920 w-full overflow-hidden bg-field">
 			<img
 				src={IMAGE}
 				alt=""

@@ -142,7 +142,7 @@ export function Picker() {
 	if (!open) {
 		if (!hint) return null;
 		return (
-			<div role="status" className="notice-in fixed top-[68px] right-4 z-60 w-72">
+			<div role="status" className="notice-in fixed top-17 right-4 z-60 w-72">
 				<div className="relative border border-border-subtle bg-surface">
 					<button
 						type="button"

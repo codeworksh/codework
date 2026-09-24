@@ -44,7 +44,7 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 							</span>
 						</h2>
 						{about.paragraphs.map((text) => (
-							<p class="mt-5 max-w-[35.5rem] text-[15px] leading-relaxed text-text-secondary text-pretty first-of-type:mt-6">
+							<p class="mt-5 max-w-142 text-[15px] leading-relaxed text-text-secondary text-pretty first-of-type:mt-6">
 								{text}
 							</p>
 						))}
@@ -103,7 +103,7 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 						const Icon = featureIcons[i]!;
 						return (
 							<div class={card}>
-								<div class="flex aspect-[4/3] items-center justify-center bg-surface-2 text-text-muted">
+								<div class="flex aspect-4/3 items-center justify-center bg-surface-2 text-text-muted">
 									<Icon className="size-8" />
 								</div>
 								<h3 class="mt-4 text-[15px] font-medium text-text">{item.title}</h3>

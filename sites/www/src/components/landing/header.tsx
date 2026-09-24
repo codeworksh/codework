@@ -33,7 +33,7 @@ export function Header() {
 					aria-label="CodeWork home"
 					className="text-brand transition-colors hover:text-(--t-field-hover)"
 				>
-					<Pixels glyph={MARK} className="size-[22px]" />
+					<Pixels glyph={MARK} className="size-5.5" />
 				</a>
 				<nav className="hidden items-center sm:flex">
 					{nav.map((link) => (
