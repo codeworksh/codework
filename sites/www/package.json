@@ -7,7 +7,7 @@
 		"build": "astro build",
 		"dev": "astro dev",
 		"preview": "astro preview",
-		"typecheck": "astro sync && tsc --noEmit"
+		"typecheck": "astro sync && astro check && tsc --noEmit"
 	},
 	"dependencies": {
 		"@astrojs/markdown-remark": "^7.3.1",
@@ -26,9 +26,10 @@
 		"vgpu": "^0.5.0"
 	},
 	"devDependencies": {
+		"@astrojs/check": "^0.9.10",
 		"@types/mdx": "^2.0.14",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
-		"typescript": "catalog:"
+		"typescript": "^6.0.3"
 	}
 }
