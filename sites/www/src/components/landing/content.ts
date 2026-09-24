@@ -16,7 +16,7 @@ export const hero = {
 	title: "Make Code Work for You",
 	lines: [
 		"An open source coding agent that makes shipping great software fun.",
-		"Extend it with plugins of tools, prompts, skills & more, shared via npm or git.",
+		"Extend it with plugins like tools, prompts, skills & more, shared via npm or git.",
 	],
 	primary: { label: "Get started", href: "/docs/" },
 	secondary: { label: "View on GitHub", href: GITHUB_URL },
@@ -26,7 +26,7 @@ export const about = {
 	lead: "An agent harness that ",
 	// The typewriter cycles through these, backspacing only as far as the next one differs.
 	phrases: [
-		"has hundreds of models.",
+		"supports hundreds of models.",
 		"steers rather than terminates.",
 		"is minimal, yet extensible.",
 		"supports sandboxed fs & shell.",
@@ -35,9 +35,9 @@ export const about = {
 		"is not bloated.",
 	],
 	paragraphs: [
-		"Intro paragraph placeholder. Describe the problem CodeWork solves and who it is for, in two or three sentences.",
-		"Second paragraph placeholder. Describe the approach: what CodeWork picks for you, and what stays in your hands.",
-		"Third paragraph placeholder, pointing to the principles or docs behind it all.",
+		"CodeWork is open source, the way devtools should be. A harness malleable enough to fit how you work, and how your team works.",
+		"CodeWork handles the loop, the sandbox and the models. Everything else is yours to shape: tools, skills, prompts and more, bundled as plugins and shared with your team over npm or git.",
+		"Start with the defaults and change them as you go. The docs cover how it's built, and how to make it yours.",
 	],
 };
 
