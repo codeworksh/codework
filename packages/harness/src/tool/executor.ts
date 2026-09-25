@@ -333,7 +333,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 				}
 				if (before.value?.block) {
 					const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-					return errored(call, [text(before.value.reason || "Tool execution was blocked")], now);
+					return errored(call, [text(before.value?.reason || "Tool execution was blocked")], now);
 				}
 			}
 

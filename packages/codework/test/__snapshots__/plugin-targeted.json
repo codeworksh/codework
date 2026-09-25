@@ -1,0 +1,74 @@
+{
+	"steps": [
+		{
+			"command": "plugin install",
+			"status": 0,
+			"stdout": "Installed @fixture/plugin@^1.0.0 (fixture.prompt.owner)\nInstalled git+file://<root>/git-plugin#main (fixture.prompt.git)\n2 installed, 2 local\n"
+		},
+		{
+			"command": "plugin check git+file://<root>/git-plugin#main --refresh",
+			"status": 0,
+			"stdout": "git+file://<root>/git-plugin#main  <sha> -> <sha>\n1 update available.\n"
+		},
+		{
+			"command": "plugin update git+file://<root>/git-plugin#main",
+			"status": 0,
+			"stdout": "Updated git+file://<root>/git-plugin#main to <sha>\n1 updated.\n"
+		},
+		{
+			"command": "plugin check @fixture/plugin --refresh",
+			"status": 0,
+			"stdout": "@fixture/plugin@^1.0.0  1.0.0 -> 1.1.0\n1 update available.\n"
+		},
+		{
+			"command": "plugin update @fixture/plugin",
+			"status": 0,
+			"stdout": "Updated @fixture/plugin@^1.0.0 to 1.1.0\n1 updated.\n"
+		},
+		{
+			"command": "plugin check ./.codework/local.mjs",
+			"status": 0,
+			"stdout": "<root>/.codework/local.mjs  local: no remote revision to compare\n"
+		},
+		{
+			"command": "plugin check fixture-local-package",
+			"status": 0,
+			"stdout": "<root>/local-package  local: no remote revision to compare\n"
+		},
+		{
+			"command": "plugin update ./.codework/local.mjs",
+			"status": 0,
+			"stdout": "<root>/.codework/local.mjs  local: no remote revision to compare\n"
+		},
+		{
+			"command": "plugin check @fixture/missing",
+			"status": 1,
+			"stdout": "Plugin \"@fixture/missing\" is not configured. Run `codework plugin list` to see what is.\n"
+		},
+		{
+			"command": "plugin update @fixture/missing",
+			"status": 1,
+			"stdout": "Plugin \"@fixture/missing\" is not configured. Run `codework plugin list` to see what is.\n"
+		},
+		{
+			"command": "plugin check fixture.prompt.owner",
+			"status": 1,
+			"stdout": "Plugin \"fixture.prompt.owner\" is not configured. Run `codework plugin list` to see what is.\n"
+		},
+		{
+			"command": "plugin update fixture.prompt.owner",
+			"status": 1,
+			"stdout": "Plugin \"fixture.prompt.owner\" is not configured. Run `codework plugin list` to see what is.\n"
+		},
+		{
+			"command": "plugin check --refresh",
+			"status": 0,
+			"stdout": "Everything is up to date.\n"
+		}
+	],
+	"runtime": [
+		"[owner:registry]",
+		"[git:2]",
+		"[local]"
+	]
+}

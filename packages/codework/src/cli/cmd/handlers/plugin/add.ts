@@ -55,7 +55,7 @@ export default Runtime.handler(
 			// What goes in the file, which is not always what was typed: a relative path anchors to
 			// the settings file being written, not to the directory the command ran in.
 			const entry = yield* written(reference, {
-				cwd: from,
+				hostDir: from,
 				file: target.path,
 				root: target.root,
 			});

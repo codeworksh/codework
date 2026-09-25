@@ -15,8 +15,14 @@ import {
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Harness, Session } from "@codeworksh/harness/effect";
+import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
+import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
 import { NAME, npmrc, withRegistry } from "../../harness/test/fixtures/registry.ts";
+
+// The runtime half of an E2E boots the harness in-process, which reads the workspace catalog.
+process.env.CODEWORK_MODELS_FILE ??= fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const plugin = (name: string) => fileURLToPath(new URL(`../../../extras/${name}`, import.meta.url));
@@ -66,6 +72,93 @@ const GENERATION = 1789564800000;
 
 /** The one project settings file: `<root>/.codework/settings.jsonc`. */
 const settings = (root: string) => join(root, ".codework", "settings.jsonc");
+
+/** An `.npmrc` whose registry refuses every connection, so an install anchored to it fails now. */
+const DEAD_NPMRC = "registry=http://127.0.0.1:9/\n@fixture:registry=http://127.0.0.1:9/\nfetch-retries=0\n";
+
+/**
+ * A published prompt plugin that leaves a marker, so the runtime proves which artifact it loaded:
+ * `served` names the registry the bytes came from, and an options `marker` replaces it.
+ */
+const ownerPlugin = (served: string) =>
+	[
+		"export default {",
+		"  id: 'fixture.prompt.owner',",
+		"  kind: 'prompt',",
+		"  setup: (ctx, options) =>",
+		`    ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ''}[owner:\${options.marker ?? '${served}'}]\`),`,
+		"};",
+		"",
+	].join("\n");
+
+const LOCAL_PLUGIN = [
+	"export default {",
+	"  id: 'fixture.prompt.local',",
+	"  kind: 'prompt',",
+	"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}[local]`),",
+	"};",
+	"",
+].join("\n");
+
+/**
+ * Exchanges in one real runtime process, resolve-only, against what the CLI filed -- one per host
+ * directory, in order, each keeping its own session. The markers each system prompt ends with are
+ * the plugins that exchange actually ran.
+ *
+ * The app runs from its home (`hostCwd`), nowhere near a project: settings reach a session only
+ * through the `hostDir` it is linked to. Its sandbox working directory is left to the session.
+ */
+const exchanges = async (
+	home: string,
+	hostDirs: ReadonlyArray<string>,
+	app: { readonly hostCwd?: string; readonly userConfigDir?: string } = {},
+) => {
+	const prompts: string[] = [];
+	const open = immediateOpen();
+	await Effect.runPromise(
+		Effect.gen(function* () {
+			const sessions = new Map<string, Effect.Success<ReturnType<typeof Session.create>>>();
+			for (const hostDir of hostDirs) {
+				const session = sessions.get(hostDir) ?? (yield* Session.create({ hostDir }));
+				sessions.set(hostDir, session);
+				yield* session.prompt({ text: "go", delivery: "followUp" });
+				yield* session.resume();
+				yield* session.wait();
+			}
+		}).pipe(
+			Effect.provide(
+				Harness.layer({
+					home,
+					hostCwd: app.hostCwd ?? home,
+					...(app.userConfigDir === undefined ? {} : { userConfigDir: app.userConfigDir }),
+					database: ":memory:",
+					llm: (request, signal) => {
+						prompts.push(request.context.systemPrompt ?? "");
+						return open(request, signal);
+					},
+				}),
+			),
+			Effect.scoped,
+			Effect.timeout("20 seconds"),
+			Effect.orDie,
+		),
+	);
+	expect(prompts).toHaveLength(hostDirs.length);
+	return prompts.map((prompt) => prompt.match(/\[(?:owner:[^\]]*|git:[^\]]*|layer:[^\]]*|local)\]/g) ?? []);
+};
+
+/**
+ * The run as a reviewable file: temp paths and the fixture's port are replaced, and column padding
+ * (sized to those machine-specific paths) is collapsed, so the same behaviour writes the same bytes
+ * on any machine and a change in it shows up as a diff.
+ */
+const artifact = (root: string, registries: ReadonlyArray<string>, record: Record<string, unknown>) =>
+	registries
+		.reduce(
+			(text, url, index) => text.replaceAll(url, `<registry-${index + 1}>/`),
+			`${JSON.stringify(record, null, "\t")}\n`.replaceAll(realpathSync(root), "<root>").replaceAll(root, "<root>"),
+		)
+		.replaceAll(/ {2,}/g, "  ");
 
 describe("codework plugin add/remove", () => {
 	it("adds a plugin to the project file, keeping its comments and formatting", () =>
@@ -576,6 +669,377 @@ describe("codework plugin install/list/check", () => {
 				expect(updated.status).toBe(1);
 				expect(updated.stdout).toContain(`error[plugin-resolve-failed]`);
 				expect(updated.stdout).toContain("Nothing to update.");
+			}),
+		120_000,
+	);
+
+	it(
+		"installs one artifact per registry a spec in both layers resolves to, and each view loads its own",
+		() =>
+			withProject(async ({ root, home }) => {
+				const spec = `${NAME}@^1.0.0`;
+				await withRegistry(
+					join(root, "user-registry"),
+					(user) =>
+						withRegistry(
+							join(root, "project-registry"),
+							async (project) => {
+								// The same string in both layers, each beside an `.npmrc` naming a different
+								// registry. Boot reads the user layer alone, so it needs the user file's
+								// artifact; the project's sessions read the project file last, so they need
+								// the project's. `install` has to put both on disk.
+								await npmrc(home, user);
+								writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ plugins: [spec] }));
+								await npmrc(root, project);
+								writeFileSync(settings(root), JSON.stringify({ plugins: [spec] }));
+
+								const installed = await runAsyncResult(root, "plugin", "install", "--home", home);
+								expect(installed.status, installed.stdout + installed.stderr).toBe(0);
+								expect(installed.stdout).toContain("2 installed");
+								const listed = await runAsyncResult(root, "plugin", "list", "--verbose", "--home", home);
+								expect(listed.status).toBe(0);
+
+								// One process, two views, alternating. Boot needed the user file's artifact and
+								// found it; a session outside any project keeps running it, while the project's
+								// session runs from its own view, where the project file owns the spec. Neither
+								// evicts the other, however often they take turns.
+								const elsewhere = mkdtempSync(join(tmpdir(), "codework-elsewhere-"));
+								const markers = await exchanges(home, [root, elsewhere, root, elsewhere]).finally(() =>
+									rmSync(elsewhere, { recursive: true, force: true }),
+								);
+								expect(markers).toEqual([
+									["[owner:project]"],
+									["[owner:user]"],
+									["[owner:project]"],
+									["[owner:user]"],
+								]);
+
+								await expect(
+									artifact(root, [user.url, project.url], {
+										layers: { user: [spec], project: [spec] },
+										install: installed.stdout,
+										list: listed.stdout,
+										runtime: { order: ["project", "elsewhere", "project", "elsewhere"], markers },
+									}),
+								).toMatchFileSnapshot("./__snapshots__/plugin-owner.layers.json");
+							},
+							{ source: ownerPlugin("project") },
+						),
+					{ source: ownerPlugin("user") },
+				);
+			}),
+		120_000,
+	);
+
+	it(
+		"keeps a spec both layers resolve to one registry as a single artifact",
+		() =>
+			withProject(async ({ root, home }) => {
+				const spec = `${NAME}@^1.0.0`;
+				await withRegistry(
+					join(root, "registry"),
+					async (registry) => {
+						// Two anchors, one registry: one store entry, so one line everywhere.
+						await npmrc(home, registry);
+						writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ plugins: [spec] }));
+						await npmrc(root, registry);
+						writeFileSync(settings(root), JSON.stringify({ plugins: [spec] }));
+
+						const installed = await runAsyncResult(root, "plugin", "install", "--home", home);
+						expect(installed.status, installed.stdout + installed.stderr).toBe(0);
+						expect(installed.stdout).toContain("1 installed");
+						const checked = await runAsyncResult(root, "plugin", "check", "--home", home);
+						expect(checked.status).toBe(0);
+
+						const [markers] = await exchanges(home, [root]);
+						expect(markers).toEqual(["[owner:registry]"]);
+
+						await expect(
+							artifact(root, [registry.url], {
+								layers: { user: [spec], project: [spec] },
+								install: installed.stdout,
+								check: checked.stdout,
+								runtime: markers,
+							}),
+						).toMatchFileSnapshot("./__snapshots__/plugin-owner.shared.json");
+					},
+					{ source: ownerPlugin("registry") },
+				);
+			}),
+		120_000,
+	);
+
+	it(
+		"never lets a package configuration patch move the registry a module loads from",
+		() =>
+			withProject(async ({ root, home }) => {
+				const spec = `${NAME}@^1.0.0`;
+				await withRegistry(
+					join(root, "registry"),
+					async (registry) => {
+						// The module is declared only by the user file, against a live registry. The
+						// project configures it from its own file, beside a dead `.npmrc` -- and adds a
+						// local plugin, which makes the exchange rebuild the pool and re-resolve every
+						// module under its owner's anchor.
+						mkdirSync(home, { recursive: true });
+						await npmrc(home, registry);
+						writeFileSync(join(home, "settings.jsonc"), JSON.stringify({ plugins: [spec] }));
+						writeFileSync(join(root, ".npmrc"), DEAD_NPMRC);
+						writeFileSync(join(root, ".codework", "local.mjs"), LOCAL_PLUGIN);
+						const project = [{ package: spec, options: { marker: "patched" } }, "./local.mjs"];
+						writeFileSync(settings(root), JSON.stringify({ plugins: project }));
+
+						const installed = await runAsyncResult(root, "plugin", "install", "--home", home);
+						expect(installed.status, installed.stdout + installed.stderr).toBe(0);
+						expect(installed.stdout).toContain("1 installed");
+
+						// Loaded from the user file's registry, configured by the project's patch.
+						const [markers] = await exchanges(home, [root]);
+						expect(markers).toEqual(["[owner:patched]", "[local]"]);
+
+						await expect(
+							artifact(root, [registry.url], {
+								layers: { user: [spec], project },
+								install: installed.stdout,
+								runtime: markers,
+							}),
+						).toMatchFileSnapshot("./__snapshots__/plugin-owner.patch.json");
+					},
+					{ source: ownerPlugin("registry") },
+				);
+			}),
+		120_000,
+	);
+
+	it(
+		"targets check and update at the configured plugin a spec names, and probes nothing else",
+		() =>
+			withProject(async ({ root, home }) => {
+				const spec = `${NAME}@^1.0.0`;
+				// A git plugin served from a repository on disk, so the git path runs with no network.
+				const repo = join(root, "git-plugin");
+				const commit = (revision: number) => {
+					writeFileSync(
+						join(repo, "package.json"),
+						JSON.stringify({
+							name: "fixture-git-plugin",
+							version: `1.0.${revision}`,
+							type: "module",
+							exports: "./index.js",
+						}),
+					);
+					writeFileSync(
+						join(repo, "index.js"),
+						`export default { id: "fixture.prompt.git", kind: "prompt", setup: (ctx) => ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ""}[git:${revision}]\`) };\n`,
+					);
+					for (const args of [
+						["add", "-A"],
+						["commit", "-qm", `revision ${revision}`],
+					]) {
+						const done = spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+						expect(done.status, done.stderr).toBe(0);
+					}
+				};
+				mkdirSync(repo);
+				const init = spawnSync("git", ["-C", repo, "init", "-q", "-b", "main"], { encoding: "utf8" });
+				expect(init.status, init.stderr).toBe(0);
+				spawnSync("git", ["-C", repo, "config", "user.email", "fixture@codework.test"]);
+				spawnSync("git", ["-C", repo, "config", "user.name", "fixture"]);
+				commit(1);
+				const git = `git+file://${repo}#main`;
+
+				await withRegistry(
+					join(root, "registry"),
+					async (registry) => {
+						await npmrc(root, registry);
+						writeFileSync(join(root, ".codework", "local.mjs"), LOCAL_PLUGIN);
+						mkdirSync(join(root, "local-package"));
+						writeFileSync(
+							join(root, "local-package", "package.json"),
+							JSON.stringify({ name: "fixture-local-package", type: "module", main: "./index.js" }),
+						);
+						writeFileSync(
+							join(root, "local-package", "index.js"),
+							"export default { id: 'fixture.tool.package', kind: 'tool', setup() {} };\n",
+						);
+						writeFileSync(
+							settings(root),
+							JSON.stringify({ plugins: [spec, git, "./local.mjs", "../local-package"] }),
+						);
+						const cli = (...args: ReadonlyArray<string>) =>
+							runAsyncResult(root, "plugin", ...args, "--home", home);
+						/** Whether the registry was asked about the package since `mark`. */
+						const asked = (mark: number) =>
+							registry
+								.paths()
+								.slice(mark)
+								.some((path) => path === `/${NAME}`);
+						const steps: Array<{
+							readonly command: string;
+							readonly status: number | null;
+							readonly stdout: string;
+						}> = [];
+						const step = async (...args: ReadonlyArray<string>) => {
+							const result = await cli(...args);
+							steps.push({ command: `plugin ${args.join(" ")}`, status: result.status, stdout: result.stdout });
+							return result;
+						};
+
+						const installed = await step("install");
+						expect(installed.status, installed.stdout + installed.stderr).toBe(0);
+						expect(installed.stdout).toContain("2 installed, 2 local");
+
+						// A git spec, spelled in full: only the repository is asked, never the registry.
+						let mark = registry.paths().length;
+						commit(2);
+						const gitChecked = await step("check", git, "--refresh");
+						expect(gitChecked.status).toBe(0);
+						expect(gitChecked.stdout).toMatch(
+							new RegExp(
+								`^${git.replaceAll("+", "\\+")}  [0-9a-f]{40} -> [0-9a-f]{40}\\n1 update available\\.\\n$`,
+							),
+						);
+						const gitUpdated = await step("update", git);
+						expect(gitUpdated.status).toBe(0);
+						expect(gitUpdated.stdout).toContain(`Updated ${git} to `);
+						expect(gitUpdated.stdout).not.toContain(NAME);
+						expect(asked(mark)).toBe(false);
+
+						// A registry package, named without the version it was written with.
+						registry.publish("1.1.0");
+						mark = registry.paths().length;
+						const checked = await step("check", NAME, "--refresh");
+						expect(checked.status).toBe(0);
+						expect(checked.stdout).toBe(`${spec}  1.0.0 -> 1.1.0\n1 update available.\n`);
+						const updated = await step("update", NAME);
+						expect(updated.status).toBe(0);
+						expect(updated.stdout).toBe(`Updated ${spec} to 1.1.0\n1 updated.\n`);
+						expect(asked(mark)).toBe(true);
+
+						// A local plugin says why nothing happened, rather than nothing.
+						const local = await step("check", "./.codework/local.mjs");
+						expect(local.status).toBe(0);
+						expect(local.stdout).toBe(
+							`${realpathSync(root)}/.codework/local.mjs  local: no remote revision to compare\n`,
+						);
+						// A local package answers to the name its manifest declares, as `{ package }` does.
+						const byName = await step("check", "fixture-local-package");
+						expect(byName.status).toBe(0);
+						expect(byName.stdout).toBe(
+							`${realpathSync(root)}/local-package  local: no remote revision to compare\n`,
+						);
+						const localUpdate = await step("update", "./.codework/local.mjs");
+						expect(localUpdate.status).toBe(0);
+						expect(localUpdate.stdout).toBe(local.stdout);
+
+						// A spec nothing configures -- and a plugin ID, which is not a spelling of the
+						// `plugins` array -- fails without asking anyone anything.
+						mark = registry.paths().length;
+						for (const missing of ["@fixture/missing", "fixture.prompt.owner"]) {
+							for (const verb of ["check", "update"]) {
+								const result = await step(verb, missing);
+								expect(result.status).toBe(1);
+								expect(result.stdout).toBe(
+									`Plugin "${missing}" is not configured. Run \`codework plugin list\` to see what is.\n`,
+								);
+							}
+						}
+						expect(registry.paths().length).toBe(mark);
+
+						// No spec is unchanged: everything is asked about, and it is all current now.
+						const everything = await step("check", "--refresh");
+						expect(everything.status).toBe(0);
+						expect(everything.stdout).toBe("Everything is up to date.\n");
+
+						// The runtime runs what the targeted updates filed.
+						const [markers] = await exchanges(home, [root]);
+						expect(markers).toEqual(["[owner:registry]", "[git:2]", "[local]"]);
+
+						await expect(
+							artifact(root, [registry.url], { steps, runtime: markers }).replaceAll(/[0-9a-f]{40}/g, "<sha>"),
+						).toMatchFileSnapshot("./__snapshots__/plugin-targeted.json");
+					},
+					{ source: ownerPlugin("registry") },
+				);
+			}),
+		180_000,
+	);
+
+	it(
+		"reads --user-config-dir instead of the home's settings, below the project, relative to hostCwd",
+		() =>
+			withProject(async ({ root, home }) => {
+				/** A local plugin that leaves `[layer:<name>]`, or its options' `marker` instead. */
+				const layerPlugin = (directory: string, name: string) => {
+					mkdirSync(directory, { recursive: true });
+					const file = join(directory, `${name}.mjs`);
+					writeFileSync(
+						file,
+						`export default { id: "fixture.prompt.${name}", kind: "prompt", setup: (ctx, options) => ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ""}[layer:\${options.marker ?? "${name}"}]\`) };\n`,
+					);
+					return file;
+				};
+				const write = (directory: string, plugins: ReadonlyArray<unknown>) => {
+					mkdirSync(directory, { recursive: true });
+					writeFileSync(join(directory, "settings.jsonc"), JSON.stringify({ plugins }));
+				};
+				const plugins = join(root, "plugins");
+				// The home's own settings, which the override replaces.
+				write(home, [layerPlugin(plugins, "home")]);
+				// `./cfg` typed where the app runs (`hostCwd` = the project for a CLI run).
+				const custom = join(root, "cfg");
+				const user = layerPlugin(plugins, "user");
+				write(custom, [user]);
+				// The project still outranks the user layer: it configures the user's plugin.
+				write(join(root, ".codework"), [
+					layerPlugin(plugins, "project"),
+					{ package: user, options: { marker: "user-from-project" } },
+				]);
+
+				const cli = (...args: ReadonlyArray<string>) =>
+					runAsyncResult(root, "plugin", ...args, "--home", home, "--user-config-dir", "./cfg");
+				const listed = await cli("list", "--verbose");
+				expect(listed.status, listed.stderr).toBe(0);
+				expect(listed.stdout).not.toContain("home.mjs");
+				expect(listed.stdout).toContain(`declared in: ${realpathSync(custom)}/settings.jsonc`);
+
+				// `-g` writes the user layer -- the override's file, never the home's.
+				const homeBefore = readFileSync(join(home, "settings.jsonc"), "utf8");
+				const globalAdd = await cli("add", layerPlugin(plugins, "added-user"), "-g");
+				expect(globalAdd.status, globalAdd.stdout + globalAdd.stderr).toBe(0);
+				expect(readFileSync(join(custom, "settings.jsonc"), "utf8")).toContain("added-user.mjs");
+				expect(readFileSync(join(home, "settings.jsonc"), "utf8")).toBe(homeBefore);
+				// Without `-g` the project file, as without the flag.
+				const projectAdd = await cli("add", layerPlugin(plugins, "added-project"));
+				expect(projectAdd.status, projectAdd.stdout + projectAdd.stderr).toBe(0);
+				expect(readFileSync(settings(root), "utf8")).toContain("added-project.mjs");
+
+				// A long-running server: the app runs from `hostCwd`, the session is linked to a
+				// different `hostDir`. The relative flag resolves where the app runs; the `cfg/` under
+				// the session's host directory -- where resolving against `hostDir` would land -- now
+				// holds a decoy, and is never read.
+				const app = mkdtempSync(join(tmpdir(), "codework-app-"));
+				try {
+					write(join(app, "cfg"), [user, layerPlugin(plugins, "added-user")]);
+					write(custom, [layerPlugin(plugins, "decoy")]);
+					const [markers] = await exchanges(home, [root], { hostCwd: app, userConfigDir: "./cfg" });
+					expect(markers).toEqual([
+						"[layer:user-from-project]",
+						"[layer:added-user]",
+						"[layer:project]",
+						"[layer:added-project]",
+					]);
+
+					await expect(
+						artifact(root, [], {
+							list: listed.stdout,
+							add: { global: globalAdd.stdout, project: projectAdd.stdout },
+							runtime: markers,
+						}),
+					).toMatchFileSnapshot("./__snapshots__/settings-layers.json");
+				} finally {
+					rmSync(app, { recursive: true, force: true });
+				}
 			}),
 		120_000,
 	);
