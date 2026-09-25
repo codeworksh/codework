@@ -94,17 +94,9 @@ export const layer = (options: Options = {}) =>
 			const references = (settings: SettingsInfo): ReadonlyArray<PluginRef> =>
 				options.plugins ?? [...builtins, ...settings.plugins];
 
-			/** Reference to the file that declared it, for failures that should name one. */
+			/** Reference to the file that owns it: the `.npmrc` anchor, and what a failure names. */
 			const declaredIn = (settings: SettingsInfo): ReadonlyMap<string, string> =>
-				new Map(
-					settings.declared.flatMap((one) =>
-						typeof one.entry === "string"
-							? [[one.entry, one.file] as const]
-							: "package" in one.entry
-								? [[one.entry.package, one.file] as const]
-								: [],
-					),
-				);
+				new Map(Array.from(Settings.modules(settings.declared), ([reference, one]) => [reference, one.file]));
 
 			const catalogOptions = { builtins, cache: paths.cache, hostDir: hostCwd };
 

@@ -288,6 +288,21 @@ export const load = Effect.fn("Settings.load")(function* (options: Options & { r
 	return { ...settings, plugins: declared.map((one) => one.entry), declared };
 });
 
+/**
+ * Each module reference once, owned by the **last** file to declare it (D6).
+ *
+ * The owner is not bookkeeping: its `.npmrc` chain keys the store artifact. The CLI that installs
+ * a reference and the runtime that loads it must pick the same owner, or `plugin update` refreshes
+ * an artifact the runtime never reads. Only a string entry loads a module, so only a string entry
+ * owns one -- a `{ package }` patch in another file configures it and must not move its registry.
+ * A reference keeps the position of its first declaration.
+ */
+export const modules = (declared: ReadonlyArray<Declared>): ReadonlyMap<string, Declared> => {
+	const owners = new Map<string, Declared>();
+	for (const one of declared) if (typeof one.entry === "string") owners.set(one.entry, one);
+	return owners;
+};
+
 export const layer = (options: Omit<Options, "hostDir"> = {}) =>
 	Layer.effect(
 		Service,

@@ -1,0 +1,15 @@
+{
+	"layers": {
+		"user": [
+			"@fixture/plugin@^1.0.0"
+		],
+		"project": [
+			"@fixture/plugin@^1.0.0"
+		]
+	},
+	"install": "Installed @fixture/plugin@^1.0.0 (fixture.prompt.owner)\nInstalled @fixture/plugin@^1.0.0 (fixture.prompt.owner)\n2 installed\n",
+	"list": "@fixture/plugin@^1.0.0  fixture.prompt.owner\n                        declared in: <root>/home/settings.jsonc\n@fixture/plugin@^1.0.0  fixture.prompt.owner\n                        declared in: <root>/.codework/settings.jsonc\n",
+	"runtime": [
+		"[owner:user]"
+	]
+}

@@ -12,6 +12,7 @@ export { parse, type Fetchable, type Target } from "./source.ts";
 export {
 	check,
 	type Checked,
+	digest as identity,
 	type Entry,
 	type Probe,
 	required as resolveCached,

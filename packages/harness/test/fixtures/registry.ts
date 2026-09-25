@@ -31,7 +31,13 @@ export interface Registry {
 export const NAME = "@fixture/plugin";
 
 /** A package the loader will accept, optionally with a lifecycle script that must never run. */
-const pack = async (directory: string, version: string, scripts: Record<string, string>, pluginId: string) => {
+const pack = async (
+	directory: string,
+	version: string,
+	scripts: Record<string, string>,
+	pluginId: string,
+	source: string | undefined,
+) => {
 	const root = join(directory, version, "package");
 	await mkdir(root, { recursive: true });
 	await writeFile(
@@ -40,7 +46,8 @@ const pack = async (directory: string, version: string, scripts: Record<string, 
 	);
 	await writeFile(
 		join(root, "index.js"),
-		`export default { id: ${JSON.stringify(pluginId)}, version: "${version}", kind: "tool", setup() {} };\n`,
+		source ??
+			`export default { id: ${JSON.stringify(pluginId)}, version: "${version}", kind: "tool", setup() {} };\n`,
 	);
 	await run("tar", ["-czf", "package.tgz", "package"], { cwd: join(directory, version) });
 	return readFile(join(directory, version, "package.tgz"));
@@ -49,7 +56,12 @@ const pack = async (directory: string, version: string, scripts: Record<string, 
 export const withRegistry = async (
 	directory: string,
 	body: (registry: Registry) => Promise<void>,
-	options: { readonly scripts?: Record<string, string>; readonly pluginId?: string } = {},
+	options: {
+		readonly scripts?: Record<string, string>;
+		readonly pluginId?: string;
+		/** The module every version serves, for a test that needs a plugin that does something. */
+		readonly source?: string;
+	} = {},
 ) => {
 	const versions = ["1.0.0", "1.1.0"];
 	const scripted = Object.keys(options.scripts ?? {}).length > 0;
@@ -57,7 +69,7 @@ export const withRegistry = async (
 	for (const version of versions) {
 		tarballs.set(
 			version,
-			await pack(directory, version, options.scripts ?? {}, options.pluginId ?? "fixture.plugin"),
+			await pack(directory, version, options.scripts ?? {}, options.pluginId ?? "fixture.plugin", options.source),
 		);
 	}
 
