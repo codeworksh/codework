@@ -113,7 +113,9 @@ describe("third-party plugins", () => {
 				);
 				const { contexts, prompts, path } = await exchange({
 					root,
-					userConfigDir: custom,
+					// `--user-config-dir` replaces the home's settings file, so it is named only when
+					// that is the file under test.
+					...(source === "custom" ? { userConfigDir: custom } : {}),
 					llm: toolTurn(pendingCall("acme_echo", { value: "settings" }, "call_settings")),
 				});
 				// The built-in Bash tool and prompt survive: a settings entry adds, it does not select.

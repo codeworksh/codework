@@ -1,22 +1,27 @@
 /*
  * @file Host discovery and loading for settings files.
  *
- * Three layers are read, lowest priority first, each merged onto the built-in defaults so
- * that "no file anywhere" needs no special case -- zero patches over the defaults is a
- * valid result:
+ * Two layers are read, lowest priority first, each merged onto the built-in defaults so that
+ * "no file anywhere" needs no special case -- zero patches over the defaults is a valid result:
  *
- * 1. `<Global.home>/settings.jsonc`            -- the user's own, `~/.codework` by default
- * 2. `.codework/settings.jsonc` found from `<hostDir>` upward
- *                                              -- committed with the project; the nearest file
- *                                                 wins, it is never merged with an outer one
- * 3. `<--user-config-dir>/settings.jsonc`     -- explicit override, `~` expanded, relative to `hostDir`
+ * 1. **user** -- `<--user-config-dir>/settings.jsonc` when that flag is given, otherwise
+ *    `<--home>/settings.jsonc` (`~/.codework` by default). The flag is a hard override of this
+ *    one file: the home's own settings are then not read at all, while everything else the home
+ *    holds -- credentials, cache, data -- stays where `--home` says.
+ * 2. **project** -- `.codework/settings.jsonc` found from `<hostDir>` upward, committed with the
+ *    project; the nearest file wins, it is never merged with an outer one.
  *
  * Every layer falls back to the `.json` spelling when the `.jsonc` one is absent.
  *
- * **All three are host paths.** The project layer is discovered from `hostDir` -- the host
- * directory a session belongs to -- and never from the session's `--cwd`, its working
- * directory, or its sandbox mount. Those name a place inside a mount that may not exist on this
- * machine, and a path that happens to exist here too would silently select a stranger's project.
+ * **Both are host paths, and they come from different directories:**
+ *
+ * - `hostCwd` -- the app process's working directory. `--home` and `--user-config-dir` are
+ *   app-level flags, so a relative spelling of either resolves here ({@link userConfigDir}).
+ * - `hostDir` -- the host directory a session is linked to. The project layer is discovered from
+ *   it, and from nothing else.
+ * - `cwd` -- a session's sandbox working directory, where the work happens. It names a place
+ *   inside a mount that may not exist on this machine; settings are never discovered from it,
+ *   because a path that happens to exist here too would silently select a stranger's project.
  *
  * `hostDir` is per call, because one process serves sessions in different projects, or in none.
  * A session with none reads the user layer only: there is no fallback to the process's own
@@ -41,6 +46,10 @@ import { merge, normalize } from "./merge.ts";
 import { defaults, Patch, type Declared, type Info, type PluginEntry } from "./schema.ts";
 
 export interface Options {
+	/**
+	 * `--user-config-dir`, already absolute ({@link userConfigDir}): the directory whose settings
+	 * file replaces the user layer's.
+	 */
 	readonly userConfigDir?: string;
 	/**
 	 * The host directory this load discovers the project layer from, supplied by the caller --
@@ -56,6 +65,14 @@ export interface Options {
 	 */
 	readonly hostDir?: string | undefined;
 }
+
+/**
+ * An app-level `--user-config-dir` as the absolute directory it names: `~` is the user's home, and
+ * a relative spelling is relative to `hostCwd` -- never to a session's `hostDir`, which is not
+ * where the flag was typed.
+ */
+export const userConfigDir = (raw: string, hostCwd: string): string =>
+	hostPath.resolve(hostCwd, expandTilde(raw, hostPath));
 
 /** The settings files a directory may hold, in the order it is searched. */
 const settingsIn = (directory: string): ReadonlyArray<string> => [
@@ -121,21 +138,14 @@ export function paths(input: {
 	readonly home: string;
 	/** The project root, from {@link projectRoot}. */
 	readonly root?: string | undefined;
-	/** What a relative `--user-config-dir` is resolved against. */
-	readonly from?: string | undefined;
-	readonly custom?: string | undefined;
+	/** `--user-config-dir`, absolute ({@link userConfigDir}): replaces the home's settings. */
+	readonly userConfigDir?: string | undefined;
 }): ReadonlyArray<ReadonlyArray<string>> {
-	const expanded = input.custom === undefined ? undefined : expandTilde(input.custom, hostPath);
-	// Anchored to the caller's directory when there is one. With none, an absolute or `~` path
-	// still resolves; a relative one has nothing to be relative to, which is the caller's error.
-	const explicit =
-		expanded === undefined ? undefined : input.from === undefined ? expanded : hostPath.resolve(input.from, expanded);
 	return [
-		settingsIn(input.home),
+		settingsIn(input.userConfigDir ?? input.home),
 		// No project root, no project layer -- an empty group contributes nothing, so this needs
 		// no branch downstream.
 		input.root === undefined ? [] : settingsIn(hostPath.join(input.root, Global.appConfigDir)),
-		...(explicit === undefined ? [] : [settingsIn(explicit)]),
 	];
 }
 
@@ -243,8 +253,7 @@ export const load = Effect.fn("Settings.load")(function* (options: Options & { r
 	const files = paths({
 		home: options.home,
 		root,
-		...(options.hostDir === undefined ? {} : { from: hostPath.resolve(options.hostDir) }),
-		...(options.userConfigDir === undefined ? {} : { custom: options.userConfigDir }),
+		...(options.userConfigDir === undefined ? {} : { userConfigDir: options.userConfigDir }),
 	});
 	let settings = merge(defaults);
 	/*

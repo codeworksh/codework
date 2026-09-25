@@ -38,13 +38,21 @@ export interface Options {
 	readonly database?: string;
 	/**
 	 * The process-level host directory: the default sandbox mount, the `.npmrc`/parse fallback
-	 * for plugin references no file declared, and the base a relative `--user-config-dir`
+	 * for plugin references no file declared, and the base a relative `home` or `userConfigDir`
 	 * resolves against. Defaults to the OS process's directory. It is never a project-settings
-	 * root -- that discovery belongs to a session's `hostDir`.
+	 * root -- that discovery belongs to a session's `hostDir` -- and never a sandbox `cwd`.
 	 */
 	readonly hostCwd?: string;
+	/**
+	 * `--home`: the shared, user-wide home -- `~/.codework` by default -- holding the user
+	 * settings, credentials, plugin cache and data.
+	 */
 	readonly home?: string;
-	/** user provided directory containing the highest-priority config. */
+	/**
+	 * `--user-config-dir`: a hard override of the user settings file only. Its `settings.jsonc`
+	 * is read *instead of* the home's; the project layer still sits above it, and everything else
+	 * the home holds stays in the home.
+	 */
 	readonly userConfigDir?: string;
 	readonly sandboxes?: ReadonlyArray<SandboxDriverLoader.Entry>;
 	readonly llm?: LLM.Open;
@@ -58,11 +66,14 @@ export interface Options {
 export const layer = (options: Options = {}) =>
 	Layer.unwrap(
 		Effect.gen(function* () {
-			const paths = yield* Global.resolve(options.home === undefined ? {} : { home: options.home });
 			// The single sanctioned `process.cwd()` in the harness, and only as the default.
 			// Everything downstream takes the host directory as a required parameter, so no module
 			// can quietly fall back to the OS process's directory when it meant a session's mount.
 			const hostCwd = options.hostCwd ?? process.cwd();
+			// `--home` is app-level too: a relative spelling is relative to `hostCwd`.
+			const paths = yield* Global.resolve(
+				options.home === undefined ? {} : { home: hostPath.resolve(hostCwd, expandTilde(options.home, hostPath)) },
+			);
 			const global = Global.layerWith(paths);
 			// `--user-config-dir` is a process-level flag: `~` expands to the user's home, and a
 			// relative spelling resolves against the process's own directory. A session's
@@ -70,7 +81,7 @@ export const layer = (options: Options = {}) =>
 			const settingsOptions =
 				options.userConfigDir === undefined
 					? {}
-					: { userConfigDir: hostPath.resolve(hostCwd, expandTilde(options.userConfigDir, hostPath)) };
+					: { userConfigDir: Settings.userConfigDir(options.userConfigDir, hostCwd) };
 			// Settings are read once here because the plugin selection has to be prepared before
 			// any layer that depends on it; every later read goes through `Settings.Service`.
 			//

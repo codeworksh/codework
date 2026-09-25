@@ -108,7 +108,11 @@ const LOCAL_PLUGIN = [
  * The app runs from its home (`hostCwd`), nowhere near a project: settings reach a session only
  * through the `hostDir` it is linked to. Its sandbox working directory is left to the session.
  */
-const exchanges = async (home: string, hostDirs: ReadonlyArray<string>) => {
+const exchanges = async (
+	home: string,
+	hostDirs: ReadonlyArray<string>,
+	app: { readonly hostCwd?: string; readonly userConfigDir?: string } = {},
+) => {
 	const prompts: string[] = [];
 	const open = immediateOpen();
 	await Effect.runPromise(
@@ -125,7 +129,8 @@ const exchanges = async (home: string, hostDirs: ReadonlyArray<string>) => {
 			Effect.provide(
 				Harness.layer({
 					home,
-					hostCwd: home,
+					hostCwd: app.hostCwd ?? home,
+					...(app.userConfigDir === undefined ? {} : { userConfigDir: app.userConfigDir }),
 					database: ":memory:",
 					llm: (request, signal) => {
 						prompts.push(request.context.systemPrompt ?? "");
@@ -139,18 +144,21 @@ const exchanges = async (home: string, hostDirs: ReadonlyArray<string>) => {
 		),
 	);
 	expect(prompts).toHaveLength(hostDirs.length);
-	return prompts.map((prompt) => prompt.match(/\[(?:owner:[^\]]*|git:[^\]]*|local)\]/g) ?? []);
+	return prompts.map((prompt) => prompt.match(/\[(?:owner:[^\]]*|git:[^\]]*|layer:[^\]]*|local)\]/g) ?? []);
 };
 
 /**
- * The run as a reviewable file: temp paths and the fixture's port are replaced, so the same
- * behaviour always writes the same bytes and a change in it shows up as a diff.
+ * The run as a reviewable file: temp paths and the fixture's port are replaced, and column padding
+ * (sized to those machine-specific paths) is collapsed, so the same behaviour writes the same bytes
+ * on any machine and a change in it shows up as a diff.
  */
 const artifact = (root: string, registries: ReadonlyArray<string>, record: Record<string, unknown>) =>
-	registries.reduce(
-		(text, url, index) => text.replaceAll(url, `<registry-${index + 1}>/`),
-		`${JSON.stringify(record, null, "\t")}\n`.replaceAll(realpathSync(root), "<root>").replaceAll(root, "<root>"),
-	);
+	registries
+		.reduce(
+			(text, url, index) => text.replaceAll(url, `<registry-${index + 1}>/`),
+			`${JSON.stringify(record, null, "\t")}\n`.replaceAll(realpathSync(root), "<root>").replaceAll(root, "<root>"),
+		)
+		.replaceAll(/ {2,}/g, "  ");
 
 describe("codework plugin add/remove", () => {
 	it("adds a plugin to the project file, keeping its comments and formatting", () =>
@@ -955,6 +963,85 @@ describe("codework plugin install/list/check", () => {
 				);
 			}),
 		180_000,
+	);
+
+	it(
+		"reads --user-config-dir instead of the home's settings, below the project, relative to hostCwd",
+		() =>
+			withProject(async ({ root, home }) => {
+				/** A local plugin that leaves `[layer:<name>]`, or its options' `marker` instead. */
+				const layerPlugin = (directory: string, name: string) => {
+					mkdirSync(directory, { recursive: true });
+					const file = join(directory, `${name}.mjs`);
+					writeFileSync(
+						file,
+						`export default { id: "fixture.prompt.${name}", kind: "prompt", setup: (ctx, options) => ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ""}[layer:\${options.marker ?? "${name}"}]\`) };\n`,
+					);
+					return file;
+				};
+				const write = (directory: string, plugins: ReadonlyArray<unknown>) => {
+					mkdirSync(directory, { recursive: true });
+					writeFileSync(join(directory, "settings.jsonc"), JSON.stringify({ plugins }));
+				};
+				const plugins = join(root, "plugins");
+				// The home's own settings, which the override replaces.
+				write(home, [layerPlugin(plugins, "home")]);
+				// `./cfg` typed where the app runs (`hostCwd` = the project for a CLI run).
+				const custom = join(root, "cfg");
+				const user = layerPlugin(plugins, "user");
+				write(custom, [user]);
+				// The project still outranks the user layer: it configures the user's plugin.
+				write(join(root, ".codework"), [
+					layerPlugin(plugins, "project"),
+					{ package: user, options: { marker: "user-from-project" } },
+				]);
+
+				const cli = (...args: ReadonlyArray<string>) =>
+					runAsyncResult(root, "plugin", ...args, "--home", home, "--user-config-dir", "./cfg");
+				const listed = await cli("list", "--verbose");
+				expect(listed.status, listed.stderr).toBe(0);
+				expect(listed.stdout).not.toContain("home.mjs");
+				expect(listed.stdout).toContain(`declared in: ${realpathSync(custom)}/settings.jsonc`);
+
+				// `-g` writes the user layer -- the override's file, never the home's.
+				const homeBefore = readFileSync(join(home, "settings.jsonc"), "utf8");
+				const globalAdd = await cli("add", layerPlugin(plugins, "added-user"), "-g");
+				expect(globalAdd.status, globalAdd.stdout + globalAdd.stderr).toBe(0);
+				expect(readFileSync(join(custom, "settings.jsonc"), "utf8")).toContain("added-user.mjs");
+				expect(readFileSync(join(home, "settings.jsonc"), "utf8")).toBe(homeBefore);
+				// Without `-g` the project file, as without the flag.
+				const projectAdd = await cli("add", layerPlugin(plugins, "added-project"));
+				expect(projectAdd.status, projectAdd.stdout + projectAdd.stderr).toBe(0);
+				expect(readFileSync(settings(root), "utf8")).toContain("added-project.mjs");
+
+				// A long-running server: the app runs from `hostCwd`, the session is linked to a
+				// different `hostDir`. The relative flag resolves where the app runs; the `cfg/` under
+				// the session's host directory -- where resolving against `hostDir` would land -- now
+				// holds a decoy, and is never read.
+				const app = mkdtempSync(join(tmpdir(), "codework-app-"));
+				try {
+					write(join(app, "cfg"), [user, layerPlugin(plugins, "added-user")]);
+					write(custom, [layerPlugin(plugins, "decoy")]);
+					const [markers] = await exchanges(home, [root], { hostCwd: app, userConfigDir: "./cfg" });
+					expect(markers).toEqual([
+						"[layer:user-from-project]",
+						"[layer:added-user]",
+						"[layer:project]",
+						"[layer:added-project]",
+					]);
+
+					await expect(
+						artifact(root, [], {
+							list: listed.stdout,
+							add: { global: globalAdd.stdout, project: projectAdd.stdout },
+							runtime: markers,
+						}),
+					).toMatchFileSnapshot("./__snapshots__/settings-layers.json");
+				} finally {
+					rmSync(app, { recursive: true, force: true });
+				}
+			}),
+		120_000,
 	);
 
 	it("skips local entries when checking for updates", () =>

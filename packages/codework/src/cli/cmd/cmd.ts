@@ -39,11 +39,11 @@ export const Cmd = Spec.make("codework", {
 	description: "CodeWork Command Line Interface",
 	shared: {
 		userConfigDir: Flag.String("user-config-dir").pipe(
-			Flag.withDescription("Directory containing user config overrides (e.g. settings.json)"),
+			Flag.withDescription("Directory whose settings.jsonc replaces the user settings in --home"),
 			Flag.optional,
 		),
 		home: Flag.String("home").pipe(
-			Flag.withDescription("CodeWork data directory (default: ~/.codework)"),
+			Flag.withDescription("CodeWork home: user settings, credentials, cache and data (default: ~/.codework)"),
 			Flag.optional,
 		),
 		database: Flag.String("database").pipe(Flag.withDescription("SQLite database path or :memory:"), Flag.optional),

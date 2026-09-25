@@ -1,7 +1,7 @@
 import { Global, Plugin, Settings } from "@codeworksh/harness/effect";
 import { Effect, Option, Path } from "effect";
 import { writeOut } from "../../../output.ts";
-import type { Shared } from "./settings.ts";
+import { userLayer, type Shared } from "./settings.ts";
 
 /**
  * Every plugin entry the settings files name, across every layer, in the order they accumulate.
@@ -31,15 +31,14 @@ const moduleOf = (entry: unknown): string | undefined => (typeof entry === "stri
 
 export const read = Effect.fn("CLI.plugin.entries")(function* (shared: Shared) {
 	const nodePath = yield* Path.Path;
-	// No session links this command to a host directory, so the one it runs in is its anchor:
-	// project settings are discovered from here, and a relative spec typed here resolves here.
-	const hostDir = nodePath.resolve(".");
+	// The directory the command runs in resolves its app-level flags. No session links it to
+	// another host directory, so it is the command's anchor too: project settings are discovered
+	// from here, and a relative spec typed here resolves here.
+	const hostCwd = nodePath.resolve(".");
+	const hostDir = hostCwd;
 	const paths = yield* Global.resolve(Option.isNone(shared.home) ? {} : { home: shared.home.value });
 	const root = yield* Settings.projectRoot(hostDir, paths.home);
-	const layers = {
-		home: paths.home,
-		...(Option.isNone(shared.userConfigDir) ? {} : { userConfigDir: shared.userConfigDir.value }),
-	};
+	const layers = { home: paths.home, ...userLayer(shared, hostCwd) };
 	/*
 	 * The runtime resolves plugins in two views, and each needs its own artifact on disk: boot
 	 * reads the user layers alone, and a session reads every layer. Within a view the last file to

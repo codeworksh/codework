@@ -1,0 +1,13 @@
+{
+	"list": "<root>/plugins/user.mjs  fixture.prompt.user\n  declared in: <root>/cfg/settings.jsonc\n<root>/plugins/project.mjs  fixture.prompt.project\n  declared in: <root>/.codework/settings.jsonc\n",
+	"add": {
+		"global": "Added fixture.prompt.added-user (<root>/plugins/added-user.mjs) to <root>/cfg/settings.jsonc\n",
+		"project": "Added fixture.prompt.added-project (<root>/plugins/added-project.mjs) to <root>/.codework/settings.jsonc\n"
+	},
+	"runtime": [
+		"[layer:user-from-project]",
+		"[layer:added-user]",
+		"[layer:project]",
+		"[layer:added-project]"
+	]
+}

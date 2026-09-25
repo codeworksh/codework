@@ -8,7 +8,7 @@
 		]
 	},
 	"install": "Installed @fixture/plugin@^1.0.0 (fixture.prompt.owner)\nInstalled @fixture/plugin@^1.0.0 (fixture.prompt.owner)\n2 installed\n",
-	"list": "@fixture/plugin@^1.0.0  fixture.prompt.owner\n                        declared in: <root>/home/settings.jsonc\n@fixture/plugin@^1.0.0  fixture.prompt.owner\n                        declared in: <root>/.codework/settings.jsonc\n",
+	"list": "@fixture/plugin@^1.0.0  fixture.prompt.owner\n  declared in: <root>/home/settings.jsonc\n@fixture/plugin@^1.0.0  fixture.prompt.owner\n  declared in: <root>/.codework/settings.jsonc\n",
 	"runtime": {
 		"order": [
 			"project",

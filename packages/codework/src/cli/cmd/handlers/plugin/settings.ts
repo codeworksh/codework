@@ -17,6 +17,16 @@ export interface Shared {
 	readonly home: Option.Option<string>;
 }
 
+/**
+ * The user layer a command reads and writes: `--user-config-dir` when given -- a hard override of
+ * the home's settings file -- resolved, like every app-level flag, against the directory the
+ * command runs in (`hostCwd`), never against a linked session's `hostDir`.
+ */
+export const userLayer = (shared: Shared, hostCwd: string) =>
+	Option.isNone(shared.userConfigDir)
+		? {}
+		: { userConfigDir: Settings.userConfigDir(shared.userConfigDir.value, hostCwd) };
+
 export interface Target {
 	readonly path: string;
 	/** Set when this command had to create the project directory, so the caller can say so. */
@@ -230,9 +240,9 @@ export const withPluginsLock = <A, E, R>(path: string, edit: Effect.Effect<A, E,
  * Which file the edit lands in.
  *
  * A plugin belongs to a project by default — it is part of how that repository is worked on, so
- * the entry belongs in a file the repository can commit. `--global` writes the user-wide file
- * instead, the way `npm -g` installs outside a package. An explicit `--user-config-dir` outranks
- * both, since naming a settings directory is already a decision about where settings live.
+ * the entry belongs in a file the repository can commit. `--global` writes the user settings file
+ * instead, the way `npm -g` installs outside a package: `<--home>/settings.jsonc`, or the
+ * `--user-config-dir` one that replaces it.
  *
  * The project is found the way the harness finds it: the nearest ancestor holding a `.codework`
  * directory, so a command run from `packages/app` edits the repository's own file rather than
@@ -259,18 +269,18 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (
 ) {
 	const fs = yield* FileSystem.FileSystem;
 	const nodePath = yield* Path.Path;
+	const hostCwd = nodePath.resolve(".");
 	// The linked session's host directory, or -- with none -- the one the command runs in.
-	const hostDir = from ?? nodePath.resolve(".");
+	const hostDir = from ?? hostCwd;
 	const home = yield* Global.resolve(Option.isNone(shared.home) ? {} : { home: shared.home.value });
 	const root = global ? undefined : yield* Settings.projectRoot(hostDir, home.home);
-	// `paths` is ordered lowest priority first: user-wide, then project, then an explicit directory.
+	// `paths` is ordered lowest priority first: the user layer, then the project.
 	const groups = Settings.paths({
 		home: home.home,
 		...(root === undefined ? {} : { root }),
-		from: hostDir,
-		...(Option.isNone(shared.userConfigDir) ? {} : { custom: shared.userConfigDir.value }),
+		...userLayer(shared, hostCwd),
 	});
-	const chosen = Option.isSome(shared.userConfigDir) ? groups.length - 1 : global ? 0 : 1;
+	const chosen = global ? 0 : 1;
 	// An empty group is the project layer saying there is no project above this directory. Then
 	// this directory becomes one -- reported, not silent, because the marker shadows any outer
 	// project from now on, so a `.codework/` created by a mistyped `cd` is worth spotting at once.
