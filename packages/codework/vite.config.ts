@@ -1,5 +1,5 @@
-import { fileURLToPath } from "node:url";
 import { recommended } from "@effect/tsgo/oxlint-presets";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
 const ignoredPaths = [
@@ -13,9 +13,8 @@ const ignoredPaths = [
 	".vscode/**",
 ];
 
-// The CLI ships the harness inside its own bundle, so harness resolves from source
-// and is inlined by `pack` (see `deps.alwaysBundle`). Everything harness needs at
-// runtime stays external and is declared in this package's dependencies.
+// Workspace packages resolve to source here so dev and tests see changes at once. `pack` still
+// leaves them external: the published CLI depends on @codeworksh/harness and aikit like any consumer.
 const aliases = {
 	"@codeworksh/harness/sandbox": fileURLToPath(new URL("../harness/src/sandbox.ts", import.meta.url)),
 	"@codeworksh/harness/sandboxes/daytona": fileURLToPath(
@@ -45,7 +44,6 @@ const pluginAliases = [
 	{ find: /^@codeworksh\/plugin\/(.*)$/, replacement: fileURLToPath(new URL("../plugin/src/$1.ts", import.meta.url)) },
 	...Object.entries(aliases).map(([find, replacement]) => ({ find, replacement })),
 ];
-const bundledWorkspaceDeps = ["@codeworksh/harness"];
 
 export default defineConfig({
 	resolve: {
@@ -55,19 +53,10 @@ export default defineConfig({
 		entry: ["src/index.ts"],
 		format: ["esm"],
 		outDir: "dist/pack",
-		deps: {
-			alwaysBundle: bundledWorkspaceDeps,
-			dts: {
-				alwaysBundle: bundledWorkspaceDeps,
-				neverBundle: true,
-			},
-		},
 		sourcemap: true,
 		clean: true,
-		dts: {
-			resolver: "oxc",
-			tsconfig: "../../tsconfig.pack.json",
-		},
+		// A CLI has no importable API, so no declarations.
+		dts: false,
 	},
 	test: {
 		include: ["test/**/*.test.ts"],
