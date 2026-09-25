@@ -18,6 +18,7 @@ import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { EventRegistry } from "../event/registry.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
+import type { Plugin } from "../plugin/plugin.ts";
 import { run as setup } from "../plugin/host.ts";
 import { select, type Origin, type Pool, type PluginRef } from "../plugin/catalog.ts";
 import { LLM } from "../runner/llm.ts";
@@ -185,6 +186,12 @@ const resolver = (input: string | PromptResolver): PromptResolver => (typeof inp
  * `references` says which entries the config pass walks. It is a function of the settings that
  * exchange read, so a caller that pinned an explicit list keeps it and everyone else follows the
  * files.
+ *
+ * `pool` is the **process view**: what boot loaded from the user layers. A session in a project
+ * runs from that project's own view, a pool created from the process view the first time the
+ * project is seen and moved only by its own sessions. The same spec can be owned by different
+ * files -- and so name different registries -- in two views; one shared pool could hold only one of
+ * those builds, and sessions in different projects would keep evicting each other's.
  */
 export const layer = (
 	options: Options,
@@ -203,12 +210,14 @@ export const layer = (
 	 * A full load pass, told to re-import even where nothing looks different. Resolve-only, like
 	 * `follow`: reload re-imports what is on disk, it does not fetch.
 	 *
-	 * It takes no references and reads its own settings, because the set it must produce is the
-	 * *process's* -- every module any session might name -- and State only ever sees one session's
-	 * view. Handing it `references` from here would quietly narrow the pool to whatever the
-	 * caller's project declares, and drop every other project's plugins on the floor.
+	 * It takes a view rather than references and reads that view's settings itself, because the set
+	 * it must produce is the view's -- every module any of its sessions has named -- and State only
+	 * ever sees one session. Handing it `references` from here would quietly narrow the pool to
+	 * whatever the caller declares, and drop what the view's other sessions loaded on the floor.
 	 */
-	rebuild: () => Effect.Effect<Pool, { readonly message: string }>,
+	rebuild: (root: string | undefined, current: Pool) => Effect.Effect<Pool, { readonly message: string }>,
+	/** The view a session in `hostDir` runs from: its project root, or the process view. */
+	viewOf: (hostDir: string | undefined) => Effect.Effect<string | undefined> = () => Effect.undefined,
 ) => {
 	return Layer.effect(
 		Service,
@@ -239,12 +248,40 @@ export const layer = (
 					id,
 					...(origin.file === undefined ? {} : { file: origin.file }),
 				});
-			const activate = Effect.fn("State.activatePlugins")(function* (next: Pool) {
-				const previous = yield* Ref.get(pool);
+			/** Project root to its view. The process view is `pool` itself. */
+			const views = new Map<string, Ref.Ref<Pool>>();
+			/** Created from the process view on first use; called under `loading`, so never twice. */
+			const poolOf = Effect.fnUntraced(function* (root: string | undefined) {
+				if (root === undefined) return pool;
+				const existing = views.get(root);
+				if (existing !== undefined) return existing;
+				const created = yield* Ref.make(yield* Ref.get(pool));
+				views.set(root, created);
+				return created;
+			});
+			const everyView = (): ReadonlyArray<readonly [string | undefined, Ref.Ref<Pool>]> => [
+				[undefined, pool],
+				...views,
+			];
+			/**
+			 * Every plugin some view runs, one per ID. Event types are process-wide, and two views
+			 * holding two builds of one plugin register its namespace once.
+			 */
+			const union = Effect.fnUntraced(function* (target: Ref.Ref<Pool>, next: Pool) {
+				const plugins = new Map<string, Plugin>();
+				for (const [, ref] of everyView()) {
+					for (const [id, plugin] of ref === target ? next.plugins : (yield* Ref.get(ref)).plugins) {
+						plugins.set(id, plugin);
+					}
+				}
+				return plugins;
+			});
+			const activate = Effect.fn("State.activatePlugins")(function* (target: Ref.Ref<Pool>, next: Pool) {
+				const previous = yield* Ref.get(target);
 				// Validation and the pool swap are one uninterruptible operation: a bad event definition
 				// never becomes runnable, and the registry cannot describe a different pool than State holds.
-				yield* eventRegistry.replace([...next.plugins.values()]);
-				yield* Ref.set(pool, next);
+				yield* eventRegistry.replace([...(yield* union(target, next)).values()]);
+				yield* Ref.set(target, next);
 				// One ephemeral notice per transition, published only after the swap lands so a
 				// listener always reads the pool the notice describes. A changed module instance is
 				// the load signal: it covers a new plugin, a superseding generation, and a
@@ -273,18 +310,27 @@ export const layer = (
 				});
 			return Service.of({
 				reload: Effect.gen(function* () {
-					// Swaps the module set for the whole process. Which of those a given session
-					// runs stays that session's own question, answered by its config pass at the
-					// next exchange.
-					const rebuilt = yield* rebuild().pipe(Effect.flatMap(activate), loading.withPermits(1), Effect.result);
-					if (rebuilt._tag === "Failure") {
-						yield* Effect.logWarning(
-							`plugin reload failed, keeping the previous set: ${rebuilt.failure.message}`,
+					// Swaps the module set of every view. Which of those a given session runs stays
+					// that session's own question, answered by its config pass at the next exchange.
+					// A view that fails keeps its previous set; the others still swap. A broken user-layer
+					// entry breaks every view the same way, and is one failure, reported once.
+					const failures = new Map<string, { readonly message: string }>();
+					for (const [root, target] of everyView()) {
+						const rebuilt = yield* Ref.get(target).pipe(
+							Effect.flatMap((current) => rebuild(root, current)),
+							Effect.flatMap((next) => activate(target, next)),
+							loading.withPermits(1),
+							Effect.result,
 						);
-						yield* publishFailed(rebuilt.failure);
-						return { plugins: (yield* Ref.get(pool)).plugins.size, failure: rebuilt.failure.message };
+						if (rebuilt._tag === "Failure") failures.set(rebuilt.failure.message, rebuilt.failure);
 					}
-					return { plugins: rebuilt.success.plugins.size };
+					for (const failure of failures.values()) {
+						yield* Effect.logWarning(`plugin reload failed, keeping the previous set: ${failure.message}`);
+						yield* publishFailed(failure);
+					}
+					const plugins = (yield* union(pool, yield* Ref.get(pool))).size;
+					const [first] = failures.keys();
+					return first === undefined ? { plugins } : { plugins, failure: first };
 				}),
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
 					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
@@ -325,12 +371,13 @@ export const layer = (
 					const loaded = yield* Effect.gen(function* () {
 						// Re-read inside the permit: whoever held it may have just done this exact
 						// work, and adopting their result is the point.
-						const current = yield* Ref.get(pool);
+						const target = yield* poolOf(yield* viewOf(hostDir));
+						const current = yield* Ref.get(target);
 						const moved = yield* follow(refs, current, loadedSettings).pipe(
 							Effect.tapError((cause) => publishFailed(cause, sessionId)),
 						);
 						if (Option.isNone(moved)) return current;
-						return yield* activate(moved.value);
+						return yield* activate(target, moved.value);
 					}).pipe(loading.withPermits(1), Effect.mapError(failed));
 
 					// The config pass: pure data over what is already loaded, so it runs every

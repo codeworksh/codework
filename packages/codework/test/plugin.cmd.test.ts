@@ -101,23 +101,28 @@ const LOCAL_PLUGIN = [
 ].join("\n");
 
 /**
- * One exchange in the real runtime, resolve-only, against what the CLI filed: the markers the
- * system prompt ends with are the plugins it actually loaded.
+ * Exchanges in one real runtime process, resolve-only, against what the CLI filed -- one per
+ * directory, in order, each directory keeping its own session. The markers each system prompt
+ * ends with are the plugins that exchange actually ran.
  */
-const exchange = async (project: string, home: string) => {
+const exchanges = async (home: string, directories: ReadonlyArray<string>) => {
 	const prompts: string[] = [];
 	const open = immediateOpen();
 	await Effect.runPromise(
 		Effect.gen(function* () {
-			const session = yield* Session.create({ directory: project, hostDir: project });
-			yield* session.prompt({ text: "go", delivery: "followUp" });
-			yield* session.resume();
-			yield* session.wait();
+			const sessions = new Map<string, Effect.Success<ReturnType<typeof Session.create>>>();
+			for (const directory of directories) {
+				const session = sessions.get(directory) ?? (yield* Session.create({ directory, hostDir: directory }));
+				sessions.set(directory, session);
+				yield* session.prompt({ text: "go", delivery: "followUp" });
+				yield* session.resume();
+				yield* session.wait();
+			}
 		}).pipe(
 			Effect.provide(
 				Harness.layer({
 					home,
-					hostCwd: project,
+					hostCwd: directories[0] ?? home,
 					database: ":memory:",
 					llm: (request, signal) => {
 						prompts.push(request.context.systemPrompt ?? "");
@@ -130,8 +135,8 @@ const exchange = async (project: string, home: string) => {
 			Effect.orDie,
 		),
 	);
-	expect(prompts).toHaveLength(1);
-	return prompts[0]?.match(/\[(?:owner:[^\]]*|local)\]/g) ?? [];
+	expect(prompts).toHaveLength(directories.length);
+	return prompts.map((prompt) => prompt.match(/\[(?:owner:[^\]]*|local)\]/g) ?? []);
 };
 
 /**
@@ -658,7 +663,7 @@ describe("codework plugin install/list/check", () => {
 	);
 
 	it(
-		"installs one artifact per registry a spec in both layers resolves to, so every view can load",
+		"installs one artifact per registry a spec in both layers resolves to, and each view loads its own",
 		() =>
 			withProject(async ({ root, home }) => {
 				const spec = `${NAME}@^1.0.0`;
@@ -683,19 +688,27 @@ describe("codework plugin install/list/check", () => {
 								const listed = await runAsyncResult(root, "plugin", "list", "--verbose", "--home", home);
 								expect(listed.status).toBe(0);
 
-								// Boot needed the user file's artifact and found it. The pool is process-wide and
-								// holds one module per reference, so the project's session reuses that build
-								// rather than switching to its own -- recorded here, so a pool that learns to
-								// hold both shows up as a change to this artifact.
-								const markers = await exchange(root, home);
-								expect(markers).toEqual(["[owner:user]"]);
+								// One process, two views, alternating. Boot needed the user file's artifact and
+								// found it; a session outside any project keeps running it, while the project's
+								// session runs from its own view, where the project file owns the spec. Neither
+								// evicts the other, however often they take turns.
+								const elsewhere = mkdtempSync(join(tmpdir(), "codework-elsewhere-"));
+								const markers = await exchanges(home, [root, elsewhere, root, elsewhere]).finally(() =>
+									rmSync(elsewhere, { recursive: true, force: true }),
+								);
+								expect(markers).toEqual([
+									["[owner:project]"],
+									["[owner:user]"],
+									["[owner:project]"],
+									["[owner:user]"],
+								]);
 
 								await expect(
 									artifact(root, [user.url, project.url], {
 										layers: { user: [spec], project: [spec] },
 										install: installed.stdout,
 										list: listed.stdout,
-										runtime: markers,
+										runtime: { order: ["project", "elsewhere", "project", "elsewhere"], markers },
 									}),
 								).toMatchFileSnapshot("./__snapshots__/plugin-owner.layers.json");
 							},
@@ -727,7 +740,7 @@ describe("codework plugin install/list/check", () => {
 						const checked = await runAsyncResult(root, "plugin", "check", "--home", home);
 						expect(checked.status).toBe(0);
 
-						const markers = await exchange(root, home);
+						const [markers] = await exchanges(home, [root]);
 						expect(markers).toEqual(["[owner:registry]"]);
 
 						await expect(
@@ -770,7 +783,7 @@ describe("codework plugin install/list/check", () => {
 						expect(installed.stdout).toContain("1 installed");
 
 						// Loaded from the user file's registry, configured by the project's patch.
-						const markers = await exchange(root, home);
+						const [markers] = await exchanges(home, [root]);
 						expect(markers).toEqual(["[owner:patched]", "[local]"]);
 
 						await expect(

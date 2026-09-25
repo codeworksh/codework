@@ -152,19 +152,28 @@ export const layer = (options: Options = {}) =>
 			 * moves, so without a query string the module registry would hand back what it already
 			 * has. Resolve-only, like the boundary check -- reload re-reads disk, it never fetches.
 			 */
+			/** A session's view is its project root; one with no project runs from the process view. */
+			const viewOf = (hostDir: string | undefined) =>
+				hostDir === undefined
+					? Effect.undefined
+					: Settings.projectRoot(hostDir, paths.home).pipe(Effect.orElseSucceed(() => undefined));
+
 			let reloads = 0;
-			const rebuild = () =>
+			const rebuild = (root: string | undefined, loaded: Pool) =>
 				Effect.gen(function* () {
 					reloads += 1;
-					// Re-read the process's layers -- the user layer and the explicit override, as
-					// at boot. Project layers belong to sessions and come back through the
-					// retained origins below, never through a process-level discovery walk.
-					const current = yield* Settings.load({ ...settingsOptions, home: paths.home });
-					const loaded = yield* Ref.get(pool);
-					// Reload is process-wide. Include modules discovered lazily from every linked
-					// session, not only the project the server happened to start in.
-					// The current root comes last so an edited spec replaces an older origin with
-					// the same plugin ID while unrelated session plugins remain loaded.
+					// Re-read the view's layers: for the process view the user layer and the
+					// explicit override, as at boot; for a project, those plus the project's own.
+					// A project root is only ever one a session already led here -- never the
+					// result of a process-level discovery walk.
+					const current = yield* Settings.load({
+						...settingsOptions,
+						home: paths.home,
+						...(root === undefined ? {} : { hostDir: root }),
+					});
+					// Include modules the view's sessions discovered lazily, not only what its
+					// settings name today. The current declarations come last so an edited spec
+					// replaces an older origin with the same plugin ID while other plugins remain.
 					//
 					// `follow` applies the same rule: a retained origin whose source has vanished
 					// since it loaded drops out of the reload with a warning instead of failing it
@@ -219,7 +228,7 @@ export const layer = (options: Options = {}) =>
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
-				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild)),
+				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild, viewOf)),
 				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),
