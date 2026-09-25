@@ -53,6 +53,8 @@ export const read = Effect.fn("CLI.plugin.entries")(function* (shared: Shared) {
 	// view names the file, which is the one a person in this project would edit.
 	const entries = new Map<string, Entry>();
 	for (const view of views) {
+		// views is [boot] outside a project, or [boot, session] inside one.
+		// Boot comes first, and the order matters (see below).
 		for (const [reference, one] of Settings.modules(view.declared)) {
 			// Already anchored to the file that declared it, so `hostDir` here only affects a
 			// reference no settings file produced.

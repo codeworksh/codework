@@ -1,5 +1,5 @@
 /*
- * @file Domain 2: the store. Owns the disk, never opens a socket.
+ * @file: The store. Owns the disk, never opens a socket.
  *
  * ```
  * <cache>/plugins/v2/
@@ -33,10 +33,10 @@
 import { Effect, Encoding, Option, Schema } from "effect";
 import { crypto, fileSystem as fs, hostPath as path } from "../host.ts";
 import { InstallError, LoadError, StoreError } from "./error.ts";
-import { download, type Fetched, registry, type Runner, url } from "./npm.ts";
-import { canonical, type Fetchable, type Target } from "./source.ts";
 import { PluginIndex } from "./index.store.ts";
 import { lock } from "./lock.ts";
+import { download, type Fetched, registry, type Runner, url } from "./npm.ts";
+import { canonical, type Fetchable, type Target } from "./source.ts";
 
 /** Facts about the *package*, and nothing about the plugin inside it. */
 export const Marker = Schema.Struct({
@@ -510,5 +510,5 @@ export const all = Effect.fn("PluginStore.all")(function* (cache: string) {
 	return found as ReadonlyArray<Entry>;
 });
 
-export type { Target };
 export * as PluginStore from "./store.ts";
+export type { Target };

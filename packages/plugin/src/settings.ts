@@ -110,6 +110,20 @@ export type Patch = typeof Patch.Type;
  * genuinely gone rather than merely inconvenient. Three things need it -- anchoring a relative
  * path, naming the declaring layer in `plugin list`, and the missing-plugin diagnostic -- so the
  * loaded shape carries it from the start.
+ *
+ * In simple terms:
+ * `written` - is what module the developer is declaring - what
+ * `file` - where the module is being declared - where
+ * `entry` - the resolved path of the module, relative to the `file`; especially needed for local.
+ *
+ * Example:
+ * written: "@acme/x@^1"
+ * entry:   "@acme/x@^1"
+ * file:    "/Users/me/.codework/settings.jsonc"
+ *
+ * written: "./plugins/mine.mjs"
+ * entry:   "/Users/me/.codework/plugins/mine.mjs"
+ * file:    "/Users/me/.codework/settings.jsonc"
  */
 export interface Declared {
 	/** The entry exactly as the file spells it, which is the string a person will search for. */
