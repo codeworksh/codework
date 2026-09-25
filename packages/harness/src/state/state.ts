@@ -205,6 +205,8 @@ export const layer = (
 		refs: ReadonlyArray<PluginRef>,
 		current: Pool,
 		settings: Info,
+		/** The view's project root, whose host directory the view resolves against. */
+		root: string | undefined,
 	) => Effect.Effect<Option.Option<Pool>, { readonly message: string }>,
 	/**
 	 * A full load pass, told to re-import even where nothing looks different. Resolve-only, like
@@ -371,9 +373,10 @@ export const layer = (
 					const loaded = yield* Effect.gen(function* () {
 						// Re-read inside the permit: whoever held it may have just done this exact
 						// work, and adopting their result is the point.
-						const target = yield* poolOf(yield* viewOf(hostDir));
+						const root = yield* viewOf(hostDir);
+						const target = yield* poolOf(root);
 						const current = yield* Ref.get(target);
-						const moved = yield* follow(refs, current, loadedSettings).pipe(
+						const moved = yield* follow(refs, current, loadedSettings, root).pipe(
 							Effect.tapError((cause) => publishFailed(cause, sessionId)),
 						);
 						if (Option.isNone(moved)) return current;

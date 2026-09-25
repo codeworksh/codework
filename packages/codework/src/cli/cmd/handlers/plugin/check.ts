@@ -18,8 +18,8 @@ export default Runtime.handler(
 	Effect.fn("CLI.plugin.check")(function* ({ refresh, spec }) {
 		const program = Effect.gen(function* () {
 			const shared = yield* Cmd.spec;
-			const { entries, cache } = yield* read(shared);
-			const selected = yield* targeted(entries, spec);
+			const { entries, cache, hostDir } = yield* read(shared);
+			const selected = yield* targeted(entries, spec, hostDir);
 			if (selected.length === 0 && Option.isSome(spec)) return;
 
 			let outdated = 0;

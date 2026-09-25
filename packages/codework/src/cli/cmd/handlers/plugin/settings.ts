@@ -113,7 +113,7 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 /**
  * What a local reference should be *written* as, which is rarely what was typed.
  *
- * A relative path on the command line is relative to `cwd`; in a settings file it is relative to
+ * A relative path on the command line is relative to the command's host directory; in a settings file it is relative to
  * that file's own directory. Those differ the moment the command runs anywhere but the directory
  * holding the file, and writing the string verbatim produces a silently wrong entry:
  *
@@ -133,10 +133,10 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
  */
 export const written = Effect.fn("CLI.plugin.written")(function* (
 	reference: string,
-	input: { readonly cwd: string; readonly file: string; readonly root: string | undefined },
+	input: { readonly hostDir: string; readonly file: string; readonly root: string | undefined },
 ) {
 	const nodePath = yield* Path.Path;
-	const target = yield* Plugin.parse(reference, input.cwd).pipe(Effect.option);
+	const target = yield* Plugin.parse(reference, input.hostDir).pipe(Effect.option);
 	if (Option.isNone(target) || target.value.kind !== "local") return reference;
 
 	const absolute = target.value.path;
@@ -259,14 +259,15 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (
 ) {
 	const fs = yield* FileSystem.FileSystem;
 	const nodePath = yield* Path.Path;
-	const cwd = from ?? nodePath.resolve(".");
+	// The linked session's host directory, or -- with none -- the one the command runs in.
+	const hostDir = from ?? nodePath.resolve(".");
 	const home = yield* Global.resolve(Option.isNone(shared.home) ? {} : { home: shared.home.value });
-	const root = global ? undefined : yield* Settings.projectRoot(cwd, home.home);
+	const root = global ? undefined : yield* Settings.projectRoot(hostDir, home.home);
 	// `paths` is ordered lowest priority first: user-wide, then project, then an explicit directory.
 	const groups = Settings.paths({
 		home: home.home,
 		...(root === undefined ? {} : { root }),
-		from: cwd,
+		from: hostDir,
 		...(Option.isNone(shared.userConfigDir) ? {} : { custom: shared.userConfigDir.value }),
 	});
 	const chosen = Option.isSome(shared.userConfigDir) ? groups.length - 1 : global ? 0 : 1;
@@ -281,10 +282,11 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (
 			...(root === undefined ? {} : { root }),
 		} satisfies Target;
 	}
-	const marker = nodePath.join(cwd, ".codework");
+	const marker = nodePath.join(hostDir, ".codework");
 	// `created` is reported either way: with `create` unset the marker is named, not made, so a
 	// caller can say what its write is about to establish without establishing it early.
-	if (!create) return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: cwd } satisfies Target;
+	if (!create)
+		return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: hostDir } satisfies Target;
 	yield* fs.makeDirectory(marker, { recursive: true });
-	return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: cwd } satisfies Target;
+	return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: hostDir } satisfies Target;
 });

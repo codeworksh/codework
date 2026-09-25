@@ -31,9 +31,11 @@ const moduleOf = (entry: unknown): string | undefined => (typeof entry === "stri
 
 export const read = Effect.fn("CLI.plugin.entries")(function* (shared: Shared) {
 	const nodePath = yield* Path.Path;
-	const cwd = nodePath.resolve(".");
+	// No session links this command to a host directory, so the one it runs in is its anchor:
+	// project settings are discovered from here, and a relative spec typed here resolves here.
+	const hostDir = nodePath.resolve(".");
 	const paths = yield* Global.resolve(Option.isNone(shared.home) ? {} : { home: shared.home.value });
-	const root = yield* Settings.projectRoot(cwd, paths.home);
+	const root = yield* Settings.projectRoot(hostDir, paths.home);
 	const layers = {
 		home: paths.home,
 		...(Option.isNone(shared.userConfigDir) ? {} : { userConfigDir: shared.userConfigDir.value }),
@@ -53,15 +55,15 @@ export const read = Effect.fn("CLI.plugin.entries")(function* (shared: Shared) {
 	const entries = new Map<string, Entry>();
 	for (const view of views) {
 		for (const [reference, one] of Settings.modules(view.declared)) {
-			// Already anchored to the file that declared it, so `cwd` here only affects a reference
-			// no settings file produced.
-			const target = Option.getOrUndefined(yield* Plugin.parse(reference, cwd).pipe(Effect.option));
-			const from = Plugin.anchor(one.file, cwd);
+			// Already anchored to the file that declared it, so `hostDir` here only affects a
+			// reference no settings file produced.
+			const target = Option.getOrUndefined(yield* Plugin.parse(reference, hostDir).pipe(Effect.option));
+			const from = Plugin.anchor(one.file, hostDir);
 			const key = yield* identity(target, reference, from, paths.cache);
 			entries.set(key, { written: moduleOf(one.written) ?? reference, reference, file: one.file, from, target });
 		}
 	}
-	return { entries: [...entries.values()] as ReadonlyArray<Entry>, cache: paths.cache };
+	return { entries: [...entries.values()] as ReadonlyArray<Entry>, cache: paths.cache, hostDir };
 });
 
 /**
@@ -75,14 +77,14 @@ const identity = (target: Plugin.Target | undefined, reference: string, from: st
 };
 
 /** What a reference names, whatever version it was written with: a package, a git spec, a file. */
-const source = (reference: string, cwd: string) =>
-	Plugin.canonical(reference, cwd).pipe(Effect.orElseSucceed(() => reference));
+const source = (reference: string, hostDir: string) =>
+	Plugin.canonical(reference, hostDir).pipe(Effect.orElseSucceed(() => reference));
 
 /**
  * The entries a command acts on: all of them, or every one `spec` names.
  *
  * Matched by source identity, the way the `plugins` array reads -- `@acme/x` selects
- * `@acme/x@^1`, a relative path selects the file it resolves to from here, and a local package
+ * `@acme/x@^1`, a relative path selects the file it resolves to from `hostDir`, and a local package
  * also answers to the name its `package.json` declares. A plugin ID is not a spelling of anything
  * in that array, so it matches nothing. Every match is kept: a spec both layers declare under
  * different registries is two artifacts, and both answer to it.
@@ -90,14 +92,15 @@ const source = (reference: string, cwd: string) =>
 export const targeted = Effect.fn("CLI.plugin.targeted")(function* (
 	entries: ReadonlyArray<Entry>,
 	spec: Option.Option<string>,
+	/** The host directory the command resolves from, which a relative spec is typed against. */
+	hostDir: string,
 ) {
 	if (Option.isNone(spec)) return entries;
-	const cwd = (yield* Path.Path).resolve(".");
-	const wanted = yield* source(spec.value, cwd);
+	const wanted = yield* source(spec.value, hostDir);
 	const selected: Entry[] = [];
 	for (const entry of entries) {
 		const named =
-			(yield* source(entry.reference, cwd)) === wanted ||
+			(yield* source(entry.reference, hostDir)) === wanted ||
 			(entry.target?.kind === "local" && (yield* Plugin.localName(entry.target.path)) === wanted);
 		if (named) selected.push(entry);
 	}

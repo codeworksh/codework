@@ -98,7 +98,14 @@ export const layer = (options: Options = {}) =>
 			const declaredIn = (settings: SettingsInfo): ReadonlyMap<string, string> =>
 				new Map(Array.from(Settings.modules(settings.declared), ([reference, one]) => [reference, one.file]));
 
+			// The process view has no session, so no host directory of its own: the app's working
+			// directory stands in for a reference nothing anchored -- an embedder's own list.
 			const catalogOptions = { builtins, cache: paths.cache, hostDir: hostCwd };
+			/**
+			 * The host directory a view resolves against: a project view's is the root its sessions'
+			 * `hostDir` led to; only the process view falls back to `hostCwd`.
+			 */
+			const hostDirOf = (root: string | undefined) => root ?? hostCwd;
 
 			/*
 			 * What the store already holds for a reference, and nothing else.
@@ -110,7 +117,7 @@ export const layer = (options: Options = {}) =>
 			 */
 			type Here = Option.Option<{ readonly generation?: number }>;
 			const filed = (reference: string, from: string): Effect.Effect<Here> =>
-				PluginSource.parse(reference, hostCwd).pipe(
+				PluginSource.parse(reference, from).pipe(
 					Effect.flatMap((target): Effect.Effect<Here, unknown> =>
 						target.kind === "local"
 							? // On disk by definition, so it can be loaded now -- but never filed, so it
@@ -143,8 +150,13 @@ export const layer = (options: Options = {}) =>
 			const pool = yield* Ref.make<Pool>(
 				yield* load(references(config), { ...resolveOnly, declared: declaredIn(config) }),
 			);
-			const followStore = (refs: ReadonlyArray<PluginRef>, current: Pool, settings: SettingsInfo) =>
-				follow(refs, current, { ...resolveOnly, declared: declaredIn(settings) }, filed);
+			const followStore = (
+				refs: ReadonlyArray<PluginRef>,
+				current: Pool,
+				settings: SettingsInfo,
+				root: string | undefined,
+			) =>
+				follow(refs, current, { ...resolveOnly, hostDir: hostDirOf(root), declared: declaredIn(settings) }, filed);
 
 			/*
 			 * A reload re-imports everything, including the local plugins nothing else can notice
@@ -183,7 +195,7 @@ export const layer = (options: Options = {}) =>
 					for (const origin of loaded.origins.values()) {
 						if (
 							configured.includes(origin.reference) ||
-							Option.isSome(yield* filed(origin.reference, anchor(origin.file, hostCwd)))
+							Option.isSome(yield* filed(origin.reference, anchor(origin.file, hostDirOf(root))))
 						) {
 							retained.push(origin);
 							continue;
@@ -203,6 +215,7 @@ export const layer = (options: Options = {}) =>
 					for (const [reference, file] of declaredIn(current)) known.set(reference, file);
 					return yield* load(accumulated, {
 						...resolveOnly,
+						hostDir: hostDirOf(root),
 						declared: known,
 						reload: reloads,
 					});

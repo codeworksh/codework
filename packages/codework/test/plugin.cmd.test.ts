@@ -101,19 +101,22 @@ const LOCAL_PLUGIN = [
 ].join("\n");
 
 /**
- * Exchanges in one real runtime process, resolve-only, against what the CLI filed -- one per
- * directory, in order, each directory keeping its own session. The markers each system prompt
- * ends with are the plugins that exchange actually ran.
+ * Exchanges in one real runtime process, resolve-only, against what the CLI filed -- one per host
+ * directory, in order, each keeping its own session. The markers each system prompt ends with are
+ * the plugins that exchange actually ran.
+ *
+ * The app runs from its home (`hostCwd`), nowhere near a project: settings reach a session only
+ * through the `hostDir` it is linked to. Its sandbox working directory is left to the session.
  */
-const exchanges = async (home: string, directories: ReadonlyArray<string>) => {
+const exchanges = async (home: string, hostDirs: ReadonlyArray<string>) => {
 	const prompts: string[] = [];
 	const open = immediateOpen();
 	await Effect.runPromise(
 		Effect.gen(function* () {
 			const sessions = new Map<string, Effect.Success<ReturnType<typeof Session.create>>>();
-			for (const directory of directories) {
-				const session = sessions.get(directory) ?? (yield* Session.create({ directory, hostDir: directory }));
-				sessions.set(directory, session);
+			for (const hostDir of hostDirs) {
+				const session = sessions.get(hostDir) ?? (yield* Session.create({ hostDir }));
+				sessions.set(hostDir, session);
 				yield* session.prompt({ text: "go", delivery: "followUp" });
 				yield* session.resume();
 				yield* session.wait();
@@ -122,7 +125,7 @@ const exchanges = async (home: string, directories: ReadonlyArray<string>) => {
 			Effect.provide(
 				Harness.layer({
 					home,
-					hostCwd: directories[0] ?? home,
+					hostCwd: home,
 					database: ":memory:",
 					llm: (request, signal) => {
 						prompts.push(request.context.systemPrompt ?? "");
@@ -135,7 +138,7 @@ const exchanges = async (home: string, directories: ReadonlyArray<string>) => {
 			Effect.orDie,
 		),
 	);
-	expect(prompts).toHaveLength(directories.length);
+	expect(prompts).toHaveLength(hostDirs.length);
 	return prompts.map((prompt) => prompt.match(/\[(?:owner:[^\]]*|git:[^\]]*|local)\]/g) ?? []);
 };
 
