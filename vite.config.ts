@@ -33,6 +33,10 @@ const aliases = [
 		replacement: fileURLToPath(new URL("./packages/harness/src/sandbox.ts", import.meta.url)),
 	},
 	{
+		find: "@codeworksh/aikit/modelgen",
+		replacement: fileURLToPath(new URL("./packages/aikit/src/modelgen.ts", import.meta.url)),
+	},
+	{
 		find: "@codeworksh/aikit/failure",
 		replacement: fileURLToPath(new URL("./packages/aikit/src/llm/failure.ts", import.meta.url)),
 	},

@@ -49,9 +49,10 @@ export const makeApp = (handlers: Handlers.Interface) =>
 		.agent({ name: "codework" })
 		.onRequest("initialize", (ctx) => Effect.runPromise(handlers.initialize(ctx.params)))
 		.onRequest("session/new", (ctx) => Effect.runPromise(handlers.newSession(ctx.params)))
-		.onRequest("session/load", (ctx) => Effect.runPromise(handlers.loadSession(ctx.params)))
+		.onRequest("session/load", (ctx) => Effect.runPromise(handlers.loadSession(ctx.params, ctx.client)))
 		.onRequest("session/list", (ctx) => Effect.runPromise(handlers.listSessions(ctx.params)))
 		.onRequest("session/prompt", (ctx) => Effect.runPromise(handlers.prompt(ctx.params, ctx.client)))
+		.onRequest("session/set_config_option", (ctx) => Effect.runPromise(handlers.setConfigOption(ctx.params)))
 		.onNotification("session/cancel", (ctx) => Effect.runPromise(handlers.cancel(ctx.params).pipe(Effect.asVoid)));
 
 /**

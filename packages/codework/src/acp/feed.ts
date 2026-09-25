@@ -1,6 +1,6 @@
 import type { SessionUpdate, ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
-import type { EventSchema } from "@codeworksh/harness/effect";
-import { Stream } from "effect";
+import type { EventSchema, SessionStore } from "@codeworksh/harness/effect";
+import { Option, Stream } from "effect";
 
 export interface SessionUpdateItem {
 	readonly sessionId: string;
@@ -197,5 +197,180 @@ export const streamUpdates = <E>(stream: Stream.Stream<EventSchema.Payload, E>):
 		Stream.map(toSessionUpdate),
 		Stream.filter((item): item is SessionUpdateItem => item !== undefined),
 	);
+
+/**
+ * Maps a stored session entry and its parts into ACP session update notifications
+ * for conversation history replay (used during session/load).
+ */
+export const entryToSessionUpdates = (entry: SessionStore.HydratedEntry): Array<SessionUpdate> => {
+	const updates: Array<SessionUpdate> = [];
+	const messageId = entry.entry.id;
+
+	if (entry.entry.type === "user") {
+		for (const part of entry.parts) {
+			if (part.type === "text") {
+				try {
+					const parsed = JSON.parse(part.data) as { text?: string };
+					if (parsed.text) {
+						updates.push({
+							sessionUpdate: "user_message_chunk",
+							messageId,
+							content: {
+								type: "text",
+								text: parsed.text,
+							},
+						});
+					}
+				} catch {
+					if (part.data) {
+						updates.push({
+							sessionUpdate: "user_message_chunk",
+							messageId,
+							content: {
+								type: "text",
+								text: part.data,
+							},
+						});
+					}
+				}
+			}
+		}
+
+		if (updates.length === 0) {
+			const label = Option.getOrUndefined(entry.entry.label);
+			let fallbackText = label;
+			if (!fallbackText && entry.entry.data) {
+				try {
+					const parsed = JSON.parse(entry.entry.data) as { prompt?: string; text?: string };
+					fallbackText = parsed.prompt ?? parsed.text;
+				} catch {}
+			}
+			if (fallbackText) {
+				updates.push({
+					sessionUpdate: "user_message_chunk",
+					messageId,
+					content: {
+						type: "text",
+						text: fallbackText,
+					},
+				});
+			}
+		}
+	} else if (entry.entry.type === "assistant") {
+		for (const part of entry.parts) {
+			if (part.type === "thinking") {
+				try {
+					const parsed = JSON.parse(part.data) as { text?: string; thinking?: string };
+					const text = parsed.text ?? parsed.thinking;
+					if (text) {
+						updates.push({
+							sessionUpdate: "agent_thought_chunk",
+							messageId,
+							content: {
+								type: "text",
+								text,
+							},
+						});
+					}
+				} catch {
+					if (part.data) {
+						updates.push({
+							sessionUpdate: "agent_thought_chunk",
+							messageId,
+							content: {
+								type: "text",
+								text: part.data,
+							},
+						});
+					}
+				}
+			} else if (part.type === "text") {
+				try {
+					const parsed = JSON.parse(part.data) as { text?: string };
+					if (parsed.text) {
+						updates.push({
+							sessionUpdate: "agent_message_chunk",
+							messageId,
+							content: {
+								type: "text",
+								text: parsed.text,
+							},
+						});
+					}
+				} catch {
+					if (part.data) {
+						updates.push({
+							sessionUpdate: "agent_message_chunk",
+							messageId,
+							content: {
+								type: "text",
+								text: part.data,
+							},
+						});
+					}
+				}
+			} else if (part.type === "toolCall") {
+				try {
+					const parsed = JSON.parse(part.data) as {
+						callID?: string;
+						callId?: string;
+						name?: string;
+						arguments?: unknown;
+						status?: string;
+						isError?: boolean;
+						result?: unknown;
+					};
+					const callId = parsed.callID ?? parsed.callId ?? Option.getOrElse(part.callId, () => part.id);
+					const name = parsed.name ?? Option.getOrElse(part.toolName, () => "tool");
+					const rawArgs = parsed.arguments;
+					const statusStr = parsed.status ?? Option.getOrElse(part.status, () => "completed");
+					const isError = statusStr === "error" || parsed.isError === true;
+					const content = toolContent(parsed.result);
+
+					updates.push({
+						sessionUpdate: "tool_call",
+						toolCallId: callId,
+						title: toolTitle(name, rawArgs),
+						name,
+						kind: toolKind(name),
+						status: "in_progress",
+						rawInput: rawArgs,
+					});
+
+					updates.push({
+						sessionUpdate: "tool_call_update",
+						toolCallId: callId,
+						title: toolTitle(name, rawArgs),
+						name,
+						kind: toolKind(name),
+						status: isError ? "failed" : "completed",
+						rawInput: rawArgs,
+						rawOutput: parsed.result,
+						...(content ? { content } : {}),
+					});
+				} catch {}
+			}
+		}
+
+		if (updates.length === 0 && entry.entry.data) {
+			try {
+				const parsed = JSON.parse(entry.entry.data) as { text?: string; content?: string };
+				const text = parsed.text ?? parsed.content;
+				if (text) {
+					updates.push({
+						sessionUpdate: "agent_message_chunk",
+						messageId,
+						content: {
+							type: "text",
+							text,
+						},
+					});
+				}
+			} catch {}
+		}
+	}
+
+	return updates;
+};
 
 export * as Feed from "./feed.ts";
