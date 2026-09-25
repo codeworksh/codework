@@ -1,5 +1,6 @@
 import { Global, Plugin, Settings } from "@codeworksh/harness/effect";
 import { Effect, Option, Path } from "effect";
+import { writeOut } from "../../../output.ts";
 import type { Shared } from "./settings.ts";
 
 /**
@@ -72,6 +73,47 @@ const identity = (target: Plugin.Target | undefined, reference: string, from: st
 	if (fetched === undefined) return Effect.succeed(target?.kind === "local" ? target.path : reference);
 	return Plugin.identity(fetched, cache, from).pipe(Effect.orElseSucceed(() => `${reference}\0${from}`));
 };
+
+/** What a reference names, whatever version it was written with: a package, a git spec, a file. */
+const source = (reference: string, cwd: string) =>
+	Plugin.canonical(reference, cwd).pipe(Effect.orElseSucceed(() => reference));
+
+/**
+ * The entries a command acts on: all of them, or every one `spec` names.
+ *
+ * Matched by source identity, the way the `plugins` array reads -- `@acme/x` selects
+ * `@acme/x@^1`, a relative path selects the file it resolves to from here, and a local package
+ * also answers to the name its `package.json` declares. A plugin ID is not a spelling of anything
+ * in that array, so it matches nothing. Every match is kept: a spec both layers declare under
+ * different registries is two artifacts, and both answer to it.
+ */
+export const targeted = Effect.fn("CLI.plugin.targeted")(function* (
+	entries: ReadonlyArray<Entry>,
+	spec: Option.Option<string>,
+) {
+	if (Option.isNone(spec)) return entries;
+	const cwd = (yield* Path.Path).resolve(".");
+	const wanted = yield* source(spec.value, cwd);
+	const selected: Entry[] = [];
+	for (const entry of entries) {
+		const named =
+			(yield* source(entry.reference, cwd)) === wanted ||
+			(entry.target?.kind === "local" && (yield* Plugin.localName(entry.target.path)) === wanted);
+		if (named) selected.push(entry);
+	}
+	if (selected.length === 0) {
+		yield* writeOut(`Plugin "${spec.value}" is not configured. Run \`codework plugin list\` to see what is.\n`);
+		process.exitCode = 1;
+	}
+	return selected as ReadonlyArray<Entry>;
+});
+
+/**
+ * A local plugin has no revision to compare and is never copied into the store. Skipped quietly
+ * when a command walks everything; named, it says why nothing happened.
+ */
+export const local = (entry: Entry, spec: Option.Option<string>) =>
+	Option.isSome(spec) ? writeOut(`${entry.reference}  local: no remote revision to compare\n`) : Effect.void;
 
 /**
  * The network half, handed to the store so the store itself never opens a socket.

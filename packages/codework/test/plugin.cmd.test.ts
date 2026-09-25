@@ -136,7 +136,7 @@ const exchanges = async (home: string, directories: ReadonlyArray<string>) => {
 		),
 	);
 	expect(prompts).toHaveLength(directories.length);
-	return prompts.map((prompt) => prompt.match(/\[(?:owner:[^\]]*|local)\]/g) ?? []);
+	return prompts.map((prompt) => prompt.match(/\[(?:owner:[^\]]*|git:[^\]]*|local)\]/g) ?? []);
 };
 
 /**
@@ -798,6 +798,160 @@ describe("codework plugin install/list/check", () => {
 				);
 			}),
 		120_000,
+	);
+
+	it(
+		"targets check and update at the configured plugin a spec names, and probes nothing else",
+		() =>
+			withProject(async ({ root, home }) => {
+				const spec = `${NAME}@^1.0.0`;
+				// A git plugin served from a repository on disk, so the git path runs with no network.
+				const repo = join(root, "git-plugin");
+				const commit = (revision: number) => {
+					writeFileSync(
+						join(repo, "package.json"),
+						JSON.stringify({
+							name: "fixture-git-plugin",
+							version: `1.0.${revision}`,
+							type: "module",
+							exports: "./index.js",
+						}),
+					);
+					writeFileSync(
+						join(repo, "index.js"),
+						`export default { id: "fixture.prompt.git", kind: "prompt", setup: (ctx) => ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ""}[git:${revision}]\`) };\n`,
+					);
+					for (const args of [
+						["add", "-A"],
+						["commit", "-qm", `revision ${revision}`],
+					]) {
+						const done = spawnSync("git", ["-C", repo, ...args], { encoding: "utf8" });
+						expect(done.status, done.stderr).toBe(0);
+					}
+				};
+				mkdirSync(repo);
+				const init = spawnSync("git", ["-C", repo, "init", "-q", "-b", "main"], { encoding: "utf8" });
+				expect(init.status, init.stderr).toBe(0);
+				spawnSync("git", ["-C", repo, "config", "user.email", "fixture@codework.test"]);
+				spawnSync("git", ["-C", repo, "config", "user.name", "fixture"]);
+				commit(1);
+				const git = `git+file://${repo}#main`;
+
+				await withRegistry(
+					join(root, "registry"),
+					async (registry) => {
+						await npmrc(root, registry);
+						writeFileSync(join(root, ".codework", "local.mjs"), LOCAL_PLUGIN);
+						mkdirSync(join(root, "local-package"));
+						writeFileSync(
+							join(root, "local-package", "package.json"),
+							JSON.stringify({ name: "fixture-local-package", type: "module", main: "./index.js" }),
+						);
+						writeFileSync(
+							join(root, "local-package", "index.js"),
+							"export default { id: 'fixture.tool.package', kind: 'tool', setup() {} };\n",
+						);
+						writeFileSync(
+							settings(root),
+							JSON.stringify({ plugins: [spec, git, "./local.mjs", "../local-package"] }),
+						);
+						const cli = (...args: ReadonlyArray<string>) =>
+							runAsyncResult(root, "plugin", ...args, "--home", home);
+						/** Whether the registry was asked about the package since `mark`. */
+						const asked = (mark: number) =>
+							registry
+								.paths()
+								.slice(mark)
+								.some((path) => path === `/${NAME}`);
+						const steps: Array<{
+							readonly command: string;
+							readonly status: number | null;
+							readonly stdout: string;
+						}> = [];
+						const step = async (...args: ReadonlyArray<string>) => {
+							const result = await cli(...args);
+							steps.push({ command: `plugin ${args.join(" ")}`, status: result.status, stdout: result.stdout });
+							return result;
+						};
+
+						const installed = await step("install");
+						expect(installed.status, installed.stdout + installed.stderr).toBe(0);
+						expect(installed.stdout).toContain("2 installed, 2 local");
+
+						// A git spec, spelled in full: only the repository is asked, never the registry.
+						let mark = registry.paths().length;
+						commit(2);
+						const gitChecked = await step("check", git, "--refresh");
+						expect(gitChecked.status).toBe(0);
+						expect(gitChecked.stdout).toMatch(
+							new RegExp(
+								`^${git.replaceAll("+", "\\+")}  [0-9a-f]{40} -> [0-9a-f]{40}\\n1 update available\\.\\n$`,
+							),
+						);
+						const gitUpdated = await step("update", git);
+						expect(gitUpdated.status).toBe(0);
+						expect(gitUpdated.stdout).toContain(`Updated ${git} to `);
+						expect(gitUpdated.stdout).not.toContain(NAME);
+						expect(asked(mark)).toBe(false);
+
+						// A registry package, named without the version it was written with.
+						registry.publish("1.1.0");
+						mark = registry.paths().length;
+						const checked = await step("check", NAME, "--refresh");
+						expect(checked.status).toBe(0);
+						expect(checked.stdout).toBe(`${spec}  1.0.0 -> 1.1.0\n1 update available.\n`);
+						const updated = await step("update", NAME);
+						expect(updated.status).toBe(0);
+						expect(updated.stdout).toBe(`Updated ${spec} to 1.1.0\n1 updated.\n`);
+						expect(asked(mark)).toBe(true);
+
+						// A local plugin says why nothing happened, rather than nothing.
+						const local = await step("check", "./.codework/local.mjs");
+						expect(local.status).toBe(0);
+						expect(local.stdout).toBe(
+							`${realpathSync(root)}/.codework/local.mjs  local: no remote revision to compare\n`,
+						);
+						// A local package answers to the name its manifest declares, as `{ package }` does.
+						const byName = await step("check", "fixture-local-package");
+						expect(byName.status).toBe(0);
+						expect(byName.stdout).toBe(
+							`${realpathSync(root)}/local-package  local: no remote revision to compare\n`,
+						);
+						const localUpdate = await step("update", "./.codework/local.mjs");
+						expect(localUpdate.status).toBe(0);
+						expect(localUpdate.stdout).toBe(local.stdout);
+
+						// A spec nothing configures -- and a plugin ID, which is not a spelling of the
+						// `plugins` array -- fails without asking anyone anything.
+						mark = registry.paths().length;
+						for (const missing of ["@fixture/missing", "fixture.prompt.owner"]) {
+							for (const verb of ["check", "update"]) {
+								const result = await step(verb, missing);
+								expect(result.status).toBe(1);
+								expect(result.stdout).toBe(
+									`Plugin "${missing}" is not configured. Run \`codework plugin list\` to see what is.\n`,
+								);
+							}
+						}
+						expect(registry.paths().length).toBe(mark);
+
+						// No spec is unchanged: everything is asked about, and it is all current now.
+						const everything = await step("check", "--refresh");
+						expect(everything.status).toBe(0);
+						expect(everything.stdout).toBe("Everything is up to date.\n");
+
+						// The runtime runs what the targeted updates filed.
+						const [markers] = await exchanges(home, [root]);
+						expect(markers).toEqual(["[owner:registry]", "[git:2]", "[local]"]);
+
+						await expect(
+							artifact(root, [registry.url], { steps, runtime: markers }).replaceAll(/[0-9a-f]{40}/g, "<sha>"),
+						).toMatchFileSnapshot("./__snapshots__/plugin-targeted.json");
+					},
+					{ source: ownerPlugin("registry") },
+				);
+			}),
+		180_000,
 	);
 
 	it("skips local entries when checking for updates", () =>
