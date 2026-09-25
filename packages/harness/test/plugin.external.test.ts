@@ -31,7 +31,8 @@ const pluginPath = (name: string) => join(dir, name);
 /** One `Session.create` + one `run`, capturing every provider request. */
 const exchange = (input: {
 	readonly root: string;
-	readonly cwd?: string;
+	/** The host directory the session is linked to; its project settings are found from here. */
+	readonly hostDir?: string;
 	readonly plugins?: ReadonlyArray<PluginRef>;
 	readonly userConfigDir?: string;
 	readonly llm?: LLM.Open;
@@ -41,10 +42,9 @@ const exchange = (input: {
 	const prompts: string[] = [];
 	const open = input.llm ?? immediateOpen();
 	return Effect.gen(function* () {
-		// The session is placed in the project under test. Since the config pass runs against the
-		// settings *that session* reads, a session with no host directory would load the project's
-		// plugins into the pool at boot and then select none of them.
-		const session = yield* Session.create({ directory: input.root, hostDir: input.cwd ?? input.root });
+		// The session is linked to the project under test through `hostDir`, which is where its
+		// settings come from. Its local sandbox works in `root` (`cwd`), which configures nothing.
+		const session = yield* Session.create({ directory: input.root, hostDir: input.hostDir ?? input.root });
 		yield* session.run(input.prompt ?? "hello");
 		// Read inside the scope: the memory database closes with the layer.
 		const path = yield* session.path();
@@ -53,7 +53,9 @@ const exchange = (input: {
 		Effect.provide(
 			Harness.layer({
 				home: join(input.root, "home"),
-				hostCwd: input.cwd ?? input.root,
+				// The app runs from `root`. That is only ever the process's directory, never where a
+				// session's project settings are discovered from.
+				hostCwd: input.root,
 				database: ":memory:",
 				llm: (request, signal) => {
 					contexts.push(request.context);
@@ -70,7 +72,7 @@ const exchange = (input: {
 };
 
 describe("third-party plugins", () => {
-	it("uses Harness.layer cwd and the nearest ancestor project file", () =>
+	it("finds the nearest ancestor project file from the session's hostDir, not the app's hostCwd", () =>
 		withSettings(async ({ root }) => {
 			const nested = join(root, "packages", "app");
 			await mkdir(join(root, "packages", ".codework"), { recursive: true });
@@ -90,8 +92,10 @@ describe("third-party plugins", () => {
 				}),
 			);
 
-			const { contexts, prompts } = await exchange({ root, cwd: nested });
-			// `acme-echo` came from the outer file, which is not read at all.
+			// The app runs from `root`, beside the outer project; the session is linked to `nested`.
+			const { contexts, prompts } = await exchange({ root, hostDir: nested });
+			// `acme-echo` came from the outer file -- the one `hostCwd` would have found -- which is
+			// not read at all.
 			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
 			expect(prompts[0]?.endsWith("\n\nnearest")).toBe(true);
 		}));
@@ -104,7 +108,7 @@ describe("third-party plugins", () => {
 				await writeFile(
 					join(directory, "settings.jsonc"),
 					JSON.stringify({
-						// The relative entry anchors to this file's directory, not to the process cwd.
+						// The relative entry anchors to this file's directory, not to `hostCwd`.
 						plugins: [
 							`./${relative(directory, pluginPath("tool/acme-echo"))}`,
 							pluginPath("prompt/acme-prompt.ts"),
@@ -256,7 +260,7 @@ describe("third-party plugins", () => {
 			);
 			expect(specs).toEqual(["codework-acme-plugin@latest", "@acme/codework-plugin@1.2.0"]);
 			// Bash is gone, the options entry configured the package plugin without moving it, and
-			// the relative entry resolved against the settings file rather than the host cwd.
+			// the relative entry resolved against the settings file rather than `hostCwd`.
 			// Tools first, then prompts; within a domain, the order the entries were written in.
 			expect(prepared.map((entry) => [entry.plugin.id, entry.options])).toEqual([
 				["acme.tool.example", { retries: 2 }],
