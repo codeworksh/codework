@@ -1,0 +1,538 @@
+<meta charset="utf-8">
+<title>ACP Integration Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root {
+	color-scheme: light;
+	--ground: #f5f7f6;
+	--surface: #ffffff;
+	--sunken: #eceff0;
+	--ink: #17201f;
+	--muted: #56625f;
+	--rule: #d5dbda;
+	--accent: #1d5f73;
+	--accent-soft: #dcebf0;
+	--crit: #b3261e;
+	--crit-soft: #f8e1df;
+	--high: #b4470f;
+	--high-soft: #f8e6da;
+	--med: #8a6200;
+	--med-soft: #f5ecd2;
+	--low: #4a5a66;
+	--low-soft: #e4e9ed;
+	--ok: #2c6e3a;
+	--ok-soft: #dfeee2;
+	--code-ink: #22302e;
+	--sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+	--cond: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+	--mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		color-scheme: dark;
+		--ground: #121817;
+		--surface: #1a2221;
+		--sunken: #222b2a;
+		--ink: #e3eae8;
+		--muted: #9aa8a4;
+		--rule: #33403e;
+		--accent: #7cc0d6;
+		--accent-soft: #1d3a44;
+		--crit: #f2968f;
+		--crit-soft: #3e1f1d;
+		--high: #f2a36f;
+		--high-soft: #3d2718;
+		--med: #e2c26a;
+		--med-soft: #37301a;
+		--low: #a9b8c3;
+		--low-soft: #273038;
+		--ok: #8fd19c;
+		--ok-soft: #1c3322;
+		--code-ink: #d4dedb;
+	}
+}
+:root[data-theme="dark"] {
+	color-scheme: dark;
+	--ground: #121817;
+	--surface: #1a2221;
+	--sunken: #222b2a;
+	--ink: #e3eae8;
+	--muted: #9aa8a4;
+	--rule: #33403e;
+	--accent: #7cc0d6;
+	--accent-soft: #1d3a44;
+	--crit: #f2968f;
+	--crit-soft: #3e1f1d;
+	--high: #f2a36f;
+	--high-soft: #3d2718;
+	--med: #e2c26a;
+	--med-soft: #37301a;
+	--low: #a9b8c3;
+	--low-soft: #273038;
+	--ok: #8fd19c;
+	--ok-soft: #1c3322;
+	--code-ink: #d4dedb;
+}
+* { box-sizing: border-box; }
+body {
+	background: var(--ground);
+	color: var(--ink);
+	font-family: var(--sans);
+	font-size: 15px;
+	line-height: 1.6;
+	margin: 0;
+	padding-inline: 16px;
+	padding-block: 40px 80px;
+}
+.wrap { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px; }
+h1, h2, h3 { font-family: var(--cond); text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: 2.3rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.55rem; font-weight: 600; }
+h3 { font-size: 1.1rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+a { color: var(--accent); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--sunken); color: var(--code-ink); padding: 0.1em 0.35em; border-radius: 3px; overflow-wrap: anywhere; }
+pre { margin: 0; background: var(--sunken); color: var(--code-ink); padding: 12px 14px; border-radius: 4px; overflow-x: auto; font-family: var(--mono); font-size: 0.8rem; line-height: 1.55; }
+pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+section { display: flex; flex-direction: column; gap: 18px; }
+.eyebrow { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lede { font-size: 1.05rem; color: var(--ink); }
+.muted { color: var(--muted); }
+
+header.top { display: flex; flex-direction: column; gap: 14px; border-bottom: 1px solid var(--rule); padding-bottom: 28px; }
+.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 24px; margin: 6px 0 0; }
+.meta div { display: flex; flex-direction: column; }
+.meta dt { font-family: var(--mono); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.meta dd { margin: 0; font-family: var(--mono); font-size: 0.85rem; overflow-wrap: anywhere; }
+
+.verdict { background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--high); border-radius: 4px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+.verdict .label { font-family: var(--cond); font-weight: 700; font-size: 1.25rem; color: var(--high); }
+.verdict ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+
+.tally { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.74rem; font-weight: 500; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.crit { background: var(--crit-soft); color: var(--crit); }
+.pill.high { background: var(--high-soft); color: var(--high); }
+.pill.med { background: var(--med-soft); color: var(--med); }
+.pill.low { background: var(--low-soft); color: var(--low); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.info { background: var(--accent-soft); color: var(--accent); }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--sunken); }
+tr:last-child td { border-bottom: none; }
+td.num { font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 0.8rem; white-space: nowrap; }
+td .mono { white-space: nowrap; }
+
+.findings { display: flex; flex-direction: column; gap: 12px; }
+details.finding { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; }
+details.finding > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 3.2rem 5.2rem 1fr; gap: 10px; align-items: baseline; padding: 12px 16px; }
+details.finding > summary::-webkit-details-marker { display: none; }
+details.finding > summary .id { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+details.finding > summary .t { font-weight: 600; }
+details.finding[open] > summary { border-bottom: 1px solid var(--rule); }
+.body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+.body dl { margin: 0; display: grid; grid-template-columns: 7.5rem 1fr; gap: 6px 14px; }
+.body dt { font-family: var(--mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding-top: 3px; }
+.body dd { margin: 0; min-width: 0; }
+@media (max-width: 560px) {
+	details.finding > summary { grid-template-columns: auto 1fr; }
+	details.finding > summary .t { grid-column: 1 / -1; }
+	.body dl { grid-template-columns: 1fr; }
+	.body dt { padding-top: 6px; }
+}
+
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.note { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+ol.plain, ul.plain { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 72ch; }
+.log { font-family: var(--mono); font-size: 0.78rem; }
+footer { border-top: 1px solid var(--rule); padding-top: 18px; color: var(--muted); font-size: 0.85rem; }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+	<span class="eyebrow">Pull request review · codeworksh/codework#38</span>
+	<h1>ACP integration review</h1>
+	<p class="lede">A review of <a href="https://github.com/codeworksh/codework/pull/38">codeworksh/codework#38</a>, which adds an Agent Client Protocol server to the CLI as <code>codework acp</code>. It covers the merge-conflict resolution, static review against the <a href="https://agentclientprotocol.com/protocol/v1/schema">ACP v1 schema</a>, a live stdio test against OpenRouter, and what the harness core can and cannot support today.</p>
+	<dl class="meta">
+		<div><dt>Date</dt><dd>2026-09-26</dd></div>
+		<div><dt>PR head reviewed</dt><dd>cf39091</dd></div>
+		<div><dt>Base (dev)</dt><dd>8f0060d</dd></div>
+		<div><dt>Merge commit</dt><dd>7c5aec1</dd></div>
+		<div><dt>ACP SDK</dt><dd>@agentclientprotocol/sdk 1.5.0 · protocol v1</dd></div>
+		<div><dt>Live model</dt><dd>openrouter / meta/muse-spark-1.3-contributor</dd></div>
+	</dl>
+</header>
+
+<section id="verdict">
+	<div class="verdict">
+		<span class="label">Request changes</span>
+		<p>The basic Zed flow works. <code>initialize</code>, <code>session/new</code>, model selection, streamed text, tool calls and <code>session/load</code> replay all ran against a real OpenRouter model over stdio. Four problems block merging:</p>
+		<ul>
+			<li><strong>F1</strong> Cancelling a turn answers <code>end_turn</code> instead of <code>cancelled</code>, and shows the user a fake error message.</li>
+			<li><strong>F2</strong> Failed turns are reported as successful <code>end_turn</code>, often with no error text at all.</li>
+			<li><strong>F3</strong> <code>src/acp/handlers.ts</code> imports harness internals by relative path (<code>../../../harness/src/…</code>), which breaks the package boundary.</li>
+			<li><strong>F4</strong> <code>session/new</code> never sets the session's host directory, so project settings and project plugins are ignored for every ACP session.</li>
+		</ul>
+		<p>All four can be fixed in <code>packages/codework</code> without changing the core.</p>
+	</div>
+	<div class="tally">
+		<span class="pill high">4 high</span>
+		<span class="pill med">6 medium</span>
+		<span class="pill low">5 low</span>
+		<span class="pill info">11 core gaps</span>
+	</div>
+</section>
+
+<section id="merge">
+	<span class="eyebrow">Step 1</span>
+	<h2>Merge conflict resolution</h2>
+	<p>I merged <code>dev</code> into <code>feature/acp-support</code> in a merge commit (no rebase, no force-push). The only textual conflict was the <code>dependencies</code> block of <code>packages/codework/package.json</code>. As instructed, I kept dev's dependency set and added the PR's new package on top:</p>
+<pre><code>"dependencies": {
+	"@agentclientprotocol/sdk": "^1.5.0",   // from the PR
+	"@codeworksh/aikit": "workspace:^",     // dev
+	"@codeworksh/harness": "workspace:*",   // dev (harness moved from devDependencies)
+	"@effect/platform-node": "4.0.0-rc.115",
+	"effect": "4.0.0-rc.115",
+	"jsonc-parser": "3.3.1"
+}</code></pre>
+	<ul class="plain">
+		<li>The PR's <code>@codeworksh/plugin</code> dependency is gone, as on dev. The ACP code doesn't import it.</li>
+		<li>The auto-merge silently produced a <strong>duplicate</strong> <code>@codeworksh/aikit/modelgen</code> alias in the root <code>vite.config.ts</code> (the PR and dev both added it). I kept dev's copy only.</li>
+		<li><code>pnpm-lock.yaml</code> was regenerated from dev's lockfile with <code>pnpm install</code>, not merged by hand. The only difference from dev is the <code>@agentclientprotocol/sdk@1.5.0</code> entry (+12 lines).</li>
+		<li>After the merge, the diff against dev contains only the PR's 12 files: 1,407 lines added, 1 removed.</li>
+		<li>No files under <code>packages/harness</code> were changed.</li>
+	</ul>
+</section>
+
+<section id="verification">
+	<span class="eyebrow">Step 2</span>
+	<h2>Verification</h2>
+	<p>This session started in a fresh container. aikit's typings (<code>dist/pack</code>) and the model catalog (<code>models.gen.json</code>) are both gitignored build outputs, so I generated them before running checks. Nothing generated was committed.</p>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>Check</th><th>Result</th><th>Notes</th></tr></thead>
+			<tbody>
+				<tr><td><code>vp check</code></td><td><span class="pill med">4 errors</span></td><td>All 4 are in <code>sites/www/src/pages/api/search.ts</code> and also fail on dev. The cause: the root <code>.gitignore</code> rule <code>lib</code> also matches <code>sites/www/src/lib</code>, so <code>@/lib/source</code> is missing from git. Nothing in ACP.</td></tr>
+				<tr><td><code>vp run typecheck</code></td><td><span class="pill med">2 failed tasks</span></td><td><code>sites/www</code> (the same baseline issue as above) and <code>harness</code>, which was killed for running out of memory (exit 137) while running in parallel. Run on its own, <code>harness</code> passes.</td></tr>
+				<tr><td><code>tsc --noEmit</code> in packages/codework</td><td><span class="pill ok">pass</span></td><td>Includes <code>src/acp</code> and <code>test/acp.test.ts</code>.</td></tr>
+				<tr><td><code>tsc --noEmit</code> in packages/harness</td><td><span class="pill ok">pass</span></td><td>Run alone.</td></tr>
+				<tr><td><code>vp test packages/codework/test/acp.test.ts</code></td><td><span class="pill ok">10 / 10</span></td><td>These pass only once <code>models.gen.json</code> exists. Without it, 2 tests fail: the prompt turn fails silently (see F2) and <code>gpt-4o</code> falls back to a reasoning-capable default.</td></tr>
+				<tr><td><code>vp test packages/codework</code></td><td><span class="pill med">115 / 117</span></td><td>The 2 failures (<code>cli.test.ts</code> catalog refresh, <code>plugin.cmd.test.ts</code> <code>--user-config-dir</code>) fail identically on a clean dev worktree.</td></tr>
+			</tbody>
+		</table>
+	</div>
+</section>
+
+<section id="live">
+	<span class="eyebrow">Step 3</span>
+	<h2>Live ACP test over stdio</h2>
+	<p>A small client built on <code>@agentclientprotocol/sdk</code> started <code>codework acp --home &lt;tmp&gt;</code> as a subprocess and spoke newline-delimited JSON-RPC over its stdin and stdout, the same way Zed does. <code>codework acp</code> has no <code>--provider</code> or <code>--model</code> flags (passing them only prints the help text), so the client selected <code>openrouter/meta/muse-spark-1.3-contributor</code> through <code>session/set_config_option</code>. <code>OPENROUTER_API_KEY</code> came from the environment.</p>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>Scenario</th><th>Result</th><th>What happened</th></tr></thead>
+			<tbody>
+				<tr><td>initialize</td><td><span class="pill ok">pass</span></td><td class="log">protocolVersion 1, loadSession true, sessionCapabilities.list {}</td></tr>
+				<tr><td>session/new</td><td><span class="pill ok">pass</span></td><td>Returns 395 model options, which is too many for a dropdown (see F8). The default is <code>openai/gpt-5.6-luna</code>.</td></tr>
+				<tr><td>set_config_option model</td><td><span class="pill med">partial</span></td><td>The runtime gets the right model, but <code>currentValue</code> comes back as <code>openrouter/muse-spark-1.3-contributor</code>: the <code>meta/</code> segment is lost (F5).</td></tr>
+				<tr><td>Text prompt</td><td><span class="pill ok">pass</span></td><td class="log">agent_message_chunk "PONG" → stopReason end_turn (7.0 s)</td></tr>
+				<tr><td>Tool use (bash)</td><td><span class="pill ok">pass</span></td><td><code>tool_call</code> (in_progress) is followed by <code>tool_call_update</code> (completed) with rawInput, rawOutput and text content, and the file was created. The first <code>tool_call</code> has no arguments, so its title is just "bash" (core gap G9).</td></tr>
+				<tr><td>session/cancel</td><td><span class="pill crit">fail</span></td><td class="log">agent_message_chunk "❌ **Error**: LLM request failed" → stopReason <strong>end_turn</strong> (the spec requires cancelled)</td></tr>
+				<tr><td>Image content block</td><td><span class="pill crit">fail</span></td><td>The image is silently dropped. The model then used <code>bash</code> to read files <em>outside</em> the session cwd (<code>cat ../client.mjs</code>, <code>ls -R ../home</code>) looking for context, without any permission request (G1, G3).</td></tr>
+				<tr><td>session/load (same process)</td><td><span class="pill ok">pass</span></td><td>Replays <code>user_message_chunk</code> and <code>agent_message_chunk</code> before responding, as the spec requires.</td></tr>
+				<tr><td>session/load after restart</td><td><span class="pill high">partial</span></td><td>History replays, but the model reverts to <code>openai/gpt-5.6-luna</code>. The next prompt fails with the generic "LLM request failed" and still returns <code>end_turn</code> (F2, G6).</td></tr>
+				<tr><td>session/list with cwd</td><td><span class="pill med">partial</span></td><td>Asking for the parent directory also returned sessions of <code>…/live/proj</code>, because the match is a string prefix. Every title is "Session" (F9).</td></tr>
+				<tr><td>Prompt for an unknown session</td><td><span class="pill med">partial</span></td><td>Fails as JSON-RPC internal error with empty <code>data: {}</code>, not a resource-not-found error (F7).</td></tr>
+				<tr><td>Invalid config values</td><td><span class="pill high">fail</span></td><td><code>thought_level: "bogus-level"</code> and <code>model: "nope/nothing"</code> are both accepted. The next prompt returned <code>end_turn</code> after 17 ms with no updates at all (F2, F6).</td></tr>
+			</tbody>
+		</table>
+	</div>
+</section>
+
+<section id="findings">
+	<span class="eyebrow">Step 4</span>
+	<h2>Findings in the ACP layer</h2>
+	<p>Each of these can be fixed inside <code>packages/codework/src/acp</code> with the harness APIs that exist today. File references are to the merged tree.</p>
+
+	<div class="findings">
+
+		<details class="finding" open>
+			<summary><span class="id">F1</span><span class="pill high">high</span><span class="t">Cancellation answers end_turn and shows a fake error</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/handlers.ts</code> (prompt, cancel) · <code>src/acp/feed.ts</code> (<code>session.llm.failed</code>)</dd>
+					<dt>Cause</dt><dd><code>cancel</code> calls <code>control.interrupt</code>, which stops the execution fiber, not the <code>control.run</code> call that <code>session/prompt</code> is waiting on. <code>run</code> returns normally once the session is idle, so <code>Effect.catchCauseIf(Cause.hasInterrupts, …)</code> never fires. The aborted LLM request then publishes <code>LLMFailed</code> with <code>reason: "aborted"</code>, which the feed renders as "❌ Error: LLM request failed".</dd>
+					<dt>Spec</dt><dd>On <code>session/cancel</code>, the agent must answer the original <code>session/prompt</code> with <code>StopReason::Cancelled</code>.</dd>
+					<dt>Fix</dt><dd>Record the cancellation per session in <code>cancel</code>, or watch for <code>EventList.ExecutionInterrupted</code> while the prompt runs, and return <code>cancelled</code> when it is seen. Drop <code>LLMFailed</code> events whose reason is <code>"aborted"</code>. Add a test that cancels a slow fake LLM.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding" open>
+			<summary><span class="id">F2</span><span class="pill high">high</span><span class="t">Failed turns are reported as successful</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/handlers.ts</code> prompt · <code>src/acp/feed.ts</code> <code>toSessionUpdate</code></dd>
+					<dt>Cause</dt><dd><code>control.run</code> resolves with <code>Admitted</code> whether the turn succeeded or not, and the handler always maps that to <code>end_turn</code>. When the run fails before the LLM starts (unknown model, missing catalog, missing credentials), nothing is streamed: <code>ExecutionFailed</code> is not mapped. When the LLM does fail, the feed looks for <code>data.errorMessage</code> or <code>data.failure.message</code>. Neither exists on <code>LLMFailed</code>, which carries the text in <code>data.message.errorMessage</code>, so the user always sees "LLM request failed". Also, <code>LLMEnded.reason === "length"</code> is never mapped to <code>max_tokens</code>.</dd>
+					<dt>Evidence</dt><dd>Live: after an invalid model, <code>end_turn</code> in 17 ms with 0 updates. After a restart, a generic error and <code>end_turn</code>. In tests: without <code>models.gen.json</code>, the streaming test gets 0 updates but still sees <code>end_turn</code>.</dd>
+					<dt>Fix</dt><dd>While the prompt runs, collect the terminal execution event for the session. For <code>ExecutionFailed</code>, fail the request with a JSON-RPC error that carries <code>SessionFailure</code>'s message. For a last <code>LLMEnded</code> with reason <code>length</code>, return <code>max_tokens</code>. Use <code>Schema.is(EventList.X)</code> guards, as <code>cli/cmd/handlers/run.ts</code> does. Core suggestion S3 would make this simpler.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding" open>
+			<summary><span class="id">F3</span><span class="pill high">high</span><span class="t">Relative imports into the harness source tree</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/handlers.ts</code>: <code>import * as SandboxController from "../../../harness/src/sandbox/control.ts"</code> and <code>import * as SessionRuntime from "../../../harness/src/session/runtime.ts"</code></dd>
+					<dt>Why it matters</dt><dd>The CLI's <code>vp pack</code> keeps <code>@codeworksh/harness</code> external, but it bundles relative files. The published CLI would therefore ship a second, private copy of harness modules next to the real dependency. It also couples the CLI to harness file layout and undoes the rule that <code>packages/codework</code> consumes the harness only through its public exports. <code>server/handlers.ts</code> manages the same operations without any of this.</dd>
+					<dt>Fix</dt><dd>Use <code>Session.attach({ sessionId, model: { provider, id }, thinkingLevel })</code> from <code>@codeworksh/harness/effect</code> to change config. It merges into the runtime bindings, exactly what <code>runtime.update</code> does now. To capture requirements, don't name internal services. Type the captured context from the public function, e.g. <code>Effect.Services&lt;ReturnType&lt;typeof Session.create&gt;&gt;</code>, or provide the harness layer per call. With both changes, the <code>SqlClient</code> and <code>SandboxController</code> yields in <code>Handlers.layer</code> can go. Reading the current binding back (<code>runtime.get</code>) has no public API; see S1. Until S1 lands, the ACP layer can keep its own record of the values it set.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding" open>
+			<summary><span class="id">F4</span><span class="pill high">high</span><span class="t">session/new doesn't link the session to its project</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/handlers.ts</code> newSession: <code>Session.create(cwd === undefined ? {} : { directory: cwd })</code></dd>
+					<dt>Cause</dt><dd>In the harness, <code>directory</code> is where the work runs inside the session's space. <code>hostDir</code> is the host project whose settings and plugins apply. Both <code>run</code> and <code>server/handlers.ts</code> pass <code>hostDir</code>. ACP passes only <code>directory</code>, so project <code>settings.jsonc</code>, project plugins and project model defaults never apply. <code>loadSession</code> then reads <code>hostDir</code> as undefined, and the config options it computes come from user settings only. The handler also calls <code>settings.load(cwd)</code> for display, so the dropdown can show a model the session won't actually use.</dd>
+					<dt>Spec</dt><dd>The <code>cwd</code> must be used for the session regardless of where the agent subprocess was spawned.</dd>
+					<dt>Fix</dt><dd><code>Session.create({ directory: cwd, hostDir: cwd, title: … })</code>. ACP guarantees <code>cwd</code> is absolute, which is what <code>declaredHostDir</code> requires.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F5</span><span class="pill med">medium</span><span class="t">Model ids containing “/” are mangled for display</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/config.ts</code> <code>resolveConfigOptions</code>, lines 40–46</dd>
+					<dt>Cause</dt><dd>When <code>model</code> contains a slash, the code cuts everything before it even though <code>provider</code> was already given. OpenRouter ids such as <code>meta/muse-spark-1.3-contributor</code> become <code>muse-spark-1.3-contributor</code>. The aikit lookup for that id then fails, the current value matches no option (so a synthetic entry is added), and thinking levels fall back to a hard-coded list.</dd>
+					<dt>Fix</dt><dd>Split on the first slash only when no provider is given. Better: keep a single parse function for the <code>provider/model</code> value and use it in both <code>setConfigOption</code> and <code>resolveConfigOptions</code>, since the two currently parse it separately.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F6</span><span class="pill med">medium</span><span class="t">set_config_option accepts any value</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/handlers.ts</code> setConfigOption</dd>
+					<dt>Cause</dt><dd><code>value as Model.ThinkingLevel</code> stores any string. An unknown model id is stored as-is. An unknown <code>configId</code> is ignored without complaint. The client is never told, and the next prompt fails silently (F2).</dd>
+					<dt>Fix</dt><dd>Validate against the options just offered: decode the thinking level with a Schema literal and require the model to be in the catalog. Answer invalid input with <code>RequestError.invalidParams</code>.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F7</span><span class="pill med">medium</span><span class="t">Typed errors become empty internal errors</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/server.ts</code> <code>makeApp</code>: <code>Effect.runPromise(handler)</code></dd>
+					<dt>Cause</dt><dd>A failed Effect rejects with a FiberFailure, and the SDK turns that into <code>-32603</code> with <code>data: {}</code>. <code>SessionNotFoundError</code>, <code>PromptConflictError</code>, location and sandbox errors all lose their meaning.</dd>
+					<dt>Fix</dt><dd>Wrap each handler once: map <code>SessionNotFoundError</code> to <code>RequestError.resourceNotFound</code>, validation errors to <code>invalidParams</code>, and everything else to <code>internalError</code> with the error's message. Keep this in <code>server.ts</code> so the handlers stay unchanged.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F8</span><span class="pill med">medium</span><span class="t">Hard-coded defaults and model lists that duplicate core settings</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/config.ts</code></dd>
+					<dt>Cause</dt><dd>The default <code>openai</code>/<code>gpt-5.6-luna</code>/<code>high</code> copies <code>defaults</code> in <code>packages/plugin/src/settings.ts</code>. <code>Settings.load</code> always returns a merged model, so this fallback can never be reached correctly. The fallback option list names models that may not exist (<code>anthropic/claude-3-7-sonnet</code>, <code>google/gemini-3.8-flash</code>). The code always adds <code>google</code>, <code>openai</code> and <code>anthropic</code> whether or not they have credentials, detects keys through a <code>globalThis.process</code> cast, and ignores OAuth logins (<code>codework auth</code>). The result: 395 options in the live test.</dd>
+					<dt>Fix</dt><dd>Take defaults from <code>Settings.load</code> only. Build the list from providers that actually have credentials, including OAuth; see S10. Delete the static fallback list.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F9</span><span class="pill med">medium</span><span class="t">session/list: prefix match, wrong field, no paging</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/handlers.ts</code> listSessions</dd>
+					<dt>Cause</dt><dd>The filter <code>row.directory.startsWith(cwd)</code> matches <code>/a/b2</code> for <code>/a/b</code>, and it matches every child directory. It also filters the in-space <code>directory</code> rather than the host project. <code>cursor</code> and <code>nextCursor</code> aren't supported, so every session in the database is returned.</dd>
+					<dt>Fix</dt><dd>Compare <code>hostDir</code> exactly, or at most use a <code>cwd + "/"</code> prefix. Page with an opaque cursor over the rows <code>list()</code> already returns, newest first.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F10</span><span class="pill med">medium</span><span class="t">The event feed and history replay are untyped</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/feed.ts</code></dd>
+					<dt>Cause</dt><dd><code>toSessionUpdate</code> matches events with <code>event.type.startsWith(…)</code> and <code>as Record&lt;string, unknown&gt;</code> casts, while <code>EventList</code> already exports a schema for each event. This is how F2's wrong field went unnoticed. <code>entryToSessionUpdates</code> hand-parses stored part JSON, guesses between shapes (<code>callID</code>/<code>callId</code>, <code>text</code>/<code>thinking</code>), and ignores parse errors with empty <code>catch {}</code>. It is about 170 lines for what is a decode of stored aikit parts.</dd>
+					<dt>Fix</dt><dd>Use <code>Schema.is(EventList.LLMTextDelta)</code> and the other guards, as <code>run.ts</code> does. For replay, decode each part with aikit's part types (one <code>switch</code> on <code>part.type</code>), or use a public transcript decoder (S8).</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F11</span><span class="pill low">low</span><span class="t">Concurrent prompts duplicate updates</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/handlers.ts</code> prompt</dd>
+					<dt>Cause</dt><dd>Each <code>session/prompt</code> registers its own <code>events.listen</code> for the session. A second prompt while one is running uses <code>delivery: "steer"</code>, joins the running turn, and forwards every update a second time. Found by reading the code; I didn't reproduce it.</dd>
+					<dt>Fix</dt><dd>Keep one forwarder per session and connection, or reject a second prompt while one is in flight.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F12</span><span class="pill low">low</span><span class="t">Resource links lose their URI</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/handlers.ts</code> <code>extractPromptText</code></dd>
+					<dt>Cause</dt><dd>ACP requires every agent to support <code>resource_link</code>. The handler turns a link into <code>[Resource: name]</code>, which drops the URI the model needs to open the file. Image and audio blocks are dropped without any signal. This is correct only because <code>promptCapabilities</code> isn't advertised, and the live test showed a client may send them anyway.</dd>
+					<dt>Fix</dt><dd>Include the URI (and <code>mimeType</code> when present). Log or reject unsupported block types.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F13</span><span class="pill low">low</span><span class="t">Tool kind guessed from substrings</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/feed.ts</code> <code>toolKind</code>, <code>toolTitle</code></dd>
+					<dt>Cause</dt><dd>Substring checks misfire: <code>rm</code> matches "format", <code>cat</code> matches "locate", <code>run</code> matches "prune". <code>toolTitle</code> also checks argument names (<code>CommandLine</code>, <code>AbsolutePath</code>, <code>TargetFile</code>) that no tool in this repo has. The only built-in tool is <code>bash</code>.</dd>
+					<dt>Fix</dt><dd>Map known tool names exactly and let plugin tools declare their own kind (S7). Default to <code>other</code>.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F14</span><span class="pill low">low</span><span class="t">Unused barrels and dead code</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>src/acp/contract.ts</code>, <code>src/acp/index.ts</code>, <code>feed.ts</code> <code>streamUpdates</code></dd>
+					<dt>Cause</dt><dd><code>contract.ts</code> re-exports the whole SDK twice (<code>export *</code> and <code>export type *</code>), and nothing imports it. <code>index.ts</code> is also unused, and so is <code>streamUpdates</code>.</dd>
+					<dt>Fix</dt><dd>Delete them.</dd>
+				</dl>
+			</div>
+		</details>
+
+		<details class="finding">
+			<summary><span class="id">F15</span><span class="pill low">low</span><span class="t">Test gaps</span></summary>
+			<div class="body">
+				<dl>
+					<dt>Where</dt><dd><code>test/acp.test.ts</code></dd>
+					<dt>Cause</dt><dd>The cancel test only checks an idle session. Nothing covers a failed turn, invalid config values, <code>hostDir</code>, the list filter, or ids containing a slash, so F1, F2, F4, F5 and F6 all pass the suite. The <code>gpt-4o</code> assertion depends on the downloaded catalog. That matches the other suites, but it deserves a comment.</dd>
+					<dt>Fix</dt><dd>Add one test per high and medium finding above, using the existing fake LLM fixtures (<code>immediateOpen</code>, <code>toolTurn</code>) and a slow fake stream for cancel.</dd>
+				</dl>
+			</div>
+		</details>
+
+	</div>
+</section>
+
+<section id="coverage">
+	<span class="eyebrow">Step 5</span>
+	<h2>ACP v1 coverage against the core</h2>
+	<p>This table checks each ACP surface against what the harness core offers today. <span class="pill ok">implemented</span> means the PR has it. <span class="pill info">possible</span> means the core already has what's needed and only ACP code is missing. <span class="pill crit">core gap</span> means ACP support can't be given without a core change; the matching core suggestion is listed in step 6.</p>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>ACP surface</th><th>Status</th><th>Details</th></tr></thead>
+			<tbody>
+				<tr><td class="mono">initialize</td><td><span class="pill ok">implemented</span></td><td>It ignores <code>clientCapabilities</code>. That is harmless today, because nothing can use them (G2).</td></tr>
+				<tr><td class="mono">authenticate / authMethods</td><td><span class="pill info">possible</span></td><td><code>codework auth</code> already exists. Advertising a <code>terminal</code> auth method that runs it would let Zed start a login.</td></tr>
+				<tr><td class="mono">session/new</td><td><span class="pill med">implemented, buggy</span></td><td>See F4. <code>mcpServers</code> is ignored (G4) and so is <code>additionalDirectories</code> (G10).</td></tr>
+				<tr><td class="mono">session/load</td><td><span class="pill ok">implemented</span></td><td>History replays before the response, as the spec requires. Model choice is lost across restarts (G6).</td></tr>
+				<tr><td class="mono">session/list</td><td><span class="pill med">implemented, buggy</span></td><td>See F9. Titles are always "Session" (G8).</td></tr>
+				<tr><td class="mono">session/prompt</td><td><span class="pill med">implemented, buggy</span></td><td>F1, F2, F12. Text only (G3).</td></tr>
+				<tr><td class="mono">session/cancel</td><td><span class="pill crit">wrong stop reason</span></td><td>F1. The core can already interrupt, so this is fixable in ACP.</td></tr>
+				<tr><td class="mono">session/set_config_option</td><td><span class="pill med">implemented, buggy</span></td><td>F5, F6. Values don't survive a restart (G6).</td></tr>
+				<tr><td class="mono">session/set_mode · current_mode_update</td><td><span class="pill crit">core gap</span></td><td>G5: the core has no concept of agent modes.</td></tr>
+				<tr><td class="mono">session/fork</td><td><span class="pill info">possible</span></td><td>The core has <code>Session.fork</code> in the store. It isn't exposed on the public <code>Session</code> module yet, though the server RPC could expose it the same way.</td></tr>
+				<tr><td class="mono">session/resume · session/close</td><td><span class="pill info">possible</span></td><td>Resume is <code>Session.attach</code> without replay. Close is <code>control.interrupt</code> plus dropping per-session state.</td></tr>
+				<tr><td class="mono">agent_message_chunk · agent_thought_chunk</td><td><span class="pill ok">implemented</span></td><td>Both come from the <code>LLMTextDelta</code> and <code>LLMThinkingDelta</code> events.</td></tr>
+				<tr><td class="mono">tool_call · tool_call_update</td><td><span class="pill ok">implemented</span></td><td>The initial call has no arguments (G9). No <code>locations</code> or <code>diff</code> content, because no core tool produces them (G7).</td></tr>
+				<tr><td class="mono">session/request_permission</td><td><span class="pill crit">core gap</span></td><td>G1: tools run with no approval step.</td></tr>
+				<tr><td class="mono">fs/read_text_file · fs/write_text_file</td><td><span class="pill crit">core gap</span></td><td>G2: tools read and write through the harness sandbox, not the client.</td></tr>
+				<tr><td class="mono">terminal/*</td><td><span class="pill crit">core gap</span></td><td>G2: <code>bash</code> runs in the sandbox shell, so the client's terminal can't be used.</td></tr>
+				<tr><td class="mono">MCP servers (stdio MUST)</td><td><span class="pill crit">core gap</span></td><td>G4: the harness has no MCP client. Supporting stdio MCP is a MUST in the spec.</td></tr>
+				<tr><td class="mono">image · audio · embedded context</td><td><span class="pill crit">core gap</span></td><td>G3: <code>PromptSchema.Prompt</code> is <code>{ text }</code> only, with a TODO in core.</td></tr>
+				<tr><td class="mono">plan updates</td><td><span class="pill crit">core gap</span></td><td>G7: there is no plan or todo event in core.</td></tr>
+				<tr><td class="mono">available_commands_update</td><td><span class="pill info">not evaluated</span></td><td>Prompt plugins exist under <code>plugin/builtin/prompt</code>. Whether they map to slash commands wasn't checked.</td></tr>
+				<tr><td class="mono">session_info_update (title)</td><td><span class="pill crit">core gap</span></td><td>G8: the core has no title update or generation API.</td></tr>
+				<tr><td class="mono">usage / cost</td><td><span class="pill info">possible</span></td><td><code>LLMEnded.message.usage</code> carries tokens and cost, and <code>run.ts</code> already sums them.</td></tr>
+				<tr><td class="mono">stopReason max_tokens</td><td><span class="pill info">possible</span></td><td>From <code>LLMEnded.reason === "length"</code> (F2).</td></tr>
+			</tbody>
+		</table>
+	</div>
+</section>
+
+<section id="core">
+	<span class="eyebrow">Step 6</span>
+	<h2>What the core can’t support, and what would help</h2>
+	<p>Per the brief, <code>packages/harness</code> wasn't modified. The gaps below block ACP features outright. Each has a suggested core change; where a change would belong to the plugin contract instead, that's noted.</p>
+	<div class="table-wrap">
+		<table>
+			<thead><tr><th>Gap</th><th>ACP impact</th><th>Suggested core change</th></tr></thead>
+			<tbody>
+				<tr><td><strong>G1</strong> No tool approval step</td><td>No <code>session/request_permission</code>. In the live test the model read files outside the project without being asked.</td><td><strong>S5</strong> Add an approval hook to the runner before a tool runs, e.g. an <code>approve(call) → allow | deny | allowAlways</code> service with a default of allow. ACP would implement it with <code>request_permission</code>, and a TUI could reuse it.</td></tr>
+				<tr><td><strong>G2</strong> Tools only use the harness sandbox</td><td>Can't use the client's fs or terminal, so the editor's unsaved buffers and terminal view aren't used.</td><td><strong>S12</strong> A sandbox driver backed by the ACP client's fs and terminal. The driver contract lives in <code>packages/plugin</code>, so this may need no harness change, but a driver would need access to the per-session connection. Worth a design note first.</td></tr>
+				<tr><td><strong>G3</strong> Prompts are text only</td><td>No image, audio or embedded-resource prompts.</td><td><strong>S6</strong> Grow <code>PromptSchema.Prompt</code> into content parts that aikit already supports; this is the existing TODO in <code>session/prompt/schema.ts</code>.</td></tr>
+				<tr><td><strong>G4</strong> No MCP client</td><td>Fails a spec MUST (stdio MCP servers from <code>session/new</code>).</td><td><strong>S7</strong> An MCP tool source, ideally a plugin whose tools are registered per session from <code>mcpServers</code>. Let tools declare an ACP-style <code>kind</code> at the same time (helps F13).</td></tr>
+				<tr><td><strong>G5</strong> No agent modes</td><td>No <code>set_mode</code> or mode updates.</td><td>Defer until there is a real second mode (ask vs. code, for example). Per the project guidelines, don't design for it early.</td></tr>
+				<tr><td><strong>G6</strong> Session config lives only in memory</td><td>After a restart, a loaded session loses its model and thinking level. Confirmed live.</td><td><strong>S2</strong> Persist runtime bindings, e.g. revive the commented-out <code>session.config.changed</code> durable event in <code>event/list.ts</code> and project it back on load.</td></tr>
+				<tr><td><strong>G7</strong> No plan or structured edit events</td><td>No <code>plan</code>, <code>diff</code> content or <code>locations</code>.</td><td>Comes with future file-edit and todo tools. Nothing to do now.</td></tr>
+				<tr><td><strong>G8</strong> No session title API</td><td>Every session is titled "Session" in <code>session/list</code>, with no <code>session_info_update</code>.</td><td><strong>S9</strong> <code>Session.rename</code>, with an optional title from the first prompt.</td></tr>
+				<tr><td><strong>G9</strong> <code>ToolStarted</code> has no arguments</td><td>The first <code>tool_call</code> shows only "bash". The command appears only once the tool finishes.</td><td><strong>S4</strong> Add the call's <code>arguments</code> to <code>EventList.ToolStarted</code>. They are already on the pending part when the tool starts.</td></tr>
+				<tr><td><strong>G10</strong> One directory per session</td><td><code>additionalDirectories</code> can't be honored.</td><td>Defer until a multi-root session is needed.</td></tr>
+				<tr><td><strong>G11</strong> Missing public APIs</td><td>This is why F3's deep imports exist.</td><td><strong>S1</strong> A public way to read a session's effective config, e.g. <code>Session.configuration(id)</code> returning the resolved model and thinking level. <strong>S3</strong> <code>Control.run</code> returning the turn's outcome (succeeded, failed with <code>SessionFailure</code>, or interrupted, plus the last stop reason), which removes the event bookkeeping in F1 and F2. <strong>S8</strong> A public transcript decoder over <code>ContextCodec.decodeMessage</code> for replay (F10). <strong>S10</strong> A "usable models" query that knows which providers have credentials, including OAuth (F8). <strong>S11</strong> <code>ListInput</code> filtering by <code>hostDir</code> with a cursor (F9).</td></tr>
+			</tbody>
+		</table>
+	</div>
+	<div class="cols">
+		<div class="note">
+			<h3>Highest-value core changes</h3>
+			<ol class="plain">
+				<li><strong>S3</strong> <code>Control.run</code> returns the outcome. This simplifies F1 and F2 for every client, including the RPC server.</li>
+				<li><strong>S2</strong> Persist session config. This fixes the restart regression that ACP clients hit whenever the editor restarts the agent.</li>
+				<li><strong>S5</strong> A tool approval hook. This is the largest missing ACP feature and a safety issue in its own right.</li>
+			</ol>
+		</div>
+		<div class="note">
+			<h3>Fix order for the PR</h3>
+			<ol class="plain">
+				<li>F3 and F4: switch to public APIs (<code>Session.attach</code>, <code>hostDir</code>).</li>
+				<li>F1, F2 and F7: stop reasons and error mapping, using typed events.</li>
+				<li>F5, F6 and F8: a single parser for model values, validation, settings-driven defaults.</li>
+				<li>F9, F10, F14 and F15: cleanup and tests.</li>
+			</ol>
+		</div>
+	</div>
+</section>
+
+<section id="repro">
+	<span class="eyebrow">Appendix</span>
+	<h2>Reproducing the live test</h2>
+	<p>From the repo root after <code>pnpm install</code>, build aikit once and generate the catalog, then drive the server with any ACP client:</p>
+<pre><code>(cd packages/aikit &amp;&amp; pnpm run build)
+node packages/aikit/dist/pack/cli.mjs modelgen ./models.gen.json
+
+# server under test (stdio)
+node --conditions=development packages/codework/src/index.ts acp --home /tmp/acp-home
+
+# client sequence
+initialize                 { protocolVersion: 1 }
+session/new                { cwd: "/abs/project", mcpServers: [] }
+session/set_config_option  { configId: "model", value: "openrouter/meta/muse-spark-1.3-contributor" }
+session/prompt             { prompt: [{ type: "text", text: "Reply with exactly: PONG" }] }
+session/cancel             (notification, about 4 s into a long prompt)</code></pre>
+	<p class="muted">Environment notes: harness typecheck needs about 6 GB of heap when <code>vp run typecheck</code> runs its tasks in parallel. The <code>sites/www</code> type errors come from the root <code>.gitignore</code> <code>lib</code> rule and are unrelated to this PR.</p>
+</section>
+
+<footer>
+	Written 2026-09-26 against merge commit 7c5aec1 (PR head cf39091, dev 8f0060d). Spec references: <a href="https://agentclientprotocol.com/protocol/v1/schema">ACP v1 schema</a>, <a href="https://agentclientprotocol.com/get-started/introduction">ACP introduction</a>, <a href="https://agentclientprotocol.com/protocol/session-setup">session setup</a>.
+</footer>
+
+</div>
