@@ -172,7 +172,6 @@ This file is the canonical source for unreleased changes and published release n
 
 ### Added
 
-- Added [documentation](https://codeworksh.github.io/aikit/) for the toolkit, including updated guides and examples.
 - Replaced the custom LLM protocol with the Vercel AI SDK (`ai`, `@ai-sdk/*`). This serves as the new foundational layer for all model interactions, streaming, and provider routing, unlocking native support for Anthropic, Google, Google Vertex AI, OpenAI, xAI, OpenRouter, and other OpenAI-compatible APIs out of the box.
 
 ### Changed

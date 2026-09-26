@@ -1,6 +1,6 @@
 # @codeworksh/aikit
 
-[AiKit](https://codeworksh.github.io/aikit/) is **TypeScript SDK** that provides a unified API for working with multiple LLM providers, automatic model discovery, provider configurations, token and cost tracking, and mid-session hand-off to other models.
+AiKit is a **TypeScript SDK** that provides a unified API for working with multiple LLM providers, automatic model discovery, provider configurations, token and cost tracking, and mid-session hand-off to other models.
 It gives you the basic primitives for streaming LLM responses without the extra bloat, letting you handle the orchestration yourself.
 
 ## Table of Contents

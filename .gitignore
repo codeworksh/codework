@@ -40,9 +40,6 @@ temp
 .idea
 .DS_Store
 
-# Zensical Build Output
-packages/aikit/site
-
 .vercel
 
 .claude
