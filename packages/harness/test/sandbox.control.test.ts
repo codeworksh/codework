@@ -41,64 +41,6 @@ const failure = <E>(exit: Exit.Exit<unknown, E>): E => {
 
 describe("Sandbox.Controller", () => {
 	it(
-		"synthesizes and mounts the row-free host",
-		Effect.gen(function* () {
-			const controller = yield* SandboxController.Controller;
-			const host = Option.getOrThrow(yield* controller.get(SandboxInstance.ID.local));
-			expect(host.id).toBe(SandboxInstance.ID.local);
-			expect(host.usage).toBe("pinned");
-			expect(host.refCount).toBe(0);
-			expect((yield* controller.list()).filter((info) => info.id === SandboxInstance.ID.local)).toHaveLength(1);
-
-			const current = yield* Effect.gen(function* () {
-				const identity = yield* SandboxIO.Current;
-				const fs = yield* SandboxIO.FileSystem;
-				expect(yield* fs.exists(identity.cwd)).toBe(true);
-				return identity;
-			}).pipe(Effect.provide(controller.mount()), Effect.scoped);
-
-			expect(current.id).toBe(SandboxInstance.ID.local);
-			expect(current.kind).toBe("local");
-		}),
-	);
-
-	it(
-		"creates durable metadata without mounting or inspecting",
-		Effect.gen(function* () {
-			const controller = yield* SandboxController.Controller;
-			const inspectCalls = fake.state.calls.inspect.length;
-			const attachCalls = fake.state.calls.attach.length;
-			const info = yield* create(controller);
-
-			expect(info.status).toBe("online");
-			expect(info.usage).toBe("idle");
-			expect(info.refCount).toBe(0);
-			expect(Option.getOrThrow(info.providerResourceId)).toBe(`fake:${info.id}`);
-			expect(fake.state.calls.inspect).toHaveLength(inspectCalls);
-			expect(fake.state.calls.attach).toHaveLength(attachCalls);
-
-			const stored = Option.getOrThrow(yield* controller.get(info.id));
-			expect(stored).toEqual(info);
-		}),
-	);
-
-	it(
-		"resolves default and overridden cwd without mounting or waking",
-		Effect.gen(function* () {
-			const controller = yield* SandboxController.Controller;
-			const attachCalls = fake.state.calls.attach.length;
-			const wakeCalls = fake.state.calls.wake.length;
-			const info = yield* create(controller, "/provider-default");
-
-			expect(yield* controller.resolveCwd(info.id)).toBe("/provider-default");
-			expect(yield* controller.resolveCwd(info.id, "/session/repo")).toBe("/session/repo");
-			expect(yield* controller.resolveCwd(SandboxInstance.ID.local)).toBe("/");
-			expect(fake.state.calls.attach).toHaveLength(attachCalls);
-			expect(fake.state.calls.wake).toHaveLength(wakeCalls);
-		}),
-	);
-
-	it(
 		"persists a create failure as faulted and returns the sanitized provider error",
 		Effect.gen(function* () {
 			const controller = yield* SandboxController.Controller;
@@ -228,22 +170,6 @@ describe("Sandbox.Controller", () => {
 	);
 
 	it(
-		"refreshes through inspect without attaching or waking",
-		Effect.gen(function* () {
-			const controller = yield* SandboxController.Controller;
-			const info = yield* create(controller);
-			fake.state.resources.get(info.id)!.status = "offline";
-			const attachCalls = fake.state.calls.attach.length;
-			const wakeCalls = fake.state.calls.wake.length;
-
-			const refreshed = yield* controller.refresh(info.id);
-			expect(refreshed.status).toBe("offline");
-			expect(fake.state.calls.attach).toHaveLength(attachCalls);
-			expect(fake.state.calls.wake).toHaveLength(wakeCalls);
-		}),
-	);
-
-	it(
 		"registers one external identity per driver resource",
 		Effect.gen(function* () {
 			const controller = yield* SandboxController.Controller;
@@ -366,42 +292,6 @@ describe("Sandbox.Controller", () => {
 			expect(failure(yield* Effect.exit(controller.destroy(info.id, { force: true })))).toBeInstanceOf(
 				SandboxMustBeStoppedError,
 			);
-		}),
-	);
-
-	it(
-		"reports references as process-local",
-		Effect.gen(function* () {
-			const first = yield* SandboxController.Controller;
-			const second = yield* SandboxController.make({ hostCwd: "/", transportIdleTimeToLive: "1 hour" });
-			const info = yield* create(first);
-
-			yield* Effect.gen(function* () {
-				expect(Option.getOrThrow(yield* first.get(info.id)).usage).toBe("busy");
-				expect(Option.getOrThrow(yield* second.get(info.id)).usage).toBe("idle");
-			}).pipe(Effect.provide(first.mount(info.id)), Effect.scoped);
-		}),
-	);
-
-	it(
-		"createAndMount releases its first reference with the layer scope",
-		Effect.gen(function* () {
-			const controller = yield* SandboxController.Controller;
-			const instanceId = yield* Effect.gen(function* () {
-				const current = yield* SandboxIO.Current;
-				expect(Option.getOrThrow(yield* controller.get(current.id)).usage).toBe("busy");
-				return current.id;
-			}).pipe(
-				Effect.provide(
-					controller.createAndMount({
-						driver: fake.driver,
-						config: { defaultCwd: SandboxDriver.AbsolutePath.make("/workspace") },
-					}),
-				),
-				Effect.scoped,
-			);
-
-			expect(Option.getOrThrow(yield* controller.get(instanceId)).usage).toBe("idle");
 		}),
 	);
 

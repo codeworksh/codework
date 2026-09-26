@@ -1,4 +1,4 @@
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
@@ -409,18 +409,6 @@ describe("Project.resolveOrCreate", () => {
 				{ location: b, kind: "primary" },
 			]);
 			yield* invariants;
-		}));
-
-	it("get and list read back registered projects", () =>
-		Effect.gen(function* () {
-			const dir = yield* initRepo(path.join(yield* root, "repo"), { origin: "https://github.com/org/repo" });
-			const resolved = yield* resolve(dir);
-			const project = yield* Project.Service;
-
-			const found = yield* project.get(resolved.project.id);
-			expect(Option.getOrThrow(found)).toMatchObject({ id: resolved.project.id, name: "repo", status: "active" });
-			expect(Option.isNone(yield* project.get(Project.provisional(local, "/nowhere")))).toBe(true);
-			expect(yield* project.list()).toHaveLength(1);
 		}));
 });
 

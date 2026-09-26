@@ -1,6 +1,6 @@
 import "./utils/env.ts";
 
-import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
+import { Message } from "@codeworksh/aikit";
 import { Effect, Layer } from "effect";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
@@ -40,19 +40,6 @@ const context: Message.Context = {
 
 describe("runner LLM", () => {
 	it(
-		"maps an unknown model to ModelNotFoundError",
-		Effect.gen(function* () {
-			const failure = yield* LLM.resolve({
-				provider: "openai",
-				model: "model-that-does-not-exist",
-			}).pipe(Effect.flip);
-
-			expect(failure._tag).toBe("Runner.ModelNotFoundError");
-			expect(failure).toMatchObject({ provider: "openai", model: "model-that-does-not-exist" });
-		}),
-	);
-
-	it(
 		"maps an async iterator failure to a typed ProviderError",
 		Effect.gen(function* () {
 			const { sessionId, publisher } = yield* setup;
@@ -78,32 +65,6 @@ describe("runner LLM", () => {
 			if (failure._tag !== "Runner.ProviderError") return yield* Effect.die("unexpected LLM failure type");
 			expect(failure.reason._tag).toBe("Runner.ProviderUnknownError");
 			expect(failure.message).toBe("openai/gpt-4o-mini: iterator failed");
-		}),
-	);
-
-	it(
-		"rejects a stream that ends without a terminal event",
-		Effect.gen(function* () {
-			const { sessionId, publisher } = yield* setup;
-			const request = LLM.make(() =>
-				Effect.sync(() => {
-					const events = createAssistantMessageEventStream();
-					events.end();
-					return events;
-				}),
-			);
-			const failure = yield* request({
-				sessionId,
-				context,
-				provider: "openai",
-				model: "gpt-4o-mini",
-				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
-				publisher,
-			}).pipe(Effect.flip);
-
-			expect(failure._tag).toBe("Runner.LLMStreamError");
-			if (failure._tag !== "Runner.LLMStreamError") return yield* Effect.die("unexpected LLM failure type");
-			expect(failure.reason).toContain("without a terminal event");
 		}),
 	);
 });

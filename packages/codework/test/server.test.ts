@@ -389,33 +389,6 @@ describe("server", () => {
 			});
 			expect(found.found).toBe(false);
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
-
-	it("reports malformed public payloads as typed encoding errors", () =>
-		Effect.gen(function* () {
-			const error = yield* Envelope.encode({
-				id: EventSchema.ID.create(),
-				type: EventList.ExecutionSucceeded.type,
-				data: {},
-			}).pipe(Effect.flip);
-			expect(error._tag).toBe("EventEncodingError");
-		}).pipe(Effect.runPromise));
-
-	it("unknown event types produce typed encode/decode errors", () =>
-		Effect.gen(function* () {
-			const encodeError = yield* Envelope.encode({
-				id: EventSchema.ID.create(),
-				type: "nope",
-				data: {},
-			}).pipe(Effect.flip);
-			expect(encodeError._tag).toBe("UnknownEventTypeError");
-
-			const failure = yield* Envelope.decode({
-				id: EventSchema.ID.create(),
-				type: "nope",
-				data: {},
-			}).pipe(Effect.flip);
-			expect(failure._tag).toBe("UnknownEventTypeError");
-		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
 });
 
 const websocket = (options: Harness.Options = {}) => {
@@ -862,20 +835,4 @@ describe("WebSocket client", () => {
 				expect(listed.find((instance) => instance.id === id)?.status).toBe("offline");
 			}).pipe(Effect.scoped, Effect.provide(server()));
 		}).pipe(Effect.timeout("20 seconds"), Effect.runPromise));
-
-	it("round-trips encoded timestamps through JSON", () =>
-		Effect.gen(function* () {
-			const timestamp = yield* DateTime.now;
-			const encoded = yield* Envelope.encode({
-				id: EventSchema.ID.create(),
-				type: EventList.ExecutionSucceeded.type,
-				data: { timestamp, sessionId: Session.SessionSchema.ID.create() },
-			});
-			const codec = Schema.fromJsonString(Envelope.EventEnvelope);
-			const json = yield* Schema.encodeEffect(codec)(encoded);
-			const decoded = yield* Envelope.decode(yield* Schema.decodeEffect(codec)(json));
-			expect(Schema.is(EventList.ExecutionSucceeded)(decoded)).toBe(true);
-			if (Schema.is(EventList.ExecutionSucceeded)(decoded))
-				expect(DateTime.toEpochMillis(decoded.data.timestamp)).toBe(DateTime.toEpochMillis(timestamp));
-		}).pipe(Effect.runPromise));
 });

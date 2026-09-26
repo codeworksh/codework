@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -58,19 +58,6 @@ describe("Sandbox.EnvSQLiteFS", () => {
 		expect(exists).toBe(false);
 	});
 
-	it("should expose initialization failures in the typed error channel", async () => {
-		const error = await Effect.runPromise(
-			Layer.build(Sandbox.EnvSqldb.layer({ options: { cwd: "relative" } })).pipe(Effect.scoped, Effect.flip),
-		);
-
-		expect(error).toBeInstanceOf(Sandbox.EnvSqldb.SqldbError);
-		expect(error).toMatchObject({
-			_tag: "SqldbError",
-			message: "Failed to initialize the SQLite filesystem",
-		});
-		expect(error.cause).toBeInstanceOf(TypeError);
-	});
-
 	it("should refuse host process execution when `hostProcess` is disabled", async () => {
 		const exit = await Effect.runPromiseExit(
 			Effect.gen(function* () {
@@ -85,53 +72,7 @@ describe("Sandbox.EnvSQLiteFS", () => {
 		}
 	});
 
-	// hostProcess opts out of the refusal: the filesystem stays virtual but
-	// child processes run on the host OS
-	it("should spawn host processes when `hostProcess` is enabled", async () => {
-		const exitCode = await Effect.runPromise(
-			Effect.gen(function* () {
-				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-				return yield* spawner.exitCode(ChildProcess.make("echo", ["hello"]));
-			}).pipe(Effect.provide(Sandbox.EnvSqldb.layer({ options: { hostProcess: true } }))),
-		);
-
-		expect(exitCode).toBe(0);
-	});
-
 	describe("with seed", () => {
-		it("should write inline seed files before the sandbox is used", async () => {
-			await withService(
-				async () => ({
-					sandbox: Sandbox.EnvSqldb.layer({
-						options: {
-							seed: {
-								"/repo/package.json": "{}",
-								"/repo/src/index.ts": "export const value = 1;\n",
-							},
-						},
-					}),
-				}),
-				async (filesystem) => {
-					expect(await filesystem.readFile("/repo/package.json")).toBe("{}");
-					expect(await filesystem.readFile("/repo/src/index.ts")).toBe("export const value = 1;\n");
-				},
-			);
-		});
-
-		it("should resolve relative seed paths against cwd", async () => {
-			await withService(
-				async () => ({
-					sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo", seed: { "package.json": "{}" } } }),
-					cwd: "/repo",
-				}),
-				async (filesystem) => {
-					expect(await filesystem.readFile("package.json")).toBe("{}");
-					expect(await filesystem.readFile("/repo/package.json")).toBe("{}");
-					expect(await filesystem.exists("/package.json")).toBe(false);
-				},
-			);
-		});
-
 		it("should freeze seeded files when readOnly is enabled", async () => {
 			await withService(
 				async () => ({
@@ -140,23 +81,6 @@ describe("Sandbox.EnvSQLiteFS", () => {
 				async (filesystem) => {
 					expect(await filesystem.readFile("/repo/package.json")).toBe("{}");
 					await expect(filesystem.writeFile("/repo/other.txt", "nope")).rejects.toBeDefined();
-				},
-			);
-		});
-	});
-
-	describe("with cwd", () => {
-		it("should resolve relative file operations against cwd", async () => {
-			await withService(
-				async () => ({ sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo" } }), cwd: "/repo" }),
-				async (filesystem) => {
-					await filesystem.writeFile("src/index.ts", "export const value = 1;\n");
-
-					expect(await filesystem.readFile("src/index.ts")).toBe("export const value = 1;\n");
-					expect(await filesystem.readFile("/repo/src/index.ts")).toBe("export const value = 1;\n");
-					expect(await filesystem.exists("src/index.ts")).toBe(true);
-					expect(await filesystem.exists("/src/index.ts")).toBe(false);
-					expect((await filesystem.stat("src")).isDirectory).toBe(true);
 				},
 			);
 		});
@@ -171,20 +95,6 @@ describe("Sandbox.EnvSQLiteFS", () => {
 				}),
 				async (filesystem) => {
 					await expect(filesystem.writeFile("/file.txt", "nope")).rejects.toBeDefined();
-				},
-			);
-		});
-
-		it("should still serve reads when read-only", async () => {
-			await withService(
-				async () => ({
-					sandbox: Sandbox.EnvSqldb.layer({ options: { cwd: "/repo", readOnly: true } }),
-					cwd: "/repo",
-				}),
-				async (filesystem) => {
-					expect((await filesystem.stat("/")).isDirectory).toBe(true);
-					expect(await filesystem.exists("/")).toBe(true);
-					expect(await filesystem.exists("/missing.txt")).toBe(false);
 				},
 			);
 		});

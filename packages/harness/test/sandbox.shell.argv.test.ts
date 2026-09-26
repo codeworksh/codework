@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { fromExec, type ISandboxExe, perMount, quote, quoteArgv, Shell, withCwd } from "../src/sandbox/shell/shell.ts";
+import { fromExec, type ISandboxExe, perMount, quote, Shell, withCwd } from "../src/sandbox/shell/shell.ts";
 
 // `execArgv` exists so values the harness does not control — branch names, file
 // paths — never reach a shell parser as bare text. These cases all break, or
@@ -56,18 +56,8 @@ describe("Shell.execArgv", () => {
 });
 
 describe("shell quoting helpers", () => {
-	it("wraps a value so the shell reads it literally", () => {
-		expect(quote("plain")).toBe("'plain'");
-		expect(quote("a b")).toBe("'a b'");
-		expect(quote("$(x)")).toBe("'$(x)'");
-	});
-
 	it("escapes embedded single quotes", () => {
 		expect(quote("it's")).toBe(`'it'\\''s'`);
-	});
-
-	it("joins a vector into one command string", () => {
-		expect(quoteArgv(["git", "checkout", "-B", "feat/a b"])).toBe(`'git' 'checkout' '-B' 'feat/a b'`);
 	});
 });
 

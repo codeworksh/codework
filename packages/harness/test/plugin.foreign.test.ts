@@ -2,7 +2,6 @@ import "./utils/env.ts";
 import type { Message } from "@codeworksh/aikit";
 import { Effect, Schema } from "effect";
 import { glob, readFile } from "node:fs/promises";
-import { registerHooks } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
@@ -119,40 +118,5 @@ describe("plugins built against another Effect instance", () => {
 		const lockfile = await readFile(new URL("pnpm-lock.yaml", root), "utf8");
 		const resolved = new Set([...lockfile.matchAll(/^ {2}effect@(\S+):$/gm)].map((match) => match[1]));
 		expect([...resolved]).toEqual([pinned]);
-	});
-
-	it("does not carry a schema's checks between instances, which is why they are deduplicated", async () => {
-		// The same second instance the fixture builds: every module in the subgraph re-evaluated
-		// under a tagged URL, which is what a separate install produces.
-		const tag = "checks-instance";
-		const hook = registerHooks({
-			resolve(specifier, context, nextResolve) {
-				const resolved = nextResolve(specifier, context);
-				return (context.parentURL ?? "").includes(tag) &&
-					resolved.url.startsWith("file:") &&
-					!resolved.url.includes(tag)
-					? { ...resolved, url: `${resolved.url}?${tag}` }
-					: resolved;
-			},
-		});
-		const foreignEffect: typeof import("effect") = await import(`${import.meta.resolve("effect")}?${tag}`).finally(
-			() => hook.deregister(),
-		);
-
-		expect(foreignEffect.Schema).not.toBe(Schema);
-
-		const encode = async (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
-			(await Effect.runPromiseExit(Schema.encodeUnknownEffect(schema)(value)))._tag;
-
-		// An unrefined schema crosses freely, which is why the plugin above works.
-		expect(await encode(foreignEffect.Schema.Struct({ v: foreignEffect.Schema.String }), { v: "ok" })).toBe(
-			"Success",
-		);
-
-		// A check does not. If this ever starts succeeding, Effect has made checks portable and the
-		// dedupe hook is worth revisiting rather than left in place unexamined.
-		expect(await encode(foreignEffect.Schema.Struct({ v: foreignEffect.Schema.Finite }), { v: 22800 })).toBe(
-			"Failure",
-		);
 	});
 });

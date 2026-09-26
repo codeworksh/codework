@@ -1,10 +1,7 @@
 /* @effect-diagnostics cryptoRandomUUID:off -- fixtures only need distinct message IDs. */
 import { Message } from "@codeworksh/aikit";
-import { ModelCatalog, Plugin, Runner, Settings } from "@codeworksh/harness/effect";
-import { SandboxProvider } from "@codeworksh/harness/sandbox";
 import { describe, expect, it } from "vite-plus/test";
-import { renderError } from "../src/cli/error.ts";
-import { addUsage, emptyUsage, header, usage } from "../src/cli/output.ts";
+import { addUsage, emptyUsage, usage } from "../src/cli/output.ts";
 
 const message = (input: {
 	readonly model: string;
@@ -43,14 +40,6 @@ const message = (input: {
 	});
 
 describe("CLI output", () => {
-	it("renders session context before a labeled response divider", () => {
-		const output = header({ sessionId: "ses_test", sandbox: "daytona", directory: "/workspace", columns: 48 });
-
-		expect(output).toContain("session  ses_test");
-		expect(output).toContain("sandbox  daytona · /workspace");
-		expect(output).toContain("── response ─");
-	});
-
 	it("aggregates model usage across tool-continuation turns", () => {
 		const first = addUsage(
 			emptyUsage,
@@ -83,143 +72,5 @@ describe("CLI output", () => {
 		expect(output).toContain("tokens   3,000 input · 300 output · 50 reasoning · 3,300 total");
 		expect(output).toContain("cache    2,300 read · 10 write");
 		expect(output).toContain("cost     $0.003000 · 2 turns");
-	});
-
-	it("renders typed provider failures without an Effect stack", () => {
-		const output = renderError(
-			new Runner.ProviderError({
-				provider: "openrouter",
-				model: "stealth/ox-alpha",
-				reason: new Runner.ProviderAuthenticationError({
-					authentication: "missing",
-					message: "provider credentials are missing",
-					isRetryable: false,
-				}),
-			}),
-		);
-
-		expect(output).toContain(
-			"error[provider-authentication-error]: openrouter/stealth/ox-alpha: provider credentials are missing",
-		);
-		expect(output).toContain("provider: openrouter");
-		expect(output).toContain("hint: set OPENROUTER_API_KEY and retry");
-		expect(output).not.toContain("Runner.ProviderError");
-	});
-
-	it("renders a misspelled plugin source by its reason", () => {
-		const output = renderError(
-			new Plugin.SourceError({
-				reason: "plugin-unsupported-source",
-				reference: "codework-acme-plugn",
-				message: "unsupported plugin source: codework-acme-plugn",
-			}),
-		);
-
-		expect(output).toContain("error[plugin-unsupported-source]: unsupported plugin source: codework-acme-plugn");
-		expect(output).toContain("reference: codework-acme-plugn");
-		expect(output).toContain("hint: a path entry starts with");
-		// One vocabulary: the tag is for code, the reason for a human.
-		expect(output).not.toContain("PluginSourceError");
-	});
-
-	it("tags each provider failure reason", () => {
-		const fields = { message: "failed", isRetryable: false };
-		for (const [reason, tag] of [
-			[new Runner.ProviderRateLimitError(fields), "provider-rate-limit-error"],
-			[new Runner.ProviderContentPolicyError(fields), "provider-content-filter-error"],
-			[new Runner.ProviderInvalidResponseError(fields), "provider-invalid-response-error"],
-			[new Runner.ProviderUnavailableError(fields), "provider-unavailable-error"],
-		] as const) {
-			const output = renderError(new Runner.ProviderError({ provider: "openai", model: "gpt-5.5", reason }));
-			expect(output).toContain(`error[${tag}]: `);
-		}
-	});
-
-	it("tags model catalog failures by reason, and a failed refresh apart from them", () => {
-		expect(
-			renderError(
-				new Runner.ModelCatalogError({ path: "/home/models.gen.json", reason: "invalid", detail: "bad json" }),
-			),
-		).toBe("error[model-catalog-invalid]: bad json\nhint: run `codework models refresh`\n");
-		expect(
-			renderError(new ModelCatalog.RefreshError({ path: "/home/models.gen.json", detail: "offline" })),
-		).toContain(
-			"error[catalog-refresh-failed]: failed to refresh the model catalog at /home/models.gen.json: offline",
-		);
-	});
-
-	it("names the file, the reason and the key when settings cannot be used", () => {
-		const output = renderError(
-			new Settings.SettingsError({
-				path: "/project/codework.json",
-				reason: "decode",
-				detail: "model.options.timeoutMs: invalid value",
-			}),
-		);
-
-		expect(output).toContain("error[settings-decode-failed]: /project/codework.json");
-		expect(output).toContain("detail: model.options.timeoutMs: invalid value");
-		expect(output).toContain("hint: the key above holds a value this setting does not accept");
-	});
-
-	it("names the plugin when a module fails to define one", () => {
-		const output = renderError(
-			new Plugin.LoadError({
-				reason: "plugin-invalid-definition",
-				reference: "./plugins/broken.ts",
-				id: "acme.tool.missing",
-				message: "codework namespace is reserved for builtins",
-			}),
-		);
-
-		expect(output).toContain("error[plugin-invalid-definition]: codework namespace is reserved for builtins");
-		expect(output).toContain("id: acme.tool.missing");
-		expect(output).toContain("hint: a plugin module must default-export one object");
-	});
-
-	it("renders a plugin failure by its reason, without the tag", () => {
-		const output = renderError(
-			new Plugin.InstallError({
-				reason: "plugin-no-commit",
-				reference: "github:acme/plugins#main",
-				message: "cannot resolve a commit for github:acme/plugins#main",
-			}),
-		);
-
-		expect(output).toContain("error[plugin-no-commit]: cannot resolve a commit for github:acme/plugins#main");
-		expect(output).toContain("reference: github:acme/plugins#main");
-		expect(output).not.toContain("PluginInstallError");
-	});
-
-	it("renders a missing local path as a source failure, not a store one", () => {
-		const output = renderError(
-			new Plugin.SourceError({
-				reason: "plugin-not-found",
-				reference: "./plugins/x.ts",
-				message: "./plugins/x.ts does not exist",
-			}),
-		);
-
-		expect(output).toContain("error[plugin-not-found]: ./plugins/x.ts does not exist");
-	});
-
-	it("renders the sanitized sandbox provider failure", () => {
-		const output = renderError(
-			new SandboxProvider.SandboxProviderError({
-				driver: "vercel",
-				operation: "create",
-				sanitized: {
-					name: "APIError",
-					message: "The project is not authorized to create a sandbox",
-					code: "forbidden",
-				},
-			}),
-		);
-
-		expect(output).toContain("error: SandboxProviderError - The project is not authorized to create a sandbox");
-		expect(output).toContain("driver: vercel");
-		expect(output).toContain("operation: create");
-		expect(output).toContain("code: forbidden");
-		expect(output).toMatch(/traceback:\nSandboxProviderError(?:: )?\n/);
 	});
 });

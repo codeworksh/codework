@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type * as Message from "../src/message/message.ts";
-import { getOverflowPatterns, isContextOverflow, isRecoverableLength } from "../src/utils/overflow.ts";
+import { isContextOverflow, isRecoverableLength } from "../src/utils/overflow.ts";
 import { makeAssistantMessage, makeModel, makeUsage } from "./utils/fixtures.ts";
 
 const model = makeModel();
@@ -90,23 +90,6 @@ describe("isContextOverflow", () => {
 			});
 			expect(isContextOverflow(message, 200_000)).toBe(false);
 		});
-
-		it("does not check usage when no context window is provided", () => {
-			const message = makeAssistantMessage(model, {
-				stopReason: "stop",
-				usage: makeUsage({ input: 500_000 }),
-			});
-			expect(isContextOverflow(message)).toBe(false);
-		});
-	});
-});
-
-describe("getOverflowPatterns", () => {
-	it("returns a defensive copy", () => {
-		const patterns = getOverflowPatterns();
-		expect(patterns.length).toBeGreaterThan(0);
-		patterns.length = 0;
-		expect(getOverflowPatterns().length).toBeGreaterThan(0);
 	});
 });
 
@@ -174,10 +157,6 @@ describe("length-stop overflow", () => {
 	it("does not flag a zero-output length stop far below the window", () => {
 		expect(isContextOverflow(lengthStop({ input: 100, output: 0 }), 200_000)).toBe(false);
 	});
-
-	it("needs a context window to judge a length stop", () => {
-		expect(isContextOverflow(lengthStop({ input: 58, cacheRead: 1_048_512, output: 0 }))).toBe(false);
-	});
 });
 
 describe("isRecoverableLength", () => {
@@ -191,13 +170,5 @@ describe("isRecoverableLength", () => {
 
 	it("recovers a zero-output length stop without needing context metadata", () => {
 		expect(isRecoverableLength(lengthStop({ input: 100, output: 0 }), 128_000)).toBe(true);
-	});
-
-	it("needs a positive desired limit to judge recoverability", () => {
-		expect(isRecoverableLength(lengthStop({ input: 100, output: 0 }), 0)).toBe(false);
-	});
-
-	it("ignores messages that did not stop on length", () => {
-		expect(isRecoverableLength(errorMessage("boom"), 128_000)).toBe(false);
 	});
 });

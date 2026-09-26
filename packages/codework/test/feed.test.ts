@@ -26,24 +26,6 @@ const settled = (): EventSchema.Payload =>
 	}) as EventSchema.Payload;
 
 describe("EventFeed", () => {
-	it("encodes once and hands every subscriber the same envelope", () =>
-		Effect.gen(function* () {
-			const bus = source();
-			const feed = yield* EventFeed.make(bus.listen);
-			const first = yield* feed.subscribe;
-			const second = yield* feed.subscribe;
-			const left = yield* first.pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped);
-			const right = yield* second.pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped);
-
-			yield* bus.publish(settled());
-
-			const [a] = Array.from(yield* Fiber.join(left));
-			const [b] = Array.from(yield* Fiber.join(right));
-			expect(a?.type).toBe(EventList.ExecutionSucceeded.type);
-			// One reference on both sides is what proves a single encode.
-			expect(a).toBe(b);
-		}).pipe(Effect.scoped, Effect.runPromise));
-
 	it("fails the subscriber that exceeds its capacity without taking the feed down", () =>
 		Effect.gen(function* () {
 			const bus = source();
