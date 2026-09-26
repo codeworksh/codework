@@ -5,7 +5,6 @@ node_modules
 out
 dist
 build
-lib
 .next
 .nuxt
 .svelte-kit
@@ -22,11 +21,9 @@ logs
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env*
+!.env.example
+!.env.*.example
 
 .eslintcache
 .cache
@@ -58,3 +55,4 @@ packages/aikit/site
 
 models.json
 models.gen.json
+.astro
