@@ -15,30 +15,30 @@ import type {
 	SetSessionConfigOptionRequest,
 	SetSessionConfigOptionResponse,
 } from "@agentclientprotocol/sdk";
-import { methods, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
-import { Model } from "@codeworksh/aikit";
+import { methods, PROTOCOL_VERSION, RequestError } from "@agentclientprotocol/sdk";
+import { type Model } from "@codeworksh/aikit";
 import {
 	Control,
 	Event,
-	Location,
+	EventList,
+	type Location,
+	ModelCatalog,
 	PromptSchema,
-	SandboxError,
+	type SandboxError,
 	Session,
 	SessionStore,
 	Settings,
 } from "@codeworksh/harness/effect";
-import { Cause, Context, DateTime, Effect, Layer, Option } from "effect";
-import { SqlClient } from "effect/unstable/sql";
-import * as SandboxController from "../../../harness/src/sandbox/control.ts";
-import * as SessionRuntime from "../../../harness/src/session/runtime.ts";
-import { resolveConfigOptions } from "./config.ts";
+import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { parseModelValue, resolveConfigOptions } from "./config.ts";
 import { entryToSessionUpdates, toSessionUpdate } from "./feed.ts";
 
 export type SessionCreateError =
 	| Location.Error
 	| SandboxError.SandboxMountError
 	| SessionStore.SessionNotFoundError
-	| SessionStore.SessionLinkedSpaceNotFoundError;
+	| SessionStore.SessionLinkedSpaceNotFoundError
+	| RequestError;
 
 export interface Interface {
 	readonly initialize: (params: InitializeRequest) => Effect.Effect<InitializeResponse>;
@@ -46,21 +46,21 @@ export interface Interface {
 	readonly loadSession: (
 		params: LoadSessionRequest,
 		client?: AgentContext,
-	) => Effect.Effect<LoadSessionResponse, SessionStore.SessionNotFoundError>;
+	) => Effect.Effect<LoadSessionResponse, SessionStore.SessionNotFoundError | RequestError>;
 	readonly setConfigOption: (
 		params: SetSessionConfigOptionRequest,
-	) => Effect.Effect<SetSessionConfigOptionResponse, SessionStore.SessionNotFoundError>;
+	) => Effect.Effect<SetSessionConfigOptionResponse, SessionStore.SessionNotFoundError | RequestError>;
 	readonly listSessions: (params: ListSessionsRequest) => Effect.Effect<ListSessionsResponse>;
 	readonly prompt: (
 		params: PromptRequest,
 		client?: AgentContext,
-	) => Effect.Effect<PromptResponse, SessionStore.SessionNotFoundError | Control.PromptConflictError>;
+	) => Effect.Effect<PromptResponse, SessionStore.SessionNotFoundError | Control.PromptConflictError | RequestError>;
 	readonly cancel: (params: CancelNotification) => Effect.Effect<{ readonly cancelled: boolean }>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/cli/acp/handlers/Service") {}
 
-const extractPromptText = (blocks: ReadonlyArray<ContentBlock>): string =>
+export const extractPromptText = (blocks: ReadonlyArray<ContentBlock>): string =>
 	blocks
 		.map((block) => {
 			if (block.type === "text") return block.text;
@@ -73,33 +73,52 @@ const extractPromptText = (blocks: ReadonlyArray<ContentBlock>): string =>
 				return "";
 			}
 			if (block.type === "resource_link") {
-				return `[Resource: ${block.name ?? block.uri}]`;
+				const label = block.name ? `${block.name} (${block.uri})` : block.uri;
+				const mime = block.mimeType ? ` [${block.mimeType}]` : "";
+				return `[Resource: ${label}${mime}]`;
+			}
+			if (block.type === "image" || block.type === "audio") {
+				return `[Attached ${block.type}: not currently supported]`;
 			}
 			return "";
 		})
 		.filter(Boolean)
 		.join("\n\n");
 
+const isInterruptedEvent = Schema.is(EventList.ExecutionInterrupted);
+const isFailedEvent = Schema.is(EventList.ExecutionFailed);
+const isLLMEndedEvent = Schema.is(EventList.LLMEnded);
+
+type ExecutionError = EventList.ExecutionFailed["data"]["error"];
+
+const validThinkingLevels: ReadonlyArray<string> = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
 export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const control = yield* Control.Service;
 		const sessions = yield* SessionStore.Service;
-		const runtime = yield* SessionRuntime.Service;
-		yield* SandboxController.Controller;
 		const events = yield* Event.Service;
-		yield* SqlClient.SqlClient;
 		const settings = yield* Settings.Service;
 
 		const env = yield* Effect.context<
 			| Control.Service
 			| SessionStore.Service
-			| SessionRuntime.Service
-			| SandboxController.Controller
 			| Event.Service
-			| SqlClient.SqlClient
 			| Settings.Service
+			| Effect.Services<ReturnType<typeof Session.create>>
+			| Effect.Services<ReturnType<typeof Session.attach>>
 		>();
+
+		interface SessionConfigState {
+			provider?: string;
+			model?: string;
+			thinkingLevel?: Model.ThinkingLevel;
+		}
+
+		const sessionConfigs = new Map<string, SessionConfigState>();
+		const cancelledSessions = new Set<string>();
+		const activePrompts = new Set<string>();
 
 		return Service.of({
 			initialize: (_params) =>
@@ -113,16 +132,30 @@ export const layer = Layer.effect(
 					},
 				}),
 			newSession: Effect.fnUntraced(function* ({ cwd }) {
-				const handle = yield* Session.create(cwd === undefined ? {} : { directory: cwd }).pipe(Effect.provide(env));
+				const handle = yield* Session.create({
+					...(cwd === undefined ? {} : { directory: cwd, hostDir: cwd }),
+					title: "ACP Session",
+				}).pipe(Effect.provide(env));
+
 				const loaded = yield* settings.load(cwd).pipe(
 					Effect.provide(env),
 					Effect.orElseSucceed(() => undefined),
 				);
+
+				if (loaded?.model) {
+					sessionConfigs.set(handle.id, {
+						provider: loaded.model.provider,
+						model: loaded.model.id,
+						thinkingLevel: loaded.model.thinkingLevel,
+					});
+				}
+
 				const configOptions = yield* resolveConfigOptions({
 					provider: loaded?.model.provider,
 					model: loaded?.model.id,
 					thinkingLevel: loaded?.model.thinkingLevel,
 				});
+
 				return {
 					sessionId: handle.id,
 					...(configOptions.length > 0 ? { configOptions } : {}),
@@ -132,12 +165,17 @@ export const layer = Layer.effect(
 				const sid = Session.SessionSchema.ID.make(sessionId);
 				yield* Session.attach({ sessionId: sid }).pipe(Effect.provide(env));
 				const session = yield* sessions.get(sid).pipe(Effect.provide(env));
-				const hostDir = Option.isNone(session) ? undefined : Option.getOrUndefined(session.value.hostDir);
+				if (Option.isNone(session)) {
+					return yield* new SessionStore.SessionNotFoundError({ sessionId: sid });
+				}
+
+				const hostDir = Option.getOrUndefined(session.value.hostDir);
 				const loaded = yield* settings.load(hostDir).pipe(
 					Effect.provide(env),
 					Effect.orElseSucceed(() => undefined),
 				);
-				const sessionOptions = Option.getOrUndefined(yield* runtime.get(sid).pipe(Effect.provide(env)));
+
+				const sessionOptions = sessionConfigs.get(sid);
 				const configOptions = yield* resolveConfigOptions({
 					provider: sessionOptions?.provider ?? loaded?.model.provider,
 					model: sessionOptions?.model ?? loaded?.model.id,
@@ -168,88 +206,162 @@ export const layer = Layer.effect(
 					return yield* new SessionStore.SessionNotFoundError({ sessionId: sid });
 				}
 
+				const existing = sessionConfigs.get(sid) ?? {};
+
 				if (configId === "thought_level") {
-					if (typeof value === "string") {
-						yield* runtime.update(sid, { thinkingLevel: value as Model.ThinkingLevel }).pipe(Effect.provide(env));
+					if (typeof value !== "string" || !validThinkingLevels.includes(value)) {
+						const msg = `Invalid thinking level: ${String(value)}`;
+						return yield* Effect.fail(RequestError.invalidParams(msg, msg));
 					}
+					const thinkingLevel = value as Model.ThinkingLevel;
+					existing.thinkingLevel = thinkingLevel;
+					yield* Session.attach({ sessionId: sid, thinkingLevel }).pipe(Effect.provide(env));
 				} else if (configId === "model") {
-					if (typeof value === "string") {
-						const slashIndex = value.indexOf("/");
-						const nextProvider = slashIndex !== -1 ? value.slice(0, slashIndex) : undefined;
-						const nextModel = slashIndex !== -1 ? value.slice(slashIndex + 1) : value;
-						yield* runtime
-							.update(sid, {
-								...(nextProvider ? { provider: nextProvider } : {}),
-								model: nextModel,
-							})
-							.pipe(Effect.provide(env));
+					if (typeof value !== "string") {
+						const msg = `Invalid model value: ${String(value)}`;
+						return yield* Effect.fail(RequestError.invalidParams(msg, msg));
 					}
+					const parsed = parseModelValue(value);
+					const catalog = yield* ModelCatalog.models.pipe(Effect.orElseSucceed(() => undefined));
+					if (catalog && !catalog[parsed.provider]?.[parsed.modelId]) {
+						const msg = `Unknown model: ${value}`;
+						return yield* Effect.fail(RequestError.invalidParams(msg, msg));
+					}
+
+					existing.provider = parsed.provider;
+					existing.model = parsed.modelId;
+					yield* Session.attach({
+						sessionId: sid,
+						model: { provider: parsed.provider, id: parsed.modelId },
+					}).pipe(Effect.provide(env));
+				} else {
+					const msg = `Unknown config option: ${configId}`;
+					return yield* Effect.fail(RequestError.invalidParams(msg, msg));
 				}
+
+				sessionConfigs.set(sid, existing);
 
 				const hostDir = Option.getOrUndefined(found.value.hostDir);
 				const loaded = yield* settings.load(hostDir).pipe(
 					Effect.provide(env),
 					Effect.orElseSucceed(() => undefined),
 				);
-				const sessionOptions = Option.getOrUndefined(yield* runtime.get(sid).pipe(Effect.provide(env)));
+
 				const configOptions = yield* resolveConfigOptions({
-					provider: sessionOptions?.provider ?? loaded?.model.provider,
-					model: sessionOptions?.model ?? loaded?.model.id,
-					thinkingLevel: sessionOptions?.thinkingLevel ?? loaded?.model.thinkingLevel,
+					provider: existing.provider ?? loaded?.model.provider,
+					model: existing.model ?? loaded?.model.id,
+					thinkingLevel: existing.thinkingLevel ?? loaded?.model.thinkingLevel,
 				});
+
 				return { configOptions };
 			}),
-			listSessions: Effect.fnUntraced(function* ({ cwd }) {
+			listSessions: Effect.fnUntraced(function* ({ cwd, cursor }) {
 				const rows = yield* sessions.list().pipe(Effect.provide(env));
+				const sorted = [...rows].sort((a, b) => {
+					const timeA = DateTime.toEpochMillis(a.updatedAt ?? a.createdAt);
+					const timeB = DateTime.toEpochMillis(b.updatedAt ?? b.createdAt);
+					return timeB - timeA;
+				});
+
 				const filtered =
 					cwd === undefined || cwd === null
-						? rows
-						: rows.filter((row) => row.directory === cwd || row.directory.startsWith(cwd));
+						? sorted
+						: sorted.filter((row) => {
+								const host = Option.getOrUndefined(row.hostDir);
+								if (!host) return false;
+								return host === cwd || host.startsWith(cwd.endsWith("/") ? cwd : `${cwd}/`);
+							});
+
+				const offset = cursor ? Number.parseInt(cursor, 10) : 0;
+				const limit = 50;
+				const page = filtered.slice(offset, offset + limit);
+				const nextCursor = offset + limit < filtered.length ? String(offset + limit) : undefined;
+
 				return {
-					sessions: filtered.map((row) => ({
-						sessionId: row.id,
-						cwd: row.directory,
-						title: row.title,
-						updatedAt: row.updatedAt ? DateTime.formatIso(row.updatedAt) : null,
-					})),
+					sessions: page.map((row) => {
+						const host = Option.getOrUndefined(row.hostDir);
+						return {
+							sessionId: row.id,
+							cwd: host ?? row.directory,
+							title: row.title,
+							updatedAt: row.updatedAt ? DateTime.formatIso(row.updatedAt) : null,
+						};
+					}),
+					...(nextCursor !== undefined ? { nextCursor } : {}),
 				};
 			}),
 			prompt: Effect.fnUntraced(function* ({ sessionId, prompt }, client) {
-				const text = extractPromptText(prompt);
 				const sid = Session.SessionSchema.ID.make(sessionId);
 				const found = yield* Session.get(sid).pipe(Effect.provide(env));
 				if (Option.isNone(found)) {
 					return yield* new SessionStore.SessionNotFoundError({ sessionId: sid });
 				}
 
-				const unsubscribe =
-					client === undefined
-						? Effect.void
-						: yield* events.listen((event) => {
-								const item = toSessionUpdate(event);
-								if (item && item.sessionId === sid) {
-									return Effect.promise(() => client.notify(methods.client.session.update, item)).pipe(
-										Effect.ignore,
-									);
-								}
-								return Effect.void;
-							});
+				if (activePrompts.has(sessionId)) {
+					const msg = "A prompt is already in progress for this session";
+					return yield* Effect.fail(RequestError.invalidParams(msg, msg));
+				}
 
-				return yield* control
-					.run({
+				const text = extractPromptText(prompt);
+
+				const turnOutcome: {
+					interrupted: boolean;
+					terminalFailure?: ExecutionError;
+					lastLLMReason?: "stop" | "length" | "toolUse";
+				} = {
+					interrupted: cancelledSessions.delete(sessionId),
+				};
+
+				const unsubscribe = yield* events.listen((event) => {
+					if (isInterruptedEvent(event) && event.data.sessionId === sid) {
+						turnOutcome.interrupted = true;
+					}
+					if (isFailedEvent(event) && event.data.sessionId === sid) {
+						turnOutcome.terminalFailure = event.data.error;
+					}
+					if (isLLMEndedEvent(event) && event.data.sessionId === sid) {
+						turnOutcome.lastLLMReason = event.data.reason;
+					}
+
+					if (client !== undefined) {
+						const item = toSessionUpdate(event);
+						if (item && item.sessionId === sid) {
+							return Effect.promise(() => client.notify(methods.client.session.update, item)).pipe(
+								Effect.ignore,
+							);
+						}
+					}
+					return Effect.void;
+				});
+
+				activePrompts.add(sessionId);
+				try {
+					yield* control.run({
 						sessionId: sid,
 						prompt: PromptSchema.Prompt.make({ text }),
-					})
-					.pipe(
-						Effect.map(() => ({ stopReason: "end_turn" as const })),
-						Effect.catchCauseIf(Cause.hasInterrupts, () => Effect.succeed({ stopReason: "cancelled" as const })),
-						Effect.ensuring(unsubscribe),
+					}).pipe(Effect.provide(env));
+				} finally {
+					activePrompts.delete(sessionId);
+					yield* unsubscribe;
+				}
+
+				if (turnOutcome.interrupted) {
+					return { stopReason: "cancelled" as const };
+				}
+				if (turnOutcome.terminalFailure !== undefined) {
+					return yield* Effect.fail(
+						RequestError.internalError(turnOutcome.terminalFailure.message, turnOutcome.terminalFailure.message),
 					);
+				}
+				if (turnOutcome.lastLLMReason === "length") {
+					return { stopReason: "max_tokens" as const };
+				}
+				return { stopReason: "end_turn" as const };
 			}),
 			cancel: Effect.fnUntraced(function* ({ sessionId }) {
-				const interrupted = yield* control.interrupt(Session.SessionSchema.ID.make(sessionId), {
-					reason: "user",
-				});
+				const sid = Session.SessionSchema.ID.make(sessionId);
+				cancelledSessions.add(sessionId);
+				const interrupted = yield* control.interrupt(sid, { reason: "user" }).pipe(Effect.provide(env));
 				return { cancelled: interrupted };
 			}),
 		});

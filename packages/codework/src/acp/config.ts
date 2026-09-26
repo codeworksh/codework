@@ -1,5 +1,7 @@
 import type { SessionConfigOption, SessionConfigSelectOption } from "@agentclientprotocol/sdk";
 import { llm, Model } from "@codeworksh/aikit";
+import { JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
+import { JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { ModelCatalog } from "@codeworksh/harness/effect";
 import { Effect } from "effect";
 
@@ -22,6 +24,23 @@ export const formatThinkingLevel = (level: Model.ThinkingLevel): string => {
 	}
 };
 
+export const parseModelValue = (
+	value: string,
+	defaultProvider?: string,
+): { provider: string; modelId: string } => {
+	const slash = value.indexOf("/");
+	if (slash !== -1) {
+		return {
+			provider: value.slice(0, slash),
+			modelId: value.slice(slash + 1),
+		};
+	}
+	return {
+		provider: defaultProvider ?? "openai",
+		modelId: value,
+	};
+};
+
 export interface SessionConfigInput {
 	readonly provider?: string | undefined;
 	readonly model?: string | undefined;
@@ -37,12 +56,16 @@ export interface SessionConfigInput {
  */
 export const resolveConfigOptions = (input: SessionConfigInput): Effect.Effect<Array<SessionConfigOption>> =>
 	Effect.gen(function* () {
-		let provider = input.provider ?? "openai";
-		let modelId = input.model ?? "gpt-5.6-luna";
-		if (modelId.includes("/")) {
-			const slash = modelId.indexOf("/");
-			provider = input.provider ?? modelId.slice(0, slash);
-			modelId = modelId.slice(slash + 1);
+		let provider: string;
+		let modelId: string;
+
+		if (input.provider !== undefined) {
+			provider = input.provider;
+			modelId = input.model ?? "gpt-5.6-luna";
+		} else {
+			const parsed = parseModelValue(input.model ?? "openai/gpt-5.6-luna");
+			provider = parsed.provider;
+			modelId = parsed.modelId;
 		}
 
 		const modelInfo = yield* Effect.tryPromise(() => llm.model(provider, modelId)).pipe(
@@ -59,21 +82,29 @@ export const resolveConfigOptions = (input: SessionConfigInput): Effect.Effect<A
 
 		if (catalog) {
 			const activeProviders = new Set<string>();
-			activeProviders.add(provider);
-			activeProviders.add("google");
-			activeProviders.add("openai");
-			activeProviders.add("anthropic");
+			if (provider) {
+				activeProviders.add(provider);
+			}
+
+			// Check OAuth availability
+			const codexStorage = new JsonOpenAICodexAuthStorage({});
+			const copilotStorage = new JsonGitHubCopilotAuthStorage({});
+			const [hasCodex, hasCopilot] = yield* Effect.tryPromise(() =>
+				Promise.all([
+					codexStorage.get().then((token) => Boolean(token?.access)).catch(() => false),
+					copilotStorage.get().then((token) => Boolean(token?.access)).catch(() => false),
+				]),
+			).pipe(Effect.orElseSucceed(() => [false, false] as const));
+
+			if (hasCodex) activeProviders.add("openai-codex");
+			if (hasCopilot) activeProviders.add("github-copilot");
 
 			for (const [pId, pModels] of Object.entries(catalog)) {
 				if (!pModels) continue;
 				const first = Object.values(pModels)[0];
 				const envVars = first?.provider?.env ?? [];
-				const hasKey = envVars.some((k) => {
-					const proc = (globalThis as Record<string, unknown>).process as
-						| { env?: Record<string, string | undefined> }
-						| undefined;
-					return Boolean(proc?.env?.[k]);
-				});
+				// oxlint-disable-next-line effecttsgo/process-env
+				const hasKey = envVars.some((k) => Boolean(process.env[k]));
 				if (hasKey) {
 					activeProviders.add(pId);
 				}
@@ -89,17 +120,6 @@ export const resolveConfigOptions = (input: SessionConfigInput): Effect.Effect<A
 					});
 				}
 			}
-		}
-
-		if (modelOptions.length === 0) {
-			modelOptions.push(
-				{ value: "google/gemini-2.5-pro", name: "Google: Gemini 2.5 Pro" },
-				{ value: "google/gemini-2.5-flash", name: "Google: Gemini 2.5 Flash" },
-				{ value: "google/gemini-3.8-flash", name: "Google: Gemini 3.8 Flash" },
-				{ value: "openai/gpt-5.6-luna", name: "OpenAI: GPT-5.6 Luna" },
-				{ value: "openai/gpt-4o", name: "OpenAI: GPT-4o" },
-				{ value: "anthropic/claude-3-7-sonnet", name: "Anthropic: Claude 3.7 Sonnet" },
-			);
 		}
 
 		if (!modelOptions.some((o) => o.value === currentModelValue)) {

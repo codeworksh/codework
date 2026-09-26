@@ -1,13 +1,46 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- stdio streams need node stream adapter for web streams. */
 import * as acp from "@agentclientprotocol/sdk";
-import { Control, Harness, Sandbox } from "@codeworksh/harness/effect";
-import { Effect, Layer, Scope } from "effect";
+import { Control, Harness, Sandbox, SessionStore } from "@codeworksh/harness/effect";
+import { Effect, Layer, Schema, Scope } from "effect";
 import { Readable, Writable } from "node:stream";
 import { Handlers } from "./handlers.ts";
 
 export interface Options {
 	readonly harness: Harness.Options;
 }
+
+const isSessionNotFoundError = Schema.is(SessionStore.SessionNotFoundError);
+const isPromptConflictError = Schema.is(Control.PromptConflictError);
+
+const toRequestError = (error: unknown): acp.RequestError => {
+	if (error instanceof acp.RequestError) {
+		return error;
+	}
+	if (isSessionNotFoundError(error)) {
+		return acp.RequestError.resourceNotFound(error.sessionId);
+	}
+	if (isPromptConflictError(error)) {
+		const msg = `Prompt conflict for session ${error.sessionId}: message ${error.messageId}`;
+		return acp.RequestError.invalidParams(msg, msg);
+	}
+	const message =
+		error instanceof Error
+			? error.message
+			: typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+				? error.message
+				: typeof error === "string"
+					? error
+					: "Internal error";
+	return acp.RequestError.internalError(message, message);
+};
+
+const runHandler = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
+	Effect.runPromise(
+		effect.pipe(
+			Effect.mapError(toRequestError),
+			Effect.catchDefect((defect: unknown) => Effect.fail(toRequestError(defect))),
+		),
+	);
 
 // Managed instances outlive any single ACP request; the server scope is what stops them.
 const managedShutdown = Layer.unwrap(
@@ -47,13 +80,13 @@ const managedShutdown = Layer.unwrap(
 export const makeApp = (handlers: Handlers.Interface) =>
 	acp
 		.agent({ name: "codework" })
-		.onRequest("initialize", (ctx) => Effect.runPromise(handlers.initialize(ctx.params)))
-		.onRequest("session/new", (ctx) => Effect.runPromise(handlers.newSession(ctx.params)))
-		.onRequest("session/load", (ctx) => Effect.runPromise(handlers.loadSession(ctx.params, ctx.client)))
-		.onRequest("session/list", (ctx) => Effect.runPromise(handlers.listSessions(ctx.params)))
-		.onRequest("session/prompt", (ctx) => Effect.runPromise(handlers.prompt(ctx.params, ctx.client)))
-		.onRequest("session/set_config_option", (ctx) => Effect.runPromise(handlers.setConfigOption(ctx.params)))
-		.onNotification("session/cancel", (ctx) => Effect.runPromise(handlers.cancel(ctx.params).pipe(Effect.asVoid)));
+		.onRequest("initialize", (ctx) => runHandler(handlers.initialize(ctx.params)))
+		.onRequest("session/new", (ctx) => runHandler(handlers.newSession(ctx.params)))
+		.onRequest("session/load", (ctx) => runHandler(handlers.loadSession(ctx.params, ctx.client)))
+		.onRequest("session/list", (ctx) => runHandler(handlers.listSessions(ctx.params)))
+		.onRequest("session/prompt", (ctx) => runHandler(handlers.prompt(ctx.params, ctx.client)))
+		.onRequest("session/set_config_option", (ctx) => runHandler(handlers.setConfigOption(ctx.params)))
+		.onNotification("session/cancel", (ctx) => runHandler(handlers.cancel(ctx.params).pipe(Effect.asVoid)));
 
 /**
  * Runs the ACP agent server over stdio streams (stdin / stdout).

@@ -1,15 +1,17 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- fixtures only need temp dirs. */
 import * as acp from "@agentclientprotocol/sdk";
+import { createAssistantMessageEventStream } from "@codeworksh/aikit";
 import { EventSchema, Harness, Session } from "@codeworksh/harness/effect";
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect, Fiber, Option } from "effect";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import { immediateOpen } from "../../harness/test/fixtures/llm.ts";
+import { assistant, immediateOpen } from "../../harness/test/fixtures/llm.ts";
+import { parseModelValue } from "../src/acp/config.ts";
 import { entryToSessionUpdates, toSessionUpdate } from "../src/acp/feed.ts";
-import { Handlers } from "../src/acp/handlers.ts";
+import { extractPromptText, Handlers } from "../src/acp/handlers.ts";
 import { makeApp, Server } from "../src/acp/server.ts";
 
 const rootCatalog = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
@@ -23,11 +25,10 @@ const makeLayer = (options: Harness.Options = {}) => {
 	return Server.layer({ harness: { home, database: ":memory:", ...options } });
 };
 
-afterAll(() => {
-	for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
-});
-
 describe("ACP (Agent Client Protocol) SDK Integration", () => {
+	afterAll(() => {
+		for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
+	});
 	it("initialize returns protocol version and agent capabilities", () =>
 		Effect.gen(function* () {
 			const handlers = yield* Handlers.Service;
@@ -119,10 +120,12 @@ describe("ACP (Agent Client Protocol) SDK Integration", () => {
 	it("session/prompt runs a turn and returns end_turn", () => {
 		const contexts: Parameters<typeof immediateOpen>[0] = [];
 		const llm = immediateOpen(contexts);
+		const project = mkdtempSync(join(tmpdir(), "codework-acp-project-"));
+		homes.push(project);
 
 		return Effect.gen(function* () {
 			const handlers = yield* Handlers.Service;
-			const created = yield* handlers.newSession({ cwd: process.cwd(), mcpServers: [] });
+			const created = yield* handlers.newSession({ cwd: project, mcpServers: [] });
 
 			const result = yield* handlers.prompt({
 				sessionId: created.sessionId,
@@ -278,6 +281,8 @@ describe("ACP (Agent Client Protocol) SDK Integration", () => {
 	it("ACP Client connects to AgentApp and executes protocol turn with streaming updates", () => {
 		const contexts: Parameters<typeof immediateOpen>[0] = [];
 		const llm = immediateOpen(contexts);
+		const project = mkdtempSync(join(tmpdir(), "codework-acp-project-"));
+		homes.push(project);
 
 		return Effect.gen(function* () {
 			const handlers = yield* Handlers.Service;
@@ -304,7 +309,7 @@ describe("ACP (Agent Client Protocol) SDK Integration", () => {
 
 				const sessionResult = yield* Effect.promise(() =>
 					clientConn.agent.request(acp.methods.agent.session.new, {
-						cwd: process.cwd(),
+						cwd: project,
 						mcpServers: [],
 					}),
 				);
@@ -335,7 +340,7 @@ describe("ACP (Agent Client Protocol) SDK Integration", () => {
 				const loadResult = yield* Effect.promise(() =>
 					clientConn.agent.request(acp.methods.agent.session.load, {
 						sessionId: sessionResult.sessionId,
-						cwd: process.cwd(),
+						cwd: project,
 						mcpServers: [],
 					}),
 				);
@@ -491,5 +496,333 @@ describe("ACP (Agent Client Protocol) SDK Integration", () => {
 			messageId: "msg_assistant_1",
 			content: { type: "text", text: "2+2 is 4." },
 		});
+	});
+
+	it("parseModelValue preserves full model ID with slashes", () => {
+		expect(parseModelValue("openrouter/meta/muse-spark-1.3-contributor")).toEqual({
+			provider: "openrouter",
+			modelId: "meta/muse-spark-1.3-contributor",
+		});
+		expect(parseModelValue("openai/gpt-4o")).toEqual({
+			provider: "openai",
+			modelId: "gpt-4o",
+		});
+		expect(parseModelValue("gemini-2.5-pro", "google")).toEqual({
+			provider: "google",
+			modelId: "gemini-2.5-pro",
+		});
+		expect(parseModelValue("claude-3-7-sonnet")).toEqual({
+			provider: "openai",
+			modelId: "claude-3-7-sonnet",
+		});
+	});
+
+	it("extractPromptText formats text, resource with uri, resource_link, and unsupported media", () => {
+		const text = extractPromptText([
+			{ type: "text", text: "Hello" },
+			{
+				type: "resource",
+				resource: { uri: "file:///path/to/file.ts", text: "const x = 1;" },
+			},
+			{
+				type: "resource_link",
+				uri: "file:///path/to/doc.md",
+				name: "Doc",
+				mimeType: "text/markdown",
+			},
+			{
+				type: "image",
+				data: "base64data",
+				mimeType: "image/png",
+			},
+		]);
+		expect(text).toContain("Hello");
+		expect(text).toContain("```file:///path/to/file.ts\nconst x = 1;\n```");
+		expect(text).toContain("[Resource: Doc (file:///path/to/doc.md) [text/markdown]]");
+		expect(text).toContain("[Attached image: not currently supported]");
+	});
+
+	it("session/set_config_option validates options and rejects invalid inputs", () => {
+		const project = mkdtempSync(join(tmpdir(), "codework-acp-project-"));
+		homes.push(project);
+
+		return Effect.gen(function* () {
+			const handlers = yield* Handlers.Service;
+			const created = yield* handlers.newSession({ cwd: project, mcpServers: [] });
+
+			// Invalid thinking level
+			const invalidThought = yield* handlers
+				.setConfigOption({
+					sessionId: created.sessionId,
+					configId: "thought_level",
+					value: "infinite",
+				})
+				.pipe(Effect.flip);
+			expect(invalidThought).toBeInstanceOf(acp.RequestError);
+			expect((invalidThought as acp.RequestError).code).toBe(-32602);
+
+			// Unknown model
+			const unknownModel = yield* handlers
+				.setConfigOption({
+					sessionId: created.sessionId,
+					configId: "model",
+					value: "fake-provider/non-existent-model",
+				})
+				.pipe(Effect.flip);
+			expect(unknownModel).toBeInstanceOf(acp.RequestError);
+			expect((unknownModel as acp.RequestError).code).toBe(-32602);
+
+			// Unknown config option
+			const unknownOption = yield* handlers
+				.setConfigOption({
+					sessionId: created.sessionId,
+					configId: "unsupported_option",
+					value: "val",
+				})
+				.pipe(Effect.flip);
+			expect(unknownOption).toBeInstanceOf(acp.RequestError);
+			expect((unknownOption as acp.RequestError).code).toBe(-32602);
+		}).pipe(Effect.scoped, Effect.provide(makeLayer()), Effect.runPromise);
+	});
+
+	it("app translates SessionNotFoundError to JSON-RPC resourceNotFound (-32002)", () => {
+		return Effect.gen(function* () {
+			const handlers = yield* Handlers.Service;
+			const app = makeApp(handlers);
+			const clientApp = acp.client({ name: "zed-test-client" });
+			const clientConn = clientApp.connect(app);
+
+			try {
+				let rejected: acp.RequestError | undefined;
+				yield* Effect.promise(async () => {
+					try {
+						await clientConn.agent.request(acp.methods.agent.session.prompt, {
+							sessionId: "ses_nonexistent123",
+							prompt: [{ type: "text", text: "hello" }],
+						});
+					} catch (err) {
+						rejected = err as acp.RequestError;
+					}
+				});
+				expect(rejected).toBeInstanceOf(acp.RequestError);
+				expect(rejected?.code).toBe(-32002);
+			} finally {
+				clientConn.close();
+			}
+		}).pipe(Effect.scoped, Effect.provide(makeLayer()), Effect.runPromise);
+	});
+
+	it("session/prompt rejects concurrent prompt on the same session", () => {
+		const project = mkdtempSync(join(tmpdir(), "codework-acp-project-"));
+		homes.push(project);
+
+		let inFlightResolve: () => void;
+		const inFlight = new Promise<void>((r) => {
+			inFlightResolve = r;
+		});
+
+		const slowLlm: Harness.Options["llm"] = (input, signal) =>
+			Effect.sync(() => {
+				const message = assistant(input, 1, { stopReason: "aborted" });
+				const events = createAssistantMessageEventStream();
+				events.push({ type: "start", partial: message });
+				inFlightResolve();
+				signal.addEventListener("abort", () => {
+					events.push({ type: "error", reason: "aborted", error: message });
+				});
+				return events;
+			});
+
+		return Effect.gen(function* () {
+			const handlers = yield* Handlers.Service;
+			const created = yield* handlers.newSession({ cwd: project, mcpServers: [] });
+
+			const fiber = yield* handlers
+				.prompt({
+					sessionId: created.sessionId,
+					prompt: [{ type: "text", text: "First prompt" }],
+				})
+				.pipe(Effect.forkChild);
+
+			// Wait until first prompt enters slowLlm
+			yield* Effect.promise(() => inFlight);
+
+			const concurrentError = yield* handlers
+				.prompt({
+					sessionId: created.sessionId,
+					prompt: [{ type: "text", text: "Second prompt" }],
+				})
+				.pipe(Effect.flip);
+
+			expect(concurrentError).toBeInstanceOf(acp.RequestError);
+			expect((concurrentError as acp.RequestError).code).toBe(-32602);
+			expect((concurrentError as acp.RequestError).message).toContain("already in progress");
+
+			yield* handlers.cancel({ sessionId: created.sessionId });
+			const result = yield* Fiber.join(fiber);
+			expect(result.stopReason).toBe("cancelled");
+		}).pipe(Effect.scoped, Effect.provide(makeLayer({ llm: slowLlm })), Effect.runPromise);
+	});
+
+	it("session/prompt returns stopReason: max_tokens when LLM finishes with length", () => {
+		const project = mkdtempSync(join(tmpdir(), "codework-acp-project-"));
+		homes.push(project);
+
+		const lengthLlm: Harness.Options["llm"] = (input) =>
+			Effect.sync(() => {
+				const message = assistant(input, 1, { stopReason: "length" });
+				const events = createAssistantMessageEventStream();
+				events.push({ type: "start", partial: message });
+				events.push({ type: "done", reason: "length", message });
+				return events;
+			});
+
+		return Effect.gen(function* () {
+			const handlers = yield* Handlers.Service;
+			const created = yield* handlers.newSession({ cwd: project, mcpServers: [] });
+
+			const result = yield* handlers.prompt({
+				sessionId: created.sessionId,
+				prompt: [{ type: "text", text: "Long output prompt" }],
+			});
+			expect(result.stopReason).toBe("max_tokens");
+		}).pipe(Effect.scoped, Effect.provide(makeLayer({ llm: lengthLlm })), Effect.runPromise);
+	});
+
+	it("session/prompt returns RequestError.internalError when LLM fails", () => {
+		const project = mkdtempSync(join(tmpdir(), "codework-acp-project-"));
+		homes.push(project);
+
+		const failingLlm: Harness.Options["llm"] = (input) =>
+			Effect.sync(() => {
+				const message = assistant(input, 1, {
+					stopReason: "error",
+					errorMessage: "Model quota exceeded",
+				});
+				const events = createAssistantMessageEventStream();
+				events.push({ type: "start", partial: message });
+				events.push({ type: "error", reason: "error", error: message });
+				return events;
+			});
+
+		return Effect.gen(function* () {
+			const handlers = yield* Handlers.Service;
+			const created = yield* handlers.newSession({ cwd: project, mcpServers: [] });
+
+			const error = yield* handlers
+				.prompt({
+					sessionId: created.sessionId,
+					prompt: [{ type: "text", text: "Fail prompt" }],
+				})
+				.pipe(Effect.flip);
+
+			expect(error).toBeInstanceOf(acp.RequestError);
+			expect((error as acp.RequestError).code).toBe(-32603);
+			expect((error as acp.RequestError).message.toLowerCase()).toContain("model quota exceeded");
+		}).pipe(Effect.scoped, Effect.provide(makeLayer({ llm: failingLlm })), Effect.runPromise);
+	});
+
+	it("session/cancel during turn returns stopReason: cancelled without error updates", () => {
+		const project = mkdtempSync(join(tmpdir(), "codework-acp-project-"));
+		homes.push(project);
+
+		let inFlightResolve: () => void;
+		const inFlight = new Promise<void>((r) => {
+			inFlightResolve = r;
+		});
+
+		const slowLlm: Harness.Options["llm"] = (input, signal) =>
+			Effect.sync(() => {
+				const message = assistant(input, 1, { stopReason: "aborted" });
+				const events = createAssistantMessageEventStream();
+				events.push({ type: "start", partial: message });
+				inFlightResolve();
+				signal.addEventListener("abort", () => {
+					events.push({ type: "error", reason: "aborted", error: message });
+				});
+				return events;
+			});
+
+		return Effect.gen(function* () {
+			const handlers = yield* Handlers.Service;
+			const app = makeApp(handlers);
+			const updates: acp.SessionNotification[] = [];
+			const clientApp = acp
+				.client({ name: "zed-test-client" })
+				.onNotification(acp.methods.client.session.update, (ctx) => {
+					updates.push(ctx.params);
+				});
+			const clientConn = clientApp.connect(app);
+
+			try {
+				const created = yield* Effect.promise(() =>
+					clientConn.agent.request(acp.methods.agent.session.new, {
+						cwd: project,
+						mcpServers: [],
+					}),
+				);
+
+				const promptPromise = clientConn.agent.request(acp.methods.agent.session.prompt, {
+					sessionId: created.sessionId,
+					prompt: [{ type: "text", text: "Long turn to cancel" }],
+				});
+
+				// Wait until LLM request has started
+				yield* Effect.promise(() => inFlight);
+
+				yield* Effect.promise(() =>
+					clientConn.agent.notify(acp.methods.agent.session.cancel, {
+						sessionId: created.sessionId,
+					}),
+				);
+
+				const promptResult = yield* Effect.promise(() => promptPromise);
+				expect(promptResult.stopReason).toBe("cancelled");
+
+				// Ensure no fake error message chunk was streamed
+				const errorChunks = updates.filter(
+					(u) =>
+						u.update.sessionUpdate === "agent_message_chunk" &&
+						"content" in u.update &&
+						typeof u.update.content === "object" &&
+						u.update.content !== null &&
+						"text" in u.update.content &&
+						typeof u.update.content.text === "string" &&
+						u.update.content.text.includes("aborted"),
+				);
+				expect(errorChunks.length).toBe(0);
+			} finally {
+				clientConn.close();
+			}
+		}).pipe(Effect.scoped, Effect.provide(makeLayer({ llm: slowLlm })), Effect.runPromise);
+	});
+
+	it("session/list filters by cwd and paginates with cursor", () => {
+		const dirA = mkdtempSync(join(tmpdir(), "codework-acp-dirA-"));
+		const dirB = mkdtempSync(join(tmpdir(), "codework-acp-dirB-"));
+		homes.push(dirA, dirB);
+
+		return Effect.gen(function* () {
+			const handlers = yield* Handlers.Service;
+			yield* handlers.newSession({ cwd: dirA, mcpServers: [] });
+			yield* handlers.newSession({ cwd: dirA, mcpServers: [] });
+			const s3 = yield* handlers.newSession({ cwd: dirB, mcpServers: [] });
+
+			// Filter by cwd
+			const listA = yield* handlers.listSessions({ cwd: dirA });
+			expect(listA.sessions.length).toBe(2);
+			expect(listA.sessions.every((s) => s.cwd === dirA)).toBe(true);
+
+			const listB = yield* handlers.listSessions({ cwd: dirB });
+			expect(listB.sessions.length).toBe(1);
+			expect(listB.sessions[0]?.sessionId).toBe(s3.sessionId);
+
+			// Cursor pagination
+			const all = yield* handlers.listSessions({});
+			expect(all.sessions.length).toBeGreaterThanOrEqual(3);
+			const firstId = all.sessions[0]?.sessionId;
+			const paged = yield* handlers.listSessions({ cursor: firstId ?? null });
+			expect(paged.sessions.some((s) => s.sessionId === firstId)).toBe(false);
+		}).pipe(Effect.scoped, Effect.provide(makeLayer()), Effect.runPromise);
 	});
 });

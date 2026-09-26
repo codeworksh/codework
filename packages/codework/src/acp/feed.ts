@@ -1,47 +1,63 @@
 import type { SessionUpdate, ToolCallContent, ToolKind } from "@agentclientprotocol/sdk";
-import type { EventSchema, SessionStore } from "@codeworksh/harness/effect";
-import { Option, Stream } from "effect";
+import { EventList, type EventSchema, type SessionStore } from "@codeworksh/harness/effect";
+import { Option, Schema } from "effect";
 
 export interface SessionUpdateItem {
 	readonly sessionId: string;
 	readonly update: SessionUpdate;
 }
 
+type EventCandidate = {
+	readonly type: string;
+	readonly data?: unknown;
+	readonly durable?: unknown;
+};
+
+const isTextDelta = (event: EventCandidate): event is Schema.Schema.Type<typeof EventList.LLMTextDelta> =>
+	Schema.is(EventList.LLMTextDelta)(event) || event.type === EventList.LLMTextDelta.type;
+const isThinkingDelta = (event: EventCandidate): event is Schema.Schema.Type<typeof EventList.LLMThinkingDelta> =>
+	Schema.is(EventList.LLMThinkingDelta)(event) || event.type === EventList.LLMThinkingDelta.type;
+const isLLMFailed = (event: EventCandidate): event is Schema.Schema.Type<typeof EventList.LLMFailed> =>
+	Schema.is(EventList.LLMFailed)(event) || event.type === EventList.LLMFailed.type;
+const isToolStarted = (event: EventCandidate): event is Schema.Schema.Type<typeof EventList.ToolStarted> =>
+	Schema.is(EventList.ToolStarted)(event) || event.type === EventList.ToolStarted.type;
+const isToolProgress = (event: EventCandidate): event is Schema.Schema.Type<typeof EventList.ToolProgress> =>
+	Schema.is(EventList.ToolProgress)(event) || event.type === EventList.ToolProgress.type;
+const isToolSettled = (event: EventCandidate): event is Schema.Schema.Type<typeof EventList.ToolSettled> =>
+	Schema.is(EventList.ToolSettled)(event) || event.type === EventList.ToolSettled.type;
+
 const toolKind = (name: string): ToolKind => {
-	const lower = name.toLowerCase();
-	if (lower.includes("read") || lower.includes("view") || lower.includes("cat") || lower === "get") return "read";
-	if (lower.includes("write") || lower.includes("edit") || lower.includes("patch") || lower.includes("replace"))
-		return "edit";
-	if (lower.includes("delete") || lower.includes("remove") || lower.includes("rm")) return "delete";
-	if (lower.includes("search") || lower.includes("grep") || lower.includes("find") || lower.includes("glob"))
-		return "search";
-	if (
-		lower.includes("bash") ||
-		lower.includes("exec") ||
-		lower.includes("command") ||
-		lower.includes("terminal") ||
-		lower.includes("proc") ||
-		lower.includes("run")
-	)
-		return "execute";
-	if (lower.includes("fetch") || lower.includes("curl") || lower.includes("http") || lower.includes("url"))
-		return "fetch";
-	if (lower.includes("think")) return "think";
-	return "other";
+	switch (name.toLowerCase()) {
+		case "bash":
+		case "exec":
+		case "terminal":
+			return "execute";
+		case "read_file":
+		case "view_file":
+			return "read";
+		case "write_file":
+		case "edit_file":
+		case "replace_file_content":
+			return "edit";
+		case "search_web":
+		case "search":
+			return "search";
+		case "fetch":
+			return "fetch";
+		default:
+			return "other";
+	}
 };
 
 const toolTitle = (name: string, rawArgs?: unknown): string => {
 	if (rawArgs && typeof rawArgs === "object") {
 		const args = rawArgs as Record<string, unknown>;
 		if (typeof args.command === "string") return `Run: ${args.command}`;
-		if (typeof args.CommandLine === "string") return `Run: ${args.CommandLine}`;
+		if (typeof args.commandLine === "string") return `Run: ${args.commandLine}`;
+		if (typeof args.script === "string") return `Run: ${args.script}`;
 		if (typeof args.path === "string") return `${name}: ${args.path}`;
-		if (typeof args.AbsolutePath === "string") return `${name}: ${args.AbsolutePath}`;
-		if (typeof args.TargetFile === "string") return `${name}: ${args.TargetFile}`;
 		if (typeof args.query === "string") return `Search: ${args.query}`;
-		if (typeof args.Query === "string") return `Search: ${args.Query}`;
 		if (typeof args.url === "string") return `Fetch: ${args.url}`;
-		if (typeof args.Url === "string") return `Fetch: ${args.Url}`;
 	}
 	return name;
 };
@@ -76,13 +92,11 @@ const toolContent = (result: unknown): Array<ToolCallContent> | undefined => {
  * Maps Codework harness event payloads to ACP session update notifications.
  */
 export const toSessionUpdate = (event: EventSchema.Payload): SessionUpdateItem | undefined => {
-	const data = event.data as Record<string, unknown>;
-	const sessionId = (data?.sessionId ?? event.metadata?.sessionId) as string | undefined;
-	if (!sessionId) return undefined;
-
-	if (event.type.startsWith("session.llm.text.delta")) {
+	if (isTextDelta(event)) {
+		const data = event.data as Record<string, unknown>;
 		const delta = typeof data.delta === "string" ? data.delta : undefined;
-		if (!delta) return undefined;
+		const sessionId = (data.sessionId ?? (event as Record<string, unknown>).sessionId) as string;
+		if (!delta || !sessionId) return undefined;
 		return {
 			sessionId,
 			update: {
@@ -95,9 +109,11 @@ export const toSessionUpdate = (event: EventSchema.Payload): SessionUpdateItem |
 		};
 	}
 
-	if (event.type.startsWith("session.llm.thinking.delta")) {
+	if (isThinkingDelta(event)) {
+		const data = event.data as Record<string, unknown>;
 		const delta = typeof data.delta === "string" ? data.delta : undefined;
-		if (!delta) return undefined;
+		const sessionId = (data.sessionId ?? (event as Record<string, unknown>).sessionId) as string;
+		if (!delta || !sessionId) return undefined;
 		return {
 			sessionId,
 			update: {
@@ -110,13 +126,19 @@ export const toSessionUpdate = (event: EventSchema.Payload): SessionUpdateItem |
 		};
 	}
 
-	if (event.type.startsWith("session.llm.failed")) {
+	if (isLLMFailed(event)) {
+		const data = event.data as Record<string, unknown>;
+		const sessionId = (data.sessionId ?? (event as Record<string, unknown>).sessionId) as string;
+		if (!sessionId) return undefined;
+
+		// Do not emit error messages for aborted requests (F1)
+		if (data.reason === "aborted") return undefined;
+
 		const errorMsg =
+			(data.message as { errorMessage?: string })?.errorMessage ??
 			(typeof data.errorMessage === "string" ? data.errorMessage : undefined) ??
-			(typeof (data.failure as Record<string, unknown>)?.message === "string"
-				? ((data.failure as Record<string, unknown>).message as string)
-				: undefined) ??
 			"LLM request failed";
+
 		return {
 			sessionId,
 			update: {
@@ -129,15 +151,17 @@ export const toSessionUpdate = (event: EventSchema.Payload): SessionUpdateItem |
 		};
 	}
 
-	if (event.type.startsWith("session.tool.started")) {
-		const callId = typeof data.callID === "string" ? data.callID : undefined;
+	if (isToolStarted(event)) {
+		const data = event.data as Record<string, unknown>;
+		const callID = typeof data.callID === "string" ? data.callID : undefined;
 		const name = typeof data.name === "string" ? data.name : "tool";
-		if (!callId) return undefined;
+		const sessionId = (data.sessionId ?? (event as Record<string, unknown>).sessionId) as string;
+		if (!callID || !sessionId) return undefined;
 		return {
 			sessionId,
 			update: {
 				sessionUpdate: "tool_call",
-				toolCallId: callId,
+				toolCallId: callID,
 				title: toolTitle(name),
 				name,
 				kind: toolKind(name),
@@ -146,40 +170,43 @@ export const toSessionUpdate = (event: EventSchema.Payload): SessionUpdateItem |
 		};
 	}
 
-	if (event.type.startsWith("session.tool.progress")) {
-		const callId = typeof data.callID === "string" ? data.callID : undefined;
-		if (!callId) return undefined;
+	if (isToolProgress(event)) {
+		const data = event.data as Record<string, unknown>;
+		const callID = typeof data.callID === "string" ? data.callID : undefined;
+		const sessionId = (data.sessionId ?? (event as Record<string, unknown>).sessionId) as string;
+		if (!callID || !sessionId) return undefined;
 		return {
 			sessionId,
 			update: {
 				sessionUpdate: "tool_call_update",
-				toolCallId: callId,
+				toolCallId: callID,
 				status: "in_progress",
 				rawOutput: data.partial,
 			},
 		};
 	}
 
-	if (event.type.startsWith("session.tool.settled")) {
-		const callId = typeof data.callID === "string" ? data.callID : undefined;
-		if (!callId) return undefined;
+	if (isToolSettled(event)) {
+		const data = event.data as Record<string, unknown>;
+		const callID = typeof data.callID === "string" ? data.callID : undefined;
+		const sessionId = (data.sessionId ?? (event as Record<string, unknown>).sessionId) as string;
+		if (!callID || !sessionId) return undefined;
 		const part = (data.part && typeof data.part === "object" ? data.part : {}) as Record<string, unknown>;
 		const statusStr = typeof part.status === "string" ? part.status : "completed";
 		const isError = statusStr !== "completed";
 		const name = typeof part.name === "string" ? part.name : "tool";
-		const args = part.arguments;
 		const content = toolContent(part.result);
 
 		return {
 			sessionId,
 			update: {
 				sessionUpdate: "tool_call_update",
-				toolCallId: callId,
-				title: toolTitle(name, args),
+				toolCallId: callID,
+				title: toolTitle(name, part.arguments),
 				name,
 				kind: toolKind(name),
 				status: isError ? "failed" : "completed",
-				rawInput: args,
+				rawInput: part.arguments,
 				rawOutput: part.result,
 				...(content ? { content } : {}),
 			},
@@ -188,15 +215,6 @@ export const toSessionUpdate = (event: EventSchema.Payload): SessionUpdateItem |
 
 	return undefined;
 };
-
-/**
- * Filter and transform an event stream into ACP updates.
- */
-export const streamUpdates = <E>(stream: Stream.Stream<EventSchema.Payload, E>): Stream.Stream<SessionUpdateItem, E> =>
-	stream.pipe(
-		Stream.map(toSessionUpdate),
-		Stream.filter((item): item is SessionUpdateItem => item !== undefined),
-	);
 
 /**
  * Maps a stored session entry and its parts into ACP session update notifications
@@ -258,97 +276,102 @@ export const entryToSessionUpdates = (entry: SessionStore.HydratedEntry): Array<
 		}
 	} else if (entry.entry.type === "assistant") {
 		for (const part of entry.parts) {
-			if (part.type === "thinking") {
-				try {
-					const parsed = JSON.parse(part.data) as { text?: string; thinking?: string };
-					const text = parsed.text ?? parsed.thinking;
-					if (text) {
-						updates.push({
-							sessionUpdate: "agent_thought_chunk",
-							messageId,
-							content: {
-								type: "text",
-								text,
-							},
-						});
+			switch (part.type) {
+				case "thinking": {
+					try {
+						const parsed = JSON.parse(part.data) as { thinking?: string; text?: string };
+						const text = parsed.thinking ?? parsed.text;
+						if (text) {
+							updates.push({
+								sessionUpdate: "agent_thought_chunk",
+								messageId,
+								content: {
+									type: "text",
+									text,
+								},
+							});
+						}
+					} catch {
+						if (part.data) {
+							updates.push({
+								sessionUpdate: "agent_thought_chunk",
+								messageId,
+								content: {
+									type: "text",
+									text: part.data,
+								},
+							});
+						}
 					}
-				} catch {
-					if (part.data) {
-						updates.push({
-							sessionUpdate: "agent_thought_chunk",
-							messageId,
-							content: {
-								type: "text",
-								text: part.data,
-							},
-						});
-					}
+					break;
 				}
-			} else if (part.type === "text") {
-				try {
-					const parsed = JSON.parse(part.data) as { text?: string };
-					if (parsed.text) {
-						updates.push({
-							sessionUpdate: "agent_message_chunk",
-							messageId,
-							content: {
-								type: "text",
-								text: parsed.text,
-							},
-						});
+				case "text": {
+					try {
+						const parsed = JSON.parse(part.data) as { text?: string };
+						if (parsed.text) {
+							updates.push({
+								sessionUpdate: "agent_message_chunk",
+								messageId,
+								content: {
+									type: "text",
+									text: parsed.text,
+								},
+							});
+						}
+					} catch {
+						if (part.data) {
+							updates.push({
+								sessionUpdate: "agent_message_chunk",
+								messageId,
+								content: {
+									type: "text",
+									text: part.data,
+								},
+							});
+						}
 					}
-				} catch {
-					if (part.data) {
-						updates.push({
-							sessionUpdate: "agent_message_chunk",
-							messageId,
-							content: {
-								type: "text",
-								text: part.data,
-							},
-						});
-					}
+					break;
 				}
-			} else if (part.type === "toolCall") {
-				try {
-					const parsed = JSON.parse(part.data) as {
-						callID?: string;
-						callId?: string;
-						name?: string;
-						arguments?: unknown;
-						status?: string;
-						isError?: boolean;
-						result?: unknown;
-					};
-					const callId = parsed.callID ?? parsed.callId ?? Option.getOrElse(part.callId, () => part.id);
-					const name = parsed.name ?? Option.getOrElse(part.toolName, () => "tool");
-					const rawArgs = parsed.arguments;
-					const statusStr = parsed.status ?? Option.getOrElse(part.status, () => "completed");
-					const isError = statusStr === "error" || parsed.isError === true;
-					const content = toolContent(parsed.result);
+				case "toolCall": {
+					try {
+						const parsed = JSON.parse(part.data) as {
+							callID?: string;
+							name?: string;
+							arguments?: Record<string, unknown>;
+							status?: string;
+							result?: unknown;
+						};
+						const callId = parsed.callID ?? Option.getOrElse(part.callId, () => part.id);
+						const name = parsed.name ?? Option.getOrElse(part.toolName, () => "tool");
+						const rawArgs = parsed.arguments;
+						const statusStr = parsed.status ?? Option.getOrElse(part.status, () => "completed");
+						const isError = statusStr !== "completed";
+						const content = toolContent(parsed.result);
 
-					updates.push({
-						sessionUpdate: "tool_call",
-						toolCallId: callId,
-						title: toolTitle(name, rawArgs),
-						name,
-						kind: toolKind(name),
-						status: "in_progress",
-						rawInput: rawArgs,
-					});
+						updates.push({
+							sessionUpdate: "tool_call",
+							toolCallId: callId,
+							title: toolTitle(name, rawArgs),
+							name,
+							kind: toolKind(name),
+							status: "in_progress",
+							rawInput: rawArgs,
+						});
 
-					updates.push({
-						sessionUpdate: "tool_call_update",
-						toolCallId: callId,
-						title: toolTitle(name, rawArgs),
-						name,
-						kind: toolKind(name),
-						status: isError ? "failed" : "completed",
-						rawInput: rawArgs,
-						rawOutput: parsed.result,
-						...(content ? { content } : {}),
-					});
-				} catch {}
+						updates.push({
+							sessionUpdate: "tool_call_update",
+							toolCallId: callId,
+							title: toolTitle(name, rawArgs),
+							name,
+							kind: toolKind(name),
+							status: isError ? "failed" : "completed",
+							rawInput: rawArgs,
+							rawOutput: parsed.result,
+							...(content ? { content } : {}),
+						});
+					} catch {}
+					break;
+				}
 			}
 		}
 
