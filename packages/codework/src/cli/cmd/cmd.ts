@@ -39,11 +39,11 @@ export const Cmd = Spec.make("codework", {
 	description: "CodeWork Command Line Interface",
 	shared: {
 		userConfigDir: Flag.String("user-config-dir").pipe(
-			Flag.withDescription("Directory containing user config overrides (e.g. settings.json)"),
+			Flag.withDescription("Directory whose settings.jsonc replaces the user settings in --home"),
 			Flag.optional,
 		),
 		home: Flag.String("home").pipe(
-			Flag.withDescription("CodeWork data directory (default: ~/.codework)"),
+			Flag.withDescription("CodeWork home: user settings, credentials, cache and data (default: ~/.codework)"),
 			Flag.optional,
 		),
 		database: Flag.String("database").pipe(Flag.withDescription("SQLite database path or :memory:"), Flag.optional),
@@ -277,6 +277,10 @@ export const Cmd = Spec.make("codework", {
 				Spec.make("check", {
 					description: "Report which configured plugins have a newer revision available",
 					params: {
+						spec: Argument.String("spec").pipe(
+							Argument.withDescription("Only this configured plugin: a package name or spec, git spec, or path"),
+							Argument.optional,
+						),
 						// An answer is reused for an hour, which is right for a command someone may
 						// run repeatedly and wrong for the minute after they pushed a plugin. Without
 						// this there is no way to say "ask again", and `check` reports a moving branch
@@ -288,6 +292,7 @@ export const Cmd = Spec.make("codework", {
 					},
 					examples: [
 						{ command: "codework plugin check", description: "Ask the registry what has moved" },
+						{ command: "codework plugin check @acme/codework-tool-proc", description: "Ask about one plugin" },
 						{
 							command: "codework plugin check --refresh",
 							description: "Ignore the cached answer, after pushing a plugin",
@@ -296,8 +301,16 @@ export const Cmd = Spec.make("codework", {
 				}),
 				Spec.make("update", {
 					description: "Fetch a newer revision of every plugin that has one",
-					params: {},
-					examples: [{ command: "codework plugin update", description: "Take whatever `check` found" }],
+					params: {
+						spec: Argument.String("spec").pipe(
+							Argument.withDescription("Only this configured plugin: a package name or spec, git spec, or path"),
+							Argument.optional,
+						),
+					},
+					examples: [
+						{ command: "codework plugin update", description: "Take whatever `check` found" },
+						{ command: "codework plugin update @acme/codework-tool-proc", description: "Update one plugin" },
+					],
 				}),
 				Spec.make("reload", {
 					description: "Re-import configured plugins in a running server",

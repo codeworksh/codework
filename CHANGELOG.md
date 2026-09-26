@@ -11,6 +11,8 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.9.2]
+
 ### Added
 
 - Added `Model.configureCatalog(path)`, `Model.catalogPath()`, and `Model.reloadCatalog()`. An embedder can keep `models.gen.json` somewhere other than the working directory (`CODEWORK_MODELS_FILE` still wins), and a long-running process can pick up a regenerated catalog without restarting.

@@ -29,7 +29,6 @@ export default defineConfig({
 			"src/repo.ts",
 			"src/sandbox.ts",
 			"src/sandbox/driver.ts",
-			"src/sandbox/error.ts",
 			"src/sandbox/errors.ts",
 			"src/sandbox/filesystem.ts",
 			"src/sandbox/instance.ts",

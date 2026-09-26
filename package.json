@@ -10,10 +10,6 @@
 		"type": "git",
 		"url": "git+https://github.com/codeworksh/codework.git"
 	},
-	"workspaces": [
-		"packages/*",
-		"extras/*"
-	],
 	"type": "module",
 	"scripts": {
 		"build": "vp run -r build",
@@ -53,5 +49,5 @@
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	},
-	"packageManager": "pnpm@11.5.2"
+	"packageManager": "pnpm@12.6.0"
 }

@@ -1,0 +1,26 @@
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/jetbrains-mono";
+
+/* Monospace body with Geist headings, shared by the landing page and the docs. */
+@theme inline {
+	--font-sans: "Geist Variable", sans-serif;
+	--font-mono: "JetBrains Mono Variable", monospace;
+}
+
+body {
+	font-family: var(--font-mono);
+	font-synthesis: none;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	font-family: var(--font-sans);
+	text-wrap: balance;
+}

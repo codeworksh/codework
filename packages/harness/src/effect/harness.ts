@@ -38,13 +38,21 @@ export interface Options {
 	readonly database?: string;
 	/**
 	 * The process-level host directory: the default sandbox mount, the `.npmrc`/parse fallback
-	 * for plugin references no file declared, and the base a relative `--user-config-dir`
+	 * for plugin references no file declared, and the base a relative `home` or `userConfigDir`
 	 * resolves against. Defaults to the OS process's directory. It is never a project-settings
-	 * root -- that discovery belongs to a session's `hostDir`.
+	 * root -- that discovery belongs to a session's `hostDir` -- and never a sandbox `cwd`.
 	 */
 	readonly hostCwd?: string;
+	/**
+	 * `--home`: the shared, user-wide home -- `~/.codework` by default -- holding the user
+	 * settings, credentials, plugin cache and data.
+	 */
 	readonly home?: string;
-	/** user provided directory containing the highest-priority config. */
+	/**
+	 * `--user-config-dir`: a hard override of the user settings file only. Its `settings.jsonc`
+	 * is read *instead of* the home's; the project layer still sits above it, and everything else
+	 * the home holds stays in the home.
+	 */
 	readonly userConfigDir?: string;
 	readonly sandboxes?: ReadonlyArray<SandboxDriverLoader.Entry>;
 	readonly llm?: LLM.Open;
@@ -58,11 +66,14 @@ export interface Options {
 export const layer = (options: Options = {}) =>
 	Layer.unwrap(
 		Effect.gen(function* () {
-			const paths = yield* Global.resolve(options.home === undefined ? {} : { home: options.home });
 			// The single sanctioned `process.cwd()` in the harness, and only as the default.
 			// Everything downstream takes the host directory as a required parameter, so no module
 			// can quietly fall back to the OS process's directory when it meant a session's mount.
 			const hostCwd = options.hostCwd ?? process.cwd();
+			// `--home` is app-level too: a relative spelling is relative to `hostCwd`.
+			const paths = yield* Global.resolve(
+				options.home === undefined ? {} : { home: hostPath.resolve(hostCwd, expandTilde(options.home, hostPath)) },
+			);
 			const global = Global.layerWith(paths);
 			// `--user-config-dir` is a process-level flag: `~` expands to the user's home, and a
 			// relative spelling resolves against the process's own directory. A session's
@@ -70,7 +81,7 @@ export const layer = (options: Options = {}) =>
 			const settingsOptions =
 				options.userConfigDir === undefined
 					? {}
-					: { userConfigDir: hostPath.resolve(hostCwd, expandTilde(options.userConfigDir, hostPath)) };
+					: { userConfigDir: Settings.userConfigDir(options.userConfigDir, hostCwd) };
 			// Settings are read once here because the plugin selection has to be prepared before
 			// any layer that depends on it; every later read goes through `Settings.Service`.
 			//
@@ -94,19 +105,18 @@ export const layer = (options: Options = {}) =>
 			const references = (settings: SettingsInfo): ReadonlyArray<PluginRef> =>
 				options.plugins ?? [...builtins, ...settings.plugins];
 
-			/** Reference to the file that declared it, for failures that should name one. */
+			/** Reference to the file that owns it: the `.npmrc` anchor, and what a failure names. */
 			const declaredIn = (settings: SettingsInfo): ReadonlyMap<string, string> =>
-				new Map(
-					settings.declared.flatMap((one) =>
-						typeof one.entry === "string"
-							? [[one.entry, one.file] as const]
-							: "package" in one.entry
-								? [[one.entry.package, one.file] as const]
-								: [],
-					),
-				);
+				new Map(Array.from(Settings.modules(settings.declared), ([reference, one]) => [reference, one.file]));
 
+			// The process view has no session, so no host directory of its own: the app's working
+			// directory stands in for a reference nothing anchored -- an embedder's own list.
 			const catalogOptions = { builtins, cache: paths.cache, hostDir: hostCwd };
+			/**
+			 * The host directory a view resolves against: a project view's is the root its sessions'
+			 * `hostDir` led to; only the process view falls back to `hostCwd`.
+			 */
+			const hostDirOf = (root: string | undefined) => root ?? hostCwd;
 
 			/*
 			 * What the store already holds for a reference, and nothing else.
@@ -118,7 +128,7 @@ export const layer = (options: Options = {}) =>
 			 */
 			type Here = Option.Option<{ readonly generation?: number }>;
 			const filed = (reference: string, from: string): Effect.Effect<Here> =>
-				PluginSource.parse(reference, hostCwd).pipe(
+				PluginSource.parse(reference, from).pipe(
 					Effect.flatMap((target): Effect.Effect<Here, unknown> =>
 						target.kind === "local"
 							? // On disk by definition, so it can be loaded now -- but never filed, so it
@@ -151,8 +161,13 @@ export const layer = (options: Options = {}) =>
 			const pool = yield* Ref.make<Pool>(
 				yield* load(references(config), { ...resolveOnly, declared: declaredIn(config) }),
 			);
-			const followStore = (refs: ReadonlyArray<PluginRef>, current: Pool, settings: SettingsInfo) =>
-				follow(refs, current, { ...resolveOnly, declared: declaredIn(settings) }, filed);
+			const followStore = (
+				refs: ReadonlyArray<PluginRef>,
+				current: Pool,
+				settings: SettingsInfo,
+				root: string | undefined,
+			) =>
+				follow(refs, current, { ...resolveOnly, hostDir: hostDirOf(root), declared: declaredIn(settings) }, filed);
 
 			/*
 			 * A reload re-imports everything, including the local plugins nothing else can notice
@@ -160,19 +175,28 @@ export const layer = (options: Options = {}) =>
 			 * moves, so without a query string the module registry would hand back what it already
 			 * has. Resolve-only, like the boundary check -- reload re-reads disk, it never fetches.
 			 */
+			/** A session's view is its project root; one with no project runs from the process view. */
+			const viewOf = (hostDir: string | undefined) =>
+				hostDir === undefined
+					? Effect.undefined
+					: Settings.projectRoot(hostDir, paths.home).pipe(Effect.orElseSucceed(() => undefined));
+
 			let reloads = 0;
-			const rebuild = () =>
+			const rebuild = (root: string | undefined, loaded: Pool) =>
 				Effect.gen(function* () {
 					reloads += 1;
-					// Re-read the process's layers -- the user layer and the explicit override, as
-					// at boot. Project layers belong to sessions and come back through the
-					// retained origins below, never through a process-level discovery walk.
-					const current = yield* Settings.load({ ...settingsOptions, home: paths.home });
-					const loaded = yield* Ref.get(pool);
-					// Reload is process-wide. Include modules discovered lazily from every linked
-					// session, not only the project the server happened to start in.
-					// The current root comes last so an edited spec replaces an older origin with
-					// the same plugin ID while unrelated session plugins remain loaded.
+					// Re-read the view's layers: for the process view the user layer and the
+					// explicit override, as at boot; for a project, those plus the project's own.
+					// A project root is only ever one a session already led here -- never the
+					// result of a process-level discovery walk.
+					const current = yield* Settings.load({
+						...settingsOptions,
+						home: paths.home,
+						...(root === undefined ? {} : { hostDir: root }),
+					});
+					// Include modules the view's sessions discovered lazily, not only what its
+					// settings name today. The current declarations come last so an edited spec
+					// replaces an older origin with the same plugin ID while other plugins remain.
 					//
 					// `follow` applies the same rule: a retained origin whose source has vanished
 					// since it loaded drops out of the reload with a warning instead of failing it
@@ -182,7 +206,7 @@ export const layer = (options: Options = {}) =>
 					for (const origin of loaded.origins.values()) {
 						if (
 							configured.includes(origin.reference) ||
-							Option.isSome(yield* filed(origin.reference, anchor(origin.file, hostCwd)))
+							Option.isSome(yield* filed(origin.reference, anchor(origin.file, hostDirOf(root))))
 						) {
 							retained.push(origin);
 							continue;
@@ -202,6 +226,7 @@ export const layer = (options: Options = {}) =>
 					for (const [reference, file] of declaredIn(current)) known.set(reference, file);
 					return yield* load(accumulated, {
 						...resolveOnly,
+						hostDir: hostDirOf(root),
 						declared: known,
 						reload: reloads,
 					});
@@ -227,7 +252,7 @@ export const layer = (options: Options = {}) =>
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
-				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild)),
+				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild, viewOf)),
 				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),

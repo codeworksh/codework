@@ -1,0 +1,175 @@
+---
+import { ArrowRight, BookOpen, Box, GitBranch, Layers, Play, Rocket, Sparkles, Users } from "lucide-react";
+import Layout from "@/components/layout.astro";
+import { about, community, features, footer, showcase, start } from "@/components/landing/content";
+import { Field } from "@/components/landing/field";
+import { GithubIcon } from "@/components/landing/github";
+import { Header } from "@/components/landing/header";
+import { Hero } from "@/components/landing/hero";
+import { Picker } from "@/components/landing/picker";
+import { Pixels } from "@/components/landing/pixels";
+import { Scene } from "@/components/landing/scene";
+import { Typewriter } from "@/components/landing/typewriter";
+import { WORDMARK } from "@/components/landing/wordmark";
+import "@/styles/site.css";
+
+const section = "mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:py-24";
+const heading = "text-2xl font-semibold tracking-tight text-text sm:text-[1.75rem]";
+const lede = "mt-2 max-w-xl text-[15px] leading-relaxed text-text-secondary text-pretty";
+const card =
+	"group flex flex-col border border-border-subtle bg-surface p-5 transition-colors duration-150 ease-out hover:border-border-strong";
+const cta = "mt-auto flex items-center gap-1 pt-4 text-[13px] font-medium text-brand";
+const featureIcons = [Layers, GitBranch, Sparkles];
+const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
+---
+
+<Layout title="CodeWork" description="CodeWork">
+	<Header client:load />
+	<Picker client:load />
+	<main>
+		<Hero client:load />
+
+		<section id="about">
+			<div class={section}>
+				<div class="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
+					<div>
+						<h2 data-typed-block class={heading}>
+							<span class="sr-only">
+								{about.lead.trim()}: {about.phrases.map((phrase) => phrase.replace(/\.$/, "")).join("; ")}.
+							</span>
+							{/* The lead holds its own line and the options type on the line below, so nothing reflows. */}
+							<span aria-hidden="true">
+								<span class="block">{about.lead.trim()}</span>
+								<span class="block text-brand">
+									<Typewriter phrases={about.phrases} client:visible />
+								</span>
+							</span>
+						</h2>
+						{about.paragraphs.map((text) => (
+							<p class="mt-5 max-w-142 text-[15px] leading-relaxed text-text-secondary text-pretty first-of-type:mt-6">
+								{text}
+							</p>
+						))}
+					</div>
+					<div class="overflow-hidden border border-border-subtle">
+						<Scene client:visible />
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<section id="watch" class="border-t border-border-subtle">
+			<div class={section}>
+				<h2 class={heading}>{showcase.title}</h2>
+				<p class={lede}>{showcase.description}</p>
+				<div class="mt-6 grid gap-4 sm:grid-cols-2 lg:mt-10 lg:grid-cols-4">
+					{showcase.items.map((title) => (
+						<div>
+							<div class="flex aspect-video items-center justify-center border border-border-subtle bg-surface-2 text-text-muted">
+								<Play className="size-8" />
+							</div>
+							<p class="mt-3 text-sm text-text">{title}</p>
+							<p class="text-[13px] text-text-muted">Channel placeholder</p>
+						</div>
+					))}
+				</div>
+			</div>
+		</section>
+
+		<section id="install" class="border-t border-border-subtle">
+			<div class={section}>
+				<h2 class={heading}>{start.title}</h2>
+				<p class={lede}>{start.description}</p>
+				<div class="mt-6 grid gap-4 lg:mt-10 lg:grid-cols-2">
+					{start.cards.map((item) => (
+						<a href="/docs/" class={`${card} p-6 lg:p-8`}>
+							<Box className="size-6 text-brand" />
+							<h3 class="mt-4 text-lg font-medium text-text">{item.title}</h3>
+							<p class="mt-2 text-sm leading-relaxed text-text-secondary">{item.body}</p>
+							<span class={cta}>
+								{item.cta}
+								<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+							</span>
+						</a>
+					))}
+				</div>
+			</div>
+		</section>
+
+		<section id="features" class="border-t border-border-subtle">
+			<div class={section}>
+				<h2 class={heading}>{features.title}</h2>
+				<p class={lede}>{features.description}</p>
+				<div class="mt-6 grid gap-4 sm:grid-cols-3 lg:mt-10">
+					{features.cards.map((item, i) => {
+						const Icon = featureIcons[i]!;
+						return (
+							<div class={card}>
+								<div class="flex aspect-4/3 items-center justify-center bg-surface-2 text-text-muted">
+									<Icon className="size-8" />
+								</div>
+								<h3 class="mt-4 text-[15px] font-medium text-text">{item.title}</h3>
+								<p class="mt-1.5 text-[13px] leading-relaxed text-text-secondary">{item.body}</p>
+							</div>
+						);
+					})}
+				</div>
+			</div>
+		</section>
+
+		<section id="community" class="border-t border-border-subtle">
+			<div class={section}>
+				<h2 class={heading}>{community.title}</h2>
+				<p class={lede}>{community.description}</p>
+				<div class="mt-6 grid gap-4 sm:grid-cols-2 lg:mt-10 lg:grid-cols-4">
+					{community.cards.map((item, i) => {
+						const Icon = communityIcons[i]!;
+						return (
+							<a href={item.href} class={card}>
+								<Icon className="size-5 text-brand" />
+								<h3 class="mt-3.5 text-[15px] font-medium text-text">{item.title}</h3>
+								<p class="mt-1.5 text-[13px] leading-relaxed text-text-secondary">{item.body}</p>
+								<span class={cta}>
+									{item.cta}
+									<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+								</span>
+							</a>
+						);
+					})}
+				</div>
+			</div>
+		</section>
+	</main>
+
+	<footer class="relative isolate overflow-hidden border-t border-border-subtle bg-field">
+		<div aria-hidden="true" class="pointer-events-none absolute inset-0">
+			<Field variant="field" client:visible />
+		</div>
+		<div class="relative mx-auto flex max-w-6xl flex-col gap-10 px-4 py-14 sm:px-6 lg:flex-row lg:justify-between">
+			<div class="lg:w-96">
+				<a href="/" aria-label="CodeWork home" data-quiet class="block w-max text-brand">
+					<Pixels glyph={WORDMARK} className="h-6 w-auto" />
+				</a>
+				<p data-quiet class="mt-4 text-sm leading-relaxed text-text-muted">
+					{footer.tagline}
+				</p>
+			</div>
+			<div class="grid grid-cols-2 gap-10 sm:gap-16">
+				{footer.columns.map((column) => (
+					<div data-quiet>
+						<h3 class="font-mono text-sm font-medium text-text">{column.title}</h3>
+						<ul class="mt-3 space-y-2 text-sm">
+							{column.links.map((link) => (
+								<li>
+									<a href={link.href} class="text-text-secondary transition-colors hover:text-brand">
+										{link.label}
+									</a>
+								</li>
+							))}
+						</ul>
+					</div>
+				))}
+			</div>
+		</div>
+	</footer>
+</Layout>

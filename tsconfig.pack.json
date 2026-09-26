@@ -4,5 +4,6 @@
 		"incremental": false,
 		"noEmit": false
 	},
-	"include": ["packages/*/src/**/*.ts"]
+	// Only the packages that publish declarations; the CLI ships none (`dts: false`).
+	"include": ["packages/aikit/src/**/*.ts", "packages/harness/src/**/*.ts", "packages/plugin/src/**/*.ts"]
 }

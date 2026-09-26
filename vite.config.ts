@@ -33,12 +33,12 @@ const aliases = [
 		replacement: fileURLToPath(new URL("./packages/harness/src/sandbox.ts", import.meta.url)),
 	},
 	{
-		find: "@codeworksh/aikit/modelgen",
-		replacement: fileURLToPath(new URL("./packages/aikit/src/modelgen.ts", import.meta.url)),
-	},
-	{
 		find: "@codeworksh/aikit/failure",
 		replacement: fileURLToPath(new URL("./packages/aikit/src/llm/failure.ts", import.meta.url)),
+	},
+	{
+		find: "@codeworksh/aikit/modelgen",
+		replacement: fileURLToPath(new URL("./packages/aikit/src/modelgen.ts", import.meta.url)),
 	},
 	{
 		find: /^@codeworksh\/aikit\/(oauth\/.+)$/,
@@ -95,7 +95,8 @@ export default defineConfig({
 		},
 	},
 	fmt: {
-		ignorePatterns: ignoredPaths,
+		// A file snapshot is the exact bytes a test wrote; reformatting it would make it drift.
+		ignorePatterns: [...ignoredPaths, "**/__snapshots__/**"],
 		printWidth: 120,
 		useTabs: true,
 		tabWidth: 3,

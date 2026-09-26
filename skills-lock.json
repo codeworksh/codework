@@ -1,0 +1,11 @@
+{
+	"version": 1,
+	"skills": {
+		"vgpu": {
+			"source": "vercel-labs/vgpu",
+			"sourceType": "github",
+			"skillPath": "skills/vgpu/SKILL.md",
+			"computedHash": "c44a1f92f39d27229bfa9d1f518e09e24948607311a5abfb4132838f89483dc5"
+		}
+	}
+}

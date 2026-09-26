@@ -9,7 +9,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@types/node": "^26.5.1",
+		"@types/node": "catalog:",
 		"effect": "4.0.0-rc.115"
 	},
 	"peerDependencies": {
@@ -17,6 +17,6 @@
 		"effect": "4.0.0-rc.115"
 	},
 	"engines": {
-		"node": ">=24.14.1"
+		"node": ">=22.0.0"
 	}
 }

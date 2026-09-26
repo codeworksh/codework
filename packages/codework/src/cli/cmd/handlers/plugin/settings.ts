@@ -17,6 +17,16 @@ export interface Shared {
 	readonly home: Option.Option<string>;
 }
 
+/**
+ * The user layer a command reads and writes: `--user-config-dir` when given -- a hard override of
+ * the home's settings file -- resolved, like every app-level flag, against the directory the
+ * command runs in (`hostCwd`), never against a linked session's `hostDir`.
+ */
+export const userLayer = (shared: Shared, hostCwd: string) =>
+	Option.isNone(shared.userConfigDir)
+		? {}
+		: { userConfigDir: Settings.userConfigDir(shared.userConfigDir.value, hostCwd) };
+
 export interface Target {
 	readonly path: string;
 	/** Set when this command had to create the project directory, so the caller can say so. */
@@ -113,7 +123,7 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
 /**
  * What a local reference should be *written* as, which is rarely what was typed.
  *
- * A relative path on the command line is relative to `cwd`; in a settings file it is relative to
+ * A relative path on the command line is relative to the command's host directory; in a settings file it is relative to
  * that file's own directory. Those differ the moment the command runs anywhere but the directory
  * holding the file, and writing the string verbatim produces a silently wrong entry:
  *
@@ -133,10 +143,10 @@ export const identify = Effect.fn("CLI.plugin.identify")(function* (
  */
 export const written = Effect.fn("CLI.plugin.written")(function* (
 	reference: string,
-	input: { readonly cwd: string; readonly file: string; readonly root: string | undefined },
+	input: { readonly hostDir: string; readonly file: string; readonly root: string | undefined },
 ) {
 	const nodePath = yield* Path.Path;
-	const target = yield* Plugin.parse(reference, input.cwd).pipe(Effect.option);
+	const target = yield* Plugin.parse(reference, input.hostDir).pipe(Effect.option);
 	if (Option.isNone(target) || target.value.kind !== "local") return reference;
 
 	const absolute = target.value.path;
@@ -230,9 +240,9 @@ export const withPluginsLock = <A, E, R>(path: string, edit: Effect.Effect<A, E,
  * Which file the edit lands in.
  *
  * A plugin belongs to a project by default — it is part of how that repository is worked on, so
- * the entry belongs in a file the repository can commit. `--global` writes the user-wide file
- * instead, the way `npm -g` installs outside a package. An explicit `--user-config-dir` outranks
- * both, since naming a settings directory is already a decision about where settings live.
+ * the entry belongs in a file the repository can commit. `--global` writes the user settings file
+ * instead, the way `npm -g` installs outside a package: `<--home>/settings.jsonc`, or the
+ * `--user-config-dir` one that replaces it.
  *
  * The project is found the way the harness finds it: the nearest ancestor holding a `.codework`
  * directory, so a command run from `packages/app` edits the repository's own file rather than
@@ -259,17 +269,18 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (
 ) {
 	const fs = yield* FileSystem.FileSystem;
 	const nodePath = yield* Path.Path;
-	const cwd = from ?? nodePath.resolve(".");
+	const hostCwd = nodePath.resolve(".");
+	// The linked session's host directory, or -- with none -- the one the command runs in.
+	const hostDir = from ?? hostCwd;
 	const home = yield* Global.resolve(Option.isNone(shared.home) ? {} : { home: shared.home.value });
-	const root = global ? undefined : yield* Settings.projectRoot(cwd, home.home);
-	// `paths` is ordered lowest priority first: user-wide, then project, then an explicit directory.
+	const root = global ? undefined : yield* Settings.projectRoot(hostDir, home.home);
+	// `paths` is ordered lowest priority first: the user layer, then the project.
 	const groups = Settings.paths({
 		home: home.home,
 		...(root === undefined ? {} : { root }),
-		from: cwd,
-		...(Option.isNone(shared.userConfigDir) ? {} : { custom: shared.userConfigDir.value }),
+		...userLayer(shared, hostCwd),
 	});
-	const chosen = Option.isSome(shared.userConfigDir) ? groups.length - 1 : global ? 0 : 1;
+	const chosen = global ? 0 : 1;
 	// An empty group is the project layer saying there is no project above this directory. Then
 	// this directory becomes one -- reported, not silent, because the marker shadows any outer
 	// project from now on, so a `.codework/` created by a mistyped `cd` is worth spotting at once.
@@ -281,10 +292,11 @@ export const resolveTarget = Effect.fn("CLI.plugin.resolveTarget")(function* (
 			...(root === undefined ? {} : { root }),
 		} satisfies Target;
 	}
-	const marker = nodePath.join(cwd, ".codework");
+	const marker = nodePath.join(hostDir, ".codework");
 	// `created` is reported either way: with `create` unset the marker is named, not made, so a
 	// caller can say what its write is about to establish without establishing it early.
-	if (!create) return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: cwd } satisfies Target;
+	if (!create)
+		return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: hostDir } satisfies Target;
 	yield* fs.makeDirectory(marker, { recursive: true });
-	return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: cwd } satisfies Target;
+	return { path: nodePath.join(marker, "settings.jsonc"), created: marker, root: hostDir } satisfies Target;
 });

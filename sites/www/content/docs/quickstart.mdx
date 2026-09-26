@@ -1,0 +1,119 @@
+---
+title: Quickstart
+description: Get from install to your first useful change with the CodeWork CLI.
+---
+
+You'll install CodeWork, connect a model provider, let it poke around your codebase, make a small edit, and review the result.
+
+To use it, you need access to a model through a supported provider. This can be a subscription, an API key, or a local model.
+
+<Callout>
+	CodeWork ships as a CLI today, plus an RPC server (`codework serve`) for programmatic access. A desktop app is coming
+	in the next few weeks.
+</Callout>
+
+## 1. Install CodeWork
+
+CodeWork ships as an npm package. Requires Node.js 24 or later.
+
+```bash
+npm install -g @codeworksh/cli
+```
+
+Every command is `codework <command>`.
+
+## 2. Choose a model
+
+A model generates CodeWork's responses. A provider is the service or account CodeWork uses to access that model.
+
+Use a subscription or API key to access a provider's models. For example, with a ChatGPT Plus/Pro plan:
+
+```bash
+codework auth login --openai-codex
+```
+
+Or set an API key and you're good:
+
+```bash
+export OPENAI_API_KEY="..."
+export ANTHROPIC_API_KEY="..."
+```
+
+Browse everything available with `codework models`, or see [Models & Pricing](/docs/models) for the full list.
+
+## 3. Ask CodeWork to explain your codebase
+
+```bash
+cd /path/to/folder
+```
+
+```bash
+codework run \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  "Explain how this repository is structured and how to run its checks."
+```
+
+CodeWork searches your repo, reads relevant files, and summarizes how the project fits together. It's one of the fastest ways to get oriented in an unfamiliar codebase.
+
+## 4. Make a small change
+
+Each `codework run` is its own session. To keep the conversation going, pass the session ID from the previous run's output:
+
+```bash
+codework run \
+  --session <session-id> \
+  "Suggest three small, safe improvements in this codebase. Explain the tradeoffs."
+```
+
+Good first tasks are low risk: improving copy, fixing small UI issues, tightening up a function. Already know what you want? Ask for it directly and describe the result you're after.
+
+## 5. Next steps
+
+**Pick a model** from the catalog:
+
+```bash
+export OPENROUTER_API_KEY="..."
+
+codework run \
+  --provider openrouter \
+  --model meta/muse-spark-1.3-contributor \
+  "Plan database migration"
+```
+
+**List what's available:**
+
+```bash
+codework models
+```
+
+**Run in a sandbox:**
+
+```bash
+codework run --sandbox-driver daytona "Inspect the repository"
+```
+
+**Run a persistent server:**
+
+```bash
+codework serve
+```
+
+Keep reading:
+
+<Cards>
+	<Card title="Models & Pricing" href="/docs/models">
+		Every way to authenticate: subscriptions and API keys.
+	</Card>
+	<Card title="Changelog" href="/docs/changelog">
+		What's new.
+	</Card>
+</Cards>
+
+## Uninstall CodeWork
+
+If you decide CodeWork isn't for you, uninstall it with:
+
+```bash
+npm uninstall -g @codeworksh/cli
+```

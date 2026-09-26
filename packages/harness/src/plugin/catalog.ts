@@ -283,7 +283,9 @@ export const select = Effect.fn("PluginCatalog.select")(function* (references: R
  * walks those entries against the loaded set. Two things can be settled right there, and they are
  * the same question asked twice:
  *
- * 1. a settings entry names a module that is not loaded, and the store holds it;
+ * 1. a settings entry names a module that is not loaded, and the store holds it -- or it is loaded
+ *    from another file's artifact than the one that owns it in this view, and the store holds
+ *    the owner's;
  * 2. a loaded module is not the newest generation the store has.
  *
  * The second is what makes `plugin update` finish. Without it the question is "is this entry
@@ -325,11 +327,23 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	let moved = false;
 
 	for (const reference of references) {
-		if (typeof reference !== "string" || pool.aliases.has(reference)) continue;
-		// Configured but not loaded. Reported by `select` either way; acted on only when the
-		// bytes are already here -- which covers a package the store holds and a local path that
-		// exists, and excludes anything that would have to be fetched.
-		if (Option.isSome(yield* filed(reference, Loader.anchor(options.declared?.get(reference), options.hostDir)))) {
+		if (typeof reference !== "string") continue;
+		const owner = options.declared?.get(reference);
+		const from = Loader.anchor(owner, options.hostDir);
+		const id = pool.aliases.get(reference);
+		if (id !== undefined) {
+			// Loaded -- but from the file that owns it here? A pool starts as a copy of the
+			// process view, where the user file owns a spec a project may declare again beside
+			// its own `.npmrc`. That owner names a different artifact, and it has moved in when
+			// its bytes are on disk; until then the loaded build keeps serving.
+			const origin = pool.origins.get(id);
+			if (owner === undefined || origin?.reference !== reference) continue;
+			if (Loader.anchor(origin.file, options.hostDir) === from) continue;
+		}
+		// Otherwise configured but not loaded. Reported by `select` either way; acted on only
+		// when the bytes are already here -- which covers a package the store holds and a local
+		// path that exists, and excludes anything that would have to be fetched.
+		if (Option.isSome(yield* filed(reference, from))) {
 			moved = true;
 			break;
 		}
@@ -351,10 +365,10 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	}
 
 	if (!moved) return Option.none<Pool>();
-	// The pool belongs to the process, while `references` belongs to one session. Rebuilding from
-	// only that session would evict modules loaded for every other project and make alternating
-	// sessions reload one another forever. Origins are the process-level reference set accumulated
-	// so far; `load` deduplicates unchanged modules by their resolved key.
+	// The pool belongs to a view -- the process, or one project -- shared by all of its sessions,
+	// while `references` belongs to one session. Rebuilding from only that session would evict
+	// modules its neighbours loaded. Origins are the view's reference set accumulated so far;
+	// `load` deduplicates unchanged modules by their resolved key.
 	// Retained origins come first so the current session's explicit reference wins when two specs
 	// declare the same plugin ID (for example `pkg@1` followed by `pkg@2`).
 	//

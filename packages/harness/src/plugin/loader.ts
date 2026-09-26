@@ -118,6 +118,19 @@ const Manifest = Schema.Struct({
 	exports: Schema.optional(Schema.Unknown),
 });
 
+const readManifest = (manifestPath: string) =>
+	fs.readFileString(manifestPath).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Manifest))));
+
+/**
+ * The name a local package declares, read without importing it: the alias the catalog registers
+ * for it, so a `{ package }` entry and a command naming the package both reach it.
+ */
+export const localName = (location: string): Effect.Effect<string | undefined> =>
+	readManifest(path.join(location, "package.json")).pipe(
+		Effect.map((manifest) => manifest.name),
+		Effect.orElseSucceed(() => undefined),
+	);
+
 /** What either path produced: a URL to import, plus whatever it could say about it. */
 interface Resolved extends Installed {
 	/** The package name a local package declared. Only a local source has one. */
@@ -135,9 +148,7 @@ const localUrl = Effect.fn("PluginLoader.localUrl")(function* (location: string,
 	if (!(yield* fs.exists(manifestPath))) {
 		return { url: yield* Effect.try(() => resolveModule("./index", location)) } satisfies Resolved;
 	}
-	const manifest = yield* fs
-		.readFileString(manifestPath)
-		.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(Manifest))));
+	const manifest = yield* readManifest(manifestPath);
 	if (manifest.exports !== undefined) {
 		const name = manifest.name;
 		if (!name) return yield* escapes("a local package with exports must declare its name");

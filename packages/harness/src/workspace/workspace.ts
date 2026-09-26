@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { v7 as uuidv7 } from "uuid";
+import { uuidv7 } from "uuidv7";
 import { withStatics } from "../schema.ts";
 
 export const ID = Schema.String.check(Schema.isStartsWith("wrk")).pipe(

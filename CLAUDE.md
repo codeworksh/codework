@@ -79,3 +79,5 @@ Flow:
 2. `pnpm bump:aikit` (or `pnpm run bump` inside `packages/aikit`): pick the bump; it commits and tags `@codeworksh/aikit@<version>` without pushing.
 3. `git push && git push --tag`.
 4. `pnpm release:aikit:dry` to preview the tarball, then `pnpm release:aikit` to publish. Use `pnpm release:aikit:dev` for a prerelease under the `dev` dist-tag.
+
+A workspace dependency is published at its manifest version, which must already be on the registry. A dependency with only dev builds (e.g. plugin, when releasing harness) is pinned explicitly, as a version or a dist-tag resolved at publish time — there is no implicit fallback: `pnpm release:harness:dev --dep @codeworksh/plugin@dev`. Release in dependency order: aikit → plugin → harness → cli.

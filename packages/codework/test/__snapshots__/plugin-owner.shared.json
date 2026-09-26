@@ -1,0 +1,15 @@
+{
+	"layers": {
+		"user": [
+			"@fixture/plugin@^1.0.0"
+		],
+		"project": [
+			"@fixture/plugin@^1.0.0"
+		]
+	},
+	"install": "Installed @fixture/plugin@^1.0.0 (fixture.prompt.owner)\n1 installed\n",
+	"check": "Everything is up to date.\n",
+	"runtime": [
+		"[owner:registry]"
+	]
+}

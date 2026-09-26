@@ -1,0 +1,21 @@
+{
+	"layers": {
+		"user": [
+			"@fixture/plugin@^1.0.0"
+		],
+		"project": [
+			{
+				"package": "@fixture/plugin@^1.0.0",
+				"options": {
+					"marker": "patched"
+				}
+			},
+			"./local.mjs"
+		]
+	},
+	"install": "Installed @fixture/plugin@^1.0.0 (fixture.prompt.owner)\n1 installed, 1 local\n",
+	"runtime": [
+		"[owner:patched]",
+		"[local]"
+	]
+}

@@ -1,0 +1,35 @@
+---
+import { ClientRouter } from "astro:transitions";
+import { themeInitScript } from "@/components/landing/theme";
+
+interface Props {
+	title: string;
+	description?: string | undefined;
+	/** Docs pages swap in place through Astro's client router; the landing page is a plain document. */
+	docs?: boolean;
+}
+
+const { title, description, docs = false } = Astro.props;
+---
+
+<html lang="en" class="dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{title}</title>
+		{description && <meta name="description" content={description} />}
+		{docs && <ClientRouter />}
+		<script is:inline set:html={themeInitScript} />
+	</head>
+	{
+		docs ? (
+			<body class="flex min-h-screen flex-col" transition:persist transition:animate="none" transition:name="page-layout">
+				<slot />
+			</body>
+		) : (
+			<body>
+				<slot />
+			</body>
+		)
+	}
+</html>

@@ -1,0 +1,35 @@
+---
+title: Models & Pricing
+sidebarTitle: Overview
+description: Connect CodeWork to a model with a subscription or an API key.
+---
+
+CodeWork supports subscription-based providers via OAuth and API key providers via environment variables. Browse the full catalog from the CLI:
+
+```bash
+codework models
+```
+
+## Subscriptions
+
+Sign in once and use the models included in your plan.
+
+| Provider                                      | Plan                  | Sign in                                |
+| --------------------------------------------- | --------------------- | -------------------------------------- |
+| [OpenAI Codex](/docs/models/openai-codex)     | ChatGPT Plus or Pro   | `codework auth login --openai-codex`   |
+| [GitHub Copilot](/docs/models/github-copilot) | GitHub Copilot        | `codework auth login --github-copilot` |
+| xAI                                           | Grok / X subscription | Coming soon                            |
+
+Tokens are stored in `~/.codework/aikit/auth.json` and are refreshed automatically when they expire.
+
+## API keys
+
+Set the provider's environment variable and CodeWork picks it up.
+
+| Provider                              | Environment variable |
+| ------------------------------------- | -------------------- |
+| Anthropic                             | `ANTHROPIC_API_KEY`  |
+| OpenAI                                | `OPENAI_API_KEY`     |
+| [OpenRouter](/docs/models/openrouter) | `OPENROUTER_API_KEY` |
+| Google Gemini                         | `GEMINI_API_KEY`     |
+| xAI                                   | `XAI_API_KEY`        |
