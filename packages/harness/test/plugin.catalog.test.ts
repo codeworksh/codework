@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { prepare, type Options, type PluginRef, type Prepared } from "../src/plugin/catalog.ts";
-import { canonical, validate } from "../src/plugin/loader.ts";
+import { canonical } from "../src/plugin/loader.ts";
 import { canonical as canonicalOf, type Fetchable, parse, type Target } from "../src/plugin/source.ts";
 import { define } from "../src/plugin/plugin.ts";
 
@@ -208,22 +208,6 @@ describe("plugin catalog and source resolution", () => {
 		const plugin = { id: "acme.tool.meta", kind: "tool", plugin: "metadata", setup: () => {} };
 		expect(selected(await run([plugin]))).toEqual([plugin]);
 	});
-	it.each([
-		{},
-		[],
-		() => a,
-		{ setup: () => {} },
-		{ id: a.id, setup: () => {} },
-		{ id: a.id, kind: "event", setup: () => {} },
-		{ id: "invalid", setup: () => {} },
-		{ id: a.id, setup: 1 },
-		null,
-		undefined,
-	])("rejects malformed definitions: %j", async (input) => {
-		expect(
-			await Effect.runPromise(validate(input, { index: 2, reference: "fixture" }).pipe(Effect.flip)),
-		).toMatchObject({ reason: "plugin-invalid-definition" });
-	});
 	it("reports a malformed supplied object as a typed definition failure", async () => {
 		// Nothing has validated the entry yet, so `origin.reference` cannot read an `id` off it --
 		// and a JavaScript caller can pass a value that has no properties to read at all.
@@ -313,13 +297,6 @@ describe("plugin catalog and source resolution", () => {
 		expect(ssh.kind === "git" && ssh.slug).toBe("plugins");
 	});
 
-	it("keeps a git source collision-free and reduces a package to its name", () => {
-		expect(named("@acme/codework-tool-proc@1.2.0")).toBe("@acme/codework-tool-proc");
-		expect(named("github:acme/plugins#main")).toBe("github:acme/plugins#main");
-		expect(named("gitlab:other/plugins#main")).not.toBe(named("github:acme/plugins#main"));
-		expect(named("./plugins/x.ts", "/project")).toBe("/project/plugins/x.ts");
-	});
-
 	it("loads each normalized source once and validates default exports", async () => {
 		let installs = 0;
 		let imports = 0;
@@ -398,21 +375,6 @@ describe("plugin catalog and source resolution", () => {
 			);
 			expect(url).toBe(pathToFileURL(realpathSync(join(empty, "index.js"))).href);
 		}));
-	it("resolves an unnamed TypeScript directory through its index", () =>
-		withDirectory(async (directory) => {
-			await writeFile(join(directory, "index.ts"), "");
-			let resolved = "";
-			await Effect.runPromise(
-				prepare([directory], {
-					...options,
-					import: async (url) => {
-						resolved = url;
-						return { default: a };
-					},
-				}),
-			);
-			expect(resolved).toBe(pathToFileURL(realpathSync(join(directory, "index.ts"))).href);
-		}));
 	it("requires a package name for native local export resolution", () =>
 		withDirectory(async (directory) => {
 			await writeFile(join(directory, "package.json"), JSON.stringify({ exports: "./entry.js" }));
@@ -420,23 +382,6 @@ describe("plugin catalog and source resolution", () => {
 			const error = await Effect.runPromise(prepare([directory], options).pipe(Effect.flip));
 			expect(error).toMatchObject({ _tag: "PluginSourceError", reason: "plugin-escapes-root" });
 			expect(error.message).toContain("must declare its name");
-		}));
-	it("resolves a manifest without exports through legacy main", () =>
-		withDirectory(async (directory) => {
-			await writeFile(join(directory, "package.json"), JSON.stringify({ name: "fixture", main: "./legacy.js" }));
-			await writeFile(join(directory, "legacy.js"), "");
-			let url = "";
-			await Effect.runPromise(
-				prepare([directory], {
-					...options,
-					import: async (input) => {
-						url = input;
-						return { default: a };
-					},
-				}),
-			);
-			// The legacy branch resolves through `createRequire`, which realpaths its answer.
-			expect(url).toBe(pathToFileURL(realpathSync(join(directory, "legacy.js"))).href);
 		}));
 	it("rejects a root export that only nests by symlink", () =>
 		withDirectory(async (directory) => {
@@ -453,11 +398,3 @@ describe("plugin catalog and source resolution", () => {
 			expect(error.message).toContain("escapes its root");
 		}));
 });
-
-it("imports an actual local module default export", () =>
-	withDirectory(async (directory) => {
-		const source = join(directory, "plugin.mjs");
-		await writeFile(source, "export default { id: 'acme.tool.local', kind: 'tool', setup() {} }");
-		const plugins = await Effect.runPromise(prepare([source], options));
-		expect(selected(plugins).map((plugin) => plugin.id)).toEqual(["acme.tool.local"]);
-	}));

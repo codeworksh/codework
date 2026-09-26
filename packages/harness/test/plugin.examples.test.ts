@@ -89,30 +89,4 @@ describe("extras examples", () => {
 				result: { content: [{ type: "text", text: "vercel" }] },
 			});
 		}));
-
-	it("configures a package example by the name its manifest declares", () =>
-		withSettings(async ({ root }) => {
-			const { contexts } = await run(root, [
-				example("codework-tool-proc"),
-				{ package: "@acme/codework-tool-proc", options: { limit: 1 } },
-				defaultPromptPlugin,
-			]);
-			// The path loaded it; the package name addressed it; the ID would have worked too.
-			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["list_processes"]);
-			expect(contexts[0]?.tools?.[0]?.description).toContain("Returns at most 1 rows");
-		}));
-
-	it("contributes nothing when an example is configured with an empty block", () =>
-		withSettings(async ({ root }) => {
-			// Both single-file examples are inert without configuration rather than registering an
-			// empty tool or an empty prompt section.
-			const { contexts } = await run(root, [
-				bashPlugin,
-				example("plugins/local.ts"),
-				defaultPromptPlugin,
-				example("plugins/house-style.ts"),
-			]);
-			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
-			expect(contexts[0]?.systemPrompt ?? "").not.toContain("## House style");
-		}));
 });

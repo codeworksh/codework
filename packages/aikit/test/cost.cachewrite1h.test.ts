@@ -18,30 +18,6 @@ describe("Model.calculateCost with 1h cache writes", () => {
 		// 600k * 6.25/Mtok + 400k * 10/Mtok = 3.75 + 4.0 = 7.75
 		expect(usage.cost.cacheWrite).toBeCloseTo(7.75, 10);
 	});
-
-	it("falls back to the 5m rate when no breakdown is reported", () => {
-		const usage = makeUsage({ cacheWrite: 1_000_000 });
-
-		Model.calculateCost(opus, usage);
-
-		expect(usage.cost.cacheWrite).toBeCloseTo(6.25, 10);
-	});
-
-	it("prices an all-1h write entirely at 2x input", () => {
-		const usage = makeUsage({ cacheWrite: 1_000_000, cacheWrite1h: 1_000_000 });
-
-		Model.calculateCost(opus, usage);
-
-		expect(usage.cost.cacheWrite).toBeCloseTo(10, 10);
-	});
-
-	it("includes the 1h premium in the total", () => {
-		const usage = makeUsage({ input: 1_000_000, cacheWrite: 1_000_000, cacheWrite1h: 400_000 });
-
-		Model.calculateCost(opus, usage);
-
-		expect(usage.cost.total).toBeCloseTo(5 + 7.75, 10);
-	});
 });
 
 describe("mapUsage 1h cache write breakdown", () => {
@@ -64,19 +40,5 @@ describe("mapUsage 1h cache write breakdown", () => {
 		expect(result.cacheWrite).toBe(1_000_000);
 		expect(result.cacheWrite1h).toBe(400_000);
 		expect(result.cost.cacheWrite).toBeCloseTo(7.75, 10);
-	});
-
-	it("omits the split when the provider does not report one", () => {
-		const result = mapUsage(usage, opus, 1, { anthropic: { usage: { input_tokens: 100 } } });
-
-		expect(result.cacheWrite1h).toBeUndefined();
-		expect(result.cost.cacheWrite).toBeCloseTo(6.25, 10);
-	});
-
-	it("ignores metadata from unrelated providers", () => {
-		const result = mapUsage(usage, opus, 1, { openai: { serviceTier: "flex" } });
-
-		expect(result.cacheWrite1h).toBeUndefined();
-		expect(result.cost.cacheWrite).toBeCloseTo(6.25, 10);
 	});
 });

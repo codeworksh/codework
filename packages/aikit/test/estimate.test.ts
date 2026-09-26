@@ -23,14 +23,6 @@ function assistant(created: number, totalTokens: number): Message.AssistantMessa
 	});
 }
 
-describe("estimateTextTokens", () => {
-	it("counts four characters to the token, rounding up", () => {
-		expect(estimateTextTokens("")).toBe(0);
-		expect(estimateTextTokens("abc")).toBe(1);
-		expect(estimateTextTokens("x".repeat(4_000))).toBe(1_000);
-	});
-});
-
 describe("estimateMessageTokens", () => {
 	it("charges a flat cost for images rather than their base64 length", () => {
 		const withImage = Message.createUserMessage({

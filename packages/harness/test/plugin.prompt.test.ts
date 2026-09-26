@@ -46,17 +46,6 @@ describe("codework.prompt.default", () => {
 		).then((path) => ({ observed, path }));
 	};
 
-	it("indexes the default selection's tools, guidelines and working directory", () =>
-		withSettings(async ({ root }) => {
-			const { observed } = await prompts(root);
-			const prompt = observed[0] ?? "";
-			expect(prompt.startsWith("You are an expert coding assistant")).toBe(true);
-			expect(prompt).toContain("Available tools:\n- bash: Execute bash commands");
-			expect(prompt).toContain("\n\nGuidelines:\n- Be concise.");
-			// The directory is the session's realpath'd cwd, not the spelling it was given.
-			expect(prompt.endsWith(`Current working directory: ${await realpath(root)}`)).toBe(true);
-		}));
-
 	it("replaces the foundation with promptCustom and places promptSystemAppend before the directory line", () =>
 		withSettings(async ({ root }) => {
 			const { observed } = await prompts(

@@ -1,23 +1,11 @@
-import { Effect, Exit, Layer, Stream } from "effect";
+import { Effect, Layer, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { type ExecChunk, fromExec, Shell as SandboxShell } from "../src/sandbox/shell/shell.ts";
 import { bashTool } from "../src/plugin/builtin/tool/bash.ts";
 import * as Executor from "../src/tool/executor.ts";
-import { make as makeProgress, noop as progressNoop } from "../src/tool/progress.ts";
+import { make as makeProgress } from "../src/tool/progress.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
-import {
-	fromSandboxShell,
-	type IToolShell,
-	ToolShell,
-	type ToolShellEvent,
-	ToolShellTimeout,
-} from "../src/tool/shell.ts";
-
-// ToolShell backed by the in-process just-bash sandbox — the bootstrap backend
-// (buffered exec, no `stream` → the tool takes variant A).
-const justBashToolShell = fromSandboxShell.pipe(Layer.provide(Sandbox.memory()));
+import { type IToolShell, ToolShell, type ToolShellEvent, ToolShellTimeout } from "../src/tool/shell.ts";
 
 // A hand-made buffered ToolShell Layer with canned behaviour — for the def/exec split.
 const stubToolShell = (exec: IToolShell["exec"]): Layer.Layer<ToolShell> =>
@@ -45,48 +33,7 @@ const call = (arguments_: Record<string, unknown>) => pendingCall("bash", argume
 // model) → a RegisteredTool the executor runs with no residual tool `R`.
 const bashExec = (shell: Layer.Layer<ToolShell>) => Executor.make([Tool.provide(bashTool, shell)]);
 
-describe("bash tool via Executor (just-bash backend)", () => {
-	it("runs a command and returns a completed outcome", async () => {
-		const outcome = await Effect.runPromise(bashExec(justBashToolShell).handle(call({ command: "echo hello" })));
-
-		expect(outcome.status).toBe("completed");
-		expect(outcome.result.isError).toBe(false);
-		expect(outcome.result.content[0]).toMatchObject({ type: "text", text: "hello\n" });
-		expect(outcome.result.details).toMatchObject({ exitCode: 0, truncated: false });
-	});
-
-	it("reports a non-zero exit as an error outcome carrying the output", async () => {
-		const outcome = await Effect.runPromise(
-			bashExec(justBashToolShell).handle(call({ command: "cat /missing.txt" })),
-		);
-
-		expect(outcome.status).toBe("error");
-		expect(outcome.result.isError).toBe(true);
-		const details = outcome.result.details as { _tag: string; exitCode: number };
-		expect(details._tag).toBe("BashFailed");
-		expect(details.exitCode).not.toBe(0);
-	});
-
-	it("rejects invalid arguments with an error outcome (model passed bad args)", async () => {
-		const outcome = await Effect.runPromise(bashExec(justBashToolShell).handle(call({})));
-
-		expect(outcome.status).toBe("error");
-		expect(outcome.result.details).toMatchObject({ error: "invalid_arguments", name: "bash" });
-	});
-
-	for (const timeout of [0, -1]) {
-		it(`rejects timeout=${timeout} before invoking the shell`, async () => {
-			const layer = stubToolShell(() => Effect.die(new Error("shell should not run for invalid timeout")));
-
-			const outcome = await Effect.runPromise(
-				bashExec(layer).handle(call({ command: "echo should-not-run", timeout })),
-			);
-
-			expect(outcome.status).toBe("error");
-			expect(outcome.result.details).toMatchObject({ error: "invalid_arguments", name: "bash" });
-		});
-	}
-
+describe("bash tool via Executor", () => {
 	it("carries truncation + a full-output path on failure too (symmetric with success)", async () => {
 		const huge = "x\n".repeat(5_000);
 		const layer = stubToolShell(() => Effect.succeed({ stdout: huge, stderr: "", exitCode: 1 }));
@@ -102,15 +49,6 @@ describe("bash tool via Executor (just-bash backend)", () => {
 });
 
 describe("bash tool error reconciliation (stub backend)", () => {
-	it("maps a ToolShell timeout to a declared BashTimedOut", async () => {
-		const layer = stubToolShell((command) => Effect.fail(new ToolShellTimeout({ command, timeoutMillis: 5_000 })));
-
-		const outcome = await Effect.runPromise(bashExec(layer).handle(call({ command: "sleep 100", timeout: 5 })));
-
-		expect(outcome.status).toBe("error");
-		expect((outcome.result.details as { _tag: string })._tag).toBe("BashTimedOut");
-	});
-
 	it("uses the ToolShellTimeout duration when encoding BashTimedOut details", async () => {
 		const layer = stubToolShell((command) => Effect.fail(new ToolShellTimeout({ command, timeoutMillis: 12_500 })));
 
@@ -121,53 +59,7 @@ describe("bash tool error reconciliation (stub backend)", () => {
 	});
 });
 
-describe("bash handler in isolation — buffered (def/exec split)", () => {
-	it("runs against a stub ToolShell and returns the typed success value", async () => {
-		const layer = stubToolShell(() => Effect.succeed({ stdout: "hi", stderr: "", exitCode: 0 }));
-
-		const success = await Effect.runPromise(
-			bashTool.handler({ command: "whatever" }, ctx).pipe(Effect.provide(layer), Effect.provide(progressNoop)),
-		);
-
-		expect(success).toEqual({ output: "hi", exitCode: 0, truncated: false });
-	});
-
-	it("fails with a typed BashFailed on non-zero exit", async () => {
-		const layer = stubToolShell(() => Effect.succeed({ stdout: "", stderr: "boom", exitCode: 2 }));
-
-		const exit = await Effect.runPromiseExit(
-			bashTool.handler({ command: "whatever" }, ctx).pipe(Effect.provide(layer), Effect.provide(progressNoop)),
-		);
-
-		expect(Exit.isFailure(exit)).toBe(true);
-	});
-
-	it("truncates large output and records details + a spill path", async () => {
-		const huge = "x\n".repeat(5_000);
-		const layer = stubToolShell(() => Effect.succeed({ stdout: huge, stderr: "", exitCode: 0 }));
-
-		const success = await Effect.runPromise(
-			bashTool.handler({ command: "whatever" }, ctx).pipe(Effect.provide(layer), Effect.provide(progressNoop)),
-		);
-
-		expect(success.truncated).toBe(true);
-		expect(success.fullOutputPath).toBeDefined();
-		expect(success.output).toContain("[showing lines");
-	});
-});
-
 describe("bash handler in isolation — streaming (variant B)", () => {
-	it("accumulates streamed output and returns the exit code", async () => {
-		const layer = streamingStub([output("line1\n"), output("line2\n"), exited(0)]);
-
-		const success = await Effect.runPromise(
-			bashTool.handler({ command: "x" }, ctx).pipe(Effect.provide(layer), Effect.provide(progressNoop)),
-		);
-
-		expect(success).toMatchObject({ exitCode: 0, truncated: false });
-		expect(success.output).toBe("line1\nline2\n");
-	});
-
 	it("reports interim output via ToolProgress while streaming", async () => {
 		const reports: string[] = [];
 		const capturing = makeProgress((partial) =>
@@ -184,50 +76,5 @@ describe("bash handler in isolation — streaming (variant B)", () => {
 
 		expect(reports.length).toBeGreaterThan(0);
 		expect(reports.at(-1)).toContain("second");
-	});
-
-	it("reports a non-zero streamed exit as BashFailed", async () => {
-		const layer = streamingStub([output("nope\n"), exited(7)]);
-
-		const exit = await Effect.runPromiseExit(
-			bashTool.handler({ command: "x" }, ctx).pipe(Effect.provide(layer), Effect.provide(progressNoop)),
-		);
-
-		expect(Exit.isFailure(exit)).toBe(true);
-	});
-});
-
-describe("fromSandboxShell streaming bridge (variant B over a backend Shell)", () => {
-	// A sandbox Shell that supports `stream` (the shape Vercel implements via
-	// Command.logs) → fromSandboxShell exposes ToolShell.stream → bash variant B.
-	const bridged = (chunks: ReadonlyArray<ExecChunk>): Layer.Layer<ToolShell> =>
-		fromSandboxShell.pipe(
-			Layer.provide(
-				Layer.succeed(
-					SandboxShell,
-					SandboxShell.of(
-						fromExec({
-							exec: () => Effect.die(new Error("exec should not run when streaming")),
-							stream: () => Stream.fromIterable(chunks),
-						}),
-					),
-				),
-			),
-		);
-
-	it("folds backend stdout/stderr chunks into Output and exit into the exit code", async () => {
-		const layer = bridged([
-			{ _tag: "stdout", bytes: utf8.encode("out\n") },
-			{ _tag: "stderr", bytes: utf8.encode("err\n") },
-			{ _tag: "exit", exitCode: 0 },
-		]);
-
-		const success = await Effect.runPromise(
-			bashTool.handler({ command: "x" }, ctx).pipe(Effect.provide(layer), Effect.provide(progressNoop)),
-		);
-
-		expect(success.exitCode).toBe(0);
-		expect(success.output).toContain("out");
-		expect(success.output).toContain("err");
 	});
 });

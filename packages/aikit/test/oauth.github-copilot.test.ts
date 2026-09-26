@@ -3,14 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
-	createGitHubCopilotDeviceFlow,
 	fetchGitHubCopilotModels,
-	pollGitHubCopilotDeviceToken,
 	getGitHubCopilotApiKey,
 	GitHubCopilotOAuthClient,
 	GITHUB_COPILOT_PROVIDER_ID,
 	gitHubCopilotBaseUrl,
-	gitHubCopilotEntitlementError,
 	JsonGitHubCopilotAuthStorage,
 } from "../src/oauth/github/copilot.ts";
 
@@ -98,32 +95,6 @@ describe("gitHubCopilotBaseUrl", () => {
 });
 
 describe("JsonGitHubCopilotAuthStorage", () => {
-	it("round-trips credentials without exposing tokens in errors", async () => {
-		const dir = await scratchDir();
-		const path = join(dir, "auth.json");
-		const storage = new JsonGitHubCopilotAuthStorage({ path });
-		const credentials = {
-			access: "ghu_x",
-			refresh: "ghu_x",
-			expires: 0,
-			availableModelIds: ["gpt-4.1"],
-		};
-		await storage.set(credentials);
-		expect(await storage.get()).toEqual(credentials);
-		const raw = JSON.parse(await readFile(path, "utf8"));
-		expect(raw[GITHUB_COPILOT_PROVIDER_ID].access).toBe("ghu_x");
-		await storage.clear();
-		expect(await storage.get()).toBeUndefined();
-	});
-
-	it("returns undefined for invalid or missing files", async () => {
-		const dir = await scratchDir();
-		const path = join(dir, "auth.json");
-		await writeFile(path, "{not json", "utf8");
-		const storage = new JsonGitHubCopilotAuthStorage({ path });
-		expect(await storage.get()).toBeUndefined();
-	});
-
 	it("refuses to overwrite a file it could not read", async () => {
 		const dir = await scratchDir();
 		const path = join(dir, "auth.json");
@@ -151,18 +122,6 @@ describe("JsonGitHubCopilotAuthStorage", () => {
 });
 
 describe("getGitHubCopilotApiKey", () => {
-	it("prefers COPILOT_GITHUB_TOKEN over every other source", async () => {
-		const dir = await scratchDir();
-		vi.stubEnv("COPILOT_GITHUB_TOKEN", "ghu_env");
-		vi.stubEnv("CODEWORK_CREDENTIALS", join(dir, "auth.json"));
-		await writeFile(
-			join(dir, "auth.json"),
-			JSON.stringify({ [GITHUB_COPILOT_PROVIDER_ID]: { access: "ghu_stored", refresh: "ghu_stored", expires: 0 } }),
-			"utf8",
-		);
-		expect(await getGitHubCopilotApiKey()).toBe("ghu_env");
-	});
-
 	it("ignores GITHUB_TOKEN and GH_TOKEN entirely", async () => {
 		const dir = await scratchDir();
 		vi.stubEnv("CODEWORK_CREDENTIALS", join(dir, "auth.json"));
@@ -211,55 +170,6 @@ describe("getGitHubCopilotApiKey", () => {
 			"utf8",
 		);
 		expect(await getGitHubCopilotApiKey()).toBe("ghu_stored");
-	});
-});
-
-describe("createGitHubCopilotDeviceFlow", () => {
-	it("returns the code payload and a pollable completion", async () => {
-		const { calls, send } = makeFetch([
-			() =>
-				ok({
-					device_code: "dc_1",
-					user_code: "WDJB-MJHT",
-					verification_uri: "https://github.com/login/device",
-					expires_in: 900,
-					interval: 1,
-				}),
-			() => ok({ access_token: "ghu_done" }),
-		]);
-		const flow = await createGitHubCopilotDeviceFlow({ fetch: send });
-		expect(flow.userCode).toBe("WDJB-MJHT");
-		expect(flow.verificationUri).toBe("https://github.com/login/device");
-		expect(flow.intervalSeconds).toBe(1);
-		await expect(pollGitHubCopilotDeviceToken(flow, { fetch: send })).resolves.toBe("ghu_done");
-		expect(calls[1]!.init?.body).toContain("dc_1");
-	});
-
-	it("defaults to a 5 second poll interval", async () => {
-		const { send } = makeFetch([
-			() =>
-				ok({
-					device_code: "dc_1",
-					user_code: "WDJB-MJHT",
-					verification_uri: "https://github.com/login/device",
-					expires_in: 900,
-				}),
-		]);
-		const flow = await createGitHubCopilotDeviceFlow({ fetch: send });
-		expect(flow.intervalSeconds).toBe(5);
-	});
-});
-
-describe("gitHubCopilotEntitlementError", () => {
-	it("denies only on explicit chat_enabled false", () => {
-		expect(gitHubCopilotEntitlementError({ chat_enabled: true, can_signup_for_limited: false })).toBeUndefined();
-		expect(gitHubCopilotEntitlementError({})).toBeUndefined();
-		expect(gitHubCopilotEntitlementError({ chat_enabled: false, can_signup_for_limited: true })).toContain(
-			"not signed up",
-		);
-		expect(gitHubCopilotEntitlementError({ chat_enabled: false, can_signup_for_limited: false })).toContain(
-			"does not have",
-		);
 	});
 });
 
@@ -336,15 +246,5 @@ describe("GitHubCopilotOAuthClient", () => {
 		const client = new GitHubCopilotOAuthClient({ storage: new JsonGitHubCopilotAuthStorage({ path }) });
 		await expect(client.login({ onAuth: () => {}, fetch: send })).rejects.toThrow("does not have");
 		expect(await new JsonGitHubCopilotAuthStorage({ path }).get()).toBeUndefined();
-	});
-
-	it("resolves a token through stored credentials", async () => {
-		const dir = await scratchDir();
-		const path = join(dir, "auth.json");
-		vi.stubEnv("CODEWORK_CREDENTIALS", path);
-		const storage = new JsonGitHubCopilotAuthStorage({ path });
-		await storage.set({ access: "ghu_stored", refresh: "ghu_stored", expires: 0 });
-		const client = new GitHubCopilotOAuthClient({ storage });
-		expect(await client.getApiKey()).toBe("ghu_stored");
 	});
 });

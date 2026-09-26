@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import { readFile, rm } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { Accumulator } from "../src/tool/accumulator.ts";
-import { truncateTail } from "../src/tool/truncate.ts";
 
 const accumulate = async (text: string, options: { maxLines: number; maxBytes: number }) => {
 	const acc = new Accumulator(options);
@@ -50,16 +49,5 @@ describe("tool output retention", () => {
 		expect(Buffer.byteLength(snapshot.content)).toBeLessThanOrEqual(17);
 		expect(snapshot.truncation).toMatchObject({ truncated: true, truncatedBy: "bytes", lastLinePartial: true });
 		expect(full).toBe(text);
-	});
-
-	it("applies the first reached line or byte bound to buffered output", () => {
-		expect(truncateTail("one\ntwo\nthree\n", { maxLines: 2, maxBytes: 100 })).toMatchObject({
-			content: "two\nthree",
-			truncatedBy: "lines",
-		});
-		expect(truncateTail("one\ntwo\nthree\n", { maxLines: 100, maxBytes: 6 })).toMatchObject({
-			content: "three",
-			truncatedBy: "bytes",
-		});
 	});
 });

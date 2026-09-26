@@ -96,7 +96,7 @@ export default defineConfig({
 	},
 	fmt: {
 		// A file snapshot is the exact bytes a test wrote; reformatting it would make it drift.
-		ignorePatterns: [...ignoredPaths, "**/__snapshots__/**"],
+		ignorePatterns: [...ignoredPaths, "**/__artifacts__/**"],
 		printWidth: 120,
 		useTabs: true,
 		tabWidth: 3,

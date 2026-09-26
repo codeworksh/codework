@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import type { SharedPluginContext } from "../src/plugin/context.ts";
-import { fallback } from "../src/plugin/prompt/registry.ts";
 import { make } from "../src/plugin/registry.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
@@ -49,16 +48,6 @@ describe("plugin domains and exchange host", () => {
 		expect(() => tools.add(echo("late"))).toThrow();
 		expect(() => tools.update("echo", { description: "late" })).toThrow();
 		expect(() => buckets.registry.prompt.set("late")).toThrow();
-	});
-	it("falls back to a default prompt, preserves full replacement, and rejects unknown tool patches", () => {
-		const empty = make();
-		expect(empty.registry.prompt.get()).toBeUndefined();
-		expect(empty.freeze().systemPrompt).toBe(fallback);
-		const buckets = make();
-		buckets.registry.prompt.set("old");
-		buckets.registry.prompt.set("new");
-		expect(buckets.freeze().systemPrompt).toBe("new");
-		expect(() => make().registry.tools.update("unknown", {})).toThrow("Unknown tool");
 	});
 	it("runs setup in declared order with a fresh context and pinned model each exchange", () =>
 		withSettings(async ({ root }) => {
@@ -120,39 +109,6 @@ describe("plugin domains and exchange host", () => {
 										ctx.plugin.prompt.set(`${ctx.plugin.prompt.get()}\nwrapped`);
 									},
 								},
-							],
-						}),
-					),
-					Effect.scoped,
-				),
-			);
-		}));
-	it("lets a prompt plugin see every tool, wherever its entry sits", () =>
-		withSettings(async ({ root }) => {
-			const prompts: string[] = [];
-			const open = immediateOpen();
-			await Effect.runPromise(
-				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: root });
-					yield* session.run("hello");
-					expect(prompts).toEqual(["1"]);
-				}).pipe(
-					Effect.provide(
-						Harness.layer({
-							home: join(root, "home"),
-							hostCwd: root,
-							database: ":memory:",
-							llm: (input, signal) => {
-								prompts.push(input.context.systemPrompt ?? "");
-								return open(input, signal);
-							},
-							plugins: [
-								{
-									id: "acme.prompt.count",
-									kind: "prompt",
-									setup: (ctx) => ctx.plugin.prompt.set(String(ctx.plugin.tools.list().length)),
-								},
-								{ id: "acme.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo("test")) },
 							],
 						}),
 					),

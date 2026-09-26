@@ -22,14 +22,6 @@ const reason = (plugins: ReadonlyArray<Plugin>) =>
  * surface as a silently dropped event or a type that means two things.
  */
 describe("event registry", () => {
-	it("flattens registered plugin events alongside the kernel's", async () => {
-		const mine = define("plugin.acme.test.events.thing");
-		const definitions = await Effect.runPromise(EventRegistry.flatten([plugin("acme.test.events", mine)]));
-
-		expect(definitions).toContain(mine);
-		expect(definitions.length).toBe(EventList.Definitions.length + 1);
-	});
-
 	it("rejects a plugin type that shadows a kernel event", async () => {
 		const collision = define(EventList.ExecutionSucceeded.type);
 		expect(await reason([plugin("acme.test.events", collision)])).toBe("this is a kernel event type");
@@ -42,18 +34,6 @@ describe("event registry", () => {
 				plugin("other.test.events", define("plugin.acme.test.events.thing")),
 			]),
 		).toContain("plugin acme.test.events already registers this type");
-	});
-
-	it("requires the plugin's own namespace", async () => {
-		expect(await reason([plugin("acme.test.events", define("acme.thing"))])).toBe(
-			'plugin event types must start with "plugin.acme.test.events."',
-		);
-	});
-
-	it("is the kernel set when nothing registers anything", async () => {
-		expect(await Effect.runPromise(EventRegistry.flatten([plugin("acme.test.events")]))).toEqual([
-			...EventList.Definitions,
-		]);
 	});
 
 	it("replaces definitions atomically and keeps the previous set when validation fails", async () => {

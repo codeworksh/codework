@@ -721,7 +721,7 @@ describe("codework plugin install/list/check", () => {
 										list: listed.stdout,
 										runtime: { order: ["project", "elsewhere", "project", "elsewhere"], markers },
 									}),
-								).toMatchFileSnapshot("./__snapshots__/plugin-owner.layers.json");
+								).toMatchFileSnapshot("./__artifacts__/plugin-owner.layers.json");
 							},
 							{ source: ownerPlugin("project") },
 						),
@@ -761,7 +761,7 @@ describe("codework plugin install/list/check", () => {
 								check: checked.stdout,
 								runtime: markers,
 							}),
-						).toMatchFileSnapshot("./__snapshots__/plugin-owner.shared.json");
+						).toMatchFileSnapshot("./__artifacts__/plugin-owner.shared.json");
 					},
 					{ source: ownerPlugin("registry") },
 				);
@@ -803,7 +803,7 @@ describe("codework plugin install/list/check", () => {
 								install: installed.stdout,
 								runtime: markers,
 							}),
-						).toMatchFileSnapshot("./__snapshots__/plugin-owner.patch.json");
+						).toMatchFileSnapshot("./__artifacts__/plugin-owner.patch.json");
 					},
 					{ source: ownerPlugin("registry") },
 				);
@@ -957,7 +957,7 @@ describe("codework plugin install/list/check", () => {
 
 						await expect(
 							artifact(root, [registry.url], { steps, runtime: markers }).replaceAll(/[0-9a-f]{40}/g, "<sha>"),
-						).toMatchFileSnapshot("./__snapshots__/plugin-targeted.json");
+						).toMatchFileSnapshot("./__artifacts__/plugin-targeted.json");
 					},
 					{ source: ownerPlugin("registry") },
 				);
@@ -1036,7 +1036,7 @@ describe("codework plugin install/list/check", () => {
 							add: { global: globalAdd.stdout, project: projectAdd.stdout },
 							runtime: markers,
 						}),
-					).toMatchFileSnapshot("./__snapshots__/settings-layers.json");
+					).toMatchFileSnapshot("./__artifacts__/settings-layers.json");
 				} finally {
 					rmSync(app, { recursive: true, force: true });
 				}

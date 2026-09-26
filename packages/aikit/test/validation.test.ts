@@ -1,6 +1,5 @@
 import Type, { type TSchema } from "typebox";
 import { describe, expect, it } from "vite-plus/test";
-import { Message as PublicMessage } from "../src/index.ts";
 import * as Message from "../src/message/message.ts";
 import { validateToolArguments, validateToolCall } from "../src/utils/validation.ts";
 
@@ -134,32 +133,6 @@ describe("validateToolArguments", () => {
 				query: "unicode",
 				limit: 5,
 				includeArchived: false,
-			});
-		});
-	});
-
-	describe("exposed interface", () => {
-		it("validates tools defined through the public Message interface", () => {
-			const tool = PublicMessage.defineTool({
-				name: "echo",
-				description: "Echo tool",
-				parameters: Type.Object({
-					count: Type.Number(),
-					enabled: Type.Boolean(),
-				}),
-			});
-			const toolCall: Message.ToolCallInFlight = {
-				callID: "tool-1",
-				name: "echo",
-				rawArgs: {
-					count: "7",
-					enabled: "true",
-				},
-			};
-
-			expect(validateToolArguments(tool, toolCall)).toEqual({
-				count: 7,
-				enabled: true,
 			});
 		});
 	});

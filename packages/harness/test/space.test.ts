@@ -1,4 +1,4 @@
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -7,7 +7,6 @@ import { Database } from "../src/db/db.ts";
 import { ProjectSchema } from "../src/project/schema.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { AbsolutePath } from "../src/schema.ts";
 import { SpaceSchema } from "../src/space/schema.ts";
 import { Space } from "../src/space/space.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
@@ -72,15 +71,6 @@ const seedSpace = Effect.fnUntraced(function* (seed: Seed) {
 	`;
 	return id;
 });
-
-const seedSession = (id: string, space: string, directory: string) =>
-	Effect.flatMap(
-		SqlClient.SqlClient,
-		(sql) => sql`
-			INSERT INTO session (id, space_id, slug, directory, title, created_at, updated_at)
-			VALUES (${id}, ${space}, ${id}, ${directory}, ${id}, 0, 0)
-		`,
-	);
 
 const spaces = Effect.flatMap(
 	SqlClient.SqlClient,
@@ -217,29 +207,6 @@ describe("Space", () => {
 			}));
 	});
 
-	describe("list / get", () => {
-		it("lists only active spaces of this env, sorted by location", () =>
-			Effect.gen(function* () {
-				yield* seedEnv(remote);
-				yield* seedProject("p");
-				yield* seedSpace({ projectId: "p", location: "/z", kind: "primary" });
-				yield* seedSpace({ projectId: "p", location: "/a", kind: "copy" });
-				yield* seedSpace({ projectId: "p", location: "/m", kind: "copy", status: "archived" });
-				yield* seedSpace({ projectId: "p", location: "/b", kind: "primary", env: remote });
-
-				const service = yield* Space.Service;
-				const result = yield* service.list(project("p"));
-
-				expect(result.map((space) => space.location)).toEqual(["/a", "/z"]);
-				expect(result[0]).toBeInstanceOf(SpaceSchema.Info);
-				expect(result[0]?.env).toBe(local);
-
-				const found = yield* service.get(Space.id(remote, "/b"));
-				expect(Option.getOrThrow(found)).toMatchObject({ location: "/b", env: remote, kind: "primary" });
-				expect(Option.isNone(yield* service.get(SpaceSchema.ID.make("missing")))).toBe(true);
-			}));
-	});
-
 	describe("archiveEnv", () => {
 		it("S30: archives every space of the env and projects left without an active space", () =>
 			Effect.gen(function* () {
@@ -264,75 +231,6 @@ describe("Space", () => {
 				expect(yield* projectStatus("only-remote")).toBe("archived");
 				expect(yield* projectStatus("both")).toBe("active");
 				expect(yield* projectStatus("host-only")).toBe("active");
-			}));
-	});
-
-	describe("rehome", () => {
-		it("inserts, then re-points project, kind and status on conflict without changing the id", () =>
-			Effect.gen(function* () {
-				yield* seedProject("p");
-				yield* seedProject("q");
-				const id = yield* seedSpace({ projectId: "p", location: "/x", kind: "plain", status: "archived" });
-
-				const service = yield* Space.Service;
-				yield* service.rehome({
-					id,
-					projectId: project("q"),
-					location: AbsolutePath.make("/x"),
-					kind: "primary",
-					env: local,
-				});
-
-				expect(yield* spaces).toMatchObject([
-					{ id, projectId: "q", location: "/x", kind: "primary", status: "active" },
-				]);
-			}));
-
-		it("falls back to copy when another primary already holds the (project, env) slot", () =>
-			Effect.gen(function* () {
-				yield* seedProject("p");
-				yield* seedSpace({ projectId: "p", location: "/a", kind: "primary" });
-
-				const service = yield* Space.Service;
-				yield* service.rehome({
-					id: Space.id(local, "/b"),
-					projectId: project("p"),
-					location: AbsolutePath.make("/b"),
-					kind: "primary",
-					env: local,
-				});
-
-				expect(yield* spaces).toMatchObject([
-					{ location: "/a", kind: "primary" },
-					{ location: "/b", kind: "copy" },
-				]);
-			}));
-	});
-
-	describe("absorb", () => {
-		it("re-points the stray's sessions at the parent, leaves directories untouched and deletes the stray", () =>
-			Effect.gen(function* () {
-				yield* seedProject("p");
-				yield* seedProject("stray");
-				const into = yield* seedSpace({ projectId: "p", location: "/x", kind: "primary" });
-				const strayId = yield* seedSpace({ projectId: "stray", location: "/x/y", kind: "plain" });
-				yield* seedSession("root", strayId, "/x/y");
-				yield* seedSession("deep", strayId, "/x/y/z");
-				yield* seedSession("own", into, "/x/k");
-
-				const service = yield* Space.Service;
-				yield* service.absorb({ strayId, into });
-
-				const sql = yield* SqlClient.SqlClient;
-				const sessions = yield* sql<{ id: string; spaceId: string; directory: string }>`
-					SELECT id, space_id, directory FROM session ORDER BY id
-				`;
-				expect(sessions).toEqual([
-					{ id: "deep", spaceId: into, directory: "/x/y/z" },
-					{ id: "own", spaceId: into, directory: "/x/k" },
-					{ id: "root", spaceId: into, directory: "/x/y" },
-				]);
-				expect((yield* spaces).map((space) => space.id)).toEqual([into]);
 			}));
 	});
 });

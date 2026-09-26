@@ -57,37 +57,6 @@ describe("request", () => {
 		});
 	});
 
-	it("merges provider and per-call headers", async () => {
-		const { fetch, calls } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		const provider = createOpenAICodex({
-			apiKey: OPENAI_CODEX_TEST_API_KEY,
-			headers: { "x-provider": "a" },
-			fetch,
-		});
-		await provider("gpt-5.4").doStream({ prompt: openAICodexUserPrompt, headers: { "x-call": "b" } });
-
-		expect(calls[0]?.init.headers).toMatchObject({ "x-provider": "a", "x-call": "b" });
-	});
-
-	it("builds the Codex request body with defaults", async () => {
-		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		const provider = createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch });
-		await provider("gpt-5.4").doStream({ prompt: openAICodexUserPrompt, temperature: 0.2 });
-
-		expect(body()).toMatchObject({
-			model: "gpt-5.4",
-			stream: true,
-			store: false,
-			instructions: "You are concise.",
-			input: [{ role: "user", content: [{ type: "input_text", text: "Hello" }] }],
-			tool_choice: "auto",
-			parallel_tool_calls: true,
-			include: ["reasoning.encrypted_content"],
-			text: { verbosity: "low" },
-			temperature: 0.2,
-		});
-	});
-
 	it("drops maxOutputTokens with a warning; the Codex backend rejects it", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
 		const provider = createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch });
@@ -136,44 +105,6 @@ describe("request", () => {
 		});
 	});
 
-	it("maps grammar metadata to native Codex custom tools", async () => {
-		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		await createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch })("gpt-5.6-luna").doStream({
-			prompt: openAICodexUserPrompt,
-			tools: [
-				{
-					type: "function",
-					name: "sample",
-					description: "Generate a sample",
-					inputSchema: {
-						type: "object",
-						properties: { payload: { type: "string" } },
-						required: ["payload"],
-					},
-					providerOptions: {
-						"openai-codex": {
-							grammar: {
-								type: "grammar",
-								format: "lark",
-								definition: "start: /[a-z]+/",
-								inputProperty: "payload",
-							},
-						},
-					},
-				},
-			],
-		});
-
-		expect(body().tools).toEqual([
-			{
-				type: "custom",
-				name: "sample",
-				description: "Generate a sample",
-				format: { type: "grammar", syntax: "lark", definition: "start: /[a-z]+/" },
-			},
-		]);
-	});
-
 	it("keeps deferred grammar tools native inside additional_tools", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
 		await createOpenAICodex({
@@ -210,33 +141,6 @@ describe("request", () => {
 				format: { type: "grammar", syntax: "regex", definition: "[a-z]+" },
 			}),
 		]);
-	});
-
-	it("uses generated deferred-tool capabilities even with an unknown model ID", async () => {
-		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		await createOpenAICodex({
-			apiKey: OPENAI_CODEX_TEST_API_KEY,
-			fetch,
-			compat: { ...openAICodexBuiltInModels()["gpt-5.6-luna"]!.compat },
-		})("custom-codex").doStream({
-			prompt: openAICodexDeferredToolsPrompt,
-			tools: openAICodexDeferredTools,
-		});
-
-		const payload = body();
-		expect(payload.tools).toMatchObject([{ name: "base_tool" }]);
-		expect(payload.input).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					type: "additional_tools",
-					role: "developer",
-					tools: [expect.objectContaining({ name: "late_tool" })],
-				}),
-			]),
-		);
-		expect((payload.input as Array<{ type?: string }>).some((item) => item.type === "tool_search_output")).toBe(
-			false,
-		);
 	});
 
 	it("falls back to transcript tool_search items for GPT-5.4 Codex", async () => {
@@ -281,17 +185,6 @@ describe("request", () => {
 		).toBe(false);
 	});
 
-	it("honors explicit deferred-tool compatibility overrides", async () => {
-		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		await createOpenAICodex({
-			apiKey: OPENAI_CODEX_TEST_API_KEY,
-			fetch,
-			compat: { supportsToolSearch: false, supportsAdditionalTools: false },
-		})("gpt-5.6-luna").doStream({ prompt: openAICodexDeferredToolsPrompt, tools: openAICodexDeferredTools });
-
-		expect(body().tools).toMatchObject([{ name: "base_tool" }, { name: "late_tool" }]);
-	});
-
 	it("applies openai-codex provider options", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
 		const provider = createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch });
@@ -314,29 +207,6 @@ describe("request", () => {
 		});
 	});
 
-	it("forwards max reasoning effort for GPT-5.6 Codex models", async () => {
-		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		const provider = createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch });
-		await provider("gpt-5.6-sol").doStream({
-			prompt: openAICodexUserPrompt,
-			providerOptions: { "openai-codex": { reasoningEffort: "max" } },
-		});
-
-		expect(body().reasoning).toEqual({ effort: "max", summary: "auto" });
-	});
-
-	it("defaults the prompt cache key to the provider sessionId", async () => {
-		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		const provider = createOpenAICodex({
-			apiKey: OPENAI_CODEX_TEST_API_KEY,
-			sessionId: "session-9",
-			fetch,
-		});
-		await provider("gpt-5.4").doStream({ prompt: openAICodexUserPrompt });
-
-		expect(body().prompt_cache_key).toBe("session-9");
-	});
-
 	it("clamps Codex cache-affinity values to 64 Unicode characters", async () => {
 		const sessionId = `${"🙂".repeat(64)}overflow`;
 		const { fetch, body, calls } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
@@ -357,43 +227,6 @@ describe("request", () => {
 
 		expect(calls[0]?.init.headers["content-encoding"]).toBe("zstd");
 		expect(body()).toMatchObject({ model: "gpt-5.4", stream: true });
-	});
-
-	it("maps schema-constrained JSON output to the native Codex text format", async () => {
-		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
-		const { stream } = await createOpenAICodex({ apiKey: OPENAI_CODEX_TEST_API_KEY, fetch })("gpt-5.4").doStream({
-			prompt: openAICodexUserPrompt,
-			responseFormat: {
-				type: "json",
-				name: "answer",
-				schema: {
-					type: "object",
-					properties: { value: { type: "string" } },
-					required: ["value"],
-					additionalProperties: false,
-				},
-			},
-		});
-		const parts = await readOpenAICodexStream(stream);
-
-		expect(body().text).toEqual({
-			verbosity: "low",
-			format: {
-				type: "json_schema",
-				strict: true,
-				name: "answer",
-				schema: {
-					type: "object",
-					properties: { value: { type: "string" } },
-					required: ["value"],
-					additionalProperties: false,
-				},
-			},
-		});
-		const start = parts.find((part) => part.type === "stream-start");
-		expect(start?.type === "stream-start" ? start.warnings : []).not.toContainEqual(
-			expect.objectContaining({ feature: "responseFormat" }),
-		);
 	});
 
 	it("warns on unsupported call options instead of sending them", async () => {

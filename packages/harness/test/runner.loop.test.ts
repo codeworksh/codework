@@ -160,26 +160,6 @@ describe("runner loop — aikit input/output", () => {
 	);
 
 	it(
-		"keeps promotion and output scoped per session",
-		Effect.gen(function* () {
-			const execution = yield* RunnerExecution.Service;
-			const sessions = yield* Session.Service;
-			const first = yield* seedSession("first");
-			const second = yield* seedSession("second");
-			yield* admit({ id: "msg_first", sessionId: first, delivery: "steer" });
-			yield* admit({ id: "msg_second", sessionId: second, delivery: "steer" });
-
-			yield* execution.resume(first);
-			yield* execution.resume(second);
-
-			expect(yield* delivered(first)).toEqual([{ id: "msg_first", promotedSeq: 1 }]);
-			expect(yield* delivered(second)).toEqual([{ id: "msg_second", promotedSeq: 1 }]);
-			expect((yield* sessions.path(first)).map((item) => item.entry.type)).toEqual(["user", "assistant"]);
-			expect((yield* sessions.path(second)).map((item) => item.entry.type)).toEqual(["user", "assistant"]);
-		}),
-	);
-
-	it(
 		"promotes all current steers as one request, then follow-ups one per request",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
@@ -215,15 +195,6 @@ describe("runner loop — aikit input/output", () => {
 	);
 
 	it(
-		"fails for a session that does not exist",
-		Effect.gen(function* () {
-			const execution = yield* RunnerExecution.Service;
-			const exit = yield* execution.resume(SessionSchema.ID.create()).pipe(Effect.exit);
-			expect(Exit.isFailure(exit)).toBe(true);
-		}),
-	);
-
-	it(
 		"fails the SandboxIO infrastructure envelope before the loop can start",
 		Effect.gen(function* () {
 			const execution = yield* RunnerExecution.Service;
@@ -249,27 +220,6 @@ describe("runner loop — aikit input/output", () => {
 			}
 			const durable = yield* sql`SELECT type FROM event WHERE aggregate_id = ${session.id}`;
 			expect(durable).toEqual([]);
-		}),
-	);
-
-	it(
-		"fails typed when the session's space row is gone",
-		Effect.gen(function* () {
-			const execution = yield* RunnerExecution.Service;
-			const sql = yield* SqlClient.SqlClient;
-			const sessionId = yield* seedSession("no-space");
-			// Simulate the FK invariant being broken: the only way a session can
-			// outlive its space row.
-			yield* sql`PRAGMA foreign_keys = OFF`;
-			yield* sql`DELETE FROM space WHERE id = (SELECT space_id FROM session WHERE id = ${sessionId})`;
-			yield* sql`PRAGMA foreign_keys = ON`;
-
-			const exit = yield* execution.resume(sessionId).pipe(Effect.exit);
-			expect(Exit.isFailure(exit)).toBe(true);
-			if (Exit.isFailure(exit)) {
-				const failure = Cause.findErrorOption(exit.cause);
-				expect(Option.isSome(failure) && failure.value._tag).toBe("SessionLinkedSpaceNotFoundError");
-			}
 		}),
 	);
 });

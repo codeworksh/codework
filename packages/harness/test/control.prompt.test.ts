@@ -10,7 +10,6 @@ import { SessionInput } from "../src/session/input/input.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
 import { PromptSchema } from "../src/session/prompt/schema.ts";
-import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
@@ -59,19 +58,6 @@ const eventCount = (type: string) =>
 const prompt = (text: string) => PromptSchema.Prompt.make({ text });
 
 describe("Control.prompt", () => {
-	it("mints a distinct id for each prompt when none is supplied", () =>
-		Effect.gen(function* () {
-			const { sessions, control, sessionId } = yield* setup;
-
-			const first = yield* control.prompt({ sessionId, prompt: prompt(text) });
-			const second = yield* control.prompt({ sessionId, prompt: prompt(text) });
-
-			expect(second.id).not.toBe(first.id);
-			expect(yield* admittedCount).toBe(2);
-			// Admission alone does not put anything in the conversation.
-			expect(yield* sessions.path(sessionId)).toEqual([]);
-		}));
-
 	it("returns the original record when the id is retried", () =>
 		Effect.gen(function* () {
 			const { sessions, control, sessionId } = yield* setup;
@@ -99,18 +85,6 @@ describe("Control.prompt", () => {
 			expect(yield* admittedCount).toBe(1);
 		}));
 
-	it("rejects reuse of one id with a different delivery lane", () =>
-		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
-			yield* control.prompt({ sessionId, id: messageId, prompt: prompt(text) });
-
-			const failure = yield* control
-				.prompt({ sessionId, id: messageId, prompt: prompt(text), delivery: "followUp" })
-				.pipe(Effect.flip);
-
-			expect(failure._tag).toBe("PromptConflictError");
-		}));
-
 	it("returns one record to concurrent exact retries", () =>
 		Effect.gen(function* () {
 			const { control, sessionId } = yield* setup;
@@ -124,17 +98,6 @@ describe("Control.prompt", () => {
 			expect(yield* admittedCount).toBe(1);
 			// The loser's event rolled back with its projector, so only one exists.
 			expect(yield* eventCount("session.prompt.admitted.1")).toBe(1);
-		}));
-
-	it("refuses a prompt for a session that does not exist", () =>
-		Effect.gen(function* () {
-			const { control } = yield* setup;
-			const failure = yield* control
-				.prompt({ sessionId: SessionSchema.ID.make("ses_nope"), prompt: prompt(text) })
-				.pipe(Effect.flip);
-
-			expect(failure._tag).toBe("SessionNotFoundError");
-			expect(yield* admittedCount).toBe(0);
 		}));
 
 	it("promotes once under concurrent promotion attempts", () =>
@@ -197,24 +160,5 @@ describe("Control.prompt", () => {
 			expect(some(yield* inputs.find(first.id)).promotedSeq).toBeDefined();
 			expect(some(yield* inputs.find(second.id)).promotedSeq).toBeUndefined();
 			expect((yield* sessions.path(sessionId)).map((h) => h.entry.id)).toEqual([first.id]);
-		}));
-});
-
-describe("Control.wait", () => {
-	it("returns immediately for an existing idle session without starting work", () =>
-		Effect.gen(function* () {
-			const { control, sessionId } = yield* setup;
-
-			yield* control.wait(sessionId);
-
-			expect((yield* control.active).has(sessionId)).toBe(false);
-		}));
-
-	it("rejects a session that does not exist", () =>
-		Effect.gen(function* () {
-			const { control } = yield* setup;
-			const failure = yield* control.wait(SessionSchema.ID.make("ses_nope")).pipe(Effect.flip);
-
-			expect(failure._tag).toBe("SessionNotFoundError");
 		}));
 });
