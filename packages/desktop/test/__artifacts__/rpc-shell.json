@@ -1,0 +1,39 @@
+{
+	"connected": true,
+	"url": "ws://127.0.0.1:<port>/rpc",
+	"listedBefore": 0,
+	"created": {
+		"title": "Desktop",
+		"directory": "<home>",
+		"hostDir": "<home>"
+	},
+	"listedAfter": 1,
+	"events": [
+		{
+			"kind": "user",
+			"content": "hello"
+		},
+		{
+			"kind": "delta",
+			"delta": "response 1"
+		},
+		{
+			"kind": "assistant",
+			"content": "response 1"
+		},
+		{
+			"kind": "ended",
+			"outcome": "succeeded"
+		}
+	],
+	"transcript": [
+		{
+			"role": "user",
+			"content": "hello"
+		},
+		{
+			"role": "assistant",
+			"content": "response 1"
+		}
+	]
+}

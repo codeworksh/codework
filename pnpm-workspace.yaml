@@ -12,6 +12,7 @@ catalog:
    vite-plus: 0.3.1
 
 allowBuilds:
+   electron: true
    "@mongodb-js/zstd": true
    # vgpu's Node adapter; the site renders in the browser only.
    "@vgpu/adapter-node": false

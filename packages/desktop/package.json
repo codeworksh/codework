@@ -1,0 +1,36 @@
+{
+	"name": "@codeworksh/desktop",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Electron desktop client for a running CodeWork RPC server.",
+	"type": "module",
+	"main": "./out/main/index.js",
+	"scripts": {
+		"check": "vp check",
+		"lint": "vp lint",
+		"start": "electron-vite dev",
+		"test": "vp test",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@codeworksh/aikit": "workspace:^",
+		"@codeworksh/harness": "workspace:*",
+		"@effect/platform-node": "4.0.0-rc.115",
+		"effect": "4.0.0-rc.115",
+		"react": "^19.3.0",
+		"react-dom": "^19.3.0",
+		"react-markdown": "^10.1.0",
+		"remark-gfm": "^4.0.1"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "^4.3.3",
+		"@types/node": "catalog:",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"@vitejs/plugin-react": "^5.1.4",
+		"electron": "^38.2.0",
+		"electron-vite": "^4.0.1",
+		"tailwindcss": "^4.3.3",
+		"typescript": "catalog:"
+	}
+}
