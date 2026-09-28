@@ -1,0 +1,11 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"module": "Preserve",
+		"moduleResolution": "Bundler",
+		"jsx": "react-jsx",
+		"lib": ["ES2023", "DOM", "DOM.Iterable"],
+		"tsBuildInfoFile": "../../.cache/typescript/web.tsbuildinfo"
+	},
+	"include": ["src", "vite.config.ts"]
+}
