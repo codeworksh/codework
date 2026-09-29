@@ -1,14 +1,7 @@
 import type * as Acp from "@codeworksh/acp/schema-v1";
 import { Model } from "@codeworksh/aikit";
-import { ModelCatalog, Settings } from "@codeworksh/harness/effect";
+import { ModelCatalog, Settings, type State } from "@codeworksh/harness/effect";
 import { Effect, Option } from "effect";
-
-/** The model and thinking level a session runs with, as the ACP layer last set them. */
-export interface Selection {
-	readonly provider: string;
-	readonly id: string;
-	readonly thinkingLevel: Model.ThinkingLevel;
-}
 
 export const MODEL = "model";
 export const THOUGHT_LEVEL = "thought_level";
@@ -39,15 +32,18 @@ const catalogFor = (hostDir: string | undefined) =>
 		return yield* ModelCatalog.effective((yield* settings.load(hostDir)).models);
 	}).pipe(Effect.orElseSucceed((): Model.BuiltInModels => ({})));
 
-/** The `model` and `thought_level` selectors for a session's current selection. */
-export const options = Effect.fn("ACP.config.options")(function* (selection: Selection, hostDir: string | undefined) {
+/** The `model` and `thought_level` selectors for a session's current configuration. */
+export const options = Effect.fn("ACP.config.options")(function* (
+	selection: State.Configuration,
+	hostDir: string | undefined,
+) {
 	const catalog = yield* catalogFor(hostDir);
 	// Providers the harness has credentials for; the current model stays selectable even if not.
 	const providers = yield* ModelCatalog.available(hostDir === undefined ? {} : { hostDir }).pipe(
 		Effect.orElseSucceed(() => []),
 	);
 
-	const current = `${selection.provider}/${selection.id}`;
+	const current = `${selection.provider}/${selection.model}`;
 	const models = providers.flatMap((provider) =>
 		Object.entries(provider.models).map(([id, info]) => ({
 			value: `${provider.id}/${id}`,
@@ -60,7 +56,7 @@ export const options = Effect.fn("ACP.config.options")(function* (selection: Sel
 		{ id: MODEL, name: "Model", category: "model", type: "select", currentValue: current, options: models },
 	];
 
-	const info = catalog[selection.provider]?.[selection.id];
+	const info = catalog[selection.provider]?.[selection.model];
 	const levels = info === undefined || info.reasoning === false ? [] : Model.getSupportedThinkingLevels(info);
 	if (levels.some((level) => level !== "off")) {
 		result.push({

@@ -245,6 +245,75 @@ describe("codework acp", () => {
 		);
 	});
 
+	it("keeps a session's chosen model and thinking level across a restart", () => {
+		const { home, project } = workspace();
+		mkdirSync(join(project, ".codework"));
+		writeFileSync(
+			join(project, ".codework", "settings.jsonc"),
+			artifact({ model: { provider: "openrouter", id: "anthropic/claude-haiku-4.5", thinkingLevel: "low" } }),
+		);
+		const env = { ...withoutProviderKeys(), OPENROUTER_API_KEY: "sk-or-test" };
+		const current = (options: ReadonlyArray<{ id: string; currentValue: unknown }> | null | undefined) => ({
+			model: options?.find((option) => option.id === "model")?.currentValue,
+			thinking: options?.find((option) => option.id === "thought_level")?.currentValue,
+		});
+		return run(
+			Effect.gen(function* () {
+				const first = yield* withAgent(
+					home,
+					(acp) =>
+						Effect.gen(function* () {
+							const chosen = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
+							const untouched = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
+							yield* acp.agent.setSessionConfigOption({
+								sessionId: chosen.sessionId,
+								configId: "model",
+								value: "openrouter/anthropic/claude-sonnet-4.5",
+							});
+							const set = yield* acp.agent.setSessionConfigOption({
+								sessionId: chosen.sessionId,
+								configId: "thought_level",
+								value: "high",
+							});
+							return {
+								ids: { chosen: chosen.sessionId, untouched: untouched.sessionId },
+								record: { created: current(chosen.configOptions), chosen: current(set.configOptions) },
+							};
+						}),
+					env,
+				);
+				// A fresh process: nothing of the first one's memory is left.
+				const reloaded = yield* withAgent(
+					home,
+					(acp) =>
+						Effect.gen(function* () {
+							const load = (sessionId: string) =>
+								acp.agent
+									.loadSession({ sessionId, cwd: project, mcpServers: [] })
+									.pipe(Effect.map((response) => current(response.configOptions)));
+							const chosen = yield* load(first.ids.chosen);
+							const untouched = yield* load(first.ids.untouched);
+							// Choosing only the thinking level keeps the saved model.
+							const rethought = yield* acp.agent
+								.setSessionConfigOption({
+									sessionId: first.ids.chosen,
+									configId: "thought_level",
+									value: "medium",
+								})
+								.pipe(Effect.map((response) => current(response.configOptions)));
+							return { chosen, untouched, rethought };
+						}),
+					env,
+				);
+				yield* Effect.promise(() =>
+					expect(artifact({ ...first.record, afterRestart: reloaded })).toMatchFileSnapshot(
+						"./__artifacts__/acp.config-persist.json",
+					),
+				);
+			}),
+		);
+	});
+
 	it("reads settings models entries like generated catalog entries", () => {
 		const { home, project } = workspace();
 		const haiku = catalogEntry("openrouter", "anthropic/claude-haiku-4.5");

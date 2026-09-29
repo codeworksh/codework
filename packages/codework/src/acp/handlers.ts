@@ -1,15 +1,7 @@
 import type * as AcpAgent from "@codeworksh/acp/agent";
 import { AcpRequestError } from "@codeworksh/acp/errors";
 import type * as Acp from "@codeworksh/acp/schema-v1";
-import {
-	Control,
-	EventList,
-	type EventSchema,
-	type Harness,
-	Session,
-	SessionStore,
-	Settings,
-} from "@codeworksh/harness/effect";
+import { Control, EventList, type EventSchema, type Harness, Session, SessionStore } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Fiber, type Layer, Option, Schema, Stream } from "effect";
 import pkg from "../../package.json" with { type: "json" };
 import { Config } from "./config.ts";
@@ -58,22 +50,10 @@ type Services = Layer.Success<ReturnType<typeof Harness.layer>>;
 export const make = Effect.gen(function* () {
 	const control = yield* Control.Service;
 	const sessions = yield* SessionStore.Service;
-	const settings = yield* Settings.Service;
 	// Handlers run on the agent's fibers, outside this layer; they carry the harness with them.
 	const context = yield* Effect.context<Services>();
 
-	// Bindings live in the harness, which has no public read-back yet (COD-81).
-	const selections = new Map<string, Config.Selection>();
 	const running = new Set<string>();
-
-	const selection = Effect.fn("ACP.selection")(function* (id: string, hostDir: string | undefined) {
-		const known = selections.get(id);
-		if (known !== undefined) return known;
-		const { model } = yield* settings.load(hostDir);
-		const loaded = { provider: model.provider, id: model.id, thinkingLevel: model.thinkingLevel };
-		selections.set(id, loaded);
-		return loaded;
-	});
 
 	const found = Effect.fn("ACP.found")(function* (id: string) {
 		const row = yield* sessions.get(sessionId(id));
@@ -101,7 +81,7 @@ export const make = Effect.gen(function* () {
 				run(
 					Effect.gen(function* () {
 						const handle = yield* Session.create({ directory: cwd, hostDir: cwd });
-						const current = yield* selection(handle.id, cwd);
+						const current = yield* Session.configuration(handle.id);
 						return { sessionId: handle.id, configOptions: yield* Config.options(current, cwd) };
 					}),
 				),
@@ -112,7 +92,7 @@ export const make = Effect.gen(function* () {
 						yield* Session.attach({ sessionId: sessionId(id) });
 						const row = yield* found(id);
 						const hostDir = Option.getOrUndefined(row.hostDir);
-						const current = yield* selection(id, hostDir);
+						const current = yield* Session.configuration(row.id);
 						for (const entry of yield* sessions.path(sessionId(id))) {
 							for (const update of Feed.replay(entry)) {
 								yield* client.sessionUpdate({ sessionId: id, update });
@@ -150,27 +130,22 @@ export const make = Effect.gen(function* () {
 					Effect.gen(function* () {
 						const row = yield* found(request.sessionId);
 						const hostDir = Option.getOrUndefined(row.hostDir);
-						const current = yield* selection(request.sessionId, hostDir);
 						const value = String(request.value);
-						let next: Config.Selection;
 						if (request.configId === Config.MODEL) {
 							const model = Option.getOrUndefined(Config.parseModel(value));
 							if (model === undefined || !(yield* Config.known(model, hostDir))) {
 								return yield* AcpRequestError.invalidParams(`Unknown model: ${value}`);
 							}
-							next = { ...current, ...model };
 							yield* Session.attach({ sessionId: row.id, model });
 						} else if (request.configId === Config.THOUGHT_LEVEL) {
 							if (!Config.isThinkingLevel(value)) {
 								return yield* AcpRequestError.invalidParams(`Unknown thinking level: ${value}`);
 							}
-							next = { ...current, thinkingLevel: value };
 							yield* Session.attach({ sessionId: row.id, thinkingLevel: value });
 						} else {
 							return yield* AcpRequestError.invalidParams(`Unknown config option: ${request.configId}`);
 						}
-						selections.set(row.id, next);
-						return { configOptions: yield* Config.options(next, hostDir) };
+						return { configOptions: yield* Config.options(yield* Session.configuration(row.id), hostDir) };
 					}),
 				),
 
