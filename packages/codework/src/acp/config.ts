@@ -1,6 +1,6 @@
 import type * as Acp from "@codeworksh/acp/schema-v1";
 import { Model } from "@codeworksh/aikit";
-import { ModelCatalog } from "@codeworksh/harness/effect";
+import { ModelCatalog, Settings } from "@codeworksh/harness/effect";
 import { Effect, Option } from "effect";
 
 /** The model and thinking level a session runs with, as the ACP layer last set them. */
@@ -32,11 +32,20 @@ export const parseModel = (value: string): Option.Option<{ readonly provider: st
 	return Option.some({ provider: value.slice(0, slash), id: value.slice(slash + 1) });
 };
 
+/** The catalog a session in `hostDir` sees: generated entries plus its settings' `models`. */
+const catalogFor = (hostDir: string | undefined) =>
+	Effect.gen(function* () {
+		const settings = yield* Settings.Service;
+		return yield* ModelCatalog.effective((yield* settings.load(hostDir)).models);
+	}).pipe(Effect.orElseSucceed((): Model.BuiltInModels => ({})));
+
 /** The `model` and `thought_level` selectors for a session's current selection. */
-export const options = Effect.fn("ACP.config.options")(function* (selection: Selection) {
-	const catalog = yield* ModelCatalog.models.pipe(Effect.orElseSucceed((): Model.BuiltInModels => ({})));
+export const options = Effect.fn("ACP.config.options")(function* (selection: Selection, hostDir: string | undefined) {
+	const catalog = yield* catalogFor(hostDir);
 	// Providers the harness has credentials for; the current model stays selectable even if not.
-	const providers = yield* ModelCatalog.available().pipe(Effect.orElseSucceed(() => []));
+	const providers = yield* ModelCatalog.available(hostDir === undefined ? {} : { hostDir }).pipe(
+		Effect.orElseSucceed(() => []),
+	);
 
 	const current = `${selection.provider}/${selection.id}`;
 	const models = providers.flatMap((provider) =>
@@ -66,12 +75,12 @@ export const options = Effect.fn("ACP.config.options")(function* (selection: Sel
 	return result;
 });
 
-/** Whether `value` names a model in the catalog. */
-export const known = Effect.fn("ACP.config.known")(function* (model: {
-	readonly provider: string;
-	readonly id: string;
-}) {
-	const catalog = yield* ModelCatalog.models.pipe(Effect.orElseSucceed((): Model.BuiltInModels => ({})));
+/** Whether a model is in the catalog a session in `hostDir` sees. */
+export const known = Effect.fn("ACP.config.known")(function* (
+	model: { readonly provider: string; readonly id: string },
+	hostDir: string | undefined,
+) {
+	const catalog = yield* catalogFor(hostDir);
 	return catalog[model.provider]?.[model.id] !== undefined;
 });
 

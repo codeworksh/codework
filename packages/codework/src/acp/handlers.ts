@@ -102,7 +102,7 @@ export const make = Effect.gen(function* () {
 					Effect.gen(function* () {
 						const handle = yield* Session.create({ directory: cwd, hostDir: cwd });
 						const current = yield* selection(handle.id, cwd);
-						return { sessionId: handle.id, configOptions: yield* Config.options(current) };
+						return { sessionId: handle.id, configOptions: yield* Config.options(current, cwd) };
 					}),
 				),
 
@@ -111,13 +111,14 @@ export const make = Effect.gen(function* () {
 					Effect.gen(function* () {
 						yield* Session.attach({ sessionId: sessionId(id) });
 						const row = yield* found(id);
-						const current = yield* selection(id, Option.getOrUndefined(row.hostDir));
+						const hostDir = Option.getOrUndefined(row.hostDir);
+						const current = yield* selection(id, hostDir);
 						for (const entry of yield* sessions.path(sessionId(id))) {
 							for (const update of Feed.replay(entry)) {
 								yield* client.sessionUpdate({ sessionId: id, update });
 							}
 						}
-						return { configOptions: yield* Config.options(current) };
+						return { configOptions: yield* Config.options(current, hostDir) };
 					}),
 				),
 
@@ -148,12 +149,13 @@ export const make = Effect.gen(function* () {
 				run(
 					Effect.gen(function* () {
 						const row = yield* found(request.sessionId);
-						const current = yield* selection(request.sessionId, Option.getOrUndefined(row.hostDir));
+						const hostDir = Option.getOrUndefined(row.hostDir);
+						const current = yield* selection(request.sessionId, hostDir);
 						const value = String(request.value);
 						let next: Config.Selection;
 						if (request.configId === Config.MODEL) {
 							const model = Option.getOrUndefined(Config.parseModel(value));
-							if (model === undefined || !(yield* Config.known(model))) {
+							if (model === undefined || !(yield* Config.known(model, hostDir))) {
 								return yield* AcpRequestError.invalidParams(`Unknown model: ${value}`);
 							}
 							next = { ...current, ...model };
@@ -168,7 +170,7 @@ export const make = Effect.gen(function* () {
 							return yield* AcpRequestError.invalidParams(`Unknown config option: ${request.configId}`);
 						}
 						selections.set(row.id, next);
-						return { configOptions: yield* Config.options(next) };
+						return { configOptions: yield* Config.options(next, hostDir) };
 					}),
 				),
 

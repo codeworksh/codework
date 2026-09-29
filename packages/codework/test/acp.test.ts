@@ -40,6 +40,35 @@ const withoutProviderKeys = (): Record<string, undefined> => {
 	return Object.fromEntries(names.map((name) => [name, undefined]));
 };
 
+/** A model from the generated catalog, to copy into a settings `models` entry. */
+const catalogEntry = (provider: string, id: string): Record<string, unknown> => {
+	const catalog: Record<string, Record<string, Record<string, unknown>>> = JSON.parse(readFileSync(models, "utf8"));
+	const entry = catalog[provider]?.[id];
+	if (entry === undefined) throw new Error(`${provider}/${id} is not in the generated catalog`);
+	return entry;
+};
+
+/** A complete settings `models` entry for a new OpenAI-compatible provider. */
+const newModel = (provider: Record<string, unknown>, id: string, fields: Record<string, unknown> = {}) => ({
+	id,
+	name: id,
+	provider: { name: provider.id, source: "config", env: [], ...provider },
+	baseUrl: "http://127.0.0.1:1/v1",
+	reasoning: false,
+	input: ["text"],
+	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+	contextWindow: 32768,
+	maxTokens: 8192,
+	protocol: "openai-compatible",
+	...fields,
+});
+
+/** Write a settings file, creating its directory. */
+const writeSettings = (file: string, settings: Record<string, unknown>) => {
+	mkdirSync(dirname(file), { recursive: true });
+	writeFileSync(file, artifact(settings));
+};
+
 const workspace = () => {
 	const home = mkdtempSync(join(tmpdir(), "codework-acp-"));
 	temps.push(home);
@@ -215,6 +244,136 @@ describe("codework acp", () => {
 			),
 		);
 	});
+
+	it("reads settings models entries like generated catalog entries", () => {
+		const { home, project } = workspace();
+		const haiku = catalogEntry("openrouter", "anthropic/claude-haiku-4.5");
+		// The user file: a keyless provider, a keyed provider whose variable is set, one whose variable
+		// isn't, and a catalog model shadowed with a new name and no reasoning.
+		writeSettings(join(home, "settings.jsonc"), {
+			models: [
+				newModel({ id: "ollama", name: "Ollama" }, "qwen3-coder:30b"),
+				newModel({ id: "gateway", name: "Gateway", key: "${GATEWAY_KEY}" }, "claude-sonnet", { reasoning: true }),
+				newModel({ id: "offline", name: "Offline", key: "${OFFLINE_KEY}" }, "model-a"),
+				{ ...haiku, name: "User Haiku", reasoning: false },
+			],
+		});
+		// The project file shadows the same catalog model again, and wins.
+		writeSettings(join(project, ".codework", "settings.jsonc"), {
+			model: { provider: "gateway", id: "claude-sonnet" },
+			models: [{ ...haiku, name: "Project Haiku" }],
+		});
+		const rejected = (name: string, settings: Record<string, unknown>) => {
+			const dir = join(home, "rejected", name);
+			writeSettings(join(dir, ".codework", "settings.jsonc"), settings);
+			return dir;
+		};
+		const literalKey = rejected("literal-key", {
+			models: [newModel({ id: "leaky", key: "sk-literal-secret" }, "model-a")],
+		});
+		const missingField = rejected("missing-field", {
+			models: [{ id: "incomplete", provider: { id: "partial", name: "Partial", source: "config", env: [] } }],
+		});
+		const literalApiKey = rejected("literal-api-key", {
+			model: { provider: "openrouter", id: "anthropic/claude-haiku-4.5", options: { apiKey: "sk-literal-secret" } },
+		});
+		return run(
+			withAgent(
+				home,
+				(acp) =>
+					Effect.gen(function* () {
+						type Options = ReadonlyArray<{ id: string; currentValue: unknown; options?: unknown }>;
+						const picker = (options: Options) => {
+							const model = options.find((option) => option.id === "model");
+							const values = (model?.options ?? []) as ReadonlyArray<{ value: string; name: string }>;
+							return {
+								current: model?.currentValue,
+								thinking: options.find((option) => option.id === "thought_level")?.currentValue ?? null,
+								providers: [...new Set(values.map((option) => option.value.split("/")[0] ?? ""))].sort((a, b) =>
+									a.localeCompare(b),
+								),
+								haiku: values.find((option) => option.value === "openrouter/anthropic/claude-haiku-4.5")?.name,
+							};
+						};
+						const created = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
+						const switched = yield* settle(
+							acp.agent
+								.setSessionConfigOption({
+									sessionId: created.sessionId,
+									configId: "model",
+									value: "ollama/qwen3-coder:30b",
+								})
+								.pipe(Effect.map((response) => picker(response.configOptions))),
+						);
+						const outside = yield* acp.agent.createSession({ cwd: home, mcpServers: [] });
+						const failure = (cwd: string) =>
+							settle(acp.agent.createSession({ cwd, mcpServers: [] })).pipe(
+								Effect.map((result) =>
+									"code" in result
+										? { code: result.code, message: (result.message ?? "").replaceAll(home, "<home>") }
+										: result,
+								),
+							);
+						const rejected = {
+							literalProviderKey: yield* failure(literalKey),
+							missingRequiredField: yield* failure(missingField),
+							literalOptionsApiKey: yield* failure(literalApiKey),
+						};
+						const record = {
+							project: picker(created.configOptions ?? []),
+							switchedToKeyless: switched,
+							userOnly: picker(outside.configOptions ?? []),
+							rejected,
+						};
+						yield* Effect.promise(() =>
+							expect(artifact(record)).toMatchFileSnapshot("./__artifacts__/acp.custom-models.json"),
+						);
+					}),
+				{
+					...withoutProviderKeys(),
+					OPENROUTER_API_KEY: "sk-or-test",
+					GATEWAY_KEY: "gw-test",
+					OFFLINE_KEY: undefined,
+				},
+			),
+		);
+	});
+
+	it.skipIf(!process.env.OPENROUTER_API_KEY)(
+		"calls a settings-defined model with a ${NAME} key",
+		() => {
+			const { home, project } = workspace();
+			// OpenRouter's catalog entry re-homed as a new provider: only the settings entry knows it.
+			const entry = catalogEntry("openrouter", "openai/gpt-4.1-mini");
+			writeSettings(join(home, "settings.jsonc"), {
+				models: [
+					{
+						...entry,
+						provider: { id: "gateway", name: "Gateway", source: "config", env: [], key: "${OPENROUTER_API_KEY}" },
+					},
+				],
+			});
+			return run(
+				withAgent(home, (acp, updates) =>
+					Effect.gen(function* () {
+						const { sessionId } = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
+						yield* acp.agent.setSessionConfigOption({
+							sessionId,
+							configId: "model",
+							value: "gateway/openai/gpt-4.1-mini",
+						});
+						const answered = yield* acp.agent.prompt({
+							sessionId,
+							prompt: [{ type: "text", text: "Reply with exactly: PONG" }],
+						});
+						expect(answered.stopReason).toBe("end_turn");
+						expect(text(yield* Queue.clear(updates), "agent_message_chunk")).toContain("PONG");
+					}),
+				),
+			);
+		},
+		120_000,
+	);
 
 	it.skipIf(!process.env.OPENROUTER_API_KEY)(
 		"streams, runs tools, cancels, fails and replays turns against OpenRouter",
