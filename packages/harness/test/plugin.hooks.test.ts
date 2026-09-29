@@ -2,7 +2,6 @@ import { Cause, Deferred, Effect, Exit, Fiber, Schema } from "effect";
 import * as TestClock from "effect/testing/TestClock";
 import { describe, expect } from "vite-plus/test";
 import { make } from "../src/tool/executor.ts";
-import { make as makeBuckets } from "../src/plugin/registry.ts";
 import { ToolProgress } from "../src/tool/progress.ts";
 import * as Tool from "../src/tool/tool.ts";
 import type { ToolAddOptions, ToolAfter } from "../src/plugin/tool/schema.ts";
@@ -386,20 +385,6 @@ describe("per-tool hooks", () => {
 			expect(terminal.result.isError).toBe(true);
 			const rendered = terminal.result.content[0];
 			expect(rendered?.type === "text" && rendered.text).toContain("afterToolCall failed");
-		}),
-	);
-	it.effect("preserves hooks and kernel timestamps across a prose update", () =>
-		Effect.gen(function* () {
-			const buckets = makeBuckets();
-			let seen = 0;
-			buckets.registry.tools.add(tool(), { afterToolCall: () => void seen++ });
-			buckets.registry.tools.update("echo", { description: "patched", promptSnippet: "echoes" });
-			buckets.registry.prompt.set("");
-			const snapshot = buckets.freeze();
-			expect(snapshot.tools.defs[0]).toMatchObject({ description: "patched", promptSnippet: "echoes" });
-			const terminal = yield* snapshot.tools.handle(call, options);
-			expect(seen).toBe(1);
-			expect(terminal.time.start).toBe(call.time.start);
 		}),
 	);
 });

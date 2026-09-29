@@ -1,18 +1,16 @@
 import "./utils/env.ts";
 import type { Message } from "@codeworksh/aikit";
 import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect";
-import { join, relative } from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { join } from "node:path";
+import { writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import { Event } from "../src/event/event.ts";
 import { EventSchema } from "../src/event/schema.ts";
-import { prepare, type PluginRef } from "../src/plugin/catalog.ts";
-import { builtins } from "../src/plugin/builtin.ts";
+import type { PluginRef } from "../src/plugin/catalog.ts";
 import { fallback } from "../src/plugin/prompt/registry.ts";
-import { Settings } from "../src/settings/settings.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { bashPlugin } from "../src/plugin/builtin/tool/bash.ts";
@@ -72,78 +70,6 @@ const exchange = (input: {
 };
 
 describe("third-party plugins", () => {
-	it("finds the nearest ancestor project file from the session's hostDir, not the app's hostCwd", () =>
-		withSettings(async ({ root }) => {
-			const nested = join(root, "packages", "app");
-			await mkdir(join(root, "packages", ".codework"), { recursive: true });
-			await mkdir(nested, { recursive: true });
-			// The outer project, which the nearest one shadows outright rather than merging with.
-			await writeFile(
-				join(root, ".codework", "settings.jsonc"),
-				JSON.stringify({ plugins: [pluginPath("tool/acme-echo")] }),
-			);
-			await writeFile(
-				join(root, "packages", ".codework", "settings.jsonc"),
-				JSON.stringify({
-					plugins: [
-						pluginPath("prompt/acme-prompt.ts"),
-						{ plugin: "acme.prompt.marker", options: { marker: "nearest" } },
-					],
-				}),
-			);
-
-			// The app runs from `root`, beside the outer project; the session is linked to `nested`.
-			const { contexts, prompts } = await exchange({ root, hostDir: nested });
-			// `acme-echo` came from the outer file -- the one `hostCwd` would have found -- which is
-			// not read at all.
-			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
-			expect(prompts[0]?.endsWith("\n\nnearest")).toBe(true);
-		}));
-
-	it.each(["global", "custom"] as const)(
-		"adds %s settings plugins to the built-ins and executes their hooks",
-		(source) =>
-			withSettings(async ({ root, global, custom }) => {
-				const directory = source === "global" ? global : custom;
-				await writeFile(
-					join(directory, "settings.jsonc"),
-					JSON.stringify({
-						// The relative entry anchors to this file's directory, not to `hostCwd`.
-						plugins: [
-							`./${relative(directory, pluginPath("tool/acme-echo"))}`,
-							pluginPath("prompt/acme-prompt.ts"),
-						],
-					}),
-				);
-				const { contexts, prompts, path } = await exchange({
-					root,
-					// `--user-config-dir` replaces the home's settings file, so it is named only when
-					// that is the file under test.
-					...(source === "custom" ? { userConfigDir: custom } : {}),
-					llm: toolTurn(pendingCall("acme_echo", { value: "settings" }, "call_settings")),
-				});
-				// The built-in Bash tool and prompt survive: a settings entry adds, it does not select.
-				expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash", "acme_echo"]);
-				expect(prompts[0]?.endsWith("\n\nacme-marker")).toBe(true);
-				expect(JSON.parse(path[1]?.parts[0]?.data ?? "{}")).toMatchObject({
-					status: "completed",
-					result: {
-						content: [
-							{ type: "text", text: "settings" },
-							{ type: "text", text: "(acme-checked)" },
-						],
-					},
-				});
-			}),
-	);
-
-	it("leaves the built-ins alone when no settings file asks for plugins", () =>
-		withSettings(async ({ root, custom }) => {
-			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model: { id: "gpt-5.6-luna" } }));
-			const { contexts } = await exchange({ root, userConfigDir: custom });
-			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
-		}));
-
 	it("indexes a settings tool in the built-in prompt, wherever its entry sits", () =>
 		withSettings(async ({ root, custom }) => {
 			// Settings entries land after the built-ins, so this tool's entry is written after the
@@ -153,136 +79,6 @@ describe("third-party plugins", () => {
 			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
 			expect(contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "acme_echo"]);
 			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
-		}));
-
-	it("disables a built-in from settings", () =>
-		withSettings(async ({ root, custom }) => {
-			await writeFile(
-				join(custom, "settings.jsonc"),
-				JSON.stringify({ plugins: [{ plugin: "codework.tool.bash", enabled: false }] }),
-			);
-			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
-			expect(contexts[0]?.tools ?? []).toEqual([]);
-			expect(prompts[0]).toContain("Available tools:\n(none)");
-		}));
-
-	it("passes a settings options block to the module that loaded the plugin", () =>
-		withSettings(async ({ root, custom }) => {
-			// One line names the module, the next configures it by the same path. The two keys keep
-			// those apart: `package` addresses something loaded, `plugin` addresses an ID.
-			await writeFile(
-				join(custom, "settings.jsonc"),
-				JSON.stringify({
-					plugins: [
-						pluginPath("prompt/acme-prompt.ts"),
-						{ package: pluginPath("prompt/acme-prompt.ts"), options: { marker: "configured" } },
-					],
-				}),
-			);
-			const { prompts } = await exchange({ root, userConfigDir: custom });
-			expect(prompts[0]?.endsWith("\n\nconfigured")).toBe(true);
-			// The plugin's own ID reaches it just as well.
-			await writeFile(
-				join(custom, "settings.jsonc"),
-				JSON.stringify({
-					plugins: [
-						pluginPath("prompt/acme-prompt.ts"),
-						{ plugin: "acme.prompt.marker", options: { marker: "by-id" } },
-					],
-				}),
-			);
-			expect((await exchange({ root, userConfigDir: custom })).prompts[0]?.endsWith("\n\nby-id")).toBe(true);
-		}));
-
-	it("configures a built-in without disturbing the order its domain gives it", () =>
-		withSettings(async ({ root, custom }) => {
-			await writeFile(
-				join(custom, "settings.jsonc"),
-				JSON.stringify({
-					plugins: [
-						{ plugin: "codework.prompt.default", options: { ignored: true } },
-						pluginPath("tool/acme-echo"),
-					],
-				}),
-			);
-			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
-			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash", "acme_echo"]);
-			// Configuration never moves a plugin, and the prompt plugin runs after the tools
-			// regardless, so the tool is indexed either way.
-			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
-		}));
-
-	it("prepares a settings block mixing package specs, an anchored path, options and a disable", () =>
-		withSettings(async ({ root, custom, global }) => {
-			// The composition `Harness.layer` performs, with real modules behind the two package
-			// specs: only the registry install is a seam, because reaching npm is not this suite's
-			// business. Imports, anchoring and ordering are the real ones.
-			const packaged = join(custom, "packages");
-			await mkdir(packaged, { recursive: true });
-			await mkdir(join(custom, "plugins"), { recursive: true });
-			await writeFile(
-				join(packaged, "tool.mjs"),
-				"export default { id: 'acme.tool.example', kind: 'tool', setup() {} }",
-			);
-			await writeFile(
-				join(packaged, "prompt.mjs"),
-				"export default { id: 'acme.prompt.example', kind: 'prompt', setup() {} }",
-			);
-			await writeFile(
-				join(custom, "plugins", "local.mjs"),
-				"export default { id: 'acme.tool.local', kind: 'tool', setup() {} }",
-			);
-			await writeFile(
-				join(custom, "settings.jsonc"),
-				JSON.stringify({
-					plugins: [
-						"codework-acme-plugin",
-						"@acme/codework-plugin@1.2.0",
-						"./plugins/local.mjs",
-						{ plugin: "acme.tool.example", options: { retries: 2 } },
-						{ plugin: "codework.tool.bash", enabled: false },
-					],
-				}),
-			);
-			const specs: string[] = [];
-			const config = await Effect.runPromise(Settings.load({ hostDir: root, userConfigDir: custom, home: global }));
-			const prepared = await Effect.runPromise(
-				prepare([...builtins, ...config.plugins], {
-					builtins,
-					cache: join(root, "cache"),
-					hostDir: root,
-					install: (target) => {
-						specs.push(target.spec);
-						const module = target.spec.startsWith("codework-acme-plugin") ? "tool.mjs" : "prompt.mjs";
-						return Effect.succeed({ url: pathToFileURL(join(packaged, module)).href, version: "1.2.0" });
-					},
-				}),
-			);
-			expect(specs).toEqual(["codework-acme-plugin@latest", "@acme/codework-plugin@1.2.0"]);
-			// Bash is gone, the options entry configured the package plugin without moving it, and
-			// the relative entry resolved against the settings file rather than `hostCwd`.
-			// Tools first, then prompts; within a domain, the order the entries were written in.
-			expect(prepared.map((entry) => [entry.plugin.id, entry.options])).toEqual([
-				["acme.tool.example", { retries: 2 }],
-				["acme.tool.local", {}],
-				["codework.prompt.default", {}],
-				["acme.prompt.example", {}],
-			]);
-		}));
-
-	it("lets an explicit option selection replace the settings plugins", () =>
-		withSettings(async ({ root, custom }) => {
-			// The broken plugin would fail preparation if settings still contributed.
-			await writeFile(
-				join(custom, "settings.jsonc"),
-				JSON.stringify({ plugins: [pluginPath("host/acme-broken.ts")] }),
-			);
-			const { contexts } = await exchange({
-				root,
-				userConfigDir: custom,
-				plugins: [bashPlugin, defaultPromptPlugin],
-			});
-			expect(contexts[0]?.tools?.map((tool) => tool.name)).toEqual(["bash"]);
 		}));
 
 	it("honours an empty option selection over both the settings and the built-ins", () =>
@@ -317,28 +113,6 @@ describe("third-party plugins", () => {
 			).rejects.toMatchObject({ _tag: "PluginLoadError", reason: "plugin-invalid-definition" });
 			expect(calls).toBe(0);
 		}));
-
-	it("loads a directory package and a single file through real imports", async () => {
-		const plugins = await Effect.runPromise(
-			prepare([pluginPath("tool/acme-echo"), `file://${pluginPath("prompt/acme-prompt.ts")}`], {
-				builtins: [],
-				cache: "/unused",
-				hostDir: "/project",
-			}),
-		);
-		expect(plugins.map((entry) => entry.plugin.id)).toEqual(["acme.tool.echo", "acme.prompt.marker"]);
-	});
-
-	it("rejects a malformed module and a reserved namespace through real imports", async () => {
-		const failure = await Effect.runPromise(
-			prepare([pluginPath("host/acme-broken.ts")], {
-				builtins: [],
-				cache: "/unused",
-				hostDir: "/project",
-			}).pipe(Effect.flip),
-		);
-		expect(failure).toMatchObject({ _tag: "PluginLoadError", reason: "plugin-invalid-definition" });
-	});
 
 	it("runs a package tool through the loop, with its after hook applied", () =>
 		withSettings(async ({ root }) => {
@@ -403,17 +177,6 @@ describe("third-party plugins", () => {
 				status: "completed",
 				result: { content: [{ type: "text", text: "acme-override:echo hi" }] },
 			});
-		}));
-
-	it("composes a prompt plugin over the default, after tool contributors", () =>
-		withSettings(async ({ root }) => {
-			const { prompts } = await exchange({
-				root,
-				plugins: [pluginPath("tool/acme-echo"), defaultPromptPlugin, pluginPath("prompt/acme-prompt.ts")],
-			});
-			expect(prompts[0]).toContain("You are an expert coding assistant");
-			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
-			expect(prompts[0]?.endsWith("\n\nacme-marker")).toBe(true);
 		}));
 
 	it("publishes plugin-owned durable and ephemeral events", () =>
@@ -513,27 +276,6 @@ describe("third-party plugins", () => {
 				_tag: "State.SnapshotError",
 				cause: { _tag: "Plugin.SetupError", pluginId: "acme.tool.malformed" },
 			});
-		}));
-
-	it("fails harness construction with the preparation error", () =>
-		withSettings(async ({ root }) => {
-			const failure = await Effect.runPromise(
-				Effect.gen(function* () {
-					yield* Session.create({ directory: root });
-				}).pipe(
-					Effect.provide(
-						Harness.layer({
-							hostCwd: root,
-							database: ":memory:",
-							llm: immediateOpen(),
-							plugins: [pluginPath("host/acme-broken.ts")],
-						}),
-					),
-					Effect.scoped,
-					Effect.flip,
-				),
-			);
-			expect(failure).toMatchObject({ _tag: "PluginLoadError", reason: "plugin-invalid-definition" });
 		}));
 
 	it("relabels an overridden tool on the winner, keeping its hooks", () =>

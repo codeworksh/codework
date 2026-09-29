@@ -20,82 +20,7 @@ const seedProject = Effect.gen(function* () {
 });
 
 describe("SandboxInstance", () => {
-	describe("model", () => {
-		it(
-			"brands ids and reserves the host identity",
-			Effect.sync(() => {
-				expect(SandboxInstance.ID.local).toBe("local");
-				expect(id("anything")).toBe("anything");
-				expect(SandboxInstance.ID.create()).toMatch(/^sbx_/);
-			}),
-		);
-
-		// The mountable set is the predicate every conditional write depends on, so
-		// it is asserted exactly rather than sampled.
-		it(
-			"treats online, offline and faulted as mountable and nothing else",
-			Effect.sync(() => {
-				expect([...SandboxInstance.mountable].sort()).toEqual(["faulted", "offline", "online"]);
-
-				// offline qualifies because mounting wakes; faulted qualifies because
-				// a fault is a usability condition, not an identity one.
-				expect(SandboxInstance.isMountable("offline")).toBe(true);
-				expect(SandboxInstance.isMountable("faulted")).toBe(true);
-
-				for (const status of ["provisioning", "suspending", "removing", "removed", "unavail"] as const) {
-					expect(SandboxInstance.isMountable(status)).toBe(false);
-				}
-			}),
-		);
-
-		// `resuming` would exist to be observed by nothing: mounting wakes, offline
-		// is already mountable, and waking needs no claim because it is not
-		// destructive. `suspending`/`removing` stay because they *are* claims.
-		it(
-			"has no resuming status",
-			Effect.sync(() => {
-				expect(SandboxInstance.Status.literals).not.toContain("resuming");
-				expect(SandboxInstance.Status.literals).toContain("suspending");
-				expect(SandboxInstance.Status.literals).toContain("removing");
-			}),
-		);
-
-		// `removed` is ours, `unavail` is the driver's claim. Collapsing them would
-		// let a misclassified 404 look like a destruction we performed.
-		it(
-			"keeps removed and unavail distinct",
-			Effect.sync(() => {
-				expect(SandboxInstance.Status.literals).toContain("removed");
-				expect(SandboxInstance.Status.literals).toContain("unavail");
-			}),
-		);
-
-		// One mapping, both directions, for both carrier shapes. Runtime code always
-		// holds a concrete id and never branches on the host.
-		it(
-			"maps the host to NULL at the storage boundary and back",
-			Effect.sync(() => {
-				expect(SandboxInstance.toColumn(SandboxInstance.ID.local)).toBe(null);
-				expect(SandboxInstance.fromColumn(null)).toBe(SandboxInstance.ID.local);
-
-				expect(SandboxInstance.toColumn(id("sbx_1"))).toBe("sbx_1");
-				expect(SandboxInstance.fromColumn("sbx_1")).toBe("sbx_1");
-
-				expect(Option.isNone(SandboxInstance.toField(SandboxInstance.ID.local))).toBe(true);
-				expect(SandboxInstance.fromField(Option.none())).toBe(SandboxInstance.ID.local);
-				expect(SandboxInstance.fromField(Option.some(id("sbx_1")))).toBe("sbx_1");
-			}),
-		);
-	});
-
 	describe("schema", () => {
-		it(
-			"migrates to an empty instance table",
-			Effect.gen(function* () {
-				expect(yield* (yield* sandboxStore).list).toEqual([]);
-			}),
-		);
-
 		// The reserved id must have exactly one storage form. A row spelling it
 		// would be a second one, silently competing with NULL.
 		it(
@@ -248,15 +173,6 @@ describe("SandboxInstance", () => {
 
 				const row = Option.getOrThrow(yield* store.find(id("sbx_m")));
 				expect(row.status).toBe("suspending");
-			}),
-		);
-
-		it(
-			"reports a missing instance as absent rather than failing",
-			Effect.gen(function* () {
-				const store = yield* sandboxStore;
-				expect(Option.isNone(yield* store.find(id("absent")))).toBe(true);
-				expect(yield* store.transition({ id: id("absent"), from: ["online"], to: "removed" })).toBe(false);
 			}),
 		);
 

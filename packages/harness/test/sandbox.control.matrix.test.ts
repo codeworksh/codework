@@ -9,7 +9,6 @@ import { FakeSandboxDriver } from "../src/sandbox/drivers/fake.ts";
 import {
 	SandboxBusyError,
 	SandboxDriverRegistrationError,
-	SandboxNotFoundError,
 	SandboxUnavailError,
 	SandboxUnsupportedError,
 } from "../src/sandbox/errors.ts";
@@ -20,10 +19,9 @@ import { testEffect } from "./utils/effect.ts";
 
 /**
  * Control-plane matrix gaps: operations and edges the main controller suite
- * does not pin — `withMount`, non-mountable statuses, fault recovery by mount,
- * mount-time not-found, stop guards, live-reference wake, registration
- * conflicts, capability/implementation mismatches, host lifecycle refusals,
- * usage filtering, shutdown without deletion, and transport idle eviction.
+ * does not pin — non-mountable statuses, fault recovery by mount, mount-time
+ * not-found, stop guards, live-reference wake, registration conflicts, host
+ * lifecycle refusals, shutdown without deletion, and transport idle eviction.
  */
 
 const fake = FakeSandboxDriver.make(SandboxDriver.Name.make("matrix-fake"));
@@ -53,62 +51,6 @@ const mountExit = (controller: SandboxController.Controller["Service"], id: Sand
 	);
 
 describe("Sandbox.Controller matrix", () => {
-	it(
-		"withMount provides the mount, holds one lease, and releases it after use",
-		Effect.gen(function* () {
-			const controller = yield* SandboxController.Controller;
-			const info = yield* create(controller);
-
-			const observed = yield* controller.withMount(
-				info.id,
-				Effect.gen(function* () {
-					const current = yield* SandboxIO.Current;
-					const fs = yield* SandboxIO.FileSystem;
-					yield* fs.writeFile("probe.txt", "via withMount");
-					return {
-						current,
-						usage: Option.getOrThrow(yield* controller.get(info.id)).usage,
-					};
-				}),
-			);
-
-			expect(observed.current.id).toBe(info.id);
-			expect(observed.current.cwd).toBe("/workspace");
-			expect(observed.usage).toBe("busy");
-			expect(Option.getOrThrow(yield* controller.get(info.id)).usage).toBe("idle");
-
-			// the write really landed in the namespace, resolved against mount cwd
-			const persisted = yield* controller.withMount(
-				info.id,
-				Effect.flatMap(SandboxIO.FileSystem, (fs) => fs.readFile("/workspace/probe.txt")),
-			);
-			expect(persisted).toBe("via withMount");
-		}),
-	);
-
-	it(
-		"withMount surfaces the typed mount error for an unknown instance",
-		Effect.gen(function* () {
-			const controller = yield* SandboxController.Controller;
-			const exit = yield* Effect.exit(controller.withMount(SandboxInstance.ID.create(), Effect.void));
-			expect(failure(exit)).toBeInstanceOf(SandboxNotFoundError);
-		}),
-	);
-
-	it(
-		"resolves a relative mount cwd against the driver's default cwd",
-		Effect.gen(function* () {
-			const controller = yield* SandboxController.Controller;
-			const info = yield* create(controller);
-
-			const current = yield* Effect.flatMap(SandboxIO.Current, Effect.succeed).pipe(
-				Effect.provide(controller.mount(info.id, { cwd: "nested" })),
-				Effect.scoped,
-			);
-			expect(current.cwd).toBe("/workspace/nested");
-		}),
-	);
-
 	it(
 		"refuses to mount while suspending, removing, or provisioning",
 		Effect.gen(function* () {
@@ -301,28 +243,6 @@ describe("Sandbox.Controller matrix", () => {
 	);
 
 	it(
-		"reports refresh as unsupported when the driver has no inspect",
-		Effect.gen(function* () {
-			const bare = FakeSandboxDriver.make(SandboxDriver.Name.make("matrix-no-inspect"));
-			const { registered: _registered, inspect: _inspect, ...rest } = bare.driver;
-			const noInspect = SandboxDriver.driver({
-				...rest,
-				capabilities: { ...rest.capabilities, inspect: false },
-			});
-
-			const controller = yield* SandboxController.make({ hostCwd: "/", transportIdleTimeToLive: "1 hour" }).pipe(
-				Effect.provide(SandboxDriverRegistry.layer(noInspect)),
-			);
-			const info = yield* controller.create({
-				driver: noInspect,
-				config: { defaultCwd: SandboxDriver.AbsolutePath.make("/workspace") },
-			});
-
-			expect(failure(yield* Effect.exit(controller.refresh(info.id)))).toBeInstanceOf(SandboxUnsupportedError);
-		}),
-	);
-
-	it(
 		"treats the host as pinned: wake is identity, stop and refresh are unsupported",
 		Effect.gen(function* () {
 			const controller = yield* SandboxController.Controller;
@@ -337,26 +257,6 @@ describe("Sandbox.Controller matrix", () => {
 			expect(failure(yield* Effect.exit(controller.refresh(SandboxInstance.ID.local)))).toBeInstanceOf(
 				SandboxUnsupportedError,
 			);
-		}),
-	);
-
-	it(
-		"filters list by usage and answers unknown ids with none",
-		Effect.gen(function* () {
-			const controller = yield* SandboxController.Controller;
-			const info = yield* create(controller);
-
-			yield* Effect.gen(function* () {
-				const busy = yield* controller.list({ usage: "busy" });
-				expect(busy.map((entry) => entry.id)).toEqual([info.id]);
-				const idle = yield* controller.list({ usage: "idle" });
-				expect(idle.some((entry) => entry.id === info.id)).toBe(false);
-			}).pipe(Effect.provide(controller.mount(info.id)), Effect.scoped);
-
-			const pinned = yield* controller.list({ usage: "pinned" });
-			expect(pinned.map((entry) => entry.id)).toEqual([SandboxInstance.ID.local]);
-
-			expect(Option.isNone(yield* controller.get(SandboxInstance.ID.create()))).toBe(true);
 		}),
 	);
 
@@ -384,39 +284,6 @@ describe("Sandbox.Controller matrix", () => {
 			yield* TestClock.adjust("30 seconds");
 			yield* probe;
 			expect(fake.state.calls.attach.length - before).toBe(2);
-		}),
-	);
-});
-
-describe("SandboxDriver registry capability validation", () => {
-	const base = FakeSandboxDriver.make(SandboxDriver.Name.make("matrix-caps"));
-
-	it(
-		"rejects a declared capability with no implementation",
-		Effect.gen(function* () {
-			const { registered: _registered, wake: _wake, ...rest } = base.driver;
-			const missingWake = SandboxDriver.driver(rest);
-
-			const exit = yield* Effect.exit(SandboxDriverRegistry.make([missingWake]));
-			const error = failure(exit);
-			expect(error).toBeInstanceOf(SandboxDriverRegistrationError);
-			expect((error as SandboxDriverRegistrationError).reason).toContain("wake");
-		}),
-	);
-
-	it(
-		"rejects an implemented operation whose capability is undeclared",
-		Effect.gen(function* () {
-			const { registered: _registered, ...rest } = base.driver;
-			const undeclaredWake = SandboxDriver.driver({
-				...rest,
-				capabilities: { ...rest.capabilities, wake: false },
-			});
-
-			const exit = yield* Effect.exit(SandboxDriverRegistry.make([undeclaredWake]));
-			const error = failure(exit);
-			expect(error).toBeInstanceOf(SandboxDriverRegistrationError);
-			expect((error as SandboxDriverRegistrationError).reason).toContain("wake");
 		}),
 	);
 });

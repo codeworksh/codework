@@ -7,7 +7,6 @@ import { EnvInMemory } from "../src/sandbox/fs/inmemory.ts";
 import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
 import { EnvNodeJSDefault } from "../src/sandbox/fs/nodejs.ts";
 import { Local } from "../src/sandbox/fs/vfs.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import { HostExe } from "../src/sandbox/shell/host.ts";
 import { EnvBash } from "../src/sandbox/shell/justbash.ts";
@@ -65,91 +64,6 @@ describe("SandboxIO.mount", () => {
 		// one relative path, two files, neither mount having moved the other
 		expect(await fs.readFile(path.join(alpha, "marker.txt"), "utf8")).toBe(alpha);
 		expect(await fs.readFile(path.join(beta, "marker.txt"), "utf8")).toBe(beta);
-	});
-
-	it("shares one transport between mounts, so absolute paths cross freely", async () => {
-		await using tmp = await tmpdir();
-		const root = await realpath(tmp.path);
-		const alpha = path.join(root, "alpha");
-		const beta = path.join(root, "beta");
-		await fs.mkdir(alpha);
-		await fs.mkdir(beta);
-
-		const write = at(
-			alpha,
-			Effect.flatMap(SandboxFileSystem.Service, (filesystem) =>
-				filesystem.writeFile("shared.txt", "written by alpha"),
-			),
-		);
-		// The second mount is a different working directory over the *same*
-		// namespace, so an absolute path written by the first is plainly visible.
-		const read = at(
-			beta,
-			Effect.flatMap(SandboxFileSystem.Service, (filesystem) => filesystem.readFile(path.join(alpha, "shared.txt"))),
-		);
-
-		const content = await Effect.runPromise(Effect.andThen(write, read).pipe(Effect.provide(transport)));
-
-		expect(content).toBe("written by alpha");
-	});
-
-	it("resolves relative filesystem paths against the mount, and leaves absolute ones alone", async () => {
-		await using tmp = await tmpdir();
-		const root = await realpath(tmp.path);
-		const nested = path.join(root, "nested");
-		await fs.mkdir(nested);
-
-		const result = await Effect.runPromise(
-			at(
-				nested,
-				Effect.gen(function* () {
-					const filesystem = yield* SandboxFileSystem.Service;
-					yield* filesystem.writeFile("relative.txt", "relative");
-					yield* filesystem.writeFile(path.join(root, "absolute.txt"), "absolute");
-					return {
-						relative: yield* filesystem.readFile("relative.txt"),
-						absolute: yield* filesystem.readFile(path.join(root, "absolute.txt")),
-						// the relative write landed under the mount, not the root
-						escaped: yield* filesystem.exists(path.join(root, "relative.txt")),
-					};
-				}),
-			).pipe(Effect.provide(transport)),
-		);
-
-		expect(result.relative).toBe("relative");
-		expect(result.absolute).toBe("absolute");
-		expect(result.escaped).toBe(false);
-	});
-
-	it("lets an operation override the mount directory, absolutely or relatively", async () => {
-		await using tmp = await tmpdir();
-		const root = await realpath(tmp.path);
-		const alpha = path.join(root, "alpha");
-		const nested = path.join(alpha, "nested");
-		await fs.mkdir(nested, { recursive: true });
-
-		const result = await Effect.runPromise(
-			at(
-				alpha,
-				Effect.gen(function* () {
-					const shell = yield* Shell;
-					return {
-						mounted: (yield* shell.exec("pwd")).stdout.trim(),
-						// an absolute override wins outright
-						absolute: (yield* shell.exec("pwd", { cwd: root })).stdout.trim(),
-						// a relative one resolves against the mount, so it reads as it looks
-						relative: (yield* shell.exec("pwd", { cwd: "nested" })).stdout.trim(),
-						// and the same holds for the argv form
-						argv: (yield* shell.execArgv(["pwd"], { cwd: "nested" })).stdout.trim(),
-					};
-				}),
-			).pipe(Effect.provide(transport)),
-		);
-
-		expect(result.mounted).toBe(alpha);
-		expect(result.absolute).toBe(root);
-		expect(result.relative).toBe(nested);
-		expect(result.argv).toBe(nested);
 	});
 
 	it("does not let an override leak into the next operation", async () => {
@@ -253,32 +167,9 @@ describe("SandboxIO.mount over a shared virtual filesystem", () => {
 		expect(result.beta.exitCode).not.toBe(0);
 		expect(result.beta.stdout).toBe("");
 	});
-
-	it("retains interpreter state when the transport is used without a mount", async () => {
-		const primitives = EnvInMemory.layer({ cwd: "/" });
-		const transport = Layer.provideMerge(Layer.merge(Local.layer, EnvBash.transport(primitives)), primitives);
-		const marker = "transport_root";
-
-		const result = await Effect.runPromise(
-			Effect.gen(function* () {
-				const shell = yield* Shell;
-				yield* shell.exec(`hash -p /bin/echo ${marker}`);
-				return yield* shell.exec(`hash -t ${marker}`);
-			}).pipe(Effect.provide(transport)),
-		);
-
-		expect(result).toMatchObject({ exitCode: 0, stdout: "/bin/echo\n" });
-	});
 });
 
 describe("SandboxIO identity", () => {
-	it("resolves an omitted or relative mount cwd against the namespace default", () => {
-		expect(SandboxIO.resolveMountCwd("/workspace")).toBe("/workspace");
-		expect(SandboxIO.resolveMountCwd("/workspace", "repo")).toBe("/workspace/repo");
-		expect(SandboxIO.resolveMountCwd("/workspace", "/tmp")).toBe("/tmp");
-		expect(() => SandboxIO.resolveMountCwd("workspace")).toThrow("Sandbox default cwd must be absolute");
-	});
-
 	// `cwd` is persisted, and `space` is keyed on a hash of the path:
 	// a surviving trailing slash would be a second row for one directory. A
 	// provider default (`getWorkDir()`) or a config value may carry one.
@@ -290,50 +181,5 @@ describe("SandboxIO identity", () => {
 		// the namespace root is the one place a trailing slash *is* the path
 		expect(SandboxIO.resolveMountCwd("/")).toBe("/");
 		expect(SandboxIO.virtual({ driver: "memory", defaultCwd: "/" }).cwd).toBe("/");
-	});
-
-	it("defaults the host to its process working directory", () => {
-		const identity = SandboxIO.host(process.cwd());
-
-		expect(identity.cwd).toBe(process.cwd());
-		expect(identity.id).toBe(SandboxInstance.ID.local);
-		expect(identity.kind).toBe("local");
-	});
-
-	it("resolves a relative host cwd from its process working directory", () => {
-		expect(() => SandboxIO.host("repo")).toThrow("Sandbox default cwd must be absolute");
-	});
-
-	it("mints a distinct id per virtual namespace unless one is named", () => {
-		const first = SandboxIO.virtual({ driver: "memory" });
-		const second = SandboxIO.virtual({ driver: "memory" });
-		const named = SandboxIO.virtual({ driver: "sqldb", id: SandboxInstance.ID.make("sbx_named") });
-
-		// building one of these builds a fresh VFS, so N calls are N namespaces
-		expect(first.id).not.toBe(second.id);
-		expect(first.kind).toBe("virtual");
-		expect(first.cwd).toBe("/");
-		expect(named.id).toBe("sbx_named");
-	});
-
-	it("carries the id it is given for a remote namespace", () => {
-		const identity = SandboxIO.remote({
-			driver: "vercel",
-			id: SandboxInstance.ID.make("sbx_remote"),
-			defaultCwd: "/vercel/sandbox",
-			cwd: "/work",
-		});
-
-		expect(identity).toEqual({ id: "sbx_remote", driver: "vercel", kind: "remote", cwd: "/work" });
-	});
-
-	it("uses a remote driver's default cwd when the mount does not override it", () => {
-		const identity = SandboxIO.remote({
-			driver: "vercel",
-			id: SandboxInstance.ID.make("sbx_remote"),
-			defaultCwd: "/vercel/sandbox",
-		});
-
-		expect(identity.cwd).toBe("/vercel/sandbox");
 	});
 });

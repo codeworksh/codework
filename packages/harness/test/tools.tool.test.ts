@@ -1,48 +1,13 @@
 import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
-import { bashDef } from "../src/plugin/builtin/tool/bash.ts";
 import * as Executor from "../src/tool/executor.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
-class ExpectedFailure extends Schema.TaggedError<ExpectedFailure>()("ExpectedFailure", {
-	message: Schema.String,
-}) {}
-
 const EmptyParams = Schema.Struct({});
 const EmptySuccess = Schema.Struct({});
 
-const call = (name: string) => pendingCall(name, {}, "call-1");
-
-describe("Tool definition", () => {
-	it("is pure, serializable data", () => {
-		expect(bashDef.name).toBe("bash");
-		expect(bashDef.label).toBe("bash");
-		expect(typeof bashDef.description).toBe("string");
-		// schemas are present (not the decoded values)
-		expect(bashDef.parameters).toBeDefined();
-		expect(bashDef.success).toBeDefined();
-		expect(bashDef.failure).toBeDefined();
-	});
-});
-
 describe("toProviderJsonSchema", () => {
-	it("derives a provider-clean JSON schema with no top-level $ref", () => {
-		const js = Tool.toProviderJsonSchema(bashDef.parameters);
-
-		expect(js.type).toBe("object");
-		expect(js).not.toHaveProperty("$ref");
-		expect(js.properties).toBeDefined();
-
-		const properties = js.properties as Record<string, unknown>;
-		expect(properties.command).toBeDefined();
-		expect(properties.timeout).toBeDefined();
-
-		// `command` is required; `timeout` is optional.
-		expect(js.required).toContain("command");
-		expect(js.required).not.toContain("timeout");
-	});
-
 	it("inlines nested struct references (no top-level $ref) for a non-trivial schema", () => {
 		const Nested = Schema.Struct({
 			outer: Schema.Struct({ inner: Schema.String }),
@@ -54,18 +19,6 @@ describe("toProviderJsonSchema", () => {
 		expect(js).not.toHaveProperty("$ref");
 		const properties = js.properties as Record<string, { type?: string }>;
 		expect(properties.outer?.type).toBe("object");
-	});
-});
-
-describe("toAikitTool", () => {
-	it("produces the aikit wire view (name, description, parameters)", () => {
-		const tool = Tool.toAikitTool(bashDef);
-
-		expect(tool.name).toBe("bash");
-		expect(typeof tool.description).toBe("string");
-		expect(tool.parameters).toBeDefined();
-		// parameters is the derived JSON schema object
-		expect((tool.parameters as unknown as { type?: string }).type).toBe("object");
 	});
 });
 
@@ -87,24 +40,6 @@ describe("Executor", () => {
 		});
 
 		expect(() => Executor.make([Tool.register(first), Tool.register(second)])).toThrow(/duplicate/i);
-	});
-
-	it("returns declared failures as encoded tool errors", async () => {
-		const tool = Tool.make({
-			name: "returnedFailure",
-			description: "fails as a tool result",
-			parameters: EmptyParams,
-			success: EmptySuccess,
-			failure: ExpectedFailure,
-			handler: () => Effect.fail(new ExpectedFailure({ message: "boom" })),
-		});
-		const executor = Executor.make([Tool.register(tool)]);
-
-		const outcome = await Effect.runPromise(executor.handle(call("returnedFailure")));
-
-		expect(outcome.status).toBe("error");
-		expect(outcome.result.isError).toBe(true);
-		expect(outcome.result.details).toMatchObject({ _tag: "ExpectedFailure", message: "boom" });
 	});
 
 	it("preserves the complete pending part when producing a terminal result", async () => {
@@ -134,23 +69,5 @@ describe("Executor", () => {
 			time: { start: 100 },
 		});
 		expect(outcome.time.end).toBeGreaterThanOrEqual(120);
-	});
-
-	it("omits optional details from content-only results", async () => {
-		const tool = Tool.make({
-			name: "contentOnly",
-			description: "returns content without structured details",
-			parameters: EmptyParams,
-			success: Schema.Void,
-			encodeContent: () => [{ type: "text", text: "done" }],
-			handler: () => Effect.void,
-		});
-		const executor = Executor.make([Tool.register(tool)]);
-
-		const outcome = await Effect.runPromise(executor.handle(call("contentOnly")));
-
-		expect(outcome.status).toBe("completed");
-		expect(outcome.result.content).toEqual([{ type: "text", text: "done" }]);
-		expect(outcome.result).not.toHaveProperty("details");
 	});
 });

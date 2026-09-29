@@ -60,6 +60,13 @@ This project uses private design documents under `.notes/` as implementation ref
 - Allow the design docs to be reviewed by subagents when see fit.
 - Propose improvements when see fit.
 
+## Testing
+
+- Never write unit tests after you write code.
+- Highly prefer E2E tests as the sole testing mechanism. Use them to verify complex features work (spawn the real CLI, boot the real runtime, hit the real provider or sandbox).
+- At the end of an E2E test, produce a verifiable and repeatable artifact under `__artifacts__/` (e.g. a path-normalised `toMatchFileSnapshot("./__artifacts__/<name>.json")` that fails on drift and regenerates with `-u`). Do not use `__snapshots__/`.
+- If you must test a system in isolation, first write down all the ways it could fail, then write the code. Only keep an isolated test if it catches a real bug the E2E tests miss (wire-protocol parsing, OAuth refresh, cancellation/concurrency, data integrity, security boundaries).
+
 ## Task Completion Requirements
 
 - `vp check` and `vp run typecheck` must pass before considering tasks completed, unless otherwise specified.

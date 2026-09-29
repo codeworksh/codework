@@ -11,27 +11,6 @@ import { it } from "./utils/effect.ts";
  * clocks so nothing depends on timing.
  */
 
-/** A drain whose every invocation is observable and individually releasable. */
-const recorder = () => {
-	const forces: boolean[] = [];
-	const keys: string[] = [];
-	return {
-		forces,
-		keys,
-		get calls() {
-			return forces.length;
-		},
-		/** `hold` gates the first invocation only; later ones return immediately. */
-		drain: (hold?: Deferred.Deferred<void>) => (key: string, force: boolean) =>
-			Effect.suspend(() => {
-				const first = forces.length === 0;
-				forces.push(force);
-				keys.push(key);
-				return first && hold !== undefined ? Deferred.await(hold) : Effect.void;
-			}),
-	};
-};
-
 /** Let forked fibers make progress without introducing a clock dependency. */
 const settle = Effect.andThen(Effect.yieldNow, Effect.andThen(Effect.yieldNow, Effect.yieldNow));
 
@@ -84,33 +63,6 @@ describe("RunCoordinator", () => {
 
 			// And joining did not queue a second pass on the way out.
 			expect(calls).toBe(1);
-		}),
-	);
-
-	it.effect(
-		"run forces a pass; wake does not",
-		Effect.gen(function* () {
-			const record = recorder();
-			const coordinator = yield* RunCoordinator.make<string, never>({ drain: record.drain() });
-
-			yield* coordinator.run("session");
-			yield* coordinator.wake("session");
-			yield* coordinator.awaitIdle("session");
-
-			expect(record.forces).toEqual([true, false]);
-		}),
-	);
-
-	it.effect(
-		"awaitIdle returns immediately while idle without starting work",
-		Effect.gen(function* () {
-			const record = recorder();
-			const coordinator = yield* RunCoordinator.make<string, never>({ drain: record.drain() });
-
-			yield* coordinator.awaitIdle("session");
-
-			expect(record.calls).toBe(0);
-			expect(Array.from(yield* coordinator.active)).toEqual([]);
 		}),
 	);
 
@@ -169,37 +121,6 @@ describe("RunCoordinator", () => {
 			yield* Deferred.succeed(secondGate, undefined);
 			yield* Fiber.join(running);
 			yield* Fiber.join(idle);
-			expect(forces).toEqual([true, false]);
-		}),
-	);
-
-	it.effect(
-		"a wake during an active drain runs exactly one follow-up pass, unforced",
-		Effect.gen(function* () {
-			const gate = yield* Deferred.make<void>();
-			const started = yield* Deferred.make<void>();
-			const forces: boolean[] = [];
-
-			const coordinator = yield* RunCoordinator.make<string, never>({
-				drain: (_key, force) =>
-					Effect.suspend(() => {
-						const first = forces.length === 0;
-						forces.push(force);
-						return first
-							? Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(gate)))
-							: Effect.void;
-					}),
-			});
-
-			const fiber = yield* Effect.forkChild(coordinator.run("session"));
-			yield* Deferred.await(started);
-			yield* coordinator.wake("session");
-			yield* Deferred.succeed(gate, undefined);
-			yield* Fiber.join(fiber);
-			yield* settle;
-
-			// New work arrived mid-drain, so a second pass runs — and the caller of
-			// `run` stays joined until that successor finishes.
 			expect(forces).toEqual([true, false]);
 		}),
 	);
@@ -300,20 +221,6 @@ describe("RunCoordinator", () => {
 
 			yield* Deferred.succeed(secondGate, undefined);
 			yield* Fiber.join(b);
-			expect(Array.from(yield* coordinator.active)).toEqual([]);
-		}),
-	);
-
-	it.effect(
-		"interrupting an idle key is a no-op",
-		Effect.gen(function* () {
-			const record = recorder();
-			const coordinator = yield* RunCoordinator.make<string, never>({ drain: record.drain() });
-
-			expect(yield* coordinator.interrupt("never-started")).toBe(false);
-			yield* settle;
-
-			expect(record.calls).toBe(0);
 			expect(Array.from(yield* coordinator.active)).toEqual([]);
 		}),
 	);

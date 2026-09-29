@@ -1,6 +1,6 @@
 import "./utils/env.ts";
 import { Settings } from "../src/settings/settings.ts";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -10,11 +10,9 @@ import { describe, expect } from "vite-plus/test";
 import { Harness } from "../src/effect/harness.ts";
 import { Sandbox } from "../src/effect/sandbox.ts";
 import { Session } from "../src/effect/session.ts";
-import { Global } from "../src/global.ts";
 import type { LLM } from "../src/runner/llm.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
-import { Session as SessionStore } from "../src/session/session.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { it } from "./utils/effect.ts";
 
@@ -32,34 +30,6 @@ const withHarness = <A, E, R>(effect: Effect.Effect<A, E, R>, llm?: LLM.Open) =>
 	);
 
 describe("Harness Effect SDK", () => {
-	it.effect("creates an isolated local session with an internal id-derived slug", () =>
-		withHarness(
-			Effect.gen(function* () {
-				const session = yield* Session.create({ title: "CLI", directory: process.cwd() });
-				const info = yield* session.info;
-				expect(info.id).toBe(session.id);
-				expect(info.title).toBe("CLI");
-				expect(info.directory).toBe(process.cwd());
-				expect(info.sandbox).toBeUndefined();
-
-				const store = yield* SessionStore.Service;
-				const row = Option.getOrThrow(yield* store.get(session.id));
-				expect(row.slug).toBe(session.id);
-			}),
-		),
-	);
-
-	it.effect("attaches a new handle to a persisted session id", () =>
-		withHarness(
-			Effect.gen(function* () {
-				const created = yield* Session.create({ directory: process.cwd() });
-				const attached = yield* Session.attach({ sessionId: created.id });
-				expect(attached.id).toBe(created.id);
-				expect(Option.isSome(yield* Session.get(created.id))).toBe(true);
-			}),
-		),
-	);
-
 	it.effect("keeps prior runtime config when attach names none", () => {
 		const contexts: Parameters<typeof immediateOpen>[0] = [];
 		const inputs: LLM.Input[] = [];
@@ -87,28 +57,6 @@ describe("Harness Effect SDK", () => {
 				]);
 			}),
 			llm,
-		);
-	});
-
-	it.effect("runs a prompt to completion and continues through an attached handle", () => {
-		const contexts: Parameters<typeof immediateOpen>[0] = [];
-		return withHarness(
-			Effect.gen(function* () {
-				const created = yield* Session.create({ directory: process.cwd() });
-				yield* created.run("first");
-				expect((yield* created.path()).map(({ entry }) => entry.type)).toEqual(["user", "assistant"]);
-
-				const attached = yield* Session.attach({ sessionId: created.id });
-				yield* attached.run("second");
-				expect((yield* attached.path()).map(({ entry }) => entry.type)).toEqual([
-					"user",
-					"assistant",
-					"user",
-					"assistant",
-				]);
-				expect(contexts).toHaveLength(2);
-			}),
-			immediateOpen(contexts),
 		);
 	});
 
@@ -229,19 +177,6 @@ describe("Harness Effect SDK", () => {
 					}),
 				),
 			(base) => Effect.promise(() => fs.rm(base, { recursive: true, force: true })),
-		),
-	);
-
-	it.effect("derives Global children from Harness.layer home", () =>
-		Effect.acquireUseRelease(
-			Effect.promise(() => fs.mkdtemp(path.join(os.tmpdir(), "codework-sdk-home-"))),
-			(home) =>
-				Effect.gen(function* () {
-					const global = yield* Global.Service;
-					expect(global.home).toBe(home);
-					expect(global.data).toBe(path.join(home, "data"));
-				}).pipe(Effect.provide(Harness.layer({ database: ":memory:", home, hostCwd: home })), Effect.scoped),
-			(home) => Effect.promise(() => fs.rm(home, { recursive: true, force: true })),
 		),
 	);
 

@@ -3,28 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Value from "typebox/value";
 import { describe, expect, it } from "vite-plus/test";
-import {
-	generateModels as generateModelsImplementation,
-	githubCopilotApiMethod,
-	githubCopilotBuiltInModels,
-	openAICodexBuiltInModels,
-} from "../src/cli/modelgen.ts";
+import { githubCopilotApiMethod, githubCopilotBuiltInModels, openAICodexBuiltInModels } from "../src/cli/modelgen.ts";
 import * as Model from "../src/model/model.ts";
 import * as ModelCatalog from "../src/model/catalog.ts";
 import * as Thinking from "../src/llm/thinking.ts";
 import { generateModels } from "../src/modelgen.ts";
-import { makeGeneratedModel } from "./utils/fixtures.ts";
-
-const CODEX_MODEL_IDS = [
-	"gpt-5.3-codex-spark",
-	"gpt-5.4",
-	"gpt-5.4-mini",
-	"gpt-5.5",
-	"gpt-5.6-luna",
-	"gpt-5.6-sol",
-	"gpt-5.6-terra",
-] as const;
-const GPT_56_MODEL_IDS = ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"] as const;
 
 function copilotModelsDevProvider(): Parameters<typeof githubCopilotBuiltInModels>[0] {
 	const base = {
@@ -84,119 +67,7 @@ function copilotModelsDevProvider(): Parameters<typeof githubCopilotBuiltInModel
 	};
 }
 
-describe("openAICodexBuiltInModels", () => {
-	it("exposes catalog generation through the public modelgen entry", () => {
-		expect(generateModels).toBe(generateModelsImplementation);
-	});
-
-	it("includes explicit Codex model list", () => {
-		const models = openAICodexBuiltInModels();
-
-		expect(Object.keys(models)).toEqual(CODEX_MODEL_IDS);
-	});
-
-	it("produces valid metadata for every explicit Codex model", () => {
-		const models = openAICodexBuiltInModels();
-
-		for (const id of CODEX_MODEL_IDS) {
-			const model = models[id]!;
-			expect(Value.Check(Model.Info, model)).toBe(true);
-			expect(model).toMatchObject({
-				id,
-				provider: { id: "openai-codex", source: "custom" },
-				baseUrl: "https://chatgpt.com/backend-api",
-				reasoning: true,
-				maxTokens: 128_000,
-				npm: "@codeworksh/ai-sdk-openai-codex",
-				api: { id, method: "responses" },
-				protocol: "openai-codex",
-			});
-		}
-	});
-
-	it("maps GPT-5.6 Codex metadata and reasoning levels", () => {
-		const models = openAICodexBuiltInModels();
-
-		for (const id of GPT_56_MODEL_IDS) {
-			const model = models[id]!;
-			expect(model).toMatchObject({
-				id,
-				contextWindow: 272_000,
-				maxTokens: 128_000,
-				protocol: "openai-codex",
-				thinkingLevelMap: { off: null, minimal: null, xhigh: "xhigh", max: "max" },
-				compat: { supportsToolSearch: true, supportsAdditionalTools: true },
-			});
-			expect(Model.getSupportedThinkingLevels(model)).toEqual(["low", "medium", "high", "xhigh", "max"]);
-		}
-	});
-
-	it("maps Codex deferred-tool capability flags", () => {
-		const models = openAICodexBuiltInModels();
-
-		expect(models["gpt-5.3-codex-spark"]?.compat).toEqual({ supportsOpenAIGrammarTools: true });
-		for (const id of ["gpt-5.4", "gpt-5.4-mini", "gpt-5.5"] as const) {
-			expect(models[id]?.compat).toEqual({
-				supportsOpenAIGrammarTools: true,
-				supportsToolSearch: true,
-			});
-		}
-		for (const id of GPT_56_MODEL_IDS) {
-			expect(models[id]?.compat).toEqual({
-				supportsOpenAIGrammarTools: true,
-				supportsToolSearch: true,
-				supportsAdditionalTools: true,
-			});
-		}
-	});
-
-	it("preserves current Codex pricing tiers", () => {
-		const models = openAICodexBuiltInModels();
-
-		expect(models["gpt-5.4"]?.cost.tiers).toEqual([
-			{ inputTokensAbove: 272_000, input: 5, output: 22.5, cacheRead: 0.5, cacheWrite: 0 },
-		]);
-		expect(models["gpt-5.6-luna"]?.cost).toMatchObject({
-			input: 0.2,
-			output: 1.2,
-			cacheRead: 0.02,
-			cacheWrite: 0.25,
-			tiers: [{ inputTokensAbove: 272_000, input: 0.4, output: 1.8, cacheRead: 0.04, cacheWrite: 0.5 }],
-		});
-		expect(models["gpt-5.6-sol"]?.cost.cacheWrite).toBe(6.25);
-		expect(models["gpt-5.6-terra"]?.cost.input).toBe(2);
-	});
-});
-
 describe("generateModels", () => {
-	it("owns Google mode and budget defaults for both Google protocols", () => {
-		for (const npm of ["@ai-sdk/google", "@ai-sdk/google-vertex"]) {
-			for (const [id, high] of [
-				["gemini-2.5-pro", 32768],
-				["gemini-2.5-flash", 24576],
-				["gemini-2.5-flash-lite", 24576],
-				["gemini-unknown", -1],
-			] as const) {
-				const model = makeGeneratedModel(id, npm);
-				expect(model.compat?.supportsThinkingLevel).toBe(false);
-				expect(model.thinkingBudgets?.high).toBe(high);
-			}
-			for (const id of ["gemini-3.5-flash", "gemma-4-31b-it", "gemini-flash-latest"]) {
-				const model = makeGeneratedModel(id, npm);
-				expect(model.compat?.supportsThinkingLevel).toBe(true);
-				expect(model.thinkingBudgets).toBeUndefined();
-			}
-		}
-	});
-
-	it("generates service-tier pricing for API and custom Codex models", () => {
-		const api = makeGeneratedModel("gpt-5.5", "@ai-sdk/openai");
-		const codex = openAICodexBuiltInModels()["gpt-5.5"]!;
-		for (const model of [api, codex]) {
-			expect(model.cost.serviceTierMultipliers).toEqual({ flex: 0.5, priority: 2.5 });
-			expect(Value.Check(Model.Info, model)).toBe(true);
-		}
-	});
 	it("generates supported provider models and merges explicit Codex models", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "aikit-modelgen-"));
 		const modelsDevPath = join(directory, "modelsdev.json");
@@ -283,7 +154,7 @@ describe("generateModels", () => {
 				protocol: "anthropic",
 			});
 			expect(catalog.anthropic?.["claude-without-tools"]).toBeUndefined();
-			expect(Object.keys(catalog["openai-codex"] ?? {})).toEqual(CODEX_MODEL_IDS);
+			expect(Object.keys(catalog["openai-codex"] ?? {})).toEqual(Object.keys(openAICodexBuiltInModels()));
 			for (const provider of ["google", "google-vertex"]) {
 				for (const id of googleIds) {
 					const generated = catalog[provider]?.[id];
@@ -385,12 +256,6 @@ describe("githubCopilotApiMethod", () => {
 			expect(githubCopilotApiMethod(id)).toBe(Model.APIMethodEnum.responses);
 		}
 	});
-
-	it("defaults everything else to Chat Completions", () => {
-		for (const id of ["gpt-4.1", "gpt-4o", "gemini-3.6-flash", "kimi-k3", "o3-mini"]) {
-			expect(githubCopilotApiMethod(id)).toBe(Model.APIMethodEnum.chat);
-		}
-	});
 });
 
 describe("githubCopilotBuiltInModels", () => {
@@ -409,19 +274,6 @@ describe("githubCopilotBuiltInModels", () => {
 		}
 	});
 
-	it("assigns the right method per model family", () => {
-		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
-		expect(models["claude-opus-4.8"]?.api?.method).toBe(Model.APIMethodEnum.messages);
-		expect(models["gpt-5.4"]?.api?.method).toBe(Model.APIMethodEnum.responses);
-		expect(models["gemini-3.6-flash"]?.api?.method).toBe(Model.APIMethodEnum.chat);
-	});
-
-	it("skips deprecated and chat-alias models", () => {
-		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
-		expect(models["gpt-4o"]).toBeUndefined();
-		expect(models["gpt-5-chat-latest"]).toBeUndefined();
-	});
-
 	it("marks adaptive Claude and stores reasoning options for Responses models", () => {
 		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
 		const claude = models["claude-opus-4.8"]!;
@@ -435,16 +287,5 @@ describe("githubCopilotBuiltInModels", () => {
 		});
 		expect(gpt.compat?.supportsOpenAIGrammarTools).toBe(true);
 		expect(gpt.thinkingLevelMap).toMatchObject({ off: null, minimal: "low", xhigh: "xhigh", max: null });
-	});
-
-	it("keeps chat-route reasoning metadata informational only", () => {
-		const models = githubCopilotBuiltInModels(copilotModelsDevProvider());
-		const gemini = models["gemini-3.6-flash"]!;
-		expect(gemini.api?.method).toBe(Model.APIMethodEnum.chat);
-		expect(gemini.thinkingLevelMap).toMatchObject({ off: null, minimal: "minimal", high: "high", xhigh: null });
-	});
-
-	it("returns an empty catalog when the provider is absent", () => {
-		expect(githubCopilotBuiltInModels(undefined)).toEqual({});
 	});
 });

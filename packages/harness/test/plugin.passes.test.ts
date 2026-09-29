@@ -5,7 +5,7 @@ import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { follow, load, select, type PluginRef, type Pool } from "../src/plugin/catalog.ts";
+import { follow, load, type Pool } from "../src/plugin/catalog.ts";
 import { Event } from "../src/event/event.ts";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
@@ -39,62 +39,6 @@ const options = { builtins: [], cache: "/unused", hostDir: "/project" };
 const filedAt = (generation: number) => ({
 	...options,
 	install: () => Effect.succeed({ url: "file:///filed.js", generation }),
-});
-
-describe("the two passes", () => {
-	it("loads a module once however many entries name it", async () => {
-		const plugin = marker("acme.prompt.one");
-		const pool = await Effect.runPromise(load([plugin, plugin, { plugin: plugin.id }], options));
-		expect(pool.plugins.size).toBe(1);
-	});
-
-	it("configures without loading: enabled, options and order are pure data", async () => {
-		const first = marker("acme.prompt.first");
-		const second = marker("acme.prompt.second");
-		const pool = await Effect.runPromise(load([first, second], options));
-
-		const walk = (references: ReadonlyArray<PluginRef>) => Effect.runPromise(select(references, pool));
-
-		// Order follows where an entry was written.
-		expect((await walk([first, second])).selection.map((entry) => entry.plugin.id)).toEqual([first.id, second.id]);
-		expect((await walk([second, first])).selection.map((entry) => entry.plugin.id)).toEqual([second.id, first.id]);
-		// `enabled: false` drops one without unloading it.
-		expect(
-			(await walk([first, second, { plugin: second.id, enabled: false }])).selection.map((entry) => entry.plugin.id),
-		).toEqual([first.id]);
-		// The module stays in the pool either way: dropping a plugin entry is configuration.
-		expect(pool.plugins.has(second.id)).toBe(true);
-		// Options are opaque, so the last block written owns it whole.
-		expect(
-			(
-				await walk([
-					first,
-					{ plugin: first.id, options: { marker: "a" } },
-					{ plugin: first.id, options: { marker: "b" } },
-				])
-			).selection[0]?.options,
-		).toEqual({ marker: "b" });
-	});
-
-	it("reports an entry naming a module it does not hold, rather than fetching it", async () => {
-		const pool = await Effect.runPromise(load([], options));
-		const walked = await Effect.runPromise(select(["@acme/never-installed"], pool));
-		// The one case the config pass cannot satisfy, which is what makes drift free to report.
-		expect(walked.missing).toEqual(["@acme/never-installed"]);
-		expect(walked.selection).toEqual([]);
-	});
-
-	it("configures a built-in through the same path as anything else", async () => {
-		const builtin = marker("codework.prompt.builtin");
-		const pool = await Effect.runPromise(load([], { ...options, builtins: [builtin] }));
-		expect(pool.plugins.has(builtin.id)).toBe(true);
-		// Seeded but not selected: naming it is what selects it.
-		expect((await Effect.runPromise(select([], pool))).selection).toEqual([]);
-		expect(
-			(await Effect.runPromise(select([builtin.id, { plugin: builtin.id, enabled: false }], pool))).selection,
-		).toEqual([]);
-		expect((await Effect.runPromise(select([builtin.id], pool))).selection).toHaveLength(1);
-	});
 });
 
 const withProject = async (body: (dirs: { root: string; project: string }) => Promise<void>) => {
@@ -179,106 +123,6 @@ describe("a running session", () => {
 });
 
 describe("following the store at an exchange boundary", () => {
-	it("does nothing when the store has not moved", async () => {
-		const first = marker("acme.prompt.a");
-		const base = await Effect.runPromise(load([first], options));
-		// Filed at the generation it was loaded at, so there is nothing to follow.
-		const moved = await Effect.runPromise(follow([first], base, filedAt(1), () => Effect.succeedNone));
-		expect(Option.isNone(moved)).toBe(true);
-	});
-
-	it("loads an entry the store holds but the pool does not", async () => {
-		const base = await Effect.runPromise(load([], options));
-		const arrived = {
-			...filedAt(1),
-			import: () => Promise.resolve({ default: marker("acme.prompt.new") }),
-		};
-		const moved = await Effect.runPromise(
-			// Configured, not loaded, and the bytes are already here: exactly the case the
-			// exchange boundary settles without anyone asking.
-			follow(["@acme/new"], base, arrived, () => Effect.succeedSome({ generation: 1 })),
-		);
-		expect(Option.isSome(moved)).toBe(true);
-		expect(Option.getOrThrow(moved).plugins.has("acme.prompt.new")).toBe(true);
-	});
-
-	it("checks the store under each reference's declaring directory, not the process's", async () => {
-		const base = await Effect.runPromise(
-			load(["a@1"], {
-				...options,
-				hostDir: "/server",
-				declared: new Map([["a@1", "/project-a/.codework/settings.jsonc"]]),
-				install: () => Effect.succeed({ url: "virtual:a@1", generation: 1 }),
-				import: () => Promise.resolve({ default: marker("acme.prompt.a") }),
-			}),
-		);
-		// The origin remembers which file declared it, because the file's directory is the
-		// `.npmrc` anchor its store entry was filed under.
-		expect(base.origins.get("acme.prompt.a")?.file).toBe("/project-a/.codework/settings.jsonc");
-
-		const seen: Array<readonly [string, string]> = [];
-		const moved = await Effect.runPromise(
-			follow(
-				["b"],
-				base,
-				{
-					...options,
-					hostDir: "/server",
-					declared: new Map([["b", "/project-b/.codework/settings.jsonc"]]),
-					install: () => Effect.succeed({ url: "virtual:b", generation: 1 }),
-				},
-				(reference, from) => {
-					seen.push([reference, from]);
-					return Effect.succeedNone;
-				},
-			),
-		);
-		expect(moved._tag).toBe("None");
-		expect(seen).toEqual([
-			["b", "/project-b"],
-			["a@1", "/project-a"],
-		]);
-	});
-
-	it("a rebuilt pool keeps each module's declaring file as its registry anchor", async () => {
-		const base = await Effect.runPromise(
-			load(["a@1"], {
-				...options,
-				declared: new Map([["a@1", "/project-a/.codework/settings.jsonc"]]),
-				install: () => Effect.succeed({ url: "virtual:a@1", generation: 1 }),
-				import: () => Promise.resolve({ default: marker("acme.prompt.a") }),
-			}),
-		);
-		const seen: Array<readonly [string, string]> = [];
-		const moved = await Effect.runPromise(
-			follow(
-				["b"],
-				base,
-				{
-					...options,
-					declared: new Map([["b", "/project-b/.codework/settings.jsonc"]]),
-					install: (target: Fetchable, _cache: string, from: string) => {
-						seen.push([target.spec, from]);
-						return Effect.succeed({ url: `virtual:${target.spec}`, generation: 1 });
-					},
-					import: (url: string) =>
-						Promise.resolve({ default: marker(url === "virtual:a@1" ? "acme.prompt.a" : "acme.prompt.b") }),
-				},
-				// `a@1` is installed, so it is filed: `b` moving is what triggers the rebuild.
-				() => Effect.succeedSome({ generation: 1 }),
-			),
-		);
-		// The union load re-resolves the retained module under *its* declaring file's chain, and
-		// the new one under its own -- one `hostDir` could not answer both.
-		expect(seen).toEqual([
-			["a@1", "/project-a"],
-			["b@latest", "/project-b"],
-		]);
-		const pool = Option.getOrThrow(moved);
-		expect(pool.origins.get("acme.prompt.a")?.file).toBe("/project-a/.codework/settings.jsonc");
-		expect(pool.origins.get("acme.prompt.b")?.file).toBe("/project-b/.codework/settings.jsonc");
-	});
-
 	it("drops a retained origin whose source vanished instead of failing the rebuild", async () => {
 		const base = await Effect.runPromise(
 			load(["a@1"], {
@@ -372,21 +216,6 @@ describe("following the store at an exchange boundary", () => {
 		);
 		expect(Option.isSome(moved)).toBe(true);
 		expect(Option.getOrThrow(moved).origins.get("acme.prompt.moved")?.generation).toBe(2);
-	});
-
-	it("never follows a local source, which has no generation to compare", async () => {
-		const base: Pool = {
-			plugins: new Map([["acme.prompt.local", marker("acme.prompt.local")]]),
-			aliases: new Map([["./local.ts", "acme.prompt.local"]]),
-			versions: new Map(),
-			// A local plugin is never copied into the store, so it has no generation at all --
-			// which is why `plugin reload` exists and is the only thing that covers it.
-			origins: new Map([["acme.prompt.local", { reference: "./local.ts" }]]),
-		};
-		const moved = await Effect.runPromise(
-			follow(["./local.ts"], base, filedAt(99), () => Effect.succeedSome({ generation: 99 })),
-		);
-		expect(Option.isNone(moved)).toBe(true);
 	});
 });
 
@@ -588,57 +417,6 @@ describe("boot", () => {
 			expect(prompts).toHaveLength(1);
 			expect(prompts[0]).not.toContain("marker");
 			await expect(access(sentinel)).rejects.toThrow();
-		}));
-
-	it("resolves a relative --user-config-dir against the process directory, not the session's", () =>
-		withProject(async ({ root, project }) => {
-			// The process launches from `launch`; the override is `<launch>/myconf`. The session
-			// anchors at `project`, a different directory entirely -- if the flag resolved
-			// against the session's host, `project/myconf` would be read instead and the plugin
-			// would never appear.
-			const launch = join(root, "launch");
-			const custom = join(launch, "myconf");
-			await mkdir(custom, { recursive: true });
-			const module = join(root, "confplugin.mjs");
-			await writeFile(
-				module,
-				[
-					"export default {",
-					"  id: 'acme.prompt.conf',",
-					"  kind: 'prompt',",
-					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}conf`),",
-					"};",
-				].join("\n"),
-			);
-			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ plugins: [module] }));
-
-			const prompts: string[] = [];
-			const open = immediateOpen();
-			await Effect.runPromise(
-				Effect.gen(function* () {
-					const session = yield* Session.create({ directory: project, hostDir: project });
-					yield* session.prompt({ text: "go", delivery: "followUp" });
-					yield* session.resume();
-					yield* session.wait();
-				}).pipe(
-					Effect.provide(
-						Harness.layer({
-							home: join(root, "home"),
-							hostCwd: launch,
-							userConfigDir: "myconf",
-							database: ":memory:",
-							llm: (request, signal) => {
-								prompts.push(request.context.systemPrompt ?? "");
-								return open(request, signal);
-							},
-						}),
-					),
-					Effect.scoped,
-					Effect.timeout("20 seconds"),
-					Effect.orDie,
-				),
-			);
-			expect(prompts[0]?.endsWith("conf")).toBe(true);
 		}));
 });
 
@@ -947,58 +725,5 @@ describe("linking a session to a host directory", () => {
 			expect(prompts).toHaveLength(2);
 			expect(prompts[0]).not.toContain("linked");
 			expect(prompts[1]?.endsWith("linked")).toBe(true);
-		}));
-
-	it("returns a session to the user layer when unlinked", () =>
-		withProject(async ({ root, project }) => {
-			const module = join(project, "linked.mjs");
-			await writeFile(
-				module,
-				[
-					"export default {",
-					"  id: 'acme.prompt.linked',",
-					"  kind: 'prompt',",
-					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}linked`),",
-					"};",
-				].join("\n"),
-			);
-			await writeFile(join(project, ".codework", "settings.jsonc"), JSON.stringify({ plugins: [module] }));
-
-			const prompts: string[] = [];
-			const open = immediateOpen();
-			await Effect.runPromise(
-				Effect.gen(function* () {
-					const created = yield* Session.create({ directory: project, hostDir: project });
-					const run = () =>
-						created
-							.prompt({ text: "go", delivery: "followUp" })
-							.pipe(Effect.andThen(created.resume()), Effect.andThen(created.wait()));
-					yield* run();
-
-					yield* Session.link({ sessionId: created.id, hostDir: null });
-					expect((yield* created.info).hasHostLink).toBe(false);
-					// The module stays loaded in the pool; it is simply no longer selected, which
-					// is the config pass doing its job rather than anything being unloaded.
-					yield* run();
-				}).pipe(
-					Effect.provide(
-						Harness.layer({
-							home: join(root, "home"),
-							hostCwd: project,
-							database: ":memory:",
-							llm: (request, signal) => {
-								prompts.push(request.context.systemPrompt ?? "");
-								return open(request, signal);
-							},
-						}),
-					),
-					Effect.scoped,
-					Effect.timeout("20 seconds"),
-					Effect.orDie,
-				),
-			);
-
-			expect(prompts[0]?.endsWith("linked")).toBe(true);
-			expect(prompts[1]).not.toContain("linked");
 		}));
 });

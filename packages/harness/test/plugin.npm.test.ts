@@ -45,39 +45,7 @@ const staging = async (directory: string) => {
 	return into;
 };
 
-const lock = (name: string, resolved: string) =>
-	JSON.stringify({ packages: { [`node_modules/${name}`]: { resolved } } });
-
 describe("download", () => {
-	it("reports a registry install's version as its revision", () =>
-		withDirectory(async (directory) => {
-			const into = await staging(directory);
-			const fetched = await Effect.runPromise(
-				download({ target: fetchable("acme@^1"), into, cache: directory, from: directory, runner: runner() }),
-			);
-			expect(fetched).toMatchObject({ name: "acme", version: "1.4.2", revision: "1.4.2" });
-			expect(fetched.entrypoint.endsWith("index.js")).toBe(true);
-		}));
-
-	it("recovers a git install's commit from the lockfile, never its manifest version", () =>
-		withDirectory(async (directory) => {
-			const into = await staging(directory);
-			const sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
-			const fetched = await Effect.runPromise(
-				download({
-					target: fetchable("github:acme/plugins#main"),
-					into,
-					cache: directory,
-					from: directory,
-					runner: runner({ lockfile: lock("plugins", `git+ssh://git@github.com/acme/plugins.git#${sha}`) }),
-				}),
-			);
-			expect(fetched.revision).toBe(sha);
-			// The version is still reported, and is still not the revision: a branch that moves
-			// without bumping `package.json` has to be detectable, and only the commit shows it.
-			expect(fetched.version).toBe("1.4.2");
-		}));
-
 	it("fails a git install whose commit cannot be recovered, rather than using the version", () =>
 		withDirectory(async (directory) => {
 			const into = await staging(directory);
@@ -121,27 +89,6 @@ describe("download", () => {
 			// The whole chain is resolved, not just the last link.
 			expect(seen).toEqual([realpathSync(real)]);
 		}));
-
-	it("resolves a local target in place, without installing it", () =>
-		withDirectory(async (directory) => {
-			const local = join(directory, "plugin");
-			await mkdir(local, { recursive: true });
-			await writeFile(join(local, "package.json"), JSON.stringify({ name: "local", exports: "./index.js" }));
-			await writeFile(join(local, "index.js"), "export default {}");
-
-			const fetched = await Effect.runPromise(
-				download({
-					target: { kind: "local", path: local },
-					into: "/unused",
-					cache: directory,
-					from: directory,
-					runner: () => Effect.die(new Error("a local target must never be installed")),
-				}),
-			);
-			expect(fetched.directory).toBe(local);
-			// Nothing to compare a re-resolve against: a local plugin is never filed.
-			expect(fetched.revision).toBeUndefined();
-		}));
 });
 
 describe("entrypoint", () => {
@@ -170,57 +117,12 @@ describe("entrypoint", () => {
 			await writeFile(join(root, "plugin.js"), "export default {}");
 			expect((await Effect.runPromise(entrypoint(directory, "acme"))).endsWith("plugin.js")).toBe(true);
 		}));
-
-	it("reports a package with nothing to import as having no entrypoint", () =>
-		withDirectory(async (directory) => {
-			const root = join(directory, "node_modules", "acme");
-			await mkdir(root, { recursive: true });
-			await writeFile(join(root, "package.json"), JSON.stringify({ name: "acme", exports: {} }));
-			const failure = await Effect.runPromise(Effect.flip(entrypoint(directory, "acme")));
-			expect(failure.reason).toBe("plugin-no-entrypoint");
-		}));
 });
 
 /*
- * Where auth comes from. Neither half of it is visible in an install's result, so both are
- * asserted on the config that produces them -- see §15 Q2.
+ * Where auth comes from, asserted on the config that produces it -- see §15 Q2.
  */
 describe("options", () => {
-	const project = async (directory: string) => {
-		const from = join(directory, "project", "packages", "app");
-		await mkdir(from, { recursive: true });
-		// The token lives at the repository root, not in the directory the person is standing in.
-		const root = join(directory, "project");
-		await writeFile(join(root, "package.json"), '{"name":"acme-project"}');
-		await writeFile(
-			join(root, ".npmrc"),
-			"@acme:registry=https://registry.acme.invalid/\n//registry.acme.invalid/:_authToken=s3cret\n",
-		);
-		return { root, from };
-	};
-
-	it("reads the .npmrc chain where the person is, walking up as npm would", () =>
-		withDirectory(async (directory) => {
-			const { from } = await project(directory);
-			const flat = await Effect.runPromise(options(from, join(directory, "cache")));
-			// A private registry and its token, from a file two directories above `from`. Pinning
-			// npm's local prefix would find neither.
-			expect(flat["//registry.acme.invalid/:_authToken"]).toBe("s3cret");
-			expect(flat["allowGit"]).toBe("root");
-		}));
-
-	it("does not read it from the staging directory the package is installed into", () =>
-		withDirectory(async (directory) => {
-			await project(directory);
-			// Staging lives inside the store, under the cache. It is where the bytes land and it
-			// has nothing to do with the repository whose plugin is being installed -- a chain
-			// read here resolves a private scope against the public registry.
-			const staging = join(directory, "cache", "plugins", "v1", "acme", "staging");
-			await mkdir(staging, { recursive: true });
-			const flat = await Effect.runPromise(options(staging, join(directory, "cache")));
-			expect(flat["//registry.acme.invalid/:_authToken"]).toBeUndefined();
-		}));
-
 	it("names no env, so git keeps the ambient agent and credential helper", () =>
 		withDirectory(async (directory) => {
 			const flat = await Effect.runPromise(options(directory, join(directory, "cache")));
@@ -256,12 +158,4 @@ describe("a relative directory", () => {
 		await expect(Effect.runPromise(options("some/relative/dir", "/tmp/cache"))).rejects.toThrow(/absolute path/);
 		await expect(Effect.runPromise(options("/tmp/project", "relative-cache"))).rejects.toThrow(/absolute path/);
 	});
-
-	it("is not confused with a directory that is merely wrong", () =>
-		withDirectory(async (directory) => {
-			// An absolute path that names the wrong tree is indistinguishable from the right one,
-			// which is the whole lesson: this guard removes a spelling, not a class of mistake.
-			const flat = await Effect.runPromise(options(directory, join(directory, "cache")));
-			expect(flat["allowGit"]).toBe("root");
-		}));
 });

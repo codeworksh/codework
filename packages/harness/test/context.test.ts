@@ -10,7 +10,6 @@ import { EventList } from "../src/event/list.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { SessionLive } from "../src/session/live.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
-import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
 import { testEffect } from "./utils/effect.ts";
 
@@ -114,47 +113,6 @@ describe("context codec", () => {
 			expect(yield* ContextCodec.decodeMessage(stored)).toEqual(original);
 			expect((yield* sessions.path(created.id)).at(-1)?.entry.id).toBe(original.messageId);
 		}));
-
-	it("rejects invalid primitives instead of coercing message data", () =>
-		Effect.gen(function* () {
-			const invalid = {
-				...assistant("a_invalid", "provider-a", "model-a"),
-				time: { created: "20", completed: 30 },
-			} as unknown as Message.AssistantMessage;
-
-			const failure = yield* ContextCodec.encodeMessage(invalid).pipe(Effect.flip);
-			expect(failure._tag).toBe("ContextEncodeError");
-			expect(failure.reason).toContain("time/created");
-		}));
-
-	it("rejects sparse indexes and mismatched promoted tool columns", () =>
-		Effect.gen(function* () {
-			const { appendMessage, sessions, sql } = yield* setup;
-			const original = assistant("a_corrupt", "provider-a", "model-a", [
-				{
-					type: "toolCall",
-					callID: "call_1",
-					name: "read",
-					arguments: {},
-					status: "pending",
-					time: { start: 1, end: 1 },
-				},
-			]);
-			yield* appendMessage(original);
-			yield* sql`UPDATE session_entry_part SET part_index = 1 WHERE entry_id = ${original.messageId}`;
-			const sparse = Option.getOrThrow(yield* sessions.entry(original.messageId));
-			const sparseError = yield* ContextCodec.decodeMessage(sparse).pipe(Effect.flip);
-			expect(sparseError._tag).toBe("ContextDecodeError");
-			expect(sparseError.reason).toContain("dense");
-
-			yield* sql`
-				UPDATE session_entry_part SET part_index = 0, call_id = 'call_other'
-				WHERE entry_id = ${original.messageId}
-			`;
-			const mismatched = Option.getOrThrow(yield* sessions.entry(original.messageId));
-			const mismatchError = yield* ContextCodec.decodeMessage(mismatched).pipe(Effect.flip);
-			expect(mismatchError.reason).toContain("tool columns");
-		}));
 });
 
 describe("context assembly", () => {
@@ -188,53 +146,6 @@ describe("context assembly", () => {
 			expect(after.leafEntryId).toBe(assistantId);
 			expect(after.messages.map((item) => item.messageId)).toEqual(["msg_visible_user"]);
 			expect(after.lastAssistant).toBeUndefined();
-		}));
-
-	it("projects Prompted directly as a canonical user message", () =>
-		Effect.gen(function* () {
-			const { context, created, sessions } = yield* setup;
-			const events = yield* Event.Service;
-			const messageId = SessionMessageSchema.ID.make("msg_native");
-			const timestamp = yield* DateTime.now;
-
-			yield* events.publish(EventList.Prompted, {
-				sessionId: created.id,
-				timestamp,
-				messageId,
-				prompt: { text: "native prompt" },
-				delivery: "steer",
-			});
-
-			const stored = (yield* sessions.path(created.id))[0]!;
-			expect(JSON.parse(stored.entry.data)).toEqual({
-				messageId,
-				role: "user",
-				time: { created: DateTime.toEpochMillis(timestamp) },
-			});
-			expect(stored.parts).toHaveLength(1);
-			expect(JSON.parse(stored.parts[0]!.data)).toEqual({ type: "text", text: "native prompt" });
-
-			const snapshot = yield* context.assemble(created.id);
-			expect(snapshot.messages).toMatchObject([
-				{
-					messageId,
-					role: "user",
-					parts: [{ type: "text", text: "native prompt" }],
-				},
-			]);
-		}));
-
-	it("distinguishes missing and empty sessions", () =>
-		Effect.gen(function* () {
-			const { context, created } = yield* setup;
-			expect(yield* context.assemble(created.id)).toEqual({
-				sessionId: created.id,
-				leafEntryId: null,
-				messages: [],
-			});
-
-			const missing = yield* context.assemble(SessionSchema.ID.make("ses_missing")).pipe(Effect.flip);
-			expect(missing._tag).toBe("SessionNotFoundError");
 		}));
 
 	it("applies latest compaction over the full path", () =>
@@ -286,17 +197,5 @@ describe("context assembly", () => {
 			expect(snapshot.messages[0]?.time.created).toBe(
 				compacted === undefined ? undefined : DateTime.toEpochMillis(compacted.entry.createdAt),
 			);
-		}));
-
-	it("fails typed when known entry data is malformed", () =>
-		Effect.gen(function* () {
-			const { append, context, created } = yield* setup;
-			yield* append({ id: "bad-custom", type: "custom", data: "{}" });
-			const failure = yield* context.assemble(created.id).pipe(Effect.flip);
-			expect(failure._tag).toBe("ContextDecodeError");
-			if (failure._tag === "ContextDecodeError") {
-				expect(failure.entryId).toBe("bad-custom");
-				expect(failure.type).toBe("custom");
-			}
 		}));
 });

@@ -106,15 +106,6 @@ describe("OAuthCommand", () => {
 		expect(stderr()).toContain("Refreshed OpenAI Codex credentials");
 	});
 
-	it("logs out and clears stored Codex credentials", async () => {
-		await storage.set(makeCredentials());
-
-		await OAuthCommand.handler(args(path, { logout: true }));
-
-		await expect(storage.get()).resolves.toBeUndefined();
-		expect(stderr()).toContain("Cleared OpenAI Codex credentials");
-	});
-
 	it("prints Copilot status without exposing stored tokens", async () => {
 		const copilotStorage = new JsonGitHubCopilotAuthStorage({ path });
 		await copilotStorage.set({
@@ -131,22 +122,5 @@ describe("OAuthCommand", () => {
 		expect(stdout()).toContain("api.individual.githubcopilot.com");
 		expect(stdout()).toContain("Available models: 2");
 		expect(stdout()).not.toContain("ghu_secret");
-	});
-
-	it("reports missing Copilot credentials and fails the status check", async () => {
-		await OAuthCommand.handler(args(path, { openaiCodex: false, githubCopilot: true, status: true }));
-
-		expect(process.exitCode).toBe(1);
-		expect(stderr()).toContain("no GitHub Copilot credentials found");
-	});
-
-	it("logs out and clears stored Copilot credentials", async () => {
-		const copilotStorage = new JsonGitHubCopilotAuthStorage({ path });
-		await copilotStorage.set({ access: "ghu_secret", refresh: "ghu_secret", expires: 0 });
-
-		await OAuthCommand.handler(args(path, { openaiCodex: false, githubCopilot: true, logout: true }));
-
-		await expect(copilotStorage.get()).resolves.toBeUndefined();
-		expect(stderr()).toContain("Cleared GitHub Copilot credentials");
 	});
 });

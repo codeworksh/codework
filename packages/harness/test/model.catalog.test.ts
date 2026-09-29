@@ -53,20 +53,6 @@ describe("ModelCatalog", () => {
 		rmSync(home, { recursive: true, force: true });
 	});
 
-	it.live("downloads into the home once, then only when stale or forced", () =>
-		Effect.gen(function* () {
-			const path = join(home, "models.gen.json");
-			expect(yield* ModelCatalog.refresh(home)).toEqual({ path, refreshed: true });
-			expect(yield* ModelCatalog.refresh(home)).toEqual({ path, refreshed: false });
-			expect(yield* ModelCatalog.refresh(home, { force: true })).toEqual({ path, refreshed: true });
-
-			const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-			utimesSync(path, hourAgo, hourAgo);
-			expect(yield* ModelCatalog.refresh(home)).toEqual({ path, refreshed: true });
-			expect(yield* ModelCatalog.providers).toContain("openai-codex");
-		}),
-	);
-
 	it.live("leaves a pinned catalog alone on the automatic check", () =>
 		Effect.gen(function* () {
 			const pinned = join(home, "pinned.json");

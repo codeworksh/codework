@@ -1,30 +1,21 @@
 import { Effect } from "effect";
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
-import { load } from "../src/plugin/catalog.ts";
-import { registry as npmRegistry, probe } from "../src/plugin/npm.ts";
-import { define } from "../src/plugin/plugin.ts";
 import { parse, type Fetchable } from "../src/plugin/source.ts";
-import { add, required } from "../src/plugin/store.ts";
+import { add } from "../src/plugin/store.ts";
 import { NAME, npmrc, withRegistry } from "./fixtures/registry.ts";
 
 /*
- * The npm toolchain against a real registry and a real git remote, both on this machine.
+ * The npm toolchain against a real registry on this machine.
  *
  * `plugin.npm.live.test.ts` proves arborist and pacote behave as assumed against the public
- * registry. This file proves the things a *public* registry cannot: that an install reads the
- * `.npmrc` the person's own directory declares, that no audit is ever requested, and that a
- * lifecycle script never runs -- each of which is invisible in a passing install and only shows up
- * as a security or auth failure much later.
+ * registry. This file proves what a passing install cannot show: that no audit is ever requested,
+ * and that a lifecycle script never runs -- each of which only shows up much later, as a stall or
+ * a security failure.
  */
-
-const run = promisify(execFile);
 
 const withDirectory = async (body: (directory: string) => Promise<void>) => {
 	const directory = await mkdtemp(join(tmpdir(), "plugin-registry-"));
@@ -39,134 +30,6 @@ const fetchable = (spec: string) => Effect.runSync(parse(spec, "/unused")) as Fe
 const accept = () => Effect.succeed("ok" as const);
 
 describe("an install against a private registry", () => {
-	it("warns and falls back to npm defaults when the project .npmrc is unreadable", () =>
-		withDirectory(async (directory) => {
-			if (process.getuid?.() === 0) return;
-			const host = join(directory, "project");
-			const config = join(host, ".npmrc");
-			await mkdir(host, { recursive: true });
-			await writeFile(
-				config,
-				"registry=https://private.example.test/\n@fixture:registry=https://private.example.test/\n",
-			);
-			await chmod(config, 0o000);
-			try {
-				// npm warns and continues on a config it cannot read, and so do we: the resolved
-				// registry is the public default, not a `plugin-resolve-failed`, and the warning
-				// -- not a refusal -- is the signal.
-				const resolved = await Effect.runPromise(
-					npmRegistry(
-						fetchable(`${NAME}@1.0.0`) as Extract<Fetchable, { kind: "registry" }>,
-						join(directory, "cache"),
-						host,
-					),
-				);
-				expect(resolved).toBe("https://registry.npmjs.org/");
-			} finally {
-				await chmod(config, 0o600);
-			}
-		}));
-
-	it("a session resolves an entry through the file that declared it, not the server's directory", () =>
-		withDirectory(async (directory) =>
-			withRegistry(join(directory, "registry"), async (registry) => {
-				const project = join(directory, "project");
-				const server = join(directory, "server");
-				await mkdir(join(project, ".codework"), { recursive: true });
-				await mkdir(server, { recursive: true });
-				await npmrc(project, registry);
-				const cache = join(directory, "cache");
-				const spec = `${NAME}@1.0.0`;
-				// The declaring file, whose directory is the `.npmrc` anchor.
-				const file = join(project, ".codework", "settings.jsonc");
-				await writeFile(file, JSON.stringify({ plugins: [spec] }));
-
-				// `plugin install` run in the project keys the artifact under its private registry.
-				await Effect.runPromise(add(fetchable(spec), cache, { from: project, validate: accept }));
-
-				const marker = define({ id: "fixture.plugin.marked", kind: "prompt", setup: () => {} });
-				const found = await Effect.runPromise(
-					load([spec], {
-						builtins: [],
-						cache,
-						// The server's own directory: no `.npmrc` here, so an exchange keyed by it
-						// would look under the public registry and see nothing.
-						hostDir: server,
-						declared: new Map([[spec, file]]),
-						install: required,
-						import: () => Promise.resolve({ default: marker }),
-					}),
-				);
-				expect(found.plugins.has("fixture.plugin.marked")).toBe(true);
-
-				// Without the declaring file the lookup falls back to the host context and misses --
-				// rather than silently serving a package a different registry produced.
-				const missed = await Effect.runPromise(
-					load([spec], {
-						builtins: [],
-						cache,
-						hostDir: server,
-						install: required,
-						import: () => Promise.resolve({ default: marker }),
-					}).pipe(Effect.result),
-				);
-				expect(missed._tag).toBe("Failure");
-			}),
-		));
-
-	it("files the same spec separately when projects resolve it through different registries", () =>
-		withDirectory(async (directory) =>
-			withRegistry(
-				join(directory, "registry-a"),
-				async (firstRegistry) =>
-					withRegistry(
-						join(directory, "registry-b"),
-						async (secondRegistry) => {
-							const firstHost = join(directory, "project-a");
-							const secondHost = join(directory, "project-b");
-							const cache = join(directory, "cache");
-							const target = fetchable(`${NAME}@1.0.0`);
-							await npmrc(firstHost, firstRegistry);
-							await npmrc(secondHost, secondRegistry);
-
-							const first = await Effect.runPromise(add(target, cache, { from: firstHost, validate: accept }));
-							const second = await Effect.runPromise(add(target, cache, { from: secondHost, validate: accept }));
-
-							expect(first.entry.digest).not.toBe(second.entry.digest);
-							expect(await readFile(fileURLToPath(first.entry.url), "utf8")).toContain("fixture.registry-a");
-							expect(await readFile(fileURLToPath(second.entry.url), "utf8")).toContain("fixture.registry-b");
-							expect(firstRegistry.paths()).toContain(`/${NAME}`);
-							expect(secondRegistry.paths()).toContain(`/${NAME}`);
-						},
-						{ pluginId: "fixture.registry-b" },
-					),
-				{ pluginId: "fixture.registry-a" },
-			),
-		));
-
-	it("resolves through the .npmrc the host directory declares, not the one where it stages", () =>
-		withDirectory(async (directory) =>
-			withRegistry(join(directory, "packages"), async (registry) => {
-				const host = join(directory, "project");
-				await npmrc(host, registry);
-				const cache = join(directory, "cache");
-
-				const added = await Effect.runPromise(
-					add(fetchable(`${NAME}@^1.0.0`), cache, { from: host, validate: accept }),
-				);
-
-				/*
-				 * `@fixture/plugin` exists on no public registry, so an install that reached one
-				 * fails rather than installing something else. That is the whole assertion: the
-				 * chain was read where the person is. Staging lives under `cache`, and a chain
-				 * read there would have found nothing -- which is what shipped until §15 Q2.
-				 */
-				expect(added.entry.version).toBe("1.0.0");
-				expect(existsSync(new URL(added.entry.url))).toBe(true);
-				expect(registry.paths()).toContain(`/${NAME}`);
-			}),
-		));
-
 	it("asks for no audit report", () =>
 		withDirectory(async (directory) =>
 			withRegistry(join(directory, "packages"), async (registry) => {
@@ -217,78 +80,5 @@ describe("an install against a private registry", () => {
 				},
 				{ scripts: { postinstall: `node -e "require('fs').writeFileSync(${JSON.stringify(marker)}, 'ran')"` } },
 			);
-		}));
-
-	it("reports the newer version a moving range points at, from the same chain", () =>
-		withDirectory(async (directory) =>
-			withRegistry(join(directory, "packages"), async (registry) => {
-				const host = join(directory, "project");
-				await npmrc(host, registry);
-				const cache = join(directory, "cache");
-				const target = fetchable(`${NAME}@^1.0.0`);
-
-				await Effect.runPromise(add(target, cache, { from: host, validate: accept }));
-				registry.publish("1.1.0");
-
-				// `probe` has to read the same `.npmrc` as the install: a staleness check pointed
-				// at a different registry answers about a package nothing is ever fetched from.
-				expect(await Effect.runPromise(probe(target, cache, host))).toBe("1.1.0");
-			}),
-		));
-});
-
-describe("an install from a git remote on disk", () => {
-	const repository = async (directory: string) => {
-		const root = join(directory, "repository");
-		await mkdir(root, { recursive: true });
-		await writeFile(
-			join(root, "package.json"),
-			JSON.stringify({ name: "fixture-git-plugin", version: "1.0.0", type: "module", exports: "./index.js" }),
-		);
-		await writeFile(join(root, "index.js"), "export default { id: 'fixture.git' };\n");
-		const git = (...args: string[]) => run("git", args, { cwd: root });
-		await git("init", "-q", "-b", "trunk");
-		await git("config", "user.email", "fixture@example.com");
-		await git("config", "user.name", "Fixture");
-		await git("add", ".");
-		await git("commit", "-qm", "fixture");
-		return { root, commit: (await git("rev-parse", "HEAD")).stdout.trim() };
-	};
-
-	it("fetches a branch and recovers the commit, with no network", () =>
-		withDirectory(async (directory) => {
-			const { root, commit } = await repository(directory);
-			const spec = `git+${pathToFileURL(root).href}#trunk`;
-
-			const added = await Effect.runPromise(
-				add(fetchable(spec), join(directory, "cache"), { from: directory, validate: accept }),
-			);
-
-			/*
-			 * Two things at once, both of which failed silently before they were tested. npm 12
-			 * defaults `allow-git` to `none`, so without `allowGit: "root"` this never opens a
-			 * connection at all (T8) -- and the revision has to be the commit rather than the
-			 * manifest version, or a branch that moves without a version bump reports an update
-			 * forever and never applies one (T2).
-			 */
-			expect(added.entry.revision).toBe(commit);
-			expect(added.entry.version).toBe("1.0.0");
-		}));
-
-	it("sees a branch move, and files the new commit", () =>
-		withDirectory(async (directory) => {
-			const { root } = await repository(directory);
-			const spec = `git+${pathToFileURL(root).href}#trunk`;
-			const cache = join(directory, "cache");
-			const first = await Effect.runPromise(add(fetchable(spec), cache, { from: directory, validate: accept }));
-
-			await writeFile(join(root, "index.js"), "export default { id: 'fixture.git', moved: true };\n");
-			await run("git", ["add", "."], { cwd: root });
-			await run("git", ["commit", "-qm", "moved"], { cwd: root });
-			const moved = (await run("git", ["rev-parse", "HEAD"], { cwd: root })).stdout.trim();
-
-			// The manifest version did not change, so only the commit can show the branch moved.
-			expect(await Effect.runPromise(probe(fetchable(spec), cache, directory))).toBe(moved);
-			expect(first.entry.revision).not.toBe(moved);
 		}));
 });

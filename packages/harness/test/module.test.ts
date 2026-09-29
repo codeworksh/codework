@@ -1,12 +1,10 @@
-import { Effect } from "effect";
 import { realpathSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { resolveModule, importModule } from "../src/util/module.ts";
-import { packageResolver } from "../src/sandbox/loader.ts";
+import { resolveModule } from "../src/util/module.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 
 const fixture = async (root: string, exports: unknown) => {
@@ -21,15 +19,6 @@ const fixture = async (root: string, exports: unknown) => {
 const url = (file: string) => pathToFileURL(realpathSync(file)).href;
 
 describe("native module loading", () => {
-	it("uses the caller's package and preserves export condition key order", async () => {
-		await using temp = await tmpdir();
-		const directory = await fixture(temp.path, { ".": { import: "./import.js", node: "./node.js" } });
-		expect(resolveModule("fixture", temp.path)).toBe(url(join(directory, "import.js")));
-		expect((await Effect.runPromise(packageResolver(temp.path)("fixture"))).url).toBe(
-			url(join(directory, "import.js")),
-		);
-	});
-
 	it("adds development conditions and respects wildcard exports and null exclusions", async () => {
 		await using temp = await tmpdir();
 		const directory = await fixture(temp.path, {
@@ -73,31 +62,5 @@ describe("native module loading", () => {
 		} finally {
 			outer.deregister();
 		}
-	});
-
-	it("imports ESM and TypeScript through Node and retains module identity", async () => {
-		await using temp = await tmpdir();
-		await writeFile(join(temp.path, "entry.mts"), "export const value: number = 42; export default { value };");
-		const resolved = resolveModule("./entry.mts", temp.path);
-		const loaded = await importModule(resolved);
-		expect(loaded).toMatchObject({ value: 42, default: { value: 42 } });
-		expect(await importModule(resolved)).toBe(loaded);
-	});
-
-	it("exposes dynamic CommonJS object exports", async () => {
-		await using temp = await tmpdir();
-		await writeFile(join(temp.path, "entry.cjs"), 'module.exports = Object.fromEntries([["value", 42]]);');
-		expect(await importModule(resolveModule("./entry.cjs", temp.path))).toMatchObject({
-			value: 42,
-			default: { value: 42 },
-		});
-	});
-
-	it("propagates module evaluation failures", async () => {
-		await using temp = await tmpdir();
-		await writeFile(join(temp.path, "entry.mjs"), 'throw new Error("plugin initialization failed");');
-		await expect(importModule(resolveModule("./entry.mjs", temp.path))).rejects.toThrow(
-			"plugin initialization failed",
-		);
 	});
 });

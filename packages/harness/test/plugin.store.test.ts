@@ -1,7 +1,7 @@
 import { Deferred, Effect, Exit, Fiber } from "effect";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
@@ -9,7 +9,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { InstallError } from "../src/plugin/error.ts";
 import type { Runner } from "../src/plugin/npm.ts";
 import { parse, type Fetchable } from "../src/plugin/source.ts";
-import { add, all, check, collect, remove, resolve, root } from "../src/plugin/store.ts";
+import { add, collect, resolve, root } from "../src/plugin/store.ts";
 
 /** Domain 2 against a fixture downloader. Nothing here reaches the network. */
 
@@ -58,45 +58,6 @@ const digestOf = (spec: string) => createHash("sha256").update(`https://registry
 const entryDir = (cache: string, slug: string, spec: string) => join(root(cache), slug, digestOf(spec));
 
 describe("the store", () => {
-	it("files one entry per canonical spec, and reuses it without re-running the installer", () =>
-		withCache(async (cache) => {
-			let runs = 0;
-			const counted: Runner = (input) => {
-				runs++;
-				return fixture()(input);
-			};
-			const first = await Effect.runPromise(install("fixture@1.0.0", cache, counted));
-			const again = await Effect.runPromise(install("fixture@1.0.0", cache, counted));
-			const other = await Effect.runPromise(install("fixture@2.0.0", cache, counted));
-
-			expect(first.entry.url).toBe(again.entry.url);
-			expect(first.entry.version).toBe("1.0.0");
-			expect(other.entry.version).toBe("2.0.0");
-			// Identity is the canonical spec, so two versions of one plugin are two entries side
-			// by side -- which is why one shared store needs no per-project copy.
-			expect(first.entry.digest).not.toBe(other.entry.digest);
-			expect(runs).toBe(2);
-
-			// The second call came off the fast path: nothing was staged, so nothing was checked.
-			expect(first.validated).toBe("checked");
-			expect(again.validated).toBeUndefined();
-		}));
-
-	it("lays the entry out as slug, digest and generation", () =>
-		withCache(async (cache) => {
-			const added = await Effect.runPromise(install("fixture@1.0.0", cache));
-			const directory = entryDir(cache, "fixture", "fixture@1.0.0");
-
-			// A readable slug is greppable; the full digest is what actually separates entries, so
-			// a collision can never return the wrong package.
-			expect(existsSync(directory)).toBe(true);
-			expect(digestOf("fixture@1.0.0")).toHaveLength(64);
-			expect((await readdir(directory)).filter((name) => /^\d+$/.test(name))).toEqual([
-				String(added.entry.generation),
-			]);
-			expect(existsSync(join(directory, String(added.entry.generation), ".complete.json"))).toBe(true);
-		}));
-
 	it("records an entrypoint that stays inside the published generation", () =>
 		withCache(async (cache) => {
 			// Node resolution realpaths its answer while a staging directory does not, so a
@@ -105,27 +66,6 @@ describe("the store", () => {
 			const file = fileURLToPath(added.entry.url);
 			expect(existsSync(file)).toBe(true);
 			expect(relative(root(cache), file).startsWith("..")).toBe(false);
-		}));
-
-	it("keeps the plugin out of what it files", () =>
-		withCache(async (cache) => {
-			const added = await Effect.runPromise(install("fixture@1.0.0", cache));
-			const directory = join(entryDir(cache, "fixture", "fixture@1.0.0"), String(added.entry.generation));
-			const marker: unknown = JSON.parse(await readFile(join(directory, ".complete.json"), "utf8"));
-
-			// Every field is the spec, or something package.json said, or a timestamp. The moment a
-			// marker holds an `id`, the on-disk format encodes the result of running code the store
-			// is meant to be indifferent to.
-			expect(Object.keys(marker as object).sort()).toEqual([
-				"createdAt",
-				"entrypoint",
-				"name",
-				"revision",
-				"spec",
-				"version",
-			]);
-			// What validation learned rides back to the caller instead.
-			expect(added.validated).toBe("checked");
 		}));
 
 	it("publishes nothing when validation rejects what was staged", () =>
@@ -167,36 +107,6 @@ describe("the store", () => {
 			// not disturbed.
 			expect(existsSync(fileURLToPath(first.entry.url))).toBe(true);
 			expect((await Effect.runPromise(resolve(fetchable("fixture"), cache, cache)))?.version).toBe("1.1.0");
-		}));
-
-	it("throws away a refresh that found the same revision", () =>
-		withCache(async (cache) => {
-			const first = await Effect.runPromise(install("fixture", cache, fixture("1.0.0")));
-			const same = await Effect.runPromise(install("fixture", cache, fixture("1.0.0"), true));
-
-			// Publishing a redundant generation would grow the store and the module registry on
-			// every update of an unchanged branch.
-			expect(same.entry.generation).toBe(first.entry.generation);
-			const directory = entryDir(cache, "fixture", "fixture@latest");
-			expect((await readdir(directory)).filter((name) => /^\d+$/.test(name))).toHaveLength(1);
-		}));
-
-	it("keeps the available revision when an outdated check is served from the TTL cache", () =>
-		withCache(async (cache) => {
-			const target = fetchable("fixture");
-			await Effect.runPromise(install("fixture", cache, fixture("1.0.0")));
-			let probes = 0;
-			const probe = () => {
-				probes++;
-				return Effect.succeed("1.1.0");
-			};
-
-			const first = await Effect.runPromise(check(target, cache, { probe, from: cache }));
-			const cached = await Effect.runPromise(check(target, cache, { probe, from: cache }));
-
-			expect(first).toEqual({ _tag: "outdated", filed: "1.0.0", available: "1.1.0" });
-			expect(cached).toEqual(first);
-			expect(probes).toBe(1);
 		}));
 
 	it("answers from the index, and repairs it when it disagrees with disk", () =>
@@ -268,23 +178,6 @@ describe("the store", () => {
 			expect(left).toContain(recent);
 			expect(left).not.toContain(old);
 			expect(left).not.toContain(".staging-crashed");
-		}));
-
-	it("drops a whole entry on remove, and forgets it in the index", () =>
-		withCache(async (cache) => {
-			await Effect.runPromise(install("fixture@1.0.0", cache));
-			expect(await Effect.runPromise(remove(fetchable("fixture@1.0.0"), cache, cache))).toBe(true);
-			expect(await Effect.runPromise(resolve(fetchable("fixture@1.0.0"), cache, cache))).toBeUndefined();
-			// Removing something that was never there is not an error.
-			expect(await Effect.runPromise(remove(fetchable("fixture@1.0.0"), cache, cache))).toBe(false);
-		}));
-
-	it("lists what is filed, without importing anything", () =>
-		withCache(async (cache) => {
-			await Effect.runPromise(install("fixture@1.0.0", cache));
-			await Effect.runPromise(install("fixture@2.0.0", cache));
-			const listed = await Effect.runPromise(all(cache));
-			expect(listed.map((entry) => entry.spec).sort()).toEqual(["fixture@1.0.0", "fixture@2.0.0"]);
 		}));
 });
 

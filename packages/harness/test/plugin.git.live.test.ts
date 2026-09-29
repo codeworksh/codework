@@ -69,6 +69,7 @@ const settings = (workspace: Workspace, plugins: ReadonlyArray<unknown>) =>
 /** One `Session.create` + one `run`, capturing what actually reached the provider. */
 const exchange = (workspace: Workspace, open?: LLM.Open) => {
 	const contexts: Message.Context[] = [];
+	const turn = open ?? toolTurn();
 	return Effect.gen(function* () {
 		const session = yield* Session.create({ directory: workspace.root, hostDir: workspace.root });
 		yield* session.run("hello");
@@ -81,7 +82,7 @@ const exchange = (workspace: Workspace, open?: LLM.Open) => {
 				database: ":memory:",
 				llm: (request, signal) => {
 					contexts.push(request.context);
-					return (open ?? toolTurn())(request, signal);
+					return turn(request, signal);
 				},
 			}),
 		),

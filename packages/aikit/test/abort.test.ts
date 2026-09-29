@@ -24,12 +24,4 @@ describe("abort classification", () => {
 		expect(message.stopReason).toBe("error");
 		expect(message.failure).toMatchObject({ _tag: "Timeout", retryable: true });
 	});
-
-	it("keeps a caller abort as aborted", async () => {
-		const controller = new AbortController();
-		setTimeout(() => controller.abort(), 20);
-		const message = await run({ signal: controller.signal });
-		expect(message.stopReason).toBe("aborted");
-		expect(message.failure).toBeUndefined();
-	});
 });

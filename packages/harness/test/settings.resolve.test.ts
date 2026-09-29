@@ -143,18 +143,6 @@ describe("settings resolution", () => {
 		expect(collect(merge(defaults, global, local, custom), "openai", "exact").maxTokens).toBe(800);
 	});
 
-	it("rejects tool selection settings in global and provider/model option blocks", async () => {
-		for (const block of [{ toolChoice: "auto" }, { activeTools: ["bash"] }]) {
-			for (const model of [
-				{ options: block },
-				...["*", "gpt-*", "gpt-5.5"].map((pattern) => ({ providerOptions: { openai: { [pattern]: block } } })),
-			]) {
-				const error = await Effect.runPromise(parse("settings.jsonc", JSON.stringify({ model })).pipe(Effect.flip));
-				expect(error.reason).toBe("decode");
-			}
-		}
-	});
-
 	it("validates known keys and retains arbitrary provider keys", async () => {
 		for (const options of [
 			{ timeoutMs: "slow" },

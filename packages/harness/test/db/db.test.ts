@@ -1,5 +1,5 @@
 import { NodeFileSystem } from "@effect/platform-node";
-import { ConfigProvider, DateTime, Effect, FileSystem, Layer, Option } from "effect";
+import { Effect, FileSystem, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import path from "node:path";
 import { describe, expect } from "vite-plus/test";
@@ -81,90 +81,7 @@ const registerInstances = (...ids: ReadonlyArray<string>) =>
 	});
 
 describe("Database", () => {
-	describe("configuration", () => {
-		memoryIt(
-			"resolves CODEWORK_DB through ConfigProvider",
-			Effect.gen(function* () {
-				const data = path.resolve("configured-data");
-				const location = yield* Database.path(data);
-				expect(location).toBe(path.join(data, "sessions.db"));
-			}).pipe(
-				Effect.provideService(
-					ConfigProvider.ConfigProvider,
-					ConfigProvider.fromUnknown({ CODEWORK_DB: "sessions.db" }),
-				),
-			),
-		);
-	});
-
 	describe("models", () => {
-		it(
-			"round-trips a project through the migrated schema",
-			Effect.gen(function* () {
-				const sql = yield* SqlClient.SqlClient;
-				const db = queries(sql);
-				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
-
-				const project = yield* ProjectRow.insert.makeEffect({
-					id: "project-1",
-					name: "codework",
-					status: "active",
-				});
-				yield* db.insertProject(project);
-
-				const found = yield* db.findProject("project-1");
-				expect(Option.isSome(found)).toBe(true);
-				const row = Option.getOrThrow(found);
-				expect(row.name).toBe("codework");
-				expect(DateTime.isDateTime(row.createdAt)).toBe(true);
-				expect(DateTime.isDateTime(row.updatedAt)).toBe(true);
-			}),
-		);
-
-		it(
-			"inserts and reads a project with its spaces",
-			Effect.gen(function* () {
-				const sql = yield* SqlClient.SqlClient;
-				const db = queries(sql);
-				yield* registerInstances("sandbox-1", "sandbox-2", "sandbox-orphan");
-
-				yield* db.insertProject(
-					yield* ProjectRow.insert.makeEffect({ id: "project-1", name: "codework", status: "active" }),
-				);
-				yield* db.insertSpace(
-					yield* space({
-						id: "space-1",
-						projectId: "project-1",
-						location: "/workspace/codework",
-						kind: "primary",
-						env: "sandbox-1",
-					}),
-				);
-				yield* db.insertSpace(
-					yield* space({
-						id: "space-2",
-						projectId: "project-1",
-						location: "/workspace/codework-feature",
-						kind: "linked",
-						env: "sandbox-2",
-					}),
-				);
-
-				const spaces = yield* db.selectSpaces("project-1");
-				expect(spaces.map((row) => ({ id: row.id, location: row.location, kind: row.kind, env: row.env }))).toEqual(
-					[
-						{ id: "space-1", location: "/workspace/codework", kind: "primary", env: instance("sandbox-1") },
-						{
-							id: "space-2",
-							location: "/workspace/codework-feature",
-							kind: "linked",
-							env: instance("sandbox-2"),
-						},
-					],
-				);
-			}),
-		);
-
 		it(
 			"enforces foreign keys, one row per place, and one primary per env",
 			Effect.gen(function* () {

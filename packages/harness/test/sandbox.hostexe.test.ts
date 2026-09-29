@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import { realpath } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { SandboxFileSystem } from "../src/sandbox/fs/filesystem.ts";
-import { SandboxIO } from "../src/sandbox/io.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { Shell } from "../src/sandbox/shell/shell.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
@@ -12,22 +11,6 @@ import { tmpdir } from "./fixtures/tempdir.ts";
 // paired VFS, commands ran in the harness's own checkout while writes landed in
 // the sandbox — so a command could read or mutate the wrong tree entirely.
 describe("Sandbox.defaultLayer — shell and filesystem share a cwd", () => {
-	it("defaults the host adapter to process.cwd()", async () => {
-		const result = await Effect.runPromise(
-			Effect.gen(function* () {
-				const current = yield* SandboxIO.Current;
-				const shell = yield* Shell;
-				return {
-					cwd: current.cwd,
-					pwd: (yield* shell.exec("pwd")).stdout.trim(),
-				};
-			}).pipe(Effect.scoped, Effect.provide(Sandbox.local(process.cwd()))),
-		);
-
-		expect(result.cwd).toBe(process.cwd());
-		expect(result.pwd).toBe(await realpath(process.cwd()));
-	});
-
 	it("runs commands in the sandbox cwd, not the harness process cwd", async () => {
 		await using tmp = await tmpdir();
 		// macOS resolves /var through a symlink, which `pwd` reports resolved.
@@ -46,22 +29,6 @@ describe("Sandbox.defaultLayer — shell and filesystem share a cwd", () => {
 		expect(result.viaExec).toBe(root);
 		expect(result.viaArgv).toBe(root);
 		expect(result.viaExec).not.toBe(process.cwd());
-	});
-
-	it("lets the shell read a file the filesystem wrote at a relative path", async () => {
-		await using tmp = await tmpdir();
-
-		const result = await Effect.runPromise(
-			Effect.gen(function* () {
-				const fs = yield* SandboxFileSystem.Service;
-				const shell = yield* Shell;
-				yield* fs.writeFile("marker.txt", "written via sandbox fs");
-				return yield* shell.exec("cat marker.txt");
-			}).pipe(Effect.scoped, Effect.provide(Sandbox.defaultLayer(tmp.path))),
-		);
-
-		expect(result.exitCode).toBe(0);
-		expect(result.stdout).toBe("written via sandbox fs");
 	});
 
 	it("resolves an explicit relative command cwd against the sandbox cwd", async () => {

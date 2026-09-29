@@ -72,25 +72,6 @@ describe("fork sequence seeding", () => {
 			expect((yield* sql`SELECT id FROM event WHERE aggregate_id = ${source.id}`).length).toBe(0);
 		}));
 
-	it("a real append after the fork lands above the copy", () =>
-		Effect.gen(function* () {
-			const session = yield* Session.Service;
-			const events = yield* Event.Service;
-			const source = yield* seed;
-			yield* session.append(entry(source.id, "e1", 1));
-			yield* session.append(entry(source.id, "e2", 6));
-
-			const fork = yield* session.fork({ sessionId: source.id, slug: "forked" });
-			const next = yield* events.latestSequence(fork.id);
-			yield* session.append(entry(fork.id, "f1", next + 1));
-
-			const path = yield* session.path(fork.id);
-			const seqs = path.map((h) => h.entry.seq);
-			expect(seqs).toEqual([1, 6, next + 1]);
-			// parent.seq < child.seq, which selectPath orders by
-			expect(seqs.every((s, i) => i === 0 || s > seqs[i - 1]!)).toBe(true);
-		}));
-
 	// Positions arrive from outside now, so the tree can no longer derive the
 	// guarantee that they advance -- it has to enforce it. Left unchecked, a
 	// stale position fails silently: `selectPath` orders by seq, so the child

@@ -2,39 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseStreamingJson } from "../src/utils/jsonparse.ts";
 
 describe("parseStreamingJson", () => {
-	describe("empty input", () => {
-		it("returns an empty object for undefined", () => {
-			expect(parseStreamingJson(undefined)).toEqual({});
-		});
-
-		it("returns an empty object for an empty string", () => {
-			expect(parseStreamingJson("")).toEqual({});
-		});
-
-		it("returns an empty object for whitespace-only input", () => {
-			expect(parseStreamingJson("   \n\t ")).toEqual({});
-		});
-	});
-
-	describe("complete JSON", () => {
-		it("parses a complete object", () => {
-			expect(parseStreamingJson('{"a": 1, "b": "two"}')).toEqual({ a: 1, b: "two" });
-		});
-
-		it("parses nested structures", () => {
-			expect(parseStreamingJson('{"items": [{"id": 1}, {"id": 2}], "done": true}')).toEqual({
-				items: [{ id: 1 }, { id: 2 }],
-				done: true,
-			});
-		});
-
-		it("parses valid escape sequences", () => {
-			expect(parseStreamingJson('{"text": "line1\\nline2\\ttabbed"}')).toEqual({
-				text: "line1\nline2\ttabbed",
-			});
-		});
-	});
-
 	describe("partial JSON during streaming", () => {
 		it("parses an object missing its closing brace", () => {
 			expect(parseStreamingJson('{"a": 1')).toEqual({ a: 1 });

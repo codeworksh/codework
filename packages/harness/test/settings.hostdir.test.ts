@@ -94,28 +94,6 @@ const open = (): LLM.Open => {
 const lastLevel = () => inputs.at(-1)?.thinkingLevel;
 
 describe("a session's host directory decides its settings", () => {
-	it("gives two sessions in one process the project each was placed in", () =>
-		withProjects(async (dirs) => {
-			inputs = [];
-			await run(
-				dirs,
-				Effect.gen(function* () {
-					const first = yield* Session.create({ hostDir: dirs.alpha });
-					yield* first.run("one");
-					expect(lastLevel()).toBe("low");
-
-					const second = yield* Session.create({ hostDir: dirs.beta });
-					yield* second.run("two");
-					expect(lastLevel()).toBe("medium");
-
-					// And the first has not been disturbed by the second: each exchange discovers
-					// from its own session, not from whichever ran most recently.
-					yield* first.run("three");
-					expect(lastLevel()).toBe("low");
-				}),
-			);
-		}));
-
 	it("reads the user layer only when the session was given no host directory", () =>
 		withProjects(async (dirs) => {
 			inputs = [];

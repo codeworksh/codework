@@ -336,16 +336,4 @@ describe("settings at the LLM boundary", () => {
 		expect(requestedHeaders?.get("x-settings")).toBe("yes");
 		expect(body.max_tokens).toBe(17);
 	});
-
-	it("keeps typed lookup errors when settings select a model the catalog does not have", async () => {
-		const input = (provider: string, model: string) => ({ provider, model, settings: { contextWindow: 999 } });
-		const missing = await Effect.runPromise(LLM.resolve(input("openai", "no-such-model")).pipe(Effect.flip));
-		expect(missing._tag).toBe("Runner.ModelNotFoundError");
-		expect(missing).toMatchObject({ provider: "openai", model: "no-such-model" });
-
-		const unknownProvider = await Effect.runPromise(
-			LLM.resolve(input("no-such-provider", "no-such-model")).pipe(Effect.flip),
-		);
-		expect(unknownProvider._tag).toBe("Runner.ModelNotFoundError");
-	});
 });

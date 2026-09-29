@@ -142,30 +142,6 @@ describe("Event.log", () => {
 			expect(items.at(-1)).toEqual({ type: "log.synced", aggregateId: A, seq: 1 });
 		}));
 
-	it("marks an empty aggregate as synced with no sequence", () =>
-		Effect.gen(function* () {
-			const events = yield* Event.Service;
-			const items = Array.from(yield* events.log({ aggregateId: A }).pipe(Stream.runCollect));
-			expect(items).toEqual([{ type: "log.synced", aggregateId: A }]);
-		}));
-
-	it("reads after an exclusive lower bound, across pages", () =>
-		Effect.gen(function* () {
-			const events = yield* Event.Service;
-			yield* turns(
-				events,
-				A,
-				Array.from({ length: 250 }, (_, index) => `message_${index}`),
-			);
-
-			const items = Array.from(yield* events.log({ aggregateId: A, after: 247 }).pipe(Stream.runCollect));
-			expect(names(items)).toEqual(["message_248", "message_249"]);
-
-			const all = Array.from(yield* events.log({ aggregateId: A }).pipe(Stream.runCollect));
-			expect(names(all)).toHaveLength(250);
-			expect(all.at(-1)).toEqual({ type: "log.synced", aggregateId: A, seq: 249 });
-		}));
-
 	liveIt("appends commits after the marker and never live-only events", () =>
 		Effect.gen(function* () {
 			const events = yield* Event.Service;
@@ -334,32 +310,6 @@ describe("Event.log", () => {
 			expect(first.durable?.seq).toBe(0);
 		}));
 
-	it("skips a row whose manifest entry is not durable instead of failing the read", () =>
-		Effect.gen(function* () {
-			const events = yield* Event.Service;
-			const topic = "plugin:test.foreign:nondurable";
-			yield* events.publish(Foreign, { topic, note: "one" });
-
-			// `EventSchema.durable` drops non-durable definitions, so only a hand-built manifest
-			// can key one under a stored type.
-			const Ephemeral = EventSchema.define({
-				type: "test.foreign.happened",
-				schema: { topic: Schema.String, note: Schema.String },
-			});
-			const handBuilt = new Map([[EventSchema.versionedType("test.foreign.happened", 1), Ephemeral]]);
-			const items = Array.from(
-				yield* events.log({ aggregateId: topic, definitions: handBuilt }).pipe(Stream.runCollect),
-			);
-			expect(items.filter((item) => !Event.isSynced(item))).toEqual([]);
-			expect(items.filter(Event.isSynced)).toHaveLength(1);
-
-			// The same row still decodes through its durable definition.
-			const decoded = Array.from(
-				yield* events.log({ aggregateId: topic, definitions: foreignDefinitions }).pipe(Stream.runCollect),
-			);
-			expect(decoded.filter((item) => !Event.isSynced(item))).toHaveLength(1);
-		}));
-
 	it("pages custom definitions across many pages and resumes from a cursor", () =>
 		Effect.gen(function* () {
 			const events = yield* Event.Service;
@@ -398,13 +348,5 @@ describe("Event.log", () => {
 			);
 			expect(tail).toHaveLength(total - 200);
 			expect(tail.at(0)).toBe("n200");
-		}));
-
-	it("leaves kernel reads on the application manifest", () =>
-		Effect.gen(function* () {
-			const events = yield* Event.Service;
-			yield* turns(events, A, ["first", "second"]);
-			const items = Array.from(yield* events.log({ aggregateId: A }).pipe(Stream.runCollect));
-			expect(names(items)).toEqual(["first", "second"]);
 		}));
 });

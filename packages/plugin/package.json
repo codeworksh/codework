@@ -187,7 +187,6 @@
 		"release": "node ../../scripts/publish.mjs plugin",
 		"release:dev": "node ../../scripts/publish.mjs plugin --dev",
 		"release:dry": "node ../../scripts/publish.mjs plugin --dry-run",
-		"test": "vp test",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

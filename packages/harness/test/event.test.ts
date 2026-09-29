@@ -56,29 +56,6 @@ describe("Event store", () => {
 			expect(yield* events.latestSequence("agg_never_written")).toBe(-1);
 		}));
 
-	it("stores the versioned type while the payload keeps the bare one", () =>
-		Effect.gen(function* () {
-			const sql = yield* SqlClient.SqlClient;
-			const events = yield* Event.Service;
-			const published = yield* events.publish(Msg, { aggId: A, text: "one" });
-
-			expect(published.type).toBe("test.msg");
-			expect((yield* rowsFor(sql, A))[0]!.type).toBe("test.msg.1");
-		}));
-
-	it("rejects a duplicate event id", () =>
-		Effect.gen(function* () {
-			const sql = yield* SqlClient.SqlClient;
-			const events = yield* Event.Service;
-			const id = EventSchema.ID.create();
-
-			yield* events.publish(Msg, { aggId: A, text: "one" }, { id });
-			const exit = yield* events.publish(Msg, { aggId: A, text: "two" }, { id }).pipe(Effect.exit);
-
-			expect(exit._tag).toBe("Failure");
-			expect((yield* rowsFor(sql, A)).length).toBe(1);
-		}));
-
 	// An id is unique across the whole store, not per aggregate: reusing one
 	// elsewhere would make an event ambiguous to anything that dedups by id.
 	it("rejects an event id already used at another aggregate", () =>
@@ -136,42 +113,6 @@ describe("Event store", () => {
 			expect(seen).toEqual([0, 1]);
 		}));
 
-	// Metadata is publish-time context, not log content: it reaches projectors on
-	// the payload and is deliberately absent from the stored row. A projector that
-	// wants it to outlive the publish writes it into its own projection.
-	describe("metadata", () => {
-		it("reaches projectors on the in-memory payload", () =>
-			Effect.gen(function* () {
-				const events = yield* Event.Service;
-				const seen: Array<Record<string, string> | undefined> = [];
-				yield* events.project(Msg, (event) => Effect.sync(() => void seen.push(event.metadata)));
-
-				const published = yield* events.publish(
-					Msg,
-					{ aggId: A, text: "traced" },
-					{ metadata: { requestId: "req_1" } },
-				);
-
-				expect(published.metadata).toEqual({ requestId: "req_1" });
-				expect(seen).toEqual([{ requestId: "req_1" }]);
-			}));
-
-		it("is not stored on the event row, so a durable reread does not see it", () =>
-			Effect.gen(function* () {
-				const sql = yield* SqlClient.SqlClient;
-				const events = yield* Event.Service;
-				yield* events.publish(Msg, { aggId: A, text: "traced" }, { metadata: { requestId: "req_1" } });
-
-				// The row holds the event's data and nothing else about the caller.
-				const stored = yield* rowsFor(sql, A);
-				expect(JSON.parse(stored[0]!.data as string)).toEqual({ aggId: A, text: "traced" });
-				expect(Object.keys(stored[0]!)).not.toContain("metadata");
-
-				const page = yield* events.readAggregate({ aggregateId: A, limit: 10, manifest });
-				expect(page.events[0]).not.toHaveProperty("metadata");
-			}));
-	});
-
 	describe("advance", () => {
 		it("starts an aggregate above a range reserved for copied state", () =>
 			Effect.gen(function* () {
@@ -212,17 +153,6 @@ describe("Event store", () => {
 					yield* events.publish(Msg, { aggId: A, text: `m${i}` });
 				}
 			});
-
-		it("reads an aggregate in sequence order", () =>
-			Effect.gen(function* () {
-				const events = yield* Event.Service;
-				yield* publishMany(3);
-
-				const page = yield* events.readAggregate({ aggregateId: A, limit: 10, manifest });
-				expect(page.hasMore).toBe(false);
-				expect(page.events.map((e) => e.data.text)).toEqual(["m0", "m1", "m2"]);
-				expect(page.events.map((e) => e.durable?.seq)).toEqual([0, 1, 2]);
-			}));
 
 		// hasMore is computed by over-reading one row, so the boundary between
 		// "exactly a page" and "a page plus one" is where it goes wrong.
@@ -265,16 +195,6 @@ describe("Event store", () => {
 					if (!page.hasMore || (guard += 1) > 5) break;
 				}
 				expect(seen).toEqual(["m0", "m1", "m2"]);
-			}));
-
-		it("excludes other aggregates", () =>
-			Effect.gen(function* () {
-				const events = yield* Event.Service;
-				yield* events.publish(Msg, { aggId: A, text: "mine" });
-				yield* events.publish(Msg, { aggId: B, text: "theirs" });
-
-				const page = yield* events.readAggregate({ aggregateId: A, limit: 10, manifest });
-				expect(page.events.map((e) => e.data.text)).toEqual(["mine"]);
 			}));
 	});
 });

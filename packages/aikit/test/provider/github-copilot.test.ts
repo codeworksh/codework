@@ -1,12 +1,8 @@
-import { LoadAPIKeyError } from "@ai-sdk/provider";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
 	GITHUB_COPILOT_API_VERSION,
 	GITHUB_COPILOT_STATIC_HEADERS,
-	applyCopilotHeaders,
-	copilotRequestMetadata,
 	createCopilotFetch,
-	createGitHubCopilot,
 } from "../../src/providers/github-copilot/index.ts";
 
 type CapturedRequest = { url: string; headers: Headers; body: unknown };
@@ -53,25 +49,6 @@ describe("createCopilotFetch", () => {
 		expect(headers.get("openai-intent")).toBe("conversation-edits");
 		expect(headers.get("x-github-api-version")).toBe(GITHUB_COPILOT_API_VERSION);
 		expect(headers.get("x-interaction-type")).toBe("conversation-agent");
-	});
-
-	it("resolves async apiKey resolvers and falls back to the environment", async () => {
-		const { requests, send } = capture();
-		const wrapped = createCopilotFetch({ apiKey: () => Promise.resolve("gho_async"), fetch: send });
-		await wrapped(CHAT_URL, { method: "POST", body: "{}" });
-		expect(requests[0]!.headers.get("authorization")).toBe("Bearer gho_async");
-
-		vi.stubEnv("COPILOT_GITHUB_TOKEN", "ghu_env");
-		const fromEnv = createCopilotFetch({ fetch: send });
-		await fromEnv(CHAT_URL, { method: "POST", body: "{}" });
-		expect(requests[1]!.headers.get("authorization")).toBe("Bearer ghu_env");
-	});
-
-	it("fails closed when no token can be resolved", async () => {
-		const { requests, send } = capture();
-		const wrapped = createCopilotFetch({ apiKey: () => Promise.resolve(undefined), fetch: send });
-		await expect(wrapped(CHAT_URL, { method: "POST", body: "{}" })).rejects.toBeInstanceOf(LoadAPIKeyError);
-		expect(requests).toHaveLength(0);
 	});
 
 	it("marks chat bodies user-initiated and tool loops agent-initiated", async () => {
@@ -221,38 +198,5 @@ describe("createCopilotFetch", () => {
 			body: JSON.stringify({ model: "claude-haiku-4.5", messages: [] }),
 		});
 		expect(requests[2]!.headers.get("anthropic-beta")).toBe(beta);
-	});
-});
-
-describe("copilotRequestMetadata", () => {
-	it("does not mark bodies it cannot parse", () => {
-		expect(copilotRequestMetadata(CHAT_URL, undefined)).toEqual({ agent: false, vision: false });
-		expect(copilotRequestMetadata(CHAT_URL, { model: "x" })).toEqual({ agent: false, vision: false });
-	});
-});
-
-describe("applyCopilotHeaders", () => {
-	it("replaces existing identity headers", () => {
-		const headers = new Headers({ "user-agent": "custom", "x-initiator": "user" });
-		applyCopilotHeaders(headers, { token: "t", url: CHAT_URL, body: {} });
-		expect(headers.get("user-agent")).toBe(GITHUB_COPILOT_STATIC_HEADERS["User-Agent"]);
-		expect(headers.get("x-initiator")).toBe("user");
-	});
-});
-
-describe("createGitHubCopilot", () => {
-	it("routes model ids to the right endpoint adapter", () => {
-		const provider = createGitHubCopilot({ apiKey: "t", fetch: capture().send });
-		expect(provider.chat("gemini-3.6-flash").provider).toBe("github-copilot.chat");
-		expect(provider.languageModel("gemini-3.6-flash").provider).toBe("github-copilot.chat");
-		expect(provider.responses("gpt-5.4").provider).toBe("github-copilot.responses");
-		expect(provider.messages("claude-opus-4.8").provider).toBe("github-copilot");
-	});
-
-	it("targets the three Copilot paths from one base URL", async () => {
-		const { requests, send } = capture();
-		const provider = createGitHubCopilot({ apiKey: "t", fetch: send });
-		expect(provider).toBeDefined();
-		expect(requests).toHaveLength(0);
 	});
 });

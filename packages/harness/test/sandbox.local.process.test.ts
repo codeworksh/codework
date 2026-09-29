@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer, Option } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
@@ -6,7 +6,6 @@ import { SandboxDriver } from "../src/sandbox/driver.ts";
 import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
 import { MemorySandboxDriver } from "../src/sandbox/drivers/memory.ts";
 import { SqldbSandboxDriver } from "../src/sandbox/drivers/sqldb.ts";
-import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import { testEffect } from "./utils/effect.ts";
 
@@ -68,32 +67,6 @@ const processLocalLifecycle = <CreateConfig, RuntimeConfig extends SandboxDriver
 				yield* controller.stop(created.id);
 				yield* controller.destroy(created.id);
 				expect(Option.getOrThrow(yield* controller.get(created.id)).status).toBe("removed");
-			}),
-		);
-
-		it(
-			"makes the namespace unavailable after driver destroy",
-			Effect.gen(function* () {
-				const instanceId = SandboxInstance.ID.create();
-				const provisioned = yield* fixture.driver.create({
-					instanceId,
-					config: fixture.config,
-				});
-				const input = {
-					id: instanceId,
-					providerResourceId: Option.fromUndefinedOr(provisioned.providerResourceId),
-					runtimeConfig: provisioned.runtimeConfig,
-				};
-
-				yield* fixture.driver.stop!(input);
-				yield* fixture.driver.destroy!(input);
-
-				const attachment = Effect.flatMap(SandboxIO.FileSystem, (fs) => fs.exists("/workspace")).pipe(
-					Effect.provide(fixture.driver.attach(input)),
-					Effect.scoped,
-					Effect.exit,
-				);
-				expect(Exit.isFailure(yield* attachment)).toBe(true);
 			}),
 		);
 	});

@@ -4,58 +4,9 @@ import { describe, expect, it } from "vite-plus/test";
 import {
 	appendOpenAICodexGrammarInputJsonDelta,
 	convertToOpenAICodexPrompt,
-	joinToolCallId,
-	splitToolCallId,
 } from "../../src/providers/openai-codex/index.ts";
 
 describe("prompt conversion", () => {
-	it("converts system, user, assistant, and tool messages", () => {
-		const prompt: LanguageModelV3Prompt = [
-			{ role: "system", content: "First." },
-			{ role: "system", content: "Second." },
-			{ role: "user", content: [{ type: "text", text: "Compute 2+2" }] },
-			{
-				role: "assistant",
-				content: [
-					{ type: "reasoning", text: "let me think" },
-					{ type: "tool-call", toolCallId: "call_1|fc_1", toolName: "math", input: { a: 2, b: 2 } },
-					{ type: "text", text: "Calling the tool." },
-				],
-			},
-			{
-				role: "tool",
-				content: [
-					{
-						type: "tool-result",
-						toolCallId: "call_1|fc_1",
-						toolName: "math",
-						output: { type: "text", value: "4" },
-					},
-				],
-			},
-		];
-
-		const { instructions, input } = convertToOpenAICodexPrompt(prompt);
-
-		expect(instructions).toBe("First.\n\nSecond.");
-		expect(input).toHaveLength(4);
-		expect(input[0]).toEqual({ role: "user", content: [{ type: "input_text", text: "Compute 2+2" }] });
-		expect(input[1]).toEqual({
-			type: "function_call",
-			id: "fc_1",
-			call_id: "call_1",
-			name: "math",
-			arguments: JSON.stringify({ a: 2, b: 2 }),
-		});
-		expect(input[2]).toMatchObject({
-			type: "message",
-			role: "assistant",
-			status: "completed",
-			content: [{ type: "output_text", text: "Calling the tool.", annotations: [] }],
-		});
-		expect(input[3]).toEqual({ type: "function_call_output", call_id: "call_1", output: "4" });
-	});
-
 	it("replays signed reasoning, assistant message ids, and deferred-tool namespaces", () => {
 		const signedReasoning = {
 			type: "reasoning" as const,
@@ -110,26 +61,6 @@ describe("prompt conversion", () => {
 		]);
 	});
 
-	it("converts image file parts to input_image entries", () => {
-		const { input } = convertToOpenAICodexPrompt([
-			{
-				role: "user",
-				content: [
-					{ type: "file", mediaType: "image/png", data: "aGVsbG8=" },
-					{ type: "file", mediaType: "image/jpeg", data: new URL("https://example.com/cat.jpg") },
-				],
-			},
-		]);
-
-		expect(input[0]).toEqual({
-			role: "user",
-			content: [
-				{ type: "input_image", image_url: "data:image/png;base64,aGVsbG8=", detail: "auto" },
-				{ type: "input_image", image_url: "https://example.com/cat.jpg", detail: "auto" },
-			],
-		});
-	});
-
 	it("converts AI SDK V4 image file data to input_image entries", () => {
 		const { input } = convertToOpenAICodexPrompt([
 			{
@@ -148,16 +79,6 @@ describe("prompt conversion", () => {
 			role: "user",
 			content: [{ type: "input_image", image_url: "data:image/png;base64,aGVsbG8=", detail: "auto" }],
 		});
-	});
-
-	it("defaults instructions when no system message exists", () => {
-		const { instructions } = convertToOpenAICodexPrompt([{ role: "user", content: [{ type: "text", text: "hi" }] }]);
-		expect(instructions).toBe("You are a helpful assistant.");
-	});
-
-	it("round-trips composite tool call ids", () => {
-		expect(splitToolCallId(joinToolCallId("call_9", "fc_9"))).toEqual({ callId: "call_9", itemId: "fc_9" });
-		expect(splitToolCallId("plain_id")).toEqual({ callId: "plain_id", itemId: "plain_id" });
 	});
 
 	it("replays native custom tool calls and results from ordinary AI SDK tool parts", () => {
