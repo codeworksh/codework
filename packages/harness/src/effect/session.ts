@@ -1,7 +1,8 @@
 import type { Model } from "@codeworksh/aikit";
-import { Effect, Option, Stream } from "effect";
+import { DateTime, Effect, Option, Stream } from "effect";
 import * as Control from "../control.ts";
 import * as Event from "../event/event.ts";
+import { EventList } from "../event/list.ts";
 import type { EventSchema } from "../event/schema.ts";
 import { Location } from "../location/location.ts";
 import * as SandboxController from "../sandbox/control.ts";
@@ -14,7 +15,7 @@ import { PromptSchema } from "../session/prompt/schema.ts";
 import * as SessionRuntime from "../session/runtime.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
-import type { State } from "../state/state.ts";
+import { State } from "../state/state.ts";
 import { rooted } from "../util/path.ts";
 import type { Info as SandboxInfo } from "./sandbox.ts";
 
@@ -103,13 +104,26 @@ export interface Handle {
 	readonly path: () => Effect.Effect<ReadonlyArray<SessionStore.HydratedEntry>>;
 }
 
+/** What stays in this process. The model and thinking level are the session's {@link chosen} config. */
 const runtimeBindings = (input: RuntimeInput): SessionRuntime.Bindings => ({
 	...input.model?.options,
-	...(input.model === undefined ? {} : { provider: input.model.provider, model: input.model.id }),
-	...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
 	...(input.tools?.execution === undefined ? {} : { toolExecution: input.tools.execution }),
 	...(input.systemPrompt?.custom === undefined ? {} : { promptCustom: input.systemPrompt.custom }),
 	...(input.systemPrompt?.append === undefined ? {} : { promptSystemAppend: input.systemPrompt.append }),
+});
+
+/** The keys of the session's durable config this input names. */
+const chosen = (input: RuntimeInput): SessionSchema.Config => ({
+	...(input.model === undefined ? {} : { model: { provider: input.model.provider, id: input.model.id } }),
+	...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
+});
+
+/** Records a config choice; the projector merges it into the session row in the same commit. */
+const choose = Effect.fn("Session.choose")(function* (sessionId: SessionSchema.ID, input: RuntimeInput) {
+	const config = chosen(input);
+	if (Object.keys(config).length === 0) return;
+	const events = yield* Event.Service;
+	yield* events.publish(EventList.ConfigChanged, { sessionId, timestamp: yield* DateTime.now, ...config });
 });
 
 const promptInput = (input: PromptInput) => {
@@ -191,6 +205,7 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 		...(input.hostDir === undefined ? {} : { hostDir: declaredHostDir(input.hostDir) }),
 	});
 	yield* runtime.set(id, runtimeBindings(input));
+	yield* choose(id, input);
 	return yield* makeHandle(id);
 });
 
@@ -283,7 +298,21 @@ export const attach = Effect.fn("Session.attach")(function* (input: AttachInput)
 	 * the only config layer, so there is nothing behind them to restore what a wipe took.
 	 */
 	yield* runtime.update(input.sessionId, runtimeBindings(input));
+	yield* choose(input.sessionId, input);
 	return found.value;
+});
+
+/**
+ * The model and thinking level the session's next exchange runs with. A choice made through
+ * {@link create} or {@link attach} is saved with the session and outlives the process; without
+ * one, the session follows its settings.
+ */
+export const configuration = Effect.fn("Session.configuration")(function* (sessionId: SessionSchema.ID) {
+	const sessions = yield* SessionStore.Service;
+	if (Option.isNone(yield* sessions.get(sessionId))) {
+		return yield* new SessionStore.SessionNotFoundError({ sessionId });
+	}
+	return yield* State.Service.use((state) => state.configuration(sessionId));
 });
 
 export { AbsolutePath, SessionMessageSchema, SessionSchema };

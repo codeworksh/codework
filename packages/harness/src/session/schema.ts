@@ -1,5 +1,6 @@
+import { Model } from "@codeworksh/aikit";
 import { Schema } from "effect";
-import { NonNegativeCost, NonNegativeInt } from "../schema.ts";
+import { NonNegativeCost, NonNegativeInt, optional } from "../schema.ts";
 
 // Session identity lives in `@codeworksh/plugin`: it is on every plugin context and every
 // tool call, so the brand a plugin holds has to be the one the harness mints.
@@ -25,6 +26,19 @@ export const titleFrom = (text: string): string | undefined => {
 	const space = cut.lastIndexOf(" ");
 	return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}…`;
 };
+
+export const ThinkingLevel = Schema.Literals(Object.values(Model.ThinkingLevelEnum));
+
+/**
+ * The model and thinking level chosen for a session, over its settings. Every key is optional:
+ * an absent one means the session follows its settings. `session.config.changed` carries only the
+ * keys it changes, and the `session.config` column holds them merged.
+ */
+export const Config = Schema.Struct({
+	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	thinkingLevel: optional(ThinkingLevel),
+});
+export type Config = typeof Config.Type;
 
 /**
  * Why an execution stopped. Supplied by whoever asked for the interruption --

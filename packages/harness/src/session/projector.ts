@@ -119,6 +119,11 @@ export const layer = Layer.effectDiscard(
 			}),
 		);
 
+		yield* events.project(EventList.ConfigChanged, (event) => {
+			const { sessionId, timestamp: _timestamp, ...config } = event.data;
+			return sessions.configure(sessionId, config);
+		});
+
 		yield* events.project(EventList.LLMStarted, (event) =>
 			Effect.gen(function* () {
 				if (event.durable === undefined) return yield* Effect.die("LLMStarted is missing its aggregate sequence");

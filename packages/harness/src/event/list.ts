@@ -38,21 +38,13 @@ export const Prompted = EventSchema.define({
 });
 export type Prompted = typeof Prompted.Type;
 
-// export const ConfigChanged = EventSchema.define({
-// 	type: "session.config.changed",
-// 	...durableOptions,
-// 	schema: {
-// 		...baseOptions,
-// 		model: optional(
-// 			Schema.Struct({
-// 				providerId: Schema.String,
-// 				modelId: Schema.String,
-// 			}),
-// 		),
-// 		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
-// 	},
-// });
-// export type ConfigChanged = typeof ConfigChanged.Type;
+/** A session's model or thinking level was chosen. Carries only the keys that changed. */
+export const ConfigChanged = EventSchema.define({
+	type: "session.config.changed",
+	...durableOptions,
+	schema: { ...baseOptions, ...SessionSchema.Config.fields },
+});
+export type ConfigChanged = typeof ConfigChanged.Type;
 
 const LLMFields = {
 	...baseOptions,
@@ -273,6 +265,7 @@ export const Definitions = EventSchema.inventory(
 	ExecutionInterrupted,
 	PromptAdmitted,
 	Prompted,
+	ConfigChanged,
 	SessionForked,
 	TurnStarted,
 	TurnEnded,
@@ -302,6 +295,7 @@ export const PublicDefinitions = Definitions;
 export const DurableDefinitions = EventSchema.inventory(
 	PromptAdmitted,
 	Prompted,
+	ConfigChanged,
 	SessionForked,
 	TurnEnded,
 	LLMStarted,

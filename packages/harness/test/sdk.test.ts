@@ -1,5 +1,4 @@
 import "./utils/env.ts";
-import { Settings } from "../src/settings/settings.ts";
 import { Effect } from "effect";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
@@ -106,30 +105,26 @@ describe("Harness Effect SDK", () => {
 
 					yield* Effect.gen(function* () {
 						const session = yield* Session.attach({ sessionId });
+						expect(yield* Session.configuration(sessionId)).toEqual({
+							provider: "openai",
+							model: "gpt-4o",
+							thinkingLevel: "low",
+						});
 						yield* session.run("fourth");
 					}).pipe(Effect.provide(runtime()), Effect.scoped);
 
 					expect(contexts).toHaveLength(4);
 					/*
-					 * Model config is process-local: it lives in SessionRuntime bindings and is
-					 * not written to the session log. An attach that names a model applies it for
-					 * that runtime's lifetime; an attach that does not falls back to the defaults,
-					 * even on a session whose earlier runtime had one set.
+					 * The model and thinking level are saved with the session: an attach that
+					 * names none keeps what an earlier runtime chose, and one that names them
+					 * replaces it for every runtime after.
 					 */
 					expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual(
 						[
 							{ provider: "openai", model: "gpt-4o-mini", thinkingLevel: "max" },
-							{
-								provider: Settings.defaults.model.provider,
-								model: Settings.defaults.model.id,
-								thinkingLevel: Settings.defaults.model.thinkingLevel,
-							},
+							{ provider: "openai", model: "gpt-4o-mini", thinkingLevel: "max" },
 							{ provider: "openai", model: "gpt-4o", thinkingLevel: "low" },
-							{
-								provider: Settings.defaults.model.provider,
-								model: Settings.defaults.model.id,
-								thinkingLevel: Settings.defaults.model.thinkingLevel,
-							},
+							{ provider: "openai", model: "gpt-4o", thinkingLevel: "low" },
 						],
 					);
 				});

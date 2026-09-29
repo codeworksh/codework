@@ -122,6 +122,12 @@ export interface Snapshot {
 	readonly toolExecution: ToolExecutionMode;
 }
 
+export interface Configuration {
+	readonly provider: string;
+	readonly model: string;
+	readonly thinkingLevel: Model.ThinkingLevel;
+}
+
 export interface Reloaded {
 	/** How many plugins the new set holds, when it swapped. */
 	readonly plugins: number;
@@ -150,6 +156,12 @@ export interface Interface {
 	 * set once at its top.
 	 */
 	readonly reload: Effect.Effect<Reloaded>;
+	/**
+	 * The model and thinking level a session's next exchange runs with: its runtime bindings over
+	 * its chosen `SessionSchema.Config` over the caller's options over settings, resolved the
+	 * way {@link snapshot} resolves them. Nothing is looked up in the catalog.
+	 */
+	readonly configuration: (sessionId: SessionId) => Effect.Effect<Configuration, Settings.SettingsError>;
 	/**
 	 * Capture runtime state for one exchange. Called inside a session drain,
 	 * where the mount it reads is already open.
@@ -310,6 +322,27 @@ export const layer = (
 					...("reference" in cause && typeof cause.reference === "string" ? { reference: cause.reference } : {}),
 					...(sessionId === undefined ? {} : { sessionId }),
 				});
+			/** Settings and composed configuration for a session's next exchange. */
+			const configure = Effect.fnUntraced(function* (sessionId: SessionId) {
+				// Read per exchange, not captured at creation, so `Session.link` takes effect at
+				// the next one. A session with none discovers no project layer: there is no
+				// fallback to the process's directory, which would hand it a stranger's project
+				// (it is a long-running server; one process serves sessions in many projects, or
+				// in none).
+				const session = Option.getOrUndefined(yield* sessions.get(sessionId));
+				const hostDir = session === undefined ? undefined : Option.getOrUndefined(session.hostDir);
+				// The chosen config survives restarts; runtime bindings, set in this process, sit over it.
+				const chosen = session === undefined ? {} : Option.getOrElse(session.config, () => ({}));
+				const sessionOptions = {
+					...(chosen.model === undefined ? {} : { provider: chosen.model.provider, model: chosen.model.id }),
+					...(chosen.thinkingLevel === undefined ? {} : { thinkingLevel: chosen.thinkingLevel }),
+					...Option.getOrElse(yield* runtime.get(sessionId), () => ({})),
+				};
+				// Not wrapped: a file the user can fix is more useful to a client as a settings
+				// failure carrying its path and key than as an anonymous snapshot failure.
+				const loadedSettings = yield* settings.load(hostDir);
+				return { hostDir, loadedSettings, configured: compose(loadedSettings, options, sessionOptions) };
+			});
 			return Service.of({
 				reload: Effect.gen(function* () {
 					// Swaps the module set of every view. Which of those a given session runs stays
@@ -334,19 +367,16 @@ export const layer = (
 					const [first] = failures.keys();
 					return first === undefined ? { plugins } : { plugins, failure: first };
 				}),
+				configuration: Effect.fn("State.configuration")(function* (sessionId: SessionId) {
+					const { configured } = yield* configure(sessionId);
+					return {
+						provider: configured.provider,
+						model: configured.model,
+						thinkingLevel: configured.thinkingLevel,
+					} satisfies Configuration;
+				}),
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
-					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
-					// Read per exchange, not captured at creation, so `Session.link` takes effect at
-					// the next one. A session with none discovers no project layer: there is no
-					// fallback to the process's directory, which would hand it a stranger's project
-					// (it is a long-running server; one process serves sessions in many projects, or
-					// in none).
-					const session = yield* sessions.get(sessionId);
-					const hostDir = Option.isNone(session) ? undefined : Option.getOrUndefined(session.value.hostDir);
-					// Not wrapped: a file the user can fix is more useful to a client as a settings
-					// failure carrying its path and key than as an anonymous snapshot failure.
-					const loadedSettings = yield* settings.load(hostDir);
-					const configured = compose(loadedSettings, options, sessionOptions);
+					const { hostDir, loadedSettings, configured } = yield* configure(sessionId);
 					const {
 						promptCustom,
 						promptSystemAppend,
