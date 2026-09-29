@@ -43,7 +43,7 @@ export function createAssistantMessage(model: Model.Info): Message.AssistantMess
 	});
 }
 
-function userContent(parts: Message.UserMessage["parts"], supportsImages: boolean): ModelMessage[] {
+function userContent(parts: Message.UserMessage["parts"]): ModelMessage[] {
 	const content: Exclude<UserModelMessage["content"], string> = [];
 	for (const part of parts) {
 		if (part.type === "text") {
@@ -53,9 +53,7 @@ function userContent(parts: Message.UserMessage["parts"], supportsImages: boolea
 			}
 			continue;
 		}
-		if (supportsImages) {
-			content.push({ type: "file", data: part.data, mediaType: part.mimeType });
-		}
+		content.push({ type: "file", data: part.data, mediaType: part.mimeType });
 	}
 
 	if (content.length === 0) return [];
@@ -331,7 +329,7 @@ export function convertMessages(context: Message.Context, model: Model.Info): Mo
 
 	for (const msg of transformedMessages) {
 		if (msg.role === "user") {
-			messages.push(...userContent(msg.parts, model.input.includes("image")));
+			messages.push(...userContent(msg.parts));
 			continue;
 		}
 		messages.push(...assistantMessages(msg, model));

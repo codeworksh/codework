@@ -484,7 +484,7 @@ describe("normalizeOpenAICodexToolCallId", () => {
 });
 
 describe("convertMessages", () => {
-	it("includes user images only when the model supports image input", () => {
+	it("replaces user images with a placeholder when the model does not support image input", () => {
 		const userMessage = pngUserMessage([
 			{ type: "text", text: "look" },
 			{ type: "image", data: PNG, mimeType: "image/png" },
@@ -497,14 +497,43 @@ describe("convertMessages", () => {
 				{ type: "file", data: PNG, mediaType: "image/png" },
 			],
 		});
-		expect(convertMessages({ messages: [userMessage] }, sameModel)[0]).toMatchObject({
+		expect(convertMessages({ messages: [userMessage] }, sameModel)[0]).toEqual({
 			role: "user",
-			content: [{ type: "text", text: "look" }],
+			content: [
+				{ type: "text", text: "look" },
+				{ type: "text", text: "(image omitted: model does not support images)" },
+			],
 		});
 	});
 
-	it("drops image-only user messages when the model does not support images", () => {
-		expect(convertMessages({ messages: [pngUserMessage()] }, sameModel)).toEqual([]);
+	it("collapses consecutive user images into one placeholder", () => {
+		const images: Message.UserMessage["parts"] = [
+			{ type: "image", data: PNG, mimeType: "image/png" },
+			{ type: "image", data: PNG, mimeType: "image/png" },
+		];
+		expect(convertMessages({ messages: [pngUserMessage(images)] }, sameModel)).toEqual([
+			{ role: "user", content: [{ type: "text", text: "(image omitted: model does not support images)" }] },
+		]);
+	});
+
+	it("replaces tool result images with a placeholder when the model does not support image input", () => {
+		const assistant = makeAssistantMessage(sameModel, {
+			stopReason: "toolUse",
+			parts: [
+				makeCompletedToolCall("call-1", "screenshot", [
+					{ type: "text", text: "captured" },
+					{ type: "image", data: PNG, mimeType: "image/png" },
+					{ type: "image", data: PNG, mimeType: "image/png" },
+				]),
+			],
+		});
+		expect(
+			convertMessages({ messages: [assistant] }, sameModel).find((message) => message.role === "tool"),
+		).toMatchObject({
+			content: [
+				{ output: { type: "text", value: "captured\n(tool image omitted: model does not support images)" } },
+			],
+		});
 	});
 
 	it("drops whitespace text but keeps a sibling image", () => {
