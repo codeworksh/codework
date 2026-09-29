@@ -100,7 +100,7 @@ export const make = Effect.gen(function* () {
 			newSession: ({ cwd }) =>
 				run(
 					Effect.gen(function* () {
-						const handle = yield* Session.create({ directory: cwd, hostDir: cwd, title: "ACP" });
+						const handle = yield* Session.create({ directory: cwd, hostDir: cwd });
 						const current = yield* selection(handle.id, cwd);
 						return { sessionId: handle.id, configOptions: yield* Config.options(current) };
 					}),
@@ -208,8 +208,17 @@ export const make = Effect.gen(function* () {
 							Stream.runHead,
 							Effect.forkScoped({ startImmediately: true }),
 						);
+						const before = (yield* handle.info).title;
 						yield* handle.run(text);
 						const end = yield* Fiber.join(settled);
+
+						// The harness titles a session from its first prompt; tell the editor.
+						const { title } = yield* handle.info;
+						if (title !== before) {
+							yield* client
+								.sessionUpdate({ sessionId: id, update: { sessionUpdate: "session_info_update", title } })
+								.pipe(Effect.ignore);
+						}
 
 						if (Option.isNone(end) || isInterrupted(end.value)) return { stopReason: "cancelled" as const };
 						if (isFailed(end.value)) return yield* AcpRequestError.internalError(end.value.data.error.message);

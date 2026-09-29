@@ -145,7 +145,6 @@ export default Runtime.handler(
 			const info = Option.isSome(session)
 				? yield* rpc["session.configure"]({ sessionId: Session.SessionSchema.ID.make(session.value), runtime })
 				: yield* rpc["session.create"]({
-						title: "CLI",
 						runtime,
 						...(Option.isNone(cwd) ? {} : { directory: cwd.value }),
 						hostDir,
@@ -176,7 +175,6 @@ export default Runtime.handler(
 			} else {
 				const selected = yield* selectSandbox(selection);
 				handle = yield* Session.create({
-					title: "CLI",
 					...runtime,
 					...(selected === undefined ? {} : { sandbox: selected }),
 					...(Option.isNone(cwd) ? {} : { directory: cwd.value }),

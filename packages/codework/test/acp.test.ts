@@ -168,7 +168,11 @@ describe("codework acp", () => {
 								sessionId,
 								prompt: [{ type: "text", text: "Reply with exactly: PONG" }],
 							});
-							const pongText = text(yield* Queue.clear(updates), "agent_message_chunk");
+							const pongUpdates = yield* Queue.clear(updates);
+							const pongText = text(pongUpdates, "agent_message_chunk");
+							const titled = pongUpdates.flatMap((update) =>
+								update.sessionUpdate === "session_info_update" ? [update.title] : [],
+							);
 							expect(pongText).toContain("PONG");
 
 							const tool = yield* acp.agent.prompt({
@@ -206,6 +210,8 @@ describe("codework acp", () => {
 								sessionId,
 								record: {
 									pong: pong.stopReason,
+									// The first prompt names the untitled session, and the editor is told once.
+									titled,
 									// Once per prompt, however many exchanges the prompt takes.
 									notices: [pongText, toolText].map(
 										(answer) =>
@@ -252,9 +258,22 @@ describe("codework acp", () => {
 								const { sessionId } = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
 								yield* acp.agent.setSessionConfigOption({ sessionId, configId: "model", value: LIVE_MODEL });
 								const result = yield* settle(
-									acp.agent.prompt({ sessionId, prompt: [{ type: "text", text: "hi" }] }),
+									acp.agent.prompt({
+										sessionId,
+										prompt: [
+											{
+												type: "text",
+												text: "Summarise how sessions, plugins and sandboxes fit together in the codework harness.\nKeep it short.",
+											},
+										],
+									}),
 								);
-								return "code" in result ? { code: result.code, hasMessage: Boolean(result.message) } : result;
+								// Titled at promotion, before the provider call fails: first line, cut to 48 characters.
+								const { sessions } = yield* acp.agent.listSessions({ cwd: project });
+								return {
+									...("code" in result ? { code: result.code, hasMessage: Boolean(result.message) } : result),
+									title: sessions.find((session) => session.sessionId === sessionId)?.title,
+								};
 							}),
 						{ OPENROUTER_API_KEY: "sk-or-invalid" },
 					);
