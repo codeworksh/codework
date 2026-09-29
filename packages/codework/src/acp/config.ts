@@ -1,7 +1,5 @@
 import type * as Acp from "@codeworksh/acp/schema-v1";
 import { Model } from "@codeworksh/aikit";
-import { JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
-import { JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { ModelCatalog } from "@codeworksh/harness/effect";
 import { Effect, Option } from "effect";
 
@@ -34,47 +32,16 @@ export const parseModel = (value: string): Option.Option<{ readonly provider: st
 	return Option.some({ provider: value.slice(0, slash), id: value.slice(slash + 1) });
 };
 
-const loggedIn = (provider: string, token: () => Promise<{ readonly access?: string } | undefined>) =>
-	Effect.tryPromise(token).pipe(
-		Effect.map((stored) => (stored?.access ? [provider] : [])),
-		Effect.orElseSucceed(() => []),
-	);
-
-const oauthProviders = Effect.map(
-	Effect.all(
-		[
-			loggedIn("openai-codex", () => new JsonOpenAICodexAuthStorage({}).get()),
-			loggedIn("github-copilot", () => new JsonGitHubCopilotAuthStorage({}).get()),
-		],
-		{ concurrency: "unbounded" },
-	),
-	(providers) => providers.flat(),
-);
-
-/**
- * Providers with credentials: an API key in the environment or an OAuth login.
- * A harness "usable models" query replaces this (COD-83).
- */
-const usableProviders = (catalog: Model.BuiltInModels) =>
-	Effect.map(oauthProviders, (oauth) => {
-		const withKeys = Object.entries(catalog).flatMap(([provider, models]) => {
-			const env = Object.values(models ?? {})[0]?.provider.env ?? [];
-			// oxlint-disable-next-line effecttsgo/process-env
-			return env.some((name) => Boolean(process.env[name])) ? [provider] : [];
-		});
-		return new Set([...withKeys, ...oauth]);
-	});
-
 /** The `model` and `thought_level` selectors for a session's current selection. */
 export const options = Effect.fn("ACP.config.options")(function* (selection: Selection) {
 	const catalog = yield* ModelCatalog.models.pipe(Effect.orElseSucceed((): Model.BuiltInModels => ({})));
-	const providers = yield* usableProviders(catalog);
-	providers.add(selection.provider);
+	// Providers the harness has credentials for; the current model stays selectable even if not.
+	const providers = yield* ModelCatalog.available().pipe(Effect.orElseSucceed(() => []));
 
 	const current = `${selection.provider}/${selection.id}`;
-	const models = [...providers].flatMap((provider) =>
-		Object.entries(catalog[provider] ?? {}).map(([id, info]) => ({
-			value: `${provider}/${id}`,
+	const models = providers.flatMap((provider) =>
+		Object.entries(provider.models).map(([id, info]) => ({
+			value: `${provider.id}/${id}`,
 			name: `${info.provider.name}: ${info.name}`,
 		})),
 	);

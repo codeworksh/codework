@@ -4,7 +4,7 @@ import type * as AcpError from "@codeworksh/acp/errors";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Exit, Fiber, Queue, type Scope } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,27 @@ type Client = AcpClient.AcpClient["Service"];
 type Update = Parameters<Parameters<Client["handleSessionUpdate"]>[0]>[0]["update"];
 
 const temps: string[] = [];
+/** An environment with `undefined` entries removed, so an override can unset a variable. */
+const environment = (env: Record<string, string | undefined>): Record<string, string> =>
+	Object.fromEntries(Object.entries(env).flatMap(([name, value]) => (value === undefined ? [] : [[name, value]])));
+
+/**
+ * Every API key variable the catalog names, unset. A case that asserts which providers have
+ * credentials starts from this, so the developer's own keys can't change the answer.
+ */
+const withoutProviderKeys = (): Record<string, undefined> => {
+	const catalog: Record<string, Record<string, { provider: { env?: string[]; key?: string } }>> = JSON.parse(
+		readFileSync(models, "utf8"),
+	);
+	const names = Object.values(catalog).flatMap((entries) =>
+		Object.values(entries).flatMap(({ provider }) => [
+			...(provider.env ?? []),
+			...(provider.key ? [provider.key] : []),
+		]),
+	);
+	return Object.fromEntries(names.map((name) => [name, undefined]));
+};
+
 const workspace = () => {
 	const home = mkdtempSync(join(tmpdir(), "codework-acp-"));
 	temps.push(home);
@@ -35,14 +56,14 @@ const workspace = () => {
 const withAgent = <A, E>(
 	home: string,
 	body: (acp: Client, updates: Queue.Queue<Update>) => Effect.Effect<A, E>,
-	env: Record<string, string> = {},
+	env: Record<string, string | undefined> = {},
 ) =>
 	Effect.gen(function* () {
 		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 		const handle = yield* spawner.spawn(
 			ChildProcess.make(process.execPath, ["--conditions=development", cli, "--home", home, "acp"], {
 				cwd: home,
-				env: { ...process.env, HOME: home, CODEWORK_MODELS_FILE: models, ...env },
+				env: environment({ ...process.env, HOME: home, CODEWORK_MODELS_FILE: models, ...env }),
 			}),
 		);
 		return yield* Effect.gen(function* () {
@@ -141,6 +162,56 @@ describe("codework acp", () => {
 						expect(artifact(transcript)).toMatchFileSnapshot("./__artifacts__/acp.json"),
 					);
 				}),
+			),
+		);
+	});
+
+	it("offers the models its credentials reach, and starts from the project's model", () => {
+		const { home, project } = workspace();
+		// A Copilot login in the home's own credential file: `--home` must be where it is looked for.
+		mkdirSync(join(home, "aikit"));
+		writeFileSync(
+			join(home, "aikit", "auth.json"),
+			artifact({ "github-copilot": { access: "test-access", refresh: "test-refresh", expires: 4_102_444_800_000 } }),
+		);
+		// The project's settings pick the model and thinking level every new session starts with.
+		mkdirSync(join(project, ".codework"));
+		writeFileSync(
+			join(project, ".codework", "settings.jsonc"),
+			artifact({ model: { provider: "openrouter", id: "anthropic/claude-haiku-4.5", thinkingLevel: "low" } }),
+		);
+		const elsewhere = join(home, "elsewhere");
+		mkdirSync(elsewhere);
+		return run(
+			withAgent(
+				home,
+				(acp) =>
+					Effect.gen(function* () {
+						const selector = (
+							options: ReadonlyArray<{ id: string; currentValue: unknown; options?: unknown }>,
+						) => {
+							const model = options.find((option) => option.id === "model");
+							const values = (model?.options ?? []) as ReadonlyArray<{ value: string }>;
+							return {
+								current: model?.currentValue,
+								providers: [...new Set(values.map((option) => option.value.split("/")[0] ?? ""))].sort((a, b) =>
+									a.localeCompare(b),
+								),
+								thinking: options.find((option) => option.id === "thought_level")?.currentValue,
+							};
+						};
+						const inProject = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
+						const outside = yield* acp.agent.createSession({ cwd: elsewhere, mcpServers: [] });
+						yield* Effect.promise(() =>
+							expect(
+								artifact({
+									project: selector(inProject.configOptions ?? []),
+									withoutProjectSettings: selector(outside.configOptions ?? []),
+								}),
+							).toMatchFileSnapshot("./__artifacts__/acp.models.json"),
+						);
+					}),
+				{ ...withoutProviderKeys(), OPENROUTER_API_KEY: "sk-or-test" },
 			),
 		);
 	});
