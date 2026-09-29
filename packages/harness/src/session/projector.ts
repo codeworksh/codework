@@ -34,7 +34,7 @@ import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { SessionInput } from "./input/input.ts";
 import type { SessionMessageSchema } from "./message/schema.ts";
-import type { SessionSchema } from "./schema.ts";
+import { SessionSchema } from "./schema.ts";
 import { Session } from "./session.ts";
 
 export const layer = Layer.effectDiscard(
@@ -112,6 +112,10 @@ export const layer = Layer.effectDiscard(
 						...(event.metadata === undefined ? {} : { metadata: event.metadata }),
 					})
 					.pipe(Effect.orDie);
+				// An untitled session is named by the first prompt it answers, in the same commit, so
+				// it never lists as "Session" once it has a conversation. Later prompts find it titled.
+				const title = SessionSchema.titleFrom(event.data.prompt.text);
+				if (title !== undefined) yield* sessions.retitle(event.data.sessionId, title);
 			}),
 		);
 

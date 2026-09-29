@@ -187,7 +187,7 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 		spaceId: location.space.id,
 		directory: location.directory,
 		slug: id,
-		title: input.title ?? "Session",
+		title: input.title ?? SessionSchema.DEFAULT_TITLE,
 		...(input.hostDir === undefined ? {} : { hostDir: declaredHostDir(input.hostDir) }),
 	});
 	yield* runtime.set(id, runtimeBindings(input));

@@ -245,6 +245,11 @@ export interface Interface {
 		sessionId: SessionSchema.ID;
 		hostDir: AbsolutePath | null;
 	}) => Effect.Effect<SessionRow, SessionNotFoundError>;
+	/**
+	 * Replace a session's {@link SessionSchema.DEFAULT_TITLE}. A session with any other title keeps it,
+	 * so a title someone chose is never overwritten. Returns whether the title changed.
+	 */
+	readonly retitle: (sessionId: SessionSchema.ID, title: string) => Effect.Effect<boolean>;
 	readonly get: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SessionRow>>;
 	/** The space a session attaches to — its env and absolute location. None when the session is unknown. */
 	readonly space: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SpaceSchema.Info>>;
@@ -1150,6 +1155,15 @@ export const layer = Layer.effect(
 			return updated.value;
 		});
 
+		const retitle = Effect.fn("Session.retitle")(function* (sessionId: SessionSchema.ID, title: string) {
+			const changed = yield* sql<{ readonly id: string }>`
+				UPDATE session SET title = ${title}
+				WHERE id = ${sessionId} AND title = ${SessionSchema.DEFAULT_TITLE}
+				RETURNING id
+			`.pipe(Effect.orDie);
+			return changed.length > 0;
+		});
+
 		const relink = Effect.fn("Session.relink")(function* (input: RelinkInput) {
 			const reject = (reason: RelinkReason) =>
 				new RelinkError({ sessionId: input.sessionId, spaceId: input.spaceId, reason });
@@ -1233,6 +1247,7 @@ export const layer = Layer.effect(
 		return Service.of({
 			create,
 			link,
+			retitle,
 			get,
 			space,
 			list,
