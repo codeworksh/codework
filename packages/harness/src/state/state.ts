@@ -361,7 +361,12 @@ export const layer = (
 					const sandbox = yield* SandboxIO.Current;
 					const location = yield* Location.Service;
 
-					const resolvedModel = yield* LLM.resolve({ provider, model, settings: configured.block });
+					const resolvedModel = yield* LLM.resolve({
+						provider,
+						model,
+						settings: configured.block,
+						models: loadedSettings.models,
+					});
 
 					const refs = references(loadedSettings);
 					const failed = (cause: { readonly message: string }) =>

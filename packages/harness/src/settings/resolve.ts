@@ -76,7 +76,8 @@ export function resolveRequest(block: Block, model: Model.Info): State.RequestOp
 		Object.entries(block).filter(
 			([key]) =>
 				!Object.hasOwn(requestFields, key) &&
-				!["thinkingLevel", "toolExecution", "contextWindow", "protocol", "extras"].includes(key),
+				// `apiKey` names the model's key variable (applied at resolution), never a request field.
+				!["thinkingLevel", "toolExecution", "contextWindow", "protocol", "apiKey", "extras"].includes(key),
 		),
 	);
 	return {

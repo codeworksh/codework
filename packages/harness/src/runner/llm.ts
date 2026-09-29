@@ -16,7 +16,7 @@ import { ModelCatalog } from "../model/catalog.ts";
 import type { SessionSchema } from "../session/schema.ts";
 import { merge } from "../settings/merge.ts";
 import { resolveOverrides, resolveRequest } from "../settings/resolve.ts";
-import type { Block } from "../settings/schema.ts";
+import { type Block, type DeclaredModel, keyName } from "../settings/schema.ts";
 import type { State } from "../state/state.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { Runner } from "./run.ts";
@@ -129,22 +129,31 @@ export const messageFailure = (message: Message.AssistantMessage): AikitFailure.
 		: AikitFailure.fromMessage(message.errorMessage ?? "The provider turn failed.");
 };
 
-export type ResolutionInput = Pick<Input, "provider" | "model" | "settings">;
+export type ResolutionInput = Pick<Input, "provider" | "model" | "settings"> & {
+	/** Catalog entries from the session's settings, which take precedence over the generated catalog. */
+	readonly models?: ReadonlyArray<DeclaredModel>;
+};
 export type Resolve = (
 	input: ResolutionInput,
 ) => Effect.Effect<Model.Info, Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError>;
 
 /** Resolve once before exchange setup; execution reuses this exact instance. */
 export const resolve: Resolve = Effect.fn("LLM.resolve")(function* (input) {
-	const model = yield* Effect.tryPromise({
-		try: () => llm(input.provider, input.model, resolveOverrides(input.settings ?? {})),
-		catch: (cause) => ModelCatalog.loadError(cause) ?? providerErrorFromUnknown(input, cause),
-	});
+	const overrides = resolveOverrides(input.settings ?? {});
+	const declared = ModelCatalog.entry(input.models ?? [], input.provider, input.model);
+	const model =
+		declared !== undefined
+			? { ...declared, ...overrides }
+			: yield* Effect.tryPromise({
+					try: () => llm(input.provider, input.model, overrides),
+					catch: (cause) => ModelCatalog.loadError(cause) ?? providerErrorFromUnknown(input, cause),
+				});
 	if (model === undefined) {
 		return yield* new Runner.ModelNotFoundError({ provider: input.provider, model: input.model });
 	}
-
-	return model;
+	// `model.options.apiKey` picks the variable aikit reads the key from, by name only.
+	const apiKey = input.settings?.apiKey;
+	return apiKey === undefined ? model : { ...model, provider: { ...model.provider, key: keyName(apiKey) } };
 });
 
 /**

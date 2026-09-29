@@ -14,6 +14,8 @@ import { JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex
 import { Clock, Config, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { fileSystem, hostPath } from "../host.ts";
 import { Runner } from "../runner/run.ts";
+import { type DeclaredModel, keyName } from "../settings/schema.ts";
+import { Settings } from "../settings/settings.ts";
 
 export const filename = "models.gen.json";
 
@@ -192,8 +194,39 @@ const loggedIn = (protocol: string, authFile: string | undefined) => {
 	);
 };
 
-/** How a provider is credentialed: an API key in the host environment, or a stored OAuth login. */
-export type Credential = "apiKey" | "oauth";
+/**
+ * A settings entry as the catalog reads it. Settings entries are read exactly like generated ones;
+ * the one difference is `provider.key`, written `"${NAME}"`, which becomes the variable name aikit
+ * looks up when it calls the model.
+ */
+export const fromSettings = (entry: Model.Info): Model.Info =>
+	entry.provider.key === undefined
+		? entry
+		: { ...entry, provider: { ...entry.provider, key: keyName(entry.provider.key) } };
+
+/** The settings entry for a model, if one declares it: the last declaration wins. */
+export const entry = (declared: ReadonlyArray<DeclaredModel>, provider: string, id: string): Model.Info | undefined => {
+	const found = declared.findLast((one) => one.entry.provider.id === provider && one.entry.id === id);
+	return found === undefined ? undefined : fromSettings(found.entry);
+};
+
+/**
+ * The generated catalog with settings entries appended in layer order: a new provider or model is
+ * added, and an entry for an existing one replaces it, as a later entry in a generated file would.
+ */
+export const effective = Effect.fn("ModelCatalog.effective")(function* (declared: ReadonlyArray<DeclaredModel>) {
+	const catalog: Model.BuiltInModels = { ...(yield* models) };
+	for (const { entry: one } of declared) {
+		catalog[one.provider.id] = { ...catalog[one.provider.id], [one.id]: fromSettings(one) };
+	}
+	return catalog;
+});
+
+/**
+ * How a provider is credentialed: an API key in the host environment, a stored OAuth login, or
+ * nothing to find because it names no key at all (a keyless endpoint defined in settings).
+ */
+export type Credential = "apiKey" | "oauth" | "none";
 
 /** A provider this process can call, and how. */
 export interface Provider {
@@ -202,31 +235,41 @@ export interface Provider {
 	readonly models: Readonly<Record<string, Model.Info>>;
 }
 
+const oauthProtocols: ReadonlySet<string> = new Set(["openai-codex", "github-copilot"]);
+
 /**
- * The catalog's providers this process has credentials for, optionally only those credentialed
- * one way. `apiKey`: the provider's `key` or `env` names are set in the host environment (they
- * include the OAuth providers' env tokens). `oauth`: a login is stored in the {@link Credentials}
- * file. A provider with both reports `apiKey`, the one a model call uses first.
+ * The effective catalog's providers this process has credentials for, optionally only those
+ * credentialed one way. `hostDir` selects the project whose settings entries apply; without it,
+ * only the user's.
+ *
+ * `apiKey`: the provider's `key` or `env` names are set in the host environment (they include the
+ * OAuth providers' env tokens). `oauth`: a login is stored in the {@link Credentials} file. `none`:
+ * the provider names no key and isn't an OAuth provider. A provider with a key and a login reports
+ * `apiKey`, the one a model call uses first.
  *
  * Presence, not validity: nothing is sent over the network, so a revoked key still counts. A
- * client showing a model picker should still add the session's current model, which may use an
- * endpoint that needs no key.
+ * client showing a model picker should still add the session's current model.
  */
 export const available = Effect.fn("ModelCatalog.available")(function* (
-	filter: { readonly credential?: Credential } = {},
+	filter: { readonly hostDir?: string; readonly credential?: Credential } = {},
 ) {
 	const { authFile } = yield* Credentials;
-	const catalog = yield* models;
+	const settings = yield* Settings.Service;
+	const catalog = yield* effective((yield* settings.load(filter.hostDir)).models);
 	const usable: Array<Provider> = [];
 	for (const [id, entries] of Object.entries(catalog)) {
 		const first = entries === undefined ? undefined : Object.values(entries)[0];
 		if (entries === undefined || first === undefined) continue;
+		const keyless =
+			first.provider.key === undefined && first.provider.env.length === 0 && !oauthProtocols.has(first.protocol);
 		const credential: Credential | undefined =
 			getEnvApiKey(first.provider) !== undefined
 				? "apiKey"
 				: (yield* loggedIn(first.protocol, authFile))
 					? "oauth"
-					: undefined;
+					: keyless
+						? "none"
+						: undefined;
 		if (credential === undefined || (filter.credential !== undefined && filter.credential !== credential)) continue;
 		usable.push({ id, credential, models: entries });
 	}

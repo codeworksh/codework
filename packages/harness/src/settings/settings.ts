@@ -43,7 +43,7 @@ import { Global } from "../global.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
 import { merge, normalize } from "./merge.ts";
-import { defaults, Patch, type Declared, type Info, type PluginEntry } from "./schema.ts";
+import { defaults, Patch, type Declared, type DeclaredModel, type Info, type PluginEntry } from "./schema.ts";
 
 export interface Options {
 	/**
@@ -165,6 +165,18 @@ const at = (source: string, offset: number): string => {
 	return `${before.length}:${(before.at(-1)?.length ?? 0) + 1}`;
 };
 
+/**
+ * Decode failures name the field, and explain it only with a message a schema check wrote. Effect's
+ * defaults quote the rejected value, and in a settings file that value can be a secret, so any
+ * other failure reads "invalid value".
+ */
+const decodeFormatter = SchemaIssue.makeFormatterStandardSchemaV1({
+	leafHook: (issue) => {
+		const message = "annotations" in issue ? issue.annotations?.message : undefined;
+		return typeof message === "string" ? message.replaceAll(/\s*\n\s*/g, " ") : "invalid value";
+	},
+});
+
 export const parse = Effect.fn("Settings.parse")(function* (path: string, source: string) {
 	// JSONC: a settings file is written by hand, so comments and a trailing comma are part of
 	// the format rather than mistakes. The parser reports offsets, which become `line:column`
@@ -192,10 +204,10 @@ export const parse = Effect.fn("Settings.parse")(function* (path: string, source
 				new SettingsError({
 					path,
 					reason: "decode",
-					detail: SchemaIssue.makeFormatterStandardSchemaV1()(error.issue)
+					detail: decodeFormatter(error.issue)
 						.issues.map(
 							(issue) =>
-								`${issue.path?.map((part) => (typeof part === "object" ? String(part.key) : part)).join(".") ?? "settings"}: invalid value`,
+								`${issue.path?.map((part) => (typeof part === "object" ? String(part.key) : part)).join(".") ?? "settings"}: ${issue.message}`,
 						)
 						.join("; "),
 				}),
@@ -267,12 +279,16 @@ export const load = Effect.fn("Settings.load")(function* (options: Options & { r
 	 * an opaque `options` block is a value the plugin may need.
 	 */
 	let declared: ReadonlyArray<Declared> = defaults.declared;
+	// Catalog entries accumulate the same way, each keeping its file; the catalog applies them in
+	// this order, so for one model the highest layer's entry wins.
+	let models: ReadonlyArray<DeclaredModel> = defaults.models;
 	for (const group of files) {
 		for (const path of group) {
 			const result = yield* Effect.result(attempt(path));
 			if (Result.isSuccess(result)) {
-				const patch = anchor(result.success, path);
+				const { models: entries, ...patch } = anchor(result.success, path);
 				settings = merge(settings, patch);
+				if (entries !== undefined) models = [...models, ...entries.map((entry) => ({ entry, file: path }))];
 				// Each entry keeps the file that declared it: it is what anchors a relative path,
 				// what `plugin list` names, and what the missing-plugin diagnostic points at.
 				if (result.success.plugins !== undefined) {
@@ -294,7 +310,7 @@ export const load = Effect.fn("Settings.load")(function* (options: Options & { r
 			return yield* error;
 		}
 	}
-	return { ...settings, plugins: declared.map((one) => one.entry), declared };
+	return { ...settings, plugins: declared.map((one) => one.entry), declared, models };
 });
 
 /**

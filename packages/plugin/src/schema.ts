@@ -1,4 +1,4 @@
-import { Message } from "@codeworksh/aikit";
+import { Message, Model } from "@codeworksh/aikit";
 import { DateTime, Option, Schema, SchemaGetter } from "effect";
 import type { Static, TSchema } from "typebox";
 import TypeBoxSchema from "typebox/schema";
@@ -43,6 +43,11 @@ export const validateAikitAssistantMessage = (value: unknown, label: string): Me
 
 export const validateAikitToolCallTerminalPart = (value: unknown, label: string): Message.ToolCallTerminalPart =>
 	validateAikitSchema(Message.ToolCallTerminalPartSchema, value, label);
+
+export const validateAikitModelInfo = (value: unknown, label: string): Model.Info =>
+	validateAikitSchema(Model.Info, value, label);
+
+export const isAikitModelInfo = (value: unknown): value is Model.Info => aikitValidatorFor(Model.Info).Check(value);
 
 export const isAikitAssistantMessage = (value: unknown): value is Message.AssistantMessage =>
 	aikitValidatorFor(Message.AssistantMessageSchema).Check(value);
