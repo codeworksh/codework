@@ -9,10 +9,6 @@ export default Runtime.handler(
 	Cmd.commands.acp,
 	Effect.fn("CLI.acp")(function* () {
 		const shared = yield* Cmd.spec;
-		const program = Server.serveStdio.pipe(
-			Effect.provide(Server.layer({ harness: harnessOptions(shared) })),
-			Effect.scoped,
-		);
-		return yield* program.pipe(Effect.catch(reportFailure));
+		return yield* Server.serve(harnessOptions(shared)).pipe(Effect.catch(reportFailure));
 	}),
 );

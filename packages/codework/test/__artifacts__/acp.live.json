@@ -1,0 +1,33 @@
+{
+	"pong": "end_turn",
+	"notices": [
+		1,
+		1
+	],
+	"tool": {
+		"stopReason": "end_turn",
+		"updates": [
+			"tool_call",
+			"tool_call_update"
+		],
+		"started": {
+			"titledWithCommand": true,
+			"hasRawInput": true
+		},
+		"settled": {
+			"kind": "execute",
+			"status": "completed"
+		}
+	},
+	"cancel": "cancelled",
+	"replay": [
+		"user_message_chunk",
+		"agent_message_chunk",
+		"tool_call",
+		"tool_call_update"
+	],
+	"failed": {
+		"code": -32603,
+		"hasMessage": true
+	}
+}

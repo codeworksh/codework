@@ -1,371 +1,225 @@
-import type {
-	AgentContext,
-	CancelNotification,
-	ContentBlock,
-	InitializeRequest,
-	InitializeResponse,
-	ListSessionsRequest,
-	ListSessionsResponse,
-	LoadSessionRequest,
-	LoadSessionResponse,
-	NewSessionRequest,
-	NewSessionResponse,
-	PromptRequest,
-	PromptResponse,
-	SetSessionConfigOptionRequest,
-	SetSessionConfigOptionResponse,
-} from "@agentclientprotocol/sdk";
-import { methods, PROTOCOL_VERSION, RequestError } from "@agentclientprotocol/sdk";
-import { type Model } from "@codeworksh/aikit";
+import type * as AcpAgent from "@codeworksh/acp/agent";
+import { AcpRequestError } from "@codeworksh/acp/errors";
+import type * as Acp from "@codeworksh/acp/schema-v1";
 import {
 	Control,
-	Event,
 	EventList,
-	type Location,
-	ModelCatalog,
-	PromptSchema,
-	type SandboxError,
+	type EventSchema,
+	type Harness,
 	Session,
 	SessionStore,
 	Settings,
 } from "@codeworksh/harness/effect";
-import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
-import { parseModelValue, resolveConfigOptions } from "./config.ts";
-import { entryToSessionUpdates, toSessionUpdate } from "./feed.ts";
+import { DateTime, Effect, Fiber, type Layer, Option, Schema, Stream } from "effect";
+import pkg from "../../package.json" with { type: "json" };
+import { Config } from "./config.ts";
+import { Feed } from "./feed.ts";
 
-export type SessionCreateError =
-	| Location.Error
-	| SandboxError.SandboxMountError
-	| SessionStore.SessionNotFoundError
-	| SessionStore.SessionLinkedSpaceNotFoundError
-	| RequestError;
+const PAGE_SIZE = 50;
 
-export interface Interface {
-	readonly initialize: (params: InitializeRequest) => Effect.Effect<InitializeResponse>;
-	readonly newSession: (params: NewSessionRequest) => Effect.Effect<NewSessionResponse, SessionCreateError>;
-	readonly loadSession: (
-		params: LoadSessionRequest,
-		client?: AgentContext,
-	) => Effect.Effect<LoadSessionResponse, SessionStore.SessionNotFoundError | RequestError>;
-	readonly setConfigOption: (
-		params: SetSessionConfigOptionRequest,
-	) => Effect.Effect<SetSessionConfigOptionResponse, SessionStore.SessionNotFoundError | RequestError>;
-	readonly listSessions: (params: ListSessionsRequest) => Effect.Effect<ListSessionsResponse>;
-	readonly prompt: (
-		params: PromptRequest,
-		client?: AgentContext,
-	) => Effect.Effect<PromptResponse, SessionStore.SessionNotFoundError | Control.PromptConflictError | RequestError>;
-	readonly cancel: (params: CancelNotification) => Effect.Effect<{ readonly cancelled: boolean }>;
-}
+const isRequestError = Schema.is(AcpRequestError);
+const isNotFound = Schema.is(SessionStore.SessionNotFoundError);
+const isConflict = Schema.is(Control.PromptConflictError);
+const isLLMEnded = Schema.is(EventList.LLMEnded);
+const isSucceeded = Schema.is(EventList.ExecutionSucceeded);
+const isFailed = Schema.is(EventList.ExecutionFailed);
+const isInterrupted = Schema.is(EventList.ExecutionInterrupted);
+const isSettled = (event: EventSchema.Payload) => isSucceeded(event) || isFailed(event) || isInterrupted(event);
 
-export class Service extends Context.Service<Service, Interface>()("@codeworksh/cli/acp/handlers/Service") {}
+/** Harness failures as JSON-RPC errors; handlers raise protocol-level ones directly. */
+const toRequestError = (error: { readonly message: string }): AcpRequestError => {
+	if (isRequestError(error)) return error;
+	if (isNotFound(error)) return AcpRequestError.resourceNotFound(`Session not found: ${error.sessionId}`);
+	if (isConflict(error)) return AcpRequestError.invalidRequest(error.message);
+	return AcpRequestError.internalError(error.message);
+};
 
-export const extractPromptText = (blocks: ReadonlyArray<ContentBlock>): string =>
-	blocks
-		.map((block) => {
-			if (block.type === "text") return block.text;
-			if (block.type === "resource") {
-				const res = block.resource;
-				if ("text" in res && typeof res.text === "string") {
-					const uri = "uri" in res && typeof res.uri === "string" ? res.uri : "file";
-					return `\n\`\`\`${uri}\n${res.text}\n\`\`\`\n`;
-				}
-				return "";
-			}
-			if (block.type === "resource_link") {
-				const label = block.name ? `${block.name} (${block.uri})` : block.uri;
-				const mime = block.mimeType ? ` [${block.mimeType}]` : "";
-				return `[Resource: ${label}${mime}]`;
-			}
-			if (block.type === "image" || block.type === "audio") {
-				return `[Attached ${block.type}: not currently supported]`;
-			}
-			return "";
-		})
-		.filter(Boolean)
-		.join("\n\n");
-
-const isInterruptedEvent = Schema.is(EventList.ExecutionInterrupted);
-const isFailedEvent = Schema.is(EventList.ExecutionFailed);
-const isLLMEndedEvent = Schema.is(EventList.LLMEnded);
-
-type ExecutionError = EventList.ExecutionFailed["data"]["error"];
-
-const validThinkingLevels: ReadonlyArray<string> = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
-
-export const layer = Layer.effect(
-	Service,
-	Effect.gen(function* () {
-		const control = yield* Control.Service;
-		const sessions = yield* SessionStore.Service;
-		const events = yield* Event.Service;
-		const settings = yield* Settings.Service;
-
-		const env = yield* Effect.context<
-			| Control.Service
-			| SessionStore.Service
-			| Event.Service
-			| Settings.Service
-			| Effect.Services<ReturnType<typeof Session.create>>
-			| Effect.Services<ReturnType<typeof Session.attach>>
-		>();
-
-		interface SessionConfigState {
-			provider?: string;
-			model?: string;
-			thinkingLevel?: Model.ThinkingLevel;
+/** Prompt content as text. Only text and embedded context are advertised, so anything else is rejected. */
+const promptText = (blocks: ReadonlyArray<Acp.ContentBlock>) =>
+	Effect.forEach(blocks, (block) => {
+		switch (block.type) {
+			case "text":
+				return Effect.succeed(block.text);
+			case "resource_link":
+				return Effect.succeed(`[${block.name}](${block.uri})`);
+			case "resource":
+				return "text" in block.resource
+					? Effect.succeed(`\`\`\`${block.resource.uri}\n${block.resource.text}\n\`\`\``)
+					: Effect.fail(AcpRequestError.invalidParams(`Unsupported binary resource: ${block.resource.uri}`));
+			default:
+				return Effect.fail(AcpRequestError.invalidParams(`Unsupported prompt content: ${block.type}`));
 		}
+	}).pipe(Effect.map((parts) => parts.join("\n\n")));
 
-		const sessionConfigs = new Map<string, SessionConfigState>();
-		const cancelledSessions = new Set<string>();
-		const activePrompts = new Set<string>();
+const sessionId = (id: string) => Session.SessionSchema.ID.make(id);
 
-		return Service.of({
-			initialize: (_params) =>
+type Services = Layer.Success<ReturnType<typeof Harness.layer>>;
+
+export const make = Effect.gen(function* () {
+	const control = yield* Control.Service;
+	const sessions = yield* SessionStore.Service;
+	const settings = yield* Settings.Service;
+	// Handlers run on the agent's fibers, outside this layer; they carry the harness with them.
+	const context = yield* Effect.context<Services>();
+
+	// Bindings live in the harness, which has no public read-back yet (COD-81).
+	const selections = new Map<string, Config.Selection>();
+	const running = new Set<string>();
+
+	const selection = Effect.fn("ACP.selection")(function* (id: string, hostDir: string | undefined) {
+		const known = selections.get(id);
+		if (known !== undefined) return known;
+		const { model } = yield* settings.load(hostDir);
+		const loaded = { provider: model.provider, id: model.id, thinkingLevel: model.thinkingLevel };
+		selections.set(id, loaded);
+		return loaded;
+	});
+
+	const found = Effect.fn("ACP.found")(function* (id: string) {
+		const row = yield* sessions.get(sessionId(id));
+		if (Option.isNone(row)) return yield* new SessionStore.SessionNotFoundError({ sessionId: sessionId(id) });
+		return row.value;
+	});
+
+	return (client: AcpAgent.Client): AcpAgent.Handlers => {
+		const run = <A, E extends { readonly message: string }>(effect: Effect.Effect<A, E, Services>) =>
+			effect.pipe(Effect.provide(context), Effect.mapError(toRequestError));
+
+		return {
+			initialize: () =>
 				Effect.succeed({
-					protocolVersion: PROTOCOL_VERSION,
+					protocolVersion: 1,
+					agentInfo: { name: "codework", version: pkg.version },
 					agentCapabilities: {
 						loadSession: true,
-						sessionCapabilities: {
-							list: {},
-						},
+						promptCapabilities: { embeddedContext: true },
+						sessionCapabilities: { list: {} },
 					},
 				}),
-			newSession: Effect.fnUntraced(function* ({ cwd }) {
-				const handle = yield* Session.create({
-					...(cwd === undefined ? {} : { directory: cwd, hostDir: cwd }),
-					title: "ACP Session",
-				}).pipe(Effect.provide(env));
 
-				const loaded = yield* settings.load(cwd).pipe(
-					Effect.provide(env),
-					Effect.orElseSucceed(() => undefined),
-				);
+			newSession: ({ cwd }) =>
+				run(
+					Effect.gen(function* () {
+						const handle = yield* Session.create({ directory: cwd, hostDir: cwd, title: "ACP" });
+						const current = yield* selection(handle.id, cwd);
+						return { sessionId: handle.id, configOptions: yield* Config.options(current) };
+					}),
+				),
 
-				if (loaded?.model) {
-					sessionConfigs.set(handle.id, {
-						provider: loaded.model.provider,
-						model: loaded.model.id,
-						thinkingLevel: loaded.model.thinkingLevel,
-					});
-				}
-
-				const configOptions = yield* resolveConfigOptions({
-					provider: loaded?.model.provider,
-					model: loaded?.model.id,
-					thinkingLevel: loaded?.model.thinkingLevel,
-				});
-
-				return {
-					sessionId: handle.id,
-					...(configOptions.length > 0 ? { configOptions } : {}),
-				};
-			}),
-			loadSession: Effect.fnUntraced(function* ({ sessionId }, client?: AgentContext) {
-				const sid = Session.SessionSchema.ID.make(sessionId);
-				yield* Session.attach({ sessionId: sid }).pipe(Effect.provide(env));
-				const session = yield* sessions.get(sid).pipe(Effect.provide(env));
-				if (Option.isNone(session)) {
-					return yield* new SessionStore.SessionNotFoundError({ sessionId: sid });
-				}
-
-				const hostDir = Option.getOrUndefined(session.value.hostDir);
-				const loaded = yield* settings.load(hostDir).pipe(
-					Effect.provide(env),
-					Effect.orElseSucceed(() => undefined),
-				);
-
-				const sessionOptions = sessionConfigs.get(sid);
-				const configOptions = yield* resolveConfigOptions({
-					provider: sessionOptions?.provider ?? loaded?.model.provider,
-					model: sessionOptions?.model ?? loaded?.model.id,
-					thinkingLevel: sessionOptions?.thinkingLevel ?? loaded?.model.thinkingLevel,
-				});
-
-				if (client) {
-					const pathEntries = yield* sessions.path(sid).pipe(Effect.provide(env));
-					for (const entry of pathEntries) {
-						const updates = entryToSessionUpdates(entry);
-						for (const update of updates) {
-							yield* Effect.promise(() =>
-								client.notify(methods.client.session.update, {
-									sessionId: sid,
-									update,
-								}),
-							).pipe(Effect.ignore);
+			loadSession: ({ sessionId: id }) =>
+				run(
+					Effect.gen(function* () {
+						yield* Session.attach({ sessionId: sessionId(id) });
+						const row = yield* found(id);
+						const current = yield* selection(id, Option.getOrUndefined(row.hostDir));
+						for (const entry of yield* sessions.path(sessionId(id))) {
+							for (const update of Feed.replay(entry)) {
+								yield* client.sessionUpdate({ sessionId: id, update });
+							}
 						}
-					}
-				}
+						return { configOptions: yield* Config.options(current) };
+					}),
+				),
 
-				return configOptions.length > 0 ? { configOptions } : {};
-			}),
-			setConfigOption: Effect.fnUntraced(function* ({ sessionId, configId, value }) {
-				const sid = Session.SessionSchema.ID.make(sessionId);
-				const found = yield* sessions.get(sid).pipe(Effect.provide(env));
-				if (Option.isNone(found)) {
-					return yield* new SessionStore.SessionNotFoundError({ sessionId: sid });
-				}
-
-				const existing = sessionConfigs.get(sid) ?? {};
-
-				if (configId === "thought_level") {
-					if (typeof value !== "string" || !validThinkingLevels.includes(value)) {
-						const msg = `Invalid thinking level: ${String(value)}`;
-						return yield* Effect.fail(RequestError.invalidParams(msg, msg));
-					}
-					const thinkingLevel = value as Model.ThinkingLevel;
-					existing.thinkingLevel = thinkingLevel;
-					yield* Session.attach({ sessionId: sid, thinkingLevel }).pipe(Effect.provide(env));
-				} else if (configId === "model") {
-					if (typeof value !== "string") {
-						const msg = `Invalid model value: ${String(value)}`;
-						return yield* Effect.fail(RequestError.invalidParams(msg, msg));
-					}
-					const parsed = parseModelValue(value);
-					const catalog = yield* ModelCatalog.models.pipe(Effect.orElseSucceed(() => undefined));
-					if (catalog && !catalog[parsed.provider]?.[parsed.modelId]) {
-						const msg = `Unknown model: ${value}`;
-						return yield* Effect.fail(RequestError.invalidParams(msg, msg));
-					}
-
-					existing.provider = parsed.provider;
-					existing.model = parsed.modelId;
-					yield* Session.attach({
-						sessionId: sid,
-						model: { provider: parsed.provider, id: parsed.modelId },
-					}).pipe(Effect.provide(env));
-				} else {
-					const msg = `Unknown config option: ${configId}`;
-					return yield* Effect.fail(RequestError.invalidParams(msg, msg));
-				}
-
-				sessionConfigs.set(sid, existing);
-
-				const hostDir = Option.getOrUndefined(found.value.hostDir);
-				const loaded = yield* settings.load(hostDir).pipe(
-					Effect.provide(env),
-					Effect.orElseSucceed(() => undefined),
-				);
-
-				const configOptions = yield* resolveConfigOptions({
-					provider: existing.provider ?? loaded?.model.provider,
-					model: existing.model ?? loaded?.model.id,
-					thinkingLevel: existing.thinkingLevel ?? loaded?.model.thinkingLevel,
-				});
-
-				return { configOptions };
-			}),
-			listSessions: Effect.fnUntraced(function* ({ cwd, cursor }) {
-				const rows = yield* sessions.list().pipe(Effect.provide(env));
-				const sorted = [...rows].sort((a, b) => {
-					const timeA = DateTime.toEpochMillis(a.updatedAt ?? a.createdAt);
-					const timeB = DateTime.toEpochMillis(b.updatedAt ?? b.createdAt);
-					return timeB - timeA;
-				});
-
-				const filtered =
-					cwd === undefined || cwd === null
-						? sorted
-						: sorted.filter((row) => {
-								const host = Option.getOrUndefined(row.hostDir);
-								if (!host) return false;
-								return host === cwd || host.startsWith(cwd.endsWith("/") ? cwd : `${cwd}/`);
-							});
-
-				const offset = cursor ? Number.parseInt(cursor, 10) : 0;
-				const limit = 50;
-				const page = filtered.slice(offset, offset + limit);
-				const nextCursor = offset + limit < filtered.length ? String(offset + limit) : undefined;
-
-				return {
-					sessions: page.map((row) => {
-						const host = Option.getOrUndefined(row.hostDir);
+			listSessions: ({ cwd, cursor }) =>
+				run(
+					Effect.gen(function* () {
+						const rows = (yield* sessions.list())
+							.filter((row) => cwd == null || Option.getOrUndefined(row.hostDir) === cwd)
+							.sort((a, b) => DateTime.Order(b.updatedAt ?? b.createdAt, a.updatedAt ?? a.createdAt));
+						const offset = cursor == null ? 0 : Number(cursor);
+						if (!Number.isSafeInteger(offset) || offset < 0) {
+							return yield* AcpRequestError.invalidParams(`Invalid cursor: ${cursor}`);
+						}
+						const next = offset + PAGE_SIZE;
 						return {
-							sessionId: row.id,
-							cwd: host ?? row.directory,
-							title: row.title,
-							updatedAt: row.updatedAt ? DateTime.formatIso(row.updatedAt) : null,
+							sessions: rows.slice(offset, next).map((row) => ({
+								sessionId: row.id,
+								cwd: Option.getOrElse(row.hostDir, () => row.directory),
+								title: row.title,
+								updatedAt: DateTime.formatIso(row.updatedAt ?? row.createdAt),
+							})),
+							...(next < rows.length ? { nextCursor: String(next) } : {}),
 						};
 					}),
-					...(nextCursor !== undefined ? { nextCursor } : {}),
-				};
-			}),
-			prompt: Effect.fnUntraced(function* ({ sessionId, prompt }, client) {
-				const sid = Session.SessionSchema.ID.make(sessionId);
-				const found = yield* Session.get(sid).pipe(Effect.provide(env));
-				if (Option.isNone(found)) {
-					return yield* new SessionStore.SessionNotFoundError({ sessionId: sid });
-				}
+				),
 
-				if (activePrompts.has(sessionId)) {
-					const msg = "A prompt is already in progress for this session";
-					return yield* Effect.fail(RequestError.invalidParams(msg, msg));
-				}
-
-				const text = extractPromptText(prompt);
-
-				const turnOutcome: {
-					interrupted: boolean;
-					terminalFailure?: ExecutionError;
-					lastLLMReason?: "stop" | "length" | "toolUse";
-				} = {
-					interrupted: cancelledSessions.delete(sessionId),
-				};
-
-				const unsubscribe = yield* events.listen((event) => {
-					if (isInterruptedEvent(event) && event.data.sessionId === sid) {
-						turnOutcome.interrupted = true;
-					}
-					if (isFailedEvent(event) && event.data.sessionId === sid) {
-						turnOutcome.terminalFailure = event.data.error;
-					}
-					if (isLLMEndedEvent(event) && event.data.sessionId === sid) {
-						turnOutcome.lastLLMReason = event.data.reason;
-					}
-
-					if (client !== undefined) {
-						const item = toSessionUpdate(event);
-						if (item && item.sessionId === sid) {
-							return Effect.promise(() => client.notify(methods.client.session.update, item)).pipe(
-								Effect.ignore,
-							);
+			setConfigOption: (request) =>
+				run(
+					Effect.gen(function* () {
+						const row = yield* found(request.sessionId);
+						const current = yield* selection(request.sessionId, Option.getOrUndefined(row.hostDir));
+						const value = String(request.value);
+						let next: Config.Selection;
+						if (request.configId === Config.MODEL) {
+							const model = Option.getOrUndefined(Config.parseModel(value));
+							if (model === undefined || !(yield* Config.known(model))) {
+								return yield* AcpRequestError.invalidParams(`Unknown model: ${value}`);
+							}
+							next = { ...current, ...model };
+							yield* Session.attach({ sessionId: row.id, model });
+						} else if (request.configId === Config.THOUGHT_LEVEL) {
+							if (!Config.isThinkingLevel(value)) {
+								return yield* AcpRequestError.invalidParams(`Unknown thinking level: ${value}`);
+							}
+							next = { ...current, thinkingLevel: value };
+							yield* Session.attach({ sessionId: row.id, thinkingLevel: value });
+						} else {
+							return yield* AcpRequestError.invalidParams(`Unknown config option: ${request.configId}`);
 						}
-					}
-					return Effect.void;
-				});
+						selections.set(row.id, next);
+						return { configOptions: yield* Config.options(next) };
+					}),
+				),
 
-				activePrompts.add(sessionId);
-				try {
-					yield* control.run({
-						sessionId: sid,
-						prompt: PromptSchema.Prompt.make({ text }),
-					}).pipe(Effect.provide(env));
-				} finally {
-					activePrompts.delete(sessionId);
-					yield* unsubscribe;
-				}
+			prompt: ({ sessionId: id, prompt }) =>
+				run(
+					Effect.gen(function* () {
+						const text = yield* promptText(prompt);
+						const handle = Option.getOrUndefined(yield* Session.get(sessionId(id)));
+						if (handle === undefined) {
+							return yield* new SessionStore.SessionNotFoundError({ sessionId: sessionId(id) });
+						}
+						if (running.has(id)) {
+							return yield* AcpRequestError.invalidRequest("A prompt is already running for this session");
+						}
+						running.add(id);
+						yield* Effect.addFinalizer(() => Effect.sync(() => running.delete(id)));
 
-				if (turnOutcome.interrupted) {
-					return { stopReason: "cancelled" as const };
-				}
-				if (turnOutcome.terminalFailure !== undefined) {
-					return yield* Effect.fail(
-						RequestError.internalError(turnOutcome.terminalFailure.message, turnOutcome.terminalFailure.message),
-					);
-				}
-				if (turnOutcome.lastLLMReason === "length") {
-					return { stopReason: "max_tokens" as const };
-				}
-				return { stopReason: "end_turn" as const };
-			}),
-			cancel: Effect.fnUntraced(function* ({ sessionId }) {
-				const sid = Session.SessionSchema.ID.make(sessionId);
-				cancelledSessions.add(sessionId);
-				const interrupted = yield* control.interrupt(sid, { reason: "user" }).pipe(Effect.provide(env));
-				return { cancelled: interrupted };
-			}),
-		});
-	}),
-);
+						// Forward this execution's updates until it settles; the settling event decides the answer.
+						let reason: EventList.LLMEnded["data"]["reason"] | undefined;
+						// Plugins are checked every exchange; tell the user about each failure once per prompt.
+						const notices = new Set<string>();
+						const settled = yield* handle.events().pipe(
+							Stream.tap((event) => {
+								if (isLLMEnded(event)) reason = event.data.reason;
+								let update = Feed.update(event);
+								const notice = Feed.notice(event);
+								if (Option.isSome(notice) && !notices.has(notice.value)) {
+									notices.add(notice.value);
+									update = Option.some(Feed.noticeUpdate(notice.value));
+								}
+								return Option.match(update, {
+									onNone: () => Effect.void,
+									onSome: (update) => client.sessionUpdate({ sessionId: id, update }).pipe(Effect.ignore),
+								});
+							}),
+							Stream.filter(isSettled),
+							Stream.runHead,
+							Effect.forkScoped({ startImmediately: true }),
+						);
+						yield* handle.run(text);
+						const end = yield* Fiber.join(settled);
+
+						if (Option.isNone(end) || isInterrupted(end.value)) return { stopReason: "cancelled" as const };
+						if (isFailed(end.value)) return yield* AcpRequestError.internalError(end.value.data.error.message);
+						return { stopReason: reason === "length" ? ("max_tokens" as const) : ("end_turn" as const) };
+					}).pipe(Effect.scoped),
+				),
+
+			cancel: ({ sessionId: id }) => control.interrupt(sessionId(id), { reason: "user" }).pipe(Effect.asVoid),
+		};
+	};
+});
 
 export * as Handlers from "./handlers.ts";

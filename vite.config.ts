@@ -12,6 +12,8 @@ const ignoredPaths = [
 	".zed/**",
 	".vercel/**",
 	"**/.vercel/**",
+	// Vendored upstream code stays byte-identical to its source; see vendors/*/VENDOR.md.
+	"vendors/**",
 ];
 const aliases = [
 	// `@codeworksh/plugin` is the published plugin SDK; in this repo it resolves to source,

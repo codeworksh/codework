@@ -1,172 +1,111 @@
-import type { SessionConfigOption, SessionConfigSelectOption } from "@agentclientprotocol/sdk";
-import { llm, Model } from "@codeworksh/aikit";
+import type * as Acp from "@codeworksh/acp/schema-v1";
+import { Model } from "@codeworksh/aikit";
 import { JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
 import { JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { ModelCatalog } from "@codeworksh/harness/effect";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
-export const formatThinkingLevel = (level: Model.ThinkingLevel): string => {
-	switch (level) {
-		case "off":
-			return "Off";
-		case "minimal":
-			return "Minimal";
-		case "low":
-			return "Low";
-		case "medium":
-			return "Medium";
-		case "high":
-			return "High";
-		case "xhigh":
-			return "Extra High";
-		case "max":
-			return "Max";
-	}
-};
-
-export const parseModelValue = (
-	value: string,
-	defaultProvider?: string,
-): { provider: string; modelId: string } => {
-	const slash = value.indexOf("/");
-	if (slash !== -1) {
-		return {
-			provider: value.slice(0, slash),
-			modelId: value.slice(slash + 1),
-		};
-	}
-	return {
-		provider: defaultProvider ?? "openai",
-		modelId: value,
-	};
-};
-
-export interface SessionConfigInput {
-	readonly provider?: string | undefined;
-	readonly model?: string | undefined;
-	readonly thinkingLevel?: Model.ThinkingLevel | undefined;
+/** The model and thinking level a session runs with, as the ACP layer last set them. */
+export interface Selection {
+	readonly provider: string;
+	readonly id: string;
+	readonly thinkingLevel: Model.ThinkingLevel;
 }
 
+export const MODEL = "model";
+export const THOUGHT_LEVEL = "thought_level";
+
+const thinkingLabels: Record<Model.ThinkingLevel, string> = {
+	off: "Off",
+	minimal: "Minimal",
+	low: "Low",
+	medium: "Medium",
+	high: "High",
+	xhigh: "Extra High",
+	max: "Max",
+};
+
+export const isThinkingLevel = (value: string): value is Model.ThinkingLevel => Object.hasOwn(thinkingLabels, value);
+
+/** Splits a `provider/model` option value on its first slash; model ids may contain more. */
+export const parseModel = (value: string): Option.Option<{ readonly provider: string; readonly id: string }> => {
+	const slash = value.indexOf("/");
+	if (slash <= 0 || slash === value.length - 1) return Option.none();
+	return Option.some({ provider: value.slice(0, slash), id: value.slice(slash + 1) });
+};
+
+const loggedIn = (provider: string, token: () => Promise<{ readonly access?: string } | undefined>) =>
+	Effect.tryPromise(token).pipe(
+		Effect.map((stored) => (stored?.access ? [provider] : [])),
+		Effect.orElseSucceed(() => []),
+	);
+
+const oauthProviders = Effect.map(
+	Effect.all(
+		[
+			loggedIn("openai-codex", () => new JsonOpenAICodexAuthStorage({}).get()),
+			loggedIn("github-copilot", () => new JsonGitHubCopilotAuthStorage({}).get()),
+		],
+		{ concurrency: "unbounded" },
+	),
+	(providers) => providers.flat(),
+);
+
 /**
- * Resolves ACP session configuration options for the active session.
- *
- * Discovers available models and model-specific thinking levels, exporting:
- * - `model` (category: "model") allowing clients like Zed IDE to render the model dropdown selector.
- * - `thought_level` (category: "thought_level") allowing clients like Zed IDE to render the thinking effort selector.
+ * Providers with credentials: an API key in the environment or an OAuth login.
+ * A harness "usable models" query replaces this (COD-83).
  */
-export const resolveConfigOptions = (input: SessionConfigInput): Effect.Effect<Array<SessionConfigOption>> =>
-	Effect.gen(function* () {
-		let provider: string;
-		let modelId: string;
-
-		if (input.provider !== undefined) {
-			provider = input.provider;
-			modelId = input.model ?? "gpt-5.6-luna";
-		} else {
-			const parsed = parseModelValue(input.model ?? "openai/gpt-5.6-luna");
-			provider = parsed.provider;
-			modelId = parsed.modelId;
-		}
-
-		const modelInfo = yield* Effect.tryPromise(() => llm.model(provider, modelId)).pipe(
-			Effect.orElseSucceed(() => undefined),
-		);
-
-		const options: Array<SessionConfigOption> = [];
-
-		// 1. Model selection option
-		const currentModelValue = `${provider}/${modelId}`;
-		const catalog = yield* ModelCatalog.models.pipe(Effect.orElseSucceed(() => undefined));
-
-		const modelOptions: Array<SessionConfigSelectOption> = [];
-
-		if (catalog) {
-			const activeProviders = new Set<string>();
-			if (provider) {
-				activeProviders.add(provider);
-			}
-
-			// Check OAuth availability
-			const codexStorage = new JsonOpenAICodexAuthStorage({});
-			const copilotStorage = new JsonGitHubCopilotAuthStorage({});
-			const [hasCodex, hasCopilot] = yield* Effect.tryPromise(() =>
-				Promise.all([
-					codexStorage.get().then((token) => Boolean(token?.access)).catch(() => false),
-					copilotStorage.get().then((token) => Boolean(token?.access)).catch(() => false),
-				]),
-			).pipe(Effect.orElseSucceed(() => [false, false] as const));
-
-			if (hasCodex) activeProviders.add("openai-codex");
-			if (hasCopilot) activeProviders.add("github-copilot");
-
-			for (const [pId, pModels] of Object.entries(catalog)) {
-				if (!pModels) continue;
-				const first = Object.values(pModels)[0];
-				const envVars = first?.provider?.env ?? [];
-				// oxlint-disable-next-line effecttsgo/process-env
-				const hasKey = envVars.some((k) => Boolean(process.env[k]));
-				if (hasKey) {
-					activeProviders.add(pId);
-				}
-			}
-
-			for (const pId of activeProviders) {
-				const pModels = catalog[pId];
-				if (!pModels) continue;
-				for (const [mId, mInfo] of Object.entries(pModels)) {
-					modelOptions.push({
-						value: `${pId}/${mId}`,
-						name: `${mInfo.provider.name}: ${mInfo.name}`,
-					});
-				}
-			}
-		}
-
-		if (!modelOptions.some((o) => o.value === currentModelValue)) {
-			modelOptions.unshift({
-				value: currentModelValue,
-				name: `${provider}: ${modelId}`,
-			});
-		}
-
-		options.push({
-			id: "model",
-			name: "Model",
-			type: "select",
-			category: "model",
-			currentValue: currentModelValue,
-			options: modelOptions,
+const usableProviders = (catalog: Model.BuiltInModels) =>
+	Effect.map(oauthProviders, (oauth) => {
+		const withKeys = Object.entries(catalog).flatMap(([provider, models]) => {
+			const env = Object.values(models ?? {})[0]?.provider.env ?? [];
+			// oxlint-disable-next-line effecttsgo/process-env
+			return env.some((name) => Boolean(process.env[name])) ? [provider] : [];
 		});
-
-		// 2. Thinking effort option
-		const supported = modelInfo
-			? Model.getSupportedThinkingLevels(modelInfo)
-			: [
-					Model.ThinkingLevelEnum.off,
-					Model.ThinkingLevelEnum.low,
-					Model.ThinkingLevelEnum.medium,
-					Model.ThinkingLevelEnum.high,
-				];
-
-		const reasoningSupported = modelInfo ? modelInfo.reasoning !== false : true;
-		if (reasoningSupported && supported.length > 0 && !(supported.length === 1 && supported[0] === "off")) {
-			const current = input.thinkingLevel ?? Model.ThinkingLevelEnum.high;
-			const currentValue = supported.includes(current) ? current : (supported[0] ?? Model.ThinkingLevelEnum.off);
-
-			options.push({
-				id: "thought_level",
-				name: "Thinking Effort",
-				type: "select",
-				category: "thought_level",
-				currentValue,
-				options: supported.map((level) => ({
-					value: level,
-					name: formatThinkingLevel(level),
-				})),
-			});
-		}
-
-		return options;
+		return new Set([...withKeys, ...oauth]);
 	});
+
+/** The `model` and `thought_level` selectors for a session's current selection. */
+export const options = Effect.fn("ACP.config.options")(function* (selection: Selection) {
+	const catalog = yield* ModelCatalog.models.pipe(Effect.orElseSucceed((): Model.BuiltInModels => ({})));
+	const providers = yield* usableProviders(catalog);
+	providers.add(selection.provider);
+
+	const current = `${selection.provider}/${selection.id}`;
+	const models = [...providers].flatMap((provider) =>
+		Object.entries(catalog[provider] ?? {}).map(([id, info]) => ({
+			value: `${provider}/${id}`,
+			name: `${info.provider.name}: ${info.name}`,
+		})),
+	);
+	if (!models.some((option) => option.value === current)) models.unshift({ value: current, name: current });
+
+	const result: Array<Acp.SessionConfigOption> = [
+		{ id: MODEL, name: "Model", category: "model", type: "select", currentValue: current, options: models },
+	];
+
+	const info = catalog[selection.provider]?.[selection.id];
+	const levels = info === undefined || info.reasoning === false ? [] : Model.getSupportedThinkingLevels(info);
+	if (levels.some((level) => level !== "off")) {
+		result.push({
+			id: THOUGHT_LEVEL,
+			name: "Thinking Effort",
+			category: "thought_level",
+			type: "select",
+			currentValue: levels.includes(selection.thinkingLevel) ? selection.thinkingLevel : (levels[0] ?? "off"),
+			options: levels.map((level) => ({ value: level, name: thinkingLabels[level] })),
+		});
+	}
+	return result;
+});
+
+/** Whether `value` names a model in the catalog. */
+export const known = Effect.fn("ACP.config.known")(function* (model: {
+	readonly provider: string;
+	readonly id: string;
+}) {
+	const catalog = yield* ModelCatalog.models.pipe(Effect.orElseSucceed((): Model.BuiltInModels => ({})));
+	return catalog[model.provider]?.[model.id] !== undefined;
+});
 
 export * as Config from "./config.ts";
