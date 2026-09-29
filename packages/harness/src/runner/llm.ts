@@ -158,7 +158,7 @@ const oauthCredentials = async (
 	protocol: string,
 	options: OpenOptions,
 ): Promise<{ apiKey?: string; baseURL?: string }> => {
-	const storage = options.authFile === undefined ? {} : { path: options.authFile };
+	const storage = ModelCatalog.oauthStorage(options.authFile);
 
 	if (protocol === "openai-codex") {
 		const apiKey = await getOpenAICodexApiKey({ storage: new JsonOpenAICodexAuthStorage(storage) });

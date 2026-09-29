@@ -7,9 +7,11 @@
  * they ask. `CODEWORK_MODELS_FILE` pins the catalog to a file the user manages: it is read,
  * and reloaded when it changes, but only an explicit refresh ever writes it.
  */
-import { Model } from "@codeworksh/aikit";
+import { getEnvApiKey, Model } from "@codeworksh/aikit";
 import { generateModels } from "@codeworksh/aikit/modelgen";
-import { Clock, Config, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
+import { JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
+import { JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
+import { Clock, Config, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { fileSystem, hostPath } from "../host.ts";
 import { Runner } from "../runner/run.ts";
 
@@ -161,5 +163,74 @@ const catalogError = (cause: unknown): Runner.ModelCatalogError =>
 export const models = Effect.tryPromise({ try: () => Model.getBuiltInModels(), catch: catalogError });
 
 export const providers = Effect.tryPromise({ try: () => Model.getProviders(), catch: catalogError });
+
+/**
+ * Where this process reads OAuth logins: `<home>/aikit/auth.json` when a home was chosen,
+ * otherwise `undefined`, which lets aikit resolve it (`CODEWORK_CREDENTIALS`, then the default home).
+ * One value, so the model calls and {@link available} can never read different files.
+ */
+export class Credentials extends Context.Service<Credentials, { readonly authFile: string | undefined }>()(
+	"@codeworksh/harness/model/catalog/Credentials",
+) {}
+
+/** The storage options an aikit OAuth store takes for {@link Credentials.authFile}. */
+export const oauthStorage = (authFile: string | undefined) => (authFile === undefined ? {} : { path: authFile });
+
+/** Whether an OAuth login is stored for the protocol. Reads the file; never refreshes a token. */
+const loggedIn = (protocol: string, authFile: string | undefined) => {
+	const storage = oauthStorage(authFile);
+	const store =
+		protocol === "openai-codex"
+			? new JsonOpenAICodexAuthStorage(storage)
+			: protocol === "github-copilot"
+				? new JsonGitHubCopilotAuthStorage(storage)
+				: undefined;
+	if (store === undefined) return Effect.succeed(false);
+	return Effect.tryPromise(() => store.get()).pipe(
+		Effect.map((stored) => stored !== undefined),
+		Effect.orElseSucceed(() => false),
+	);
+};
+
+/** How a provider is credentialed: an API key in the host environment, or a stored OAuth login. */
+export type Credential = "apiKey" | "oauth";
+
+/** A provider this process can call, and how. */
+export interface Provider {
+	readonly id: string;
+	readonly credential: Credential;
+	readonly models: Readonly<Record<string, Model.Info>>;
+}
+
+/**
+ * The catalog's providers this process has credentials for, optionally only those credentialed
+ * one way. `apiKey`: the provider's `key` or `env` names are set in the host environment (they
+ * include the OAuth providers' env tokens). `oauth`: a login is stored in the {@link Credentials}
+ * file. A provider with both reports `apiKey`, the one a model call uses first.
+ *
+ * Presence, not validity: nothing is sent over the network, so a revoked key still counts. A
+ * client showing a model picker should still add the session's current model, which may use an
+ * endpoint that needs no key.
+ */
+export const available = Effect.fn("ModelCatalog.available")(function* (
+	filter: { readonly credential?: Credential } = {},
+) {
+	const { authFile } = yield* Credentials;
+	const catalog = yield* models;
+	const usable: Array<Provider> = [];
+	for (const [id, entries] of Object.entries(catalog)) {
+		const first = entries === undefined ? undefined : Object.values(entries)[0];
+		if (entries === undefined || first === undefined) continue;
+		const credential: Credential | undefined =
+			getEnvApiKey(first.provider) !== undefined
+				? "apiKey"
+				: (yield* loggedIn(first.protocol, authFile))
+					? "oauth"
+					: undefined;
+		if (credential === undefined || (filter.credential !== undefined && filter.credential !== credential)) continue;
+		usable.push({ id, credential, models: entries });
+	}
+	return usable;
+});
 
 export * as ModelCatalog from "./catalog.ts";
