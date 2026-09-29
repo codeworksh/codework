@@ -397,11 +397,18 @@ export const layer = (
 								? one.entry === reference
 								: "package" in one.entry && one.entry.package === reference,
 						);
-						yield* Effect.logWarning(
-							`plugin ${reference} is configured but not loaded — run \`codework plugin install\`${
-								where === undefined ? "" : ` (declared in ${where.file})`
-							}`,
-						);
+						const error = `plugin ${reference} is configured but not loaded — run \`codework plugin install\`${
+							where === undefined ? "" : ` (declared in ${where.file})`
+						}`;
+						yield* Effect.logWarning(error);
+						// The advice is for the user, who may not be reading this process's logs.
+						yield* eventService.publish(EventList.PluginUpdated, {
+							status: "failed",
+							reference,
+							error,
+							...(where === undefined ? {} : { file: where.file }),
+							sessionId,
+						});
 					}
 
 					const contributions = yield* setup(chosen.selection, {

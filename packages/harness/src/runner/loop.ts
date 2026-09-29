@@ -176,6 +176,8 @@ export const layer = (options: Options = {}) =>
 								messageId,
 								callID: call.callID,
 								name: call.name,
+								label: snapshot.tools.defs.find((def) => def.name === call.name)?.label,
+								arguments: call.arguments,
 							});
 							const handled = yield* snapshot.tools
 								.handle(call, {

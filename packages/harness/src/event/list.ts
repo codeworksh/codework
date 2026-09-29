@@ -160,7 +160,14 @@ export type LLMFailed = typeof LLMFailed.Type;
 
 export const ToolStarted = EventSchema.define({
 	type: "session.tool.started",
-	schema: { ...LLMFields, callID: Schema.String, name: Schema.String },
+	schema: {
+		...LLMFields,
+		callID: Schema.String,
+		name: Schema.String,
+		/** The tool's display label, when its definition declares one. */
+		label: optional(Schema.String),
+		arguments: Schema.Record(Schema.String, Schema.Json),
+	},
 });
 export type ToolStarted = typeof ToolStarted.Type;
 
