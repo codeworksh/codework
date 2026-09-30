@@ -9,6 +9,7 @@ import {
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
@@ -118,11 +119,11 @@ describe("Tool Call Without Result Tests", () => {
 		});
 	});
 
-	describeIfOpenRouter("OpenRouter Provider", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter Provider (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testToolCallWithoutResult(model, options);
 		});
 	});

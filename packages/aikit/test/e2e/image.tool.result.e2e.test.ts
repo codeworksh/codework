@@ -14,6 +14,7 @@ import {
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAIModel,
 	getOpenAICodexModel,
@@ -291,21 +292,21 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describeIfOpenRouter("OpenRouter provider (z-ai/glm-5.3-flash)", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter provider (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await handleToolWithTextAndImageResult(model, options);
 		});
 
 		it("should replace images with placeholders for a text-only model", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await handleImagesOnTextOnlyModel(model, options, "openrouter");
 		});
 	});

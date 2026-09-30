@@ -8,6 +8,7 @@ import {
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
@@ -148,23 +149,23 @@ describe("AI Providers Empty Message Tests", () => {
 		});
 	});
 
-	describeIfOpenRouter("OpenRouter Provider Empty Messages", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter Provider Empty Messages (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyMessage(await getOpenRouterModel(), options);
+			await testEmptyMessage(await getOpenRouterModel(modelId), options);
 		});
 
 		it("should handle empty string content", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyStringMessage(await getOpenRouterModel(), options);
+			await testEmptyStringMessage(await getOpenRouterModel(modelId), options);
 		});
 
 		it("should handle whitespace-only content", { retry: 3, timeout: 30000 }, async () => {
-			await testWhitespaceOnlyMessage(await getOpenRouterModel(), options);
+			await testWhitespaceOnlyMessage(await getOpenRouterModel(modelId), options);
 		});
 
 		it("should handle empty assistant message in conversation", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyAssistantMessage(await getOpenRouterModel(), options);
+			await testEmptyAssistantMessage(await getOpenRouterModel(modelId), options);
 		});
 	});
 });

@@ -101,8 +101,15 @@ export async function getOpenAICodexModel(
 	return model;
 }
 
+/** Every OpenRouter suite runs once per model. */
+export const OPENROUTER_E2E_MODELS = [
+	"deepseek/deepseek-v4.1-flash",
+	"google/gemini-3.8-flash",
+	"meta/muse-spark-1.3-contributor",
+] as const;
+
 export async function getOpenRouterModel(
-	modelId = "z-ai/glm-5.3-flash",
+	modelId: string,
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.openrouter>> {
 	const model = await llm("openrouter", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openrouter);

@@ -8,6 +8,7 @@ import {
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
@@ -68,9 +69,9 @@ describe("responseId E2E Tests", () => {
 		});
 	});
 
-	describeIfOpenRouter("OpenRouter Provider", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter Provider (%s)", (modelId) => {
 		it("should expose responseId", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await expectResponseId(model, openrouterOptions());
 		});
 	});
