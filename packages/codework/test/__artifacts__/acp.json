@@ -4,6 +4,7 @@
 		"agentCapabilities": {
 			"loadSession": true,
 			"promptCapabilities": {
+				"image": true,
 				"embeddedContext": true
 			},
 			"sessionCapabilities": {
@@ -50,7 +51,7 @@
 	},
 	"promptImage": {
 		"code": -32602,
-		"message": "Unsupported prompt content: image"
+		"message": "Image data is not base64"
 	},
 	"loadUnknownSession": {
 		"code": -32002,

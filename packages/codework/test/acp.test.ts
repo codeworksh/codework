@@ -5,7 +5,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Exit, Fiber, Queue, type Scope } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { crc32, deflateSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vite-plus/test";
@@ -14,6 +15,35 @@ const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
 // Cheap, reliable with tools, and its id contains a slash, which the model selector must keep intact.
 const LIVE_MODEL = "openrouter/openai/gpt-4.1-mini";
+
+/**
+ * The Codex login's current access token, for `OPENAI_CODEX_API_KEY`. The login file itself is
+ * never copied into a test home: a refresh there would rotate the refresh token and sign the
+ * developer out. An expired token skips the Codex cases rather than refreshing.
+ */
+const codexToken = (): string | undefined => {
+	try {
+		const login = JSON.parse(readFileSync(join(homedir(), ".codework", "aikit", "auth.json"), "utf8"))[
+			"openai-codex"
+		];
+		// @effect-diagnostics-next-line globalDate:off -- module setup, outside any Effect.
+		return typeof login?.access === "string" && login.expires > Date.now() + 10 * 60_000 ? login.access : undefined;
+	} catch {
+		return undefined;
+	}
+};
+const codex = process.env.OPENAI_CODEX_API_KEY ?? codexToken();
+if (codex !== undefined) process.env.OPENAI_CODEX_API_KEY = codex;
+
+/** Every live case runs against each of these; `env` names the key that enables it. */
+const LIVE = [
+	{ name: "openai", provider: "openai", id: "gpt-5.6-luna", env: "OPENAI_API_KEY" },
+	{ name: "openai-codex", provider: "openai-codex", id: "gpt-5.6-luna", env: "OPENAI_CODEX_API_KEY" },
+	{ name: "anthropic", provider: "anthropic", id: "claude-sonnet-5-5", env: "ANTHROPIC_API_KEY" },
+	{ name: "deepseek", provider: "openrouter", id: "deepseek/deepseek-v4.1-flash", env: "OPENROUTER_API_KEY" },
+	{ name: "gemini", provider: "openrouter", id: "google/gemini-3.8-flash", env: "OPENROUTER_API_KEY" },
+	{ name: "muse", provider: "openrouter", id: "meta/muse-spark-1.3-contributor", env: "OPENROUTER_API_KEY" },
+].map((live) => ({ ...live, model: `${live.provider}/${live.id}` }));
 
 type Client = AcpClient.AcpClient["Service"];
 type Update = Parameters<Parameters<Client["handleSessionUpdate"]>[0]>[0]["update"];
@@ -126,6 +156,29 @@ const text = (updates: ReadonlyArray<Update>, kind: "agent_message_chunk" | "use
 			return content != null && "text" in content && typeof content.text === "string" ? [content.text] : [];
 		})
 		.join("");
+
+/** A `size`×`size` PNG of one colour, as base64. */
+const solidPng = ([r, g, b]: readonly [number, number, number], size = 64): string => {
+	const chunk = (type: string, data: Buffer) => {
+		const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+		const length = Buffer.alloc(4);
+		length.writeUInt32BE(data.length);
+		const crc = Buffer.alloc(4);
+		crc.writeUInt32BE(crc32(body));
+		return Buffer.concat([length, body, crc]);
+	};
+	const header = Buffer.alloc(13);
+	header.writeUInt32BE(size, 0);
+	header.writeUInt32BE(size, 4);
+	header.set([8, 2, 0, 0, 0], 8); // 8-bit RGB
+	const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: size }, () => [r, g, b]).flat())]);
+	return Buffer.concat([
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+		chunk("IHDR", header),
+		chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: size }, () => row)))),
+		chunk("IEND", Buffer.alloc(0)),
+	]).toString("base64");
+};
 
 const artifact = (record: Record<string, unknown>) => `${JSON.stringify(record, null, "\t")}\n`;
 
@@ -408,183 +461,271 @@ describe("codework acp", () => {
 		);
 	});
 
-	it.skipIf(!process.env.OPENROUTER_API_KEY)(
-		"calls a settings-defined model with a ${NAME} key",
-		() => {
-			const { home, project } = workspace();
-			// OpenRouter's catalog entry re-homed as a new provider: only the settings entry knows it.
-			const entry = catalogEntry("openrouter", "openai/gpt-4.1-mini");
-			writeSettings(join(home, "settings.jsonc"), {
-				models: [
-					{
-						...entry,
-						provider: { id: "gateway", name: "Gateway", source: "config", env: [], key: "${OPENROUTER_API_KEY}" },
-					},
-				],
-			});
-			return run(
-				withAgent(home, (acp, updates) =>
-					Effect.gen(function* () {
-						const { sessionId } = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
-						yield* acp.agent.setSessionConfigOption({
-							sessionId,
-							configId: "model",
-							value: "gateway/openai/gpt-4.1-mini",
-						});
-						const answered = yield* acp.agent.prompt({
-							sessionId,
-							prompt: [{ type: "text", text: "Reply with exactly: PONG" }],
-						});
-						expect(answered.stopReason).toBe("end_turn");
-						expect(text(yield* Queue.clear(updates), "agent_message_chunk")).toContain("PONG");
-					}),
-				),
-			);
-		},
-		120_000,
-	);
-
-	it.skipIf(!process.env.OPENROUTER_API_KEY)(
-		"streams, runs tools, cancels, fails and replays turns against OpenRouter",
-		() => {
-			const { home, project } = workspace();
-			// The harness warns about this uninstalled plugin every turn; the warning must reach stderr,
-			// not the protocol stream on stdout.
-			mkdirSync(join(project, ".codework"));
-			writeFileSync(
-				join(project, ".codework", "settings.jsonc"),
-				artifact({ plugins: ["codework-plugin-not-installed@0.0.0"] }),
-			);
-			const kinds = (updates: ReadonlyArray<Update>) => [...new Set(updates.map((update) => update.sessionUpdate))];
-			return run(
-				Effect.gen(function* () {
-					const first = yield* withAgent(home, (acp, updates) =>
+	describe.each(LIVE)("live: $name", (live) => {
+		it.skipIf(!process.env[live.env])(
+			"calls a settings-defined model with a ${NAME} key",
+			() => {
+				const { home, project } = workspace();
+				// The catalog entry re-homed as a new provider: only the settings entry knows it.
+				const entry = catalogEntry(live.provider, live.id);
+				writeSettings(join(home, "settings.jsonc"), {
+					models: [
+						{
+							...entry,
+							provider: { id: "gateway", name: "Gateway", source: "config", env: [], key: `\${${live.env}}` },
+						},
+					],
+				});
+				return run(
+					withAgent(home, (acp, updates) =>
 						Effect.gen(function* () {
 							const { sessionId } = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
-							yield* acp.agent.setSessionConfigOption({ sessionId, configId: "model", value: LIVE_MODEL });
-
-							const pong = yield* acp.agent.prompt({
+							yield* acp.agent.setSessionConfigOption({
+								sessionId,
+								configId: "model",
+								value: `gateway/${live.id}`,
+							});
+							const answered = yield* acp.agent.prompt({
 								sessionId,
 								prompt: [{ type: "text", text: "Reply with exactly: PONG" }],
 							});
-							const pongUpdates = yield* Queue.clear(updates);
-							const pongText = text(pongUpdates, "agent_message_chunk");
-							const titled = pongUpdates.flatMap((update) =>
-								update.sessionUpdate === "session_info_update" ? [update.title] : [],
-							);
-							expect(pongText).toContain("PONG");
-
-							const tool = yield* acp.agent.prompt({
-								sessionId,
-								prompt: [
-									{
-										type: "text",
-										text: "Call the `bash` tool with the command `echo acp-e2e-marker`, then reply with its output.",
-									},
-								],
-							});
-							const toolUpdates = yield* Queue.clear(updates);
-							const toolText = text(toolUpdates, "agent_message_chunk");
-							const started = toolUpdates.find((update) => update.sessionUpdate === "tool_call");
-							const settled = toolUpdates.find(
-								(update) => update.sessionUpdate === "tool_call_update" && update.status === "completed",
-							);
-							expect(artifact({ settled })).toContain("acp-e2e-marker");
-
-							// Cancel once the answer is streaming; the prompt must answer `cancelled`, not fail.
-							const long = yield* acp.agent
-								.prompt({ sessionId, prompt: [{ type: "text", text: "Count from 1 to 2000, one per line." }] })
-								.pipe(Effect.forkChild);
-							const streaming = Effect.gen(function* () {
-								while ((yield* Queue.take(updates)).sessionUpdate !== "agent_message_chunk") {
-									// Thoughts may stream first.
-								}
-							});
-							yield* streaming.pipe(Effect.timeout("30 seconds"));
-							yield* acp.agent.cancel({ sessionId });
-							const cancelled = yield* Fiber.join(long);
-							yield* Queue.clear(updates);
-
-							return {
-								sessionId,
-								record: {
-									pong: pong.stopReason,
-									// The first prompt names the untitled session, and the editor is told once.
-									titled,
-									// Once per prompt, however many exchanges the prompt takes.
-									notices: [pongText, toolText].map(
-										(answer) =>
-											answer.split("codework-plugin-not-installed@0.0.0 is configured but not loaded")
-												.length - 1,
-									),
-									tool: {
-										stopReason: tool.stopReason,
-										updates: kinds(toolUpdates).filter((kind) => kind.startsWith("tool_call")),
-										started:
-											started?.sessionUpdate === "tool_call"
-												? {
-														titledWithCommand: started.title.includes("echo acp-e2e-marker"),
-														hasRawInput: started.rawInput !== undefined,
-													}
-												: undefined,
-										settled:
-											settled?.sessionUpdate === "tool_call_update"
-												? { kind: settled.kind, status: settled.status }
-												: undefined,
-									},
-									cancel: cancelled.stopReason,
-								},
-							};
+							expect(answered.stopReason).toBe("end_turn");
+							expect(text(yield* Queue.clear(updates), "agent_message_chunk")).toContain("PONG");
 						}),
-					);
+					),
+				);
+			},
+			120_000,
+		);
 
-					// A fresh process replays the stored conversation before answering `session/load`.
-					const replay = yield* withAgent(home, (acp, updates) =>
-						Effect.gen(function* () {
-							yield* acp.agent.loadSession({ sessionId: first.sessionId, cwd: project, mcpServers: [] });
-							const replayed = yield* Queue.clear(updates);
-							expect(text(replayed, "user_message_chunk")).toContain("Reply with exactly: PONG");
-							expect(text(replayed, "agent_message_chunk")).toContain("PONG");
-							return kinds(replayed).filter((kind) => kind !== "agent_thought_chunk");
-						}),
-					);
-
-					// A provider failure answers the prompt with its error, not a silent `end_turn`.
-					const failed = yield* withAgent(
-						home,
-						(acp) =>
+		it.skipIf(!process.env[live.env])(
+			"streams, runs tools, cancels, fails and replays turns",
+			() => {
+				const { home, project } = workspace();
+				// The harness warns about this uninstalled plugin every turn; the warning must reach stderr,
+				// not the protocol stream on stdout.
+				mkdirSync(join(project, ".codework"));
+				writeFileSync(
+					join(project, ".codework", "settings.jsonc"),
+					artifact({ plugins: ["codework-plugin-not-installed@0.0.0"] }),
+				);
+				const kinds = (updates: ReadonlyArray<Update>) => [
+					...new Set(updates.map((update) => update.sessionUpdate)),
+				];
+				return run(
+					Effect.gen(function* () {
+						const first = yield* withAgent(home, (acp, updates) =>
 							Effect.gen(function* () {
 								const { sessionId } = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
-								yield* acp.agent.setSessionConfigOption({ sessionId, configId: "model", value: LIVE_MODEL });
-								const result = yield* settle(
-									acp.agent.prompt({
-										sessionId,
-										prompt: [
-											{
-												type: "text",
-												text: "Summarise how sessions, plugins and sandboxes fit together in the codework harness.\nKeep it short.",
-											},
-										],
-									}),
+								yield* acp.agent.setSessionConfigOption({ sessionId, configId: "model", value: live.model });
+
+								const pong = yield* acp.agent.prompt({
+									sessionId,
+									prompt: [{ type: "text", text: "Reply with exactly: PONG" }],
+								});
+								const pongUpdates = yield* Queue.clear(updates);
+								const pongText = text(pongUpdates, "agent_message_chunk");
+								const titled = pongUpdates.flatMap((update) =>
+									update.sessionUpdate === "session_info_update" ? [update.title] : [],
 								);
-								// Titled at promotion, before the provider call fails: first line, cut to 48 characters.
-								const { sessions } = yield* acp.agent.listSessions({ cwd: project });
+								expect(pongText).toContain("PONG");
+
+								const tool = yield* acp.agent.prompt({
+									sessionId,
+									prompt: [
+										{
+											type: "text",
+											text: "Call the `bash` tool with the command `echo acp-e2e-marker`, then reply with its output.",
+										},
+									],
+								});
+								const toolUpdates = yield* Queue.clear(updates);
+								const toolText = text(toolUpdates, "agent_message_chunk");
+								const started = toolUpdates.find((update) => update.sessionUpdate === "tool_call");
+								const settled = toolUpdates.find(
+									(update) => update.sessionUpdate === "tool_call_update" && update.status === "completed",
+								);
+								expect(artifact({ settled })).toContain("acp-e2e-marker");
+
+								// Cancel once the answer is streaming; the prompt must answer `cancelled`, not fail.
+								const long = yield* acp.agent
+									.prompt({
+										sessionId,
+										prompt: [{ type: "text", text: "Count from 1 to 2000, one per line." }],
+									})
+									.pipe(Effect.forkChild);
+								const streaming = Effect.gen(function* () {
+									while ((yield* Queue.take(updates)).sessionUpdate !== "agent_message_chunk") {
+										// Thoughts may stream first.
+									}
+								});
+								yield* streaming.pipe(Effect.timeout("30 seconds"));
+								yield* acp.agent.cancel({ sessionId });
+								const cancelled = yield* Fiber.join(long);
+								yield* Queue.clear(updates);
+
 								return {
-									...("code" in result ? { code: result.code, hasMessage: Boolean(result.message) } : result),
-									title: sessions.find((session) => session.sessionId === sessionId)?.title,
+									sessionId,
+									record: {
+										pong: pong.stopReason,
+										// The first prompt names the untitled session, and the editor is told once.
+										titled,
+										// Once per prompt, however many exchanges the prompt takes.
+										notices: [pongText, toolText].map(
+											(answer) =>
+												answer.split("codework-plugin-not-installed@0.0.0 is configured but not loaded")
+													.length - 1,
+										),
+										tool: {
+											stopReason: tool.stopReason,
+											updates: kinds(toolUpdates).filter((kind) => kind.startsWith("tool_call")),
+											started:
+												started?.sessionUpdate === "tool_call"
+													? {
+															titledWithCommand: started.title.includes("echo acp-e2e-marker"),
+															hasRawInput: started.rawInput !== undefined,
+														}
+													: undefined,
+											settled:
+												settled?.sessionUpdate === "tool_call_update"
+													? { kind: settled.kind, status: settled.status }
+													: undefined,
+										},
+										cancel: cancelled.stopReason,
+									},
 								};
 							}),
-						{ OPENROUTER_API_KEY: "sk-or-invalid" },
-					);
+						);
 
-					yield* Effect.promise(() =>
-						expect(artifact({ ...first.record, replay, failed })).toMatchFileSnapshot(
-							"./__artifacts__/acp.live.json",
-						),
-					);
-				}),
-			);
-		},
-		180_000,
-	);
+						// A fresh process replays the stored conversation before answering `session/load`.
+						const replay = yield* withAgent(home, (acp, updates) =>
+							Effect.gen(function* () {
+								yield* acp.agent.loadSession({ sessionId: first.sessionId, cwd: project, mcpServers: [] });
+								const replayed = yield* Queue.clear(updates);
+								expect(text(replayed, "user_message_chunk")).toContain("Reply with exactly: PONG");
+								expect(text(replayed, "agent_message_chunk")).toContain("PONG");
+								return kinds(replayed).filter((kind) => kind !== "agent_thought_chunk");
+							}),
+						);
+
+						// A provider failure answers the prompt with its error, not a silent `end_turn`.
+						const failed = yield* withAgent(
+							home,
+							(acp) =>
+								Effect.gen(function* () {
+									const { sessionId } = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
+									yield* acp.agent.setSessionConfigOption({ sessionId, configId: "model", value: live.model });
+									const result = yield* settle(
+										acp.agent.prompt({
+											sessionId,
+											prompt: [
+												{
+													type: "text",
+													text: "Summarise how sessions, plugins and sandboxes fit together in the codework harness.\nKeep it short.",
+												},
+											],
+										}),
+									);
+									// Titled at promotion, before the provider call fails: first line, cut to 48 characters.
+									const { sessions } = yield* acp.agent.listSessions({ cwd: project });
+									return {
+										...("code" in result
+											? { code: result.code, hasMessage: Boolean(result.message) }
+											: result),
+										title: sessions.find((session) => session.sessionId === sessionId)?.title,
+									};
+								}),
+							{ [live.env]: "invalid-key" },
+						);
+
+						yield* Effect.promise(() =>
+							expect(artifact({ ...first.record, replay, failed })).toMatchFileSnapshot(
+								`./__artifacts__/acp.live.${live.name}.json`,
+							),
+						);
+					}),
+				);
+			},
+			180_000,
+		);
+		it.skipIf(!process.env[live.env])(
+			"answers about an image in the prompt and replays it",
+			() => {
+				const { home, project } = workspace();
+				const red = solidPng([255, 0, 0]);
+				return run(
+					Effect.gen(function* () {
+						const first = yield* withAgent(home, (acp, updates) =>
+							Effect.gen(function* () {
+								const initialized = yield* acp.agent.initialize({ protocolVersion: 1 });
+								const { sessionId } = yield* acp.agent.createSession({ cwd: project, mcpServers: [] });
+								yield* acp.agent.setSessionConfigOption({ sessionId, configId: "model", value: live.model });
+								const reject = (prompt: Parameters<Client["agent"]["prompt"]>[0]["prompt"]) =>
+									settle(acp.agent.prompt({ sessionId, prompt }));
+								// Refused before anything is saved: the replay below holds only the answered prompt.
+								const rejected = {
+									audio: yield* reject([{ type: "audio", data: red, mimeType: "audio/wav" }]),
+									bmp: yield* reject([{ type: "image", data: red, mimeType: "image/bmp" }]),
+									oversized: yield* reject([
+										{ type: "image", data: "A".repeat(4.5 * 1024 * 1024 + 4), mimeType: "image/png" },
+									]),
+									notBase64: yield* reject([{ type: "image", data: "not base64!", mimeType: "image/png" }]),
+									binaryResource: yield* reject([
+										{
+											type: "resource",
+											resource: { uri: "file:///notes.pdf", blob: red, mimeType: "application/pdf" },
+										},
+									]),
+								};
+								const answered = yield* acp.agent.prompt({
+									sessionId,
+									prompt: [
+										{ type: "text", text: "Which colour fills this image? Answer with one word." },
+										{ type: "image", data: red, mimeType: "image/png" },
+									],
+								});
+								const answer = text(yield* Queue.clear(updates), "agent_message_chunk").toLowerCase();
+								const { sessions } = yield* acp.agent.listSessions({ cwd: project });
+								return {
+									sessionId,
+									record: {
+										promptCapabilities: initialized.agentCapabilities?.promptCapabilities,
+										rejected,
+										stopReason: answered.stopReason,
+										namesRed: answer.includes("red"),
+										title: sessions.find((session) => session.sessionId === sessionId)?.title,
+									},
+								};
+							}),
+						);
+
+						// A fresh process replays the image with the prompt it came in.
+						const replay = yield* withAgent(home, (acp, updates) =>
+							Effect.gen(function* () {
+								yield* acp.agent.loadSession({ sessionId: first.sessionId, cwd: project, mcpServers: [] });
+								return (yield* Queue.clear(updates)).flatMap(
+									(update): ReadonlyArray<Record<string, unknown>> => {
+										if (update.sessionUpdate !== "user_message_chunk") return [];
+										const content = update.content;
+										return content.type === "image"
+											? [{ type: "image", mimeType: content.mimeType, sameData: content.data === red }]
+											: content.type === "text"
+												? [{ type: "text", text: content.text }]
+												: [{ type: content.type }];
+									},
+								);
+							}),
+						);
+
+						yield* Effect.promise(() =>
+							expect(artifact({ ...first.record, replay })).toMatchFileSnapshot(
+								`./__artifacts__/acp.image.${live.name}.json`,
+							),
+						);
+					}),
+				);
+			},
+			120_000,
+		);
+	});
 });
