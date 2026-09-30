@@ -68,13 +68,19 @@ export interface RelinkInput {
 	readonly directory?: string;
 }
 
+interface PromptOptions {
+	readonly delivery?: Delivery;
+	readonly id?: SessionMessageSchema.ID;
+}
+
+/** Text, or ordered text and image parts. Images are checked before anything is saved. */
 export type PromptInput =
 	| string
-	| {
-			readonly text: string;
-			readonly delivery?: Delivery;
-			readonly id?: SessionMessageSchema.ID;
-	  };
+	| (PromptOptions & { readonly text: string })
+	| (PromptOptions & { readonly parts: ReadonlyArray<PromptSchema.Part> });
+
+type Admission = ReturnType<Control.Interface["prompt"]>;
+type PromptResult = Effect.Effect<Effect.Success<Admission>, Effect.Error<Admission> | PromptSchema.InvalidPromptError>;
 
 export interface Info {
 	readonly id: SessionSchema.ID;
@@ -93,8 +99,8 @@ export interface Handle {
 	readonly id: SessionSchema.ID;
 	readonly active: Effect.Effect<boolean>;
 	readonly info: Effect.Effect<Info, SessionStore.SessionNotFoundError>;
-	readonly prompt: (input: PromptInput) => ReturnType<Control.Interface["prompt"]>;
-	readonly run: (input: PromptInput) => ReturnType<Control.Interface["run"]>;
+	readonly prompt: (input: PromptInput) => PromptResult;
+	readonly run: (input: PromptInput) => PromptResult;
 	readonly wait: () => ReturnType<Control.Interface["wait"]>;
 	readonly resume: () => ReturnType<Control.Interface["resume"]>;
 	/** Stops active work and waits for its cleanup; idle is a no-op returning false. */
@@ -126,14 +132,21 @@ const choose = Effect.fn("Session.choose")(function* (sessionId: SessionSchema.I
 	yield* events.publish(EventList.ConfigChanged, { sessionId, timestamp: yield* DateTime.now, ...config });
 });
 
-const promptInput = (input: PromptInput) => {
+const promptInput = Effect.fnUntraced(function* (input: PromptInput) {
 	const value = typeof input === "string" ? { text: input } : input;
+	const parts = "parts" in value ? value.parts : [{ type: "text" as const, text: value.text }];
+	if (parts.length === 0)
+		return yield* new PromptSchema.InvalidPromptError({ reason: "A prompt needs at least one part" });
+	for (const part of parts) {
+		const problem = part.type === "image" ? PromptSchema.imageProblem(part) : undefined;
+		if (problem !== undefined) return yield* new PromptSchema.InvalidPromptError({ reason: problem });
+	}
 	return {
-		prompt: PromptSchema.Prompt.make({ text: value.text }),
+		prompt: PromptSchema.Prompt.make({ parts }),
 		...(value.delivery === undefined ? {} : { delivery: value.delivery }),
 		...(value.id === undefined ? {} : { id: value.id }),
 	};
-};
+});
 
 const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.ID) {
 	const sessions = yield* SessionStore.Service;
@@ -168,8 +181,9 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 		id,
 		active: control.active.pipe(Effect.map((active) => active.has(id))),
 		info,
-		prompt: (input) => control.prompt({ sessionId: id, ...promptInput(input) }),
-		run: (input) => control.run({ sessionId: id, ...promptInput(input) }),
+		prompt: (input) =>
+			promptInput(input).pipe(Effect.flatMap((prompt) => control.prompt({ sessionId: id, ...prompt }))),
+		run: (input) => promptInput(input).pipe(Effect.flatMap((prompt) => control.run({ sessionId: id, ...prompt }))),
 		wait: () => control.wait(id),
 		resume: () => control.resume(id),
 		// The embedder API keeps its blocking contract: a caller that returns from

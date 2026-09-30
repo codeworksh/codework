@@ -103,7 +103,7 @@ const admit = Effect.fnUntraced(function* (input: {
 	return yield* inputs.admit({
 		id: SessionMessageSchema.ID.make(input.id),
 		sessionId: input.sessionId,
-		prompt: { text: input.text ?? input.id },
+		prompt: { parts: [{ type: "text", text: input.text ?? input.id }] },
 		delivery: input.delivery,
 	});
 });

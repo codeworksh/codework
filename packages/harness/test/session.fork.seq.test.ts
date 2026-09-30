@@ -132,7 +132,7 @@ describe("append keeps the aggregate head in sync", () => {
 
 			const admitted = yield* control.prompt({
 				sessionId: source.id,
-				prompt: PromptSchema.Prompt.make({ text: "after" }),
+				prompt: PromptSchema.Prompt.fromText("after"),
 			});
 			expect(admitted.admittedSeq).toBeGreaterThan(1);
 
