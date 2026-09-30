@@ -44,15 +44,29 @@ export function anthropicOptions(extras: AnthropicOptions = {}): AnthropicOption
 	return { ...fromEnvApiKey(process.env.ANTHROPIC_API_KEY), ...extras };
 }
 
-export const OPENAI_E2E_MODEL = "gpt-5.6-luna";
-export const OPENAI_CODEX_E2E_MODEL = "gpt-5.6-luna";
+/** Every OpenAI suite runs once per model, latest to oldest. */
+export const OPENAI_E2E_MODELS = [
+	"gpt-6-luna",
+	"gpt-5.6-luna",
+	"gpt-5.5",
+	"gpt-5.4",
+	"gpt-5.4-mini",
+	"gpt-5.4-nano",
+] as const;
 
+/**
+ * Every Codex suite runs once per model. The Codex backend rejects gpt-5.4, gpt-5.4-mini and
+ * gpt-5.4-nano for ChatGPT accounts ("not supported when using Codex with a ChatGPT account").
+ */
+export const OPENAI_CODEX_E2E_MODELS = ["gpt-6-luna", "gpt-5.6-luna", "gpt-5.5"] as const;
+
+/** Suites default to low reasoning; pass `reasoning` to override. */
 export function openaiOptions(extras: OpenAIOptions = {}): OpenAIOptions {
-	return { ...fromEnvApiKey(process.env.OPENAI_API_KEY), ...extras, reasoning: "low" };
+	return { ...fromEnvApiKey(process.env.OPENAI_API_KEY), reasoning: "low", ...extras };
 }
 
 export function openaiCodexOptions(extras: OpenAICodexOptions = {}): OpenAICodexOptions {
-	return { ...fromEnvApiKey(process.env.OPENAI_CODEX_API_KEY), ...extras, reasoning: "low" };
+	return { ...fromEnvApiKey(process.env.OPENAI_CODEX_API_KEY), reasoning: "low", ...extras };
 }
 
 export function openrouterOptions(extras: OpenRouterOptions = {}): OpenRouterOptions {
@@ -85,16 +99,14 @@ export async function getAnthropicModel(
 	return model;
 }
 
-export async function getOpenAIModel(
-	modelId = OPENAI_E2E_MODEL,
-): Promise<Model.TModel<typeof Model.KnownProviderEnum.openai>> {
+export async function getOpenAIModel(modelId: string): Promise<Model.TModel<typeof Model.KnownProviderEnum.openai>> {
 	const model = await llm("openai", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openai);
 	return model;
 }
 
 export async function getOpenAICodexModel(
-	modelId = OPENAI_CODEX_E2E_MODEL,
+	modelId: string,
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.openaiCodex>> {
 	const model = await llm("openai-codex", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openaiCodex);

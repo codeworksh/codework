@@ -7,6 +7,8 @@ import {
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	describeIfOpenRouter,
 	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
@@ -89,23 +91,23 @@ async function testEmptyAssistantMessage(model: StreamableModel, options: Suppor
 }
 
 describe("AI Providers Empty Message Tests", () => {
-	describeIfOpenAI("OpenAI Provider Empty Messages", () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI Provider Empty Messages (%s)", (modelId) => {
 		const options = openaiOptions();
 
 		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyMessage(await getOpenAIModel(), options);
+			await testEmptyMessage(await getOpenAIModel(modelId), options);
 		});
 
 		it("should handle empty string content", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyStringMessage(await getOpenAIModel(), options);
+			await testEmptyStringMessage(await getOpenAIModel(modelId), options);
 		});
 
 		it("should handle whitespace-only content", { retry: 3, timeout: 30000 }, async () => {
-			await testWhitespaceOnlyMessage(await getOpenAIModel(), options);
+			await testWhitespaceOnlyMessage(await getOpenAIModel(modelId), options);
 		});
 
 		it("should handle empty assistant message in conversation", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyAssistantMessage(await getOpenAIModel(), options);
+			await testEmptyAssistantMessage(await getOpenAIModel(modelId), options);
 		});
 	});
 
@@ -129,23 +131,23 @@ describe("AI Providers Empty Message Tests", () => {
 		});
 	});
 
-	describeIfOpenAICodex("OpenAI Codex Provider Empty Messages", () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex Provider Empty Messages (%s)", (modelId) => {
 		const options = openaiCodexOptions();
 
 		it("should handle empty content array", { retry: 3, timeout: 60_000 }, async () => {
-			await testEmptyMessage(await getOpenAICodexModel(), options);
+			await testEmptyMessage(await getOpenAICodexModel(modelId), options);
 		});
 
 		it("should handle empty string content", { retry: 3, timeout: 60_000 }, async () => {
-			await testEmptyStringMessage(await getOpenAICodexModel(), options);
+			await testEmptyStringMessage(await getOpenAICodexModel(modelId), options);
 		});
 
 		it("should handle whitespace-only content", { retry: 3, timeout: 60_000 }, async () => {
-			await testWhitespaceOnlyMessage(await getOpenAICodexModel(), options);
+			await testWhitespaceOnlyMessage(await getOpenAICodexModel(modelId), options);
 		});
 
 		it("should handle empty assistant message in conversation", { retry: 3, timeout: 60_000 }, async () => {
-			await testEmptyAssistantMessage(await getOpenAICodexModel(), options);
+			await testEmptyAssistantMessage(await getOpenAICodexModel(modelId), options);
 		});
 	});
 

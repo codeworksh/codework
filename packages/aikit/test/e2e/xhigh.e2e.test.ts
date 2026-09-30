@@ -3,18 +3,7 @@ import type { AnthropicOptions } from "../../src/llm/options.ts";
 import * as Message from "../../src/message/message.ts";
 import * as Model from "../../src/model/model.ts";
 import { stream } from "../../src/stream.ts";
-import {
-	anthropicOptions,
-	describeIfAnthropic,
-	describeIfOpenAI,
-	describeIfOpenAICodex,
-	getAnthropicModel,
-	getOpenAICodexModel,
-	getOpenAIModel,
-	getText,
-	OPENAI_CODEX_E2E_MODEL,
-	OPENAI_E2E_MODEL,
-} from "../utils/llm.ts";
+import { anthropicOptions, describeIfAnthropic, getAnthropicModel, getText } from "../utils/llm.ts";
 
 function makeContext(): Message.Context {
 	return {
@@ -56,14 +45,8 @@ async function completeWithXhigh(model: Model.Info, options: AnthropicOptions) {
 	expect(getText(response).length).toBeGreaterThan(0);
 }
 
+// OpenAI and Codex levels are covered per model by thinking.levels.e2e.test.ts.
 describe("xhigh reasoning", () => {
-	describeIfOpenAI(`openai provider (${OPENAI_E2E_MODEL})`, () => {
-		it("should clamp unsupported xhigh to high", async () => {
-			const model = await getOpenAIModel();
-			expectXhighSupport(model, "high");
-		});
-	});
-
 	describeIfAnthropic("anthropic provider (claude-haiku-4-5)", () => {
 		const options = anthropicOptions();
 
@@ -71,14 +54,6 @@ describe("xhigh reasoning", () => {
 			const model = await getAnthropicModel();
 			expectXhighSupport(model, "high");
 			await completeWithXhigh(model, options);
-		});
-	});
-
-	describeIfOpenAICodex(`openai codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
-		it("should support xhigh in the catalog without a live xhigh call", async () => {
-			const model = await getOpenAICodexModel();
-			expect(Model.getSupportedThinkingLevels(model)).toContain("xhigh");
-			expect(Model.clampThinkingLevel(model, "xhigh")).toBe("xhigh");
 		});
 	});
 });

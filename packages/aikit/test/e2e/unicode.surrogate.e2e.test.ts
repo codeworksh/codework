@@ -11,6 +11,8 @@ import {
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	describeIfOpenRouter,
 	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
@@ -189,40 +191,40 @@ describe("AI Providers Unicode Surrogate Pair Tests", () => {
 		});
 	});
 
-	describeIfOpenAI("OpenAI Provider Unicode Handling", () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI Provider Unicode Handling (%s)", (modelId) => {
 		const options = openaiOptions();
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testEmojiInToolResults(model, options);
 		});
 
 		it("should handle real-world LinkedIn comment data with emoji", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testRealWorldLinkedInData(model, options);
 		});
 
 		it("should handle unpaired high surrogate (0xD83D) in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testUnpairedHighSurrogate(model, options);
 		});
 	});
 
-	describeIfOpenAICodex("OpenAI Codex Provider Unicode Handling", () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex Provider Unicode Handling (%s)", (modelId) => {
 		const options = openaiCodexOptions();
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testEmojiInToolResults(model, options);
 		});
 
 		it("should handle real-world LinkedIn comment data with emoji", { retry: 3, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testRealWorldLinkedInData(model, options);
 		});
 
 		it("should handle unpaired high surrogate (0xD83D) in tool results", { retry: 3, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testUnpairedHighSurrogate(model, options);
 		});
 	});

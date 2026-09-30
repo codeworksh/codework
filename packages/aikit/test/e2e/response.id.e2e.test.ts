@@ -7,6 +7,8 @@ import {
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	describeIfOpenRouter,
 	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
@@ -48,9 +50,9 @@ async function expectResponseId(model: StreamableModel, options: StreamOptionsWi
 }
 
 describe("responseId E2E Tests", () => {
-	describeIfOpenAI("OpenAI Provider", () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI Provider (%s)", (modelId) => {
 		it("should expose responseId", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await expectResponseId(model, openaiOptions());
 		});
 	});
@@ -62,9 +64,9 @@ describe("responseId E2E Tests", () => {
 		});
 	});
 
-	describeIfOpenAICodex("OpenAI Codex Provider", () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex Provider (%s)", (modelId) => {
 		it("should expose responseId", { retry: 3, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await expectResponseId(model, openaiCodexOptions());
 		});
 	});

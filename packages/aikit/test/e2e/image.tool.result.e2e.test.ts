@@ -20,8 +20,8 @@ import {
 	getOpenAICodexModel,
 	getOpenRouterModel,
 	getText,
-	OPENAI_CODEX_E2E_MODEL,
-	OPENAI_E2E_MODEL,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
@@ -235,21 +235,21 @@ async function handleImagesOnTextOnlyModel(model: SupportedModel, options: Suppo
 }
 
 describe("Tool Results with Images", () => {
-	describeIfOpenAI(`OpenAI provider (${OPENAI_E2E_MODEL})`, () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI provider (%s)", (modelId) => {
 		const options = openaiOptions({ maxTokens: 256 });
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await handleToolWithTextAndImageResult(model, options);
 		});
 
 		it("should replace images with placeholders for a text-only model", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await handleImagesOnTextOnlyModel(model, options, "openai");
 		});
 	});
@@ -273,21 +273,21 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describeIfOpenAICodex(`OpenAI Codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex provider (%s)", (modelId) => {
 		const options = openaiCodexOptions();
 
 		it("should handle tool result with only image", { retry: 2, timeout: 120_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 2, timeout: 120_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await handleToolWithTextAndImageResult(model, options);
 		});
 
 		it("should replace images with placeholders for a text-only model", { retry: 2, timeout: 120_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await handleImagesOnTextOnlyModel(model, options, "openai-codex");
 		});
 	});

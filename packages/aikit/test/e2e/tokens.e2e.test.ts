@@ -13,8 +13,8 @@ import {
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
-	OPENAI_CODEX_E2E_MODEL,
-	OPENAI_E2E_MODEL,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
@@ -71,15 +71,11 @@ async function testTokensOnAbort(model: StreamableModel, options: StreamOptionsW
 }
 
 describe("Token Statistics on Abort", () => {
-	describeIfOpenAI("OpenAI Provider", () => {
-		it(
-			`${OPENAI_E2E_MODEL} - should report zero token usage when aborted mid-stream`,
-			{ retry: 3, timeout: 30000 },
-			async () => {
-				const model = await getOpenAIModel();
-				await testTokensOnAbort(model, openaiOptions());
-			},
-		);
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI Provider (%s)", (modelId) => {
+		it("should report zero token usage when aborted mid-stream", { retry: 3, timeout: 30000 }, async () => {
+			const model = await getOpenAIModel(modelId);
+			await testTokensOnAbort(model, openaiOptions());
+		});
 	});
 
 	describeIfAnthropic("Anthropic Provider", () => {
@@ -100,14 +96,10 @@ describe("Token Statistics on Abort", () => {
 		});
 	});
 
-	describeIfOpenAICodex("OpenAI Codex Provider", () => {
-		it(
-			`${OPENAI_CODEX_E2E_MODEL} - should report zero token usage when aborted mid-stream`,
-			{ retry: 3, timeout: 60000 },
-			async () => {
-				const model = await getOpenAICodexModel();
-				await testTokensOnAbort(model, openaiCodexOptions());
-			},
-		);
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex Provider (%s)", (modelId) => {
+		it("should report zero token usage when aborted mid-stream", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenAICodexModel(modelId);
+			await testTokensOnAbort(model, openaiCodexOptions());
+		});
 	});
 });

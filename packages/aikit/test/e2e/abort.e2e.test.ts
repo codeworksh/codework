@@ -14,8 +14,8 @@ import {
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
-	OPENAI_CODEX_E2E_MODEL,
-	OPENAI_E2E_MODEL,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
@@ -177,36 +177,41 @@ describe("AI Provider Abort Tests", () => {
 		});
 	});
 
-	describeIfOpenAI(`OpenAI provider (${OPENAI_E2E_MODEL})`, () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI provider (%s)", (modelId) => {
 		const options = openaiOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testAbortSignal(model, options);
 		});
 
 		it("should handle immediate abort", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testImmediateAbort(model, options);
 		});
 
 		it("should handle abort then new message", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testAbortThenNewMessage(model, options);
 		});
 	});
 
-	describeIfOpenAICodex(`OpenAI Codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex provider (%s)", (modelId) => {
 		const options = openaiCodexOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testAbortSignal(model, options);
 		});
 
 		it("should handle immediate abort", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testImmediateAbort(model, options);
+		});
+
+		it("should handle abort then new message", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenAICodexModel(modelId);
+			await testAbortThenNewMessage(model, options);
 		});
 	});
 

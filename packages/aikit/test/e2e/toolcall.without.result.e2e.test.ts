@@ -8,6 +8,8 @@ import {
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	describeIfOpenRouter,
 	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
@@ -101,20 +103,20 @@ describe("Tool Call Without Result Tests", () => {
 		});
 	});
 
-	describeIfOpenAI("OpenAI Provider", () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI Provider (%s)", (modelId) => {
 		const options = openaiOptions();
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testToolCallWithoutResult(model, options);
 		});
 	});
 
-	describeIfOpenAICodex("OpenAI Codex Provider", () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex Provider (%s)", (modelId) => {
 		const options = openaiCodexOptions();
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 120_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testToolCallWithoutResult(model, options);
 		});
 	});
