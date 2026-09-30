@@ -1,4 +1,5 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- this suite spawns the CLI as a child process. */
+import "./utils/env.ts";
 import * as Acp from "@agentclientprotocol/sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { type Cause, Effect, Exit, Fiber, Option, Queue, type Scope, Stream } from "effect";
@@ -10,7 +11,6 @@ import { crc32, deflateSync } from "node:zlib";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import "./env.ts";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
