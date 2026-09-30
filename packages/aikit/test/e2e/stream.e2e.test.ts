@@ -9,7 +9,9 @@ import * as Model from "../../src/model/model.ts";
 import { stream } from "../../src/stream.ts";
 import { StringEnum } from "../../src/utils/helpers.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
+	anthropicThinkingLevel,
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
@@ -439,44 +441,43 @@ async function handleImage<TOptions extends Protocol.CommonOptions>(model: Strea
 }
 
 describe("Generate E2E Tests", () => {
-	// ── Anthropic E2E tests ──
+	// ── Anthropic E2E tests (no reasoning by default; high for thinking and multi-turn) ──
 
-	describeIfAnthropic("Anthropic provider (claude-haiku-4-5)", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic provider (%s)", (modelId) => {
 		const options = anthropicOptions();
 
 		it("should resolve appropriate protocol", async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			expect(model.protocol).toBe(Model.KnownProviderEnum.anthropic);
 		});
 
-		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+		it("should complete basic text generation", { retry: 3, timeout: 90_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
 			await basicTextGeneration(model, options);
 		});
 
-		it("should handle tool calling", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+		it("should handle tool calling", { retry: 3, timeout: 90_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
 			await handleToolCall(model, options);
 		});
 
-		it("should handle streaming", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+		it("should handle streaming", { retry: 3, timeout: 90_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
 			await handleStreaming(model, options);
 		});
 
-		it("should handle thinking", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
-			// Use reasoning option to enable thinking (maps to anthropic provider thinking config)
-			await handleThinking(model, { ...options, reasoning: "high" });
+		it("should handle thinking", { retry: 3, timeout: 120_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
+			await handleThinking(model, anthropicOptions({ reasoning: anthropicThinkingLevel(modelId) }));
 		});
 
-		it("should handle multi-turn with thinking and tools", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getAnthropicModel();
-			await handleMultiTurn(model, { ...options, reasoning: "high" });
+		it("should handle multi-turn with thinking and tools", { retry: 3, timeout: 180_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
+			await handleMultiTurn(model, anthropicOptions({ reasoning: "high" }));
 		});
 
-		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
-			const model = await getAnthropicModel();
+		it("should handle image input", { retry: 3, timeout: 90_000 }, async (ctx) => {
+			const model = await getAnthropicModel(modelId);
 			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});

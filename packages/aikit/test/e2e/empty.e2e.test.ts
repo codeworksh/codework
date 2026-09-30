@@ -3,6 +3,7 @@ import * as Message from "../../src/message/message.ts";
 import { complete } from "../../src/stream.ts";
 import { makeAssistantMessage, makeUsage } from "../utils/fixtures.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
@@ -111,23 +112,23 @@ describe("AI Providers Empty Message Tests", () => {
 		});
 	});
 
-	describeIfAnthropic("Anthropic Provider Empty Messages", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic Provider Empty Messages (%s)", (modelId) => {
 		const options = anthropicOptions();
 
 		it("should handle empty content array", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyMessage(await getAnthropicModel(), options);
+			await testEmptyMessage(await getAnthropicModel(modelId), options);
 		});
 
 		it("should handle empty string content", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyStringMessage(await getAnthropicModel(), options);
+			await testEmptyStringMessage(await getAnthropicModel(modelId), options);
 		});
 
 		it("should handle whitespace-only content", { retry: 3, timeout: 30000 }, async () => {
-			await testWhitespaceOnlyMessage(await getAnthropicModel(), options);
+			await testWhitespaceOnlyMessage(await getAnthropicModel(modelId), options);
 		});
 
 		it("should handle empty assistant message in conversation", { retry: 3, timeout: 30000 }, async () => {
-			await testEmptyAssistantMessage(await getAnthropicModel(), options);
+			await testEmptyAssistantMessage(await getAnthropicModel(modelId), options);
 		});
 	});
 

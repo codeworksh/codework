@@ -135,17 +135,26 @@ export function normalizeOpenAICodexToolCallId(
 }
 
 /**
- * OpenAI takes the tool call ID verbatim as `call_id` (at most 64 characters),
- * so a Codex `call|item` ID keeps only its unique call half.
+ * OpenAI (`call_id`, at most 64 characters) and Anthropic (`^[a-zA-Z0-9_-]+$`)
+ * take a foreign tool call ID verbatim, so a Codex `call|item` ID keeps only
+ * its unique call half.
  */
-export function normalizeOpenAIToolCallId(id: string): string {
+export function normalizeForeignToolCallId(id: string): string {
+	if (/^[a-zA-Z0-9_-]{1,64}$/.test(id)) return id;
 	return normalizeOpenAICodexIdPart(id.split("|")[0] ?? id);
 }
 
 function toolCallIdNormalizer(model: Model.Info) {
-	if (model.protocol === Model.KnownProviderEnum.openaiCodex) return normalizeOpenAICodexToolCallId;
-	if (model.protocol === Model.KnownProviderEnum.openai) return normalizeOpenAIToolCallId;
-	return undefined;
+	switch (model.protocol) {
+		case Model.KnownProviderEnum.openaiCodex:
+			return normalizeOpenAICodexToolCallId;
+		case Model.KnownProviderEnum.openai:
+		case Model.KnownProviderEnum.anthropic:
+		case Model.KnownProviderEnum.googleVertexAnthropic:
+			return normalizeForeignToolCallId;
+		default:
+			return undefined;
+	}
 }
 
 type OpenAIReasoningMetadata = {

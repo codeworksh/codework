@@ -9,6 +9,7 @@ import { convertMessages } from "../../src/llm/transform.ts";
 import { complete } from "../../src/stream.ts";
 import { makeAssistantMessage, makeCompletedToolCall } from "../utils/fixtures.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
@@ -254,21 +255,21 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describeIfAnthropic("Anthropic provider (claude-haiku-4-5)", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic provider (%s)", (modelId) => {
 		const options = anthropicOptions({ maxTokens: 256, temperature: 0 });
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await handleToolWithTextAndImageResult(model, options);
 		});
 
 		it("should replace images with placeholders for a text-only model", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await handleImagesOnTextOnlyModel(model, options, "anthropic");
 		});
 	});

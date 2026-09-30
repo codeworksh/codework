@@ -3,6 +3,7 @@ import * as Protocol from "../../src/llm/protocol.ts";
 import * as Message from "../../src/message/message.ts";
 import { stream } from "../../src/stream.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
@@ -78,15 +79,12 @@ describe("Token Statistics on Abort", () => {
 		});
 	});
 
-	describeIfAnthropic("Anthropic Provider", () => {
-		it(
-			"claude-haiku-4-5 - should report zero token usage when aborted mid-stream",
-			{ retry: 3, timeout: 30000 },
-			async () => {
-				const model = await getAnthropicModel();
-				await testTokensOnAbort(model, anthropicOptions());
-			},
-		);
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic Provider (%s)", (modelId) => {
+		// Models that cannot disable thinking reason before streaming any text.
+		it("should report zero token usage when aborted mid-stream", { retry: 3, timeout: 90_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
+			await testTokensOnAbort(model, anthropicOptions());
+		});
 	});
 
 	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter Provider (%s)", (modelId) => {

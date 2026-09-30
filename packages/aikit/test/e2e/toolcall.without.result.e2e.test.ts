@@ -4,6 +4,7 @@ import * as Protocol from "../../src/llm/protocol.ts";
 import * as Message from "../../src/message/message.ts";
 import { complete } from "../../src/stream.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
@@ -94,11 +95,11 @@ async function testToolCallWithoutResult(model: StreamableModel, options: Stream
 }
 
 describe("Tool Call Without Result Tests", () => {
-	describeIfAnthropic("Anthropic Provider", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic Provider (%s)", (modelId) => {
 		const options = anthropicOptions();
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testToolCallWithoutResult(model, options);
 		});
 	});

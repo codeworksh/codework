@@ -14,6 +14,7 @@ import * as Protocol from "../../src/llm/protocol.ts";
 import * as Message from "../../src/message/message.ts";
 import { complete } from "../../src/stream.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
@@ -104,28 +105,24 @@ function assertTotalTokensEqualsComponents(usage: Usage) {
 
 describe("totalTokens field", () => {
 	// ── Anthropic ---
-	describeIfAnthropic("Anthropic", () => {
-		it(
-			"claude-haiku-4-5 - should return totalTokens equal to sum of components",
-			{ retry: 3, timeout: 60000 },
-			async () => {
-				const model = await getAnthropicModel();
-				const options = anthropicOptions({ cacheRetention: "short" });
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic (%s)", (modelId) => {
+		it("should return totalTokens equal to sum of components", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getAnthropicModel(modelId);
+			const options = anthropicOptions({ cacheRetention: "short" });
 
-				console.log(`\nAnthropic / ${model.id}:`);
-				const { first, second } = await testTotalTokensWithCache(model, options);
+			console.log(`\nAnthropic / ${model.id}:`);
+			const { first, second } = await testTotalTokensWithCache(model, options);
 
-				logUsage("First request", first);
-				logUsage("Second request", second);
+			logUsage("First request", first);
+			logUsage("Second request", second);
 
-				assertTotalTokensEqualsComponents(first);
-				assertTotalTokensEqualsComponents(second);
+			assertTotalTokensEqualsComponents(first);
+			assertTotalTokensEqualsComponents(second);
 
-				// Anthropic should have cache activity
-				const hasCache = second.cacheRead > 0 || second.cacheWrite > 0 || first.cacheWrite > 0;
-				expect(hasCache).toBe(true);
-			},
-		);
+			// Anthropic should have cache activity
+			const hasCache = second.cacheRead > 0 || second.cacheWrite > 0 || first.cacheWrite > 0;
+			expect(hasCache).toBe(true);
+		});
 	});
 
 	// --- OpenAI ---

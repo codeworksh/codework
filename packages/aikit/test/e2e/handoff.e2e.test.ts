@@ -3,8 +3,13 @@ import { expect, it } from "vite-plus/test";
 import * as Message from "../../src/message/message.ts";
 import { stream } from "../../src/stream.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
+	anthropicOptions,
+	anthropicThinkingLevel,
+	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
+	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getText,
@@ -109,6 +114,11 @@ const codex = async (id: string): Promise<Target> => ({
 	options: openaiCodexOptions({ reasoning: "high" }),
 });
 
+const anthropic = async (id: string): Promise<Target> => ({
+	model: await getAnthropicModel(id),
+	options: anthropicOptions({ reasoning: anthropicThinkingLevel(id) }),
+});
+
 /** The next model in the matrix, wrapping around, so every model hands off to a different one. */
 function neighbour<T>(models: readonly T[], id: T): T {
 	return models[(models.indexOf(id) + 1) % models.length]!;
@@ -158,6 +168,54 @@ describeIfOpenAI.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex <-> OpenAI handoff 
 		async () => {
 			const history = await toolTurn(await openai(modelId));
 			await expectContinues(await codex(modelId), history);
+		},
+	);
+});
+
+describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic handoff (%s)", (modelId) => {
+	it("replays a thinking-only aborted turn", { retry: 2, timeout: 180_000 }, async () => {
+		await expectAbortedReasoningReplays(await anthropic(modelId));
+	});
+
+	it(
+		`continues a tool turn on ${neighbour(ANTHROPIC_E2E_MODELS, modelId)}`,
+		{ retry: 2, timeout: 180_000 },
+		async () => {
+			const history = await toolTurn(await anthropic(modelId));
+			await expectContinues(await anthropic(neighbour(ANTHROPIC_E2E_MODELS, modelId)), history);
+		},
+	);
+});
+
+// Tool IDs and signed reasoning must cross between Anthropic and the Responses API both ways.
+const CROSS_PROVIDER_MODEL = "gpt-5.6-luna";
+
+describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic <-> OpenAI handoff (%s)", (modelId) => {
+	it.runIf(process.env.OPENAI_API_KEY)(
+		"continues an Anthropic tool turn on OpenAI",
+		{ retry: 2, timeout: 180_000 },
+		async () => {
+			const history = await toolTurn(await anthropic(modelId));
+			await expectContinues(await openai(CROSS_PROVIDER_MODEL), history);
+		},
+	);
+
+	it.runIf(process.env.OPENAI_API_KEY)(
+		"continues an OpenAI tool turn on Anthropic",
+		{ retry: 2, timeout: 180_000 },
+		async () => {
+			const history = await toolTurn(await openai(CROSS_PROVIDER_MODEL));
+			await expectContinues(await anthropic(modelId), history);
+		},
+	);
+
+	it.runIf(process.env.OPENAI_CODEX_API_KEY)(
+		"continues a Codex tool turn on Anthropic",
+		{ retry: 2, timeout: 180_000 },
+		async () => {
+			const history = await toolTurn(await codex(CROSS_PROVIDER_MODEL));
+			expect(history.parts.find((part) => part.type === "toolCall")?.callID).toContain("|");
+			await expectContinues(await anthropic(modelId), history);
 		},
 	);
 });

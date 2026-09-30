@@ -7,6 +7,7 @@ import * as Model from "../../src/model/model.ts";
 import { complete } from "../../src/stream.ts";
 import { makeAssistantMessage, makePendingToolCall } from "../utils/fixtures.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
@@ -172,21 +173,21 @@ async function testUnpairedHighSurrogate(model: StreamableModel, options: Stream
 }
 
 describe("AI Providers Unicode Surrogate Pair Tests", () => {
-	describeIfAnthropic("Anthropic Provider Unicode Handling", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic Provider Unicode Handling (%s)", (modelId) => {
 		const options = anthropicOptions();
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testEmojiInToolResults(model, options);
 		});
 
 		it("should handle real-world LinkedIn comment data with emoji", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testRealWorldLinkedInData(model, options);
 		});
 
 		it("should handle unpaired high surrogate (0xD83D) in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testUnpairedHighSurrogate(model, options);
 		});
 	});

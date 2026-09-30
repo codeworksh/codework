@@ -3,8 +3,12 @@ import * as Message from "../../src/message/message.ts";
 import { stream } from "../../src/stream.ts";
 import { isContextOverflow } from "../../src/utils/overflow.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
+	anthropicOptions,
+	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
+	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
 	OPENAI_CODEX_E2E_MODELS,
@@ -27,8 +31,8 @@ const OPENAI_HARD_CONTEXT = 1_050_000;
  * terminal message must carry an error that isContextOverflow recognises so
  * callers can compact and retry.
  */
-async function expectContextOverflow(model: StreamableModel, options: object, name: string) {
-	const targetChars = (Math.max(model.contextWindow, OPENAI_HARD_CONTEXT) + 10_000) * 4 * 1.5;
+async function expectContextOverflow(model: StreamableModel, options: object, name: string, hardContext = 0) {
+	const targetChars = (Math.max(model.contextWindow, hardContext) + 10_000) * 4 * 1.5;
 	const response = await stream.complete(
 		model,
 		{
@@ -62,13 +66,20 @@ async function expectContextOverflow(model: StreamableModel, options: object, na
 describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI context overflow (%s)", (modelId) => {
 	it("reports a recognisable context overflow", { retry: 2, timeout: 180_000 }, async () => {
 		const model = await getOpenAIModel(modelId);
-		await expectContextOverflow(model, openaiOptions(), "openai");
+		await expectContextOverflow(model, openaiOptions(), "openai", OPENAI_HARD_CONTEXT);
 	});
 });
 
 describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex context overflow (%s)", (modelId) => {
 	it("reports a recognisable context overflow", { retry: 2, timeout: 180_000 }, async () => {
 		const model = await getOpenAICodexModel(modelId);
-		await expectContextOverflow(model, openaiCodexOptions(), "openai-codex");
+		await expectContextOverflow(model, openaiCodexOptions(), "openai-codex", OPENAI_HARD_CONTEXT);
+	});
+});
+
+describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic context overflow (%s)", (modelId) => {
+	it("reports a recognisable context overflow", { retry: 2, timeout: 180_000 }, async () => {
+		const model = await getAnthropicModel(modelId);
+		await expectContextOverflow(model, anthropicOptions(), "anthropic");
 	});
 });

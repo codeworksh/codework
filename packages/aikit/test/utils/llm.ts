@@ -40,6 +40,27 @@ function fromEnvApiKey(value: string | undefined): { apiKey: string } | Record<s
 	return value === undefined ? {} : { apiKey: value };
 }
 
+/** Every Anthropic suite runs once per model: current generation, then the 4.5 generation. */
+export const ANTHROPIC_E2E_MODELS = [
+	"claude-sonnet-4-6",
+	"claude-sonnet-5",
+	"claude-sonnet-5-5",
+	"claude-opus-4-6",
+	"claude-opus-4-8",
+	"claude-opus-5-5",
+	"claude-fable-5-1",
+	"claude-sonnet-4-5-20250929",
+	"claude-haiku-4-5-20251001",
+] as const;
+
+/**
+ * The lowest effort at which a model reliably emits thinking on a short reasoning prompt:
+ * adaptive models skip thinking below high (Opus 4.6) or below max (Sonnet 5, 5.5, Fable).
+ */
+export function anthropicThinkingLevel(modelId: string): "high" | "max" {
+	return /^claude-(sonnet|fable)-5/.test(modelId) ? "max" : "high";
+}
+
 export function anthropicOptions(extras: AnthropicOptions = {}): AnthropicOptions {
 	return { ...fromEnvApiKey(process.env.ANTHROPIC_API_KEY), ...extras };
 }
@@ -92,7 +113,7 @@ export function assertProtocol<TProtocol extends Model.KnownProviderEnum>(
 }
 
 export async function getAnthropicModel(
-	modelId = "claude-haiku-4-5",
+	modelId: string,
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.anthropic>> {
 	const model = await llm("anthropic", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.anthropic);

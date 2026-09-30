@@ -3,6 +3,7 @@ import * as Protocol from "../../src/llm/protocol.ts";
 import * as Message from "../../src/message/message.ts";
 import { complete, stream } from "../../src/stream.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
@@ -158,21 +159,21 @@ async function testAbortThenNewMessage(model: StreamableModel, options: StreamOp
 }
 
 describe("AI Provider Abort Tests", () => {
-	describeIfAnthropic("Anthropic provider (claude-haiku-4-5)", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic provider (%s)", (modelId) => {
 		const options = anthropicOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testAbortSignal(model, options);
 		});
 
 		it("should handle immediate abort", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testImmediateAbort(model, options);
 		});
 
 		it("should handle abort then new message", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testAbortThenNewMessage(model, options);
 		});
 	});

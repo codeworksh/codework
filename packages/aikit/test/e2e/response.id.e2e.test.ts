@@ -3,6 +3,7 @@ import * as Protocol from "../../src/llm/protocol.ts";
 import * as Message from "../../src/message/message.ts";
 import { complete } from "../../src/stream.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
@@ -57,9 +58,9 @@ describe("responseId E2E Tests", () => {
 		});
 	});
 
-	describeIfAnthropic("Anthropic Provider", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic Provider (%s)", (modelId) => {
 		it("should expose responseId", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await expectResponseId(model, anthropicOptions());
 		});
 	});

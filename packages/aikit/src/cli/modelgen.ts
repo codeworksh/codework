@@ -269,6 +269,34 @@ function applyModelMetadata(model: Model.Info): void {
 	if (model.id.includes("opus-4-7") || model.id.includes("opus-4.7")) {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	}
+	if (isAnthropicMessages(model)) applyAnthropicMetadata(model);
+}
+
+function isAnthropicMessages(model: Model.Info): boolean {
+	return (
+		model.protocol === Model.KnownProviderEnum.anthropic ||
+		model.protocol === Model.KnownProviderEnum.googleVertexAnthropic
+	);
+}
+
+// Checked live against the Messages API: effort levels each adaptive family
+// accepts, the 5.5 and Fable models that reject `thinking: {type: "disabled"}`, and
+// Sonnet 4.5's window, which is 1M only behind a beta header.
+function applyAnthropicMetadata(model: Model.Info): void {
+	const id = model.id;
+	if (/sonnet-4[-.]5/.test(id)) model.contextWindow = 200_000;
+	if (/(opus|sonnet)-4[-.]6/.test(id)) {
+		mergeThinkingLevelMap(model, { max: "max" });
+	}
+	if (/opus-4[-.][78]|(opus|sonnet|fable)-5/.test(id)) {
+		mergeThinkingLevelMap(model, { xhigh: "xhigh", max: "max" });
+	}
+	if (/(opus|sonnet)-5[-.]5/.test(id)) {
+		mergeThinkingLevelMap(model, { off: null, minimal: null });
+	}
+	if (/fable-5/.test(id)) {
+		mergeThinkingLevelMap(model, { off: null });
+	}
 }
 
 //
