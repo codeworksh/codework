@@ -7,9 +7,9 @@
 
 ## Commands
 
-- Don't run dev server commands (e.g `pnpm run dev`) - assume it's already running.
+- Don't run dev server commands (e.g `pnpm run dev`, `bun run dev`) - assume it's already running.
 - Don't run build commands unless specifically told to.
-- Focus on checking commands like `pnpm run typecheck`, `pnpm run check`, `bun run lint`, etc
+- Focus on checking commands like `pnpm run check`, `bun run lint` `bun run typecheck`, etc.
 
 ## Package Managers
 
