@@ -21,14 +21,20 @@ const versions = new Map(packages.map(({ manifest, version }) => [manifest.name,
 
 async function waitForPublishedVersion(name, version) {
 	const url = `https://registry.npmjs.org/${name.replace("/", "%2f")}/${version}`;
-	for (let attempt = 0; attempt < 180; attempt++) {
+	// npm scans accepted uploads before exposing them; previous runs exceeded 15 minutes.
+	const deadline = Date.now() + 60 * 60 * 1_000;
+	while (Date.now() < deadline) {
 		const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
 		if (response.ok) return;
 		if (response.status !== 404) throw new Error(`Registry lookup failed: HTTP ${response.status}`);
 		console.error(`Waiting for npm to make ${name}@${version} available`);
-		await setTimeout(5_000);
+		await setTimeout(15_000);
 	}
-	throw new Error(`npm did not make ${name}@${version} available within 15 minutes`);
+	throw new Error(
+		`npm accepted ${name}@${version}, but it is still unavailable after 60 minutes. ` +
+			"Check the package's Versions tab and npm notifications for scanning or review status. " +
+			"The accepted upload may still become available after this workflow ends.",
+	);
 }
 
 for (const { directory, manifest, version } of packages) {

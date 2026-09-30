@@ -32,4 +32,8 @@ All publishes use the `canary` dist-tag; `latest` stays unchanged.
 
 Install with `pnpm add @codeworksh/cli@canary` (or another package's `@canary` tag).
 Publishing is sequential: a failed run may have published some packages already.
+After each accepted upload, the workflow waits up to 60 minutes for npm's
+publish-time scanning to make the version available. A timeout does not cancel
+the upload. Check the package's Versions tab and npm notifications for scanning,
+manual review, or blocking before retrying. See [npm's scanning announcement](https://github.blog/changelog/2026-07-28-npm-publish-time-malware-scanning-and-dual-use-metadata/).
 Re-run the workflow to publish a fresh, complete set.
