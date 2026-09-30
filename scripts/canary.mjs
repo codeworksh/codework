@@ -17,7 +17,7 @@ const packages = ["aikit", "plugin", "harness", "codework"].map((directory) => {
 	if (!base) throw new Error(`Invalid package version: ${manifest.version}`);
 	return { directory, manifest, version: `${base}-canary.${run}.${attempt}.g${sha.slice(0, 8)}` };
 });
-const versions = new Map(packages.map(({ manifest, version }) => [manifest.name, version]));
+const uploadedVersions = new Map();
 
 async function waitForPublishedVersion(name, version) {
 	const url = `https://registry.npmjs.org/${name.replace("/", "%2f")}/${version}`;
@@ -25,8 +25,18 @@ async function waitForPublishedVersion(name, version) {
 	const deadline = Date.now() + 60 * 60 * 1_000;
 	while (Date.now() < deadline) {
 		const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-		if (response.ok) return;
-		if (response.status !== 404) throw new Error(`Registry lookup failed: HTTP ${response.status}`);
+		if (!response.ok && response.status !== 404) throw new Error(`Registry lookup failed: HTTP ${response.status}`);
+		if (response.ok) {
+			const tagsResponse = await fetch(
+				`https://registry.npmjs.org/-/package/${name.replace("/", "%2f")}/dist-tags`,
+				{ signal: AbortSignal.timeout(10_000) },
+			);
+			if (!tagsResponse.ok) throw new Error(`Dist-tag lookup failed: HTTP ${tagsResponse.status}`);
+			if ((await tagsResponse.json()).canary === version) {
+				console.error(`Verified ${name}@canary -> ${version}`);
+				return;
+			}
+		}
 		console.error(`Waiting for npm to make ${name}@${version} available`);
 		await setTimeout(15_000);
 	}
@@ -42,12 +52,15 @@ for (const { directory, manifest, version } of packages) {
 	const dependencies = { ...manifest.dependencies, ...manifest.peerDependencies, ...manifest.optionalDependencies };
 	for (const [name, range] of Object.entries(dependencies)) {
 		if (typeof range !== "string" || !range.startsWith("workspace:")) continue;
-		const dependencyVersion = versions.get(name);
-		if (!dependencyVersion) throw new Error(`Unknown canary dependency: ${name}`);
-		args.push("--dep", `${name}@${dependencyVersion}`);
+		const dependencyVersion = uploadedVersions.get(name);
+		if (!dependencyVersion) throw new Error(`Canary dependency has not been uploaded: ${name}`);
+		args.push("--uploaded-dep", `${name}@${dependencyVersion}`);
 	}
 	const result = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit" });
 	if (result.error) throw result.error;
 	if (result.status !== 0) process.exit(result.status ?? 1);
-	await waitForPublishedVersion(manifest.name, version);
+	uploadedVersions.set(manifest.name, version);
 }
+
+// All uploads are accepted before waiting, so npm can scan the packages concurrently.
+await Promise.all(packages.map(({ manifest, version }) => waitForPublishedVersion(manifest.name, version)));
