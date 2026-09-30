@@ -134,6 +134,20 @@ export function normalizeOpenAICodexToolCallId(
 	return `${normalizedCallId}|${normalizedItemId}`;
 }
 
+/**
+ * OpenAI takes the tool call ID verbatim as `call_id` (at most 64 characters),
+ * so a Codex `call|item` ID keeps only its unique call half.
+ */
+export function normalizeOpenAIToolCallId(id: string): string {
+	return normalizeOpenAICodexIdPart(id.split("|")[0] ?? id);
+}
+
+function toolCallIdNormalizer(model: Model.Info) {
+	if (model.protocol === Model.KnownProviderEnum.openaiCodex) return normalizeOpenAICodexToolCallId;
+	if (model.protocol === Model.KnownProviderEnum.openai) return normalizeOpenAIToolCallId;
+	return undefined;
+}
+
 type OpenAIReasoningMetadata = {
 	itemId: string;
 	reasoningEncryptedContent?: string | null;
@@ -321,11 +335,7 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 
 export function convertMessages(context: Message.Context, model: Model.Info): ModelMessage[] {
 	const messages: ModelMessage[] = [];
-	const transformedMessages = Message.transformMessages(
-		context.messages,
-		model,
-		model.protocol === Model.KnownProviderEnum.openaiCodex ? normalizeOpenAICodexToolCallId : undefined,
-	);
+	const transformedMessages = Message.transformMessages(context.messages, model, toolCallIdNormalizer(model));
 
 	for (const msg of transformedMessages) {
 		if (msg.role === "user") {
