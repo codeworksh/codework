@@ -21,14 +21,14 @@ const versions = new Map(packages.map(({ manifest, version }) => [manifest.name,
 
 async function waitForPublishedVersion(name, version) {
 	const url = `https://registry.npmjs.org/${name.replace("/", "%2f")}/${version}`;
-	for (let attempt = 0; attempt < 36; attempt++) {
+	for (let attempt = 0; attempt < 180; attempt++) {
 		const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
 		if (response.ok) return;
 		if (response.status !== 404) throw new Error(`Registry lookup failed: HTTP ${response.status}`);
 		console.error(`Waiting for npm to make ${name}@${version} available`);
 		await setTimeout(5_000);
 	}
-	throw new Error(`npm did not make ${name}@${version} available within 3 minutes`);
+	throw new Error(`npm did not make ${name}@${version} available within 15 minutes`);
 }
 
 for (const { directory, manifest, version } of packages) {
