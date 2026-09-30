@@ -17,6 +17,10 @@ import {
 	openaiCodexOptions,
 	openaiOptions,
 	type StreamableModel,
+	OPENROUTER_E2E_MODELS,
+	describeIfOpenRouter,
+	getOpenRouterModel,
+	openrouterOptions,
 } from "../utils/llm.ts";
 
 /*
@@ -144,5 +148,23 @@ describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic thinking levels (%s)",
 	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
 		const model = await getAnthropicModel(modelId);
 		await expectLevelAccepted(model, anthropicOptions({ reasoning }));
+	});
+});
+
+// OpenRouter leaves reasoning to each endpoint: several make it mandatory, so off is
+// never sent, and xhigh and max clamp to high.
+describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter thinking levels (%s)", (modelId) => {
+	it("exposes the default levels", async () => {
+		const model = await getOpenRouterModel(modelId);
+		expect(Model.getSupportedThinkingLevels(model)).toEqual(["off", "minimal", "low", "medium", "high"]);
+	});
+
+	it("answers when no level is requested", { retry: 2, timeout: 60_000 }, async () => {
+		await expectLevelAccepted(await getOpenRouterModel(modelId), openrouterOptions());
+	});
+
+	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
+		const model = await getOpenRouterModel(modelId);
+		await expectLevelAccepted(model, openrouterOptions({ reasoning }));
 	});
 });

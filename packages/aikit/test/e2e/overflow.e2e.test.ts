@@ -16,6 +16,10 @@ import {
 	openaiCodexOptions,
 	openaiOptions,
 	type StreamableModel,
+	OPENROUTER_E2E_MODELS,
+	describeIfOpenRouter,
+	getOpenRouterModel,
+	openrouterOptions,
 } from "../utils/llm.ts";
 
 const LOREM_IPSUM =
@@ -81,5 +85,12 @@ describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic context overflow (%s)"
 	it("reports a recognisable context overflow", { retry: 2, timeout: 180_000 }, async () => {
 		const model = await getAnthropicModel(modelId);
 		await expectContextOverflow(model, anthropicOptions(), "anthropic");
+	});
+});
+
+describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter context overflow (%s)", (modelId) => {
+	it("reports a recognisable context overflow", { retry: 2, timeout: 180_000 }, async () => {
+		const model = await getOpenRouterModel(modelId);
+		await expectContextOverflow(model, openrouterOptions(), "openrouter");
 	});
 });

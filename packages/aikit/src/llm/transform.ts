@@ -135,9 +135,9 @@ export function normalizeOpenAICodexToolCallId(
 }
 
 /**
- * OpenAI (`call_id`, at most 64 characters) and Anthropic (`^[a-zA-Z0-9_-]+$`)
- * take a foreign tool call ID verbatim, so a Codex `call|item` ID keeps only
- * its unique call half.
+ * OpenAI (`call_id`, at most 64 characters), Anthropic (`^[a-zA-Z0-9_-]+$`) and
+ * OpenRouter upstreams take a foreign tool call ID verbatim, so a Codex
+ * `call|item` ID keeps only its unique call half.
  */
 export function normalizeForeignToolCallId(id: string): string {
 	if (/^[a-zA-Z0-9_-]{1,64}$/.test(id)) return id;
@@ -151,6 +151,7 @@ function toolCallIdNormalizer(model: Model.Info) {
 		case Model.KnownProviderEnum.openai:
 		case Model.KnownProviderEnum.anthropic:
 		case Model.KnownProviderEnum.googleVertexAnthropic:
+		case Model.KnownProviderEnum.openrouter:
 			return normalizeForeignToolCallId;
 		default:
 			return undefined;

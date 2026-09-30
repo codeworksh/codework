@@ -584,7 +584,7 @@ describe("Generate E2E Tests", () => {
 		});
 	});
 
-	// ── OpenRouter E2E ──
+	// ── OpenRouter E2E (reasoning left to the model by default; high for thinking and multi-turn) ──
 
 	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter provider (%s)", (modelId) => {
 		const options = openrouterOptions();
@@ -594,22 +594,32 @@ describe("Generate E2E Tests", () => {
 			expect(model.protocol).toBe(Model.KnownProviderEnum.openrouter);
 		});
 
-		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
+		it("should complete basic text generation", { retry: 3, timeout: 60_000 }, async () => {
 			const model = await getOpenRouterModel(modelId);
 			await basicTextGeneration(model, options);
 		});
 
-		it("should handle tool calling", { retry: 3, timeout: 30000 }, async () => {
+		it("should handle tool calling", { retry: 3, timeout: 60_000 }, async () => {
 			const model = await getOpenRouterModel(modelId);
 			await handleToolCall(model, options);
 		});
 
-		it("should handle streaming", { retry: 3, timeout: 30000 }, async () => {
+		it("should handle streaming", { retry: 3, timeout: 60_000 }, async () => {
 			const model = await getOpenRouterModel(modelId);
 			await handleStreaming(model, options);
 		});
 
-		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
+		it("should handle thinking", { retry: 3, timeout: 120_000 }, async () => {
+			const model = await getOpenRouterModel(modelId);
+			await handleThinking(model, openrouterOptions({ reasoning: "high" }));
+		});
+
+		it("should handle multi-turn with thinking and tools", { retry: 3, timeout: 180_000 }, async () => {
+			const model = await getOpenRouterModel(modelId);
+			await handleMultiTurn(model, openrouterOptions({ reasoning: "high" }));
+		});
+
+		it("should handle image input", { retry: 3, timeout: 60_000 }, async (ctx) => {
 			const model = await getOpenRouterModel(modelId);
 			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);

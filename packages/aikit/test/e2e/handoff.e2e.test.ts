@@ -18,6 +18,10 @@ import {
 	openaiCodexOptions,
 	openaiOptions,
 	type StreamableModel,
+	OPENROUTER_E2E_MODELS,
+	describeIfOpenRouter,
+	getOpenRouterModel,
+	openrouterOptions,
 } from "../utils/llm.ts";
 
 /*
@@ -119,6 +123,11 @@ const anthropic = async (id: string): Promise<Target> => ({
 	options: anthropicOptions({ reasoning: anthropicThinkingLevel(id) }),
 });
 
+const openrouter = async (id: string): Promise<Target> => ({
+	model: await getOpenRouterModel(id),
+	options: openrouterOptions({ reasoning: "high" }),
+});
+
 /** The next model in the matrix, wrapping around, so every model hands off to a different one. */
 function neighbour<T>(models: readonly T[], id: T): T {
 	return models[(models.indexOf(id) + 1) % models.length]!;
@@ -216,6 +225,36 @@ describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic <-> OpenAI handoff (%s
 			const history = await toolTurn(await codex(CROSS_PROVIDER_MODEL));
 			expect(history.parts.find((part) => part.type === "toolCall")?.callID).toContain("|");
 			await expectContinues(await anthropic(modelId), history);
+		},
+	);
+});
+
+describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter handoff (%s)", (modelId) => {
+	it(
+		`continues a tool turn on ${neighbour(OPENROUTER_E2E_MODELS, modelId)}`,
+		{ retry: 2, timeout: 180_000 },
+		async () => {
+			const history = await toolTurn(await openrouter(modelId));
+			await expectContinues(await openrouter(neighbour(OPENROUTER_E2E_MODELS, modelId)), history);
+		},
+	);
+
+	it.runIf(process.env.OPENAI_CODEX_API_KEY)(
+		"continues a Codex tool turn on OpenRouter",
+		{ retry: 2, timeout: 180_000 },
+		async () => {
+			const history = await toolTurn(await codex(CROSS_PROVIDER_MODEL));
+			expect(history.parts.find((part) => part.type === "toolCall")?.callID).toContain("|");
+			await expectContinues(await openrouter(modelId), history);
+		},
+	);
+
+	it.runIf(process.env.ANTHROPIC_API_KEY)(
+		"continues an OpenRouter tool turn on Anthropic",
+		{ retry: 2, timeout: 180_000 },
+		async () => {
+			const history = await toolTurn(await openrouter(modelId));
+			await expectContinues(await anthropic("claude-sonnet-4-6"), history);
 		},
 	);
 });

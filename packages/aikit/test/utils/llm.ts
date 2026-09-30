@@ -136,9 +136,10 @@ export async function getOpenAICodexModel(
 
 /** Every OpenRouter suite runs once per model. */
 export const OPENROUTER_E2E_MODELS = [
+	"meta/muse-spark-1.3-contributor",
+	"z-ai/glm-5.3-flash",
 	"deepseek/deepseek-v4.1-flash",
 	"google/gemini-3.8-flash",
-	"meta/muse-spark-1.3-contributor",
 ] as const;
 
 export async function getOpenRouterModel(
