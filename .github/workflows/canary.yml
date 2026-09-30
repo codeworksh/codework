@@ -1,4 +1,4 @@
-name: Publish canary
+name: NPM Publish Canary
 
 on:
    push:
