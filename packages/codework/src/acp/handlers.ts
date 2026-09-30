@@ -1,7 +1,15 @@
 import type * as AcpAgent from "@codeworksh/acp/agent";
 import { AcpRequestError } from "@codeworksh/acp/errors";
 import type * as Acp from "@codeworksh/acp/schema-v1";
-import { Control, EventList, type EventSchema, type Harness, Session, SessionStore } from "@codeworksh/harness/effect";
+import {
+	Control,
+	EventList,
+	type EventSchema,
+	type Harness,
+	PromptSchema,
+	Session,
+	SessionStore,
+} from "@codeworksh/harness/effect";
 import { DateTime, Effect, Fiber, type Layer, Option, Schema, Stream } from "effect";
 import pkg from "../../package.json" with { type: "json" };
 import { Config } from "./config.ts";
@@ -12,6 +20,7 @@ const PAGE_SIZE = 50;
 const isRequestError = Schema.is(AcpRequestError);
 const isNotFound = Schema.is(SessionStore.SessionNotFoundError);
 const isConflict = Schema.is(Control.PromptConflictError);
+const isInvalidPrompt = Schema.is(PromptSchema.InvalidPromptError);
 const isLLMEnded = Schema.is(EventList.LLMEnded);
 const isSucceeded = Schema.is(EventList.ExecutionSucceeded);
 const isFailed = Schema.is(EventList.ExecutionFailed);
@@ -23,25 +32,49 @@ const toRequestError = (error: { readonly message: string }): AcpRequestError =>
 	if (isRequestError(error)) return error;
 	if (isNotFound(error)) return AcpRequestError.resourceNotFound(`Session not found: ${error.sessionId}`);
 	if (isConflict(error)) return AcpRequestError.invalidRequest(error.message);
+	if (isInvalidPrompt(error)) return AcpRequestError.invalidParams(error.message);
 	return AcpRequestError.internalError(error.message);
 };
 
-/** Prompt content as text. Only text and embedded context are advertised, so anything else is rejected. */
-const promptText = (blocks: ReadonlyArray<Acp.ContentBlock>) =>
-	Effect.forEach(blocks, (block) => {
+/**
+ * Prompt content as harness prompt parts, in order. Text, embedded context and images are
+ * advertised; anything else is rejected. Adjacent text joins into one part. The harness checks
+ * the images.
+ */
+const promptParts = Effect.fnUntraced(function* (blocks: ReadonlyArray<Acp.ContentBlock>) {
+	const parts: Array<PromptSchema.Part> = [];
+	const add = (part: PromptSchema.Part) => {
+		const last = parts.at(-1);
+		if (part.type === "text" && last?.type === "text")
+			parts[parts.length - 1] = { ...last, text: `${last.text}\n\n${part.text}` };
+		else parts.push(part);
+	};
+	for (const block of blocks) {
 		switch (block.type) {
 			case "text":
-				return Effect.succeed(block.text);
+				add({ type: "text", text: block.text });
+				break;
 			case "resource_link":
-				return Effect.succeed(`[${block.name}](${block.uri})`);
+				add({ type: "text", text: `[${block.name}](${block.uri})` });
+				break;
+			case "image":
+				add({ type: "image", data: block.data, mimeType: block.mimeType });
+				break;
 			case "resource":
-				return "text" in block.resource
-					? Effect.succeed(`\`\`\`${block.resource.uri}\n${block.resource.text}\n\`\`\``)
-					: Effect.fail(AcpRequestError.invalidParams(`Unsupported binary resource: ${block.resource.uri}`));
+				if ("text" in block.resource) {
+					add({ type: "text", text: `\`\`\`${block.resource.uri}\n${block.resource.text}\n\`\`\`` });
+				} else if (block.resource.mimeType?.startsWith("image/")) {
+					add({ type: "image", data: block.resource.blob, mimeType: block.resource.mimeType });
+				} else {
+					return yield* AcpRequestError.invalidParams(`Unsupported binary resource: ${block.resource.uri}`);
+				}
+				break;
 			default:
-				return Effect.fail(AcpRequestError.invalidParams(`Unsupported prompt content: ${block.type}`));
+				return yield* AcpRequestError.invalidParams(`Unsupported prompt content: ${block.type}`);
 		}
-	}).pipe(Effect.map((parts) => parts.join("\n\n")));
+	}
+	return parts;
+});
 
 const sessionId = (id: string) => Session.SessionSchema.ID.make(id);
 
@@ -72,7 +105,7 @@ export const make = Effect.gen(function* () {
 					agentInfo: { name: "codework", version: pkg.version },
 					agentCapabilities: {
 						loadSession: true,
-						promptCapabilities: { embeddedContext: true },
+						promptCapabilities: { embeddedContext: true, image: true },
 						sessionCapabilities: { list: {} },
 					},
 				}),
@@ -152,7 +185,7 @@ export const make = Effect.gen(function* () {
 			prompt: ({ sessionId: id, prompt }) =>
 				run(
 					Effect.gen(function* () {
-						const text = yield* promptText(prompt);
+						const parts = yield* promptParts(prompt);
 						const handle = Option.getOrUndefined(yield* Session.get(sessionId(id)));
 						if (handle === undefined) {
 							return yield* new SessionStore.SessionNotFoundError({ sessionId: sessionId(id) });
@@ -186,7 +219,7 @@ export const make = Effect.gen(function* () {
 							Effect.forkScoped({ startImmediately: true }),
 						);
 						const before = (yield* handle.info).title;
-						yield* handle.run(text);
+						yield* handle.run({ parts });
 						const end = yield* Fiber.join(settled);
 
 						// The harness titles a session from its first prompt; tell the editor.

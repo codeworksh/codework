@@ -8,8 +8,8 @@ const isToolStarted = Schema.is(EventList.ToolStarted);
 const isToolSettled = Schema.is(EventList.ToolSettled);
 const isPluginUpdated = Schema.is(EventList.PluginUpdated);
 
-// Stored parts are aikit message parts; replay reads only the fields it renders.
 const TextContent = Schema.Struct({ type: Schema.Literal("text"), text: Schema.String });
+const ImageContent = Schema.Struct({ type: Schema.Literal("image"), data: Schema.String, mimeType: Schema.String });
 const ToolResult = Schema.Struct({
 	content: Schema.Array(Schema.Union([TextContent, Schema.Struct({ type: Schema.Literal("image") })])),
 	isError: Schema.Boolean,
@@ -24,6 +24,7 @@ const ToolCall = Schema.Struct({
 });
 const StoredPart = Schema.Union([
 	TextContent,
+	ImageContent,
 	Schema.Struct({ type: Schema.Literal("thinking"), thinking: Schema.String }),
 	ToolCall,
 ]);
@@ -33,7 +34,7 @@ type ToolCall = typeof ToolCall.Type;
 
 const text = (value: string): Acp.ContentBlock => ({ type: "text", text: value });
 
-// Only `bash` ships built in; plugin tools report `other` until tools declare a kind (COD-87).
+// The kind comes from the tool's name. Only `bash` ships built in; plugin tools report `other`.
 const kind = (name: string): Acp.ToolKind => (name === "bash" ? "execute" : "other");
 
 /** The command for `bash`, otherwise the tool's label or name. */
@@ -102,6 +103,13 @@ export const replay = ({ entry, parts }: SessionStore.HydratedEntry): ReadonlyAr
 					{
 						sessionUpdate: entry.type === "user" ? "user_message_chunk" : "agent_message_chunk",
 						content: text(part.value.text),
+					},
+				];
+			case "image":
+				return [
+					{
+						sessionUpdate: entry.type === "user" ? "user_message_chunk" : "agent_message_chunk",
+						content: { type: "image", data: part.value.data, mimeType: part.value.mimeType },
 					},
 				];
 			case "thinking":
