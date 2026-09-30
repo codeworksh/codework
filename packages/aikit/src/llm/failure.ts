@@ -12,7 +12,7 @@ import {
 	TypeValidationError,
 	UnsupportedFunctionalityError,
 } from "@ai-sdk/provider";
-import { RetryError } from "ai";
+import { RetryError, StreamProviderError } from "ai";
 import type { Failure } from "./failure/schema.ts";
 
 export * from "./failure/schema.ts";
@@ -103,8 +103,8 @@ const apiMetadata = (error: APICallError): Metadata => {
 const includes = (value: string | undefined, terms: ReadonlyArray<string>): boolean =>
 	value !== undefined && terms.some((term) => value.toLowerCase().includes(term));
 
-const fromAPICall = (error: APICallError): Failure => {
-	const details = apiMetadata(error);
+/** Classify by provider error code, then HTTP status; shared by request and in-stream failures. */
+const classify = (statusCode: number | undefined, details: Metadata): Failure => {
 	if (includes(details.code, ["quota", "billing", "credit"])) return { _tag: "Quota", ...details };
 	if (
 		includes(details.code, [
@@ -118,15 +118,30 @@ const fromAPICall = (error: APICallError): Failure => {
 	) {
 		return { _tag: "ContentPolicy", ...details };
 	}
-	if (error.statusCode === 401) return { _tag: "Authentication", reason: "invalid", ...details };
-	if (error.statusCode === 403) return { _tag: "Authorization", ...details };
-	if (error.statusCode === 404) return { _tag: "ModelUnavailable", ...details };
-	if (error.statusCode === 408) return { _tag: "Timeout", ...details };
-	if (error.statusCode === 429) return { _tag: "RateLimit", ...details };
-	if (error.statusCode !== undefined && error.statusCode >= 500) return { _tag: "Unavailable", ...details };
-	if (error.statusCode === undefined) return { _tag: "Transport", ...details };
-	if (error.statusCode >= 400 && error.statusCode < 500) return { _tag: "InvalidRequest", ...details };
+	if (statusCode === 401) return { _tag: "Authentication", reason: "invalid", ...details };
+	if (statusCode === 403) return { _tag: "Authorization", ...details };
+	if (statusCode === 404) return { _tag: "ModelUnavailable", ...details };
+	if (statusCode === 408) return { _tag: "Timeout", ...details };
+	if (statusCode === 429) return { _tag: "RateLimit", ...details };
+	if (statusCode !== undefined && statusCode >= 500) return { _tag: "Unavailable", ...details };
+	if (statusCode === undefined) return { _tag: "Transport", ...details };
+	if (statusCode >= 400 && statusCode < 500) return { _tag: "InvalidRequest", ...details };
 	return { _tag: "Unknown", ...details };
+};
+
+/**
+ * A failure the provider reported after the stream started, e.g. OpenAI's
+ * `context_length_exceeded` event, which it sends instead of an HTTP 400 at random.
+ */
+const fromStreamProvider = (error: StreamProviderError): Failure => {
+	// Like apiMetadata: providers put the discriminator in `code`, or only in `type`.
+	const code = error.code === undefined ? error.type : String(error.code);
+	return classify(error.statusCode, {
+		message: normalizeMessage(errorMessage(error)),
+		retryable: error.isRetryable,
+		...(error.statusCode === undefined ? {} : { status: error.statusCode }),
+		...(code === undefined ? {} : { code }),
+	});
 };
 
 const resemblesTimeout = (error: unknown): boolean => {
@@ -154,7 +169,8 @@ export function normalize(error: unknown): Failure {
 	if (NoSuchModelError.isInstance(error)) {
 		return { _tag: "ModelUnavailable", message: errorMessage(error), retryable: false };
 	}
-	if (APICallError.isInstance(error)) return fromAPICall(error);
+	if (APICallError.isInstance(error)) return classify(error.statusCode, apiMetadata(error));
+	if (StreamProviderError.isInstance(error)) return fromStreamProvider(error);
 	if (
 		InvalidPromptError.isInstance(error) ||
 		InvalidArgumentError.isInstance(error) ||

@@ -9,7 +9,9 @@ import * as Model from "../../src/model/model.ts";
 import { stream } from "../../src/stream.ts";
 import { StringEnum } from "../../src/utils/helpers.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
+	anthropicThinkingLevel,
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
@@ -19,8 +21,8 @@ import {
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
-	OPENAI_CODEX_E2E_MODEL,
-	OPENAI_E2E_MODEL,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	getText,
 	openaiCodexOptions,
 	openaiOptions,
@@ -373,7 +375,12 @@ async function handleOpenAIReasoningReplay<TOptions extends Protocol.CommonOptio
 		const thinking = first.parts.find((part): part is Message.ThinkingContent => part.type === "thinking");
 		expect(thinking?.thinkingSignature).toBeTruthy();
 		const metadata: unknown = JSON.parse(thinking?.thinkingSignature ?? "null");
-		expect(metadata).toMatchObject({ itemId: expect.any(String) });
+		// OpenAI stores the item reference; Codex stores the whole encrypted reasoning item.
+		expect(metadata).toMatchObject(
+			model.protocol === Model.KnownProviderEnum.openaiCodex
+				? { type: "reasoning", id: expect.any(String), encrypted_content: expect.any(String) }
+				: { itemId: expect.any(String) },
+		);
 
 		context.messages.push(
 			first,
@@ -434,129 +441,150 @@ async function handleImage<TOptions extends Protocol.CommonOptions>(model: Strea
 }
 
 describe("Generate E2E Tests", () => {
-	// ── Anthropic E2E tests ──
+	// ── Anthropic E2E tests (no reasoning by default; high for thinking and multi-turn) ──
 
-	describeIfAnthropic("Anthropic provider (claude-haiku-4-5)", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic provider (%s)", (modelId) => {
 		const options = anthropicOptions();
 
 		it("should resolve appropriate protocol", async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			expect(model.protocol).toBe(Model.KnownProviderEnum.anthropic);
 		});
 
-		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+		it("should complete basic text generation", { retry: 3, timeout: 90_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
 			await basicTextGeneration(model, options);
 		});
 
-		it("should handle tool calling", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+		it("should handle tool calling", { retry: 3, timeout: 90_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
 			await handleToolCall(model, options);
 		});
 
-		it("should handle streaming", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+		it("should handle streaming", { retry: 3, timeout: 90_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
 			await handleStreaming(model, options);
 		});
 
-		it("should handle thinking", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
-			// Use reasoning option to enable thinking (maps to anthropic provider thinking config)
-			await handleThinking(model, { ...options, reasoning: "high" });
+		it("should handle thinking", { retry: 3, timeout: 120_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
+			await handleThinking(model, anthropicOptions({ reasoning: anthropicThinkingLevel(modelId) }));
 		});
 
-		it("should handle multi-turn with thinking and tools", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getAnthropicModel();
-			await handleMultiTurn(model, { ...options, reasoning: "high" });
+		it("should handle multi-turn with thinking and tools", { retry: 3, timeout: 180_000 }, async () => {
+			const model = await getAnthropicModel(modelId);
+			await handleMultiTurn(model, anthropicOptions({ reasoning: "high" }));
 		});
 
-		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
-			const model = await getAnthropicModel();
+		it("should handle image input", { retry: 3, timeout: 90_000 }, async (ctx) => {
+			const model = await getAnthropicModel(modelId);
 			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});
 	});
 
-	// ── OpenAI E2E tests (gpt-5.6-luna, thinking low) ──
+	// ── OpenAI E2E tests (low reasoning by default; medium for thinking, high for multi-turn) ──
 
-	describeIfOpenAI(`OpenAI provider (${OPENAI_E2E_MODEL})`, () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI provider (%s)", (modelId) => {
 		const options = openaiOptions();
 
 		it("should resolve appropriate protocol", async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			expect(model.protocol).toBe(Model.KnownProviderEnum.openai);
 		});
 
-		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+		it("should complete basic text generation", { retry: 3, timeout: 60_000 }, async () => {
+			const model = await getOpenAIModel(modelId);
 			await basicTextGeneration(model, options);
 		});
 
-		it("should handle tool calling", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+		it("should handle tool calling", { retry: 3, timeout: 60_000 }, async () => {
+			const model = await getOpenAIModel(modelId);
 			await handleToolCall(model, options);
 		});
 
-		it("should handle streaming", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+		it("should handle streaming", { retry: 3, timeout: 60_000 }, async () => {
+			const model = await getOpenAIModel(modelId);
 			await handleStreaming(model, options);
 		});
 
-		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
-			const model = await getOpenAIModel();
+		it("should handle thinking", { retry: 3, timeout: 120_000 }, async () => {
+			const model = await getOpenAIModel(modelId);
+			await handleThinking(
+				model,
+				openaiOptions({ reasoning: "medium", providerOptions: { openai: { reasoningSummary: "detailed" } } }),
+			);
+		});
+
+		it("should handle multi-turn with thinking and tools", { retry: 3, timeout: 180_000 }, async () => {
+			const model = await getOpenAIModel(modelId);
+			await handleMultiTurn(model, openaiOptions({ reasoning: "high" }));
+		});
+
+		it("should handle image input", { retry: 3, timeout: 60_000 }, async (ctx) => {
+			const model = await getOpenAIModel(modelId);
 			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});
-	});
 
-	describeIfOpenAI(`OpenAI reasoning replay (${OPENAI_E2E_MODEL})`, () => {
 		it("should persist and replay native reasoning metadata without warnings", { timeout: 120_000 }, async () => {
-			const model = await getOpenAIModel();
-			await handleOpenAIReasoningReplay(model, {
-				...openaiOptions(),
-				providerOptions: { openai: { reasoningSummary: "detailed" } },
-			});
+			const model = await getOpenAIModel(modelId);
+			// High: smaller models skip reasoning on easy prompts at lower efforts.
+			await handleOpenAIReasoningReplay(
+				model,
+				openaiOptions({ reasoning: "high", providerOptions: { openai: { reasoningSummary: "detailed" } } }),
+			);
 		});
 	});
 
-	// ── OpenAI Codex E2E tests (ChatGPT OAuth, gpt-5.6-luna, thinking low) ──
+	// ── OpenAI Codex E2E tests (ChatGPT OAuth; low by default, medium thinking, high multi-turn) ──
 
-	describeIfOpenAICodex(`OpenAI Codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex provider (%s)", (modelId) => {
 		const options = openaiCodexOptions();
 
+		it("should resolve appropriate protocol", async () => {
+			const model = await getOpenAICodexModel(modelId);
+			expect(model.protocol).toBe(Model.KnownProviderEnum.openaiCodex);
+		});
+
 		it("should complete basic text generation", { retry: 2, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await basicTextGeneration(model, options);
 		});
 
 		it("should handle tool calling", { retry: 2, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await handleToolCall(model, options);
 		});
 
 		it("should handle streaming", { retry: 2, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await handleStreaming(model, options);
 		});
 
-		it("should handle thinking", { retry: 2, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
-			await handleThinking(model, options);
+		it("should handle thinking", { retry: 2, timeout: 120_000 }, async () => {
+			const model = await getOpenAICodexModel(modelId);
+			await handleThinking(model, openaiCodexOptions({ reasoning: "medium" }));
 		});
 
-		it("should handle multi-turn with thinking and tools", { retry: 2, timeout: 120_000 }, async () => {
-			const model = await getOpenAICodexModel();
-			await handleMultiTurn(model, options);
+		it("should handle multi-turn with thinking and tools", { retry: 2, timeout: 180_000 }, async () => {
+			const model = await getOpenAICodexModel(modelId);
+			await handleMultiTurn(model, openaiCodexOptions({ reasoning: "high" }));
 		});
 
 		it("should handle image input", { retry: 2, timeout: 60_000 }, async (ctx) => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});
+
+		it("should persist and replay native reasoning metadata without warnings", { timeout: 120_000 }, async () => {
+			const model = await getOpenAICodexModel(modelId);
+			await handleOpenAIReasoningReplay(model, openaiCodexOptions({ reasoning: "high" }));
+		});
 	});
 
-	// ── OpenRouter E2E ──
+	// ── OpenRouter E2E (reasoning left to the model by default; high for thinking and multi-turn) ──
 
 	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter provider (%s)", (modelId) => {
 		const options = openrouterOptions();
@@ -566,22 +594,32 @@ describe("Generate E2E Tests", () => {
 			expect(model.protocol).toBe(Model.KnownProviderEnum.openrouter);
 		});
 
-		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
+		it("should complete basic text generation", { retry: 3, timeout: 60_000 }, async () => {
 			const model = await getOpenRouterModel(modelId);
 			await basicTextGeneration(model, options);
 		});
 
-		it("should handle tool calling", { retry: 3, timeout: 30000 }, async () => {
+		it("should handle tool calling", { retry: 3, timeout: 60_000 }, async () => {
 			const model = await getOpenRouterModel(modelId);
 			await handleToolCall(model, options);
 		});
 
-		it("should handle streaming", { retry: 3, timeout: 30000 }, async () => {
+		it("should handle streaming", { retry: 3, timeout: 60_000 }, async () => {
 			const model = await getOpenRouterModel(modelId);
 			await handleStreaming(model, options);
 		});
 
-		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
+		it("should handle thinking", { retry: 3, timeout: 120_000 }, async () => {
+			const model = await getOpenRouterModel(modelId);
+			await handleThinking(model, openrouterOptions({ reasoning: "high" }));
+		});
+
+		it("should handle multi-turn with thinking and tools", { retry: 3, timeout: 180_000 }, async () => {
+			const model = await getOpenRouterModel(modelId);
+			await handleMultiTurn(model, openrouterOptions({ reasoning: "high" }));
+		});
+
+		it("should handle image input", { retry: 3, timeout: 60_000 }, async (ctx) => {
 			const model = await getOpenRouterModel(modelId);
 			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);

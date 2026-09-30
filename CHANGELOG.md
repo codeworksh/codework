@@ -11,6 +11,25 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Added
+
+- Added `gpt-6-luna` to the OpenAI Codex catalog. The Codex backend serves it to ChatGPT accounts, with every reasoning level from `low` to `max` and reasoning off.
+
+### Fixed
+
+- Fixed OpenAI and Codex reasoning levels that the API rejects. `minimal` is no longer offered for gpt-5.4 through gpt-6 and is clamped to `low`, since these models reject it. `xhigh` and `max` are now offered on gpt-5.6 and gpt-6 models through the OpenAI API, and `max` stays off gpt-5.5 and earlier. OpenAI gpt-5.6 and gpt-6 models now turn reasoning off with `none`, as do Codex `gpt-5.5`, `gpt-5.6-luna` and `gpt-6-luna`.
+- Fixed `gpt-6-luna` ignoring a request to turn reasoning off. `@ai-sdk/openai` 4.0.66 dropped `reasoningEffort: "none"` for the model; aikit now requires 4.0.81.
+- Fixed every request to Claude Sonnet 5.5, Opus 5.5 and the Fable 5 models failing when no reasoning level was set. aikit sent `thinking: {type: "disabled"}`, which these models reject; they cannot turn thinking off, so aikit now leaves thinking to the model.
+- Fixed Claude thinking levels. `xhigh` and `max` are now offered on Opus 4.7 and 4.8, the Sonnet 5, Opus 5 and Fable 5 families, and `max` on Sonnet 4.6 and Opus 4.6; previously these requests were clamped down to `high`.
+- Fixed Claude Sonnet 4.5's context window on the Anthropic API, which is 200k tokens, not 1M (1M needs a beta header). Responses were sized against the wrong window, so long sessions failed with a context overflow instead of a shorter answer.
+- Fixed a prompt that already overflows the context window failing as an invalid `max_output_tokens`. The response ceiling is no longer shrunk below 16 tokens, the smallest OpenAI accepts, so the provider's context overflow error reaches the caller and `isContextOverflow` recognises it.
+- Fixed conversations started on OpenAI Codex failing when continued on OpenAI, Anthropic or OpenRouter. Codex tool call IDs (`call_…|fc_…`) exceed the 64-character `call_id` limit of OpenAI and of OpenRouter upstreams such as Meta, and contain characters Anthropic rejects; they are now shortened to the unique call part for those providers.
+- Fixed a provider error sent mid-stream, such as OpenAI's `context_length_exceeded` event, being reported as an `Unknown` failure. It is now classified by its status and code like an error returned before the stream starts, so the same overflow is an `InvalidRequest` either way.
+
+### Internal
+
+- The OpenAI, Codex, Anthropic and OpenRouter live e2e suites now run against a model matrix: gpt-6-luna through gpt-5.4-nano for OpenAI, gpt-6-luna, gpt-5.6-luna and gpt-5.5 for Codex, Claude Sonnet 4.6 through Fable 5.1 plus the 4.5 generation for Anthropic, and Muse Spark 1.3, GLM 5.3 Flash, DeepSeek V4.1 Flash and Gemini 3.8 Flash for OpenRouter. New suites cover every reasoning level, context overflow, cross-model and cross-provider handoff, and prompt caching.
+
 ## [@codeworksh/aikit@0.9.3]
 
 ### Added

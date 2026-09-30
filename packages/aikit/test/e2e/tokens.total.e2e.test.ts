@@ -14,6 +14,7 @@ import * as Protocol from "../../src/llm/protocol.ts";
 import * as Message from "../../src/message/message.ts";
 import { complete } from "../../src/stream.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
@@ -24,8 +25,8 @@ import {
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
-	OPENAI_CODEX_E2E_MODEL,
-	OPENAI_E2E_MODEL,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
@@ -104,70 +105,58 @@ function assertTotalTokensEqualsComponents(usage: Usage) {
 
 describe("totalTokens field", () => {
 	// ── Anthropic ---
-	describeIfAnthropic("Anthropic", () => {
-		it(
-			"claude-haiku-4-5 - should return totalTokens equal to sum of components",
-			{ retry: 3, timeout: 60000 },
-			async () => {
-				const model = await getAnthropicModel();
-				const options = anthropicOptions({ cacheRetention: "short" });
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic (%s)", (modelId) => {
+		it("should return totalTokens equal to sum of components", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getAnthropicModel(modelId);
+			const options = anthropicOptions({ cacheRetention: "short" });
 
-				console.log(`\nAnthropic / ${model.id}:`);
-				const { first, second } = await testTotalTokensWithCache(model, options);
+			console.log(`\nAnthropic / ${model.id}:`);
+			const { first, second } = await testTotalTokensWithCache(model, options);
 
-				logUsage("First request", first);
-				logUsage("Second request", second);
+			logUsage("First request", first);
+			logUsage("Second request", second);
 
-				assertTotalTokensEqualsComponents(first);
-				assertTotalTokensEqualsComponents(second);
+			assertTotalTokensEqualsComponents(first);
+			assertTotalTokensEqualsComponents(second);
 
-				// Anthropic should have cache activity
-				const hasCache = second.cacheRead > 0 || second.cacheWrite > 0 || first.cacheWrite > 0;
-				expect(hasCache).toBe(true);
-			},
-		);
+			// Anthropic should have cache activity
+			const hasCache = second.cacheRead > 0 || second.cacheWrite > 0 || first.cacheWrite > 0;
+			expect(hasCache).toBe(true);
+		});
 	});
 
 	// --- OpenAI ---
-	describeIfOpenAI("OpenAI", () => {
-		it(
-			`${OPENAI_E2E_MODEL} - should return totalTokens equal to sum of components`,
-			{ retry: 3, timeout: 60000 },
-			async () => {
-				const model = await getOpenAIModel();
-				const options = openaiOptions();
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI (%s)", (modelId) => {
+		it("should return totalTokens equal to sum of components", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenAIModel(modelId);
+			const options = openaiOptions();
 
-				console.log(`\nOpenAI / ${model.id}:`);
-				const { first, second } = await testTotalTokensWithCache(model, options);
+			console.log(`\nOpenAI / ${model.id}:`);
+			const { first, second } = await testTotalTokensWithCache(model, options);
 
-				logUsage("First request", first);
-				logUsage("Second request", second);
+			logUsage("First request", first);
+			logUsage("Second request", second);
 
-				assertTotalTokensEqualsComponents(first);
-				assertTotalTokensEqualsComponents(second);
-			},
-		);
+			assertTotalTokensEqualsComponents(first);
+			assertTotalTokensEqualsComponents(second);
+		});
 	});
 
 	// --- OpenAI Codex ---
-	describeIfOpenAICodex("OpenAI Codex", () => {
-		it(
-			`${OPENAI_CODEX_E2E_MODEL} - should return totalTokens equal to sum of components`,
-			{ retry: 3, timeout: 120000 },
-			async () => {
-				const model = await getOpenAICodexModel();
-				const options = openaiCodexOptions({ sessionId: `aikit-e2e-${Date.now()}` });
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex (%s)", (modelId) => {
+		it("should return totalTokens equal to sum of components", { retry: 3, timeout: 120000 }, async () => {
+			const model = await getOpenAICodexModel(modelId);
+			const options = openaiCodexOptions({ sessionId: `aikit-e2e-${Date.now()}` });
 
-				console.log(`\nOpenAI Codex / ${model.id}:`);
-				const { first, second } = await testTotalTokensWithCache(model, options);
+			console.log(`\nOpenAI Codex / ${model.id}:`);
+			const { first, second } = await testTotalTokensWithCache(model, options);
 
-				logUsage("First request", first);
-				logUsage("Second request", second);
+			logUsage("First request", first);
+			logUsage("Second request", second);
 
-				assertTotalTokensEqualsComponents(first);
-				assertTotalTokensEqualsComponents(second);
-			},
-		);
+			assertTotalTokensEqualsComponents(first);
+			assertTotalTokensEqualsComponents(second);
+		});
 	});
 
 	// --- OpenRouter ---

@@ -6,13 +6,13 @@ import { stream } from "../../src/stream.ts";
 import {
 	describeIfOpenAICodex,
 	getOpenAICodexModel,
-	OPENAI_CODEX_E2E_MODEL,
+	OPENAI_CODEX_E2E_MODELS,
 	openaiCodexOptions,
 } from "../utils/llm.ts";
 
-describeIfOpenAICodex(`OpenAI Codex ${OPENAI_CODEX_E2E_MODEL}`, () => {
-	it("streams a Luna grammar tool through standard Aikit tool events", { retry: 2, timeout: 120_000 }, async () => {
-		const model = await getOpenAICodexModel();
+describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex %s", (modelId) => {
+	it("streams a grammar tool through standard Aikit tool events", { retry: 2, timeout: 120_000 }, async () => {
+		const model = await getOpenAICodexModel(modelId);
 		const constrainedTool = Message.defineTool({
 			name: "emit_token",
 			description: "Emit the lowercase token requested by the user",
@@ -54,7 +54,7 @@ describeIfOpenAICodex(`OpenAI Codex ${OPENAI_CODEX_E2E_MODEL}`, () => {
 	it("enforces native JSON schema output over a real Codex round trip", { retry: 2, timeout: 120_000 }, async () => {
 		const apiKey = process.env.OPENAI_CODEX_API_KEY;
 		if (!apiKey) throw new Error("OPENAI_CODEX_API_KEY is required");
-		const result = await createOpenAICodex({ apiKey })(OPENAI_CODEX_E2E_MODEL).doGenerate({
+		const result = await createOpenAICodex({ apiKey })(modelId).doGenerate({
 			prompt: [
 				{
 					role: "user",

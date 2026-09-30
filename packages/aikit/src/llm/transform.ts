@@ -134,6 +134,30 @@ export function normalizeOpenAICodexToolCallId(
 	return `${normalizedCallId}|${normalizedItemId}`;
 }
 
+/**
+ * OpenAI (`call_id`, at most 64 characters), Anthropic (`^[a-zA-Z0-9_-]+$`) and
+ * OpenRouter upstreams take a foreign tool call ID verbatim, so a Codex
+ * `call|item` ID keeps only its unique call half.
+ */
+export function normalizeForeignToolCallId(id: string): string {
+	if (/^[a-zA-Z0-9_-]{1,64}$/.test(id)) return id;
+	return normalizeOpenAICodexIdPart(id.split("|")[0] ?? id);
+}
+
+function toolCallIdNormalizer(model: Model.Info) {
+	switch (model.protocol) {
+		case Model.KnownProviderEnum.openaiCodex:
+			return normalizeOpenAICodexToolCallId;
+		case Model.KnownProviderEnum.openai:
+		case Model.KnownProviderEnum.anthropic:
+		case Model.KnownProviderEnum.googleVertexAnthropic:
+		case Model.KnownProviderEnum.openrouter:
+			return normalizeForeignToolCallId;
+		default:
+			return undefined;
+	}
+}
+
 type OpenAIReasoningMetadata = {
 	itemId: string;
 	reasoningEncryptedContent?: string | null;
@@ -321,11 +345,7 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 
 export function convertMessages(context: Message.Context, model: Model.Info): ModelMessage[] {
 	const messages: ModelMessage[] = [];
-	const transformedMessages = Message.transformMessages(
-		context.messages,
-		model,
-		model.protocol === Model.KnownProviderEnum.openaiCodex ? normalizeOpenAICodexToolCallId : undefined,
-	);
+	const transformedMessages = Message.transformMessages(context.messages, model, toolCallIdNormalizer(model));
 
 	for (const msg of transformedMessages) {
 		if (msg.role === "user") {
