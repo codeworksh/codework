@@ -1,4 +1,4 @@
-import type * as Acp from "@codeworksh/acp/schema-v1";
+import type * as Acp from "@agentclientprotocol/sdk";
 import { Model } from "@codeworksh/aikit";
 import { ModelCatalog, Settings, type State } from "@codeworksh/harness/effect";
 import { Effect, Option } from "effect";

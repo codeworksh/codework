@@ -1,18 +1,18 @@
 {
 	"initialize": {
 		"protocolVersion": 1,
+		"agentInfo": {
+			"name": "codework"
+		},
 		"agentCapabilities": {
 			"loadSession": true,
 			"promptCapabilities": {
-				"image": true,
-				"embeddedContext": true
+				"embeddedContext": true,
+				"image": true
 			},
 			"sessionCapabilities": {
 				"list": {}
 			}
-		},
-		"agentInfo": {
-			"name": "codework"
 		}
 	},
 	"newSession": {

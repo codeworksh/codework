@@ -1,7 +1,7 @@
 {
 	"promptCapabilities": {
-		"image": true,
-		"embeddedContext": true
+		"embeddedContext": true,
+		"image": true
 	},
 	"rejected": {
 		"audio": {

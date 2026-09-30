@@ -1,6 +1,4 @@
-import type * as AcpAgent from "@codeworksh/acp/agent";
-import { AcpRequestError } from "@codeworksh/acp/errors";
-import type * as Acp from "@codeworksh/acp/schema-v1";
+import type * as Acp from "@agentclientprotocol/sdk";
 import {
 	Control,
 	EventList,
@@ -12,12 +10,13 @@ import {
 } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Fiber, type Layer, Option, Schema, Stream } from "effect";
 import pkg from "../../package.json" with { type: "json" };
+import { Agent } from "./agent.ts";
 import { Config } from "./config.ts";
 import { Feed } from "./feed.ts";
 
 const PAGE_SIZE = 50;
 
-const isRequestError = Schema.is(AcpRequestError);
+const isRequestError = Schema.is(Agent.RequestError);
 const isNotFound = Schema.is(SessionStore.SessionNotFoundError);
 const isConflict = Schema.is(Control.PromptConflictError);
 const isInvalidPrompt = Schema.is(PromptSchema.InvalidPromptError);
@@ -28,12 +27,12 @@ const isInterrupted = Schema.is(EventList.ExecutionInterrupted);
 const isSettled = (event: EventSchema.Payload) => isSucceeded(event) || isFailed(event) || isInterrupted(event);
 
 /** Harness failures as JSON-RPC errors; handlers raise protocol-level ones directly. */
-const toRequestError = (error: { readonly message: string }): AcpRequestError => {
+const toRequestError = (error: { readonly message: string }): Agent.RequestError => {
 	if (isRequestError(error)) return error;
-	if (isNotFound(error)) return AcpRequestError.resourceNotFound(`Session not found: ${error.sessionId}`);
-	if (isConflict(error)) return AcpRequestError.invalidRequest(error.message);
-	if (isInvalidPrompt(error)) return AcpRequestError.invalidParams(error.message);
-	return AcpRequestError.internalError(error.message);
+	if (isNotFound(error)) return Agent.RequestError.resourceNotFound(`Session not found: ${error.sessionId}`);
+	if (isConflict(error)) return Agent.RequestError.invalidRequest(error.message);
+	if (isInvalidPrompt(error)) return Agent.RequestError.invalidParams(error.message);
+	return Agent.RequestError.internalError(error.message);
 };
 
 /**
@@ -66,11 +65,11 @@ const promptParts = Effect.fnUntraced(function* (blocks: ReadonlyArray<Acp.Conte
 				} else if (block.resource.mimeType?.startsWith("image/")) {
 					add({ type: "image", data: block.resource.blob, mimeType: block.resource.mimeType });
 				} else {
-					return yield* AcpRequestError.invalidParams(`Unsupported binary resource: ${block.resource.uri}`);
+					return yield* Agent.RequestError.invalidParams(`Unsupported binary resource: ${block.resource.uri}`);
 				}
 				break;
 			default:
-				return yield* AcpRequestError.invalidParams(`Unsupported prompt content: ${block.type}`);
+				return yield* Agent.RequestError.invalidParams(`Unsupported prompt content: ${block.type}`);
 		}
 	}
 	return parts;
@@ -94,7 +93,7 @@ export const make = Effect.gen(function* () {
 		return row.value;
 	});
 
-	return (client: AcpAgent.Client): AcpAgent.Handlers => {
+	return (client: Agent.Client): Agent.Handlers => {
 		const run = <A, E extends { readonly message: string }>(effect: Effect.Effect<A, E, Services>) =>
 			effect.pipe(Effect.provide(context), Effect.mapError(toRequestError));
 
@@ -143,7 +142,7 @@ export const make = Effect.gen(function* () {
 							.sort((a, b) => DateTime.Order(b.updatedAt ?? b.createdAt, a.updatedAt ?? a.createdAt));
 						const offset = cursor == null ? 0 : Number(cursor);
 						if (!Number.isSafeInteger(offset) || offset < 0) {
-							return yield* AcpRequestError.invalidParams(`Invalid cursor: ${cursor}`);
+							return yield* Agent.RequestError.invalidParams(`Invalid cursor: ${cursor}`);
 						}
 						const next = offset + PAGE_SIZE;
 						return {
@@ -167,16 +166,16 @@ export const make = Effect.gen(function* () {
 						if (request.configId === Config.MODEL) {
 							const model = Option.getOrUndefined(Config.parseModel(value));
 							if (model === undefined || !(yield* Config.known(model, hostDir))) {
-								return yield* AcpRequestError.invalidParams(`Unknown model: ${value}`);
+								return yield* Agent.RequestError.invalidParams(`Unknown model: ${value}`);
 							}
 							yield* Session.attach({ sessionId: row.id, model });
 						} else if (request.configId === Config.THOUGHT_LEVEL) {
 							if (!Config.isThinkingLevel(value)) {
-								return yield* AcpRequestError.invalidParams(`Unknown thinking level: ${value}`);
+								return yield* Agent.RequestError.invalidParams(`Unknown thinking level: ${value}`);
 							}
 							yield* Session.attach({ sessionId: row.id, thinkingLevel: value });
 						} else {
-							return yield* AcpRequestError.invalidParams(`Unknown config option: ${request.configId}`);
+							return yield* Agent.RequestError.invalidParams(`Unknown config option: ${request.configId}`);
 						}
 						return { configOptions: yield* Config.options(yield* Session.configuration(row.id), hostDir) };
 					}),
@@ -191,7 +190,7 @@ export const make = Effect.gen(function* () {
 							return yield* new SessionStore.SessionNotFoundError({ sessionId: sessionId(id) });
 						}
 						if (running.has(id)) {
-							return yield* AcpRequestError.invalidRequest("A prompt is already running for this session");
+							return yield* Agent.RequestError.invalidRequest("A prompt is already running for this session");
 						}
 						running.add(id);
 						yield* Effect.addFinalizer(() => Effect.sync(() => running.delete(id)));
@@ -231,7 +230,7 @@ export const make = Effect.gen(function* () {
 						}
 
 						if (Option.isNone(end) || isInterrupted(end.value)) return { stopReason: "cancelled" as const };
-						if (isFailed(end.value)) return yield* AcpRequestError.internalError(end.value.data.error.message);
+						if (isFailed(end.value)) return yield* Agent.RequestError.internalError(end.value.data.error.message);
 						return { stopReason: reason === "length" ? ("max_tokens" as const) : ("end_turn" as const) };
 					}).pipe(Effect.scoped),
 				),

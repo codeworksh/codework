@@ -1,6 +1,6 @@
-import * as AcpAgent from "@codeworksh/acp/agent";
 import { Control, Harness, Sandbox } from "@codeworksh/harness/effect";
 import { Effect, Logger, Stdio } from "effect";
+import { Agent } from "./agent.ts";
 import { Handlers } from "./handlers.ts";
 
 // Sessions and managed sandboxes outlive any single request; the connection's end is what stops them.
@@ -40,7 +40,7 @@ export const serve = (options: Harness.Options) =>
 	Effect.gen(function* () {
 		yield* Effect.addFinalizer(() => shutdown.pipe(Effect.ignore));
 		const handlers = yield* Handlers.make;
-		yield* AcpAgent.serve(yield* Stdio.Stdio, handlers);
+		yield* Agent.serve(yield* Stdio.Stdio, handlers);
 	}).pipe(Effect.scoped, Effect.provide(Harness.layer(options)), Effect.provideService(Logger.LogToStderr, true));
 
 export * as Server from "./server.ts";

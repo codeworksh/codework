@@ -1,8 +1,8 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- this suite spawns the CLI as a child process. */
-import * as AcpClient from "@codeworksh/acp/client";
-import type * as AcpError from "@codeworksh/acp/errors";
+import * as Acp from "@agentclientprotocol/sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Exit, Fiber, Queue, type Scope } from "effect";
+import { type Cause, Effect, Exit, Fiber, Option, Queue, type Scope, Stream } from "effect";
+import * as EffectCause from "effect/Cause";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -45,8 +45,7 @@ const LIVE = [
 	{ name: "muse", provider: "openrouter", id: "meta/muse-spark-1.3-contributor", env: "OPENROUTER_API_KEY" },
 ].map((live) => ({ ...live, model: `${live.provider}/${live.id}` }));
 
-type Client = AcpClient.AcpClient["Service"];
-type Update = Parameters<Parameters<Client["handleSessionUpdate"]>[0]>[0]["update"];
+type Update = Acp.SessionUpdate;
 
 const temps: string[] = [];
 /** An environment with `undefined` entries removed, so an override can unset a variable. */
@@ -107,8 +106,51 @@ const workspace = () => {
 	return { home, project };
 };
 
+/** The SDK's client as effects; a JSON-RPC error answer fails with `Acp.RequestError`. */
+const connect = (handle: ChildProcessSpawner.ChildProcessHandle, updates: Queue.Queue<Update>) =>
+	Effect.gen(function* () {
+		const context = yield* Effect.context<never>();
+		const stdin = yield* Queue.unbounded<Uint8Array, Cause.Done>();
+		yield* Stream.fromQueue(stdin).pipe(Stream.run(handle.stdin), Effect.forkScoped);
+		const connection = Acp.client({ name: "codework-e2e" })
+			.onNotification("session/update", ({ params }) =>
+				Effect.runPromiseWith(context)(Queue.offer(updates, params.update).pipe(Effect.asVoid)),
+			)
+			.connect(
+				Acp.ndJsonStream(
+					new WritableStream({ write: (chunk) => void Queue.offerUnsafe(stdin, chunk) }),
+					yield* Stream.toReadableStreamEffect(handle.stdout),
+				),
+			);
+		yield* Effect.addFinalizer(() => Effect.sync(() => connection.close()));
+		const request =
+			<M extends Acp.AgentRequestMethod>(method: M) =>
+			(params: Acp.AgentRequestParamsByMethod[M]) =>
+				Effect.promise((signal) =>
+					connection.agent
+						.request(method, params, { cancellationSignal: signal })
+						.then(Exit.succeed, (error) =>
+							error instanceof Acp.RequestError ? Exit.fail(error) : Exit.die(error),
+						),
+				).pipe(Effect.flatten);
+		return {
+			agent: {
+				initialize: request("initialize"),
+				createSession: request("session/new"),
+				loadSession: request("session/load"),
+				listSessions: request("session/list"),
+				setSessionConfigOption: request("session/set_config_option"),
+				prompt: request("session/prompt"),
+				cancel: (params: Acp.CancelNotification) =>
+					Effect.promise(() => connection.agent.notify("session/cancel", params)),
+			},
+		};
+	});
+
+type Client = Effect.Success<ReturnType<typeof connect>>;
+
 /**
- * Spawns `codework acp` against `home` and runs `body` with the vendored client connected to it.
+ * Spawns `codework acp` against `home` and runs `body` with an ACP client connected to it.
  * HOME is the same throwaway directory, so the user's credentials and settings stay out; the
  * child process ends with the scope.
  */
@@ -125,25 +167,22 @@ const withAgent = <A, E>(
 				env: environment({ ...process.env, HOME: home, CODEWORK_MODELS_FILE: models, ...env }),
 			}),
 		);
-		return yield* Effect.gen(function* () {
-			const acp = yield* AcpClient.AcpClient;
-			const updates = yield* Queue.unbounded<Update>();
-			yield* acp.handleSessionUpdate((notification) => Queue.offer(updates, notification.update));
-			yield* acp.agent.initialize({ protocolVersion: 1, clientInfo: { name: "codework-e2e", version: "0.0.0" } });
-			return yield* body(acp, updates);
-		}).pipe(Effect.provide(AcpClient.layerChildProcess(handle)));
+		const updates = yield* Queue.unbounded<Update>();
+		const acp = yield* connect(handle, updates);
+		yield* acp.agent.initialize({ protocolVersion: 1, clientInfo: { name: "codework-e2e", version: "0.0.0" } });
+		return yield* body(acp, updates);
 	}).pipe(Effect.scoped);
 
 const run = <A, E>(effect: Effect.Effect<A, E, Scope.Scope | ChildProcessSpawner.ChildProcessSpawner>) =>
 	effect.pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise);
 
 /** A request's result, or the JSON-RPC error it was answered with. */
-const settle = <A>(effect: Effect.Effect<A, AcpError.AcpError>) =>
+const settle = <A>(effect: Effect.Effect<A, Acp.RequestError>) =>
 	Effect.map(Effect.exit(effect), (exit) => {
 		if (Exit.isSuccess(exit)) return { ok: exit.value };
-		const failure = exit.cause.reasons.find((reason) => reason._tag === "Fail");
-		return failure?._tag === "Fail" && failure.error._tag === "AcpRequestError"
-			? { code: failure.error.code, message: failure.error.errorMessage }
+		const failure = EffectCause.findErrorOption(exit.cause);
+		return Option.isSome(failure)
+			? { code: failure.value.code, message: failure.value.message }
 			: { defect: String(exit.cause) };
 	});
 

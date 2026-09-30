@@ -1,9 +1,0 @@
-{
-	"$schema": "../../node_modules/@effect/tsgo/schema.json",
-	"extends": "../../tsconfig.json",
-	"compilerOptions": {
-		"lib": ["ES2025"],
-		"tsBuildInfoFile": "../../.cache/typescript/acp.tsbuildinfo"
-	},
-	"include": ["src", "scripts"]
-}

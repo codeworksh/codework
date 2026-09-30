@@ -1,4 +1,4 @@
-import type * as Acp from "@codeworksh/acp/schema-v1";
+import type * as Acp from "@agentclientprotocol/sdk";
 import { EventList, type EventSchema, type SessionStore } from "@codeworksh/harness/effect";
 import { Option, Schema } from "effect";
 
