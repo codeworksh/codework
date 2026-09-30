@@ -329,17 +329,39 @@ function syntheticSkippedToolCall(toolCall: ToolCallPendingPart | ToolCallRunnin
 	};
 }
 
+const USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
+const TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
+
+// Consecutive images collapse into a single placeholder.
+function omitImages(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
+	const result: TextContent[] = [];
+	for (const [index, block] of content.entries()) {
+		if (block.type === "text") result.push(block);
+		else if (content[index - 1]?.type !== "image") result.push({ type: "text", text: placeholder });
+	}
+	return result;
+}
+
+function omitToolImages(toolCall: ToolCall): ToolCall {
+	if (!("result" in toolCall) || !toolCall.result.content.some((content) => content.type === "image")) return toolCall;
+	return {
+		...toolCall,
+		result: { ...toolCall.result, content: omitImages(toolCall.result.content, TOOL_IMAGE_PLACEHOLDER) },
+	} as ToolCall;
+}
+
 export function transformMessages<TProtocol extends Model.KnownProviderEnum>(
 	messages: Message[],
 	model: Model.TModel<TProtocol>,
 	normalizeToolCallId?: (id: string, model: Model.TModel<TProtocol>, source: AssistantMessage) => string,
 ): Message[] {
 	const toolCallIDMap = new Map<string, string>();
+	const supportsImages = model.input.includes("image");
 
 	const transformed: Message[] = [];
 	for (const msg of messages) {
 		if (msg.role === "user") {
-			transformed.push(msg);
+			transformed.push(supportsImages ? msg : { ...msg, parts: omitImages(msg.parts, USER_IMAGE_PLACEHOLDER) });
 			continue;
 		}
 
@@ -394,10 +416,9 @@ export function transformMessages<TProtocol extends Model.KnownProviderEnum>(
 			return block;
 		});
 		const parts = transformedParts.map((block) => {
-			if (block.type === "toolCall" && isUnresolvedToolCall(block)) {
-				return syntheticSkippedToolCall(block);
-			}
-			return block;
+			if (block.type !== "toolCall") return block;
+			const toolCall = isUnresolvedToolCall(block) ? syntheticSkippedToolCall(block) : block;
+			return supportsImages ? toolCall : omitToolImages(toolCall);
 		});
 
 		transformed.push({

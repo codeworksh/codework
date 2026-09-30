@@ -19,6 +19,7 @@ import {
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
@@ -170,23 +171,19 @@ describe("totalTokens field", () => {
 	});
 
 	// --- OpenRouter ---
-	describeIfOpenRouter("OpenRouter", () => {
-		it(
-			"z-ai/glm-5.3-flash - should return totalTokens equal to sum of components",
-			{ retry: 3, timeout: 60000 },
-			async () => {
-				const model = await getOpenRouterModel();
-				const options = openrouterOptions();
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter (%s)", (modelId) => {
+		it("should return totalTokens equal to sum of components", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenRouterModel(modelId);
+			const options = openrouterOptions();
 
-				console.log(`\nOpenRouter / ${model.id}:`);
-				const { first, second } = await testTotalTokensWithCache(model, options);
+			console.log(`\nOpenRouter / ${model.id}:`);
+			const { first, second } = await testTotalTokensWithCache(model, options);
 
-				logUsage("First request", first);
-				logUsage("Second request", second);
+			logUsage("First request", first);
+			logUsage("Second request", second);
 
-				assertTotalTokensEqualsComponents(first);
-				assertTotalTokensEqualsComponents(second);
-			},
-		);
+			assertTotalTokensEqualsComponents(first);
+			assertTotalTokensEqualsComponents(second);
+		});
 	});
 });

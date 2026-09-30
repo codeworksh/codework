@@ -8,6 +8,7 @@ import {
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
@@ -92,15 +93,11 @@ describe("Token Statistics on Abort", () => {
 		);
 	});
 
-	describeIfOpenRouter("OpenRouter Provider", () => {
-		it(
-			"z-ai/glm-5.3-flash - should report zero token usage when aborted mid-stream",
-			{ retry: 3, timeout: 30000 },
-			async () => {
-				const model = await getOpenRouterModel();
-				await testTokensOnAbort(model, openrouterOptions());
-			},
-		);
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter Provider (%s)", (modelId) => {
+		it("should report zero token usage when aborted mid-stream", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenRouterModel(modelId);
+			await testTokensOnAbort(model, openrouterOptions());
+		});
 	});
 
 	describeIfOpenAICodex("OpenAI Codex Provider", () => {

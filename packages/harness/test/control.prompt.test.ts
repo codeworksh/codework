@@ -55,7 +55,7 @@ const eventCount = (type: string) =>
 		return (yield* sql`SELECT id FROM event WHERE type = ${type}`).length;
 	});
 
-const prompt = (text: string) => PromptSchema.Prompt.make({ text });
+const prompt = (text: string) => PromptSchema.Prompt.fromText(text);
 
 describe("Control.prompt", () => {
 	it("returns the original record when the id is retried", () =>

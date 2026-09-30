@@ -5,13 +5,16 @@ import { describe, expect, it } from "vite-plus/test";
 import type { AnthropicOptions, OpenAICodexOptions, OpenAIOptions } from "../../src/llm/options.ts";
 import * as Message from "../../src/message/message.ts";
 import * as Model from "../../src/model/model.ts";
+import { convertMessages } from "../../src/llm/transform.ts";
 import { complete } from "../../src/stream.ts";
+import { makeAssistantMessage, makeCompletedToolCall } from "../utils/fixtures.ts";
 import {
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAIModel,
 	getOpenAICodexModel,
@@ -184,6 +187,53 @@ async function handleToolWithTextAndImageResult(model: SupportedModel, options: 
 	expect(text).toMatch(/circle|dot|disc|disk|round/);
 }
 
+/*
+ * A vision model with `input` narrowed to text stands in for a text-only
+ * model: the provider must accept the history with every image replaced by a
+ * placeholder, and the model must be able to read those placeholders back.
+ */
+async function handleImagesOnTextOnlyModel(model: SupportedModel, options: SupportedOptions, name: string) {
+	const textOnly = { ...model, input: ["text" as const] };
+	const image = { type: "image" as const, data: getImageBase64(), mimeType: "image/png" };
+	const context: Message.Context = {
+		systemPrompt: "You are a helpful assistant.",
+		messages: [
+			Message.createUserMessage({
+				role: "user",
+				parts: [{ type: "text", text: "Here are two photos." }, image, image],
+				time: { created: Date.now() },
+			}),
+			makeAssistantMessage(textOnly, {
+				stopReason: "toolUse",
+				parts: [
+					makeCompletedToolCall("call_screenshot", "screenshot", [{ type: "text", text: "rendered" }, image]),
+				],
+			}),
+			Message.createUserMessage({
+				role: "user",
+				parts: [
+					{
+						type: "text",
+						text: "Quote verbatim every parenthesised note in this conversation, one per line, and nothing else.",
+					},
+				],
+				time: { created: Date.now() },
+			}),
+		],
+		tools: [
+			Message.defineTool({ name: "screenshot", description: "Takes a screenshot", parameters: Type.Object({}) }),
+		],
+	};
+
+	const wire = convertMessages(context, textOnly);
+	expect(JSON.stringify(wire)).not.toContain(image.data);
+	await expect(JSON.stringify(wire, null, "\t")).toMatchFileSnapshot(`./__artifacts__/text-only-images.${name}.json`);
+
+	const response = await completeWithTransientRetry(textOnly, context, options);
+	expect(response.stopReason, response.errorMessage).toBe("stop");
+	expect(getText(response).toLowerCase()).toContain("image omitted: model does not support images");
+}
+
 describe("Tool Results with Images", () => {
 	describeIfOpenAI(`OpenAI provider (${OPENAI_E2E_MODEL})`, () => {
 		const options = openaiOptions({ maxTokens: 256 });
@@ -196,6 +246,11 @@ describe("Tool Results with Images", () => {
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
 			const model = await getOpenAIModel();
 			await handleToolWithTextAndImageResult(model, options);
+		});
+
+		it("should replace images with placeholders for a text-only model", { retry: 3, timeout: 30000 }, async () => {
+			const model = await getOpenAIModel();
+			await handleImagesOnTextOnlyModel(model, options, "openai");
 		});
 	});
 
@@ -211,6 +266,11 @@ describe("Tool Results with Images", () => {
 			const model = await getAnthropicModel();
 			await handleToolWithTextAndImageResult(model, options);
 		});
+
+		it("should replace images with placeholders for a text-only model", { retry: 3, timeout: 30000 }, async () => {
+			const model = await getAnthropicModel();
+			await handleImagesOnTextOnlyModel(model, options, "anthropic");
+		});
 	});
 
 	describeIfOpenAICodex(`OpenAI Codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
@@ -225,19 +285,29 @@ describe("Tool Results with Images", () => {
 			const model = await getOpenAICodexModel();
 			await handleToolWithTextAndImageResult(model, options);
 		});
+
+		it("should replace images with placeholders for a text-only model", { retry: 2, timeout: 120_000 }, async () => {
+			const model = await getOpenAICodexModel();
+			await handleImagesOnTextOnlyModel(model, options, "openai-codex");
+		});
 	});
 
-	describeIfOpenRouter("OpenRouter provider (z-ai/glm-5.3-flash)", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter provider (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await handleToolWithImageResult(model, options);
 		});
 
 		it("should handle tool result with text and image", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await handleToolWithTextAndImageResult(model, options);
+		});
+
+		it("should replace images with placeholders for a text-only model", { retry: 3, timeout: 30000 }, async () => {
+			const model = await getOpenRouterModel(modelId);
+			await handleImagesOnTextOnlyModel(model, options, "openrouter");
 		});
 	});
 });

@@ -21,6 +21,7 @@ const Handlers = Runtime.handlers(Cmd, {
 	session: {
 		link: () => import("./cli/cmd/handlers/session/link.ts"),
 	},
+	acp: () => import("./cli/cmd/handlers/acp.ts"),
 	plugin: {
 		add: () => import("./cli/cmd/handlers/plugin/add.ts"),
 		check: () => import("./cli/cmd/handlers/plugin/check.ts"),

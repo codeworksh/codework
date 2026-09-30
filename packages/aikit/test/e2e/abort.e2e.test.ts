@@ -8,6 +8,7 @@ import {
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getGeneratedText,
 	getOpenAICodexModel,
@@ -77,7 +78,8 @@ async function testAbortSignal(model: StreamableModel, options: StreamOptionsWit
 		}),
 	);
 
-	const followUp = await complete(model, context, { maxTokens: 256, ...options });
+	// Room for a thinking model's reasoning as well as the five names.
+	const followUp = await complete(model, context, { maxTokens: 2048, ...options });
 	expect(followUp.stopReason).toBe("stop");
 	expect(getGeneratedText(followUp).length).toBeGreaterThan(0);
 }
@@ -208,21 +210,21 @@ describe("AI Provider Abort Tests", () => {
 		});
 	});
 
-	describeIfOpenRouter("OpenRouter provider (z-ai/glm-5.3-flash)", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter provider (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testAbortSignal(model, options);
 		});
 
 		it("should handle immediate abort", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testImmediateAbort(model, options);
 		});
 
 		it("should handle abort then new message", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testAbortThenNewMessage(model, options);
 		});
 	});

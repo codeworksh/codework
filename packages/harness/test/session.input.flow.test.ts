@@ -26,7 +26,7 @@ const wired = Layer.provideMerge(Layer.merge(SessionProjector.layer, SessionProj
 const { effect: it } = testEffect(wired);
 
 const sessionId = SessionSchema.ID.make("ses_a");
-const prompt = PromptSchema.Prompt.make({ text: "fix the bug" });
+const prompt = PromptSchema.Prompt.fromText("fix the bug");
 
 const seedSessions = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
@@ -41,7 +41,7 @@ const admit = (input: SessionInput.Interface, text: string) =>
 	input.admit({
 		id: SessionMessageSchema.ID.create(),
 		sessionId,
-		prompt: PromptSchema.Prompt.make({ text }),
+		prompt: PromptSchema.Prompt.fromText(text),
 		delivery: "steer",
 	});
 

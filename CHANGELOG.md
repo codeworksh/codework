@@ -11,6 +11,16 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/aikit@0.9.3]
+
+### Added
+
+- Added the `getEnvApiKey` export, so a caller can check whether a provider has an API key in the environment using the same lookup aikit applies when it opens that provider.
+
+### Fixed
+
+- Fixed images reaching models that cannot read them. For a model whose `input` does not include `"image"`, each image in a user message is now replaced with `(image omitted: model does not support images)` and each image in a tool result with `(tool image omitted: model does not support images)`; consecutive images collapse to one placeholder. The message and tool result are kept, so the model still knows an image was there. Previously a user image was silently dropped, which removed an image-only message entirely, and a tool-result image was sent anyway, which providers often reject. Vision models are unchanged.
+
 ## [@codeworksh/aikit@0.9.2]
 
 ### Added

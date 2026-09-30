@@ -76,7 +76,7 @@ export function resolveRequest(block: Block, model: Model.Info): State.RequestOp
 		Object.entries(block).filter(
 			([key]) =>
 				!Object.hasOwn(requestFields, key) &&
-				!["thinkingLevel", "toolExecution", "contextWindow", "protocol", "extras"].includes(key),
+				!["thinkingLevel", "toolExecution", "contextWindow", "protocol", "apiKey", "extras"].includes(key),
 		),
 	);
 	return {

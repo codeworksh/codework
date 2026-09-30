@@ -130,6 +130,8 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	directory: AbsolutePath,
 	// The host directory anchor this session belongs to.
 	hostDir: Model.FieldOption(AbsolutePath),
+	// The model and thinking level chosen over settings; see `SessionSchema.Config`.
+	config: Model.FieldOption(Model.JsonFromString(SessionSchema.Config)),
 	title: Schema.String,
 	tag: Model.FieldOption(Schema.String),
 	metadata: Model.FieldOption(Model.JsonFromString(Metadata)),

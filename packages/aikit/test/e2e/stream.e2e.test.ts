@@ -14,6 +14,7 @@ import {
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
@@ -557,31 +558,31 @@ describe("Generate E2E Tests", () => {
 
 	// ── OpenRouter E2E ──
 
-	describeIfOpenRouter("OpenRouter provider (z-ai/glm-5.3-flash)", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter provider (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should resolve appropriate protocol", async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			expect(model.protocol).toBe(Model.KnownProviderEnum.openrouter);
 		});
 
 		it("should complete basic text generation", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await basicTextGeneration(model, options);
 		});
 
 		it("should handle tool calling", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await handleToolCall(model, options);
 		});
 
 		it("should handle streaming", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await handleStreaming(model, options);
 		});
 
 		it("should handle image input", { retry: 3, timeout: 30000 }, async (ctx) => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			if (!model.input.includes("image")) ctx.skip();
 			await handleImage(model, options);
 		});
