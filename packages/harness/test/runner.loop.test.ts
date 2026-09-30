@@ -81,12 +81,11 @@ const delivered = Effect.fnUntraced(function* (sessionId: string) {
 	return rows.map((row) => ({ id: row.id, promotedSeq: Option.getOrNull(row.promotedSeq) }));
 });
 
-const seedSession = Effect.fnUntraced(function* (slug = "runner-loop") {
+const seedSession = Effect.fnUntraced(function* () {
 	const sessions = yield* Session.Service;
 	const { spaceId, location } = yield* seedSpace({ location: process.cwd(), projectId: "p" });
 	const session = yield* sessions.create({
 		spaceId,
-		slug: `${slug}-${crypto.randomUUID()}`,
 		directory: location,
 		title: "runner loop",
 	});
@@ -207,7 +206,6 @@ describe("runner loop — aikit input/output", () => {
 			});
 			const session = yield* sessions.create({
 				spaceId,
-				slug: `missing-sandbox-cwd-${crypto.randomUUID()}`,
 				directory: location,
 				title: "missing sandbox cwd",
 			});
@@ -293,7 +291,7 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 			const execution = yield* RunnerExecution.Service;
 			const sessions = yield* Session.Service;
 			const sql = yield* SqlClient.SqlClient;
-			const sessionId = yield* seedSession("tool-continuation");
+			const sessionId = yield* seedSession();
 			yield* admit({ id: "msg_tool", sessionId, delivery: "steer" });
 
 			yield* execution.resume(sessionId);
@@ -348,7 +346,7 @@ describe("runner loop — crash healing", () => {
 			const events = yield* Event.Service;
 			const execution = yield* RunnerExecution.Service;
 			const sessions = yield* Session.Service;
-			const sessionId = yield* seedSession("heal");
+			const sessionId = yield* seedSession();
 			const input: LLM.Input = {
 				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
 				sessionId,
@@ -427,7 +425,7 @@ describe("runner loop — tool interruption", () => {
 			const events = yield* Event.Service;
 			const sessions = yield* Session.Service;
 			const sql = yield* SqlClient.SqlClient;
-			const sessionId = yield* seedSession("tool-interrupt");
+			const sessionId = yield* seedSession();
 			yield* admit({ id: "msg_interrupt_tools", sessionId, delivery: "steer" });
 
 			const bothStarted = yield* Deferred.make<void>();
