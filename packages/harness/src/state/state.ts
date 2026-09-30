@@ -17,13 +17,13 @@ import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { EventRegistry } from "../event/registry.ts";
+import { Location } from "../location/location.ts";
+import { select, type Origin, type PluginRef, type Pool } from "../plugin/catalog.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
-import type { Plugin } from "../plugin/plugin.ts";
 import { run as setup } from "../plugin/host.ts";
-import { select, type Origin, type Pool, type PluginRef } from "../plugin/catalog.ts";
+import type { Plugin } from "../plugin/plugin.ts";
 import { LLM } from "../runner/llm.ts";
 import type { Runner } from "../runner/run.ts";
-import { Location } from "../location/location.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { SessionRuntime } from "../session/runtime.ts";
 import type { ID as SessionId } from "../session/schema.ts";
@@ -436,7 +436,6 @@ export const layer = (
 							where === undefined ? "" : ` (declared in ${where.file})`
 						}`;
 						yield* Effect.logWarning(error);
-						// The advice is for the user, who may not be reading this process's logs.
 						yield* eventService.publish(EventList.PluginUpdated, {
 							status: "failed",
 							reference,

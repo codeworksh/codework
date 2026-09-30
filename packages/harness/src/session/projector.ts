@@ -112,8 +112,6 @@ export const layer = Layer.effectDiscard(
 						...(event.metadata === undefined ? {} : { metadata: event.metadata }),
 					})
 					.pipe(Effect.orDie);
-				// An untitled session is named by the first prompt it answers, in the same commit, so
-				// it never lists as "Session" once it has a conversation. Later prompts find it titled.
 				const title = SessionSchema.titleFrom(event.data.prompt.text);
 				if (title !== undefined) yield* sessions.retitle(event.data.sessionId, title);
 			}),

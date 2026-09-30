@@ -38,7 +38,6 @@ export const Prompted = EventSchema.define({
 });
 export type Prompted = typeof Prompted.Type;
 
-/** A session's model or thinking level was chosen. Carries only the keys that changed. */
 export const ConfigChanged = EventSchema.define({
 	type: "session.config.changed",
 	...durableOptions,

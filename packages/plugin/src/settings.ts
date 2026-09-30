@@ -34,7 +34,7 @@ export const requestFields = {
  * model is called. Settings only ever hold the variable's name.
  */
 const keyReference = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
-const keyReferenceError = 'apiKey must reference an environment variable, e.g. "${OPENROUTER_API_KEY}"';
+const keyReferenceError = 'apiKey must reference an environment variable, e.g. "${OPENAI_API_KEY}"';
 export const KeyReference = Schema.String.check(
 	Schema.makeFilter((value) => keyReference.test(value) || keyReferenceError),
 );
