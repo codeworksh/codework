@@ -3,6 +3,8 @@ name: Publish canary
 on:
    push:
       branches: [canary]
+      paths-ignore:
+         - sites/www/**
 
 permissions:
    contents: read
@@ -23,12 +25,10 @@ jobs:
               registry-url: https://registry.npmjs.org
               run-install: false
               cache: false
-         - run: vp install --frozen-lockfile
+         - run: vp install --frozen-lockfile --filter '!@codeworksh/www'
          # Package tsconfigs resolve aikit through its generated declarations.
          - run: vp run @codeworksh/aikit#build
-         - run: vp exec astro sync
-           working-directory: sites/www
-         - run: vp check
-         - run: vp run typecheck
+         - run: vp check packages scripts .github
+         - run: vp run --filter './packages/*' --concurrency-limit 2 typecheck
          - name: Publish all packages under canary
            run: node scripts/canary.mjs

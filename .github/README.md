@@ -1,6 +1,8 @@
 # Canary publishing
 
-Every push to `canary` (including a merged pull request) runs `workflows/canary.yml`.
+Every push to `canary` (including a merged pull request) runs `workflows/canary.yml`,
+except pushes that only change `sites/www/**`. Website dependencies and checks
+are excluded from this publishing workflow.
 Checks must pass before publishing `@codeworksh/aikit`, `@codeworksh/plugin`,
 `@codeworksh/harness`, and `@codeworksh/cli`, in dependency order.
 
