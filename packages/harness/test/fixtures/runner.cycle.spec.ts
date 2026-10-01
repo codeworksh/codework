@@ -150,7 +150,6 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							const { spaceId, location } = yield* seedSpace({ location: "/tmp", env: sandboxInstanceId });
 							const session = yield* sessions.create({
 								spaceId,
-								slug: `runner-cycle-${crypto.randomUUID()}`,
 								directory: location,
 								title: "Live runner cycle",
 								tag: "test",

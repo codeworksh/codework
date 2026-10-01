@@ -214,7 +214,6 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 		id,
 		spaceId: location.space.id,
 		directory: location.directory,
-		slug: id,
 		title: input.title ?? SessionSchema.DEFAULT_TITLE,
 		...(input.hostDir === undefined ? {} : { hostDir: declaredHostDir(input.hostDir) }),
 	});

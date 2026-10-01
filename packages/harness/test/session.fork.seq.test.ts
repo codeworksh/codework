@@ -32,7 +32,6 @@ const seed = Effect.gen(function* () {
 	const session = yield* Session.Service;
 	return yield* session.create({
 		spaceId,
-		slug: "src",
 		directory: location,
 		title: "T",
 		tag: "test",
@@ -56,7 +55,7 @@ describe("fork sequence seeding", () => {
 			const sourceHead = yield* events.latestSequence(source.id);
 			expect(sourceHead).toBe(9);
 
-			const fork = yield* session.fork({ sessionId: source.id, slug: "forked" });
+			const fork = yield* session.fork({ sessionId: source.id });
 
 			// The seeded position is the highest copied entry, not 0.
 			expect(yield* events.latestSequence(fork.id)).toBe(10);
