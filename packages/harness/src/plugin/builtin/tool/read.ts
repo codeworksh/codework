@@ -31,9 +31,10 @@ const ReadParams = Schema.Struct({
 });
 
 const ReadSuccess = Schema.Struct({
-	/** Numbered lines, plus a footer when `truncated`. This is what the model reads. */
+	/** Numbered lines, plus a footer when `truncated` or when caller limit leaves lines remaining. */
 	content: Schema.String,
 	truncated: Schema.Boolean,
+	truncatedBy: Schema.optional(Schema.Literals(["lines", "bytes"])),
 	path: Schema.String,
 	startLine: NonNegativeInt,
 	endLine: NonNegativeInt,
@@ -83,8 +84,12 @@ const numberLines = (lines: ReadonlyArray<string>, startLine: number, totalLines
 	return lines.map((line, index) => `${String(startLine + index).padStart(width, " ")}|${line}`).join("\n");
 };
 
-const footer = (start: number, end: number, total: number): string =>
-	`\n\n[showing lines ${start}-${end} of ${total}. Read again with offset ${end + 1}.]`;
+const footer = (start: number, end: number, total: number, reason: "lines" | "bytes"): string => {
+	if (reason === "bytes") {
+		return `\n\n[showing lines ${start}-${end} of ${total} (${formatSize(DEFAULT_MAX_BYTES)} limit). Read again with offset ${end + 1}.]`;
+	}
+	return `\n\n[showing lines ${start}-${end} of ${total}. Read again with offset ${end + 1}.]`;
+};
 
 const linesLabel = (count: number): string => `${count} ${count === 1 ? "line" : "lines"}`;
 
@@ -129,23 +134,44 @@ export const readHandler: Tool.Handler<
 			);
 		}
 
+		const hasCallerLimit = params.limit !== undefined && params.limit < DEFAULT_MAX_LINES;
+		const maxLines = params.limit ?? DEFAULT_MAX_LINES;
 		const selected = lines.slice(offset - 1);
-		const truncated = truncateHead(selected.join("\n"), { maxLines: params.limit ?? DEFAULT_MAX_LINES });
+		const truncated = truncateHead(selected.join("\n"), { maxLines });
 		if (truncated.firstLineExceedsLimit) {
 			const bytes = Buffer.byteLength(selected[0] ?? "", "utf8");
 			return yield* failed(
 				params.path,
 				"line_too_long",
-				`Line ${offset} is ${bytes} bytes, over the ${formatSize(DEFAULT_MAX_BYTES)} read limit.`,
+				`Line ${offset} is ${bytes} bytes, over the ${formatSize(DEFAULT_MAX_BYTES)} read limit. ` +
+					`Use bash to inspect: sed -n '${offset}p' ${params.path} | head -c ${DEFAULT_MAX_BYTES}`,
 			);
 		}
 
 		const kept = selected.slice(0, truncated.outputLines);
 		const endLine = kept.length === 0 ? 0 : offset + kept.length - 1;
 		const body = numberLines(kept, offset, lines.length);
+
+		// If caller explicitly requested a limit and it was satisfied without hitting the byte limit,
+		// it is an intentional paged window, not a system truncation.
+		const isSystemTruncated = truncated.truncatedBy === "bytes" || (truncated.truncated && !hasCallerLimit);
+		const truncatedBy = isSystemTruncated ? (truncated.truncatedBy ?? undefined) : undefined;
+		const hasMoreLines = endLine < lines.length;
+
+		let content = body;
+		if (truncated.truncatedBy === "bytes") {
+			content += footer(offset, endLine, lines.length, "bytes");
+		} else if (isSystemTruncated && truncated.truncated) {
+			content += footer(offset, endLine, lines.length, "lines");
+		} else if (hasCallerLimit && hasMoreLines) {
+			const remaining = lines.length - endLine;
+			content += `\n\n[${remaining} more ${remaining === 1 ? "line" : "lines"} in file. Read again with offset ${endLine + 1}.]`;
+		}
+
 		return {
-			content: truncated.truncated ? body + footer(offset, endLine, lines.length) : body,
-			truncated: truncated.truncated,
+			content,
+			truncated: isSystemTruncated,
+			...(truncatedBy === undefined ? {} : { truncatedBy }),
 			path: params.path,
 			startLine: offset,
 			endLine,

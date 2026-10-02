@@ -100,6 +100,7 @@ describe("read plugin through the local harness", () => {
 				details: {
 					content,
 					truncated: true,
+					truncatedBy: "lines",
 					path: "long.txt",
 					startLine: 1,
 					endLine: DEFAULT_MAX_LINES,
@@ -168,12 +169,95 @@ describe("read plugin through the local harness", () => {
 			const bytes = DEFAULT_MAX_BYTES + 1;
 			await writeFile(join(root, "wide.txt"), "a".repeat(bytes));
 			const call = await read(root, custom, { path: "wide.txt" });
-			const message = `Line 1 is ${bytes} bytes, over the ${formatSize(DEFAULT_MAX_BYTES)} read limit.`;
+			const message =
+				`Line 1 is ${bytes} bytes, over the ${formatSize(DEFAULT_MAX_BYTES)} read limit. ` +
+				`Use bash to inspect: sed -n '1p' wide.txt | head -c ${DEFAULT_MAX_BYTES}`;
 			expect(call.status).toBe("error");
 			expect(call.result).toMatchObject({
 				isError: true,
 				content: [{ type: "text", text: message }],
 				details: { _tag: "ReadFailed", path: "wide.txt", reason: "line_too_long", message },
+			});
+		}));
+
+	it("truncates when byte limit is exceeded before line limit", () =>
+		withSettings(async ({ root, custom }) => {
+			// 500 lines of 200 chars each: ~100KB > 50KB byte limit, but < 2000 line limit
+			const total = 500;
+			const lines = Array.from({ length: total }, (_, i) => `Line ${i + 1}: ${"x".repeat(200)}`);
+			await writeFile(join(root, "large-bytes.txt"), lines.join("\n"));
+			const call = await read(root, custom, { path: "large-bytes.txt" });
+			expect(call.status).toBe("completed");
+			expect(call.result).toMatchObject({
+				isError: false,
+				details: {
+					truncated: true,
+					truncatedBy: "bytes",
+					path: "large-bytes.txt",
+					startLine: 1,
+					totalLines: total,
+				},
+			});
+			const details = (call.result as { details: { endLine: number } }).details;
+			expect(details.endLine).toBeLessThan(total);
+			const text = (call.result as { content: Array<{ text: string }> }).content[0]?.text ?? "";
+			expect(text).toContain("1|Line 1:");
+			expect(text).toContain(
+				`[showing lines 1-${details.endLine} of ${total} (${formatSize(DEFAULT_MAX_BYTES)} limit). Read again with offset ${details.endLine + 1}.]`,
+			);
+		}));
+
+	it("handles limit parameter", () =>
+		withSettings(async ({ root, custom }) => {
+			const total = 100;
+			const lines = Array.from({ length: total }, (_, i) => `Line ${i + 1}`);
+			await writeFile(join(root, "limit-test.txt"), lines.join("\n"));
+			const call = await read(root, custom, { path: "limit-test.txt", limit: 10 });
+			expect(call.status).toBe("completed");
+			const width = String(total).length;
+			const expectedBody = Array.from({ length: 10 }, (_, i) => {
+				const line = i + 1;
+				return `${String(line).padStart(width, " ")}|Line ${line}`;
+			}).join("\n");
+			const expectedContent = `${expectedBody}\n\n[90 more lines in file. Read again with offset 11.]`;
+			expect(call.result).toMatchObject({
+				isError: false,
+				content: [{ type: "text", text: expectedContent }],
+				details: {
+					content: expectedContent,
+					truncated: false,
+					path: "limit-test.txt",
+					startLine: 1,
+					endLine: 10,
+					totalLines: total,
+				},
+			});
+		}));
+
+	it("handles offset and limit parameters together", () =>
+		withSettings(async ({ root, custom }) => {
+			const total = 100;
+			const lines = Array.from({ length: total }, (_, i) => `Line ${i + 1}`);
+			await writeFile(join(root, "offset-limit-test.txt"), lines.join("\n"));
+			const call = await read(root, custom, { path: "offset-limit-test.txt", offset: 41, limit: 20 });
+			expect(call.status).toBe("completed");
+			const width = String(total).length;
+			const expectedBody = Array.from({ length: 20 }, (_, i) => {
+				const line = 41 + i;
+				return `${String(line).padStart(width, " ")}|Line ${line}`;
+			}).join("\n");
+			const expectedContent = `${expectedBody}\n\n[40 more lines in file. Read again with offset 61.]`;
+			expect(call.result).toMatchObject({
+				isError: false,
+				content: [{ type: "text", text: expectedContent }],
+				details: {
+					content: expectedContent,
+					truncated: false,
+					path: "offset-limit-test.txt",
+					startLine: 41,
+					endLine: 60,
+					totalLines: total,
+				},
 			});
 		}));
 });
