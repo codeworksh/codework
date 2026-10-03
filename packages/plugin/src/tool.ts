@@ -98,6 +98,7 @@ interface DefineInput<
 	readonly description: string;
 	readonly label?: string;
 	readonly promptSnippet?: string;
+	readonly promptGuidelines?: ReadonlyArray<string>;
 	readonly parameters: Params;
 	readonly success: Success;
 	readonly failure?: Failure;
