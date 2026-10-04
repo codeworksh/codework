@@ -1,0 +1,10 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"jsxImportSource": "react",
+		"types": ["node", "react"],
+		"tsBuildInfoFile": "../../.cache/typescript/tui.tsbuildinfo"
+	},
+	"include": ["src"]
+}

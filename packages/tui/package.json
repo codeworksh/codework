@@ -1,0 +1,52 @@
+{
+	"name": "@codeworksh/tui",
+	"version": "0.0.1",
+	"description": "Terminal User Interface (TUI) for CodeWork using Ink and React",
+	"keywords": [
+		"codework",
+		"ink",
+		"react",
+		"tui"
+	],
+	"homepage": "https://www.codework.sh",
+	"license": "MIT",
+	"bin": {
+		"codework-tui": "./src/index.tsx"
+	},
+	"files": [
+		"dist",
+		"src",
+		"README.md"
+	],
+	"type": "module",
+	"exports": {
+		".": "./src/index.tsx"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"check": "vp check",
+		"lint": "vp lint",
+		"start": "tsx src/index.tsx",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@codeworksh/aikit": "workspace:*",
+		"@codeworksh/harness": "workspace:*",
+		"@effect/platform-node": "4.0.0-rc.115",
+		"effect": "4.0.0-rc.115",
+		"ink": "^7.1.1",
+		"ink-text-input": "^6.0.0",
+		"marked": "^18.0.14",
+		"react": "^19.3.0"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@types/react": "^19.3.0",
+		"tsx": "^4.23.13",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	},
+	"engines": {
+		"node": ">=22.0.0"
+	}
+}

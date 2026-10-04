@@ -1,0 +1,3 @@
+[workspace]
+members = ["packages/rust-tui"]
+resolver = "2"

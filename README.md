@@ -23,6 +23,12 @@ export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY, XAI_API_KEY, ...
 codework run "Inspect and fix the failing tests"
 ```
 
+Launch the interactive Terminal User Interface (TUI):
+
+```bash
+pnpm dlx @codeworksh/tui
+```
+
 Continue a session, pick a model, or move into a sandbox:
 
 ```bash
@@ -33,6 +39,7 @@ codework run --sandbox-driver daytona "Inspect repository"
 
 ## Features
 
+- **Interactive TUI** — Full terminal chat interface built with Ink and React, featuring real-time reasoning streams, tool execution badges, metrics, and markdown rendering.
 - **Any model** — OpenAI, Anthropic, Google, xAI, OpenRouter, and more via one catalog (`codework models`).
 - **Subscription sign-in** — `codework auth login --openai-codex` or `--github-copilot`.
 - **Persistent sessions** — resume any session by ID; state lives in a local database.
@@ -40,13 +47,14 @@ codework run --sandbox-driver daytona "Inspect repository"
 - **Server mode** — `codework serve` owns sessions and sandboxes; clients attach with `--server`.
 - **Plugins** — `codework plugin add <pkg>` adds tools, prompts, and sandbox drivers, per project or globally (`-g`).
 
-See the [CLI docs](./packages/codework/README.md) for every command and flag.
+See the [CLI docs](./packages/codework/README.md) and [TUI docs](./packages/tui/README.md) for details.
 
 ## Packages
 
 | Package                                     | Description                                                          |
 | ------------------------------------------- | -------------------------------------------------------------------- |
 | [`@codeworksh/cli`](./packages/codework)    | The `codework` coding agent CLI.                                     |
+| [`@codeworksh/tui`](./packages/tui)         | Interactive Terminal User Interface (TUI) built with Ink and React.  |
 | [`@codeworksh/harness`](./packages/harness) | Effect-powered agent runtime with persistent sessions and sandboxes. |
 | [`@codeworksh/plugin`](./packages/plugin)   | SDK for tools, prompt plugins, and sandbox drivers.                  |
 | [`@codeworksh/aikit`](./packages/aikit)     | Unified multi-provider LLM API with streaming, tools, and usage.     |
