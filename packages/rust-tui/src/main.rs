@@ -6,6 +6,7 @@ mod diff;
 mod git;
 mod markdown;
 mod rpc;
+mod tool;
 mod types;
 mod ui;
 

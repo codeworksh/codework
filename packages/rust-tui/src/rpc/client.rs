@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
+use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_tungstenite::connect_async;
@@ -26,13 +27,18 @@ pub enum StreamEvent {
         call_id: String,
         name: String,
         label: Option<String>,
+        /// The tool call's raw arguments — the command, path, or query.
+        arguments: Value,
     },
     ToolSettled {
         call_id: String,
         name: Option<String>,
         is_error: bool,
-        patch: Option<String>,
-        first_changed_line: Option<u64>,
+        /// The arguments the terminal part carries, repeated from `started`.
+        arguments: Value,
+        /// The tool's own success/failure struct. Arbitrary JSON: the shape is the
+        /// tool's to define, so it is interpreted downstream rather than here.
+        details: Option<Value>,
     },
     Usage(UsageReport),
     Succeeded,
@@ -325,40 +331,10 @@ impl RpcClient {
                                         }
                                     }
                                     "session.tool.started" => {
-                                        let call_id = data.get("callID").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
-                                        let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
-                                        let label = data.get("label").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                        let _ = event_tx.send(StreamEvent::ToolStarted { call_id, name, label });
+                                        let _ = event_tx.send(started_event(data));
                                     }
                                     "session.tool.settled" => {
-                                        let call_id = data.get("callID").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
-                                        let part = data.get("part");
-                                        let name = part
-                                            .and_then(|p| p.get("name"))
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s.to_string());
-                                        let result = part.and_then(|p| p.get("result"));
-                                        let is_error = result
-                                            .and_then(|r| r.get("isError"))
-                                            .and_then(|v| v.as_bool())
-                                            .unwrap_or(false);
-                                        // `details` is arbitrary tool-defined JSON, so every read here is
-                                        // best-effort: a missing or non-string patch means "no diff".
-                                        let details = result.and_then(|r| r.get("details"));
-                                        let patch = details
-                                            .and_then(|d| d.get("patch"))
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s.to_string());
-                                        let first_changed_line = details
-                                            .and_then(|d| d.get("firstChangedLine"))
-                                            .and_then(|v| v.as_u64());
-                                        let _ = event_tx.send(StreamEvent::ToolSettled {
-                                            call_id,
-                                            name,
-                                            is_error,
-                                            patch,
-                                            first_changed_line,
-                                        });
+                                        let _ = event_tx.send(settled_event(data));
                                     }
                                     "session.llm.ended" => {
                                         if let Some(msg) = data.get("message") {
@@ -409,9 +385,162 @@ impl RpcClient {
     }
 }
 
+/// Reads a `session.tool.started` payload. Every field is best-effort: a missing
+/// or malformed one yields a plain `tool` line rather than an error.
+fn started_event(data: &Value) -> StreamEvent {
+    let call_id = data.get("callID").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
+    let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
+    let label = data.get("label").and_then(|v| v.as_str()).map(str::to_string);
+    let arguments = data.get("arguments").cloned().unwrap_or(Value::Null);
+    StreamEvent::ToolStarted {
+        call_id,
+        name,
+        label,
+        arguments,
+    }
+}
+
+/// Reads a `session.tool.settled` payload. The terminal `part` carries both the
+/// call's `arguments` and its `result.details`, whose shape is the tool's own
+/// (the `edit` tool's `patch` and `firstChangedLine`, a `read`'s line window, a
+/// `bash`'s `exitCode`), so it is carried through opaquely.
+fn settled_event(data: &Value) -> StreamEvent {
+    let call_id = data.get("callID").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
+    let part = data.get("part");
+    let name = part
+        .and_then(|p| p.get("name"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let arguments = part
+        .and_then(|p| p.get("arguments"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let result = part.and_then(|p| p.get("result"));
+    let is_error = result
+        .and_then(|r| r.get("isError"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let details = result.and_then(|r| r.get("details")).cloned();
+    StreamEvent::ToolSettled {
+        call_id,
+        name,
+        is_error,
+        arguments,
+        details,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parses_a_started_call_with_its_arguments() {
+        let data = json!({
+            "sessionId": "ses_1",
+            "messageId": "msg_1",
+            "callID": "call_1",
+            "name": "bash",
+            "label": "bash",
+            "arguments": { "command": "npm test", "timeout": 30 },
+        });
+        match started_event(&data) {
+            StreamEvent::ToolStarted { call_id, name, label, arguments } => {
+                assert_eq!(call_id, "call_1");
+                assert_eq!(name, "bash");
+                assert_eq!(label.as_deref(), Some("bash"));
+                assert_eq!(arguments.get("command").and_then(Value::as_str), Some("npm test"));
+            }
+            other => panic!("expected ToolStarted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_a_settled_call_with_its_result_details() {
+        let data = json!({
+            "sessionId": "ses_1",
+            "messageId": "msg_1",
+            "callID": "call_1",
+            "part": {
+                "type": "toolCall",
+                "callID": "call_1",
+                "name": "edit",
+                "arguments": { "path": "src/a.ts", "edits": [] },
+                "status": "completed",
+                "time": { "start": 1, "end": 2 },
+                "result": {
+                    "content": [{ "type": "text", "text": "edited" }],
+                    "isError": false,
+                    "details": { "patch": "--- src/a.ts", "path": "src/a.ts", "firstChangedLine": 3 },
+                },
+            },
+        });
+        match settled_event(&data) {
+            StreamEvent::ToolSettled { call_id, name, is_error, arguments, details } => {
+                assert_eq!(call_id, "call_1");
+                assert_eq!(name.as_deref(), Some("edit"));
+                assert!(!is_error);
+                // The arguments ride on the terminal part, so a settled call is titled
+                // from them even when no started event arrived.
+                assert_eq!(arguments.get("path").and_then(Value::as_str), Some("src/a.ts"));
+                let details = details.expect("details");
+                assert_eq!(details.get("patch").and_then(Value::as_str), Some("--- src/a.ts"));
+                assert_eq!(details.get("firstChangedLine").and_then(Value::as_u64), Some(3));
+            }
+            other => panic!("expected ToolSettled, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_an_error_settlement() {
+        let data = json!({
+            "callID": "call_2",
+            "part": {
+                "name": "bash",
+                "arguments": { "command": "false" },
+                "status": "error",
+                "result": {
+                    "content": [{ "type": "text", "text": "boom" }],
+                    "isError": true,
+                    "details": { "output": "boom", "truncated": false, "exitCode": 1 },
+                },
+            },
+        });
+        match settled_event(&data) {
+            StreamEvent::ToolSettled { is_error, details, .. } => {
+                assert!(is_error);
+                assert_eq!(details.and_then(|d| d.get("exitCode").and_then(Value::as_u64)), Some(1));
+            }
+            other => panic!("expected ToolSettled, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_a_bare_payload_without_arguments_or_details() {
+        // A plugin tool, or an older server: nothing to read, nothing to fail on.
+        match started_event(&json!({ "callID": "c", "name": "acme_echo" })) {
+            StreamEvent::ToolStarted { arguments, label, .. } => {
+                assert!(arguments.is_null());
+                assert!(label.is_none());
+            }
+            other => panic!("expected ToolStarted, got {other:?}"),
+        }
+
+        let settled = json!({
+            "callID": "c",
+            "part": { "name": "acme_echo", "status": "completed" },
+        });
+        match settled_event(&settled) {
+            StreamEvent::ToolSettled { arguments, details, is_error, name, .. } => {
+                assert!(arguments.is_null());
+                assert!(details.is_none());
+                assert!(!is_error);
+                assert_eq!(name.as_deref(), Some("acme_echo"));
+            }
+            other => panic!("expected ToolSettled, got {other:?}"),
+        }
+    }
 
     #[tokio::test]
     #[ignore]

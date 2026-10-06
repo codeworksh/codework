@@ -8,8 +8,9 @@ use crate::catalog::{
 use crate::config::ConfigManager;
 use crate::credentials::CredentialStore;
 use crate::rpc::{RpcClient, StreamEvent};
+use crate::tool;
 use crate::types::{
-    ConversationTurn, FocusedPanel, ModelConfig, ModelSortMode, SessionInfo, SessionStats, ToolResult,
+    ConversationTurn, FocusedPanel, ModelConfig, ModelSortMode, SessionInfo, SessionStats,
 };
 use crate::ui::model::ModelBrowserState;
 use crate::ui::spinner::Spinner;
@@ -146,9 +147,16 @@ impl App {
                     turn.thinking.push_str(&delta);
                 }
             }
-            StreamEvent::ToolStarted { call_id, name, label } => {
+            StreamEvent::ToolStarted {
+                call_id,
+                name,
+                label,
+                arguments,
+            } => {
                 if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    turn.active_tool = Some(label.unwrap_or(name));
+                    // Title the running line from the call's arguments, so an in-flight tool
+                    // reads `bash npm test` rather than just `bash`.
+                    turn.active_tool = Some(tool::derive(&name, label.as_deref(), &arguments, None, false));
                     turn.active_call_id = Some(call_id);
                 }
             }
@@ -156,26 +164,28 @@ impl App {
                 call_id,
                 name,
                 is_error,
-                patch,
-                first_changed_line,
+                arguments,
+                details,
             } => {
                 if let Some(turn) = self.turns.get_mut(last_turn_idx) {
                     // Pair by callID: parallel tool calls settle out of order, so a settle that
-                    // is not the current active call must not clear or steal its label.
-                    let label = if turn.active_call_id.as_deref() == Some(call_id.as_str()) {
+                    // is not the current active call must not clear or steal its line.
+                    let live = if turn.active_call_id.as_deref() == Some(call_id.as_str()) {
                         turn.active_call_id = None;
-                        turn.active_tool
-                            .take()
-                            .unwrap_or_else(|| name.clone().unwrap_or_else(|| call_id.clone()))
+                        turn.active_tool.take()
                     } else {
-                        name.clone().unwrap_or_else(|| call_id.clone())
+                        None
                     };
-                    turn.completed_tools.push(ToolResult {
-                        label,
-                        is_error,
-                        patch,
-                        first_changed_line,
-                    });
+                    let tool_name = name.clone().unwrap_or_else(|| call_id.clone());
+                    let settled =
+                        tool::derive(&tool_name, None, &arguments, details.as_ref(), is_error);
+                    // The running call already resolved its own identity, including the
+                    // tool's declared label, which the terminal part does not carry.
+                    let result = match live {
+                        Some(running) => tool::settle(running, settled),
+                        None => settled,
+                    };
+                    turn.completed_tools.push(result);
                 }
             }
             StreamEvent::Usage(usage) => {
@@ -195,14 +205,10 @@ impl App {
                 if let Some(turn) = self.turns.get_mut(last_turn_idx) {
                     turn.streaming = false;
                     turn.end_time = Some(chrono::Utc::now().timestamp_millis());
-                    if let Some(t) = turn.active_tool.take() {
+                    // A call that never settled keeps the line it was titled with.
+                    if let Some(running) = turn.active_tool.take() {
                         turn.active_call_id = None;
-                        turn.completed_tools.push(ToolResult {
-                            label: t,
-                            is_error: false,
-                            patch: None,
-                            first_changed_line: None,
-                        });
+                        turn.completed_tools.push(running);
                     }
                 }
                 self.is_streaming = false;

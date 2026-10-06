@@ -3,6 +3,7 @@ pub mod logo;
 pub mod model;
 pub mod session;
 pub mod spinner;
+pub mod text;
 pub mod theme;
 pub mod welcome;
 

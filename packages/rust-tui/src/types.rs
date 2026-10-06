@@ -108,16 +108,39 @@ pub struct UsageReport {
     pub model: Option<String>,
 }
 
-/// A settled tool call, carrying whatever the tool's result `details` exposed.
+/// A tool call as the transcript shows it: one settled call, plus whatever its
+/// result `details` exposed.
 ///
-/// `patch` is a standard unified diff (the `edit` tool emits one); a tool that
-/// produces no diff simply leaves it `None`.
+/// `target` and `summary` are derived once, when the event arrives (see
+/// `crate::tool`), so rendering never re-parses JSON per frame. `patch` is a
+/// standard unified diff (the `edit` tool emits one); a tool that produces no
+/// diff simply leaves it `None`.
 #[derive(Debug, Clone)]
 pub struct ToolResult {
+    /// Raw tool name: the row's identity, and what grouping keys on.
+    pub name: String,
+    /// What the call touched — its command, path, or query — read from the tool
+    /// call's arguments. `None` when they are unreadable, including for every
+    /// plugin tool whose argument shape we do not know.
+    pub target: Option<String>,
+    /// Display fallback when there is no `target`: the tool's declared label.
     pub label: String,
+    /// A short result summary: line window, exit code, match counts, +/− counts.
+    pub summary: Option<String>,
     pub is_error: bool,
     pub patch: Option<String>,
     pub first_changed_line: Option<u64>,
+}
+
+impl ToolResult {
+    /// The row's heading: the tool name plus what it touched, or just the label
+    /// when the arguments were unreadable.
+    pub fn heading(&self) -> String {
+        match &self.target {
+            Some(target) => format!("{} {}", self.name, target),
+            None => self.label.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -134,7 +157,8 @@ pub struct ConversationTurn {
     pub tokens_per_sec: f64,
     pub model_name: String,
     pub error: Option<String>,
-    pub active_tool: Option<String>,
+    /// The tool call that is currently running, titled from its arguments.
+    pub active_tool: Option<ToolResult>,
     pub active_call_id: Option<String>,
     pub completed_tools: Vec<ToolResult>,
 }

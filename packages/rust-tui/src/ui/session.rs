@@ -6,9 +6,11 @@ use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
 
 use crate::markdown::{render_markdown, wrap_text};
+use crate::tool;
 use crate::types::{ConversationTurn, ModelConfig, SessionInfo, SessionStats, ToolResult};
 use crate::ui::logo::{render_animated_logo_lines, render_header_logo};
 use crate::ui::spinner::Spinner;
+use crate::ui::text::elide;
 use crate::ui::theme::Theme;
 use crate::ui::welcome::{CommandItem, COMMANDS};
 
@@ -129,18 +131,17 @@ pub fn render_session(
             conv_lines.push(Line::raw(""));
         }
 
-        // Active Tool
-        if let Some(tool) = &turn.active_tool {
+        // Active Tool, titled from the arguments it was called with
+        if let Some(running) = &turn.active_tool {
             conv_lines.push(Line::from(vec![
                 Span::styled(format!("{} ", spinner.current()), Style::default().fg(Theme::ACTIVITY)),
-                Span::styled(tool.clone(), Style::default().fg(Theme::TEXT_PRIMARY)),
+                Span::styled(running.heading(), Style::default().fg(Theme::TEXT_PRIMARY)),
             ]));
         }
 
-        // Completed Tools (with an inline diff when the tool produced a patch)
-        for tool in &turn.completed_tools {
-            conv_lines.extend(render_tool_result(tool, max_text_width));
-        }
+        // Completed Tools: titled from their arguments, runs collapsed, and an
+        // inline diff whenever the tool produced a patch
+        conv_lines.extend(render_tool_rows(&turn.completed_tools, max_text_width));
 
         if turn.active_tool.is_some() || !turn.completed_tools.is_empty() {
             conv_lines.push(Line::raw(""));
@@ -390,8 +391,63 @@ pub fn render_session(
     f.render_widget(Paragraph::new(sidebar_lines).block(sidebar_block), sidebar_area);
 }
 
-/// Renders one settled tool call: a status line, plus a truncated inline unified
-/// diff indented beneath it when the tool returned a `patch` in its details.
+/// Renders a turn's settled calls, collapsing runs of consecutive calls to the
+/// same tool into one row so a long stretch of `read` costs a line, not twenty.
+pub fn render_tool_rows(tools: &[ToolResult], max_text_width: usize) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    for row in tool::group(tools) {
+        match row {
+            tool::ToolRow::Single(result) => lines.extend(render_tool_result(result, max_text_width)),
+            tool::ToolRow::Run { name, members, failed } => {
+                lines.push(render_tool_run(&name, &members, failed, max_text_width));
+            }
+        }
+    }
+    lines
+}
+
+/// One collapsed run: `✓ read ×7  a.rs, b.rs, src/c.rs, …`.
+fn render_tool_run(
+    name: &str,
+    members: &[&ToolResult],
+    failed: usize,
+    max_text_width: usize,
+) -> Line<'static> {
+    // A run with any failure takes the error colour, so a wall of green never
+    // hides the one call that did not work.
+    let (icon, color) = if failed > 0 {
+        ("✗ ", Theme::ERROR)
+    } else {
+        ("✓ ", Theme::SUCCESS)
+    };
+    let label = format!("{name} ×{}", members.len());
+
+    let mut spans = vec![
+        Span::styled(icon, Style::default().fg(color).add_modifier(Modifier::BOLD)),
+        Span::styled(label.clone(), Style::default().fg(color)),
+    ];
+
+    let mut meta = tool::run_targets(members);
+    if failed > 0 {
+        if !meta.is_empty() {
+            meta.push_str(" · ");
+        }
+        meta.push_str(&format!("{failed} failed"));
+    }
+    if !meta.is_empty() {
+        let used = 2 + UnicodeWidthStr::width(label.as_str()) + 2;
+        spans.push(Span::raw("  "));
+        spans.push(Span::styled(
+            elide(&meta, max_text_width.saturating_sub(used)),
+            Style::default().fg(Theme::TEXT_MUTED),
+        ));
+    }
+
+    Line::from(spans)
+}
+
+/// Renders one settled tool call: a status line headed by the tool and what it
+/// touched, plus a truncated inline unified diff when it returned a `patch`.
 pub fn render_tool_result(tool: &ToolResult, max_text_width: usize) -> Vec<Line<'static>> {
     let (icon, color) = if tool.is_error {
         ("✗ ", Theme::ERROR)
@@ -399,30 +455,35 @@ pub fn render_tool_result(tool: &ToolResult, max_text_width: usize) -> Vec<Line<
         ("✓ ", Theme::SUCCESS)
     };
 
+    // The summary is the outcome and is never dropped; the heading gives way to
+    // it when the pane is too narrow for both.
+    let summary_width = tool
+        .summary
+        .as_ref()
+        .map(|summary| UnicodeWidthStr::width(summary.as_str()) + 2)
+        .unwrap_or(0);
+
     let mut header = vec![
         Span::styled(icon, Style::default().fg(color).add_modifier(Modifier::BOLD)),
-        Span::styled(tool.label.clone(), Style::default().fg(color)),
+        Span::styled(
+            elide(&tool.heading(), max_text_width.saturating_sub(2 + summary_width)),
+            Style::default().fg(color),
+        ),
     ];
+    if let Some(summary) = &tool.summary {
+        header.push(Span::raw("  "));
+        header.push(Span::styled(summary.clone(), Style::default().fg(Theme::TEXT_MUTED)));
+    }
 
     let Some(patch) = &tool.patch else {
         return vec![Line::from(header)];
     };
 
-    let (diff_lines, summary) = crate::diff::render_diff(
+    let (diff_lines, _) = crate::diff::render_diff(
         patch,
         max_text_width.saturating_sub(2),
         crate::diff::DEFAULT_MAX_DIFF_LINES,
     );
-
-    let mut meta = format!("+{} −{}", summary.added, summary.removed);
-    if let Some(path) = crate::diff::patch_path(patch) {
-        meta.push_str(&format!(" · {}", path));
-    }
-    if let Some(line) = tool.first_changed_line {
-        meta.push_str(&format!(" · line {}", line));
-    }
-    header.push(Span::raw("  "));
-    header.push(Span::styled(meta, Style::default().fg(Theme::TEXT_MUTED)));
 
     let mut lines = vec![Line::from(header)];
     for mut diff_line in diff_lines {
@@ -570,12 +631,24 @@ mod tests {
     }
 
     fn edit_result(patch: &str) -> ToolResult {
-        ToolResult {
-            label: "edit".into(),
-            is_error: false,
-            patch: Some(patch.to_string()),
-            first_changed_line: Some(2),
-        }
+        crate::tool::derive(
+            "edit",
+            None,
+            &serde_json::json!({ "path": "src/a.ts" }),
+            Some(&serde_json::json!({ "patch": patch, "path": "src/a.ts", "firstChangedLine": 2 })),
+            false,
+        )
+    }
+
+    fn read_call(target: &str) -> ToolResult {
+        crate::tool::derive("read", None, &serde_json::json!({ "path": target }), None, false)
+    }
+
+    fn headings(lines: &[Line]) -> usize {
+        lines
+            .iter()
+            .filter(|line| line.spans.first().map(|span| span.content.as_ref()) == Some("✓ "))
+            .count()
     }
 
     #[test]
@@ -608,14 +681,74 @@ mod tests {
 
     #[test]
     fn test_render_tool_result_without_patch_is_single_line() {
-        let tool = ToolResult {
-            label: "read".into(),
-            is_error: false,
-            patch: None,
-            first_changed_line: None,
-        };
-        let lines = render_tool_result(&tool, 60);
+        let lines = render_tool_result(&read_call("src/a.ts"), 60);
         assert_eq!(lines.len(), 1);
-        assert!(tool_text(&lines).contains("read"));
+        assert!(tool_text(&lines).contains("read src/a.ts"));
+    }
+
+    #[test]
+    fn test_render_tool_result_keeps_the_summary_when_narrow() {
+        let long = "packages/harness/src/plugin/builtin/tool/something-very-long/edit.ts";
+        let tool = crate::tool::derive(
+            "read",
+            None,
+            &serde_json::json!({ "path": long }),
+            Some(&serde_json::json!({
+                "startLine": 1,
+                "endLine": 10,
+                "totalLines": 99,
+                "truncated": false,
+            })),
+            false,
+        );
+        let lines = render_tool_result(&tool, 30);
+        let text = tool_text(&lines);
+        assert!(text.contains("1-10 of 99"), "the outcome must survive elision: {text}");
+        assert!(UnicodeWidthStr::width(text.as_str()) <= 30, "{text}");
+    }
+
+    #[test]
+    fn test_render_tool_rows_collapses_a_run() {
+        let tools = vec![read_call("a.rs"), read_call("b.rs"), read_call("c.rs")];
+        let lines = render_tool_rows(&tools, 60);
+        assert_eq!(lines.len(), 1, "three reads collapse into one row");
+        let text = tool_text(&lines);
+        assert!(text.contains("read ×3"), "{text}");
+        assert!(text.contains("a.rs, b.rs, c.rs"), "{text}");
+    }
+
+    #[test]
+    fn test_render_tool_rows_keeps_a_short_run_separate() {
+        let tools = vec![read_call("a.rs"), read_call("b.rs")];
+        let lines = render_tool_rows(&tools, 60);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(headings(&lines), 2);
+    }
+
+    #[test]
+    fn test_render_tool_rows_marks_failures_in_a_run() {
+        let mut failed = read_call("b.rs");
+        failed.is_error = true;
+        let tools = vec![read_call("a.rs"), failed, read_call("c.rs")];
+        let lines = render_tool_rows(&tools, 60);
+        assert_eq!(lines.len(), 1);
+        let text = tool_text(&lines);
+        assert!(text.contains("read ×3"), "{text}");
+        assert!(text.contains("1 failed"), "{text}");
+        let label = lines[0]
+            .spans
+            .iter()
+            .find(|span| span.content.contains("read ×3"))
+            .expect("the run label");
+        assert_eq!(label.style.fg, Some(Theme::ERROR));
+    }
+
+    #[test]
+    fn test_render_tool_rows_never_collapses_a_run_of_edits() {
+        let patch = "--- src/a.ts\n+++ src/a.ts\n@@ -1 +1 @@\n-a\n+b\n";
+        let tools = vec![edit_result(patch), edit_result(patch), edit_result(patch)];
+        let lines = render_tool_rows(&tools, 60);
+        assert_eq!(headings(&lines), 3, "each edit keeps its own heading and diff");
+        assert!(!tool_text(&lines).contains('×'));
     }
 }

@@ -9,6 +9,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
+use crate::ui::text::elide;
 use crate::ui::theme::Theme;
 
 /// How many diff lines are shown before the "… +N more lines" footer.
@@ -91,25 +92,23 @@ fn parse(patch: &str) -> Vec<ParsedLine> {
     parsed
 }
 
-fn truncate(text: &str, max_width: usize) -> String {
-    if max_width == 0 {
-        return String::new();
-    }
-    if UnicodeWidthStr::width(text) <= max_width {
-        return text.to_string();
-    }
-    let mut out = String::new();
-    let mut width = 0usize;
-    for ch in text.chars() {
-        let ch_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-        if width + ch_width + 1 > max_width {
-            break;
+/// Added/removed counts across an already-parsed patch.
+fn summarize(parsed: &[ParsedLine]) -> DiffSummary {
+    let mut summary = DiffSummary::default();
+    for line in parsed {
+        match line.kind {
+            Kind::Added => summary.added += 1,
+            Kind::Removed => summary.removed += 1,
+            _ => {}
         }
-        out.push(ch);
-        width += ch_width;
     }
-    out.push('…');
-    out
+    summary
+}
+
+/// Added/removed counts for the whole of `patch`, without building any styled
+/// lines — for callers that only want the numbers (a tool-call summary).
+pub fn counts(patch: &str) -> DiffSummary {
+    summarize(&parse(patch))
 }
 
 /// The new-file path from a patch's `+++` header, when present.
@@ -124,15 +123,7 @@ pub fn patch_path(patch: &str) -> Option<String> {
 /// indented for a conversation pane. Returns the full added/removed summary.
 pub fn render_diff(patch: &str, max_width: usize, max_lines: usize) -> (Vec<Line<'static>>, DiffSummary) {
     let parsed = parse(patch);
-
-    let mut summary = DiffSummary::default();
-    for line in &parsed {
-        match line.kind {
-            Kind::Added => summary.added += 1,
-            Kind::Removed => summary.removed += 1,
-            _ => {}
-        }
-    }
+    let summary = summarize(&parsed);
 
     let gutter_width = parsed
         .iter()
@@ -160,13 +151,13 @@ pub fn render_diff(patch: &str, max_width: usize, max_lines: usize) -> (Vec<Line
                 } else {
                     Style::default().fg(Theme::DIFF_META).add_modifier(Modifier::BOLD)
                 };
-                lines.push(Line::from(vec![Span::styled(truncate(&line.text, max_width), style)]));
+                lines.push(Line::from(vec![Span::styled(elide(&line.text, max_width), style)]));
             }
             Kind::NoNewline => {
                 lines.push(Line::from(vec![
                     Span::raw(" ".repeat(gutter_width + 1)),
                     Span::styled(
-                        truncate(&line.text, max_width.saturating_sub(gutter_width + 1)),
+                        elide(&line.text, max_width.saturating_sub(gutter_width + 1)),
                         Style::default().fg(Theme::DIFF_META).add_modifier(Modifier::ITALIC),
                     ),
                 ]));
@@ -189,7 +180,7 @@ pub fn render_diff(patch: &str, max_width: usize, max_lines: usize) -> (Vec<Line
                 spans.push(Span::styled(marker, Style::default().fg(marker_color)));
                 spans.push(Span::raw(" "));
 
-                let shown = truncate(&line.text, content_width);
+                let shown = elide(&line.text, content_width);
                 let used = prefix_width + UnicodeWidthStr::width(shown.as_str());
                 let content_style = match bg {
                     Some(background) => Style::default().fg(fg).bg(background),
@@ -280,6 +271,14 @@ mod tests {
         let patch = "--- a\n+++ a\n@@ -1 +1 @@\n-old\n\\ No newline at end of file\n+new\n";
         let (lines, _) = render_diff(patch, 80, DEFAULT_MAX_DIFF_LINES);
         assert!(joined(&lines).contains("No newline at end of file"));
+    }
+
+    #[test]
+    fn counts_added_and_removed_without_rendering() {
+        let summary = counts(PATCH);
+        assert_eq!(summary.added, 1);
+        assert_eq!(summary.removed, 1);
+        assert_eq!(counts(""), DiffSummary::default());
     }
 
     #[test]
