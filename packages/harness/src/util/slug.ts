@@ -66,8 +66,7 @@ const SECTORS = [
 
 const CONNECTORS = ["at", "of", "in"] as const;
 
-// The words alone collide within a few hundred sessions; the tail of the id (the random end of
-// a uuidv7) keeps the slug unique without a retry.
+// The words alone collide; use tail of the ID keeps the slug unique without retry.
 export const create = Effect.fnUntraced(function* (id: string) {
 	const prefix = yield* Random.choice(PREFIXES);
 	const hardware = yield* Random.choice(HARDWARE);
