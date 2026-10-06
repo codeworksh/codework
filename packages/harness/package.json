@@ -89,8 +89,11 @@
 		"@npmcli/arborist": "^10.0.2",
 		"@npmcli/config": "^11.0.1",
 		"@platformatic/vfs": "^0.4.0",
+		"diff": "^8.0.4",
+		"ignore": "^7.0.12",
 		"jsonc-parser": "3.3.1",
 		"just-bash": "^3.4.2",
+		"minimatch": "^10.2.6",
 		"npm-package-arg": "^14.0.0",
 		"pacote": "^22.0.0",
 		"uuidv7": "^1.2.1"

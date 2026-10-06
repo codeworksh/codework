@@ -1,8 +1,11 @@
 import { defaultPromptPlugin } from "./builtin/prompt/default.ts";
 import { bashPlugin } from "./builtin/tool/bash.ts";
+import { editPlugin } from "./builtin/tool/edit.ts";
+import { readPlugin } from "./builtin/tool/read.ts";
+import { searchPlugin } from "./builtin/tool/search.ts";
 
 /**
  * Every plugin the harness ships, and the selection a caller who passes no `plugins` gets. Tool
  * contributors come first so the Prompt plugin that indexes them runs after they registered.
  */
-export const builtins = Object.freeze([bashPlugin, defaultPromptPlugin]);
+export const builtins = Object.freeze([bashPlugin, readPlugin, searchPlugin, editPlugin, defaultPromptPlugin]);

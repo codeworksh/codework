@@ -1,0 +1,21 @@
+{
+	"name": "@codeworksh/rust-tui",
+	"version": "0.0.1",
+	"description": "High-performance Terminal User Interface (TUI) for CodeWork in Rust using Ratatui",
+	"keywords": [
+		"codework",
+		"ratatui",
+		"rust",
+		"tui"
+	],
+	"homepage": "https://www.codework.sh",
+	"author": "Prem (https://github.com/prem315)",
+	"license": "MIT",
+	"type": "module",
+	"scripts": {
+		"build": "cargo build --release",
+		"check": "cargo check",
+		"start": "cargo run",
+		"typecheck": "cargo check"
+	}
+}
