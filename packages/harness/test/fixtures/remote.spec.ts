@@ -426,7 +426,6 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 								const sessions = yield* Session.Service;
 								const created = yield* sessions.create({
 									spaceId: resolved.space.id,
-									slug: `${options.kind}-${Date.now()}`,
 									directory: resolved.directory,
 									title: `${options.kind} integration`,
 								});

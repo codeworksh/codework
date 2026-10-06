@@ -61,7 +61,6 @@ const setup = Effect.gen(function* () {
 	const sessions = yield* Session.Service;
 	const created = yield* sessions.create({
 		spaceId,
-		slug: `context-${crypto.randomUUID()}`,
 		directory: location,
 		title: "Context test",
 	});

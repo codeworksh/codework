@@ -25,6 +25,7 @@ import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 import { Space } from "../space/space.ts";
 import { posix } from "../util/posix.ts";
+import { Slug } from "../util/slug.ts";
 import { SessionSchema } from "./schema.ts";
 
 export {
@@ -123,7 +124,6 @@ export interface CreateSession {
 	/** The space (one directory in one env) this session attaches to; must exist. */
 	readonly spaceId: SpaceSchema.ID;
 	readonly parentId?: SessionSchema.ID; // session hierarchy (subagents) or fork lineage
-	readonly slug: string;
 	/** Absolute realpath of the cwd; equal to or under `space.location`. */
 	readonly directory: AbsolutePath;
 	/**
@@ -206,7 +206,6 @@ export interface ForkInput {
 	readonly entryId?: string; // fork point; default = current leaf (clone)
 	readonly mode?: "at" | "before"; // default "at"; "before" valid only for user entries
 	readonly id?: SessionSchema.ID; // new session id; generated when omitted
-	readonly slug: string; // required — slugs are unique
 	readonly title?: string; // default: source title
 	readonly tag?: string; // default: source tag
 }
@@ -493,7 +492,6 @@ export const layer = Layer.effect(
 			return yield* selectPartsForEntries(ids).pipe(Effect.orDie);
 		});
 
-		// TODO(sanchitrk): auto generate slug not from input
 		const create = Effect.fn("Session.create")(function* (input: CreateSession) {
 			const id = input.id ?? SessionSchema.ID.create();
 			const row = yield* SessionRow.insert
@@ -501,7 +499,7 @@ export const layer = Layer.effect(
 					id,
 					spaceId: input.spaceId,
 					parentId: Option.fromUndefinedOr(input.parentId),
-					slug: input.slug,
+					slug: yield* Slug.create(id),
 					directory: input.directory,
 					hostDir: Option.fromUndefinedOr(input.hostDir),
 					config: Option.none(),
@@ -1023,7 +1021,7 @@ export const layer = Layer.effect(
 							// Same space and directory as the source, so the same env and cwd.
 							spaceId: source.value.spaceId,
 							parentId: Option.some(source.value.id), // fork lineage
-							slug: input.slug,
+							slug: yield* Slug.create(newSessionId),
 							directory: source.value.directory,
 							// A fork continues the same work, so it reads the same project.
 							hostDir: source.value.hostDir,
