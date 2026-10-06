@@ -1,10 +1,4 @@
-/*
- * @file The built-in Prompt plugin: `codework.prompt.default`.
- *
- * Content only. The harness renders the prompt -- the tool index, the guideline dedupe, the tags and
- * the `<cwd>` -- so this plugin writes the foundation, the standing rules and the caller's append.
- * A third party that wants a different foundation omits this plugin or `set`s over it.
- */
+// Content only: the harness renders tools, tags and `<cwd>`.
 
 import * as Section from "@codeworksh/plugin/plugin/section";
 import { Effect } from "effect";

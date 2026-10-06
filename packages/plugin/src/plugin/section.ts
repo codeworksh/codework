@@ -1,20 +1,7 @@
-/**
- * Named sections of the system prompt.
- *
- * The prompt is a foundation (untagged head text) followed by sections, each rendered as a
- * snake_case XML-style tag. A plugin writes into a section by value, never by string, so a typo
- * fails to compile instead of quietly opening a new section.
- *
- * Sections merge by name: two plugins writing to `Rules`, or to their own `define("notes")`, fill
- * one `<rules>` / `<notes>`. `tools` and `cwd` are rendered by the harness and are not writable.
- */
+// Sections are passed by value, never by name string, so a typo fails to compile instead of
+// quietly opening a new section.
 
-/**
- * How a section's entries render.
- *
- * - `text`: entries verbatim, separated by a blank line.
- * - `list`: entries whitespace-collapsed, deduplicated (first wins), rendered as `- ` bullets.
- */
+/** `text`: entries verbatim, blank-line separated. `list`: deduplicated `- ` bullets. */
 export type Format = "text" | "list";
 
 export interface Section<Name extends string = string> {
@@ -22,26 +9,24 @@ export interface Section<Name extends string = string> {
 	readonly format: Format;
 }
 
-/** Built-ins a plugin may write to. The harness renders them in this order, before custom ones. */
 export const Rules: Section<"rules"> = Object.freeze({ name: "rules", format: "list" });
 export const Addendum: Section<"addendum"> = Object.freeze({ name: "addendum", format: "text" });
 export const ProjectContext: Section<"project_context"> = Object.freeze({ name: "project_context", format: "text" });
 export const Skills: Section<"skills"> = Object.freeze({ name: "skills", format: "text" });
 
-/** The writable built-ins, in render order. */
+/** Rendered in this order, before custom sections. */
 export const builtins: ReadonlyArray<Section> = Object.freeze([Rules, Addendum, ProjectContext, Skills]);
 
-/** Names no plugin may define: harness-rendered sections and the untagged head. */
+/** Rendered by the harness, never by a plugin. */
 export const reserved: ReadonlySet<string> = new Set(["tools", "cwd", "foundation"]);
 
 const pattern = /^[a-z][a-z0-9_]*$/;
 
 const formats: ReadonlySet<unknown> = new Set<Format>(["text", "list"]);
 
-/** True for a format the renderer knows; a JavaScript plugin can hand over anything. */
+/** Runtime check: a JavaScript plugin can pass anything. */
 export const isFormat = (format: unknown): format is Format => formats.has(format);
 
-/** Why `name` cannot be written to as a section, or undefined when it can. */
 export const invalid = (name: unknown): string | undefined => {
 	if (typeof name !== "string" || !pattern.test(name))
 		return `prompt section name must be snake_case: ${JSON.stringify(name)}`;
@@ -49,10 +34,7 @@ export const invalid = (name: unknown): string | undefined => {
 	return undefined;
 };
 
-/**
- * A custom section. Throws on a name that is not snake_case, is reserved, or belongs to a
- * built-in -- use the built-in value for those.
- */
+/** A custom section. Throws on a name that is not snake_case, reserved, or built in. */
 export const define = <const Name extends string>(
 	name: Name,
 	options?: { readonly format?: Format },

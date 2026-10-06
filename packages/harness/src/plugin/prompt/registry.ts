@@ -12,7 +12,7 @@ import type { PromptRegistry } from "./schema.ts";
  */
 export const fallback = "You are an AI agent for CodeWork. CodeWork is the best agent harness for code & work.";
 
-/** One section as plugins left it: its format, fixed by the first write, and its entries. */
+/** The format is fixed by the first write. */
 export interface Written {
 	readonly format: Section.Format;
 	readonly entries: ReadonlyArray<string>;
@@ -20,7 +20,6 @@ export interface Written {
 
 export interface Snapshot {
 	readonly foundation: string | undefined;
-	/** In first-write order. */
 	readonly sections: ReadonlyMap<string, Written>;
 }
 
@@ -32,7 +31,7 @@ export const make = () => {
 	const writable = () => {
 		if (!open) throw new Error("prompt registry is closed");
 	};
-	/** The section's slot, opened with this format on first write. A plugin passing a hand-built object is checked too. */
+	// Checked at runtime too: a JavaScript plugin can hand-build a Section.
 	const slot = (section: Section.Section) => {
 		writable();
 		const reason = Section.invalid(section.name);

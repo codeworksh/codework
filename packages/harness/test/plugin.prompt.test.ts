@@ -107,7 +107,6 @@ describe("codework.prompt.default", () => {
 							id: "acme.prompt.team",
 							kind: "prompt",
 							setup: (ctx) => {
-								// A second spelling of a default rule dedupes into the first.
 								ctx.plugin.prompt.sections.append(
 									Section.Rules,
 									"If a command  fails, read the error before retrying.",

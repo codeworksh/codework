@@ -17,7 +17,6 @@ export const make = () => {
 	return {
 		registry: Object.freeze<PluginRegistry>({ tools: tools.registry, prompt: prompt.registry }),
 		close,
-		/** Close the buckets and render the snapshot; `directory` is the exchange's `<cwd>`. */
 		freeze: (directory: string) => {
 			close();
 			const resolved = makeCatalog(tools.entries()).resolve();
