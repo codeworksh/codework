@@ -14,7 +14,7 @@ use crate::types::{
 };
 use crate::ui::model::ModelBrowserState;
 use crate::ui::spinner::Spinner;
-use crate::ui::welcome::COMMANDS;
+use crate::ui::welcome::commands;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActiveScreen {
@@ -48,6 +48,10 @@ pub struct App {
     pub session_scroll_offset: usize,
     pub session_dropdown_index: usize,
     pub is_streaming: bool,
+
+    // Theme picker state
+    pub theme_picker_open: bool,
+    pub theme_picker_index: usize,
 
     // RPC Client
     pub rpc_client: Arc<RpcClient>,
@@ -83,6 +87,9 @@ impl App {
             session_scroll_offset: 0,
             session_dropdown_index: 0,
             is_streaming: false,
+
+            theme_picker_open: false,
+            theme_picker_index: 0,
 
             rpc_client: Arc::new(RpcClient::default()),
             stream_tx,
@@ -267,6 +274,10 @@ impl App {
             return;
         }
 
+        if self.theme_picker_open && self.screen != ActiveScreen::ModelFlow {
+            return self.handle_theme_picker_key(key);
+        }
+
         match self.screen {
             ActiveScreen::Welcome => self.handle_welcome_key(key),
             ActiveScreen::ModelFlow => self.handle_model_flow_key(key),
@@ -274,10 +285,55 @@ impl App {
         }
     }
 
+    /// Live-preview navigation inside the `/theme` picker: moving the cursor
+    /// switches the palette immediately, so the whole UI recolors as you move.
+    /// Esc dismisses back to the palette you came from; Enter keeps it.
+    fn handle_theme_picker_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Esc => {
+                let _ = crate::ui::theme::set_active(self.theme_picker_index);
+                self.theme_picker_open = false;
+            }
+            KeyCode::Up | KeyCode::Left => {
+                let count = crate::ui::theme::PALETTES.len();
+                self.theme_picker_index = if self.theme_picker_index == 0 {
+                    count - 1
+                } else {
+                    self.theme_picker_index - 1
+                };
+                let _ = crate::ui::theme::set_active(self.theme_picker_index);
+            }
+            KeyCode::Down | KeyCode::Right => {
+                self.theme_picker_index = (self.theme_picker_index + 1) % crate::ui::theme::PALETTES.len();
+                let _ = crate::ui::theme::set_active(self.theme_picker_index);
+            }
+            KeyCode::Enter => {
+                self.theme_picker_open = false;
+                self.persist_theme();
+            }
+            _ => {}
+        }
+    }
+
+    /// Save the active theme id alongside the model config, so the choice
+    /// survives restarts. Without a configured model it stays session-only.
+    fn persist_theme(&self) {
+        if let Some(cfg) = &self.active_config {
+            let cfg = ModelConfig {
+                provider: cfg.provider.clone(),
+                model: cfg.model.clone(),
+                updated_at: cfg.updated_at.clone(),
+                theme: Some(crate::ui::theme::active().id.to_string()),
+            };
+            let _ = self.config_manager.save(&cfg);
+        }
+    }
+
     fn handle_welcome_key(&mut self, key: KeyEvent) {
         let is_dropdown_open = self.welcome_input.starts_with('/') && !self.welcome_input.contains(' ');
+        let all_commands = commands();
         let matching_cmds = if is_dropdown_open {
-            COMMANDS
+            all_commands
                 .iter()
                 .filter(|cmd| cmd.name.starts_with(&self.welcome_input))
                 .collect::<Vec<_>>()
@@ -425,6 +481,11 @@ impl App {
                 self.open_model_flow();
                 true
             }
+            "/theme" => {
+                self.theme_picker_open = true;
+                self.theme_picker_index = crate::ui::theme::active_index();
+                true
+            }
             "/exit" => {
                 self.should_quit = true;
                 true
@@ -442,7 +503,8 @@ impl App {
                 let mut help_turn = ConversationTurn::new("help".to_string(), "/help".to_string(), "system".to_string());
                 help_turn.streaming = false;
                 help_turn.end_time = Some(chrono::Utc::now().timestamp_millis());
-                help_turn.response = "### CodeWork Help & Commands\n\n| Command | Description |\n| :--- | :--- |\n| `/help` | Show available commands and shortcuts |\n| `/clear` | Clear conversation history and screen |\n| `/model` | Switch or view active LLM model |\n| `/session` | List or resume recent sessions |\n| `/compact` | Compact current conversation context |\n| `/exit` | Exit CodeWork TUI |\n\n**Shortcuts:**\n- `↑` / `↓` : Scroll chat history (or navigate commands when typing `/`)\n- `Home` / `End` : Jump to top / bottom of chat\n- `Ctrl+C` : Interrupt streaming response / Exit".to_string();
+                help_turn.response = "### CodeWork Help & Commands\n\n| Command | Description |\n| :--- | :--- |\n| `/help` | Show available commands and shortcuts |
+| `/theme` | Change the color theme |\n| `/clear` | Clear conversation history and screen |\n| `/model` | Switch or view active LLM model |\n| `/session` | List or resume recent sessions |\n| `/compact` | Compact current conversation context |\n| `/exit` | Exit CodeWork TUI |\n\n**Shortcuts:**\n- `↑` / `↓` : Scroll chat history (or navigate commands when typing `/`)\n- `Home` / `End` : Jump to top / bottom of chat\n- `Ctrl+C` : Interrupt streaming response / Exit".to_string();
                 self.turns.push(help_turn);
                 true
             }
@@ -523,6 +585,7 @@ impl App {
                                     provider: pending.provider_id.clone(),
                                     model: pending.id.clone(),
                                     updated_at: Some(chrono::Utc::now().to_rfc3339()),
+                                    theme: Some(crate::ui::theme::active().id.to_string()),
                                 });
 
                                 let _ = tx.send(StreamEvent::Succeeded);
@@ -866,6 +929,7 @@ impl App {
                             provider: m_clone.provider_id.clone(),
                             model: m_clone.id.clone(),
                             updated_at: Some(chrono::Utc::now().to_rfc3339()),
+                            theme: Some(crate::ui::theme::active().id.to_string()),
                         });
                         self.active_config = self.config_manager.load();
                         self.welcome_status_message = Some(format!("Connected to {} ({})", m_clone.name, m_clone.id));
@@ -924,8 +988,9 @@ impl App {
         }
 
         let is_dropdown_open = self.session_input.starts_with('/') && !self.session_input.contains(' ');
+        let all_commands = commands();
         let matching_cmds = if is_dropdown_open {
-            COMMANDS
+            all_commands
                 .iter()
                 .filter(|cmd| cmd.name.starts_with(&self.session_input))
                 .collect::<Vec<_>>()

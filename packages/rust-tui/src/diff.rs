@@ -147,9 +147,9 @@ pub fn render_diff(patch: &str, max_width: usize, max_lines: usize) -> (Vec<Line
         match line.kind {
             Kind::Hunk | Kind::FileHeader => {
                 let style = if line.kind == Kind::Hunk {
-                    Style::default().fg(Theme::DIFF_HUNK).add_modifier(Modifier::BOLD)
+                    Style::default().fg(Theme::diff_hunk()).add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Theme::DIFF_META).add_modifier(Modifier::BOLD)
+                    Style::default().fg(Theme::diff_meta()).add_modifier(Modifier::BOLD)
                 };
                 lines.push(Line::from(vec![Span::styled(elide(&line.text, max_width), style)]));
             }
@@ -158,15 +158,15 @@ pub fn render_diff(patch: &str, max_width: usize, max_lines: usize) -> (Vec<Line
                     Span::raw(" ".repeat(gutter_width + 1)),
                     Span::styled(
                         elide(&line.text, max_width.saturating_sub(gutter_width + 1)),
-                        Style::default().fg(Theme::DIFF_META).add_modifier(Modifier::ITALIC),
+                        Style::default().fg(Theme::diff_meta()).add_modifier(Modifier::ITALIC),
                     ),
                 ]));
             }
             Kind::Added | Kind::Removed | Kind::Context => {
                 let (marker, fg, bg, marker_color) = match line.kind {
-                    Kind::Added => ("+", Theme::SUCCESS, Some(Theme::DIFF_ADD_BG), Theme::SUCCESS),
-                    Kind::Removed => ("-", Theme::ERROR, Some(Theme::DIFF_DEL_BG), Theme::ERROR),
-                    _ => (" ", Theme::TEXT_PRIMARY, None, Theme::TEXT_MUTED),
+                    Kind::Added => ("+", Theme::success(), Some(Theme::diff_add_bg()), Theme::success()),
+                    Kind::Removed => ("-", Theme::error(), Some(Theme::diff_del_bg()), Theme::error()),
+                    _ => (" ", Theme::text_primary(), None, Theme::text_muted()),
                 };
 
                 let mut spans: Vec<Span<'static>> = Vec::new();
@@ -175,7 +175,7 @@ pub fn render_diff(patch: &str, max_width: usize, max_lines: usize) -> (Vec<Line
                         .line_no
                         .map(|n| format!("{:>width$} ", n, width = gutter_width))
                         .unwrap_or_else(|| " ".repeat(gutter_width + 1));
-                    spans.push(Span::styled(number, Style::default().fg(Theme::TEXT_MUTED)));
+                    spans.push(Span::styled(number, Style::default().fg(Theme::text_muted())));
                 }
                 spans.push(Span::styled(marker, Style::default().fg(marker_color)));
                 spans.push(Span::raw(" "));
@@ -201,7 +201,7 @@ pub fn render_diff(patch: &str, max_width: usize, max_lines: usize) -> (Vec<Line
     if remaining > 0 {
         lines.push(Line::from(vec![
             Span::raw(" ".repeat(gutter_width + 1)),
-            Span::styled(format!("⋯ +{remaining} more lines"), Style::default().fg(Theme::DIFF_META)),
+            Span::styled(format!("⋯ +{remaining} more lines"), Style::default().fg(Theme::diff_meta())),
         ]));
     }
 

@@ -12,7 +12,7 @@ use crate::ui::logo::{render_animated_logo_lines, render_header_logo};
 use crate::ui::spinner::Spinner;
 use crate::ui::text::elide;
 use crate::ui::theme::Theme;
-use crate::ui::welcome::{CommandItem, COMMANDS};
+use crate::ui::welcome::{commands, CommandItem};
 
 pub fn render_session(
     f: &mut Frame,
@@ -68,7 +68,7 @@ pub fn render_session(
         ])
         .split(chunks[0]);
 
-    let border_style = Style::default().fg(Theme::BORDER);
+    let border_style = Style::default().fg(Theme::border());
 
     // 1. Main Header with 2-space padding
     let sess_title = session_info
@@ -82,8 +82,8 @@ pub fn render_session(
     let formatted_dir = crate::git::truncate_path(std::path::Path::new(sess_dir), max_dir_len);
     let mut title_spans = vec![Span::raw("  ")];
     title_spans.extend(render_header_logo(spinner.tick_count(), is_streaming));
-    title_spans.push(Span::styled(format!("· {} ", sess_title), Style::default().fg(Theme::TEXT_PRIMARY)));
-    title_spans.push(Span::styled(format!("({})", formatted_dir), Style::default().fg(Theme::TEXT_MUTED)));
+    title_spans.push(Span::styled(format!("· {} ", sess_title), Style::default().fg(Theme::text_primary())));
+    title_spans.push(Span::styled(format!("({})", formatted_dir), Style::default().fg(Theme::text_muted())));
 
     let header_lines = vec![
         Line::from(title_spans),
@@ -114,8 +114,8 @@ pub fn render_session(
         if !turn.thinking.is_empty() {
             let spin_char = if turn.streaming { spinner.current() } else { "●" };
             conv_lines.push(Line::from(vec![
-                Span::styled(format!("{} ", spin_char), Style::default().fg(Theme::ACTIVITY)),
-                Span::styled("Thinking", Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("{} ", spin_char), Style::default().fg(Theme::activity())),
+                Span::styled("Thinking", Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD)),
             ]));
 
             let wrap_think_w = max_text_width.saturating_sub(4).max(10);
@@ -123,8 +123,8 @@ pub fn render_session(
                 let wrapped = wrap_text(t_line, wrap_think_w);
                 for w_line in wrapped {
                     conv_lines.push(Line::from(vec![
-                        Span::styled("  │ ", Style::default().fg(Theme::TEXT_MUTED)),
-                        Span::styled(w_line, Style::default().fg(Theme::TEXT_MUTED).add_modifier(Modifier::ITALIC)),
+                        Span::styled("  │ ", Style::default().fg(Theme::text_muted())),
+                        Span::styled(w_line, Style::default().fg(Theme::text_muted()).add_modifier(Modifier::ITALIC)),
                     ]));
                 }
             }
@@ -134,8 +134,8 @@ pub fn render_session(
         // Active Tool, titled from the arguments it was called with
         if let Some(running) = &turn.active_tool {
             conv_lines.push(Line::from(vec![
-                Span::styled(format!("{} ", spinner.current()), Style::default().fg(Theme::ACTIVITY)),
-                Span::styled(running.heading(), Style::default().fg(Theme::TEXT_PRIMARY)),
+                Span::styled(format!("{} ", spinner.current()), Style::default().fg(Theme::activity())),
+                Span::styled(running.heading(), Style::default().fg(Theme::text_primary())),
             ]));
         }
 
@@ -157,8 +157,8 @@ pub fn render_session(
         // Error line
         if let Some(err) = &turn.error {
             conv_lines.push(Line::from(vec![
-                Span::styled("✗ ", Style::default().fg(Theme::ERROR).add_modifier(Modifier::BOLD)),
-                Span::styled(err.clone(), Style::default().fg(Theme::ERROR)),
+                Span::styled("✗ ", Style::default().fg(Theme::error()).add_modifier(Modifier::BOLD)),
+                Span::styled(err.clone(), Style::default().fg(Theme::error())),
             ]));
             conv_lines.push(Line::raw(""));
         }
@@ -171,11 +171,11 @@ pub fn render_session(
         };
 
         let footer_spans = vec![
-            Span::styled("● ", Style::default().fg(Theme::ACCENT)),
-            Span::styled("Build   ", Style::default().fg(Theme::ACCENT).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("{}   ", turn.model_name), Style::default().fg(Theme::MODEL)),
-            Span::styled(format!("{:.1}s   ", elapsed_sec), Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(format!("{:.1} tok/s", turn.tokens_per_sec), Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled("● ", Style::default().fg(Theme::accent())),
+            Span::styled("Build   ", Style::default().fg(Theme::accent()).add_modifier(Modifier::BOLD)),
+            Span::styled(format!("{}   ", turn.model_name), Style::default().fg(Theme::model())),
+            Span::styled(format!("{:.1}s   ", elapsed_sec), Style::default().fg(Theme::text_muted())),
+            Span::styled(format!("{:.1} tok/s", turn.tokens_per_sec), Style::default().fg(Theme::text_muted())),
         ];
         conv_lines.push(Line::from(footer_spans));
         conv_lines.push(Line::raw(""));
@@ -200,7 +200,7 @@ pub fn render_session(
         Line::from(vec![
             Span::raw("  "),
             Span::styled("─".repeat(left_dashes), border_style),
-            Span::styled(tag, Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD)),
+            Span::styled(tag, Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD)),
             Span::styled("─".repeat(right_dashes), border_style),
         ])
     } else {
@@ -216,8 +216,8 @@ pub fn render_session(
     if is_streaming {
         input_widget_lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(format!("{} ", spinner.current()), Style::default().fg(Theme::ACTIVITY)),
-            Span::styled("Generating response... (Ctrl+C to interrupt)", Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled(format!("{} ", spinner.current()), Style::default().fg(Theme::activity())),
+            Span::styled("Generating response... (Ctrl+C to interrupt)", Style::default().fg(Theme::text_muted())),
         ]));
     } else {
         let total_input_lines = wrapped_input.lines.len();
@@ -233,14 +233,14 @@ pub fn render_session(
             let mut spans = if line_idx == 0 {
                 vec![
                     Span::raw("  "),
-                    Span::styled("❯ ", Style::default().fg(Theme::ACCENT).add_modifier(Modifier::BOLD)),
+                    Span::styled("❯ ", Style::default().fg(Theme::accent()).add_modifier(Modifier::BOLD)),
                 ]
             } else {
                 vec![
                     Span::raw("    "),
                 ]
             };
-            spans.extend(crate::ui::input::render_line_spans(line, Theme::ACCENT, cursor_visible));
+            spans.extend(crate::ui::input::render_line_spans(line, Theme::accent(), cursor_visible));
             input_widget_lines.push(Line::from(spans));
         }
     }
@@ -256,7 +256,8 @@ pub fn render_session(
     // Command Dropdown Popup in Session
     let is_dropdown_open = !is_streaming && input_buffer.starts_with('/') && !input_buffer.contains(' ');
     if is_dropdown_open {
-        let matching_cmds: Vec<&CommandItem> = COMMANDS
+        let commands = commands();
+        let matching_cmds: Vec<&CommandItem> = commands
             .iter()
             .filter(|cmd| cmd.name.starts_with(input_buffer))
             .collect();
@@ -273,13 +274,13 @@ pub fn render_session(
 
         let popup_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Theme::SKY))
-            .title(Span::styled(" Commands ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)))
+            .border_style(Style::default().fg(Theme::sky()))
+            .title(Span::styled(" Commands ", Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD)))
             .title_bottom(Span::styled(
                 " ↑/↓ navigate • Tab complete • Enter select • Esc dismiss ",
-                Style::default().fg(Theme::TEXT_MUTED),
+                Style::default().fg(Theme::text_muted()),
             ))
-            .style(Style::default().bg(Theme::BG_SURFACE));
+            .style(Style::default().bg(Theme::bg_surface()));
 
         f.render_widget(popup_block, popup_rect);
 
@@ -294,20 +295,20 @@ pub fn render_session(
         if matching_cmds.is_empty() {
             cmd_lines.push(Line::from(vec![
                 Span::raw("  "),
-                Span::styled("No matching commands", Style::default().fg(Theme::TEXT_MUTED)),
+                Span::styled("No matching commands", Style::default().fg(Theme::text_muted())),
             ]));
         } else {
             for (idx, cmd) in matching_cmds.iter().enumerate() {
                 let is_selected = idx == dropdown_index;
                 if is_selected {
                     cmd_lines.push(Line::from(vec![
-                        Span::styled("▶ ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)),
+                        Span::styled("▶ ", Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD)),
                         Span::styled(format!("{} ", cmd.icon), Style::default().fg(cmd.icon_color).add_modifier(Modifier::BOLD)),
                         Span::styled(
                             format!("{:<10}", cmd.name),
-                            Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD),
+                            Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD),
                         ),
-                        Span::styled(cmd.description, Style::default().fg(Theme::TEXT_PRIMARY)),
+                        Span::styled(cmd.description, Style::default().fg(Theme::text_primary())),
                     ]));
                 } else {
                     cmd_lines.push(Line::from(vec![
@@ -315,9 +316,9 @@ pub fn render_session(
                         Span::styled(format!("{} ", cmd.icon), Style::default().fg(cmd.icon_color)),
                         Span::styled(
                             format!("{:<10}", cmd.name),
-                            Style::default().fg(Theme::TEXT_SECONDARY),
+                            Style::default().fg(Theme::text_secondary()),
                         ),
-                        Span::styled(cmd.description, Style::default().fg(Theme::TEXT_MUTED)),
+                        Span::styled(cmd.description, Style::default().fg(Theme::text_muted())),
                     ]));
                 }
             }
@@ -352,41 +353,41 @@ pub fn render_session(
         sidebar_lines.push(Line::raw(""));
     }
 
-    sidebar_lines.push(Line::from(Span::styled("MODEL", Style::default().fg(Theme::TEXT_MUTED).add_modifier(Modifier::BOLD))));
+    sidebar_lines.push(Line::from(Span::styled("MODEL", Style::default().fg(Theme::text_muted()).add_modifier(Modifier::BOLD))));
     sidebar_lines.push(Line::from(vec![
-        Span::styled(format!("{} ", config.provider), Style::default().fg(Theme::TEXT_PRIMARY)),
-        Span::styled(&config.model, Style::default().fg(Theme::MODEL).add_modifier(Modifier::BOLD)),
+        Span::styled(format!("{} ", config.provider), Style::default().fg(Theme::text_primary())),
+        Span::styled(&config.model, Style::default().fg(Theme::model()).add_modifier(Modifier::BOLD)),
     ]));
     sidebar_lines.push(Line::raw(""));
 
-    sidebar_lines.push(Line::from(Span::styled("CONTEXT", Style::default().fg(Theme::TEXT_MUTED).add_modifier(Modifier::BOLD))));
+    sidebar_lines.push(Line::from(Span::styled("CONTEXT", Style::default().fg(Theme::text_muted()).add_modifier(Modifier::BOLD))));
     let pct = (stats.total_tokens as f64 / 1_000_000.0 * 100.0).clamp(0.0, 100.0);
     let filled = ((pct / 10.0).round() as usize).min(10);
     let empty = 10 - filled;
     let bar = format!("[{}{}] {:.1}%", "█".repeat(filled), "░".repeat(empty), pct);
-    sidebar_lines.push(Line::from(Span::styled(bar, Style::default().fg(Theme::ACCENT))));
+    sidebar_lines.push(Line::from(Span::styled(bar, Style::default().fg(Theme::accent()))));
     sidebar_lines.push(Line::from(Span::styled(
         format!("{} / 1.0M tokens", stats.total_tokens),
-        Style::default().fg(Theme::TEXT_MUTED),
+        Style::default().fg(Theme::text_muted()),
     )));
     sidebar_lines.push(Line::raw(""));
 
-    sidebar_lines.push(Line::from(Span::styled("METRICS", Style::default().fg(Theme::TEXT_MUTED).add_modifier(Modifier::BOLD))));
+    sidebar_lines.push(Line::from(Span::styled("METRICS", Style::default().fg(Theme::text_muted()).add_modifier(Modifier::BOLD))));
     sidebar_lines.push(Line::from(vec![
-        Span::styled("Turns: ", Style::default().fg(Theme::TEXT_MUTED)),
-        Span::styled(format!("{}", stats.turns_count), Style::default().fg(Theme::TEXT_PRIMARY)),
+        Span::styled("Turns: ", Style::default().fg(Theme::text_muted())),
+        Span::styled(format!("{}", stats.turns_count), Style::default().fg(Theme::text_primary())),
     ]));
     sidebar_lines.push(Line::from(vec![
-        Span::styled("Cost:  ", Style::default().fg(Theme::TEXT_MUTED)),
-        Span::styled(format!("${:.4}", stats.cost), Style::default().fg(Theme::SUCCESS)),
+        Span::styled("Cost:  ", Style::default().fg(Theme::text_muted())),
+        Span::styled(format!("${:.4}", stats.cost), Style::default().fg(Theme::success())),
     ]));
     sidebar_lines.push(Line::raw(""));
 
-    sidebar_lines.push(Line::from(Span::styled("CONTROLS", Style::default().fg(Theme::TEXT_MUTED).add_modifier(Modifier::BOLD))));
-    sidebar_lines.push(Line::from(Span::styled("Ctrl+C  Interrupt / Exit", Style::default().fg(Theme::TEXT_SECONDARY))));
-    sidebar_lines.push(Line::from(Span::styled("↑ / ↓   Scroll chat", Style::default().fg(Theme::TEXT_SECONDARY))));
-    sidebar_lines.push(Line::from(Span::styled("Home/End Top / Bottom", Style::default().fg(Theme::TEXT_SECONDARY))));
-    sidebar_lines.push(Line::from(Span::styled("Esc     Return to home", Style::default().fg(Theme::TEXT_SECONDARY))));
+    sidebar_lines.push(Line::from(Span::styled("CONTROLS", Style::default().fg(Theme::text_muted()).add_modifier(Modifier::BOLD))));
+    sidebar_lines.push(Line::from(Span::styled("Ctrl+C  Interrupt / Exit", Style::default().fg(Theme::text_secondary()))));
+    sidebar_lines.push(Line::from(Span::styled("↑ / ↓   Scroll chat", Style::default().fg(Theme::text_secondary()))));
+    sidebar_lines.push(Line::from(Span::styled("Home/End Top / Bottom", Style::default().fg(Theme::text_secondary()))));
+    sidebar_lines.push(Line::from(Span::styled("Esc     Return to home", Style::default().fg(Theme::text_secondary()))));
 
     f.render_widget(Paragraph::new(sidebar_lines).block(sidebar_block), sidebar_area);
 }
@@ -416,9 +417,9 @@ fn render_tool_run(
     // A run with any failure takes the error colour, so a wall of green never
     // hides the one call that did not work.
     let (icon, color) = if failed > 0 {
-        ("✗ ", Theme::ERROR)
+        ("✗ ", Theme::error())
     } else {
-        ("✓ ", Theme::SUCCESS)
+        ("✓ ", Theme::success())
     };
     let label = format!("{name} ×{}", members.len());
 
@@ -439,7 +440,7 @@ fn render_tool_run(
         spans.push(Span::raw("  "));
         spans.push(Span::styled(
             elide(&meta, max_text_width.saturating_sub(used)),
-            Style::default().fg(Theme::TEXT_MUTED),
+            Style::default().fg(Theme::text_muted()),
         ));
     }
 
@@ -450,9 +451,9 @@ fn render_tool_run(
 /// touched, plus a truncated inline unified diff when it returned a `patch`.
 pub fn render_tool_result(tool: &ToolResult, max_text_width: usize) -> Vec<Line<'static>> {
     let (icon, color) = if tool.is_error {
-        ("✗ ", Theme::ERROR)
+        ("✗ ", Theme::error())
     } else {
-        ("✓ ", Theme::SUCCESS)
+        ("✓ ", Theme::success())
     };
 
     // The summary is the outcome and is never dropped; the heading gives way to
@@ -472,7 +473,7 @@ pub fn render_tool_result(tool: &ToolResult, max_text_width: usize) -> Vec<Line<
     ];
     if let Some(summary) = &tool.summary {
         header.push(Span::raw("  "));
-        header.push(Span::styled(summary.clone(), Style::default().fg(Theme::TEXT_MUTED)));
+        header.push(Span::styled(summary.clone(), Style::default().fg(Theme::text_muted())));
     }
 
     let Some(patch) = &tool.patch else {
@@ -499,8 +500,8 @@ pub fn render_input_with_cursor(input: &str, cursor: usize) -> Vec<Span<'static>
 }
 
 pub fn render_user_prompt_box(prompt: &str, max_text_width: usize) -> Vec<Line<'static>> {
-    let box_bg = Theme::BG_USER_MSG;
-    let border_color = Theme::BORDER_USER_MSG;
+    let box_bg = Theme::bg_user_msg();
+    let border_color = Theme::border_user_msg();
     let wrap_w = max_text_width.saturating_sub(6).max(10);
 
     let mut prompt_lines = Vec::new();
@@ -532,7 +533,7 @@ pub fn render_user_prompt_box(prompt: &str, max_text_width: usize) -> Vec<Line<'
         Span::styled(top_prefix, Style::default().fg(border_color).bg(box_bg)),
         Span::styled(
             top_icon,
-            Style::default().fg(Theme::PRIMARY).bg(box_bg).add_modifier(Modifier::BOLD),
+            Style::default().fg(Theme::primary()).bg(box_bg).add_modifier(Modifier::BOLD),
         ),
         Span::styled("─".repeat(bar_len), Style::default().fg(border_color).bg(box_bg)),
         Span::styled(top_right, Style::default().fg(border_color).bg(box_bg)),
@@ -564,7 +565,7 @@ pub fn render_user_prompt_box(prompt: &str, max_text_width: usize) -> Vec<Line<'
             Span::styled("│ ", Style::default().fg(border_color).bg(box_bg)),
             Span::styled(
                 display_text,
-                Style::default().fg(Theme::TEXT_PRIMARY).bg(box_bg).add_modifier(Modifier::BOLD),
+                Style::default().fg(Theme::text_primary()).bg(box_bg).add_modifier(Modifier::BOLD),
             ),
             Span::styled(" ".repeat(pad), Style::default().bg(box_bg)),
             Span::styled(" │", Style::default().fg(border_color).bg(box_bg)),
@@ -617,7 +618,7 @@ mod tests {
         let lines = render_user_prompt_box("check background color", 50);
         for line in &lines {
             for span in &line.spans {
-                assert_eq!(span.style.bg, Some(Theme::BG_USER_MSG));
+                assert_eq!(span.style.bg, Some(Theme::bg_user_msg()));
             }
         }
     }
@@ -672,11 +673,11 @@ mod tests {
         let added = spans()
             .find(|s| s.content.as_ref() == "new")
             .expect("added content span");
-        assert_eq!(added.style.bg, Some(Theme::DIFF_ADD_BG));
+        assert_eq!(added.style.bg, Some(Theme::diff_add_bg()));
         let removed = spans()
             .find(|s| s.content.as_ref() == "old")
             .expect("removed content span");
-        assert_eq!(removed.style.bg, Some(Theme::DIFF_DEL_BG));
+        assert_eq!(removed.style.bg, Some(Theme::diff_del_bg()));
     }
 
     #[test]
@@ -740,7 +741,7 @@ mod tests {
             .iter()
             .find(|span| span.content.contains("read ×3"))
             .expect("the run label");
-        assert_eq!(label.style.fg, Some(Theme::ERROR));
+        assert_eq!(label.style.fg, Some(Theme::error()));
     }
 
     #[test]

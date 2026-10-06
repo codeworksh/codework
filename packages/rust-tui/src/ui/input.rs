@@ -271,7 +271,7 @@ pub fn render_line_spans(
     cursor_color: Color,
     cursor_visible: bool,
 ) -> Vec<Span<'static>> {
-    let plain_text = |text: String| Span::styled(text, Style::default().fg(Theme::TEXT_PRIMARY));
+    let plain_text = |text: String| Span::styled(text, Style::default().fg(Theme::text_primary()));
 
     match line.cursor_col {
         // Caret is on this line but in its "off" blink phase: draw the text
@@ -297,7 +297,7 @@ pub fn render_line_spans(
                     Span::styled(
                         cur_char.to_string(),
                         Style::default()
-                            .fg(Theme::BG_CARD)
+                            .fg(Theme::bg_card())
                             .bg(cursor_color)
                             .add_modifier(Modifier::BOLD),
                     ),
@@ -316,7 +316,7 @@ pub fn render_input_with_cursor(input: &str, cursor: usize) -> Vec<Span<'static>
         char_count: input.chars().count(),
         cursor_col: Some(cursor),
     };
-    render_line_spans(&line, Theme::ACCENT, true)
+    render_line_spans(&line, Theme::accent(), true)
 }
 
 #[cfg(test)]

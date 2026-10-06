@@ -5,6 +5,7 @@ pub mod session;
 pub mod spinner;
 pub mod text;
 pub mod theme;
+pub mod theme_picker;
 pub mod welcome;
 
 #[allow(unused_imports)]
@@ -14,6 +15,7 @@ pub use input::{
 };
 pub use model::render_model_browser;
 pub use session::render_session;
+pub use theme_picker::render_theme_picker;
 pub use theme::Theme;
 #[allow(unused_imports)]
-pub use welcome::{render_welcome, CommandItem, COMMANDS};
+pub use welcome::{commands, render_welcome, CommandItem};

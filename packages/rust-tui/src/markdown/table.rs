@@ -128,9 +128,9 @@ pub fn render_table(rows: &[String], max_width: usize) -> Vec<Line<'static>> {
         }
     }
 
-    let border_style = Style::default().fg(Theme::BORDER);
+    let border_style = Style::default().fg(Theme::border());
     let header_style = Style::default()
-        .fg(Theme::PRIMARY)
+        .fg(Theme::primary())
         .add_modifier(Modifier::BOLD);
 
     let mut lines = Vec::new();

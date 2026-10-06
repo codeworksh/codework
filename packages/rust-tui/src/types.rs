@@ -6,6 +6,9 @@ pub struct ModelConfig {
     pub model: String,
     #[serde(rename = "updatedAt", skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    /// Selected UI theme id (e.g. "tokyo-night"); absent means the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
 }
 
 #[allow(dead_code)]

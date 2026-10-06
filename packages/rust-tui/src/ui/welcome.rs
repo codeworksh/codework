@@ -17,44 +17,54 @@ pub struct CommandItem {
     pub icon_color: Color,
 }
 
-pub const COMMANDS: &[CommandItem] = &[
-    CommandItem {
-        name: "/help",
-        icon: "?",
-        description: "Show available commands and shortcuts",
-        icon_color: Theme::SKY,
-    },
-    CommandItem {
-        name: "/clear",
-        icon: "↺",
-        description: "Clear conversation history and screen",
-        icon_color: Theme::WARNING,
-    },
-    CommandItem {
-        name: "/model",
-        icon: "✦",
-        description: "Switch or view active LLM model",
-        icon_color: Theme::PRIMARY,
-    },
-    CommandItem {
-        name: "/session",
-        icon: "◷",
-        description: "List or resume recent sessions",
-        icon_color: Theme::SECONDARY,
-    },
-    CommandItem {
-        name: "/compact",
-        icon: "⇥",
-        description: "Compact current conversation context",
-        icon_color: Theme::SUCCESS,
-    },
-    CommandItem {
-        name: "/exit",
-        icon: "✕",
-        description: "Exit CodeWork TUI",
-        icon_color: Theme::ERROR,
-    },
-];
+/// Built as a function (not a `const`) so icon colors resolve against the
+/// active palette — a `const` would freeze the startup theme's colors.
+pub fn commands() -> Vec<CommandItem> {
+    vec![
+        CommandItem {
+            name: "/help",
+            icon: "?",
+            description: "Show available commands and shortcuts",
+            icon_color: Theme::sky(),
+        },
+        CommandItem {
+            name: "/clear",
+            icon: "↺",
+            description: "Clear conversation history and screen",
+            icon_color: Theme::warning(),
+        },
+        CommandItem {
+            name: "/model",
+            icon: "✦",
+            description: "Switch or view active LLM model",
+            icon_color: Theme::primary(),
+        },
+        CommandItem {
+            name: "/theme",
+            icon: "◑",
+            description: "Change the color theme",
+            icon_color: Theme::pink(),
+        },
+        CommandItem {
+            name: "/session",
+            icon: "◷",
+            description: "List or resume recent sessions",
+            icon_color: Theme::secondary(),
+        },
+        CommandItem {
+            name: "/compact",
+            icon: "⇥",
+            description: "Compact current conversation context",
+            icon_color: Theme::success(),
+        },
+        CommandItem {
+            name: "/exit",
+            icon: "✕",
+            description: "Exit CodeWork TUI",
+            icon_color: Theme::error(),
+        },
+    ]
+}
 
 pub fn render_welcome(
     f: &mut Frame,
@@ -70,8 +80,9 @@ pub fn render_welcome(
     let cursor_visible = spinner.cursor_visible();
     let is_dropdown_open = input.starts_with('/') && !input.contains(' ');
 
+    let commands = commands();
     let matching_cmds: Vec<&CommandItem> = if is_dropdown_open {
-        COMMANDS
+        commands
             .iter()
             .filter(|cmd| cmd.name.starts_with(input))
             .collect()
@@ -109,8 +120,8 @@ pub fn render_welcome(
 
     let top_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Theme::BORDER))
-        .style(Style::default().bg(Theme::BG_SURFACE));
+        .border_style(Style::default().fg(Theme::border()))
+        .style(Style::default().bg(Theme::bg_surface()));
     f.render_widget(top_block, top_rect);
 
     if top_h >= 5 {
@@ -132,15 +143,15 @@ pub fn render_welcome(
             ),
             Span::styled(
                 "codework ",
-                Style::default().fg(Theme::TEXT_PRIMARY).add_modifier(Modifier::BOLD),
+                Style::default().fg(Theme::text_primary()).add_modifier(Modifier::BOLD),
             ),
-            Span::styled("v0.0.1", Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled("v0.0.1", Style::default().fg(Theme::text_muted())),
             Span::raw(" ".repeat(header_pad)),
-            Span::styled(right_part, Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled(right_part, Style::default().fg(Theme::text_muted())),
         ]);
         let divider_line = Line::from(Span::styled(
             "─".repeat(inner_w as usize),
-            Style::default().fg(Theme::BORDER),
+            Style::default().fg(Theme::border()),
         ));
         f.render_widget(
             Paragraph::new(vec![header_line, divider_line]),
@@ -156,11 +167,11 @@ pub fn render_welcome(
         let mut left_lines = Vec::new();
         left_lines.push(Line::from(Span::styled(
             "The Open-Source",
-            Style::default().fg(Theme::TEXT_PRIMARY).add_modifier(Modifier::BOLD),
+            Style::default().fg(Theme::text_primary()).add_modifier(Modifier::BOLD),
         )));
         left_lines.push(Line::from(Span::styled(
             "Coding Agent Harness",
-            Style::default().fg(Theme::ACCENT),
+            Style::default().fg(Theme::accent()),
         )));
         left_lines.push(Line::raw(""));
 
@@ -175,11 +186,11 @@ pub fn render_welcome(
             .unwrap_or_else(|| "codework:default".to_string());
         left_lines.push(Line::from(Span::styled(
             model_str,
-            Style::default().fg(Theme::MODEL),
+            Style::default().fg(Theme::model()),
         )));
         left_lines.push(Line::from(Span::styled(
             "plugins • sandboxed",
-            Style::default().fg(Theme::TEXT_MUTED),
+            Style::default().fg(Theme::text_muted()),
         )));
 
         f.render_widget(
@@ -190,7 +201,7 @@ pub fn render_welcome(
         // Vertical divider
         if inner_w > left_w {
             let div_lines: Vec<Line> = (0..content_h)
-                .map(|_| Line::from(Span::styled("│", Style::default().fg(Theme::BORDER))))
+                .map(|_| Line::from(Span::styled("│", Style::default().fg(Theme::border()))))
                 .collect();
             f.render_widget(
                 Paragraph::new(div_lines),
@@ -208,70 +219,70 @@ pub fn render_welcome(
                     Span::raw("  "),
                     Span::styled(
                         "Agent Loop & Tools",
-                        Style::default().fg(Theme::ACCENT).add_modifier(Modifier::BOLD),
+                        Style::default().fg(Theme::accent()).add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Understand ", Style::default().fg(Theme::TEXT_SECONDARY)),
-                    Span::styled("search & read codebase", Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled("Understand ", Style::default().fg(Theme::text_secondary())),
+                    Span::styled("search & read codebase", Style::default().fg(Theme::text_muted())),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Modify     ", Style::default().fg(Theme::TEXT_SECONDARY)),
-                    Span::styled("edit files & apply diffs", Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled("Modify     ", Style::default().fg(Theme::text_secondary())),
+                    Span::styled("edit files & apply diffs", Style::default().fg(Theme::text_muted())),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Execute    ", Style::default().fg(Theme::TEXT_SECONDARY)),
-                    Span::styled("sandboxed commands & shell", Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled("Execute    ", Style::default().fg(Theme::text_secondary())),
+                    Span::styled("sandboxed commands & shell", Style::default().fg(Theme::text_muted())),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Debug      ", Style::default().fg(Theme::TEXT_SECONDARY)),
-                    Span::styled("autonomous test & iterate", Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled("Debug      ", Style::default().fg(Theme::text_secondary())),
+                    Span::styled("autonomous test & iterate", Style::default().fg(Theme::text_muted())),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("─".repeat(div_width), Style::default().fg(Theme::BORDER)),
+                    Span::styled("─".repeat(div_width), Style::default().fg(Theme::border())),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
                     Span::styled(
                         "Plugins & MCP",
-                        Style::default().fg(Theme::ACCENT).add_modifier(Modifier::BOLD),
+                        Style::default().fg(Theme::accent()).add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Plugin SDK ", Style::default().fg(Theme::TEXT_SECONDARY)),
-                    Span::styled("custom tools, drivers & hooks", Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled("Plugin SDK ", Style::default().fg(Theme::text_secondary())),
+                    Span::styled("custom tools, drivers & hooks", Style::default().fg(Theme::text_muted())),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("MCP Ready  ", Style::default().fg(Theme::TEXT_SECONDARY)),
-                    Span::styled("plug in external tool servers", Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled("MCP Ready  ", Style::default().fg(Theme::text_secondary())),
+                    Span::styled("plug in external tool servers", Style::default().fg(Theme::text_muted())),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("─".repeat(div_width), Style::default().fg(Theme::BORDER)),
+                    Span::styled("─".repeat(div_width), Style::default().fg(Theme::border())),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
                     Span::styled(
                         "Developer Platform",
-                        Style::default().fg(Theme::ACCENT).add_modifier(Modifier::BOLD),
+                        Style::default().fg(Theme::accent()).add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Sandboxed  ", Style::default().fg(Theme::TEXT_SECONDARY)),
-                    Span::styled("isolated execution", Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled("Sandboxed  ", Style::default().fg(Theme::text_secondary())),
+                    Span::styled("isolated execution", Style::default().fg(Theme::text_muted())),
                 ]),
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled("Open Source", Style::default().fg(Theme::TEXT_SECONDARY)),
-                    Span::styled("build & run your agent", Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled("Open Source", Style::default().fg(Theme::text_secondary())),
+                    Span::styled("build & run your agent", Style::default().fg(Theme::text_muted())),
                 ]),
             ];
             f.render_widget(
@@ -288,17 +299,17 @@ pub fn render_welcome(
             Line::from(vec![
                 Span::styled(
                     "Codework: ",
-                    Style::default().fg(Theme::PINK),
+                    Style::default().fg(Theme::pink()),
                 ),
                 Span::styled(
                     "Build, run, and customize AI coding agents with plugins to",
-                    Style::default().fg(Theme::TEXT_MUTED).add_modifier(Modifier::ITALIC),
+                    Style::default().fg(Theme::text_muted()).add_modifier(Modifier::ITALIC),
                 ),
             ]),
             Line::from(vec![
                 Span::styled(
                     "understand code, edit files, execute commands, and debug autonomously.",
-                    Style::default().fg(Theme::TEXT_MUTED).add_modifier(Modifier::ITALIC),
+                    Style::default().fg(Theme::text_muted()).add_modifier(Modifier::ITALIC),
                 ),
             ]),
         ];
@@ -310,15 +321,15 @@ pub fn render_welcome(
     let bot_h = card2_height.min(area.height.saturating_sub(bot_y));
     if bot_h >= 3 {
         let bot_border_color = if is_dropdown_open {
-            Theme::SKY
+            Theme::sky()
         } else {
-            Theme::BORDER_BOX
+            Theme::border_box()
         };
 
         let bot_block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(bot_border_color))
-            .style(Style::default().bg(Theme::BG_SURFACE));
+            .style(Style::default().bg(Theme::bg_surface()));
         let bot_inner = Rect::new(start_x + 1, bot_y + 1, card_width.saturating_sub(2), bot_h.saturating_sub(2));
 
         f.render_widget(bot_block, Rect::new(start_x, bot_y, card_width, bot_h));
@@ -327,26 +338,26 @@ pub fn render_welcome(
         if is_dropdown_open {
             bot_lines.push(Line::from(Span::styled(
                 "Commands",
-                Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD),
+                Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD),
             )));
 
             if matching_cmds.is_empty() {
                 bot_lines.push(Line::from(Span::styled(
                     "No matching commands",
-                    Style::default().fg(Theme::TEXT_MUTED),
+                    Style::default().fg(Theme::text_muted()),
                 )));
             } else {
                 for (idx, cmd) in matching_cmds.iter().enumerate() {
                     let is_selected = idx == dropdown_index;
                     if is_selected {
                         bot_lines.push(Line::from(vec![
-                            Span::styled("▶ ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)),
+                            Span::styled("▶ ", Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD)),
                             Span::styled(format!("{} ", cmd.icon), Style::default().fg(cmd.icon_color).add_modifier(Modifier::BOLD)),
                             Span::styled(
                                 format!("{:<10}", cmd.name),
-                                Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD),
+                                Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD),
                             ),
-                            Span::styled(cmd.description, Style::default().fg(Theme::TEXT_PRIMARY)),
+                            Span::styled(cmd.description, Style::default().fg(Theme::text_primary())),
                         ]));
                     } else {
                         bot_lines.push(Line::from(vec![
@@ -354,9 +365,9 @@ pub fn render_welcome(
                             Span::styled(format!("{} ", cmd.icon), Style::default().fg(cmd.icon_color)),
                             Span::styled(
                                 format!("{:<10}", cmd.name),
-                                Style::default().fg(Theme::TEXT_SECONDARY),
+                                Style::default().fg(Theme::text_secondary()),
                             ),
-                            Span::styled(cmd.description, Style::default().fg(Theme::TEXT_MUTED)),
+                            Span::styled(cmd.description, Style::default().fg(Theme::text_muted())),
                         ]));
                     }
                 }
@@ -374,25 +385,25 @@ pub fn render_welcome(
             for (i, line) in visible_slice.iter().enumerate() {
                 let l_idx = scroll_top + i;
                 let prefix = if l_idx == 0 {
-                    Span::styled("> ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD))
+                    Span::styled("> ", Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD))
                 } else {
                     Span::raw("  ")
                 };
                 let mut spans = vec![prefix];
-                spans.extend(crate::ui::input::render_line_spans(line, Theme::SKY, cursor_visible));
+                spans.extend(crate::ui::input::render_line_spans(line, Theme::sky(), cursor_visible));
                 bot_lines.push(Line::from(spans));
             }
         } else {
             if input.is_empty() {
                 let mut spans = vec![
-                    Span::styled("> ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)),
+                    Span::styled("> ", Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD)),
                     Span::styled(
                         "Type a message or / for commands...",
-                        Style::default().fg(Theme::TEXT_MUTED),
+                        Style::default().fg(Theme::text_muted()),
                     ),
                 ];
                 spans.push(if cursor_visible {
-                    Span::styled("█", Style::default().fg(Theme::SKY))
+                    Span::styled("█", Style::default().fg(Theme::sky()))
                 } else {
                     Span::raw(" ")
                 });
@@ -408,12 +419,12 @@ pub fn render_welcome(
                 for (i, line) in visible_slice.iter().enumerate() {
                     let l_idx = scroll_top + i;
                     let prefix = if l_idx == 0 {
-                        Span::styled("> ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD))
+                        Span::styled("> ", Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD))
                     } else {
                         Span::raw("  ")
                     };
                     let mut spans = vec![prefix];
-                    spans.extend(crate::ui::input::render_line_spans(line, Theme::SKY, cursor_visible));
+                    spans.extend(crate::ui::input::render_line_spans(line, Theme::sky(), cursor_visible));
                     bot_lines.push(Line::from(spans));
                 }
             }
@@ -430,13 +441,13 @@ pub fn render_welcome(
         } else {
             "Press Enter to submit • Esc to exit"
         };
-        let left_span = Span::styled(left_text, Style::default().fg(Theme::TEXT_MUTED));
+        let left_span = Span::styled(left_text, Style::default().fg(Theme::text_muted()));
 
         let (right_spans, right_len) = if let Some(msg) = status_message {
             (
                 vec![Span::styled(
                     msg.to_string(),
-                    Style::default().fg(Theme::ACTIVITY),
+                    Style::default().fg(Theme::activity()),
                 )],
                 msg.len(),
             )
@@ -444,12 +455,12 @@ pub fn render_welcome(
             let text = format!("✓ Connected: {} ({})", cfg.provider, cfg.model);
             (
                 vec![
-                    Span::styled("✓ ", Style::default().fg(Theme::SUCCESS)),
-                    Span::styled("Connected: ", Style::default().fg(Theme::TEXT_MUTED)),
-                    Span::styled(&cfg.provider, Style::default().fg(Theme::MODEL)),
-                    Span::styled(" (", Style::default().fg(Theme::TEXT_MUTED)),
-                    Span::styled(&cfg.model, Style::default().fg(Theme::MODEL)),
-                    Span::styled(")", Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled("✓ ", Style::default().fg(Theme::success())),
+                    Span::styled("Connected: ", Style::default().fg(Theme::text_muted())),
+                    Span::styled(&cfg.provider, Style::default().fg(Theme::model())),
+                    Span::styled(" (", Style::default().fg(Theme::text_muted())),
+                    Span::styled(&cfg.model, Style::default().fg(Theme::model())),
+                    Span::styled(")", Style::default().fg(Theme::text_muted())),
                 ],
                 text.len(),
             )
@@ -457,7 +468,7 @@ pub fn render_welcome(
             (
                 vec![Span::styled(
                     "No model connected (/model)",
-                    Style::default().fg(Theme::TEXT_MUTED),
+                    Style::default().fg(Theme::text_muted()),
                 )],
                 "No model connected (/model)".len(),
             )
@@ -481,7 +492,7 @@ mod tests {
 
     #[test]
     fn test_commands_have_valid_icons() {
-        for cmd in COMMANDS {
+        for cmd in commands() {
             assert!(!cmd.name.is_empty(), "command name must not be empty");
             assert!(cmd.name.starts_with('/'), "command name must start with /");
             assert!(!cmd.icon.is_empty(), "command icon must not be empty");
@@ -491,7 +502,8 @@ mod tests {
 
     #[test]
     fn test_commands_filter_prefix() {
-        let matching: Vec<&CommandItem> = COMMANDS.iter().filter(|c| c.name.starts_with("/m")).collect();
+        let all = commands();
+        let matching: Vec<&CommandItem> = all.iter().filter(|c| c.name.starts_with("/m")).collect();
         assert_eq!(matching.len(), 1);
         assert_eq!(matching[0].name, "/model");
         assert_eq!(matching[0].icon, "✦");

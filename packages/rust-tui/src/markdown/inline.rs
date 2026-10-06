@@ -13,7 +13,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
             if !buffer.is_empty() {
                 spans.push(Span::styled(
                     std::mem::take(&mut buffer),
-                    Style::default().fg(Theme::TEXT_PRIMARY),
+                    Style::default().fg(Theme::text_primary()),
                 ));
             }
             chars.next(); // consume `
@@ -26,7 +26,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
             }
             spans.push(Span::styled(
                 code,
-                Style::default().fg(Theme::SUCCESS),
+                Style::default().fg(Theme::success()),
             ));
         } else if ch == '*' {
             chars.next();
@@ -35,7 +35,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 if !buffer.is_empty() {
                     spans.push(Span::styled(
                         std::mem::take(&mut buffer),
-                        Style::default().fg(Theme::TEXT_PRIMARY),
+                        Style::default().fg(Theme::text_primary()),
                     ));
                 }
                 let mut bold_text = String::new();
@@ -49,7 +49,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 spans.push(Span::styled(
                     bold_text,
                     Style::default()
-                        .fg(Theme::WARNING)
+                        .fg(Theme::warning())
                         .add_modifier(Modifier::BOLD),
                 ));
             } else {
@@ -57,7 +57,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 if !buffer.is_empty() {
                     spans.push(Span::styled(
                         std::mem::take(&mut buffer),
-                        Style::default().fg(Theme::TEXT_PRIMARY),
+                        Style::default().fg(Theme::text_primary()),
                     ));
                 }
                 let mut italic_text = String::new();
@@ -70,7 +70,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 spans.push(Span::styled(
                     italic_text,
                     Style::default()
-                        .fg(Theme::TEXT_MUTED)
+                        .fg(Theme::text_muted())
                         .add_modifier(Modifier::ITALIC),
                 ));
             }
@@ -78,7 +78,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
             if !buffer.is_empty() {
                 spans.push(Span::styled(
                     std::mem::take(&mut buffer),
-                    Style::default().fg(Theme::TEXT_PRIMARY),
+                    Style::default().fg(Theme::text_primary()),
                 ));
             }
             chars.next(); // consume [
@@ -101,7 +101,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 spans.push(Span::styled(
                     link_text,
                     Style::default()
-                        .fg(Theme::PRIMARY)
+                        .fg(Theme::primary())
                         .add_modifier(Modifier::UNDERLINED),
                 ));
             } else {
@@ -118,7 +118,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
     if !buffer.is_empty() {
         spans.push(Span::styled(
             buffer,
-            Style::default().fg(Theme::TEXT_PRIMARY),
+            Style::default().fg(Theme::text_primary()),
         ));
     }
 

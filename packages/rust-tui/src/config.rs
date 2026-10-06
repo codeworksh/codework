@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use crate::credentials::get_codework_dir;
 use crate::types::ModelConfig;
+use crate::ui::theme;
 
 pub struct ConfigManager {
     file_path: PathBuf,
@@ -23,7 +24,15 @@ impl ConfigManager {
 
     pub fn load(&self) -> Option<ModelConfig> {
         if let Ok(content) = fs::read_to_string(&self.file_path) {
-            serde_json::from_str(&content).ok()
+            let config: Option<ModelConfig> = serde_json::from_str(&content).ok();
+            if let Some(cfg) = &config {
+                if let Some(id) = &cfg.theme {
+                    if let Some(idx) = theme::by_id(id) {
+                        theme::set_active(idx);
+                    }
+                }
+            }
+            config
         } else {
             None
         }

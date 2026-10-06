@@ -27,7 +27,7 @@ use ratatui::Terminal;
 use tokio::time::interval;
 
 use app::{ActiveScreen, App};
-use ui::{render_model_browser, render_session, render_welcome};
+use ui::{render_model_browser, render_session, render_theme_picker, render_welcome};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let area = f.area();
             // Fill the entire terminal viewport with Deep Black (#0B0B0F) background
             f.render_widget(
-                Block::default().style(Style::default().bg(ui::Theme::BG_APP)),
+                Block::default().style(Style::default().bg(ui::Theme::bg_app())),
                 area,
             );
             match app.screen {
@@ -116,6 +116,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
                 }
+            }
+
+            if app.theme_picker_open {
+                render_theme_picker(f, area, app.theme_picker_index);
             }
         })?;
 

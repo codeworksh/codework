@@ -195,8 +195,8 @@ pub fn render_model_browser(
     // 1. Header (1 line)
     let header_area = Rect::new(area.x, area.y, area.width, 1);
     let mut header_spans = vec![
-        Span::styled("models", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)),
-        Span::styled(" - AI Model Browser", Style::default().fg(Theme::TEXT_MUTED)),
+        Span::styled("models", Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD)),
+        Span::styled(" - AI Model Browser", Style::default().fg(Theme::text_muted())),
     ];
 
     if state.is_searching {
@@ -215,14 +215,14 @@ pub fn render_model_browser(
                 }
             }
         };
-        header_spans.push(Span::styled(format!("/ search {}: ", search_target), Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD)));
-        header_spans.push(Span::styled(current_query, Style::default().fg(Theme::TEXT_PRIMARY)));
+        header_spans.push(Span::styled(format!("/ search {}: ", search_target), Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD)));
+        header_spans.push(Span::styled(current_query, Style::default().fg(Theme::text_primary())));
         header_spans.push(if cursor_visible {
-            Span::styled("█", Style::default().fg(Theme::ACTIVITY))
+            Span::styled("█", Style::default().fg(Theme::activity()))
         } else {
             Span::raw(" ")
         });
-        header_spans.push(Span::styled("  (Enter: browse, Esc: clear)", Style::default().fg(Theme::TEXT_MUTED)));
+        header_spans.push(Span::styled("  (Enter: browse, Esc: clear)", Style::default().fg(Theme::text_muted())));
     } else {
         let mut filter_tags = Vec::new();
         if !state.provider_search.is_empty() {
@@ -239,18 +239,18 @@ pub fn render_model_browser(
 
         if !filter_tags.is_empty() {
             header_spans.push(Span::raw("    "));
-            header_spans.push(Span::styled(format!("[Filter: {}]", filter_tags.join(", ")), Style::default().fg(Theme::ACTIVITY)));
+            header_spans.push(Span::styled(format!("[Filter: {}]", filter_tags.join(", ")), Style::default().fg(Theme::activity())));
         } else if let Some(msg) = state.active_notification() {
             header_spans.push(Span::raw("    "));
-            header_spans.push(Span::styled(format!("✓ {}", msg), Style::default().fg(Theme::SUCCESS)));
+            header_spans.push(Span::styled(format!("✓ {}", msg), Style::default().fg(Theme::success())));
         }
     }
     f.render_widget(Paragraph::new(Line::from(header_spans)), header_area);
 
     // 2. Footer (1 line at bottom)
     let footer_area = Rect::new(area.x, area.y + area.height.saturating_sub(1), area.width, 1);
-    let yellow = Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD);
-    let muted = Style::default().fg(Theme::TEXT_MUTED);
+    let yellow = Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD);
+    let muted = Style::default().fg(Theme::text_muted());
 
     let footer_line = Line::from(vec![
         Span::styled("q", yellow), Span::styled(" quit   ", muted),
@@ -308,14 +308,14 @@ pub fn render_model_browser(
     // ----------------------------------------------------
     let providers_focused = state.focused_panel == FocusedPanel::Providers;
     let prov_border_style = if providers_focused {
-        Style::default().fg(Theme::SKY)
+        Style::default().fg(Theme::sky())
     } else {
-        Style::default().fg(Theme::BORDER_BOX)
+        Style::default().fg(Theme::border_box())
     };
     let prov_title_style = if providers_focused {
-        Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)
+        Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Theme::TEXT_SECONDARY)
+        Style::default().fg(Theme::text_secondary())
     };
 
     let all_providers = get_all_providers();
@@ -353,14 +353,14 @@ pub fn render_model_browser(
         let is_selected = state.provider_index == 0;
         let prefix = if is_selected { "> " } else { "  " };
         prov_lines.push(Line::from(vec![
-            Span::styled(prefix, if is_selected { Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD) } else { Style::default().fg(Theme::TEXT_MUTED) }),
-            Span::styled("All", if is_selected { Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD) } else { Style::default().fg(Theme::TEXT_PRIMARY) }),
+            Span::styled(prefix, if is_selected { Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD) } else { Style::default().fg(Theme::text_muted()) }),
+            Span::styled("All", if is_selected { Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD) } else { Style::default().fg(Theme::text_primary()) }),
             Span::raw(" "),
-            Span::styled(format!("({})", total_models), if is_selected { Style::default().fg(Theme::ACTIVITY) } else { Style::default().fg(Theme::TEXT_MUTED) }),
+            Span::styled(format!("({})", total_models), if is_selected { Style::default().fg(Theme::activity()) } else { Style::default().fg(Theme::text_muted()) }),
         ]));
         prov_lines.push(Line::from(Span::styled(
             format!("  (no providers match \"{}\")", state.provider_search),
-            Style::default().fg(Theme::TEXT_MUTED),
+            Style::default().fg(Theme::text_muted()),
         )));
     } else {
         for idx in prov_start..prov_end {
@@ -383,19 +383,19 @@ pub fn render_model_browser(
             };
 
             let name_style = if is_selected {
-                Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD)
+                Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Theme::TEXT_PRIMARY)
+                Style::default().fg(Theme::text_primary())
             };
 
             let count_style = if is_selected {
-                Style::default().fg(Theme::ACTIVITY)
+                Style::default().fg(Theme::activity())
             } else {
-                Style::default().fg(Theme::TEXT_MUTED)
+                Style::default().fg(Theme::text_muted())
             };
 
             prov_lines.push(Line::from(vec![
-                Span::styled(prefix, if is_selected { Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD) } else { Style::default().fg(Theme::TEXT_MUTED) }),
+                Span::styled(prefix, if is_selected { Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD) } else { Style::default().fg(Theme::text_muted()) }),
                 Span::styled(display_id, name_style),
                 Span::raw(" "),
                 Span::styled(count_str, count_style),
@@ -409,14 +409,14 @@ pub fn render_model_browser(
     // ----------------------------------------------------
     let models_focused = state.focused_panel == FocusedPanel::Models;
     let models_border_style = if models_focused {
-        Style::default().fg(Theme::SKY)
+        Style::default().fg(Theme::sky())
     } else {
-        Style::default().fg(Theme::BORDER_BOX)
+        Style::default().fg(Theme::border_box())
     };
     let models_title_style = if models_focused {
-        Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)
+        Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Theme::TEXT_SECONDARY)
+        Style::default().fg(Theme::text_secondary())
     };
 
     let filtered_models = state.filtered_models();
@@ -480,7 +480,7 @@ pub fn render_model_browser(
     );
     model_lines.push(Line::from(Span::styled(
         table_header,
-        Style::default().fg(Theme::TEXT_MUTED),
+        Style::default().fg(Theme::text_muted()),
     )));
 
     // Model rows
@@ -523,18 +523,18 @@ pub fn render_model_browser(
                 );
                 model_lines.push(Line::from(Span::styled(
                     row_str,
-                    Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD),
+                    Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD),
                 )));
             } else {
                 model_lines.push(Line::from(vec![
                     Span::raw(prefix),
-                    Span::styled(format!("{:<id_w$}", id_display, id_w = id_w), Style::default().fg(Theme::TEXT_PRIMARY)),
+                    Span::styled(format!("{:<id_w$}", id_display, id_w = id_w), Style::default().fg(Theme::text_primary())),
                     Span::raw(" "),
-                    Span::styled(format!("{:<prov_w$}", prov_display, prov_w = prov_w), Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled(format!("{:<prov_w$}", prov_display, prov_w = prov_w), Style::default().fg(Theme::text_muted())),
                     Span::raw(" "),
-                    Span::styled(format!("{:>cost_w$}", cost_display, cost_w = cost_w), Style::default().fg(Theme::TEXT_MUTED)),
+                    Span::styled(format!("{:>cost_w$}", cost_display, cost_w = cost_w), Style::default().fg(Theme::text_muted())),
                     Span::raw(" "),
-                    Span::styled(format!("{:>ctx_w$}", context_display, ctx_w = ctx_w), Style::default().fg(Theme::TEXT_SECONDARY)),
+                    Span::styled(format!("{:>ctx_w$}", context_display, ctx_w = ctx_w), Style::default().fg(Theme::text_secondary())),
                 ]));
             }
         }
@@ -545,9 +545,9 @@ pub fn render_model_browser(
     // Panel 3: Provider (Bottom-Left)
     // ----------------------------------------------------
     let prov_bottom_block = Block::default()
-        .title(Span::styled(" Provider ", Style::default().fg(Theme::TEXT_SECONDARY)))
+        .title(Span::styled(" Provider ", Style::default().fg(Theme::text_secondary())))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Theme::BORDER_BOX));
+        .border_style(Style::default().fg(Theme::border_box()));
     f.render_widget(prov_bottom_block, bottom_left_area);
 
     let bottom_left_inner = Rect::new(
@@ -565,7 +565,7 @@ pub fn render_model_browser(
     if let Some(p) = prov_info {
         prov_detail_lines.push(Line::from(Span::styled(
             &p.name,
-            Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD),
+            Style::default().fg(Theme::sky()).add_modifier(Modifier::BOLD),
         )));
 
         if bottom_left_h >= 8 {
@@ -584,20 +584,20 @@ pub fn render_model_browser(
 
         let docs = p.docs_url.as_deref().unwrap_or("-");
         prov_detail_lines.push(Line::from(vec![
-            Span::styled("Docs: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(truncate_field(docs), Style::default().fg(Theme::TEXT_SECONDARY)),
+            Span::styled("Docs: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(truncate_field(docs), Style::default().fg(Theme::text_secondary())),
         ]));
 
         let api = p.base_url.as_deref().unwrap_or("-");
         prov_detail_lines.push(Line::from(vec![
-            Span::styled("API:  ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(truncate_field(api), Style::default().fg(Theme::TEXT_SECONDARY)),
+            Span::styled("API:  ", Style::default().fg(Theme::text_muted())),
+            Span::styled(truncate_field(api), Style::default().fg(Theme::text_secondary())),
         ]));
 
         let npm = p.npm.as_deref().unwrap_or("-");
         prov_detail_lines.push(Line::from(vec![
-            Span::styled("NPM:  ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(truncate_field(npm), Style::default().fg(Theme::TEXT_SECONDARY)),
+            Span::styled("NPM:  ", Style::default().fg(Theme::text_muted())),
+            Span::styled(truncate_field(npm), Style::default().fg(Theme::text_secondary())),
         ]));
 
         let env = if !p.env_keys.is_empty() {
@@ -606,8 +606,8 @@ pub fn render_model_browser(
             "-".to_string()
         };
         prov_detail_lines.push(Line::from(vec![
-            Span::styled("Env:  ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(truncate_field(&env), Style::default().fg(Theme::TEXT_SECONDARY)),
+            Span::styled("Env:  ", Style::default().fg(Theme::text_muted())),
+            Span::styled(truncate_field(&env), Style::default().fg(Theme::text_secondary())),
         ]));
 
         if bottom_left_h >= 8 {
@@ -627,9 +627,9 @@ pub fn render_model_browser(
     // Panel 4: Details (Bottom-Right)
     // ----------------------------------------------------
     let details_block = Block::default()
-        .title(Span::styled(" Details ", Style::default().fg(Theme::TEXT_SECONDARY)))
+        .title(Span::styled(" Details ", Style::default().fg(Theme::text_secondary())))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Theme::BORDER_BOX));
+        .border_style(Style::default().fg(Theme::border_box()));
     f.render_widget(details_block, bottom_right_area);
 
     let details_inner = Rect::new(
@@ -654,24 +654,24 @@ pub fn render_model_browser(
             id_tag
         };
         details_lines.push(Line::from(vec![
-            Span::styled(&m.name, Style::default().fg(Theme::TEXT_PRIMARY).add_modifier(Modifier::BOLD)),
+            Span::styled(&m.name, Style::default().fg(Theme::text_primary()).add_modifier(Modifier::BOLD)),
             Span::raw("  "),
-            Span::styled(id_display, Style::default().fg(Theme::TEXT_MUTED)),
+            Span::styled(id_display, Style::default().fg(Theme::text_muted())),
         ]));
 
         // Line 1: Provider & Family aligned in grid
         details_lines.push(Line::from(vec![
-            Span::styled("Provider: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(&m.provider_id, Style::default().fg(Theme::SKY)),
+            Span::styled("Provider: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(&m.provider_id, Style::default().fg(Theme::sky())),
             Span::raw(" ".repeat(col1_w.saturating_sub(10 + m.provider_id.len()).max(2))),
-            Span::styled("Family: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(&m.family, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Family: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(&m.family, Style::default().fg(Theme::text_primary())),
         ]));
 
         // Line 2: Status
         details_lines.push(Line::from(vec![
-            Span::styled("Status:   ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled("active", Style::default().fg(Theme::SUCCESS)),
+            Span::styled("Status:   ", Style::default().fg(Theme::text_muted())),
+            Span::styled("active", Style::default().fg(Theme::success())),
         ]));
 
         if details_inner_h >= 11 {
@@ -684,13 +684,13 @@ pub fn render_model_browser(
         let c1_context = format!("Context: {:<7} Input: -", ctx_str);
         let c1_context_pad = col1_w.saturating_sub(c1_context.len()).max(2);
         details_lines.push(Line::from(vec![
-            Span::styled("Context: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(format!("{:<7} ", ctx_str), Style::default().fg(Theme::TEXT_PRIMARY)),
-            Span::styled("Input: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled("-", Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Context: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(format!("{:<7} ", ctx_str), Style::default().fg(Theme::text_primary())),
+            Span::styled("Input: ", Style::default().fg(Theme::text_muted())),
+            Span::styled("-", Style::default().fg(Theme::text_primary())),
             Span::raw(" ".repeat(c1_context_pad)),
-            Span::styled("Output: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(out_limit_str, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Output: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(out_limit_str, Style::default().fg(Theme::text_primary())),
         ]));
 
         // Line 5: Input & Output Pricing with clean column spacing
@@ -699,11 +699,11 @@ pub fn render_model_browser(
         let in_rate_str = format!("Input: {}", in_rate);
         let in_rate_pad = col1_w.saturating_sub(in_rate_str.len()).max(2);
         details_lines.push(Line::from(vec![
-            Span::styled("Input: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(in_rate, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Input: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(in_rate, Style::default().fg(Theme::text_primary())),
             Span::raw(" ".repeat(in_rate_pad)),
-            Span::styled("Output: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(out_rate, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Output: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(out_rate, Style::default().fg(Theme::text_primary())),
         ]));
 
         // Line 6: Cache Read & Write with clean column spacing (no more glue!)
@@ -712,11 +712,11 @@ pub fn render_model_browser(
         let cr_str = format!("Cache Read: {}", cache_r_rate);
         let cr_pad = col1_w.saturating_sub(cr_str.len()).max(2);
         details_lines.push(Line::from(vec![
-            Span::styled("Cache Read: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(cache_r_rate, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Cache Read: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(cache_r_rate, Style::default().fg(Theme::text_primary())),
             Span::raw(" ".repeat(cr_pad)),
-            Span::styled("Cache Write: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(cache_w_rate, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Cache Write: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(cache_w_rate, Style::default().fg(Theme::text_primary())),
         ]));
 
         if details_inner_h >= 11 {
@@ -730,8 +730,8 @@ pub fn render_model_browser(
             "tools, temperature"
         };
         details_lines.push(Line::from(vec![
-            Span::styled("Capabilities: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(caps, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Capabilities: ", Style::default().fg(Theme::text_muted())),
+            Span::styled(caps, Style::default().fg(Theme::text_primary())),
         ]));
 
         // Line 9: Modalities
@@ -741,8 +741,8 @@ pub fn render_model_browser(
             "text -> text".to_string()
         };
         details_lines.push(Line::from(vec![
-            Span::styled("Modalities:   ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(modalities_str, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Modalities:   ", Style::default().fg(Theme::text_muted())),
+            Span::styled(modalities_str, Style::default().fg(Theme::text_primary())),
         ]));
 
         // Line 10: Released & Knowledge with clean spacing
@@ -750,18 +750,18 @@ pub fn render_model_browser(
         let rel_str = format!("Released: {}", rel);
         let rel_pad = col1_w.saturating_sub(rel_str.len()).max(2);
         details_lines.push(Line::from(vec![
-            Span::styled("Released:     ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(rel, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Released:     ", Style::default().fg(Theme::text_muted())),
+            Span::styled(rel, Style::default().fg(Theme::text_primary())),
             Span::raw(" ".repeat(rel_pad)),
-            Span::styled("Knowledge: ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled("-", Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Knowledge: ", Style::default().fg(Theme::text_muted())),
+            Span::styled("-", Style::default().fg(Theme::text_primary())),
         ]));
 
         // Line 11: Updated
         let upd = m.updated.as_deref().unwrap_or("-");
         details_lines.push(Line::from(vec![
-            Span::styled("Updated:      ", Style::default().fg(Theme::TEXT_MUTED)),
-            Span::styled(upd, Style::default().fg(Theme::TEXT_PRIMARY)),
+            Span::styled("Updated:      ", Style::default().fg(Theme::text_muted())),
+            Span::styled(upd, Style::default().fg(Theme::text_primary())),
         ]));
     }
     f.render_widget(Paragraph::new(details_lines), details_inner);
@@ -782,10 +782,10 @@ pub fn render_model_browser(
         let modal_block = Block::default()
             .title(Span::styled(
                 format!(" Configure API Key: {} ", prov_name),
-                Style::default().fg(Theme::ACCENT).add_modifier(Modifier::BOLD),
+                Style::default().fg(Theme::accent()).add_modifier(Modifier::BOLD),
             ))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Theme::BORDER));
+            .border_style(Style::default().fg(Theme::border()));
         f.render_widget(modal_block, modal_area);
 
         let modal_inner = Rect::new(
@@ -798,9 +798,9 @@ pub fn render_model_browser(
         let mut lines = Vec::new();
         if let Some(m) = &state.pending_model {
             lines.push(Line::from(vec![
-                Span::styled("Model: ", Style::default().fg(Theme::TEXT_MUTED)),
-                Span::styled(&m.name, Style::default().fg(Theme::TEXT_PRIMARY).add_modifier(Modifier::BOLD)),
-                Span::styled(format!(" ({})", m.id), Style::default().fg(Theme::TEXT_MUTED)),
+                Span::styled("Model: ", Style::default().fg(Theme::text_muted())),
+                Span::styled(&m.name, Style::default().fg(Theme::text_primary()).add_modifier(Modifier::BOLD)),
+                Span::styled(format!(" ({})", m.id), Style::default().fg(Theme::text_muted())),
             ]));
             let env_desc = if !m.env_keys.is_empty() {
                 m.env_keys.join(" or ")
@@ -808,25 +808,25 @@ pub fn render_model_browser(
                 "API key".to_string()
             };
             lines.push(Line::from(vec![
-                Span::styled("Environment key: ", Style::default().fg(Theme::TEXT_MUTED)),
-                Span::styled(env_desc, Style::default().fg(Theme::ACCENT)),
+                Span::styled("Environment key: ", Style::default().fg(Theme::text_muted())),
+                Span::styled(env_desc, Style::default().fg(Theme::accent())),
             ]));
             lines.push(Line::raw(""));
         }
 
         if state.validating {
             lines.push(Line::from(vec![
-                Span::styled(format!("{} ", spinner.current()), Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD)),
-                Span::styled("Validating API key with provider...", Style::default().fg(Theme::ACTIVITY)),
+                Span::styled(format!("{} ", spinner.current()), Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD)),
+                Span::styled("Validating API key with provider...", Style::default().fg(Theme::activity())),
             ]));
         } else {
-            lines.push(Line::from(Span::styled("Enter your API key below:", Style::default().fg(Theme::TEXT_PRIMARY))));
+            lines.push(Line::from(Span::styled("Enter your API key below:", Style::default().fg(Theme::text_primary()))));
             let masked = "•".repeat(state.api_key_input.len());
             lines.push(Line::from(vec![
-                Span::styled("API Key: ", Style::default().fg(Theme::ACCENT).add_modifier(Modifier::BOLD)),
-                Span::styled(masked, Style::default().fg(Theme::TEXT_PRIMARY)),
+                Span::styled("API Key: ", Style::default().fg(Theme::accent()).add_modifier(Modifier::BOLD)),
+                Span::styled(masked, Style::default().fg(Theme::text_primary())),
                 if cursor_visible {
-                    Span::styled("█", Style::default().fg(Theme::ACCENT))
+                    Span::styled("█", Style::default().fg(Theme::accent()))
                 } else {
                     Span::raw(" ")
                 },
@@ -834,14 +834,14 @@ pub fn render_model_browser(
 
             if let Some(err) = &state.validation_error {
                 lines.push(Line::from(vec![
-                    Span::styled("✗ ", Style::default().fg(Theme::ERROR).add_modifier(Modifier::BOLD)),
-                    Span::styled(err, Style::default().fg(Theme::ERROR)),
+                    Span::styled("✗ ", Style::default().fg(Theme::error()).add_modifier(Modifier::BOLD)),
+                    Span::styled(err, Style::default().fg(Theme::error())),
                 ]));
             } else {
                 lines.push(Line::raw(""));
             }
 
-            lines.push(Line::from(Span::styled("Press Enter to validate & save, Esc to cancel", Style::default().fg(Theme::TEXT_MUTED))));
+            lines.push(Line::from(Span::styled("Press Enter to validate & save, Esc to cancel", Style::default().fg(Theme::text_muted()))));
         }
 
         f.render_widget(Paragraph::new(lines), modal_inner);
@@ -860,9 +860,9 @@ pub fn render_model_browser(
         f.render_widget(Clear, help_area);
 
         let help_block = Block::default()
-            .title(Span::styled(" AI Model Browser - Help ", Style::default().fg(Theme::ACCENT).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(" AI Model Browser - Help ", Style::default().fg(Theme::accent()).add_modifier(Modifier::BOLD)))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Theme::BORDER));
+            .border_style(Style::default().fg(Theme::border()));
         f.render_widget(help_block, help_area);
 
         let help_inner = Rect::new(
@@ -887,12 +887,12 @@ pub fn render_model_browser(
         let mut lines = Vec::new();
         for (key_str, desc) in shortcuts {
             lines.push(Line::from(vec![
-                Span::styled(format!("{:<18}", key_str), Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD)),
-                Span::styled(desc, Style::default().fg(Theme::TEXT_PRIMARY)),
+                Span::styled(format!("{:<18}", key_str), Style::default().fg(Theme::activity()).add_modifier(Modifier::BOLD)),
+                Span::styled(desc, Style::default().fg(Theme::text_primary())),
             ]));
         }
         lines.push(Line::raw(""));
-        lines.push(Line::from(Span::styled("Press any key or Esc to close help", Style::default().fg(Theme::TEXT_MUTED))));
+        lines.push(Line::from(Span::styled("Press any key or Esc to close help", Style::default().fg(Theme::text_muted()))));
 
         f.render_widget(Paragraph::new(lines), help_inner);
     }
