@@ -1,0 +1,160 @@
+[
+  {
+    "details": {
+      "content": "Edited sample.ts (1 replacement).",
+      "created": false,
+      "editsApplied": 1,
+      "firstChangedLine": 2,
+      "patch": "--- sample.ts
++++ sample.ts
+@@ -1,3 +1,3 @@
+ const one = 1;
+-const two = 2;
++const two = 22;
+ const three = 3;
+",
+      "path": "sample.ts",
+    },
+    "file": "const one = 1;
+const two = 22;
+const three = 3;
+",
+    "name": "single",
+    "status": "completed",
+  },
+  {
+    "details": {
+      "content": "Edited sample.ts (2 replacements).",
+      "created": false,
+      "editsApplied": 2,
+      "firstChangedLine": 1,
+      "patch": "--- sample.ts
++++ sample.ts
+@@ -1,3 +1,3 @@
+-const one = 1;
++const one = 100;
+ const two = 2;
+-const three = 3;
++const three = 300;
+",
+      "path": "sample.ts",
+    },
+    "file": "const one = 100;
+const two = 2;
+const three = 300;
+",
+    "name": "multi",
+    "status": "completed",
+  },
+  {
+    "details": {
+      "content": "Created made.txt (5 bytes).",
+      "created": true,
+      "editsApplied": 1,
+      "firstChangedLine": 1,
+      "patch": "--- made.txt
++++ made.txt
+@@ -0,0 +1,1 @@
++made
+",
+      "path": "made.txt",
+    },
+    "file": "made
+",
+    "name": "create",
+    "status": "completed",
+  },
+  {
+    "details": {
+      "_tag": "EditFailed",
+      "message": "edit 1: oldText was not found in sample.ts.",
+      "path": "sample.ts",
+      "reason": "no_match",
+    },
+    "file": "const one = 1;
+const two = 2;
+const three = 3;
+",
+    "name": "no-match",
+    "status": "error",
+  },
+  {
+    "details": {
+      "_tag": "EditFailed",
+      "message": "edit 1: oldText is not unique in dup.ts; include more surrounding text to make it unique.",
+      "path": "dup.ts",
+      "reason": "ambiguous_match",
+    },
+    "file": "const a = 1;
+const a = 1;
+",
+    "name": "ambiguous",
+    "status": "error",
+  },
+  {
+    "details": {
+      "_tag": "EditFailed",
+      "message": "edits overlap in sample.ts; merge them into one edit.",
+      "path": "sample.ts",
+      "reason": "overlapping_edits",
+    },
+    "file": "const one = 1;
+const two = 2;
+const three = 3;
+",
+    "name": "overlap",
+    "status": "error",
+  },
+  {
+    "details": {
+      "_tag": "EditFailed",
+      "message": "No change: the replacements leave sample.ts unchanged.",
+      "path": "sample.ts",
+      "reason": "no_change",
+    },
+    "file": "const one = 1;
+const two = 2;
+const three = 3;
+",
+    "name": "no-change",
+    "status": "error",
+  },
+  {
+    "details": {
+      "_tag": "EditFailed",
+      "message": "edits must contain at least one replacement.",
+      "path": "sample.ts",
+      "reason": "no_edits",
+    },
+    "file": "const one = 1;
+const two = 2;
+const three = 3;
+",
+    "name": "no-edits",
+    "status": "error",
+  },
+  {
+    "details": {
+      "_tag": "EditFailed",
+      "message": "File not found: made.txt. To create it, provide exactly one edit with an empty oldText.",
+      "path": "made.txt",
+      "reason": "create_needs_single_empty_edit",
+    },
+    "name": "create-rejected",
+    "status": "error",
+  },
+  {
+    "details": {
+      "_tag": "EditFailed",
+      "message": "edit 1: oldText is empty; replacing a whole existing file is not supported. Provide exact text to replace.",
+      "path": "sample.ts",
+      "reason": "empty_old_text",
+    },
+    "file": "const one = 1;
+const two = 2;
+const three = 3;
+",
+    "name": "empty-old-text",
+    "status": "error",
+  },
+]
