@@ -1,8 +1,9 @@
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::markdown::inline::parse_inline;
+use crate::ui::Theme;
 
 pub fn is_table_row(line: &str) -> bool {
     let trimmed = line.trim();
@@ -127,9 +128,9 @@ pub fn render_table(rows: &[String], max_width: usize) -> Vec<Line<'static>> {
         }
     }
 
-    let border_style = Style::default().fg(Color::Rgb(39, 39, 42));
+    let border_style = Style::default().fg(Theme::BORDER);
     let header_style = Style::default()
-        .fg(Color::Rgb(6, 182, 212))
+        .fg(Theme::PRIMARY)
         .add_modifier(Modifier::BOLD);
 
     let mut lines = Vec::new();

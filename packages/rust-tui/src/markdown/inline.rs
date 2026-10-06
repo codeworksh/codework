@@ -1,5 +1,7 @@
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
+
+use crate::ui::Theme;
 
 pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
@@ -11,7 +13,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
             if !buffer.is_empty() {
                 spans.push(Span::styled(
                     std::mem::take(&mut buffer),
-                    Style::default().fg(Color::Rgb(244, 244, 245)),
+                    Style::default().fg(Theme::TEXT_PRIMARY),
                 ));
             }
             chars.next(); // consume `
@@ -24,7 +26,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
             }
             spans.push(Span::styled(
                 code,
-                Style::default().fg(Color::Rgb(74, 222, 128)),
+                Style::default().fg(Theme::SUCCESS),
             ));
         } else if ch == '*' {
             chars.next();
@@ -33,7 +35,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 if !buffer.is_empty() {
                     spans.push(Span::styled(
                         std::mem::take(&mut buffer),
-                        Style::default().fg(Color::Rgb(244, 244, 245)),
+                        Style::default().fg(Theme::TEXT_PRIMARY),
                     ));
                 }
                 let mut bold_text = String::new();
@@ -47,7 +49,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 spans.push(Span::styled(
                     bold_text,
                     Style::default()
-                        .fg(Color::Rgb(251, 146, 60))
+                        .fg(Theme::WARNING)
                         .add_modifier(Modifier::BOLD),
                 ));
             } else {
@@ -55,7 +57,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 if !buffer.is_empty() {
                     spans.push(Span::styled(
                         std::mem::take(&mut buffer),
-                        Style::default().fg(Color::Rgb(244, 244, 245)),
+                        Style::default().fg(Theme::TEXT_PRIMARY),
                     ));
                 }
                 let mut italic_text = String::new();
@@ -68,7 +70,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 spans.push(Span::styled(
                     italic_text,
                     Style::default()
-                        .fg(Color::Rgb(161, 161, 170))
+                        .fg(Theme::TEXT_MUTED)
                         .add_modifier(Modifier::ITALIC),
                 ));
             }
@@ -76,7 +78,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
             if !buffer.is_empty() {
                 spans.push(Span::styled(
                     std::mem::take(&mut buffer),
-                    Style::default().fg(Color::Rgb(244, 244, 245)),
+                    Style::default().fg(Theme::TEXT_PRIMARY),
                 ));
             }
             chars.next(); // consume [
@@ -99,7 +101,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
                 spans.push(Span::styled(
                     link_text,
                     Style::default()
-                        .fg(Color::Rgb(6, 182, 212))
+                        .fg(Theme::PRIMARY)
                         .add_modifier(Modifier::UNDERLINED),
                 ));
             } else {
@@ -116,7 +118,7 @@ pub fn parse_inline(text: &str) -> Vec<Span<'static>> {
     if !buffer.is_empty() {
         spans.push(Span::styled(
             buffer,
-            Style::default().fg(Color::Rgb(244, 244, 245)),
+            Style::default().fg(Theme::TEXT_PRIMARY),
         ));
     }
 

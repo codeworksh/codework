@@ -5,7 +5,8 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
 
 use crate::types::ModelConfig;
-use crate::ui::session::render_input_with_cursor;
+use crate::ui::logo::{render_animated_logo_lines, LOGO_GRADIENT, LOGO_SPARKLE_FRAMES};
+use crate::ui::spinner::Spinner;
 use crate::ui::theme::Theme;
 
 #[derive(Debug, Clone, Copy)]
@@ -21,58 +22,38 @@ pub const COMMANDS: &[CommandItem] = &[
         name: "/help",
         icon: "?",
         description: "Show available commands and shortcuts",
-        icon_color: Color::Rgb(6, 182, 212), // Cyan #06b6d4
+        icon_color: Theme::SKY,
     },
     CommandItem {
         name: "/clear",
         icon: "↺",
         description: "Clear conversation history and screen",
-        icon_color: Color::Rgb(250, 204, 21), // Yellow #facc15
+        icon_color: Theme::WARNING,
     },
     CommandItem {
         name: "/model",
         icon: "✦",
         description: "Switch or view active LLM model",
-        icon_color: Color::Rgb(192, 132, 252), // Purple #c084fc
+        icon_color: Theme::PRIMARY,
     },
     CommandItem {
         name: "/session",
         icon: "◷",
         description: "List or resume recent sessions",
-        icon_color: Color::Rgb(129, 140, 248), // Indigo #818cf8
+        icon_color: Theme::SECONDARY,
     },
     CommandItem {
         name: "/compact",
         icon: "⇥",
         description: "Compact current conversation context",
-        icon_color: Color::Rgb(16, 185, 129), // Green #10b981
+        icon_color: Theme::SUCCESS,
     },
     CommandItem {
         name: "/exit",
         icon: "✕",
         description: "Exit CodeWork TUI",
-        icon_color: Color::Rgb(248, 113, 113), // Red #f87171
+        icon_color: Theme::ERROR,
     },
-];
-
-const LOGO_GRADIENT: [Color; 9] = [
-    Color::Rgb(236, 72, 153), // #ec4899 - Pink
-    Color::Rgb(217, 70, 239), // #d946ef - Magenta
-    Color::Rgb(192, 132, 252), // #c084fc - Purple
-    Color::Rgb(168, 85, 247), // #a855f7 - Violet
-    Color::Rgb(129, 140, 248), // #818cf8 - Indigo
-    Color::Rgb(99, 102, 241),  // #6366f1 - Blue
-    Color::Rgb(56, 189, 248),  // #38bdf8 - Sky
-    Color::Rgb(6, 182, 212),   // #06b6d4 - Cyan
-    Color::Rgb(34, 211, 238),  // #22d3ee - Light Cyan
-];
-
-const LOGO_LINES: [&str; 5] = [
-    "▄██████▄  ▄██   ▄██▄",
-    "██▀       ███   ████",
-    "██        ███ █ ████",
-    "██▄       ██████████",
-    "▀██████▀   ▀█▀   ▀█▀",
 ];
 
 pub fn render_welcome(
@@ -83,8 +64,10 @@ pub fn render_welcome(
     dropdown_index: usize,
     active_config: Option<&ModelConfig>,
     status_message: Option<&str>,
+    spinner: &Spinner,
 ) {
     let card_width = 78u16.min(area.width.saturating_sub(2));
+    let cursor_visible = spinner.cursor_visible();
     let is_dropdown_open = input.starts_with('/') && !input.contains(' ');
 
     let matching_cmds: Vec<&CommandItem> = if is_dropdown_open {
@@ -96,13 +79,22 @@ pub fn render_welcome(
         Vec::new()
     };
 
+    let max_welcome_text_w = (card_width as usize).saturating_sub(6).max(10);
+    let wrapped_welcome = crate::ui::input::wrap_input_with_cursor(input, cursor_pos, max_welcome_text_w);
+    let max_visible_welcome = 5usize;
+    let num_welcome_lines = if input.is_empty() {
+        1
+    } else {
+        wrapped_welcome.lines.len().clamp(1, max_visible_welcome)
+    };
+
     // Calculate Card 2 (Bottom Card) height
     let card2_height = if is_dropdown_open {
         let rows = matching_cmds.len().max(1) as u16;
-        // 1 (top border) + 1 (header "Commands") + rows + 1 (empty line) + 1 (input line) + 1 (bottom border)
-        5 + rows
+        // 1 (top border) + 1 (header "Commands") + rows + 1 (empty line) + num_lines + 1 (bottom border)
+        4 + rows + num_welcome_lines as u16
     } else {
-        3
+        2 + num_welcome_lines as u16
     };
 
     // Total content height
@@ -117,7 +109,8 @@ pub fn render_welcome(
 
     let top_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Theme::BORDER));
+        .border_style(Style::default().fg(Theme::BORDER))
+        .style(Style::default().bg(Theme::BG_SURFACE));
     f.render_widget(top_block, top_rect);
 
     if top_h >= 5 {
@@ -126,14 +119,20 @@ pub fn render_welcome(
         let inner_y = start_y + 1;
 
         // Header bar inside card
-        let left_part = "codework v0.0.1";
+        let sparkle_frame = LOGO_SPARKLE_FRAMES[(spinner.tick_count() / 2) % LOGO_SPARKLE_FRAMES.len()];
+        let sparkle_color = LOGO_GRADIENT[spinner.tick_count() % LOGO_GRADIENT.len()];
+        let left_part_len = 2 + "codework v0.0.1".len();
         let right_part = "open-source harness";
-        let header_pad = (inner_w as usize).saturating_sub(left_part.len() + right_part.len());
+        let header_pad = (inner_w as usize).saturating_sub(left_part_len + right_part.len());
 
         let header_line = Line::from(vec![
             Span::styled(
+                format!("{} ", sparkle_frame),
+                Style::default().fg(sparkle_color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
                 "codework ",
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                Style::default().fg(Theme::TEXT_PRIMARY).add_modifier(Modifier::BOLD),
             ),
             Span::styled("v0.0.1", Style::default().fg(Theme::TEXT_MUTED)),
             Span::raw(" ".repeat(header_pad)),
@@ -157,7 +156,7 @@ pub fn render_welcome(
         let mut left_lines = Vec::new();
         left_lines.push(Line::from(Span::styled(
             "The Open-Source",
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            Style::default().fg(Theme::TEXT_PRIMARY).add_modifier(Modifier::BOLD),
         )));
         left_lines.push(Line::from(Span::styled(
             "Coding Agent Harness",
@@ -165,17 +164,8 @@ pub fn render_welcome(
         )));
         left_lines.push(Line::raw(""));
 
-        // Logo with gradient
-        for line in LOGO_LINES {
-            let chars: Vec<char> = line.chars().collect();
-            let mut spans = Vec::new();
-            for (col_idx, &ch) in chars.iter().enumerate() {
-                let color_idx = ((col_idx as f32 / chars.len() as f32) * LOGO_GRADIENT.len() as f32) as usize;
-                let color = LOGO_GRADIENT[color_idx.min(LOGO_GRADIENT.len() - 1)];
-                spans.push(Span::styled(ch.to_string(), Style::default().fg(color)));
-            }
-            left_lines.push(Line::from(spans));
-        }
+        // CW Logo with animated gradient
+        left_lines.extend(render_animated_logo_lines(0, spinner.tick_count()));
 
         left_lines.push(Line::raw(""));
         left_lines.push(Line::raw(""));
@@ -327,7 +317,8 @@ pub fn render_welcome(
 
         let bot_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(bot_border_color));
+            .border_style(Style::default().fg(bot_border_color))
+            .style(Style::default().bg(Theme::BG_SURFACE));
         let bot_inner = Rect::new(start_x + 1, bot_y + 1, card_width.saturating_sub(2), bot_h.saturating_sub(2));
 
         f.render_widget(bot_block, Rect::new(start_x, bot_y, card_width, bot_h));
@@ -373,27 +364,58 @@ pub fn render_welcome(
 
             bot_lines.push(Line::raw(""));
 
-            let mut input_spans = vec![
-                Span::styled("> ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)),
-            ];
-            input_spans.extend(render_input_with_cursor(input, cursor_pos));
-            bot_lines.push(Line::from(input_spans));
+            let total_w_lines = wrapped_welcome.lines.len();
+            let scroll_top = if wrapped_welcome.cursor_line >= max_visible_welcome {
+                wrapped_welcome.cursor_line + 1 - max_visible_welcome
+            } else {
+                0
+            };
+            let visible_slice = &wrapped_welcome.lines[scroll_top..(scroll_top + max_visible_welcome).min(total_w_lines)];
+            for (i, line) in visible_slice.iter().enumerate() {
+                let l_idx = scroll_top + i;
+                let prefix = if l_idx == 0 {
+                    Span::styled("> ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD))
+                } else {
+                    Span::raw("  ")
+                };
+                let mut spans = vec![prefix];
+                spans.extend(crate::ui::input::render_line_spans(line, Theme::SKY, cursor_visible));
+                bot_lines.push(Line::from(spans));
+            }
         } else {
             if input.is_empty() {
-                bot_lines.push(Line::from(vec![
+                let mut spans = vec![
                     Span::styled("> ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)),
                     Span::styled(
                         "Type a message or / for commands...",
                         Style::default().fg(Theme::TEXT_MUTED),
                     ),
-                    Span::styled("█", Style::default().fg(Theme::SKY)),
-                ]));
-            } else {
-                let mut input_spans = vec![
-                    Span::styled("> ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD)),
                 ];
-                input_spans.extend(render_input_with_cursor(input, cursor_pos));
-                bot_lines.push(Line::from(input_spans));
+                spans.push(if cursor_visible {
+                    Span::styled("█", Style::default().fg(Theme::SKY))
+                } else {
+                    Span::raw(" ")
+                });
+                bot_lines.push(Line::from(spans));
+            } else {
+                let total_w_lines = wrapped_welcome.lines.len();
+                let scroll_top = if wrapped_welcome.cursor_line >= max_visible_welcome {
+                    wrapped_welcome.cursor_line + 1 - max_visible_welcome
+                } else {
+                    0
+                };
+                let visible_slice = &wrapped_welcome.lines[scroll_top..(scroll_top + max_visible_welcome).min(total_w_lines)];
+                for (i, line) in visible_slice.iter().enumerate() {
+                    let l_idx = scroll_top + i;
+                    let prefix = if l_idx == 0 {
+                        Span::styled("> ", Style::default().fg(Theme::SKY).add_modifier(Modifier::BOLD))
+                    } else {
+                        Span::raw("  ")
+                    };
+                    let mut spans = vec![prefix];
+                    spans.extend(crate::ui::input::render_line_spans(line, Theme::SKY, cursor_visible));
+                    bot_lines.push(Line::from(spans));
+                }
             }
         }
 

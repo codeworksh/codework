@@ -1,0 +1,133 @@
+[
+  {
+    "content": "Found 2 matches in 2 files:
+
+docs/guide.md:
+  2: Call authenticate() to log in.
+
+src/auth.ts:
+  2: export function authenticate(user: User) {
+
+(backend)",
+    "files": 2,
+    "hasMore": false,
+    "matches": 2,
+    "name": "content-default",
+    "truncated": false,
+  },
+  {
+    "content": "Found 1 match in 1 file:
+
+docs/guide.md:
+  2: Call authenticate() to log in.
+
+(backend)",
+    "files": 1,
+    "hasMore": false,
+    "matches": 1,
+    "name": "content-include-md",
+    "truncated": false,
+  },
+  {
+    "content": "Found 1 match in 1 file:
+
+src/auth.ts:
+  3:   return db.find(user);
+
+(backend)",
+    "files": 1,
+    "hasMore": false,
+    "matches": 1,
+    "name": "content-literal",
+    "truncated": false,
+  },
+  {
+    "content": "Found 1 match in 1 file:
+
+src/auth.ts:
+  4- }
+  5: // TODO: add rate limiting
+
+(backend)",
+    "files": 1,
+    "hasMore": false,
+    "matches": 1,
+    "name": "content-context",
+    "truncated": false,
+  },
+  {
+    "content": "Found 4 matches in 4 files:
+
+debug.log:
+  1: authenticate called
+
+docs/guide.md:
+  2: Call authenticate() to log in.
+
+node_modules/pkg/index.js:
+  1: export const authenticate = () => {};
+
+src/auth.ts:
+  2: export function authenticate(user: User) {
+
+(backend)",
+    "files": 4,
+    "hasMore": false,
+    "matches": 4,
+    "name": "content-no-ignore",
+    "truncated": false,
+  },
+  {
+    "content": "Found 1 match in 1 file:
+
+docs/guide.md:
+  2: Call authenticate() to log in.
+
+[Showing 1 match. More available; continue with offset 1 or narrow the query.]
+
+(backend)",
+    "files": 1,
+    "hasMore": true,
+    "matches": 1,
+    "name": "content-limit",
+    "truncated": true,
+  },
+  {
+    "content": "Found 1 match in 1 file:
+
+src/auth.ts:
+  2: export function authenticate(user: User) {
+
+(backend)",
+    "files": 1,
+    "hasMore": false,
+    "matches": 1,
+    "name": "content-offset",
+    "truncated": false,
+  },
+  {
+    "content": "Found 2 files:
+
+src/auth.ts
+src/utils.ts
+
+(backend)",
+    "files": 2,
+    "hasMore": false,
+    "matches": 2,
+    "name": "files-glob",
+    "truncated": false,
+  },
+  {
+    "content": "Found 1 file:
+
+src/auth.ts
+
+(backend)",
+    "files": 1,
+    "hasMore": false,
+    "matches": 1,
+    "name": "files-needle",
+    "truncated": false,
+  },
+]

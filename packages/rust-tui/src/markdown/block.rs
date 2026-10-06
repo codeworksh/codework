@@ -1,9 +1,10 @@
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::markdown::inline::parse_inline;
 use crate::markdown::table::{is_table_row, render_table};
+use crate::ui::Theme;
 
 pub fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
     if max_width == 0 || text.is_empty() {
@@ -43,8 +44,8 @@ pub fn render_markdown(text: &str, max_width: usize) -> Vec<Line<'static>> {
     let raw_lines: Vec<&str> = text.lines().collect();
     let mut i = 0;
 
-    let border_style = Style::default().fg(Color::Rgb(39, 39, 42));
-    let code_bg = Color::Rgb(24, 24, 27);
+    let border_style = Style::default().fg(Theme::BORDER);
+    let code_bg = Theme::BG_SURFACE;
 
     while i < raw_lines.len() {
         let line = raw_lines[i];
@@ -97,7 +98,7 @@ pub fn render_markdown(text: &str, max_width: usize) -> Vec<Line<'static>> {
                     Span::styled("│ ", border_style),
                     Span::styled(
                         display_code.clone(),
-                        Style::default().fg(Color::Rgb(74, 222, 128)).bg(code_bg),
+                        Style::default().fg(Theme::SUCCESS).bg(code_bg),
                     ),
                 ];
                 let line_len = UnicodeWidthStr::width(display_code.as_str()) + 2;
@@ -130,10 +131,10 @@ pub fn render_markdown(text: &str, max_width: usize) -> Vec<Line<'static>> {
         if trimmed.starts_with("# ") {
             let content = trimmed[2..].trim();
             lines.push(Line::from(vec![
-                Span::styled("┃ ", Style::default().fg(Color::Rgb(6, 182, 212)).add_modifier(Modifier::BOLD)),
+                Span::styled("┃ ", Style::default().fg(Theme::PRIMARY).add_modifier(Modifier::BOLD)),
                 Span::styled(
                     content.to_string(),
-                    Style::default().fg(Color::Rgb(255, 255, 255)).add_modifier(Modifier::BOLD),
+                    Style::default().fg(Theme::TEXT_PRIMARY).add_modifier(Modifier::BOLD),
                 ),
             ]));
             i += 1;
@@ -143,10 +144,10 @@ pub fn render_markdown(text: &str, max_width: usize) -> Vec<Line<'static>> {
         if trimmed.starts_with("## ") {
             let content = trimmed[3..].trim();
             lines.push(Line::from(vec![
-                Span::styled("┃ ", Style::default().fg(Color::Rgb(6, 182, 212)).add_modifier(Modifier::BOLD)),
+                Span::styled("┃ ", Style::default().fg(Theme::PRIMARY).add_modifier(Modifier::BOLD)),
                 Span::styled(
                     content.to_string(),
-                    Style::default().fg(Color::Rgb(244, 244, 245)).add_modifier(Modifier::BOLD),
+                    Style::default().fg(Theme::TEXT_PRIMARY).add_modifier(Modifier::BOLD),
                 ),
             ]));
             i += 1;
@@ -156,10 +157,10 @@ pub fn render_markdown(text: &str, max_width: usize) -> Vec<Line<'static>> {
         if trimmed.starts_with("### ") {
             let content = trimmed[4..].trim();
             lines.push(Line::from(vec![
-                Span::styled("│ ", Style::default().fg(Color::Rgb(161, 161, 170))),
+                Span::styled("│ ", Style::default().fg(Theme::TEXT_MUTED)),
                 Span::styled(
                     content.to_string(),
-                    Style::default().fg(Color::Rgb(228, 228, 231)).add_modifier(Modifier::BOLD),
+                    Style::default().fg(Theme::TEXT_SECONDARY).add_modifier(Modifier::BOLD),
                 ),
             ]));
             i += 1;
@@ -174,7 +175,7 @@ pub fn render_markdown(text: &str, max_width: usize) -> Vec<Line<'static>> {
             for w_line in wrapped {
                 let mut spans = vec![Span::styled(
                     "│ ",
-                    Style::default().fg(Color::Rgb(113, 113, 122)),
+                    Style::default().fg(Theme::TEXT_MUTED),
                 )];
                 spans.extend(parse_inline(&w_line));
                 lines.push(Line::from(spans));
@@ -193,7 +194,7 @@ pub fn render_markdown(text: &str, max_width: usize) -> Vec<Line<'static>> {
                 let mut spans = Vec::new();
                 spans.push(Span::raw(" ".repeat(indent)));
                 if w_idx == 0 {
-                    spans.push(Span::styled("• ", Style::default().fg(Color::Rgb(6, 182, 212))));
+                    spans.push(Span::styled("• ", Style::default().fg(Theme::PRIMARY)));
                 } else {
                     spans.push(Span::raw("  "));
                 }
@@ -218,7 +219,7 @@ pub fn render_markdown(text: &str, max_width: usize) -> Vec<Line<'static>> {
                     let mut spans = Vec::new();
                     spans.push(Span::raw(" ".repeat(indent)));
                     if w_idx == 0 {
-                        spans.push(Span::styled(prefix.clone(), Style::default().fg(Color::Rgb(6, 182, 212))));
+                        spans.push(Span::styled(prefix.clone(), Style::default().fg(Theme::PRIMARY)));
                     } else {
                         spans.push(Span::raw(" ".repeat(prefix_len)));
                     }

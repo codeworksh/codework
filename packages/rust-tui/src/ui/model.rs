@@ -190,6 +190,8 @@ pub fn render_model_browser(
         return;
     }
 
+    let cursor_visible = spinner.cursor_visible();
+
     // 1. Header (1 line)
     let header_area = Rect::new(area.x, area.y, area.width, 1);
     let mut header_spans = vec![
@@ -215,7 +217,11 @@ pub fn render_model_browser(
         };
         header_spans.push(Span::styled(format!("/ search {}: ", search_target), Style::default().fg(Theme::ACTIVITY).add_modifier(Modifier::BOLD)));
         header_spans.push(Span::styled(current_query, Style::default().fg(Theme::TEXT_PRIMARY)));
-        header_spans.push(Span::styled("█", Style::default().fg(Theme::ACTIVITY)));
+        header_spans.push(if cursor_visible {
+            Span::styled("█", Style::default().fg(Theme::ACTIVITY))
+        } else {
+            Span::raw(" ")
+        });
         header_spans.push(Span::styled("  (Enter: browse, Esc: clear)", Style::default().fg(Theme::TEXT_MUTED)));
     } else {
         let mut filter_tags = Vec::new();
@@ -819,7 +825,11 @@ pub fn render_model_browser(
             lines.push(Line::from(vec![
                 Span::styled("API Key: ", Style::default().fg(Theme::ACCENT).add_modifier(Modifier::BOLD)),
                 Span::styled(masked, Style::default().fg(Theme::TEXT_PRIMARY)),
-                Span::styled("█", Style::default().fg(Theme::ACCENT)),
+                if cursor_visible {
+                    Span::styled("█", Style::default().fg(Theme::ACCENT))
+                } else {
+                    Span::raw(" ")
+                },
             ]));
 
             if let Some(err) = &state.validation_error {

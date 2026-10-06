@@ -45,6 +45,7 @@ pub struct App {
     pub session_input: String,
     pub session_cursor: usize,
     pub session_scroll_offset: usize,
+    pub session_dropdown_index: usize,
     pub is_streaming: bool,
 
     // RPC Client
@@ -79,6 +80,7 @@ impl App {
             session_input: String::new(),
             session_cursor: 0,
             session_scroll_offset: 0,
+            session_dropdown_index: 0,
             is_streaming: false,
 
             rpc_client: Arc::new(RpcClient::default()),
@@ -197,7 +199,22 @@ impl App {
         }
     }
 
+    pub fn get_session_input_width(&self) -> usize {
+        let (term_w, _) = crossterm::terminal::size().unwrap_or((80, 24));
+        let sidebar_width = (term_w / 4).clamp(24, 32);
+        let main_width = term_w.saturating_sub(sidebar_width + 1);
+        (main_width as usize).saturating_sub(6).max(10)
+    }
+
+    pub fn get_welcome_input_width(&self) -> usize {
+        let (term_w, _) = crossterm::terminal::size().unwrap_or((80, 24));
+        let card_width = 78u16.min(term_w.saturating_sub(2));
+        (card_width as usize).saturating_sub(6).max(10)
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) {
+        self.spinner.reset_blink();
+
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             if self.is_streaming {
                 // Interrupt active session
@@ -250,6 +267,11 @@ impl App {
                     } else {
                         self.welcome_dropdown_index -= 1;
                     }
+                } else if !is_dropdown_open {
+                    let w = self.get_welcome_input_width();
+                    if let Some(new_cur) = crate::ui::input::cursor_up_in_input(&self.welcome_input, self.welcome_cursor, w) {
+                        self.welcome_cursor = new_cur;
+                    }
                 }
             }
             KeyCode::Down => {
@@ -258,6 +280,11 @@ impl App {
                         self.welcome_dropdown_index = 0;
                     } else {
                         self.welcome_dropdown_index += 1;
+                    }
+                } else if !is_dropdown_open {
+                    let w = self.get_welcome_input_width();
+                    if let Some(new_cur) = crate::ui::input::cursor_down_in_input(&self.welcome_input, self.welcome_cursor, w) {
+                        self.welcome_cursor = new_cur;
                     }
                 }
             }
@@ -286,19 +313,17 @@ impl App {
                     self.welcome_cursor = self.welcome_input.chars().count();
                 }
             }
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) || key.modifiers.contains(KeyModifiers::ALT) => {
+                insert_char_at(&mut self.welcome_input, &mut self.welcome_cursor, '\n');
+                self.welcome_dropdown_index = 0;
+            }
             KeyCode::Enter => {
                 if is_dropdown_open && !matching_cmds.is_empty() {
-                    let cmd_name = matching_cmds[self.welcome_dropdown_index].name;
-                    if cmd_name == "/model" {
-                        self.open_model_flow();
-                        return;
-                    } else if cmd_name == "/exit" {
-                        self.should_quit = true;
-                        return;
-                    } else if cmd_name == "/clear" {
-                        self.turns.clear();
-                        self.welcome_input.clear();
-                        self.welcome_cursor = 0;
+                    let cmd_name = matching_cmds[self.welcome_dropdown_index.min(matching_cmds.len() - 1)].name;
+                    self.welcome_input.clear();
+                    self.welcome_cursor = 0;
+                    self.welcome_dropdown_index = 0;
+                    if self.execute_command(cmd_name) {
                         return;
                     } else {
                         self.welcome_input = format!("{} ", cmd_name);
@@ -312,18 +337,10 @@ impl App {
                     return;
                 }
 
-                if trimmed == "/model" {
-                    self.open_model_flow();
-                    return;
-                }
-                if trimmed == "/exit" {
-                    self.should_quit = true;
-                    return;
-                }
-                if trimmed == "/clear" {
-                    self.turns.clear();
+                if self.execute_command(&trimmed) {
                     self.welcome_input.clear();
                     self.welcome_cursor = 0;
+                    self.welcome_dropdown_index = 0;
                     return;
                 }
 
@@ -336,6 +353,7 @@ impl App {
                 // Start Session
                 self.welcome_input.clear();
                 self.welcome_cursor = 0;
+                self.welcome_dropdown_index = 0;
                 self.start_session(trimmed);
             }
             KeyCode::Backspace => {
@@ -360,6 +378,55 @@ impl App {
                 self.welcome_status_message = None;
             }
             _ => {}
+        }
+    }
+
+    pub fn execute_command(&mut self, cmd: &str) -> bool {
+        let trimmed = cmd.trim();
+        let cmd_name = trimmed.split_whitespace().next().unwrap_or(trimmed);
+
+        match cmd_name {
+            "/model" => {
+                self.open_model_flow();
+                true
+            }
+            "/exit" => {
+                self.should_quit = true;
+                true
+            }
+            "/clear" => {
+                self.turns.clear();
+                self.session_scroll_offset = 0;
+                true
+            }
+            "/session" => {
+                self.screen = ActiveScreen::Welcome;
+                true
+            }
+            "/help" => {
+                let mut help_turn = ConversationTurn::new("help".to_string(), "/help".to_string(), "system".to_string());
+                help_turn.streaming = false;
+                help_turn.end_time = Some(chrono::Utc::now().timestamp_millis());
+                help_turn.response = "### CodeWork Help & Commands\n\n| Command | Description |\n| :--- | :--- |\n| `/help` | Show available commands and shortcuts |\n| `/clear` | Clear conversation history and screen |\n| `/model` | Switch or view active LLM model |\n| `/session` | List or resume recent sessions |\n| `/compact` | Compact current conversation context |\n| `/exit` | Exit CodeWork TUI |\n\n**Shortcuts:**\n- `↑` / `↓` : Scroll chat history (or navigate commands when typing `/`)\n- `Home` / `End` : Jump to top / bottom of chat\n- `Ctrl+C` : Interrupt streaming response / Exit".to_string();
+                self.turns.push(help_turn);
+                true
+            }
+            "/compact" => {
+                if self.turns.len() > 1 {
+                    let old_count = self.turns.len();
+                    let last_turn = self.turns.pop().unwrap();
+                    self.turns.clear();
+                    let mut compact_turn = ConversationTurn::new("compact".to_string(), "[Context Compacted]".to_string(), "system".to_string());
+                    compact_turn.streaming = false;
+                    compact_turn.end_time = Some(chrono::Utc::now().timestamp_millis());
+                    compact_turn.response = format!("Previous {} turns compacted into session context summary.", old_count - 1);
+                    self.turns.push(compact_turn);
+                    self.turns.push(last_turn);
+                    self.session_scroll_offset = 0;
+                }
+                true
+            }
+            _ => false,
         }
     }
 
@@ -821,15 +888,90 @@ impl App {
             return;
         }
 
+        let is_dropdown_open = self.session_input.starts_with('/') && !self.session_input.contains(' ');
+        let matching_cmds = if is_dropdown_open {
+            COMMANDS
+                .iter()
+                .filter(|cmd| cmd.name.starts_with(&self.session_input))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        if is_dropdown_open {
+            match key.code {
+                KeyCode::Esc => {
+                    self.session_input.clear();
+                    self.session_cursor = 0;
+                    self.session_dropdown_index = 0;
+                    return;
+                }
+                KeyCode::Up => {
+                    if !matching_cmds.is_empty() {
+                        if self.session_dropdown_index == 0 {
+                            self.session_dropdown_index = matching_cmds.len() - 1;
+                        } else {
+                            self.session_dropdown_index -= 1;
+                        }
+                    }
+                    return;
+                }
+                KeyCode::Down => {
+                    if !matching_cmds.is_empty() {
+                        if self.session_dropdown_index + 1 >= matching_cmds.len() {
+                            self.session_dropdown_index = 0;
+                        } else {
+                            self.session_dropdown_index += 1;
+                        }
+                    }
+                    return;
+                }
+                KeyCode::Tab => {
+                    if !matching_cmds.is_empty() {
+                        let cmd_name = matching_cmds[self.session_dropdown_index.min(matching_cmds.len() - 1)].name;
+                        self.session_input = format!("{} ", cmd_name);
+                        self.session_cursor = self.session_input.chars().count();
+                    }
+                    return;
+                }
+                KeyCode::Enter => {
+                    if !matching_cmds.is_empty() {
+                        let cmd_name = matching_cmds[self.session_dropdown_index.min(matching_cmds.len() - 1)].name;
+                        self.session_input.clear();
+                        self.session_cursor = 0;
+                        self.session_dropdown_index = 0;
+                        if self.execute_command(cmd_name) {
+                            return;
+                        } else {
+                            self.session_input = format!("{} ", cmd_name);
+                            self.session_cursor = self.session_input.chars().count();
+                            return;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
         match key.code {
             KeyCode::Esc => {
                 self.screen = ActiveScreen::Welcome;
             }
             KeyCode::Up => {
-                self.session_scroll_offset += 2;
+                let w = self.get_session_input_width();
+                if let Some(new_cur) = crate::ui::input::cursor_up_in_input(&self.session_input, self.session_cursor, w) {
+                    self.session_cursor = new_cur;
+                } else {
+                    self.session_scroll_offset += 2;
+                }
             }
             KeyCode::Down => {
-                self.session_scroll_offset = self.session_scroll_offset.saturating_sub(2);
+                let w = self.get_session_input_width();
+                if let Some(new_cur) = crate::ui::input::cursor_down_in_input(&self.session_input, self.session_cursor, w) {
+                    self.session_cursor = new_cur;
+                } else {
+                    self.session_scroll_offset = self.session_scroll_offset.saturating_sub(2);
+                }
             }
             KeyCode::PageUp => {
                 self.session_scroll_offset += 15;
@@ -862,9 +1004,15 @@ impl App {
             }
             KeyCode::Delete => {
                 delete_at(&mut self.session_input, self.session_cursor);
+                self.session_dropdown_index = 0;
             }
             KeyCode::Backspace => {
                 backspace_at(&mut self.session_input, &mut self.session_cursor);
+                self.session_dropdown_index = 0;
+            }
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) || key.modifiers.contains(KeyModifiers::ALT) => {
+                insert_char_at(&mut self.session_input, &mut self.session_cursor, '\n');
+                self.session_dropdown_index = 0;
             }
             KeyCode::Enter => {
                 let prompt = self.session_input.trim().to_string();
@@ -873,6 +1021,10 @@ impl App {
                 }
                 self.session_input.clear();
                 self.session_cursor = 0;
+                self.session_dropdown_index = 0;
+                if self.execute_command(&prompt) {
+                    return;
+                }
                 self.dispatch_turn(prompt);
             }
             KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -883,22 +1035,27 @@ impl App {
             }
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 clear_to_start(&mut self.session_input, &mut self.session_cursor);
+                self.session_dropdown_index = 0;
             }
             KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 delete_word_backward(&mut self.session_input, &mut self.session_cursor);
+                self.session_dropdown_index = 0;
             }
             KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 let byte_pos = self.session_input.char_indices().nth(self.session_cursor).map(|(i, _)| i).unwrap_or(self.session_input.len());
                 self.session_input.truncate(byte_pos);
+                self.session_dropdown_index = 0;
             }
             KeyCode::Char(c) => {
                 insert_char_at(&mut self.session_input, &mut self.session_cursor, c);
+                self.session_dropdown_index = 0;
             }
             _ => {}
         }
     }
 
     pub fn handle_paste(&mut self, text: &str) {
+        self.spinner.reset_blink();
         match self.screen {
             ActiveScreen::Welcome => {
                 insert_str_at(&mut self.welcome_input, &mut self.welcome_cursor, text);
@@ -934,6 +1091,7 @@ impl App {
             ActiveScreen::Session => {
                 if !self.is_streaming {
                     insert_str_at(&mut self.session_input, &mut self.session_cursor, text);
+                    self.session_dropdown_index = 0;
                 }
             }
         }
@@ -943,6 +1101,7 @@ impl App {
         self.screen = ActiveScreen::Session;
         self.session_cursor = 0;
         self.session_scroll_offset = 0;
+        self.session_dropdown_index = 0;
 
         let cfg = match &self.active_config {
             Some(c) => c.clone(),
@@ -1290,6 +1449,92 @@ mod tests {
         // End resets to 0 (when input empty)
         app.handle_key(KeyEvent::from(KeyCode::End));
         assert_eq!(app.session_scroll_offset, 0);
+    }
+
+    #[tokio::test]
+    async fn test_session_command_dropdown() {
+        let mut app = App::new();
+        app.screen = ActiveScreen::Session;
+        assert_eq!(app.session_input, "");
+
+        // Typing '/' opens the command dropdown
+        app.handle_key(KeyEvent::from(KeyCode::Char('/')));
+        assert_eq!(app.session_input, "/");
+        assert_eq!(app.session_dropdown_index, 0);
+
+        // Pressing Down navigates to next command
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        assert_eq!(app.session_dropdown_index, 1);
+
+        // Pressing Up navigates back
+        app.handle_key(KeyEvent::from(KeyCode::Up));
+        assert_eq!(app.session_dropdown_index, 0);
+
+        // Typing 'm' filters commands
+        app.handle_key(KeyEvent::from(KeyCode::Char('m')));
+        assert_eq!(app.session_input, "/m");
+
+        // Pressing Tab auto-completes the selected command
+        app.handle_key(KeyEvent::from(KeyCode::Tab));
+        assert_eq!(app.session_input, "/model ");
+
+        // Pressing Esc clears the input and closes dropdown
+        app.session_input = "/".to_string();
+        app.session_cursor = 1;
+        app.handle_key(KeyEvent::from(KeyCode::Esc));
+        assert_eq!(app.session_input, "");
+        assert_eq!(app.screen, ActiveScreen::Session);
+
+        // Executing /clear clears turns
+        let mut turn = ConversationTurn::new("1".to_string(), "hello".to_string(), "model".to_string());
+        turn.response = "world".to_string();
+        turn.streaming = false;
+        app.turns.push(turn);
+        assert_eq!(app.turns.len(), 1);
+        app.session_input = "/clear".to_string();
+        app.session_cursor = 6;
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert!(app.turns.is_empty());
+        assert_eq!(app.session_input, "");
+    }
+
+    #[tokio::test]
+    async fn test_multiline_session_input_and_navigation() {
+        let mut app = App::new();
+        app.screen = ActiveScreen::Session;
+        app.session_input = "hello world".to_string();
+        app.session_cursor = 11;
+
+        // Shift+Enter inserts newline
+        let shift_enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT);
+        app.handle_key(shift_enter);
+        assert_eq!(app.session_input, "hello world\n");
+        assert_eq!(app.session_cursor, 12);
+
+        // Type second line
+        for c in "next line".chars() {
+            app.handle_key(KeyEvent::from(KeyCode::Char(c)));
+        }
+        assert_eq!(app.session_input, "hello world\nnext line");
+        assert_eq!(app.session_cursor, 21);
+
+        // Press Up should move cursor to line 1 (col 9, which is 'r') instead of scrolling chat
+        let initial_scroll = app.session_scroll_offset;
+        app.handle_key(KeyEvent::from(KeyCode::Up));
+        assert_eq!(app.session_scroll_offset, initial_scroll);
+        assert_eq!(app.session_cursor, 9); // col 9 on "hello world"
+
+        // Press Up again from line 0 should scroll chat history
+        app.handle_key(KeyEvent::from(KeyCode::Up));
+        assert_eq!(app.session_scroll_offset, initial_scroll + 2);
+
+        // Press Down moves cursor to line 1
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        assert_eq!(app.session_cursor, 12 + 9); // col 9 on "next line" (12 + 9 = 21)
+
+        // Press Down again from last line scrolls chat down
+        app.handle_key(KeyEvent::from(KeyCode::Down));
+        assert_eq!(app.session_scroll_offset, initial_scroll);
     }
 }
 

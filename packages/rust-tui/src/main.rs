@@ -19,7 +19,7 @@ use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::backend::CrosstermBackend;
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::widgets::Block;
 use ratatui::Terminal;
 use tokio::time::interval;
@@ -43,8 +43,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    // Set terminal background to black (OSC 11), clear screen, and enter alternate screen
-    let _ = stdout.write_all(b"\x1b]11;#000000\x07\x1b[40m\x1b[2J\x1b[H");
+    // Set terminal background to #1E1E2E (OSC 11), clear screen, and enter alternate screen
+    let _ = stdout.write_all(b"\x1b]11;#1E1E2E\x07\x1b[48;2;30;30;46m\x1b[2J\x1b[H");
     let _ = stdout.flush();
     execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)?;
     let backend = CrosstermBackend::new(stdout);
@@ -75,9 +75,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         terminal.draw(|f| {
             let area = f.area();
-            // Fill the entire terminal viewport with pure black background
+            // Fill the entire terminal viewport with Deep Black (#0B0B0F) background
             f.render_widget(
-                Block::default().style(Style::default().bg(Color::Rgb(0, 0, 0))),
+                Block::default().style(Style::default().bg(ui::Theme::BG_APP)),
                 area,
             );
             match app.screen {
@@ -90,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         app.welcome_dropdown_index,
                         app.active_config.as_ref(),
                         app.welcome_status_message.as_deref(),
+                        &app.spinner,
                     );
                 }
                 ActiveScreen::ModelFlow => {
@@ -107,6 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &app.session_input,
                             app.session_cursor,
                             app.session_scroll_offset,
+                            app.session_dropdown_index,
                             &app.spinner,
                             app.is_streaming,
                         );

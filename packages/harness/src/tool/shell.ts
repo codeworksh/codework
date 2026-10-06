@@ -72,6 +72,17 @@ export interface IToolShell {
 		options?: ToolShellExecOptions,
 	) => Effect.Effect<ToolShellResult, ToolShellError | ToolShellTimeout>;
 	/**
+	 * Run a program with an explicit argument vector, bypassing shell word
+	 * splitting — the same contract `SandboxIO.Shell.execArgv` offers, surfaced
+	 * here so a tool that builds a command from caller-supplied values (a search
+	 * pattern, a path) passes them as data instead of interpolating into
+	 * {@link exec}, where a space or `$(…)` would change what runs.
+	 */
+	readonly execArgv?: (
+		argv: ReadonlyArray<string>,
+		options?: ToolShellExecOptions,
+	) => Effect.Effect<ToolShellResult, ToolShellError | ToolShellTimeout>;
+	/**
 	 * Optional streaming output (variant B): combined stdout/stderr chunks then a
 	 * terminal `Exit`. Absent → the tool falls back to {@link exec}. Offered by
 	 * `ToolShell.local`. The process group is killed when the consuming scope
@@ -142,7 +153,34 @@ export const fromSandboxShell: Layer.Layer<ToolShell, never, Shell> = Layer.effe
 					)
 			: undefined;
 
-		return ToolShell.of(stream ? { exec, stream } : { exec });
+		// Argv path: same contract as the buffered `exec`, but the command never
+		// meets a shell parser — the backend receives the vector as data.
+		const execArgv: NonNullable<IToolShell["execArgv"]> = (argv, options) => {
+			const run = shell
+				.execArgv(argv, {
+					...(options?.env ? { env: options.env } : {}),
+					...(options?.cwd ? { cwd: options.cwd } : {}),
+				})
+				.pipe(Effect.mapError((cause) => new ToolShellError({ command: argv.join(" "), cause })));
+
+			if (options?.timeout === undefined) return widenExecError(run);
+
+			const timeout = options.timeout;
+			return run.pipe(
+				Effect.timeoutOption(timeout),
+				Effect.flatMap(
+					Option.match({
+						onNone: () =>
+							Effect.fail(
+								new ToolShellTimeout({ command: argv.join(" "), timeoutMillis: Duration.toMillis(timeout) }),
+							),
+						onSome: Effect.succeed,
+					}),
+				),
+			);
+		};
+
+		return ToolShell.of(stream ? { exec, execArgv, stream } : { exec, execArgv });
 	}),
 );
 
@@ -225,11 +263,18 @@ export const local = (config?: LocalConfig): Layer.Layer<ToolShell, never, Child
 					);
 				});
 
-			const exec: IToolShell["exec"] = (command, options) => {
+			// Spawn `program args` and collect output. `command` is the display form used
+			// only to attribute a failure; the vector is what actually runs.
+			const spawn = (
+				program: string,
+				args: ReadonlyArray<string>,
+				command: string,
+				options?: ToolShellExecOptions,
+			): Effect.Effect<ToolShellResult, ToolShellError | ToolShellTimeout> => {
 				// Per-call option wins, else the adapter default, else the built-in default.
 				const forceKillAfter = options?.forceKillAfter ?? configForceKillAfter;
 				const run = Effect.gen(function* () {
-					const handle = yield* ChildProcess.make(shell, ["-c", command], {
+					const handle = yield* ChildProcess.make(program, args, {
 						cwd: options?.cwd ?? config?.cwd,
 						env: { ...config?.env, ...options?.env },
 						extendEnv: true,
@@ -274,6 +319,16 @@ export const local = (config?: LocalConfig): Layer.Layer<ToolShell, never, Child
 				);
 			};
 
+			const exec: IToolShell["exec"] = (command, options) => spawn(shell, ["-c", command], command, options);
+
+			// Argv path: the program is spawned directly, so a caller-supplied pattern
+			// or path can never be reinterpreted by a shell.
+			const execArgv: NonNullable<IToolShell["execArgv"]> = (argv, options) => {
+				const [program, ...args] = argv;
+				if (program === undefined) return Effect.die(new Error("ToolShell.execArgv requires a program"));
+				return spawn(program, args, argv.join(" "), options);
+			};
+
 			// Streaming: combined stdout/stderr chunks then a terminal `Exit`. The
 			// process group is killed (with escalation) when the consuming scope closes,
 			// so an interrupted/timed-out consumer keeps whatever it accumulated.
@@ -306,6 +361,6 @@ export const local = (config?: LocalConfig): Layer.Layer<ToolShell, never, Child
 				);
 			};
 
-			return ToolShell.of({ exec, stream });
+			return ToolShell.of({ exec, execArgv, stream });
 		}),
 	);
