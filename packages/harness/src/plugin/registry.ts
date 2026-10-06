@@ -1,6 +1,7 @@
 import type { PluginRegistry } from "@codeworksh/plugin/plugin";
 import { make as makeCatalog } from "../tool/registry.ts";
-import { fallback, make as makePrompt } from "./prompt/registry.ts";
+import { make as makePrompt } from "./prompt/registry.ts";
+import { render } from "./prompt/render.ts";
 import { make as makeTools } from "./tool/registry.ts";
 
 /** The buckets a plugin writes into during `setup`. Declared in `@codeworksh/plugin`. */
@@ -16,9 +17,14 @@ export const make = () => {
 	return {
 		registry: Object.freeze<PluginRegistry>({ tools: tools.registry, prompt: prompt.registry }),
 		close,
-		freeze: () => {
+		/** Close the buckets and render the snapshot; `directory` is the exchange's `<cwd>`. */
+		freeze: (directory: string) => {
 			close();
-			return { tools: makeCatalog(tools.entries()).resolve(), systemPrompt: prompt.value() ?? fallback };
+			const resolved = makeCatalog(tools.entries()).resolve();
+			return {
+				tools: resolved,
+				systemPrompt: render({ prompt: prompt.snapshot(), tools: resolved.defs, directory }),
+			};
 		},
 	};
 };

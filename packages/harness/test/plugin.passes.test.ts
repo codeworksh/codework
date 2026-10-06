@@ -26,9 +26,12 @@ const marker = (id: string) =>
 		kind: "prompt",
 		setup: (ctx, options) => {
 			const suffix = typeof options.marker === "string" ? options.marker : "none";
-			ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ""}${suffix}`);
+			ctx.plugin.prompt.foundation.set(`${ctx.plugin.prompt.foundation.get() ?? ""}${suffix}`);
 		},
 	});
+
+/** The rendered foundation: everything before the harness-owned `<tools>` section. */
+const foundation = (prompt: string | undefined) => (prompt ?? "").split("\n\n<tools>\n")[0] ?? "";
 
 const options = { builtins: [], cache: "/unused", hostDir: "/project" };
 
@@ -67,7 +70,7 @@ describe("a running session", () => {
 					"export default {",
 					"  id: 'acme.prompt.live',",
 					"  kind: 'prompt',",
-					"  setup: (ctx, options) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}${options.marker}`),",
+					"  setup: (ctx, options) => ctx.plugin.prompt.foundation.set(`${ctx.plugin.prompt.foundation.get() ?? ''}${options.marker}`),",
 					"};",
 				].join("\n"),
 			);
@@ -115,8 +118,8 @@ describe("a running session", () => {
 					Effect.orDie,
 				),
 			);
-			expect(prompts[0]?.endsWith("before")).toBe(true);
-			expect(prompts[1]?.endsWith("after")).toBe(true);
+			expect(foundation(prompts[0]).endsWith("before")).toBe(true);
+			expect(foundation(prompts[1]).endsWith("after")).toBe(true);
 			// The module was imported once, at boot, and never again.
 			expect((globalThis as { __markerImports?: number }).__markerImports).toBe(imports);
 		}));
@@ -236,7 +239,7 @@ describe("a running session and the store", () => {
 					"export default {",
 					"  id: 'acme.prompt.arrived',",
 					"  kind: 'prompt',",
-					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}arrived`),",
+					"  setup: (ctx) => ctx.plugin.prompt.foundation.set(`${ctx.plugin.prompt.foundation.get() ?? ''}arrived`),",
 					"};",
 				].join("\n"),
 			);
@@ -289,7 +292,7 @@ describe("a running session and the store", () => {
 			);
 			expect(prompts).toHaveLength(2);
 			expect(prompts[0]).not.toContain("arrived");
-			expect(prompts[1]?.endsWith("arrived")).toBe(true);
+			expect(foundation(prompts[1]).endsWith("arrived")).toBe(true);
 		}));
 });
 
@@ -379,7 +382,7 @@ describe("boot", () => {
 					"export default {",
 					"  id: 'acme.prompt.marker',",
 					"  kind: 'prompt',",
-					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}marker`),",
+					"  setup: (ctx) => ctx.plugin.prompt.foundation.set(`${ctx.plugin.prompt.foundation.get() ?? ''}marker`),",
 					"};",
 				].join("\n"),
 			);
@@ -429,7 +432,7 @@ describe("reload", () => {
 				"export default {",
 				"  id: 'acme.prompt.edited',",
 				"  kind: 'prompt',",
-				`  setup: (ctx) => ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ''}${suffix}\`),`,
+				`  setup: (ctx) => ctx.plugin.prompt.foundation.set(\`\${ctx.plugin.prompt.foundation.get() ?? ''}${suffix}\`),`,
 				"};",
 			].join("\n"),
 		);
@@ -492,7 +495,7 @@ describe("reload", () => {
 						// module registry hands back the module it already has.
 						yield* Effect.promise(() => write(file, "after"));
 						yield* run();
-						expect(prompts[1]?.endsWith("before")).toBe(true);
+						expect(foundation(prompts[1]).endsWith("before")).toBe(true);
 
 						const reloaded = yield* state.reload;
 						expect(reloaded.failure).toBeUndefined();
@@ -501,7 +504,7 @@ describe("reload", () => {
 			});
 			// Two exchanges see the old module against an unchanged URL; the reload is what makes
 			// the third see the edit.
-			expect(prompts.map((prompt) => (prompt.endsWith("after") ? "after" : "before"))).toEqual([
+			expect(prompts.map((prompt) => (foundation(prompt).endsWith("after") ? "after" : "before"))).toEqual([
 				"before",
 				"before",
 				"after",
@@ -534,7 +537,7 @@ describe("reload", () => {
 						yield* run();
 					}),
 			});
-			expect(prompts.at(-1)?.endsWith("before")).toBe(true);
+			expect(foundation(prompts.at(-1)).endsWith("before")).toBe(true);
 		}));
 
 	it("reloads a local plugin discovered from a linked session outside the startup project", () =>
@@ -560,7 +563,10 @@ describe("reload", () => {
 						yield* run();
 					}),
 			});
-			expect(prompts.map((prompt) => (prompt.endsWith("after") ? "after" : "before"))).toEqual(["before", "after"]);
+			expect(prompts.map((prompt) => (foundation(prompt).endsWith("after") ? "after" : "before"))).toEqual([
+				"before",
+				"after",
+			]);
 		}));
 
 	it("rejects an event definition on reload that the boot registry would reject", () =>
@@ -585,7 +591,7 @@ describe("reload", () => {
 									"  id: 'acme.prompt.edited',",
 									"  kind: 'prompt',",
 									"  events: [{ type: 'session.created' }],",
-									"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}after`),",
+									"  setup: (ctx) => ctx.plugin.prompt.foundation.set(`${ctx.plugin.prompt.foundation.get() ?? ''}after`),",
 									"};",
 								].join("\n"),
 							),
@@ -595,7 +601,7 @@ describe("reload", () => {
 						yield* run();
 					}),
 			});
-			expect(prompts.at(-1)?.endsWith("before")).toBe(true);
+			expect(foundation(prompts.at(-1)).endsWith("before")).toBe(true);
 		}));
 
 	it("publishes a plugin.updated notice for each lifecycle transition", () =>
@@ -656,7 +662,7 @@ describe("reload", () => {
 					}),
 			});
 			// The first exchange's lazy load ran the plugin: its marker made the prompt.
-			expect(prompts[0]?.endsWith("before")).toBe(true);
+			expect(foundation(prompts[0]).endsWith("before")).toBe(true);
 		}));
 });
 
@@ -671,7 +677,7 @@ describe("linking a session to a host directory", () => {
 					"export default {",
 					"  id: 'acme.prompt.linked',",
 					"  kind: 'prompt',",
-					"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}linked`),",
+					"  setup: (ctx) => ctx.plugin.prompt.foundation.set(`${ctx.plugin.prompt.foundation.get() ?? ''}linked`),",
 					"};",
 				].join("\n"),
 			);
@@ -724,6 +730,6 @@ describe("linking a session to a host directory", () => {
 
 			expect(prompts).toHaveLength(2);
 			expect(prompts[0]).not.toContain("linked");
-			expect(prompts[1]?.endsWith("linked")).toBe(true);
+			expect(foundation(prompts[1]).endsWith("linked")).toBe(true);
 		}));
 });

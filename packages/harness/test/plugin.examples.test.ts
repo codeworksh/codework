@@ -60,7 +60,7 @@ const selection: ReadonlyArray<PluginRef> = [
 ];
 
 describe("extras examples", () => {
-	it("registers every example tool and composes the prompt in selection order", () =>
+	it("registers every example tool and composes the prompt into sections", () =>
 		withSettings(async ({ root }) => {
 			const { contexts } = await run(root, selection);
 			const context = contexts[0];
@@ -71,10 +71,13 @@ describe("extras examples", () => {
 			expect(prompt).toContain("- project_fact: Look up a project convention: deploy.");
 			// Each example read its own options block.
 			expect(prompt).toContain("- The short version: 43.");
-			expect(prompt).toContain("## House style");
-			expect(prompt).toContain("- No `any` in TypeScript.");
-			// Composition order: the built-in body, then life, then house style last.
-			expect(prompt.indexOf("## On the meaning of life")).toBeLessThan(prompt.indexOf("## House style"));
+			expect(prompt).not.toContain("- The short version: 42.");
+			// House style merged into the shared <rules>, after the built-in body's rules.
+			const rules = prompt.slice(prompt.indexOf("<rules>"), prompt.indexOf("</rules>"));
+			expect(rules).toContain("- No `any` in TypeScript.");
+			expect(rules.indexOf("- Be concise.")).toBeLessThan(rules.indexOf("- No `any` in TypeScript."));
+			// A custom section renders after the built-ins.
+			expect(prompt.indexOf("</cwd>")).toBeLessThan(prompt.indexOf("<meaning_of_life>"));
 		}));
 
 	it("runs a single-file example tool through the loop", () =>

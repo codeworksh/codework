@@ -56,17 +56,13 @@ const echo = Plugin.define({
 	},
 });
 
-// A prompt plugin renders the system prompt, and indexes every tool registered before it.
+// A prompt plugin writes the foundation and sections; the harness renders the prompt.
 const prompt = Plugin.define({
 	id: "acme.prompt.main",
 	kind: "prompt",
 	setup(ctx) {
-		ctx.plugin.prompt.set(
-			`You have: ${ctx.plugin.tools
-				.list()
-				.map((tool) => tool.name)
-				.join(", ")}`,
-		);
+		ctx.plugin.prompt.foundation.set("You are a terse assistant.");
+		ctx.plugin.prompt.sections.append(Plugin.Section.Rules, "Answer in one sentence.");
 	},
 });
 
@@ -79,9 +75,9 @@ Hooks belong to the tool registration. Sequential or parallel scheduling, select
 
 `ctx.plugin.tools.update(name, patch)` rewrites a registration's model-facing prose without replacing the tool or its hooks. A read sees only earlier contributions, so a plugin patching `promptSnippet` or `promptGuidelines` must run _before_ the tool it patches is indexed. Declaring `kind: "tool"` puts it ahead of every prompt plugin already; what it still has to get right is its position among the other tool plugins, which is the order their entries are written in.
 
-Prompt plugins use `ctx.plugin.prompt.get()` and `set(string)`. Each `set` replaces the entire prompt, including with an empty string. Place a prompt plugin after the tools or prompt contributors it needs. Contributions close after setup; plugins receive event publication but no subscription or background lifecycle.
+Prompt plugins write into `ctx.plugin.prompt`: `foundation.set(text)` for the untagged head (the last `set` wins), and `sections.append/set/remove/get` with a `Plugin.Section` value — the built-in `Rules`, `Addendum`, `ProjectContext` and `Skills`, or a custom `Plugin.Section.define("github_pr_rules", { format: "list" })`. Sections merge by name across plugins. The harness renders the foundation, then `<tools>`, the built-in sections, `<cwd>`, and custom sections in first-write order; `tools` and `cwd` are its own. Contributions close after setup; plugins receive event publication but no subscription or background lifecycle.
 
-Omitting `plugins` selects Bash then the default prompt, followed by the host settings' `plugins` block. An explicit array replaces all of that, and an empty one runs nothing — which is not a usable harness: `freeze` requires a system prompt, so a selection without a prompt plugin fails every exchange with `SnapshotError("no prompt plugin set a system prompt")`. Every working selection ends with a prompt plugin, whether `codework.prompt.default` or your own.
+Omitting `plugins` selects Bash then the default prompt, followed by the host settings' `plugins` block. An explicit array replaces all of that, and an empty one runs nothing: the prompt is then a fallback foundation with only the harness-owned `<tools>` and `<cwd>`.
 
 An entry is a **module** or a **configuration object**.
 

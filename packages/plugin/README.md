@@ -52,19 +52,27 @@ for a capability such as `SandboxIO.Shell`.
 ## A prompt plugin
 
 ```ts
-import { Plugin } from "@codeworksh/plugin";
+import { Plugin, Section } from "@codeworksh/plugin";
+
+const GithubPrRules = Section.define("github_pr_rules", { format: "list" });
 
 export default Plugin.define({
 	id: "acme.prompt.house-style",
 	kind: "prompt",
 	setup(ctx) {
-		// `set` replaces the whole prompt, so compose on what earlier plugins rendered.
-		const existing = ctx.plugin.prompt.get();
-		const section = "## House style\n\n- No `any`.";
-		ctx.plugin.prompt.set(existing === undefined ? section : `${existing}\n\n${section}`);
+		// Merges into the one <rules> every plugin writes to.
+		ctx.plugin.prompt.sections.append(Section.Rules, "No `any`.");
+		// Opens <github_pr_rules> on first use; later appends, from any plugin, land in it.
+		ctx.plugin.prompt.sections.append(GithubPrRules, "Link the issue in every PR description.");
 	},
 });
 ```
+
+The harness renders the system prompt from what plugins wrote: the foundation first and untagged
+(`ctx.plugin.prompt.foundation.set`), then `<tools>`, `<rules>`, `<addendum>`, `<project_context>`,
+`<skills>`, `<cwd>`, and custom sections in the order they were first written. `tools` and `cwd`
+belong to the harness. A `list` section renders its entries as deduplicated `- ` bullets; a `text`
+section (the default) keeps them verbatim, separated by a blank line.
 
 ## `kind` decides when a plugin runs
 

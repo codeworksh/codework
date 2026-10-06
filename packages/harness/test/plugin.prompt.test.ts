@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
+import { bashPlugin } from "../src/plugin/builtin/tool/bash.ts";
+import { define, Section } from "../src/plugin/index.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 
@@ -46,21 +48,21 @@ describe("codework.prompt.default", () => {
 		).then((path) => ({ observed, path }));
 	};
 
-	it("replaces the foundation with promptCustom and places promptSystemAppend before the directory line", () =>
+	it("replaces the foundation with promptCustom and renders promptSystemAppend as the addendum", () =>
 		withSettings(async ({ root }) => {
 			const { observed } = await prompts(
 				root,
 				{ plugins: [defaultPromptPlugin] },
 				{ systemPrompt: { custom: "Only this.", append: "  Extra section.  " } },
 			);
-			// No tool plugin ran, the append is trimmed, and the directory line stays last.
+			// No tool plugin ran, the foundation stays untagged, and the append is trimmed.
 			expect(observed[0]).toBe(
 				[
 					"Only this.",
-					"Available tools:\n(none)",
-					"Guidelines:\n- Be concise. Report what you did and what you found, not what you are about to do.\n- Quote exact paths and command output rather than paraphrasing them.\n- If a command fails, read the error before retrying.",
-					"Extra section.",
-					`Current working directory: ${await realpath(root)}`,
+					"<tools>\n(none)\n</tools>",
+					"<rules>\n- Be concise. Report what you did and what you found, not what you are about to do.\n- Quote exact paths and command output rather than paraphrasing them.\n- If a command fails, read the error before retrying.\n</rules>",
+					"<addendum>\nExtra section.\n</addendum>",
+					`<cwd>\n${await realpath(root)}\n</cwd>`,
 				].join("\n\n"),
 			);
 		}));
@@ -78,6 +80,68 @@ describe("codework.prompt.default", () => {
 					},
 				},
 			);
+			expect(observed).toEqual([]);
+			expect(path).toEqual([]);
+		}));
+
+	it("merges sections across plugins and renders custom ones after the built-ins", () =>
+		withSettings(async ({ root }) => {
+			const GithubPrRules = Section.define("github_pr_rules", { format: "list" });
+			const Notes = Section.define("notes");
+			const { observed } = await prompts(
+				root,
+				{
+					plugins: [
+						bashPlugin,
+						defaultPromptPlugin,
+						define({
+							id: "acme.prompt.github",
+							kind: "prompt",
+							setup: (ctx) => {
+								ctx.plugin.prompt.sections.append(Section.Rules, "Never push to main.");
+								ctx.plugin.prompt.sections.append(GithubPrRules, "Link the issue in every PR description.");
+								ctx.plugin.prompt.sections.append(Notes, "Reviewers: alice, bob.");
+							},
+						}),
+						define({
+							id: "acme.prompt.team",
+							kind: "prompt",
+							setup: (ctx) => {
+								// A second spelling of a default rule dedupes into the first.
+								ctx.plugin.prompt.sections.append(
+									Section.Rules,
+									"If a command  fails, read the error before retrying.",
+								);
+								ctx.plugin.prompt.sections.append(GithubPrRules, "Never force-push a branch under review.");
+								ctx.plugin.prompt.sections.append(GithubPrRules, "Link the issue in every PR   description.");
+								ctx.plugin.prompt.sections.append(Notes, "Release on Thursdays.");
+							},
+						}),
+					],
+				},
+				{ systemPrompt: { append: "Always run tests with pnpm." } },
+			);
+			const prompt = (observed[0] ?? "").replaceAll(await realpath(root), "<root>");
+			await expect(prompt).toMatchFileSnapshot("./__artifacts__/prompt.sections.txt");
+		}));
+
+	it("fails the snapshot when two plugins write one section in different formats", () =>
+		withSettings(async ({ root }) => {
+			const { observed, path } = await prompts(root, {
+				plugins: [
+					defaultPromptPlugin,
+					define({
+						id: "acme.prompt.list",
+						kind: "prompt",
+						setup: (ctx) => ctx.plugin.prompt.sections.append(Section.define("notes", { format: "list" }), "a"),
+					}),
+					define({
+						id: "acme.prompt.text",
+						kind: "prompt",
+						setup: (ctx) => ctx.plugin.prompt.sections.append(Section.define("notes"), "b"),
+					}),
+				],
+			});
 			expect(observed).toEqual([]);
 			expect(path).toEqual([]);
 		}));

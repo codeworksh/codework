@@ -7,6 +7,7 @@ export { anchor, canonical, definition, inspect, localName } from "./loader.ts";
 export { define, type Mount, type Plugin } from "./plugin.ts";
 export * as Prompt from "./prompt/schema.ts";
 export type { PluginRegistry } from "./registry.ts";
+export * as Section from "@codeworksh/plugin/plugin/section";
 export { probe } from "./npm.ts";
 export { parse, type Fetchable, type Target } from "./source.ts";
 export {
