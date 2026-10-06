@@ -37,6 +37,25 @@ describe("provider failure normalization", () => {
 		expect(JSON.stringify(failure)).not.toContain("sensitive");
 	});
 
+	it("reads retry-after-ms and an HTTP-date retry-after", () => {
+		const retryAfter = (responseHeaders: Record<string, string>) =>
+			Failure.normalize(
+				new APICallError({
+					message: "Overloaded",
+					url: "https://provider.invalid/v1/chat",
+					requestBodyValues: {},
+					statusCode: 529,
+					responseHeaders,
+				}),
+			).retryAfterMs;
+
+		expect(retryAfter({ "retry-after-ms": "1500", "retry-after": "9" })).toBe(1_500);
+		const at = retryAfter({ "retry-after": new Date(Date.now() + 45_000).toUTCString() });
+		expect(at).toBeGreaterThan(43_000);
+		expect(at).toBeLessThanOrEqual(45_000);
+		expect(retryAfter({ "retry-after": "Thu, 01 Jan 1970 00:00:00 GMT" })).toBe(0);
+	});
+
 	it("distinguishes quota exhaustion from ordinary rate limiting", () => {
 		const failure = Failure.normalize(
 			new APICallError({

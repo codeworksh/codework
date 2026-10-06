@@ -66,11 +66,16 @@ const header = (headers: Record<string, string> | undefined, name: string): stri
 	}
 };
 
+/** The server's requested wait, in the three forms providers send: `retry-after-ms`, seconds, or an HTTP date. */
 const retryAfter = (headers: Record<string, string> | undefined): number | undefined => {
+	const millis = Number(header(headers, "retry-after-ms"));
+	if (Number.isFinite(millis) && millis >= 0) return millis;
 	const value = header(headers, "retry-after");
 	if (value === undefined) return undefined;
 	const seconds = Number(value);
 	if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+	const date = Date.parse(value);
+	if (Number.isFinite(date)) return Math.max(0, date - Date.now());
 };
 
 const apiMetadata = (error: APICallError): Metadata => {
