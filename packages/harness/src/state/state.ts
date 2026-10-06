@@ -30,7 +30,7 @@ import type { ID as SessionId } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
 import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
-import type { Block, Info } from "../settings/schema.ts";
+import type { Block, Info, RetryPolicy } from "../settings/schema.ts";
 import { Settings } from "../settings/settings.ts";
 import type { Resolved } from "../tool/registry.ts";
 
@@ -120,6 +120,8 @@ export interface Snapshot {
 	/** Matched file attributes used to construct provider requests. */
 	readonly settings: Block;
 	readonly toolExecution: ToolExecutionMode;
+	/** Agent-level retry of a transiently failed provider request. */
+	readonly retry: RetryPolicy;
 }
 
 export interface Configuration {
@@ -470,6 +472,7 @@ export const layer = (
 						request,
 						settings: configured.block,
 						toolExecution,
+						retry: loadedSettings.retry,
 					} satisfies Snapshot;
 				}),
 			});

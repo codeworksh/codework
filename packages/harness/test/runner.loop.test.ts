@@ -1,6 +1,7 @@
 import "./utils/env.ts";
 import type { Plugin } from "../src/plugin/plugin.ts";
 import { builtins as plugins } from "../src/plugin/builtin.ts";
+import type { Info } from "../src/settings/schema.ts";
 import { Settings } from "../src/settings/settings.ts";
 import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
@@ -39,6 +40,7 @@ const runtime = (
 		readonly contexts?: Message.Context[];
 		readonly state?: State.Options;
 		readonly plugins?: ReadonlyArray<Plugin>;
+		readonly settings?: Info;
 	} = {},
 ) => {
 	const database = Database.layer(":memory:");
@@ -55,7 +57,9 @@ const runtime = (
 			),
 		),
 		Layer.provideMerge(SessionRuntime.layer),
-		Layer.provideMerge(Layer.succeed(Settings.Service, { load: () => Effect.succeed(Settings.defaults) })),
+		Layer.provideMerge(
+			Layer.succeed(Settings.Service, { load: () => Effect.succeed(options.settings ?? Settings.defaults) }),
+		),
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
 		Layer.provideMerge(SessionProjector.layer),
@@ -618,4 +622,174 @@ describe("runner loop — provider failure", () => {
 			}
 		}),
 	);
+});
+
+describe("runner loop — retry", () => {
+	type Failure = { readonly _tag: string; readonly retryable: boolean; readonly retryAfterMs?: number };
+
+	/** Each call takes the next script entry: a failure (optionally after streaming text), else success. */
+	const scripted = (
+		script: ReadonlyArray<{ readonly failure: Failure; readonly streamed?: string } | "ok">,
+		contexts: Message.Context[] = [],
+	): LLM.Open => {
+		let index = 0;
+		return (input) =>
+			Effect.sync(() => {
+				index += 1;
+				contexts.push(structuredClone(input.context));
+				const step = script[index - 1] ?? "ok";
+				const events = createAssistantMessageEventStream();
+				if (step === "ok") {
+					const message = assistant(input, index);
+					events.push({ type: "start", partial: message });
+					events.push({ type: "done", reason: "stop", message });
+					return events;
+				}
+				const failed = Object.assign(
+					assistant(input, index, {
+						stopReason: "error",
+						errorMessage: `${step.failure._tag} failure`,
+						parts: step.streamed === undefined ? [] : [{ type: "text", text: step.streamed }],
+					}),
+					{ failure: { ...step.failure, message: `${step.failure._tag} failure` } },
+				);
+				events.push({ type: "start", partial: failed });
+				if (step.streamed !== undefined) {
+					events.push({ type: "text.delta", partIndex: 0, delta: step.streamed, partial: failed });
+				}
+				events.push({ type: "error", reason: "error", error: failed });
+				return events;
+			});
+	};
+
+	const settings = (retry: Partial<Info["retry"]>): Info => ({
+		...Settings.defaults,
+		retry: { ...Settings.defaults.retry, ...retry },
+	});
+
+	/** The turn's lifecycle as a client sees it, without timestamps or ids. */
+	const journal = Effect.fnUntraced(function* () {
+		const events = yield* Event.Service;
+		const seen: Array<Record<string, unknown>> = [];
+		yield* events.listen((event) =>
+			Effect.sync(() => {
+				if (!event.type.startsWith("session.")) return;
+				if (event.type.startsWith("session.prompt.") || event.type.startsWith("session.execution.")) return;
+				const data = event.data as Record<string, unknown>;
+				const picked = Object.fromEntries(
+					["messageId", "attempt", "maxRetries", "delayMs", "success", "reason", "cause", "message"]
+						.filter((key) => data[key] !== undefined && (key !== "message" || typeof data[key] === "string"))
+						.map((key) => [key, data[key]]),
+				);
+				seen.push({ type: event.type, ...picked });
+			}),
+		);
+		return seen;
+	});
+
+	const pathOf = Effect.fnUntraced(function* (sessionId: SessionSchema.ID) {
+		const sessions = yield* Session.Service;
+		return (yield* sessions.path(sessionId)).map((item) => ({
+			id: item.entry.id,
+			type: item.entry.type,
+			state: item.entry.state,
+			parts: item.parts.length,
+		}));
+	});
+
+	describe("transient failures, then success", () => {
+		const contexts: Message.Context[] = [];
+		const open = scripted(
+			[
+				{ failure: { _tag: "Unavailable", retryable: true } },
+				{ failure: { _tag: "Transport", retryable: true }, streamed: "half an answ" },
+			],
+			contexts,
+		);
+		const { live: it } = testEffect(runtime({ open, settings: settings({ baseDelayMs: 5, maxDelayMs: 8 }) }));
+
+		it(
+			"settles each failed draft, retries with backoff, and commits the third attempt",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const seen = yield* journal();
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_retry", sessionId, delivery: "steer" });
+
+				yield* execution.resume(sessionId);
+
+				const path = yield* pathOf(sessionId);
+				expect(path.map((entry) => entry.state)).toEqual(["committed", "aborted", "aborted", "committed"]);
+				// Every attempt is sent the original context: the failed drafts and their partial text never leak in.
+				expect(contexts).toHaveLength(3);
+				expect(contexts[1]).toEqual(contexts[0]);
+				expect(contexts[2]).toEqual(contexts[0]);
+				yield* Effect.promise(() =>
+					expect({ events: seen, path }).toMatchFileSnapshot("./__artifacts__/runner.retry.json"),
+				);
+			}),
+		);
+	});
+
+	describe("interrupt during backoff", () => {
+		const open = scripted([{ failure: { _tag: "RateLimit", retryable: true } }]);
+		const { live: it } = testEffect(runtime({ open, settings: settings({ baseDelayMs: 60_000 }) }));
+
+		it(
+			"cancels the sleep without leaving a draft open",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const events = yield* Event.Service;
+				const seen = yield* journal();
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_retry_interrupt", sessionId, delivery: "steer" });
+
+				const scheduled = yield* Deferred.make<void>();
+				yield* events.listen((event) =>
+					event.type === EventList.RetryScheduled.type
+						? Deferred.succeed(scheduled, undefined).pipe(Effect.asVoid)
+						: Effect.void,
+				);
+				const waiting = yield* execution.resume(sessionId).pipe(Effect.forkChild);
+				yield* Deferred.await(scheduled);
+				yield* execution.interrupt(sessionId);
+				const exit = yield* Fiber.await(waiting);
+				expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
+
+				expect((yield* pathOf(sessionId)).map((entry) => entry.state)).toEqual(["committed", "aborted"]);
+				expect(seen.slice(-2)).toEqual([
+					{ type: EventList.RetryFinished.type, attempt: 1, success: false, message: "interrupted" },
+					{ type: EventList.TurnAborted.type, cause: { _tag: "interrupted" } },
+				]);
+			}),
+			{ timeout: 10_000 },
+		);
+	});
+
+	describe("failures that are not retried", () => {
+		const cases = [
+			["a quota error, even when marked retryable", { _tag: "Quota", retryable: true }],
+			["a retry-after longer than maxDelayMs", { _tag: "RateLimit", retryable: true, retryAfterMs: 120_000 }],
+			["a non-retryable error", { _tag: "InvalidRequest", retryable: false }],
+		] as const;
+		for (const [name, failure] of cases) {
+			const { live: it } = testEffect(
+				runtime({ open: scripted([{ failure }]), settings: settings({ baseDelayMs: 1 }) }),
+			);
+			it(
+				`fails the turn on ${name}`,
+				Effect.gen(function* () {
+					const execution = yield* RunnerExecution.Service;
+					const seen = yield* journal();
+					const sessionId = yield* seedSession();
+					yield* admit({ id: "msg_no_retry", sessionId, delivery: "steer" });
+
+					const exit = yield* execution.resume(sessionId).pipe(Effect.exit);
+					expect(Exit.isFailure(exit)).toBe(true);
+					expect(seen.some((event) => String(event.type).startsWith("session.retry."))).toBe(false);
+					expect((yield* pathOf(sessionId)).map((entry) => entry.state)).toEqual(["committed", "aborted"]);
+				}),
+			);
+		}
+	});
 });

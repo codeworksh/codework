@@ -6,7 +6,7 @@
  */
 
 import { type Message } from "@codeworksh/aikit";
-import { Cause, DateTime, Effect, Exit, Layer, Option } from "effect";
+import { Cause, DateTime, Duration, Effect, Exit, Layer, Option } from "effect";
 import { ContextCodec } from "../context/codec.ts";
 import { Context } from "../context/context.ts";
 import { Event } from "../event/event.ts";
@@ -19,6 +19,7 @@ import { State } from "../state/state.ts";
 import { errorMessage } from "../util/error.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { LLM } from "./llm.ts";
+import { Retry } from "./retry.ts";
 import { Runner } from "./run.ts";
 
 export type Promotion = "steer" | "followUp" | undefined;
@@ -254,10 +255,22 @@ export const layer = (options: Options = {}) =>
 					return { needsContinuation: false } satisfies TurnResult;
 				}
 
+				// The latest attempt's publisher; a retried turn has one per provider request.
 				let publisher: LLMEventPublisher.Publisher | undefined;
 				let committed = false;
-				const turnWindow = Effect.gen(function* () {
-					yield* events.publish(EventList.TurnStarted, { timestamp: yield* DateTime.now, sessionId });
+				let retries = 0;
+
+				/** Abort the latest attempt's draft, unless its own terminal event already did. */
+				const settleDraft = (cause: EventList.TurnAbortCause) =>
+					Effect.gen(function* () {
+						if (publisher?.startedMessageId === undefined) return;
+						const stored = yield* sessions.entry(publisher.startedMessageId);
+						if (Option.isSome(stored) && stored.value.entry.state === "draft") {
+							yield* publishFailure(stored.value, cause);
+						}
+					});
+
+				const attempt = Effect.gen(function* () {
 					publisher = yield* LLMEventPublisher.make({ sessionId }).pipe(
 						Effect.provideService(Event.Service, events),
 					);
@@ -284,6 +297,64 @@ export const layer = (options: Options = {}) =>
 							LLM.messageFailure(terminal.message),
 						);
 					}
+					return terminal;
+				});
+
+				/*
+				 * Nothing is committed before TurnEnded, so a failed request can always be repeated
+				 * against the same assembled context. Each failed attempt keeps its aborted draft in
+				 * the journal and the next one starts a new draft. An interrupt during the backoff
+				 * finds no open draft: the failed one was settled before the sleep.
+				 */
+				const request = (): Effect.Effect<
+					Effect.Success<typeof attempt>,
+					Effect.Error<typeof attempt>,
+					Effect.Services<typeof attempt>
+				> =>
+					attempt.pipe(
+						Effect.catch((error) => {
+							const delayMs = Retry.delay(snapshot.retry, retries + 1, error);
+							if (delayMs === undefined) return Effect.fail(error);
+							return Effect.gen(function* () {
+								retries += 1;
+								yield* Effect.uninterruptible(settleDraft({ _tag: "error", message: error.message }));
+								yield* events.publish(EventList.RetryScheduled, {
+									timestamp: yield* DateTime.now,
+									sessionId,
+									attempt: retries,
+									maxRetries: snapshot.retry.maxRetries,
+									delayMs,
+									message: error.message,
+								});
+								yield* Effect.sleep(Duration.millis(delayMs));
+								return yield* request();
+							});
+						}),
+					);
+
+				const turnWindow = Effect.gen(function* () {
+					yield* events.publish(EventList.TurnStarted, { timestamp: yield* DateTime.now, sessionId });
+					const terminal = yield* request().pipe(
+						Effect.onExit((exit) =>
+							retries === 0
+								? Effect.void
+								: Effect.gen(function* () {
+										yield* events.publish(EventList.RetryFinished, {
+											timestamp: yield* DateTime.now,
+											sessionId,
+											attempt: retries,
+											success: Exit.isSuccess(exit),
+											...(Exit.isSuccess(exit)
+												? {}
+												: {
+														message: Cause.hasInterrupts(exit.cause)
+															? "interrupted"
+															: errorMessage(exit.cause),
+													}),
+										});
+									}),
+						),
+					);
 
 					const interrupted = yield* settleTools(snapshot, terminal.message, terminal.reason, () => {
 						committed = true;
@@ -295,26 +366,22 @@ export const layer = (options: Options = {}) =>
 					} satisfies TurnResult;
 				});
 
+				// `onError`, not `catchCause`: a catch handler never runs on an interrupted fiber, and
+				// an interrupt is exactly when the open draft most needs settling.
 				return yield* turnWindow.pipe(
-					Effect.catchCause((cause) => {
-						if (committed) return Effect.failCause(cause);
+					Effect.onError((cause) => {
+						if (committed) return Effect.void;
 						const turnCause: EventList.TurnAbortCause = Cause.hasInterrupts(cause)
 							? { _tag: "interrupted" }
 							: { _tag: "error", message: errorMessage(cause) };
-						const record = Effect.gen(function* () {
-							if (publisher?.startedMessageId !== undefined) {
-								const stored = yield* sessions.entry(publisher.startedMessageId);
-								if (Option.isSome(stored) && stored.value.entry.state === "draft") {
-									yield* publishFailure(stored.value, turnCause);
-								}
-							}
+						return Effect.gen(function* () {
+							yield* settleDraft(turnCause);
 							yield* events.publish(EventList.TurnAborted, {
 								timestamp: yield* DateTime.now,
 								sessionId,
 								cause: turnCause,
 							});
 						});
-						return Effect.uninterruptible(record).pipe(Effect.andThen(Effect.failCause(cause)));
 					}),
 				);
 			});

@@ -5,7 +5,7 @@
 		"tsBuildInfoFile": "../../.cache/typescript/plugin.tsbuildinfo",
 		"paths": {
 			"@codeworksh/aikit": ["../aikit/dist/pack/index.d.mts"],
-			"@codeworksh/aikit/failure": ["../aikit/src/llm/failure.ts"],
+			"@codeworksh/aikit/failure": ["../aikit/dist/pack/llm/failure.d.mts"],
 			"@codeworksh/aikit/modelgen": ["../aikit/dist/pack/modelgen.d.mts"]
 		},
 		"plugins": [
