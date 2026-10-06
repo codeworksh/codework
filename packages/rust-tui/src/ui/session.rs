@@ -6,7 +6,7 @@ use ratatui::Frame;
 use unicode_width::UnicodeWidthStr;
 
 use crate::markdown::{render_markdown, wrap_text};
-use crate::types::{ConversationTurn, ModelConfig, SessionInfo, SessionStats};
+use crate::types::{ConversationTurn, ModelConfig, SessionInfo, SessionStats, ToolResult};
 use crate::ui::logo::{render_animated_logo_lines, render_header_logo};
 use crate::ui::spinner::Spinner;
 use crate::ui::theme::Theme;
@@ -137,12 +137,9 @@ pub fn render_session(
             ]));
         }
 
-        // Completed Tools
+        // Completed Tools (with an inline diff when the tool produced a patch)
         for tool in &turn.completed_tools {
-            conv_lines.push(Line::from(vec![
-                Span::styled("✓ ", Style::default().fg(Theme::SUCCESS)),
-                Span::styled(tool.clone(), Style::default().fg(Theme::SUCCESS)),
-            ]));
+            conv_lines.extend(render_tool_result(tool, max_text_width));
         }
 
         if turn.active_tool.is_some() || !turn.completed_tools.is_empty() {
@@ -393,6 +390,48 @@ pub fn render_session(
     f.render_widget(Paragraph::new(sidebar_lines).block(sidebar_block), sidebar_area);
 }
 
+/// Renders one settled tool call: a status line, plus a truncated inline unified
+/// diff indented beneath it when the tool returned a `patch` in its details.
+pub fn render_tool_result(tool: &ToolResult, max_text_width: usize) -> Vec<Line<'static>> {
+    let (icon, color) = if tool.is_error {
+        ("✗ ", Theme::ERROR)
+    } else {
+        ("✓ ", Theme::SUCCESS)
+    };
+
+    let mut header = vec![
+        Span::styled(icon, Style::default().fg(color).add_modifier(Modifier::BOLD)),
+        Span::styled(tool.label.clone(), Style::default().fg(color)),
+    ];
+
+    let Some(patch) = &tool.patch else {
+        return vec![Line::from(header)];
+    };
+
+    let (diff_lines, summary) = crate::diff::render_diff(
+        patch,
+        max_text_width.saturating_sub(2),
+        crate::diff::DEFAULT_MAX_DIFF_LINES,
+    );
+
+    let mut meta = format!("+{} −{}", summary.added, summary.removed);
+    if let Some(path) = crate::diff::patch_path(patch) {
+        meta.push_str(&format!(" · {}", path));
+    }
+    if let Some(line) = tool.first_changed_line {
+        meta.push_str(&format!(" · line {}", line));
+    }
+    header.push(Span::raw("  "));
+    header.push(Span::styled(meta, Style::default().fg(Theme::TEXT_MUTED)));
+
+    let mut lines = vec![Line::from(header)];
+    for mut diff_line in diff_lines {
+        diff_line.spans.insert(0, Span::raw("  "));
+        lines.push(diff_line);
+    }
+    lines
+}
+
 #[allow(dead_code)]
 pub fn render_input_with_cursor(input: &str, cursor: usize) -> Vec<Span<'static>> {
     crate::ui::input::render_input_with_cursor(input, cursor)
@@ -520,5 +559,63 @@ mod tests {
                 assert_eq!(span.style.bg, Some(Theme::BG_USER_MSG));
             }
         }
+    }
+
+    fn tool_text(lines: &[Line]) -> String {
+        lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn edit_result(patch: &str) -> ToolResult {
+        ToolResult {
+            label: "edit".into(),
+            is_error: false,
+            patch: Some(patch.to_string()),
+            first_changed_line: Some(2),
+        }
+    }
+
+    #[test]
+    fn test_render_tool_result_with_patch() {
+        let patch = "--- src/a.ts\n+++ src/a.ts\n@@ -1,3 +1,3 @@\n let a = 1;\n-let b = 2;\n+let b = 3;\n";
+        let lines = render_tool_result(&edit_result(patch), 60);
+        let text = tool_text(&lines);
+        assert!(text.contains("edit"), "{text}");
+        assert!(text.contains("+1 −1"), "{text}");
+        assert!(text.contains("src/a.ts"), "{text}");
+        assert!(text.contains("line 2"), "{text}");
+        assert!(text.contains("- let b = 2;"), "{text}");
+        assert!(text.contains("+ let b = 3;"), "{text}");
+    }
+
+    #[test]
+    fn test_render_tool_result_tints_added_and_removed() {
+        let patch = "--- a\n+++ a\n@@ -1 +1 @@\n-old\n+new\n";
+        let lines = render_tool_result(&edit_result(patch), 60);
+        let spans = || lines.iter().flat_map(|l| l.spans.iter());
+        let added = spans()
+            .find(|s| s.content.as_ref() == "new")
+            .expect("added content span");
+        assert_eq!(added.style.bg, Some(Theme::DIFF_ADD_BG));
+        let removed = spans()
+            .find(|s| s.content.as_ref() == "old")
+            .expect("removed content span");
+        assert_eq!(removed.style.bg, Some(Theme::DIFF_DEL_BG));
+    }
+
+    #[test]
+    fn test_render_tool_result_without_patch_is_single_line() {
+        let tool = ToolResult {
+            label: "read".into(),
+            is_error: false,
+            patch: None,
+            first_changed_line: None,
+        };
+        let lines = render_tool_result(&tool, 60);
+        assert_eq!(lines.len(), 1);
+        assert!(tool_text(&lines).contains("read"));
     }
 }

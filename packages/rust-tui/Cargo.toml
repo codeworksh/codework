@@ -3,6 +3,7 @@ name = "codework-tui"
 version = "0.0.1"
 edition = "2021"
 description = "High-performance Terminal User Interface for CodeWork in Rust using Ratatui"
+authors = ["Prem <https://github.com/prem315>"]
 license = "MIT"
 
 [[bin]]

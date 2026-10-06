@@ -22,8 +22,18 @@ pub enum StreamEvent {
     SessionCreated(SessionInfo),
     TextDelta(String),
     ThinkingDelta(String),
-    ToolStarted { name: String, label: Option<String> },
-    ToolSettled { name: String },
+    ToolStarted {
+        call_id: String,
+        name: String,
+        label: Option<String>,
+    },
+    ToolSettled {
+        call_id: String,
+        name: Option<String>,
+        is_error: bool,
+        patch: Option<String>,
+        first_changed_line: Option<u64>,
+    },
     Usage(UsageReport),
     Succeeded,
     Failed(String),
@@ -315,13 +325,40 @@ impl RpcClient {
                                         }
                                     }
                                     "session.tool.started" => {
+                                        let call_id = data.get("callID").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
                                         let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
                                         let label = data.get("label").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                        let _ = event_tx.send(StreamEvent::ToolStarted { name, label });
+                                        let _ = event_tx.send(StreamEvent::ToolStarted { call_id, name, label });
                                     }
                                     "session.tool.settled" => {
-                                        let name = data.get("callID").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
-                                        let _ = event_tx.send(StreamEvent::ToolSettled { name });
+                                        let call_id = data.get("callID").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
+                                        let part = data.get("part");
+                                        let name = part
+                                            .and_then(|p| p.get("name"))
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let result = part.and_then(|p| p.get("result"));
+                                        let is_error = result
+                                            .and_then(|r| r.get("isError"))
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false);
+                                        // `details` is arbitrary tool-defined JSON, so every read here is
+                                        // best-effort: a missing or non-string patch means "no diff".
+                                        let details = result.and_then(|r| r.get("details"));
+                                        let patch = details
+                                            .and_then(|d| d.get("patch"))
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let first_changed_line = details
+                                            .and_then(|d| d.get("firstChangedLine"))
+                                            .and_then(|v| v.as_u64());
+                                        let _ = event_tx.send(StreamEvent::ToolSettled {
+                                            call_id,
+                                            name,
+                                            is_error,
+                                            patch,
+                                            first_changed_line,
+                                        });
                                     }
                                     "session.llm.ended" => {
                                         if let Some(msg) = data.get("message") {

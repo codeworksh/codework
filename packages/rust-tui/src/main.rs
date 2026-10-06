@@ -2,6 +2,7 @@ mod app;
 mod catalog;
 mod config;
 mod credentials;
+mod diff;
 mod git;
 mod markdown;
 mod rpc;

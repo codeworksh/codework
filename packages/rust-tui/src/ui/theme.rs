@@ -56,4 +56,19 @@ impl Theme {
 
     /// Muted border / text: #6C7086
     pub const TEXT_MUTED: Color = Color::Rgb(108, 112, 134);
+
+    // ------------------------------------------------------------------------
+    // Diff Rendering
+    // ------------------------------------------------------------------------
+    /// Added-line tint: a dim green that reads as a background over BG_APP.
+    pub const DIFF_ADD_BG: Color = Color::Rgb(30, 46, 36);
+
+    /// Removed-line tint: a dim red over BG_APP.
+    pub const DIFF_DEL_BG: Color = Color::Rgb(52, 31, 40);
+
+    /// Hunk header (`@@ … @@`).
+    pub const DIFF_HUNK: Color = Color::Rgb(115, 199, 236);
+
+    /// File headers, the no-newline marker, and truncation footers.
+    pub const DIFF_META: Color = Color::Rgb(108, 112, 134);
 }

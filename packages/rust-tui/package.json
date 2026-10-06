@@ -9,6 +9,7 @@
 		"tui"
 	],
 	"homepage": "https://www.codework.sh",
+	"author": "Prem (https://github.com/prem315)",
 	"license": "MIT",
 	"type": "module",
 	"scripts": {

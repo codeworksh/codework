@@ -108,6 +108,18 @@ pub struct UsageReport {
     pub model: Option<String>,
 }
 
+/// A settled tool call, carrying whatever the tool's result `details` exposed.
+///
+/// `patch` is a standard unified diff (the `edit` tool emits one); a tool that
+/// produces no diff simply leaves it `None`.
+#[derive(Debug, Clone)]
+pub struct ToolResult {
+    pub label: String,
+    pub is_error: bool,
+    pub patch: Option<String>,
+    pub first_changed_line: Option<u64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct ConversationTurn {
     #[allow(dead_code)]
@@ -123,7 +135,8 @@ pub struct ConversationTurn {
     pub model_name: String,
     pub error: Option<String>,
     pub active_tool: Option<String>,
-    pub completed_tools: Vec<String>,
+    pub active_call_id: Option<String>,
+    pub completed_tools: Vec<ToolResult>,
 }
 
 impl ConversationTurn {
@@ -141,6 +154,7 @@ impl ConversationTurn {
             model_name,
             error: None,
             active_tool: None,
+            active_call_id: None,
             completed_tools: Vec::new(),
         }
     }

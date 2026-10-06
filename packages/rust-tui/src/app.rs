@@ -9,7 +9,7 @@ use crate::config::ConfigManager;
 use crate::credentials::CredentialStore;
 use crate::rpc::{RpcClient, StreamEvent};
 use crate::types::{
-    ConversationTurn, FocusedPanel, ModelConfig, ModelSortMode, SessionInfo, SessionStats,
+    ConversationTurn, FocusedPanel, ModelConfig, ModelSortMode, SessionInfo, SessionStats, ToolResult,
 };
 use crate::ui::model::ModelBrowserState;
 use crate::ui::spinner::Spinner;
@@ -146,15 +146,36 @@ impl App {
                     turn.thinking.push_str(&delta);
                 }
             }
-            StreamEvent::ToolStarted { name, label } => {
+            StreamEvent::ToolStarted { call_id, name, label } => {
                 if let Some(turn) = self.turns.get_mut(last_turn_idx) {
                     turn.active_tool = Some(label.unwrap_or(name));
+                    turn.active_call_id = Some(call_id);
                 }
             }
-            StreamEvent::ToolSettled { name } => {
+            StreamEvent::ToolSettled {
+                call_id,
+                name,
+                is_error,
+                patch,
+                first_changed_line,
+            } => {
                 if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    let tool_label = turn.active_tool.take().unwrap_or(name);
-                    turn.completed_tools.push(tool_label);
+                    // Pair by callID: parallel tool calls settle out of order, so a settle that
+                    // is not the current active call must not clear or steal its label.
+                    let label = if turn.active_call_id.as_deref() == Some(call_id.as_str()) {
+                        turn.active_call_id = None;
+                        turn.active_tool
+                            .take()
+                            .unwrap_or_else(|| name.clone().unwrap_or_else(|| call_id.clone()))
+                    } else {
+                        name.clone().unwrap_or_else(|| call_id.clone())
+                    };
+                    turn.completed_tools.push(ToolResult {
+                        label,
+                        is_error,
+                        patch,
+                        first_changed_line,
+                    });
                 }
             }
             StreamEvent::Usage(usage) => {
@@ -175,7 +196,13 @@ impl App {
                     turn.streaming = false;
                     turn.end_time = Some(chrono::Utc::now().timestamp_millis());
                     if let Some(t) = turn.active_tool.take() {
-                        turn.completed_tools.push(t);
+                        turn.active_call_id = None;
+                        turn.completed_tools.push(ToolResult {
+                            label: t,
+                            is_error: false,
+                            patch: None,
+                            first_changed_line: None,
+                        });
                     }
                 }
                 self.is_streaming = false;
@@ -185,6 +212,7 @@ impl App {
                     turn.streaming = false;
                     turn.error = Some(err);
                     turn.active_tool = None;
+                    turn.active_call_id = None;
                 }
                 self.is_streaming = false;
             }
@@ -193,6 +221,7 @@ impl App {
                     turn.streaming = false;
                     turn.error = Some(format!("Interrupted: {}", reason));
                     turn.active_tool = None;
+                    turn.active_call_id = None;
                 }
                 self.is_streaming = false;
             }
