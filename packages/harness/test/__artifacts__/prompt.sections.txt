@@ -24,8 +24,8 @@ Always run tests with pnpm.
 - Never force-push a branch under review.
 </github_pr_rules>
 
-<notes>
+<team-notes>
 Reviewers: alice, bob.
 
 Release on Thursdays.
-</notes>
+</team-notes>

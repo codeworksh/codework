@@ -87,7 +87,7 @@ describe("codework.prompt.default", () => {
 	it("merges sections across plugins and renders custom ones after the built-ins", () =>
 		withSettings(async ({ root }) => {
 			const GithubPrRules = Section.define("github_pr_rules", { format: "list" });
-			const Notes = Section.define("notes");
+			const Notes = Section.define("team-notes");
 			const { observed } = await prompts(
 				root,
 				{

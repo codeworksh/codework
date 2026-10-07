@@ -20,7 +20,7 @@ export const builtins: ReadonlyArray<Section> = Object.freeze([Rules, Addendum, 
 /** Rendered by the harness, never by a plugin. */
 export const reserved: ReadonlySet<string> = new Set(["tools", "cwd", "foundation"]);
 
-const pattern = /^[a-z][a-z0-9_]*$/;
+const pattern = /^[a-z][a-z0-9_-]*$/;
 
 const formats: ReadonlySet<unknown> = new Set<Format>(["text", "list"]);
 
@@ -29,12 +29,12 @@ export const isFormat = (format: unknown): format is Format => formats.has(forma
 
 export const invalid = (name: unknown): string | undefined => {
 	if (typeof name !== "string" || !pattern.test(name))
-		return `prompt section name must be snake_case: ${JSON.stringify(name)}`;
+		return `prompt section name must be lowercase letters, digits, "_" or "-": ${JSON.stringify(name)}`;
 	if (reserved.has(name)) return `prompt section name is reserved: ${name}`;
 	return undefined;
 };
 
-/** A custom section. Throws on a name that is not snake_case, reserved, or built in. */
+/** A custom section. Throws on a name that is malformed, reserved, or built in. */
 export const define = <const Name extends string>(
 	name: Name,
 	options?: { readonly format?: Format },
