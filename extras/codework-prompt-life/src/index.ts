@@ -1,15 +1,15 @@
 /*
- * A third-party prompt plugin, vendored as a worked example. A prompt plugin composes on
- * whatever an earlier one set, so it belongs *after* the tool plugins and prompt plugins it
- * builds on — `ctx.plugin.prompt.get()` sees only contributions made before it ran:
+ * A third-party prompt plugin, vendored as a worked example. It opens its own section,
+ * `<meaning_of_life>`, which the harness renders after the built-in ones:
  *
  *   { "plugins": ["@acme/codework-prompt-life",
  *                 { "package": "@acme/codework-prompt-life", "options": { "answer": 42 } }] }
  */
-import { Plugin } from "@codeworksh/plugin";
+import { Plugin, Section } from "@codeworksh/plugin";
 
 const DEFAULT_ANSWER = 42;
-const HEADING = "## On the meaning of life";
+
+const MeaningOfLife = Section.define("meaning_of_life");
 
 /** Unvalidated by the harness, so the plugin checks its own block and falls back in place. */
 const readAnswer = (options: Plugin.PluginOptions): number => {
@@ -17,10 +17,8 @@ const readAnswer = (options: Plugin.PluginOptions): number => {
 	return typeof answer === "number" && Number.isFinite(answer) ? answer : DEFAULT_ANSWER;
 };
 
-const section = (answer: number) =>
+const body = (answer: number) =>
 	[
-		HEADING,
-		"",
 		"When the user asks what the meaning of life is, answer briefly and then get back to work:",
 		"",
 		`- The short version: ${answer}.`,
@@ -32,11 +30,6 @@ export default Plugin.define({
 	id: "acme.prompt.life",
 	kind: "prompt",
 	setup(ctx, options) {
-		const existing = ctx.plugin.prompt.get();
-		// `set` replaces the whole prompt, so compose on what is already there rather than
-		// discarding another plugin's work.
-		ctx.plugin.prompt.set(
-			existing === undefined ? section(readAnswer(options)) : `${existing}\n\n${section(readAnswer(options))}`,
-		);
+		ctx.plugin.prompt.sections.append(MeaningOfLife, body(readAnswer(options)));
 	},
 });

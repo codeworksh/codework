@@ -53,6 +53,12 @@
 			"import": "./dist/pack/plugin/prompt.mjs",
 			"default": "./dist/pack/plugin/prompt.mjs"
 		},
+		"./plugin/section": {
+			"development": "./src/plugin/section.ts",
+			"types": "./dist/pack/plugin/section.d.mts",
+			"import": "./dist/pack/plugin/section.mjs",
+			"default": "./dist/pack/plugin/section.mjs"
+		},
 		"./sandbox": {
 			"development": "./src/sandbox.ts",
 			"types": "./dist/pack/sandbox.d.mts",

@@ -1,87 +1,87 @@
 {
-	"events": [
-		{
-			"type": "session.turn.started"
-		},
-		{
-			"messageId": "assistant_1",
-			"type": "session.llm.started"
-		},
-		{
-			"messageId": "assistant_1",
-			"reason": "error",
-			"type": "session.llm.failed"
-		},
-		{
-			"attempt": 1,
-			"delayMs": 5,
-			"maxRetries": 3,
-			"message": "openai/gpt-5.6-luna: Unavailable failure",
-			"type": "session.retry.scheduled"
-		},
-		{
-			"messageId": "assistant_2",
-			"type": "session.llm.started"
-		},
-		{
-			"messageId": "assistant_2",
-			"type": "session.llm.text.delta"
-		},
-		{
-			"messageId": "assistant_2",
-			"reason": "error",
-			"type": "session.llm.failed"
-		},
-		{
-			"attempt": 2,
-			"delayMs": 8,
-			"maxRetries": 3,
-			"message": "openai/gpt-5.6-luna: Transport failure",
-			"type": "session.retry.scheduled"
-		},
-		{
-			"messageId": "assistant_3",
-			"type": "session.llm.started"
-		},
-		{
-			"messageId": "assistant_3",
-			"reason": "stop",
-			"type": "session.llm.ended"
-		},
-		{
-			"attempt": 2,
-			"success": true,
-			"type": "session.retry.finished"
-		},
-		{
-			"messageId": "assistant_3",
-			"type": "session.turn.ended"
-		}
-	],
-	"path": [
-		{
-			"id": "msg_retry",
-			"parts": 1,
-			"state": "committed",
-			"type": "user"
-		},
-		{
-			"id": "assistant_1",
-			"parts": 0,
-			"state": "aborted",
-			"type": "assistant"
-		},
-		{
-			"id": "assistant_2",
-			"parts": 0,
-			"state": "aborted",
-			"type": "assistant"
-		},
-		{
-			"id": "assistant_3",
-			"parts": 1,
-			"state": "committed",
-			"type": "assistant"
-		}
-	]
+  "events": [
+    {
+      "type": "session.turn.started",
+    },
+    {
+      "messageId": "assistant_1",
+      "type": "session.llm.started",
+    },
+    {
+      "messageId": "assistant_1",
+      "reason": "error",
+      "type": "session.llm.failed",
+    },
+    {
+      "attempt": 1,
+      "delayMs": 5,
+      "maxRetries": 3,
+      "message": "openai/gpt-5.6-luna: Unavailable failure",
+      "type": "session.retry.scheduled",
+    },
+    {
+      "messageId": "assistant_2",
+      "type": "session.llm.started",
+    },
+    {
+      "messageId": "assistant_2",
+      "type": "session.llm.text.delta",
+    },
+    {
+      "messageId": "assistant_2",
+      "reason": "error",
+      "type": "session.llm.failed",
+    },
+    {
+      "attempt": 2,
+      "delayMs": 8,
+      "maxRetries": 3,
+      "message": "openai/gpt-5.6-luna: Transport failure",
+      "type": "session.retry.scheduled",
+    },
+    {
+      "messageId": "assistant_3",
+      "type": "session.llm.started",
+    },
+    {
+      "messageId": "assistant_3",
+      "reason": "stop",
+      "type": "session.llm.ended",
+    },
+    {
+      "attempt": 2,
+      "success": true,
+      "type": "session.retry.finished",
+    },
+    {
+      "messageId": "assistant_3",
+      "type": "session.turn.ended",
+    },
+  ],
+  "path": [
+    {
+      "id": "msg_retry",
+      "parts": 1,
+      "state": "committed",
+      "type": "user",
+    },
+    {
+      "id": "assistant_1",
+      "parts": 0,
+      "state": "aborted",
+      "type": "assistant",
+    },
+    {
+      "id": "assistant_2",
+      "parts": 0,
+      "state": "aborted",
+      "type": "assistant",
+    },
+    {
+      "id": "assistant_3",
+      "parts": 1,
+      "state": "committed",
+      "type": "assistant",
+    },
+  ],
 }

@@ -86,7 +86,7 @@ const ownerPlugin = (served: string) =>
 		"  id: 'fixture.prompt.owner',",
 		"  kind: 'prompt',",
 		"  setup: (ctx, options) =>",
-		`    ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ''}[owner:\${options.marker ?? '${served}'}]\`),`,
+		`    ctx.plugin.prompt.foundation.set(\`\${ctx.plugin.prompt.foundation.get() ?? ''}[owner:\${options.marker ?? '${served}'}]\`),`,
 		"};",
 		"",
 	].join("\n");
@@ -95,7 +95,7 @@ const LOCAL_PLUGIN = [
 	"export default {",
 	"  id: 'fixture.prompt.local',",
 	"  kind: 'prompt',",
-	"  setup: (ctx) => ctx.plugin.prompt.set(`${ctx.plugin.prompt.get() ?? ''}[local]`),",
+	"  setup: (ctx) => ctx.plugin.prompt.foundation.set(`${ctx.plugin.prompt.foundation.get() ?? ''}[local]`),",
 	"};",
 	"",
 ].join("\n");
@@ -830,7 +830,7 @@ describe("codework plugin install/list/check", () => {
 					);
 					writeFileSync(
 						join(repo, "index.js"),
-						`export default { id: "fixture.prompt.git", kind: "prompt", setup: (ctx) => ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ""}[git:${revision}]\`) };\n`,
+						`export default { id: "fixture.prompt.git", kind: "prompt", setup: (ctx) => ctx.plugin.prompt.foundation.set(\`\${ctx.plugin.prompt.foundation.get() ?? ""}[git:${revision}]\`) };\n`,
 					);
 					for (const args of [
 						["add", "-A"],
@@ -975,7 +975,7 @@ describe("codework plugin install/list/check", () => {
 					const file = join(directory, `${name}.mjs`);
 					writeFileSync(
 						file,
-						`export default { id: "fixture.prompt.${name}", kind: "prompt", setup: (ctx, options) => ctx.plugin.prompt.set(\`\${ctx.plugin.prompt.get() ?? ""}[layer:\${options.marker ?? "${name}"}]\`) };\n`,
+						`export default { id: "fixture.prompt.${name}", kind: "prompt", setup: (ctx, options) => ctx.plugin.prompt.foundation.set(\`\${ctx.plugin.prompt.foundation.get() ?? ""}[layer:\${options.marker ?? "${name}"}]\`) };\n`,
 					);
 					return file;
 				};

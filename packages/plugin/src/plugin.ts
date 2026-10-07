@@ -9,6 +9,7 @@
 export type { Config, Events, PromptResolver, SharedPluginContext } from "./plugin/context.ts";
 export { define, domains, type Mount, type Plugin, type PluginKind, rank } from "./plugin/plugin.ts";
 export * as Prompt from "./plugin/prompt.ts";
+export * as Section from "./plugin/section.ts";
 export type { PluginOptions, PluginPatch, PluginRef, PluginSpec } from "./plugin/ref.ts";
 export type { PluginRegistry } from "./plugin/registry.ts";
 export * as Tool from "./plugin/tool.ts";
