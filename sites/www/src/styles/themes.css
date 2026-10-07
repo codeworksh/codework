@@ -1,31 +1,11 @@
 /*
  * Site themes, picked with T (see components/landing/theme.ts). Each sets the same tokens; the
- * field canvas reads the --t-field-* inks at runtime. CodeWork is the default; the rest are
+ * field canvas reads the --t-field-* inks at runtime. Tokyo Night is the default. All are
  * Omarchy's palettes, from omacom/omarchy themes/<id>/colors.toml via the Omarchy site.
  */
 
 /* The field's inks double as the wordmark's bands; the canvas reads them at runtime. */
 :root,
-[data-theme="codework"] {
-	--t-bg: #11151b;
-	--t-surface: #161b22;
-	--t-surface-2: #1c232c;
-	--t-border-subtle: #222a34;
-	--t-border-strong: #3a4655;
-	--t-text: #d8e1ea;
-	--t-text-secondary: #aab6c3;
-	--t-text-muted: #7f8b99;
-	--t-brand: #7fb4dc;
-	--t-brand-ink: #0b0f14;
-	--t-field-bg: #0d1117;
-	--t-field-dim: #1f3346;
-	--t-field-mid: #35597a;
-	--t-field-lit: #7fb4dc;
-	--t-field-hover: #a9cdea;
-	--t-field-crest: #d4e8f7;
-	color-scheme: dark;
-}
-
 [data-theme="tokyo-night"] {
 	--t-bg: #1a1b26;
 	--t-surface: #1f2230;

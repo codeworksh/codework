@@ -6,7 +6,6 @@
 export type Theme = { id: string; name: string; light?: true };
 
 export const THEMES: Theme[] = [
-	{ id: "codework", name: "CodeWork" },
 	{ id: "catppuccin", name: "Catppuccin" },
 	{ id: "catppuccin-latte", name: "Catppuccin Latte", light: true },
 	{ id: "ethereal", name: "Ethereal" },
@@ -31,7 +30,7 @@ export const THEMES: Theme[] = [
 	{ id: "white", name: "White", light: true },
 ];
 
-export const DEFAULT_THEME = "codework";
+export const DEFAULT_THEME = "tokyo-night";
 const THEME_KEY = "codework-theme";
 /** Set once the visitor has opened the picker or dismissed the hint. */
 export const HINT_KEY = "codework-theme-hint-seen";
@@ -40,9 +39,8 @@ export const THEME_EVENT = "codework-theme";
 /** Ask the picker to open, from anywhere on the page. */
 export const OPEN_PICKER_EVENT = "codework-open-picker";
 
-/** Theme previews: Omarchy's screenshots for now, CodeWork's own illustration for the default. */
-export const previewOf = (id: string) =>
-	id === DEFAULT_THEME ? "/images/workspace.webp" : `https://omarchy.org/assets/images/theme-previews/${id}.webp`;
+/** Theme previews: Omarchy's screenshots for now. */
+export const previewOf = (id: string) => `https://omarchy.org/assets/images/theme-previews/${id}.webp`;
 
 /**
  * Inlined in <head> so the saved theme is on the page before it first paints. It also sets the
