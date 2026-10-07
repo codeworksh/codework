@@ -123,6 +123,8 @@ const TILE_ODDS = 0.45;
 /** Tiles keep out of this band either side of the hero's middle (-1 top, 1 bottom), and need this much field under them. */
 const TILE_MIDDLE = 0.15;
 const TILE_MIN_SHADE = 0.3;
+/** Small screens have far more room below the copy than above it; a cap per corner keeps the four even. */
+const TILE_PER_CORNER_SMALL = 3;
 /** Css px a tile keeps clear of copy and controls. */
 const TILE_CLEARANCE = 16;
 /** A tile is one pixel standing in for many, so the drift lights it more often than a single cell. */
@@ -137,7 +139,8 @@ type Ping = { x: number; y: number; born: number; from: number; to: number; life
 type Charge = { x: number; y: number; start: number };
 type Glow = { x: number; y: number; strength: number; reach: number };
 type Stamp = { x: number; y: number; cellPx: number; amp: number };
-type Tile = { col: number; row: number; w: number; h: number; shade: number; ext: string };
+/** A steady tile always shows; the rest come and go with the dither. */
+type Tile = { col: number; row: number; w: number; h: number; shade: number; ext: string; steady: boolean };
 
 function lcg(seed: number) {
 	let state = seed >>> 0;
@@ -363,6 +366,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 			const w = TILE_W * unit;
 			const h = TILE_H * unit;
 			const odds = unit > 1 ? 1 : TILE_ODDS;
+			const slots: { col: number; row: number; shade: number; corner: number; reach: number }[] = [];
 			const stepX = w + 1;
 			const stepY = h + 1;
 			for (let row = Math.ceil(rMin / stepY) * stepY; row + h <= rMin + rows; row += stepY) {
@@ -377,17 +381,33 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					const halfW = (w * cell) / 2 / dpr + TILE_CLEARANCE;
 					const halfH = (h * cell) / 2 / dpr + TILE_CLEARANCE;
 					if (nearest(quiet, box.left + x / dpr, box.top + y / dpr) < Math.hypot(halfW, halfH)) continue;
-					tiles.push({
-						col,
-						row,
-						w,
-						h,
-						shade,
-						ext: EXTENSIONS[(firstExtension + tiles.length * EXTENSION_STEP) % EXTENSIONS.length]!,
-					});
-					for (let r = row; r < row + h; r++)
-						covered.fill(1, (r - rMin) * cols + col - cMin, (r - rMin) * cols + col - cMin + w);
+					const top = y < height / 2;
+					const left = x < width / 2;
+					const corner = (top ? 0 : 2) + (left ? 0 : 1);
+					slots.push({ col, row, shade, corner, reach: Math.hypot(left ? x : width - x, top ? y : height - y) });
 				}
+			}
+			// On small screens each corner keeps the slots nearest its own corner, up to the cap.
+			const perCorner = [0, 0, 0, 0];
+			const kept =
+				unit > 1
+					? [...slots]
+							.sort((a, b) => a.reach - b.reach)
+							.filter((s) => perCorner[s.corner]!++ < TILE_PER_CORNER_SMALL)
+					: slots;
+			for (const { col, row, shade } of kept) {
+				tiles.push({
+					col,
+					row,
+					w,
+					h,
+					shade,
+					// Small screens have a few slots, each with a fixed dither threshold; left to it, whole corners go dark.
+					steady: unit > 1,
+					ext: EXTENSIONS[(firstExtension + tiles.length * EXTENSION_STEP) % EXTENSIONS.length]!,
+				});
+				for (let r = row; r < row + h; r++)
+					covered.fill(1, (r - rMin) * cols + col - cMin, (r - rMin) * cols + col - cMin + w);
 			}
 		};
 
@@ -529,7 +549,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				const cy = wmY + (tile.row + tile.h / 2) * cell;
 				const { lum, heat } = light(tile.col + tile.w / 2, tile.row + tile.h / 2, tile.shade, cx, cy, TILE_GAIN);
 				const floor = threshold(tile.col, tile.row);
-				if (lum <= floor) continue;
+				if (lum <= floor && !tile.steady) continue;
 				// A tile well past its threshold rests a shade brighter, so its label reads.
 				const ink = inkOf(Math.max(heat, (lum - floor) * 0.5));
 				ctx.fillStyle = ink === palette.dim ? palette.tile : ink;
