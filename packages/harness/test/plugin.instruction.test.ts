@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vite-plus/test";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
+import { scenario } from "./fixtures/instruction.spec.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 
@@ -107,4 +108,10 @@ describe("codework.prompt.instruction", () => {
 			expect(text).toContain("<cwd>");
 			expect(context(text)).toBeUndefined();
 		}));
+
+	it(
+		"reads only the host sandbox's cwd walk, honours the nested worktree and the host dir link",
+		scenario({}),
+		60_000,
+	);
 });
