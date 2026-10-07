@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/harness",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"description": "AI agent harness — agent loop, tools, plugins, sandbox, and more.",
 	"keywords": [
 		"agent",
