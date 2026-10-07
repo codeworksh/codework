@@ -10,7 +10,7 @@ import type { PromptRegistry } from "./schema.ts";
  * assembled prompt would not already tell them. The real foundation lives in
  * `codework.prompt.default`; this is only the floor.
  */
-export const fallback = "You are an AI agent for CodeWork. CodeWork is the best agent harness for code & work.";
+export const fallback = "You are an expert coding assistant operating inside codework, a coding agent harness.";
 
 /** The format is fixed by the first write. */
 export interface Written {

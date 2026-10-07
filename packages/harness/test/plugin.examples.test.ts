@@ -75,7 +75,9 @@ describe("extras examples", () => {
 			// House style merged into the shared <rules>, after the built-in body's rules.
 			const rules = prompt.slice(prompt.indexOf("<rules>"), prompt.indexOf("</rules>"));
 			expect(rules).toContain("- No `any` in TypeScript.");
-			expect(rules.indexOf("- Be concise.")).toBeLessThan(rules.indexOf("- No `any` in TypeScript."));
+			expect(rules.indexOf("- Be concise in your responses")).toBeLessThan(
+				rules.indexOf("- No `any` in TypeScript."),
+			);
 			// A custom section renders after the built-ins.
 			expect(prompt.indexOf("</cwd>")).toBeLessThan(prompt.indexOf("<meaning_of_life>"));
 		}));

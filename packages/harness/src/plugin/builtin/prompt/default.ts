@@ -5,20 +5,21 @@ import { Effect } from "effect";
 import type { PromptResolver, SharedPluginContext } from "../../context.ts";
 import { define } from "../../plugin.ts";
 
-/** The default coding-agent foundation, used unless `promptCustom` replaces it. */
-const foundation = `You are an expert coding assistant operating inside codework, a coding agent harness.`;
+/** The default prompt foundation, used unless `promptCustom` replaces it. */
+const foundation =
+	"You are an expert coding assistant operating inside codework, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.";
 
-/**
- * Rules that hold regardless of which tools are registered.
- *
- * Kept short on purpose. Every line here is spent on every request, so a line
- * earns its place only if a model measurably behaves worse without it.
- */
+/** Every line here is spent on every request; keep it short. */
 const standingRules: ReadonlyArray<string> = [
-	"Be concise. Report what you did and what you found, not what you are about to do.",
-	"Quote exact paths and command output rather than paraphrasing them.",
-	"If a command fails, read the error before retrying.",
+	"Be concise in your responses",
+	"Show file paths clearly when working with files",
 ];
+
+/** Bash stands in for file tools only until dedicated ones are registered. */
+const toolRules = (names: ReadonlySet<string>): ReadonlyArray<string> =>
+	names.has("bash") && !["grep", "find", "ls"].some((name) => names.has(name))
+		? ["Use bash for file operations like ls, rg, find"]
+		: [];
 
 /**
  * A caller slot, awaited lazily. A throw or rejection fails the snapshot, which the
@@ -35,7 +36,8 @@ export const defaultPromptPlugin = define({
 		const append = (yield* slot(ctx, ctx.config.promptSystemAppend))?.trim();
 		const prompt = ctx.plugin.prompt;
 		prompt.foundation.set(custom ?? foundation);
-		for (const rule of standingRules) prompt.sections.append(Section.Rules, rule);
+		const names = new Set(ctx.plugin.tools.list().map((tool) => tool.name));
+		for (const rule of [...toolRules(names), ...standingRules]) prompt.sections.append(Section.Rules, rule);
 		if (append !== undefined && append.length > 0) prompt.sections.append(Section.Addendum, append);
 	}),
 });

@@ -1,5 +1,5 @@
 import "./utils/env.ts";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { realpath } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,6 +10,7 @@ import { bashPlugin } from "../src/plugin/builtin/tool/bash.ts";
 import { define, Section } from "../src/plugin/index.ts";
 import { immediateOpen } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
+import * as Tool from "../src/tool/tool.ts";
 
 /**
  * The Prompt domain stores one string and imposes no shape, so these assertions belong
@@ -60,7 +61,7 @@ describe("codework.prompt.default", () => {
 				[
 					"Only this.",
 					"<tools>\n(none)\n</tools>",
-					"<rules>\n- Be concise. Report what you did and what you found, not what you are about to do.\n- Quote exact paths and command output rather than paraphrasing them.\n- If a command fails, read the error before retrying.\n</rules>",
+					"<rules>\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
 					"<addendum>\nExtra section.\n</addendum>",
 					`<cwd>\n${await realpath(root)}\n</cwd>`,
 				].join("\n\n"),
@@ -107,10 +108,7 @@ describe("codework.prompt.default", () => {
 							id: "acme.prompt.team",
 							kind: "prompt",
 							setup: (ctx) => {
-								ctx.plugin.prompt.sections.append(
-									Section.Rules,
-									"If a command  fails, read the error before retrying.",
-								);
+								ctx.plugin.prompt.sections.append(Section.Rules, "Be concise  in your responses");
 								ctx.plugin.prompt.sections.append(GithubPrRules, "Never force-push a branch under review.");
 								ctx.plugin.prompt.sections.append(GithubPrRules, "Link the issue in every PR   description.");
 								ctx.plugin.prompt.sections.append(Notes, "Release on Thursdays.");
@@ -143,5 +141,32 @@ describe("codework.prompt.default", () => {
 			});
 			expect(observed).toEqual([]);
 			expect(path).toEqual([]);
+		}));
+
+	it("tells the model to search with bash only while no dedicated search tool is registered", () =>
+		withSettings(async ({ root }) => {
+			const rule = "Use bash for file operations like ls, rg, find";
+			const grep = define({
+				id: "acme.tool.grep",
+				kind: "tool",
+				setup: (ctx) =>
+					ctx.plugin.tools.add(
+						Tool.register(
+							Tool.make({
+								name: "grep",
+								description: "Search file contents.",
+								parameters: Schema.Struct({}),
+								success: Schema.String,
+								handler: () => Effect.succeed(""),
+							}),
+						),
+					),
+			});
+			const bashOnly = await prompts(root, { plugins: [bashPlugin, defaultPromptPlugin] });
+			expect(bashOnly.observed[0]).toContain(`- ${rule}`);
+			const withGrep = await prompts(root, { plugins: [bashPlugin, grep, defaultPromptPlugin] });
+			expect(withGrep.observed[0]).not.toContain(rule);
+			const noBash = await prompts(root, { plugins: [defaultPromptPlugin] });
+			expect(noBash.observed[0]).not.toContain(rule);
 		}));
 });
