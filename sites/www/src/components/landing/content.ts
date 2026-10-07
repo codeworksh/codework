@@ -43,8 +43,12 @@ export const about = {
 
 export const showcase = {
 	title: "See it in action",
-	description: "Placeholder: demo videos and walkthroughs will live here.",
-	items: ["Video placeholder", "Video placeholder", "Video placeholder", "Video placeholder"],
+	// Reads "devs ♥ it. …", the heart drawn as a pixel glyph between the halves.
+	description: ["devs", "it. share yours, it might end up here."],
+	// `id` is the YouTube video id.
+	videos: [
+		{ id: "X6Q-JAGxva4", title: "Codework + ACP: Running an AI Coding Agent Inside Zed", channel: "Prem Patel" },
+	],
 };
 
 export const start = {

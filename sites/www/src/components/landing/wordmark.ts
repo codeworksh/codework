@@ -168,6 +168,13 @@ export const MARK: Glyph = {
 	],
 };
 
+/** A heart, drawn inline in copy at text height. */
+export const HEART: Glyph = {
+	width: 7,
+	height: 6,
+	rows: ["0110110", "1111111", "1111111", "0111110", "0011100", "0001000"],
+};
+
 /** Resting ink per band, top to bottom, as rows of a 19-row reference height. */
 const BANDS = [
 	["crest", 5],
