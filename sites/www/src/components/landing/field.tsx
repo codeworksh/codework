@@ -8,13 +8,25 @@ import { bandOf, MARK, WORDMARK, type Ink } from "./wordmark";
  * word into the field; 'field' is the bare texture for the footer.
  */
 
-type Palette = Record<Ink | "bg", string>;
+type Palette = Record<Ink | "bg" | "tile", string>;
+
+/** Mixes two #rrggbb colours, `t` of the way from a to b. */
+const mixHex = (a: string, b: string, t: number) =>
+	`#${[1, 3, 5]
+		.map((i) => {
+			const [from, to] = [parseInt(a.slice(i, i + 2), 16), parseInt(b.slice(i, i + 2), 16)];
+			return Math.round(from + (to - from) * t)
+				.toString(16)
+				.padStart(2, "0");
+		})
+		.join("")}`;
 
 function readPalette(): Palette {
 	const style = getComputedStyle(document.documentElement);
 	const token = (name: string) => style.getPropertyValue(`--t-field-${name}`).trim();
 	return {
 		bg: token("bg"),
+		tile: mixHex(token("dim"), token("lit"), TILE_LIFT),
 		dim: token("dim"),
 		mid: token("mid"),
 		lit: token("lit"),
@@ -60,7 +72,7 @@ const ENTRANCE_SCATTER = 0.35;
 const ENTRANCE_FLASH = 0.16;
 
 /**
- * File-extension tiles in the hero's lower U: bigger pixels, a whole number of cells, lit and dithered
+ * File-extension tiles in the hero's four corners: bigger pixels, a whole number of cells, lit and dithered
  * like the rest. Tiles are TILE_W x TILE_H units; a unit grows past one cell on small screens so the
  * label stays legible.
  */
@@ -102,12 +114,14 @@ const EXTENSIONS = [
 const EXTENSION_STEP = 7;
 const TILE_W = 4;
 const TILE_H = 2;
+/** How far a resting tile's ink is lifted from dim toward lit, so its label stands out from the field. */
+const TILE_LIFT = 0.1;
 /** Narrowest a tile may draw, in css px. */
 const TILE_MIN_CSS = 40;
-/** Share of the eligible slots that hold a tile, so the band stays scattered. */
+/** Share of the eligible slots that hold a tile, so the corners stay scattered. Small screens, where tiles grow and slots are few, fill every one. */
 const TILE_ODDS = 0.45;
-/** Tiles start below this point of the hero (-1 top, 1 bottom) and need this much field under them. */
-const TILE_FROM_Y = 0.15;
+/** Tiles keep out of this band either side of the hero's middle (-1 top, 1 bottom), and need this much field under them. */
+const TILE_MIDDLE = 0.15;
 const TILE_MIN_SHADE = 0.3;
 /** Css px a tile keeps clear of copy and controls. */
 const TILE_CLEARANCE = 16;
@@ -348,6 +362,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 			const unit = Math.max(1, Math.ceil((TILE_MIN_CSS * dpr) / (TILE_W * cell)));
 			const w = TILE_W * unit;
 			const h = TILE_H * unit;
+			const odds = unit > 1 ? 1 : TILE_ODDS;
 			const stepX = w + 1;
 			const stepY = h + 1;
 			for (let row = Math.ceil(rMin / stepY) * stepY; row + h <= rMin + rows; row += stepY) {
@@ -355,10 +370,10 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					if (row < glyph.height && row + h > 0 && col < glyph.width && col + w > 0) continue;
 					const x = wmX + (col + w / 2) * cell;
 					const y = wmY + (row + h / 2) * cell;
-					if ((y / height) * 2 - 1 < TILE_FROM_Y) continue;
+					if (Math.abs((y / height) * 2 - 1) < TILE_MIDDLE) continue;
 					const shade = ramp[(row + (h >> 1) - rMin) * cols + (col + (w >> 1) - cMin)] ?? 0;
 					if (shade < TILE_MIN_SHADE) continue;
-					if (jitter[(row * 29 + col * 13) & 4095]! > TILE_ODDS) continue;
+					if (jitter[(row * 29 + col * 13) & 4095]! > odds) continue;
 					const halfW = (w * cell) / 2 / dpr + TILE_CLEARANCE;
 					const halfH = (h * cell) / 2 / dpr + TILE_CLEARANCE;
 					if (nearest(quiet, box.left + x / dpr, box.top + y / dpr) < Math.hypot(halfW, halfH)) continue;
@@ -516,7 +531,8 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				const floor = threshold(tile.col, tile.row);
 				if (lum <= floor) continue;
 				// A tile well past its threshold rests a shade brighter, so its label reads.
-				ctx.fillStyle = inkOf(Math.max(heat, (lum - floor) * 0.5));
+				const ink = inkOf(Math.max(heat, (lum - floor) * 0.5));
+				ctx.fillStyle = ink === palette.dim ? palette.tile : ink;
 				ctx.fillRect(
 					x,
 					y,
