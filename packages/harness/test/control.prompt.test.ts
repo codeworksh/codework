@@ -1,5 +1,5 @@
 import { Effect, Layer, Option } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { Control } from "../src/control.ts";
 import { ContextCodec } from "../src/context/codec.ts";

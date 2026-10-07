@@ -1,5 +1,5 @@
 import { Context, Duration, Effect, Layer, Option, Schema, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { Shell } from "../sandbox/shell/shell.ts";
 
 /**

@@ -2,7 +2,7 @@ import { available, LIVE, openaiFamily } from "./utils/live.ts";
 
 import { Message } from "@codeworksh/aikit";
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Ref } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { ContextCodec } from "../src/context/codec.ts";
 import { Database } from "../src/db/db.ts";

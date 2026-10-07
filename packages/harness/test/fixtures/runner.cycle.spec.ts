@@ -9,7 +9,7 @@ import { seedSpace } from "./space.ts";
 
 import type { Message } from "@codeworksh/aikit";
 import { Effect, Layer, Queue, Schema } from "effect";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { SqlClient, SqlSchema } from "effect/sql";
 import { describe, expect, it as vitestIt } from "vite-plus/test";
 import { ContextCodec } from "../../src/context/codec.ts";
 import { Context } from "../../src/context/context.ts";

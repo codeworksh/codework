@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { ProjectSchema } from "../../src/project/schema.ts";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
 import { AbsolutePath } from "../../src/schema.ts";

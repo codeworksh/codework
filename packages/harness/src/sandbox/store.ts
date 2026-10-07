@@ -1,5 +1,5 @@
 import { Effect, Option, Schema } from "effect";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { SqlClient, SqlSchema } from "effect/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
 import { SandboxInstance } from "./instance.ts";
 

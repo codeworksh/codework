@@ -5,7 +5,7 @@ import type { Info } from "../src/settings/schema.ts";
 import { Settings } from "../src/settings/settings.ts";
 import { createAssistantMessageEventStream, Message } from "@codeworksh/aikit";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { SqlClient, SqlSchema } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { Context } from "../src/context/context.ts";
 import { Control } from "../src/control.ts";

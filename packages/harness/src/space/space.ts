@@ -1,5 +1,5 @@
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect";
-import { SqlClient, SqlError, SqlSchema } from "effect/unstable/sql";
+import { SqlClient, SqlError, SqlSchema } from "effect/sql";
 import { SpaceRow } from "../db/schema.sql.ts";
 import { ProjectSchema } from "../project/schema.ts";
 import { SandboxInstance } from "../sandbox/instance.ts";

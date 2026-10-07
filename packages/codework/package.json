@@ -52,8 +52,8 @@
 		"@agentclientprotocol/sdk": "1.5.1",
 		"@codeworksh/aikit": "workspace:^",
 		"@codeworksh/harness": "workspace:*",
-		"@effect/platform-node": "4.0.0-rc.115",
-		"effect": "4.0.0-rc.115",
+		"@effect/platform-node": "4.0.1",
+		"effect": "4.0.1",
 		"jsonc-parser": "3.3.1",
 		"zod": "4.6.5"
 	},

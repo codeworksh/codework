@@ -142,8 +142,8 @@ That is the reason `kind` is part of the definition rather than something the ha
 A plugin package declares `@codeworksh/harness` and `effect` as **exact peer dependencies**, never as dependencies:
 
 ```jsonc
-"peerDependencies": { "@codeworksh/harness": "0.0.1", "effect": "4.0.0-rc.115" },
-"devDependencies":  { "effect": "4.0.0-rc.115" }
+"peerDependencies": { "@codeworksh/harness": "0.0.1", "effect": "4.0.1" },
+"devDependencies":  { "effect": "4.0.1" }
 ```
 
 A plugin is installed into its own directory, so its Effect is a separate module instance from the harness's. Two instances of the _same_ version interoperate completely — service tags resolve by their string id, and schemas, generators and handlers all cross the boundary. Two different _versions_ do not: a tool's schema then encodes a result the harness cannot commit. Declaring the peer moves that from a runtime failure to a line during `npm install`, and `test/plugin.foreign.test.ts` holds the interop itself in place.

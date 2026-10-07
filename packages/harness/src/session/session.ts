@@ -1,5 +1,5 @@
 import { Context, DateTime, Effect, Layer, Option, Result, Schema } from "effect";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { SqlClient, SqlSchema } from "effect/sql";
 import { uuidv7 } from "uuidv7";
 import { Database } from "../db/db.ts";
 import {
