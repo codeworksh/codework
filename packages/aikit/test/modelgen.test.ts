@@ -233,13 +233,7 @@ describe("generateModels refetch", () => {
 
 describe("githubCopilotApiMethod", () => {
 	it("routes Claude 4.x/5.x to Anthropic Messages", () => {
-		for (const id of [
-			"claude-haiku-4.5",
-			"claude-sonnet-4.6",
-			"claude-opus-4.8",
-			"claude-opus-5",
-			"claude-fable-5",
-		]) {
+		for (const id of ["claude-haiku-4.5", "claude-sonnet-4.6", "claude-opus-4.8", "claude-opus-5"]) {
 			expect(githubCopilotApiMethod(id)).toBe(Model.APIMethodEnum.messages);
 		}
 	});

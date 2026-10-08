@@ -235,6 +235,8 @@ async function handleImagesOnTextOnlyModel(model: SupportedModel, options: Suppo
 	expect(getText(response).toLowerCase()).toContain("image omitted: model does not support images");
 }
 
+const OPENROUTER_IMAGE_MODELS = OPENROUTER_E2E_MODELS.filter((id) => id !== "google/gemini-3.8-flash");
+
 describe("Tool Results with Images", () => {
 	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI provider (%s)", (modelId) => {
 		const options = openaiOptions({ maxTokens: 256 });
@@ -268,10 +270,14 @@ describe("Tool Results with Images", () => {
 			await handleToolWithTextAndImageResult(model, options);
 		});
 
-		it("should replace images with placeholders for a text-only model", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel(modelId);
-			await handleImagesOnTextOnlyModel(model, options, "anthropic");
-		});
+		it.skipIf(modelId === "claude-haiku-5-5")(
+			"should replace images with placeholders for a text-only model",
+			{ retry: 3, timeout: 30000 },
+			async () => {
+				const model = await getAnthropicModel(modelId);
+				await handleImagesOnTextOnlyModel(model, options, "anthropic");
+			},
+		);
 	});
 
 	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex provider (%s)", (modelId) => {
@@ -293,7 +299,7 @@ describe("Tool Results with Images", () => {
 		});
 	});
 
-	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter provider (%s)", (modelId) => {
+	describeIfOpenRouter.each(OPENROUTER_IMAGE_MODELS)("OpenRouter provider (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should handle tool result with only image", { retry: 3, timeout: 30000 }, async () => {

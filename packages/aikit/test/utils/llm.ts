@@ -48,17 +48,16 @@ export const ANTHROPIC_E2E_MODELS = [
 	"claude-opus-4-6",
 	"claude-opus-4-8",
 	"claude-opus-5-5",
-	"claude-fable-5-1",
-	"claude-sonnet-4-5-20250929",
+	"claude-haiku-5-5",
 	"claude-haiku-4-5-20251001",
 ] as const;
 
 /**
  * The lowest effort at which a model reliably emits thinking on a short reasoning prompt:
- * adaptive models skip thinking below high (Opus 4.6) or below max (Sonnet 5, 5.5, Fable).
+ * adaptive models skip thinking below high (Opus 4.6) or below max (Sonnet 5, 5.5).
  */
 export function anthropicThinkingLevel(modelId: string): "high" | "max" {
-	return /^claude-(sonnet|fable)-5/.test(modelId) ? "max" : "high";
+	return modelId.startsWith("claude-sonnet-5") ? "max" : "high";
 }
 
 export function anthropicOptions(extras: AnthropicOptions = {}): AnthropicOptions {

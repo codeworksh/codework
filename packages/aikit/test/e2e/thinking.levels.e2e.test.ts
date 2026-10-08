@@ -54,7 +54,7 @@ const ANTHROPIC_BUDGET: Model.ThinkingLevel[] = ["off", "minimal", "low", "mediu
 const ANTHROPIC_XHIGH_MAX: Model.ThinkingLevel[] = [...ANTHROPIC_BUDGET, "xhigh", "max"];
 
 // Checked live: 4.6 takes max but not xhigh (Opus maps xhigh onto max), 4.8 and 5.x take
-// both, the 5.5 and Fable models reject disabled thinking, and the 4.5 models only take a budget.
+// both, Opus and Sonnet 5.5 reject disabled thinking, and Haiku 4.5 only takes a budget.
 const ANTHROPIC_LEVELS: Record<(typeof ANTHROPIC_E2E_MODELS)[number], Model.ThinkingLevel[]> = {
 	"claude-sonnet-4-6": [...ANTHROPIC_BUDGET, "max"],
 	"claude-sonnet-5": ANTHROPIC_XHIGH_MAX,
@@ -62,8 +62,7 @@ const ANTHROPIC_LEVELS: Record<(typeof ANTHROPIC_E2E_MODELS)[number], Model.Thin
 	"claude-opus-4-6": ANTHROPIC_XHIGH_MAX,
 	"claude-opus-4-8": ANTHROPIC_XHIGH_MAX,
 	"claude-opus-5-5": ANTHROPIC_XHIGH_MAX.slice(2),
-	"claude-fable-5-1": ANTHROPIC_XHIGH_MAX.slice(1),
-	"claude-sonnet-4-5-20250929": ANTHROPIC_BUDGET,
+	"claude-haiku-5-5": ANTHROPIC_XHIGH_MAX,
 	"claude-haiku-4-5-20251001": ANTHROPIC_BUDGET,
 };
 
