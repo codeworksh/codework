@@ -1,9 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/")({
-	component: IndexView,
-});
+import { Desktop } from "../desktop";
 
-function IndexView() {
-	return <div>Hello, world</div>;
-}
+export const Route = createFileRoute("/")({
+	component: Desktop,
+});

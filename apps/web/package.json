@@ -12,14 +12,17 @@
 	"dependencies": {
 		"@tanstack/react-router": "^1.161.0",
 		"react": "^19.3.0",
-		"react-dom": "^19.3.0"
+		"react-dom": "^19.3.0",
+		"webwm": "https://github.com/codeworksh/webwm/releases/download/v0.1.0/webwm-0.1.0.tgz"
 	},
 	"devDependencies": {
+		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/router-plugin": "^1.161.0",
 		"@types/node": "catalog:",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
 		"@vitejs/plugin-react": "^6.0.0",
+		"tailwindcss": "^4.3.3",
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vite-plus": "catalog:"

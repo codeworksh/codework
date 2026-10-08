@@ -4,6 +4,7 @@ import { createBrowserHistory, createHashHistory, RouterProvider } from "@tansta
 
 import { isElectron } from "./env";
 import { getRouter } from "./router";
+import "./style.css";
 
 // Electron loads the app from a file-backed shell, so hash history avoids path
 // resolution issues.
