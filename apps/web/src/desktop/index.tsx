@@ -1,9 +1,13 @@
 import { useRef, useState } from "react";
 import {
 	focus,
+	hasMasterStack,
+	masterStackMfactRange,
+	mfactFromPointer,
 	moveWidgetRelative,
 	tagBit,
 	tileInsertionTargetAtPoint,
+	type Bounds,
 	type InsertionTarget,
 	type Widget,
 	type WidgetId,
@@ -11,6 +15,7 @@ import {
 } from "webwm";
 import { useArrangedWidgets, useElementSize } from "webwm/react";
 
+import { Divider } from "./divider";
 import { Frame } from "./frame";
 
 const desktop = tagBit(0);
@@ -45,21 +50,23 @@ export function Desktop() {
 	const [layout, setLayout] = useState<"tile" | "monocle">("tile");
 	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
 	const [drag, setDrag] = useState<Drag | null>(null);
+	const [mfact, setMfact] = useState(0.6);
+	const [resizing, setResizing] = useState(false);
 	const [ref, size] = useElementSize<HTMLDivElement>();
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const focusedId = order.focusOrder[0];
-	const arrangement = useArrangedWidgets(
-		widgets,
-		order,
-		{ x: 0, y: 0, w: size.width, h: size.height },
-		{
-			activeTags: desktop,
-			layout,
-			...(focusedId === undefined ? {} : { focusedWidgetId: focusedId }),
-			nmaster,
-			mfact: 0.6,
-		},
-	);
+	const bounds: Bounds = { x: 0, y: 0, w: size.width, h: size.height };
+	const tiled = order.tileOrder.flatMap((id) => widgets.filter((widget) => widget.id === id));
+	// Both columns must keep their widgets' minimum widths, so mfact is clamped to that range.
+	const range = layout === "tile" && bounds.w > 0 ? masterStackMfactRange(tiled, bounds, nmaster) : null;
+	const effectiveMfact = range ? Math.min(range.max, Math.max(range.min, mfact)) : mfact;
+	const arrangement = useArrangedWidgets(widgets, order, bounds, {
+		activeTags: desktop,
+		layout,
+		...(focusedId === undefined ? {} : { focusedWidgetId: focusedId }),
+		nmaster,
+		mfact: effectiveMfact,
+	});
 
 	const targetAt = (clientX: number, clientY: number) => {
 		const surface = surfaceRef.current?.getBoundingClientRect();
@@ -67,6 +74,14 @@ export function Desktop() {
 		// The narrow-window fallback is one column, so it has no master area.
 		const masters = arrangement.mode === "stack" ? 0 : nmaster;
 		return tileInsertionTargetAtPoint(arrangement.placements, clientX - surface.left, clientY - surface.top, masters);
+	};
+
+	const showDivider =
+		range !== null && arrangement.mode !== "stack" && hasMasterStack(arrangement.placements.length, nmaster);
+
+	const resizeTo = (clientX: number) => {
+		const surface = surfaceRef.current?.getBoundingClientRect();
+		if (surface && range) setMfact(mfactFromPointer(clientX - surface.left, bounds, range));
 	};
 
 	const focusWidget = (widgetId: WidgetId) => setOrder((current) => focus(widgets, current, desktop, widgetId).order);
@@ -106,6 +121,7 @@ export function Desktop() {
 						maximized={layout === "monocle"}
 						canDrag={layout === "tile" && !pinned.has(widget.id)}
 						offset={drag?.widgetId === widget.id ? drag : null}
+						animate={!resizing}
 						onFocus={() => focusWidget(widget.id)}
 						onPin={() => togglePin(widget.id)}
 						onMaximize={() => toggleMax(widget.id)}
@@ -130,6 +146,18 @@ export function Desktop() {
 							top: drag.target.indicator.y,
 							width: drag.target.indicator.w - 24,
 						}}
+					/>
+				)}
+				{showDivider && range && (
+					<Divider
+						left={Math.floor(bounds.w * effectiveMfact)}
+						height={arrangement.contentBounds.h}
+						mfact={effectiveMfact}
+						range={range}
+						onResizeStart={() => setResizing(true)}
+						onResize={resizeTo}
+						onResizeEnd={() => setResizing(false)}
+						onChange={setMfact}
 					/>
 				)}
 			</div>

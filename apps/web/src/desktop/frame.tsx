@@ -11,6 +11,8 @@ interface FrameProps {
 	readonly maximized: boolean;
 	readonly canDrag: boolean;
 	readonly offset: { readonly deltaX: number; readonly deltaY: number } | null;
+	/** Ease into new slots; off while the column divider is dragged so frames track the pointer. */
+	readonly animate: boolean;
 	readonly onFocus: () => void;
 	readonly onPin: () => void;
 	readonly onMaximize: () => void;
@@ -21,7 +23,7 @@ interface FrameProps {
 }
 
 export function Frame(props: FrameProps) {
-	const { title, rect, focused, pinned, maximized, canDrag, offset } = props;
+	const { title, rect, focused, pinned, maximized, canDrag, offset, animate } = props;
 	const handleRef = useDragHandle<HTMLDivElement>({
 		canDrag: () => props.canDrag,
 		onDragStart: props.onDragStart,
@@ -35,7 +37,7 @@ export function Frame(props: FrameProps) {
 	return (
 		<article
 			// Settling into a new slot animates; the dragged frame follows the pointer directly.
-			className={`group absolute top-0 left-0 box-border p-1 ${offset ? "z-10 opacity-90" : "transition-[transform,width,height] duration-200 ease-out"}`}
+			className={`group absolute top-0 left-0 box-border p-1 ${offset ? "z-10 opacity-90" : animate ? "transition-[transform,width,height] duration-200 ease-out" : ""}`}
 			data-focused={focused}
 			style={{ width: rect.w, height: rect.h, transform: `translate(${x}px, ${y}px)` }}
 			onPointerDown={props.onFocus}
