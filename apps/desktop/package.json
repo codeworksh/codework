@@ -6,7 +6,7 @@
 	"main": "out/main.cjs",
 	"scripts": {
 		"build": "vp pack",
-		"dev": "vp pack --watch",
+		"dev": "node scripts/dev.mjs",
 		"start": "node scripts/start-electron.mjs",
 		"typecheck": "tsc --noEmit"
 	},

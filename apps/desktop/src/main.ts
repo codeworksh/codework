@@ -87,9 +87,13 @@ function handleRequest(request: Request): Promise<Response> {
 	if (DEV_SERVER_URL) {
 		const url = new URL(request.url);
 		if (url.host !== HOST) return Promise.resolve(new Response(null, { status: 404 }));
+		// Module scripts carry `Origin: codework-dev://app`; forwarding it makes
+		// net.fetch a CORS request the dev server never allows, failing every script.
+		const headers = new Headers(request.headers);
+		headers.delete("origin");
 		return net.fetch(new URL(`${url.pathname}${url.search}`, DEV_SERVER_URL).toString(), {
 			method: request.method,
-			headers: request.headers,
+			headers,
 			body: request.method === "GET" || request.method === "HEAD" ? null : request.body,
 			duplex: "half",
 		} as RequestInit);

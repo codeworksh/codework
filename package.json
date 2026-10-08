@@ -20,6 +20,7 @@
 		"bump:plugin": "pnpm --filter @codeworksh/plugin run bump",
 		"check": "vp check",
 		"check:packages": "vp run -r check",
+		"dev:desktop": "pnpm --filter @codeworksh/desktop dev",
 		"cli": "vp run @codeworksh/cli#start",
 		"lint": "vp lint",
 		"prepare": "node scripts/clean-tsgo-backups.mjs && effect-tsgo patch --typescript --oxlint",
