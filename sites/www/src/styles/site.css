@@ -44,6 +44,10 @@ body {
 	}
 }
 .field-in {
+	opacity: 0;
+}
+.field-in[data-painted] {
+	opacity: 1;
 	animation: field-in 900ms ease-out both;
 }
 
@@ -95,7 +99,11 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+	.field-in {
+		opacity: 1;
+	}
 	.field-in,
+	.field-in[data-painted],
 	[data-hero-stagger],
 	.typed-caret,
 	.heartbeat {

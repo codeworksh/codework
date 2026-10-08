@@ -258,7 +258,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		let spriteStampAt = Infinity;
 		let wordPress = false;
 		let visible = true;
-		let entrance = isHero && !reducedMotion ? performance.now() : -Infinity;
+		let entrance: number | null = isHero && !reducedMotion ? null : -Infinity;
 
 		const onWord = (x: number, y: number) =>
 			isHero && x >= wmX && y >= wmY && x < wmX + glyph.width * cell && y < wmY + glyph.height * cell;
@@ -412,6 +412,8 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		};
 
 		const draw = (time: number) => {
+			// Start when pixels are ready, rather than spending the entrance on layout work.
+			entrance ??= time;
 			const t = reducedMotion ? 0 : time / 1000;
 			const age = (time - entrance) / 1000;
 			const entering = age < ENTRANCE_SWEEP + ENTRANCE_SCATTER + ENTRANCE_FLASH;
@@ -594,6 +596,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				painted.current();
 				painted.current = undefined;
 			}
+			canvas.dataset.painted = "true";
 		};
 
 		let frame = 0;
@@ -689,7 +692,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		const resize = new ResizeObserver(() => {
 			if (!measure()) return;
 			start();
-			draw(reducedMotion ? 0 : lastDraw);
+			draw(reducedMotion ? 0 : performance.now());
 		});
 		resize.observe(host);
 		if (slot) resize.observe(slot);
