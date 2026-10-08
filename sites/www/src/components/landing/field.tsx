@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { THEME_EVENT } from "./theme";
-import { bandOf, MARK, WORDMARK, type Ink } from "./wordmark";
+import { DEPTH, MARK, WORDMARK, WORDMARK_OUTLINE, type Ink } from "./wordmark";
 
 /**
  * The hero's pixel field: drifting dithered noise on the wordmark's grid, a glow that follows
@@ -219,7 +219,6 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		// Only a few dozen tiles fit, so each visit starts the walk somewhere else in the list.
 		const firstExtension = Math.floor(Math.random() * EXTENSIONS.length);
 		let palette = readPalette();
-		let restInks = glyph.rows.map((_, row) => palette[bandOf(row, glyph.height)]);
 
 		// Device-pixel geometry. One grid for everything, anchored on the wordmark slot: the
 		// word occupies cells 0..width, 0..height and the field runs into negative indices around it.
@@ -528,7 +527,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				for (let c = 0; c < cols; c++) {
 					const col = cMin + c;
 					if (covered[r * cols + c] === 1) continue;
-					if (isHero && glyph.rows[row]?.[col] === "1") continue;
+					if (isHero && /[12]/.test(glyph.rows[row]?.[col] ?? "0")) continue;
 					const xLeft = wmX + col * cell;
 					const { lum, heat } = light(col, row, ramp[r * cols + c]!, xLeft + cell / 2, cy);
 					if (lum <= threshold(col, row)) continue;
@@ -565,23 +564,39 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				ctx.fillText(tile.ext, cx, cy, tile.w * cell * 0.9);
 			}
 
-			// The word: resting band ink, lifted to hover/crest by a stamp or a glow passing over it.
+			// Outline echoes reveal with the same cells as the solid word.
+			const landsAt = (col: number, row: number) =>
+				(col / glyph.width) * ENTRANCE_SWEEP + jitter[(row & 63) * 64 + (col & 63)]! * ENTRANCE_SCATTER;
+			if (isHero) {
+				ctx.lineWidth = Math.max(1, cell * 0.08);
+				for (const { offset, ink } of DEPTH) {
+					ctx.strokeStyle = palette[ink];
+					ctx.beginPath();
+					for (const edge of WORDMARK_OUTLINE) {
+						if (entering && age < landsAt(edge.col, edge.row)) continue;
+						ctx.moveTo(wmX + (edge.x1 + offset) * cell, wmY + (edge.y1 + offset) * cell);
+						ctx.lineTo(wmX + (edge.x2 + offset) * cell, wmY + (edge.y2 + offset) * cell);
+					}
+					ctx.stroke();
+				}
+			}
+
+			// Solid body and cursor, lifted by a stamp or glow passing over them.
 			for (let row = 0; isHero && row < glyph.height; row++) {
 				const bits = glyph.rows[row]!;
 				const yTop = wmY + row * cell;
 				const y = Math.round(yTop);
 				const rowHeight = Math.round(yTop + cell) - y;
 				for (let col = 0; col < glyph.width; col++) {
-					if (bits[col] !== "1") continue;
+					if (bits[col] !== "1" && bits[col] !== "2") continue;
 					const xLeft = wmX + col * cell;
 					const cx = xLeft + cell / 2;
 					const cy = yTop + cell / 2;
-					let ink = restInks[row]!;
+					let ink = bits[col] === "2" ? palette.crest : palette.lit;
 					if (entering) {
-						const landsAt =
-							(col / glyph.width) * ENTRANCE_SWEEP + jitter[(row & 63) * 64 + (col & 63)]! * ENTRANCE_SCATTER;
-						if (age < landsAt) continue;
-						if (age < landsAt + ENTRANCE_FLASH) ink = palette.crest;
+						const arrival = landsAt(col, row);
+						if (age < arrival) continue;
+						if (age < arrival + ENTRANCE_FLASH) ink = palette.crest;
 					}
 					const lift = Math.max(stamps.length > 0 ? stampAt(cx, cy) : 0, glows.length > 0 ? glowAt(cx, cy) : 0);
 					if (lift > 0.45) ink = palette.crest;
@@ -700,7 +715,6 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		// A new theme brings new inks.
 		const onTheme = () => {
 			palette = readPalette();
-			restInks = glyph.rows.map((_, row) => palette[bandOf(row, glyph.height)]);
 			if (reducedMotion) draw(0);
 		};
 		window.addEventListener(THEME_EVENT, onTheme);

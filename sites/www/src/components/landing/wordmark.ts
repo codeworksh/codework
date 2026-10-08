@@ -1,149 +1,139 @@
-/** A pixel glyph: rows of "1"/"0" cells, drawn on the hero field's grid. */
+/** A pixel glyph: 1 is the body, 2 is the cursor accent, 0 is empty. */
 export type Glyph = { rows: readonly string[]; width: number; height: number };
 
-// Letters share a 9-column cell, 16 rows tall; W is wider and drops a notch below the line.
+// Square C and cursor match the logo; stepped corners give the other letters their shape.
 const LETTERS: Record<string, readonly string[]> = {
 	C: [
-		"..#######",
-		".########",
-		"###...###",
-		"###...###",
-		"###...##.",
-		"###...#..",
-		"###......",
-		"###......",
-		"###......",
-		"###......",
-		"###...#..",
-		"###...##.",
-		"###...###",
-		"###...###",
-		".########",
-		"..#######",
+		"##########",
+		"##########",
+		"##........",
+		"##........",
+		"##......++",
+		"##......++",
+		"##........",
+		"##........",
+		"##########",
+		"##########",
 	],
 	O: [
-		"..#####..",
-		".#######.",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		".#######.",
-		"..#####..",
+		".########.",
+		"##########",
+		"##......##",
+		"##......##",
+		"##......##",
+		"##......##",
+		"##......##",
+		"##......##",
+		"##########",
+		".########.",
 	],
 	D: [
-		"#######..",
-		"########.",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"########.",
-		"#######..",
+		"########..",
+		"#########.",
+		"##......##",
+		"##......##",
+		"##......##",
+		"##......##",
+		"##......##",
+		"##......##",
+		"#########.",
+		"########..",
 	],
 	E: [
-		"..#######",
-		".########",
-		"###......",
-		"###......",
-		"###......",
-		"###......",
-		"###......",
-		"#######..",
-		"#######..",
-		"###......",
-		"###......",
-		"###......",
-		"###......",
-		"###......",
-		".########",
-		"..#######",
+		"##########",
+		"##########",
+		"##........",
+		"##........",
+		"#######...",
+		"#######...",
+		"##........",
+		"##........",
+		"##########",
+		"##########",
 	],
 	W: [
-		"..#...###...#..",
-		".##...###...##.",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		"###...###...###",
-		".#############.",
-		"..###########..",
-		"......###......",
+		"##...##...##",
+		"##...##...##",
+		"##...##...##",
+		"##...##...##",
+		"##...##...##",
+		"##...##...##",
+		"##...##...##",
+		"###.####.###",
+		".##########.",
+		"..###..###..",
 	],
 	R: [
-		"#######..",
-		"########.",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"########.",
-		"#######..",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...###",
-		"###...##.",
-		"###...#..",
+		"########..",
+		"#########.",
+		"##......##",
+		"##......##",
+		"#########.",
+		"########..",
+		"##...##...",
+		"##....##..",
+		"##.....##.",
+		"##......##",
 	],
 	K: [
-		"###...###",
-		"###...###",
-		"###..###.",
-		"###..###.",
-		"###.###..",
-		"###.###..",
-		"######...",
-		"#####....",
-		"#####....",
-		"######...",
-		"###.###..",
-		"###.###..",
-		"###..###.",
-		"###..###.",
-		"###...###",
-		"###...###",
+		"##......##",
+		"##.....##.",
+		"##....##..",
+		"##...##...",
+		"######....",
+		"######....",
+		"##...##...",
+		"##....##..",
+		"##.....##.",
+		"##......##",
 	],
 };
 
 function compose(word: string): Glyph {
 	const letters = word.split("").map((char) => LETTERS[char]!);
-	const height = Math.max(...letters.map((rows) => rows.length));
-	const rows = Array.from({ length: height }, (_, row) =>
-		letters
-			.map((rows) => (rows[row] ?? ".".repeat(rows[0]!.length)).replaceAll("#", "1").replaceAll(".", "0"))
-			.join("0"),
+	const width = letters.reduce((sum, rows) => sum + rows[0]!.length + 1, 0);
+	const rows = Array.from(
+		{ length: 10 },
+		(_, row) =>
+			letters
+				.map((letter) => letter[row]!.replaceAll("#", "1").replaceAll("+", "2").replaceAll(".", "0"))
+				.join("0") + "0",
 	);
-	return { rows, width: rows[0]!.length, height };
+	// One empty cell on the right and bottom leaves room for the outline echoes.
+	return { rows: [...rows, "0".repeat(width)], width, height: 11 };
 }
 
 export const WORDMARK = compose("CODEWORK");
+export type Ink = "crest" | "hover" | "lit" | "mid" | "dim";
+export const DEPTH = [
+	{ offset: 0.65, ink: "mid" },
+	{ offset: 0.32, ink: "lit" },
+] as const;
+
+/** Exposed cell edges, shared by the SVG fallback and animated canvas. */
+export function outlineOf(glyph: Glyph) {
+	const filled = (col: number, row: number) => /[12]/.test(glyph.rows[row]?.[col] ?? "0");
+	const sides = [
+		[-1, 0, 0, 0, 0, 1],
+		[1, 0, 1, 0, 1, 1],
+		[0, -1, 0, 0, 1, 0],
+		[0, 1, 0, 1, 1, 1],
+	] as const;
+	return glyph.rows.flatMap((bits, row) =>
+		bits
+			.split("")
+			.flatMap((_, col) =>
+				filled(col, row)
+					? sides.flatMap(([dx, dy, x1, y1, x2, y2]) =>
+							filled(col + dx, row + dy)
+								? []
+								: [{ col, row, x1: col + x1, y1: row + y1, x2: col + x2, y2: row + y2 }],
+						)
+					: [],
+			),
+	);
+}
+export const WORDMARK_OUTLINE = outlineOf(WORDMARK);
 
 /** C and cursor logo, on the original stamp grid so press growth keeps its scale. */
 export const MARK: Glyph = {
@@ -174,24 +164,3 @@ export const HEART: Glyph = {
 	height: 6,
 	rows: ["0110110", "1111111", "1111111", "0111110", "0011100", "0001000"],
 };
-
-/** Resting ink per band, top to bottom, as rows of a 19-row reference height. */
-const BANDS = [
-	["crest", 5],
-	["hover", 2],
-	["lit", 4],
-	["mid", 3],
-	["dim", 5],
-] as const;
-export type Ink = (typeof BANDS)[number][0];
-const BAND_ROWS = BANDS.reduce((sum, [, rows]) => sum + rows, 0);
-
-/** The band a row of a glyph rests in, spread in proportion to the glyph's height. */
-export function bandOf(row: number, height: number): Ink {
-	let at = (row / height) * BAND_ROWS;
-	for (const [ink, rows] of BANDS) {
-		if (at < rows) return ink;
-		at -= rows;
-	}
-	return "dim";
-}
