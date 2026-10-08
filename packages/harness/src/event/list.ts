@@ -81,6 +81,34 @@ export const TurnAborted = EventSchema.define({
 });
 export type TurnAborted = typeof TurnAborted.Type;
 
+/**
+ * A failed provider request will be repeated after `delayMs`. `attempt` counts retries from 1, so
+ * the request that failed was attempt `attempt - 1`; the failed draft is already settled.
+ */
+export const RetryScheduled = EventSchema.define({
+	type: "session.retry.scheduled",
+	schema: {
+		...baseOptions,
+		attempt: NonNegativeInt,
+		maxRetries: NonNegativeInt,
+		delayMs: NonNegativeInt,
+		message: Schema.String,
+	},
+});
+export type RetryScheduled = typeof RetryScheduled.Type;
+
+/** Once per turn that retried: whether a retry succeeded, after how many. */
+export const RetryFinished = EventSchema.define({
+	type: "session.retry.finished",
+	schema: {
+		...baseOptions,
+		attempt: NonNegativeInt,
+		success: Schema.Boolean,
+		message: optional(Schema.String),
+	},
+});
+export type RetryFinished = typeof RetryFinished.Type;
+
 /** Durable insertion of the request's draft assistant placeholder. */
 export const LLMStarted = EventSchema.define({
 	type: "session.llm.started",
@@ -269,6 +297,8 @@ export const Definitions = EventSchema.inventory(
 	TurnStarted,
 	TurnEnded,
 	TurnAborted,
+	RetryScheduled,
+	RetryFinished,
 	LLMStarted,
 	LLMTextStart,
 	LLMTextDelta,

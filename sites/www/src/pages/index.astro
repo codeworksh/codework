@@ -1,5 +1,5 @@
 ---
-import { ArrowRight, BookOpen, Box, GitBranch, Layers, Play, Rocket, Sparkles, Users } from "lucide-react";
+import { ArrowRight, BookOpen, Box, GitBranch, Layers, Rocket, Sparkles, Users } from "lucide-react";
 import Layout from "@/components/layout.astro";
 import { about, community, features, footer, showcase, start } from "@/components/landing/content";
 import { Field } from "@/components/landing/field";
@@ -10,7 +10,8 @@ import { Picker } from "@/components/landing/picker";
 import { Pixels } from "@/components/landing/pixels";
 import { Scene } from "@/components/landing/scene";
 import { Typewriter } from "@/components/landing/typewriter";
-import { WORDMARK } from "@/components/landing/wordmark";
+import { Videos } from "@/components/landing/videos";
+import { HEART, WORDMARK } from "@/components/landing/wordmark";
 import "@/styles/site.css";
 
 const section = "mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:py-24";
@@ -58,22 +59,13 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 			</div>
 		</section>
 
-		<section id="watch" class="border-t border-border-subtle">
-			<div class={section}>
-				<h2 class={heading}>{showcase.title}</h2>
-				<p class={lede}>{showcase.description}</p>
-				<div class="mt-6 grid gap-4 sm:grid-cols-2 lg:mt-10 lg:grid-cols-4">
-					{showcase.items.map((title) => (
-						<div>
-							<div class="flex aspect-video items-center justify-center border border-border-subtle bg-surface-2 text-text-muted">
-								<Play className="size-8" />
-							</div>
-							<p class="mt-3 text-sm text-text">{title}</p>
-							<p class="text-[13px] text-text-muted">Channel placeholder</p>
-						</div>
-					))}
-				</div>
-			</div>
+		<section id="watch" class="border-t border-border-subtle py-12 lg:py-24">
+			<Videos title={showcase.title} videos={showcase.videos} client:visible>
+				{`${showcase.description[0]} `}
+				<span class="sr-only">love</span>
+				<Pixels glyph={HEART} className="heartbeat inline-block h-3 w-auto align-[-0.05em] text-brand" />
+				{` ${showcase.description[1]}`}
+			</Videos>
 		</section>
 
 		<section id="install" class="border-t border-border-subtle">

@@ -1,0 +1,27 @@
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<sandbox>/repo/AGENTS.md">
+Main checkout copy.
+
+</project_instructions>
+
+<project_instructions path="<sandbox>/repo/pkg/AGENTS.override.md">
+Pkg: run vp check.
+
+</project_instructions>
+</project_context>
+
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<sandbox>/repo/.claude/worktrees/x/AGENTS.md">
+Worktree copy.
+
+</project_instructions>
+
+<project_instructions path="<sandbox>/repo/.claude/worktrees/x/pkg/AGENTS.override.md">
+Pkg: run vp check.
+
+</project_instructions>
+</project_context>

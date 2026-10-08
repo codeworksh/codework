@@ -1,6 +1,6 @@
 import { DateTime, Effect, Option, Schema } from "effect";
-import { VariantSchema } from "effect/unstable/schema";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { VariantSchema } from "effect/schema";
+import { SqlClient, SqlSchema } from "effect/sql";
 import { SessionInputRow } from "../../db/schema.sql.ts";
 import { Event } from "../../event/event.ts";
 import { EventList } from "../../event/list.ts";

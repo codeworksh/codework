@@ -1,6 +1,6 @@
 import { remoteSuite } from "./fixtures/live.ts";
 import { Effect, Layer, ManagedRuntime, Option } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { SandboxController } from "../src/sandbox/control.ts";

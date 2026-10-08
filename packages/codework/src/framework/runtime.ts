@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 import type { CommandError } from "../cli/error.ts";
 import { Spec } from "./spec.ts";
 

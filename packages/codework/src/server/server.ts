@@ -1,17 +1,15 @@
 import { Control, Harness, Sandbox } from "@codeworksh/harness/effect";
 import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
-import { HttpRouter, HttpServer } from "effect/unstable/http";
-import * as NetAddress from "effect/unstable/net/NetAddress";
-import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
+import { HttpRouter, HttpServer } from "effect/http";
+import * as NetAddress from "effect/net/NetAddress";
+import { RpcSerialization, RpcServer } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the RPC listener needs a raw node server. */
 import { createServer } from "node:http";
 import { Contract } from "./contract.ts";
 import { EventFeed } from "./feed.ts";
 import { Handlers } from "./handlers.ts";
 import { OAuth } from "./oauth.ts";
-
-const WsProtocol = RpcServer.layerProtocolWebsocket({ path: "/rpc" }).pipe(Layer.provide(HttpRouter.layer));
 
 // Managed instances outlive any single RPC; the serve scope is what stops them.
 const managedShutdown = Layer.unwrap(
@@ -60,10 +58,10 @@ const listenLog = Layer.unwrap(
 );
 
 export const layer = (options: { host: string; port: number; harness: Harness.Options }) => {
-	const rpc = RpcServer.layer(Contract.Api).pipe(Layer.provide(Handlers.layer.pipe(Layer.provide(EventFeed.layer))));
-	const app = rpc.pipe(
-		Layer.provideMerge(WsProtocol),
-		Layer.provide(HttpRouter.serve(WsProtocol, { disableListenLog: true })),
+	const rpc = RpcServer.layerHttp({ group: Contract.Api, path: "/rpc", protocol: "websocket" }).pipe(
+		Layer.provide(Handlers.layer.pipe(Layer.provide(EventFeed.layer))),
+	);
+	const app = HttpRouter.serve(rpc, { disableListenLog: true }).pipe(
 		Layer.provideMerge(managedShutdown),
 		Layer.provide(OAuth.layer(options.harness.home === undefined ? {} : { home: options.harness.home })),
 	);

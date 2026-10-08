@@ -1,0 +1,18 @@
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<root>/repo/CLAUDE.override.md">
+Repo: use Effect for services.
+
+</project_instructions>
+
+<project_instructions path="<root>/repo/pkg/AGENTS.override.md">
+Pkg: run vp check.
+
+</project_instructions>
+
+<project_instructions path="<root>/repo/pkg/app/src/AGENTS.md">
+Src: closest to the cwd.
+
+</project_instructions>
+</project_context>

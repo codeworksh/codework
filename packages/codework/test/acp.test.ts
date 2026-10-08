@@ -4,7 +4,7 @@ import * as Acp from "@agentclientprotocol/sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { type Cause, Effect, Exit, Fiber, Option, Queue, type Scope, Stream } from "effect";
 import * as EffectCause from "effect/Cause";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { crc32, deflateSync } from "node:zlib";

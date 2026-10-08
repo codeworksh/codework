@@ -1,6 +1,6 @@
 import { Model } from "@codeworksh/aikit";
 import { Schema } from "effect";
-import { Argument, Flag } from "effect/unstable/cli";
+import { Argument, Flag } from "effect/cli";
 import { Spec } from "../../framework/spec.ts";
 
 /**

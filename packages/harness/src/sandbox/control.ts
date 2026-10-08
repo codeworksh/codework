@@ -1,5 +1,5 @@
 import { Cause, Context, DateTime, type Duration, Effect, Layer, LayerMap, Option, Schema, Semaphore } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
 import { Space } from "../space/space.ts";
 import { SandboxDriver } from "./driver.ts";

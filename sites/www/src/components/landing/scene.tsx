@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import shader from "./scene.wgsl?raw";
-import { DEFAULT_THEME, THEME_EVENT, THEMES, readTheme } from "./theme";
+import { THEME_EVENT, THEMES, readTheme } from "./theme";
 
 const IMAGE = "/images/workspace.webp";
 const SIZE = [1322, 920] as const;
@@ -31,8 +31,7 @@ function rgbOf(color: string, probe: CanvasRenderingContext2D): Rgb {
 /**
  * The active theme as the ramp scene.wgsl remaps the illustration onto. Dark themes keep the night
  * and use their own grounds and inks; light themes relight the room as day (see `day` in the
- * shader), running from their text colour to their page colour. CodeWork is the palette the art
- * was drawn in, so it shows as painted.
+ * shader), running from their text colour to their page colour.
  */
 function rampOf(probe: CanvasRenderingContext2D): Ramp {
 	const style = getComputedStyle(document.documentElement);
@@ -49,7 +48,7 @@ function rampOf(probe: CanvasRenderingContext2D): Ramp {
 	return {
 		...(Object.fromEntries(SHADES.map((name, i) => [name, shades[i]!])) as Record<(typeof SHADES)[number], Rgb>),
 		...(Object.fromEntries(GLOWS.map((name, i) => [name, glows[i]!])) as Record<(typeof GLOWS)[number], Rgb>),
-		strength: id === DEFAULT_THEME ? 0 : light ? 0.85 : 0.9,
+		strength: light ? 0.85 : 0.9,
 		// Light themes see the room by day.
 		daylight: light ? 1 : 0,
 	};

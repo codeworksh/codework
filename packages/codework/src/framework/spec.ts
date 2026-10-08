@@ -1,4 +1,4 @@
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 
 /**
  * A declarative command tree. Specs carry only the shape of a command -- its

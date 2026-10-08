@@ -1,6 +1,6 @@
 import { Model as AikitModel, type Protocol } from "@codeworksh/aikit";
 import { Effect, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effect";
-import { isAikitModelInfo, validateAikitModelInfo } from "./schema.ts";
+import { isAikitModelInfo, NonNegativeInt, validateAikitModelInfo } from "./schema.ts";
 
 export const ThinkingLevel = Schema.Literals(Object.values(AikitModel.ThinkingLevelEnum));
 export const ToolExecution = Schema.Literals(["sequential", "parallel"]);
@@ -136,11 +136,31 @@ export const PluginPatch = Schema.Union(
 export const PluginEntry = Schema.Union([PluginReference, PluginPatch]);
 export type PluginEntry = typeof PluginEntry.Type;
 
+/**
+ * Agent-level retry of a turn whose provider request failed transiently (rate limit, overload,
+ * 5xx, dropped connection). Delays double from `baseDelayMs` and stop growing at `maxDelayMs`;
+ * a server that asks for a longer wait than `maxDelayMs` is not retried. `maxRetries: 0` is off.
+ *
+ * Separate from `model.options.maxRetries`, which retries inside the provider SDK and defaults to
+ * 0 so that the two do not multiply, and so a quota error reaches the loop instead of being retried.
+ */
+export const Retry = Schema.Struct({
+	maxRetries: Schema.optional(NonNegativeInt),
+	baseDelayMs: Schema.optional(NonNegativeInt),
+	maxDelayMs: Schema.optional(NonNegativeInt),
+});
+export interface RetryPolicy {
+	readonly maxRetries: number;
+	readonly baseDelayMs: number;
+	readonly maxDelayMs: number;
+}
+
 export const Patch = Schema.Struct({
 	$schema: Schema.optional(Schema.String),
 	plugins: Schema.optional(Schema.Array(PluginEntry)),
 	model: Schema.optional(Model),
 	models: Schema.optional(Schema.Array(ModelEntry)),
+	retry: Schema.optional(Retry),
 });
 export type Patch = typeof Patch.Type;
 
@@ -204,6 +224,7 @@ export interface Info {
 		readonly thinkingLevel: AikitModel.ThinkingLevel;
 		readonly toolExecution: ToolExecution;
 	};
+	readonly retry: RetryPolicy;
 }
 
 /** Let aikit supply model-aware generation defaults. */
@@ -216,6 +237,7 @@ export const defaults: Info = {
 		id: "gpt-5.6-luna",
 		thinkingLevel: "high",
 		toolExecution: "sequential",
-		options: { timeoutMs: 3_600_000, maxRetries: 3 },
+		options: { timeoutMs: 3_600_000, maxRetries: 0 },
 	},
+	retry: { maxRetries: 3, baseDelayMs: 2_000, maxDelayMs: 60_000 },
 };

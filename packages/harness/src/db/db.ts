@@ -1,12 +1,12 @@
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
 import { Config, Effect, Layer, String as Str } from "effect";
-import { Migrator, SqlClient } from "effect/unstable/sql";
+import { Migrator, SqlClient } from "effect/sql";
 import { Global } from "../global.ts";
 import { fileSystem } from "../host.ts";
 import { posix } from "../util/posix.ts";
 import { migrations } from "./migrations.ts";
 
-export { SqlClient, SqlSchema } from "effect/unstable/sql";
+export { SqlClient, SqlSchema } from "effect/sql";
 
 // PRAGMAs and migrations run once during layer construction; the node:sqlite
 // client holds a single connection for the lifetime of the layer, so the settings
