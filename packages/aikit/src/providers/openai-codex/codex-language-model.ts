@@ -12,6 +12,7 @@ import type {
 } from "@ai-sdk/provider";
 import {
 	createOpenAICodexAPICallError,
+	openAICodexFetchError,
 	createOpenAICodexPrematureCloseError,
 	createOpenAICodexStreamError,
 } from "./codex-error.ts";
@@ -332,6 +333,8 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			headers,
 			body: compressedBody ?? bodyJson,
 			...(options.abortSignal !== undefined && { signal: options.abortSignal }),
+		}).catch((error: unknown) => {
+			throw openAICodexFetchError(error, url, body);
 		});
 
 		if (!response.ok) {

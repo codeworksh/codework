@@ -191,3 +191,20 @@ export function createOpenAICodexPrematureCloseError(args: {
 		isRetryable: true,
 	});
 }
+
+/**
+ * A fetch that rejects never produced a response, but its body was still sent. Wrap
+ * it the way AI SDK providers do, so it reads as a retryable transport failure that
+ * carries the request. Aborts pass through untouched.
+ */
+export function openAICodexFetchError(error: unknown, url: string, requestBodyValues: unknown): unknown {
+	if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) return error;
+	const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
+	return new APICallError({
+		message: `Cannot connect to API: ${cause instanceof Error ? cause.message : String(cause)}`,
+		cause: error,
+		url,
+		requestBodyValues,
+		isRetryable: true,
+	});
+}
