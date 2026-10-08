@@ -150,7 +150,17 @@ export const statsFrom = (info: FileInfo): RemoteFileSystem.FileStat => {
 
 type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
-	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm" | "realpath"
+	| "readFile"
+	| "readFileBuffer"
+	| "writeFile"
+	| "stat"
+	| "lstat"
+	| "readdir"
+	| "exists"
+	| "mkdir"
+	| "rm"
+	| "realpath"
+	| "scanLines"
 >;
 
 const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
@@ -215,6 +225,15 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
 			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
 		},
+		scanLines: SandboxFileSystem.Scan.viaShell(async (argv) => {
+			const result = await sandbox.process.executeCommand(
+				quoteArgv(argv),
+				options.cwd,
+				undefined,
+				options.execTimeout,
+			);
+			return { exitCode: result.exitCode, stdout: result.result ?? "" };
+		}),
 	};
 
 	return filesystem;

@@ -193,7 +193,17 @@ export const statsFrom = (stats: Stats): RemoteFileSystem.FileStat => {
 
 type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
-	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm" | "realpath"
+	| "readFile"
+	| "readFileBuffer"
+	| "writeFile"
+	| "stat"
+	| "lstat"
+	| "readdir"
+	| "exists"
+	| "mkdir"
+	| "rm"
+	| "realpath"
+	| "scanLines"
 >;
 
 // The Vercel `fs` surface is `node:fs/promises`-compatible, so the provider
@@ -244,6 +254,10 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options): RemoteFilesyste
 			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
 			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
 		},
+		scanLines: SandboxFileSystem.Scan.viaShell(async (argv) => {
+			const result = await (await spawnArgv(sandbox, options, argv)).wait();
+			return { exitCode: result.exitCode, stdout: await result.stdout(), stderr: await result.stderr() };
+		}),
 	};
 
 	return filesystem;

@@ -87,6 +87,10 @@ const filesystem = (remote: Remote, execTimeout: number | undefined): SandboxFil
 			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
 			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
 		},
+		scanLines: SandboxFileSystem.Scan.viaShell(async (argv) => {
+			const result = await (await command(remote, execTimeout, argv)).wait();
+			return { exitCode: result.exitCode, stdout: await result.stdout(), stderr: await result.stderr() };
+		}),
 	});
 
 const command = (

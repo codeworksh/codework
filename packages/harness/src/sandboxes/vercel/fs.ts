@@ -51,6 +51,7 @@ export const make = (provider: Interface, options?: Options): SandboxFileSystem.
 		// option validation happens in `fromProvider`, before any mutation
 		rm: (path, rmOptions) => provider.rm(resolve(path), rmOptions),
 		realpath: (path) => provider.realpath(resolve(path)),
+		scanLines: (path, scanOptions) => provider.scanLines(resolve(path), scanOptions),
 	};
 };
 

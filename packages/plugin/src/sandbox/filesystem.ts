@@ -1,5 +1,10 @@
 import { Context, Effect, Schema } from "effect";
 import { posix } from "../posix.ts";
+import { type LineScan, type LineScanOptions, validate as validateScan } from "./scan.ts";
+
+export type { LineScan, LineScanOptions } from "./scan.ts";
+/** The shared line-scan rules: `LineScanner` for byte streams, `script` for shell-only backends. */
+export * as Scan from "./scan.ts";
 
 /**
  * The runtime filesystem contract, independent of any backend.
@@ -99,6 +104,12 @@ export interface Provider {
 	/** Canonical absolute path with symlinks resolved; rejects when the path does not exist. */
 	readonly realpath: (path: string) => Promise<string>;
 	/**
+	 * A window of the file's lines, by the rules in `Scan`. Bounded: never
+	 * returns, or holds, more than the window. A remote backend runs the scan
+	 * inside the sandbox (`Scan.script`) so only the window crosses the network.
+	 */
+	readonly scanLines: (path: string, options: LineScanOptions) => Promise<LineScan>;
+	/**
 	 * Metadata for the directory entry itself rather than a symlink's target.
 	 * Optional: a backend whose `stat` has mixed symlink semantics implements it
 	 * so symlink identity is asked for explicitly, never inferred.
@@ -124,6 +135,8 @@ export interface Interface {
 	readonly rm: (path: string, options?: RmOptions) => Effect.Effect<void, FileSystemError | OperationUnsupportedError>;
 	/** Canonical absolute path with symlinks resolved; fails when the path does not exist. */
 	readonly realpath: (path: string) => Effect.Effect<string, FileSystemError>;
+	/** A bounded window of the file's lines; see `Scan`. Invalid options are a defect. */
+	readonly scanLines: (path: string, options: LineScanOptions) => Effect.Effect<LineScan, FileSystemError>;
 	// `lstat` is present only when the backend supports it; check before calling.
 	readonly lstat?: (path: string) => Effect.Effect<FileStat, FileSystemError>;
 }
@@ -216,6 +229,11 @@ export const fromProvider = (provider: Provider): Interface => {
 		realpath: Effect.fn("SandboxFileSystem.realpath")((path: string) =>
 			attempt("realpath", path, () => provider.realpath(path)),
 		),
+		scanLines: Effect.fn("SandboxFileSystem.scanLines")((path: string, options: LineScanOptions) =>
+			Effect.sync(() => validateScan(options)).pipe(
+				Effect.andThen(attempt("scanLines", path, () => provider.scanLines(path, options))),
+			),
+		),
 	};
 };
 
@@ -239,6 +257,7 @@ export const withCwd = (fs: Interface, cwd: string): Interface => {
 		mkdir: (path, options) => fs.mkdir(at(path), options),
 		rm: (path, options) => fs.rm(at(path), options),
 		realpath: (path) => fs.realpath(at(path)),
+		scanLines: (path, options) => fs.scanLines(at(path), options),
 		// carried through only when the backend implements it, so a caller can
 		// still detect absence by checking the property
 		...(fs.lstat === undefined ? {} : { lstat: (path: string) => fs.lstat!(at(path)) }),

@@ -1,4 +1,4 @@
-/* oxlint-disable effecttsgo/async-function -- VFS operations implement a Promise-based adapter contract. */
+/* oxlint-disable effecttsgo/async-function, effecttsgo/new-promise -- VFS operations implement a Promise-based adapter contract. */
 import type { VirtualFileSystem, VirtualStats } from "@platformatic/vfs";
 import { Context, Effect, Layer } from "effect";
 import { Buffer } from "node:buffer";
@@ -22,6 +22,8 @@ const toFileStat = (stats: VirtualStats): SandboxFileSystem.FileStat => ({
 // The VFS backend authors the Promise-based provider surface; `fromProvider`
 // lifts it into the Effect service the harness consumes.
 export interface Interface extends SandboxFileSystem.Provider {}
+
+const SCAN_CHUNK = 64 * 1024;
 
 const bytes = (content: string | Uint8Array) =>
 	typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content);
@@ -91,6 +93,34 @@ const make = (vfs: VirtualFileSystem): Interface => {
 		// Every VFS provider resolves symlinks itself (the host one via
 		// `fs.realpath`) and rejects with ENOENT for a missing path.
 		realpath: (path) => vfs.promises.realpath(path),
+		scanLines: async (path, options) => {
+			const scanner = new SandboxFileSystem.Scan.LineScanner(options);
+			// Bounded by the size seen now, so a file that keeps growing ends the scan.
+			const { size } = await vfs.promises.stat(path);
+			if (size === 0) return scanner.finish();
+			// Positional reads through a descriptor: the VFS read stream loads the
+			// whole file first, and the host provider reads only what is asked.
+			const fd = await new Promise<number>((resolve, reject) =>
+				vfs.open(path, "r", (error, value) => (error ? reject(error) : resolve(value!))),
+			);
+			try {
+				const buffer = Buffer.alloc(Math.min(SCAN_CHUNK, size));
+				for (let position = 0; position < size;) {
+					const length = Math.min(buffer.length, size - position);
+					const read = await new Promise<number>((resolve, reject) =>
+						vfs.read(fd, buffer, 0, length, position, (error, bytesRead) =>
+							error ? reject(error) : resolve(bytesRead),
+						),
+					);
+					if (read === 0) break;
+					scanner.push(buffer.subarray(0, read));
+					position += read;
+				}
+			} finally {
+				await new Promise<void>((resolve) => vfs.close(fd, () => resolve()));
+			}
+			return scanner.finish();
+		},
 	};
 };
 
