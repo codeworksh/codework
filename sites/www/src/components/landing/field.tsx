@@ -9,7 +9,7 @@ import { DEPTH, MARK, WORDMARK, WORDMARK_OUTLINE, type Ink } from "./wordmark";
  * word into the field; 'field' is the bare texture for the footer.
  */
 
-type Palette = Record<Ink | "bg" | "tile", string>;
+type Palette = Record<Ink | "bg" | "tile" | "grid", string>;
 
 /** Mixes two #rrggbb colours, `t` of the way from a to b. */
 const mixHex = (a: string, b: string, t: number) =>
@@ -27,6 +27,7 @@ function readPalette(): Palette {
 	const token = (name: string) => style.getPropertyValue(`--t-field-${name}`).trim();
 	return {
 		bg: token("bg"),
+		grid: mixHex(token("bg"), token("dim"), 0.22),
 		tile: mixHex(token("dim"), token("lit"), TILE_LIFT),
 		dim: token("dim"),
 		mid: token("mid"),
@@ -46,6 +47,8 @@ const BAYER = [
 const NOISE_SIZE = 128;
 /** Grid cells per unit of noise: how big the drifting blobs read. */
 const CELLS_PER_NOISE = 9;
+/** Each faint grid square contains two by two field pixels. */
+const GRID_CELLS = 2;
 /** Pointer reach, in grid cells. */
 const CURSOR_CELLS = 12;
 /** Density of the bare field, which has no vignette to shape it. */
@@ -441,6 +444,23 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 
 			ctx.fillStyle = palette.bg;
 			ctx.fillRect(0, 0, width, height);
+
+			if (isHero) {
+				ctx.strokeStyle = palette.grid;
+				ctx.lineWidth = 1;
+				ctx.beginPath();
+				for (let col = Math.ceil(cMin / GRID_CELLS) * GRID_CELLS; col < cMin + cols; col += GRID_CELLS) {
+					const x = Math.round(wmX + col * cell) + 0.5;
+					ctx.moveTo(x, 0);
+					ctx.lineTo(x, height);
+				}
+				for (let row = Math.ceil(rMin / GRID_CELLS) * GRID_CELLS; row < rMin + rows; row += GRID_CELLS) {
+					const y = Math.round(wmY + row * cell) + 0.5;
+					ctx.moveTo(0, y);
+					ctx.lineTo(width, y);
+				}
+				ctx.stroke();
+			}
 
 			const reachOf = (level: number) => CURSOR_CELLS * cell * (0.45 + 0.55 * level);
 			const glows: Glow[] = [];
