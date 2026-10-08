@@ -2,9 +2,8 @@ import { Palette } from "lucide-react";
 import { useEffect, useState } from "react";
 import { GITHUB_URL, nav } from "./content";
 import { GithubIcon } from "./github";
-import { Pixels } from "./pixels";
+import { Logo } from "./logo";
 import { OPEN_PICKER_EVENT } from "./theme";
-import { MARK } from "./wordmark";
 
 /** Sits transparent over the hero, and picks up a ground once the hero has scrolled under it. */
 export function Header() {
@@ -33,7 +32,7 @@ export function Header() {
 					aria-label="CodeWork home"
 					className="text-brand transition-colors hover:text-(--t-field-hover)"
 				>
-					<Pixels glyph={MARK} className="size-5.5" />
+					<Logo className="size-5" />
 				</a>
 				<nav className="hidden items-center sm:flex">
 					{nav.map((link) => (
