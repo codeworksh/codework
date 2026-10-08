@@ -55,7 +55,12 @@ export interface Identity {
 	readonly kind: SandboxInstance.Kind;
 	/** Absolute, and always a path in *this* namespace. */
 	readonly cwd: string;
+	/** Directory, in this namespace, that oversized tool output is written to. */
+	readonly spillPath: string;
 }
+
+/** Spill directory for a driver that configures none. */
+export const DEFAULT_SPILL_PATH = "/tmp";
 
 /** Identity and working directory of the current mount. */
 export class Current extends Context.Service<Current, Identity>()("@codeworksh/plugin/sandbox/io/Current") {}
@@ -160,6 +165,7 @@ export const host = (cwd: string): Identity => ({
 	driver: "local" as SandboxDriver.Name,
 	kind: "local",
 	cwd: resolveMountCwd(cwd),
+	spillPath: DEFAULT_SPILL_PATH,
 });
 
 /**
@@ -174,11 +180,13 @@ export const virtual = (input: {
 	readonly id?: SandboxInstance.ID;
 	readonly defaultCwd?: string;
 	readonly cwd?: string;
+	readonly spillPath?: string;
 }): Identity => ({
 	id: input.id ?? SandboxInstance.ID.create(),
 	driver: input.driver as SandboxDriver.Name,
 	kind: "virtual",
 	cwd: resolveMountCwd(input.defaultCwd ?? "/", input.cwd),
+	spillPath: input.spillPath ?? DEFAULT_SPILL_PATH,
 });
 
 /**
@@ -192,11 +200,14 @@ export const remote = (input: {
 	/** Namespace-intrinsic default supplied or discovered by the driver. */
 	readonly defaultCwd: string;
 	readonly cwd?: string;
+	/** Namespace-intrinsic spill directory configured by the driver. */
+	readonly spillPath?: string;
 }): Identity => ({
 	id: input.id,
 	driver: input.driver as SandboxDriver.Name,
 	kind: "remote",
 	cwd: resolveMountCwd(input.defaultCwd, input.cwd),
+	spillPath: input.spillPath ?? DEFAULT_SPILL_PATH,
 });
 
 export * as SandboxIO from "./io.ts";

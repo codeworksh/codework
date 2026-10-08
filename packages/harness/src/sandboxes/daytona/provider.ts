@@ -19,6 +19,8 @@ type Resources = import("@daytona/sdk").Resources;
 
 /** Fallback when Daytona cannot report a snapshot/image-specific work directory. */
 export const DEFAULT_CWD = "/home/daytona";
+/** Where oversized tool output is written inside the sandbox. */
+export const SPILL_PATH = "/tmp";
 
 /**
  * The mount cwd for a Daytona namespace.
@@ -333,6 +335,7 @@ const identityLayer = (options: Options) =>
 				driver: "daytona",
 				id: options.instanceId ?? SandboxInstance.ID.create(),
 				defaultCwd: cwd,
+				spillPath: SPILL_PATH,
 			}),
 		),
 	);

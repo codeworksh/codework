@@ -34,6 +34,7 @@ export type CreateConfig = typeof CreateConfig.Type;
 
 export const RuntimeConfig = Schema.Struct({
 	defaultCwd: SandboxDriver.AbsolutePath,
+	spillPath: Schema.optional(SandboxDriver.AbsolutePath),
 	user: Schema.optional(Schema.String),
 	execTimeout: Schema.optional(Schema.Finite),
 });
@@ -125,6 +126,7 @@ export const make = (
 		input: { readonly user?: string | undefined; readonly execTimeout?: number | undefined },
 	) => ({
 		defaultCwd: SandboxDriver.AbsolutePath.make(defaultCwd),
+		spillPath: SandboxDriver.AbsolutePath.make(EnvDaytona.SPILL_PATH),
 		...(input.user === undefined ? {} : { user: input.user }),
 		...(input.execTimeout === undefined ? {} : { execTimeout: input.execTimeout }),
 	});
@@ -192,6 +194,7 @@ export const make = (
 					);
 				return {
 					defaultCwd,
+					spillPath: overrides?.spillPath ?? SandboxDriver.AbsolutePath.make(EnvDaytona.SPILL_PATH),
 					...(overrides?.user === undefined ? { user: sandbox.user } : { user: overrides.user }),
 					...(overrides?.execTimeout === undefined ? {} : { execTimeout: overrides.execTimeout }),
 				};

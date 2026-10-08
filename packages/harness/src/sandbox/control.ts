@@ -539,6 +539,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 						driver: SandboxDriver.Name.make("local"),
 						kind: "local",
 						cwd: SandboxIO.resolveMountCwd(hostDefaultCwd, mountOptions.cwd),
+						spillPath: SandboxIO.DEFAULT_SPILL_PATH,
 					};
 				} else {
 					const row = yield* requireRow(id);
@@ -564,6 +565,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 						driver: attached.driver.name,
 						kind: row.kind,
 						cwd: SandboxIO.resolveMountCwd(attached.input.runtimeConfig.defaultCwd, mountOptions.cwd),
+						spillPath: attached.input.runtimeConfig.spillPath ?? SandboxIO.DEFAULT_SPILL_PATH,
 					};
 
 					const wasIdle = lease.held

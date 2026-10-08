@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { bashTool } from "../src/plugin/builtin/tool/bash.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
 import * as Executor from "../src/tool/executor.ts";
 import { ToolProgress } from "../src/tool/progress.ts";
 import * as Registry from "../src/tool/registry.ts";
@@ -120,7 +121,11 @@ const onProgress = (event: Executor.ProgressEvent): Effect.Effect<void, Error, F
 		yield* sink.write(event);
 	});
 
-const registeredBash = Tool.provide(bashTool, streamingToolShell);
+// The output file path comes from the mount; the stub never creates one.
+const registeredBash = Tool.provide(
+	bashTool,
+	Layer.merge(streamingToolShell, SandboxIO.identityLayer(SandboxIO.host("/"))),
+);
 
 describe("ToolRegistry — best-effort progress via a File IO sink", () => {
 	it("isolates a failing sink: the tool still completes", async () => {
