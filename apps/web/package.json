@@ -11,6 +11,7 @@
 	},
 	"dependencies": {
 		"@tanstack/react-router": "^1.161.0",
+		"lucide-react": "^1.52.0",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0",
 		"webwm": "https://github.com/codeworksh/webwm/releases/download/v0.1.0/webwm-0.1.0.tgz"
