@@ -3,6 +3,7 @@ import { posix } from "../posix.ts";
 import type { SandboxDriver } from "./driver.ts";
 import { SandboxFileSystem } from "./filesystem.ts";
 import { SandboxInstance } from "./instance.ts";
+import { SandboxMutation } from "./mutation.ts";
 import { type ISandboxExe, Shell as ShellTag, withCwd as shellWithCwd } from "./shell.ts";
 
 /**
@@ -34,6 +35,10 @@ export type FileSystem = SandboxFileSystem.Service;
 export const Shell = ShellTag;
 export type Shell = ShellTag;
 
+/** Per-file mutation ordering for this mount's instance. Re-exported here so consumers import one namespace. */
+export const Mutation = SandboxMutation.Service;
+export type Mutation = SandboxMutation.Service;
+
 /**
  * What a mount sees: immutable identity, plus the working directory resolved for
  * *this* mount.
@@ -56,7 +61,7 @@ export interface Identity {
 export class Current extends Context.Service<Current, Identity>()("@codeworksh/plugin/sandbox/io/Current") {}
 
 /** Everything a mount provides. */
-export type Provides = Current | SandboxFileSystem.Service | ShellTag;
+export type Provides = Current | SandboxFileSystem.Service | ShellTag | SandboxMutation.Service;
 
 /** A built mount. */
 export type Layer<E = never, RIn = never> = EffectLayer.Layer<Provides, E, RIn>;
@@ -89,6 +94,25 @@ export const resolveMountCwd = (defaultCwd: string, cwd?: string): string => {
 };
 
 /**
+ * Complete a mount with its {@link Mutation} queue, derived from the mount's own
+ * identity and filesystem. Every layer that provides a mount goes through here,
+ * so mounts of one instance always meet in the same queue.
+ */
+export const withMutation = <E, R>(
+	layer: EffectLayer.Layer<Current | SandboxFileSystem.Service | ShellTag, E, R>,
+): EffectLayer.Layer<Provides, E, R> =>
+	EffectLayer.provideMerge(
+		EffectLayer.effect(
+			Mutation,
+			Effect.gen(function* () {
+				const current = yield* Current;
+				return SandboxMutation.make(current.id, current.cwd, yield* SandboxFileSystem.Service);
+			}),
+		),
+		layer,
+	);
+
+/**
  * Bind a cwd-neutral transport to one mount.
  *
  * The transport underneath is shared between
@@ -110,7 +134,7 @@ export const mount = (identity: Identity): EffectLayer.Layer<Provides, never, Sa
 			ShellTag,
 			Effect.map(ShellTag, (shell: ISandboxExe) => shellWithCwd(shell, identity.cwd)),
 		),
-	);
+	).pipe(withMutation);
 
 /**
  * Just the identity tag, with no filesystem or shell beneath it. For consumers

@@ -641,7 +641,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 					Layer.succeed(SandboxIO.Current, identity),
 					Layer.succeed(SandboxIO.FileSystem, SandboxFileSystem.withCwd(fs, identity.cwd)),
 					Layer.succeed(SandboxIO.Shell, shellWithCwd(shell, identity.cwd)),
-				);
+				).pipe(SandboxIO.withMutation);
 			}),
 		);
 

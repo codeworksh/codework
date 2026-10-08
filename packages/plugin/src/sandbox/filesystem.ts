@@ -66,12 +66,15 @@ export const isNotFoundError = (cause: unknown) => {
 };
 
 /**
- * Shell forms of `realpath` for backends that only expose a process API.
- * `pwd -P` is the portable primitive: directories resolve directly, anything
- * else resolves its parent and keeps the final name as given. Run as
- * `sh -c <script> _ <path>`; try the first, fall back to the second.
+ * Shell forms of `realpath` for backends that only expose a process API. Run as
+ * `sh -c <script> _ <path>`, trying each in turn. `realpath -e` (coreutils)
+ * resolves every component, a symlinked file included, and fails on a missing
+ * path. Where it is absent, `pwd -P` is the portable primitive: directories
+ * resolve directly, anything else resolves its parent and keeps the final name
+ * as given — so a symlinked *file* stays unresolved there.
  */
 export const realpathScripts = [
+	'realpath -e -- "$1"',
 	'cd -- "$1" && pwd -P',
 	'cd -- "$(dirname -- "$1")" && printf \'%s/%s\' "$(pwd -P)" "$(basename -- "$1")"',
 ] as const;
