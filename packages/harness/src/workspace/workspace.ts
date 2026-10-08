@@ -2,7 +2,7 @@ import { Schema } from "effect";
 import { uuidv7 } from "uuidv7";
 import { withStatics } from "../schema.ts";
 
-export const ID = Schema.String.check(Schema.isStartsWith("wrk")).pipe(
+export const ID = Schema.String.check(Schema.isStartingWith("wrk")).pipe(
 	Schema.brand("Workspace.ID"),
 	withStatics((schema) => ({
 		ascending: (id?: string) => {

@@ -9,7 +9,7 @@ import { seedSpace } from "./space.ts";
 
 import type { Message } from "@codeworksh/aikit";
 import { Effect, Layer, Queue, Schema } from "effect";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { SqlClient, SqlSchema } from "effect/sql";
 import { describe, expect, it as vitestIt } from "vite-plus/test";
 import { ContextCodec } from "../../src/context/codec.ts";
 import { Context } from "../../src/context/context.ts";
@@ -150,7 +150,6 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							const { spaceId, location } = yield* seedSpace({ location: "/tmp", env: sandboxInstanceId });
 							const session = yield* sessions.create({
 								spaceId,
-								slug: `runner-cycle-${crypto.randomUUID()}`,
 								directory: location,
 								title: "Live runner cycle",
 								tag: "test",
@@ -198,7 +197,10 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							});
 
 							const ask = Effect.fnUntraced(function* (prompt: string) {
-								yield* control.prompt({ sessionId: session.id, prompt: { text: prompt } });
+								yield* control.prompt({
+									sessionId: session.id,
+									prompt: { parts: [{ type: "text", text: prompt }] },
+								});
 								const terminal = yield* Queue.take(terminals).pipe(Effect.timeout("75 seconds"));
 								yield* waitUntilIdle(control, session.id);
 								expect(terminal).toBe("ended");
@@ -244,7 +246,10 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 
 							const storyPrompt =
 								"Using every established detail about Velora, write a vivid story of exactly 100 words. Do not preface or explain it.";
-							yield* control.prompt({ sessionId: session.id, prompt: { text: storyPrompt } });
+							yield* control.prompt({
+								sessionId: session.id,
+								prompt: { parts: [{ type: "text", text: storyPrompt }] },
+							});
 							const firstTextDelta = yield* Queue.take(textDeltas).pipe(Effect.timeout("75 seconds"));
 							yield* control.interrupt(session.id);
 							const interruptedTerminal = yield* Queue.take(terminals).pipe(Effect.timeout("10 seconds"));

@@ -7,11 +7,15 @@ import * as Model from "../../src/model/model.ts";
 import { complete } from "../../src/stream.ts";
 import { makeAssistantMessage, makePendingToolCall } from "../utils/fixtures.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
@@ -169,78 +173,78 @@ async function testUnpairedHighSurrogate(model: StreamableModel, options: Stream
 }
 
 describe("AI Providers Unicode Surrogate Pair Tests", () => {
-	describeIfAnthropic("Anthropic Provider Unicode Handling", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic Provider Unicode Handling (%s)", (modelId) => {
 		const options = anthropicOptions();
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testEmojiInToolResults(model, options);
 		});
 
 		it("should handle real-world LinkedIn comment data with emoji", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testRealWorldLinkedInData(model, options);
 		});
 
 		it("should handle unpaired high surrogate (0xD83D) in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testUnpairedHighSurrogate(model, options);
 		});
 	});
 
-	describeIfOpenAI("OpenAI Provider Unicode Handling", () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI Provider Unicode Handling (%s)", (modelId) => {
 		const options = openaiOptions();
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testEmojiInToolResults(model, options);
 		});
 
 		it("should handle real-world LinkedIn comment data with emoji", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testRealWorldLinkedInData(model, options);
 		});
 
 		it("should handle unpaired high surrogate (0xD83D) in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testUnpairedHighSurrogate(model, options);
 		});
 	});
 
-	describeIfOpenAICodex("OpenAI Codex Provider Unicode Handling", () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex Provider Unicode Handling (%s)", (modelId) => {
 		const options = openaiCodexOptions();
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testEmojiInToolResults(model, options);
 		});
 
 		it("should handle real-world LinkedIn comment data with emoji", { retry: 3, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testRealWorldLinkedInData(model, options);
 		});
 
 		it("should handle unpaired high surrogate (0xD83D) in tool results", { retry: 3, timeout: 60_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testUnpairedHighSurrogate(model, options);
 		});
 	});
 
-	describeIfOpenRouter("OpenRouter Provider Unicode Handling", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter Provider Unicode Handling (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should handle emoji in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testEmojiInToolResults(model, options);
 		});
 
 		it("should handle real-world LinkedIn comment data with emoji", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testRealWorldLinkedInData(model, options);
 		});
 
 		it("should handle unpaired high surrogate (0xD83D) in tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testUnpairedHighSurrogate(model, options);
 		});
 	});

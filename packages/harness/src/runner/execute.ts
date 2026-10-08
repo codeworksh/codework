@@ -4,7 +4,7 @@
  */
 
 import { Cause, Context, DateTime, Effect, Exit, Layer, Option } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { Location } from "../location/location.ts";

@@ -1,5 +1,5 @@
 import { Effect, Layer, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { type ExecResult, Shell, ShellError, type ShellOptions } from "./shell.ts";
 
 /**

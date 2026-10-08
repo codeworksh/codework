@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { ChildProcessSpawner } from "effect/process";
 import { Database } from "../db/db.ts";
 import { SandboxController } from "./control.ts";
 import { SandboxDriver } from "./driver.ts";

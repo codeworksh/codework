@@ -126,6 +126,8 @@ export function disabledProviderOptions(model: Model.Info): ProviderOptionBag {
 	const key = Model.optionsKey(model);
 
 	if (key === "anthropic" || key === "google-vertex-anthropic") {
+		// `null` means this model cannot disable thinking and rejects the request.
+		if (model.thinkingLevelMap?.off === null) return {};
 		return { [key]: { thinking: { type: "disabled" } } };
 	}
 

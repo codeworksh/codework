@@ -3,8 +3,8 @@
 /* @effect-diagnostics globalFetchInEffect:off -- the integration suite calls its local test server. */
 import { Event, EventList, EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
 import { DateTime, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Stream } from "effect";
-import { HttpServer } from "effect/unstable/http";
-import { RpcTest } from "effect/unstable/rpc";
+import { HttpServer } from "effect/http";
+import { RpcTest } from "effect/rpc";
 import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

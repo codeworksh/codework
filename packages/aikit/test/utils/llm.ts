@@ -40,19 +40,54 @@ function fromEnvApiKey(value: string | undefined): { apiKey: string } | Record<s
 	return value === undefined ? {} : { apiKey: value };
 }
 
+/** Every Anthropic suite runs once per model: current generation, then the 4.5 generation. */
+export const ANTHROPIC_E2E_MODELS = [
+	"claude-sonnet-4-6",
+	"claude-sonnet-5",
+	"claude-sonnet-5-5",
+	"claude-opus-4-6",
+	"claude-opus-4-8",
+	"claude-opus-5-5",
+	"claude-fable-5-1",
+	"claude-sonnet-4-5-20250929",
+	"claude-haiku-4-5-20251001",
+] as const;
+
+/**
+ * The lowest effort at which a model reliably emits thinking on a short reasoning prompt:
+ * adaptive models skip thinking below high (Opus 4.6) or below max (Sonnet 5, 5.5, Fable).
+ */
+export function anthropicThinkingLevel(modelId: string): "high" | "max" {
+	return /^claude-(sonnet|fable)-5/.test(modelId) ? "max" : "high";
+}
+
 export function anthropicOptions(extras: AnthropicOptions = {}): AnthropicOptions {
 	return { ...fromEnvApiKey(process.env.ANTHROPIC_API_KEY), ...extras };
 }
 
-export const OPENAI_E2E_MODEL = "gpt-5.6-luna";
-export const OPENAI_CODEX_E2E_MODEL = "gpt-5.6-luna";
+/** Every OpenAI suite runs once per model, latest to oldest. */
+export const OPENAI_E2E_MODELS = [
+	"gpt-6-luna",
+	"gpt-5.6-luna",
+	"gpt-5.5",
+	"gpt-5.4",
+	"gpt-5.4-mini",
+	"gpt-5.4-nano",
+] as const;
 
+/**
+ * Every Codex suite runs once per model. The Codex backend rejects gpt-5.4, gpt-5.4-mini and
+ * gpt-5.4-nano for ChatGPT accounts ("not supported when using Codex with a ChatGPT account").
+ */
+export const OPENAI_CODEX_E2E_MODELS = ["gpt-6-luna", "gpt-5.6-luna", "gpt-5.5"] as const;
+
+/** Suites default to low reasoning; pass `reasoning` to override. */
 export function openaiOptions(extras: OpenAIOptions = {}): OpenAIOptions {
-	return { ...fromEnvApiKey(process.env.OPENAI_API_KEY), ...extras, reasoning: "low" };
+	return { ...fromEnvApiKey(process.env.OPENAI_API_KEY), reasoning: "low", ...extras };
 }
 
 export function openaiCodexOptions(extras: OpenAICodexOptions = {}): OpenAICodexOptions {
-	return { ...fromEnvApiKey(process.env.OPENAI_CODEX_API_KEY), ...extras, reasoning: "low" };
+	return { ...fromEnvApiKey(process.env.OPENAI_CODEX_API_KEY), reasoning: "low", ...extras };
 }
 
 export function openrouterOptions(extras: OpenRouterOptions = {}): OpenRouterOptions {
@@ -78,31 +113,37 @@ export function assertProtocol<TProtocol extends Model.KnownProviderEnum>(
 }
 
 export async function getAnthropicModel(
-	modelId = "claude-haiku-4-5",
+	modelId: string,
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.anthropic>> {
 	const model = await llm("anthropic", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.anthropic);
 	return model;
 }
 
-export async function getOpenAIModel(
-	modelId = OPENAI_E2E_MODEL,
-): Promise<Model.TModel<typeof Model.KnownProviderEnum.openai>> {
+export async function getOpenAIModel(modelId: string): Promise<Model.TModel<typeof Model.KnownProviderEnum.openai>> {
 	const model = await llm("openai", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openai);
 	return model;
 }
 
 export async function getOpenAICodexModel(
-	modelId = OPENAI_CODEX_E2E_MODEL,
+	modelId: string,
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.openaiCodex>> {
 	const model = await llm("openai-codex", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openaiCodex);
 	return model;
 }
 
+/** Every OpenRouter suite runs once per model. */
+export const OPENROUTER_E2E_MODELS = [
+	"meta/muse-spark-1.3-contributor",
+	"z-ai/glm-5.3-flash",
+	"deepseek/deepseek-v4.1-flash",
+	"google/gemini-3.8-flash",
+] as const;
+
 export async function getOpenRouterModel(
-	modelId = "z-ai/glm-5.3-flash",
+	modelId: string,
 ): Promise<Model.TModel<typeof Model.KnownProviderEnum.openrouter>> {
 	const model = await llm("openrouter", modelId);
 	assertProtocol(model, Model.KnownProviderEnum.openrouter);

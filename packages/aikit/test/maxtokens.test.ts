@@ -12,9 +12,9 @@ describe("clampMaxTokensToContext", () => {
 		expect(clampMaxTokensToContext(model, emptyContext, 131_072)).toBe(131_072 - 4096);
 	});
 
-	it("never returns less than one token", () => {
+	it("never returns less than the smallest ceiling providers accept", () => {
 		const model = makeModel({ maxTokens: 8192, contextWindow: 1000 });
-		expect(clampMaxTokensToContext(model, emptyContext, 8192)).toBe(1);
+		expect(clampMaxTokensToContext(model, emptyContext, 8192)).toBe(16);
 	});
 
 	it("passes the ceiling through when the model declares no context window", () => {

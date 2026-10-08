@@ -14,6 +14,10 @@ export default defineConfig({
 		}),
 	},
 	integrations: [react(), mdx({ extendMarkdownConfig: true, syntaxHighlight: false })],
+	server: {
+		// ngrok tunnels to the dev server; a leading dot admits every subdomain.
+		allowedHosts: [".ngrok-free.dev", ".ngrok-free.app", ".ngrok.dev", ".ngrok.app", ".ngrok.io"],
+	},
 	vite: {
 		plugins: [tailwindcss()],
 	},

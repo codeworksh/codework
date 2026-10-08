@@ -20,7 +20,6 @@ const setup = Effect.gen(function* () {
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
 		spaceId,
-		slug: `provider-${crypto.randomUUID()}`,
 		directory: location,
 		title: "Provider test",
 		tag: "test",

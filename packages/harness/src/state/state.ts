@@ -17,20 +17,20 @@ import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { EventRegistry } from "../event/registry.ts";
+import { Location } from "../location/location.ts";
+import { select, type Origin, type PluginRef, type Pool } from "../plugin/catalog.ts";
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
-import type { Plugin } from "../plugin/plugin.ts";
 import { run as setup } from "../plugin/host.ts";
-import { select, type Origin, type Pool, type PluginRef } from "../plugin/catalog.ts";
+import type { Plugin } from "../plugin/plugin.ts";
 import { LLM } from "../runner/llm.ts";
 import type { Runner } from "../runner/run.ts";
-import { Location } from "../location/location.ts";
 import { SandboxIO } from "../sandbox/io.ts";
 import { SessionRuntime } from "../session/runtime.ts";
 import type { ID as SessionId } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
 import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
-import type { Block, Info } from "../settings/schema.ts";
+import type { Block, Info, RetryPolicy } from "../settings/schema.ts";
 import { Settings } from "../settings/settings.ts";
 import type { Resolved } from "../tool/registry.ts";
 
@@ -120,6 +120,14 @@ export interface Snapshot {
 	/** Matched file attributes used to construct provider requests. */
 	readonly settings: Block;
 	readonly toolExecution: ToolExecutionMode;
+	/** Agent-level retry of a transiently failed provider request. */
+	readonly retry: RetryPolicy;
+}
+
+export interface Configuration {
+	readonly provider: string;
+	readonly model: string;
+	readonly thinkingLevel: Model.ThinkingLevel;
 }
 
 export interface Reloaded {
@@ -150,6 +158,12 @@ export interface Interface {
 	 * set once at its top.
 	 */
 	readonly reload: Effect.Effect<Reloaded>;
+	/**
+	 * The model and thinking level a session's next exchange runs with: its runtime bindings over
+	 * its chosen `SessionSchema.Config` over the caller's options over settings, resolved the
+	 * way {@link snapshot} resolves them. Nothing is looked up in the catalog.
+	 */
+	readonly configuration: (sessionId: SessionId) => Effect.Effect<Configuration, Settings.SettingsError>;
 	/**
 	 * Capture runtime state for one exchange. Called inside a session drain,
 	 * where the mount it reads is already open.
@@ -310,6 +324,27 @@ export const layer = (
 					...("reference" in cause && typeof cause.reference === "string" ? { reference: cause.reference } : {}),
 					...(sessionId === undefined ? {} : { sessionId }),
 				});
+			/** Settings and composed configuration for a session's next exchange. */
+			const configure = Effect.fnUntraced(function* (sessionId: SessionId) {
+				// Read per exchange, not captured at creation, so `Session.link` takes effect at
+				// the next one. A session with none discovers no project layer: there is no
+				// fallback to the process's directory, which would hand it a stranger's project
+				// (it is a long-running server; one process serves sessions in many projects, or
+				// in none).
+				const session = Option.getOrUndefined(yield* sessions.get(sessionId));
+				const hostDir = session === undefined ? undefined : Option.getOrUndefined(session.hostDir);
+				// The chosen config survives restarts; runtime bindings, set in this process, sit over it.
+				const chosen = session === undefined ? {} : Option.getOrElse(session.config, () => ({}));
+				const sessionOptions = {
+					...(chosen.model === undefined ? {} : { provider: chosen.model.provider, model: chosen.model.id }),
+					...(chosen.thinkingLevel === undefined ? {} : { thinkingLevel: chosen.thinkingLevel }),
+					...Option.getOrElse(yield* runtime.get(sessionId), () => ({})),
+				};
+				// Not wrapped: a file the user can fix is more useful to a client as a settings
+				// failure carrying its path and key than as an anonymous snapshot failure.
+				const loadedSettings = yield* settings.load(hostDir);
+				return { hostDir, loadedSettings, configured: compose(loadedSettings, options, sessionOptions) };
+			});
 			return Service.of({
 				reload: Effect.gen(function* () {
 					// Swaps the module set of every view. Which of those a given session runs stays
@@ -334,19 +369,16 @@ export const layer = (
 					const [first] = failures.keys();
 					return first === undefined ? { plugins } : { plugins, failure: first };
 				}),
+				configuration: Effect.fn("State.configuration")(function* (sessionId: SessionId) {
+					const { configured } = yield* configure(sessionId);
+					return {
+						provider: configured.provider,
+						model: configured.model,
+						thinkingLevel: configured.thinkingLevel,
+					} satisfies Configuration;
+				}),
 				snapshot: Effect.fn("State.snapshot")(function* (sessionId: SessionId) {
-					const sessionOptions = Option.getOrElse(yield* runtime.get(sessionId), () => ({}));
-					// Read per exchange, not captured at creation, so `Session.link` takes effect at
-					// the next one. A session with none discovers no project layer: there is no
-					// fallback to the process's directory, which would hand it a stranger's project
-					// (it is a long-running server; one process serves sessions in many projects, or
-					// in none).
-					const session = yield* sessions.get(sessionId);
-					const hostDir = Option.isNone(session) ? undefined : Option.getOrUndefined(session.value.hostDir);
-					// Not wrapped: a file the user can fix is more useful to a client as a settings
-					// failure carrying its path and key than as an anonymous snapshot failure.
-					const loadedSettings = yield* settings.load(hostDir);
-					const configured = compose(loadedSettings, options, sessionOptions);
+					const { hostDir, loadedSettings, configured } = yield* configure(sessionId);
 					const {
 						promptCustom,
 						promptSystemAppend,
@@ -361,7 +393,12 @@ export const layer = (
 					const sandbox = yield* SandboxIO.Current;
 					const location = yield* Location.Service;
 
-					const resolvedModel = yield* LLM.resolve({ provider, model, settings: configured.block });
+					const resolvedModel = yield* LLM.resolve({
+						provider,
+						model,
+						settings: configured.block,
+						models: loadedSettings.models,
+					});
 
 					const refs = references(loadedSettings);
 					const failed = (cause: { readonly message: string }) =>
@@ -397,11 +434,17 @@ export const layer = (
 								? one.entry === reference
 								: "package" in one.entry && one.entry.package === reference,
 						);
-						yield* Effect.logWarning(
-							`plugin ${reference} is configured but not loaded — run \`codework plugin install\`${
-								where === undefined ? "" : ` (declared in ${where.file})`
-							}`,
-						);
+						const error = `plugin ${reference} is configured but not loaded — run \`codework plugin install\`${
+							where === undefined ? "" : ` (declared in ${where.file})`
+						}`;
+						yield* Effect.logWarning(error);
+						yield* eventService.publish(EventList.PluginUpdated, {
+							status: "failed",
+							reference,
+							error,
+							...(where === undefined ? {} : { file: where.file }),
+							sessionId,
+						});
 					}
 
 					const contributions = yield* setup(chosen.selection, {
@@ -429,6 +472,7 @@ export const layer = (
 						request,
 						settings: configured.block,
 						toolExecution,
+						retry: loadedSettings.retry,
 					} satisfies Snapshot;
 				}),
 			});

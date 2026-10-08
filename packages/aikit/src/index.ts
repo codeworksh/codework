@@ -2,6 +2,7 @@ export * as Event from "./event/event.ts";
 export { llm } from "./llm.ts";
 export * as Failure from "./llm/failure.ts";
 export * as Protocol from "./llm/protocol.ts";
+export { getEnvApiKey } from "./llm/runtime.ts";
 export { ThinkingBudgets } from "./llm/shared.ts";
 export * as Message from "./message/message.ts";
 export * as Model from "./model/model.ts";

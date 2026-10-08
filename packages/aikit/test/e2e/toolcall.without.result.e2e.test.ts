@@ -4,11 +4,15 @@ import * as Protocol from "../../src/llm/protocol.ts";
 import * as Message from "../../src/message/message.ts";
 import { complete } from "../../src/stream.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getOpenAICodexModel,
 	getOpenAIModel,
@@ -91,38 +95,38 @@ async function testToolCallWithoutResult(model: StreamableModel, options: Stream
 }
 
 describe("Tool Call Without Result Tests", () => {
-	describeIfAnthropic("Anthropic Provider", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic Provider (%s)", (modelId) => {
 		const options = anthropicOptions();
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testToolCallWithoutResult(model, options);
 		});
 	});
 
-	describeIfOpenAI("OpenAI Provider", () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI Provider (%s)", (modelId) => {
 		const options = openaiOptions();
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testToolCallWithoutResult(model, options);
 		});
 	});
 
-	describeIfOpenAICodex("OpenAI Codex Provider", () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex Provider (%s)", (modelId) => {
 		const options = openaiCodexOptions();
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 120_000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testToolCallWithoutResult(model, options);
 		});
 	});
 
-	describeIfOpenRouter("OpenRouter Provider", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter Provider (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should tolerate tool calls without corresponding tool results", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testToolCallWithoutResult(model, options);
 		});
 	});

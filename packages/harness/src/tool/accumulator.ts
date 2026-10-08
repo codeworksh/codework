@@ -1,4 +1,5 @@
-import { Effect, Encoding, type FileSystem, type Scope } from "effect";
+import { Effect, type FileSystem, type Scope } from "effect";
+import { Hex } from "effect/encoding";
 import { tmpdir } from "node:os";
 import { crypto, fileSystem } from "../host.ts";
 import { posix } from "../util/posix.ts";
@@ -191,7 +192,7 @@ export class Accumulator {
 	private ensureTempFile(): Effect.Effect<void, never, Scope.Scope> {
 		if (this.tempFile !== undefined) return Effect.void;
 		return Effect.gen({ self: this }, function* () {
-			const suffix = Encoding.encodeHex(yield* crypto.randomBytes(8));
+			const suffix = Hex.encode(yield* crypto.randomBytes(8));
 			this.tempFilePath = defaultTempFilePath(this.tempFilePrefix, suffix);
 			this.tempFile = yield* fileSystem.open(this.tempFilePath, { flag: "w" });
 			for (const chunk of this.rawChunks) yield* this.tempFile.writeAll(chunk);

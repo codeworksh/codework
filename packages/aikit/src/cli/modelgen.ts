@@ -168,21 +168,27 @@ const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
 	"gpt-5.4-mini",
 	"gpt-5.4-nano",
 	"gpt-5.5",
+	"gpt-5.6-luna",
+	"gpt-5.6-sol",
+	"gpt-5.6-terra",
+	"gpt-6-luna",
+	"gpt-6-sol",
 ]);
 
-function supportsOpenAiXhigh(model: Model.Info): boolean {
-	const modelId = model.id;
-	return (
-		modelId.includes("gpt-5.2") ||
-		modelId.includes("gpt-5.3") ||
-		modelId.includes("gpt-5.4") ||
-		modelId.includes("gpt-5.5") ||
-		(model.protocol === Model.KnownProviderEnum.openaiCodex && modelId.includes("gpt-5.6"))
-	);
+// Checked live against the Responses and Codex APIs: these families reject
+// reasoning.effort "minimal".
+const OPENAI_NO_MINIMAL_REASONING = /gpt-5\.[456]|gpt-6/;
+
+function isOpenAiResponses(model: Model.Info): boolean {
+	return model.protocol === Model.KnownProviderEnum.openai || model.protocol === Model.KnownProviderEnum.openaiCodex;
 }
 
-function supportsOpenAiCodexMax(model: Model.Info): boolean {
-	return model.protocol === Model.KnownProviderEnum.openaiCodex && model.id.includes("gpt-5.6");
+function supportsOpenAiXhigh(model: Model.Info): boolean {
+	return /gpt-5\.[2-5]/.test(model.id) || supportsOpenAiMax(model);
+}
+
+function supportsOpenAiMax(model: Model.Info): boolean {
+	return isOpenAiResponses(model) && /gpt-5\.6|gpt-6/.test(model.id);
 }
 
 function mergeThinkingLevelMap(model: Model.Info, map: ThinkingLevelMap): void {
@@ -251,7 +257,10 @@ function applyModelMetadata(model: Model.Info): void {
 	if (supportsOpenAiXhigh(model)) {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	}
-	if (supportsOpenAiCodexMax(model)) {
+	if (isOpenAiResponses(model) && OPENAI_NO_MINIMAL_REASONING.test(model.id)) {
+		mergeThinkingLevelMap(model, { minimal: null });
+	}
+	if (supportsOpenAiMax(model)) {
 		mergeThinkingLevelMap(model, { max: "max" });
 	}
 	if (model.id.includes("opus-4-6") || model.id.includes("opus-4.6")) {
@@ -259,6 +268,34 @@ function applyModelMetadata(model: Model.Info): void {
 	}
 	if (model.id.includes("opus-4-7") || model.id.includes("opus-4.7")) {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
+	}
+	if (isAnthropicMessages(model)) applyAnthropicMetadata(model);
+}
+
+function isAnthropicMessages(model: Model.Info): boolean {
+	return (
+		model.protocol === Model.KnownProviderEnum.anthropic ||
+		model.protocol === Model.KnownProviderEnum.googleVertexAnthropic
+	);
+}
+
+// Checked live against the Messages API: effort levels each adaptive family
+// accepts, the 5.5 and Fable models that reject `thinking: {type: "disabled"}`, and
+// Sonnet 4.5's window, which is 1M only behind a beta header.
+function applyAnthropicMetadata(model: Model.Info): void {
+	const id = model.id;
+	if (/sonnet-4[-.]5/.test(id)) model.contextWindow = 200_000;
+	if (/(opus|sonnet)-4[-.]6/.test(id)) {
+		mergeThinkingLevelMap(model, { max: "max" });
+	}
+	if (/opus-4[-.][78]|(opus|sonnet|fable)-5/.test(id)) {
+		mergeThinkingLevelMap(model, { xhigh: "xhigh", max: "max" });
+	}
+	if (/(opus|sonnet)-5[-.]5/.test(id)) {
+		mergeThinkingLevelMap(model, { off: null, minimal: null });
+	}
+	if (/fable-5/.test(id)) {
+		mergeThinkingLevelMap(model, { off: null });
 	}
 }
 
@@ -281,8 +318,11 @@ const OPENAI_CODEX_TOOL_SEARCH_MODEL_IDS = new Set([
 	"gpt-5.6-luna",
 	"gpt-5.6-sol",
 	"gpt-5.6-terra",
+	"gpt-6-luna",
 ]);
-const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"]);
+const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-luna"]);
+// Checked live: the Codex backend accepts reasoning.effort "none" for these.
+const OPENAI_CODEX_NONE_REASONING_MODEL_IDS = new Set(["gpt-5.5", "gpt-5.6-luna", "gpt-6-luna"]);
 
 type OpenAICodexModelSeed = Pick<Model.Info, "id" | "name" | "input" | "cost" | "contextWindow" | "thinkingLevelMap">;
 
@@ -305,9 +345,10 @@ function withOpenAiLongContextPricing(cost: Model.Info["cost"]): Model.Info["cos
 	};
 }
 
-const OPENAI_CODEX_GPT_56_COSTS = {
+const OPENAI_CODEX_COSTS = {
 	"gpt-5.6-luna": { input: 0.2, output: 1.2, cacheRead: 0.02, cacheWrite: 0.25 },
 	"gpt-5.6-terra": { input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5 },
+	"gpt-6-luna": { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
 } satisfies Record<string, Model.Info["cost"]>;
 
 const OPENAI_CODEX_MODELS: OpenAICodexModelSeed[] = [
@@ -343,7 +384,7 @@ const OPENAI_CODEX_MODELS: OpenAICodexModelSeed[] = [
 		id: "gpt-5.6-luna",
 		name: "GPT-5.6 Luna",
 		input: ["text", "image"],
-		cost: withOpenAiLongContextPricing(OPENAI_CODEX_GPT_56_COSTS["gpt-5.6-luna"]),
+		cost: withOpenAiLongContextPricing(OPENAI_CODEX_COSTS["gpt-5.6-luna"]),
 		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
 		thinkingLevelMap: { minimal: null },
 	},
@@ -359,9 +400,16 @@ const OPENAI_CODEX_MODELS: OpenAICodexModelSeed[] = [
 		id: "gpt-5.6-terra",
 		name: "GPT-5.6 Terra",
 		input: ["text", "image"],
-		cost: withOpenAiLongContextPricing(OPENAI_CODEX_GPT_56_COSTS["gpt-5.6-terra"]),
+		cost: withOpenAiLongContextPricing(OPENAI_CODEX_COSTS["gpt-5.6-terra"]),
 		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
 		thinkingLevelMap: { minimal: null },
+	},
+	{
+		id: "gpt-6-luna",
+		name: "GPT-6 Luna",
+		input: ["text", "image"],
+		cost: withOpenAiLongContextPricing(OPENAI_CODEX_COSTS["gpt-6-luna"]),
+		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
 	},
 ];
 
@@ -380,8 +428,11 @@ export function openAICodexBuiltInModels(): Record<string, Model.Info> {
 			},
 			baseUrl: OPENAI_CODEX_BASE_URL,
 			reasoning: true,
-			// Codex models always reason; the off level cannot be requested.
-			thinkingLevelMap: { off: null, ...seed.thinkingLevelMap },
+			// Codex models reason unless verified to accept "none".
+			thinkingLevelMap: {
+				off: OPENAI_CODEX_NONE_REASONING_MODEL_IDS.has(seed.id) ? "none" : null,
+				...seed.thinkingLevelMap,
+			},
 			maxTokens: OPENAI_CODEX_MAX_TOKENS,
 			npm: OPENAI_CODEX_NPM,
 			api: {

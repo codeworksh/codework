@@ -13,11 +13,11 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"effect": "4.0.0-rc.115"
+		"effect": "4.0.1"
 	},
 	"peerDependencies": {
 		"@codeworksh/plugin": "workspace:*",
-		"effect": "4.0.0-rc.115"
+		"effect": "4.0.1"
 	},
 	"engines": {
 		"node": ">=22.0.0"

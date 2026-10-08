@@ -1,0 +1,73 @@
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<checkout>/AGENTS.md">
+# 69th
+
+A small TypeScript monorepo: `packages/api` (HTTP service) and `packages/web` (client).
+
+## Conventions
+
+- TypeScript only; no `any`.
+- Run `npm run check` before finishing a change.
+- Keep functions small and pure where possible.
+
+</project_instructions>
+
+<project_instructions path="<checkout>/packages/api/AGENTS.md">
+# api
+
+- Handlers live in `src/`; one route per file.
+- Every handler returns a typed result; never throw for expected errors.
+
+</project_instructions>
+</project_context>
+
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<checkout>/AGENTS.md">
+# 69th
+
+A small TypeScript monorepo: `packages/api` (HTTP service) and `packages/web` (client).
+
+## Conventions
+
+- TypeScript only; no `any`.
+- Run `npm run check` before finishing a change.
+- Keep functions small and pure where possible.
+
+</project_instructions>
+
+<project_instructions path="<checkout>/packages/web/CLAUDE.md">
+# web
+
+- Components are function components; no classes.
+- Fetch through `src/client.ts` only.
+
+</project_instructions>
+</project_context>
+
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<checkout>/AGENTS.md">
+# 69th
+
+A small TypeScript monorepo: `packages/api` (HTTP service) and `packages/web` (client).
+
+## Conventions
+
+- TypeScript only; no `any`.
+- Run `npm run check` before finishing a change.
+- Keep functions small and pure where possible.
+
+</project_instructions>
+
+<project_instructions path="<checkout>/docs/AGENTS.override.md">
+# docs
+
+Docs are prose for people: ignore the code conventions above and write plain English.
+
+</project_instructions>
+</project_context>

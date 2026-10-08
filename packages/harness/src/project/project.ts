@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Option, Schema, Semaphore } from "effect";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { SqlClient, SqlSchema } from "effect/sql";
 import { Database } from "../db/db.ts";
 import { ProjectRow } from "../db/schema.sql.ts";
 import { Git } from "../git/git.ts";

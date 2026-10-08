@@ -1,6 +1,6 @@
 import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Layer, Option } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { ContextCodec } from "../src/context/codec.ts";
 import { Context } from "../src/context/context.ts";
@@ -61,7 +61,6 @@ const setup = Effect.gen(function* () {
 	const sessions = yield* Session.Service;
 	const created = yield* sessions.create({
 		spaceId,
-		slug: `context-${crypto.randomUUID()}`,
 		directory: location,
 		title: "Context test",
 	});

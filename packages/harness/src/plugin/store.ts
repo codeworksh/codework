@@ -30,7 +30,8 @@
  * never gets a marker.
  */
 
-import { Effect, Encoding, Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
+import { Hex } from "effect/encoding";
 import { crypto, fileSystem as fs, hostPath as path } from "../host.ts";
 import { InstallError, LoadError, StoreError } from "./error.ts";
 import { PluginIndex } from "./index.store.ts";
@@ -87,7 +88,7 @@ const slugOf = (target: Fetchable): string =>
  */
 export const digest = Effect.fn("PluginStore.digest")(function* (target: Fetchable, cache: string, from: string) {
 	const source = target.kind === "registry" ? `${yield* registry(target, cache, from)}\0${target.spec}` : target.spec;
-	return Encoding.encodeHex(yield* crypto.digest("SHA-256", new TextEncoder().encode(source)));
+	return Hex.encode(yield* crypto.digest("SHA-256", new TextEncoder().encode(source)));
 });
 
 const entryDir = Effect.fn("PluginStore.entryDir")(function* (target: Fetchable, cache: string, from: string) {

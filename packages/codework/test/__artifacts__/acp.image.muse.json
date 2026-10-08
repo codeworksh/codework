@@ -1,0 +1,42 @@
+{
+	"promptCapabilities": {
+		"embeddedContext": true,
+		"image": true
+	},
+	"rejected": {
+		"audio": {
+			"code": -32602,
+			"message": "Unsupported prompt content: audio"
+		},
+		"bmp": {
+			"code": -32602,
+			"message": "Unsupported image type image/bmp; use image/png, image/jpeg, image/gif, image/webp"
+		},
+		"oversized": {
+			"code": -32602,
+			"message": "Image exceeds the 4.5 MB limit of base64"
+		},
+		"notBase64": {
+			"code": -32602,
+			"message": "Image data is not base64"
+		},
+		"binaryResource": {
+			"code": -32602,
+			"message": "Unsupported binary resource: file:///notes.pdf"
+		}
+	},
+	"stopReason": "end_turn",
+	"namesRed": true,
+	"title": "Which colour fills this image? Answer with one…",
+	"replay": [
+		{
+			"type": "text",
+			"text": "Which colour fills this image? Answer with one word."
+		},
+		{
+			"type": "image",
+			"mimeType": "image/png",
+			"sameData": true
+		}
+	]
+}

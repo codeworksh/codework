@@ -11,7 +11,7 @@ import {
 	SessionStore,
 } from "@codeworksh/harness/effect";
 import { Schema } from "effect";
-import { Rpc, RpcGroup } from "effect/unstable/rpc";
+import { Rpc, RpcGroup } from "effect/rpc";
 import { EncodingError, EventEnvelope } from "./envelope.ts";
 
 export const SandboxInfo = Schema.Struct({

@@ -43,7 +43,7 @@ export function createAssistantMessage(model: Model.Info): Message.AssistantMess
 	});
 }
 
-function userContent(parts: Message.UserMessage["parts"], supportsImages: boolean): ModelMessage[] {
+function userContent(parts: Message.UserMessage["parts"]): ModelMessage[] {
 	const content: Exclude<UserModelMessage["content"], string> = [];
 	for (const part of parts) {
 		if (part.type === "text") {
@@ -53,9 +53,7 @@ function userContent(parts: Message.UserMessage["parts"], supportsImages: boolea
 			}
 			continue;
 		}
-		if (supportsImages) {
-			content.push({ type: "file", data: part.data, mediaType: part.mimeType });
-		}
+		content.push({ type: "file", data: part.data, mediaType: part.mimeType });
 	}
 
 	if (content.length === 0) return [];
@@ -134,6 +132,30 @@ export function normalizeOpenAICodexToolCallId(
 		normalizedItemId = normalizeOpenAICodexIdPart(`fc_${normalizedItemId}`);
 	}
 	return `${normalizedCallId}|${normalizedItemId}`;
+}
+
+/**
+ * OpenAI (`call_id`, at most 64 characters), Anthropic (`^[a-zA-Z0-9_-]+$`) and
+ * OpenRouter upstreams take a foreign tool call ID verbatim, so a Codex
+ * `call|item` ID keeps only its unique call half.
+ */
+export function normalizeForeignToolCallId(id: string): string {
+	if (/^[a-zA-Z0-9_-]{1,64}$/.test(id)) return id;
+	return normalizeOpenAICodexIdPart(id.split("|")[0] ?? id);
+}
+
+function toolCallIdNormalizer(model: Model.Info) {
+	switch (model.protocol) {
+		case Model.KnownProviderEnum.openaiCodex:
+			return normalizeOpenAICodexToolCallId;
+		case Model.KnownProviderEnum.openai:
+		case Model.KnownProviderEnum.anthropic:
+		case Model.KnownProviderEnum.googleVertexAnthropic:
+		case Model.KnownProviderEnum.openrouter:
+			return normalizeForeignToolCallId;
+		default:
+			return undefined;
+	}
 }
 
 type OpenAIReasoningMetadata = {
@@ -323,15 +345,11 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 
 export function convertMessages(context: Message.Context, model: Model.Info): ModelMessage[] {
 	const messages: ModelMessage[] = [];
-	const transformedMessages = Message.transformMessages(
-		context.messages,
-		model,
-		model.protocol === Model.KnownProviderEnum.openaiCodex ? normalizeOpenAICodexToolCallId : undefined,
-	);
+	const transformedMessages = Message.transformMessages(context.messages, model, toolCallIdNormalizer(model));
 
 	for (const msg of transformedMessages) {
 		if (msg.role === "user") {
-			messages.push(...userContent(msg.parts, model.input.includes("image")));
+			messages.push(...userContent(msg.parts));
 			continue;
 		}
 		messages.push(...assistantMessages(msg, model));

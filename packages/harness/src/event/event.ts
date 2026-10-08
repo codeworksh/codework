@@ -1,5 +1,5 @@
 import { Cause, Context, Effect, Layer, Option, PubSub, Queue, Ref, Stream } from "effect";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { SqlClient, SqlSchema } from "effect/sql";
 import { EventRow } from "../db/schema.sql.ts";
 // Uncomment with `decodeSerializedEvent` below — the manifest is what it looks
 // stored types up in.

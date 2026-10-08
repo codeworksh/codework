@@ -33,7 +33,9 @@ export type SharedOptions = Static<typeof SharedOptions>;
 
 /** Headroom left for the prompt when sizing a response against the context window. */
 const CONTEXT_SAFETY_TOKENS = 4096;
-const MIN_MAX_TOKENS = 1;
+// The smallest ceiling OpenAI accepts (`max_output_tokens` >= 16). Below it an
+// overflowing prompt fails as an invalid parameter instead of a context overflow.
+const MIN_MAX_TOKENS = 16;
 
 /**
  * The model's own ceiling, unless the caller named a smaller one.

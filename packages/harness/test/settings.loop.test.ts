@@ -381,7 +381,7 @@ describe("settings at exchange boundaries", () => {
 			);
 		}));
 
-	it("rereads files on restart and does not restore process-local overrides", () =>
+	it("rereads files on restart and keeps the session's chosen thinking level", () =>
 		withSettings(async ({ root, custom }) => {
 			await file(custom, "low");
 			const inputs: LLM.Input[] = [];
@@ -397,7 +397,7 @@ describe("settings at exchange boundaries", () => {
 				Effect.gen(function* () {
 					const sessionId = yield* Effect.gen(function* () {
 						const handle = yield* Session.create({ directory: root });
-						// A binding is process-local; the file is not.
+						// A chosen thinking level is saved with the session; the file is read afresh.
 						yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
 						yield* handle.run("first");
 						expect(inputs.at(-1)?.thinkingLevel).toBe("max");
@@ -409,8 +409,8 @@ describe("settings at exchange boundaries", () => {
 					yield* Effect.gen(function* () {
 						const handle = yield* Session.attach({ sessionId });
 						yield* handle.run("second");
-						// The binding is gone with the old process; the edited file is read again.
-						expect(inputs.at(-1)?.thinkingLevel).toBe("medium");
+						// The choice outlives the old process and still outranks the file, which is read again.
+						expect(inputs.at(-1)?.thinkingLevel).toBe("max");
 						expect(inputs.at(-1)?.options?.headers?.revision).toBe("medium");
 					}).pipe(Effect.provide(runtime()), Effect.scoped);
 				}).pipe(Effect.scoped, Effect.timeout("10 seconds")),

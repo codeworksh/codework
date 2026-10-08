@@ -1,5 +1,6 @@
 import { Model as AikitModel, type Protocol } from "@codeworksh/aikit";
-import { Schema } from "effect";
+import { Effect, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effect";
+import { isAikitModelInfo, NonNegativeInt, validateAikitModelInfo } from "./schema.ts";
 
 export const ThinkingLevel = Schema.Literals(Object.values(AikitModel.ThinkingLevelEnum));
 export const ToolExecution = Schema.Literals(["sequential", "parallel"]);
@@ -28,6 +29,19 @@ export const requestFields = {
 	Schema.Top
 >;
 
+/**
+ * An API key named, never written: `"${NAME}"`, read from the host process environment when the
+ * model is called. Settings only ever hold the variable's name.
+ */
+const keyReference = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+const keyReferenceError = 'apiKey must reference an environment variable, e.g. "${OPENAI_API_KEY}"';
+export const KeyReference = Schema.String.check(
+	Schema.makeFilter((value) => keyReference.test(value) || keyReferenceError),
+);
+
+/** The variable a `"${NAME}"` reference names. */
+export const keyName = (reference: string): string => keyReference.exec(reference)?.[1] ?? reference;
+
 const reserved = new Set([
 	"toolChoice",
 	"activeTools",
@@ -37,7 +51,6 @@ const reserved = new Set([
 	"sessionId",
 	"reasoning",
 	"modelId",
-	"apiKey",
 	"onPayload",
 	"api",
 	"npm",
@@ -56,6 +69,8 @@ export const Block = Schema.StructWithRest(
 		thinkingLevel: Schema.optional(ThinkingLevel),
 		toolExecution: Schema.optional(ToolExecution),
 		contextWindow: Schema.optional(Schema.Finite),
+		/** Which environment variable holds the key for this model: `"${NAME}"`. */
+		apiKey: Schema.optional(KeyReference),
 		extras: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 	}),
 	[Schema.Record(Schema.String, Schema.Unknown)],
@@ -75,6 +90,32 @@ export const Model = Schema.Struct({
 	options: Schema.optional(Block),
 	providerOptions: Schema.optional(Schema.Record(Schema.String, Schema.Record(Schema.String, Block))),
 });
+const reasonOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
+
+const decodeModelEntry = (value: unknown, options: SchemaAST.ParseOptions) =>
+	Effect.try({
+		try: () => {
+			const entry = validateAikitModelInfo(value, "models entry");
+			if (entry.provider.key !== undefined && !keyReference.test(entry.provider.key)) {
+				throw new Error(`models entry ${entry.provider.id}/${entry.id}: provider.key: ${keyReferenceError}`);
+			}
+			return entry;
+		},
+		catch: (cause) => new SchemaIssue.InvalidValue({ message: reasonOf(cause) }, value, options),
+	});
+
+/**
+ * A catalog entry in settings: an aikit `Model.Info`, read exactly like an entry of the generated
+ * catalog. The one difference is `provider.key`, which must be a `"${NAME}"` reference.
+ */
+export const ModelEntry = Schema.Unknown.pipe(
+	Schema.decodeTo(Schema.declare<AikitModel.Info>(isAikitModelInfo, { expected: "aikit Model.Info" }), {
+		decode: SchemaGetter.transformEffect(decodeModelEntry),
+		encode: SchemaGetter.transformEffect(decodeModelEntry),
+	}),
+);
+export type ModelEntry = typeof ModelEntry.Type;
+
 /** A module to load: a path, a `file:` URL, or a package spec. */
 const PluginReference = Schema.String.check(Schema.isNonEmpty());
 /**
@@ -95,10 +136,31 @@ export const PluginPatch = Schema.Union(
 export const PluginEntry = Schema.Union([PluginReference, PluginPatch]);
 export type PluginEntry = typeof PluginEntry.Type;
 
+/**
+ * Agent-level retry of a turn whose provider request failed transiently (rate limit, overload,
+ * 5xx, dropped connection). Delays double from `baseDelayMs` and stop growing at `maxDelayMs`;
+ * a server that asks for a longer wait than `maxDelayMs` is not retried. `maxRetries: 0` is off.
+ *
+ * Separate from `model.options.maxRetries`, which retries inside the provider SDK and defaults to
+ * 0 so that the two do not multiply, and so a quota error reaches the loop instead of being retried.
+ */
+export const Retry = Schema.Struct({
+	maxRetries: Schema.optional(NonNegativeInt),
+	baseDelayMs: Schema.optional(NonNegativeInt),
+	maxDelayMs: Schema.optional(NonNegativeInt),
+});
+export interface RetryPolicy {
+	readonly maxRetries: number;
+	readonly baseDelayMs: number;
+	readonly maxDelayMs: number;
+}
+
 export const Patch = Schema.Struct({
 	$schema: Schema.optional(Schema.String),
 	plugins: Schema.optional(Schema.Array(PluginEntry)),
 	model: Schema.optional(Model),
+	models: Schema.optional(Schema.Array(ModelEntry)),
+	retry: Schema.optional(Retry),
 });
 export type Patch = typeof Patch.Type;
 
@@ -134,6 +196,12 @@ export interface Declared {
 	readonly file: string;
 }
 
+/** A `models` entry, and the settings file that declared it. */
+export interface DeclaredModel {
+	readonly entry: AikitModel.Info;
+	readonly file: string;
+}
+
 export interface Info {
 	/**
 	 * Plugin entries added to the harness selection, in order: every layer's entries, lowest
@@ -145,23 +213,31 @@ export interface Info {
 	readonly plugins: ReadonlyArray<PluginEntry>;
 	/** {@link Info.plugins}, with the origin of each entry. Same order, same length. */
 	readonly declared: ReadonlyArray<Declared>;
+	/**
+	 * Catalog entries from every layer, lowest priority first. Applied over the generated catalog
+	 * in this order, so for one `provider.id` + `id` the last entry wins.
+	 */
+	readonly models: ReadonlyArray<DeclaredModel>;
 	readonly model: typeof Model.Type & {
 		readonly provider: string;
 		readonly id: string;
 		readonly thinkingLevel: AikitModel.ThinkingLevel;
 		readonly toolExecution: ToolExecution;
 	};
+	readonly retry: RetryPolicy;
 }
 
 /** Let aikit supply model-aware generation defaults. */
 export const defaults: Info = {
 	plugins: [],
 	declared: [],
+	models: [],
 	model: {
 		provider: "openai",
 		id: "gpt-5.6-luna",
 		thinkingLevel: "high",
 		toolExecution: "sequential",
-		options: { timeoutMs: 3_600_000, maxRetries: 3 },
+		options: { timeoutMs: 3_600_000, maxRetries: 0 },
 	},
+	retry: { maxRetries: 3, baseDelayMs: 2_000, maxDelayMs: 60_000 },
 };

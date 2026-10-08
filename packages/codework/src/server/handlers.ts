@@ -102,7 +102,7 @@ export const layer = Contract.Api.toLayer(
 			"session.prompt": Effect.fnUntraced(function* ({ sessionId, text, delivery, id }) {
 				yield* control.prompt({
 					sessionId,
-					prompt: PromptSchema.Prompt.make({ text }),
+					prompt: PromptSchema.Prompt.fromText(text),
 					...(delivery === undefined ? {} : { delivery }),
 					...(id === undefined ? {} : { id }),
 				});

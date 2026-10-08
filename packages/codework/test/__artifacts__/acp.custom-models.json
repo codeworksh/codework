@@ -1,0 +1,49 @@
+{
+	"project": {
+		"current": "gateway/claude-sonnet",
+		"thinking": "high",
+		"providers": [
+			"gateway",
+			"ollama",
+			"openrouter"
+		],
+		"haiku": "OpenRouter: Project Haiku"
+	},
+	"switchedToKeyless": {
+		"ok": {
+			"current": "ollama/qwen3-coder:30b",
+			"thinking": null,
+			"providers": [
+				"gateway",
+				"ollama",
+				"openrouter"
+			],
+			"haiku": "OpenRouter: Project Haiku"
+		}
+	},
+	"userOnly": {
+		"current": "openai/gpt-5.6-luna",
+		"thinking": "high",
+		"providers": [
+			"gateway",
+			"ollama",
+			"openai",
+			"openrouter"
+		],
+		"haiku": "OpenRouter: User Haiku"
+	},
+	"rejected": {
+		"literalProviderKey": {
+			"code": -32603,
+			"message": "<home>/rejected/literal-key/.codework/settings.jsonc: decode: models.0: models entry leaky/model-a: provider.key: apiKey must reference an environment variable, e.g. \"${OPENAI_API_KEY}\""
+		},
+		"missingRequiredField": {
+			"code": -32603,
+			"message": "<home>/rejected/missing-field/.codework/settings.jsonc: decode: models.0: validation failed for models entry - name, baseUrl, reasoning, input, cost, contextWindow, maxTokens, protocol: must have required properties name, baseUrl, reasoning, input, cost, contextWindow, maxTokens, protocol"
+		},
+		"literalOptionsApiKey": {
+			"code": -32603,
+			"message": "<home>/rejected/literal-api-key/.codework/settings.jsonc: decode: model.options.apiKey: apiKey must reference an environment variable, e.g. \"${OPENAI_API_KEY}\""
+		}
+	}
+}

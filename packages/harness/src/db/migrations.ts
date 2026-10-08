@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 
 // Migrations ship as code (Migrator.fromRecord) rather than .sql files on
 // disk, so they survive bundling and need no runtime path resolution.
@@ -259,5 +259,14 @@ export const migrations = {
 		// never filled in from the process's own directory: the project layer is simply not
 		// read. A session can be given one later without being re-created.
 		yield* sql`ALTER TABLE session ADD COLUMN host_dir TEXT`;
+	}),
+
+	"202609290001_session_config": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+
+		// The model and thinking level chosen for this session, as a JSON object
+		// (`SessionSchema.Config`). Projected from `session.config.changed`, which
+		// merges into it. NULL: nothing chosen, the session follows its settings.
+		yield* sql`ALTER TABLE session ADD COLUMN config TEXT`;
 	}),
 };

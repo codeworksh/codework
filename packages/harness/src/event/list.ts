@@ -38,21 +38,12 @@ export const Prompted = EventSchema.define({
 });
 export type Prompted = typeof Prompted.Type;
 
-// export const ConfigChanged = EventSchema.define({
-// 	type: "session.config.changed",
-// 	...durableOptions,
-// 	schema: {
-// 		...baseOptions,
-// 		model: optional(
-// 			Schema.Struct({
-// 				providerId: Schema.String,
-// 				modelId: Schema.String,
-// 			}),
-// 		),
-// 		thinkingLevel: optional(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
-// 	},
-// });
-// export type ConfigChanged = typeof ConfigChanged.Type;
+export const ConfigChanged = EventSchema.define({
+	type: "session.config.changed",
+	...durableOptions,
+	schema: { ...baseOptions, ...SessionSchema.Config.fields },
+});
+export type ConfigChanged = typeof ConfigChanged.Type;
 
 const LLMFields = {
 	...baseOptions,
@@ -89,6 +80,34 @@ export const TurnAborted = EventSchema.define({
 	schema: { ...baseOptions, cause: TurnAbortCause },
 });
 export type TurnAborted = typeof TurnAborted.Type;
+
+/**
+ * A failed provider request will be repeated after `delayMs`. `attempt` counts retries from 1, so
+ * the request that failed was attempt `attempt - 1`; the failed draft is already settled.
+ */
+export const RetryScheduled = EventSchema.define({
+	type: "session.retry.scheduled",
+	schema: {
+		...baseOptions,
+		attempt: NonNegativeInt,
+		maxRetries: NonNegativeInt,
+		delayMs: NonNegativeInt,
+		message: Schema.String,
+	},
+});
+export type RetryScheduled = typeof RetryScheduled.Type;
+
+/** Once per turn that retried: whether a retry succeeded, after how many. */
+export const RetryFinished = EventSchema.define({
+	type: "session.retry.finished",
+	schema: {
+		...baseOptions,
+		attempt: NonNegativeInt,
+		success: Schema.Boolean,
+		message: optional(Schema.String),
+	},
+});
+export type RetryFinished = typeof RetryFinished.Type;
 
 /** Durable insertion of the request's draft assistant placeholder. */
 export const LLMStarted = EventSchema.define({
@@ -160,7 +179,14 @@ export type LLMFailed = typeof LLMFailed.Type;
 
 export const ToolStarted = EventSchema.define({
 	type: "session.tool.started",
-	schema: { ...LLMFields, callID: Schema.String, name: Schema.String },
+	schema: {
+		...LLMFields,
+		callID: Schema.String,
+		name: Schema.String,
+		/** The tool's display label, when its definition declares one. */
+		label: optional(Schema.String),
+		arguments: Schema.Record(Schema.String, Schema.Json),
+	},
 });
 export type ToolStarted = typeof ToolStarted.Type;
 
@@ -266,10 +292,13 @@ export const Definitions = EventSchema.inventory(
 	ExecutionInterrupted,
 	PromptAdmitted,
 	Prompted,
+	ConfigChanged,
 	SessionForked,
 	TurnStarted,
 	TurnEnded,
 	TurnAborted,
+	RetryScheduled,
+	RetryFinished,
 	LLMStarted,
 	LLMTextStart,
 	LLMTextDelta,
@@ -295,6 +324,7 @@ export const PublicDefinitions = Definitions;
 export const DurableDefinitions = EventSchema.inventory(
 	PromptAdmitted,
 	Prompted,
+	ConfigChanged,
 	SessionForked,
 	TurnEnded,
 	LLMStarted,
