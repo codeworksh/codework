@@ -87,6 +87,7 @@ async function expectLevelAccepted(model: StreamableModel, options: object) {
 
 	expect(response.stopReason, response.errorMessage).toBe("stop");
 	expect(getText(response)).toContain(String(a + b));
+	expect(response.thinkingLevel).toBe((options as { reasoning?: Model.ThinkingLevel }).reasoning ?? "off");
 	return response;
 }
 
@@ -102,11 +103,13 @@ describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI thinking levels (%s)", (modelId
 		const { reasoning: _, ...off } = openaiOptions();
 		const response = await expectLevelAccepted(model, off);
 		expect(response.parts.some((part) => part.type === "thinking")).toBe(false);
+		expect(response.providerThinkingLevel).toBeDefined();
 	});
 
 	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
 		const model = await getOpenAIModel(modelId);
-		await expectLevelAccepted(model, openaiOptions({ reasoning }));
+		const response = await expectLevelAccepted(model, openaiOptions({ reasoning }));
+		expect(response.providerThinkingLevel).toBeDefined();
 	});
 });
 
@@ -122,11 +125,13 @@ describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex thinking level
 		const { reasoning: _, ...off } = openaiCodexOptions();
 		const response = await expectLevelAccepted(model, off);
 		expect(response.parts.some((part) => part.type === "thinking")).toBe(false);
+		expect(response.providerThinkingLevel).toBeDefined();
 	});
 
 	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
 		const model = await getOpenAICodexModel(modelId);
-		await expectLevelAccepted(model, openaiCodexOptions({ reasoning }));
+		const response = await expectLevelAccepted(model, openaiCodexOptions({ reasoning }));
+		expect(response.providerThinkingLevel).toBeDefined();
 	});
 });
 
@@ -139,6 +144,7 @@ describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic thinking levels (%s)",
 	it("answers when no level is requested", { retry: 2, timeout: 60_000 }, async () => {
 		const model = await getAnthropicModel(modelId);
 		const response = await expectLevelAccepted(model, anthropicOptions());
+		expect(response.providerThinkingLevel).toBeUndefined();
 		// Models that cannot disable thinking may still think; the request must not fail.
 		if (ANTHROPIC_LEVELS[modelId].includes("off")) {
 			expect(response.parts.some((part) => part.type === "thinking")).toBe(false);
@@ -147,7 +153,9 @@ describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic thinking levels (%s)",
 
 	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
 		const model = await getAnthropicModel(modelId);
-		await expectLevelAccepted(model, anthropicOptions({ reasoning }));
+		const response = await expectLevelAccepted(model, anthropicOptions({ reasoning }));
+		if (model.compat?.forceAdaptiveThinking) expect(response.providerThinkingLevel).toBeDefined();
+		else expect(response.providerThinkingLevel).toBeUndefined();
 	});
 });
 
@@ -160,11 +168,13 @@ describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter thinking levels (%s
 	});
 
 	it("answers when no level is requested", { retry: 2, timeout: 60_000 }, async () => {
-		await expectLevelAccepted(await getOpenRouterModel(modelId), openrouterOptions());
+		const response = await expectLevelAccepted(await getOpenRouterModel(modelId), openrouterOptions());
+		expect(response.providerThinkingLevel).toBeUndefined();
 	});
 
 	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
 		const model = await getOpenRouterModel(modelId);
-		await expectLevelAccepted(model, openrouterOptions({ reasoning }));
+		const response = await expectLevelAccepted(model, openrouterOptions({ reasoning }));
+		expect(response.providerThinkingLevel).toBeDefined();
 	});
 });

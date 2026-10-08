@@ -69,6 +69,7 @@ export function makeAssistantMessage(
 		protocol: model.protocol,
 		provider: model.provider,
 		model: model.id,
+		thinkingLevel: "off",
 		usage: makeUsage(),
 		stopReason: "stop",
 		time: { created: Date.now(), completed: Date.now() },

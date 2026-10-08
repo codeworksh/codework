@@ -19,6 +19,7 @@ const message = (input: {
 		protocol: "openai",
 		provider: { id: "openai", name: "OpenAI", source: "custom", env: [] },
 		model: input.model,
+		thinkingLevel: "off",
 		usage: {
 			input: input.input,
 			output: input.output,

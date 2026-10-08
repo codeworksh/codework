@@ -49,6 +49,7 @@ const assistant = (
 		protocol: "openai",
 		provider: { id: providerId, name: providerId, source: "custom", env: [] },
 		model,
+		thinkingLevel: "off",
 		usage: usage(),
 		stopReason: parts.some((part) => part.type === "toolCall") ? "toolUse" : "stop",
 		time: { created: 20, completed: 30 },

@@ -189,6 +189,7 @@ describe("provider thinking-budget floor", () => {
 				protocol: anthropic.protocol,
 				provider: anthropic.provider,
 				model: anthropic.id,
+				thinkingLevel: "off",
 				usage: makeUsage({ input: 198_000, totalTokens: 198_000 }),
 				stopReason: "stop",
 				time: { created: 1, completed: 2 },
