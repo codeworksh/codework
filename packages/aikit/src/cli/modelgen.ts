@@ -288,7 +288,7 @@ function applyAnthropicMetadata(model: Model.Info): void {
 	if (/(opus|sonnet)-4[-.]6/.test(id)) {
 		mergeThinkingLevelMap(model, { max: "max" });
 	}
-	if (/opus-4[-.][78]|(opus|sonnet|fable)-5/.test(id)) {
+	if (/opus-4[-.][78]|(opus|sonnet|fable|haiku)-5/.test(id)) {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh", max: "max" });
 	}
 	if (/(opus|sonnet)-5[-.]5/.test(id)) {
