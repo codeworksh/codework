@@ -138,8 +138,8 @@ type Ping = { x: number; y: number; born: number; from: number; to: number; life
 type Charge = { x: number; y: number; start: number };
 type Glow = { x: number; y: number; strength: number; reach: number };
 type Stamp = { x: number; y: number; cellPx: number; amp: number };
-/** A steady tile always shows; the rest come and go with the dither. */
-type Tile = { col: number; row: number; w: number; h: number; shade: number; ext: string; steady: boolean };
+/** Extension tiles appear and disappear with the field on every screen size. */
+type Tile = { col: number; row: number; w: number; h: number; shade: number; ext: string };
 
 function lcg(seed: number) {
 	let state = seed >>> 0;
@@ -404,8 +404,6 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					w,
 					h,
 					shade,
-					// Small screens have a few slots, each with a fixed dither threshold; left to it, whole corners go dark.
-					steady: small,
 					ext: EXTENSIONS[(firstExtension + tiles.length * EXTENSION_STEP) % EXTENSIONS.length]!,
 				});
 				for (let r = row; r < row + h; r++)
@@ -530,7 +528,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				for (let c = 0; c < cols; c++) {
 					const col = cMin + c;
 					if (covered[r * cols + c] === 1) continue;
-					if (isHero && /[12]/.test(glyph.rows[row]?.[col] ?? "0")) continue;
+					if (isHero && glyph.rows[row]?.[col] === "1") continue;
 					const xLeft = wmX + col * cell;
 					const { lum, heat } = light(col, row, ramp[r * cols + c]!, xLeft + cell / 2, cy);
 					if (lum <= threshold(col, row)) continue;
@@ -553,7 +551,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				const cy = wmY + (tile.row + tile.h / 2) * cell;
 				const { lum, heat } = light(tile.col + tile.w / 2, tile.row + tile.h / 2, tile.shade, cx, cy, TILE_GAIN);
 				const floor = threshold(tile.col, tile.row);
-				if (lum <= floor && !tile.steady) continue;
+				if (lum <= floor) continue;
 				// A tile well past its threshold rests a shade brighter, so its label reads.
 				const ink = inkOf(Math.max(heat, (lum - floor) * 0.5));
 				ctx.fillStyle = ink === palette.dim ? palette.tile : ink;
@@ -584,18 +582,18 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				}
 			}
 
-			// Solid body and cursor, lifted by a stamp or glow passing over them.
+			// Solid word, lifted by a stamp or glow passing over it.
 			for (let row = 0; isHero && row < glyph.height; row++) {
 				const bits = glyph.rows[row]!;
 				const yTop = wmY + row * cell;
 				const y = Math.round(yTop);
 				const rowHeight = Math.round(yTop + cell) - y;
 				for (let col = 0; col < glyph.width; col++) {
-					if (bits[col] !== "1" && bits[col] !== "2") continue;
+					if (bits[col] !== "1") continue;
 					const xLeft = wmX + col * cell;
 					const cx = xLeft + cell / 2;
 					const cy = yTop + cell / 2;
-					let ink = bits[col] === "2" ? palette.crest : palette.lit;
+					let ink = palette.lit;
 					if (entering) {
 						const arrival = landsAt(col, row);
 						if (age < arrival) continue;

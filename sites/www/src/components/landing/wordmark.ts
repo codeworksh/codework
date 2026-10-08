@@ -1,15 +1,15 @@
-/** A pixel glyph: 1 is the body, 2 is the cursor accent, 0 is empty. */
+/** A pixel glyph: 1 is filled, 0 is empty. */
 export type Glyph = { rows: readonly string[]; width: number; height: number };
 
-// Square C and cursor match the logo; stepped corners give the other letters their shape.
+// Square strokes and stepped corners keep the wordmark crisp on the pixel grid.
 const LETTERS: Record<string, readonly string[]> = {
 	C: [
 		"##########",
 		"##########",
 		"##........",
 		"##........",
-		"##......++",
-		"##......++",
+		"##........",
+		"##........",
 		"##........",
 		"##........",
 		"##########",
@@ -94,10 +94,7 @@ function compose(word: string): Glyph {
 	const width = letters.reduce((sum, rows) => sum + rows[0]!.length + 1, 0);
 	const rows = Array.from(
 		{ length: 10 },
-		(_, row) =>
-			letters
-				.map((letter) => letter[row]!.replaceAll("#", "1").replaceAll("+", "2").replaceAll(".", "0"))
-				.join("0") + "0",
+		(_, row) => letters.map((letter) => letter[row]!.replaceAll("#", "1").replaceAll(".", "0")).join("0") + "0",
 	);
 	// One empty cell on the right and bottom leaves room for the outline echoes.
 	return { rows: [...rows, "0".repeat(width)], width, height: 11 };
@@ -112,7 +109,7 @@ export const DEPTH = [
 
 /** Exposed cell edges, shared by the SVG fallback and animated canvas. */
 export function outlineOf(glyph: Glyph) {
-	const filled = (col: number, row: number) => /[12]/.test(glyph.rows[row]?.[col] ?? "0");
+	const filled = (col: number, row: number) => glyph.rows[row]?.[col] === "1";
 	const sides = [
 		[-1, 0, 0, 0, 0, 1],
 		[1, 0, 1, 0, 1, 1],

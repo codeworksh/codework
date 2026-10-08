@@ -26,14 +26,14 @@ export function Pixels({ glyph, depth = false, className }: { glyph: Glyph; dept
 					/>
 				))}
 			{glyph.rows.flatMap((bits, y) =>
-				[...bits.matchAll(/1+|2+/g)].map((run) => (
+				[...bits.matchAll(/1+/g)].map((run) => (
 					<rect
 						key={`${y}-${run.index}`}
 						x={run.index}
 						y={y}
 						width={run[0].length}
 						height={1}
-						fill={run[0][0] === "2" ? "var(--t-field-crest)" : "currentColor"}
+						fill="currentColor"
 					/>
 				)),
 			)}
