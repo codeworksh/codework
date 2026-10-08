@@ -527,7 +527,8 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				0.78 * ((BAYER[(row & 7) * 8 + (col & 7)]! + 0.5) / 64) + 0.22 * jitter[(row & 63) * 64 + (col & 63)]!;
 			const inkOf = (heat: number) => (heat > 0.34 ? palette.lit : heat > 0.1 ? palette.mid : palette.dim);
 
-			for (let r = 0; r < rows; r++) {
+			// The hero rests on the grid alone; small cells only draw the interactive logo stamps.
+			for (let r = 0; r < rows && (!isHero || stamps.length > 0); r++) {
 				const row = rMin + r;
 				const yTop = wmY + row * cell;
 				const y = Math.round(yTop);
@@ -538,7 +539,10 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					if (covered[r * cols + c] === 1) continue;
 					if (isHero && glyph.rows[row]?.[col] === "1") continue;
 					const xLeft = wmX + col * cell;
-					const { lum, heat } = light(col, row, ramp[r * cols + c]!, xLeft + cell / 2, cy);
+					const wave = isHero ? stampAt(xLeft + cell / 2, cy) : 0;
+					const { lum, heat } = isHero
+						? { lum: wave * 1.15, heat: wave }
+						: light(col, row, ramp[r * cols + c]!, xLeft + cell / 2, cy);
 					if (lum <= threshold(col, row)) continue;
 					ctx.fillStyle = inkOf(heat);
 					const x = Math.round(xLeft);
