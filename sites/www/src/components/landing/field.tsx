@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
+import { Chase, chaseCount, type Pellet } from "./chase";
 import { THEME_EVENT } from "./theme";
 import { DEPTH, MARK, WORDMARK, WORDMARK_OUTLINE, type Ink } from "./wordmark";
 
 /**
  * The hero's pixel field: drifting dithered noise on the wordmark's grid, a glow that follows
- * the pointer and a roaming sprite, and the mark stamped wherever you click. 'hero' draws the
+ * the pointer, a tile-eating logo character, and the mark stamped wherever you click. 'hero' draws the
  * word into the field; 'field' is the bare texture for the footer.
  */
 
@@ -60,19 +61,13 @@ const CHARGE_TIME = 1.1;
 const CHARGE_FROM = 0.45;
 const CHARGE_GROWTH = 1.6;
 
-const SPRITE_STRENGTH = 0.7;
-const SPRITE_CHARGE_GLOW = 0.4;
-const SPRITE_FIRST_STAMP_WAIT = [1, 2] as const;
-const SPRITE_STAMP_WAIT = [2, 3] as const;
-const SPRITE_STAMP_CHARGE = [0, 0.2] as const;
-
 /** The word is cut in left to right, each cell flashing its crest ink as it lands. */
 const ENTRANCE_SWEEP = 0.8;
 const ENTRANCE_SCATTER = 0.35;
 const ENTRANCE_FLASH = 0.16;
 
 /**
- * File-extension tiles in the hero's four corners: bigger pixels, a whole number of cells, lit and dithered
+ * File-extension tiles across the hero: bigger pixels, a whole number of cells, lit and dithered
  * like the rest. Tiles start at TILE_W x TILE_H cells and grow on small screens so the label stays legible.
  */
 const EXTENSIONS = [
@@ -117,13 +112,8 @@ const TILE_H = 2;
 const TILE_LIFT = 0.1;
 /** Target minimum tile width, in css px, rounded to the field grid. */
 const TILE_MIN_CSS = 40;
-/** Share of the eligible slots that hold a tile, so the corners stay scattered. Small screens, where tiles grow and slots are few, fill every one. */
-const TILE_ODDS = 0.45;
-/** Tiles keep out of this band either side of the hero's middle (-1 top, 1 bottom), and need this much field under them. */
-const TILE_MIDDLE = 0.15;
-const TILE_MIN_SHADE = 0.3;
-/** Small screens have far more room below the copy than above it; a cap per corner keeps the four even. */
-const TILE_PER_CORNER_SMALL = 3;
+/** Share of the eligible slots that hold a tile, so the corners stay scattered. Small screens use a denser share of their fewer available slots. */
+const TILE_ODDS = 0.16;
 /** Css px a tile keeps clear of copy and controls. */
 const TILE_CLEARANCE = 16;
 /** A tile is one pixel standing in for many, so the drift lights it more often than a single cell. */
@@ -196,8 +186,6 @@ function sample(field: Float32Array, x: number, y: number) {
 	return (a * (1 - sx) + b * sx) * (1 - sy) + (c * (1 - sx) + d * sx) * sy;
 }
 
-const between = ([lo, hi]: readonly [number, number]) => lo + Math.random() * (hi - lo);
-
 export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "field"; onPainted?: () => void }) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const painted = useRef(onPainted);
@@ -247,13 +235,13 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		const slot = isHero ? document.querySelector<HTMLElement>("[data-hero-wordmark]") : null;
 
 		const pointer = { x: -1e4, y: -1e4 };
-		const sprite = { x: -1e4, y: -1e4, strength: 0 };
+		let chasers: Chase[] = [];
+		const eaten = new Map<string, number>();
+		let pellets: Pellet[] = [];
 		let strength = 0;
 		let targetStrength = 0;
 		let pings: Ping[] = [];
 		let holding: Charge | null = null;
-		let spriteHold: (Charge & { charge: number }) | null = null;
-		let spriteStampAt = Infinity;
 		let wordPress = false;
 		let visible = true;
 		let entrance: number | null = isHero && !reducedMotion ? null : -Infinity;
@@ -352,10 +340,40 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				}
 			}
 			layTiles(box);
+			const obstacles = [...quiet, ...(slot ? [slot] : [])].map((el) => {
+				const rect = el.getBoundingClientRect();
+				// Mobile copy wrappers span the screen; keep their side gutters traversable.
+				const gutter = box.width < 640 && !el.closest("header") ? 16 : 0;
+				return {
+					left: rect.left - box.left + gutter,
+					top: rect.top - box.top,
+					right: rect.right - box.left - gutter,
+					bottom: rect.bottom - box.top,
+				};
+			});
+			eaten.clear();
+			const starts = [
+				{ x: 30, y: 90 },
+				{ x: box.width - 30, y: box.height - 30 },
+				{ x: box.width - 30, y: 90 },
+				{ x: 30, y: box.height - 30 },
+				{ x: box.width / 2, y: 90 },
+			];
+			chasers =
+				isHero && !reducedMotion
+					? starts
+							.slice(0, chaseCount(box.width))
+							.map((start) => new Chase(box.width, box.height, obstacles, start, eaten))
+					: [];
+			pellets = tiles.map((tile) => ({
+				id: `${tile.col}:${tile.row}`,
+				x: (wmX + (tile.col + tile.w / 2) * cell) / dpr,
+				y: (wmY + (tile.row + tile.h / 2) * cell) / dpr,
+			}));
 			return true;
 		};
 
-		/** Tiles on a lattice aligned to the word's grid, kept to the lower U and clear of the copy. */
+		/** Tiles on a lattice aligned to the word's grid, scattered through the clear spaces. */
 		const layTiles = (box: DOMRect) => {
 			tiles = [];
 			covered = new Uint8Array(cols * rows);
@@ -363,8 +381,9 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 			const small = box.width < 640;
 			const w = Math.max(TILE_W, Math.round((TILE_MIN_CSS * dpr) / cell));
 			const h = Math.max(TILE_H, Math.round((w * TILE_H) / TILE_W));
-			const odds = small ? 1 : TILE_ODDS;
-			const slots: { col: number; row: number; shade: number; corner: number; reach: number }[] = [];
+			const count = chaseCount(box.width);
+			const odds = Math.min(0.65, (small ? 0.3 : TILE_ODDS) * Math.sqrt(count));
+			const slots: { col: number; row: number; shade: number; rank: number }[] = [];
 			const stepX = w + 1;
 			const stepY = h + 1;
 			// Anchor the two sides to the canvas edges, so changing the word's width cannot empty a corner.
@@ -379,24 +398,17 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					if (row < glyph.height && row + h > 0 && col < glyph.width && col + w > 0) continue;
 					const x = wmX + (col + w / 2) * cell;
 					const y = wmY + (row + h / 2) * cell;
-					if (Math.abs((y / height) * 2 - 1) < TILE_MIDDLE) continue;
-					const shade = ramp[(row + (h >> 1) - rMin) * cols + (col + (w >> 1) - cMin)] ?? 0;
-					if (shade < TILE_MIN_SHADE) continue;
+
+					const shade = Math.max(0.22, ramp[(row + (h >> 1) - rMin) * cols + (col + (w >> 1) - cMin)] ?? 0);
 					if (jitter[(row * 29 + col * 13) & 4095]! > odds) continue;
 					const halfW = (w * cell) / 2 / dpr + TILE_CLEARANCE;
 					const halfH = (h * cell) / 2 / dpr + TILE_CLEARANCE;
 					if (nearest(quiet, box.left + x / dpr, box.top + y / dpr) < Math.hypot(halfW, halfH)) continue;
-					const top = y < height / 2;
-					const left = x < width / 2;
-					const corner = (top ? 0 : 2) + (left ? 0 : 1);
-					slots.push({ col, row, shade, corner, reach: Math.hypot(left ? x : width - x, top ? y : height - y) });
+					slots.push({ col, row, shade, rank: jitter[(row * 29 + col * 13) & 4095]! });
 				}
 			}
-			// On small screens each corner keeps the slots nearest its own corner, up to the cap.
-			const perCorner = [0, 0, 0, 0];
-			const kept = small
-				? [...slots].sort((a, b) => a.reach - b.reach).filter((s) => perCorner[s.corner]!++ < TILE_PER_CORNER_SMALL)
-				: slots;
+			// Sparse tiles throughout the clear spaces, with a smaller mobile budget.
+			const kept = slots.sort((a, b) => a.rank - b.rank).slice(0, count * (small ? 16 : 24));
 			for (const { col, row, shade } of kept) {
 				tiles.push({
 					col,
@@ -418,37 +430,13 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 			const age = (time - entrance) / 1000;
 			const entering = age < ENTRANCE_SWEEP + ENTRANCE_SCATTER + ENTRANCE_FLASH;
 
-			// The sprite wanders a Lissajous path, glowing as it goes and stamping now and then.
-			let spriteGoal = 0;
-			if (isHero && !reducedMotion) {
-				const rx = 0.44 * (1 + 0.1 * Math.sin(t * 0.11));
-				const ry = 0.38 * (1 + 0.1 * Math.sin(t * 0.09 + 2));
-				sprite.x = width * (0.5 + rx * Math.sin(t * 0.65));
-				sprite.y = height * (0.48 + ry * Math.sin(t * 0.39 + 1.1));
-				const box = host.getBoundingClientRect();
-				spriteGoal = strengthAt(box.left + sprite.x / dpr, box.top + sprite.y / dpr) * SPRITE_STRENGTH;
-
-				if (entering) {
-					spriteHold = null;
-					spriteStampAt = Infinity;
-				} else if (spriteStampAt === Infinity) {
-					spriteStampAt = time + between(SPRITE_FIRST_STAMP_WAIT) * 1000;
+			const targets = new Set(chasers.flatMap((chase) => (chase.targetId ? [chase.targetId] : [])));
+			if (!entering)
+				for (const chase of chasers) {
+					if (chase.targetId) targets.delete(chase.targetId);
+					chase.update(t, pellets, targets);
+					if (chase.targetId) targets.add(chase.targetId);
 				}
-				if (!entering && !spriteHold && time >= spriteStampAt) {
-					spriteHold = { x: sprite.x, y: sprite.y, start: time, charge: between(SPRITE_STAMP_CHARGE) };
-				}
-				if (spriteHold) {
-					spriteHold.x = sprite.x;
-					spriteHold.y = sprite.y;
-					spriteGoal *= SPRITE_CHARGE_GLOW;
-					if (chargeOf(time, spriteHold.start) >= spriteHold.charge) {
-						launch(spriteHold.x, spriteHold.y, spriteHold.charge, time);
-						spriteHold = null;
-						spriteStampAt = time + between(SPRITE_STAMP_WAIT) * 1000;
-					}
-				}
-			}
-			sprite.strength += (spriteGoal - sprite.strength) * 0.08;
 			strength += (targetStrength - strength) * 0.3;
 
 			ctx.fillStyle = palette.bg;
@@ -457,7 +445,9 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 			const reachOf = (level: number) => CURSOR_CELLS * cell * (0.45 + 0.55 * level);
 			const glows: Glow[] = [];
 			if (strength > 0.01) glows.push({ ...pointer, strength, reach: reachOf(strength) });
-			if (sprite.strength > 0.01) glows.push({ ...sprite, reach: reachOf(sprite.strength) });
+			if (!entering)
+				for (const chase of chasers)
+					glows.push({ x: chase.x * dpr, y: chase.y * dpr, strength: 0.25, reach: 36 * dpr });
 			const glowAt = (cx: number, cy: number) => {
 				let amount = 0;
 				for (const glow of glows) {
@@ -478,15 +468,13 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					amp: (1 - life) ** 1.7,
 				};
 			});
-			for (const charging of [holding, spriteHold]) {
-				if (charging)
-					stamps.push({
-						x: charging.x,
-						y: charging.y,
-						cellPx: cell * (CHARGE_FROM + CHARGE_GROWTH * chargeOf(time, charging.start)),
-						amp: 0.9,
-					});
-			}
+			if (holding)
+				stamps.push({
+					x: holding.x,
+					y: holding.y,
+					cellPx: cell * (CHARGE_FROM + CHARGE_GROWTH * chargeOf(time, holding.start)),
+					amp: 0.9,
+				});
 			const stampAt = (cx: number, cy: number) => {
 				let amp = 0;
 				for (const stamp of stamps) {
@@ -545,15 +533,16 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				ctx.font = `700 ${Math.round(tiles[0]!.h * cell * 0.5)}px "JetBrains Mono Variable", monospace`;
 			}
 			for (const tile of tiles) {
+				if (eaten.has(`${tile.col}:${tile.row}`)) continue;
 				const x = Math.round(wmX + tile.col * cell);
 				const y = Math.round(wmY + tile.row * cell);
 				const cx = wmX + (tile.col + tile.w / 2) * cell;
 				const cy = wmY + (tile.row + tile.h / 2) * cell;
 				const { lum, heat } = light(tile.col + tile.w / 2, tile.row + tile.h / 2, tile.shade, cx, cy, TILE_GAIN);
 				const floor = threshold(tile.col, tile.row);
-				if (lum <= floor) continue;
+				if (lum <= floor && !targets.has(`${tile.col}:${tile.row}`)) continue;
 				// A tile well past its threshold rests a shade brighter, so its label reads.
-				const ink = inkOf(Math.max(heat, (lum - floor) * 0.5));
+				const ink = inkOf(Math.max(heat, (lum - floor) * 0.5, targets.has(`${tile.col}:${tile.row}`) ? 0.15 : 0));
 				ctx.fillStyle = ink === palette.dim ? palette.tile : ink;
 				ctx.fillRect(
 					x,
@@ -607,6 +596,8 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					ctx.fillRect(x, y, Math.round(xLeft + cell) - x, rowHeight);
 				}
 			}
+
+			if (!entering) for (const chase of chasers) chase.draw(ctx, t, dpr, palette.lit, palette.crest);
 
 			if (painted.current) {
 				painted.current();
