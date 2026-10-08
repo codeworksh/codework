@@ -12,7 +12,6 @@ import { SandboxIO } from "../../src/sandbox/io.ts";
 import { Sandbox } from "../../src/sandbox/sandbox.ts";
 import { type ISandboxExe, Shell } from "../../src/sandbox/shell/shell.ts";
 import { SandboxStore } from "../../src/sandbox/store.ts";
-import { AbsolutePath } from "../../src/schema.ts";
 import { Session } from "../../src/session/session.ts";
 import { fromSandboxShell, ToolShell, ToolShellTimeout } from "../../src/tool/shell.ts";
 import { Hash } from "../../src/util/hash.ts";
@@ -393,6 +392,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 										driver: options.kind,
 										id: mappedEnvId,
 										defaultCwd: options.cwd,
+										cwd: repo,
 									}),
 								),
 							);
@@ -410,10 +410,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 									}),
 								),
 							).pipe(Layer.provide(database));
-							const location = Location.layerMounted({ directory: AbsolutePath.make(repo) }).pipe(
-								Layer.provide(sandbox),
-								Layer.provide(registered),
-							);
+							const location = Location.layerMounted().pipe(Layer.provide(sandbox), Layer.provide(registered));
 							// provideMerge, not provide: `registered` and the block below
 							// share the one in-memory database.
 							const application = Layer.merge(location, Session.layer).pipe(

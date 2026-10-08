@@ -13,10 +13,33 @@ This file is the canonical source for unreleased changes and published release n
 
 ### Added
 
-- Added `gpt-6-luna` to the OpenAI Codex catalog. The Codex backend serves it to ChatGPT accounts, with every reasoning level from `low` to `max` and reasoning off.
+- Added automatic retry of transient provider failures in the harness loop. A turn whose request fails with a rate limit, overload, 5xx, timeout or dropped connection, including one that fails mid-stream, is retried with exponential backoff. Configure it with a top-level `retry` block in `settings.jsonc`: `{ "maxRetries": 3, "baseDelayMs": 2000, "maxDelayMs": 60000 }`, where `maxRetries: 0` turns it off. Quota errors are never retried, and a server that asks to wait longer than `maxDelayMs` fails the turn. Each failed attempt stays in the session as an aborted entry that the model never sees, and clients receive `session.retry.scheduled` and `session.retry.finished` events to show progress.
+
+### Changed
+
+- `model.options.maxRetries`, the retry inside the provider SDK, now defaults to `0` (was `3`). The SDK retried silently, only before the stream started, and also retried quota errors. Combined with the loop retry, one outage would have cost up to 16 requests. Set it per model if an endpoint needs it.
 
 ### Fixed
 
+- Fixed an interrupted turn never reporting `session.turn.aborted`. The cleanup that settles the turn's open draft and publishes the event was skipped on interruption, so the draft was only cleaned up on the session's next run.
+
+## [@codeworksh/aikit@0.10.0]
+
+Covers every change since 0.9.2, the last release on the `latest` tag, including 0.9.3, which only shipped as dev and canary builds.
+
+### Added
+
+- Added the `getEnvApiKey` export, so a caller can check whether a provider has an API key in the environment using the same lookup aikit applies when it opens that provider.
+- Added `gpt-6-luna` to the OpenAI Codex catalog. The Codex backend serves it to ChatGPT accounts, with every reasoning level from `low` to `max` and reasoning off.
+
+### Changed
+
+- Updated `@ai-sdk/openai` to `^4.0.81` and `@ai-sdk/provider` to `^4.0.19`.
+
+### Fixed
+
+- Fixed images reaching models that cannot read them. For a model whose `input` does not include `"image"`, each image in a user message is now replaced with `(image omitted: model does not support images)` and each image in a tool result with `(tool image omitted: model does not support images)`; consecutive images collapse to one placeholder. The message and tool result are kept, so the model still knows an image was there. Previously a user image was silently dropped, which removed an image-only message entirely, and a tool-result image was sent anyway, which providers often reject. Vision models are unchanged.
+- Fixed `retry-after-ms` and an HTTP-date `retry-after` being ignored when normalizing a provider failure. Only a `retry-after` given in seconds was read, so `retryAfterMs` was missing and a retry could come before the server's requested wait.
 - Fixed OpenAI and Codex reasoning levels that the API rejects. `minimal` is no longer offered for gpt-5.4 through gpt-6 and is clamped to `low`, since these models reject it. `xhigh` and `max` are now offered on gpt-5.6 and gpt-6 models through the OpenAI API, and `max` stays off gpt-5.5 and earlier. OpenAI gpt-5.6 and gpt-6 models now turn reasoning off with `none`, as do Codex `gpt-5.5`, `gpt-5.6-luna` and `gpt-6-luna`.
 - Fixed `gpt-6-luna` ignoring a request to turn reasoning off. `@ai-sdk/openai` 4.0.66 dropped `reasoningEffort: "none"` for the model; aikit now requires 4.0.81.
 - Fixed every request to Claude Sonnet 5.5, Opus 5.5 and the Fable 5 models failing when no reasoning level was set. aikit sent `thinking: {type: "disabled"}`, which these models reject; they cannot turn thinking off, so aikit now leaves thinking to the model.
@@ -29,16 +52,6 @@ This file is the canonical source for unreleased changes and published release n
 ### Internal
 
 - The OpenAI, Codex, Anthropic and OpenRouter live e2e suites now run against a model matrix: gpt-6-luna through gpt-5.4-nano for OpenAI, gpt-6-luna, gpt-5.6-luna and gpt-5.5 for Codex, Claude Sonnet 4.6 through Fable 5.1 plus the 4.5 generation for Anthropic, and Muse Spark 1.3, GLM 5.3 Flash, DeepSeek V4.1 Flash and Gemini 3.8 Flash for OpenRouter. New suites cover every reasoning level, context overflow, cross-model and cross-provider handoff, and prompt caching.
-
-## [@codeworksh/aikit@0.9.3]
-
-### Added
-
-- Added the `getEnvApiKey` export, so a caller can check whether a provider has an API key in the environment using the same lookup aikit applies when it opens that provider.
-
-### Fixed
-
-- Fixed images reaching models that cannot read them. For a model whose `input` does not include `"image"`, each image in a user message is now replaced with `(image omitted: model does not support images)` and each image in a tool result with `(tool image omitted: model does not support images)`; consecutive images collapse to one placeholder. The message and tool result are kept, so the model still knows an image was there. Previously a user image was silently dropped, which removed an image-only message entirely, and a tool-result image was sent anyway, which providers often reject. Vision models are unchanged.
 
 ## [@codeworksh/aikit@0.9.2]
 

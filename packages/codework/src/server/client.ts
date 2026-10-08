@@ -1,7 +1,7 @@
 import { EventList, type EventSchema, optional, Session } from "@codeworksh/harness/effect";
 import { NodeSocket } from "@effect/platform-node";
 import { Deferred, Effect, Layer, Predicate, Schema, Stream } from "effect";
-import { RpcClient, RpcSerialization } from "effect/unstable/rpc";
+import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Contract } from "./contract.ts";
 import { Envelope } from "./envelope.ts";
 

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import type { SharedPluginContext } from "../src/plugin/context.ts";
+import { Section } from "../src/plugin/index.ts";
 import { make } from "../src/plugin/registry.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
@@ -38,16 +39,20 @@ describe("plugin domains and exchange host", () => {
 		tools.add(echo("winner"));
 		tools.update("echo", { description: "patched", promptGuidelines: ["one"] });
 		expect(tools.list().map((t) => t.name)).toEqual(["echo"]);
-		buckets.registry.prompt.set("");
-		const snapshot = buckets.freeze();
-		expect(snapshot.systemPrompt).toBe("");
+		buckets.registry.prompt.foundation.set("Base.");
+		const snapshot = buckets.freeze("/work");
+		// The patched guideline reaches the harness-rendered <rules>; no snippet, so no index line.
+		expect(snapshot.systemPrompt).toBe(
+			["Base.", "<tools>\n(none)\n</tools>", "<rules>\n- one\n</rules>", "<cwd>\n/work\n</cwd>"].join("\n\n"),
+		);
 		expect(snapshot.tools.defs[0]?.description).toBe("patched");
 		expect(snapshot.tools.wire[0]?.description).toBe("patched");
 		expect((await Effect.runPromise(snapshot.tools.handle(pendingCall("echo")))).status).toBe("completed");
 		expect(stale).toBe(0);
 		expect(() => tools.add(echo("late"))).toThrow();
 		expect(() => tools.update("echo", { description: "late" })).toThrow();
-		expect(() => buckets.registry.prompt.set("late")).toThrow();
+		expect(() => buckets.registry.prompt.foundation.set("late")).toThrow();
+		expect(() => buckets.registry.prompt.sections.append(Section.Rules, "late")).toThrow();
 	});
 	it("runs setup in declared order with a fresh context and pinned model each exchange", () =>
 		withSettings(async ({ root }) => {
@@ -75,11 +80,11 @@ describe("plugin domains and exchange host", () => {
 					// slots were awaited against this exchange's bucket and the wrap saw the result.
 					expect(observed).toHaveLength(2);
 					expect(observed[0]).toBe(observed[1]);
-					expect(observed[0]?.startsWith("custom:1\n\n")).toBe(true);
-					expect(observed[0]).toContain("\n\nappend\n\n");
-					expect(observed[0]?.endsWith("\nwrapped")).toBe(true);
+					expect(observed[0]?.startsWith("custom:1\n\n<tools>\n")).toBe(true);
+					expect(observed[0]).toContain("\n\n<addendum>\nappend\n</addendum>\n\n");
+					expect(observed[0]?.endsWith("\n\n<wrap>\nwrapped\n</wrap>")).toBe(true);
 					expect(contexts[0]?.events).not.toHaveProperty("subscribe");
-					expect(() => contexts[0]?.plugin.prompt.set("late")).toThrow();
+					expect(() => contexts[0]?.plugin.prompt.foundation.set("late")).toThrow();
 				}).pipe(
 					Effect.provide(
 						Harness.layer({
@@ -106,7 +111,7 @@ describe("plugin domains and exchange host", () => {
 									kind: "prompt",
 									setup: async (ctx) => {
 										await Promise.resolve();
-										ctx.plugin.prompt.set(`${ctx.plugin.prompt.get()}\nwrapped`);
+										ctx.plugin.prompt.sections.append(Section.define("wrap"), "wrapped");
 									},
 								},
 							],
@@ -174,7 +179,7 @@ describe("plugin domains and exchange host", () => {
 									kind: "prompt",
 									setup: (ctx) => {
 										setups++;
-										ctx.plugin.prompt.set("");
+										ctx.plugin.prompt.foundation.set("");
 									},
 								},
 							],
@@ -203,7 +208,7 @@ describe("plugin domains and exchange host", () => {
 						yield* session.run("hello");
 						expect(later).toBe(false);
 						expect(requested).toBe(false);
-						expect(() => retained?.plugin.prompt.set("late")).toThrow();
+						expect(() => retained?.plugin.prompt.foundation.set("late")).toThrow();
 					}).pipe(
 						Effect.provide(
 							Harness.layer({
@@ -251,7 +256,7 @@ describe("plugin domains and exchange host", () => {
 						yield* Deferred.await(entered);
 						yield* session.interrupt();
 						yield* Fiber.join(fiber);
-						expect(() => retained?.plugin.prompt.set("late")).toThrow();
+						expect(() => retained?.plugin.prompt.foundation.set("late")).toThrow();
 						yield* Deferred.succeed(release, undefined);
 					}).pipe(
 						Effect.provide(

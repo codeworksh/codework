@@ -19,7 +19,7 @@ import { withStatics } from "./schema.ts";
 // (a persisted row, a request payload) and rejects a foreign prefix rather
 // than branding it silently. uuidv7 keeps IDs lexicographically sortable by
 // creation time, so `ORDER BY id` is `ORDER BY created`.
-export const SessionID = Schema.String.check(Schema.isStartsWith("ses")).pipe(
+export const SessionID = Schema.String.check(Schema.isStartingWith("ses")).pipe(
 	Schema.brand("Session.ID"),
 	withStatics((schema) => ({
 		ascending: (id?: string) => {

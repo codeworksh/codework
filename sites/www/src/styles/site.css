@@ -76,10 +76,29 @@ body {
 	}
 }
 
+/* Two quick beats, then a rest. */
+@keyframes heartbeat {
+	0%,
+	40%,
+	100% {
+		transform: scale(1);
+	}
+	10% {
+		transform: scale(1.25);
+	}
+	25% {
+		transform: scale(1.15);
+	}
+}
+.heartbeat {
+	animation: heartbeat 1.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.field-in,
 	[data-hero-stagger],
-	.typed-caret {
+	.typed-caret,
+	.heartbeat {
 		animation: none;
 	}
 }
@@ -102,5 +121,21 @@ body {
 @media (prefers-reduced-motion: reduce) {
 	.notice-in {
 		animation: none;
+	}
+}
+
+/* A full-bleed rail whose slides line up with the max-w-6xl content column, neighbours peeking in either side. */
+.rail {
+	--gutter: 1rem;
+	padding-inline: calc(max(0px, (100% - 72rem) / 2) + var(--gutter));
+	scroll-padding-inline: calc(max(0px, (100% - 72rem) / 2) + var(--gutter));
+	scrollbar-width: none;
+}
+.rail::-webkit-scrollbar {
+	display: none;
+}
+@media (width >= 40rem) {
+	.rail {
+		--gutter: 1.5rem;
 	}
 }

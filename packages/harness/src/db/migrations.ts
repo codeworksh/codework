@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 
 // Migrations ship as code (Migrator.fromRecord) rather than .sql files on
 // disk, so they survive bundling and need no runtime path resolution.

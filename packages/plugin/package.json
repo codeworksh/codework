@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/plugin",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"description": "SDK for building CodeWork plugins — the plugin, tool, and sandbox contracts shared with @codeworksh/harness.",
 	"keywords": [
 		"agent",
@@ -52,6 +52,12 @@
 			"types": "./dist/pack/plugin/prompt.d.mts",
 			"import": "./dist/pack/plugin/prompt.mjs",
 			"default": "./dist/pack/plugin/prompt.mjs"
+		},
+		"./plugin/section": {
+			"development": "./src/plugin/section.ts",
+			"types": "./dist/pack/plugin/section.d.mts",
+			"import": "./dist/pack/plugin/section.mjs",
+			"default": "./dist/pack/plugin/section.mjs"
 		},
 		"./sandbox": {
 			"development": "./src/sandbox.ts",
@@ -197,11 +203,11 @@
 		"@codeworksh/aikit": "workspace:*",
 		"@types/node": "catalog:",
 		"bumpp": "^12.3.0",
-		"effect": "4.0.0-rc.115"
+		"effect": "4.0.1"
 	},
 	"peerDependencies": {
 		"@codeworksh/aikit": "workspace:^",
-		"effect": "4.0.0-rc.115"
+		"effect": "4.0.1"
 	},
 	"engines": {
 		"node": ">=22.0.0"

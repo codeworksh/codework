@@ -90,8 +90,9 @@ describe("third-party plugins", () => {
 			);
 			const { contexts, prompts } = await exchange({ root, userConfigDir: custom, plugins: [] });
 			expect(contexts[0]?.tools ?? []).toEqual([]);
-			// No plugin set a prompt, so the registry floor stands in for one.
-			expect(prompts[0]).toBe(fallback);
+			// No plugin set a foundation, so the registry floor stands in; the harness-owned
+			// sections still render.
+			expect(prompts[0]?.startsWith(`${fallback}\n\n<tools>\n(none)\n</tools>\n\n<cwd>\n`)).toBe(true);
 		}));
 
 	it("reports preparation failures from settings before calling the model", () =>
@@ -337,7 +338,7 @@ describe("third-party plugins", () => {
 				llm: toolTurn(pendingCall("bash", { command: "echo hi" }, "call_bash")),
 			});
 			expect(contexts[0]?.tools).toEqual([]);
-			expect(prompts[0]).toContain("Available tools:\n(none)");
+			expect(prompts[0]).toContain("<tools>\n(none)\n</tools>");
 			const settled = JSON.parse(path[1]?.parts[0]?.data ?? "{}");
 			expect(settled).toMatchObject({ status: "error", result: { isError: true } });
 			expect(settled.result.content[0].text).toContain("Unknown tool: bash");

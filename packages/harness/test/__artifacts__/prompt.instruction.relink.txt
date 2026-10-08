@@ -1,0 +1,41 @@
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<daytona>/repo/AGENTS.md">
+Daytona: repo root.
+
+</project_instructions>
+
+<project_instructions path="<daytona>/repo/pkg/AGENTS.md">
+Daytona: pkg.
+
+</project_instructions>
+</project_context>
+
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<vercel>/repo/AGENTS.md">
+Vercel: repo root.
+
+</project_instructions>
+
+<project_instructions path="<vercel>/repo/pkg/AGENTS.md">
+Vercel: pkg.
+
+</project_instructions>
+</project_context>
+
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<host>/repo/AGENTS.md">
+Host: repo root.
+
+</project_instructions>
+
+<project_instructions path="<host>/repo/pkg/AGENTS.md">
+Host: pkg.
+
+</project_instructions>
+</project_context>

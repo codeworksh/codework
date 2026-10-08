@@ -1,4 +1,5 @@
-import { Duration, Effect, Encoding, Layer, Option, Ref, Schema, Stream } from "effect";
+import { Duration, Effect, Layer, Option, Ref, Schema, Stream } from "effect";
+import { Hex } from "effect/encoding";
 import { tmpdir } from "node:os";
 import { crypto, fileSystem } from "../../../host.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
@@ -117,7 +118,7 @@ const footer = (t: TruncationResult, fullOutputPath: string | undefined, lastLin
 /** Write full output to a host temp file (best-effort; undefined on failure). */
 const spillToTempFile = (content: string): Effect.Effect<string | undefined> =>
 	Effect.gen(function* () {
-		const suffix = Encoding.encodeHex(yield* crypto.randomBytes(6));
+		const suffix = Hex.encode(yield* crypto.randomBytes(6));
 		const path = posix.join(tmpdir(), `codework-bash-${suffix}.log`);
 		yield* fileSystem.writeFileString(path, content);
 		return path;

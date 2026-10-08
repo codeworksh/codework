@@ -57,7 +57,7 @@ export const run = Effect.fn("PluginHost.run")(function* (
 			);
 		}
 		return yield* Effect.try({
-			try: buckets.freeze,
+			try: () => buckets.freeze(input.location.directory),
 			catch: (cause) =>
 				new SetupError({
 					message: `plugin snapshot freeze failed: ${cause instanceof Error ? cause.message : String(cause)}`,

@@ -1,6 +1,6 @@
 import type { VirtualFileSystem } from "@platformatic/vfs";
 import { Layer } from "effect";
-import type { ChildProcessSpawner } from "effect/unstable/process";
+import type { ChildProcessSpawner } from "effect/process";
 import { SandboxFileSystem } from "./fs/filesystem.ts";
 import { Local } from "./fs/vfs.ts";
 import { EnvBash } from "./shell/justbash.ts";
