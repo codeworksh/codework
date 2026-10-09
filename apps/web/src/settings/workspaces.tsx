@@ -83,7 +83,7 @@ export function WorkspacesSettings() {
 	};
 
 	return (
-		<div className="mx-auto flex max-w-2xl flex-col gap-4 p-6">
+		<div className="mx-auto flex max-w-2xl flex-col gap-4 p-4 md:p-6">
 			<header>
 				<h2 className="text-base font-semibold">Workspaces</h2>
 				<p className="text-ink-muted">
@@ -160,7 +160,7 @@ function NameField({ workspace, autoFocus, onError }: RowProps & { readonly auto
 			value={draft ?? workspace.name}
 			autoFocus={autoFocus}
 			onFocus={(event) => autoFocus && event.currentTarget.select()}
-			className="h-8 flex-1 border-transparent bg-transparent shadow-none hover:border-input focus-visible:border-input dark:bg-transparent"
+			className="h-8 min-w-24 flex-1 border-transparent bg-transparent shadow-none hover:border-input focus-visible:border-input dark:bg-transparent"
 			onChange={(event) => setDraft(event.target.value)}
 			onBlur={(event) => commit(event.currentTarget.value)}
 			onKeyDown={(event) => {

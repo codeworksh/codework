@@ -23,14 +23,15 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 						{...workspaceRoute(workspace)}
 						aria-current={current ? "page" : undefined}
 						title={`${workspace.name} (${shortcutLabel(index + 1)})`}
-						className={`flex h-7 items-center gap-1.5 rounded-[10px] px-3 font-medium transition-colors [corner-shape:superellipse(1.25)] ${
+						className={`flex h-7 items-center gap-1.5 rounded-[10px] px-3 font-medium max-md:px-2 transition-colors [corner-shape:superellipse(1.25)] ${
 							current
 								? "border border-edge bg-linear-to-b from-frame-top to-frame text-ink shadow-frame"
 								: "border border-transparent text-ink-muted hover:bg-ink/5 hover:text-ink"
 						}`}
 					>
 						<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
-						{workspace.name}
+						{/* Narrow windows keep only the icons; the title still names the tab. */}
+						<span className="max-md:sr-only">{workspace.name}</span>
 					</Link>
 				);
 			})}

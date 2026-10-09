@@ -20,22 +20,27 @@ const sections = [{ to: "/settings/workspaces", label: "Workspaces", icon: Layer
 export function SettingsLayout() {
 	const matchRoute = useMatchRoute();
 	return (
-		// Wider than shadcn's 16rem default, so section names never crowd the icons.
+		// Wider than shadcn's 16rem default, so section names never crowd the icons;
+		// below md the sidebar folds to an icon rail so the section keeps the room.
 		<SidebarProvider className="h-full min-h-0 gap-2 p-2" style={{ "--sidebar-width": "20rem" } as CSSProperties}>
-			<Sidebar collapsible="none" className="panel bg-transparent">
-				<SidebarHeader className="px-4 pt-4">
+			<Sidebar collapsible="none" className="panel bg-transparent max-md:w-14">
+				<SidebarHeader className="px-4 pt-4 max-md:sr-only">
 					<h1 className="text-base font-semibold">Settings</h1>
 				</SidebarHeader>
 				<SidebarContent>
 					<SidebarGroup>
-						<SidebarGroupLabel>App</SidebarGroupLabel>
+						<SidebarGroupLabel className="max-md:sr-only">App</SidebarGroupLabel>
 						<SidebarMenu>
 							{sections.map(({ to, label, icon: Icon }) => (
 								<SidebarMenuItem key={to}>
-									<SidebarMenuButton asChild isActive={matchRoute({ to }) !== false}>
-										<Link to={to}>
+									<SidebarMenuButton
+										asChild
+										isActive={matchRoute({ to }) !== false}
+										className="max-md:justify-center"
+									>
+										<Link to={to} title={label}>
 											<Icon strokeWidth={1.75} />
-											{label}
+											<span className="max-md:sr-only">{label}</span>
 										</Link>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
