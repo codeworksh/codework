@@ -9,14 +9,21 @@ const electronPath = createRequire(import.meta.url)("electron");
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 
-const child = spawn(electronPath, ["out/main.cjs"], {
+const child = spawn(electronPath, ["."], {
 	stdio: "inherit",
 	cwd: desktopDir,
 	env,
 });
 
+// Stay alive until Electron has quit, so callers waiting on this process never
+// overlap a still-running instance.
+const forward = (signal) => child.kill(signal);
+process.on("SIGINT", forward);
+process.on("SIGTERM", forward);
+
 child.on("exit", (code, signal) => {
 	if (signal) {
+		process.off(signal, forward);
 		process.kill(process.pid, signal);
 		return;
 	}

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, net, protocol } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { startServer } from "./server.ts";
 
 const SCHEME = app.isPackaged ? "codework" : "codework-dev";
 const HOST = "app";
@@ -87,9 +88,13 @@ function handleRequest(request: Request): Promise<Response> {
 	if (DEV_SERVER_URL) {
 		const url = new URL(request.url);
 		if (url.host !== HOST) return Promise.resolve(new Response(null, { status: 404 }));
+		// Module scripts carry `Origin: codework-dev://app`; forwarding it makes
+		// net.fetch a CORS request the dev server never allows, failing every script.
+		const headers = new Headers(request.headers);
+		headers.delete("origin");
 		return net.fetch(new URL(`${url.pathname}${url.search}`, DEV_SERVER_URL).toString(), {
 			method: request.method,
-			headers: request.headers,
+			headers,
 			body: request.method === "GET" || request.method === "HEAD" ? null : request.body,
 			duplex: "half",
 		} as RequestInit);
@@ -101,6 +106,12 @@ function createMainWindow(): BrowserWindow {
 	const window = new BrowserWindow({
 		width: 1440,
 		height: 900,
+		// The web shell draws its own title bar (workspace switcher) beside the
+		// inset traffic lights, which sit centered in its 44px height.
+		...(process.platform === "darwin" && {
+			titleBarStyle: "hiddenInset",
+			trafficLightPosition: { x: 14, y: 16 },
+		}),
 		webPreferences: {
 			preload: path.join(app.getAppPath(), "out/preload.cjs"),
 			sandbox: true,
@@ -110,8 +121,9 @@ function createMainWindow(): BrowserWindow {
 	return window;
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
 	protocol.handle(SCHEME, handleRequest);
+	await startServer();
 	createMainWindow();
 
 	app.on("activate", () => {

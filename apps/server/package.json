@@ -1,17 +1,20 @@
 {
-	"name": "@codeworksh/desktop",
+	"name": "@codeworksh/server",
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"main": "out/main.cjs",
+	"exports": {
+		"./contract": "./src/contract.ts"
+	},
 	"scripts": {
 		"build": "vp pack",
-		"dev": "node scripts/dev.mjs",
-		"start": "node scripts/start-electron.mjs",
+		"dev": "vp pack --watch",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"electron": "44.4.2"
+		"@effect/platform-node": "4.0.1",
+		"@effect/sql-sqlite-node": "4.0.1",
+		"effect": "4.0.1"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",

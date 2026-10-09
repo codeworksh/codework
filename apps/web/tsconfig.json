@@ -4,6 +4,7 @@
 		"module": "Preserve",
 		"moduleResolution": "Bundler",
 		"jsx": "react-jsx",
+		"types": ["vite-plus/client"],
 		"lib": ["ES2023", "DOM", "DOM.Iterable"],
 		"tsBuildInfoFile": "../../.cache/typescript/web.tsbuildinfo"
 	},

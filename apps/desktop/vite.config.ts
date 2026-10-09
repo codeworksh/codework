@@ -4,19 +4,22 @@ import { defineConfig } from "vite-plus";
 // stay external — everything else is inlined into the artifact.
 const isExternal = (id: string) => id === "electron" || id.startsWith("electron/") || id.startsWith("node:");
 
+// One config per entry: a sandboxed preload cannot require sibling files, so
+// modules shared with main must be inlined rather than split into a chunk.
+// Neither cleans the shared out dir, or one build would delete the other's file.
+const bundle = (entry: string) => ({
+	format: "cjs" as const,
+	outDir: "out",
+	dts: false,
+	sourcemap: true,
+	outExtensions: () => ({ js: ".cjs" }),
+	entry: [entry],
+	clean: false,
+	deps: {
+		neverBundle: isExternal,
+	},
+});
+
 export default defineConfig({
-	pack: [
-		{
-			format: "cjs",
-			outDir: "out",
-			dts: false,
-			sourcemap: true,
-			outExtensions: () => ({ js: ".cjs" }),
-			entry: ["src/main.ts", "src/preload.ts"],
-			clean: true,
-			deps: {
-				neverBundle: isExternal,
-			},
-		},
-	],
+	pack: [bundle("src/main.ts"), bundle("src/preload.ts")],
 });
