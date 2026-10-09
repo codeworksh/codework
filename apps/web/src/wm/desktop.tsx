@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { useAtom, useAtomSet } from "@effect/atom-react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	focus,
 	hasMasterStack,
@@ -21,9 +22,16 @@ import { FrameContext, ShellContext } from "../sdk/shell";
 import { builtins, registry } from "../widgets";
 import { Divider } from "./divider";
 import { Frame } from "./frame";
-import { add, initialDesk, type Instance, remove, retarget, focus as raise, update } from "./instances";
+import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
-import { firstWorkspace, workspaceRoute, workspaceTag } from "./workspaces";
+import {
+	updateWorkspace,
+	useWorkspaces,
+	type Workspace,
+	workspaceRoute,
+	workspacesKey,
+	workspaceTag,
+} from "./workspaces";
 
 const nmaster = 1;
 
@@ -77,13 +85,11 @@ function Host({ instanceId, shell, decorate, children }: HostProps) {
 	);
 }
 
-/** Per-workspace view settings, like dwm's pertag: each workspace keeps its own split. */
+/** Per-workspace view settings, like dwm's pertag: each workspace keeps its own split, saved with it. */
 interface View {
 	readonly layout: "tile" | "monocle";
 	readonly mfact: number;
 }
-
-const defaultView: View = { layout: "tile", mfact: 0.6 };
 
 interface Drag {
 	readonly widgetId: WidgetId;
@@ -93,13 +99,16 @@ interface Drag {
 }
 
 interface DesktopProps {
-	readonly workspace: number;
+	readonly workspace: Workspace;
 }
 
 export function Desktop({ workspace }: DesktopProps) {
-	const [desk, setDesk] = useState(initialDesk);
+	const [desk, setDesk] = useAtom(deskAtom);
+	const workspaces = useWorkspaces();
 	const navigate = useNavigate();
-	const [views, setViews] = useState<ReadonlyMap<number, View>>(() => new Map());
+	const saveWorkspace = useAtomSet(updateWorkspace);
+	// Local edits ahead of the database, so dragging the divider never waits on a round trip.
+	const [views, setViews] = useState<ReadonlyMap<string, View>>(() => new Map());
 	const [chrome, setChrome] = useState<ReadonlyMap<string, Chrome>>(() => new Map());
 	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
 	const [drag, setDrag] = useState<Drag | null>(null);
@@ -119,9 +128,17 @@ export function Desktop({ workspace }: DesktopProps) {
 		[instances],
 	);
 	const byId = new Map(instances.map((instance) => [instance.id, instance]));
-	const { layout, mfact } = views.get(workspace) ?? defaultView;
+	const saved: View = { layout: workspace.layout, mfact: workspace.mfact };
+	const view = views.get(workspace.id) ?? saved;
+	const { layout, mfact } = view;
 	const setView = (patch: Partial<View>) =>
-		setViews((current) => new Map(current).set(workspace, { ...(current.get(workspace) ?? defaultView), ...patch }));
+		setViews((current) => new Map(current).set(workspace.id, { ...(current.get(workspace.id) ?? saved), ...patch }));
+
+	// Writes the view back once it settles; mid-drag splits stay local.
+	useEffect(() => {
+		if (resizing || (view.layout === workspace.layout && view.mfact === workspace.mfact)) return;
+		saveWorkspace({ payload: { id: workspace.id, ...view }, reactivityKeys: workspacesKey });
+	}, [resizing, view, workspace, saveWorkspace]);
 	const setLayout = (next: View["layout"]) => setView({ layout: next });
 	const setMfact = (next: number) => setView({ mfact: next });
 	// Focus is the most recently focused widget that is visible on this workspace.
@@ -163,7 +180,9 @@ export function Desktop({ workspace }: DesktopProps) {
 	// Focuses an instance, switching to a workspace that shows it when this one does not.
 	const reveal = (instance: Instance) => {
 		setDesk((current) => raise(current, instance.id));
-		if ((instance.tags & activeTags) === 0) void navigate(workspaceRoute(firstWorkspace(instance.tags)));
+		if ((instance.tags & activeTags) !== 0) return;
+		const home = workspaces.find((candidate) => (instance.tags & workspaceTag(candidate)) !== 0);
+		if (home !== undefined) void navigate(workspaceRoute(home));
 	};
 
 	const decorate = useCallback(

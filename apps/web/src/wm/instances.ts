@@ -1,7 +1,7 @@
-import { attachWidget, detachWidget, focusWidget, moveWidgetRelative, type WidgetOrder } from "webwm";
+import { Atom } from "effect/reactivity";
+import { attachWidget, detachWidget, focusWidget, moveWidgetRelative, tagBit, type WidgetOrder } from "webwm";
 
 import type { Params } from "../sdk";
-import { workspaceTag } from "./workspaces";
 
 /**
  * One placed copy of a widget. The window manager owns instances; a widget only
@@ -30,7 +30,8 @@ export interface Desk {
 	readonly order: WidgetOrder;
 }
 
-const [main, code, notes] = [workspaceTag(1), workspaceTag(2), workspaceTag(3)];
+// Tag bits of the workspaces the database is seeded with: Main, Code, Notes.
+const [main, code, notes] = [tagBit(0), tagBit(1), tagBit(2)];
 
 // Hardcoded until instances live in SQLite. Tile order follows this list, so
 // Files is the master on Main and Projects on Code; Chat and Terminal sit on
@@ -51,7 +52,11 @@ const seed: readonly Instance[] = [
 ];
 
 const ids = seed.map(({ id }) => id);
-export const initialDesk: Desk = { instances: seed, order: { tileOrder: ids, focusOrder: ids } };
+
+/** Shared so settings can close the widgets of a deleted workspace while the desktop is hidden. */
+export const deskAtom = Atom.make<Desk>({ instances: seed, order: { tileOrder: ids, focusOrder: ids } }).pipe(
+	Atom.keepAlive,
+);
 
 /** Adds a focused instance to the tile order right after `after`, or last. */
 export function add(desk: Desk, instance: Instance, after?: string): Desk {
@@ -67,6 +72,18 @@ export const remove = (desk: Desk, id: string): Desk => ({
 	instances: desk.instances.filter((instance) => instance.id !== id),
 	order: detachWidget(desk.order, id),
 });
+
+/** Instances that appear only on the workspace with this tag mask. */
+export const only = (desk: Desk, tag: number) => desk.instances.filter((instance) => instance.tags === tag);
+
+/** Takes a deleted workspace's tag off every instance, closing those it leaves on no workspace. */
+export const untag = (desk: Desk, tag: number): Desk =>
+	only(desk, tag).reduce<Desk>((current, instance) => remove(current, instance.id), {
+		...desk,
+		instances: desk.instances.map((instance) =>
+			instance.tags & tag && instance.tags !== tag ? { ...instance, tags: instance.tags & ~tag } : instance,
+		),
+	});
 
 export const focus = (desk: Desk, id: string): Desk => ({ ...desk, order: focusWidget(desk.order, id) });
 

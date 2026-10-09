@@ -1,0 +1,45 @@
+import {
+	AppWindow,
+	BookOpen,
+	Bot,
+	Briefcase,
+	Code2,
+	Database,
+	FlaskConical,
+	Globe,
+	LayoutDashboard,
+	Megaphone,
+	MessagesSquare,
+	Music,
+	NotebookPen,
+	Palette,
+	Rocket,
+	Server,
+	Terminal,
+	Wrench,
+	type LucideIcon,
+} from "lucide-react";
+
+/** Icons a workspace can pick, saved by name so the database stores no components. */
+export const icons: Readonly<Record<string, LucideIcon>> = {
+	"layout-dashboard": LayoutDashboard,
+	code: Code2,
+	"notebook-pen": NotebookPen,
+	terminal: Terminal,
+	globe: Globe,
+	bot: Bot,
+	"messages-square": MessagesSquare,
+	"book-open": BookOpen,
+	briefcase: Briefcase,
+	database: Database,
+	server: Server,
+	"flask-conical": FlaskConical,
+	palette: Palette,
+	megaphone: Megaphone,
+	music: Music,
+	rocket: Rocket,
+	wrench: Wrench,
+	"app-window": AppWindow,
+};
+
+export const iconOf = (name: string): LucideIcon => icons[name] ?? AppWindow;

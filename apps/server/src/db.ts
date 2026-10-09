@@ -1,5 +1,5 @@
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
-import { Effect, Layer, String as Str } from "effect";
+import { Clock, Effect, Layer, String as Str } from "effect";
 import { Migrator, SqlClient } from "effect/sql";
 
 // Migrations ship as code so they survive bundling. Keys are
@@ -17,6 +17,29 @@ const migrations = {
 				PRIMARY KEY (package, key)
 			)
 		`;
+	}),
+	"202610090002_workspaces": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`
+			CREATE TABLE workspaces (
+				id TEXT PRIMARY KEY,
+				bit INTEGER NOT NULL UNIQUE,
+				pos INTEGER NOT NULL,
+				name TEXT NOT NULL,
+				icon TEXT NOT NULL,
+				layout TEXT NOT NULL,
+				mfact REAL NOT NULL,
+				created INTEGER NOT NULL
+			)
+		`;
+		const created = yield* Clock.currentTimeMillis;
+		yield* sql`INSERT INTO workspaces ${sql.insert(
+			[
+				{ id: "main", name: "Main", icon: "layout-dashboard" },
+				{ id: "code", name: "Code", icon: "code" },
+				{ id: "notes", name: "Notes", icon: "notebook-pen" },
+			].map((workspace, index) => ({ ...workspace, bit: index, pos: index, layout: "tile", mfact: 0.6, created })),
+		)}`;
 	}),
 };
 

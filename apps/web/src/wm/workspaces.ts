@@ -1,35 +1,30 @@
-import { Code2, LayoutDashboard, NotebookPen, type LucideIcon } from "lucide-react";
+import { useAtomValue } from "@effect/atom-react";
+import type { Workspace } from "@codeworksh/server/contract";
+import { AsyncResult } from "effect/reactivity";
 import { tagBit } from "webwm";
 
-export interface Workspace {
-	/** 1-based, as shown in the URL and bound to Cmd/Ctrl+number. */
-	readonly id: number;
-	readonly name: string;
-	readonly icon: LucideIcon;
+import { Server } from "../kernel/rpc";
+
+export type { Workspace };
+
+/** Every mutation names this key, so the list refetches after any change. */
+export const workspacesKey = ["workspaces"];
+
+export const workspacesAtom = Server.query("workspaces.list", undefined, { reactivityKeys: workspacesKey });
+
+export const createWorkspace = Server.mutation("workspaces.create");
+export const updateWorkspace = Server.mutation("workspaces.update");
+export const reorderWorkspaces = Server.mutation("workspaces.reorder");
+export const deleteWorkspace = Server.mutation("workspaces.delete");
+
+/** Workspaces in switcher order; empty until the server answers. */
+export function useWorkspaces(): readonly Workspace[] {
+	const result = useAtomValue(workspacesAtom);
+	return AsyncResult.isSuccess(result) ? result.value : [];
 }
 
-export const workspaces: readonly Workspace[] = [
-	{ id: 1, name: "Main", icon: LayoutDashboard },
-	{ id: 2, name: "Code", icon: Code2 },
-	{ id: 3, name: "Notes", icon: NotebookPen },
-];
+/** webwm tag mask for the widgets shown on a workspace. */
+export const workspaceTag = (workspace: Workspace) => tagBit(workspace.bit);
 
-export const defaultWorkspace = 1;
-
-/** Workspace N is webwm tag bit N-1. */
-export const workspaceTag = (id: number) => tagBit(id - 1);
-
-export function parseWorkspace(param: string | undefined): number | null {
-	if (param === undefined) return defaultWorkspace;
-	const id = Number(param);
-	return workspaces.some((workspace) => workspace.id === id) ? id : null;
-}
-
-/** The lowest workspace in a tag mask: where an instance on several workspaces is revealed. */
-export const firstWorkspace = (tags: number) => Math.log2(tags & -tags) + 1;
-
-/** Router target for a workspace; the default one is `/`. */
-export const workspaceRoute = (id: number) =>
-	id === defaultWorkspace
-		? ({ to: "/" } as const)
-		: ({ to: "/workspaces/$workspaceId", params: { workspaceId: String(id) } } as const);
+export const workspaceRoute = (workspace: Workspace) =>
+	({ to: "/workspaces/$workspaceId", params: { workspaceId: workspace.id } }) as const;

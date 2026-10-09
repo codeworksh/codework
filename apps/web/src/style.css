@@ -15,6 +15,7 @@
 	--cw-ink: #3f3f46;
 	--cw-ink-muted: #8a8a93;
 	--cw-scrollbar: rgb(0 0 0 / 0.16);
+	--cw-danger: #dc2626;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +31,7 @@
 		--cw-ink: #e4e4e7;
 		--cw-ink-muted: #9b9ba3;
 		--cw-scrollbar: rgb(255 255 255 / 0.14);
+		--cw-danger: #f87171;
 	}
 }
 
@@ -41,9 +43,42 @@
 	--color-edge-focus: var(--cw-edge-focus);
 	--color-ink: var(--cw-ink);
 	--color-ink-muted: var(--cw-ink-muted);
+
+	/* shadcn/ui's color names, mapped onto the --cw-* contract. */
+	--color-background: var(--cw-frame);
+	--color-foreground: var(--cw-ink);
+	--color-card: var(--cw-frame);
+	--color-card-foreground: var(--cw-ink);
+	--color-popover: var(--cw-frame-top);
+	--color-popover-foreground: var(--cw-ink);
+	--color-primary: var(--cw-ink);
+	--color-primary-foreground: var(--cw-frame);
+	--color-secondary: color-mix(in oklab, var(--cw-ink) 8%, transparent);
+	--color-secondary-foreground: var(--cw-ink);
+	--color-muted: color-mix(in oklab, var(--cw-ink) 6%, transparent);
+	--color-muted-foreground: var(--cw-ink-muted);
+	--color-accent: color-mix(in oklab, var(--cw-ink) 8%, transparent);
+	--color-accent-foreground: var(--cw-ink);
+	--color-destructive: var(--cw-danger);
+	--color-border: var(--cw-edge);
+	--color-input: var(--cw-edge-focus);
+	--color-ring: color-mix(in oklab, var(--cw-ink) 30%, transparent);
+	--color-sidebar: var(--cw-frame);
+	--color-sidebar-foreground: var(--cw-ink);
+	--color-sidebar-primary: var(--cw-ink);
+	--color-sidebar-primary-foreground: var(--cw-frame);
+	--color-sidebar-accent: color-mix(in oklab, var(--cw-ink) 8%, transparent);
+	--color-sidebar-accent-foreground: var(--cw-ink);
+	--color-sidebar-border: var(--cw-edge);
+	--color-sidebar-ring: color-mix(in oklab, var(--cw-ink) 30%, transparent);
 	/* Inset top highlight plus a tight and a soft drop shadow read as a raised panel. */
 	--shadow-frame:
 		inset 0 1px 0 var(--cw-highlight), 0 1px 2px var(--cw-shadow-near), 0 8px 24px -8px var(--cw-shadow-far);
+}
+
+/* The raised card every frame and settings pane sits on. */
+@utility panel {
+	@apply rounded-[16px] border border-edge bg-linear-to-b from-frame-top to-frame to-40% shadow-frame [corner-shape:superellipse(1.25)];
 }
 
 @layer base {

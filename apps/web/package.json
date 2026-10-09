@@ -14,11 +14,15 @@
 		"@effect/atom-react": "4.0.1",
 		"@pierre/trees": "1.0.0-beta.6",
 		"@tanstack/react-router": "^1.161.0",
+		"class-variance-authority": "^0.7.1",
+		"clsx": "^2.1.1",
 		"effect": "4.0.1",
 		"lucide-react": "^1.52.0",
+		"radix-ui": "^1.7.0",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0",
 		"scheduler": "^0.27.0",
+		"tailwind-merge": "^3.7.0",
 		"webwm": "https://github.com/codeworksh/webwm/releases/download/v0.1.0/webwm-0.1.0.tgz"
 	},
 	"devDependencies": {

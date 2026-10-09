@@ -47,6 +47,41 @@ export class SessionNotFound extends Schema.TaggedError<SessionNotFound>()("Serv
 	id: Schema.String,
 }) {}
 
+export const Layout = Schema.Literals(["tile", "monocle"]);
+export type Layout = typeof Layout.Type;
+
+/**
+ * A workspace. `bit` is its webwm tag bit, fixed for life so reordering never
+ * rewrites widget masks; `pos` is its place in the switcher and its Cmd+N key.
+ */
+export const Workspace = Schema.Struct({
+	id: Schema.String,
+	bit: Schema.Number,
+	pos: Schema.Number,
+	name: Schema.String,
+	/** A name from the app's icon set, e.g. "code". */
+	icon: Schema.String,
+	layout: Layout,
+	/** Master column share of the width, 0–1. */
+	mfact: Schema.Number,
+});
+export type Workspace = typeof Workspace.Type;
+
+export const WorkspaceCreate = Schema.Struct({ name: Schema.String, icon: Schema.String });
+export const WorkspaceUpdate = Schema.Struct({
+	id: Schema.String,
+	name: Schema.optional(Schema.String),
+	icon: Schema.optional(Schema.String),
+	layout: Schema.optional(Layout),
+	mfact: Schema.optional(Schema.Number),
+});
+export const WorkspaceOrder = Schema.Struct({ ids: Schema.Array(Schema.String) });
+export const WorkspaceId = Schema.Struct({ id: Schema.String });
+
+export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()("Server.WorkspaceError", {
+	message: Schema.String,
+}) {}
+
 /** Package-scoped JSON storage: `package` namespaces keys so packages never collide. */
 const KvKey = { package: Schema.String, key: Schema.String };
 
@@ -63,6 +98,30 @@ export const Api = RpcGroup.make(
 		payload: { id: Schema.String },
 		success: Session,
 		error: SessionNotFound,
+	}),
+	Rpc.make("workspaces.list", {
+		success: Schema.Array(Workspace),
+	}),
+	Rpc.make("workspaces.create", {
+		payload: WorkspaceCreate,
+		success: Workspace,
+		error: WorkspaceError,
+	}),
+	Rpc.make("workspaces.update", {
+		payload: WorkspaceUpdate,
+		success: Schema.Void,
+		error: WorkspaceError,
+	}),
+	/** Puts the workspaces in this order; `ids` must name every workspace once. */
+	Rpc.make("workspaces.reorder", {
+		payload: WorkspaceOrder,
+		success: Schema.Void,
+		error: WorkspaceError,
+	}),
+	Rpc.make("workspaces.delete", {
+		payload: WorkspaceId,
+		success: Schema.Void,
+		error: WorkspaceError,
 	}),
 	Rpc.make("kv.get", {
 		payload: KvKey,

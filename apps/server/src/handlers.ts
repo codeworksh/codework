@@ -2,6 +2,7 @@ import { Clock, Effect, FileSystem, Option, Path, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { Contract, type Entry } from "./contract.ts";
 import { findSession, projects } from "./mock.ts";
+import { Workspaces } from "./workspaces.ts";
 
 const JsonText = Schema.fromJsonString(Schema.Json);
 const decodeJson = Schema.decodeUnknownEffect(JsonText);
@@ -20,8 +21,11 @@ export const layer = Contract.Api.toLayer(
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 		const sql = yield* SqlClient.SqlClient;
+		const workspaces = yield* Workspaces.handlers;
 
 		return Contract.Api.of({
+			...workspaces,
+
 			"fs.list": Effect.fn("fs.list")(function* ({ path: directory }) {
 				const fail = (cause: unknown) => new Contract.FsError({ path: directory, message: String(cause) });
 				const names = yield* fs.readDirectory(directory).pipe(Effect.mapError(fail));

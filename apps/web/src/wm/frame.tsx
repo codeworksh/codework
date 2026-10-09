@@ -48,7 +48,7 @@ export function Frame(props: FrameProps) {
 			style={{ width: rect.w, height: rect.h, transform: `translate(${x}px, ${y}px)` }}
 			onPointerDown={props.onFocus}
 		>
-			<div className="flex h-full flex-col overflow-hidden rounded-[16px] border border-edge bg-linear-to-b from-frame-top to-frame to-40% shadow-frame [corner-shape:superellipse(1.25)] group-data-[focused=true]:border-edge-focus">
+			<div className="panel flex h-full flex-col overflow-hidden group-data-[focused=true]:border-edge-focus">
 				<header className="flex items-center gap-1 py-1.5 pr-2 pl-1.5 select-none">
 					<div
 						ref={handleRef}
