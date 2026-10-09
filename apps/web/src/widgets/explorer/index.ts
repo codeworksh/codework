@@ -5,7 +5,7 @@ import { defineWidget } from "../../sdk";
 import { Explorer, type ExplorerProps } from "./explorer";
 
 export const explorer = defineWidget<ExplorerProps>({
-	kind: "explorer",
+	kind: "codework:explorer",
 	title: "Files",
 	icon: FolderTree,
 	minWidth: 260,

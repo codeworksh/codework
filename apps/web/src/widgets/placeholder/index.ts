@@ -5,7 +5,7 @@ import { defineWidget } from "../../sdk";
 
 /** An empty frame, standing in for widgets that are not built yet. */
 export const placeholder = defineWidget({
-	kind: "placeholder",
+	kind: "codework:placeholder",
 	title: "Widget",
 	icon: AppWindow,
 	minWidth: 220,

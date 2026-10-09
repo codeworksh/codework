@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import {
 	focus,
 	hasMasterStack,
@@ -11,40 +12,58 @@ import {
 	type InsertionTarget,
 	type Widget,
 	type WidgetId,
-	type WidgetOrder,
 } from "webwm";
 import { useArrangedWidgets, useElementSize } from "webwm/react";
 
-import { registry } from "../widgets";
+import type { Frame as FrameApi, Shell } from "../sdk";
+import { FrameContext, ShellContext } from "../sdk/shell";
+import { builtins, registry } from "../widgets";
 import { Divider } from "./divider";
 import { Frame } from "./frame";
-import { instances } from "./instances";
-import { workspaceTag } from "./workspaces";
+import { add, initialDesk, type Instance, remove, focus as raise, update } from "./instances";
+import { resolve } from "./resolver";
+import { firstWorkspace, workspaceRoute, workspaceTag } from "./workspaces";
 
 const nmaster = 1;
-const byId = new Map(instances.map((instance) => [instance.id, instance]));
-
-// webwm only needs identity, tags, and minimum sizes; those come from the
-// widget's definition so the layout respects what each widget can shrink to.
-const widgets: Widget[] = instances.map(({ id, kind, tags }) => {
-	const definition = registry.get(kind);
-	return { id, tags, minWidth: definition?.minWidth ?? 220, minHeight: definition?.minHeight ?? 140 };
-});
 
 /** Frame title, icon, and body for one instance, resolved through the widget registry. */
-function describe(id: WidgetId) {
-	const instance = byId.get(id);
-	const definition = instance === undefined ? undefined : registry.get(instance.kind);
+function describe(instance: Instance) {
+	const definition = registry.get(instance.kind);
 	return {
-		title: instance?.title ?? definition?.title ?? id,
+		title: instance.title ?? definition?.title ?? instance.id,
 		icon: definition?.icon,
 		body:
-			instance !== undefined && definition !== undefined ? (
-				definition.render({ instanceId: id, props: instance.props })
+			definition === undefined ? (
+				<p className="p-3 text-ink-muted">Missing widget: {instance.kind}</p>
 			) : (
-				<p className="p-3 text-ink-muted">Missing widget: {instance?.kind ?? id}</p>
+				definition.render({
+					instanceId: instance.id,
+					props: instance.props,
+					address: instance.address,
+					params: instance.params ?? {},
+				})
 			),
 	};
+}
+
+interface HostProps {
+	readonly instanceId: string;
+	readonly shell: Shell;
+	readonly retitle: (instanceId: string, title: string) => void;
+	readonly children: ReactNode;
+}
+
+/** Gives a widget its shell and frame; the frame stays stable so widgets can use it in effects. */
+function Host({ instanceId, shell, retitle, children }: HostProps) {
+	const frame = useMemo<FrameApi>(
+		() => ({ instanceId, setTitle: (title) => retitle(instanceId, title) }),
+		[instanceId, retitle],
+	);
+	return (
+		<ShellContext value={shell}>
+			<FrameContext value={frame}>{children}</FrameContext>
+		</ShellContext>
+	);
 }
 
 /** Per-workspace view settings, like dwm's pertag: each workspace keeps its own split. */
@@ -67,10 +86,8 @@ interface DesktopProps {
 }
 
 export function Desktop({ workspace }: DesktopProps) {
-	const [order, setOrder] = useState<WidgetOrder>({
-		tileOrder: widgets.map(({ id }) => id),
-		focusOrder: widgets.map(({ id }) => id),
-	});
+	const [desk, setDesk] = useState(initialDesk);
+	const navigate = useNavigate();
 	const [views, setViews] = useState<ReadonlyMap<number, View>>(() => new Map());
 	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
 	const [drag, setDrag] = useState<Drag | null>(null);
@@ -78,6 +95,18 @@ export function Desktop({ workspace }: DesktopProps) {
 	const [ref, size] = useElementSize<HTMLDivElement>();
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const activeTags = workspaceTag(workspace);
+	const { instances, order } = desk;
+	// webwm only needs identity, tags, and minimum sizes; those come from the
+	// widget's definition so the layout respects what each widget can shrink to.
+	const widgets: Widget[] = useMemo(
+		() =>
+			instances.map(({ id, kind, tags }) => {
+				const definition = registry.get(kind);
+				return { id, tags, minWidth: definition?.minWidth ?? 220, minHeight: definition?.minHeight ?? 140 };
+			}),
+		[instances],
+	);
+	const byId = new Map(instances.map((instance) => [instance.id, instance]));
 	const { layout, mfact } = views.get(workspace) ?? defaultView;
 	const setView = (patch: Partial<View>) =>
 		setViews((current) => new Map(current).set(workspace, { ...(current.get(workspace) ?? defaultView), ...patch }));
@@ -117,7 +146,55 @@ export function Desktop({ workspace }: DesktopProps) {
 	};
 
 	const focusWidget = (widgetId: WidgetId) =>
-		setOrder((current) => focus(widgets, current, activeTags, widgetId).order);
+		setDesk((current) => ({ ...current, order: focus(widgets, current.order, activeTags, widgetId).order }));
+
+	// Focuses an instance, switching to a workspace that shows it when this one does not.
+	const reveal = (instance: Instance) => {
+		setDesk((current) => raise(current, instance.id));
+		if ((instance.tags & activeTags) === 0) void navigate(workspaceRoute(firstWorkspace(instance.tags)));
+	};
+
+	const retitle = useCallback(
+		(instanceId: string, title: string) => setDesk((current) => update(current, instanceId, { title })),
+		[],
+	);
+
+	/** The shell API as seen by one widget: it is the default target and where new widgets land next to. */
+	const shellFor = (caller: string): Shell => ({
+		open(address, { kind, placement = "next", fresh = false, params } = {}) {
+			// The most recently focused instance showing the address wins.
+			const existing = fresh
+				? undefined
+				: order.focusOrder
+						.map((id) => byId.get(id))
+						.find((instance) => instance?.address === address && (kind === undefined || instance.kind === kind));
+			if (existing !== undefined) {
+				if (params !== undefined) setDesk((current) => update(current, existing.id, { params }));
+				reveal(existing);
+				return;
+			}
+			const widget = resolve(builtins, address, kind);
+			if (widget === undefined) throw new Error(`No widget opens ${address}`);
+			const instance: Instance = {
+				id: `${widget.kind}/${crypto.randomUUID().slice(0, 8)}`,
+				kind: widget.kind,
+				tags: activeTags,
+				props: {},
+				address,
+				...(params === undefined ? {} : { params }),
+			};
+			setDesk((current) => add(current, instance, placement === "next" ? caller : undefined));
+		},
+		focus(instanceId = caller) {
+			const instance = byId.get(instanceId);
+			if (instance !== undefined) reveal(instance);
+		},
+		close(instanceId = caller) {
+			setDesk((current) =>
+				current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current,
+			);
+		},
+	});
 
 	const toggleMax = (widgetId: WidgetId) => {
 		setDrag(null);
@@ -145,7 +222,9 @@ export function Desktop({ workspace }: DesktopProps) {
 				style={{ width: arrangement.contentBounds.w, height: arrangement.contentBounds.h }}
 			>
 				{arrangement.placements.map(({ widget, rect }) => {
-					const { title, icon, body } = describe(widget.id);
+					const instance = byId.get(widget.id);
+					if (instance === undefined) return null;
+					const { title, icon, body } = describe(instance);
 					return (
 						<Frame
 							key={widget.id}
@@ -161,6 +240,7 @@ export function Desktop({ workspace }: DesktopProps) {
 							onFocus={() => focusWidget(widget.id)}
 							onPin={() => togglePin(widget.id)}
 							onMaximize={() => toggleMax(widget.id)}
+							onClose={() => setDesk((current) => remove(current, widget.id))}
 							onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
 							onDragMove={({ clientX, clientY, deltaX, deltaY }) =>
 								setDrag({ widgetId: widget.id, deltaX, deltaY, target: targetAt(clientX, clientY) })
@@ -168,12 +248,17 @@ export function Desktop({ workspace }: DesktopProps) {
 							onDragEnd={({ clientX, clientY }) => {
 								const target = targetAt(clientX, clientY);
 								if (target)
-									setOrder((current) => moveWidgetRelative(current, widget.id, target.widgetId, target.edge));
+									setDesk((current) => ({
+										...current,
+										order: moveWidgetRelative(current.order, widget.id, target.widgetId, target.edge),
+									}));
 								setDrag(null);
 							}}
 							onDragCancel={() => setDrag(null)}
 						>
-							{body}
+							<Host instanceId={widget.id} shell={shellFor(widget.id)} retitle={retitle}>
+								{body}
+							</Host>
 						</Frame>
 					);
 				})}

@@ -1,8 +1,11 @@
+import { attachWidget, detachWidget, focusWidget, moveWidgetRelative, type WidgetOrder } from "webwm";
+
+import type { Params } from "../sdk";
 import { workspaceTag } from "./workspaces";
 
 /**
  * One placed copy of a widget. The window manager owns instances; a widget only
- * ever sees its own id and decoded props.
+ * ever sees its own id, address, params, and decoded props.
  */
 export interface Instance {
 	readonly id: string;
@@ -14,17 +17,63 @@ export interface Instance {
 	readonly props: unknown;
 	/** Overrides the widget's default title. */
 	readonly title?: string;
+	/** What the instance shows when opened by address; opening it again focuses this instance. */
+	readonly address?: string;
+	readonly params?: Params;
+}
+
+/** Every instance plus webwm's tile and focus order over them. */
+export interface Desk {
+	readonly instances: readonly Instance[];
+	readonly order: WidgetOrder;
 }
 
 const [main, code, notes] = [workspaceTag(1), workspaceTag(2), workspaceTag(3)];
 
 // Hardcoded until instances live in SQLite. Tile order follows this list, so
-// Files is the master on Main; Chat and Terminal sit on two workspaces at once.
-export const instances: readonly Instance[] = [
-	{ id: "files", kind: "explorer", tags: main, props: { root: "/Users/sanchitrk/Developer/codeworksh/codework" } },
-	{ id: "chat", kind: "placeholder", title: "Chat", tags: main | code, props: {} },
-	{ id: "terminal", kind: "placeholder", title: "Terminal", tags: main | code, props: {} },
-	{ id: "preview", kind: "placeholder", title: "Preview", tags: main, props: {} },
-	{ id: "editor", kind: "placeholder", title: "Editor", tags: code, props: {} },
-	{ id: "notes", kind: "placeholder", title: "Notes", tags: notes, props: {} },
+// Files is the master on Main and Projects on Code; Chat and Terminal sit on
+// two workspaces at once.
+const seed: readonly Instance[] = [
+	{
+		id: "files",
+		kind: "codework:explorer",
+		tags: main,
+		props: { root: "/Users/sanchitrk/Developer/codeworksh/codework" },
+	},
+	{ id: "projects", kind: "codework:projects", tags: code, props: {} },
+	{ id: "chat", kind: "codework:placeholder", title: "Chat", tags: main | code, props: {} },
+	{ id: "terminal", kind: "codework:placeholder", title: "Terminal", tags: main | code, props: {} },
+	{ id: "preview", kind: "codework:placeholder", title: "Preview", tags: main, props: {} },
+	{ id: "editor", kind: "codework:placeholder", title: "Editor", tags: code, props: {} },
+	{ id: "notes", kind: "codework:placeholder", title: "Notes", tags: notes, props: {} },
 ];
+
+const ids = seed.map(({ id }) => id);
+export const initialDesk: Desk = { instances: seed, order: { tileOrder: ids, focusOrder: ids } };
+
+/** Adds a focused instance to the tile order right after `after`, or last. */
+export function add(desk: Desk, instance: Instance, after?: string): Desk {
+	const attached = attachWidget(desk.order, instance.id);
+	const target = after ?? desk.order.tileOrder.at(-1);
+	return {
+		instances: [...desk.instances, instance],
+		order: target === undefined ? attached : moveWidgetRelative(attached, instance.id, target, "after"),
+	};
+}
+
+export const remove = (desk: Desk, id: string): Desk => ({
+	instances: desk.instances.filter((instance) => instance.id !== id),
+	order: detachWidget(desk.order, id),
+});
+
+export const focus = (desk: Desk, id: string): Desk => ({ ...desk, order: focusWidget(desk.order, id) });
+
+export function update(desk: Desk, id: string, patch: Partial<Instance>): Desk {
+	const current = desk.instances.find((instance) => instance.id === id);
+	if (current === undefined || Object.entries(patch).every(([key, value]) => current[key as keyof Instance] === value))
+		return desk;
+	return {
+		...desk,
+		instances: desk.instances.map((instance) => (instance === current ? { ...instance, ...patch } : instance)),
+	};
+}

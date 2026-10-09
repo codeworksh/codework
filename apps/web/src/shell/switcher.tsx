@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 
-import { defaultWorkspace, workspaces } from "../wm/workspaces";
+import { workspaceRoute, workspaces } from "../wm/workspaces";
 
 interface SwitcherProps {
 	readonly active: number;
@@ -15,9 +15,7 @@ export function Switcher({ active }: SwitcherProps) {
 				return (
 					<Link
 						key={id}
-						{...(id === defaultWorkspace
-							? { to: "/" }
-							: { to: "/workspaces/$workspaceId", params: { workspaceId: String(id) } })}
+						{...workspaceRoute(id)}
 						aria-current={current ? "page" : undefined}
 						title={`${name} (${shortcutLabel(id)})`}
 						className={`flex h-7 items-center gap-1.5 rounded-[10px] px-3 font-medium transition-colors [corner-shape:superellipse(1.25)] ${

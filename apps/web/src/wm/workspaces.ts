@@ -24,3 +24,12 @@ export function parseWorkspace(param: string | undefined): number | null {
 	const id = Number(param);
 	return workspaces.some((workspace) => workspace.id === id) ? id : null;
 }
+
+/** The lowest workspace in a tag mask: where an instance on several workspaces is revealed. */
+export const firstWorkspace = (tags: number) => Math.log2(tags & -tags) + 1;
+
+/** Router target for a workspace; the default one is `/`. */
+export const workspaceRoute = (id: number) =>
+	id === defaultWorkspace
+		? ({ to: "/" } as const)
+		: ({ to: "/workspaces/$workspaceId", params: { workspaceId: String(id) } } as const);

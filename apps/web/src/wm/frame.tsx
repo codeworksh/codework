@@ -1,4 +1,4 @@
-import { GripVertical, Maximize2, Minimize2, Pin, PinOff, type LucideIcon } from "lucide-react";
+import { GripVertical, Maximize2, Minimize2, Pin, PinOff, X, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Rect } from "webwm";
 import { useDragHandle } from "webwm/react";
@@ -19,6 +19,7 @@ interface FrameProps {
 	readonly onFocus: () => void;
 	readonly onPin: () => void;
 	readonly onMaximize: () => void;
+	readonly onClose: () => void;
 	readonly onDragStart: () => void;
 	readonly onDragMove: (movement: DragMovement) => void;
 	readonly onDragEnd: (movement: DragMovement) => void;
@@ -72,6 +73,7 @@ export function Frame(props: FrameProps) {
 						active={false}
 						onClick={props.onMaximize}
 					/>
+					<Action icon={X} label="Close" active={false} onClick={props.onClose} />
 				</header>
 				<div className="min-h-0 flex-1 overflow-hidden">{props.children}</div>
 			</div>

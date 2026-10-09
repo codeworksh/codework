@@ -3,7 +3,7 @@ import { useEffect } from "react";
 
 import { Desktop } from "../wm/desktop";
 import { Switcher, workspaceShortcut } from "./switcher";
-import { defaultWorkspace, parseWorkspace } from "../wm/workspaces";
+import { defaultWorkspace, parseWorkspace, workspaceRoute } from "../wm/workspaces";
 
 // The window has no native title bar on macOS; this bar is its drag region and
 // leaves room for the inset traffic lights.
@@ -23,9 +23,7 @@ export function Shell() {
 			const id = workspaceShortcut(event);
 			if (id === null) return;
 			event.preventDefault();
-			void (id === defaultWorkspace
-				? navigate({ to: "/" })
-				: navigate({ to: "/workspaces/$workspaceId", params: { workspaceId: String(id) } }));
+			void navigate(workspaceRoute(id));
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);

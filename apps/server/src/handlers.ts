@@ -1,6 +1,7 @@
 import { Clock, Effect, FileSystem, Option, Path, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { Contract, type Entry } from "./contract.ts";
+import { findSession, projects } from "./mock.ts";
 
 const JsonText = Schema.fromJsonString(Schema.Json);
 const decodeJson = Schema.decodeUnknownEffect(JsonText);
@@ -41,6 +42,14 @@ export const layer = Contract.Api.toLayer(
 					.filter(Option.isSome)
 					.map((entry) => entry.value)
 					.sort(byKindThenName);
+			}),
+
+			"projects.list": () => Effect.succeed(projects),
+
+			"sessions.get": Effect.fn("sessions.get")(function* ({ id }) {
+				const session = findSession(id);
+				if (session === undefined) return yield* new Contract.SessionNotFound({ id });
+				return session;
 			}),
 
 			"kv.get": Effect.fn("kv.get")(function* ({ package: pkg, key }) {
