@@ -59,109 +59,108 @@ const BOM = [0xef, 0xbb, 0xbf] as const;
  * started, so a file that keeps growing cannot keep the scan going.
  */
 export class LineScanner {
-	readonly #start: number;
-	readonly #end: number;
-	readonly #maxBytes: number;
+	private readonly start: number;
+	private readonly end: number;
+	private readonly maxBytes: number;
 	// Only a mark at the very start of the file is dropped, and that happens on
 	// the bytes; one starting a later line is text.
-	readonly #decoder = new TextDecoder("utf-8", { ignoreBOM: true });
+	private readonly decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 	/** The first bytes, held until it is known whether they are a byte-order mark. */
-	#head: Array<number> | undefined = [];
-	#totalBytes = 0;
-	#line = 0;
-	#lineLength = 0;
-	#lineOpen = false;
+	private head: Array<number> | undefined = [];
+	private totalBytes = 0;
+	private line = 0;
+	private lineLength = 0;
+	private lineOpen = false;
 	/** The current line's bytes, kept only while it is selected and could still fit. */
-	#pieces: Array<Uint8Array> = [];
-	#selected: Array<Uint8Array> = [];
-	#selectedBytes = 0;
-	#firstLineBytes = 0;
-	#full = false;
+	private pieces: Array<Uint8Array> = [];
+	private selected: Array<Uint8Array> = [];
+	private selectedBytes = 0;
+	private firstLineBytes = 0;
+	private full = false;
 
 	constructor(options: LineScanOptions) {
 		validate(options);
-		this.#start = options.startLine;
-		this.#end = options.endLine ?? Number.POSITIVE_INFINITY;
-		this.#maxBytes = options.maxBytes;
+		this.start = options.startLine;
+		this.end = options.endLine ?? Number.POSITIVE_INFINITY;
+		this.maxBytes = options.maxBytes;
 	}
 
 	push(chunk: Uint8Array): void {
-		this.#totalBytes += chunk.length;
-		if (this.#head !== undefined) {
-			const take = Math.min(BOM.length - this.#head.length, chunk.length);
-			this.#head.push(...chunk.subarray(0, take));
-			if (this.#head.length < BOM.length) return;
-			this.#releaseHead();
+		this.totalBytes += chunk.length;
+		if (this.head !== undefined) {
+			const take = Math.min(BOM.length - this.head.length, chunk.length);
+			this.head.push(...chunk.subarray(0, take));
+			if (this.head.length < BOM.length) return;
+			this.releaseHead();
 			chunk = chunk.subarray(take);
 		}
-		this.#scan(chunk);
+		this.scan(chunk);
 	}
 
 	finish(): LineScan {
-		if (this.#head !== undefined) this.#releaseHead();
-		if (this.#lineOpen) this.#endLine();
-		const text = this.#selected.map((line) => this.#decoder.decode(line)).join("\n");
+		if (this.head !== undefined) this.releaseHead();
+		if (this.lineOpen) this.endLine();
+		const text = this.selected.map((line) => this.decoder.decode(line)).join("\n");
 		return {
 			text,
-			lines: this.#selected.length,
-			totalLines: this.#line,
-			totalBytes: this.#totalBytes,
-			firstLineBytes: this.#firstLineBytes,
+			lines: this.selected.length,
+			totalLines: this.line,
+			totalBytes: this.totalBytes,
+			firstLineBytes: this.firstLineBytes,
 		};
 	}
 
-	#releaseHead(): void {
-		const head = Uint8Array.from(this.#head ?? []);
-		this.#head = undefined;
+	private releaseHead(): void {
+		const head = Uint8Array.from(this.head ?? []);
+		this.head = undefined;
 		const bom = head.length === BOM.length && BOM.every((byte, index) => head[index] === byte);
-		if (!bom) this.#scan(head);
+		if (!bom) this.scan(head);
 	}
 
-	#scan(chunk: Uint8Array): void {
+	private scan(chunk: Uint8Array): void {
 		let from = 0;
 		while (from < chunk.length) {
 			const newline = chunk.indexOf(NEWLINE, from);
 			const to = newline === -1 ? chunk.length : newline;
-			this.#append(chunk.subarray(from, to));
+			this.append(chunk.subarray(from, to));
 			if (newline === -1) return;
-			this.#endLine();
+			this.endLine();
 			from = newline + 1;
 		}
 	}
 
-	#isSelected(): boolean {
-		return !this.#full && this.#line >= this.#start && this.#line < this.#end;
+	private isSelected(): boolean {
+		return !this.full && this.line >= this.start && this.line < this.end;
 	}
 
-	#append(bytes: Uint8Array): void {
+	private append(bytes: Uint8Array): void {
 		if (bytes.length === 0) {
-			this.#lineOpen = true;
+			this.lineOpen = true;
 			return;
 		}
-		this.#lineOpen = true;
+		this.lineOpen = true;
 		// Past `maxBytes` the line cannot fit, so its bytes are only counted. Copied,
 		// not sliced: a Node `Buffer` slice is a view the reader may overwrite.
-		if (this.#isSelected() && this.#lineLength + bytes.length <= this.#maxBytes)
-			this.#pieces.push(new Uint8Array(bytes));
-		this.#lineLength += bytes.length;
+		if (this.isSelected() && this.lineLength + bytes.length <= this.maxBytes) this.pieces.push(new Uint8Array(bytes));
+		this.lineLength += bytes.length;
 	}
 
-	#endLine(): void {
-		if (this.#isSelected()) {
-			const first = this.#selected.length === 0;
-			if (first) this.#firstLineBytes = this.#lineLength;
-			const added = first ? this.#lineLength : this.#lineLength + 1;
-			if (this.#selectedBytes + added > this.#maxBytes) this.#full = true;
+	private endLine(): void {
+		if (this.isSelected()) {
+			const first = this.selected.length === 0;
+			if (first) this.firstLineBytes = this.lineLength;
+			const added = first ? this.lineLength : this.lineLength + 1;
+			if (this.selectedBytes + added > this.maxBytes) this.full = true;
 			else {
-				this.#selected.push(concat(this.#pieces, this.#lineLength));
-				this.#selectedBytes += added;
+				this.selected.push(concat(this.pieces, this.lineLength));
+				this.selectedBytes += added;
 			}
 		}
-		this.#pieces = [];
-		this.#lineLength = 0;
-		this.#lineOpen = false;
-		this.#line++;
+		this.pieces = [];
+		this.lineLength = 0;
+		this.lineOpen = false;
+		this.line++;
 	}
 }
 
