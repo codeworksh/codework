@@ -89,13 +89,13 @@ export function WorkspacesSettings() {
 			title="Workspaces"
 			description="Each workspace is a tab in the title bar. Its place in the list is its keyboard shortcut."
 		>
-			<Section title="Your workspaces">
+			<Section title="Your Workspaces">
 				<Group>
 					{listed.map((workspace, index) => (
 						<div
 							key={workspace.id}
 							data-workspace={workspace.id}
-							className={`flex items-center gap-2 px-2 py-2 ${dragging === workspace.id ? "opacity-50" : ""}`}
+							className={`flex items-center gap-2 px-3 py-2.5 ${dragging === workspace.id ? "opacity-50" : ""}`}
 							onDragOver={(event) => {
 								event.preventDefault();
 								dragOver(workspace.id);
@@ -127,7 +127,7 @@ export function WorkspacesSettings() {
 						type="button"
 						disabled={workspaces.length >= MAX}
 						title={workspaces.length >= MAX ? `All ${MAX} workspaces are in use` : undefined}
-						className="flex items-center gap-2 rounded-b-xl px-4 py-3 text-ink-muted transition-colors hover:bg-ink/4 hover:text-ink disabled:pointer-events-none disabled:opacity-50"
+						className="flex items-center gap-2 rounded-b-xl px-5 py-4 text-ink-muted transition-colors hover:bg-ink/4 hover:text-ink disabled:pointer-events-none disabled:opacity-50"
 						onClick={addWorkspace}
 					>
 						<Plus className="size-4" />

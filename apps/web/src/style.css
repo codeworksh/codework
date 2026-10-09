@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Self-hosted so it works offline; the optical-size axis tunes glyphs for small text vs titles. */
+@import "@fontsource-variable/inter/opsz.css";
 
 /* `--cw-*` are the theme contract widgets style against; Tailwind colors map onto
    them so light/dark switches in one place. */
@@ -33,6 +35,11 @@
 		--cw-scrollbar: rgb(255 255 255 / 0.14);
 		--cw-danger: #f87171;
 	}
+}
+
+/* One token for interface text, so a different face is a one-line change. */
+@theme {
+	--font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
 @theme inline {
@@ -89,7 +96,7 @@
 	}
 
 	body {
-		@apply bg-desktop text-[13px]/[1.4] text-ink;
+		@apply bg-desktop text-[13px]/[1.4] text-ink antialiased;
 	}
 
 	/* A 6px rounded thumb on a clear track, widget content included. The standard
