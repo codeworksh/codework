@@ -1,5 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
+import { MessageSquareText } from "lucide-react";
 import { useEffect } from "react";
 
 import { Server, useFrame, type WidgetProps } from "../../sdk";
@@ -14,13 +15,15 @@ export function Session({ address }: WidgetProps<unknown>) {
 }
 
 function Conversation({ id }: { readonly id: string }) {
-	const { setTitle } = useFrame();
+	const { setTitle, setIcon } = useFrame();
 	const result = useAtomValue(sessions(id));
 	const title = AsyncResult.isSuccess(result) ? result.value.title : undefined;
 
 	useEffect(() => {
-		if (title !== undefined) setTitle(title);
-	}, [title, setTitle]);
+		if (title === undefined) return;
+		setTitle(title);
+		setIcon(MessageSquareText);
+	}, [title, setTitle, setIcon]);
 
 	return AsyncResult.match(result, {
 		onInitial: () => null,

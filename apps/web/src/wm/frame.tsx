@@ -4,6 +4,8 @@ import type { Rect } from "webwm";
 import { useDragHandle } from "webwm/react";
 import type { DragMovement } from "webwm/dom";
 
+import { Title } from "./title";
+
 interface FrameProps {
 	readonly title: string;
 	readonly icon?: LucideIcon | undefined;
@@ -57,9 +59,7 @@ export function Frame(props: FrameProps) {
 							aria-hidden
 						/>
 						{Icon && <Icon className="mr-0.5 size-3.5 shrink-0 text-ink-muted" strokeWidth={1.75} aria-hidden />}
-						<span className="truncate font-medium text-ink-muted group-data-[focused=true]:text-ink">
-							{title}
-						</span>
+						<Title text={title} className="font-medium text-ink-muted group-data-[focused=true]:text-ink" />
 					</div>
 					<Action
 						icon={pinned ? PinOff : Pin}

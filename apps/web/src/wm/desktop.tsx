@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import type { LucideIcon } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import {
 	focus,
@@ -26,12 +27,18 @@ import { firstWorkspace, workspaceRoute, workspaceTag } from "./workspaces";
 
 const nmaster = 1;
 
+/** What a widget set on its frame at runtime; it outranks the instance and definition. */
+interface Chrome {
+	readonly title?: string;
+	readonly icon?: LucideIcon;
+}
+
 /** Frame title, icon, and body for one instance, resolved through the widget registry. */
-function describe(instance: Instance) {
+function describe(instance: Instance, chrome: Chrome | undefined) {
 	const definition = registry.get(instance.kind);
 	return {
-		title: instance.title ?? definition?.title ?? instance.id,
-		icon: definition?.icon,
+		title: chrome?.title ?? instance.title ?? definition?.title ?? instance.id,
+		icon: chrome?.icon ?? definition?.icon,
 		body:
 			definition === undefined ? (
 				<p className="p-3 text-ink-muted">Missing widget: {instance.kind}</p>
@@ -49,15 +56,19 @@ function describe(instance: Instance) {
 interface HostProps {
 	readonly instanceId: string;
 	readonly shell: Shell;
-	readonly retitle: (instanceId: string, title: string) => void;
+	readonly decorate: (instanceId: string, chrome: Chrome) => void;
 	readonly children: ReactNode;
 }
 
 /** Gives a widget its shell and frame; the frame stays stable so widgets can use it in effects. */
-function Host({ instanceId, shell, retitle, children }: HostProps) {
+function Host({ instanceId, shell, decorate, children }: HostProps) {
 	const frame = useMemo<FrameApi>(
-		() => ({ instanceId, setTitle: (title) => retitle(instanceId, title) }),
-		[instanceId, retitle],
+		() => ({
+			instanceId,
+			setTitle: (title) => decorate(instanceId, { title }),
+			setIcon: (icon) => decorate(instanceId, { icon }),
+		}),
+		[instanceId, decorate],
 	);
 	return (
 		<ShellContext value={shell}>
@@ -89,6 +100,7 @@ export function Desktop({ workspace }: DesktopProps) {
 	const [desk, setDesk] = useState(initialDesk);
 	const navigate = useNavigate();
 	const [views, setViews] = useState<ReadonlyMap<number, View>>(() => new Map());
+	const [chrome, setChrome] = useState<ReadonlyMap<string, Chrome>>(() => new Map());
 	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
 	const [drag, setDrag] = useState<Drag | null>(null);
 	const [resizing, setResizing] = useState(false);
@@ -154,10 +166,32 @@ export function Desktop({ workspace }: DesktopProps) {
 		if ((instance.tags & activeTags) === 0) void navigate(workspaceRoute(firstWorkspace(instance.tags)));
 	};
 
-	const retitle = useCallback(
-		(instanceId: string, title: string) => setDesk((current) => update(current, instanceId, { title })),
+	const decorate = useCallback(
+		(instanceId: string, patch: Chrome) =>
+			setChrome((current) => {
+				const previous = current.get(instanceId) ?? {};
+				const next = { ...previous, ...patch };
+				if (next.title === previous.title && next.icon === previous.icon) return current;
+				return new Map(current).set(instanceId, next);
+			}),
 		[],
 	);
+
+	// A frame showing something else, or gone, starts from the widget's defaults again.
+	const undecorate = (instanceId: string) =>
+		setChrome((current) => {
+			if (!current.has(instanceId)) return current;
+			const next = new Map(current);
+			next.delete(instanceId);
+			return next;
+		});
+
+	const close = (instanceId: string) => {
+		setDesk((current) =>
+			current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current,
+		);
+		undecorate(instanceId);
+	};
 
 	/** The shell API as seen by one widget: the default target, and the opener of what it opens. */
 	const shellFor = (caller: string): Shell => ({
@@ -184,6 +218,7 @@ export function Desktop({ workspace }: DesktopProps) {
 					: undefined;
 				if (target !== undefined) {
 					setDesk((current) => raise(retarget(current, target.id, address, params), target.id));
+					undecorate(target.id);
 					return;
 				}
 			}
@@ -203,9 +238,7 @@ export function Desktop({ workspace }: DesktopProps) {
 			if (instance !== undefined) reveal(instance);
 		},
 		close(instanceId = caller) {
-			setDesk((current) =>
-				current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current,
-			);
+			close(instanceId);
 		},
 	});
 
@@ -237,7 +270,7 @@ export function Desktop({ workspace }: DesktopProps) {
 				{arrangement.placements.map(({ widget, rect }) => {
 					const instance = byId.get(widget.id);
 					if (instance === undefined) return null;
-					const { title, icon, body } = describe(instance);
+					const { title, icon, body } = describe(instance, chrome.get(widget.id));
 					return (
 						<Frame
 							key={widget.id}
@@ -253,7 +286,7 @@ export function Desktop({ workspace }: DesktopProps) {
 							onFocus={() => focusWidget(widget.id)}
 							onPin={() => togglePin(widget.id)}
 							onMaximize={() => toggleMax(widget.id)}
-							onClose={() => setDesk((current) => remove(current, widget.id))}
+							onClose={() => close(widget.id)}
 							onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
 							onDragMove={({ clientX, clientY, deltaX, deltaY }) =>
 								setDrag({ widgetId: widget.id, deltaX, deltaY, target: targetAt(clientX, clientY) })
@@ -269,7 +302,12 @@ export function Desktop({ workspace }: DesktopProps) {
 							}}
 							onDragCancel={() => setDrag(null)}
 						>
-							<Host key={instance.address} instanceId={widget.id} shell={shellFor(widget.id)} retitle={retitle}>
+							<Host
+								key={instance.address}
+								instanceId={widget.id}
+								shell={shellFor(widget.id)}
+								decorate={decorate}
+							>
 								{body}
 							</Host>
 						</Frame>

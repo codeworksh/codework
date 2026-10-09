@@ -70,12 +70,12 @@ export const remove = (desk: Desk, id: string): Desk => ({
 
 export const focus = (desk: Desk, id: string): Desk => ({ ...desk, order: focusWidget(desk.order, id) });
 
-/** Shows another address in an instance; the old address's title and params go with it. */
+/** Shows another address in an instance; the old address's params go with it. */
 export const retarget = (desk: Desk, id: string, address: string, params: Params | undefined): Desk => ({
 	...desk,
 	instances: desk.instances.map((instance) => {
 		if (instance.id !== id) return instance;
-		const { title: _title, params: _params, ...kept } = instance;
+		const { params: _params, ...kept } = instance;
 		return { ...kept, address, ...(params === undefined ? {} : { params }) };
 	}),
 });

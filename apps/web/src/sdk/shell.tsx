@@ -1,3 +1,4 @@
+import type { LucideIcon } from "lucide-react";
 import { createContext, useContext } from "react";
 
 import { isMac } from "../kernel/platform";
@@ -36,8 +37,10 @@ export interface Shell {
 
 export interface Frame {
 	readonly instanceId: string;
-	/** Replaces the frame title until the widget closes. */
+	/** Replaces the default title; a title too long for the frame is shortened in the middle. */
 	readonly setTitle: (title: string) => void;
+	/** Replaces the default icon. */
+	readonly setIcon: (icon: LucideIcon) => void;
 }
 
 /**
