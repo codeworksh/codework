@@ -57,9 +57,20 @@
 		@apply bg-desktop text-[13px]/[1.4] text-ink;
 	}
 
-	/* Thin thumb on a clear track; covers widget content too. */
-	* {
-		scrollbar-width: thin;
-		scrollbar-color: var(--cw-scrollbar) transparent;
+	/* A 6px rounded thumb on a clear track, widget content included. The standard
+	   scrollbar-width/color would override these and bottom out at "thin". */
+	::-webkit-scrollbar {
+		width: 6px;
+		height: 6px;
+	}
+
+	::-webkit-scrollbar-track,
+	::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+
+	::-webkit-scrollbar-thumb {
+		border-radius: 3px;
+		background: var(--cw-scrollbar);
 	}
 }
