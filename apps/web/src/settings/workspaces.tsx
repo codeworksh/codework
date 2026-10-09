@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { isMac } from "../kernel/platform";
 import { iconOf, icons } from "../shell/icons";
 import { shortcutLabel } from "../shell/switcher";
 import { deskAtom, only, untag } from "../wm/instances";
@@ -29,6 +30,7 @@ import {
 	workspacesKey,
 	workspaceTag,
 } from "../wm/workspaces";
+import { Group, Keys, Page, Row, Section } from "./blocks";
 
 // webwm tag bits available, and so the Cmd+1–9 keys; the server enforces it too.
 const MAX = 9;
@@ -83,56 +85,73 @@ export function WorkspacesSettings() {
 	};
 
 	return (
-		<div className="mx-auto flex max-w-2xl flex-col gap-4 p-4 md:p-6">
-			<header>
-				<h2 className="text-base font-semibold">Workspaces</h2>
-				<p className="text-ink-muted">
-					Each workspace is a tab in the title bar, in this order, and a {shortcutLabel(1)}–{MAX} shortcut. Drag to
-					reorder.
-				</p>
-			</header>
-			<ul className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-				{listed.map((workspace, index) => (
-					<li
-						key={workspace.id}
-						data-workspace={workspace.id}
-						className={`flex items-center gap-2 px-2 py-1.5 ${dragging === workspace.id ? "opacity-50" : ""}`}
-						onDragOver={(event) => {
-							event.preventDefault();
-							dragOver(workspace.id);
-						}}
-						onDrop={(event) => event.preventDefault()}
-					>
-						<span
-							draggable
-							aria-label={`Reorder ${workspace.name}`}
-							className="grid size-7 cursor-grab place-items-center text-ink-muted/60 active:cursor-grabbing"
-							onDragStart={(event) => {
-								event.dataTransfer.effectAllowed = "move";
-								const row = event.currentTarget.closest("li");
-								if (row) event.dataTransfer.setDragImage(row, 16, row.offsetHeight / 2);
-								setDragging(workspace.id);
+		<Page
+			title="Workspaces"
+			description="Each workspace is a tab in the title bar. Its place in the list is its keyboard shortcut."
+		>
+			<Section title="Your workspaces">
+				<Group>
+					{listed.map((workspace, index) => (
+						<div
+							key={workspace.id}
+							data-workspace={workspace.id}
+							className={`flex items-center gap-2 px-2 py-2 ${dragging === workspace.id ? "opacity-50" : ""}`}
+							onDragOver={(event) => {
+								event.preventDefault();
+								dragOver(workspace.id);
 							}}
-							onDragEnd={dragEnd}
+							onDrop={(event) => event.preventDefault()}
 						>
-							<GripVertical className="size-4" />
-						</span>
-						<IconPicker workspace={workspace} onError={setError} />
-						<NameField workspace={workspace} autoFocus={workspace.id === created} onError={setError} />
-						<kbd className="w-9 shrink-0 text-center font-sans text-ink-muted">{shortcutLabel(index + 1)}</kbd>
-						<DeleteButton workspace={workspace} disabled={workspaces.length === 1} onError={setError} />
-					</li>
-				))}
-			</ul>
-			<div className="flex items-center gap-3">
-				<Button variant="secondary" size="sm" disabled={workspaces.length >= MAX} onClick={addWorkspace}>
-					<Plus />
-					New workspace
-				</Button>
-				{workspaces.length >= MAX && <span className="text-ink-muted">All {MAX} workspaces are in use.</span>}
-			</div>
-			{error !== null && <p className="text-destructive">{error}</p>}
-		</div>
+							<span
+								draggable
+								aria-label={`Reorder ${workspace.name}`}
+								title="Drag to reorder"
+								className="grid size-7 cursor-grab place-items-center text-ink-muted/60 active:cursor-grabbing"
+								onDragStart={(event) => {
+									event.dataTransfer.effectAllowed = "move";
+									const row = event.currentTarget.parentElement;
+									if (row) event.dataTransfer.setDragImage(row, 16, row.offsetHeight / 2);
+									setDragging(workspace.id);
+								}}
+								onDragEnd={dragEnd}
+							>
+								<GripVertical className="size-4" />
+							</span>
+							<IconPicker workspace={workspace} onError={setError} />
+							<NameField workspace={workspace} autoFocus={workspace.id === created} onError={setError} />
+							<Keys>{shortcutLabel(index + 1)}</Keys>
+							<DeleteButton workspace={workspace} disabled={workspaces.length === 1} onError={setError} />
+						</div>
+					))}
+					<button
+						type="button"
+						disabled={workspaces.length >= MAX}
+						title={workspaces.length >= MAX ? `All ${MAX} workspaces are in use` : undefined}
+						className="flex items-center gap-2 rounded-b-xl px-4 py-3 text-ink-muted transition-colors hover:bg-ink/4 hover:text-ink disabled:pointer-events-none disabled:opacity-50"
+						onClick={addWorkspace}
+					>
+						<Plus className="size-4" />
+						New workspace
+					</button>
+				</Group>
+				{error !== null && <p className="text-destructive">{error}</p>}
+			</Section>
+			<Section title="Shortcuts">
+				<Group>
+					<Row title="Switch workspace" description="Jump to a workspace by its place in the list">
+						<Keys>
+							{shortcutLabel(1)}–{MAX}
+						</Keys>
+					</Row>
+					<Row title="Open settings">
+						<Keys>{isMac ? "⌘," : "Ctrl+,"}</Keys>
+					</Row>
+					<Row title="Close settings" description="Back to the workspace you came from">
+						<Keys>Esc</Keys>
+					</Row>
+				</Group>
+			</Section>
+		</Page>
 	);
 }
 
