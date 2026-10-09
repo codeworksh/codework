@@ -1,9 +1,9 @@
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect } from "react";
 
-import { Desktop } from ".";
+import { Desktop } from "../wm/desktop";
 import { Switcher, workspaceShortcut } from "./switcher";
-import { defaultWorkspace, parseWorkspace } from "./workspaces";
+import { defaultWorkspace, parseWorkspace } from "../wm/workspaces";
 
 // The window has no native title bar on macOS; this bar is its drag region and
 // leaves room for the inset traffic lights.

@@ -1,6 +1,6 @@
 import { createRootRoute } from "@tanstack/react-router";
 
-import { Shell } from "../desktop/shell";
+import { Shell } from "../shell/shell";
 
 export const Route = createRootRoute({
 	component: Shell,

@@ -1,3 +1,4 @@
+import { RegistryProvider } from "@effect/atom-react";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserHistory, createHashHistory, RouterProvider } from "@tanstack/react-router";
@@ -13,6 +14,8 @@ const router = getRouter(history);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 	<React.StrictMode>
-		<RouterProvider router={router} />
+		<RegistryProvider>
+			<RouterProvider router={router} />
+		</RegistryProvider>
 	</React.StrictMode>,
 );

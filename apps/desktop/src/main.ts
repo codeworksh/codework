@@ -1,6 +1,7 @@
 import { app, BrowserWindow, net, protocol } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { startServer } from "./server.ts";
 
 const SCHEME = app.isPackaged ? "codework" : "codework-dev";
 const HOST = "app";
@@ -120,8 +121,9 @@ function createMainWindow(): BrowserWindow {
 	return window;
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
 	protocol.handle(SCHEME, handleRequest);
+	await startServer();
 	createMainWindow();
 
 	app.on("activate", () => {

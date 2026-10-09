@@ -1,10 +1,13 @@
 import { GripVertical, Maximize2, Minimize2, Pin, PinOff, type LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import type { Rect } from "webwm";
 import { useDragHandle } from "webwm/react";
 import type { DragMovement } from "webwm/dom";
 
 interface FrameProps {
 	readonly title: string;
+	readonly icon?: LucideIcon | undefined;
+	readonly children?: ReactNode;
 	readonly rect: Rect;
 	readonly focused: boolean;
 	readonly pinned: boolean;
@@ -23,7 +26,7 @@ interface FrameProps {
 }
 
 export function Frame(props: FrameProps) {
-	const { title, rect, focused, pinned, maximized, canDrag, offset, animate } = props;
+	const { title, icon: Icon, rect, focused, pinned, maximized, canDrag, offset, animate } = props;
 	const handleRef = useDragHandle<HTMLDivElement>({
 		canDrag: () => props.canDrag,
 		onDragStart: props.onDragStart,
@@ -52,6 +55,7 @@ export function Frame(props: FrameProps) {
 							className={`size-3.5 shrink-0 text-ink-muted/50 ${canDrag ? "" : "invisible"}`}
 							aria-hidden
 						/>
+						{Icon && <Icon className="mr-0.5 size-3.5 shrink-0 text-ink-muted" strokeWidth={1.75} aria-hidden />}
 						<span className="truncate font-medium text-ink-muted group-data-[focused=true]:text-ink">
 							{title}
 						</span>
@@ -69,7 +73,7 @@ export function Frame(props: FrameProps) {
 						onClick={props.onMaximize}
 					/>
 				</header>
-				<div className="flex-1" />
+				<div className="min-h-0 flex-1 overflow-hidden">{props.children}</div>
 			</div>
 		</article>
 	);

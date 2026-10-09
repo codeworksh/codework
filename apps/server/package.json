@@ -1,0 +1,24 @@
+{
+	"name": "@codeworksh/server",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./contract": "./src/contract.ts"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"dev": "vp pack --watch",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@effect/platform-node": "4.0.1",
+		"@effect/sql-sqlite-node": "4.0.1",
+		"effect": "4.0.1"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	}
+}

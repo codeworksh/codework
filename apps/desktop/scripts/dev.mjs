@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webDir = path.resolve(desktopDir, "../web");
+const serverDir = path.resolve(desktopDir, "../server");
 const outDir = path.join(desktopDir, "out");
+const serverOutDir = path.join(serverDir, "dist");
 const WEB_URL = "http://127.0.0.1:5173";
 const startedAt = Date.now();
 
@@ -35,20 +37,23 @@ function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-// Electron is useless without either, so losing one ends the session (this also
-// catches Vite refusing an occupied port).
+// Electron is useless without any of them, so losing one ends the session (this
+// also catches Vite refusing an occupied port).
 for (const [args, cwd] of [
 	[["run", "dev"], webDir],
 	[["exec", "vp", "pack", "--watch"], desktopDir],
+	[["exec", "vp", "pack", "--watch"], serverDir],
 ]) {
 	run("pnpm", args, { cwd }).on("exit", shutdown);
 }
 
 // Wait for fresh bundles and a reachable web server, so Electron
 // does not boot on a stale bundle and immediately restart.
+const bundles = [path.join(outDir, "main.cjs"), path.join(outDir, "preload.cjs"), path.join(serverOutDir, "index.mjs")];
+
 async function ready() {
-	for (const file of ["main.cjs", "preload.cjs"]) {
-		const built = await stat(path.join(outDir, file)).catch(() => null);
+	for (const file of bundles) {
+		const built = await stat(file).catch(() => null);
 		if (built === null || built.mtimeMs < startedAt) return false;
 	}
 	return fetch(WEB_URL).then(
@@ -71,9 +76,10 @@ function startElectron() {
 	});
 }
 
+// Main supervises the app server, so restarting Electron also restarts it.
 let restartTimer;
-watch(outDir, (_event, file) => {
-	if (file !== "main.cjs" && file !== "preload.cjs") return;
+const onRebuild = (dir) => (_event, file) => {
+	if (!bundles.includes(path.join(dir, String(file)))) return;
 	clearTimeout(restartTimer);
 	restartTimer = setTimeout(() => {
 		const previous = electron;
@@ -82,6 +88,8 @@ watch(outDir, (_event, file) => {
 		stop(previous);
 		previous.once("exit", startElectron);
 	}, 100);
-});
+};
+watch(outDir, onRebuild(outDir));
+watch(serverOutDir, onRebuild(serverOutDir));
 
 startElectron();

@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 
-import { defaultWorkspace, workspaces } from "./workspaces";
+import { defaultWorkspace, workspaces } from "../wm/workspaces";
 
 interface SwitcherProps {
 	readonly active: number;

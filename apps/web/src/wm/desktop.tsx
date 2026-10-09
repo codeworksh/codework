@@ -15,31 +15,37 @@ import {
 } from "webwm";
 import { useArrangedWidgets, useElementSize } from "webwm/react";
 
+import { registry } from "../widgets";
 import { Divider } from "./divider";
 import { Frame } from "./frame";
+import { instances } from "./instances";
 import { workspaceTag } from "./workspaces";
 
 const nmaster = 1;
-const [main, code, notes] = [workspaceTag(1), workspaceTag(2), workspaceTag(3)];
+const byId = new Map(instances.map((instance) => [instance.id, instance]));
 
-// A widget can sit on several workspaces at once (Chat and Terminal here).
-const widgets: Widget[] = [
-	{ id: "chat", tags: main | code, minWidth: 320, minHeight: 200 },
-	{ id: "files", tags: main, minWidth: 220, minHeight: 140 },
-	{ id: "terminal", tags: main | code, minWidth: 220, minHeight: 140 },
-	{ id: "preview", tags: main, minWidth: 220, minHeight: 140 },
-	{ id: "editor", tags: code, minWidth: 320, minHeight: 200 },
-	{ id: "notes", tags: notes, minWidth: 320, minHeight: 200 },
-];
+// webwm only needs identity, tags, and minimum sizes; those come from the
+// widget's definition so the layout respects what each widget can shrink to.
+const widgets: Widget[] = instances.map(({ id, kind, tags }) => {
+	const definition = registry.get(kind);
+	return { id, tags, minWidth: definition?.minWidth ?? 220, minHeight: definition?.minHeight ?? 140 };
+});
 
-const titles: Record<WidgetId, string> = {
-	chat: "Chat",
-	files: "Files",
-	terminal: "Terminal",
-	preview: "Preview",
-	editor: "Editor",
-	notes: "Notes",
-};
+/** Frame title, icon, and body for one instance, resolved through the widget registry. */
+function describe(id: WidgetId) {
+	const instance = byId.get(id);
+	const definition = instance === undefined ? undefined : registry.get(instance.kind);
+	return {
+		title: instance?.title ?? definition?.title ?? id,
+		icon: definition?.icon,
+		body:
+			instance !== undefined && definition !== undefined ? (
+				definition.render({ instanceId: id, props: instance.props })
+			) : (
+				<p className="p-3 text-ink-muted">Missing widget: {instance?.kind ?? id}</p>
+			),
+	};
+}
 
 /** Per-workspace view settings, like dwm's pertag: each workspace keeps its own split. */
 interface View {
@@ -138,33 +144,39 @@ export function Desktop({ workspace }: DesktopProps) {
 				className="relative"
 				style={{ width: arrangement.contentBounds.w, height: arrangement.contentBounds.h }}
 			>
-				{arrangement.placements.map(({ widget, rect }) => (
-					<Frame
-						key={widget.id}
-						title={titles[widget.id] ?? widget.id}
-						rect={rect}
-						focused={widget.id === focusedId}
-						pinned={pinned.has(widget.id)}
-						maximized={layout === "monocle"}
-						canDrag={layout === "tile" && !pinned.has(widget.id)}
-						offset={drag?.widgetId === widget.id ? drag : null}
-						animate={!resizing}
-						onFocus={() => focusWidget(widget.id)}
-						onPin={() => togglePin(widget.id)}
-						onMaximize={() => toggleMax(widget.id)}
-						onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
-						onDragMove={({ clientX, clientY, deltaX, deltaY }) =>
-							setDrag({ widgetId: widget.id, deltaX, deltaY, target: targetAt(clientX, clientY) })
-						}
-						onDragEnd={({ clientX, clientY }) => {
-							const target = targetAt(clientX, clientY);
-							if (target)
-								setOrder((current) => moveWidgetRelative(current, widget.id, target.widgetId, target.edge));
-							setDrag(null);
-						}}
-						onDragCancel={() => setDrag(null)}
-					/>
-				))}
+				{arrangement.placements.map(({ widget, rect }) => {
+					const { title, icon, body } = describe(widget.id);
+					return (
+						<Frame
+							key={widget.id}
+							title={title}
+							icon={icon}
+							rect={rect}
+							focused={widget.id === focusedId}
+							pinned={pinned.has(widget.id)}
+							maximized={layout === "monocle"}
+							canDrag={layout === "tile" && !pinned.has(widget.id)}
+							offset={drag?.widgetId === widget.id ? drag : null}
+							animate={!resizing}
+							onFocus={() => focusWidget(widget.id)}
+							onPin={() => togglePin(widget.id)}
+							onMaximize={() => toggleMax(widget.id)}
+							onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
+							onDragMove={({ clientX, clientY, deltaX, deltaY }) =>
+								setDrag({ widgetId: widget.id, deltaX, deltaY, target: targetAt(clientX, clientY) })
+							}
+							onDragEnd={({ clientX, clientY }) => {
+								const target = targetAt(clientX, clientY);
+								if (target)
+									setOrder((current) => moveWidgetRelative(current, widget.id, target.widgetId, target.edge));
+								setDrag(null);
+							}}
+							onDragCancel={() => setDrag(null)}
+						>
+							{body}
+						</Frame>
+					);
+				})}
 				{drag?.target && (
 					<div
 						className="pointer-events-none absolute z-20 h-0.5 -translate-y-px rounded-full bg-ink/40"

@@ -1,6 +1,10 @@
 declare global {
 	interface Window {
-		desktopBridge?: { platform: string };
+		desktopBridge?: {
+			platform: string;
+			/** The app server's RPC WebSocket URL. */
+			server: string;
+		};
 	}
 }
 
