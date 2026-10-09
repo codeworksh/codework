@@ -1,9 +1,9 @@
 import { Duration, Effect, Layer, Option, Ref, Schema, Stream } from "effect";
 import { SandboxIO } from "../../../sandbox/io.ts";
+import { quoteArgv } from "../../../sandbox/shell/shell.ts";
 import { Accumulator, type OutputSnapshot } from "../../../tool/accumulator.ts";
 import { Output } from "../../../tool/output.ts";
 import { ToolProgress } from "../../../tool/progress.ts";
-import { quoteArgv } from "../../../sandbox/shell/shell.ts";
 import { fromSandboxShell, type IToolShell, ToolShell } from "../../../tool/shell.ts";
 import * as Tool from "../../../tool/tool.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "../../../tool/truncate.ts";
@@ -65,20 +65,32 @@ class BashTimedOut extends Schema.TaggedError<BashTimedOut>()("BashTimedOut", {
 const BashFailure = Schema.Union([BashFailed, BashTimedOut]);
 type BashFailureError = BashFailed | BashTimedOut;
 
+/** The reason for a failure, after any output: the model sees nothing else of `details`. */
+const withStatus = (failure: BashFailureError): string => {
+	const status =
+		failure._tag === "BashTimedOut"
+			? `Command timed out after ${failure.timeoutSeconds} seconds`
+			: failure.exitCode === -1
+				? "Command terminated without an exit code"
+				: `Command exited with code ${failure.exitCode}`;
+	return failure.output ? `${failure.output.replace(/\n$/, "")}\n\n${status}` : status;
+};
+
 export const bashDef = Tool.define({
 	name: "bash",
 	label: "bash",
 	promptSnippet: "Execute bash commands (ls, grep, find, etc.).",
 	description:
 		"Execute a bash command in the working directory and return its combined stdout/stderr output. " +
-		`Output is truncated to the last ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)} (whichever is hit first); when truncated, the full ` +
-		"output is saved to a file whose path is shown at the end of the output. A non-zero exit code is reported as an error carrying the captured output.",
+		`Output is truncated to the last ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)} (whichever is hit first); when truncated, a ` +
+		"note says which lines are shown and gives the path of a file holding the full output when one was saved. " +
+		"A non-zero exit code is reported as an error carrying the captured output.",
 	parameters: BashParams,
 	success: BashSuccess,
 	failure: BashFailure,
-	// The model reads just the command output, not the JSON envelope.
-	encodeContent: (success) => [{ type: "text", text: success.output }],
-	encodeFailureContent: (failure) => [{ type: "text", text: failure.output }],
+	// The model reads the command output, not the JSON envelope — and, on failure, why it failed.
+	encodeContent: (success) => [{ type: "text", text: success.output || "(no output)" }],
+	encodeFailureContent: (failure) => [{ type: "text", text: withStatus(failure) }],
 });
 
 /** The structured, model-facing shape of a presented result (ready to spread). */

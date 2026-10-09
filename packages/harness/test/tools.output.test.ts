@@ -71,6 +71,8 @@ const call = <E>(mount: Layer.Layer<SandboxIO.Provides, E>, command: string, tim
 			pendingCall("bash", { command, ...(timeout === undefined ? {} : { timeout }) }, "call-1"),
 		);
 		const details = outcome.result.details as Details;
+		// What the model reads.
+		const text = outcome.result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 		const saved = details.fullOutputPath;
 		const spilled =
 			saved === undefined
@@ -79,7 +81,7 @@ const call = <E>(mount: Layer.Layer<SandboxIO.Provides, E>, command: string, tim
 						content: yield* filesystem.readFile(saved),
 						leftovers: (yield* filesystem.readdir("/tmp")).filter((name) => name.endsWith(".rc")),
 					};
-		return { status: outcome.status, details, spilled };
+		return { status: outcome.status, details, text, spilled };
 	}).pipe(Effect.provide(mount));
 
 const run = <E>(mount: Layer.Layer<SandboxIO.Provides, E>, command: string, timeout?: number) =>
@@ -104,6 +106,7 @@ describe.each([
 		const result = await run(layer, "echo small; echo 'a ) in a comment' # )");
 		expect(result.status).toBe("completed");
 		expect(result.details).toMatchObject({ output: "small\na ) in a comment\n", truncated: false, exitCode: 0 });
+		expect(result.text).toBe("small\na ) in a comment\n");
 		expect(result.details.fullOutputPath).toBeUndefined();
 		if (backend !== "justbash") {
 			const added = (await fs.readdir("/tmp")).filter(
@@ -125,8 +128,17 @@ describe.each([
 		expect(result.details.output).toContain(
 			`héllo\n\n[showing lines 502-2501 of 2501. Full output: ${result.details.fullOutputPath}]`,
 		);
+		expect(result.text).toBe(`${result.details.output}\n\nCommand exited with code 3`);
 		if (backend !== "justbash") expect((await fs.stat(result.details.fullOutputPath!)).mode & 0o777).toBe(0o600);
 		if (backend !== "justbash") await fs.rm(result.details.fullOutputPath!);
+	});
+
+	it("tells the model when there is no output, and why a silent command failed", async () => {
+		const { dir, layer } = await mount();
+		await using _ = dir;
+		expect((await run(layer, "true")).text).toBe("(no output)");
+		expect((await run(layer, "exit 4")).text).toBe("Command exited with code 4");
+		expect((await run(layer, "echo; exit 4")).text).toBe("\n\nCommand exited with code 4");
 	});
 
 	it("waits for background jobs still writing", async () => {
@@ -194,6 +206,7 @@ describe.each([
 			expect(result.status).toBe("error");
 			expect(result.details).toMatchObject({ _tag: "BashTimedOut", truncated: false });
 			expect(result.details.output).toContain("partial-line");
+			expect(result.text).toBe("partial-line\n\nCommand timed out after 2 seconds");
 			const added = (await fs.readdir("/tmp")).filter(
 				(name) => !before.includes(name) && name.startsWith("codework-bash"),
 			);
