@@ -72,7 +72,7 @@ export const bashDef = Tool.define({
 	description:
 		"Execute a bash command in the working directory and return its combined stdout/stderr output. " +
 		`Output is truncated to the last ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)} (whichever is hit first); when truncated, the full ` +
-		"output is saved to a file in the sandbox. A non-zero exit code is reported as an error carrying the captured output.",
+		"output is saved to a file whose path is shown at the end of the output. A non-zero exit code is reported as an error carrying the captured output.",
 	parameters: BashParams,
 	success: BashSuccess,
 	failure: BashFailure,
