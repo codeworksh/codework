@@ -41,7 +41,7 @@ export function Hero() {
 
 				<div data-hero-wordmark className={`w-[88%] max-w-4xl ${painted ? "invisible" : ""}`}>
 					<span className="sr-only">CodeWork</span>
-					<Pixels glyph={WORDMARK} banded className="block h-auto w-full" />
+					<Pixels glyph={WORDMARK} depth className="block h-auto w-full text-brand" />
 				</div>
 
 				<div

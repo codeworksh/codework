@@ -7,6 +7,7 @@ import { GithubIcon } from "@/components/landing/github";
 import { Header } from "@/components/landing/header";
 import { Hero } from "@/components/landing/hero";
 import { Picker } from "@/components/landing/picker";
+import { Logo } from "@/components/landing/logo";
 import { Pixels } from "@/components/landing/pixels";
 import { Scene } from "@/components/landing/scene";
 import { Typewriter } from "@/components/landing/typewriter";
@@ -140,7 +141,7 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 		<div class="relative mx-auto flex max-w-6xl flex-col gap-10 px-4 py-14 sm:px-6 lg:flex-row lg:justify-between">
 			<div class="lg:w-96">
 				<a href="/" aria-label="CodeWork home" data-quiet class="block w-max text-brand">
-					<Pixels glyph={WORDMARK} className="h-6 w-auto" />
+					<Logo className="mr-3 size-5" /><Pixels glyph={WORDMARK} className="h-6 w-auto" />
 				</a>
 				<p data-quiet class="mt-4 text-sm leading-relaxed text-text-muted">
 					{footer.tagline}

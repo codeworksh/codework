@@ -17,6 +17,9 @@ const { title, description, docs = false } = Astro.props;
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>{title}</title>
+		<link rel="icon" type="image/x-icon" href="/brand/favicon.ico" sizes="16x16 32x32 48x48" />
+		<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
+		<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" sizes="180x180" />
 		{description && <meta name="description" content={description} />}
 		{docs && <ClientRouter />}
 		<script is:inline set:html={themeInitScript} />
