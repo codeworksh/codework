@@ -105,6 +105,12 @@ function createMainWindow(): BrowserWindow {
 	const window = new BrowserWindow({
 		width: 1440,
 		height: 900,
+		// The web shell draws its own title bar (workspace switcher) beside the
+		// inset traffic lights, which sit centered in its 44px height.
+		...(process.platform === "darwin" && {
+			titleBarStyle: "hiddenInset",
+			trafficLightPosition: { x: 14, y: 16 },
+		}),
 		webPreferences: {
 			preload: path.join(app.getAppPath(), "out/preload.cjs"),
 			sandbox: true,

@@ -2,10 +2,10 @@ import { useRef, useState } from "react";
 import {
 	focus,
 	hasMasterStack,
+	isVisible,
 	masterStackMfactRange,
 	mfactFromPointer,
 	moveWidgetRelative,
-	tagBit,
 	tileInsertionTargetAtPoint,
 	type Bounds,
 	type InsertionTarget,
@@ -17,15 +17,19 @@ import { useArrangedWidgets, useElementSize } from "webwm/react";
 
 import { Divider } from "./divider";
 import { Frame } from "./frame";
+import { workspaceTag } from "./workspaces";
 
-const desktop = tagBit(0);
 const nmaster = 1;
+const [main, code, notes] = [workspaceTag(1), workspaceTag(2), workspaceTag(3)];
 
+// A widget can sit on several workspaces at once (Chat and Terminal here).
 const widgets: Widget[] = [
-	{ id: "chat", tags: desktop, minWidth: 320, minHeight: 200 },
-	{ id: "files", tags: desktop, minWidth: 220, minHeight: 140 },
-	{ id: "terminal", tags: desktop, minWidth: 220, minHeight: 140 },
-	{ id: "preview", tags: desktop, minWidth: 220, minHeight: 140 },
+	{ id: "chat", tags: main | code, minWidth: 320, minHeight: 200 },
+	{ id: "files", tags: main, minWidth: 220, minHeight: 140 },
+	{ id: "terminal", tags: main | code, minWidth: 220, minHeight: 140 },
+	{ id: "preview", tags: main, minWidth: 220, minHeight: 140 },
+	{ id: "editor", tags: code, minWidth: 320, minHeight: 200 },
+	{ id: "notes", tags: notes, minWidth: 320, minHeight: 200 },
 ];
 
 const titles: Record<WidgetId, string> = {
@@ -33,7 +37,17 @@ const titles: Record<WidgetId, string> = {
 	files: "Files",
 	terminal: "Terminal",
 	preview: "Preview",
+	editor: "Editor",
+	notes: "Notes",
 };
+
+/** Per-workspace view settings, like dwm's pertag: each workspace keeps its own split. */
+interface View {
+	readonly layout: "tile" | "monocle";
+	readonly mfact: number;
+}
+
+const defaultView: View = { layout: "tile", mfact: 0.6 };
 
 interface Drag {
 	readonly widgetId: WidgetId;
@@ -42,26 +56,38 @@ interface Drag {
 	readonly target: InsertionTarget | null;
 }
 
-export function Desktop() {
+interface DesktopProps {
+	readonly workspace: number;
+}
+
+export function Desktop({ workspace }: DesktopProps) {
 	const [order, setOrder] = useState<WidgetOrder>({
 		tileOrder: widgets.map(({ id }) => id),
 		focusOrder: widgets.map(({ id }) => id),
 	});
-	const [layout, setLayout] = useState<"tile" | "monocle">("tile");
+	const [views, setViews] = useState<ReadonlyMap<number, View>>(() => new Map());
 	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
 	const [drag, setDrag] = useState<Drag | null>(null);
-	const [mfact, setMfact] = useState(0.6);
 	const [resizing, setResizing] = useState(false);
 	const [ref, size] = useElementSize<HTMLDivElement>();
 	const surfaceRef = useRef<HTMLDivElement>(null);
-	const focusedId = order.focusOrder[0];
+	const activeTags = workspaceTag(workspace);
+	const { layout, mfact } = views.get(workspace) ?? defaultView;
+	const setView = (patch: Partial<View>) =>
+		setViews((current) => new Map(current).set(workspace, { ...(current.get(workspace) ?? defaultView), ...patch }));
+	const setLayout = (next: View["layout"]) => setView({ layout: next });
+	const setMfact = (next: number) => setView({ mfact: next });
+	// Focus is the most recently focused widget that is visible on this workspace.
+	const focusedId = focus(widgets, order, activeTags).widget?.id;
 	const bounds: Bounds = { x: 0, y: 0, w: size.width, h: size.height };
-	const tiled = order.tileOrder.flatMap((id) => widgets.filter((widget) => widget.id === id));
+	const tiled = order.tileOrder.flatMap((id) =>
+		widgets.filter((widget) => widget.id === id && isVisible(widget, activeTags)),
+	);
 	// Both columns must keep their widgets' minimum widths, so mfact is clamped to that range.
 	const range = layout === "tile" && bounds.w > 0 ? masterStackMfactRange(tiled, bounds, nmaster) : null;
 	const effectiveMfact = range ? Math.min(range.max, Math.max(range.min, mfact)) : mfact;
 	const arrangement = useArrangedWidgets(widgets, order, bounds, {
-		activeTags: desktop,
+		activeTags,
 		layout,
 		...(focusedId === undefined ? {} : { focusedWidgetId: focusedId }),
 		nmaster,
@@ -84,7 +110,8 @@ export function Desktop() {
 		if (surface && range) setMfact(mfactFromPointer(clientX - surface.left, bounds, range));
 	};
 
-	const focusWidget = (widgetId: WidgetId) => setOrder((current) => focus(widgets, current, desktop, widgetId).order);
+	const focusWidget = (widgetId: WidgetId) =>
+		setOrder((current) => focus(widgets, current, activeTags, widgetId).order);
 
 	const toggleMax = (widgetId: WidgetId) => {
 		setDrag(null);

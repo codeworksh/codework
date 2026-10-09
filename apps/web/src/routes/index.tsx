@@ -1,7 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { Desktop } from "../desktop";
-
-export const Route = createFileRoute("/")({
-	component: Desktop,
-});
+// The default workspace; the root Shell renders it.
+export const Route = createFileRoute("/")({});
