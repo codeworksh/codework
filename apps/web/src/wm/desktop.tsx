@@ -260,8 +260,11 @@ export function Desktop({ workspace }: DesktopProps) {
 		});
 
 	// With each frame's p-1 inset, p-1 here gives even 8px gaps at edges and between frames.
+	// The scrollbar gutter is always reserved (on both edges, so gaps stay even): if a
+	// scrollbar could take width only when it shows, it would shrink the layout, the
+	// overflow would vanish with it, and the layout would jitter between both.
 	return (
-		<main className="box-border h-full overflow-auto p-1" ref={ref}>
+		<main className="box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]" ref={ref}>
 			<div
 				ref={surfaceRef}
 				className="relative"

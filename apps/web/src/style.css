@@ -14,6 +14,7 @@
 	--cw-shadow-far: rgb(0 0 0 / 0.08);
 	--cw-ink: #3f3f46;
 	--cw-ink-muted: #8a8a93;
+	--cw-scrollbar: rgb(0 0 0 / 0.16);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -28,6 +29,7 @@
 		--cw-shadow-far: rgb(0 0 0 / 0.5);
 		--cw-ink: #e4e4e7;
 		--cw-ink-muted: #9b9ba3;
+		--cw-scrollbar: rgb(255 255 255 / 0.14);
 	}
 }
 
@@ -53,5 +55,11 @@
 
 	body {
 		@apply bg-desktop text-[13px]/[1.4] text-ink;
+	}
+
+	/* Thin thumb on a clear track; covers widget content too. */
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: var(--cw-scrollbar) transparent;
 	}
 }
