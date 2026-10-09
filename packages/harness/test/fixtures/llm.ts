@@ -13,6 +13,7 @@ export const assistant = (
 		protocol: "openai",
 		provider: { id: input.provider, name: input.provider, source: "custom", env: [] },
 		model: input.model,
+		thinkingLevel: input.thinkingLevel ?? "off",
 		usage: {
 			input: 1,
 			output: 1,

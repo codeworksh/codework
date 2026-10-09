@@ -13,6 +13,7 @@ const message = (parts: Message.AssistantMessage["parts"]): Message.AssistantMes
 	protocol: "anthropic",
 	provider: { id: "anthropic", name: "Anthropic", source: "custom", env: [] },
 	model: "claude-test",
+	thinkingLevel: "off",
 	usage: {
 		input: 10,
 		output: 20,

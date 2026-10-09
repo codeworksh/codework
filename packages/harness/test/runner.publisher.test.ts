@@ -37,6 +37,7 @@ const assistant = (overrides: Partial<Message.AssistantMessage> = {}): Message.A
 	protocol: "anthropic",
 	provider: { id: "anthropic", name: "Anthropic", source: "custom", env: [] },
 	model: "claude-test",
+	thinkingLevel: "off",
 	usage: {
 		input: 1,
 		output: 2,

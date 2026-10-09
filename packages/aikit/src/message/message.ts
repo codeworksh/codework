@@ -174,6 +174,10 @@ export const AssistantMessageSchema = Type.Object({
 	protocol: Model.KnownProviderEnumSchema,
 	provider: Model.ProviderInfo,
 	model: Type.String(),
+	/** Thinking level the caller requested, before aikit fits it to the model. */
+	thinkingLevel: Model.ThinkingLevel,
+	/** Provider-native thinking value the request carried. Absent for budget-only or unmanaged reasoning. */
+	providerThinkingLevel: Type.Optional(Type.String()),
 	usage: UsageSchema,
 	stopReason: StopReasonSchema,
 	errorMessage: Type.Optional(Type.String()),

@@ -20,13 +20,17 @@ import { sanitizeSurrogates } from "../utils/sanitize.ts";
 type ToolCallPart = Extract<Message.AssistantMessage["parts"][number], { type: "toolCall" }>;
 type TerminalToolCall = Exclude<ToolCallPart, Message.ToolCallPendingPart | Message.ToolCallRunningPart>;
 
-export function createAssistantMessage(model: Model.Info): Message.AssistantMessage {
+export function createAssistantMessage(
+	model: Model.Info,
+	thinkingLevel: Model.ThinkingLevel,
+): Message.AssistantMessage {
 	return Message.createAssistantMessage({
 		role: "assistant",
 		parts: [],
 		protocol: model.protocol,
 		provider: model.provider,
 		model: model.id,
+		thinkingLevel,
 		usage: {
 			input: 0,
 			output: 0,
