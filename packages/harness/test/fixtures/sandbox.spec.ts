@@ -6,6 +6,7 @@ import { Local } from "../../src/sandbox/fs/vfs.ts";
 import { HostExe } from "../../src/sandbox/shell/host.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
 import type { Sandbox } from "../../src/sandbox/sandbox.ts";
+import { files, label, reference, windows } from "./scan.corpus.ts";
 
 export interface SandboxEnv<E = never> {
 	/** The raw local primitives; `withService` builds the filesystem over them. */
@@ -36,6 +37,7 @@ const toPromise = (fs: SandboxFileSystem.Interface): PromiseFileSystem => ({
 	mkdir: (path, options) => Effect.runPromise(fs.mkdir(path, options)),
 	rm: (path, options) => Effect.runPromise(fs.rm(path, options)),
 	realpath: (path) => Effect.runPromise(fs.realpath(path)),
+	scanLines: (path, options) => Effect.runPromise(fs.scanLines(path, options)),
 });
 
 /**
@@ -119,6 +121,29 @@ export const filesystemSpec = <E>(make: MakeSandbox<E>) => {
 			await run(async (fs) => {
 				await fs.mkdir("dir", { recursive: true });
 				await expect(fs.readFile("dir")).rejects.toBeDefined();
+			});
+		});
+	});
+
+	describe("scanLines", () => {
+		it("returns the window the reference computes, for every corpus file", async () => {
+			await run(async (fs) => {
+				for (const [name, bytes] of Object.entries(files)) {
+					await fs.writeFile(`scan/${name}`, bytes);
+					for (const options of windows) {
+						expect(await fs.scanLines(`scan/${name}`, options), `${name} ${label(options)}`).toEqual(
+							reference(bytes, options),
+						);
+					}
+				}
+			});
+		});
+
+		it("rejects a missing file as not found", async () => {
+			await run(async (fs) => {
+				await expect(fs.scanLines("missing.txt", { startLine: 0, maxBytes: 100 })).rejects.toSatisfy((cause) =>
+					SandboxFileSystem.isNotFoundError((cause as SandboxFileSystem.FileSystemError).cause),
+				);
 			});
 		});
 	});
