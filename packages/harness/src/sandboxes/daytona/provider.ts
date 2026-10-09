@@ -207,16 +207,13 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 			}
 		},
 		realpath: async (path: string) => {
-			const run = async (script: string) => {
+			for (const script of SandboxFileSystem.realpathScripts) {
 				const command = quoteArgv(["sh", "-c", script, "_", path]);
 				const result = await sandbox.process.executeCommand(command, options.cwd, undefined, options.execTimeout);
-				return { command, result };
-			};
-			const asDirectory = await run(SandboxFileSystem.realpathScripts[0]);
-			if (asDirectory.result.exitCode === 0) return (asDirectory.result.result ?? "").trimEnd();
-			const asFile = await run(SandboxFileSystem.realpathScripts[1]);
-			assertCommandSucceeded(asFile.command, asFile.result);
-			return (asFile.result.result ?? "").trimEnd();
+				if (result.exitCode === 0) return (result.result ?? "").trimEnd();
+			}
+			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
+			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
 		},
 	};
 
@@ -327,8 +324,9 @@ const identityLayer = (options: Options) =>
  * remote filesystems have no synchronous filesystem surface.
  */
 export const layer = (options: Options = {}): Layer.Layer<SandboxIO.Provides | SandboxResource.Service, DaytonaError> =>
-	Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options), resourceLayer).pipe(
-		Layer.provide(remote(options)),
-	);
+	Layer.mergeAll(
+		SandboxIO.withMutation(Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options))),
+		resourceLayer,
+	).pipe(Layer.provide(remote(options)));
 
 export const services = layer;

@@ -437,9 +437,10 @@ export const layer = (
 	options: Options = {},
 ): Layer.Layer<SandboxIO.Provides | SandboxResource.Service, VercelError> => {
 	const mounted = { ...options, cwd: SandboxIO.resolveMountCwd(DEFAULT_CWD, options.cwd) };
-	return Layer.mergeAll(filesystemLayer(mounted), shellLayer(mounted), identityLayer(mounted), resourceLayer).pipe(
-		Layer.provide(remote(mounted)),
-	);
+	return Layer.mergeAll(
+		SandboxIO.withMutation(Layer.mergeAll(filesystemLayer(mounted), shellLayer(mounted), identityLayer(mounted))),
+		resourceLayer,
+	).pipe(Layer.provide(remote(mounted)));
 };
 
 export const services = layer;
