@@ -39,6 +39,7 @@ export type CreateConfig = typeof CreateConfig.Type;
 
 export const RuntimeConfig = Schema.Struct({
 	defaultCwd: SandboxDriver.AbsolutePath,
+	spillPath: Schema.optional(SandboxDriver.AbsolutePath),
 	execTimeout: Schema.optional(Schema.Finite),
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
@@ -173,6 +174,7 @@ export const make = (
 					providerStatus: state.providerStatus,
 					runtimeConfig: {
 						defaultCwd: SandboxDriver.AbsolutePath.make(sandbox.cwd || EnvVercel.DEFAULT_CWD),
+						spillPath: SandboxDriver.AbsolutePath.make(EnvVercel.SPILL_PATH),
 						...(config.execTimeout === undefined ? {} : { execTimeout: config.execTimeout }),
 					},
 					metadata: {
@@ -183,6 +185,7 @@ export const make = (
 		runtimeConfigFor: ({ providerResourceId, overrides }) =>
 			Effect.map(get(providerResourceId, false, "runtimeConfigFor"), (sandbox) => ({
 				defaultCwd: overrides?.defaultCwd ?? SandboxDriver.AbsolutePath.make(sandbox.cwd || EnvVercel.DEFAULT_CWD),
+				spillPath: overrides?.spillPath ?? SandboxDriver.AbsolutePath.make(EnvVercel.SPILL_PATH),
 				...(overrides?.execTimeout === undefined ? {} : { execTimeout: overrides.execTimeout }),
 			})),
 		attach: (input) =>

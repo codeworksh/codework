@@ -1,6 +1,7 @@
 import { Effect, Layer, Stream } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 import { bashTool } from "../src/plugin/builtin/tool/bash.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
 import * as Executor from "../src/tool/executor.ts";
 import { make as makeProgress } from "../src/tool/progress.ts";
 import * as Tool from "../src/tool/tool.ts";
@@ -31,22 +32,10 @@ const call = (arguments_: Record<string, unknown>) => pendingCall("bash", argume
 
 // bash registered with a specific ToolShell backend (provided at registration, per the erasure
 // model) → a RegisteredTool the executor runs with no residual tool `R`.
-const bashExec = (shell: Layer.Layer<ToolShell>) => Executor.make([Tool.provide(bashTool, shell)]);
-
-describe("bash tool via Executor", () => {
-	it("carries truncation + a full-output path on failure too (symmetric with success)", async () => {
-		const huge = "x\n".repeat(5_000);
-		const layer = stubToolShell(() => Effect.succeed({ stdout: huge, stderr: "", exitCode: 1 }));
-
-		const outcome = await Effect.runPromise(bashExec(layer).handle(call({ command: "x" })));
-
-		expect(outcome.status).toBe("error");
-		const details = outcome.result.details as { _tag: string; truncated: boolean; fullOutputPath?: string };
-		expect(details._tag).toBe("BashFailed");
-		expect(details.truncated).toBe(true);
-		expect(details.fullOutputPath).toBeDefined();
-	});
-});
+// The output file path comes from the mount; the stubs never create one.
+const identity = SandboxIO.identityLayer(SandboxIO.host("/"));
+const bashExec = (shell: Layer.Layer<ToolShell>) =>
+	Executor.make([Tool.provide(bashTool, Layer.merge(shell, identity))]);
 
 describe("bash tool error reconciliation (stub backend)", () => {
 	it("uses the ToolShellTimeout duration when encoding BashTimedOut details", async () => {
@@ -71,7 +60,9 @@ describe("bash handler in isolation — streaming (variant B)", () => {
 		const layer = streamingStub([output("first\n"), output("second\n"), exited(0)]);
 
 		await Effect.runPromise(
-			bashTool.handler({ command: "x" }, ctx).pipe(Effect.provide(layer), Effect.provide(capturing)),
+			bashTool
+				.handler({ command: "x" }, ctx)
+				.pipe(Effect.provide(layer), Effect.provide(capturing), Effect.provide(identity)),
 		);
 
 		expect(reports.length).toBeGreaterThan(0);

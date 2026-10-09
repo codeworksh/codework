@@ -1,40 +1,34 @@
 import { Duration, Effect, Layer, Option, Ref, Schema, Stream } from "effect";
-import { Hex } from "effect/encoding";
-import { tmpdir } from "node:os";
-import { crypto, fileSystem } from "../../../host.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
+import { quoteArgv } from "../../../sandbox/shell/shell.ts";
 import { Accumulator, type OutputSnapshot } from "../../../tool/accumulator.ts";
+import { Output } from "../../../tool/output.ts";
 import { ToolProgress } from "../../../tool/progress.ts";
 import { fromSandboxShell, type IToolShell, ToolShell } from "../../../tool/shell.ts";
 import * as Tool from "../../../tool/tool.ts";
-import {
-	DEFAULT_MAX_BYTES,
-	DEFAULT_MAX_LINES,
-	formatSize,
-	truncateTail,
-	type TruncationResult,
-} from "../../../tool/truncate.ts";
-import { posix } from "../../../util/posix.ts";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "../../../tool/truncate.ts";
 import { define } from "../../plugin.ts";
 
 /**
  * The self-contained bash plugin — a worked example for tool plugins. The definition is pure data;
- * the handler depends only on {@link ToolShell} / {@link ToolProgress}, never
- * `sandbox/Shell`, so the backend (local OS / just-bash / remote provider) is
- * swapped by changing the provided Layer with no change to the tool.
+ * the handler depends only on {@link ToolShell} / {@link ToolProgress} and the mount's
+ * {@link SandboxIO.Current}, never `sandbox/Shell`, so the backend (host / just-bash / remote
+ * provider) is swapped by changing the provided Layer with no change to the tool.
  *
- * Two execution paths, picked by capability:
- *   - **variant A (buffered)** otherwise: `ToolShell.exec` returns the full output,
- *     truncated once after completion.
- *   - **variant B (streaming)** when the backend offers `ToolShell.stream`: output
- *     flows through an {@link Accumulator} (bounded memory + temp-file spill)
- *     and is reported live via {@link ToolProgress}; on timeout the partial output
- *     produced so far is preserved.
+ * The command runs wrapped (`Output`) so its full output is written to a file inside the sandbox,
+ * kept only when it exceeds the display limits. Two paths, picked by capability:
+ *   - **variant A (buffered)** otherwise: the sandbox returns only the tail of the output with its
+ *     size, so a huge output never crosses to the harness.
+ *   - **variant B (streaming)** when the backend offers `ToolShell.stream`: output flows through
+ *     an {@link Accumulator} (bounded memory) and is reported live via {@link ToolProgress}; on
+ *     timeout the partial output produced so far is preserved.
  *
  * Success and failure carry the *same* structured shape
  * (`output`, `exitCode`, `truncated`, `fullOutputPath`)
  * — a non-zero exit is just `exitCode !== 0`, not a different kind of result.
  */
+
+const limits: Output.Limits = { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES };
 
 const BashParams = Schema.Struct({
 	command: Schema.String.annotate({ description: "The bash command to execute." }),
@@ -48,7 +42,7 @@ const BashParams = Schema.Struct({
 // Shared structured fields, so a programmatic consumer reads truncation / the
 // full-output path the same way whether the command succeeded or failed.
 const outputFields = {
-	/** Combined stdout + stderr, truncated for display (full output is on disk when `truncated`). */
+	/** Combined stdout + stderr, truncated for display (full output is in the sandbox when `truncated`). */
 	output: Schema.String,
 	truncated: Schema.Boolean,
 	fullOutputPath: Schema.optional(Schema.String),
@@ -71,20 +65,32 @@ class BashTimedOut extends Schema.TaggedError<BashTimedOut>()("BashTimedOut", {
 const BashFailure = Schema.Union([BashFailed, BashTimedOut]);
 type BashFailureError = BashFailed | BashTimedOut;
 
+/** The reason for a failure, after any output: the model sees nothing else of `details`. */
+const withStatus = (failure: BashFailureError): string => {
+	const status =
+		failure._tag === "BashTimedOut"
+			? `Command timed out after ${failure.timeoutSeconds} seconds`
+			: failure.exitCode === -1
+				? "Command terminated without an exit code"
+				: `Command exited with code ${failure.exitCode}`;
+	return failure.output ? `${failure.output.replace(/\n$/, "")}\n\n${status}` : status;
+};
+
 export const bashDef = Tool.define({
 	name: "bash",
 	label: "bash",
 	promptSnippet: "Execute bash commands (ls, grep, find, etc.).",
 	description:
 		"Execute a bash command in the working directory and return its combined stdout/stderr output. " +
-		`Output is truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES}KB (whichever is hit first); when truncated, the full ` +
-		"output is saved to a temp file. A non-zero exit code is reported as an error carrying the captured output.",
+		`Output is truncated to the last ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)} (whichever is hit first); when truncated, a ` +
+		"note says which lines are shown and gives the path of a file holding the full output when one was saved. " +
+		"A non-zero exit code is reported as an error carrying the captured output.",
 	parameters: BashParams,
 	success: BashSuccess,
 	failure: BashFailure,
-	// The model reads just the command output, not the JSON envelope.
-	encodeContent: (success) => [{ type: "text", text: success.output }],
-	encodeFailureContent: (failure) => [{ type: "text", text: failure.output }],
+	// The model reads the command output, not the JSON envelope — and, on failure, why it failed.
+	encodeContent: (success) => [{ type: "text", text: success.output || "(no output)" }],
+	encodeFailureContent: (failure) => [{ type: "text", text: withStatus(failure) }],
 });
 
 /** The structured, model-facing shape of a presented result (ready to spread). */
@@ -115,126 +121,161 @@ const footer = (t: TruncationResult, fullOutputPath: string | undefined, lastLin
 	return `\n\n[showing lines ${startLine}-${t.totalLines} of ${t.totalLines} (${formatSize(t.maxBytes)} limit).${where}]`;
 };
 
-/** Write full output to a host temp file (best-effort; undefined on failure). */
-const spillToTempFile = (content: string): Effect.Effect<string | undefined> =>
-	Effect.gen(function* () {
-		const suffix = Hex.encode(yield* crypto.randomBytes(6));
-		const path = posix.join(tmpdir(), `codework-bash-${suffix}.log`);
-		yield* fileSystem.writeFileString(path, content);
-		return path;
-	}).pipe(Effect.orElseSucceed(() => undefined));
-
-/** Variant A: truncate the buffered output once, spilling the full output if truncated. */
-const presentBuffered = (combined: string): Effect.Effect<Presented> =>
-	Effect.gen(function* () {
-		const t = truncateTail(combined);
-		if (!t.truncated) return { output: t.content, truncated: false };
-		const fullOutputPath = yield* spillToTempFile(combined);
-		return {
-			output: t.content + footer(t, fullOutputPath),
-			truncated: true,
-			...(fullOutputPath !== undefined ? { fullOutputPath } : {}),
-		};
-	});
-
-/** Variant B: present an accumulator snapshot (the temp file is spilled incrementally). */
-const presentSnapshot = (snap: OutputSnapshot, lastLineBytes: number): Presented => {
+/** Present a snapshot; `saved` is the output file, when the sandbox kept one. */
+const present = (snap: OutputSnapshot, lastLineBytes: number, saved: string | undefined): Presented => {
 	if (!snap.truncation.truncated) return { output: snap.content, truncated: false };
 	return {
-		output: snap.content + footer(snap.truncation, snap.fullOutputPath, lastLineBytes),
+		// A tail that fit the limits on its own still ends with its newline; the footer brings its own.
+		output: snap.content.replace(/\n$/, "") + footer(snap.truncation, saved, lastLineBytes),
 		truncated: true,
-		...(snap.fullOutputPath !== undefined ? { fullOutputPath: snap.fullOutputPath } : {}),
+		...(saved !== undefined ? { fullOutputPath: saved } : {}),
 	};
 };
 
-/** Variant A — buffered: one `exec`, truncate after completion. No live progress. */
+const utf8 = new TextEncoder();
+
+/**
+ * A command cut off by its deadline never reached the wrapper's own cleanup:
+ * remove the exit-code file, and the output file unless the result points at it.
+ */
+const cleanUp = (shell: IToolShell, file: string, presented: Presented) =>
+	shell
+		.exec(`rm -f -- ${quoteArgv(presented.fullOutputPath === undefined ? [file, `${file}.rc`] : [`${file}.rc`])}`, {
+			timeout: Duration.seconds(5),
+		})
+		.pipe(Effect.ignore);
+
+/** Variant A — buffered: one `exec` that returns the tail of the output and its size. No live progress. */
 const runBuffered = (
 	shell: IToolShell,
 	params: typeof BashParams.Type,
+	file: string,
 ): Effect.Effect<typeof BashSuccess.Type, BashFailureError> =>
 	Effect.gen(function* () {
 		const result = yield* shell
-			.exec(params.command, params.timeout !== undefined ? { timeout: Duration.seconds(params.timeout) } : undefined)
+			.exec(
+				Output.buffered(params.command, file, limits),
+				params.timeout !== undefined ? { timeout: Duration.seconds(params.timeout) } : undefined,
+			)
 			.pipe(
 				// A deadline becomes a model-visible BashTimedOut (no partial output is
 				// available from a buffered exec); an infra/spawn failure is not
 				// model-actionable, so it becomes a defect (run error).
 				Effect.catchTags({
 					ToolShellTimeout: (timeout) =>
-						Effect.fail(
-							new BashTimedOut({ timeoutSeconds: timeout.timeoutMillis / 1000, output: "", truncated: false }),
+						cleanUp(shell, file, { output: "", truncated: false }).pipe(
+							Effect.andThen(
+								Effect.fail(
+									new BashTimedOut({
+										timeoutSeconds: timeout.timeoutMillis / 1000,
+										output: "",
+										truncated: false,
+									}),
+								),
+							),
 						),
 					ToolShellError: (cause) => Effect.die(cause),
 				}),
 			);
 
-		const present = yield* presentBuffered(combineOutput(result.stdout, result.stderr));
-		if (result.exitCode !== 0) {
-			return yield* new BashFailed({ exitCode: result.exitCode, ...present });
+		const acc = new Accumulator(limits);
+		const combined = combineOutput(result.stdout, result.stderr);
+		const window = Output.window(combined);
+		if (window === undefined) acc.append(utf8.encode(combined));
+		else {
+			const shown = utf8.encode(window.text);
+			// Below the byte cap, the window is whole lines from `tail -n`.
+			acc.skip(
+				window.bytes - shown.length,
+				window.newlines - countNewlines(window.text),
+				shown.length < Output.windowBytes(limits),
+			);
+			acc.append(shown);
 		}
-		return { exitCode: result.exitCode, ...present } satisfies typeof BashSuccess.Type;
+		acc.finish();
+		const presented = present(acc.snapshot(), acc.getLastLineBytes(), window?.kept === true ? file : undefined);
+		if (result.exitCode !== 0) {
+			return yield* new BashFailed({ exitCode: result.exitCode, ...presented });
+		}
+		return { exitCode: result.exitCode, ...presented } satisfies typeof BashSuccess.Type;
 	});
+
+const countNewlines = (text: string): number => {
+	let count = 0;
+	for (let index = text.indexOf("\n"); index !== -1; index = text.indexOf("\n", index + 1)) count++;
+	return count;
+};
 
 /** Variant B — streaming: accumulate output, report progress, keep partial output on timeout. */
 const runStreaming = (
+	shell: IToolShell,
 	stream: NonNullable<IToolShell["stream"]>,
 	params: typeof BashParams.Type,
+	file: string,
 ): Effect.Effect<typeof BashSuccess.Type, BashFailureError, ToolProgress> =>
-	Effect.scoped(
-		Effect.gen(function* () {
-			const acc = new Accumulator({ tempFilePrefix: "codework-bash" });
-			const progress = yield* ToolProgress;
-			const exitCode = yield* Ref.make<number | null>(null);
-			// executes command and streams output
-			const consume = stream(params.command).pipe(
-				Stream.runForEach((event) =>
-					event._tag === "Exit"
-						? Ref.set(exitCode, event.exitCode)
-						: // `gen` so the snapshot is read *after* the append runs (not eagerly
-							// at pipeline-construction time, which would lag a chunk behind).
-							Effect.gen(function* () {
-								yield* acc.append(Buffer.from(event.bytes));
-								yield* progress.report({ content: [{ type: "text", text: acc.snapshot().content }] });
-							}),
-				),
-				// Infra/spawn failure → defect (run error), like variant A.
-				Effect.catchTag("ToolShellError", (cause) => Effect.die(cause)),
-			);
+	Effect.gen(function* () {
+		const acc = new Accumulator(limits);
+		const progress = yield* ToolProgress;
+		const exitCode = yield* Ref.make<number | null>(null);
+		// The first output tells whether the sandbox could create the output file.
+		const notice = Output.unsaved(file);
+		let head = "";
+		const consume = stream(Output.streaming(params.command, file, limits)).pipe(
+			Stream.runForEach((event) =>
+				event._tag === "Exit"
+					? Ref.set(exitCode, event.exitCode)
+					: Effect.gen(function* () {
+							if (head.length < notice.length)
+								head += new TextDecoder().decode(event.bytes.slice(0, notice.length));
+							acc.append(event.bytes);
+							yield* progress.report({ content: [{ type: "text", text: acc.snapshot().content }] });
+						}),
+			),
+			// Infra/spawn failure → defect (run error), like variant A.
+			Effect.catchTag("ToolShellError", (cause) => Effect.die(cause)),
+		);
 
-			// Consume with the deadline; on timeout the accumulator keeps what arrived.
-			let timedOutAfter: number | undefined;
-			if (params.timeout !== undefined) {
-				const finished = yield* consume.pipe(Effect.timeoutOption(Duration.seconds(params.timeout)));
-				if (Option.isNone(finished)) timedOutAfter = params.timeout;
-			} else {
-				yield* consume;
-			}
+		// Consume with the deadline; on timeout the accumulator keeps what arrived.
+		let timedOutAfter: number | undefined;
+		if (params.timeout !== undefined) {
+			const finished = yield* consume.pipe(Effect.timeoutOption(Duration.seconds(params.timeout)));
+			if (Option.isNone(finished)) timedOutAfter = params.timeout;
+		} else {
+			yield* consume;
+		}
 
-			yield* acc.finish();
-			const present = presentSnapshot(acc.snapshot(), acc.getLastLineBytes());
+		acc.finish();
+		const snapshot = acc.snapshot();
+		// Every byte arrived, so the raw-size rule here is the one the sandbox applied.
+		const kept = snapshot.beyondLimits && !head.startsWith(notice);
+		const presented = present(snapshot, acc.getLastLineBytes(), kept ? file : undefined);
 
-			if (timedOutAfter !== undefined) {
-				return yield* new BashTimedOut({ timeoutSeconds: timedOutAfter, ...present });
-			}
-			const code = yield* Ref.get(exitCode);
-			// No Exit event (e.g. killed before reporting one) → treat as a failure.
-			if (code === null || code !== 0) {
-				return yield* new BashFailed({ exitCode: code ?? -1, ...present });
-			}
-			return { exitCode: code, ...present } satisfies typeof BashSuccess.Type;
-		}),
-	);
+		if (timedOutAfter !== undefined) {
+			yield* cleanUp(shell, file, presented);
+			return yield* new BashTimedOut({ timeoutSeconds: timedOutAfter, ...presented });
+		}
+		const code = yield* Ref.get(exitCode);
+		// No Exit event (e.g. killed before reporting one) → treat as a failure.
+		if (code === null || code !== 0) {
+			return yield* new BashFailed({ exitCode: code ?? -1, ...presented });
+		}
+		return { exitCode: code, ...presented } satisfies typeof BashSuccess.Type;
+	});
 
 export const bashHandler: Tool.Handler<
 	typeof BashParams,
 	typeof BashSuccess,
 	typeof BashFailure,
-	ToolShell | ToolProgress
+	ToolShell | ToolProgress | SandboxIO.Current
 > = (params) =>
 	Effect.gen(function* () {
 		const shell = yield* ToolShell;
+		const file = yield* Output.path((yield* SandboxIO.Current).spillPath, "codework-bash");
 		// Prefer streaming when the backend supports it; fall back to buffered exec.
-		return shell.stream !== undefined ? yield* runStreaming(shell.stream, params) : yield* runBuffered(shell, params);
+		// Cancelled from outside, the wrapper never reaches its own cleanup either.
+		return yield* (
+			shell.stream !== undefined ? runStreaming(shell, shell.stream, params, file) : runBuffered(shell, params, file)
+		).pipe(Effect.onInterrupt(() => cleanUp(shell, file, { output: "", truncated: false })));
 	});
 
 /** The bash tool: definition + handler, wired the testable (def/exec split) way. */
@@ -245,7 +286,11 @@ export const bashPlugin = define({
 	kind: "tool",
 	setup: Effect.fn("BashPlugin.setup")(function* (ctx) {
 		const shell = yield* SandboxIO.Shell;
-		const mounted = fromSandboxShell.pipe(Layer.provide(Layer.succeed(SandboxIO.Shell, shell)));
+		const current = yield* SandboxIO.Current;
+		const mounted = Layer.merge(
+			fromSandboxShell.pipe(Layer.provide(Layer.succeed(SandboxIO.Shell, shell))),
+			Layer.succeed(SandboxIO.Current, current),
+		);
 		ctx.plugin.tools.add(Tool.provide(bashTool, mounted));
 	}),
 });

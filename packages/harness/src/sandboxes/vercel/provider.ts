@@ -23,6 +23,8 @@ type RemoteSandbox = import("@vercel/sandbox").Sandbox;
 
 /** Vercel's namespace-intrinsic working directory. */
 export const DEFAULT_CWD = "/vercel/sandbox";
+/** Where oversized tool output is written inside the sandbox. */
+export const SPILL_PATH = "/tmp";
 
 export class VercelError extends Schema.TaggedError<VercelError>()("VercelError", {
 	sanitized: SandboxInstance.PersistedError,
@@ -437,6 +439,7 @@ const identityLayer = (options: Options) =>
 				driver: "vercel",
 				id: options.instanceId ?? SandboxInstance.ID.create(),
 				defaultCwd: DEFAULT_CWD,
+				spillPath: SPILL_PATH,
 				...(options.cwd === undefined ? {} : { cwd: options.cwd }),
 			}),
 		),

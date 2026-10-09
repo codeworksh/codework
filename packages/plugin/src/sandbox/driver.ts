@@ -17,7 +17,11 @@ export const AbsolutePath = Schema.String.check(Schema.isStartingWith("/")).pipe
 );
 export type AbsolutePath = typeof AbsolutePath.Type;
 
-export const RuntimeConfigBase = Schema.Struct({ defaultCwd: AbsolutePath });
+export const RuntimeConfigBase = Schema.Struct({
+	defaultCwd: AbsolutePath,
+	/** Where oversized tool output is written inside the sandbox; `SandboxIO.DEFAULT_SPILL_PATH` when absent. */
+	spillPath: Schema.optional(AbsolutePath),
+});
 export interface RuntimeConfigBase extends Schema.Schema.Type<typeof RuntimeConfigBase> {}
 
 export interface Capabilities {

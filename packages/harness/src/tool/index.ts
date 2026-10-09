@@ -18,12 +18,10 @@ export { ToolExecutionError } from "./error.ts";
 
 export {
 	fromSandboxShell,
-	local as localToolShell,
 	ToolShell,
 	ToolShellError,
 	ToolShellTimeout,
 	type IToolShell,
-	type LocalConfig,
 	type ToolShellExecOptions,
 	type ToolShellResult,
 } from "./shell.ts";
