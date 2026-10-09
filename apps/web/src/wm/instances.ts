@@ -20,6 +20,8 @@ export interface Instance {
 	/** What the instance shows when opened by address; opening it again focuses this instance. */
 	readonly address?: string;
 	readonly params?: Params;
+	/** The instance whose `open` created this one; only it may replace this one's address. */
+	readonly openedBy?: string;
 }
 
 /** Every instance plus webwm's tile and focus order over them. */
@@ -67,6 +69,16 @@ export const remove = (desk: Desk, id: string): Desk => ({
 });
 
 export const focus = (desk: Desk, id: string): Desk => ({ ...desk, order: focusWidget(desk.order, id) });
+
+/** Shows another address in an instance; the old address's title and params go with it. */
+export const retarget = (desk: Desk, id: string, address: string, params: Params | undefined): Desk => ({
+	...desk,
+	instances: desk.instances.map((instance) => {
+		if (instance.id !== id) return instance;
+		const { title: _title, params: _params, ...kept } = instance;
+		return { ...kept, address, ...(params === undefined ? {} : { params }) };
+	}),
+});
 
 export function update(desk: Desk, id: string, patch: Partial<Instance>): Desk {
 	const current = desk.instances.find((instance) => instance.id === id);

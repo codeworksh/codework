@@ -20,7 +20,7 @@ import { FrameContext, ShellContext } from "../sdk/shell";
 import { builtins, registry } from "../widgets";
 import { Divider } from "./divider";
 import { Frame } from "./frame";
-import { add, initialDesk, type Instance, remove, focus as raise, update } from "./instances";
+import { add, initialDesk, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
 import { firstWorkspace, workspaceRoute, workspaceTag } from "./workspaces";
 
@@ -159,28 +159,41 @@ export function Desktop({ workspace }: DesktopProps) {
 		[],
 	);
 
-	/** The shell API as seen by one widget: it is the default target and where new widgets land next to. */
+	/** The shell API as seen by one widget: the default target, and the opener of what it opens. */
 	const shellFor = (caller: string): Shell => ({
-		open(address, { kind, placement = "next", fresh = false, params } = {}) {
-			// The most recently focused instance showing the address wins.
-			const existing = fresh
-				? undefined
-				: order.focusOrder
-						.map((id) => byId.get(id))
-						.find((instance) => instance?.address === address && (kind === undefined || instance.kind === kind));
-			if (existing !== undefined) {
-				if (params !== undefined) setDesk((current) => update(current, existing.id, { params }));
-				reveal(existing);
-				return;
-			}
+		open(address, { kind, placement = "next", mode = "replace", params } = {}) {
+			// Most recently focused first, so the frame last looked at wins.
+			const recent = order.focusOrder.flatMap((id) => byId.get(id) ?? []);
 			const widget = resolve(builtins, address, kind);
 			if (widget === undefined) throw new Error(`No widget opens ${address}`);
+			if (mode === "replace") {
+				const existing = recent.find((instance) => instance.address === address && instance.kind === widget.kind);
+				if (existing !== undefined) {
+					if (params !== undefined) setDesk((current) => update(current, existing.id, { params }));
+					reveal(existing);
+					return;
+				}
+				const target = widget.replaceable
+					? recent.find(
+							(instance) =>
+								instance.openedBy === caller &&
+								instance.kind === widget.kind &&
+								(instance.tags & activeTags) !== 0 &&
+								!pinned.has(instance.id),
+						)
+					: undefined;
+				if (target !== undefined) {
+					setDesk((current) => raise(retarget(current, target.id, address, params), target.id));
+					return;
+				}
+			}
 			const instance: Instance = {
 				id: `${widget.kind}/${crypto.randomUUID().slice(0, 8)}`,
 				kind: widget.kind,
 				tags: activeTags,
 				props: {},
 				address,
+				openedBy: caller,
 				...(params === undefined ? {} : { params }),
 			};
 			setDesk((current) => add(current, instance, placement === "next" ? caller : undefined));
@@ -256,7 +269,7 @@ export function Desktop({ workspace }: DesktopProps) {
 							}}
 							onDragCancel={() => setDrag(null)}
 						>
-							<Host instanceId={widget.id} shell={shellFor(widget.id)} retitle={retitle}>
+							<Host key={instance.address} instanceId={widget.id} shell={shellFor(widget.id)} retitle={retitle}>
 								{body}
 							</Host>
 						</Frame>

@@ -33,6 +33,12 @@ export interface Navigation {
 	readonly priority?: Priority;
 	/** Vetoes an address the globs matched, or one opened by kind. */
 	readonly canOpen?: (address: string) => boolean;
+	/**
+	 * A plain `open` from the widget that opened this one may show another
+	 * address in this frame instead of adding a frame (list → detail). Pinned
+	 * frames are never replaced.
+	 */
+	readonly replaceable?: boolean;
 }
 
 /** What a widget author declares. */

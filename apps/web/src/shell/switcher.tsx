@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 
+import { isMac } from "../kernel/platform";
 import { workspaceRoute, workspaces } from "../wm/workspaces";
 
 interface SwitcherProps {
@@ -32,8 +33,6 @@ export function Switcher({ active }: SwitcherProps) {
 		</nav>
 	);
 }
-
-const isMac = navigator.platform.startsWith("Mac");
 
 export const shortcutLabel = (id: number) => `${isMac ? "⌘" : "Ctrl+"}${id}`;
 

@@ -28,6 +28,7 @@ export const session = defineWidget({
 	cardinality: "many",
 	priority: "builtin",
 	opens: ["codework://session/*"],
+	replaceable: true,
 	props: Schema.Struct({}),
 	component: Session,
 });
