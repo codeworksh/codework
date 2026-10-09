@@ -253,15 +253,16 @@ function DeleteButton({ workspace, disabled, onError }: RowProps & { readonly di
 				<AlertDialogHeader>
 					<AlertDialogTitle>Delete {workspace.name}?</AlertDialogTitle>
 					<AlertDialogDescription>
+						Its tab and shortcut go away.{" "}
 						{closing === 0
-							? "No widgets are open only here; widgets shared with other workspaces stay there."
-							: `${closing} ${closing === 1 ? "widget is" : "widgets are"} open only here and will close. Widgets shared with other workspaces stay there.`}
+							? "Widgets shared with other workspaces stay where they are."
+							: `${closing} ${closing === 1 ? "widget" : "widgets"} open only here will close; shared widgets stay.`}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel>Cancel</AlertDialogCancel>
 					<AlertDialogAction
-						className="bg-destructive text-white hover:bg-destructive/90"
+						variant="destructive"
 						onClick={() =>
 							remove({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }).then(
 								() => setDesk((current) => untag(current, tag)),

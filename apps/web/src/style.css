@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* shadcn/ui's enter and exit animations (animate-in, fade-in-0, zoom-in-95, ...). */
+@import "tw-animate-css";
 /* Self-hosted so it works offline; the optical-size axis tunes glyphs for small text vs titles. */
 @import "@fontsource-variable/inter/opsz.css";
 
@@ -18,6 +20,7 @@
 	--cw-ink-muted: #8a8a93;
 	--cw-scrollbar: rgb(0 0 0 / 0.16);
 	--cw-danger: #dc2626;
+	--cw-dialog-shadow: 0 24px 64px -24px rgb(0 0 0 / 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -34,6 +37,7 @@
 		--cw-ink-muted: #9b9ba3;
 		--cw-scrollbar: rgb(255 255 255 / 0.14);
 		--cw-danger: #f87171;
+		--cw-dialog-shadow: inset 0 1px rgb(255 255 255 / 0.04), 0 24px 72px -20px rgb(0 0 0 / 0.9);
 	}
 }
 
@@ -86,6 +90,16 @@
 /* The raised card every frame and settings pane sits on. */
 @utility panel {
 	@apply rounded-[16px] border border-edge bg-linear-to-b from-frame-top to-frame to-40% shadow-frame [corner-shape:superellipse(1.25)];
+}
+
+/* Dialogs float over a blurred desktop: a translucent card with a deep, soft shadow. */
+@utility dialog-glass {
+	@apply rounded-2xl border border-edge bg-frame/85 backdrop-blur-xl backdrop-saturate-150;
+	box-shadow: var(--cw-dialog-shadow);
+}
+
+@utility dialog-backdrop {
+	@apply bg-desktop/60 backdrop-blur-[4px];
 }
 
 @layer base {
