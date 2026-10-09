@@ -1,5 +1,6 @@
 import { Link, Outlet, useMatchRoute } from "@tanstack/react-router";
 import { Layers } from "lucide-react";
+import type { CSSProperties } from "react";
 
 import {
 	Sidebar,
@@ -19,8 +20,9 @@ const sections = [{ to: "/settings/workspaces", label: "Workspaces", icon: Layer
 export function SettingsLayout() {
 	const matchRoute = useMatchRoute();
 	return (
-		<SidebarProvider className="h-full min-h-0 gap-2 p-2">
-			<Sidebar collapsible="none" className="panel w-56 bg-transparent">
+		// Wider than shadcn's 16rem default, so section names never crowd the icons.
+		<SidebarProvider className="h-full min-h-0 gap-2 p-2" style={{ "--sidebar-width": "20rem" } as CSSProperties}>
+			<Sidebar collapsible="none" className="panel bg-transparent">
 				<SidebarHeader className="px-4 pt-4">
 					<h1 className="text-base font-semibold">Settings</h1>
 				</SidebarHeader>
