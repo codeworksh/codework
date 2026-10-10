@@ -281,3 +281,51 @@ describe("request", () => {
 		expect(resolveOpenAICodexUrl("https://example.com/base/")).toBe("https://example.com/base/codex/responses");
 	});
 });
+
+describe("transport failures", () => {
+	const model = openAICodexBuiltInModels()["gpt-5.4"]!;
+
+	it("retries a fetch that never answers, then fails with the request it sent", async () => {
+		let calls = 0;
+		const fetch: typeof globalThis.fetch = async () => {
+			calls++;
+			throw new TypeError("fetch failed", { cause: new Error("connect ECONNREFUSED") });
+		};
+		const result = await stream.complete(
+			model,
+			{ messages: [makeUserMessage("hello")] },
+			{ apiKey: OPENAI_CODEX_TEST_API_KEY, reasoning: "high", maxRetries: 1, factoryOptions: { fetch } },
+		);
+		expect(calls).toBe(2);
+		expect(result).toMatchObject({
+			stopReason: "error",
+			errorMessage: "cannot connect to API: connect ECONNREFUSED",
+			failure: { _tag: "Transport", retryable: true },
+			thinkingLevel: "high",
+			providerThinkingLevel: "high",
+		});
+	});
+
+	it("does not retry an aborted fetch", async () => {
+		const controller = new AbortController();
+		let calls = 0;
+		const fetch: typeof globalThis.fetch = async () => {
+			calls++;
+			controller.abort();
+			throw new DOMException("The operation was aborted.", "AbortError");
+		};
+		const result = await stream.complete(
+			model,
+			{ messages: [makeUserMessage("hello")] },
+			{
+				apiKey: OPENAI_CODEX_TEST_API_KEY,
+				reasoning: "high",
+				maxRetries: 2,
+				signal: controller.signal,
+				factoryOptions: { fetch },
+			},
+		);
+		expect(calls).toBe(1);
+		expect(result.stopReason).toBe("aborted");
+	});
+});

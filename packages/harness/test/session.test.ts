@@ -28,14 +28,13 @@ const inheritSeq = (sourceId: string, forkId: string) => {
 };
 beforeEach(() => seqCounters.clear());
 
-const createSession = (slug: string) =>
+const createSession = () =>
 	Effect.gen(function* () {
 		// session.space_id references space(id)
 		const { spaceId, location } = yield* seedSpace();
 		const session = yield* Session.Service;
 		return yield* session.create({
 			spaceId,
-			slug,
 			directory: location,
 			title: "Test session",
 			tag: "test",
@@ -116,7 +115,7 @@ describe("session", () => {
 	it.effect("assistant appends bump the session usage aggregates", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const created = yield* createSession("s-usage");
+			const created = yield* createSession();
 
 			yield* session.append(userEntry(created.id, "e1", "hi"));
 			yield* session.append(
@@ -143,7 +142,7 @@ describe("session", () => {
 	it.effect("path walks root→leaf across a branch point", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const created = yield* createSession("s-branch");
+			const created = yield* createSession();
 
 			yield* session.append(userEntry(created.id, "e1", "start"));
 			yield* session.append(assistantEntry(created.id, "e2"));
@@ -170,8 +169,8 @@ describe("session", () => {
 	it.effect("append validates an explicit parentId against the session", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const a = yield* createSession("s-parent-a");
-			const b = yield* createSession("s-parent-b");
+			const a = yield* createSession();
+			const b = yield* createSession();
 			yield* session.append(userEntry(a.id, "ea1", "in session a"));
 			yield* session.append(userEntry(b.id, "eb1", "in session b"));
 
@@ -190,7 +189,7 @@ describe("session", () => {
 	it.effect("duplicate call ids within an entry are rejected by the schema", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const created = yield* createSession("s-dup-call");
+			const created = yield* createSession();
 
 			const toolPart = (callId: string): Session.AppendPart => ({
 				type: "toolCall",
@@ -216,8 +215,8 @@ describe("session", () => {
 	it.effect("append validates compaction shape and boundary against its actual parent path", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const source = yield* createSession("s-compaction-guard");
-			const other = yield* createSession("s-compaction-guard-other");
+			const source = yield* createSession();
+			const other = yield* createSession();
 			yield* session.append(userEntry(source.id, "e1", "root"));
 			yield* session.append(assistantEntry(source.id, "e2"));
 			yield* session.branch({ sessionId: source.id, entryId: "e1" });
@@ -304,12 +303,12 @@ describe("session", () => {
 	it.effect("clone (fork at leaf) copies the path with fresh identity", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const source = yield* createSession("s-fork-clone-src");
+			const source = yield* createSession();
 			yield* session.append(userEntry(source.id, "e1", "hello"));
 			yield* session.append(assistantEntry(source.id, "e2", { toolCall: { callId: "call_1", toolName: "read" } }));
 			yield* session.setLabel({ sessionId: source.id, entryId: "e1", label: "start" });
 
-			const fork = yield* session.fork({ sessionId: source.id, slug: "s-fork-clone" });
+			const fork = yield* session.fork({ sessionId: source.id });
 
 			// lineage + fresh session state
 			expect(Option.getOrElse(fork.parentId, () => "")).toBe(source.id);
@@ -343,14 +342,14 @@ describe("session", () => {
 	it.effect("fork copies only the active path, not abandoned branches", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const source = yield* createSession("s-fork-branches-src");
+			const source = yield* createSession();
 			yield* session.append(userEntry(source.id, "e1", "start"));
 			yield* session.append(assistantEntry(source.id, "e2"));
 			yield* session.append(userEntry(source.id, "e3", "approach A"));
 			yield* session.branch({ sessionId: source.id, entryId: "e2" });
 			yield* session.append(userEntry(source.id, "e5", "approach B"));
 
-			const fork = yield* session.fork({ sessionId: source.id, slug: "s-fork-branches" });
+			const fork = yield* session.fork({ sessionId: source.id });
 
 			// source has 4 entries; fork has only the active path e1→e2→e5
 			const forkTimeline = yield* session.timeline({ sessionId: fork.id });
@@ -370,7 +369,7 @@ describe("session", () => {
 	it.effect("fork remaps compaction firstKeptEntryId into the new session", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const source = yield* createSession("s-fork-compaction-src");
+			const source = yield* createSession();
 			yield* session.append(userEntry(source.id, "e1", "old"));
 			yield* session.append(assistantEntry(source.id, "e2"));
 			yield* session.append({
@@ -389,7 +388,7 @@ describe("session", () => {
 				data: JSON.stringify({ summary: "all prior work", firstKeptEntryId: null, tokensBefore: 500 }),
 			});
 
-			const fork = yield* session.fork({ sessionId: source.id, slug: "s-fork-compaction" });
+			const fork = yield* session.fork({ sessionId: source.id });
 			const forkPath = yield* session.path(fork.id);
 
 			const forkE2 = forkPath[1]!.entry; // copy of e2
@@ -408,7 +407,7 @@ describe("session", () => {
 	it.effect("forkBefore a user entry lands at its parent; validates entry type", () =>
 		Effect.gen(function* () {
 			const session = yield* Session.Service;
-			const source = yield* createSession("s-fork-before-src");
+			const source = yield* createSession();
 			yield* session.append(userEntry(source.id, "e1", "keep me"));
 			yield* session.append(assistantEntry(source.id, "e2"));
 			yield* session.append(userEntry(source.id, "e3", "redo this prompt"));
@@ -418,16 +417,13 @@ describe("session", () => {
 				sessionId: source.id,
 				entryId: "e3",
 				mode: "before",
-				slug: "s-fork-before",
 			});
 			const forkPath = yield* session.path(fork.id);
 			expect(forkPath).toHaveLength(2);
 			expect(forkPath.map((h) => h.entry.type)).toEqual(["user", "assistant"]);
 
 			// before a non-user entry is a typed structural rejection
-			const invalid = yield* session
-				.fork({ sessionId: source.id, entryId: "e2", mode: "before", slug: "s-fork-before-bad" })
-				.pipe(Effect.flip);
+			const invalid = yield* session.fork({ sessionId: source.id, entryId: "e2", mode: "before" }).pipe(Effect.flip);
 			expect(invalid._tag).toBe("InvalidEntryDataError");
 
 			// before the root user entry → empty fork
@@ -435,7 +431,6 @@ describe("session", () => {
 				sessionId: source.id,
 				entryId: "e1",
 				mode: "before",
-				slug: "s-fork-before-empty",
 			});
 			expect(Option.isNone(empty.leafEntryId)).toBe(true);
 			expect(yield* session.path(empty.id)).toHaveLength(0);
@@ -456,7 +451,6 @@ describe("session", () => {
 				const session = yield* Session.Service;
 				const created = yield* session.create({
 					spaceId: from.spaceId,
-					slug: "s-relink",
 					directory: AbsolutePath.make("/old/app/packages/x"),
 					title: "t",
 				});
@@ -468,7 +462,6 @@ describe("session", () => {
 				// Sitting at the old root lands on the new root.
 				const atRoot = yield* session.create({
 					spaceId: from.spaceId,
-					slug: "s-relink-root",
 					directory: from.location,
 					title: "t",
 				});
@@ -483,7 +476,6 @@ describe("session", () => {
 				const session = yield* Session.Service;
 				const created = yield* session.create({
 					spaceId: from.spaceId,
-					slug: "s-relink-dir",
 					directory: AbsolutePath.make("/old/app/pkg"),
 					title: "t",
 				});
@@ -509,7 +501,6 @@ describe("session", () => {
 				const session = yield* Session.Service;
 				const created = yield* session.create({
 					spaceId: from.spaceId,
-					slug: "s-relink-x",
 					directory: from.location,
 					title: "t",
 				});

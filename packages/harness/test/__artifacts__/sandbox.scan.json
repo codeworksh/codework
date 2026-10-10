@@ -1,0 +1,869 @@
+{
+	"empty": {
+		"0..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 0,
+			"firstLineBytes": 0
+		},
+		"1..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 0,
+			"firstLineBytes": 0
+		},
+		"1..2 max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 0,
+			"firstLineBytes": 0
+		},
+		"0..end max 6": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 0,
+			"firstLineBytes": 0
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 0,
+			"firstLineBytes": 0
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 0,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 0,
+			"firstLineBytes": 0
+		}
+	},
+	"newline": {
+		"0..end max 10000": {
+			"text": "",
+			"lines": 1,
+			"totalLines": 1,
+			"totalBytes": 1,
+			"firstLineBytes": 0
+		},
+		"1..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 1,
+			"firstLineBytes": 0
+		},
+		"1..2 max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 1,
+			"firstLineBytes": 0
+		},
+		"0..end max 6": {
+			"text": "",
+			"lines": 1,
+			"totalLines": 1,
+			"totalBytes": 1,
+			"firstLineBytes": 0
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 1,
+			"totalLines": 1,
+			"totalBytes": 1,
+			"firstLineBytes": 0
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 1,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 1,
+			"firstLineBytes": 0
+		}
+	},
+	"noTrailingNewline": {
+		"0..end max 10000": {
+			"text": "a\nb",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 3,
+			"firstLineBytes": 1
+		},
+		"1..end max 10000": {
+			"text": "b",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 3,
+			"firstLineBytes": 1
+		},
+		"1..2 max 10000": {
+			"text": "b",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 3,
+			"firstLineBytes": 1
+		},
+		"0..end max 6": {
+			"text": "a\nb",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 3,
+			"firstLineBytes": 1
+		},
+		"0..end max 1": {
+			"text": "a",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 3,
+			"firstLineBytes": 1
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 3,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 3,
+			"firstLineBytes": 0
+		}
+	},
+	"trailingNewline": {
+		"0..end max 10000": {
+			"text": "a\nb",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 4,
+			"firstLineBytes": 1
+		},
+		"1..end max 10000": {
+			"text": "b",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 4,
+			"firstLineBytes": 1
+		},
+		"1..2 max 10000": {
+			"text": "b",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 4,
+			"firstLineBytes": 1
+		},
+		"0..end max 6": {
+			"text": "a\nb",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 4,
+			"firstLineBytes": 1
+		},
+		"0..end max 1": {
+			"text": "a",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 4,
+			"firstLineBytes": 1
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 4,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 4,
+			"firstLineBytes": 0
+		}
+	},
+	"blankLines": {
+		"0..end max 10000": {
+			"text": "a\n\n\nb",
+			"lines": 4,
+			"totalLines": 4,
+			"totalBytes": 6,
+			"firstLineBytes": 1
+		},
+		"1..end max 10000": {
+			"text": "\n\nb",
+			"lines": 3,
+			"totalLines": 4,
+			"totalBytes": 6,
+			"firstLineBytes": 0
+		},
+		"1..2 max 10000": {
+			"text": "",
+			"lines": 1,
+			"totalLines": 4,
+			"totalBytes": 6,
+			"firstLineBytes": 0
+		},
+		"0..end max 6": {
+			"text": "a\n\n\nb",
+			"lines": 4,
+			"totalLines": 4,
+			"totalBytes": 6,
+			"firstLineBytes": 1
+		},
+		"0..end max 1": {
+			"text": "a",
+			"lines": 1,
+			"totalLines": 4,
+			"totalBytes": 6,
+			"firstLineBytes": 1
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 4,
+			"totalBytes": 6,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 4,
+			"totalBytes": 6,
+			"firstLineBytes": 0
+		}
+	},
+	"crlf": {
+		"0..end max 10000": {
+			"text": "one\r\ntwo\r",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 10,
+			"firstLineBytes": 4
+		},
+		"1..end max 10000": {
+			"text": "two\r",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 10,
+			"firstLineBytes": 4
+		},
+		"1..2 max 10000": {
+			"text": "two\r",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 10,
+			"firstLineBytes": 4
+		},
+		"0..end max 6": {
+			"text": "one\r",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 10,
+			"firstLineBytes": 4
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 10,
+			"firstLineBytes": 4
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 10,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 10,
+			"firstLineBytes": 0
+		}
+	},
+	"bom": {
+		"0..end max 10000": {
+			"text": "first\nsecond",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 16,
+			"firstLineBytes": 5
+		},
+		"1..end max 10000": {
+			"text": "second",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 16,
+			"firstLineBytes": 6
+		},
+		"1..2 max 10000": {
+			"text": "second",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 16,
+			"firstLineBytes": 6
+		},
+		"0..end max 6": {
+			"text": "first",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 16,
+			"firstLineBytes": 5
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 16,
+			"firstLineBytes": 5
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 16,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 16,
+			"firstLineBytes": 0
+		}
+	},
+	"bomOnly": {
+		"0..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 3,
+			"firstLineBytes": 0
+		},
+		"1..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 3,
+			"firstLineBytes": 0
+		},
+		"1..2 max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 3,
+			"firstLineBytes": 0
+		},
+		"0..end max 6": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 3,
+			"firstLineBytes": 0
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 3,
+			"firstLineBytes": 0
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 3,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 0,
+			"totalBytes": 3,
+			"firstLineBytes": 0
+		}
+	},
+	"doubleBom": {
+		"0..end max 10000": {
+			"text": "﻿text",
+			"lines": 1,
+			"totalLines": 1,
+			"totalBytes": 11,
+			"firstLineBytes": 7
+		},
+		"1..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 11,
+			"firstLineBytes": 0
+		},
+		"1..2 max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 11,
+			"firstLineBytes": 0
+		},
+		"0..end max 6": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 11,
+			"firstLineBytes": 7
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 11,
+			"firstLineBytes": 7
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 11,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 11,
+			"firstLineBytes": 0
+		}
+	},
+	"bomMidFile": {
+		"0..end max 10000": {
+			"text": "a\n﻿b",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 7,
+			"firstLineBytes": 1
+		},
+		"1..end max 10000": {
+			"text": "﻿b",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 7,
+			"firstLineBytes": 4
+		},
+		"1..2 max 10000": {
+			"text": "﻿b",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 7,
+			"firstLineBytes": 4
+		},
+		"0..end max 6": {
+			"text": "a\n﻿b",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 7,
+			"firstLineBytes": 1
+		},
+		"0..end max 1": {
+			"text": "a",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 7,
+			"firstLineBytes": 1
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 7,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 7,
+			"firstLineBytes": 0
+		}
+	},
+	"shortLikeBom": {
+		"0..end max 10000": {
+			"text": "�",
+			"lines": 1,
+			"totalLines": 1,
+			"totalBytes": 2,
+			"firstLineBytes": 2
+		},
+		"1..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 2,
+			"firstLineBytes": 0
+		},
+		"1..2 max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 2,
+			"firstLineBytes": 0
+		},
+		"0..end max 6": {
+			"text": "�",
+			"lines": 1,
+			"totalLines": 1,
+			"totalBytes": 2,
+			"firstLineBytes": 2
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 2,
+			"firstLineBytes": 2
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 2,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 1,
+			"totalBytes": 2,
+			"firstLineBytes": 0
+		}
+	},
+	"multibyte": {
+		"0..end max 10000": {
+			"text": "héllo\n🚀🚀\nwörld",
+			"lines": 3,
+			"totalLines": 3,
+			"totalBytes": 22,
+			"firstLineBytes": 6
+		},
+		"1..end max 10000": {
+			"text": "🚀🚀\nwörld",
+			"lines": 2,
+			"totalLines": 3,
+			"totalBytes": 22,
+			"firstLineBytes": 8
+		},
+		"1..2 max 10000": {
+			"text": "🚀🚀",
+			"lines": 1,
+			"totalLines": 3,
+			"totalBytes": 22,
+			"firstLineBytes": 8
+		},
+		"0..end max 6": {
+			"text": "héllo",
+			"lines": 1,
+			"totalLines": 3,
+			"totalBytes": 22,
+			"firstLineBytes": 6
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 3,
+			"totalBytes": 22,
+			"firstLineBytes": 6
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 3,
+			"totalBytes": 22,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 3,
+			"totalBytes": 22,
+			"firstLineBytes": 0
+		}
+	},
+	"longFirstLine": {
+		"0..end max 10000": {
+			"text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nshort",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 107,
+			"firstLineBytes": 100
+		},
+		"1..end max 10000": {
+			"text": "short",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 107,
+			"firstLineBytes": 5
+		},
+		"1..2 max 10000": {
+			"text": "short",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 107,
+			"firstLineBytes": 5
+		},
+		"0..end max 6": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 107,
+			"firstLineBytes": 100
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 107,
+			"firstLineBytes": 100
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 107,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 107,
+			"firstLineBytes": 0
+		}
+	},
+	"percent": {
+		"0..end max 10000": {
+			"text": "100% %d %s\n\\n stays",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 20,
+			"firstLineBytes": 10
+		},
+		"1..end max 10000": {
+			"text": "\\n stays",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 20,
+			"firstLineBytes": 8
+		},
+		"1..2 max 10000": {
+			"text": "\\n stays",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 20,
+			"firstLineBytes": 8
+		},
+		"0..end max 6": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 20,
+			"firstLineBytes": 10
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 20,
+			"firstLineBytes": 10
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 20,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 20,
+			"firstLineBytes": 0
+		}
+	},
+	"trailingSpaces": {
+		"0..end max 10000": {
+			"text": "keep   \n  these  ",
+			"lines": 2,
+			"totalLines": 2,
+			"totalBytes": 17,
+			"firstLineBytes": 7
+		},
+		"1..end max 10000": {
+			"text": "  these  ",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 17,
+			"firstLineBytes": 9
+		},
+		"1..2 max 10000": {
+			"text": "  these  ",
+			"lines": 1,
+			"totalLines": 2,
+			"totalBytes": 17,
+			"firstLineBytes": 9
+		},
+		"0..end max 6": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 17,
+			"firstLineBytes": 7
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 17,
+			"firstLineBytes": 7
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 17,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 2,
+			"totalBytes": 17,
+			"firstLineBytes": 0
+		}
+	},
+	"pastOneRead": {
+		"0..end max 10000": {
+			"text": "one\ntwo",
+			"lines": 2,
+			"totalLines": 4,
+			"totalBytes": 70013,
+			"firstLineBytes": 3
+		},
+		"1..end max 10000": {
+			"text": "two",
+			"lines": 1,
+			"totalLines": 4,
+			"totalBytes": 70013,
+			"firstLineBytes": 3
+		},
+		"1..2 max 10000": {
+			"text": "two",
+			"lines": 1,
+			"totalLines": 4,
+			"totalBytes": 70013,
+			"firstLineBytes": 3
+		},
+		"0..end max 6": {
+			"text": "one",
+			"lines": 1,
+			"totalLines": 4,
+			"totalBytes": 70013,
+			"firstLineBytes": 3
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 4,
+			"totalBytes": 70013,
+			"firstLineBytes": 3
+		},
+		"10..20 max 40": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 4,
+			"totalBytes": 70013,
+			"firstLineBytes": 0
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 4,
+			"totalBytes": 70013,
+			"firstLineBytes": 0
+		}
+	},
+	"manyLines": {
+		"0..end max 10000": {
+			"text": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45\nline 46\nline 47\nline 48\nline 49\nline 50",
+			"lines": 50,
+			"totalLines": 50,
+			"totalBytes": 390,
+			"firstLineBytes": 6
+		},
+		"1..end max 10000": {
+			"text": "line 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\nline 21\nline 22\nline 23\nline 24\nline 25\nline 26\nline 27\nline 28\nline 29\nline 30\nline 31\nline 32\nline 33\nline 34\nline 35\nline 36\nline 37\nline 38\nline 39\nline 40\nline 41\nline 42\nline 43\nline 44\nline 45\nline 46\nline 47\nline 48\nline 49\nline 50",
+			"lines": 49,
+			"totalLines": 50,
+			"totalBytes": 390,
+			"firstLineBytes": 6
+		},
+		"1..2 max 10000": {
+			"text": "line 2",
+			"lines": 1,
+			"totalLines": 50,
+			"totalBytes": 390,
+			"firstLineBytes": 6
+		},
+		"0..end max 6": {
+			"text": "line 1",
+			"lines": 1,
+			"totalLines": 50,
+			"totalBytes": 390,
+			"firstLineBytes": 6
+		},
+		"0..end max 1": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 50,
+			"totalBytes": 390,
+			"firstLineBytes": 6
+		},
+		"10..20 max 40": {
+			"text": "line 11\nline 12\nline 13\nline 14\nline 15",
+			"lines": 5,
+			"totalLines": 50,
+			"totalBytes": 390,
+			"firstLineBytes": 7
+		},
+		"1000..end max 10000": {
+			"text": "",
+			"lines": 0,
+			"totalLines": 50,
+			"totalBytes": 390,
+			"firstLineBytes": 0
+		}
+	}
+}

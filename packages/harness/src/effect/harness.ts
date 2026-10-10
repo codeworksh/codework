@@ -263,6 +263,7 @@ export const layer = (options: Options = {}) =>
 				Layer.provideMerge(database),
 				Layer.provideMerge(global),
 				Layer.provideMerge(ModelCatalog.layer({ home: paths.home, watch: options.watchModels ?? false })),
+				Layer.provideMerge(Layer.succeed(ModelCatalog.Credentials, { authFile })),
 			);
 		}),
 	);

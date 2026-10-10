@@ -1,34 +1,30 @@
-import { Effect, Encoding, type FileSystem, type Scope } from "effect";
-import { tmpdir } from "node:os";
-import { crypto, fileSystem } from "../host.ts";
-import { posix } from "../util/posix.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateTail, type TruncationResult } from "./truncate.ts";
 
 /**
- * Incrementally accumulates streaming output with bounded memory.
- * It decodes chunks with a streaming UTF-8 decoder,
- * keeps only a rolling decoded *tail* for snapshots, and spills the full output
- * to a temp file once it exceeds the display limits — so a multi-gigabyte stream
- * never sits in memory.
+ * Incrementally accumulates streaming output with bounded memory: chunks are
+ * decoded with a streaming UTF-8 decoder and only a rolling decoded *tail* is
+ * kept for snapshots, while totals are counted over everything. The full output
+ * is never held here; it lives in the sandbox's output file (`Output`).
  *
- * It is a plain mutable class; the streaming bash handler runs it in an Effect
- * scope, so the spill file handle closes on completion, failure, or interrupt.
+ * Output that never reached the harness can be accounted for with
+ * {@link Accumulator.skip}, so totals and truncation read as if every byte had
+ * arrived.
  */
 
 export interface OutputAccumulatorOptions {
 	readonly maxLines?: number;
 	readonly maxBytes?: number;
-	readonly tempFilePrefix?: string;
 }
 
 export interface OutputSnapshot {
 	readonly content: string;
 	readonly truncation: TruncationResult;
-	readonly fullOutputPath?: string;
-}
-
-function defaultTempFilePath(prefix: string, suffix: string): string {
-	return posix.join(tmpdir(), `${prefix}-${suffix}.log`);
+	/**
+	 * The raw output exceeds the limits — the rule the sandbox uses to keep its
+	 * output file. Decoding can grow invalid UTF-8, so `truncation.truncated` may
+	 * be set without it.
+	 */
+	readonly beyondLimits: boolean;
 }
 
 function byteLength(text: string): number {
@@ -39,10 +35,8 @@ export class Accumulator {
 	private readonly maxLines: number;
 	private readonly maxBytes: number;
 	private readonly maxRollingBytes: number;
-	private readonly tempFilePrefix: string;
 	private readonly decoder = new TextDecoder();
 
-	private rawChunks: Buffer[] = [];
 	private tailText = "";
 	private tailBytes = 0;
 	private tailStartsAtLineBoundary = true;
@@ -54,44 +48,36 @@ export class Accumulator {
 	private hasOpenLine = false;
 	private finished = false;
 
-	private tempFilePath: string | undefined;
-	private tempFile: FileSystem.File | undefined;
-
 	constructor(options: OutputAccumulatorOptions = {}) {
 		this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
 		this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 		this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
-		this.tempFilePrefix = options.tempFilePrefix ?? "codework-output";
 	}
 
-	append(data: Buffer): Effect.Effect<void, never, Scope.Scope> {
-		return Effect.suspend(() => {
-			if (this.finished) return Effect.die(new Error("cannot append to a finished output accumulator"));
-
-			this.totalRawBytes += data.length;
-			this.appendDecodedText(this.decoder.decode(data, { stream: true }));
-
-			if (this.tempFile !== undefined || this.shouldUseTempFile()) {
-				return Effect.gen({ self: this }, function* () {
-					yield* this.ensureTempFile();
-					yield* this.tempFile!.writeAll(data).pipe(Effect.orDie);
-				});
-			}
-			if (data.length > 0) this.rawChunks.push(data);
-			return Effect.void;
-		});
+	append(data: Uint8Array): void {
+		if (this.finished) throw new Error("cannot append to a finished output accumulator");
+		this.totalRawBytes += data.length;
+		this.appendDecodedText(this.decoder.decode(data, { stream: true }));
 	}
 
-	finish(): Effect.Effect<void, never, Scope.Scope> {
-		return Effect.suspend(() => {
-			if (this.finished) return Effect.void;
-			this.finished = true;
-			this.appendDecodedText(this.decoder.decode());
-			return Effect.gen({ self: this }, function* () {
-				if (this.shouldUseTempFile()) yield* this.ensureTempFile();
-				if (this.tempFile !== undefined) yield* this.tempFile.sync.pipe(Effect.orDie);
-			});
-		});
+	/**
+	 * Count output that was produced but not delivered — the start of the output,
+	 * before anything is appended. Unless it is known to end a line, the first
+	 * appended line is treated as partial and left out of snapshots.
+	 */
+	skip(bytes: number, newlines: number, endsLine: boolean): void {
+		if (bytes <= 0) return;
+		this.totalRawBytes += bytes;
+		this.totalDecodedBytes += bytes;
+		this.completedLines += newlines;
+		this.totalLines = this.completedLines;
+		this.tailStartsAtLineBoundary = endsLine;
+	}
+
+	finish(): void {
+		if (this.finished) return;
+		this.finished = true;
+		this.appendDecodedText(this.decoder.decode());
 	}
 
 	snapshot(): OutputSnapshot {
@@ -99,9 +85,11 @@ export class Accumulator {
 			maxLines: this.maxLines,
 			maxBytes: this.maxBytes,
 		});
-		const truncated = this.totalLines > this.maxLines || this.totalDecodedBytes > this.maxBytes;
+		// Raw bytes, the measure the sandbox applies when it decides to keep the output file.
+		const beyondLimits = this.totalLines > this.maxLines || this.totalRawBytes > this.maxBytes;
+		const truncated = beyondLimits || tailTruncation.truncated;
 		const truncatedBy = truncated
-			? (tailTruncation.truncatedBy ?? (this.totalDecodedBytes > this.maxBytes ? "bytes" : "lines"))
+			? (tailTruncation.truncatedBy ?? (this.totalRawBytes > this.maxBytes ? "bytes" : "lines"))
 			: null;
 		const truncation: TruncationResult = {
 			...tailTruncation,
@@ -112,12 +100,7 @@ export class Accumulator {
 			maxLines: this.maxLines,
 			maxBytes: this.maxBytes,
 		};
-
-		return {
-			content: truncation.content,
-			truncation,
-			...(this.tempFilePath === undefined ? {} : { fullOutputPath: this.tempFilePath }),
-		};
+		return { content: truncation.content, truncation, beyondLimits };
 	}
 
 	/** Bytes in the final (possibly unterminated) line — for the partial-line footer. */
@@ -178,24 +161,10 @@ export class Accumulator {
 			return this.tailText;
 		}
 
+		// Drop the partial first line only when a line follows it; a cut final line is all there is to show.
 		const firstNewline = this.tailText.indexOf("\n");
-		return firstNewline === -1 ? this.tailText : this.tailText.slice(firstNewline + 1);
-	}
-
-	private shouldUseTempFile(): boolean {
-		return (
-			this.totalRawBytes > this.maxBytes || this.totalDecodedBytes > this.maxBytes || this.totalLines > this.maxLines
-		);
-	}
-
-	private ensureTempFile(): Effect.Effect<void, never, Scope.Scope> {
-		if (this.tempFile !== undefined) return Effect.void;
-		return Effect.gen({ self: this }, function* () {
-			const suffix = Encoding.encodeHex(yield* crypto.randomBytes(8));
-			this.tempFilePath = defaultTempFilePath(this.tempFilePrefix, suffix);
-			this.tempFile = yield* fileSystem.open(this.tempFilePath, { flag: "w" });
-			for (const chunk of this.rawChunks) yield* this.tempFile.writeAll(chunk);
-			this.rawChunks = [];
-		}).pipe(Effect.orDie);
+		return firstNewline === -1 || firstNewline === this.tailText.length - 1
+			? this.tailText
+			: this.tailText.slice(firstNewline + 1);
 	}
 }

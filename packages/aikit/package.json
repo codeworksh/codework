@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/aikit",
-	"version": "0.9.2",
+	"version": "0.10.0",
 	"description": "TypeScript SDK that provides a unified API for working with multiple LLM providers, automatic model discovery, and more.",
 	"keywords": [
 		"agent",
@@ -98,9 +98,9 @@
 		"@ai-sdk/anthropic": "^4.0.53",
 		"@ai-sdk/google": "^4.0.69",
 		"@ai-sdk/google-vertex": "^5.0.81",
-		"@ai-sdk/openai": "^4.0.66",
+		"@ai-sdk/openai": "^4.0.81",
 		"@ai-sdk/openai-compatible": "^3.0.48",
-		"@ai-sdk/provider": "^4.0.14",
+		"@ai-sdk/provider": "^4.0.19",
 		"@ai-sdk/xai": "^4.0.58",
 		"@openrouter/ai-sdk-provider": "^3.0.0",
 		"ai": "^7.0.99",

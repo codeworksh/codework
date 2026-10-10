@@ -1,5 +1,5 @@
 import { Effect, Layer, Option } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { Control } from "../src/control.ts";
 import { ContextCodec } from "../src/context/codec.ts";
@@ -36,7 +36,6 @@ const setup = Effect.gen(function* () {
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
 		spaceId,
-		slug: "prompted",
 		directory: location,
 		title: "T",
 		tag: "test",
@@ -55,7 +54,7 @@ const eventCount = (type: string) =>
 		return (yield* sql`SELECT id FROM event WHERE type = ${type}`).length;
 	});
 
-const prompt = (text: string) => PromptSchema.Prompt.make({ text });
+const prompt = (text: string) => PromptSchema.Prompt.fromText(text);
 
 describe("Control.prompt", () => {
 	it("returns the original record when the id is retried", () =>

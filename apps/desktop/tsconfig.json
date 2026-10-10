@@ -1,0 +1,9 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"types": ["node", "electron"],
+		"lib": ["ES2023", "DOM"],
+		"tsBuildInfoFile": "../../.cache/typescript/desktop.tsbuildinfo"
+	},
+	"include": ["src", "vite.config.ts"]
+}

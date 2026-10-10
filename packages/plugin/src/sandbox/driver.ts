@@ -12,12 +12,16 @@ export const Name = Schema.String.check(Schema.isNonEmpty()).pipe(Schema.brand("
 export type Name = typeof Name.Type;
 
 /** A path whose coordinate system is the mounted namespace. */
-export const AbsolutePath = Schema.String.check(Schema.isStartsWith("/")).pipe(
+export const AbsolutePath = Schema.String.check(Schema.isStartingWith("/")).pipe(
 	Schema.brand("SandboxDriver.AbsolutePath"),
 );
 export type AbsolutePath = typeof AbsolutePath.Type;
 
-export const RuntimeConfigBase = Schema.Struct({ defaultCwd: AbsolutePath });
+export const RuntimeConfigBase = Schema.Struct({
+	defaultCwd: AbsolutePath,
+	/** Where oversized tool output is written inside the sandbox; `SandboxIO.DEFAULT_SPILL_PATH` when absent. */
+	spillPath: Schema.optional(AbsolutePath),
+});
 export interface RuntimeConfigBase extends Schema.Schema.Type<typeof RuntimeConfigBase> {}
 
 export interface Capabilities {

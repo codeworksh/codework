@@ -1,5 +1,5 @@
 import { Cause, Context, DateTime, type Duration, Effect, Layer, LayerMap, Option, Schema, Semaphore } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
 import { Space } from "../space/space.ts";
 import { SandboxDriver } from "./driver.ts";
@@ -539,6 +539,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 						driver: SandboxDriver.Name.make("local"),
 						kind: "local",
 						cwd: SandboxIO.resolveMountCwd(hostDefaultCwd, mountOptions.cwd),
+						spillPath: SandboxIO.DEFAULT_SPILL_PATH,
 					};
 				} else {
 					const row = yield* requireRow(id);
@@ -564,6 +565,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 						driver: attached.driver.name,
 						kind: row.kind,
 						cwd: SandboxIO.resolveMountCwd(attached.input.runtimeConfig.defaultCwd, mountOptions.cwd),
+						spillPath: attached.input.runtimeConfig.spillPath ?? SandboxIO.DEFAULT_SPILL_PATH,
 					};
 
 					const wasIdle = lease.held
@@ -641,7 +643,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 					Layer.succeed(SandboxIO.Current, identity),
 					Layer.succeed(SandboxIO.FileSystem, SandboxFileSystem.withCwd(fs, identity.cwd)),
 					Layer.succeed(SandboxIO.Shell, shellWithCwd(shell, identity.cwd)),
-				);
+				).pipe(SandboxIO.withMutation);
 			}),
 		);
 

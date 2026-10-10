@@ -6,6 +6,7 @@ import { RootProvider } from "fumadocs-ui/provider/astro";
 import type { ReactNode } from "react";
 import { navigate } from "astro:transitions/client";
 import Search from "./search";
+import { Logo } from "./landing/logo";
 
 export function Docs(props: {
 	tree: Root;
@@ -22,7 +23,18 @@ export function Docs(props: {
 			theme={{ enabled: false }}
 			search={{ SearchDialog: Search }}
 		>
-			<DocsLayout tree={props.tree} themeSwitch={{ enabled: false }} nav={{ title: "CodeWork" }}>
+			<DocsLayout
+				tree={props.tree}
+				themeSwitch={{ enabled: false }}
+				nav={{
+					title: (
+						<>
+							<Logo className="mr-2 size-5" />
+							CodeWork
+						</>
+					),
+				}}
+			>
 				<DocsPage {...props.page}>{props.children}</DocsPage>
 			</DocsLayout>
 		</RootProvider>

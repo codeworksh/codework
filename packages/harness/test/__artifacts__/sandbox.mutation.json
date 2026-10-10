@@ -1,0 +1,42 @@
+{
+	"increments": 20,
+	"order": [
+		"a",
+		"b",
+		"c",
+		"d",
+		"e"
+	],
+	"interrupted": {
+		"queuedBehind": {
+			"beforeRelease": [
+				"a"
+			],
+			"after": [
+				"a",
+				"c"
+			]
+		},
+		"arrivedAfter": {
+			"beforeRelease": [
+				"a"
+			],
+			"after": [
+				"a",
+				"c"
+			]
+		}
+	},
+	"afterFailure": {
+		"failed": "boom",
+		"next": "ran"
+	},
+	"waits": {
+		"relativeVsAbsolute": true,
+		"throughSymlinkedDirectory": true,
+		"throughSymlinkedFile": true,
+		"missingThroughSymlink": true,
+		"acrossMountsOfOneInstance": true,
+		"unrelatedFiles": false
+	}
+}

@@ -126,6 +126,8 @@ export function disabledProviderOptions(model: Model.Info): ProviderOptionBag {
 	const key = Model.optionsKey(model);
 
 	if (key === "anthropic" || key === "google-vertex-anthropic") {
+		// `null` means this model cannot disable thinking and rejects the request.
+		if (model.thinkingLevelMap?.off === null) return {};
 		return { [key]: { thinking: { type: "disabled" } } };
 	}
 
@@ -286,6 +288,28 @@ export function reasoningProviderOptions(model: Model.Info, plan: Plan): Provide
 	}
 
 	return {};
+}
+
+/**
+ * The provider-native thinking value a request carried, read off the exact body the
+ * adapter sent. Adapters drop efforts they believe a model rejects, so the options
+ * aikit hands them can say more than the wire did.
+ */
+export function providerThinkingLevel(body: unknown): string | undefined {
+	const value =
+		field(body, "reasoning", "effort") ??
+		field(body, "reasoning_effort") ??
+		field(body, "generationConfig", "thinkingConfig", "thinkingLevel") ??
+		// With thinking disabled Anthropic's adapter adds its own default effort, which says nothing about thinking.
+		(field(body, "thinking", "type") === "disabled" ? undefined : field(body, "output_config", "effort"));
+	return typeof value === "string" ? value : undefined;
+}
+
+function field(value: unknown, ...keys: string[]): unknown {
+	return keys.reduce<unknown>(
+		(at, key) => (typeof at === "object" && at !== null ? (at as Record<string, unknown>)[key] : undefined),
+		value,
+	);
 }
 
 export * as Thinking from "./thinking.ts";

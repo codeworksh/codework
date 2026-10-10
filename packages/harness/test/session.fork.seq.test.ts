@@ -1,5 +1,5 @@
 import { Effect, Layer, Option } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { Control } from "../src/control.ts";
 import { Database } from "../src/db/db.ts";
@@ -32,7 +32,6 @@ const seed = Effect.gen(function* () {
 	const session = yield* Session.Service;
 	return yield* session.create({
 		spaceId,
-		slug: "src",
 		directory: location,
 		title: "T",
 		tag: "test",
@@ -56,7 +55,7 @@ describe("fork sequence seeding", () => {
 			const sourceHead = yield* events.latestSequence(source.id);
 			expect(sourceHead).toBe(9);
 
-			const fork = yield* session.fork({ sessionId: source.id, slug: "forked" });
+			const fork = yield* session.fork({ sessionId: source.id });
 
 			// The seeded position is the highest copied entry, not 0.
 			expect(yield* events.latestSequence(fork.id)).toBe(10);
@@ -132,7 +131,7 @@ describe("append keeps the aggregate head in sync", () => {
 
 			const admitted = yield* control.prompt({
 				sessionId: source.id,
-				prompt: PromptSchema.Prompt.make({ text: "after" }),
+				prompt: PromptSchema.Prompt.fromText("after"),
 			});
 			expect(admitted.admittedSeq).toBeGreaterThan(1);
 

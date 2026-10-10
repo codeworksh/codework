@@ -23,6 +23,8 @@ type RemoteSandbox = import("@vercel/sandbox").Sandbox;
 
 /** Vercel's namespace-intrinsic working directory. */
 export const DEFAULT_CWD = "/vercel/sandbox";
+/** Where oversized tool output is written inside the sandbox. */
+export const SPILL_PATH = "/tmp";
 
 export class VercelError extends Schema.TaggedError<VercelError>()("VercelError", {
 	sanitized: SandboxInstance.PersistedError,
@@ -193,7 +195,17 @@ export const statsFrom = (stats: Stats): RemoteFileSystem.FileStat => {
 
 type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
-	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm" | "realpath"
+	| "readFile"
+	| "readFileBuffer"
+	| "writeFile"
+	| "stat"
+	| "lstat"
+	| "readdir"
+	| "exists"
+	| "mkdir"
+	| "rm"
+	| "realpath"
+	| "scanLines"
 >;
 
 // The Vercel `fs` surface is `node:fs/promises`-compatible, so the provider
@@ -244,6 +256,10 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options): RemoteFilesyste
 			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
 			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
 		},
+		scanLines: SandboxFileSystem.Scan.viaShell(async (argv) => {
+			const result = await (await spawnArgv(sandbox, options, argv)).wait();
+			return { exitCode: result.exitCode, stdout: await result.stdout(), stderr: await result.stderr() };
+		}),
 	};
 
 	return filesystem;
@@ -423,6 +439,7 @@ const identityLayer = (options: Options) =>
 				driver: "vercel",
 				id: options.instanceId ?? SandboxInstance.ID.create(),
 				defaultCwd: DEFAULT_CWD,
+				spillPath: SPILL_PATH,
 				...(options.cwd === undefined ? {} : { cwd: options.cwd }),
 			}),
 		),
@@ -437,9 +454,10 @@ export const layer = (
 	options: Options = {},
 ): Layer.Layer<SandboxIO.Provides | SandboxResource.Service, VercelError> => {
 	const mounted = { ...options, cwd: SandboxIO.resolveMountCwd(DEFAULT_CWD, options.cwd) };
-	return Layer.mergeAll(filesystemLayer(mounted), shellLayer(mounted), identityLayer(mounted), resourceLayer).pipe(
-		Layer.provide(remote(mounted)),
-	);
+	return Layer.mergeAll(
+		SandboxIO.withMutation(Layer.mergeAll(filesystemLayer(mounted), shellLayer(mounted), identityLayer(mounted))),
+		resourceLayer,
+	).pipe(Layer.provide(remote(mounted)));
 };
 
 export const services = layer;

@@ -3,18 +3,20 @@ import * as Protocol from "../../src/llm/protocol.ts";
 import * as Message from "../../src/message/message.ts";
 import { complete, stream } from "../../src/stream.ts";
 import {
+	ANTHROPIC_E2E_MODELS,
 	anthropicOptions,
 	describeIfAnthropic,
 	describeIfOpenAI,
 	describeIfOpenAICodex,
 	describeIfOpenRouter,
+	OPENROUTER_E2E_MODELS,
 	getAnthropicModel,
 	getGeneratedText,
 	getOpenAICodexModel,
 	getOpenAIModel,
 	getOpenRouterModel,
-	OPENAI_CODEX_E2E_MODEL,
-	OPENAI_E2E_MODEL,
+	OPENAI_CODEX_E2E_MODELS,
+	OPENAI_E2E_MODELS,
 	openaiCodexOptions,
 	openaiOptions,
 	openrouterOptions,
@@ -77,7 +79,8 @@ async function testAbortSignal(model: StreamableModel, options: StreamOptionsWit
 		}),
 	);
 
-	const followUp = await complete(model, context, { maxTokens: 256, ...options });
+	// Room for a thinking model's reasoning as well as the five names.
+	const followUp = await complete(model, context, { maxTokens: 2048, ...options });
 	expect(followUp.stopReason).toBe("stop");
 	expect(getGeneratedText(followUp).length).toBeGreaterThan(0);
 }
@@ -156,73 +159,78 @@ async function testAbortThenNewMessage(model: StreamableModel, options: StreamOp
 }
 
 describe("AI Provider Abort Tests", () => {
-	describeIfAnthropic("Anthropic provider (claude-haiku-4-5)", () => {
+	describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic provider (%s)", (modelId) => {
 		const options = anthropicOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testAbortSignal(model, options);
 		});
 
 		it("should handle immediate abort", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testImmediateAbort(model, options);
 		});
 
 		it("should handle abort then new message", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getAnthropicModel();
+			const model = await getAnthropicModel(modelId);
 			await testAbortThenNewMessage(model, options);
 		});
 	});
 
-	describeIfOpenAI(`OpenAI provider (${OPENAI_E2E_MODEL})`, () => {
+	describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI provider (%s)", (modelId) => {
 		const options = openaiOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testAbortSignal(model, options);
 		});
 
 		it("should handle immediate abort", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testImmediateAbort(model, options);
 		});
 
 		it("should handle abort then new message", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenAIModel();
+			const model = await getOpenAIModel(modelId);
 			await testAbortThenNewMessage(model, options);
 		});
 	});
 
-	describeIfOpenAICodex(`OpenAI Codex provider (${OPENAI_CODEX_E2E_MODEL})`, () => {
+	describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex provider (%s)", (modelId) => {
 		const options = openaiCodexOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testAbortSignal(model, options);
 		});
 
 		it("should handle immediate abort", { retry: 3, timeout: 60000 }, async () => {
-			const model = await getOpenAICodexModel();
+			const model = await getOpenAICodexModel(modelId);
 			await testImmediateAbort(model, options);
+		});
+
+		it("should handle abort then new message", { retry: 3, timeout: 60000 }, async () => {
+			const model = await getOpenAICodexModel(modelId);
+			await testAbortThenNewMessage(model, options);
 		});
 	});
 
-	describeIfOpenRouter("OpenRouter provider (z-ai/glm-5.3-flash)", () => {
+	describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter provider (%s)", (modelId) => {
 		const options = openrouterOptions();
 
 		it("should abort mid-stream", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testAbortSignal(model, options);
 		});
 
 		it("should handle immediate abort", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testImmediateAbort(model, options);
 		});
 
 		it("should handle abort then new message", { retry: 3, timeout: 30000 }, async () => {
-			const model = await getOpenRouterModel();
+			const model = await getOpenRouterModel(modelId);
 			await testAbortThenNewMessage(model, options);
 		});
 	});

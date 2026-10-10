@@ -3,7 +3,7 @@
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect } from "effect";
-import type { CliError } from "effect/unstable/cli";
+import type { CliError } from "effect/cli";
 import pkg from "../package.json" with { type: "json" };
 import { Cmd } from "./cli/cmd/cmd.ts";
 import type { CommandError } from "./cli/error.ts";
@@ -21,6 +21,7 @@ const Handlers = Runtime.handlers(Cmd, {
 	session: {
 		link: () => import("./cli/cmd/handlers/session/link.ts"),
 	},
+	acp: () => import("./cli/cmd/handlers/acp.ts"),
 	plugin: {
 		add: () => import("./cli/cmd/handlers/plugin/add.ts"),
 		check: () => import("./cli/cmd/handlers/plugin/check.ts"),

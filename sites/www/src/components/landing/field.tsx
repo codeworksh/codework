@@ -1,20 +1,34 @@
 import { useEffect, useRef } from "react";
+import { Chase, chaseCount, type Pellet } from "./chase";
 import { THEME_EVENT } from "./theme";
-import { bandOf, MARK, WORDMARK, type Ink } from "./wordmark";
+import { DEPTH, MARK, WORDMARK, WORDMARK_OUTLINE, type Ink } from "./wordmark";
 
 /**
  * The hero's pixel field: drifting dithered noise on the wordmark's grid, a glow that follows
- * the pointer and a roaming sprite, and the mark stamped wherever you click. 'hero' draws the
+ * the pointer, a tile-eating logo character, and the mark stamped wherever you click. 'hero' draws the
  * word into the field; 'field' is the bare texture for the footer.
  */
 
-type Palette = Record<Ink | "bg", string>;
+type Palette = Record<Ink | "bg" | "tile" | "grid", string>;
+
+/** Mixes two #rrggbb colours, `t` of the way from a to b. */
+const mixHex = (a: string, b: string, t: number) =>
+	`#${[1, 3, 5]
+		.map((i) => {
+			const [from, to] = [parseInt(a.slice(i, i + 2), 16), parseInt(b.slice(i, i + 2), 16)];
+			return Math.round(from + (to - from) * t)
+				.toString(16)
+				.padStart(2, "0");
+		})
+		.join("")}`;
 
 function readPalette(): Palette {
 	const style = getComputedStyle(document.documentElement);
 	const token = (name: string) => style.getPropertyValue(`--t-field-${name}`).trim();
 	return {
 		bg: token("bg"),
+		grid: mixHex(token("bg"), token("dim"), 0.22),
+		tile: mixHex(token("dim"), token("lit"), TILE_LIFT),
 		dim: token("dim"),
 		mid: token("mid"),
 		lit: token("lit"),
@@ -33,6 +47,8 @@ const BAYER = [
 const NOISE_SIZE = 128;
 /** Grid cells per unit of noise: how big the drifting blobs read. */
 const CELLS_PER_NOISE = 9;
+/** Each faint grid square contains two by two field pixels. */
+const GRID_CELLS = 2;
 /** Pointer reach, in grid cells. */
 const CURSOR_CELLS = 12;
 /** Density of the bare field, which has no vignette to shape it. */
@@ -48,21 +64,14 @@ const CHARGE_TIME = 1.1;
 const CHARGE_FROM = 0.45;
 const CHARGE_GROWTH = 1.6;
 
-const SPRITE_STRENGTH = 0.7;
-const SPRITE_CHARGE_GLOW = 0.4;
-const SPRITE_FIRST_STAMP_WAIT = [1, 2] as const;
-const SPRITE_STAMP_WAIT = [2, 3] as const;
-const SPRITE_STAMP_CHARGE = [0, 0.2] as const;
-
 /** The word is cut in left to right, each cell flashing its crest ink as it lands. */
 const ENTRANCE_SWEEP = 0.8;
 const ENTRANCE_SCATTER = 0.35;
 const ENTRANCE_FLASH = 0.16;
 
 /**
- * File-extension tiles in the hero's lower U: bigger pixels, a whole number of cells, lit and dithered
- * like the rest. Tiles are TILE_W x TILE_H units; a unit grows past one cell on small screens so the
- * label stays legible.
+ * File-extension tiles across the hero: bigger pixels, a whole number of cells, lit and dithered
+ * like the rest. Tiles start at TILE_W x TILE_H cells and grow on small screens so the label stays legible.
  */
 const EXTENSIONS = [
 	".py",
@@ -102,13 +111,12 @@ const EXTENSIONS = [
 const EXTENSION_STEP = 7;
 const TILE_W = 4;
 const TILE_H = 2;
-/** Narrowest a tile may draw, in css px. */
+/** How far a resting tile's ink is lifted from dim toward lit, so its label stands out from the field. */
+const TILE_LIFT = 0.1;
+/** Target minimum tile width, in css px, rounded to the field grid. */
 const TILE_MIN_CSS = 40;
-/** Share of the eligible slots that hold a tile, so the band stays scattered. */
-const TILE_ODDS = 0.45;
-/** Tiles start below this point of the hero (-1 top, 1 bottom) and need this much field under them. */
-const TILE_FROM_Y = 0.15;
-const TILE_MIN_SHADE = 0.3;
+/** Share of the eligible slots that hold a tile, so the corners stay scattered. Small screens use a denser share of their fewer available slots. */
+const TILE_ODDS = 0.16;
 /** Css px a tile keeps clear of copy and controls. */
 const TILE_CLEARANCE = 16;
 /** A tile is one pixel standing in for many, so the drift lights it more often than a single cell. */
@@ -123,6 +131,7 @@ type Ping = { x: number; y: number; born: number; from: number; to: number; life
 type Charge = { x: number; y: number; start: number };
 type Glow = { x: number; y: number; strength: number; reach: number };
 type Stamp = { x: number; y: number; cellPx: number; amp: number };
+/** Extension tiles appear and disappear with the field on every screen size. */
 type Tile = { col: number; row: number; w: number; h: number; shade: number; ext: string };
 
 function lcg(seed: number) {
@@ -180,8 +189,6 @@ function sample(field: Float32Array, x: number, y: number) {
 	return (a * (1 - sx) + b * sx) * (1 - sy) + (c * (1 - sx) + d * sx) * sy;
 }
 
-const between = ([lo, hi]: readonly [number, number]) => lo + Math.random() * (hi - lo);
-
 export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "field"; onPainted?: () => void }) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const painted = useRef(onPainted);
@@ -202,7 +209,6 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		// Only a few dozen tiles fit, so each visit starts the walk somewhere else in the list.
 		const firstExtension = Math.floor(Math.random() * EXTENSIONS.length);
 		let palette = readPalette();
-		let restInks = glyph.rows.map((_, row) => palette[bandOf(row, glyph.height)]);
 
 		// Device-pixel geometry. One grid for everything, anchored on the wordmark slot: the
 		// word occupies cells 0..width, 0..height and the field runs into negative indices around it.
@@ -232,16 +238,16 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		const slot = isHero ? document.querySelector<HTMLElement>("[data-hero-wordmark]") : null;
 
 		const pointer = { x: -1e4, y: -1e4 };
-		const sprite = { x: -1e4, y: -1e4, strength: 0 };
+		let chasers: Chase[] = [];
+		const eaten = new Map<string, number>();
+		let pellets: Pellet[] = [];
 		let strength = 0;
 		let targetStrength = 0;
 		let pings: Ping[] = [];
 		let holding: Charge | null = null;
-		let spriteHold: (Charge & { charge: number }) | null = null;
-		let spriteStampAt = Infinity;
 		let wordPress = false;
 		let visible = true;
-		let entrance = isHero && !reducedMotion ? performance.now() : -Infinity;
+		let entrance: number | null = isHero && !reducedMotion ? null : -Infinity;
 
 		const onWord = (x: number, y: number) =>
 			isHero && x >= wmX && y >= wmY && x < wmX + glyph.width * cell && y < wmY + glyph.height * cell;
@@ -337,90 +343,131 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				}
 			}
 			layTiles(box);
+			const obstacles = [...quiet, ...(slot ? [slot] : [])].map((el) => {
+				const rect = el.getBoundingClientRect();
+				// Mobile copy wrappers span the screen; keep their side gutters traversable.
+				const gutter = box.width < 640 && !el.closest("header") ? 16 : 0;
+				return {
+					left: rect.left - box.left + gutter,
+					top: rect.top - box.top,
+					right: rect.right - box.left - gutter,
+					bottom: rect.bottom - box.top,
+				};
+			});
+			eaten.clear();
+			const starts = [
+				{ x: 30, y: 90 },
+				{ x: box.width - 30, y: box.height - 30 },
+				{ x: box.width - 30, y: 90 },
+				{ x: 30, y: box.height - 30 },
+				{ x: box.width / 2, y: 90 },
+			];
+			chasers =
+				isHero && !reducedMotion
+					? starts
+							.slice(0, chaseCount(box.width))
+							.map((start) => new Chase(box.width, box.height, obstacles, start, eaten))
+					: [];
+			pellets = tiles.map((tile) => ({
+				id: `${tile.col}:${tile.row}`,
+				x: (wmX + (tile.col + tile.w / 2) * cell) / dpr,
+				y: (wmY + (tile.row + tile.h / 2) * cell) / dpr,
+			}));
 			return true;
 		};
 
-		/** Tiles on a lattice aligned to the word's grid, kept to the lower U and clear of the copy. */
+		/** Tiles on a lattice aligned to the word's grid, scattered through the clear spaces. */
 		const layTiles = (box: DOMRect) => {
 			tiles = [];
 			covered = new Uint8Array(cols * rows);
 			if (!isHero) return;
-			const unit = Math.max(1, Math.ceil((TILE_MIN_CSS * dpr) / (TILE_W * cell)));
-			const w = TILE_W * unit;
-			const h = TILE_H * unit;
+			const small = box.width < 640;
+			const w = Math.max(TILE_W, Math.round((TILE_MIN_CSS * dpr) / cell));
+			const h = Math.max(TILE_H, Math.round((w * TILE_H) / TILE_W));
+			const count = chaseCount(box.width);
+			const odds = Math.min(0.65, (small ? 0.3 : TILE_ODDS) * Math.sqrt(count));
+			const slots: { col: number; row: number; shade: number; rank: number }[] = [];
 			const stepX = w + 1;
 			const stepY = h + 1;
+			// Anchor the two sides to the canvas edges, so changing the word's width cannot empty a corner.
+			const firstCol = Math.ceil(-wmX / cell);
+			const lastCol = Math.floor((width - wmX) / cell) - w;
+			const middleCol = (firstCol + lastCol) / 2;
+			const tileCols: number[] = [];
+			for (let col = firstCol; col <= middleCol; col += stepX) tileCols.push(col);
+			for (let col = lastCol; col > middleCol; col -= stepX) tileCols.push(col);
 			for (let row = Math.ceil(rMin / stepY) * stepY; row + h <= rMin + rows; row += stepY) {
-				for (let col = Math.ceil(cMin / stepX) * stepX; col + w <= cMin + cols; col += stepX) {
+				for (const col of tileCols) {
 					if (row < glyph.height && row + h > 0 && col < glyph.width && col + w > 0) continue;
 					const x = wmX + (col + w / 2) * cell;
 					const y = wmY + (row + h / 2) * cell;
-					if ((y / height) * 2 - 1 < TILE_FROM_Y) continue;
-					const shade = ramp[(row + (h >> 1) - rMin) * cols + (col + (w >> 1) - cMin)] ?? 0;
-					if (shade < TILE_MIN_SHADE) continue;
-					if (jitter[(row * 29 + col * 13) & 4095]! > TILE_ODDS) continue;
+
+					const shade = Math.max(0.22, ramp[(row + (h >> 1) - rMin) * cols + (col + (w >> 1) - cMin)] ?? 0);
+					if (jitter[(row * 29 + col * 13) & 4095]! > odds) continue;
 					const halfW = (w * cell) / 2 / dpr + TILE_CLEARANCE;
 					const halfH = (h * cell) / 2 / dpr + TILE_CLEARANCE;
 					if (nearest(quiet, box.left + x / dpr, box.top + y / dpr) < Math.hypot(halfW, halfH)) continue;
-					tiles.push({
-						col,
-						row,
-						w,
-						h,
-						shade,
-						ext: EXTENSIONS[(firstExtension + tiles.length * EXTENSION_STEP) % EXTENSIONS.length]!,
-					});
-					for (let r = row; r < row + h; r++)
-						covered.fill(1, (r - rMin) * cols + col - cMin, (r - rMin) * cols + col - cMin + w);
+					slots.push({ col, row, shade, rank: jitter[(row * 29 + col * 13) & 4095]! });
 				}
+			}
+			// Sparse tiles throughout the clear spaces, with a smaller mobile budget.
+			const kept = slots.sort((a, b) => a.rank - b.rank).slice(0, count * (small ? 16 : 24));
+			for (const { col, row, shade } of kept) {
+				tiles.push({
+					col,
+					row,
+					w,
+					h,
+					shade,
+					ext: EXTENSIONS[(firstExtension + tiles.length * EXTENSION_STEP) % EXTENSIONS.length]!,
+				});
+				for (let r = row; r < row + h; r++)
+					covered.fill(1, (r - rMin) * cols + col - cMin, (r - rMin) * cols + col - cMin + w);
 			}
 		};
 
 		const draw = (time: number) => {
+			// Start when pixels are ready, rather than spending the entrance on layout work.
+			entrance ??= time;
 			const t = reducedMotion ? 0 : time / 1000;
 			const age = (time - entrance) / 1000;
 			const entering = age < ENTRANCE_SWEEP + ENTRANCE_SCATTER + ENTRANCE_FLASH;
 
-			// The sprite wanders a Lissajous path, glowing as it goes and stamping now and then.
-			let spriteGoal = 0;
-			if (isHero && !reducedMotion) {
-				const rx = 0.44 * (1 + 0.1 * Math.sin(t * 0.11));
-				const ry = 0.38 * (1 + 0.1 * Math.sin(t * 0.09 + 2));
-				sprite.x = width * (0.5 + rx * Math.sin(t * 0.65));
-				sprite.y = height * (0.48 + ry * Math.sin(t * 0.39 + 1.1));
-				const box = host.getBoundingClientRect();
-				spriteGoal = strengthAt(box.left + sprite.x / dpr, box.top + sprite.y / dpr) * SPRITE_STRENGTH;
-
-				if (entering) {
-					spriteHold = null;
-					spriteStampAt = Infinity;
-				} else if (spriteStampAt === Infinity) {
-					spriteStampAt = time + between(SPRITE_FIRST_STAMP_WAIT) * 1000;
+			const targets = new Set(chasers.flatMap((chase) => (chase.targetId ? [chase.targetId] : [])));
+			if (!entering)
+				for (const chase of chasers) {
+					if (chase.targetId) targets.delete(chase.targetId);
+					chase.update(t, pellets, targets);
+					if (chase.targetId) targets.add(chase.targetId);
 				}
-				if (!entering && !spriteHold && time >= spriteStampAt) {
-					spriteHold = { x: sprite.x, y: sprite.y, start: time, charge: between(SPRITE_STAMP_CHARGE) };
-				}
-				if (spriteHold) {
-					spriteHold.x = sprite.x;
-					spriteHold.y = sprite.y;
-					spriteGoal *= SPRITE_CHARGE_GLOW;
-					if (chargeOf(time, spriteHold.start) >= spriteHold.charge) {
-						launch(spriteHold.x, spriteHold.y, spriteHold.charge, time);
-						spriteHold = null;
-						spriteStampAt = time + between(SPRITE_STAMP_WAIT) * 1000;
-					}
-				}
-			}
-			sprite.strength += (spriteGoal - sprite.strength) * 0.08;
 			strength += (targetStrength - strength) * 0.3;
 
 			ctx.fillStyle = palette.bg;
 			ctx.fillRect(0, 0, width, height);
 
+			if (isHero) {
+				ctx.strokeStyle = palette.grid;
+				ctx.lineWidth = 1;
+				ctx.beginPath();
+				for (let col = Math.ceil(cMin / GRID_CELLS) * GRID_CELLS; col < cMin + cols; col += GRID_CELLS) {
+					const x = Math.round(wmX + col * cell) + 0.5;
+					ctx.moveTo(x, 0);
+					ctx.lineTo(x, height);
+				}
+				for (let row = Math.ceil(rMin / GRID_CELLS) * GRID_CELLS; row < rMin + rows; row += GRID_CELLS) {
+					const y = Math.round(wmY + row * cell) + 0.5;
+					ctx.moveTo(0, y);
+					ctx.lineTo(width, y);
+				}
+				ctx.stroke();
+			}
+
 			const reachOf = (level: number) => CURSOR_CELLS * cell * (0.45 + 0.55 * level);
 			const glows: Glow[] = [];
 			if (strength > 0.01) glows.push({ ...pointer, strength, reach: reachOf(strength) });
-			if (sprite.strength > 0.01) glows.push({ ...sprite, reach: reachOf(sprite.strength) });
+			if (!entering)
+				for (const chase of chasers)
+					glows.push({ x: chase.x * dpr, y: chase.y * dpr, strength: 0.25, reach: 36 * dpr });
 			const glowAt = (cx: number, cy: number) => {
 				let amount = 0;
 				for (const glow of glows) {
@@ -441,15 +488,13 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					amp: (1 - life) ** 1.7,
 				};
 			});
-			for (const charging of [holding, spriteHold]) {
-				if (charging)
-					stamps.push({
-						x: charging.x,
-						y: charging.y,
-						cellPx: cell * (CHARGE_FROM + CHARGE_GROWTH * chargeOf(time, charging.start)),
-						amp: 0.9,
-					});
-			}
+			if (holding)
+				stamps.push({
+					x: holding.x,
+					y: holding.y,
+					cellPx: cell * (CHARGE_FROM + CHARGE_GROWTH * chargeOf(time, holding.start)),
+					amp: 0.9,
+				});
 			const stampAt = (cx: number, cy: number) => {
 				let amp = 0;
 				for (const stamp of stamps) {
@@ -482,7 +527,8 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				0.78 * ((BAYER[(row & 7) * 8 + (col & 7)]! + 0.5) / 64) + 0.22 * jitter[(row & 63) * 64 + (col & 63)]!;
 			const inkOf = (heat: number) => (heat > 0.34 ? palette.lit : heat > 0.1 ? palette.mid : palette.dim);
 
-			for (let r = 0; r < rows; r++) {
+			// The hero rests on the grid alone; small cells only draw the interactive logo stamps.
+			for (let r = 0; r < rows && (!isHero || stamps.length > 0); r++) {
 				const row = rMin + r;
 				const yTop = wmY + row * cell;
 				const y = Math.round(yTop);
@@ -493,7 +539,10 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					if (covered[r * cols + c] === 1) continue;
 					if (isHero && glyph.rows[row]?.[col] === "1") continue;
 					const xLeft = wmX + col * cell;
-					const { lum, heat } = light(col, row, ramp[r * cols + c]!, xLeft + cell / 2, cy);
+					const wave = isHero ? stampAt(xLeft + cell / 2, cy) : 0;
+					const { lum, heat } = isHero
+						? { lum: wave * 1.15, heat: wave }
+						: light(col, row, ramp[r * cols + c]!, xLeft + cell / 2, cy);
 					if (lum <= threshold(col, row)) continue;
 					ctx.fillStyle = inkOf(heat);
 					const x = Math.round(xLeft);
@@ -508,15 +557,17 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				ctx.font = `700 ${Math.round(tiles[0]!.h * cell * 0.5)}px "JetBrains Mono Variable", monospace`;
 			}
 			for (const tile of tiles) {
+				if (eaten.has(`${tile.col}:${tile.row}`)) continue;
 				const x = Math.round(wmX + tile.col * cell);
 				const y = Math.round(wmY + tile.row * cell);
 				const cx = wmX + (tile.col + tile.w / 2) * cell;
 				const cy = wmY + (tile.row + tile.h / 2) * cell;
 				const { lum, heat } = light(tile.col + tile.w / 2, tile.row + tile.h / 2, tile.shade, cx, cy, TILE_GAIN);
 				const floor = threshold(tile.col, tile.row);
-				if (lum <= floor) continue;
+				if (lum <= floor && !targets.has(`${tile.col}:${tile.row}`)) continue;
 				// A tile well past its threshold rests a shade brighter, so its label reads.
-				ctx.fillStyle = inkOf(Math.max(heat, (lum - floor) * 0.5));
+				const ink = inkOf(Math.max(heat, (lum - floor) * 0.5, targets.has(`${tile.col}:${tile.row}`) ? 0.15 : 0));
+				ctx.fillStyle = ink === palette.dim ? palette.tile : ink;
 				ctx.fillRect(
 					x,
 					y,
@@ -527,7 +578,24 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				ctx.fillText(tile.ext, cx, cy, tile.w * cell * 0.9);
 			}
 
-			// The word: resting band ink, lifted to hover/crest by a stamp or a glow passing over it.
+			// Outline echoes reveal with the same cells as the solid word.
+			const landsAt = (col: number, row: number) =>
+				(col / glyph.width) * ENTRANCE_SWEEP + jitter[(row & 63) * 64 + (col & 63)]! * ENTRANCE_SCATTER;
+			if (isHero) {
+				ctx.lineWidth = Math.max(1, cell * 0.08);
+				for (const { offset, ink } of DEPTH) {
+					ctx.strokeStyle = palette[ink];
+					ctx.beginPath();
+					for (const edge of WORDMARK_OUTLINE) {
+						if (entering && age < landsAt(edge.col, edge.row)) continue;
+						ctx.moveTo(wmX + (edge.x1 + offset) * cell, wmY + (edge.y1 + offset) * cell);
+						ctx.lineTo(wmX + (edge.x2 + offset) * cell, wmY + (edge.y2 + offset) * cell);
+					}
+					ctx.stroke();
+				}
+			}
+
+			// Solid word, lifted by a stamp or glow passing over it.
 			for (let row = 0; isHero && row < glyph.height; row++) {
 				const bits = glyph.rows[row]!;
 				const yTop = wmY + row * cell;
@@ -538,12 +606,11 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 					const xLeft = wmX + col * cell;
 					const cx = xLeft + cell / 2;
 					const cy = yTop + cell / 2;
-					let ink = restInks[row]!;
+					let ink = palette.lit;
 					if (entering) {
-						const landsAt =
-							(col / glyph.width) * ENTRANCE_SWEEP + jitter[(row & 63) * 64 + (col & 63)]! * ENTRANCE_SCATTER;
-						if (age < landsAt) continue;
-						if (age < landsAt + ENTRANCE_FLASH) ink = palette.crest;
+						const arrival = landsAt(col, row);
+						if (age < arrival) continue;
+						if (age < arrival + ENTRANCE_FLASH) ink = palette.crest;
 					}
 					const lift = Math.max(stamps.length > 0 ? stampAt(cx, cy) : 0, glows.length > 0 ? glowAt(cx, cy) : 0);
 					if (lift > 0.45) ink = palette.crest;
@@ -554,10 +621,13 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 				}
 			}
 
+			if (!entering) for (const chase of chasers) chase.draw(ctx, t, dpr, palette.lit, palette.crest);
+
 			if (painted.current) {
 				painted.current();
 				painted.current = undefined;
 			}
+			canvas.dataset.painted = "true";
 		};
 
 		let frame = 0;
@@ -653,7 +723,7 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		const resize = new ResizeObserver(() => {
 			if (!measure()) return;
 			start();
-			draw(reducedMotion ? 0 : lastDraw);
+			draw(reducedMotion ? 0 : performance.now());
 		});
 		resize.observe(host);
 		if (slot) resize.observe(slot);
@@ -661,7 +731,6 @@ export function Field({ variant = "hero", onPainted }: { variant?: "hero" | "fie
 		// A new theme brings new inks.
 		const onTheme = () => {
 			palette = readPalette();
-			restInks = glyph.rows.map((_, row) => palette[bandOf(row, glyph.height)]);
 			if (reducedMotion) draw(0);
 		};
 		window.addEventListener(THEME_EVENT, onTheme);

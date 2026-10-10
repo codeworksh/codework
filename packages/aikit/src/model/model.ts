@@ -182,6 +182,8 @@ export function isAnthropicAdaptiveThinkingModel(modelId: string): boolean {
 		"sonnet-5",
 		"sonnet.5",
 		"fable-5",
+		"haiku-5",
+		"haiku.5",
 	].some((needle) => modelId.includes(needle));
 }
 

@@ -1,5 +1,5 @@
 import { Effect, Option } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";

@@ -1,4 +1,5 @@
-import { streamText, type TextStreamPart, type ToolSet } from "ai";
+import { APICallError } from "@ai-sdk/provider";
+import { RetryError, streamText, type TextStreamPart, type ToolSet } from "ai";
 import * as Message from "../message/message.ts";
 import * as Model from "../model/model.ts";
 import { AssistantMessageEventStream } from "../utils/eventstream.ts";
@@ -318,6 +319,9 @@ function handlePart(
 		case "tool-call":
 			finalizeToolCall(output, part, stream);
 			break;
+		case "start-step":
+			stampProviderThinkingLevel(output, part.request.body);
+			break;
 		case "finish-step":
 			output.responseId ||= part.response.id;
 			if (part.response.modelId && part.response.modelId !== model.id)
@@ -337,6 +341,17 @@ function handlePart(
 		case "error":
 			throw part.error instanceof Error ? part.error : new Error(formatThrownError(part.error));
 	}
+}
+
+function stampProviderThinkingLevel(output: Message.AssistantMessage, body: unknown): void {
+	const level = Thinking.providerThinkingLevel(body);
+	if (level !== undefined) output.providerThinkingLevel = level;
+}
+
+/** A request the provider refused never streams a `start-step`; its body travels on the error. */
+function rejectedRequestBody(error: unknown): unknown {
+	if (RetryError.isInstance(error)) return rejectedRequestBody(error.lastError);
+	return APICallError.isInstance(error) ? error.requestBodyValues : undefined;
 }
 
 function resolvePricing(model: Model.Info, pricing: Pricing): number {
@@ -376,7 +391,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 	const runtimeOptions = applyDefaultMaxTokens(model, (options ?? {}) as RuntimeOptions);
 
 	void (async () => {
-		const output = createAssistantMessage(model);
+		const output = createAssistantMessage(model, runtimeOptions.reasoning ?? "off");
 		try {
 			const plan = Thinking.resolvePlan(model, context, runtimeOptions);
 			const languageModel = await resolveAISDKLanguageModel(model, runtimeOptions, plan.budget);
@@ -404,6 +419,8 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 				maxOutputTokens: resolveMaxOutputTokens(model, plan),
 				temperature: runtimeOptions.temperature,
 				providerOptions,
+				// The exact body is where `providerThinkingLevel` is read from.
+				include: { requestBody: true },
 				abortSignal: runtimeOptions.signal,
 				timeout: runtimeOptions.timeoutMs,
 				maxRetries: runtimeOptions.maxRetries,
@@ -445,6 +462,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			output.time.completed = Date.now();
 			// Only the caller's signal means "stop". An abort from inside the SDK, such as its
 			// `timeoutMs` timer, is a failure the caller did not ask for.
+			stampProviderThinkingLevel(output, rejectedRequestBody(error));
 			output.stopReason = runtimeOptions.signal?.aborted ? "aborted" : "error";
 			if (output.stopReason === "aborted") {
 				output.errorMessage = formatThrownError(error);

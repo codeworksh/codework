@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { SandboxInstance } from "../../src/sandbox/instance.ts";
 import * as EnvVercel from "../../src/sandboxes/vercel/provider.ts";
 import { bashTool } from "../../src/plugin/builtin/tool/bash.ts";
+import { SandboxIO } from "../../src/sandbox/io.ts";
 import * as Registry from "../../src/tool/registry.ts";
 import { fromSandboxShell, ToolShell } from "../../src/tool/shell.ts";
 import * as Tool from "../../src/tool/tool.ts";
@@ -35,7 +36,13 @@ export const toolsRegistryVercelSpec = (resourceId: () => Promise<string>) =>
 			async () => {
 				const shell = await runtime.runPromise(Effect.flatMap(ToolShell, Effect.succeed));
 				expect(shell.stream).toBeDefined();
-				const resolved = Registry.make([Tool.provide(bashTool, Layer.succeed(ToolShell, shell))]).resolve();
+				const current = await runtime.runPromise(Effect.flatMap(SandboxIO.Current, Effect.succeed));
+				const resolved = Registry.make([
+					Tool.provide(
+						bashTool,
+						Layer.merge(Layer.succeed(ToolShell, shell), Layer.succeed(SandboxIO.Current, current)),
+					),
+				]).resolve();
 				await using temp = await tmpdir();
 				const path = join(temp.path, "progress.ndjson");
 

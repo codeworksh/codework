@@ -1,6 +1,6 @@
 import { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Layer, Option } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { ContextCodec } from "../src/context/codec.ts";
 import { Context } from "../src/context/context.ts";
@@ -49,6 +49,7 @@ const assistant = (
 		protocol: "openai",
 		provider: { id: providerId, name: providerId, source: "custom", env: [] },
 		model,
+		thinkingLevel: "off",
 		usage: usage(),
 		stopReason: parts.some((part) => part.type === "toolCall") ? "toolUse" : "stop",
 		time: { created: 20, completed: 30 },
@@ -61,7 +62,6 @@ const setup = Effect.gen(function* () {
 	const sessions = yield* Session.Service;
 	const created = yield* sessions.create({
 		spaceId,
-		slug: `context-${crypto.randomUUID()}`,
 		directory: location,
 		title: "Context test",
 	});

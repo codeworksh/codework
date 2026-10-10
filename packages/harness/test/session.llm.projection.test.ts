@@ -1,6 +1,6 @@
 import type { Message } from "@codeworksh/aikit";
 import { DateTime, Effect, Layer } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
 import { Event } from "../src/event/event.ts";
@@ -24,7 +24,6 @@ const setup = Effect.gen(function* () {
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
 		spaceId,
-		slug: "llm",
 		directory: location,
 		title: "T",
 		tag: "test",
@@ -41,6 +40,7 @@ const assistant = (overrides: Partial<Message.AssistantMessage> = {}): Message.A
 	protocol: "anthropic",
 	provider: { id: "anthropic", name: "Anthropic", source: "custom", env: [] },
 	model: "claude-test",
+	thinkingLevel: "off",
 	usage: {
 		input: 11,
 		output: 22,

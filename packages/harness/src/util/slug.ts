@@ -1,3 +1,5 @@
+import { Effect, Random } from "effect";
+
 const PREFIXES = [
 	"binary",
 	"protocol",
@@ -62,17 +64,15 @@ const SECTORS = [
 	"sector-7",
 ] as const;
 
-export function create(): string {
-	const pick = <T extends readonly string[]>(arr: T): T[number] => arr[Math.floor(Math.random() * arr.length)]!;
+const CONNECTORS = ["at", "of", "in"] as const;
 
-	const prefix = pick(PREFIXES);
-	const component = pick(HARDWARE);
-	const sector = pick(SECTORS);
+// The words alone collide; use tail of the ID keeps the slug unique without retry.
+export const create = Effect.fnUntraced(function* (id: string) {
+	const prefix = yield* Random.choice(PREFIXES);
+	const hardware = yield* Random.choice(HARDWARE);
+	const connector = yield* Random.choice(CONNECTORS);
+	const sector = yield* Random.choice(SECTORS);
+	return `${prefix}-${hardware}-${connector}-${sector}-${id.slice(-8)}`;
+});
 
-	const connectors = ["at", "of", "in"] as const;
-	const connector = connectors[Math.floor(Math.random() * connectors.length)];
-
-	return `${prefix}-${component}-${connector}-${sector}`;
-}
-
-export * as Slug from "./slug";
+export * as Slug from "./slug.ts";

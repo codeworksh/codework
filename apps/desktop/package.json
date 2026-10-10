@@ -1,0 +1,21 @@
+{
+	"name": "@codeworksh/desktop",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "out/main.cjs",
+	"scripts": {
+		"build": "vp pack",
+		"dev": "node scripts/dev.mjs",
+		"start": "node scripts/start-electron.mjs",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"electron": "44.4.2"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	}
+}

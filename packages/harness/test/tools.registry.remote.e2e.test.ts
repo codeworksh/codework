@@ -8,6 +8,7 @@ import { afterAll, beforeAll, expect, it } from "vite-plus/test";
 import * as EnvDaytona from "../src/sandboxes/daytona/provider.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { bashTool } from "../src/plugin/builtin/tool/bash.ts";
+import { SandboxIO } from "../src/sandbox/io.ts";
 import * as Registry from "../src/tool/registry.ts";
 import { fromSandboxShell, ToolShell } from "../src/tool/shell.ts";
 import * as Tool from "../src/tool/tool.ts";
@@ -80,7 +81,13 @@ daytonaSuite("ToolRegistry × real Daytona sandbox — buffered bash (no streami
 		async () => {
 			const shell = await acquireToolShell(runtime);
 			expect(shell.stream).toBeUndefined(); // Daytona backend is exec-only → buffered path
-			const resolved = Registry.make([Tool.provide(bashTool, Layer.succeed(ToolShell, shell))]).resolve();
+			const current = await runtime.runPromise(Effect.flatMap(SandboxIO.Current, Effect.succeed));
+			const resolved = Registry.make([
+				Tool.provide(
+					bashTool,
+					Layer.merge(Layer.succeed(ToolShell, shell), Layer.succeed(SandboxIO.Current, current)),
+				),
+			]).resolve();
 			await using temp = await tmpdir();
 			const path = join(temp.path, "progress.ndjson");
 

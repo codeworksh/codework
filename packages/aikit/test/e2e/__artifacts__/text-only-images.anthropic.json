@@ -1,0 +1,49 @@
+[
+	{
+		"role": "user",
+		"content": [
+			{
+				"type": "text",
+				"text": "Here are two photos."
+			},
+			{
+				"type": "text",
+				"text": "(image omitted: model does not support images)"
+			}
+		]
+	},
+	{
+		"role": "assistant",
+		"content": [
+			{
+				"type": "tool-call",
+				"toolCallId": "call_screenshot",
+				"toolName": "screenshot",
+				"input": {}
+			}
+		]
+	},
+	{
+		"role": "tool",
+		"content": [
+			{
+				"type": "tool-result",
+				"toolCallId": "call_screenshot",
+				"toolName": "screenshot",
+				"output": {
+					"type": "text",
+					"value": "rendered\n(tool image omitted: model does not support images)"
+				}
+			}
+		]
+	},
+	{
+		"role": "user",
+		"content": [
+			{
+				"type": "text",
+				"text": "Quote verbatim every parenthesised note in this conversation, one per line, and nothing else."
+			}
+		]
+	}
+]

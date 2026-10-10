@@ -1,0 +1,60 @@
+{
+	"initialize": {
+		"protocolVersion": 1,
+		"agentInfo": {
+			"name": "codework"
+		},
+		"agentCapabilities": {
+			"loadSession": true,
+			"promptCapabilities": {
+				"embeddedContext": true,
+				"image": true
+			},
+			"sessionCapabilities": {
+				"list": {}
+			}
+		}
+	},
+	"newSession": {
+		"configIds": [
+			"model",
+			"thought_level"
+		],
+		"model": "openai/gpt-5.6-luna"
+	},
+	"setModelWithSlashes": {
+		"ok": "openrouter/openai/gpt-4.1-mini"
+	},
+	"setUnknownModel": {
+		"code": -32602,
+		"message": "Unknown model: nope/nothing"
+	},
+	"setUnknownThinkingLevel": {
+		"code": -32602,
+		"message": "Unknown thinking level: bogus"
+	},
+	"setUnknownOption": {
+		"code": -32602,
+		"message": "Unknown config option: mode"
+	},
+	"listProject": {
+		"ok": [
+			true
+		]
+	},
+	"listParent": {
+		"ok": 0
+	},
+	"promptUnknownSession": {
+		"code": -32002,
+		"message": "Session not found: ses_missing"
+	},
+	"promptImage": {
+		"code": -32602,
+		"message": "Image data is not base64"
+	},
+	"loadUnknownSession": {
+		"code": -32002,
+		"message": "Session not found: ses_missing"
+	}
+}

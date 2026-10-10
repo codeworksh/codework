@@ -38,4 +38,5 @@
  * use, not for this file to guess at.
  */
 export * as Plugin from "./plugin.ts";
+export * as Section from "./plugin/section.ts";
 export * as Tool from "./tool.ts";

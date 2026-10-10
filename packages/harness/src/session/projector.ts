@@ -33,8 +33,9 @@ import { ContextCodec } from "../context/codec.ts";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
 import { SessionInput } from "./input/input.ts";
+import { PromptSchema } from "./prompt/schema.ts";
 import type { SessionMessageSchema } from "./message/schema.ts";
-import type { SessionSchema } from "./schema.ts";
+import { SessionSchema } from "./schema.ts";
 import { Session } from "./session.ts";
 
 export const layer = Layer.effectDiscard(
@@ -97,7 +98,7 @@ export const layer = Layer.effectDiscard(
 						messageId: event.data.messageId,
 						role: "user",
 						time: { created: DateTime.toEpochMillis(event.data.timestamp) },
-						parts: [{ type: "text", text: event.data.prompt.text }],
+						parts: [...event.data.prompt.parts],
 					}),
 				).pipe(Effect.orDie);
 				yield* sessions
@@ -112,8 +113,15 @@ export const layer = Layer.effectDiscard(
 						...(event.metadata === undefined ? {} : { metadata: event.metadata }),
 					})
 					.pipe(Effect.orDie);
+				const title = SessionSchema.titleFrom(PromptSchema.Prompt.text(event.data.prompt));
+				if (title !== undefined) yield* sessions.retitle(event.data.sessionId, title);
 			}),
 		);
+
+		yield* events.project(EventList.ConfigChanged, (event) => {
+			const { sessionId, timestamp: _timestamp, ...config } = event.data;
+			return sessions.configure(sessionId, config);
+		});
 
 		yield* events.project(EventList.LLMStarted, (event) =>
 			Effect.gen(function* () {

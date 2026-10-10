@@ -1,0 +1,37 @@
+{
+	"pong": "end_turn",
+	"titled": [
+		"Reply with exactly: PONG"
+	],
+	"notices": [
+		1,
+		1
+	],
+	"tool": {
+		"stopReason": "end_turn",
+		"updates": [
+			"tool_call",
+			"tool_call_update"
+		],
+		"started": {
+			"titledWithCommand": true,
+			"hasRawInput": true
+		},
+		"settled": {
+			"kind": "execute",
+			"status": "completed"
+		}
+	},
+	"cancel": "cancelled",
+	"replay": [
+		"user_message_chunk",
+		"agent_message_chunk",
+		"tool_call",
+		"tool_call_update"
+	],
+	"failed": {
+		"code": -32603,
+		"hasMessage": true,
+		"title": "Summarise how sessions, plugins and sandboxes…"
+	}
+}

@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";

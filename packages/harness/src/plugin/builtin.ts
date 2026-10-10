@@ -1,9 +1,10 @@
 import { defaultPromptPlugin } from "./builtin/prompt/default.ts";
+import { instructionPlugin } from "./builtin/prompt/instruction.ts";
 import { bashPlugin } from "./builtin/tool/bash.ts";
 import { readPlugin } from "./builtin/tool/read.ts";
 
 /**
  * Every plugin the harness ships, and the selection a caller who passes no `plugins` gets. Tool
- * contributors come first so the Prompt plugin that indexes them runs after they registered.
+ * contributors come first; within the prompt domain, declaration order is run order.
  */
-export const builtins = Object.freeze([bashPlugin, readPlugin, defaultPromptPlugin]);
+export const builtins = Object.freeze([bashPlugin, readPlugin, defaultPromptPlugin, instructionPlugin]);

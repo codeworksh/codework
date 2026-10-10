@@ -12,10 +12,10 @@ import { SandboxIO } from "../../src/sandbox/io.ts";
 import { Sandbox } from "../../src/sandbox/sandbox.ts";
 import { type ISandboxExe, Shell } from "../../src/sandbox/shell/shell.ts";
 import { SandboxStore } from "../../src/sandbox/store.ts";
-import { AbsolutePath } from "../../src/schema.ts";
 import { Session } from "../../src/session/session.ts";
 import { fromSandboxShell, ToolShell, ToolShellTimeout } from "../../src/tool/shell.ts";
 import { Hash } from "../../src/util/hash.ts";
+import { files, label, reference, windows } from "./scan.corpus.ts";
 
 type Run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>) => Promise<A>;
 /**
@@ -172,6 +172,47 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 				expect(result.linkStat.isFile).toBe(true);
 				if (result.linkLstat !== undefined) expect(result.linkLstat.isSymbolicLink).toBe(true);
 				expect(result.treeRemoved).toBe(true);
+			},
+			options.timeout,
+		);
+
+		it(
+			"scans line windows inside the sandbox exactly like the local scanner",
+			async () => {
+				const root = path.join(options.cwd, name(options.kind, "scan"));
+				const result = await options.run(
+					Effect.gen(function* () {
+						const fs = yield* SandboxFileSystem.Service;
+						const program = Effect.gen(function* () {
+							const mismatches: Array<string> = [];
+							for (const [file, bytes] of Object.entries(files)) {
+								yield* fs.writeFile(path.join(root, file), bytes);
+								for (const window of windows) {
+									const scanned = yield* fs.scanLines(path.join(root, file), window);
+									// The provider's SDK decodes the output, and may emit one U+FFFD per
+									// invalid byte where TextDecoder emits one per sequence.
+									const replacements = (scan: SandboxFileSystem.LineScan) => ({
+										...scan,
+										text: scan.text.replace(/\uFFFD+/g, "\uFFFD"),
+									});
+									if (
+										JSON.stringify(replacements(scanned)) !==
+										JSON.stringify(replacements(reference(bytes, window)))
+									)
+										mismatches.push(`${file} ${label(window)}: ${JSON.stringify(scanned)}`);
+								}
+							}
+							const missing = yield* fs.scanLines(path.join(root, "missing"), windows[0]!).pipe(Effect.flip);
+							return { mismatches, missingIsNotFound: SandboxFileSystem.isNotFoundError(missing.cause) };
+						});
+						return yield* program.pipe(
+							Effect.ensuring(fs.rm(root, { recursive: true, force: true }).pipe(Effect.ignore)),
+						);
+					}),
+				);
+
+				expect(result.mismatches).toEqual([]);
+				expect(result.missingIsNotFound).toBe(true);
 			},
 			options.timeout,
 		);
@@ -393,6 +434,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 										driver: options.kind,
 										id: mappedEnvId,
 										defaultCwd: options.cwd,
+										cwd: repo,
 									}),
 								),
 							);
@@ -410,10 +452,7 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 									}),
 								),
 							).pipe(Layer.provide(database));
-							const location = Location.layerMounted({ directory: AbsolutePath.make(repo) }).pipe(
-								Layer.provide(sandbox),
-								Layer.provide(registered),
-							);
+							const location = Location.layerMounted().pipe(Layer.provide(sandbox), Layer.provide(registered));
 							// provideMerge, not provide: `registered` and the block below
 							// share the one in-memory database.
 							const application = Layer.merge(location, Session.layer).pipe(
@@ -426,7 +465,6 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 								const sessions = yield* Session.Service;
 								const created = yield* sessions.create({
 									spaceId: resolved.space.id,
-									slug: `${options.kind}-${Date.now()}`,
 									directory: resolved.directory,
 									title: `${options.kind} integration`,
 								});

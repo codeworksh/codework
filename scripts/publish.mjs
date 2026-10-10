@@ -19,7 +19,7 @@ const workspaceMap = new Map([
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness|@codeworksh/plugin> [--dev] [--stage] [--dep <name>@<version>]... [npm publish args]",
+		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness|@codeworksh/plugin> [--dev] [--stage] [--dep <name>@<version>]... [--uploaded-dep <name>@<version>]... [npm publish args]",
 	);
 	process.exit(1);
 }
@@ -44,6 +44,7 @@ function parsePublishOptions(args) {
 	let stage = false;
 	let publishVersion;
 	const dependencyPins = new Map();
+	const uploadedDependencies = new Set();
 
 	for (let index = 0; index < args.length; index++) {
 		const arg = args[index];
@@ -75,15 +76,26 @@ function parsePublishOptions(args) {
 			continue;
 		}
 
-		if (arg === "--dep" || arg.startsWith("--dep=")) {
-			const value = arg === "--dep" ? args[++index] : arg.slice("--dep=".length);
+		const dependencyFlag = ["--dep", "--uploaded-dep"].find((flag) => arg === flag || arg.startsWith(`${flag}=`));
+		if (dependencyFlag) {
+			const value = arg === dependencyFlag ? args[++index] : arg.slice(dependencyFlag.length + 1);
 			// Split at the version's `@`, not a scope's.
 			const at = value?.lastIndexOf("@") ?? -1;
 			if (at <= 0 || at === value.length - 1) {
-				console.error(`--dep expects <name>@<version>, got ${value ?? "nothing"}`);
+				console.error(`${dependencyFlag} expects <name>@<version>, got ${value ?? "nothing"}`);
 				process.exit(1);
 			}
-			dependencyPins.set(value.slice(0, at), value.slice(at + 1));
+			const name = value.slice(0, at);
+			const version = value.slice(at + 1);
+			if (dependencyFlag === "--uploaded-dep") {
+				if (!/^\d+\.\d+\.\d+-canary\.[0-9A-Za-z.-]+$/.test(version)) {
+					throw new Error("--uploaded-dep requires an exact canary version, not a dist-tag");
+				}
+				uploadedDependencies.add(name);
+			} else {
+				uploadedDependencies.delete(name);
+			}
+			dependencyPins.set(name, version);
 			continue;
 		}
 
@@ -95,7 +107,7 @@ function parsePublishOptions(args) {
 		process.exit(1);
 	}
 
-	return { dependencyPins, dev, forwardArgs, publishVersion, stage };
+	return { dependencyPins, uploadedDependencies, dev, forwardArgs, publishVersion, stage };
 }
 
 async function readJSON(path) {
@@ -265,9 +277,10 @@ async function distTag(name, tag) {
  * Falling back to a tag unasked once shipped a harness depending on a plugin build older than the
  * one published a minute before it, because the tag lookup was answered from a cache.
  *
- * Both paths ask the registry uncached, so a dependency published moments ago resolves.
+ * --uploaded-dep accepts exact canary versions whose uploads already succeeded in this run.
+ * The canary orchestrator verifies availability after uploading the complete dependency chain.
  */
-async function resolveWorkspaceVersion(packageName, dependencyPins) {
+async function resolveWorkspaceVersion(packageName, dependencyPins, uploadedDependencies) {
 	const workspaceDir = workspaceMap.get(packageName);
 	if (!workspaceDir) {
 		throw new Error(`Unknown workspace dependency: ${packageName}`);
@@ -275,6 +288,7 @@ async function resolveWorkspaceVersion(packageName, dependencyPins) {
 
 	const pinned = dependencyPins.get(packageName);
 	if (pinned) {
+		if (uploadedDependencies.has(packageName)) return pinned;
 		// A version starts with a digit; anything else is a dist-tag.
 		const version = /^\d/.test(pinned) ? pinned : await distTag(packageName, pinned);
 		if (version && (await isPublished(packageName, version))) return version;
@@ -318,14 +332,15 @@ function rewriteWorkspaceRange(range, version) {
 	return workspaceRange;
 }
 
-async function rewriteDependencyMap(dependencies, dependencyPins) {
+async function rewriteDependencyMap(dependencies, dependencyPins, uploadedDependencies) {
 	if (!dependencies) return undefined;
 
 	const rewritten = {};
 
 	for (const [name, range] of Object.entries(dependencies)) {
 		if (typeof range === "string" && range.startsWith("workspace:")) {
-			rewritten[name] = rewriteWorkspaceRange(range, await resolveWorkspaceVersion(name, dependencyPins));
+			const version = await resolveWorkspaceVersion(name, dependencyPins, uploadedDependencies);
+			rewritten[name] = uploadedDependencies.has(name) ? version : rewriteWorkspaceRange(range, version);
 			continue;
 		}
 
@@ -335,7 +350,7 @@ async function rewriteDependencyMap(dependencies, dependencyPins) {
 	return rewritten;
 }
 
-async function createPublishManifest(manifest, version, dependencyPins) {
+async function createPublishManifest(manifest, version, dependencyPins, uploadedDependencies) {
 	return compactObject({
 		name: manifest.name,
 		version,
@@ -369,10 +384,14 @@ async function createPublishManifest(manifest, version, dependencyPins) {
 		sideEffects: manifest.sideEffects,
 		publishConfig: manifest.publishConfig,
 		engines: manifest.engines,
-		dependencies: await rewriteDependencyMap(manifest.dependencies, dependencyPins),
-		peerDependencies: await rewriteDependencyMap(manifest.peerDependencies, dependencyPins),
+		dependencies: await rewriteDependencyMap(manifest.dependencies, dependencyPins, uploadedDependencies),
+		peerDependencies: await rewriteDependencyMap(manifest.peerDependencies, dependencyPins, uploadedDependencies),
 		peerDependenciesMeta: manifest.peerDependenciesMeta,
-		optionalDependencies: await rewriteDependencyMap(manifest.optionalDependencies, dependencyPins),
+		optionalDependencies: await rewriteDependencyMap(
+			manifest.optionalDependencies,
+			dependencyPins,
+			uploadedDependencies,
+		),
 	});
 }
 
@@ -452,6 +471,9 @@ if (publishOptions.dev && !hasFlag(forwardArgs, "--tag")) {
  * and `@dev` start serving the same thing and the distinction stops meaning anything.
  */
 const publishTag = optionValue([...publishArgs, ...forwardArgs], "--tag");
+if (publishOptions.uploadedDependencies.size > 0 && publishTag !== "canary") {
+	throw new Error("--uploaded-dep is only supported for canary publishing");
+}
 if (publishTag === "dev" && !isPrereleaseVersion(publishVersion)) {
 	console.error(`Refusing to publish stable version ${publishVersion} with the dev dist-tag`);
 	process.exit(1);
@@ -484,7 +506,12 @@ for (const name of publishOptions.dependencyPins.keys()) {
 }
 let publishManifest;
 try {
-	publishManifest = await createPublishManifest(manifest, publishVersion, publishOptions.dependencyPins);
+	publishManifest = await createPublishManifest(
+		manifest,
+		publishVersion,
+		publishOptions.dependencyPins,
+		publishOptions.uploadedDependencies,
+	);
 } catch (error) {
 	console.error(error instanceof Error ? error.message : error);
 	process.exit(1);

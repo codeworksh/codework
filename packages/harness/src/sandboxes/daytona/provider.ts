@@ -19,6 +19,8 @@ type Resources = import("@daytona/sdk").Resources;
 
 /** Fallback when Daytona cannot report a snapshot/image-specific work directory. */
 export const DEFAULT_CWD = "/home/daytona";
+/** Where oversized tool output is written inside the sandbox. */
+export const SPILL_PATH = "/tmp";
 
 /**
  * The mount cwd for a Daytona namespace.
@@ -150,7 +152,17 @@ export const statsFrom = (info: FileInfo): RemoteFileSystem.FileStat => {
 
 type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
-	"readFile" | "readFileBuffer" | "writeFile" | "stat" | "lstat" | "readdir" | "exists" | "mkdir" | "rm" | "realpath"
+	| "readFile"
+	| "readFileBuffer"
+	| "writeFile"
+	| "stat"
+	| "lstat"
+	| "readdir"
+	| "exists"
+	| "mkdir"
+	| "rm"
+	| "realpath"
+	| "scanLines"
 >;
 
 const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
@@ -207,17 +219,23 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 			}
 		},
 		realpath: async (path: string) => {
-			const run = async (script: string) => {
+			for (const script of SandboxFileSystem.realpathScripts) {
 				const command = quoteArgv(["sh", "-c", script, "_", path]);
 				const result = await sandbox.process.executeCommand(command, options.cwd, undefined, options.execTimeout);
-				return { command, result };
-			};
-			const asDirectory = await run(SandboxFileSystem.realpathScripts[0]);
-			if (asDirectory.result.exitCode === 0) return (asDirectory.result.result ?? "").trimEnd();
-			const asFile = await run(SandboxFileSystem.realpathScripts[1]);
-			assertCommandSucceeded(asFile.command, asFile.result);
-			return (asFile.result.result ?? "").trimEnd();
+				if (result.exitCode === 0) return (result.result ?? "").trimEnd();
+			}
+			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
+			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
 		},
+		scanLines: SandboxFileSystem.Scan.viaShell(async (argv) => {
+			const result = await sandbox.process.executeCommand(
+				quoteArgv(argv),
+				options.cwd,
+				undefined,
+				options.execTimeout,
+			);
+			return { exitCode: result.exitCode, stdout: result.result ?? "" };
+		}),
 	};
 
 	return filesystem;
@@ -317,6 +335,7 @@ const identityLayer = (options: Options) =>
 				driver: "daytona",
 				id: options.instanceId ?? SandboxInstance.ID.create(),
 				defaultCwd: cwd,
+				spillPath: SPILL_PATH,
 			}),
 		),
 	);
@@ -327,8 +346,9 @@ const identityLayer = (options: Options) =>
  * remote filesystems have no synchronous filesystem surface.
  */
 export const layer = (options: Options = {}): Layer.Layer<SandboxIO.Provides | SandboxResource.Service, DaytonaError> =>
-	Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options), resourceLayer).pipe(
-		Layer.provide(remote(options)),
-	);
+	Layer.mergeAll(
+		SandboxIO.withMutation(Layer.mergeAll(filesystemLayer(options), shellLayer(options), identityLayer(options))),
+		resourceLayer,
+	).pipe(Layer.provide(remote(options)));
 
 export const services = layer;

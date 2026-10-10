@@ -1,13 +1,14 @@
 import { Effect } from "effect";
 import { randomUUID } from "node:crypto";
-import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { ContextCodec } from "../../src/context/codec.ts";
 import { Harness } from "../../src/effect/harness.ts";
 import { Sandbox } from "../../src/effect/sandbox.ts";
 import { Session } from "../../src/effect/session.ts";
+import { SandboxController } from "../../src/sandbox/control.ts";
 import type { SandboxDriver } from "../../src/sandbox/driver.ts";
+import { SandboxIO } from "../../src/sandbox/io.ts";
 import { bashPlugin } from "../../src/plugin/builtin/tool/bash.ts";
 import { defaultPromptPlugin } from "../../src/plugin/builtin/prompt/default.ts";
 import { pendingCall } from "../tools.fixture.ts";
@@ -42,7 +43,19 @@ export const bashPluginSpec = (options: {
 			if (call === undefined || call.type !== "toolCall" || (call.status !== "completed" && call.status !== "error"))
 				throw new Error("bash was not settled");
 			expect(call.name).toBe("bash");
-			return { call, messages };
+			// The output file lives in the sandbox, so it is read through a mount of it.
+			const saved = (call.result.details as { fullOutputPath?: string }).fullOutputPath;
+			const controller = yield* SandboxController.Controller;
+			const spilled =
+				saved === undefined
+					? undefined
+					: yield* controller.withMount(
+							sandbox.id,
+							Effect.flatMap(SandboxIO.FileSystem, (fs) =>
+								fs.readFile(saved).pipe(Effect.tap(() => fs.rm(saved, { force: true }))),
+							),
+						);
+			return { call, messages, spilled };
 		}).pipe(
 			Effect.provide(
 				Harness.layer({
@@ -81,20 +94,13 @@ export const bashPluginSpec = (options: {
 			"truncates real output and preserves the entire spill file",
 			() =>
 				withSettings(async (input) => {
-					const { call } = await exchange(input, "seq 1 2500");
+					const { call, spilled } = await exchange(input, "seq 1 2500");
 					expect(call.status).toBe("completed");
 					const details = call.result.details as { truncated: boolean; fullOutputPath?: string; output: string };
 					expect(details.truncated).toBe(true);
-					if (details.fullOutputPath === undefined) throw new Error("missing full output path");
-					try {
-						expect(await readFile(details.fullOutputPath, "utf8")).toBe(
-							Array.from({ length: 2500 }, (_, index) => `${index + 1}\n`).join(""),
-						);
-						expect(details.output).toContain("2500\n");
-						expect(details.output).not.toMatch(/^1\n/);
-					} finally {
-						await rm(details.fullOutputPath, { force: true });
-					}
+					expect(spilled).toBe(Array.from({ length: 2500 }, (_, index) => `${index + 1}\n`).join(""));
+					expect(details.output).toContain("2500\n");
+					expect(details.output).not.toMatch(/^1\n/);
 				}),
 			180_000,
 		);

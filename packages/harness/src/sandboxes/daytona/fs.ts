@@ -32,6 +32,7 @@ export const make = (provider: Interface, options?: Options): SandboxFileSystem.
 		mkdir: (path, mkdirOptions) => provider.mkdir(resolve(path), mkdirOptions),
 		rm: (path, rmOptions) => provider.rm(resolve(path), rmOptions),
 		realpath: (path) => provider.realpath(resolve(path)),
+		scanLines: (path, scanOptions) => provider.scanLines(resolve(path), scanOptions),
 	};
 };
 

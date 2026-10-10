@@ -1,5 +1,5 @@
 import { Context, DateTime, Effect, Layer, Option, Result, Schema } from "effect";
-import { SqlClient, SqlSchema } from "effect/unstable/sql";
+import { SqlClient, SqlSchema } from "effect/sql";
 import { uuidv7 } from "uuidv7";
 import { Database } from "../db/db.ts";
 import {
@@ -25,6 +25,7 @@ import { AbsolutePath } from "../schema.ts";
 import { SpaceSchema } from "../space/schema.ts";
 import { Space } from "../space/space.ts";
 import { posix } from "../util/posix.ts";
+import { Slug } from "../util/slug.ts";
 import { SessionSchema } from "./schema.ts";
 
 export {
@@ -123,7 +124,6 @@ export interface CreateSession {
 	/** The space (one directory in one env) this session attaches to; must exist. */
 	readonly spaceId: SpaceSchema.ID;
 	readonly parentId?: SessionSchema.ID; // session hierarchy (subagents) or fork lineage
-	readonly slug: string;
 	/** Absolute realpath of the cwd; equal to or under `space.location`. */
 	readonly directory: AbsolutePath;
 	/**
@@ -206,7 +206,6 @@ export interface ForkInput {
 	readonly entryId?: string; // fork point; default = current leaf (clone)
 	readonly mode?: "at" | "before"; // default "at"; "before" valid only for user entries
 	readonly id?: SessionSchema.ID; // new session id; generated when omitted
-	readonly slug: string; // required — slugs are unique
 	readonly title?: string; // default: source title
 	readonly tag?: string; // default: source tag
 }
@@ -245,6 +244,16 @@ export interface Interface {
 		sessionId: SessionSchema.ID;
 		hostDir: AbsolutePath | null;
 	}) => Effect.Effect<SessionRow, SessionNotFoundError>;
+	/**
+	 * Replace a session's {@link SessionSchema.DEFAULT_TITLE}. A session with any other title keeps it,
+	 * so a title someone chose is never overwritten. Returns whether the title changed.
+	 */
+	readonly retitle: (sessionId: SessionSchema.ID, title: string) => Effect.Effect<boolean>;
+	/**
+	 * Merge chosen keys into a session's {@link SessionSchema.Config}; keys not named keep their
+	 * value. The projection of `session.config.changed`, so it runs inside that event's commit.
+	 */
+	readonly configure: (sessionId: SessionSchema.ID, config: SessionSchema.Config) => Effect.Effect<void>;
 	readonly get: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SessionRow>>;
 	/** The space a session attaches to — its env and absolute location. None when the session is unknown. */
 	readonly space: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SpaceSchema.Info>>;
@@ -483,7 +492,6 @@ export const layer = Layer.effect(
 			return yield* selectPartsForEntries(ids).pipe(Effect.orDie);
 		});
 
-		// TODO(sanchitrk): auto generate slug not from input
 		const create = Effect.fn("Session.create")(function* (input: CreateSession) {
 			const id = input.id ?? SessionSchema.ID.create();
 			const row = yield* SessionRow.insert
@@ -491,9 +499,10 @@ export const layer = Layer.effect(
 					id,
 					spaceId: input.spaceId,
 					parentId: Option.fromUndefinedOr(input.parentId),
-					slug: input.slug,
+					slug: yield* Slug.create(id),
 					directory: input.directory,
 					hostDir: Option.fromUndefinedOr(input.hostDir),
+					config: Option.none(),
 					title: input.title,
 					tag: Option.fromUndefinedOr(input.tag),
 					metadata: Option.fromUndefinedOr(input.metadata as Record<string, string> | undefined),
@@ -1012,10 +1021,12 @@ export const layer = Layer.effect(
 							// Same space and directory as the source, so the same env and cwd.
 							spaceId: source.value.spaceId,
 							parentId: Option.some(source.value.id), // fork lineage
-							slug: input.slug,
+							slug: yield* Slug.create(newSessionId),
 							directory: source.value.directory,
 							// A fork continues the same work, so it reads the same project.
 							hostDir: source.value.hostDir,
+							// And runs the same model, until the fork chooses another.
+							config: source.value.config,
 							title: input.title ?? source.value.title,
 							tag: input.tag === undefined ? source.value.tag : Option.some(input.tag),
 							metadata: source.value.metadata,
@@ -1150,6 +1161,27 @@ export const layer = Layer.effect(
 			return updated.value;
 		});
 
+		const retitle = Effect.fn("Session.retitle")(function* (sessionId: SessionSchema.ID, title: string) {
+			const changed = yield* sql<{ readonly id: string }>`
+				UPDATE session SET title = ${title}
+				WHERE id = ${sessionId} AND title = ${SessionSchema.DEFAULT_TITLE}
+				RETURNING id
+			`.pipe(Effect.orDie);
+			return changed.length > 0;
+		});
+
+		const encodeConfig = Schema.encodeEffect(Schema.fromJsonString(SessionSchema.Config));
+		const configure = Effect.fn("Session.configure")(function* (
+			sessionId: SessionSchema.ID,
+			config: SessionSchema.Config,
+		) {
+			const patch = yield* encodeConfig(config);
+			yield* sql`
+				UPDATE session SET config = json_patch(COALESCE(config, '{}'), ${patch})
+				WHERE id = ${sessionId}
+			`;
+		}, Effect.orDie);
+
 		const relink = Effect.fn("Session.relink")(function* (input: RelinkInput) {
 			const reject = (reason: RelinkReason) =>
 				new RelinkError({ sessionId: input.sessionId, spaceId: input.spaceId, reason });
@@ -1233,6 +1265,8 @@ export const layer = Layer.effect(
 		return Service.of({
 			create,
 			link,
+			retitle,
+			configure,
 			get,
 			space,
 			list,

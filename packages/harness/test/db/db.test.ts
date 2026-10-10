@@ -1,6 +1,6 @@
 import { NodeFileSystem } from "@effect/platform-node";
 import { Effect, FileSystem, Layer } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import path from "node:path";
 import { describe, expect } from "vite-plus/test";
 import { Database } from "../../src/db/db.ts";

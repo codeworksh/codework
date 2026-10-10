@@ -1,8 +1,8 @@
-import "./utils/env.ts";
+import { available, LIVE, openaiFamily } from "./utils/live.ts";
 
 import { Message } from "@codeworksh/aikit";
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Ref } from "effect";
-import { SqlClient } from "effect/unstable/sql";
+import { SqlClient } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { ContextCodec } from "../src/context/codec.ts";
 import { Database } from "../src/db/db.ts";
@@ -16,7 +16,6 @@ import { testEffect } from "./utils/effect.ts";
 
 const layer = SessionLive.layer.pipe(Layer.provideMerge(Event.layer), Layer.provideMerge(Database.layer(":memory:")));
 const suite = testEffect(layer);
-const openaiLiveIt = process.env.OPENAI_API_KEY ? suite.live : suite.live.skip;
 
 const setup = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
@@ -24,7 +23,6 @@ const setup = Effect.gen(function* () {
 	const sessions = yield* Session.Service;
 	const session = yield* sessions.create({
 		spaceId,
-		slug: `provider-${crypto.randomUUID()}`,
 		directory: location,
 		title: "Provider live test",
 		tag: "test",
@@ -43,8 +41,10 @@ const context = (text: string): Message.Context => ({
 	],
 });
 
-describe("runner LLM — OpenAI live", () => {
-	openaiLiveIt(
+describe.each(LIVE)("runner LLM — live $name", (live) => {
+	const liveIt = available(live) ? suite.live : suite.live.skip;
+
+	liveIt(
 		"persists finalized thinking from a real provider response",
 		Effect.gen(function* () {
 			const events = yield* Event.Service;
@@ -70,12 +70,13 @@ describe("runner LLM — OpenAI live", () => {
 					context: context(
 						"Solve carefully, showing no work: how many positive integers below 1000 are divisible by 3 or 5 but not by 15? Reply with the number and one short verification sentence.",
 					),
-					provider: "openai",
-					model: "gpt-5.6-luna",
-					resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-5.6-luna" }),
-					// Enough effort, and the fullest summary, to make one the usual answer.
-					thinkingLevel: "medium",
-					settings: { reasoningSummary: "detailed" },
+					provider: live.provider,
+					model: live.id,
+					resolvedModel: yield* LLM.resolve({ provider: live.provider, model: live.id }),
+					// Enough effort, and for OpenAI the fullest summary, to make one the usual answer. At
+					// `medium` an adaptive Claude model often decides this needs no thinking.
+					thinkingLevel: "high",
+					settings: openaiFamily(live) ? { reasoningSummary: "detailed" } : {},
 					publisher,
 				}).pipe(Effect.ensuring(removeListener));
 
@@ -107,7 +108,7 @@ describe("runner LLM — OpenAI live", () => {
 		{ timeout: 540_000 },
 	);
 
-	openaiLiveIt(
+	liveIt(
 		"bridges Effect interruption to a partless aborted tombstone",
 		Effect.gen(function* () {
 			const { sessions, sessionId } = yield* setup;
@@ -125,12 +126,13 @@ describe("runner LLM — OpenAI live", () => {
 			const running = yield* LLM.run({
 				sessionId,
 				context: context("List 200 distinct first names, one per line."),
-				provider: "openai",
-				model: "gpt-5.6-luna",
-				resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-5.6-luna" }),
+				provider: live.provider,
+				model: live.id,
+				resolvedModel: yield* LLM.resolve({ provider: live.provider, model: live.id }),
 				publisher,
 			}).pipe(Effect.forkChild);
-			const interruptedPart = yield* Deferred.await(streaming);
+			// A provider that fails or stalls fails the case here instead of hanging it.
+			const interruptedPart = yield* Deferred.await(streaming).pipe(Effect.timeout("60 seconds"));
 
 			yield* Fiber.interrupt(running);
 			const exit = yield* Fiber.await(running);
