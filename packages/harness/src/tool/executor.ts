@@ -296,7 +296,21 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 			const { tool: impl, hooks } = entry;
 			const def = impl.definition;
 
-			const decoded = yield* Effect.result(Schema.decodeEffect(asCodec(def.parameters))(call.arguments));
+			// A repair that throws leaves arguments no schema can accept.
+			const prepared = yield* Effect.result(
+				Effect.try({
+					try: () => (def.prepareArguments ? def.prepareArguments(call.arguments) : call.arguments),
+					catch: (cause) => (cause instanceof Error ? cause.message : String(cause)),
+				}),
+			);
+			if (Result.isFailure(prepared)) {
+				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+				return errored(call, [text(`Invalid arguments for ${call.name}: ${prepared.failure}`)], now, {
+					error: "invalid_arguments",
+					name: call.name,
+				});
+			}
+			const decoded = yield* Effect.result(Schema.decodeEffect(asCodec(def.parameters))(prepared.success));
 			if (Result.isFailure(decoded)) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 				return errored(call, [text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)], now, {

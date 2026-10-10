@@ -77,7 +77,7 @@ describe("third-party plugins", () => {
 			// and the prompt that indexes tools sees it — which is the whole point of `kind`.
 			await writeFile(join(custom, "settings.jsonc"), JSON.stringify({ plugins: [pluginPath("tool/acme-echo")] }));
 			const { contexts, prompts } = await exchange({ root, userConfigDir: custom });
-			expect(contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "read", "write", "acme_echo"]);
+			expect(contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "read", "write", "edit", "acme_echo"]);
 			expect(prompts[0]).toContain("- acme_echo: Echo a value back");
 		}));
 
