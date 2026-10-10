@@ -12,7 +12,7 @@ codework models --provider openai-codex # one provider
 codework models providers               # provider IDs only
 ```
 
-## Where the catalog comes from
+## Where the Catalog Comes From
 
 | Provider                                      | Source                                                                                  |
 | --------------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -23,7 +23,7 @@ codework models providers               # provider IDs only
 
 The catalog is saved as `~/.codework/models.gen.json` and refreshed when it's older than 15 minutes. Change that window with `CODEWORK_MODELS_TTL`, refresh it by hand with `codework models refresh --force`, or pin it to a file you manage with `CODEWORK_MODELS_FILE`.
 
-## How pricing works
+## How Pricing Works
 
 Prices are in US dollars **per million tokens**, with four rates per model:
 
@@ -52,7 +52,7 @@ cost     $0.003127 · 3 turns
 	compare models, not as a bill.
 </Callout>
 
-## OpenAI Codex models
+## OpenAI Codex Models
 
 Available with `codework auth login --openai-codex` on a ChatGPT Plus or Pro plan. Prices are the API-equivalent rates CodeWork uses for the usage summary.
 
@@ -64,12 +64,12 @@ Available with `codework auth login --openai-codex` on a ChatGPT Plus or Pro pla
 | GPT-5.6 Sol         | `gpt-5.6-sol`         | $5.00 | $0.50      | $6.25       | $30.00 | 272K    |
 | GPT-5.5             | `gpt-5.5`             | $5.00 | $0.50      | -           | $30.00 | 272K    |
 | GPT-5.4             | `gpt-5.4`             | $2.50 | $0.25      | -           | $15.00 | 272K    |
-| GPT-5.4 mini        | `gpt-5.4-mini`        | $0.75 | $0.075     | -           | $4.50  | 272K    |
+| GPT-5.4 Mini        | `gpt-5.4-mini`        | $0.75 | $0.075     | -           | $4.50  | 272K    |
 | GPT-5.3 Codex Spark | `gpt-5.3-codex-spark` | $1.75 | $0.175     | -           | $14.00 | 128K    |
 
 Every Codex model reasons, accepts images (except Codex Spark, which is text only), and can write up to 128K output tokens. Requests served at the `flex` service tier cost half; `priority` costs 2× (2.5× for GPT-5.5).
 
-### Thinking levels
+### Thinking Levels
 
 Set the level with `--thinking`, `thinkingLevel` in [settings](/docs/cli/settings#model), or the Thinking Effort picker in your editor. Ask for a level a model doesn't support and CodeWork uses the next one up, or the highest it has.
 
