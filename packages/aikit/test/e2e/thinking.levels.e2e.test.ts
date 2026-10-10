@@ -66,6 +66,43 @@ const ANTHROPIC_LEVELS: Record<(typeof ANTHROPIC_E2E_MODELS)[number], Model.Thin
 	"claude-haiku-4-5-20251001": ANTHROPIC_BUDGET,
 };
 
+type Provider = "openai" | "openai-codex" | "anthropic" | "openrouter";
+interface Recorded {
+	readonly thinkingLevel: Model.ThinkingLevel;
+	readonly providerThinkingLevel: string | null;
+	/** Only recorded where the test asserts it: adaptive models think unpredictably at low efforts. */
+	readonly thinking?: boolean;
+}
+const recorded = new Map<Provider, Map<string, Map<Model.ThinkingLevel, Recorded>>>();
+
+function record(provider: Provider, model: StreamableModel, response: Message.AssistantMessage, thinking?: boolean) {
+	const models = recorded.get(provider) ?? new Map<string, Map<Model.ThinkingLevel, Recorded>>();
+	const levels = models.get(model.id) ?? new Map<Model.ThinkingLevel, Recorded>();
+	levels.set(response.thinkingLevel, {
+		thinkingLevel: response.thinkingLevel,
+		providerThinkingLevel: response.providerThinkingLevel ?? null,
+		...(thinking === undefined ? {} : { thinking }),
+	});
+	models.set(model.id, levels);
+	recorded.set(provider, models);
+}
+
+/** Models and levels in catalog order, so the artifact only changes when a level does. */
+function artifact(provider: Provider, models: ReadonlyArray<string>): string {
+	const levels: Model.ThinkingLevel[] = ["off", ...ACTIVE_LEVELS];
+	const entries = models.flatMap((modelId) => {
+		const byLevel = recorded.get(provider)?.get(modelId);
+		if (byLevel === undefined) return [];
+		return [
+			[
+				modelId,
+				Object.fromEntries(levels.flatMap((level) => (byLevel.has(level) ? [[level, byLevel.get(level)]] : []))),
+			],
+		];
+	});
+	return JSON.stringify(Object.fromEntries(entries), null, "\t");
+}
+
 async function expectLevelAccepted(model: StreamableModel, options: object) {
 	const a = (Math.random() * 100) | 0;
 	const b = (Math.random() * 100) | 0;
@@ -101,14 +138,25 @@ describeIfOpenAI.each(OPENAI_E2E_MODELS)("OpenAI thinking levels (%s)", (modelId
 		const model = await getOpenAIModel(modelId);
 		const { reasoning: _, ...off } = openaiOptions();
 		const response = await expectLevelAccepted(model, off);
-		expect(response.parts.some((part) => part.type === "thinking")).toBe(false);
+		const thinking = response.parts.some((part) => part.type === "thinking");
+		record("openai", model, response, thinking);
+		expect(thinking).toBe(false);
 		expect(response.providerThinkingLevel).toBeDefined();
 	});
 
 	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
 		const model = await getOpenAIModel(modelId);
 		const response = await expectLevelAccepted(model, openaiOptions({ reasoning }));
+		record("openai", model, response);
 		expect(response.providerThinkingLevel).toBeDefined();
+	});
+});
+
+describeIfOpenAI("OpenAI thinking levels artifact", () => {
+	it("records the level each model ran at", async () => {
+		await expect(artifact("openai", OPENAI_E2E_MODELS)).toMatchFileSnapshot(
+			"./__artifacts__/thinking.levels.openai.json",
+		);
 	});
 });
 
@@ -123,14 +171,25 @@ describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex thinking level
 		const model = await getOpenAICodexModel(modelId);
 		const { reasoning: _, ...off } = openaiCodexOptions();
 		const response = await expectLevelAccepted(model, off);
-		expect(response.parts.some((part) => part.type === "thinking")).toBe(false);
+		const thinking = response.parts.some((part) => part.type === "thinking");
+		record("openai-codex", model, response, thinking);
+		expect(thinking).toBe(false);
 		expect(response.providerThinkingLevel).toBeDefined();
 	});
 
 	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
 		const model = await getOpenAICodexModel(modelId);
 		const response = await expectLevelAccepted(model, openaiCodexOptions({ reasoning }));
+		record("openai-codex", model, response);
 		expect(response.providerThinkingLevel).toBeDefined();
+	});
+});
+
+describeIfOpenAICodex("OpenAI Codex thinking levels artifact", () => {
+	it("records the level each model ran at", async () => {
+		await expect(artifact("openai-codex", OPENAI_CODEX_E2E_MODELS)).toMatchFileSnapshot(
+			"./__artifacts__/thinking.levels.openai-codex.json",
+		);
 	});
 });
 
@@ -143,18 +202,33 @@ describeIfAnthropic.each(ANTHROPIC_E2E_MODELS)("Anthropic thinking levels (%s)",
 	it("answers when no level is requested", { retry: 2, timeout: 60_000 }, async () => {
 		const model = await getAnthropicModel(modelId);
 		const response = await expectLevelAccepted(model, anthropicOptions());
-		expect(response.providerThinkingLevel).toBeUndefined();
-		// Models that cannot disable thinking may still think; the request must not fail.
-		if (ANTHROPIC_LEVELS[modelId].includes("off")) {
-			expect(response.parts.some((part) => part.type === "thinking")).toBe(false);
+		const canDisable = ANTHROPIC_LEVELS[modelId].includes("off");
+		// A model that cannot disable thinking runs at Anthropic's default effort, and may think.
+		if (canDisable) {
+			const thinking = response.parts.some((part) => part.type === "thinking");
+			record("anthropic", model, response, thinking);
+			expect(thinking).toBe(false);
+			expect(response.providerThinkingLevel).toBeUndefined();
+		} else {
+			record("anthropic", model, response);
+			expect(response.providerThinkingLevel).toBe("high");
 		}
 	});
 
 	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
 		const model = await getAnthropicModel(modelId);
 		const response = await expectLevelAccepted(model, anthropicOptions({ reasoning }));
+		record("anthropic", model, response);
 		if (model.compat?.forceAdaptiveThinking) expect(response.providerThinkingLevel).toBeDefined();
 		else expect(response.providerThinkingLevel).toBeUndefined();
+	});
+});
+
+describeIfAnthropic("Anthropic thinking levels artifact", () => {
+	it("records the level each model ran at", async () => {
+		await expect(artifact("anthropic", ANTHROPIC_E2E_MODELS)).toMatchFileSnapshot(
+			"./__artifacts__/thinking.levels.anthropic.json",
+		);
 	});
 });
 
@@ -167,13 +241,24 @@ describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter thinking levels (%s
 	});
 
 	it("answers when no level is requested", { retry: 2, timeout: 60_000 }, async () => {
-		const response = await expectLevelAccepted(await getOpenRouterModel(modelId), openrouterOptions());
+		const model = await getOpenRouterModel(modelId);
+		const response = await expectLevelAccepted(model, openrouterOptions());
+		record("openrouter", model, response);
 		expect(response.providerThinkingLevel).toBeUndefined();
 	});
 
 	it.each(ACTIVE_LEVELS)("accepts reasoning %s", { retry: 2, timeout: 180_000 }, async (reasoning) => {
 		const model = await getOpenRouterModel(modelId);
 		const response = await expectLevelAccepted(model, openrouterOptions({ reasoning }));
+		record("openrouter", model, response);
 		expect(response.providerThinkingLevel).toBeDefined();
+	});
+});
+
+describeIfOpenRouter("OpenRouter thinking levels artifact", () => {
+	it("records the level each model ran at", async () => {
+		await expect(artifact("openrouter", OPENROUTER_E2E_MODELS)).toMatchFileSnapshot(
+			"./__artifacts__/thinking.levels.openrouter.json",
+		);
 	});
 });

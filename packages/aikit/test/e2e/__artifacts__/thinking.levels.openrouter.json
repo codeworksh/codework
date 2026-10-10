@@ -1,0 +1,122 @@
+{
+	"meta/muse-spark-1.3-contributor": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "minimal"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "high"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "high"
+		}
+	},
+	"z-ai/glm-5.3-flash": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "minimal"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "high"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "high"
+		}
+	},
+	"deepseek/deepseek-v4.1-flash": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "minimal"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "high"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "high"
+		}
+	},
+	"google/gemini-3.8-flash": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "minimal"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "high"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "high"
+		}
+	}
+}
