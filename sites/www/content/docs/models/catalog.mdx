@@ -34,7 +34,7 @@ Prices are in US dollars **per million tokens**, with four rates per model:
 | Cache read  | Prompt tokens served from the provider's cache                    |
 | Cache write | Prompt tokens written to the cache, on providers that bill for it |
 
-Some models also have long-context tiers: once a request's input passes a threshold, a higher set of rates applies to the whole request. They're listed under `cost.tiers` in the [catalog entry](#look-up-any-model).
+Some models also have long-context tiers: once a request's input passes a threshold, a higher set of rates applies to the whole request.
 
 Every `codework run` ends with a usage summary that adds these up for that run:
 
@@ -80,23 +80,6 @@ Set the level with `--thinking`, `thinkingLevel` in [settings](/docs/cli/setting
 | `gpt-5.5`                      | `off`, `low`, `medium`, `high`, `xhigh`        |
 | `gpt-5.4`, `gpt-5.4-mini`      | `low`, `medium`, `high`, `xhigh`               |
 | `gpt-5.3-codex-spark`          | `minimal`, `low`, `medium`, `high`, `xhigh`    |
-
-## Look up any model
-
-Prices for models.dev providers change as providers change them, so the catalog file is the source of truth. Read a model's entry with `jq`:
-
-```bash
-jq '.openrouter["deepseek/deepseek-v4.1-flash"] | {name, cost, contextWindow, maxTokens, input, reasoning}' \
-  ~/.codework/models.gen.json
-```
-
-| Field           | Meaning                                                        |
-| --------------- | -------------------------------------------------------------- |
-| `cost`          | Per-million-token rates, plus `tiers` for long-context pricing |
-| `contextWindow` | Most tokens the model accepts in one request                   |
-| `maxTokens`     | Most tokens it can generate in one response                    |
-| `input`         | `text`, and `image` if it accepts images                       |
-| `reasoning`     | Whether it supports thinking levels                            |
 
 ## Related
 
