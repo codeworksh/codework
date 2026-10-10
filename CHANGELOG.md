@@ -13,14 +13,17 @@ This file is the canonical source for unreleased changes and published release n
 
 ### Added
 
+- Added the `normalizeOptionalNulls` export, which drops the `null` a strict tool call sends for an omitted optional argument whose schema does not accept null. `validateToolArguments` now applies it.
 - Added automatic retry of transient provider failures in the harness loop. A turn whose request fails with a rate limit, overload, 5xx, timeout or dropped connection, including one that fails mid-stream, is retried with exponential backoff. Configure it with a top-level `retry` block in `settings.jsonc`: `{ "maxRetries": 3, "baseDelayMs": 2000, "maxDelayMs": 60000 }`, where `maxRetries: 0` turns it off. Quota errors are never retried, and a server that asks to wait longer than `maxDelayMs` fails the turn. Each failed attempt stays in the session as an aborted entry that the model never sees, and clients receive `session.retry.scheduled` and `session.retry.finished` events to show progress.
 
 ### Changed
 
 - `model.options.maxRetries`, the retry inside the provider SDK, now defaults to `0` (was `3`). The SDK retried silently, only before the stream started, and also retried quota errors. Combined with the loop retry, one outage would have cost up to 16 requests. Set it per model if an endpoint needs it.
+- `resolveOpenAICodexToolConstraint` now resolves grammar constraints only, and `Message.resolveJsonSchemaConstraint` is removed; `convertTools` handles JSON-schema strictness for every provider.
 
 ### Fixed
 
+- Fixed tools with `constrainedSampling: { type: "json_schema" }` being rejected by Anthropic and other strict providers. aikit set `strict: true` but sent the original schema; it now converts it to the strict subset (closed objects, every property required, optional ones nullable). A `"prefer"` tool whose schema the provider cannot express in strict mode, such as Anthropic with `minimum`, is sent non-strict; a `"require"` tool throws.
 - Fixed an interrupted turn never reporting `session.turn.aborted`. The cleanup that settles the turn's open draft and publishes the event was skipped on interruption, so the draft was only cleaned up on the session's next run.
 
 ## [@codeworksh/aikit@0.10.0]
