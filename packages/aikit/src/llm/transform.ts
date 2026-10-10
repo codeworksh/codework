@@ -16,6 +16,7 @@ import { resolveOpenAICodexToolConstraint } from "../providers/openai-codex/code
 import { shortHash } from "../utils/hash.ts";
 import { parseStreamingJson } from "../utils/jsonparse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize.ts";
+import { resolveStrictParameters } from "./strict.ts";
 
 type ToolCallPart = Extract<Message.AssistantMessage["parts"][number], { type: "toolCall" }>;
 type TerminalToolCall = Exclude<ToolCallPart, Message.ToolCallPendingPart | Message.ToolCallRunningPart>;
@@ -367,18 +368,16 @@ export function convertTools(tools?: Message.Tool[], model?: Model.Info): ToolSe
 
 	const result: ToolSet = {};
 	for (const tool of tools) {
-		const jsonSchemaConstraint = Message.resolveJsonSchemaConstraint(tool, model?.compat);
+		const strictParameters = resolveStrictParameters(tool, model);
 		const grammarConstraint =
 			model?.protocol === Model.KnownProviderEnum.openaiCodex
 				? resolveOpenAICodexToolConstraint(tool, model.compat)
 				: undefined;
 		result[tool.name] = {
 			description: tool.description,
-			inputSchema: jsonSchema(tool.parameters as any),
-			...(jsonSchemaConstraint ? { strict: true } : {}),
-			...(grammarConstraint?.type === "grammar"
-				? { providerOptions: { "openai-codex": { grammar: grammarConstraint } } }
-				: {}),
+			inputSchema: jsonSchema(strictParameters ?? (tool.parameters as any)),
+			...(strictParameters ? { strict: true } : {}),
+			...(grammarConstraint ? { providerOptions: { "openai-codex": { grammar: grammarConstraint } } } : {}),
 		};
 	}
 	return result;

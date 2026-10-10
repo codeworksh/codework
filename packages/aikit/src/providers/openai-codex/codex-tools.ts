@@ -94,10 +94,9 @@ function inferGrammarInputProperty(parameters: TSchema): string {
 export function resolveOpenAICodexToolConstraint(
 	tool: Message.Tool,
 	compat?: OpenAICodexCompatibility,
-): OpenAICodexGrammarConstraint | { type: "json_schema"; strict: true } | undefined {
+): OpenAICodexGrammarConstraint | undefined {
 	const config = tool.constrainedSampling;
-	if (!config) return undefined;
-	if (config.type === "json_schema") return Message.resolveJsonSchemaConstraint(tool, compat);
+	if (!config || config.type !== "grammar") return undefined;
 	if (!(compat?.supportsOpenAIGrammarTools ?? false)) return undefined;
 
 	const lark = config.variants.openai_lark;

@@ -85,6 +85,7 @@ export const bashDef = Tool.define({
 		"note says which lines are shown and gives the path of a file holding the full output when one was saved. " +
 		"A non-zero exit code is reported as an error carrying the captured output.",
 	parameters: BashParams,
+	constrainedSampling: { type: "json_schema", strict: "prefer" },
 	success: BashSuccess,
 	failure: BashFailure,
 	// The model reads the command output, not the JSON envelope — and, on failure, why it failed.
