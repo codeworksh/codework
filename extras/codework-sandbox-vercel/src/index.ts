@@ -49,8 +49,12 @@ const status = (remote: Remote): SandboxDriver.Observed => ({
 	providerStatus: remote.status,
 });
 
-const filesystem = (remote: Remote, execTimeout: number | undefined): SandboxFileSystem.Interface =>
-	SandboxFileSystem.fromProvider({
+const filesystem = (remote: Remote, execTimeout: number | undefined): SandboxFileSystem.Interface => {
+	const run = async (argv: ReadonlyArray<string>) => {
+		const result = await (await command(remote, execTimeout, argv)).wait();
+		return { exitCode: result.exitCode, stdout: await result.stdout(), stderr: await result.stderr() };
+	};
+	return SandboxFileSystem.fromProvider({
 		readFile: (path) => remote.fs.readFile(path, "utf8"),
 		readFileBuffer: async (path) => new Uint8Array(await remote.fs.readFile(path)),
 		writeFile: (path, content) =>
@@ -87,11 +91,10 @@ const filesystem = (remote: Remote, execTimeout: number | undefined): SandboxFil
 			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
 			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
 		},
-		scanLines: SandboxFileSystem.Scan.viaShell(async (argv) => {
-			const result = await (await command(remote, execTimeout, argv)).wait();
-			return { exitCode: result.exitCode, stdout: await result.stdout(), stderr: await result.stderr() };
-		}),
+		scanLines: SandboxFileSystem.Scan.viaShell(run),
+		readBytes: SandboxFileSystem.readBytesViaShell(run),
 	});
+};
 
 const command = (
 	remote: Remote,

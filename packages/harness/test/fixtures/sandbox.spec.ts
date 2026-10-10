@@ -29,6 +29,7 @@ export type PromiseFileSystem = SandboxFileSystem.Provider;
 const toPromise = (fs: SandboxFileSystem.Interface): PromiseFileSystem => ({
 	readFile: (path) => Effect.runPromise(fs.readFile(path)),
 	readFileBuffer: (path) => Effect.runPromise(fs.readFileBuffer(path)),
+	readBytes: (path, offset, length) => Effect.runPromise(fs.readBytes(path, offset, length)),
 	writeFile: (path, content) => Effect.runPromise(fs.writeFile(path, content)),
 	stat: (path) => Effect.runPromise(fs.stat(path)),
 	...(fs.lstat === undefined ? {} : { lstat: (path: string) => Effect.runPromise(fs.lstat!(path)) }),
@@ -142,6 +143,26 @@ export const filesystemSpec = <E>(make: MakeSandbox<E>) => {
 		it("rejects a missing file as not found", async () => {
 			await run(async (fs) => {
 				await expect(fs.scanLines("missing.txt", { startLine: 0, maxBytes: 100 })).rejects.toSatisfy((cause) =>
+					SandboxFileSystem.isNotFoundError((cause as SandboxFileSystem.FileSystemError).cause),
+				);
+			});
+		});
+	});
+
+	describe("readBytes", () => {
+		it("returns the requested range, short at the end of the file", async () => {
+			await run(async (fs) => {
+				await fs.writeFile("range.dat", new Uint8Array([0, 1, 2, 127, 128, 255]));
+				expect([...(await fs.readBytes("range.dat", 0, 2))]).toEqual([0, 1]);
+				expect([...(await fs.readBytes("range.dat", 3, 2))]).toEqual([127, 128]);
+				expect([...(await fs.readBytes("range.dat", 4, 10))]).toEqual([128, 255]);
+				expect(await fs.readBytes("range.dat", 10, 4)).toHaveLength(0);
+			});
+		});
+
+		it("rejects a missing file as not found", async () => {
+			await run(async (fs) => {
+				await expect(fs.readBytes("missing.dat", 0, 4)).rejects.toSatisfy((cause) =>
 					SandboxFileSystem.isNotFoundError((cause as SandboxFileSystem.FileSystemError).cause),
 				);
 			});

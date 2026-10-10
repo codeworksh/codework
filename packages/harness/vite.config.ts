@@ -50,6 +50,8 @@ export default defineConfig({
 			"src/sandbox.ts",
 			"src/sandboxes/daytona/index.ts",
 			"src/sandboxes/vercel/index.ts",
+			// Spawned by path from the image resizer, never imported, so it needs its own entry.
+			"src/tool/image/worker.ts",
 		],
 		format: ["esm"],
 		outDir: "dist/pack",

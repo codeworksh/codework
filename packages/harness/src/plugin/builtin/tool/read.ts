@@ -1,183 +1,203 @@
 import { Effect, Layer, Schema } from "effect";
 import { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
-import { NonNegativeInt, PositiveInt } from "../../../schema.ts";
+import { Image } from "../../../tool/image/index.ts";
+import { ToolPath } from "../../../tool/path.ts";
 import * as Tool from "../../../tool/tool.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "../../../tool/truncate.ts";
 import { define } from "../../plugin.ts";
 
 /**
- * The built-in read plugin. The definition is pure data; the handler depends only on
- * {@link SandboxIO.FileSystem}, so the backend (local OS / in-memory / remote provider)
- * is whatever the mount provides. Output keeps the head of the file
- * ({@link truncateHead}); the file itself is the full copy, and a truncated read
- * tells the model the next `offset`.
+ * The built-in read plugin. Text is read through `scanLines`, so only the shown
+ * window crosses from the sandbox; images, told apart by their bytes, go to the
+ * model as attachments. Continuation notices are part of the text the model
+ * reads; `details` keeps only how the text was cut.
  */
 
 const ReadParams = Schema.Struct({
-	path: Schema.String.annotate({
-		description: "File to read. Relative paths resolve against the working directory.",
-	}),
-	offset: Schema.optional(
-		PositiveInt.annotate({
-			description: "1-based line to start from. Defaults to 1.",
-		}),
-	),
-	limit: Schema.optional(
-		PositiveInt.annotate({
-			description: `Maximum number of lines to return. Defaults to ${DEFAULT_MAX_LINES}, and still capped at ${formatSize(DEFAULT_MAX_BYTES)}.`,
-		}),
-	),
+	path: Schema.String.annotate({ description: "Path to the file to read (relative or absolute)" }),
+	offset: Schema.optional(Schema.Finite.annotate({ description: "Line number to start reading from (1-indexed)" })),
+	limit: Schema.optional(Schema.Finite.annotate({ description: "Maximum number of lines to read" })),
 });
 
-const ReadSuccess = Schema.Struct({
-	/** Numbered lines, plus a footer when `truncated` or when caller limit leaves lines remaining. */
-	content: Schema.String,
+/** How the shown text was cut. */
+const Truncation = Schema.Struct({
 	truncated: Schema.Boolean,
-	truncatedBy: Schema.optional(Schema.Literals(["lines", "bytes"])),
-	path: Schema.String,
-	startLine: NonNegativeInt,
-	endLine: NonNegativeInt,
-	totalLines: NonNegativeInt,
+	truncatedBy: Schema.NullOr(Schema.Literals(["lines", "bytes"])),
+	/** Lines selected by `offset`/`limit`, before the limits. */
+	totalLines: Schema.Finite,
+	outputLines: Schema.Finite,
+	outputBytes: Schema.Finite,
+	firstLineExceedsLimit: Schema.Boolean,
+	maxLines: Schema.Finite,
+	maxBytes: Schema.Finite,
 });
 
-const ReadReason = Schema.Literals(["not_found", "not_a_file", "binary", "offset_out_of_range", "line_too_long"]);
+const ReadText = Schema.Struct({
+	type: Schema.Literal("text"),
+	text: Schema.String,
+	truncation: Schema.optional(Truncation),
+});
 
-class ReadFailed extends Schema.TaggedError<ReadFailed>()("ReadFailed", {
-	path: Schema.String,
-	reason: ReadReason,
-	message: Schema.String,
-}) {}
+const ReadImage = Schema.Struct({
+	type: Schema.Literal("image"),
+	/** What the model reads with the image: its type and any conversion/resize hints. */
+	note: Schema.String,
+	image: Schema.optional(Schema.Struct({ data: Schema.String, mimeType: Schema.String })),
+});
 
-const ReadFailure = Schema.Union([ReadFailed]);
+const ReadSuccess = Schema.Union([ReadText, ReadImage]);
+
+class ReadFailed extends Schema.TaggedError<ReadFailed>()("ReadFailed", { message: Schema.String }) {}
+
+const BINARY_PROBE_BYTES = 8000;
 
 export const readDef = Tool.define({
 	name: "read",
 	label: "read",
-	promptSnippet: "Read a text file, optionally from a line offset.",
+	description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
+	promptSnippet: "Read file contents",
 	promptGuidelines: ["Use read to examine files instead of cat or sed."],
-	description:
-		"Read a text file and return its contents with 1-based line numbers. " +
-		`Output is truncated to the first ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)} (whichever is hit first). ` +
-		"When truncated, call again with offset set to the next line. " +
-		"A missing path, a directory, a binary file, a line longer than the byte limit, or an offset past the end is an error.",
 	parameters: ReadParams,
 	success: ReadSuccess,
-	failure: ReadFailure,
-	encodeContent: (success) => [{ type: "text", text: success.content }],
+	failure: ReadFailed,
+	encodeContent: (success) =>
+		success.type === "text"
+			? [{ type: "text", text: success.text }]
+			: [
+					{ type: "text", text: success.note },
+					...(success.image === undefined ? [] : [{ type: "image" as const, ...success.image }]),
+				],
 	encodeFailureContent: (failure) => [{ type: "text", text: failure.message }],
+	// The image travels in the content; storing it again in details would double the record.
+	encodeDetails: (success) =>
+		success.type === "text" && success.truncation !== undefined ? { truncation: success.truncation } : undefined,
 });
 
-const failed = (path: string, reason: typeof ReadReason.Type, message: string) =>
-	new ReadFailed({ path, reason, message });
+const fail = (message: string) => Effect.fail(new ReadFailed({ message }));
 
-/** Lines of `content`, without a trailing empty line from a final newline. */
-const linesOf = (content: string): string[] => {
-	if (content.length === 0) return [];
-	const lines = content.split("\n");
-	if (content.endsWith("\n")) lines.pop();
-	return lines;
-};
+/**
+ * Filesystem failures are the model's to see, as Pi shows them: a missing path in
+ * one wording on every backend, anything else (EACCES, …) as the backend reported it.
+ */
+const fsFailure = (path: string) => (error: SandboxFileSystem.FileSystemError) =>
+	fail(
+		SandboxFileSystem.isNotFoundError(error.cause)
+			? `ENOENT: no such file or directory, open '${path}'`
+			: error.cause instanceof Error
+				? error.cause.message
+				: `Could not read file: ${path}`,
+	);
 
-const numberLines = (lines: ReadonlyArray<string>, startLine: number, totalLines: number): string => {
-	const width = String(Math.max(totalLines, 1)).length;
-	return lines.map((line, index) => `${String(startLine + index).padStart(width, " ")}|${line}`).join("\n");
-};
+const readImage = (fs: SandboxFileSystem.Interface, resolved: string, mimeType: string) =>
+	Effect.gen(function* () {
+		const bytes = yield* fs.readFileBuffer(resolved);
+		const inline: Image.Inline = yield* Image.inline(bytes, mimeType);
+		if (!inline.ok) return { type: "image" as const, note: `Read image file [${mimeType}]\n${inline.message}` };
+		return {
+			type: "image" as const,
+			note: [`Read image file [${inline.mimeType}]`, ...inline.hints].join("\n"),
+			image: { data: inline.data, mimeType: inline.mimeType },
+		};
+	});
 
-const footer = (start: number, end: number, total: number, reason: "lines" | "bytes"): string => {
-	if (reason === "bytes") {
-		return `\n\n[showing lines ${start}-${end} of ${total} (${formatSize(DEFAULT_MAX_BYTES)} limit). Read again with offset ${end + 1}.]`;
-	}
-	return `\n\n[showing lines ${start}-${end} of ${total}. Read again with offset ${end + 1}.]`;
-};
+const readText = (
+	fs: SandboxFileSystem.Interface,
+	resolved: string,
+	params: typeof ReadParams.Type,
+): Effect.Effect<typeof ReadText.Type, ReadFailed | SandboxFileSystem.FileSystemError> =>
+	Effect.gen(function* () {
+		const { path, offset } = params;
+		const startLine = offset ? Math.max(0, Math.trunc(offset) - 1) : 0;
+		const limit = params.limit === undefined ? undefined : Math.max(1, Math.trunc(params.limit));
+		const endLine = startLine + Math.min(limit ?? DEFAULT_MAX_LINES, DEFAULT_MAX_LINES);
+		// A start no file reaches only needs the line count, for the error below.
+		const scan = yield* fs.scanLines(
+			resolved,
+			Number.isSafeInteger(endLine)
+				? { startLine, endLine, maxBytes: DEFAULT_MAX_BYTES }
+				: { startLine: 0, endLine: 1, maxBytes: DEFAULT_MAX_BYTES },
+		);
+		// An empty file still has a line 1 to read, as an editor shows it.
+		if (startLine >= Math.max(scan.totalLines, 1)) {
+			return yield* fail(`Offset ${offset} is beyond end of file (${scan.totalLines} lines total)`);
+		}
 
-const linesLabel = (count: number): string => `${count} ${count === 1 ? "line" : "lines"}`;
+		// The scan bounds raw bytes; invalid UTF-8 grows when decoded (one byte becomes a
+		// three-byte U+FFFD), so the decoded text is bounded again.
+		const grown = Buffer.byteLength(scan.text, "utf8") > DEFAULT_MAX_BYTES ? truncateHead(scan.text) : undefined;
+		const firstLineBytes = grown?.firstLineExceedsLimit
+			? Buffer.byteLength(scan.text.split("\n", 1)[0] ?? "", "utf8")
+			: scan.firstLineBytes;
+		const shown = grown === undefined ? scan : { text: grown.content, lines: grown.outputLines };
 
-/** Missing path is model-visible; every other filesystem failure is a defect. */
-const absentOrDie = (path: string) => (error: SandboxFileSystem.FileSystemError) => {
-	if (SandboxFileSystem.isNotFoundError(error.cause)) {
-		return Effect.fail(failed(path, "not_found", `File not found: ${path}`));
-	}
-	return Effect.die(error);
-};
+		const first = startLine + 1;
+		const selected = Math.min(scan.totalLines, limit === undefined ? Infinity : startLine + limit) - startLine;
+		const truncation = (truncatedBy: "lines" | "bytes" | null, firstLineExceedsLimit: boolean) => ({
+			truncated: true,
+			truncatedBy,
+			totalLines: selected,
+			outputLines: shown.lines,
+			outputBytes: Buffer.byteLength(shown.text, "utf8"),
+			firstLineExceedsLimit,
+			maxLines: DEFAULT_MAX_LINES,
+			maxBytes: DEFAULT_MAX_BYTES,
+		});
+
+		if (firstLineBytes > DEFAULT_MAX_BYTES) {
+			return {
+				type: "text" as const,
+				text: `[Line ${first} is ${formatSize(firstLineBytes)}, exceeds ${formatSize(DEFAULT_MAX_BYTES)} limit. Use bash: sed -n '${first}p' ${path} | head -c ${DEFAULT_MAX_BYTES}]`,
+				truncation: { ...truncation("bytes", true), outputLines: 0, outputBytes: 0 },
+			};
+		}
+		if (shown.lines < selected) {
+			const last = startLine + shown.lines;
+			const truncatedBy = shown.lines < Math.min(selected, DEFAULT_MAX_LINES) ? "bytes" : "lines";
+			const limitText = truncatedBy === "bytes" ? ` (${formatSize(DEFAULT_MAX_BYTES)} limit)` : "";
+			return {
+				type: "text" as const,
+				text: `${shown.text}\n\n[Showing lines ${first}-${last} of ${scan.totalLines}${limitText}. Use offset=${last + 1} to continue.]`,
+				truncation: truncation(truncatedBy, false),
+			};
+		}
+		if (limit !== undefined && startLine + limit < scan.totalLines) {
+			const remaining = scan.totalLines - (startLine + limit);
+			return {
+				type: "text" as const,
+				text: `${shown.text}\n\n[${remaining} more lines in file. Use offset=${startLine + limit + 1} to continue.]`,
+			};
+		}
+		return { type: "text" as const, text: shown.text };
+	});
 
 export const readHandler: Tool.Handler<
 	typeof ReadParams,
 	typeof ReadSuccess,
-	typeof ReadFailure,
+	typeof ReadFailed,
 	SandboxIO.FileSystem
 > = (params) =>
 	Effect.gen(function* () {
 		const fs = yield* SandboxIO.FileSystem;
-		const offset = params.offset ?? 1;
-		const stat = yield* fs
-			.stat(params.path)
-			.pipe(Effect.catchTag("SandboxFileSystemError", absentOrDie(params.path)));
-		if (!stat.isFile) {
-			return yield* failed(params.path, "not_a_file", `Not a file: ${params.path}`);
-		}
+		const resolved = yield* ToolPath.resolveRead(fs, params.path);
+		const stat = yield* fs.stat(resolved);
+		if (stat.isDirectory) return yield* fail("EISDIR: illegal operation on a directory, read");
+		if (!stat.isFile) return yield* fail("Not a regular file");
 
-		const text = yield* fs
-			.readFile(params.path)
-			.pipe(Effect.catchTag("SandboxFileSystemError", absentOrDie(params.path)));
-		if (text.includes("\0")) {
-			return yield* failed(params.path, "binary", `Binary file: ${params.path}`);
-		}
-
-		const lines = linesOf(text);
-		// An empty file read from the start is a successful empty result, not a bad offset.
-		if (offset > lines.length && !(lines.length === 0 && offset === 1)) {
-			return yield* failed(
-				params.path,
-				"offset_out_of_range",
-				`Offset ${offset} is past the end of ${params.path} (${linesLabel(lines.length)}).`,
-			);
-		}
-
-		const hasCallerLimit = params.limit !== undefined && params.limit < DEFAULT_MAX_LINES;
-		const maxLines = params.limit ?? DEFAULT_MAX_LINES;
-		const selected = lines.slice(offset - 1);
-		const truncated = truncateHead(selected.join("\n"), { maxLines });
-		if (truncated.firstLineExceedsLimit) {
-			const bytes = Buffer.byteLength(selected[0] ?? "", "utf8");
-			return yield* failed(
-				params.path,
-				"line_too_long",
-				`Line ${offset} is ${bytes} bytes, over the ${formatSize(DEFAULT_MAX_BYTES)} read limit. ` +
-					`Use bash to inspect: sed -n '${offset}p' ${params.path} | head -c ${DEFAULT_MAX_BYTES}`,
-			);
-		}
-
-		const kept = selected.slice(0, truncated.outputLines);
-		const endLine = kept.length === 0 ? 0 : offset + kept.length - 1;
-		const body = numberLines(kept, offset, lines.length);
-
-		// If caller explicitly requested a limit and it was satisfied without hitting the byte limit,
-		// it is an intentional paged window, not a system truncation.
-		const isSystemTruncated = truncated.truncatedBy === "bytes" || (truncated.truncated && !hasCallerLimit);
-		const truncatedBy = isSystemTruncated ? (truncated.truncatedBy ?? undefined) : undefined;
-		const hasMoreLines = endLine < lines.length;
-
-		let content = body;
-		if (truncated.truncatedBy === "bytes") {
-			content += footer(offset, endLine, lines.length, "bytes");
-		} else if (isSystemTruncated && truncated.truncated) {
-			content += footer(offset, endLine, lines.length, "lines");
-		} else if (hasCallerLimit && hasMoreLines) {
-			const remaining = lines.length - endLine;
-			content += `\n\n[${remaining} more ${remaining === 1 ? "line" : "lines"} in file. Read again with offset ${endLine + 1}.]`;
-		}
-
-		return {
-			content,
-			truncated: isSystemTruncated,
-			...(truncatedBy === undefined ? {} : { truncatedBy }),
-			path: params.path,
-			startLine: offset,
-			endLine,
-			totalLines: lines.length,
-		} satisfies typeof ReadSuccess.Type;
-	});
+		// One read serves the image sniff and the binary probe; only a PNG's chunk walk reads further.
+		const head = yield* fs.readBytes(resolved, 0, BINARY_PROBE_BYTES);
+		const mimeType = yield* Image.detectOf({
+			// Unknown size: the chunk walk stops at the first short read instead.
+			size: stat.size ?? Infinity,
+			read: (offset, length) =>
+				offset + length <= head.length
+					? Effect.succeed(head.subarray(offset, offset + length))
+					: fs.readBytes(resolved, offset, length),
+		});
+		if (mimeType !== undefined) return yield* readImage(fs, resolved, mimeType);
+		if (head.includes(0)) return yield* fail(`Unsupported read ${params.path}: binary file.`);
+		return yield* readText(fs, resolved, params);
+	}).pipe(Effect.catchTag("SandboxFileSystemError", fsFailure(params.path)));
 
 /** The read tool: definition + handler, wired the testable (def/exec split) way. */
 export const readTool = Tool.implement(readDef, readHandler);

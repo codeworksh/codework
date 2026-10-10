@@ -1,6 +1,7 @@
 import "./utils/env.ts";
+import { PhotonImage } from "@silvia-odwyer/photon-node";
 import { Effect } from "effect";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { ContextCodec } from "../src/context/codec.ts";
@@ -8,27 +9,138 @@ import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
 import { defaultPromptPlugin } from "../src/plugin/builtin/prompt/default.ts";
 import { readPlugin } from "../src/plugin/builtin/tool/read.ts";
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "../src/tool/truncate.ts";
 import { toolTurn } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
-/** One scripted `read` call through plugin setup, the local mount, and durable settlement. */
-const read = (root: string, custom: string, args: Record<string, unknown>) =>
+const png = (width: number, height: number) =>
+	new Uint8Array(new PhotonImage(new Uint8Array(width * height * 4).fill(200), width, height).get_bytes());
+
+/** A 2x2 24-bit BMP: 54 header bytes, then two rows padded to 8 bytes. */
+const bmp = () => {
+	const bytes = Buffer.alloc(54 + 16);
+	bytes.write("BM", 0, "ascii");
+	bytes.writeUInt32LE(bytes.length, 2);
+	bytes.writeUInt32LE(54, 10);
+	bytes.writeUInt32LE(40, 14);
+	bytes.writeInt32LE(2, 18);
+	bytes.writeInt32LE(2, 22);
+	bytes.writeUInt16LE(1, 26);
+	bytes.writeUInt16LE(24, 28);
+	bytes.writeUInt32LE(16, 34);
+	bytes.fill(0x7f, 54);
+	return new Uint8Array(bytes);
+};
+
+/** A PNG with an `acTL` chunk before its first `IDAT`: animated, so not an inline image. */
+const apng = () => {
+	const still = Buffer.from(png(2, 2));
+	const acTL = Buffer.concat([Buffer.from([0, 0, 0, 8]), Buffer.from("acTL"), Buffer.alloc(8), Buffer.alloc(4)]);
+	// The signature (8) plus IHDR (4 length + 4 type + 13 data + 4 CRC) ends at 33.
+	return new Uint8Array(Buffer.concat([still.subarray(0, 33), acTL, still.subarray(33)]));
+};
+
+/** A JPEG stored landscape whose EXIF says "rotate 90° clockwise" (orientation 6). */
+const rotatedJpeg = (width: number, height: number) => {
+	const jpeg = Buffer.from(
+		new PhotonImage(new Uint8Array(width * height * 4).fill(90), width, height).get_bytes_jpeg(80),
+	);
+	const tiff = Buffer.from([
+		...Buffer.from("MM\0*", "binary"),
+		0,
+		0,
+		0,
+		8, // first IFD
+		0,
+		1, // one entry
+		0x01,
+		0x12,
+		0,
+		3,
+		0,
+		0,
+		0,
+		1,
+		0,
+		6,
+		0,
+		0, // Orientation, SHORT, 1, value 6
+		0,
+		0,
+		0,
+		0, // no next IFD
+	]);
+	const payload = Buffer.concat([Buffer.from("Exif\0\0", "binary"), tiff]);
+	const app1 = Buffer.concat([Buffer.from([0xff, 0xe1, 0, payload.length + 2]), payload]);
+	return new Uint8Array(Buffer.concat([jpeg.subarray(0, 2), app1, jpeg.subarray(2)]));
+};
+
+const numbered = (count: number, width = 0) =>
+	Array.from({ length: count }, (_, index) => `line ${index + 1}`.padEnd(width, ".")).join("\n") + "\n";
+
+/** Each case: the file it needs (if any) and the arguments of one `read` call. */
+const cases: ReadonlyArray<{
+	readonly name: string;
+	readonly file?: readonly [string, string | Uint8Array];
+	readonly args: Record<string, unknown>;
+}> = [
+	{ name: "text", file: ["hello.txt", "alpha\nbeta\n"], args: { path: "hello.txt" } },
+	{ name: "empty", file: ["empty.txt", ""], args: { path: "empty.txt" } },
+	{ name: "bom", file: ["bom.txt", "﻿first\nsecond"], args: { path: "bom.txt" } },
+	{ name: "offset-limit", file: ["ten.txt", numbered(10)], args: { path: "ten.txt", offset: 3, limit: 2 } },
+	{ name: "limit-to-end", file: ["three.txt", numbered(3)], args: { path: "three.txt", offset: 2, limit: 5 } },
+	{ name: "line-limit", file: ["long.txt", numbered(2500)], args: { path: "long.txt" } },
+	{ name: "line-limit-offset", args: { path: "long.txt", offset: 2001 } },
+	{ name: "exactly-line-limit", file: ["exact.txt", numbered(2000)], args: { path: "exact.txt" } },
+	{ name: "byte-limit", file: ["wide.txt", numbered(1000, 99)], args: { path: "wide.txt" } },
+	{
+		name: "first-line-too-long",
+		file: ["huge-line.txt", `${"x".repeat(60 * 1024)}\nend\n`],
+		args: { path: "huge-line.txt" },
+	},
+	{ name: "offset-past-end", args: { path: "three.txt", offset: 4 } },
+	{ name: "offset-huge", args: { path: "three.txt", offset: 1e20 } },
+	{ name: "missing", args: { path: "missing.txt" } },
+	{ name: "directory", file: ["dir/inside.txt", "x"], args: { path: "dir" } },
+	{
+		name: "binary",
+		file: ["blob.bin", new Uint8Array([0x7f, 0x45, 0x4c, 0x46, 0, 1, 2, 3])],
+		args: { path: "blob.bin" },
+	},
+	{ name: "gif-text", file: ["gif.txt", "GIF is not an image\n"], args: { path: "gif.txt" } },
+	{ name: "fake-png", file: ["fake.png", "definitely not a png\n"], args: { path: "fake.png" } },
+	{ name: "png", file: ["dot.png", png(4, 3)], args: { path: "dot.png" } },
+	{ name: "png-resized", file: ["wide.png", png(3000, 1000)], args: { path: "wide.png" } },
+	{ name: "png-thin", file: ["thin.png", png(5000, 1)], args: { path: "thin.png" } },
+	{ name: "bmp-converted", file: ["tiny.bmp", bmp()], args: { path: "tiny.bmp" } },
+	{ name: "apng", file: ["moving.png", apng()], args: { path: "moving.png" } },
+	{ name: "jpeg-exif-rotated", file: ["photo.jpg", rotatedJpeg(3000, 1000)], args: { path: "photo.jpg" } },
+	{ name: "unreadable", file: ["secret.txt", "hidden\n"], args: { path: "secret.txt" } },
+	{ name: "at-prefix", args: { path: "@hello.txt" } },
+	{ name: "unicode-space", file: ["two words.txt", "spaced\n"], args: { path: "two words.txt" } },
+	{ name: "nfd-name", file: ["cafe\u0301.txt", "accented\n"], args: { path: "caf\u00e9.txt" } },
+	{ name: "curly-quote-name", file: ["it\u2019s.txt", "quoted\n"], args: { path: "it's.txt" } },
+	{
+		name: "screenshot-name-lowercase",
+		file: ["Screenshot 2026-10-10 at 9.41.12\u202Fam.txt", "en_AU\n"],
+		args: { path: "Screenshot 2026-10-10 at 9.41.12 am.txt" },
+	},
+	{
+		name: "screenshot-name",
+		file: ["Screenshot 2026-10-10 at 9.41.12 AM.png", png(2, 2)],
+		args: { path: "Screenshot 2026-10-10 at 9.41.12 AM.png" },
+	},
+];
+
+/** Every case as one turn of parallel `read` calls through plugin setup, the local mount, and durable settlement. */
+const readAll = (root: string, custom: string) =>
 	Effect.gen(function* () {
-		const session = yield* Session.create({ directory: root });
-		yield* session.run("Read the file.");
+		const session = yield* Session.create({ directory: root, model: { provider: "openai", id: "gpt-5.6-luna" } });
+		yield* session.run("Read the files.");
 		const path = yield* session.path();
 		expect(path.every((entry) => entry.entry.state === "committed")).toBe(true);
 		const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
-		const calls = messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));
-		expect(calls).toHaveLength(1);
-		const call = calls[0];
-		if (call === undefined || call.type !== "toolCall" || (call.status !== "completed" && call.status !== "error")) {
-			throw new Error("read was not settled");
-		}
-		expect(call.name).toBe("read");
-		return call;
+		return messages.flatMap((message) => message.parts.filter((part) => part.type === "toolCall"));
 	}).pipe(
 		Effect.provide(
 			Harness.layer({
@@ -37,227 +149,58 @@ const read = (root: string, custom: string, args: Record<string, unknown>) =>
 				userConfigDir: custom,
 				database: ":memory:",
 				plugins: [readPlugin, defaultPromptPlugin],
-				llm: toolTurn(pendingCall("read", args)),
+				llm: toolTurn(...cases.map((entry) => pendingCall("read", entry.args, entry.name))),
 			}),
 		),
 		Effect.scoped,
 		Effect.runPromise,
 	);
 
+/** Image bytes are summarised: the artifact records what the model got, not the pixels. */
+const summarise = (content: ReadonlyArray<{ type: string; text?: string; data?: string; mimeType?: string }>) =>
+	content.map((part) =>
+		part.type === "image"
+			? { type: "image", mimeType: part.mimeType, base64Bytes: part.data?.length }
+			: {
+					type: part.type,
+					text:
+						part.text !== undefined && part.text.length > 400
+							? `${part.text.slice(0, 120)}…${part.text.slice(-200)}`
+							: part.text,
+				},
+	);
+
 describe("read plugin through the local harness", () => {
-	it("numbers a file in the session directory", () =>
+	it("reads text, pages, images and failures like Pi", () =>
 		withSettings(async ({ root, custom }) => {
-			await writeFile(join(root, "hello.txt"), "alpha\nbeta\n");
-			const call = await read(root, custom, { path: "hello.txt" });
-			expect(call.status).toBe("completed");
-			expect(call.result).toMatchObject({
-				isError: false,
-				content: [{ type: "text", text: "1|alpha\n2|beta" }],
-				details: {
-					content: "1|alpha\n2|beta",
-					truncated: false,
-					path: "hello.txt",
-					startLine: 1,
-					endLine: 2,
-					totalLines: 2,
-				},
-			});
-		}));
+			for (const { file } of cases) {
+				if (file === undefined) continue;
+				await mkdir(join(root, file[0], ".."), { recursive: true });
+				await writeFile(join(root, file[0]), file[1]);
+			}
+			await chmod(join(root, "secret.txt"), 0o000);
 
-	it("numbers from an offset inside the file", () =>
-		withSettings(async ({ root, custom }) => {
-			await writeFile(join(root, "hello.txt"), "one\ntwo\nthree\n");
-			const call = await read(root, custom, { path: "hello.txt", offset: 2 });
-			expect(call.status).toBe("completed");
-			expect(call.result).toMatchObject({
-				isError: false,
-				details: {
-					content: "2|two\n3|three",
-					truncated: false,
-					path: "hello.txt",
-					startLine: 2,
-					endLine: 3,
-					totalLines: 3,
-				},
-			});
-		}));
-
-	it("keeps the head of a long file and names the next offset", () =>
-		withSettings(async ({ root, custom }) => {
-			const total = DEFAULT_MAX_LINES + 1;
-			const body = Array.from({ length: total }, (_, index) => String(index + 1)).join("\n");
-			await writeFile(join(root, "long.txt"), body);
-			const call = await read(root, custom, { path: "long.txt" });
-			expect(call.status).toBe("completed");
-			const width = String(total).length;
-			const numbered = Array.from({ length: DEFAULT_MAX_LINES }, (_, index) => {
-				const line = index + 1;
-				return `${String(line).padStart(width, " ")}|${line}`;
-			}).join("\n");
-			const content = `${numbered}\n\n[showing lines 1-${DEFAULT_MAX_LINES} of ${total}. Read again with offset ${DEFAULT_MAX_LINES + 1}.]`;
-			expect(call.result).toMatchObject({
-				isError: false,
-				details: {
-					content,
-					truncated: true,
-					truncatedBy: "lines",
-					path: "long.txt",
-					startLine: 1,
-					endLine: DEFAULT_MAX_LINES,
-					totalLines: total,
-				},
-			});
-		}));
-
-	it("reports a missing path", () =>
-		withSettings(async ({ root, custom }) => {
-			const call = await read(root, custom, { path: "missing.txt" });
-			expect(call.status).toBe("error");
-			expect(call.result).toMatchObject({
-				isError: true,
-				content: [{ type: "text", text: "File not found: missing.txt" }],
-				details: {
-					_tag: "ReadFailed",
-					path: "missing.txt",
-					reason: "not_found",
-					message: "File not found: missing.txt",
-				},
-			});
-		}));
-
-	it("reports a directory", () =>
-		withSettings(async ({ root, custom }) => {
-			await mkdir(join(root, "folder"));
-			const call = await read(root, custom, { path: "folder" });
-			expect(call.status).toBe("error");
-			expect(call.result).toMatchObject({
-				isError: true,
-				details: { _tag: "ReadFailed", path: "folder", reason: "not_a_file", message: "Not a file: folder" },
-			});
-		}));
-
-	it("reports a binary file without returning its bytes", () =>
-		withSettings(async ({ root, custom }) => {
-			await writeFile(join(root, "bin.dat"), Buffer.from([0x68, 0x00, 0x69]));
-			const call = await read(root, custom, { path: "bin.dat" });
-			expect(call.status).toBe("error");
-			expect(call.result).toMatchObject({
-				isError: true,
-				content: [{ type: "text", text: "Binary file: bin.dat" }],
-				details: { _tag: "ReadFailed", path: "bin.dat", reason: "binary", message: "Binary file: bin.dat" },
-			});
-		}));
-
-	it("reports an offset past the end", () =>
-		withSettings(async ({ root, custom }) => {
-			await writeFile(join(root, "short.txt"), "only\n");
-			const call = await read(root, custom, { path: "short.txt", offset: 3 });
-			expect(call.status).toBe("error");
-			expect(call.result).toMatchObject({
-				isError: true,
-				details: {
-					_tag: "ReadFailed",
-					path: "short.txt",
-					reason: "offset_out_of_range",
-					message: "Offset 3 is past the end of short.txt (1 line).",
-				},
-			});
-		}));
-
-	it("reports a line longer than the byte limit", () =>
-		withSettings(async ({ root, custom }) => {
-			const bytes = DEFAULT_MAX_BYTES + 1;
-			await writeFile(join(root, "wide.txt"), "a".repeat(bytes));
-			const call = await read(root, custom, { path: "wide.txt" });
-			const message =
-				`Line 1 is ${bytes} bytes, over the ${formatSize(DEFAULT_MAX_BYTES)} read limit. ` +
-				`Use bash to inspect: sed -n '1p' wide.txt | head -c ${DEFAULT_MAX_BYTES}`;
-			expect(call.status).toBe("error");
-			expect(call.result).toMatchObject({
-				isError: true,
-				content: [{ type: "text", text: message }],
-				details: { _tag: "ReadFailed", path: "wide.txt", reason: "line_too_long", message },
-			});
-		}));
-
-	it("truncates when byte limit is exceeded before line limit", () =>
-		withSettings(async ({ root, custom }) => {
-			// 500 lines of 200 chars each: ~100KB > 50KB byte limit, but < 2000 line limit
-			const total = 500;
-			const lines = Array.from({ length: total }, (_, i) => `Line ${i + 1}: ${"x".repeat(200)}`);
-			await writeFile(join(root, "large-bytes.txt"), lines.join("\n"));
-			const call = await read(root, custom, { path: "large-bytes.txt" });
-			expect(call.status).toBe("completed");
-			expect(call.result).toMatchObject({
-				isError: false,
-				details: {
-					truncated: true,
-					truncatedBy: "bytes",
-					path: "large-bytes.txt",
-					startLine: 1,
-					totalLines: total,
-				},
-			});
-			const details = (call.result as { details: { endLine: number } }).details;
-			expect(details.endLine).toBeLessThan(total);
-			const text = (call.result as { content: Array<{ text: string }> }).content[0]?.text ?? "";
-			expect(text).toContain("1|Line 1:");
-			expect(text).toContain(
-				`[showing lines 1-${details.endLine} of ${total} (${formatSize(DEFAULT_MAX_BYTES)} limit). Read again with offset ${details.endLine + 1}.]`,
+			const calls = await readAll(root, custom);
+			const report = Object.fromEntries(
+				cases.map(({ name }) => {
+					const call = calls.find((part) => part.type === "toolCall" && part.callID === name);
+					if (call?.type !== "toolCall" || (call.status !== "completed" && call.status !== "error"))
+						throw new Error(`${name} was not settled`);
+					return [
+						name,
+						{
+							status: call.status,
+							content: summarise(call.result.content),
+							...(call.result.details === undefined ? {} : { details: call.result.details }),
+						},
+					];
+				}),
 			);
-		}));
 
-	it("handles limit parameter", () =>
-		withSettings(async ({ root, custom }) => {
-			const total = 100;
-			const lines = Array.from({ length: total }, (_, i) => `Line ${i + 1}`);
-			await writeFile(join(root, "limit-test.txt"), lines.join("\n"));
-			const call = await read(root, custom, { path: "limit-test.txt", limit: 10 });
-			expect(call.status).toBe("completed");
-			const width = String(total).length;
-			const expectedBody = Array.from({ length: 10 }, (_, i) => {
-				const line = i + 1;
-				return `${String(line).padStart(width, " ")}|Line ${line}`;
-			}).join("\n");
-			const expectedContent = `${expectedBody}\n\n[90 more lines in file. Read again with offset 11.]`;
-			expect(call.result).toMatchObject({
-				isError: false,
-				content: [{ type: "text", text: expectedContent }],
-				details: {
-					content: expectedContent,
-					truncated: false,
-					path: "limit-test.txt",
-					startLine: 1,
-					endLine: 10,
-					totalLines: total,
-				},
-			});
-		}));
-
-	it("handles offset and limit parameters together", () =>
-		withSettings(async ({ root, custom }) => {
-			const total = 100;
-			const lines = Array.from({ length: total }, (_, i) => `Line ${i + 1}`);
-			await writeFile(join(root, "offset-limit-test.txt"), lines.join("\n"));
-			const call = await read(root, custom, { path: "offset-limit-test.txt", offset: 41, limit: 20 });
-			expect(call.status).toBe("completed");
-			const width = String(total).length;
-			const expectedBody = Array.from({ length: 20 }, (_, i) => {
-				const line = 41 + i;
-				return `${String(line).padStart(width, " ")}|Line ${line}`;
-			}).join("\n");
-			const expectedContent = `${expectedBody}\n\n[40 more lines in file. Read again with offset 61.]`;
-			expect(call.result).toMatchObject({
-				isError: false,
-				content: [{ type: "text", text: expectedContent }],
-				details: {
-					content: expectedContent,
-					truncated: false,
-					path: "offset-limit-test.txt",
-					startLine: 41,
-					endLine: 60,
-					totalLines: total,
-				},
-			});
+			// Errors name absolute paths; the artifact names them under `<root>`.
+			const json = JSON.stringify(report, null, "\t")
+				.replaceAll(await realpath(root), "<root>")
+				.replaceAll(root, "<root>");
+			await expect(json + "\n").toMatchFileSnapshot("./__artifacts__/tools.read.json");
 		}));
 });

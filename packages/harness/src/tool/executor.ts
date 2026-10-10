@@ -174,8 +174,9 @@ const encodeOutcome = (
 		if (Exit.isSuccess(exit)) {
 			const encoded = yield* Schema.encodeUnknownEffect(asCodec(def.success))(exit.value).pipe(Effect.orDie);
 			const content = def.encodeContent ? def.encodeContent(exit.value) : [yield* jsonText(encoded)];
+			const details = def.encodeDetails ? def.encodeDetails(exit.value) : encoded;
 			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-			return completed(call, content, now, encoded);
+			return completed(call, content, now, details);
 		}
 
 		const cause = exit.cause;

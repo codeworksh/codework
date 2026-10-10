@@ -42,6 +42,7 @@ export const make = (provider: Interface, options?: Options): SandboxFileSystem.
 	return {
 		readFile: (path) => provider.readFile(resolve(path)),
 		readFileBuffer: (path) => provider.readFileBuffer(resolve(path)),
+		readBytes: (path, offset, length) => provider.readBytes(resolve(path), offset, length),
 		writeFile: (path, content) => provider.writeFile(resolve(path), content),
 		stat: (path) => provider.stat(resolve(path)),
 		...(provider.lstat === undefined ? {} : { lstat: (path: string) => provider.lstat!(resolve(path)) }),

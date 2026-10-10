@@ -1,6 +1,6 @@
 import { Context, Effect, Schema } from "effect";
 import { posix } from "../posix.ts";
-import { type LineScan, type LineScanOptions, validate as validateScan } from "./scan.ts";
+import { type LineScan, type LineScanOptions, type ShellRun, validate as validateScan } from "./scan.ts";
 
 export type { LineScan, LineScanOptions } from "./scan.ts";
 /** The shared line-scan rules: `LineScanner` for byte streams, `script` for shell-only backends. */
@@ -85,12 +85,45 @@ export const realpathScripts = [
 ] as const;
 
 /**
+ * Shell form of `readBytes` for backends that only expose a process API. Run as
+ * `sh -c <script> _ <path> <offset + 1> <length>`; prints the bytes as base64,
+ * so binary content survives a transport that decodes stdout as text. Exits 2
+ * when the path does not exist, 3 when it cannot be opened.
+ */
+export const readBytesScript = [
+	'[ -e "$1" ] || exit 2',
+	// A pipeline exits with its last command's status, and `head` closing early is
+	// normal, so `tail` cannot report a file it cannot open; opening it first does.
+	'{ : < "$1"; } 2>/dev/null || exit 3',
+	'tail -c +"$2" -- "$1" | head -c "$3" | base64',
+].join("\n");
+
+/**
+ * `Provider.readBytes` for a backend that runs an argument vector and collects
+ * its output. A missing path rejects with `ENOENT`, the shape `isNotFoundError` recognises.
+ */
+export const readBytesViaShell =
+	(run: (argv: ReadonlyArray<string>) => Promise<ShellRun>) =>
+	// oxlint-disable-next-line effecttsgo/async-function -- the Provider contract is Promise-based
+	async (path: string, offset: number, length: number): Promise<Uint8Array> => {
+		const result = await run(["sh", "-c", readBytesScript, "_", path, String(offset + 1), String(length)]);
+		if (result.exitCode === 2)
+			throw Object.assign(new Error(`ENOENT: no such file or directory, readBytes '${path}'`), { code: "ENOENT" });
+		if (result.exitCode === 3) throw new Error(`readBytes: cannot open '${path}'`);
+		if (result.exitCode !== 0)
+			throw new Error(`readBytes failed (exit ${result.exitCode}): ${(result.stderr ?? result.stdout).trim()}`);
+		return new Uint8Array(Buffer.from(result.stdout.replace(/\s/g, ""), "base64"));
+	};
+
+/**
  * The backend-facing contract. Backends author plain promises and let them
  * reject; {@link fromProvider} turns rejections into typed failures.
  */
 export interface Provider {
 	readonly readFile: (path: string) => Promise<string>;
 	readonly readFileBuffer: (path: string) => Promise<Uint8Array>;
+	/** Up to `length` bytes from `offset`; fewer at the end of the file. */
+	readonly readBytes: (path: string, offset: number, length: number) => Promise<Uint8Array>;
 	/**
 	 * Write the file. Parents may be missing — do not create them here;
 	 * {@link fromProvider} owns that guarantee for every backend.
@@ -126,6 +159,8 @@ export interface Provider {
 export interface Interface {
 	readonly readFile: (path: string) => Effect.Effect<string, FileSystemError>;
 	readonly readFileBuffer: (path: string) => Effect.Effect<Uint8Array, FileSystemError>;
+	/** Up to `length` bytes from `offset`; fewer at the end of the file. */
+	readonly readBytes: (path: string, offset: number, length: number) => Effect.Effect<Uint8Array, FileSystemError>;
 	/** Creates missing parent directories, on every backend. */
 	readonly writeFile: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>;
 	readonly stat: (path: string) => Effect.Effect<FileStat, FileSystemError>;
@@ -201,6 +236,9 @@ export const fromProvider = (provider: Provider): Interface => {
 		readFileBuffer: Effect.fn("SandboxFileSystem.readFileBuffer")((path: string) =>
 			attempt("readFileBuffer", path, () => provider.readFileBuffer(path)),
 		),
+		readBytes: Effect.fn("SandboxFileSystem.readBytes")((path: string, offset: number, length: number) =>
+			attempt("readBytes", path, () => provider.readBytes(path, offset, length)),
+		),
 		writeFile: Effect.fn("SandboxFileSystem.writeFile")(writeCreatingParents),
 		stat: Effect.fn("SandboxFileSystem.stat")((path: string) => attempt("stat", path, () => provider.stat(path))),
 		// carried through only when the backend actually implements it
@@ -250,6 +288,7 @@ export const withCwd = (fs: Interface, cwd: string): Interface => {
 	return {
 		readFile: (path) => fs.readFile(at(path)),
 		readFileBuffer: (path) => fs.readFileBuffer(at(path)),
+		readBytes: (path, offset, length) => fs.readBytes(at(path), offset, length),
 		writeFile: (path, content) => fs.writeFile(at(path), content),
 		stat: (path) => fs.stat(at(path)),
 		readdir: (path) => fs.readdir(at(path)),
