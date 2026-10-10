@@ -1,4 +1,14 @@
 {
 	"title": "Docs",
-	"pages": ["---Get Started---", "index", "quickstart", "models", "changelog", "---CLI---", "...cli", "---Customize---", "plugins"]
+	"pages": [
+		"---Get Started---",
+		"index",
+		"quickstart",
+		"models",
+		"changelog",
+		"---CLI---",
+		"...cli",
+		"---Customize---",
+		"plugins"
+	]
 }

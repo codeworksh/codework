@@ -66,6 +66,13 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 | `--refresh`      | `check`         | Ask the registry again instead of reusing a recent answer  |
 | `--server <url>` | `reload`        | Server base URL (default `http://127.0.0.1:7433`)          |
 
+## `codework models`
+
+| Flag              | Applies to | Description                             |
+| ----------------- | ---------- | --------------------------------------- |
+| `--provider <id>` | `models`   | List only this provider's models        |
+| `--force`         | `refresh`  | Download the catalog even if it's fresh |
+
 ## `codework serve`
 
 | Flag     | Description                                                  |
@@ -94,3 +101,5 @@ These work on every command that runs CodeWork locally, including `run`, `serve`
 | `OPENROUTER_API_KEY`   | OpenRouter API key                                                  |
 | `GEMINI_API_KEY`       | Google Gemini API key                                               |
 | `XAI_API_KEY`          | xAI API key                                                         |
+
+Settings files are covered in the [settings reference](/docs/cli/settings).

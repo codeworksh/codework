@@ -1,4 +1,4 @@
 {
 	"title": "CLI",
-	"pages": ["index", "installation", "using", "acp", "rpc", "reference"]
+	"pages": ["index", "installation", "using", "acp", "rpc", "settings", "reference"]
 }

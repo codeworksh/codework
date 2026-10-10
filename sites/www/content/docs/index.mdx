@@ -1,10 +1,12 @@
 ---
 title: CodeWork Documentation
 sidebarTitle: Welcome
-description: CodeWork is a coding agent for code and work. Use it to understand your codebase, plan, build features, fix bugs, and much more. Hell, it'll even clear out your pending Linear issues.
+description: CodeWork is a coding agent you run from your terminal, inside your editor, or as a server. Bring any model, extend it with plugins, and run it on your machine or in a sandbox.
 ---
 
 ![CodeWork workspace](/images/workspace.webp)
+
+CodeWork reads your codebase, plans changes, edits files, and runs commands to check its work. You pick the model, from a ChatGPT or Copilot subscription, an API key, or a model running on your own machine.
 
 ## Start here
 
@@ -15,20 +17,43 @@ description: CodeWork is a coding agent for code and work. Use it to understand 
 	<Card title="Models & Pricing" href="/docs/models">
 		Sign in with a subscription or bring your own API key.
 	</Card>
-	<Card title="Changelog" href="/docs/changelog">
-		See what's new in each release.
+	<Card title="Catalog & Prices" href="/docs/models/catalog">
+		Every built-in model with its price, context window, and thinking levels.
 	</Card>
 </Cards>
 
-## Providers
+## Use it where you work
 
-CodeWork supports subscription-based providers via OAuth and API key providers via environment variables.
+<Cards>
+	<Card title="Terminal" href="/docs/cli">
+		`codework run` streams answers and tool calls, and keeps every session to continue later.
+	</Card>
+	<Card title="Your editor" href="/docs/cli/acp">
+		Use CodeWork as the agent in Zed, or any editor that speaks the Agent Client Protocol.
+	</Card>
+	<Card title="A server" href="/docs/cli/rpc">
+		Keep sessions and sandboxes running in `codework serve` and drive them from your own tools.
+	</Card>
+</Cards>
 
-| Provider                                                | Access                           |
-| ------------------------------------------------------- | -------------------------------- |
-| [OpenAI Codex](/docs/models/openai-codex)               | ChatGPT Plus or Pro subscription |
-| [GitHub Copilot](/docs/models/github-copilot)           | GitHub Copilot subscription      |
-| [OpenRouter](/docs/models/openrouter)                   | `OPENROUTER_API_KEY`             |
-| [Anthropic, OpenAI, Gemini, xAI](/docs/models#api-keys) | API key                          |
+<Placeholder title="CodeWork in Zed">
+	Screenshot: CodeWork running in Zed's Agent Panel, next to the same session continued in a terminal.
+</Placeholder>
 
-See [Models & Pricing](/docs/models) for the full list.
+## Make it yours
+
+<Cards>
+	<Card title="Plugins" href="/docs/plugins">
+		Add tools and system prompt sections from npm, git, or a file in your repo.
+	</Card>
+	<Card title="Settings" href="/docs/cli/settings">
+		Set a default model, turn tools on and off, and tune retries per project.
+	</Card>
+	<Card title="Custom Models" href="/docs/models/custom">
+		Run a local model or route through your company's gateway.
+	</Card>
+</Cards>
+
+## Work safely
+
+CodeWork has no permission prompts: it runs shell commands and edits files without asking. Run it in a git repository so you can review and undo its changes, and use a [sandbox](/docs/cli/using#sandboxes) when you don't want it touching your machine.

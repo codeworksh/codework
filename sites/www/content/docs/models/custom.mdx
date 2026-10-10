@@ -1,0 +1,120 @@
+---
+title: Custom Models
+description: Add a local model, a private gateway, or any OpenAI-compatible endpoint to the catalog from your settings.
+---
+
+The `models` array in a [settings file](/docs/cli/settings) adds entries to the [model catalog](/docs/models/catalog). Use it for a model running on your machine, a company gateway, or a catalog model you want to rename or correct.
+
+## Add a local model
+
+This adds a model served by [Ollama](https://ollama.com) on its OpenAI-compatible endpoint:
+
+```jsonc title="~/.codework/settings.jsonc"
+{
+	"models": [
+		{
+			"id": "qwen3-coder:30b",
+			"name": "Qwen3 Coder 30B",
+			"provider": { "id": "ollama", "name": "Ollama", "source": "config", "env": [] },
+			"protocol": "openai-compatible",
+			"baseUrl": "http://127.0.0.1:11434/v1",
+			"reasoning": false,
+			"input": ["text"],
+			"cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+			"contextWindow": 32768,
+			"maxTokens": 8192,
+		},
+	],
+}
+```
+
+Then run it like any other model:
+
+```bash
+codework run --provider ollama --model qwen3-coder:30b "Explain this repository"
+```
+
+The same shape works for LM Studio, vLLM, llama.cpp, or anything else that speaks the OpenAI Chat Completions API. Change `baseUrl` to its address.
+
+## Fields
+
+Every entry needs all of these. A missing or mistyped field fails the session with the settings file and the field it didn't accept.
+
+| Field           | Description                                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| `id`            | Model ID, as you'll pass it to `--model`                                                     |
+| `name`          | Display name, shown in editor model pickers                                                  |
+| `provider`      | `id` (for `--provider`), `name`, `source` (use `"config"`), `env`, and an optional `key`     |
+| `protocol`      | Wire protocol, such as `openai-compatible`, `openai`, `anthropic`, `google`, or `openrouter` |
+| `baseUrl`       | The endpoint's base URL                                                                      |
+| `reasoning`     | `true` if the model supports thinking levels                                                 |
+| `input`         | `["text"]`, or `["text", "image"]` if it accepts images                                      |
+| `cost`          | Per-million-token `input`, `output`, `cacheRead`, and `cacheWrite`, for the usage summary    |
+| `contextWindow` | Most tokens the model accepts in one request                                                 |
+| `maxTokens`     | Most tokens it can generate in one response                                                  |
+
+## Use an API key
+
+Settings never hold a key itself. Name the environment variable that holds it with `provider.key`, written as `"${NAME}"`:
+
+```jsonc title="~/.codework/settings.jsonc"
+{
+	"models": [
+		{
+			"id": "claude-sonnet",
+			"name": "Claude Sonnet (Gateway)",
+			"provider": {
+				"id": "gateway",
+				"name": "Company Gateway",
+				"source": "config",
+				"env": [],
+				"key": "${GATEWAY_KEY}",
+			},
+			"protocol": "openai-compatible",
+			"baseUrl": "https://llm.example.com/v1",
+			"reasoning": true,
+			"input": ["text", "image"],
+			"cost": { "input": 3, "output": 15, "cacheRead": 0.3, "cacheWrite": 3.75 },
+			"contextWindow": 200000,
+			"maxTokens": 64000,
+		},
+	],
+}
+```
+
+```bash
+export GATEWAY_KEY="..."
+```
+
+A literal key such as `"sk-..."` is rejected. A provider with a `key` only shows up in model pickers when that variable is set; a provider with no `key` and an empty `env`, like the Ollama example, always does.
+
+## Override a catalog model
+
+An entry with the same `provider.id` and `id` as a catalog model replaces it. Copy the entry from `~/.codework/models.gen.json`, change what you need, and add it to `models`:
+
+```bash
+jq '.openrouter["deepseek/deepseek-v4.1-flash"]' ~/.codework/models.gen.json
+```
+
+User and project settings are both read, user first. For the same model, the last entry wins, so a project can override your personal entry.
+
+## Make it the default
+
+Point `model` at your entry so you don't have to pass flags:
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"model": { "provider": "ollama", "id": "qwen3-coder:30b" },
+}
+```
+
+## Related
+
+<Cards>
+	<Card title="Model Catalog" href="/docs/models/catalog">
+		Every built-in model and its price.
+	</Card>
+	<Card title="Settings" href="/docs/cli/settings">
+		The full settings reference.
+	</Card>
+</Cards>

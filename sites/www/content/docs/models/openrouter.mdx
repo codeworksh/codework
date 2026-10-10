@@ -1,21 +1,37 @@
 ---
 title: OpenRouter
-description: 500+ active models on 80+ providers with a single API key.
+description: Reach hundreds of models from many providers with a single API key.
 ---
 
+[OpenRouter](https://openrouter.ai) routes one API key to models from Anthropic, OpenAI, Google, DeepSeek, Meta, and many more. It's the quickest way to try models side by side.
+
 ## Set your key
+
+Create a key at [openrouter.ai/keys](https://openrouter.ai/keys), then:
 
 ```bash
 export OPENROUTER_API_KEY="..."
 ```
 
-`OPENROUTER_API_KEY` is also available through **Use an API key**.
+Add it to your shell profile so it's set in every terminal. For an editor, also add it to the agent's `env` (see [Zed](/docs/cli/acp#zed)).
 
 ## Run
+
+Model IDs are OpenRouter's own, in `vendor/model` form:
 
 ```bash
 codework run \
   --provider openrouter \
-  --model meta/muse-spark-1.3-contributor \
-  "Plan database migration"
+  --model deepseek/deepseek-v4.1-flash \
+  "Plan the database migration"
 ```
+
+List every OpenRouter model CodeWork can use:
+
+```bash
+codework models --provider openrouter
+```
+
+## Pricing
+
+You pay OpenRouter at its listed rates. The usage summary at the end of each run estimates the cost from the [catalog](/docs/models/catalog#look-up-any-model), whose prices come from models.dev and track OpenRouter's.

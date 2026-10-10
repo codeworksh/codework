@@ -1,0 +1,98 @@
+---
+title: Settings
+description: Every key in settings.jsonc, where CodeWork looks for it, and how user and project settings combine.
+---
+
+CodeWork is configured with `settings.jsonc` files. JSON with comments and trailing commas is fine. A plain `settings.json` is read when there's no `.jsonc`.
+
+## Where settings live
+
+| Layer   | File                                                         | Use it for                                        |
+| ------- | ------------------------------------------------------------ | ------------------------------------------------- |
+| User    | `~/.codework/settings.jsonc`                                 | Your defaults in every project                    |
+| Project | `.codework/settings.jsonc` in the nearest ancestor directory | What the whole team should get. Commit this file. |
+
+The project layer is applied over the user layer. `model` and `retry` fields from the project win; `plugins` and `models` lists from both layers are combined, user first.
+
+CodeWork re-reads settings at every turn, so a change applies from your next message without a restart. A file that exists but can't be parsed fails the session with its path and the key it didn't accept, rather than being skipped.
+
+`--home` moves the user layer along with the rest of the CodeWork home. `--user-config-dir <dir>` replaces just the user file with `<dir>/settings.jsonc`.
+
+## Example
+
+```jsonc title=".codework/settings.jsonc"
+{
+	// Default model for every session in this project
+	"model": {
+		"provider": "openrouter",
+		"id": "deepseek/deepseek-v4.1-flash",
+		"thinkingLevel": "medium",
+	},
+
+	// Turn on the opt-in search tools and add a team plugin
+	"plugins": [
+		{ "plugin": "codework.tool.grep", "enabled": true },
+		{ "plugin": "codework.tool.find", "enabled": true },
+		"@acme/codework-tool-proc@1.2.0",
+	],
+
+	// Retry rate limits and outages a little longer than the default
+	"retry": { "maxRetries": 5 },
+}
+```
+
+## Top-level keys
+
+| Key       | Type   | Description                                                                          |
+| --------- | ------ | ------------------------------------------------------------------------------------ |
+| `model`   | object | The default model and how to call it. See [model](#model).                           |
+| `models`  | array  | Extra catalog entries. See [Custom Models](/docs/models/custom).                     |
+| `plugins` | array  | Plugins to load and configure. See [Configure plugins](/docs/plugins/configuration). |
+| `retry`   | object | Retries for failed model requests. See [retry](#retry).                              |
+
+## `model`
+
+| Key             | Default        | Description                                                             |
+| --------------- | -------------- | ----------------------------------------------------------------------- |
+| `provider`      | `openai`       | Provider ID from the [catalog](/docs/models/catalog)                    |
+| `id`            | `gpt-5.6-luna` | Model ID                                                                |
+| `thinkingLevel` | `high`         | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`            |
+| `toolExecution` | `sequential`   | `parallel` runs the tool calls from one model response at the same time |
+| `options`       |                | Request options, below                                                  |
+
+`--provider`, `--model`, and `--thinking` on `codework run`, and the pickers in your editor, override these for one session.
+
+### `model.options`
+
+| Key              | Default   | Description                                                                         |
+| ---------------- | --------- | ----------------------------------------------------------------------------------- |
+| `temperature`    |           | Sampling temperature, for models that accept it                                     |
+| `maxTokens`      |           | Cap on output tokens per response                                                   |
+| `timeoutMs`      | `3600000` | Longest a single request may take                                                   |
+| `idleTimeoutMs`  | `300000`  | Abort a response stream that sends nothing for this long, and retry it              |
+| `maxRetries`     | `0`       | Retries inside the provider's SDK. Leave at `0` and use [`retry`](#retry) instead.  |
+| `cacheRetention` |           | Prompt caching: `none`, `short`, or `long`, on providers that support it            |
+| `headers`        |           | Extra HTTP headers sent with each request                                           |
+| `baseURL`        |           | Send requests to a different endpoint, such as a proxy                              |
+| `apiKey`         |           | The environment variable holding the key, written `"${NAME}"`. Never a literal key. |
+
+## `retry`
+
+When a request fails with a rate limit, an overload, a server error, a timeout, or a dropped connection, CodeWork waits and tries the turn again. Quota and billing errors are never retried.
+
+| Key           | Default | Description                                              |
+| ------------- | ------- | -------------------------------------------------------- |
+| `maxRetries`  | `3`     | Attempts after the first. `0` turns retries off.         |
+| `baseDelayMs` | `2000`  | Wait before the first retry; doubles after each one      |
+| `maxDelayMs`  | `60000` | Longest wait. A server asking for longer fails the turn. |
+
+## Related
+
+<Cards>
+	<Card title="Configure plugins" href="/docs/plugins/configuration">
+		Module and configuration entries, options, and order.
+	</Card>
+	<Card title="Custom Models" href="/docs/models/custom">
+		Add entries to the model catalog.
+	</Card>
+</Cards>

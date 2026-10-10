@@ -1,35 +1,93 @@
 ---
 title: Models & Pricing
 sidebarTitle: Overview
-description: Connect CodeWork to a model with a subscription or an API key.
+description: Connect CodeWork to a model with a subscription, an API key, or your own endpoint, and see what each run costs.
 ---
 
-CodeWork supports subscription-based providers via OAuth and API key providers via environment variables. Browse the full catalog from the CLI:
+A **model** writes CodeWork's answers and decides which tools to call. A **provider** is the service CodeWork reaches it through. You can use any model in the [catalog](/docs/models/catalog) from a provider you have credentials for, and switch per run, per project, or mid-conversation in your editor.
 
-```bash
-codework models
-```
+## Connect a provider
 
-## Subscriptions
+### Subscriptions
 
 Sign in once and use the models included in your plan.
 
-| Provider                                      | Plan                  | Sign in                                |
-| --------------------------------------------- | --------------------- | -------------------------------------- |
-| [OpenAI Codex](/docs/models/openai-codex)     | ChatGPT Plus or Pro   | `codework auth login --openai-codex`   |
-| [GitHub Copilot](/docs/models/github-copilot) | GitHub Copilot        | `codework auth login --github-copilot` |
-| xAI                                           | Grok / X subscription | Coming soon                            |
+| Provider                                      | Plan                | Sign in                                |
+| --------------------------------------------- | ------------------- | -------------------------------------- |
+| [OpenAI Codex](/docs/models/openai-codex)     | ChatGPT Plus or Pro | `codework auth login --openai-codex`   |
+| [GitHub Copilot](/docs/models/github-copilot) | GitHub Copilot      | `codework auth login --github-copilot` |
 
-Tokens are stored in `~/.codework/aikit/auth.json` and are refreshed automatically when they expire.
+Logins are stored in `~/.codework/aikit/auth.json` and refreshed automatically when they expire.
 
-## API keys
+### API keys
 
-Set the provider's environment variable and CodeWork picks it up.
+Set the provider's environment variable and CodeWork picks it up. No sign-in step.
 
-| Provider                              | Environment variable |
-| ------------------------------------- | -------------------- |
-| Anthropic                             | `ANTHROPIC_API_KEY`  |
-| OpenAI                                | `OPENAI_API_KEY`     |
-| [OpenRouter](/docs/models/openrouter) | `OPENROUTER_API_KEY` |
-| Google Gemini                         | `GEMINI_API_KEY`     |
-| xAI                                   | `XAI_API_KEY`        |
+| Provider                              | Provider ID  | Environment variable |
+| ------------------------------------- | ------------ | -------------------- |
+| [OpenRouter](/docs/models/openrouter) | `openrouter` | `OPENROUTER_API_KEY` |
+| Anthropic                             | `anthropic`  | `ANTHROPIC_API_KEY`  |
+| OpenAI                                | `openai`     | `OPENAI_API_KEY`     |
+| Google Gemini                         | `google`     | `GEMINI_API_KEY`     |
+| xAI                                   | `xai`        | `XAI_API_KEY`        |
+
+These are the common ones. Any other [models.dev](https://models.dev) provider with tool-calling models works the same way: run `codework models providers` for the full list of IDs.
+
+### Your own models
+
+Local models (Ollama, LM Studio, vLLM) and private gateways are added in settings. See [Custom Models](/docs/models/custom).
+
+## Choose a model
+
+Pass `--provider` and `--model` on a run:
+
+```bash
+export OPENROUTER_API_KEY="..."
+
+codework run --provider openrouter --model deepseek/deepseek-v4.1-flash "Plan the database migration"
+```
+
+Or set a default for every run in your [settings](/docs/cli/settings#model):
+
+```jsonc title="~/.codework/settings.jsonc"
+{
+	"model": { "provider": "openrouter", "id": "deepseek/deepseek-v4.1-flash", "thinkingLevel": "medium" },
+}
+```
+
+Without any settings, CodeWork uses `openai/gpt-5.6-luna` at `high` thinking, which needs `OPENAI_API_KEY`.
+
+In an editor, use the model and Thinking Effort pickers instead. They list every model from the providers CodeWork has credentials for. See [ACP](/docs/cli/acp#sessions-and-configuration).
+
+## Thinking levels
+
+Reasoning models let you trade speed and cost for depth. CodeWork uses one scale for every provider and maps it to each provider's own setting:
+
+`off` · `minimal` · `low` · `medium` · `high` · `xhigh` · `max`
+
+Each model supports a subset; ask for one it doesn't have and CodeWork uses the next level up. Pass `--thinking <level>` on a run, or set `thinkingLevel` in settings. The [catalog](/docs/models/catalog#thinking-levels) lists the levels for each Codex model.
+
+## Pricing
+
+CodeWork doesn't charge for models. You pay your provider, at their rates or through your plan. Every run ends with a usage summary showing tokens and an estimated cost from the catalog's per-million-token prices:
+
+```text
+── usage ───────────────────────────────────────────────────────────────
+model    openai-codex/gpt-5.6-luna
+tokens   6,172 input · 1,377 output · 412 reasoning · 19,581 total
+cache    12,032 read · 0 write
+cost     $0.003127 · 3 turns
+```
+
+See [Catalog & Prices](/docs/models/catalog) for the price of each model and how the estimate is worked out.
+
+## Related
+
+<Cards>
+	<Card title="Catalog & Prices" href="/docs/models/catalog">
+		Every built-in model, with prices, context windows, and thinking levels.
+	</Card>
+	<Card title="Custom Models" href="/docs/models/custom">
+		Add a local model or a private gateway.
+	</Card>
+</Cards>

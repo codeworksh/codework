@@ -1,0 +1,110 @@
+---
+title: Model Catalog
+sidebarTitle: Catalog & Prices
+description: Every model CodeWork can run, what each one costs, and how to look up a model's price, context window, and thinking levels.
+---
+
+CodeWork reads models from a catalog in your CodeWork home. The catalog lists each model's provider, context window, input types, reasoning support, and price, and it's what `--provider`, `--model`, and the model picker in your editor choose from.
+
+```bash
+codework models                         # every model, as provider/model
+codework models --provider openai-codex # one provider
+codework models providers               # provider IDs only
+```
+
+## Where the catalog comes from
+
+| Provider                                      | Source                                                                                  |
+| --------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [OpenAI Codex](/docs/models/openai-codex)     | A fixed list maintained in CodeWork (below).                                            |
+| [GitHub Copilot](/docs/models/github-copilot) | [models.dev](https://models.dev), adjusted for Copilot's endpoints and thinking levels. |
+| Every other provider                          | [models.dev](https://models.dev): any provider whose models support tool calling.       |
+| [Your own models](/docs/models/custom)        | The `models` array in your settings, layered over the catalog.                          |
+
+The catalog is saved as `~/.codework/models.gen.json` and refreshed when it's older than 15 minutes. Change that window with `CODEWORK_MODELS_TTL`, refresh it by hand with `codework models refresh --force`, or pin it to a file you manage with `CODEWORK_MODELS_FILE`.
+
+## How pricing works
+
+Prices are in US dollars **per million tokens**, with four rates per model:
+
+| Rate        | Charged for                                                       |
+| ----------- | ----------------------------------------------------------------- |
+| Input       | Prompt tokens the provider hasn't cached                          |
+| Output      | Tokens the model generates, including reasoning tokens            |
+| Cache read  | Prompt tokens served from the provider's cache                    |
+| Cache write | Prompt tokens written to the cache, on providers that bill for it |
+
+Some models also have long-context tiers: once a request's input passes a threshold, a higher set of rates applies to the whole request. They're listed under `cost.tiers` in the [catalog entry](#look-up-any-model).
+
+Every `codework run` ends with a usage summary that adds these up for the session:
+
+```text
+── usage ───────────────────────────────────────────────────────────────
+model    openai-codex/gpt-5.6-luna
+tokens   6,172 input · 1,377 output · 412 reasoning · 19,581 total
+cache    12,032 read · 0 write
+cost     $0.003127 · 3 turns
+```
+
+<Callout title="Subscriptions are billed by your plan">
+	With [OpenAI Codex](/docs/models/openai-codex) or [GitHub Copilot](/docs/models/github-copilot), the cost line is
+	what the same tokens would cost at API rates. What you actually pay is set by your ChatGPT or Copilot plan. Use it to
+	compare models, not as a bill.
+</Callout>
+
+## OpenAI Codex models
+
+Available with `codework auth login --openai-codex` on a ChatGPT Plus or Pro plan. Prices are the API-equivalent rates CodeWork uses for the usage summary.
+
+| Model               | ID                    | Input | Cache read | Cache write | Output | Context |
+| ------------------- | --------------------- | ----- | ---------- | ----------- | ------ | ------- |
+| GPT-6 Luna          | `gpt-6-luna`          | $0.10 | $0.01      | $0.125      | $0.50  | 272K    |
+| GPT-5.6 Luna        | `gpt-5.6-luna`        | $0.20 | $0.02      | $0.25       | $1.20  | 272K    |
+| GPT-5.6 Terra       | `gpt-5.6-terra`       | $2.00 | $0.20      | $2.50       | $12.00 | 272K    |
+| GPT-5.6 Sol         | `gpt-5.6-sol`         | $5.00 | $0.50      | $6.25       | $30.00 | 272K    |
+| GPT-5.5             | `gpt-5.5`             | $5.00 | $0.50      | -           | $30.00 | 272K    |
+| GPT-5.4             | `gpt-5.4`             | $2.50 | $0.25      | -           | $15.00 | 272K    |
+| GPT-5.4 mini        | `gpt-5.4-mini`        | $0.75 | $0.075     | -           | $4.50  | 272K    |
+| GPT-5.3 Codex Spark | `gpt-5.3-codex-spark` | $1.75 | $0.175     | -           | $14.00 | 128K    |
+
+Every Codex model reasons, accepts images (except Codex Spark, which is text only), and can write up to 128K output tokens. Requests served at the `flex` service tier cost half; `priority` costs 2× (2.5× for GPT-5.5).
+
+### Thinking levels
+
+Set the level with `--thinking`, `thinkingLevel` in [settings](/docs/cli/settings#model), or the Thinking Effort picker in your editor. Ask for a level a model doesn't support and CodeWork uses the next one up, or the highest it has.
+
+| Model                          | Levels                                         |
+| ------------------------------ | ---------------------------------------------- |
+| `gpt-6-luna`, `gpt-5.6-luna`   | `off`, `low`, `medium`, `high`, `xhigh`, `max` |
+| `gpt-5.6-sol`, `gpt-5.6-terra` | `low`, `medium`, `high`, `xhigh`, `max`        |
+| `gpt-5.5`                      | `off`, `low`, `medium`, `high`, `xhigh`        |
+| `gpt-5.4`, `gpt-5.4-mini`      | `low`, `medium`, `high`, `xhigh`               |
+| `gpt-5.3-codex-spark`          | `minimal`, `low`, `medium`, `high`, `xhigh`    |
+
+## Look up any model
+
+Prices for models.dev providers change as providers change them, so the catalog file is the source of truth. Read a model's entry with `jq`:
+
+```bash
+jq '.openrouter["deepseek/deepseek-v4.1-flash"] | {name, cost, contextWindow, maxTokens, input, reasoning}' \
+  ~/.codework/models.gen.json
+```
+
+| Field           | Meaning                                                        |
+| --------------- | -------------------------------------------------------------- |
+| `cost`          | Per-million-token rates, plus `tiers` for long-context pricing |
+| `contextWindow` | Most tokens the model accepts in one request                   |
+| `maxTokens`     | Most tokens it can generate in one response                    |
+| `input`         | `text`, and `image` if it accepts images                       |
+| `reasoning`     | Whether it supports thinking levels                            |
+
+## Related
+
+<Cards>
+	<Card title="Custom models" href="/docs/models/custom">
+		Add a local model or a private gateway.
+	</Card>
+	<Card title="Settings" href="/docs/cli/settings">
+		Set a default model and thinking level.
+	</Card>
+</Cards>
