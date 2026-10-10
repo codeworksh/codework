@@ -1,0 +1,112 @@
+---
+title: Agent Client Protocol
+sidebarTitle: Overview
+description: Use CodeWork as the agent inside your editor. CodeWork speaks the Agent Client Protocol, so any ACP client can drive it.
+---
+
+The [Agent Client Protocol](https://agentclientprotocol.com) (ACP) is an open standard for connecting coding agents to editors. The editor owns the interface: the chat panel, the file picker, the diff view. The agent owns the thinking: models, tools, and sessions. ACP is the contract between them.
+
+CodeWork ships an ACP server in the CLI. Run `codework acp` and CodeWork waits on stdin for an editor to talk to it. You get the same agent, models, plugins, and session history you have in the terminal, inside the editor you already use.
+
+<Placeholder title="CodeWork running in an editor's agent panel">
+	Screenshot: an ACP editor with a CodeWork thread open, showing a streamed answer, a tool call, and the model picker.
+</Placeholder>
+
+## How it works
+
+Your editor starts CodeWork as a child process and the two exchange JSON-RPC messages over stdio. You never run `codework acp` yourself; you tell your editor how to launch it.
+
+1. **Your editor starts the process.** It runs `codework acp` in the background and keeps it alive while the agent panel is in use.
+2. **Your editor opens a session.** CodeWork creates a session for the project folder you have open. That folder is the session's working directory, and its `.codework/settings.jsonc` applies, just like running the CLI from that folder.
+3. **You prompt.** Text, images, and files or selections you mention go to CodeWork as one prompt.
+4. **CodeWork streams back.** Its answer, its reasoning, and each tool call (with input and output) appear in the panel as they happen.
+5. **The editor closes the connection.** CodeWork interrupts anything still running and stops any sandboxes it manages.
+
+Sessions created through ACP are regular CodeWork sessions. They're stored in the same database as the ones you start with `codework run`, so the session list in your editor and the CLI see the same history.
+
+<Callout>
+	stdout is reserved for the protocol, so CodeWork writes its logs to stderr. If something goes wrong, check your
+	editor's ACP log view.
+</Callout>
+
+## What's supported
+
+| Capability             | Support                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| New sessions           | Yes, rooted at the folder your editor has open                                              |
+| Session history        | Yes. Past sessions for the folder are listed, and opening one replays the full conversation |
+| Text prompts           | Yes                                                                                         |
+| Images                 | Yes, pasted or attached, for models that accept images                                      |
+| Files and selections   | Yes. Mentioned files and selections are sent with the prompt as context                     |
+| Streaming              | Yes: answer text, reasoning, and tool calls with their input and output                     |
+| Model picker           | Yes. Lists models from every provider you have credentials for                              |
+| Thinking effort picker | Yes, for models that support reasoning                                                      |
+| Cancel                 | Yes. Stopping a turn in the editor interrupts the running prompt                            |
+| Session titles         | Yes. CodeWork titles a session from its first prompt and the editor picks it up             |
+| Plugin errors          | Shown in the conversation as a warning, so you see them without digging through logs        |
+
+### Not supported yet
+
+- **Tool permission prompts.** CodeWork runs tools, including shell commands, without asking the editor first.
+- **Sandboxes.** ACP sessions run locally in your project folder. Use [`codework run --sandbox-driver`](/docs/cli#run-a-session) when you want isolation.
+- **Editor-side file system and terminals.** CodeWork reads files and runs commands itself, in the session's working directory, rather than through the editor.
+- **Signing in from the editor.** ACP doesn't carry a login flow. Sign in with the CLI or set an API key first (see below).
+- **Slash commands and agent modes.**
+
+## Before you connect an editor
+
+### 1. Install the CLI
+
+```bash
+npm install -g @codeworksh/cli
+```
+
+Check it's on your path and note where it lives. Some editors don't inherit your shell's `PATH`, so you may need the absolute path later.
+
+```bash
+which codework
+```
+
+### 2. Give CodeWork access to a model
+
+The editor can't sign you in, so do it from the terminal once. Credentials are stored in your CodeWork home and every ACP session picks them up.
+
+```bash
+codework auth login --openai-codex
+```
+
+Or use an API key. Either export it in the environment your editor launches from, or pass it in your editor's agent config (each editor guide shows where).
+
+```bash
+export ANTHROPIC_API_KEY="..."
+```
+
+The model picker only lists providers CodeWork has credentials for. See [Models & Pricing](/docs/models) for every option.
+
+### 3. Pick a model (optional)
+
+Each new session starts on the default model from your settings. You can switch models and thinking effort per session from the editor's picker at any time.
+
+## Command reference
+
+```bash
+codework acp [--home <dir>] [--database <path>] [--user-config-dir <dir>]
+```
+
+| Flag                | Description                                                                     |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `--home`            | CodeWork home for settings, credentials, cache and data (default `~/.codework`) |
+| `--database`        | SQLite database path, or `:memory:` for throwaway sessions                      |
+| `--user-config-dir` | Directory whose `settings.jsonc` replaces the user settings in `--home`         |
+
+Use the same `--home` and `--database` as your CLI runs if you want the editor and the terminal to share sessions. The defaults already do.
+
+## Editors
+
+<Cards>
+	<Card title="Zed" href="/docs/acp/zed">
+		Add CodeWork as a custom agent in Zed's Agent Panel.
+	</Card>
+</Cards>
+
+Any editor that speaks ACP can run CodeWork with the same command: `codework acp`. See the [list of ACP clients](https://agentclientprotocol.com/overview/clients) for others.

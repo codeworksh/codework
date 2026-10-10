@@ -1,0 +1,138 @@
+---
+title: Zed
+description: Add CodeWork to Zed's Agent Panel as a custom ACP agent.
+---
+
+[Zed](https://zed.dev) has built-in support for the Agent Client Protocol. Register CodeWork once in your Zed settings and it shows up next to Zed's own agent in the Agent Panel, with its own threads, model picker, and history.
+
+<Placeholder title="CodeWork in Zed's Agent Panel">
+	Screenshot: Zed with the Agent Panel open on a CodeWork thread. Show a streamed answer, a `bash` tool call with its
+	output, and the model and thinking effort pickers at the bottom of the panel.
+</Placeholder>
+
+## Prerequisites
+
+- A recent version of [Zed](https://zed.dev/download).
+- The CodeWork CLI, installed and signed in to a model provider. See [Before you connect an editor](/docs/acp#before-you-connect-an-editor).
+
+## 1. Find the CodeWork binary
+
+Zed launches CodeWork itself, and when you open Zed from the Dock or Start menu it may not see your shell's `PATH`. Get the absolute path to be safe:
+
+```bash
+which codework
+```
+
+You'll get something like `/Users/you/.nvm/versions/node/v24.14.1/bin/codework`. Use that wherever the config below says `codework`.
+
+## 2. Add CodeWork to your Zed settings
+
+Open **Agent Settings**, go to **External Agents**, click **Add Agent**, and choose **Add Custom Agent**. Zed opens your settings file with a new `agent_servers` entry. Fill it in like this (or add it by hand with `zed: open settings`):
+
+```json title="~/.config/zed/settings.json"
+{
+	"agent_servers": {
+		"CodeWork": {
+			"type": "custom",
+			"command": "codework",
+			"args": ["acp"],
+			"env": {}
+		}
+	}
+}
+```
+
+- `command` is the CodeWork binary. Use the absolute path from step 1 if `codework` alone doesn't work.
+- `args` must include `acp`. That's what turns the CLI into an ACP server.
+- `env` is passed to CodeWork. It's the easiest place to put an API key Zed wouldn't otherwise see.
+
+Save the file. Zed picks up the change without a restart.
+
+<Placeholder title="Zed settings.json with the CodeWork agent server">
+	Screenshot: the `agent_servers` block above in Zed's settings editor.
+</Placeholder>
+
+### Pass an API key
+
+If you use an API key rather than `codework auth login`, add it to `env`:
+
+```json
+{
+	"agent_servers": {
+		"CodeWork": {
+			"type": "custom",
+			"command": "codework",
+			"args": ["acp"],
+			"env": {
+				"ANTHROPIC_API_KEY": "sk-ant-..."
+			}
+		}
+	}
+}
+```
+
+### Use a different CodeWork home
+
+Any [`codework acp` flag](/docs/acp#command-reference) goes in `args`. For example, to keep Zed's sessions in a separate home:
+
+```json
+"args": ["acp", "--home", "/Users/you/.codework-zed"]
+```
+
+## 3. Start a CodeWork thread
+
+1. Open a project folder in Zed. CodeWork works in this folder, and its `.codework/settings.jsonc` applies.
+2. Open the Agent Panel from the status bar or the command palette.
+3. Open the new-thread menu (or the agent selector) and choose **CodeWork** under External Agents.
+4. Type a prompt and press `enter`.
+
+You can also bind a key to `agent: new external agent thread` to jump straight into a new thread.
+
+<Placeholder title="Choosing CodeWork from the new thread menu">
+	Screenshot: the Agent Panel's new-thread menu open, with CodeWork listed under External Agents.
+</Placeholder>
+
+Try something that exercises the tools:
+
+```text
+Explain how this repository is structured and how to run its checks.
+```
+
+## Working in a thread
+
+**Add context.** Type `@` to mention a file or symbol, or select code and add it to the thread. CodeWork receives the contents with your prompt. You can also paste or drop images if your model accepts them.
+
+**Switch models.** The model picker lists every model from the providers CodeWork has credentials for. The change applies to the current thread from the next prompt.
+
+**Set thinking effort.** For reasoning models, a second picker sets how hard the model thinks before answering, from **Off** up to the highest level the model supports.
+
+**Stop a turn.** Click stop to interrupt CodeWork. The partial answer stays in the thread.
+
+**Pick up where you left off.** CodeWork lists its past sessions for the folder, so Zed can bring them into Thread History. Open the Threads Sidebar (`cmd-alt-j` on macOS, `ctrl-alt-j` on Linux and Windows), open **Thread History**, click **Import Threads**, and select CodeWork. Opening an imported thread replays the full conversation, tool calls included, so you can keep going.
+
+<Placeholder type="video" title="A CodeWork session in Zed, start to finish">
+	Video: prompt CodeWork to fix a small bug, watch it read files and run tests, switch the model mid-thread, then
+	reopen the thread from history.
+</Placeholder>
+
+## Troubleshooting
+
+### CodeWork doesn't appear in the Agent Panel
+
+Check that `agent_servers` is at the top level of your settings and the JSON is valid. Zed underlines errors in the settings editor.
+
+### "Failed to launch" or the thread never starts
+
+Zed couldn't run the command. Replace `codework` with the absolute path from `which codework`. CodeWork needs Node.js 24 or later, so make sure the `node` that path resolves to is new enough.
+
+### The model picker is empty or missing a provider
+
+CodeWork only lists providers it has credentials for. Run `codework auth status --openai-codex` (or the flag for your provider) in a terminal, or add the API key to `env` in your Zed settings.
+
+### A plugin warning appears in the thread
+
+A plugin in your settings failed to load, often because it isn't installed yet. Run `codework plugin install` in the project folder, or `codework plugin list --verbose` to see why.
+
+### Something else
+
+Run `dev: open acp logs` from Zed's command palette to see the raw messages between Zed and CodeWork. CodeWork's own logs go to stderr, which Zed captures alongside them.
