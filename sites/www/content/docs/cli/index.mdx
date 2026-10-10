@@ -1,0 +1,86 @@
+---
+title: CodeWork CLI
+sidebarTitle: Overview
+description: Run the CodeWork agent from your terminal, inside your editor over ACP, or as a long-lived server.
+---
+
+The `codework` CLI is the main way to use CodeWork. It runs agent sessions in your repository or in a sandbox, manages models and plugins, and powers every other interface: `codework acp` serves editors and `codework serve` starts the RPC server.
+
+## Getting Started
+
+```bash
+pnpm add -g @codeworksh/cli
+```
+
+Then, from your project folder:
+
+```bash
+codework run "Explain how this repository is structured"
+```
+
+<Placeholder type="video" title="Your first CodeWork run">
+	Video: `codework run` exploring a repository, streaming tool calls, then continuing the same session with
+	`--session`.
+</Placeholder>
+
+See [Installation](/docs/cli/installation) for requirements, signing in, and updates.
+
+## Running a Prompt
+
+`codework run` sends one prompt, streams CodeWork's answer and tool calls to your terminal, and exits when the turn is done. It prints the session ID so you can continue later.
+
+```bash
+codework run "Inspect the failing tests"
+```
+
+Start the session somewhere other than the current directory with `--cwd`:
+
+```bash
+codework run --cwd ~/work/api "Add a health check endpoint"
+```
+
+## Sessions
+
+Every run is a session, stored in your CodeWork home. Continue one by passing its ID:
+
+```bash
+codework run --session <session-id> "Now fix them"
+```
+
+Sessions are shared across interfaces. A session started with `codework run` can be continued from an [editor](/docs/cli/acp) or through the [RPC server](/docs/cli/rpc), as long as they use the same home.
+
+## Models
+
+Pick a model per run with `--provider` and `--model`. Add `--thinking` to set reasoning effort on models that support it.
+
+```bash
+export OPENROUTER_API_KEY="..."
+
+codework run --provider openrouter --model deepseek/deepseek-v4.1-flash "Plan the database migration"
+```
+
+Browse what's available with `codework models`. Set a default in your settings so you don't have to pass flags every time; see [Capabilities](/docs/cli/using#models-and-settings).
+
+## Sandbox Controls
+
+By default CodeWork works directly in your folder. Pass `--sandbox-driver` to run a new session in an isolated remote sandbox instead:
+
+```bash
+codework run --sandbox-driver daytona "Inspect the repository"
+```
+
+The run prints the sandbox ID. Reuse the same sandbox for another session with `--sandbox-id`.
+
+<Placeholder type="video" title="Running CodeWork in a Daytona sandbox">
+	Video: a run with `--sandbox-driver daytona`, showing the sandbox being created, the agent working in it, and the
+	sandbox ID printed at the end.
+</Placeholder>
+
+## Editors and Servers
+
+| Command          | Use it for                                                                |
+| ---------------- | ------------------------------------------------------------------------- |
+| `codework acp`   | Using CodeWork as the agent in an [ACP editor](/docs/cli/acp) such as Zed |
+| `codework serve` | Keeping sessions running in a [long-lived server](/docs/cli/rpc)          |
+
+Every command and flag is listed in the [Reference](/docs/cli/reference).

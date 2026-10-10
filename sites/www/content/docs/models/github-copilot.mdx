@@ -1,16 +1,42 @@
 ---
 title: GitHub Copilot
-description: Use Claude, GPT, Gemini, Grok, Kimi, and more through your Copilot subscription.
+description: Use Claude, GPT, Gemini, Grok, and more through your Copilot subscription.
 ---
 
-Requires a GitHub Copilot subscription. Free plans get a limited model set.
+Requires a GitHub Copilot subscription. Free plans get a smaller set of models.
 
-## Sign in
+## Sign In
 
-Sign in with the device flow:
+CodeWork uses GitHub's device flow. It shows a code, opens GitHub in your browser, and finishes once you enter it:
 
 ```bash
 codework auth login --github-copilot
 ```
 
-Models are served through `api.githubcopilot.com`. Run `codework models` to see which ones your plan includes.
+On GitHub Enterprise, pass your domain:
+
+```bash
+codework auth login --github-copilot --enterprise github.example.com
+```
+
+Add `--enable-models` to turn on catalog models your Copilot settings haven't enabled yet.
+
+## Run
+
+```bash
+codework models --provider github-copilot
+codework run --provider github-copilot --model <model-id> "Explain this repository"
+```
+
+Models are served through `api.githubcopilot.com`, or your Enterprise's own Copilot endpoint. Which ones you can use depends on your plan and your organization's Copilot policies.
+
+## Check or Remove the Login
+
+```bash
+codework auth status --github-copilot
+codework auth logout --github-copilot
+```
+
+## Pricing
+
+Usage counts against your Copilot plan. The cost in CodeWork's usage summary is the API-rate equivalent, useful for comparing models but not what you're billed.

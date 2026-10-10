@@ -1,119 +1,106 @@
 ---
 title: Quickstart
-description: Get from install to your first useful change with the CodeWork CLI.
+description: Install CodeWork, connect a model, and make your first change in a few minutes.
 ---
 
-You'll install CodeWork, connect a model provider, let it poke around your codebase, make a small edit, and review the result.
-
-To use it, you need access to a model through a supported provider. This can be a subscription, an API key, or a local model.
-
-<Callout>
-	CodeWork ships as a CLI today, plus an RPC server (`codework serve`) for programmatic access. A desktop app is coming
-	in the next few weeks.
-</Callout>
+You'll install the CLI, connect a model, ask CodeWork about your codebase, have it make a small change, and review what it did.
 
 ## 1. Install CodeWork
 
-CodeWork ships as an npm package. Requires Node.js 24 or later.
+You need Node.js 24 or later and pnpm.
 
 ```bash
-npm install -g @codeworksh/cli
+pnpm add -g @codeworksh/cli
+codework --help
 ```
 
-Every command is `codework <command>`.
+See [Installation](/docs/cli/installation) for updating and uninstalling.
 
-## 2. Choose a model
+## 2. Connect a Model
 
-A model generates CodeWork's responses. A provider is the service or account CodeWork uses to access that model.
-
-Use a subscription or API key to access a provider's models. For example, with a ChatGPT Plus/Pro plan:
+Sign in with a ChatGPT Plus or Pro plan:
 
 ```bash
 codework auth login --openai-codex
 ```
 
-Or set an API key and you're good:
+Or set an API key. OpenRouter gives you hundreds of models with one key:
 
 ```bash
-export OPENAI_API_KEY="..."
-export ANTHROPIC_API_KEY="..."
+export OPENROUTER_API_KEY="..."
 ```
 
-Browse everything available with `codework models`, or see [Models & Pricing](/docs/models) for the full list.
+[Models & Pricing](/docs/models) covers every provider, including Copilot, Anthropic, Gemini, and local models.
 
-## 3. Ask CodeWork to explain your codebase
+## 3. Ask About Your Codebase
 
-```bash
-cd /path/to/folder
-```
+From your project folder:
 
 ```bash
 codework run \
-  --provider openai-codex \
-  --model gpt-5.6-luna \
+  --provider openrouter \
+  --model deepseek/deepseek-v4.1-flash \
   "Explain how this repository is structured and how to run its checks."
 ```
 
-CodeWork searches your repo, reads relevant files, and summarizes how the project fits together. It's one of the fastest ways to get oriented in an unfamiliar codebase.
+CodeWork searches the repo, reads the files that matter, and summarizes how the project fits together. You see each tool call as it runs. It prints the session ID first, and a usage summary with the run's tokens and cost when it's done.
 
-## 4. Make a small change
+<Placeholder type="video" title="Your first CodeWork run">
+	Video: `codework run` exploring a repository, streaming `read` and `bash` calls, then printing the usage summary.
+</Placeholder>
 
-Each `codework run` is its own session. To keep the conversation going, pass the session ID from the previous run's output:
+## 4. Make a Change
+
+Continue the same session with `--session`, so CodeWork keeps what it already learned:
 
 ```bash
 codework run \
   --session <session-id> \
-  "Suggest three small, safe improvements in this codebase. Explain the tradeoffs."
+  "Add a short 'Development' section to the README with the commands you found. Then run the checks."
 ```
 
-Good first tasks are low risk: improving copy, fixing small UI issues, tightening up a function. Already know what you want? Ask for it directly and describe the result you're after.
+Good first tasks are small and easy to review: docs, a copy fix, a failing test, one function.
 
-## 5. Next steps
+<Callout type="warn">
+	CodeWork doesn't ask before it edits files or runs commands. Start in a git repository with a clean working tree so
+	every change is easy to see and undo.
+</Callout>
 
-**Pick a model** from the catalog:
+## 5. Review the Result
 
 ```bash
-export OPENROUTER_API_KEY="..."
-
-codework run \
-  --provider openrouter \
-  --model meta/muse-spark-1.3-contributor \
-  "Plan database migration"
+git diff
 ```
 
-**List what's available:**
+Keep what you like, or ask for changes in the same session. Throw everything away with `git restore .`.
+
+## 6. Set a Default Model
+
+Save the model in your settings so you can drop the flags:
+
+```jsonc title="~/.codework/settings.jsonc"
+{
+	"model": { "provider": "openrouter", "id": "deepseek/deepseek-v4.1-flash" },
+}
+```
 
 ```bash
-codework models
+codework run "Find and fix one flaky test"
 ```
 
-**Run in a sandbox:**
-
-```bash
-codework run --sandbox-driver daytona "Inspect the repository"
-```
-
-**Run a persistent server:**
-
-```bash
-codework serve
-```
-
-Keep reading:
+## Next Steps
 
 <Cards>
-	<Card title="Models & Pricing" href="/docs/models">
-		Every way to authenticate: subscriptions and API keys.
+	<Card title="Use it in Zed" href="/docs/cli/acp#zed">
+		Run the same agent and sessions from your editor.
 	</Card>
-	<Card title="Changelog" href="/docs/changelog">
-		What's new.
+	<Card title="Catalog & Prices" href="/docs/models/catalog">
+		Compare models by price, context window, and thinking levels.
+	</Card>
+	<Card title="Plugins" href="/docs/plugins">
+		Give CodeWork new tools and house rules.
+	</Card>
+	<Card title="Sandboxes" href="/docs/cli/using#sandboxes">
+		Run sessions in an isolated machine.
 	</Card>
 </Cards>
-
-## Uninstall CodeWork
-
-If you decide CodeWork isn't for you, uninstall it with:
-
-```bash
-npm uninstall -g @codeworksh/cli
-```

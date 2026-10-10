@@ -1,0 +1,109 @@
+---
+title: Model Catalog
+sidebarTitle: Catalog & Prices
+description: Every model CodeWork can run, what each one costs, and which thinking levels it supports.
+---
+
+CodeWork reads models from a catalog in your CodeWork home. The catalog lists each model's provider, context window, input types, reasoning support, and price, and it's what `--provider`, `--model`, and the model picker in your editor choose from.
+
+```bash
+codework models                         # every model, as provider/model
+codework models --provider openai-codex # one provider
+codework models providers               # provider IDs only
+```
+
+## Where the Catalog Comes From
+
+| Provider                                      | Source                                                                                  |
+| --------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [OpenAI Codex](/docs/models/openai-codex)     | A fixed list maintained in CodeWork (below).                                            |
+| [GitHub Copilot](/docs/models/github-copilot) | [models.dev](https://models.dev), adjusted for Copilot's endpoints and thinking levels. |
+| Every other provider                          | [models.dev](https://models.dev): any provider whose models support tool calling.       |
+| [Your own models](/docs/models/custom)        | The `models` array in your settings, added to the catalog.                              |
+
+The catalog is saved as `~/.codework/models.gen.json` and refreshed when it's older than 15 minutes. Change that window with `CODEWORK_MODELS_TTL`, refresh it by hand with `codework models refresh --force`, or pin it to a file you manage with `CODEWORK_MODELS_FILE`.
+
+## How Pricing Works
+
+Prices are in US dollars **per million tokens**, with four rates per model:
+
+| Rate        | Charged for                                                       |
+| ----------- | ----------------------------------------------------------------- |
+| Input       | Prompt tokens the provider hasn't cached                          |
+| Output      | Tokens the model generates, including reasoning tokens            |
+| Cache read  | Prompt tokens served from the provider's cache                    |
+| Cache write | Prompt tokens written to the cache, on providers that bill for it |
+
+Some models also have long-context tiers: once a request's input passes a threshold, a higher set of rates applies to the whole request. They're listed under `cost.tiers` in `~/.codework/models.gen.json`.
+
+Every `codework run` ends with a usage summary that adds these up for that run:
+
+```text
+── usage ───────────────────────────────────────────────────────────────
+model    openai-codex/gpt-5.6-luna
+tokens   6,172 input · 1,377 output · 412 reasoning · 19,581 total
+cache    12,032 read · 0 write
+cost     $0.003127 · 3 turns
+```
+
+<Callout title="Subscriptions are billed by your plan">
+	With [OpenAI Codex](/docs/models/openai-codex) or [GitHub Copilot](/docs/models/github-copilot), the cost line is
+	what the same tokens would cost at API rates. What you actually pay is set by your ChatGPT or Copilot plan. Use it to
+	compare models, not as a bill.
+</Callout>
+
+## OpenAI Codex Models
+
+Available with `codework auth login --openai-codex` on a ChatGPT Plus or Pro plan. Prices are the API-equivalent rates CodeWork uses for the usage summary.
+
+| Model               | ID                    | Input | Cache Read | Cache Write | Output | Context |
+| ------------------- | --------------------- | ----- | ---------- | ----------- | ------ | ------- |
+| GPT-6 Luna          | `gpt-6-luna`          | $0.10 | $0.01      | $0.125      | $0.50  | 272K    |
+| GPT-5.6 Luna        | `gpt-5.6-luna`        | $0.20 | $0.02      | $0.25       | $1.20  | 272K    |
+| GPT-5.6 Terra       | `gpt-5.6-terra`       | $2.00 | $0.20      | $2.50       | $12.00 | 272K    |
+| GPT-5.6 Sol         | `gpt-5.6-sol`         | $5.00 | $0.50      | $6.25       | $30.00 | 272K    |
+| GPT-5.5             | `gpt-5.5`             | $5.00 | $0.50      | -           | $30.00 | 272K    |
+| GPT-5.4             | `gpt-5.4`             | $2.50 | $0.25      | -           | $15.00 | 272K    |
+| GPT-5.4 Mini        | `gpt-5.4-mini`        | $0.75 | $0.075     | -           | $4.50  | 272K    |
+| GPT-5.3 Codex Spark | `gpt-5.3-codex-spark` | $1.75 | $0.175     | -           | $14.00 | 128K    |
+
+Every Codex model reasons, accepts images (except Codex Spark, which is text only), and can write up to 128K output tokens. Requests served at the `flex` service tier cost half; `priority` costs 2× (2.5× for GPT-5.5).
+
+### Thinking Levels
+
+Set the level with `--thinking`, `thinkingLevel` in [settings](/docs/cli/settings#model), or the Thinking Effort picker in your editor. Ask for a level a model doesn't support and CodeWork uses the next one up, or the highest it has.
+
+| Model                          | Levels                                         |
+| ------------------------------ | ---------------------------------------------- |
+| `gpt-6-luna`, `gpt-5.6-luna`   | `off`, `low`, `medium`, `high`, `xhigh`, `max` |
+| `gpt-5.6-sol`, `gpt-5.6-terra` | `low`, `medium`, `high`, `xhigh`, `max`        |
+| `gpt-5.5`                      | `off`, `low`, `medium`, `high`, `xhigh`        |
+| `gpt-5.4`, `gpt-5.4-mini`      | `low`, `medium`, `high`, `xhigh`               |
+| `gpt-5.3-codex-spark`          | `minimal`, `low`, `medium`, `high`, `xhigh`    |
+
+## Top OpenRouter Models
+
+Available with `OPENROUTER_API_KEY` set. See [OpenRouter](/docs/models/openrouter). Prices come from models.dev and follow OpenRouter's, so they can change between catalog refreshes.
+
+| Model               | ID                             | Input | Cache Read | Cache Write | Output | Context |
+| ------------------- | ------------------------------ | ----- | ---------- | ----------- | ------ | ------- |
+| Claude Opus 5.5     | `anthropic/claude-opus-5.5`    | $4.00 | $0.20      | $5.00       | $20.00 | 1M      |
+| Claude Sonnet 5.5   | `anthropic/claude-sonnet-5.5`  | $2.00 | $0.10      | $2.50       | $10.00 | 1M      |
+| GPT-6.1 Sol         | `openai/gpt-6.1-sol`           | $2.00 | $0.10      | $2.50       | $10.00 | 1.05M   |
+| Gemini 3.8 Flash    | `google/gemini-3.8-flash`      | $0.75 | $0.075     | $0.042      | $3.75  | 1M      |
+| Kimi K3             | `moonshotai/kimi-k3`           | $0.50 | $0.28      | -           | $13.50 | 1M      |
+| DeepSeek V4.1 Flash | `deepseek/deepseek-v4.1-flash` | $0.30 | $0.006     | -           | $1.20  | 1M      |
+| MiniMax M3          | `minimax/minimax-m3`           | $0.30 | $0.06      | -           | $1.20  | 1M      |
+
+Use the ID with the `openrouter` provider, for example `--provider openrouter --model deepseek/deepseek-v4.1-flash`.
+
+## Related
+
+<Cards>
+	<Card title="Custom models" href="/docs/models/custom">
+		Add a local model or a private gateway.
+	</Card>
+	<Card title="Settings" href="/docs/cli/settings">
+		Set a default model and thinking level.
+	</Card>
+</Cards>

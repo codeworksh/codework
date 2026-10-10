@@ -1,0 +1,105 @@
+---
+title: Reference
+description: Every CodeWork CLI command, flag, and environment variable.
+---
+
+Run `codework --help` or `codework <command> --help` to see this from your terminal.
+
+## Commands
+
+| Command                         | What it does                                                   |
+| ------------------------------- | -------------------------------------------------------------- |
+| `codework run <prompt>`         | Start or continue an agent session                             |
+| `codework models`               | List the model catalog                                         |
+| `codework models providers`     | List provider IDs                                              |
+| `codework models refresh`       | Download the model catalog if it's stale                       |
+| `codework auth login`           | Sign in to a subscription provider                             |
+| `codework auth status`          | Show a stored login without refreshing it                      |
+| `codework auth refresh`         | Refresh a stored login if it has expired                       |
+| `codework auth logout`          | Clear a stored login                                           |
+| `codework plugin add <spec>`    | Install a plugin and add it to a settings file                 |
+| `codework plugin remove <spec>` | Remove a plugin from a settings file                           |
+| `codework plugin install`       | Install every plugin the settings files name                   |
+| `codework plugin list`          | List configured plugins and what each resolved to              |
+| `codework plugin check [spec]`  | Report plugins with a newer revision                           |
+| `codework plugin update [spec]` | Fetch newer revisions                                          |
+| `codework plugin reload`        | Re-import plugins in a running server                          |
+| `codework session link <id>`    | Anchor a session to a project folder, through a running server |
+| `codework serve`                | Start the [RPC server](/docs/cli/rpc)                          |
+| `codework acp`                  | Start the [ACP server](/docs/cli/acp) on stdio                 |
+
+## `codework run`
+
+| Flag                         | Description                                                                |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| `-s`, `--session <id>`       | Continue an existing session                                               |
+| `-C`, `--cwd <path>`         | Working directory for a new session                                        |
+| `--provider <id>`            | Model catalog provider ID                                                  |
+| `--model <id>`               | Model ID                                                                   |
+| `--thinking <level>`         | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`               |
+| `--sandbox-driver <driver>`  | Sandbox driver for a new session (default `local`)                         |
+| `--sandbox-id <id>`          | Reuse an existing sandbox instance                                         |
+| `--sandbox-provider-id <id>` | Attach to an existing remote sandbox by its provider ID                    |
+| `--server <url>`             | Run against an [RPC server](/docs/cli/rpc), e.g. `ws://127.0.0.1:7433/rpc` |
+
+## `codework auth`
+
+| Flag                  | Description                                                         |
+| --------------------- | ------------------------------------------------------------------- |
+| `--openai-codex`      | Use OpenAI Codex (ChatGPT Plus or Pro)                              |
+| `--github-copilot`    | Use GitHub Copilot                                                  |
+| `--device`            | `login` only: use a device code instead of a local browser callback |
+| `--browser`           | `login` only: open the sign-in URL in your browser (default on)     |
+| `--enterprise <host>` | `login` only: GitHub Enterprise domain for Copilot                  |
+| `--enable-models`     | `login` only: enable unconfigured Copilot catalog models            |
+| `--auth-file <path>`  | Credential file (default `<home>/aikit/auth.json`)                  |
+| `--server <url>`      | Store the credentials in a running RPC server                       |
+| `--json`              | Machine-readable output                                             |
+
+## `codework plugin`
+
+| Flag             | Applies to      | Description                                                |
+| ---------------- | --------------- | ---------------------------------------------------------- |
+| `-g`, `--global` | `add`, `remove` | Edit the user-wide settings file instead of this project's |
+| `--session <id>` | `add`           | Write to the project a session is linked to                |
+| `--verbose`      | `list`          | Show the message behind a failure                          |
+| `--refresh`      | `check`         | Ask the registry again instead of reusing a recent answer  |
+| `--server <url>` | `reload`        | Server base URL (default `http://127.0.0.1:7433`)          |
+
+## `codework models`
+
+| Flag              | Applies to | Description                             |
+| ----------------- | ---------- | --------------------------------------- |
+| `--provider <id>` | `models`   | List only this provider's models        |
+| `--force`         | `refresh`  | Download the catalog even if it's fresh |
+
+## `codework serve`
+
+| Flag     | Description                                                  |
+| -------- | ------------------------------------------------------------ |
+| `--host` | Interface to bind (default `127.0.0.1`)                      |
+| `--port` | Port to listen on, or `0` for any free port (default `7433`) |
+
+## Global Flags
+
+These work on every command that runs CodeWork locally, including `run`, `serve`, and `acp`.
+
+| Flag                | Description                                                                     |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `--home`            | CodeWork home for settings, credentials, cache and data (default `~/.codework`) |
+| `--database`        | SQLite database path, or `:memory:` for throwaway sessions                      |
+| `--user-config-dir` | Directory whose `settings.jsonc` replaces the user settings in `--home`         |
+
+## Environment Variables
+
+| Variable               | Description                                                         |
+| ---------------------- | ------------------------------------------------------------------- |
+| `CODEWORK_MODELS_FILE` | Pin the model catalog to a file you manage                          |
+| `CODEWORK_MODELS_TTL`  | How old the catalog may get before a refresh (default `15 minutes`) |
+| `OPENAI_API_KEY`       | OpenAI API key                                                      |
+| `ANTHROPIC_API_KEY`    | Anthropic API key                                                   |
+| `OPENROUTER_API_KEY`   | OpenRouter API key                                                  |
+| `GEMINI_API_KEY`       | Google Gemini API key                                               |
+| `XAI_API_KEY`          | xAI API key                                                         |
+
+Settings files are covered in the [settings reference](/docs/cli/settings).

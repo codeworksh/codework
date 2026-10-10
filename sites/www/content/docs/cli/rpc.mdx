@@ -1,0 +1,104 @@
+---
+title: RPC Server
+description: Run CodeWork as a long-lived server that owns sessions and sandboxes, and drive it from the CLI or your own client.
+---
+
+`codework serve` starts a persistent server. Sessions, sandboxes, credentials, and plugins live in the server process, so work keeps running when a client disconnects, and several clients can share the same sessions.
+
+Use it when you want CodeWork to outlive a terminal, to run it on another machine, or to build your own interface on top of it.
+
+<Placeholder title="Two terminals sharing one CodeWork server">
+	Screenshot: `codework serve` printing its listen address in one terminal, and `codework run --server ...` streaming a
+	session in another.
+</Placeholder>
+
+## Start the Server
+
+```bash
+codework serve
+```
+
+The server listens on `ws://127.0.0.1:7433/rpc` and prints the address when it's ready.
+
+| Flag     | Description                                                  |
+| -------- | ------------------------------------------------------------ |
+| `--host` | Interface to bind (default `127.0.0.1`)                      |
+| `--port` | Port to listen on, or `0` for any free port (default `7433`) |
+
+`--home`, `--database`, and `--user-config-dir` belong on the server. Model credentials, plugins, and working directories are resolved there, not on the client.
+
+<Callout type="warn">
+	The RPC server is not secure yet: it has no authentication, so anyone who can reach the port can drive your sessions.
+	It binds to loopback by default; don't expose it on a public interface. Authentication will be added in a later
+	release.
+</Callout>
+
+## Use It from the CLI
+
+Point any `run`, `auth`, `session`, or `plugin reload` command at the server:
+
+```bash
+codework run --server ws://127.0.0.1:7433/rpc "Inspect the failing tests"
+codework run --server ws://127.0.0.1:7433/rpc --session <id> "Now fix them"
+codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc
+codework plugin reload
+```
+
+A remote run doesn't boot a local harness. Pressing `ctrl-c` interrupts the shared session on the server; disconnecting without it leaves the work running.
+
+## Link a Session to a Project
+
+A session remembers which project folder it belongs to, so it picks up that project's settings and plugins wherever it's continued from. Change or clear that link on a running server with:
+
+```bash
+codework session link <session-id> ~/work/api
+codework session link <session-id> --unlink
+```
+
+## Protocol
+
+The endpoint speaks [Effect RPC](https://effect.website) over WebSocket at `/rpc`, with newline-delimited JSON framing. The contract lives in [`packages/codework/src/server/contract.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/server/contract.ts).
+
+{/* TODO: document request/response shapes and a minimal client example once the contract is published as a package. */}
+
+### Methods
+
+| Group     | Methods                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------- |
+| `session` | `create`, `list`, `info`, `configure`, `link`, `relink`, `prompt`, `interrupt`, `wait`, `message` |
+| `sandbox` | `drivers`, `list`, `create`, `register`, `stop`                                                   |
+| `auth`    | `save`, `status`, `refresh`, `logout`                                                             |
+| `plugin`  | `reload`                                                                                          |
+| `event`   | `subscribe` (stream)                                                                              |
+
+### Events
+
+`event.subscribe` streams every event the server publishes. Events are live and not replayed, so subscribe before you send a prompt.
+
+Each busy period starts with `session.execution.started` and ends with exactly one of `succeeded`, `failed`, or `interrupted`. A failure carries a category such as `provider-authentication-error` or `sandbox-mount-error`. Plugins publish their own events under `plugin.<plugin-id>.*`; a client skips types it doesn't know.
+
+### Lifecycle
+
+- `session.prompt` returns once the prompt is admitted. Follow the event stream for the result.
+- `session.interrupt` returns as soon as the stop is accepted; `session.wait` resolves when the session has settled.
+- Managed sandboxes stay up until you stop them or the server shuts down. External sandboxes are never stopped by the server.
+
+## RPC or ACP?
+
+|           | RPC server                               | ACP                                      |
+| --------- | ---------------------------------------- | ---------------------------------------- |
+| Transport | WebSocket                                | stdio                                    |
+| Lifetime  | Long-lived, outlives clients             | One process per editor connection        |
+| Clients   | CLI, your own tools                      | Editors such as [Zed](/docs/cli/acp#zed) |
+| Sandboxes | Create, share, and reuse across sessions | Local project folder only                |
+
+## Related
+
+<Cards>
+	<Card title="Overview" href="/docs/cli">
+		Every command and flag.
+	</Card>
+	<Card title="ACP" href="/docs/cli/acp">
+		Use CodeWork inside your editor.
+	</Card>
+</Cards>

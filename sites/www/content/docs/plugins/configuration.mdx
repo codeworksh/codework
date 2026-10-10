@@ -1,0 +1,128 @@
+---
+title: Configure Plugins
+sidebarTitle: Configuration
+description: Declare plugins in settings.jsonc, pass them options, and turn them on or off for a project or for yourself.
+---
+
+Plugins are configured in the `plugins` array of a CodeWork settings file. The same array both selects which modules load and configures the plugins they contain.
+
+## Settings Files
+
+CodeWork reads two settings layers and combines them, lowest priority first:
+
+| Layer   | Location                                                     | Use it for                                           |
+| ------- | ------------------------------------------------------------ | ---------------------------------------------------- |
+| User    | `~/.codework/settings.jsonc`                                 | Plugins you want in every project.                   |
+| Project | `.codework/settings.jsonc` in the nearest ancestor directory | Plugins the whole team should get. Commit this file. |
+
+Both layers fall back to `settings.json` when there is no `.jsonc` file. `--home` moves the user layer along with the rest of the CodeWork home, and `--user-config-dir <dir>` replaces just the user settings file with `<dir>/settings.jsonc`.
+
+The `plugins` arrays **add up** rather than replace each other: the user list comes first, then the project list extends it. A teammate's project plugins never remove the personal ones you rely on.
+
+CodeWork re-reads settings at every turn. Changing an option, flipping `enabled`, or declaring a plugin that is already installed takes effect on the next message, with no restart.
+
+<Callout type="warn">
+	A settings file that exists but cannot be parsed fails the session with the file path and the offending key. CodeWork
+	does not skip a broken file, because skipping it would silently drop everything else it configures.
+</Callout>
+
+## Two Kinds of Entries
+
+Every item in `plugins` is one of two things.
+
+**A module entry** is a string. It names something to load: a package spec, a git spec, or a path.
+
+**A configuration entry** is an object. It configures a plugin that a module entry, or the built-in list, already selected. It names that plugin by ID (`plugin`) or by the module string that loaded it (`package`), never both.
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"plugins": [
+		// Module entry: install and load this package.
+		"@acme/codework-tool-proc@1.2.0",
+
+		// Configuration entry, addressed by package name. An npm version can be left off.
+		{ "package": "@acme/codework-tool-proc", "options": { "limit": 40 } },
+
+		// Configuration entry, addressed by plugin ID.
+		{ "plugin": "codework.tool.bash", "enabled": false },
+	],
+}
+```
+
+A configuration entry never loads, installs, or moves anything. If its name matches nothing that was selected, it is ignored rather than failing the session, so a typo costs you a missing option, not a network fetch. Check `codework plugin list` when an option seems to have no effect.
+
+### Configuration Fields
+
+| Field     | Type    | Meaning                                                                                       |
+| --------- | ------- | --------------------------------------------------------------------------------------------- |
+| `plugin`  | string  | The plugin ID to configure, like `acme.tool.proc`. Use this or `package`.                     |
+| `package` | string  | The module string that loaded the plugin: a package name, or the full git spec or path.       |
+| `enabled` | boolean | `false` removes the plugin from the session. `true` turns on a plugin that is off by default. |
+| `options` | object  | Handed to the plugin's `setup` untouched. Each plugin documents its own options.              |
+
+When several entries configure the same plugin, the last `enabled` wins and the last `options` block replaces earlier ones whole. Option blocks are never merged, because CodeWork cannot know what their keys mean.
+
+## Turn Plugins On and Off
+
+Disable any plugin, built-in or not, by ID:
+
+```jsonc
+{ "plugin": "codework.tool.write", "enabled": false }
+```
+
+Some plugins are **opt-in**: they load with everything else but stay off until an entry turns them on. The built-in `grep`, `find`, and `ls` tools work this way.
+
+```jsonc
+{ "plugin": "codework.tool.grep", "enabled": true }
+```
+
+Disabling a plugin in your project file also works on a plugin that came from your user file, since the lists are combined.
+
+## Pass Options to a Plugin
+
+Options belong to the plugin, so their shape is whatever the plugin's README says. For example, the example `house-style` prompt plugin takes a list of rules:
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"plugins": [
+		"./plugins/house-style.ts",
+		{
+			"package": "./plugins/house-style.ts",
+			"options": { "rules": ["No `any` in TypeScript.", "Prefer small, focused commits."] },
+		},
+	],
+}
+```
+
+Put the module entry before its configuration. `codework plugin add` does this for you, inserting the module ahead of any configuration you already wrote for it.
+
+## Paths in Settings
+
+A relative path in a settings file resolves from the directory of the file that declares it, not from where you run CodeWork.
+
+| Written in                           | Entry                | Loads                                   |
+| ------------------------------------ | -------------------- | --------------------------------------- |
+| `/work/app/.codework/settings.jsonc` | `./plugins/style.ts` | `/work/app/.codework/plugins/style.ts`  |
+| `~/.codework/settings.jsonc`         | `./plugins/style.ts` | `~/.codework/plugins/style.ts`          |
+| either                               | `../tools/proc`      | `../tools/proc` from that file's folder |
+
+Absolute paths, `~/` paths, and `file:///` URLs are taken as written. A path can point at a single file or at a package directory with its own `package.json`. A local package can be configured by the `name` in its manifest as well as by its path.
+
+## Order
+
+Plugins run in two passes: every `tool` plugin first, then every `prompt` plugin. This holds no matter which settings file each came from, so a tool you add in settings is always in place before the system prompt is built. Tools with a `promptSnippet` are listed in the prompt's tool list.
+
+Within one kind, plugins run in the order their module entries are written, after the built-ins. That order matters when plugins build on each other. A plugin that patches another plugin's tool must come after it, and a prompt plugin that appends to the `rules` section adds to what `codework.prompt.default` already wrote.
+
+Writing a module entry again moves the plugin to the new position. Configuration entries never change the order.
+
+## Related
+
+<Cards>
+	<Card title="Install and manage" href="/docs/plugins/install">
+		Add, install, update, and remove plugins with the CLI.
+	</Card>
+	<Card title="Build a plugin" href="/docs/plugins/authoring">
+		Read your own options in a plugin's setup.
+	</Card>
+</Cards>

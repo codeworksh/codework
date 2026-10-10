@@ -1,0 +1,328 @@
+---
+title: Build a Plugin
+sidebarTitle: Build a Plugin
+description: Write tool and prompt plugins with the @codeworksh/plugin SDK, test them locally, and publish them to npm or git.
+---
+
+A plugin is a module that default-exports one object made with `Plugin.define`. Its `setup` function runs at the start of a session and writes into the agent: tools into the tool registry, text into the system prompt.
+
+Plugins build against `@codeworksh/plugin`, the same contract the harness itself depends on. Tool schemas use [Effect](https://effect.website) `Schema`.
+
+## Your First Plugin
+
+The shortest path is a single file in your repository. It needs no build, no publish, and no version.
+
+<div className="fd-steps">
+<div className="fd-step">
+
+### Create the File
+
+Put it next to your project settings:
+
+```ts title=".codework/plugins/facts.ts"
+import { Plugin, Tool } from "@codeworksh/plugin";
+import { Effect, Schema } from "effect";
+
+export default Plugin.define({
+	id: "local.tool.facts",
+	kind: "tool",
+	setup(ctx, options) {
+		const facts = (options["facts"] ?? {}) as Record<string, string>;
+		const keys = Object.keys(facts);
+		if (keys.length === 0) return;
+
+		ctx.plugin.tools.add(
+			Tool.register(
+				Tool.make({
+					name: "project_fact",
+					description: `Look up a project convention. Known keys: ${keys.join(", ")}.`,
+					promptSnippet: "Look up a project convention",
+					parameters: Schema.Struct({ key: Schema.String }),
+					success: Schema.String,
+					encodeContent: (value) => [{ type: "text", text: value }],
+					handler: ({ key }) => Effect.succeed(facts[key] ?? `No fact recorded for "${key}".`),
+				}),
+			),
+		);
+	},
+});
+```
+
+</div>
+<div className="fd-step">
+
+### Install the SDK Beside It
+
+A local plugin's imports resolve from its own folder, so `@codeworksh/plugin` and `effect` need to be installed where Node can find them, usually your project root:
+
+```bash
+pnpm add -D @codeworksh/plugin effect
+```
+
+</div>
+<div className="fd-step">
+
+### Declare It with Options
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"plugins": [
+		"./plugins/facts.ts",
+		{ "package": "./plugins/facts.ts", "options": { "facts": { "deploy": "vercel", "tests": "pnpm test" } } },
+	],
+}
+```
+
+Or let the CLI write the module entry for you with `codework plugin add ./.codework/plugins/facts.ts`.
+
+</div>
+<div className="fd-step">
+
+### Try It
+
+```bash
+codework run "How do we deploy this project?"
+```
+
+`codework plugin list` should show `local.tool.facts` next to the entry. If it shows an error slug instead, see [Troubleshooting](/docs/plugins/troubleshooting).
+
+</div>
+</div>
+
+<Placeholder title="Calling a local plugin tool">
+	Session transcript where the agent calls project_fact and answers from the configured facts.
+</Placeholder>
+
+## The Plugin Definition
+
+| Field    | Required | Meaning                                                                                                        |
+| -------- | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `id`     | Yes      | A unique ID in the form `vendor.domain.name`: three lowercase segments, like `acme.tool.proc`.                 |
+| `kind`   | Yes      | `"tool"` or `"prompt"`. Decides which pass the plugin runs in. See [Order](/docs/plugins/configuration#order). |
+| `setup`  | Yes      | `(ctx, options) => void`. May return a `Promise` or an Effect.                                                 |
+| `optIn`  | No       | `true` keeps the plugin off until a settings entry sets `"enabled": true`.                                     |
+| `events` | No       | Event definitions this plugin publishes. Types must start with `plugin.<id>.`.                                 |
+
+The `codework.` prefix is reserved for built-ins, and a third-party plugin that uses it is rejected.
+
+`options` is the plugin's own block from settings, or `{}` when there is none. CodeWork never validates it, so check the shape yourself and fall back to defaults instead of throwing. A plugin with nothing configured should usually register nothing.
+
+### The Setup Context
+
+`ctx` is one object shared by every plugin in a session.
+
+| Field               | What it holds                                                      |
+| ------------------- | ------------------------------------------------------------------ |
+| `ctx.plugin.tools`  | The tool registry: `add`, `update`, `list`, `get`, `has`.          |
+| `ctx.plugin.prompt` | The system prompt registry: `foundation` and `sections`.           |
+| `ctx.sessionId`     | The current session ID.                                            |
+| `ctx.model`         | The model this session is calling.                                 |
+| `ctx.settings`      | The merged settings for this session.                              |
+| `ctx.location`      | Where the session's work happens.                                  |
+| `ctx.sandbox`       | Which sandbox the session runs in.                                 |
+| `ctx.paths`         | CodeWork's own directories: `home`, `bin`, `cache`, `data`, `log`. |
+| `ctx.events`        | `publish`, for announcing your plugin's own events.                |
+
+The registries are open only while `setup` runs. Do your registration there, not later.
+
+## Tool Plugins
+
+A tool is a definition plus a handler. `Tool.make` builds both at once:
+
+| Field                  | Meaning                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| `name`                 | What the model calls. Must be unique across the session.                         |
+| `description`          | What the model reads to decide when to use the tool.                             |
+| `parameters`           | An Effect `Schema` for the arguments. Converted to JSON Schema for the provider. |
+| `success`              | The schema of a successful result.                                               |
+| `failure`              | Optional. A typed, model-visible failure the model can react to.                 |
+| `encodeContent`        | Optional. Renders a success for the model. Defaults to JSON text.                |
+| `encodeFailureContent` | Optional. Renders a failure for the model.                                       |
+| `promptSnippet`        | Optional. One line for the system prompt's tool list.                            |
+| `promptGuidelines`     | Optional. Bullets added to the prompt's guidelines while the tool is active.     |
+| `label`                | Optional. A short display name for UIs.                                          |
+
+Register it with `Tool.register(tool)` when the handler needs nothing but its arguments.
+
+### Run Inside the Sandbox
+
+Sessions can run on your machine, in a container, or in a remote sandbox. A tool that touches files or runs commands should go through the session's sandbox rather than `node:fs` or `node:child_process`, so it acts wherever the session actually runs.
+
+Return an Effect from `setup` to ask for the sandbox services, then use them from your tool's handler. This example, adapted from the `@acme/codework-tool-proc` example plugin, runs `ps` through the sandbox shell:
+
+```ts title="src/index.ts"
+import { Plugin, Tool } from "@codeworksh/plugin";
+import { SandboxIO } from "@codeworksh/plugin/sandbox";
+import { Effect, Schema } from "effect";
+
+class ProcFailed extends Schema.TaggedError<ProcFailed>()("ProcFailed", {
+	stderr: Schema.String,
+}) {}
+
+export default Plugin.define({
+	id: "acme.tool.proc",
+	kind: "tool",
+	setup: Effect.fn("AcmeProc.setup")(function* (ctx) {
+		const shell = yield* SandboxIO.Shell;
+		ctx.plugin.tools.add(
+			Tool.register(
+				Tool.make({
+					name: "list_processes",
+					description: "List running processes in the session's environment.",
+					parameters: Schema.Struct({}),
+					success: Schema.String,
+					failure: ProcFailed,
+					encodeContent: (text) => [{ type: "text", text }],
+					encodeFailureContent: (failure) => [{ type: "text", text: failure.stderr }],
+					handler: () =>
+						Effect.gen(function* () {
+							const result = yield* shell.exec("ps -eo pid=,pcpu=,args=").pipe(Effect.orDie);
+							if (result.exitCode !== 0) return yield* new ProcFailed({ stderr: result.stderr });
+							return result.stdout;
+						}),
+				}),
+			),
+		);
+	}),
+});
+```
+
+`SandboxIO` provides `Shell`, `FileSystem`, `Current` (the sandbox's identity and working directory), and `Mutation`. A failure the model can act on, like a non-zero exit, should be a typed `failure`. A failure it cannot act on, like a shell that will not start, is a defect.
+
+### Guard and Rewrite Tool Calls
+
+`tools.add` takes optional hooks that run around every call to that tool:
+
+```ts
+ctx.plugin.tools.add(tool, {
+	// Return { block: true } to stop the call. The reason is shown to the model.
+	beforeToolCall: ({ params }) =>
+		isDangerous(params) ? { block: true, reason: "blocked by acme policy" } : undefined,
+
+	// Return replacement content, details, or isError to rewrite the result.
+	afterToolCall: ({ terminal }) =>
+		terminal.status === "completed"
+			? { content: [...terminal.result.content, { type: "text", text: "(checked by acme)" }] }
+			: undefined,
+});
+```
+
+Return `undefined` to leave the call alone. Hooks may also return a `Promise` or an Effect.
+
+### Change Someone Else's Tool
+
+`tools.update` patches the prose of a tool another plugin registered, without touching its handler or hooks. It can change `description`, `label`, `promptSnippet`, and `promptGuidelines`.
+
+```ts
+ctx.plugin.tools.update("bash", { promptGuidelines: ["Prefer `pnpm` over `npm` in this repository."] });
+```
+
+The tool must already be registered, so your plugin's entry has to come after the plugin that owns it.
+
+Registering a tool with a name that already exists replaces it. That is how a plugin overrides a built-in, but disabling the built-in by ID is usually clearer.
+
+## Prompt Plugins
+
+Prompt plugins run after every tool plugin, so `ctx.plugin.tools.list()` already holds the final tool set.
+
+The system prompt is built from a **foundation** followed by **sections**:
+
+```ts
+import { Plugin, Section } from "@codeworksh/plugin";
+
+export default Plugin.define({
+	id: "local.prompt.house-style",
+	kind: "prompt",
+	setup(ctx, options) {
+		const rules = Array.isArray(options["rules"]) ? options["rules"] : [];
+		for (const rule of rules) ctx.plugin.prompt.sections.append(Section.Rules, String(rule));
+	},
+});
+```
+
+Built-in sections, rendered in this order:
+
+| Section                  | Format | Use it for                                 |
+| ------------------------ | ------ | ------------------------------------------ |
+| `Section.Rules`          | list   | Short rules. Duplicates are removed.       |
+| `Section.Addendum`       | text   | Extra instructions appended to the prompt. |
+| `Section.ProjectContext` | text   | Facts about the project.                   |
+| `Section.Skills`         | text   | Skill descriptions.                        |
+
+Open your own section with `Section.define`. It is rendered as a tagged block after the built-in ones:
+
+```ts
+const Deploy = Section.define("deploy_notes"); // rendered as <deploy_notes>
+ctx.plugin.prompt.sections.append(Deploy, "Production deploys go through the release workflow only.");
+```
+
+Section names are lowercase letters, digits, `_` and `-`. The names `tools`, `cwd`, and `foundation` are reserved.
+
+| Method                                      | What it does                            |
+| ------------------------------------------- | --------------------------------------- |
+| `sections.append(section, text)`            | Add an entry to a section.              |
+| `sections.set(section, entries)`            | Replace a section's entries.            |
+| `sections.remove(section)`                  | Drop a section.                         |
+| `sections.get(section)`                     | Read a section's current entries.       |
+| `foundation.set(text)` / `foundation.get()` | Replace or read the head of the prompt. |
+
+Replacing the foundation discards the default prompt `codework.prompt.default` wrote. Prefer appending to a section unless you mean to.
+
+## Publish a Plugin
+
+A published plugin is an ordinary npm package or git repository that default-exports a plugin.
+
+```json title="package.json"
+{
+	"name": "@acme/codework-tool-proc",
+	"version": "1.2.0",
+	"type": "module",
+	"exports": { ".": "./dist/index.js" },
+	"files": ["dist"],
+	"peerDependencies": {
+		"@codeworksh/plugin": "^0.1.0",
+		"effect": "^4.0.0"
+	}
+}
+```
+
+<Callout type="warn" title="Ship compiled JavaScript">
+	Node will not strip TypeScript types inside `node_modules`, and CodeWork runs no install scripts, so a `prepare`
+	build never happens. Point `exports` at built `.js` files and publish them. For a git source, commit the build
+	output. A plugin that ships only `.ts` fails with `plugin-not-compiled`.
+</Callout>
+
+A few more things to get right:
+
+- **Default-export one plugin.** The module's default export must be the object from `Plugin.define`.
+- **Declare your dependencies.** CodeWork installs a plugin's `dependencies` with it, but never runs their lifecycle scripts.
+- **Document your options.** Settings authors only know your `options` shape from your README.
+- **Name by convention.** `codework-tool-<name>` or `codework-prompt-<name>` makes a package easy to find.
+
+Users then install it with:
+
+```bash
+codework plugin add @acme/codework-tool-proc
+```
+
+## Example Plugins
+
+The CodeWork repository ships worked examples under [`extras/`](https://github.com/codeworksh/codework/tree/canary/extras). Each one is loaded in CodeWork's own test suite, so they stay correct.
+
+| Example                  | Kind   | Shows                                                            |
+| ------------------------ | ------ | ---------------------------------------------------------------- |
+| `codework-tool-proc`     | tool   | A sandboxed shell tool with typed failures and options.          |
+| `codework-prompt-life`   | prompt | A custom prompt section, configured by package name.             |
+| `plugins/local.ts`       | tool   | A single-file tool that answers from its own options.            |
+| `plugins/house-style.ts` | prompt | A single-file plugin that appends to the shared `rules` section. |
+
+## Related
+
+<Cards>
+	<Card title="Configure" href="/docs/plugins/configuration">
+		How settings authors declare and configure your plugin.
+	</Card>
+	<Card title="Troubleshooting" href="/docs/plugins/troubleshooting">
+		Errors you may hit while developing or publishing.
+	</Card>
+</Cards>
