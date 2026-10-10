@@ -8,7 +8,7 @@ export * as Message from "./message/message.ts";
 export * as Model from "./model/model.ts";
 export { stream } from "./stream.ts";
 export { createAssistantMessageEventStream, EventStream } from "./utils/eventstream.ts";
-export { validateSchema, validateToolArguments, validateToolCall } from "./utils/validation.ts";
+export { normalizeOptionalNulls, validateSchema, validateToolArguments, validateToolCall } from "./utils/validation.ts";
 
 export { createOpenAICodex, openaiCodex, openAICodexTools } from "./providers/openai-codex/index.ts";
 export type {

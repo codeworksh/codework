@@ -53,6 +53,11 @@ export interface ToolDef<
 	/** Optional guideline bullets appended to the default system prompt Guidelines section when this tool is active. */
 	readonly promptGuidelines?: ReadonlyArray<string>;
 	readonly parameters: Params;
+	/**
+	 * How the provider constrains the generated arguments. `{ type: "json_schema", strict: "prefer" }` sends
+	 * `parameters` in strict mode where the provider can express it and falls back to non-strict otherwise.
+	 */
+	readonly constrainedSampling?: Message.Tool["constrainedSampling"];
 	readonly success: Success;
 	/** Declared, model-visible failures (typed). Omit for tools that cannot fail expectedly. */
 	readonly failure?: Failure;
@@ -99,6 +104,7 @@ interface DefineInput<
 	readonly label?: string;
 	readonly promptSnippet?: string;
 	readonly parameters: Params;
+	readonly constrainedSampling?: Message.Tool["constrainedSampling"];
 	readonly success: Success;
 	readonly failure?: Failure;
 	readonly encodeContent?: (success: Success["Type"]) => ModelContent;
@@ -231,4 +237,5 @@ export const toAikitTool = (def: AnyToolDef): Message.Tool => ({
 	name: def.name,
 	description: def.description,
 	parameters: toProviderJsonSchema(def.parameters) as unknown as TSchema,
+	...(def.constrainedSampling === undefined ? {} : { constrainedSampling: def.constrainedSampling }),
 });

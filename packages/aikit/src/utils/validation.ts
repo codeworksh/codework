@@ -6,6 +6,7 @@ import type { Static, TSchema } from "typebox";
 import Schema from "typebox/schema";
 import Value from "typebox/value";
 
+import { nullableVariant, schemaAllowsNull } from "../llm/strict.ts";
 import type * as Message from "../message/message.ts";
 
 const validators = new WeakMap<TSchema, ReturnType<typeof Schema.Compile>>();
@@ -26,6 +27,50 @@ function errorPath(error: { instancePath?: string; params?: Record<string, unkno
 	if (Array.isArray(requiredProperties)) return requiredProperties.join(", ");
 
 	return "root";
+}
+
+type JsonSchemaObject = {
+	properties?: Record<string, JsonSchemaObject>;
+	required?: string[];
+	items?: JsonSchemaObject | JsonSchemaObject[];
+	$ref?: unknown;
+};
+
+/**
+ * Drop `null` from optional properties whose schema does not accept null, in place. Strict constrained sampling
+ * makes every property required and nullable, so the model answers an omitted optional argument with `null`.
+ */
+export function normalizeOptionalNulls(value: unknown, schema: unknown): void {
+	const variant = nullableVariant(schema);
+	if (variant !== undefined) return normalizeOptionalNulls(value, variant);
+	const node = schema as JsonSchemaObject;
+	if (Array.isArray(value)) {
+		if (Array.isArray(node.items)) {
+			for (const [index, item] of value.entries()) {
+				if (node.items[index]) normalizeOptionalNulls(item, node.items[index]);
+			}
+		} else if (node.items) {
+			for (const item of value) normalizeOptionalNulls(item, node.items);
+		}
+		return;
+	}
+	if (typeof value !== "object" || value === null || !node.properties) return;
+
+	const object = value as Record<string, unknown>;
+	const required = new Set(node.required ?? []);
+	for (const [key, property] of Object.entries(node.properties)) {
+		if (!(key in object)) continue;
+		if (
+			object[key] === null &&
+			!required.has(key) &&
+			typeof property.$ref !== "string" &&
+			!schemaAllowsNull(property)
+		) {
+			delete object[key];
+		} else {
+			normalizeOptionalNulls(object[key], property);
+		}
+	}
 }
 
 /**
@@ -78,9 +123,7 @@ export function validateToolArguments<T extends Message.Tool>(
 	tool: T,
 	toolExecution: Message.ToolCallInFlight,
 ): Message.ToolArguments<T> {
-	return validateSchema(
-		tool.parameters,
-		toolExecution.rawArgs,
-		`Tool "${toolExecution.name}"`,
-	) as Message.ToolArguments<T>;
+	const args = structuredClone(toolExecution.rawArgs);
+	normalizeOptionalNulls(args, tool.parameters);
+	return validateSchema(tool.parameters, args, `Tool "${toolExecution.name}"`) as Message.ToolArguments<T>;
 }
