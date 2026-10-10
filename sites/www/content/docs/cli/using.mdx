@@ -8,15 +8,23 @@ description: The tools CodeWork can use, how to configure its model and plugins,
 
 CodeWork works in your repository with a small set of built-in tools. It decides which to use; you see each call and its output as it runs.
 
-| Tool    | What it does                                    |
-| ------- | ----------------------------------------------- |
-| `read`  | Read a file, or a range of lines from it        |
-| `write` | Create a file or overwrite one                  |
-| `edit`  | Make targeted replacements in an existing file  |
-| `bash`  | Run a shell command, with an optional timeout   |
-| `grep`  | Search file contents by regex or literal string |
-| `find`  | Find files by glob pattern                      |
-| `ls`    | List a directory                                |
+| Tool    | What it does                                    | Default |
+| ------- | ----------------------------------------------- | ------- |
+| `read`  | Read a file, or a range of lines from it        | On      |
+| `write` | Create a file or overwrite one                  | On      |
+| `edit`  | Make targeted replacements in an existing file  | On      |
+| `bash`  | Run a shell command, with an optional timeout   | On      |
+| `grep`  | Search file contents by regex or literal string | Off     |
+| `find`  | Find files by glob pattern                      | Off     |
+| `ls`    | List a directory                                | Off     |
+
+The search tools are opt-in. Until you turn them on, CodeWork searches with `bash`. Turn one on in your settings:
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"plugins": [{ "plugin": "codework.tool.grep", "enabled": true }],
+}
+```
 
 [Plugins](#plugins) can add more.
 
@@ -25,7 +33,7 @@ CodeWork works in your repository with a small set of built-in tools. It decides
 	first. Review its changes with git, and use a [sandbox](#sandboxes) for work you don't want touching your machine.
 </Callout>
 
-## Models and settings
+## Models and Settings
 
 CodeWork reads settings from `~/.codework/settings.jsonc` for your user, then from `.codework/settings.jsonc` in the nearest project folder, so a project can override your defaults.
 
@@ -42,7 +50,7 @@ Set a default model so you don't have to pass `--provider` and `--model` on ever
 
 Add `"thinkingLevel"` to set a default reasoning effort. Flags on `codework run` override settings for that session. Without any settings, CodeWork uses OpenAI's `gpt-5.6-luna` with high thinking.
 
-Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Each model supports a subset.
+Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Each model supports a subset; see [Models & Pricing](/docs/models#thinking-levels). Every key is listed in the [settings reference](/docs/cli/settings).
 
 ## Plugins
 

@@ -10,7 +10,7 @@ Plugins are how CodeWork learns new things. A plugin can give the agent a new to
 	Terminal showing codework plugin add installing a plugin, then codework plugin list with its ID resolved.
 </Placeholder>
 
-## How plugins work
+## How Plugins Work
 
 A plugin is a JavaScript module that default-exports one plugin definition. You name it in a [settings file](/docs/plugins/configuration), install it with the [CLI](/docs/plugins/install), and CodeWork loads it at the start of every session.
 
@@ -26,7 +26,7 @@ Loading never touches the network. If a plugin is declared but not installed, Co
 	once it loads.
 </Callout>
 
-## Plugin kinds
+## Plugin Kinds
 
 Every plugin declares a `kind`, which is the part of the agent it extends. The kind also decides when it runs: all tool plugins are set up before any prompt plugin, so a prompt plugin always sees the complete tool set.
 
@@ -37,7 +37,7 @@ Every plugin declares a `kind`, which is the part of the agent it extends. The k
 
 Within one kind, plugins run in the order their entries are written, which is what lets one plugin build on another.
 
-## Built-in plugins
+## Built-In Plugins
 
 CodeWork ships these plugins and turns most of them on by default. You can switch any of them on or off from settings by ID.
 
@@ -66,7 +66,7 @@ Turn on the search tools with one entry each:
 
 The `codework.` namespace is reserved for built-ins. Third-party plugins use their own vendor prefix, like `acme.tool.proc`.
 
-## Where plugins come from
+## Where Plugins Come From
 
 | Source         | Example entry                           | Notes                                                       |
 | -------------- | --------------------------------------- | ----------------------------------------------------------- |
@@ -78,23 +78,23 @@ Installed packages live in a shared store under `~/.codework/cache`, so ten proj
 
 ## FAQ
 
-### Do plugins need a build step?
+### Do Plugins Need a Build Step?
 
 Not for a local file. A plugin loaded by path can be plain TypeScript, because Node strips types outside `node_modules`. A plugin installed from npm or git must ship compiled JavaScript.
 
-### Does CodeWork update plugins automatically?
+### Does CodeWork Update Plugins Automatically?
 
 No. A session only loads what is already installed. Run `codework plugin check` to see what is newer and `codework plugin update` to fetch it.
 
-### Can I turn off a built-in tool?
+### Can I Turn Off a Built-In Tool?
 
 Yes. Add `{ "plugin": "codework.tool.bash", "enabled": false }` (or any other built-in ID) to the `plugins` array.
 
-### Where do installed plugins live?
+### Where Do Installed Plugins Live?
 
 In a shared store under `~/.codework/cache/plugins`. Nothing is written into your project except the settings entry.
 
-### Can a project and my user settings both declare plugins?
+### Can a Project and My User Settings Both Declare Plugins?
 
 Yes. The two lists are combined, user first, so project plugins add to your personal ones instead of replacing them.
 

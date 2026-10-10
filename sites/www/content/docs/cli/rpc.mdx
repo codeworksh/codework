@@ -12,7 +12,7 @@ Use it when you want CodeWork to outlive a terminal, to run it on another machin
 	session in another.
 </Placeholder>
 
-## Start the server
+## Start the Server
 
 ```bash
 codework serve
@@ -33,7 +33,7 @@ The server listens on `ws://127.0.0.1:7433/rpc` and prints the address when it's
 	release.
 </Callout>
 
-## Use it from the CLI
+## Use It from the CLI
 
 Point any `run`, `auth`, `session`, or `plugin reload` command at the server:
 
@@ -46,7 +46,7 @@ codework plugin reload
 
 A remote run doesn't boot a local harness. Pressing `ctrl-c` interrupts the shared session on the server; disconnecting without it leaves the work running.
 
-## Link a session to a project
+## Link a Session to a Project
 
 A session remembers which project folder it belongs to, so it picks up that project's settings and plugins wherever it's continued from. Change or clear that link on a running server with:
 

@@ -11,7 +11,7 @@ The [Agent Client Protocol](https://agentclientprotocol.com) (ACP) is an open st
 
 ![CodeWork building a Snake game in Zed's Agent Panel](/images/docs/zed/zed-thread.png)
 
-## Start the ACP server
+## Start the ACP Server
 
 ```bash
 codework acp
@@ -19,14 +19,14 @@ codework acp
 
 You don't normally run this yourself. You tell your editor to run it, as in the [Zed setup](#zed) below. It accepts the [global flags](/docs/cli/reference#global-flags) `--home`, `--database`, and `--user-config-dir`.
 
-## Transport and message format
+## Transport and Message Format
 
 - **Transport:** stdio. The editor writes requests to CodeWork's stdin and reads responses and notifications from its stdout.
 - **Messages:** JSON-RPC 2.0, one message per line (newline-delimited JSON).
 - **Protocol version:** ACP v1.
 - **Logs:** written to stderr, since stdout is reserved for the protocol.
 
-## Request flow
+## Request Flow
 
 1. `initialize`: CodeWork reports its name, version, and capabilities.
 2. `session/new`: CodeWork creates a session rooted at the editor's project folder. That folder's `.codework/settings.jsonc` applies, as if you'd run the CLI from it.
@@ -46,7 +46,7 @@ codework auth login --openai-codex
 
 Or pass an API key in the environment the editor launches CodeWork with, such as `OPENROUTER_API_KEY` or `GEMINI_API_KEY`. See [Models & Pricing](/docs/models) for every provider.
 
-## Sessions and configuration
+## Sessions and Configuration
 
 ACP sessions are regular CodeWork sessions, stored in the same database as the ones you start with `codework run`. Your editor's history and the CLI see the same sessions.
 
@@ -63,7 +63,7 @@ CodeWork has no permission prompts. It runs every tool, including shell commands
 
 ACP sessions run locally in your project folder. Use [`codework run --sandbox-driver`](/docs/cli/using#sandboxes) when you want isolation.
 
-## Prompt content
+## Prompt Content
 
 | Content                     | Support                                       |
 | --------------------------- | --------------------------------------------- |
@@ -79,7 +79,7 @@ If a plugin in your settings fails to load, CodeWork shows a warning in the conv
 
 [Zed](https://zed.dev) has built-in ACP support. Register CodeWork once and it shows up next to Zed's own agent in the Agent Panel.
 
-### 1. Find the CodeWork binary
+### 1. Find the CodeWork Binary
 
 Zed may not see your shell's `PATH` when it's opened from the Dock or Start menu. Get the absolute path to be safe:
 
@@ -89,7 +89,7 @@ which codework
 
 You'll get something like `/Users/you/Library/pnpm/bin/codework`. Use that wherever the config below says `codework`.
 
-### 2. Add CodeWork as a custom agent
+### 2. Add CodeWork as a Custom Agent
 
 Open **Agent Settings**, go to **External Agents**, click **Add Agent**, and choose **Add Custom Agent**. Zed opens your settings file with a new `agent_servers` entry. Fill it in like this:
 
@@ -112,7 +112,7 @@ Open **Agent Settings**, go to **External Agents**, click **Add Agent**, and cho
 
 ![Zed settings with the CodeWork agent server](/images/docs/zed/zed-settings.png)
 
-### 3. Start a thread
+### 3. Start a Thread
 
 1. Open a project folder in Zed. CodeWork works in this folder.
 2. Open the Agent Panel from the status bar or the command palette.
@@ -123,7 +123,7 @@ Open **Agent Settings**, go to **External Agents**, click **Add Agent**, and cho
 
 You can bind a key to `agent: new external agent thread` to jump straight into a new thread.
 
-### Working in a thread
+### Working in a Thread
 
 - **Add context:** type `@` to mention a file or symbol, or add a selection to the thread. Paste or drop images if your model accepts them.
 - **Switch models and thinking effort:** use the pickers at the bottom of the panel. Search the model picker by display name, such as "DeepSeek V4.1 Flash", not by its `openrouter/...` ID. Changes apply from the next prompt, and Zed remembers your choice as `default_config_options.model` in the CodeWork entry of its settings.
@@ -136,7 +136,7 @@ You can bind a key to `agent: new external agent thread` to jump straight into a
 	reopen the thread from history.
 </Placeholder>
 
-## Other editors
+## Other Editors
 
 Any editor that speaks ACP can run CodeWork with the same command, `codework acp`. See the [list of ACP clients](https://agentclientprotocol.com/overview/clients).
 

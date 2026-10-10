@@ -6,9 +6,9 @@
 		"quickstart",
 		"models",
 		"changelog",
-		"---Customize---",
-		"plugins",
 		"---CLI---",
-		"...cli"
+		"...cli",
+		"---Customize---",
+		"plugins"
 	]
 }

@@ -1,4 +1,4 @@
 {
 	"title": "Models & Pricing",
-	"pages": ["index", "openai-codex", "github-copilot", "openrouter"]
+	"pages": ["index", "catalog", "custom", "openai-codex", "github-copilot", "openrouter"]
 }

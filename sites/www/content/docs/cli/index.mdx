@@ -6,7 +6,7 @@ description: Run the CodeWork agent from your terminal, inside your editor over 
 
 The `codework` CLI is the main way to use CodeWork. It runs agent sessions in your repository or in a sandbox, manages models and plugins, and powers every other interface: `codework acp` serves editors and `codework serve` starts the RPC server.
 
-## Getting started
+## Getting Started
 
 ```bash
 pnpm add -g @codeworksh/cli
@@ -25,7 +25,7 @@ codework run "Explain how this repository is structured"
 
 See [Installation](/docs/cli/installation) for requirements, signing in, and updates.
 
-## Running a prompt
+## Running a Prompt
 
 `codework run` sends one prompt, streams CodeWork's answer and tool calls to your terminal, and exits when the turn is done. It prints the session ID so you can continue later.
 
@@ -61,7 +61,7 @@ codework run --provider openrouter --model deepseek/deepseek-v4.1-flash "Plan th
 
 Browse what's available with `codework models`. Set a default in your settings so you don't have to pass flags every time; see [Capabilities](/docs/cli/using#models-and-settings).
 
-## Sandbox controls
+## Sandbox Controls
 
 By default CodeWork works directly in your folder. Pass `--sandbox-driver` to run a new session in an isolated remote sandbox instead:
 
@@ -76,7 +76,7 @@ The run prints the sandbox ID. Reuse the same sandbox for another session with `
 	sandbox ID printed at the end.
 </Placeholder>
 
-## Editors and servers
+## Editors and Servers
 
 | Command          | Use it for                                                                |
 | ---------------- | ------------------------------------------------------------------------- |

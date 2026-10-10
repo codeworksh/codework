@@ -1,5 +1,5 @@
 ---
-title: Build a plugin
+title: Build a Plugin
 sidebarTitle: Build a Plugin
 description: Write tool and prompt plugins with the @codeworksh/plugin SDK, test them locally, and publish them to npm or git.
 ---
@@ -8,14 +8,14 @@ A plugin is a module that default-exports one object made with `Plugin.define`. 
 
 Plugins build against `@codeworksh/plugin`, the same contract the harness itself depends on. Tool schemas use [Effect](https://effect.website) `Schema`.
 
-## Your first plugin
+## Your First Plugin
 
 The shortest path is a single file in your repository. It needs no build, no publish, and no version.
 
 <div className="fd-steps">
 <div className="fd-step">
 
-### Create the file
+### Create the File
 
 Put it next to your project settings:
 
@@ -51,7 +51,7 @@ export default Plugin.define({
 </div>
 <div className="fd-step">
 
-### Install the SDK beside it
+### Install the SDK Beside It
 
 A local plugin's imports resolve from its own folder, so `@codeworksh/plugin` and `effect` need to be installed where Node can find them, usually your project root:
 
@@ -62,7 +62,7 @@ pnpm add -D @codeworksh/plugin effect
 </div>
 <div className="fd-step">
 
-### Declare it with options
+### Declare It with Options
 
 ```jsonc title=".codework/settings.jsonc"
 {
@@ -78,7 +78,7 @@ Or let the CLI write the module entry for you with `codework plugin add ./.codew
 </div>
 <div className="fd-step">
 
-### Try it
+### Try It
 
 ```bash
 codework run "How do we deploy this project?"
@@ -93,7 +93,7 @@ codework run "How do we deploy this project?"
 	Session transcript where the agent calls project_fact and answers from the configured facts.
 </Placeholder>
 
-## The plugin definition
+## The Plugin Definition
 
 | Field    | Required | Meaning                                                                                                        |
 | -------- | -------- | -------------------------------------------------------------------------------------------------------------- |
@@ -107,7 +107,7 @@ The `codework.` prefix is reserved for built-ins, and a third-party plugin that 
 
 `options` is the plugin's own block from settings, or `{}` when there is none. CodeWork never validates it, so check the shape yourself and fall back to defaults instead of throwing. A plugin with nothing configured should usually register nothing.
 
-### The setup context
+### The Setup Context
 
 `ctx` is one object shared by every plugin in a session.
 
@@ -125,7 +125,7 @@ The `codework.` prefix is reserved for built-ins, and a third-party plugin that 
 
 The registries are open only while `setup` runs. Do your registration there, not later.
 
-## Tool plugins
+## Tool Plugins
 
 A tool is a definition plus a handler. `Tool.make` builds both at once:
 
@@ -144,7 +144,7 @@ A tool is a definition plus a handler. `Tool.make` builds both at once:
 
 Register it with `Tool.register(tool)` when the handler needs nothing but its arguments.
 
-### Run inside the sandbox
+### Run Inside the Sandbox
 
 Sessions can run on your machine, in a container, or in a remote sandbox. A tool that touches files or runs commands should go through the session's sandbox rather than `node:fs` or `node:child_process`, so it acts wherever the session actually runs.
 
@@ -189,7 +189,7 @@ export default Plugin.define({
 
 `SandboxIO` provides `Shell`, `FileSystem`, `Current` (the sandbox's identity and working directory), and `Mutation`. A failure the model can act on, like a non-zero exit, should be a typed `failure`. A failure it cannot act on, like a shell that will not start, is a defect.
 
-### Guard and rewrite tool calls
+### Guard and Rewrite Tool Calls
 
 `tools.add` takes optional hooks that run around every call to that tool:
 
@@ -209,7 +209,7 @@ ctx.plugin.tools.add(tool, {
 
 Return `undefined` to leave the call alone. Hooks may also return a `Promise` or an Effect.
 
-### Change someone else's tool
+### Change Someone Else's Tool
 
 `tools.update` patches the prose of a tool another plugin registered, without touching its handler or hooks. It can change `description`, `label`, `promptSnippet`, and `promptGuidelines`.
 
@@ -221,7 +221,7 @@ The tool must already be registered, so your plugin's entry has to come after th
 
 Registering a tool with a name that already exists replaces it. That is how a plugin overrides a built-in, but disabling the built-in by ID is usually clearer.
 
-## Prompt plugins
+## Prompt Plugins
 
 Prompt plugins run after every tool plugin, so `ctx.plugin.tools.list()` already holds the final tool set.
 
@@ -268,7 +268,7 @@ Section names are lowercase letters, digits, `_` and `-`. The names `tools`, `cw
 
 Replacing the foundation discards the default prompt `codework.prompt.default` wrote. Prefer appending to a section unless you mean to.
 
-## Publish a plugin
+## Publish a Plugin
 
 A published plugin is an ordinary npm package or git repository that default-exports a plugin.
 
@@ -305,7 +305,7 @@ Users then install it with:
 codework plugin add @acme/codework-tool-proc
 ```
 
-## Example plugins
+## Example Plugins
 
 The CodeWork repository ships worked examples under [`extras/`](https://github.com/codeworksh/codework/tree/canary/extras). Each one is loaded in CodeWork's own test suite, so they stay correct.
 

@@ -1,12 +1,12 @@
 ---
-title: Configure plugins
+title: Configure Plugins
 sidebarTitle: Configuration
 description: Declare plugins in settings.jsonc, pass them options, and turn them on or off for a project or for yourself.
 ---
 
 Plugins are configured in the `plugins` array of a CodeWork settings file. The same array both selects which modules load and configures the plugins they contain.
 
-## Settings files
+## Settings Files
 
 CodeWork reads two settings layers and combines them, lowest priority first:
 
@@ -26,7 +26,7 @@ CodeWork re-reads settings at every turn. Changing an option, flipping `enabled`
 	does not skip a broken file, because skipping it would silently drop everything else it configures.
 </Callout>
 
-## Two kinds of entries
+## Two Kinds of Entries
 
 Every item in `plugins` is one of two things.
 
@@ -51,7 +51,7 @@ Every item in `plugins` is one of two things.
 
 A configuration entry never loads, installs, or moves anything. If its name matches nothing that was selected, it is ignored rather than failing the session, so a typo costs you a missing option, not a network fetch. Check `codework plugin list` when an option seems to have no effect.
 
-### Configuration fields
+### Configuration Fields
 
 | Field     | Type    | Meaning                                                                                       |
 | --------- | ------- | --------------------------------------------------------------------------------------------- |
@@ -62,7 +62,7 @@ A configuration entry never loads, installs, or moves anything. If its name matc
 
 When several entries configure the same plugin, the last `enabled` wins and the last `options` block replaces earlier ones whole. Option blocks are never merged, because CodeWork cannot know what their keys mean.
 
-## Turn plugins on and off
+## Turn Plugins On and Off
 
 Disable any plugin, built-in or not, by ID:
 
@@ -78,7 +78,7 @@ Some plugins are **opt-in**: they load with everything else but stay off until a
 
 Disabling a plugin in your project file also works on a plugin that came from your user file, since the lists are combined.
 
-## Pass options to a plugin
+## Pass Options to a Plugin
 
 Options belong to the plugin, so their shape is whatever the plugin's README says. For example, the example `house-style` prompt plugin takes a list of rules:
 
@@ -96,7 +96,7 @@ Options belong to the plugin, so their shape is whatever the plugin's README say
 
 Put the module entry before its configuration. `codework plugin add` does this for you, inserting the module ahead of any configuration you already wrote for it.
 
-## Paths in settings
+## Paths in Settings
 
 A relative path in a settings file resolves from the directory of the file that declares it, not from where you run CodeWork.
 
