@@ -28,7 +28,9 @@ The server listens on `ws://127.0.0.1:7433/rpc` and prints the address when it's
 `--home`, `--database`, and `--user-config-dir` belong on the server. Model credentials, plugins, and working directories are resolved there, not on the client.
 
 <Callout type="warn">
-	The server has no authentication yet. It binds to loopback by default; don't expose it on a public interface.
+	The RPC server is not secure yet: it has no authentication, so anyone who can reach the port can drive your sessions.
+	It binds to loopback by default; don't expose it on a public interface. Authentication will be added in a later
+	release.
 </Callout>
 
 ## Use it from the CLI

@@ -45,9 +45,13 @@ Sessions created through ACP are regular CodeWork sessions. They're stored in th
 | Session titles         | Yes. CodeWork titles a session from its first prompt and the editor picks it up             |
 | Plugin errors          | Shown in the conversation as a warning, so you see them without digging through logs        |
 
+<Callout type="warn">
+	CodeWork has no permission prompts. It runs every tool, including shell commands and file edits, without asking
+	first. Review its changes with git, and run work you don't want touching your machine in a sandbox from the CLI.
+</Callout>
+
 ### Not supported yet
 
-- **Tool permission prompts.** CodeWork runs tools, including shell commands, without asking the editor first.
 - **Sandboxes.** ACP sessions run locally in your project folder. Use [`codework run --sandbox-driver`](/docs/cli#run-a-session) when you want isolation.
 - **Editor-side file system and terminals.** CodeWork reads files and runs commands itself, in the session's working directory, rather than through the editor.
 - **Signing in from the editor.** ACP doesn't carry a login flow. Sign in with the CLI or set an API key first (see below).
