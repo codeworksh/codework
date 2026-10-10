@@ -1,8 +1,10 @@
-import { GripVertical, Maximize2, Minimize2, Pin, PinOff, type LucideIcon } from "lucide-react";
+import { GripVertical, Maximize2, Minimize2, Pin, PinOff, X, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Rect } from "webwm";
 import { useDragHandle } from "webwm/react";
 import type { DragMovement } from "webwm/dom";
+
+import { Title } from "./title";
 
 interface FrameProps {
 	readonly title: string;
@@ -19,6 +21,7 @@ interface FrameProps {
 	readonly onFocus: () => void;
 	readonly onPin: () => void;
 	readonly onMaximize: () => void;
+	readonly onClose: () => void;
 	readonly onDragStart: () => void;
 	readonly onDragMove: (movement: DragMovement) => void;
 	readonly onDragEnd: (movement: DragMovement) => void;
@@ -45,7 +48,7 @@ export function Frame(props: FrameProps) {
 			style={{ width: rect.w, height: rect.h, transform: `translate(${x}px, ${y}px)` }}
 			onPointerDown={props.onFocus}
 		>
-			<div className="flex h-full flex-col overflow-hidden rounded-[16px] border border-edge bg-linear-to-b from-frame-top to-frame to-40% shadow-frame [corner-shape:superellipse(1.25)] group-data-[focused=true]:border-edge-focus">
+			<div className="panel flex h-full flex-col overflow-hidden group-data-[focused=true]:border-edge-focus">
 				<header className="flex items-center gap-1 py-1.5 pr-2 pl-1.5 select-none">
 					<div
 						ref={handleRef}
@@ -56,9 +59,7 @@ export function Frame(props: FrameProps) {
 							aria-hidden
 						/>
 						{Icon && <Icon className="mr-0.5 size-3.5 shrink-0 text-ink-muted" strokeWidth={1.75} aria-hidden />}
-						<span className="truncate font-medium text-ink-muted group-data-[focused=true]:text-ink">
-							{title}
-						</span>
+						<Title text={title} className="font-medium text-ink-muted group-data-[focused=true]:text-ink" />
 					</div>
 					<Action
 						icon={pinned ? PinOff : Pin}
@@ -72,6 +73,7 @@ export function Frame(props: FrameProps) {
 						active={false}
 						onClick={props.onMaximize}
 					/>
+					<Action icon={X} label="Close" active={false} onClick={props.onClose} />
 				</header>
 				<div className="min-h-0 flex-1 overflow-hidden">{props.children}</div>
 			</div>
