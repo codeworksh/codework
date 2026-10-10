@@ -77,7 +77,7 @@ describe("ToolRegistry — execution through the snapshot", () => {
 // ── Progress delivery via a File IO sink (models any async sink: DB / queue / HTTP) ──────────
 
 const utf8 = new TextEncoder();
-const output = (text: string): ToolShellEvent => ({ _tag: "Output", bytes: utf8.encode(text) });
+const output = (text: string): ToolShellEvent => ({ _tag: "Output", channel: "stdout", bytes: utf8.encode(text) });
 const exited = (exitCode: number): ToolShellEvent => ({ _tag: "Exit", exitCode });
 
 // A streaming ToolShell so bash takes its variant-B path (it reports progress only when streaming).

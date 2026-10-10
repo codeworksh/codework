@@ -45,7 +45,7 @@ const script = (
 	file: string,
 	limits: Limits,
 	pipeline: (source: string) => string,
-	report: ReadonlyArray<string> = [],
+	report: ReadonlyArray<string>,
 ) =>
 	[
 		`f=${quote(file)}`,
@@ -54,8 +54,12 @@ const script = (
 		"run() (",
 		command,
 		")",
+		// The side files are created the same exclusive way as the output file.
 		// `umask` may be missing where modes mean nothing (an in-process shell over a virtual filesystem).
-		`if mkdir -p ${quote(posix.dirname(file))} 2>/dev/null && (umask 077 2>/dev/null; set -C && : > "$f") 2>/dev/null; then`,
+		`if mkdir -p ${quote(posix.dirname(file))} 2>/dev/null && (umask 077 2>/dev/null; set -C && : > "$f" && : > "$f.rc" && : > "$f.pid") 2>/dev/null; then`,
+		// What `cleanup` kills when the command outlives its deadline: this shell
+		// and, when it leads one, its process group.
+		'\techo "$$ $(ps -o pgid= -p $$ 2>/dev/null)" > "$f.pid"',
 		// A pipe ends only when every writer — background jobs included — has
 		// closed it. POSIX `sh` has no `pipefail`, so the exit code travels
 		// through a side file.
@@ -69,39 +73,18 @@ const script = (
 		`\t[ -s "$f" ] && [ "$(tail -c 1 "$f" | wc -l | awk '{ print $1 }')" = 0 ] && l=$((l + 1))`,
 		`\tkeep=0; { [ "$b" -gt ${limits.maxBytes} ] || [ "$l" -gt ${limits.maxLines} ]; } && keep=1`,
 		...report.map((line) => `\t${line}`),
+		// The pid stays on record until here: the tail below is still this command's work.
 		'\t[ "$keep" = 1 ] || rm -f "$f"',
-		'\texit "${rc:-1}"',
+		'\trm -f "$f.pid"; exit "${rc:-1}"',
 		"fi",
+		// Whatever the failed creation left behind. A random name is nobody else's.
+		'rm -f "$f" "$f.rc" "$f.pid" 2>/dev/null',
 		`printf '%s\\n' ${quote(unsaved(file))}`,
 		"run 2>&1",
 	].join("\n");
 
-/** For a backend that streams: all output still flows back as it is produced, and a copy lands in the file. */
-export const streaming = (command: string, file: string, limits: Limits) =>
-	script(command, file, limits, (source) => `${source} | tee -a "$f"`);
-
-/**
- * For a backend that returns output only at the end: the output goes to the
- * file, and only a header — its size, and whether the file was kept — and a
- * tail window come back. The bytes before the window are skipped, and counted.
- */
-export const buffered = (command: string, file: string, limits: Limits) =>
-	script(
-		command,
-		file,
-		limits,
-		// The redirect sits on the whole group, not on `cat`: an in-process shell
-		// (just-bash) re-encodes text that a command reading a pipe writes to a file.
-		(source) => `{ ${source} | cat; } >> "$f"`,
-		[
-			`printf '${HEADER} %s %s %s\\n' "$b" "$n" "$keep"`,
-			`tail -n ${limits.maxLines} "$f" | tail -c ${windowBytes(limits)}`,
-		],
-	);
-
-export interface Window {
-	/** The end of the output: whole lines, unless the byte cap cut into the first. */
-	readonly text: string;
+/** The sandbox's own account of the output: its raw size, and whether the file was kept. */
+export interface Report {
 	/** Bytes and newlines in the whole output. */
 	readonly bytes: number;
 	readonly newlines: number;
@@ -109,19 +92,90 @@ export interface Window {
 	readonly kept: boolean;
 }
 
-const header = new RegExp(`^${HEADER} (\\d+) (\\d+) ([01])$`);
+const header = new RegExp(`^${HEADER} (\\d+) (\\d+) ([01])(?: (\\d+))?$`, "m");
+
+const parse = (match: RegExpExecArray): Report => ({
+	bytes: Number(match[1]),
+	newlines: Number(match[2]),
+	kept: match[3] === "1",
+});
+
+/**
+ * For a backend that streams: all output still flows back as it is produced, and
+ * a copy lands in the file. The report rides on stderr, the wrapper's own channel
+ * since the command's is folded into stdout.
+ */
+export const streaming = (command: string, file: string, limits: Limits) =>
+	script(command, file, limits, (source) => `${source} | tee -a "$f"`, [
+		`printf '${HEADER} %s %s %s\\n' "$b" "$n" "$keep" >&2`,
+	]);
+
+/** Read {@link streaming}'s stderr: the report, if it got that far, and anything else the wrapper said. */
+export const report = (stderr: string): { readonly report: Report | undefined; readonly rest: string } => {
+	const match = header.exec(stderr);
+	if (match === null) return { report: undefined, rest: stderr };
+	return {
+		report: parse(match),
+		rest: stderr.slice(0, match.index) + stderr.slice(match.index + match[0].length).replace(/^\n/, ""),
+	};
+};
+
+/**
+ * For a backend that returns output only at the end: the output goes to the
+ * file, and only a header — the report plus the window's raw size — and a tail
+ * window come back. The bytes before the window are skipped, and counted.
+ */
+export const buffered = (command: string, file: string, limits: Limits) => {
+	const tail = `tail -n ${limits.maxLines} "$f" | tail -c ${windowBytes(limits)}`;
+	return script(
+		command,
+		file,
+		limits,
+		// The redirect sits on the whole group, not on `cat`: an in-process shell
+		// (just-bash) re-encodes text that a command reading a pipe writes to a file.
+		(source) => `{ ${source} | cat; } >> "$f"`,
+		[`w=$(${tail} | wc -c | awk '{ print $1 }')`, `printf '${HEADER} %s %s %s %s\\n' "$b" "$n" "$keep" "$w"`, tail],
+	);
+};
+
+export interface Window extends Report {
+	/** The end of the output: whole lines, unless the byte cap cut into the first. */
+	readonly text: string;
+	/** Raw bytes of `text` — the decoded text may be larger. */
+	readonly textBytes: number;
+}
 
 /** Read {@link buffered}'s result; `undefined` when the output was not saved and came back whole. */
 export const window = (stdout: string): Window | undefined => {
 	const newline = stdout.indexOf("\n");
 	const match = header.exec(newline === -1 ? stdout : stdout.slice(0, newline));
-	if (match === null) return undefined;
-	return {
-		text: stdout.slice(newline + 1),
-		bytes: Number(match[1]),
-		newlines: Number(match[2]),
-		kept: match[3] === "1",
-	};
+	if (match === null || match[4] === undefined) return undefined;
+	return { ...parse(match), text: stdout.slice(newline + 1), textBytes: Number(match[4]) };
 };
+
+/**
+ * After a deadline or an interrupt the wrapper never reaches its own cleanup.
+ * Kill what it started — its process group when it led one, else its process
+ * tree, whole while the wrapper itself still runs — and remove the side files,
+ * and the output file unless `keep`.
+ */
+export const cleanup = (file: string, keep: boolean) =>
+	[
+		`f=${quote(file)}`,
+		'set -- $(cat "$f.pid" 2>/dev/null)',
+		// Collected before anything is killed: a child whose parent died is no longer in the tree.
+		`tree() { echo "$1"; for c in $(ps -A -o pid= -o ppid= 2>/dev/null | awk -v p="$1" '$2 == p { print $1 }'); do tree "$c"; done; }`,
+		'if [ -n "${1:-}" ]; then',
+		'\tpids=$(tree "$1")',
+		// The one spelling of a group kill that `dash` accepts too. Without `ps` the
+		// group is unknown: try it anyway, as no group but the wrapper's can carry its pid.
+		'\t[ "${2:-$1}" = "$1" ] && kill -s KILL -- "-$1" 2>/dev/null',
+		"\tkill -9 $pids 2>/dev/null",
+		"fi",
+		`rm -f -- ${keep ? '"$f.rc" "$f.pid"' : '"$f" "$f.rc" "$f.pid"'}`,
+	].join("\n");
+
+/** Remove an output file that {@link cleanup} kept. */
+export const remove = (file: string) => `rm -f -- ${quote(file)}`;
 
 export * as Output from "./output.ts";
