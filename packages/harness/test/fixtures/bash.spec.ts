@@ -16,13 +16,22 @@ import { toolTurn } from "./llm.ts";
 import { remoteSuite } from "./live.ts";
 import { withSettings } from "./settings.ts";
 
+const SETTLE = "3 seconds";
+
 /** Every call goes through plugin setup, the runner, the mounted driver and durable settlement. */
 export const bashPluginSpec = (options: {
 	readonly driver: SandboxDriver.Registration;
 	readonly resourceId: () => Promise<string>;
 	readonly streaming: boolean;
 }) => {
-	const exchange = (input: { root: string; custom: string }, command: string, live = false, timeout?: number) =>
+	const exchange = (
+		input: { root: string; custom: string },
+		command: string,
+		live = false,
+		timeout?: number,
+		/** A file the command keeps writing: read twice, {@link SETTLE} apart, once the call is settled. */
+		witness?: string,
+	) =>
 		Effect.gen(function* () {
 			const sandbox = yield* Sandbox.register({
 				driver: options.driver.registered.name,
@@ -55,7 +64,20 @@ export const bashPluginSpec = (options: {
 								fs.readFile(saved).pipe(Effect.tap(() => fs.rm(saved, { force: true }))),
 							),
 						);
-			return { call, messages, spilled };
+			const witnessed =
+				witness === undefined
+					? undefined
+					: yield* controller.withMount(
+							sandbox.id,
+							Effect.gen(function* () {
+								const fs = yield* SandboxIO.FileSystem;
+								yield* Effect.sleep(SETTLE);
+								const settled = yield* fs.readFile(witness);
+								yield* Effect.sleep(SETTLE);
+								return { settled, later: yield* fs.readFile(witness) };
+							}),
+						);
+			return { call, messages, spilled, witnessed };
 		}).pipe(
 			Effect.provide(
 				Harness.layer({
@@ -101,6 +123,45 @@ export const bashPluginSpec = (options: {
 					expect(spilled).toBe(Array.from({ length: 2500 }, (_, index) => `${index + 1}\n`).join(""));
 					expect(details.output).toContain("2500\n");
 					expect(details.output).not.toMatch(/^1\n/);
+				}),
+			180_000,
+		);
+
+		it(
+			"keeps output that decodes larger than it is, and numbers its lines as the sandbox counts them",
+			() =>
+				withSettings(async (input) => {
+					const { call, spilled } = await exchange(
+						input,
+						`awk 'BEGIN { for (i = 0; i < 2500; i++) printf "\\377\\n" }'`,
+					);
+					expect(call.status).toBe("completed");
+					const details = call.result.details as { truncated: boolean; fullOutputPath?: string; output: string };
+					expect(details.truncated).toBe(true);
+					expect(spilled).toHaveLength(5000);
+					expect(
+						details.output.endsWith(`[showing lines 501-2500 of 2500. Full output: ${details.fullOutputPath}]`),
+					).toBe(true);
+				}),
+			180_000,
+		);
+
+		it(
+			"stops the command at the deadline",
+			() =>
+				withSettings(async (input) => {
+					const witness = `/tmp/heartbeat-${randomUUID()}`;
+					const { call, witnessed } = await exchange(
+						input,
+						`while :; do echo tick >> ${witness}; sleep 0.2; done`,
+						false,
+						3,
+						witness,
+					);
+					expect(call.status).toBe("error");
+					expect(call.result.details).toMatchObject({ _tag: "BashTimedOut", timeoutSeconds: 3 });
+					expect(witnessed?.settled.length).toBeGreaterThan(0);
+					expect(witnessed?.later).toBe(witnessed?.settled);
 				}),
 			180_000,
 		);

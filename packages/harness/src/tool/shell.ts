@@ -46,7 +46,7 @@ const widenExecError = <A>(
  * exit rides as the last element.)
  */
 export type ToolShellEvent =
-	| { readonly _tag: "Output"; readonly bytes: Uint8Array }
+	| { readonly _tag: "Output"; readonly channel: "stdout" | "stderr"; readonly bytes: Uint8Array }
 	| { readonly _tag: "Exit"; readonly exitCode: number };
 
 export interface IToolShell {
@@ -123,7 +123,7 @@ export const fromSandboxShell: Layer.Layer<ToolShell, never, Shell> = Layer.effe
 						Stream.map((chunk): ToolShellEvent =>
 							chunk._tag === "exit"
 								? { _tag: "Exit", exitCode: chunk.exitCode }
-								: { _tag: "Output", bytes: chunk.bytes },
+								: { _tag: "Output", channel: chunk._tag, bytes: chunk.bytes },
 						),
 						Stream.mapError((cause) => new ToolShellError({ command, cause })),
 					)

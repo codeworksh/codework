@@ -514,4 +514,74 @@ describe("settings at exchange boundaries", () => {
 				}).pipe(Effect.scoped, Effect.timeout("10 seconds")),
 			);
 		}));
+
+	it("clamps the thinking level to the selected model and persists the clamped one", () =>
+		withSettings(async ({ root, custom }) => {
+			const inputs: Array<LLM.Input & { readonly reasoning: string | undefined }> = [];
+			const open: LLM.Open = (input, signal) =>
+				Effect.sync(() => {
+					inputs.push({ ...input, reasoning: LLM.runtimeOptions(input, input.resolvedModel, signal).reasoning });
+					return terminal(input, inputs.length);
+				});
+			const select = (model: object) => writeFile(join(custom, "settings.jsonc"), JSON.stringify({ model }));
+			const cases = [
+				// A model without reasoning runs the default "high" at "off".
+				{ provider: "openai", id: "gpt-4o-mini" },
+				// Nearest supported level, upward first: "minimal" is null on gpt-5.4.
+				{ provider: "openai", id: "gpt-5.4", thinkingLevel: "minimal" },
+				// Then downward: gpt-5.4 maps no "max".
+				{ provider: "openai", id: "gpt-5.4", thinkingLevel: "max" },
+				// A supported level is left alone.
+				{ provider: "openai", id: "gpt-5.6-luna", thinkingLevel: "max" },
+			];
+			await Effect.runPromise(
+				Effect.gen(function* () {
+					const handle = yield* Session.create({ directory: root });
+					const rows: Array<Record<string, unknown>> = [];
+					for (const [index, item] of cases.entries()) {
+						yield* Effect.promise(() => select(item));
+						yield* handle.run(`turn ${index}`);
+						const persisted = (yield* handle.path()).at(-1)?.entry;
+						const envelope: { readonly thinkingLevel?: string } = JSON.parse(persisted?.data ?? "{}");
+						rows.push({
+							requested: item.thinkingLevel ?? defaults.model.thinkingLevel,
+							model: `${item.provider}/${item.id}`,
+							configuration: (yield* Session.configuration(handle.id)).thinkingLevel,
+							request: {
+								reasoning: inputs.at(-1)?.reasoning ?? null,
+								thinkingLevel: inputs.at(-1)?.thinkingLevel,
+							},
+							persisted: persisted?.type === "assistant" ? envelope.thinkingLevel : persisted?.type,
+						});
+					}
+					// A session's own choice is clamped the same way, and re-fitted on a model change.
+					yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
+					yield* Effect.promise(() => select({ provider: "openai", id: "gpt-4o-mini" }));
+					const chosenOff = (yield* Session.configuration(handle.id)).thinkingLevel;
+					yield* Effect.promise(() => select({ provider: "openai", id: "gpt-5.6-luna" }));
+					const chosenMax = (yield* Session.configuration(handle.id)).thinkingLevel;
+					rows.push({
+						chosen: "max",
+						models: { "openai/gpt-4o-mini": chosenOff, "openai/gpt-5.6-luna": chosenMax },
+					});
+					yield* Effect.promise(() =>
+						expect(JSON.stringify(rows, null, "\t")).toMatchFileSnapshot(
+							"./__artifacts__/settings.thinking.json",
+						),
+					);
+				}).pipe(
+					Effect.provide(
+						Harness.layer({
+							home: join(root, "home"),
+							hostCwd: root,
+							database: ":memory:",
+							userConfigDir: custom,
+							llm: open,
+						}),
+					),
+					Effect.scoped,
+					Effect.timeout("10 seconds"),
+				),
+			);
+		}));
 });

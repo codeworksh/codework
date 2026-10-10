@@ -57,14 +57,14 @@ export const options = Effect.fn("ACP.config.options")(function* (
 	];
 
 	const info = catalog[selection.provider]?.[selection.model];
-	const levels = info === undefined || info.reasoning === false ? [] : Model.getSupportedThinkingLevels(info);
+	const levels = info === undefined ? [] : Model.getSupportedThinkingLevels(info);
 	if (levels.some((level) => level !== "off")) {
 		result.push({
 			id: THOUGHT_LEVEL,
 			name: "Thinking Effort",
 			category: "thought_level",
 			type: "select",
-			currentValue: levels.includes(selection.thinkingLevel) ? selection.thinkingLevel : (levels[0] ?? "off"),
+			currentValue: selection.thinkingLevel,
 			options: levels.map((level) => ({ value: level, name: thinkingLabels[level] })),
 		});
 	}

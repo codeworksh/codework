@@ -1,11 +1,13 @@
 /*
- * Files are read only through the sandbox, never from the host (`hostDir`, `hostCwd`, `<home>`):
- * a host-side global file would be read twice whenever a local sandbox's walk passes through it.
+ * Discovery happens only in the sandbox namespace, local or remote: never through the host
+ * filesystem (`hostDir`, `hostCwd`) and never from a global `<home>` file. The walk ends at the
+ * sandbox root, which on a local sandbox is `/`, so a `~/AGENTS.md` above the cwd loads like any
+ * other ancestor's file.
  */
 
 import * as Section from "@codeworksh/plugin/plugin/section";
 import { Effect, Option } from "effect";
-import type { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
+import { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
 import { posix } from "../../../util/posix.ts";
 import type { SharedPluginContext } from "../../context.ts";
@@ -21,7 +23,7 @@ const names: ReadonlyArray<string> = [
 	"CLAUDE.MD",
 ];
 
-interface Found {
+export interface Found {
 	readonly name: string;
 	readonly path: string;
 	/** Undefined for a file with nothing to say, which still claims its directory. */
@@ -33,16 +35,45 @@ const content = (raw: string): string | undefined => {
 	return text.trim().length === 0 ? undefined : text;
 };
 
-const first = Effect.fnUntraced(function* (fs: SandboxFileSystem.Interface, directory: string) {
+/** `directory` and every ancestor up to the sandbox root, closest first. */
+const ancestors = (directory: string): string[] => {
+	const chain: string[] = [];
+	for (let current = directory; ; current = posix.dirname(current)) {
+		chain.push(current);
+		if (posix.dirname(current) === current) return chain;
+	}
+};
+
+/**
+ * Which of `paths` are files. Absence is the expected answer and stays silent; any other failure
+ * (permissions, a remote blip) is logged so a dropped file is not a mystery, then counts as absent.
+ */
+const present = (fs: SandboxFileSystem.Interface, paths: ReadonlyArray<string>) =>
+	Effect.forEach(
+		paths,
+		(path) =>
+			fs.stat(path).pipe(
+				Effect.map((stat) => stat.isFile),
+				Effect.catch((error) =>
+					SandboxFileSystem.isNotFoundError(error.cause)
+						? Effect.succeed(false)
+						: Effect.logWarning(`could not stat instruction file ${path}`, error.cause).pipe(Effect.as(false)),
+				),
+			),
+		{ concurrency: "unbounded" },
+	).pipe(Effect.map((hits) => new Set(paths.filter((_, index) => hits[index]))));
+
+/** A file that stats but does not read falls through to the next candidate. */
+const first = Effect.fnUntraced(function* (
+	fs: SandboxFileSystem.Interface,
+	directory: string,
+	files: ReadonlySet<string>,
+) {
 	for (const name of names) {
 		const path = posix.join(directory, name);
-		const isFile = yield* fs.stat(path).pipe(
-			Effect.map((stat) => stat.isFile),
-			Effect.orElseSucceed(() => false),
-		);
-		if (!isFile) continue;
+		if (!files.has(path)) continue;
 		const raw = yield* fs.readFile(path).pipe(
-			Effect.tapError((cause) => Effect.logWarning(`could not read instruction file ${path}`, cause)),
+			Effect.tapError((error) => Effect.logWarning(`could not read instruction file ${path}`, error.cause)),
 			Effect.option,
 		);
 		if (Option.isSome(raw)) return { name, path, content: content(raw.value) } satisfies Found;
@@ -66,34 +97,39 @@ const shadowing = (location: SharedPluginContext["location"]): string | undefine
 	return location.space.location.startsWith(`${main}/`) ? main : undefined;
 };
 
+/** One file per directory from the sandbox root down to the cwd, closest last so it has the final word. */
+export const discover = Effect.fnUntraced(function* (
+	fs: SandboxFileSystem.Interface,
+	location: SharedPluginContext["location"],
+) {
+	const chain = ancestors(location.directory);
+	// Every candidate of every directory is probed in one batch: on a remote sandbox each stat is a
+	// network round trip, so a serial walk cost 6 x depth of them before every model call.
+	const files = yield* present(
+		fs,
+		chain.flatMap((directory) => names.map((name) => posix.join(directory, name))),
+	);
+	const found = yield* Effect.forEach(chain, (directory) => first(fs, directory, files), {
+		concurrency: "unbounded",
+	});
+
+	// The worktree root is always on the chain, since the cwd is at or beneath it.
+	const main = shadowing(location);
+	const worktree = main === undefined ? undefined : found[chain.indexOf(location.space.location)];
+	const walked: Found[] = [];
+	for (const [index, here] of found.entries()) {
+		const shadowed = chain[index] === main && worktree !== undefined && here?.name === worktree.name;
+		if (here !== undefined && !shadowed) walked.push(here);
+	}
+	return walked.reverse();
+});
+
 export const instructionPlugin = define({
 	id: "codework.prompt.instruction",
 	kind: "prompt",
 	setup: Effect.fn("InstructionPlugin.setup")(function* (ctx) {
 		const fs = yield* SandboxIO.FileSystem;
-
-		// The worktree root is probed before the walk and again during it.
-		const probed = new Map<string, Found | undefined>();
-		const at = Effect.fnUntraced(function* (directory: string) {
-			if (!probed.has(directory)) probed.set(directory, yield* first(fs, directory));
-			return probed.get(directory);
-		});
-
-		const walked: Found[] = [];
-		const main = shadowing(ctx.location);
-		const worktree = main === undefined ? undefined : yield* at(ctx.location.space.location);
-		let current: string = ctx.location.directory;
-		while (true) {
-			const here = yield* at(current);
-			const shadowed = current === main && worktree !== undefined && here?.name === worktree.name;
-			if (here !== undefined && !shadowed) walked.push(here);
-			const parent = posix.dirname(current);
-			if (parent === current) break;
-			current = parent;
-		}
-
-		// Closest file last, so it has the final word.
-		const files = walked.reverse().filter((file) => file.content !== undefined);
+		const files = (yield* discover(fs, ctx.location)).filter((file) => file.content !== undefined);
 		if (files.length === 0) return;
 
 		const prompt = ctx.plugin.prompt;

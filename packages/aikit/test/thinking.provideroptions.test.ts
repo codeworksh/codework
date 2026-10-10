@@ -86,6 +86,12 @@ describe("Thinking.disabledProviderOptions", () => {
 		).toEqual({});
 	});
 
+	it("names Anthropic's default effort for a Claude that cannot disable thinking", () => {
+		expect(
+			off({ id: "claude-opus-5-5", npm: "@ai-sdk/anthropic", reasoning: true, thinkingLevelMap: { off: null } }),
+		).toEqual({ anthropic: { effort: "high" } });
+	});
+
 	it("falls back to the lowest level for Gemini 3, which cannot disable thinking", () => {
 		expect(
 			off({

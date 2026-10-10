@@ -1,0 +1,15 @@
+<project_context>
+Project-Specific Instructions & Guidelines:
+
+<project_instructions path="<root>/repo/AGENTS.md">
+Repo.
+
+</project_instructions>
+
+<project_instructions path="<root>/repo/src/AGENTS.md">
+Src: still loaded.
+
+</project_instructions>
+</project_context>
+
+could not stat instruction file <root>/repo/src/AGENTS.override.md Error: ELOOP: too many symbolic links encountered, stat '<root>/repo/src/AGENTS.override.md'

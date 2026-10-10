@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { stream } from "../src/llm/stream.ts";
 import type { RuntimeOptions } from "../src/llm/options.ts";
+import { fakeAnthropic, textReply } from "./utils/anthropic.ts";
 import { makeGeneratedModel, makeModel, makeUserMessage } from "./utils/fixtures.ts";
 
 async function capture(model: ReturnType<typeof makeModel>, options: RuntimeOptions) {
@@ -24,6 +25,18 @@ async function capture(model: ReturnType<typeof makeModel>, options: RuntimeOpti
 	).result();
 	expect(body).toBeDefined();
 	return { body, message };
+}
+
+/** The same bookkeeping on a request the provider answered, so `start-step` carries the body. */
+async function complete(model: ReturnType<typeof makeModel>, options: RuntimeOptions) {
+	const server = fakeAnthropic(textReply);
+	const message = await stream(
+		model,
+		{ messages: [makeUserMessage("hello")] },
+		{ ...options, apiKey: "test-key", factoryOptions: { fetch: server.fetch } },
+	).result();
+	expect(message.stopReason).toBe("stop");
+	return { body: server.body(), message };
 }
 
 const captureBody = async (...args: Parameters<typeof capture>) => (await capture(...args)).body;
@@ -113,6 +126,14 @@ const budgetClaude = makeModel({
 	reasoning: true,
 	maxTokens: 64_000,
 });
+const alwaysThinkingClaude = makeModel({
+	id: "claude-opus-5-5",
+	npm: "@ai-sdk/anthropic",
+	reasoning: true,
+	maxTokens: 64_000,
+	compat: { forceAdaptiveThinking: true },
+	thinkingLevelMap: { off: null, minimal: null },
+});
 const gemini3 = google({ id: "gemini-3-pro", compat: { supportsThinkingLevel: true } });
 const openrouter = makeModel({
 	id: "z-ai/glm-5.3-flash",
@@ -184,6 +205,32 @@ describe("thinking level bookkeeping", () => {
 		const { body, message } = await capture(unknown, { reasoning: "high" });
 		expect(path(body, "reasoning")).toBeUndefined();
 		expect(message).toMatchObject({ thinkingLevel: "high" });
+		expect(message.providerThinkingLevel).toBeUndefined();
+	});
+
+	it("records Anthropic's default effort for a model that cannot disable thinking", async () => {
+		const { body, message } = await capture(alwaysThinkingClaude, {});
+		expect(path(body, "thinking")).toBeUndefined();
+		expect(path(body, "output_config", "effort")).toBe("high");
+		expect(message).toMatchObject({ thinkingLevel: "off", providerThinkingLevel: "high" });
+	});
+
+	it.each([
+		["the default effort of an always-thinking Claude", alwaysThinkingClaude, {}, "high"],
+		["a clamped effort", adaptiveClaude, { reasoning: "minimal" }, "low"],
+		["a requested effort", adaptiveClaude, { reasoning: "medium" }, "medium"],
+	] as const)("records %s off the answered request", async (_name, model, options, effort) => {
+		const { body, message } = await complete(model, options);
+		expect(path(body, "output_config", "effort")).toBe(effort);
+		expect(message).toMatchObject({
+			thinkingLevel: "reasoning" in options ? options.reasoning : "off",
+			providerThinkingLevel: effort,
+		});
+	});
+
+	it("records no native level off an answered request with thinking disabled", async () => {
+		const { body, message } = await complete(adaptiveClaude, {});
+		expect(path(body, "thinking", "type")).toBe("disabled");
 		expect(message.providerThinkingLevel).toBeUndefined();
 	});
 

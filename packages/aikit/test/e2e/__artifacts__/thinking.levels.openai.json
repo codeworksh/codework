@@ -1,0 +1,188 @@
+{
+	"gpt-6-luna": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": "none",
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "max"
+		}
+	},
+	"gpt-5.6-luna": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": "none",
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "max"
+		}
+	},
+	"gpt-5.5": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": "none",
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "xhigh"
+		}
+	},
+	"gpt-5.4": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": "none",
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "xhigh"
+		}
+	},
+	"gpt-5.4-mini": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": "none",
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "xhigh"
+		}
+	},
+	"gpt-5.4-nano": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": "none",
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "xhigh"
+		}
+	}
+}

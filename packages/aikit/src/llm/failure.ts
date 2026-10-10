@@ -108,9 +108,27 @@ const apiMetadata = (error: APICallError): Metadata => {
 const includes = (value: string | undefined, terms: ReadonlyArray<string>): boolean =>
 	value !== undefined && terms.some((term) => value.toLowerCase().includes(term));
 
+/**
+ * Account limits that reset in hours or need a payment, not a backoff. Codes cover OpenAI's
+ * `insufficient_quota`, Codex's `subscription_sharing_usage_limit_exceeded` and OpenCode's
+ * `GoUsageLimitError`/`FreeUsageLimitError`; the prose covers providers that only say it in words,
+ * except when they describe a per-minute window, which is throttling however it is phrased.
+ */
+const QUOTA_CODE_TERMS = ["quota", "billing", "credit", "usage_limit", "usagelimit"];
+const QUOTA_MESSAGE =
+	/usage limit|quota exceeded|insufficient (?:quota|credits?)|credit balance|billing|out of budget|available balance/i;
+const RATE_LIMIT_CODE_TERMS = ["rate_limit", "ratelimit"];
+const RATE_WINDOW_MESSAGE = /per[- ](?:second|minute)|\b[rt]pm\b/i;
+
+const isQuota = (details: Metadata): boolean => {
+	if (includes(details.code, RATE_LIMIT_CODE_TERMS)) return false;
+	if (includes(details.code, QUOTA_CODE_TERMS)) return true;
+	return QUOTA_MESSAGE.test(details.message) && !RATE_WINDOW_MESSAGE.test(details.message);
+};
+
 /** Classify by provider error code, then HTTP status; shared by request and in-stream failures. */
 const classify = (statusCode: number | undefined, details: Metadata): Failure => {
-	if (includes(details.code, ["quota", "billing", "credit"])) return { _tag: "Quota", ...details };
+	if (isQuota(details)) return { _tag: "Quota", ...details };
 	if (
 		includes(details.code, [
 			"content_filter",
