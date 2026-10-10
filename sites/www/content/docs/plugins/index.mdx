@@ -76,7 +76,29 @@ The `codework.` namespace is reserved for built-ins. Third-party plugins use the
 
 Installed packages live in a shared store under `~/.codework/cache`, so ten projects using the same plugin share one copy. Nothing is ever written into your project except the settings entry.
 
-## Next steps
+## FAQ
+
+### Do plugins need a build step?
+
+Not for a local file. A plugin loaded by path can be plain TypeScript, because Node strips types outside `node_modules`. A plugin installed from npm or git must ship compiled JavaScript.
+
+### Does CodeWork update plugins automatically?
+
+No. A session only loads what is already installed. Run `codework plugin check` to see what is newer and `codework plugin update` to fetch it.
+
+### Can I turn off a built-in tool?
+
+Yes. Add `{ "plugin": "codework.tool.bash", "enabled": false }` (or any other built-in ID) to the `plugins` array.
+
+### Where do installed plugins live?
+
+In a shared store under `~/.codework/cache/plugins`. Nothing is written into your project except the settings entry.
+
+### Can a project and my user settings both declare plugins?
+
+Yes. The two lists are combined, user first, so project plugins add to your personal ones instead of replacing them.
+
+## Related
 
 <Cards>
 	<Card title="Install and manage" href="/docs/plugins/install">

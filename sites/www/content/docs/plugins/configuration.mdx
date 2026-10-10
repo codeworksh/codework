@@ -115,3 +115,14 @@ Plugins run in two passes: every `tool` plugin first, then every `prompt` plugin
 Within one kind, plugins run in the order their module entries are written, after the built-ins. That order matters when plugins build on each other. A plugin that patches another plugin's tool must come after it, and a prompt plugin that appends to the `rules` section adds to what `codework.prompt.default` already wrote.
 
 Writing a module entry again moves the plugin to the new position. Configuration entries never change the order.
+
+## Related
+
+<Cards>
+	<Card title="Install and manage" href="/docs/plugins/install">
+		Add, install, update, and remove plugins with the CLI.
+	</Card>
+	<Card title="Build a plugin" href="/docs/plugins/authoring">
+		Read your own options in a plugin's setup.
+	</Card>
+</Cards>
