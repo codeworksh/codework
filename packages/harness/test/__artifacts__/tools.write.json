@@ -1,0 +1,117 @@
+{
+	"results": {
+		"new": {
+			"status": "completed",
+			"content": [
+				{
+					"type": "text",
+					"text": "Successfully wrote to new.txt"
+				}
+			]
+		},
+		"parents": {
+			"status": "completed",
+			"content": [
+				{
+					"type": "text",
+					"text": "Successfully wrote to nested/dir/file.txt"
+				}
+			]
+		},
+		"overwrite": {
+			"status": "completed",
+			"content": [
+				{
+					"type": "text",
+					"text": "Successfully wrote to existing.txt"
+				}
+			]
+		},
+		"empty": {
+			"status": "completed",
+			"content": [
+				{
+					"type": "text",
+					"text": "Successfully wrote to cleared.txt"
+				}
+			]
+		},
+		"unicode": {
+			"status": "completed",
+			"content": [
+				{
+					"type": "text",
+					"text": "Successfully wrote to unicode.txt"
+				}
+			]
+		},
+		"at-prefix": {
+			"status": "completed",
+			"content": [
+				{
+					"type": "text",
+					"text": "Successfully wrote to @mention.txt"
+				}
+			]
+		},
+		"unicode-space": {
+			"status": "completed",
+			"content": [
+				{
+					"type": "text",
+					"text": "Successfully wrote to two words.txt"
+				}
+			]
+		},
+		"parent-is-file": {
+			"status": "error",
+			"content": [
+				{
+					"type": "text",
+					"text": "ENOTDIR: not a directory, open '<root>/blocker/child.txt'"
+				}
+			],
+			"details": {
+				"_tag": "WriteFailed",
+				"message": "ENOTDIR: not a directory, open '<root>/blocker/child.txt'"
+			}
+		},
+		"directory": {
+			"status": "error",
+			"content": [
+				{
+					"type": "text",
+					"text": "EISDIR: illegal operation on a directory, open '<root>/dir'"
+				}
+			],
+			"details": {
+				"_tag": "WriteFailed",
+				"message": "EISDIR: illegal operation on a directory, open '<root>/dir'"
+			}
+		},
+		"invalid-arguments": {
+			"status": "error",
+			"content": [
+				{
+					"type": "text",
+					"text": "Invalid arguments for write: Missing key\n  at [\"content\"]"
+				}
+			],
+			"details": {
+				"error": "invalid_arguments",
+				"name": "write"
+			}
+		}
+	},
+	"files": {
+		"blocker": "a file\n",
+		"cleared.txt": "",
+		"dir/inside.txt": "x",
+		"existing.txt": "new\n",
+		"mention.txt": "via mention\n",
+		"nested/dir/file.txt": "deep\n",
+		"new.txt": "hello\n",
+		"two words.txt": "spaced\n",
+		"unicode.txt": "héllo wörld 🚀\r\nline two"
+	}
+}

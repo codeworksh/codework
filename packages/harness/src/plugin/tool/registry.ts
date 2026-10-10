@@ -33,6 +33,10 @@ const assertTool = (tool: RegisteredTool) => {
 		throw new Error(`Tool ${name}: encodeContent must be a function`);
 	if (def.encodeFailureContent !== undefined && !Predicate.isFunction(def.encodeFailureContent))
 		throw new Error(`Tool ${name}: encodeFailureContent must be a function`);
+	if (def.prepareArguments !== undefined && !Predicate.isFunction(def.prepareArguments))
+		throw new Error(`Tool ${name}: prepareArguments must be a function`);
+	if (def.encodeDetails !== undefined && !Predicate.isFunction(def.encodeDetails))
+		throw new Error(`Tool ${name}: encodeDetails must be a function`);
 	if (!Predicate.isFunction(tool.handler)) throw new Error(`Tool ${name}: handler must be a function`);
 };
 

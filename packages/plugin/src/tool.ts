@@ -52,6 +52,11 @@ export interface ToolDef<
 	readonly promptSnippet?: string;
 	/** Optional guideline bullets appended to the default system prompt Guidelines section when this tool is active. */
 	readonly promptGuidelines?: ReadonlyArray<string>;
+	/**
+	 * Repair argument shapes models commonly send before they are validated against
+	 * `parameters`. Return a copy; a throw makes the arguments invalid.
+	 */
+	readonly prepareArguments?: (args: unknown) => unknown;
 	readonly parameters: Params;
 	/**
 	 * How the provider constrains the generated arguments. `{ type: "json_schema", strict: "prefer" }` sends
@@ -65,6 +70,11 @@ export interface ToolDef<
 	readonly encodeContent?: (success: Success["Type"]) => ModelContent;
 	/** Render an expected failure for the model. Omit → executor falls back to JSON text. */
 	readonly encodeFailureContent?: (failure: Failure["Type"]) => ModelContent;
+	/**
+	 * The `details` kept with a success, for UIs and programmatic consumers. Omit → the encoded
+	 * success. Set it when `encodeContent` already carries the payload, so it is not stored twice.
+	 */
+	readonly encodeDetails?: (success: Success["Type"]) => unknown;
 }
 
 /** A handler: validated params + context → typed success or typed failure. */
@@ -103,12 +113,15 @@ interface DefineInput<
 	readonly description: string;
 	readonly label?: string;
 	readonly promptSnippet?: string;
+	readonly promptGuidelines?: ReadonlyArray<string>;
+	readonly prepareArguments?: (args: unknown) => unknown;
 	readonly parameters: Params;
 	readonly constrainedSampling?: Message.Tool["constrainedSampling"];
 	readonly success: Success;
 	readonly failure?: Failure;
 	readonly encodeContent?: (success: Success["Type"]) => ModelContent;
 	readonly encodeFailureContent?: (failure: Failure["Type"]) => ModelContent;
+	readonly encodeDetails?: (success: Success["Type"]) => unknown;
 }
 
 /** Define a pure tool (handler attached later via {@link implement} or a toolkit). */

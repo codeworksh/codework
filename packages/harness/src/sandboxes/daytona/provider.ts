@@ -154,6 +154,7 @@ type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
 	| "readFile"
 	| "readFileBuffer"
+	| "readBytes"
 	| "writeFile"
 	| "stat"
 	| "lstat"
@@ -166,6 +167,10 @@ type RemoteFilesystemProvider = Pick<
 >;
 
 const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
+	const run = async (argv: ReadonlyArray<string>) => {
+		const result = await sandbox.process.executeCommand(quoteArgv(argv), options.cwd, undefined, options.execTimeout);
+		return { exitCode: result.exitCode, stdout: result.result ?? "" };
+	};
 	const filesystem: RemoteFilesystemProvider = {
 		readFile: async (path: string) => (await sandbox.fs.downloadFile(path)).toString("utf8"),
 		readFileBuffer: async (path: string) => new Uint8Array(await sandbox.fs.downloadFile(path)),
@@ -227,15 +232,8 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
 			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
 		},
-		scanLines: SandboxFileSystem.Scan.viaShell(async (argv) => {
-			const result = await sandbox.process.executeCommand(
-				quoteArgv(argv),
-				options.cwd,
-				undefined,
-				options.execTimeout,
-			);
-			return { exitCode: result.exitCode, stdout: result.result ?? "" };
-		}),
+		scanLines: SandboxFileSystem.Scan.viaShell(run),
+		readBytes: SandboxFileSystem.readBytesViaShell(run),
 	};
 
 	return filesystem;

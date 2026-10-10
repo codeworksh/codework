@@ -197,6 +197,7 @@ type RemoteFilesystemProvider = Pick<
 	RemoteFileSystem.Interface,
 	| "readFile"
 	| "readFileBuffer"
+	| "readBytes"
 	| "writeFile"
 	| "stat"
 	| "lstat"
@@ -213,6 +214,10 @@ type RemoteFilesystemProvider = Pick<
 // paths against `cwd` and guarantees parent creation on `writeFile`. Only
 // `realpath` has no fs counterpart and shells out.
 const providerFrom = (sandbox: RemoteSandbox, options: Options): RemoteFilesystemProvider => {
+	const run = async (argv: ReadonlyArray<string>) => {
+		const result = await (await spawnArgv(sandbox, options, argv)).wait();
+		return { exitCode: result.exitCode, stdout: await result.stdout(), stderr: await result.stderr() };
+	};
 	const filesystem: RemoteFilesystemProvider = {
 		readFile: (path: string) => sandbox.fs.readFile(path, "utf8"),
 		readFileBuffer: async (path: string) => new Uint8Array(await sandbox.fs.readFile(path)),
@@ -256,10 +261,8 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options): RemoteFilesyste
 			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
 			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
 		},
-		scanLines: SandboxFileSystem.Scan.viaShell(async (argv) => {
-			const result = await (await spawnArgv(sandbox, options, argv)).wait();
-			return { exitCode: result.exitCode, stdout: await result.stdout(), stderr: await result.stderr() };
-		}),
+		scanLines: SandboxFileSystem.Scan.viaShell(run),
+		readBytes: SandboxFileSystem.readBytesViaShell(run),
 	};
 
 	return filesystem;

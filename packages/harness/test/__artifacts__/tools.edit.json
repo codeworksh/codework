@@ -1,0 +1,571 @@
+{
+	"single": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in single.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 hello world\n+1 hello pi",
+			"patch": "--- single.txt\n+++ single.txt\n@@ -1,1 +1,1 @@\n-hello world\n+hello pi\n",
+			"firstChangedLine": 1
+		},
+		"after": "hello pi\n"
+	},
+	"multi-disjoint": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 2 block(s) in multi-disjoint.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 alpha\n+1 ALPHA\n 2 beta\n-3 gamma\n+3 GAMMA\n 4 delta",
+			"patch": "--- multi-disjoint.txt\n+++ multi-disjoint.txt\n@@ -1,4 +1,4 @@\n-alpha\n+ALPHA\n beta\n-gamma\n+GAMMA\n delta\n",
+			"firstChangedLine": 1
+		},
+		"after": "ALPHA\nbeta\nGAMMA\ndelta\n"
+	},
+	"multi-large-gap": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 3 block(s) in multi-large-gap.txt."
+			}
+		],
+		"details": {
+			"diff": "     ...\n  96 line 096\n  97 line 097\n  98 line 098\n  99 line 099\n-100 line 100\n+100 LINE 100\n 101 line 101\n 102 line 102\n 103 line 103\n 104 line 104\n     ...\n 296 line 296\n 297 line 297\n 298 line 298\n 299 line 299\n-300 line 300\n+300 LINE 300\n 301 line 301\n 302 line 302\n 303 line 303\n 304 line 304\n     ...\n 496 line 496\n 497 line 497\n 498 line 498\n 499 line 499\n-500 line 500\n+500 LINE 500\n 501 line 501\n 502 line 502\n 503 line 503\n 504 line 504\n     ...",
+			"patch": "--- multi-large-gap.txt\n+++ multi-large-gap.txt\n@@ -96,9 +96,9 @@\n line 096\n line 097\n line 098\n line 099\n-line 100\n+LINE 100\n line 101\n line 102\n line 103\n line 104\n@@ -296,9 +296,9 @@\n line 296\n line 297\n line 298\n line 299\n-line 300\n+LINE 300\n line 301\n line 302\n line 303\n line 304\n@@ -496,9 +496,9 @@\n line 496\n line 497\n line 498\n line 499\n-line 500\n+LINE 500\n line 501\n line 502\n line 503\n line 504\n",
+			"firstChangedLine": 100
+		},
+		"after": "line 001\nline 002\nline 003\nline 004\nline 005\nline 006\nline 007\nline 008\nline 009\nline 010\nline 011\nline 012\nline 013\nline 014\nline 015\nline 016\nline 017\nline 018\nline 019\nline 020\nline 021\nline 022\nline 023\nline 024\nline 025\nline 026\nline 027\nline 028\nline 029\nline 030\nline 031\nline 032\nline 033\nline 034\nline 035\nline 036\nline 037\nline 038\nline 039\nline 040\nline 041\nline 042\nline 043\nline 044\nline 045\nline 046\nline 047\nline 048\nline 049\nline 050\nline 051\nline 052\nline 053\nline 054\nline 055\nline 056\nline 057\nline 058\nline 059\nline 060\nline 061\nline 062\nline 063\nline 064\nline 065\nline 066\nline 067\nline 068\nline 069\nline 070\nline 071\nline 072\nline 073\nline 074\nline 075\nline 076\nline 077\nline 078\nline 079\nline 080\nline 081\nline 082\nline 083\nline 084\nline 085\nline 086\nline 087\nline 088\nline 089\nline 090\nline 091\nline 092\nline 093\nline 094\nline 095\nline 096\nline 097\nline 098\nline 099\nLINE 100\nline 101\nline 102\nline 103\nline 104\nline 105\nline 106\nline 107\nline 108\nline 109\nline 110\nline 111\nline 112\nline 113\nline 114\nline 115\nline 116\nline 117\nline 118\nline 119\nline 120\nline 121\nline 122\nline 123\nline 124\nline 125\nline 126\nline 127\nline 128\nline 129\nline 130\nline 131\nline 132\nline 133\nline 134\nline 135\nline 136\nline 137\nline 138\nline 139\nline 140\nline 141\nline 142\nline 143\nline 144\nline 145\nline 146\nline 147\nline 148\nline 149\nline 150\nline 151\nline 152\nline 153\nline 154\nline 155\nline 156\nline 157\nline 158\nline 159\nline 160\nline 161\nline 162\nline 163\nline 164\nline 165\nline 166\nline 167\nline 168\nline 169\nline 170\nline 171\nline 172\nline 173\nline 174\nline 175\nline 176\nline 177\nline 178\nline 179\nline 180\nline 181\nline 182\nline 183\nline 184\nline 185\nline 186\nline 187\nline 188\nline 189\nline 190\nline 191\nline 192\nline 193\nline 194\nline 195\nline 196\nline 197\nline 198\nline 199\nline 200\nline 201\nline 202\nline 203\nline 204\nline 205\nline 206\nline 207\nline 208\nline 209\nline 210\nline 211\nline 212\nline 213\nline 214\nline 215\nline 216\nline 217\nline 218\nline 219\nline 220\nline 221\nline 222\nline 223\nline 224\nline 225\nline 226\nline 227\nline 228\nline 229\nline 230\nline 231\nline 232\nline 233\nline 234\nline 235\nline 236\nline 237\nline 238\nline 239\nline 240\nline 241\nline 242\nline 243\nline 244\nline 245\nline 246\nline 247\nline 248\nline 249\nline 250\nline 251\nline 252\nline 253\nline 254\nline 255\nline 256\nline 257\nline 258\nline 259\nline 260\nline 261\nline 262\nline 263\nline 264\nline 265\nline 266\nline 267\nline 268\nline 269\nline 270\nline 271\nline 272\nline 273\nline 274\nline 275\nline 276\nline 277\nline 278\nline 279\nline 280\nline 281\nline 282\nline 283\nline 284\nline 285\nline 286\nline 287\nline 288\nline 289\nline 290\nline 291\nline 292\nline 293\nline 294\nline 295\nline 296\nline 297\nline 298\nline 299\nLINE 300\nline 301\nline 302\nline 303\nline 304\nline 305\nline 306\nline 307\nline 308\nline 309\nline 310\nline 311\nline 312\nline 313\nline 314\nline 315\nline 316\nline 317\nline 318\nline 319\nline 320\nline 321\nline 322\nline 323\nline 324\nline 325\nline 326\nline 327\nline 328\nline 329\nline 330\nline 331\nline 332\nline 333\nline 334\nline 335\nline 336\nline 337\nline 338\nline 339\nline 340\nline 341\nline 342\nline 343\nline 344\nline 345\nline 346\nline 347\nline 348\nline 349\nline 350\nline 351\nline 352\nline 353\nline 354\nline 355\nline 356\nline 357\nline 358\nline 359\nline 360\nline 361\nline 362\nline 363\nline 364\nline 365\nline 366\nline 367\nline 368\nline 369\nline 370\nline 371\nline 372\nline 373\nline 374\nline 375\nline 376\nline 377\nline 378\nline 379\nline 380\nline 381\nline 382\nline 383\nline 384\nline 385\nline 386\nline 387\nline 388\nline 389\nline 390\nline 391\nline 392\nline 393\nline 394\nline 395\nline 396\nline 397\nline 398\nline 399\nline 400\nline 401\nline 402\nline 403\nline 404\nline 405\nline 406\nline 407\nline 408\nline 409\nline 410\nline 411\nline 412\nline 413\nline 414\nline 415\nline 416\nline 417\nline 418\nline 419\nline 420\nline 421\nline 422\nline 423\nline 424\nline 425\nline 426\nline 427\nline 428\nline 429\nline 430\nline 431\nline 432\nline 433\nline 434\nline 435\nline 436\nline 437\nline 438\nline 439\nline 440\nline 441\nline 442\nline 443\nline 444\nline 445\nline 446\nline 447\nline 448\nline 449\nline 450\nline 451\nline 452\nline 453\nline 454\nline 455\nline 456\nline 457\nline 458\nline 459\nline 460\nline 461\nline 462\nline 463\nline 464\nline 465\nline 466\nline 467\nline 468\nline 469\nline 470\nline 471\nline 472\nline 473\nline 474\nline 475\nline 476\nline 477\nline 478\nline 479\nline 480\nline 481\nline 482\nline 483\nline 484\nline 485\nline 486\nline 487\nline 488\nline 489\nline 490\nline 491\nline 492\nline 493\nline 494\nline 495\nline 496\nline 497\nline 498\nline 499\nLINE 500\nline 501\nline 502\nline 503\nline 504\nline 505\nline 506\nline 507\nline 508\nline 509\nline 510\nline 511\nline 512\nline 513\nline 514\nline 515\nline 516\nline 517\nline 518\nline 519\nline 520\nline 521\nline 522\nline 523\nline 524\nline 525\nline 526\nline 527\nline 528\nline 529\nline 530\nline 531\nline 532\nline 533\nline 534\nline 535\nline 536\nline 537\nline 538\nline 539\nline 540\nline 541\nline 542\nline 543\nline 544\nline 545\nline 546\nline 547\nline 548\nline 549\nline 550\nline 551\nline 552\nline 553\nline 554\nline 555\nline 556\nline 557\nline 558\nline 559\nline 560\nline 561\nline 562\nline 563\nline 564\nline 565\nline 566\nline 567\nline 568\nline 569\nline 570\nline 571\nline 572\nline 573\nline 574\nline 575\nline 576\nline 577\nline 578\nline 579\nline 580\nline 581\nline 582\nline 583\nline 584\nline 585\nline 586\nline 587\nline 588\nline 589\nline 590\nline 591\nline 592\nline 593\nline 594\nline 595\nline 596\nline 597\nline 598\nline 599\nline 600\n"
+	},
+	"against-original": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 2 block(s) in against-original.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 foo\n-2 bar\n+1 foo bar\n+2 BAR\n 3 baz",
+			"patch": "--- against-original.txt\n+++ against-original.txt\n@@ -1,3 +1,3 @@\n-foo\n-bar\n+foo bar\n+BAR\n baz\n",
+			"firstChangedLine": 1
+		},
+		"after": "foo bar\nBAR\nbaz\n"
+	},
+	"empty-edits": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Edit tool input is invalid. edits must contain at least one replacement."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Edit tool input is invalid. edits must contain at least one replacement."
+		}
+	},
+	"overlap": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "edits[0] and edits[1] overlap in overlap.txt. Merge them into one edit or target disjoint regions."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "edits[0] and edits[1] overlap in overlap.txt. Merge them into one edit or target disjoint regions."
+		}
+	},
+	"no-partial-apply": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Could not find edits[1] in no-partial-apply.txt. The oldText must match exactly including all whitespace and newlines."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Could not find edits[1] in no-partial-apply.txt. The oldText must match exactly including all whitespace and newlines."
+		}
+	},
+	"not-found": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Could not find the exact text in not-found.txt. The old text must match exactly including all whitespace and newlines."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Could not find the exact text in not-found.txt. The old text must match exactly including all whitespace and newlines."
+		}
+	},
+	"duplicate": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Found 3 occurrences of the text in duplicate.txt. The text must be unique. Please provide more context to make it unique."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Found 3 occurrences of the text in duplicate.txt. The text must be unique. Please provide more context to make it unique."
+		}
+	},
+	"duplicate-multi": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Found 2 occurrences of edits[1] in duplicate-multi.txt. Each oldText must be unique. Please provide more context to make it unique."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Found 2 occurrences of edits[1] in duplicate-multi.txt. Each oldText must be unique. Please provide more context to make it unique."
+		}
+	},
+	"empty-old-text": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "oldText must not be empty in empty-old-text.txt."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "oldText must not be empty in empty-old-text.txt."
+		}
+	},
+	"no-change": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "No changes made to no-change.txt. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "No changes made to no-change.txt. The replacement produced identical content. This might indicate an issue with special characters or the text not existing as expected."
+		}
+	},
+	"missing-file": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Could not edit file: missing-file.txt. Error code: ENOENT."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Could not edit file: missing-file.txt. Error code: ENOENT."
+		}
+	},
+	"read-only": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Could not edit file: read-only.txt. Error code: EACCES."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Could not edit file: read-only.txt. Error code: EACCES."
+		}
+	},
+	"directory": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Could not edit file: directory.txt. Path is not a file."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Could not edit file: directory.txt. Path is not a file."
+		}
+	},
+	"symlink": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in symlink.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 target\n+1 edited",
+			"patch": "--- symlink.txt\n+++ symlink.txt\n@@ -1,1 +1,1 @@\n-target\n+edited\n",
+			"firstChangedLine": 1
+		}
+	},
+	"fuzzy-trailing-whitespace": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in fuzzy-trailing-whitespace.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 line one   \n-2 line two  \n+1 replaced\n 3 line three",
+			"patch": "--- fuzzy-trailing-whitespace.txt\n+++ fuzzy-trailing-whitespace.txt\n@@ -1,3 +1,2 @@\n-line one   \n-line two  \n+replaced\n line three\n",
+			"firstChangedLine": 1
+		},
+		"after": "replaced\nline three\n"
+	},
+	"fuzzy-fullwidth": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in fuzzy-fullwidth.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 你好，世界\n-2 你好（世界）\n+1 你好，pi\n+2 你好(pi)",
+			"patch": "--- fuzzy-fullwidth.txt\n+++ fuzzy-fullwidth.txt\n@@ -1,2 +1,2 @@\n-你好，世界\n-你好（世界）\n+你好，pi\n+你好(pi)\n",
+			"firstChangedLine": 1
+		},
+		"after": "你好，pi\n你好(pi)\n"
+	},
+	"fuzzy-nfkc": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in fuzzy-nfkc.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 ＡＢＣ１２３\n-2 café\n+1 XYZ789\n+2 coffee",
+			"patch": "--- fuzzy-nfkc.txt\n+++ fuzzy-nfkc.txt\n@@ -1,2 +1,2 @@\n-ＡＢＣ１２３\n-café\n+XYZ789\n+coffee\n",
+			"firstChangedLine": 1
+		},
+		"after": "XYZ789\ncoffee\n"
+	},
+	"fuzzy-smart-single": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in fuzzy-smart-single.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 console.log(‘hello’);\n+1 console.log('world');",
+			"patch": "--- fuzzy-smart-single.txt\n+++ fuzzy-smart-single.txt\n@@ -1,1 +1,1 @@\n-console.log(‘hello’);\n+console.log('world');\n",
+			"firstChangedLine": 1
+		},
+		"after": "console.log('world');\n"
+	},
+	"fuzzy-smart-double": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in fuzzy-smart-double.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 const msg = “Hello World”;\n+1 const msg = \"Goodbye\";",
+			"patch": "--- fuzzy-smart-double.txt\n+++ fuzzy-smart-double.txt\n@@ -1,1 +1,1 @@\n-const msg = “Hello World”;\n+const msg = \"Goodbye\";\n",
+			"firstChangedLine": 1
+		},
+		"after": "const msg = \"Goodbye\";\n"
+	},
+	"fuzzy-dashes": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in fuzzy-dashes.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 range: 1–5\n-2 break—here\n+1 range: 10-50\n+2 break--here",
+			"patch": "--- fuzzy-dashes.txt\n+++ fuzzy-dashes.txt\n@@ -1,2 +1,2 @@\n-range: 1–5\n-break—here\n+range: 10-50\n+break--here\n",
+			"firstChangedLine": 1
+		},
+		"after": "range: 10-50\nbreak--here\n"
+	},
+	"fuzzy-nbsp": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in fuzzy-nbsp.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 hello world\n+1 hello universe",
+			"patch": "--- fuzzy-nbsp.txt\n+++ fuzzy-nbsp.txt\n@@ -1,1 +1,1 @@\n-hello world\n+hello universe\n",
+			"firstChangedLine": 1
+		},
+		"after": "hello universe\n"
+	},
+	"fuzzy-prefers-exact": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in fuzzy-prefers-exact.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 const x = 'exact';\n+1 const x = 'changed';\n 2 const y = 'other';",
+			"patch": "--- fuzzy-prefers-exact.txt\n+++ fuzzy-prefers-exact.txt\n@@ -1,2 +1,2 @@\n-const x = 'exact';\n+const x = 'changed';\n const y = 'other';\n",
+			"firstChangedLine": 1
+		},
+		"after": "const x = 'changed';\nconst y = 'other';\n"
+	},
+	"fuzzy-not-found": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Could not find the exact text in fuzzy-not-found.txt. The old text must match exactly including all whitespace and newlines."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Could not find the exact text in fuzzy-not-found.txt. The old text must match exactly including all whitespace and newlines."
+		}
+	},
+	"fuzzy-duplicate": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Found 2 occurrences of the text in fuzzy-duplicate.txt. The text must be unique. Please provide more context to make it unique."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Found 2 occurrences of the text in fuzzy-duplicate.txt. The text must be unique. Please provide more context to make it unique."
+		}
+	},
+	"fuzzy-multi": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 2 block(s) in fuzzy-multi.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 console.log(‘hello’);\n-2 hello world\n+1 console.log('world');\n+2 hello universe",
+			"patch": "--- fuzzy-multi.txt\n+++ fuzzy-multi.txt\n@@ -1,2 +1,2 @@\n-console.log(‘hello’);\n-hello world\n+console.log('world');\n+hello universe\n",
+			"firstChangedLine": 1
+		},
+		"after": "console.log('world');\nhello universe\n"
+	},
+	"fuzzy-preserve-duplicate-line": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in fuzzy-preserve-duplicate-line.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 replace me   \n+1 after\n 2 after   ",
+			"patch": "--- fuzzy-preserve-duplicate-line.txt\n+++ fuzzy-preserve-duplicate-line.txt\n@@ -1,2 +1,2 @@\n-replace me   \n+after\n after   \n",
+			"firstChangedLine": 1
+		},
+		"after": "after\nafter   \n"
+	},
+	"fuzzy-preserve-multi": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 2 block(s) in fuzzy-preserve-multi.txt."
+			}
+		],
+		"details": {
+			"diff": " 1 keep before  \n-2 first target  \n-3 first after\n+2 FIRST\n+3 FIRST2\n 4 keep middle   \n-5 second target  \n-6 second after\n+5 SECOND\n+6 SECOND2\n 7 keep after  ",
+			"patch": "--- fuzzy-preserve-multi.txt\n+++ fuzzy-preserve-multi.txt\n@@ -1,7 +1,7 @@\n keep before  \n-first target  \n-first after\n+FIRST\n+FIRST2\n keep middle   \n-second target  \n-second after\n+SECOND\n+SECOND2\n keep after  \n",
+			"firstChangedLine": 2
+		},
+		"after": "keep before  \nFIRST\nFIRST2\nkeep middle   \nSECOND\nSECOND2\nkeep after  \n"
+	},
+	"crlf-lf-old-text": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in crlf-lf-old-text.txt."
+			}
+		],
+		"details": {
+			"diff": " 1 line one\n-2 line two\n+2 replaced line\n 3 line three",
+			"patch": "--- crlf-lf-old-text.txt\n+++ crlf-lf-old-text.txt\n@@ -1,3 +1,3 @@\n line one\n-line two\n+replaced line\n line three\n",
+			"firstChangedLine": 2
+		},
+		"after": "line one\r\nreplaced line\r\nline three\r\n"
+	},
+	"lf-preserved": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in lf-preserved.txt."
+			}
+		],
+		"details": {
+			"diff": " 1 first\n-2 second\n+2 REPLACED\n 3 third",
+			"patch": "--- lf-preserved.txt\n+++ lf-preserved.txt\n@@ -1,3 +1,3 @@\n first\n-second\n+REPLACED\n third\n",
+			"firstChangedLine": 2
+		},
+		"after": "first\nREPLACED\nthird\n"
+	},
+	"crlf-duplicates": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Found 2 occurrences of the text in crlf-duplicates.txt. The text must be unique. Please provide more context to make it unique."
+			}
+		],
+		"details": {
+			"_tag": "EditFailed",
+			"message": "Found 2 occurrences of the text in crlf-duplicates.txt. The text must be unique. Please provide more context to make it unique."
+		}
+	},
+	"bom-crlf": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in bom-crlf.txt."
+			}
+		],
+		"details": {
+			"diff": " 1 first\n-2 second\n+2 REPLACED\n 3 third",
+			"patch": "--- bom-crlf.txt\n+++ bom-crlf.txt\n@@ -1,3 +1,3 @@\n first\n-second\n+REPLACED\n third\n",
+			"firstChangedLine": 2
+		},
+		"after": "﻿first\r\nREPLACED\r\nthird\r\n"
+	},
+	"bom-crlf-multi": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 2 block(s) in bom-crlf-multi.txt."
+			}
+		],
+		"details": {
+			"diff": " 1 first\n-2 second\n+2 SECOND\n 3 third\n-4 fourth\n+4 FOURTH",
+			"patch": "--- bom-crlf-multi.txt\n+++ bom-crlf-multi.txt\n@@ -1,4 +1,4 @@\n first\n-second\n+SECOND\n third\n-fourth\n+FOURTH\n",
+			"firstChangedLine": 2
+		},
+		"after": "﻿first\r\nSECOND\r\nthird\r\nFOURTH\r\n"
+	},
+	"args-json-string": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in args-json-string.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 a b\n+1 A b",
+			"patch": "--- args-json-string.txt\n+++ args-json-string.txt\n@@ -1,1 +1,1 @@\n-a b\n+A b\n",
+			"firstChangedLine": 1
+		},
+		"after": "A b\n"
+	},
+	"args-json-string-object": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in args-json-string-object.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 a b\n+1 A b",
+			"patch": "--- args-json-string-object.txt\n+++ args-json-string-object.txt\n@@ -1,1 +1,1 @@\n-a b\n+A b\n",
+			"firstChangedLine": 1
+		},
+		"after": "A b\n"
+	},
+	"args-single-object": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in args-single-object.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 a b\n+1 A b",
+			"patch": "--- args-single-object.txt\n+++ args-single-object.txt\n@@ -1,1 +1,1 @@\n-a b\n+A b\n",
+			"firstChangedLine": 1
+		},
+		"after": "A b\n"
+	},
+	"args-top-level": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 1 block(s) in args-top-level.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 a b\n+1 A b",
+			"patch": "--- args-top-level.txt\n+++ args-top-level.txt\n@@ -1,1 +1,1 @@\n-a b\n+A b\n",
+			"firstChangedLine": 1
+		},
+		"after": "A b\n"
+	},
+	"args-top-level-appended": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Successfully replaced 2 block(s) in args-top-level-appended.txt."
+			}
+		],
+		"details": {
+			"diff": "-1 a b\n+1 A B",
+			"patch": "--- args-top-level-appended.txt\n+++ args-top-level-appended.txt\n@@ -1,1 +1,1 @@\n-a b\n+A B\n",
+			"firstChangedLine": 1
+		},
+		"after": "A B\n"
+	},
+	"args-invalid-json": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Invalid arguments for edit: Expected array\n  at [\"edits\"]"
+			}
+		],
+		"details": {
+			"error": "invalid_arguments",
+			"name": "edit"
+		}
+	}
+}
