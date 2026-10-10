@@ -5,7 +5,7 @@ import {
 	type ToolBefore,
 	type ToolRegistration,
 } from "../plugin/tool/schema.ts";
-import { Message } from "@codeworksh/aikit";
+import { Message, normalizeOptionalNulls } from "@codeworksh/aikit";
 import {
 	Cause,
 	Duration,
@@ -279,6 +279,22 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 	}
 
 	const wire = [...impls.values()].map(({ tool }) => toAikitTool(tool.definition));
+	// Decode against the JSON codec the wire schema is derived from, so `null` for a `Schema.optional` field
+	// (how strict sampling answers an omitted argument) decodes to `undefined`. Nulls the wire schema itself
+	// does not allow are dropped first.
+	const decoders = new Map(
+		wire.map((tool) => {
+			const decode = Schema.decodeUnknownEffect(
+				Schema.toCodecJson(asCodec(impls.get(tool.name)!.tool.definition.parameters)),
+			);
+			const parse = (args: unknown) => {
+				const normalized = structuredClone(args);
+				normalizeOptionalNulls(normalized, tool.parameters);
+				return decode(normalized);
+			};
+			return [tool.name, parse] as const;
+		}),
+	);
 
 	const handle = <RProgress = never, EProgress = never>(
 		call: Message.ToolCallPendingPart,
@@ -310,7 +326,7 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 					name: call.name,
 				});
 			}
-			const decoded = yield* Effect.result(Schema.decodeEffect(asCodec(def.parameters))(prepared.success));
+			const decoded = yield* Effect.result(decoders.get(call.name)!(prepared.success));
 			if (Result.isFailure(decoded)) {
 				const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 				return errored(call, [text(`Invalid arguments for ${call.name}: ${decoded.failure.message}`)], now, {
