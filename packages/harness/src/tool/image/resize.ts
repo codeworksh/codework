@@ -30,7 +30,7 @@ export const defaults: ResizeOptions = {
 };
 
 /** Tags worker replies: Node posts its own messages on the worker channel too (e.g. under `--watch`). */
-export const REPLY = "codework:image-resize";
+export const REPLY = "codework:photon-image-resize";
 
 export type Reply = { type: typeof REPLY; result: Resized | null } | { type: typeof REPLY; error: string };
 

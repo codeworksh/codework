@@ -9,7 +9,6 @@ export type Inline =
 	| { readonly ok: true; readonly data: string; readonly mimeType: string; readonly hints: ReadonlyArray<string> }
 	| { readonly ok: false; readonly message: string };
 
-/** Formats every provider takes inline; anything else (BMP) is converted to PNG first. */
 const INLINE = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 const toPng = (bytes: Uint8Array) =>
