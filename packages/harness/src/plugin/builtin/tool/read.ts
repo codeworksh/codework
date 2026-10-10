@@ -59,6 +59,7 @@ export const readDef = Tool.define({
 	promptSnippet: "Read file contents",
 	promptGuidelines: ["Use read to examine files instead of cat or sed."],
 	parameters: ReadParams,
+	constrainedSampling: { type: "json_schema", strict: "prefer" },
 	success: ReadSuccess,
 	failure: ReadFailed,
 	encodeContent: (success) =>
