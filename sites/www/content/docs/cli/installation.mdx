@@ -1,0 +1,73 @@
+---
+title: Installation
+description: Install the CodeWork CLI, connect a model, and keep it up to date.
+---
+
+## Requirements
+
+- Node.js 24 or later
+- pnpm
+
+## Install
+
+```bash
+pnpm add -g @codeworksh/cli
+```
+
+Check that it's on your path:
+
+```bash
+codework --help
+```
+
+Every command is `codework <command>`. Add `--help` to any command to see its flags.
+
+## Connect a model
+
+CodeWork needs access to at least one model provider. Sign in with a subscription:
+
+```bash
+codework auth login --openai-codex
+codework auth login --github-copilot
+```
+
+Or set an API key:
+
+```bash
+export ANTHROPIC_API_KEY="..."
+export GEMINI_API_KEY="..."
+```
+
+Credentials from `codework auth login` are stored in your CodeWork home (`~/.codework` by default) and refreshed automatically. See [Models & Pricing](/docs/models) for every provider.
+
+Check what CodeWork can see:
+
+```bash
+codework auth status --openai-codex
+codework models
+```
+
+## Where CodeWork keeps its files
+
+| Path                                 | What's in it                                      |
+| ------------------------------------ | ------------------------------------------------- |
+| `~/.codework/settings.jsonc`         | User settings: default model, plugins             |
+| `~/.codework/aikit/auth.json`        | Subscription credentials                          |
+| `~/.codework/models.gen.json`        | The model catalog, refreshed every 15 minutes     |
+| `<project>/.codework/settings.jsonc` | Project settings, layered over your user settings |
+
+Use `--home` on any command to point CodeWork at a different home.
+
+## Update
+
+```bash
+pnpm add -g @codeworksh/cli@latest
+```
+
+## Uninstall
+
+```bash
+pnpm remove -g @codeworksh/cli
+```
+
+This leaves `~/.codework` in place. Delete it too if you want to remove your sessions, settings, and credentials.

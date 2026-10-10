@@ -1,4 +1,4 @@
 {
 	"title": "Docs",
-	"pages": ["---Get Started---", "index", "quickstart", "models", "changelog", "---CLI---", "cli", "acp", "rpc"]
+	"pages": ["---Get Started---", "index", "quickstart", "models", "changelog", "---CLI---", "...cli"]
 }

@@ -46,6 +46,15 @@ codework plugin reload
 
 A remote run doesn't boot a local harness. Pressing `ctrl-c` interrupts the shared session on the server; disconnecting without it leaves the work running.
 
+## Link a session to a project
+
+A session remembers which project folder it belongs to, so it picks up that project's settings and plugins wherever it's continued from. Change or clear that link on a running server with:
+
+```bash
+codework session link <session-id> ~/work/api
+codework session link <session-id> --unlink
+```
+
 ## Protocol
 
 The endpoint speaks [Effect RPC](https://effect.website) over WebSocket at `/rpc`, with newline-delimited JSON framing. The contract lives in [`packages/codework/src/server/contract.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/server/contract.ts).
@@ -76,20 +85,20 @@ Each busy period starts with `session.execution.started` and ends with exactly o
 
 ## RPC or ACP?
 
-|           | RPC server                               | ACP                                  |
-| --------- | ---------------------------------------- | ------------------------------------ |
-| Transport | WebSocket                                | stdio                                |
-| Lifetime  | Long-lived, outlives clients             | One process per editor connection    |
-| Clients   | CLI, your own tools                      | Editors such as [Zed](/docs/acp/zed) |
-| Sandboxes | Create, share, and reuse across sessions | Local project folder only            |
+|           | RPC server                               | ACP                                      |
+| --------- | ---------------------------------------- | ---------------------------------------- |
+| Transport | WebSocket                                | stdio                                    |
+| Lifetime  | Long-lived, outlives clients             | One process per editor connection        |
+| Clients   | CLI, your own tools                      | Editors such as [Zed](/docs/cli/acp#zed) |
+| Sandboxes | Create, share, and reuse across sessions | Local project folder only                |
 
 ## Related
 
 <Cards>
-	<Card title="CLI" href="/docs/cli">
+	<Card title="Overview" href="/docs/cli">
 		Every command and flag.
 	</Card>
-	<Card title="Agent Client Protocol" href="/docs/acp">
+	<Card title="ACP" href="/docs/cli/acp">
 		Use CodeWork inside your editor.
 	</Card>
 </Cards>
