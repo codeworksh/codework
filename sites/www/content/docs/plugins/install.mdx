@@ -45,7 +45,7 @@ codework plugin add "git+https://github.com/acme/tools.git#main::path:packages/p
 codework plugin add ./plugins/house-style.ts
 ```
 
-A relative path is resolved from where you run the command, then written relative to the settings file so the entry works in any checkout of the repository. Remote tarball URLs are not supported.
+A relative path is resolved from where you run the command (or from the linked session's directory with `--session`). When the plugin and the settings file are both inside the project, the entry is written relative to the settings file so it works in any checkout. Otherwise, as with `-g`, an absolute path is written. Remote tarball URLs are not supported.
 
 Private registries work through your normal `.npmrc`. CodeWork reads the `.npmrc` chain from the project that declares the plugin, so a scoped registry and token configured in the repository are the ones used to install it.
 
@@ -114,6 +114,7 @@ codework plugin check --refresh                  # ignore the cached answer
 
 ```text
 @acme/codework-tool-proc@^1  1.2.0 -> 1.3.1
+1 update available.
 ```
 
 Answers are cached for an hour. Use `--refresh` right after you publish a new version of your own plugin. If a remote cannot be reached, `check` says so and exits non-zero rather than reporting you as up to date.
@@ -145,7 +146,7 @@ codework plugin remove @acme/codework-tool-proc
 codework plugin remove acme.tool.proc -g
 ```
 
-You can name the plugin by package, path, or plugin ID, with or without the version you added it with. `remove` deletes the module entry and any configuration entries written for it, and it still works on a plugin that is broken or not installed.
+You can name the plugin by package, path, or plugin ID. An npm package matches with or without the version you added it with; a git spec must include its `#` ref. `remove` deletes the module entry and any configuration entries written for it. For a plugin that is broken or not installed, name it by package or path, since its ID can only be read from an installed copy.
 
 ## Command reference
 

@@ -148,7 +148,7 @@ Register it with `Tool.register(tool)` when the handler needs nothing but its ar
 
 Sessions can run on your machine, in a container, or in a remote sandbox. A tool that touches files or runs commands should go through the session's sandbox rather than `node:fs` or `node:child_process`, so it acts wherever the session actually runs.
 
-Return an Effect from `setup` to ask for the sandbox services, then bind them to your tool with `Tool.provide`. This example, adapted from the `@acme/codework-tool-proc` example plugin, runs `ps` through the sandbox shell:
+Return an Effect from `setup` to ask for the sandbox services, then use them from your tool's handler. This example, adapted from the `@acme/codework-tool-proc` example plugin, runs `ps` through the sandbox shell:
 
 ```ts title="src/index.ts"
 import { Plugin, Tool } from "@codeworksh/plugin";
@@ -187,7 +187,7 @@ export default Plugin.define({
 });
 ```
 
-`SandboxIO` provides `Shell`, `FileSystem`, and `Current` (the sandbox's identity and working directory). A failure the model can act on, like a non-zero exit, should be a typed `failure`. A failure it cannot act on, like a shell that will not start, is a defect.
+`SandboxIO` provides `Shell`, `FileSystem`, `Current` (the sandbox's identity and working directory), and `Mutation`. A failure the model can act on, like a non-zero exit, should be a typed `failure`. A failure it cannot act on, like a shell that will not start, is a defect.
 
 ### Guard and rewrite tool calls
 

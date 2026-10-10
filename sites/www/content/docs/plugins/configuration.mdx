@@ -40,7 +40,7 @@ Every item in `plugins` is one of two things.
 		// Module entry: install and load this package.
 		"@acme/codework-tool-proc@1.2.0",
 
-		// Configuration entry, addressed by package name. The version can be left off.
+		// Configuration entry, addressed by package name. An npm version can be left off.
 		{ "package": "@acme/codework-tool-proc", "options": { "limit": 40 } },
 
 		// Configuration entry, addressed by plugin ID.
@@ -56,7 +56,7 @@ A configuration entry never loads, installs, or moves anything. If its name matc
 | Field     | Type    | Meaning                                                                                       |
 | --------- | ------- | --------------------------------------------------------------------------------------------- |
 | `plugin`  | string  | The plugin ID to configure, like `acme.tool.proc`. Use this or `package`.                     |
-| `package` | string  | The module string that loaded the plugin: a package name, git spec, or path.                  |
+| `package` | string  | The module string that loaded the plugin: a package name, or the full git spec or path.       |
 | `enabled` | boolean | `false` removes the plugin from the session. `true` turns on a plugin that is off by default. |
 | `options` | object  | Handed to the plugin's `setup` untouched. Each plugin documents its own options.              |
 
@@ -110,7 +110,7 @@ Absolute paths, `~/` paths, and `file:///` URLs are taken as written. A path can
 
 ## Order
 
-Plugins run in two passes: every `tool` plugin first, then every `prompt` plugin. This holds no matter which settings file each came from, so a tool you add in settings always appears in the system prompt's tool list.
+Plugins run in two passes: every `tool` plugin first, then every `prompt` plugin. This holds no matter which settings file each came from, so a tool you add in settings is always in place before the system prompt is built. Tools with a `promptSnippet` are listed in the prompt's tool list.
 
 Within one kind, plugins run in the order their module entries are written, after the built-ins. That order matters when plugins build on each other. A plugin that patches another plugin's tool must come after it, and a prompt plugin that appends to the `rules` section adds to what `codework.prompt.default` already wrote.
 
