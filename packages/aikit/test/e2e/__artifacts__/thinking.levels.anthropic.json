@@ -1,0 +1,217 @@
+{
+	"claude-sonnet-4-6": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null,
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "max"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "max"
+		}
+	},
+	"claude-sonnet-5": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null,
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "max"
+		}
+	},
+	"claude-sonnet-5-5": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": "high"
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "max"
+		}
+	},
+	"claude-opus-4-6": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null,
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "max"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "max"
+		}
+	},
+	"claude-opus-4-8": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null,
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "max"
+		}
+	},
+	"claude-opus-5-5": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": "high"
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": "low"
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": "low"
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": "medium"
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": "high"
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": "xhigh"
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": "max"
+		}
+	},
+	"claude-haiku-4-5-20251001": {
+		"off": {
+			"thinkingLevel": "off",
+			"providerThinkingLevel": null,
+			"thinking": false
+		},
+		"minimal": {
+			"thinkingLevel": "minimal",
+			"providerThinkingLevel": null
+		},
+		"low": {
+			"thinkingLevel": "low",
+			"providerThinkingLevel": null
+		},
+		"medium": {
+			"thinkingLevel": "medium",
+			"providerThinkingLevel": null
+		},
+		"high": {
+			"thinkingLevel": "high",
+			"providerThinkingLevel": null
+		},
+		"xhigh": {
+			"thinkingLevel": "xhigh",
+			"providerThinkingLevel": null
+		},
+		"max": {
+			"thinkingLevel": "max",
+			"providerThinkingLevel": null
+		}
+	}
+}

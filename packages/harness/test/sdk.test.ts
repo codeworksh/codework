@@ -41,7 +41,7 @@ describe("Harness Effect SDK", () => {
 			Effect.gen(function* () {
 				const created = yield* Session.create({
 					directory: process.cwd(),
-					model: { provider: "openai", id: "gpt-4o-mini" },
+					model: { provider: "openai", id: "gpt-5.6-luna" },
 					thinkingLevel: "max",
 				});
 				yield* created.run("first");
@@ -51,8 +51,8 @@ describe("Harness Effect SDK", () => {
 				yield* attached.run("second");
 
 				expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual([
-					{ provider: "openai", model: "gpt-4o-mini", thinkingLevel: "max" },
-					{ provider: "openai", model: "gpt-4o-mini", thinkingLevel: "max" },
+					{ provider: "openai", model: "gpt-5.6-luna", thinkingLevel: "max" },
+					{ provider: "openai", model: "gpt-5.6-luna", thinkingLevel: "max" },
 				]);
 			}),
 			llm,
@@ -76,7 +76,7 @@ describe("Harness Effect SDK", () => {
 					const sessionId = yield* Effect.gen(function* () {
 						const session = yield* Session.create({
 							directory: process.cwd(),
-							model: { provider: "openai", id: "gpt-4o-mini" },
+							model: { provider: "openai", id: "gpt-5.6-luna" },
 							thinkingLevel: "max",
 						});
 						yield* session.run("first");
@@ -97,7 +97,7 @@ describe("Harness Effect SDK", () => {
 					yield* Effect.gen(function* () {
 						const session = yield* Session.attach({
 							sessionId,
-							model: { provider: "openai", id: "gpt-4o" },
+							model: { provider: "openai", id: "gpt-5.4" },
 							thinkingLevel: "low",
 						});
 						yield* session.run("third");
@@ -107,7 +107,7 @@ describe("Harness Effect SDK", () => {
 						const session = yield* Session.attach({ sessionId });
 						expect(yield* Session.configuration(sessionId)).toEqual({
 							provider: "openai",
-							model: "gpt-4o",
+							model: "gpt-5.4",
 							thinkingLevel: "low",
 						});
 						yield* session.run("fourth");
@@ -121,10 +121,10 @@ describe("Harness Effect SDK", () => {
 					 */
 					expect(inputs.map(({ provider, model, thinkingLevel }) => ({ provider, model, thinkingLevel }))).toEqual(
 						[
-							{ provider: "openai", model: "gpt-4o-mini", thinkingLevel: "max" },
-							{ provider: "openai", model: "gpt-4o-mini", thinkingLevel: "max" },
-							{ provider: "openai", model: "gpt-4o", thinkingLevel: "low" },
-							{ provider: "openai", model: "gpt-4o", thinkingLevel: "low" },
+							{ provider: "openai", model: "gpt-5.6-luna", thinkingLevel: "max" },
+							{ provider: "openai", model: "gpt-5.6-luna", thinkingLevel: "max" },
+							{ provider: "openai", model: "gpt-5.4", thinkingLevel: "low" },
+							{ provider: "openai", model: "gpt-5.4", thinkingLevel: "low" },
 						],
 					);
 				});

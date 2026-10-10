@@ -119,7 +119,9 @@ suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 	// command line. That trade is refused; see §16.5 of the Sandbox IO spec.
 	//
 	// So this stays declared until Daytona adds `signal` to `executeCommand` or
-	// cwd/env to sessions, and this suite fails the day either lands.
+	// cwd/env to sessions, and this suite fails the day either lands. The bash
+	// tool is not bound by it: on a deadline it kills the wrapper's process tree
+	// with a second exec (see `bashPluginSpec`).
 	cancellationSpec("daytona", () => ({
 		run: (program) => run(program),
 		witness: `${SANDBOX_CWD}/cancel-progress`,

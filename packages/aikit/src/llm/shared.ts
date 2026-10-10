@@ -17,6 +17,8 @@ export const HelperOptions = Type.Object({
 	sessionId: Type.Optional(Type.String()),
 	apiKey: Type.Optional(Type.String()),
 	timeoutMs: Type.Optional(Type.Number()),
+	/** Abort a stream that goes this long without a chunk, so a dead connection fails instead of waiting out `timeoutMs`. */
+	idleTimeoutMs: Type.Optional(Type.Number()),
 	maxRetries: Type.Optional(Type.Number()),
 	signal: Type.Optional(Type.Unsafe<AbortSignal>({})),
 	onPayload: Type.Optional(

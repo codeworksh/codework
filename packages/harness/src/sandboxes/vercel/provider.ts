@@ -349,6 +349,23 @@ const execArgv =
 		);
 	};
 
+type Logs = ReturnType<Command["logs"]>;
+type LogLine = Logs extends AsyncGenerator<infer L> ? L : never;
+
+// The SDK's `return()` waits for the pending read of the HTTP log stream, which
+// never ends while a surviving child (e.g. `tee`) holds stdout open; abort the
+// read first so closing the stream's scope cannot hang.
+const closable = (logs: Logs): AsyncIterable<LogLine, void> => ({
+	[Symbol.asyncIterator]: () => ({
+		next: () => logs.next(),
+		return: async () => {
+			logs.close();
+			await logs.return().catch(() => {});
+			return { done: true, value: undefined };
+		},
+	}),
+});
+
 // Streaming output via `Command.logs` (an async generator of stdout/stderr
 // entries), followed by the exit code from `wait`. The kill finalizer fires when
 // the consuming scope closes (interrupt / timeout).
@@ -358,9 +375,10 @@ const stream =
 		Stream.unwrap(
 			acquireCommand(sandbox, options, command, opts?.env, opts?.cwd).pipe(
 				Effect.map((cmd) => {
-					const logs = Stream.fromAsyncIterable(cmd.logs(), (cause) => new ShellError({ command, cause })).pipe(
-						Stream.map((log): ExecChunk => ({ _tag: log.stream, bytes: utf8.encode(log.data) })),
-					);
+					const logs = Stream.fromAsyncIterable(
+						closable(cmd.logs()),
+						(cause) => new ShellError({ command, cause }),
+					).pipe(Stream.map((log): ExecChunk => ({ _tag: log.stream, bytes: utf8.encode(log.data) })));
 					const exit = Stream.fromEffect(
 						Effect.tryPromise({ try: () => cmd.wait(), catch: (cause) => new ShellError({ command, cause }) }),
 					).pipe(Stream.map((finished): ExecChunk => ({ _tag: "exit", exitCode: finished.exitCode })));

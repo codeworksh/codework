@@ -386,6 +386,13 @@ export function resolveMaxOutputTokens(model: Model.Info, plan: Thinking.Plan): 
 	return sendsBudget ? plan.maxTokens - plan.budget : plan.maxTokens;
 }
 
+/** A bare number is a total ceiling only; the idle timeout has to be spelled per chunk. */
+function resolveTimeout(options: RuntimeOptions): Parameters<typeof streamText<ToolSet>>[0]["timeout"] {
+	const { timeoutMs, idleTimeoutMs } = options;
+	if (timeoutMs === undefined && idleTimeoutMs === undefined) return undefined;
+	return compact({ totalMs: timeoutMs, firstChunkMs: idleTimeoutMs, chunkMs: idleTimeoutMs });
+}
+
 export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Options> = (model, context, options) => {
 	const stream = new AssistantMessageEventStream();
 	const runtimeOptions = applyDefaultMaxTokens(model, (options ?? {}) as RuntimeOptions);
@@ -422,7 +429,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 				// The exact body is where `providerThinkingLevel` is read from.
 				include: { requestBody: true },
 				abortSignal: runtimeOptions.signal,
-				timeout: runtimeOptions.timeoutMs,
+				timeout: resolveTimeout(runtimeOptions),
 				maxRetries: runtimeOptions.maxRetries,
 				headers: runtimeOptions.headers,
 				// Aikit owns error normalization and emits one terminal error event.

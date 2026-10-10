@@ -1,6 +1,5 @@
-import { Duration, Effect, Layer, Option, Ref, Schema, Stream } from "effect";
+import { Duration, Effect, Fiber, Layer, Option, Ref, Schema, Stream } from "effect";
 import { SandboxIO } from "../../../sandbox/io.ts";
-import { quoteArgv } from "../../../sandbox/shell/shell.ts";
 import { Accumulator, type OutputSnapshot } from "../../../tool/accumulator.ts";
 import { Output } from "../../../tool/output.ts";
 import { ToolProgress } from "../../../tool/progress.ts";
@@ -136,15 +135,16 @@ const present = (snap: OutputSnapshot, lastLineBytes: number, saved: string | un
 const utf8 = new TextEncoder();
 
 /**
- * A command cut off by its deadline never reached the wrapper's own cleanup:
- * remove the exit-code file, and the output file unless the result points at it.
+ * A command cut off by its deadline never reached the wrapper's own cleanup: kill
+ * what is left of it and remove its side files, keeping the output file only when
+ * the result points at it.
  */
 const cleanUp = (shell: IToolShell, file: string, presented: Presented) =>
-	shell
-		.exec(`rm -f -- ${quoteArgv(presented.fullOutputPath === undefined ? [file, `${file}.rc`] : [`${file}.rc`])}`, {
-			timeout: Duration.seconds(5),
-		})
-		.pipe(Effect.ignore);
+	sweep(shell, Output.cleanup(file, presented.fullOutputPath !== undefined));
+
+/** Best-effort housekeeping script: bounded, and never a failure of the tool. */
+const sweep = (shell: IToolShell, script: string) =>
+	shell.exec(script, { timeout: Duration.seconds(5) }).pipe(Effect.ignore);
 
 /** Variant A — buffered: one `exec` that returns the tail of the output and its size. No live progress. */
 const runBuffered = (
@@ -184,14 +184,13 @@ const runBuffered = (
 		const window = Output.window(combined);
 		if (window === undefined) acc.append(utf8.encode(combined));
 		else {
-			const shown = utf8.encode(window.text);
 			// Below the byte cap, the window is whole lines from `tail -n`.
 			acc.skip(
-				window.bytes - shown.length,
+				window.bytes - window.textBytes,
 				window.newlines - countNewlines(window.text),
-				shown.length < Output.windowBytes(limits),
+				window.textBytes < Output.windowBytes(limits),
 			);
-			acc.append(shown);
+			acc.append(utf8.encode(window.text), window.textBytes);
 		}
 		acc.finish();
 		const presented = present(acc.snapshot(), acc.getLastLineBytes(), window?.kept === true ? file : undefined);
@@ -221,16 +220,23 @@ const runStreaming = (
 		// The first output tells whether the sandbox could create the output file.
 		const notice = Output.unsaved(file);
 		let head = "";
+		// The wrapper's own channel: its report, once the command is done.
+		const control = new TextDecoder();
+		let said = "";
 		const consume = stream(Output.streaming(params.command, file, limits)).pipe(
 			Stream.runForEach((event) =>
 				event._tag === "Exit"
 					? Ref.set(exitCode, event.exitCode)
-					: Effect.gen(function* () {
-							if (head.length < notice.length)
-								head += new TextDecoder().decode(event.bytes.slice(0, notice.length));
-							acc.append(event.bytes);
-							yield* progress.report({ content: [{ type: "text", text: acc.snapshot().content }] });
-						}),
+					: event.channel === "stderr"
+						? Effect.sync(() => {
+								said += control.decode(event.bytes, { stream: true });
+							})
+						: Effect.gen(function* () {
+								if (head.length < notice.length)
+									head += new TextDecoder().decode(event.bytes.slice(0, notice.length));
+								acc.append(event.bytes);
+								yield* progress.report({ content: [{ type: "text", text: acc.snapshot().content }] });
+							}),
 			),
 			// Infra/spawn failure → defect (run error), like variant A.
 			Effect.catchTag("ToolShellError", (cause) => Effect.die(cause)),
@@ -239,20 +245,31 @@ const runStreaming = (
 		// Consume with the deadline; on timeout the accumulator keeps what arrived.
 		let timedOutAfter: number | undefined;
 		if (params.timeout !== undefined) {
-			const finished = yield* consume.pipe(Effect.timeoutOption(Duration.seconds(params.timeout)));
-			if (Option.isNone(finished)) timedOutAfter = params.timeout;
+			const fiber = yield* Effect.forkChild(consume);
+			const finished = yield* Fiber.await(fiber).pipe(Effect.timeoutOption(Duration.seconds(params.timeout)));
+			if (Option.isSome(finished)) yield* Fiber.join(fiber);
+			else {
+				timedOutAfter = params.timeout;
+				// Kill while the stream still holds the wrapper: interrupting it first can
+				// kill the wrapper alone, orphaning the command outside the tree cleanup walks.
+				yield* sweep(shell, Output.cleanup(file, true));
+				yield* Fiber.interrupt(fiber);
+			}
 		} else {
 			yield* consume;
 		}
 
+		const { report, rest } = Output.report(said + control.decode());
+		if (rest.length > 0) acc.append(utf8.encode(rest));
 		acc.finish();
 		const snapshot = acc.snapshot();
-		// Every byte arrived, so the raw-size rule here is the one the sandbox applied.
-		const kept = snapshot.beyondLimits && !head.startsWith(notice);
+		// The sandbox decided on its raw bytes. Cut off before it reported, the file
+		// is still there when it was created, so the harness's own count applies.
+		const kept = report !== undefined ? report.kept : snapshot.beyondLimits && !head.startsWith(notice);
 		const presented = present(snapshot, acc.getLastLineBytes(), kept ? file : undefined);
 
 		if (timedOutAfter !== undefined) {
-			yield* cleanUp(shell, file, presented);
+			if (!kept) yield* sweep(shell, Output.remove(file));
 			return yield* new BashTimedOut({ timeoutSeconds: timedOutAfter, ...presented });
 		}
 		const code = yield* Ref.get(exitCode);

@@ -126,8 +126,10 @@ export function disabledProviderOptions(model: Model.Info): ProviderOptionBag {
 	const key = Model.optionsKey(model);
 
 	if (key === "anthropic" || key === "google-vertex-anthropic") {
-		// `null` means this model cannot disable thinking and rejects the request.
-		if (model.thinkingLevelMap?.off === null) return {};
+		// `null` means this model cannot disable thinking and rejects the request. It
+		// reasons at the API's default effort regardless, so name that effort on the
+		// wire and the response records the level the model really ran at.
+		if (model.thinkingLevelMap?.off === null) return { [key]: { effort: ANTHROPIC_DEFAULT_EFFORT } };
 		return { [key]: { thinking: { type: "disabled" } } };
 	}
 
@@ -168,6 +170,10 @@ function googleDisabledThinkingConfig(model: Model.Info): Record<string, unknown
 }
 
 type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
+
+// TODO(sanchitrk): should we go lower here like low or medium?
+/** The effort Anthropic applies when a request names none. */
+const ANTHROPIC_DEFAULT_EFFORT: AnthropicEffort = "high";
 
 /**
  * The effort level an adaptive Claude model reasons at.
@@ -300,7 +306,7 @@ export function providerThinkingLevel(body: unknown): string | undefined {
 		field(body, "reasoning", "effort") ??
 		field(body, "reasoning_effort") ??
 		field(body, "generationConfig", "thinkingConfig", "thinkingLevel") ??
-		// With thinking disabled Anthropic's adapter adds its own default effort, which says nothing about thinking.
+		// An effort sent alongside disabled thinking only shapes the answer; it is not a thinking level.
 		(field(body, "thinking", "type") === "disabled" ? undefined : field(body, "output_config", "effort"));
 	return typeof value === "string" ? value : undefined;
 }

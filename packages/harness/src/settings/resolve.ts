@@ -90,7 +90,8 @@ export function resolveRequest(block: Block, model: Model.Info): State.RequestOp
  *
  * Separate from {@link resolveRequest} because these steer the loop itself -- how hard to
  * think, how to schedule tool calls -- rather than the request body. Runtime bindings
- * outrank a matched block, which outranks the file's top level.
+ * outrank a matched block, which outranks the file's top level. The thinking level is the
+ * requested one; State clamps it to the model once the catalog lookup is in hand.
  */
 export const resolveControls = (settings: Info, block: Block, runtime: State.Options) => ({
 	thinkingLevel: runtime.thinkingLevel ?? block.thinkingLevel ?? settings.model.thinkingLevel,

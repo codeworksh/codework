@@ -54,9 +54,10 @@ export class Accumulator {
 		this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
 	}
 
-	append(data: Uint8Array): void {
+	/** `rawBytes` is what `data` measured before a backend decoded it, when that differs. */
+	append(data: Uint8Array, rawBytes = data.length): void {
 		if (this.finished) throw new Error("cannot append to a finished output accumulator");
-		this.totalRawBytes += data.length;
+		this.totalRawBytes += rawBytes;
 		this.appendDecodedText(this.decoder.decode(data, { stream: true }));
 	}
 

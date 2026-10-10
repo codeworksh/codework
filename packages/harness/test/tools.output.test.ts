@@ -1,6 +1,7 @@
-import { Effect, Fiber, Layer } from "effect";
+import { Effect, Fiber, Layer, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import fs from "node:fs/promises";
+import { basename } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { bashTool } from "../src/plugin/builtin/tool/bash.ts";
 import { EnvNodeJSDefault } from "../src/sandbox/fs/nodejs.ts";
@@ -8,7 +9,7 @@ import { Local } from "../src/sandbox/fs/vfs.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { HostExe } from "../src/sandbox/shell/host.ts";
-import { Shell } from "../src/sandbox/shell/shell.ts";
+import { quote, Shell } from "../src/sandbox/shell/shell.ts";
 import * as Executor from "../src/tool/executor.ts";
 import { fromSandboxShell, ToolShell } from "../src/tool/shell.ts";
 import * as Tool from "../src/tool/tool.ts";
@@ -29,6 +30,9 @@ import { pendingCall } from "./tools.fixture.ts";
  *   - output that decodes larger than it is (invalid UTF-8) is cut without saying so
  *   - a trailing NUL makes the sandbox and the harness count lines differently
  *   - a child that outlives its parent survives the deadline
+ *   - a backend that cannot cut a command short leaves it running after the deadline
+ *   - a backend that hands text rather than bytes reports a file the sandbox removed,
+ *     or numbers the shown lines wrongly
  */
 
 interface Details {
@@ -39,11 +43,39 @@ interface Details {
 	readonly exitCode?: number;
 }
 
+const utf8 = new TextEncoder();
+
 // The host shell without `stream`: the buffered wrapper under a real `sh`, which
-// unlike just-bash runs background jobs and writes raw bytes.
-const withoutStream = Layer.effect(
+// unlike just-bash runs background jobs and writes raw bytes. Like a remote exec
+// API, interrupting the call abandons the command rather than killing it.
+const buffered = Layer.effect(
 	Shell,
-	Effect.map(Shell, (shell) => Shell.of({ exec: shell.exec, execArgv: shell.execArgv })),
+	Effect.map(Shell, (shell) =>
+		Shell.of({
+			exec: (command, opts) =>
+				Effect.promise(() => Effect.runPromiseExit(shell.exec(command, opts))).pipe(Effect.flatMap((exit) => exit)),
+			execArgv: shell.execArgv,
+		}),
+	),
+).pipe(Layer.provide(HostExe.layer()));
+
+// A streaming backend whose SDK hands decoded text, not bytes (Vercel): invalid UTF-8 grows on the way.
+const reencoded = Layer.effect(
+	Shell,
+	Effect.map(Shell, (shell) =>
+		Shell.of({
+			exec: shell.exec,
+			execArgv: shell.execArgv,
+			stream: (command, opts) =>
+				shell.stream!(command, opts).pipe(
+					Stream.map((chunk) =>
+						chunk._tag === "exit"
+							? chunk
+							: { ...chunk, bytes: utf8.encode(new TextDecoder().decode(chunk.bytes)) },
+					),
+				),
+		}),
+	),
 ).pipe(Layer.provide(HostExe.layer()));
 
 const host = (cwd: string, shell: Layer.Layer<Shell, never, ChildProcessSpawner.ChildProcessSpawner>) =>
@@ -53,7 +85,8 @@ const host = (cwd: string, shell: Layer.Layer<Shell, never, ChildProcessSpawner.
 
 const backends = {
 	host: (cwd: string) => host(cwd, HostExe.layer()),
-	hostBuffered: (cwd: string) => host(cwd, withoutStream),
+	hostReencoded: (cwd: string) => host(cwd, reencoded),
+	hostBuffered: (cwd: string) => host(cwd, buffered),
 	justbash: () => Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer(), SandboxIO.virtual({ driver: "memory" })),
 };
 
@@ -79,7 +112,10 @@ const call = <E>(mount: Layer.Layer<SandboxIO.Provides, E>, command: string, tim
 				? undefined
 				: {
 						content: yield* filesystem.readFile(saved),
-						leftovers: (yield* filesystem.readdir("/tmp")).filter((name) => name.endsWith(".rc")),
+						// This call's side files; other calls' are in flight in the same directory.
+						leftovers: (yield* filesystem.readdir("/tmp")).filter(
+							(name) => name.startsWith(basename(saved)) && name !== basename(saved),
+						),
 					};
 		return { status: outcome.status, details, text, spilled };
 	}).pipe(Effect.provide(mount));
@@ -89,8 +125,16 @@ const run = <E>(mount: Layer.Layer<SandboxIO.Provides, E>, command: string, time
 
 const numbered = (count: number) => Array.from({ length: count }, (_, index) => `${index + 1}\n`).join("");
 
+const added = async (before: ReadonlyArray<string>) =>
+	(await fs.readdir("/tmp")).filter((name) => !before.includes(name) && name.startsWith("codework-bash"));
+
+// Other tests' commands share the directory: theirs are in flight, a leftover stays.
+const expectNothingAdded = (before: ReadonlyArray<string>) =>
+	expect.poll(() => added(before), { timeout: 5_000 }).toEqual([]);
+
 describe.each([
 	["host", "streams"],
+	["hostReencoded", "streams"],
 	["hostBuffered", "buffers"],
 	["justbash", "buffers"],
 ] as const)("bash output files over %s (%s)", (backend, _mode) => {
@@ -108,12 +152,7 @@ describe.each([
 		expect(result.details).toMatchObject({ output: "small\na ) in a comment\n", truncated: false, exitCode: 0 });
 		expect(result.text).toBe("small\na ) in a comment\n");
 		expect(result.details.fullOutputPath).toBeUndefined();
-		if (backend !== "justbash") {
-			const added = (await fs.readdir("/tmp")).filter(
-				(name) => !before.includes(name) && name.startsWith("codework-bash"),
-			);
-			expect(added).toEqual([]);
-		}
+		if (backend !== "justbash") await expectNothingAdded(before);
 	});
 
 	it("keeps the complete output in the sandbox and shows its tail", async () => {
@@ -160,14 +199,47 @@ describe.each([
 			await fs.rm(result.details.fullOutputPath!);
 		});
 
-	if (backend !== "justbash")
+	if (backend !== "justbash") {
 		it("says it cut output that decodes larger than it is, without a file it removed", async () => {
 			const { dir, layer } = await mount();
 			await using _ = dir;
+			const before = await fs.readdir("/tmp");
 			const result = await run(layer, `awk 'BEGIN { for (i = 0; i < 20000; i++) printf "\\377" }'`);
 			expect(result.details.truncated).toBe(true);
 			expect(result.details.fullOutputPath).toBeUndefined();
+			await expectNothingAdded(before);
 		});
+
+		it("numbers the shown lines of output that decodes larger than it is from the sandbox's counts", async () => {
+			const { dir, layer } = await mount();
+			await using _ = dir;
+			const result = await run(layer, `awk 'BEGIN { for (i = 0; i < 2500; i++) printf "\\377\\n" }'`);
+			expect(result.details.truncated).toBe(true);
+			expect((await fs.stat(result.details.fullOutputPath!)).size).toBe(5000);
+			expect(result.details.output.startsWith("\uFFFD\n")).toBe(true);
+			expect(
+				result.details.output.endsWith(
+					`[showing lines 501-2500 of 2500. Full output: ${result.details.fullOutputPath}]`,
+				),
+			).toBe(true);
+			await fs.rm(result.details.fullOutputPath!);
+		});
+
+		it("stops the command at the deadline, and leaves no files", async () => {
+			const { dir, layer } = await mount();
+			await using _ = dir;
+			const before = await fs.readdir("/tmp");
+			const heartbeat = `${dir.path}/heartbeat`;
+			const result = await run(layer, `while :; do echo tick >> ${quote(heartbeat)}; sleep 0.1; done`, 1);
+			expect(result.details).toMatchObject({ _tag: "BashTimedOut", timeoutSeconds: 1 });
+			await new Promise((resolve) => setTimeout(resolve, 300));
+			const settled = await fs.readFile(heartbeat, "utf8");
+			expect(settled.length).toBeGreaterThan(0);
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			expect(await fs.readFile(heartbeat, "utf8")).toBe(settled);
+			await expectNothingAdded(before);
+		});
+	}
 
 	it("counts a final line that ends in NUL the way the sandbox does", async () => {
 		const { dir, layer } = await mount();
@@ -191,10 +263,7 @@ describe.each([
 				}),
 			);
 			await new Promise((resolve) => setTimeout(resolve, 300));
-			const added = (await fs.readdir("/tmp")).filter(
-				(name) => !before.includes(name) && name.startsWith("codework-bash"),
-			);
-			expect(added).toEqual([]);
+			await expectNothingAdded(before);
 		});
 
 	if (backend === "host") {
@@ -207,10 +276,7 @@ describe.each([
 			expect(result.details).toMatchObject({ _tag: "BashTimedOut", truncated: false });
 			expect(result.details.output).toContain("partial-line");
 			expect(result.text).toBe("partial-line\n\nCommand timed out after 2 seconds");
-			const added = (await fs.readdir("/tmp")).filter(
-				(name) => !before.includes(name) && name.startsWith("codework-bash"),
-			);
-			expect(added).toEqual([]);
+			await expectNothingAdded(before);
 		});
 
 		it("kills a child that outlives its parent at the deadline", async () => {

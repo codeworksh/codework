@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { stream } from "../src/llm/stream.ts";
 import type { RuntimeOptions } from "../src/llm/options.ts";
+import { fakeAnthropic, messageStart } from "./utils/anthropic.ts";
 import { makeGeneratedModel, makeModel, makeUserMessage } from "./utils/fixtures.ts";
 
 const model = makeModel({ ...makeGeneratedModel("gemini-3.5-flash"), protocol: "google", npm: "@ai-sdk/google" });
@@ -23,5 +24,17 @@ describe("abort classification", () => {
 		const message = await run({ timeoutMs: 20 });
 		expect(message.stopReason).toBe("error");
 		expect(message.failure).toMatchObject({ _tag: "Timeout", retryable: true });
+	});
+
+	it("fails a stream that stalls after its first chunk once the idle timeout passes", async () => {
+		const server = fakeAnthropic([messageStart], { stall: true });
+		const message = await stream(
+			makeModel({ npm: "@ai-sdk/anthropic" }),
+			{ messages: [makeUserMessage("hello")] },
+			{ apiKey: "test-key", maxRetries: 0, idleTimeoutMs: 50, factoryOptions: { fetch: server.fetch } },
+		).result();
+		expect(message.stopReason).toBe("error");
+		expect(message.failure).toMatchObject({ _tag: "Timeout", retryable: true });
+		expect(message.errorMessage).toMatch(/chunk timeout/i);
 	});
 });

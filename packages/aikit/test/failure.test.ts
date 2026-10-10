@@ -71,6 +71,57 @@ describe("provider failure normalization", () => {
 		expect(failure.code).toBe("insufficient_quota");
 	});
 
+	const limited = (data: unknown, message = "Too many requests") =>
+		Failure.normalize(
+			new APICallError({
+				message,
+				url: "https://provider.invalid/v1/chat",
+				requestBodyValues: {},
+				statusCode: 429,
+				responseHeaders: { "retry-after": "2" },
+				data,
+			}),
+		);
+
+	it.each([
+		["Codex subscription usage limit", { error: { code: "subscription_sharing_usage_limit_exceeded" } }],
+		["OpenCode Go usage limit", { type: "GoUsageLimitError", message: "Usage limit exceeded" }],
+		["OpenCode free-tier usage limit", { type: "FreeUsageLimitError" }],
+		["monthly usage prose", { error: { message: "Monthly usage limit reached. Enable available balance usage." } }],
+		["generic usage limit prose", { error: { message: "You have hit your usage limit for this period" } }],
+		["budget prose", { error: { message: "Organization is out of budget" } }],
+		["monthly quota prose", { error: { message: "Monthly quota exceeded" } }],
+	])("classifies a %s 429 as quota, not rate limiting", (_name, data) => {
+		expect(limited(data)._tag).toBe("Quota");
+	});
+
+	it.each([
+		["a rate-limit code", { error: { code: "rate_limit_exceeded", message: "Rate limit reached" } }],
+		[
+			"a rate-limit code with quota prose",
+			{ error: { code: "rate_limit_exceeded", message: "Usage limit: slow down" } },
+		],
+		["a per-minute quota", { error: { message: "Quota exceeded for quota metric 'Requests per minute'" } }],
+		["a per-minute usage limit", { error: { message: "Usage limit of 60 requests per minute exceeded" } }],
+		["a rate-limit code naming a quota", { error: { code: "rate_limit_quota_exceeded" } }],
+		["a bare 429", undefined],
+	])("keeps %s as a retryable rate limit", (_name, data) => {
+		expect(limited(data)).toMatchObject({ _tag: "RateLimit", retryable: true, retryAfterMs: 2_000 });
+	});
+
+	it("classifies an exhausted credit balance as quota, whatever the status", () => {
+		const failure = Failure.normalize(
+			new APICallError({
+				message: "Your credit balance is too low",
+				url: "https://api.anthropic.com/v1/messages",
+				requestBodyValues: {},
+				statusCode: 400,
+				data: { error: { type: "invalid_request_error", message: "Your credit balance is too low" } },
+			}),
+		);
+		expect(failure).toMatchObject({ _tag: "Quota", retryable: false, status: 400 });
+	});
+
 	it("recognizes Codex policy codes and OpenAI request ids", () => {
 		const failure = Failure.normalize(
 			new APICallError({

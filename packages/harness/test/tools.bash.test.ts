@@ -23,7 +23,7 @@ const streamingStub = (events: ReadonlyArray<ToolShellEvent>): Layer.Layer<ToolS
 	);
 
 const utf8 = new TextEncoder();
-const output = (text: string): ToolShellEvent => ({ _tag: "Output", bytes: utf8.encode(text) });
+const output = (text: string): ToolShellEvent => ({ _tag: "Output", channel: "stdout", bytes: utf8.encode(text) });
 const exited = (exitCode: number): ToolShellEvent => ({ _tag: "Exit", exitCode });
 
 const ctx = { callID: "call-1", toolName: "bash", rawArgs: {} as Record<string, unknown> };
