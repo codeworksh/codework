@@ -51,10 +51,12 @@ Sessions are shared across interfaces. A session started with `codework run` can
 
 ## Models
 
-Pick a model per run with `--provider` and `--model`, and set reasoning effort with `--thinking`:
+Pick a model per run with `--provider` and `--model`. Add `--thinking` to set reasoning effort on models that support it.
 
 ```bash
-codework run --provider anthropic --model claude-sonnet-5-5 --thinking high "Plan the database migration"
+export OPENROUTER_API_KEY="..."
+
+codework run --provider openrouter --model deepseek/deepseek-v4.1-flash "Plan the database migration"
 ```
 
 Browse what's available with `codework models`. Set a default in your settings so you don't have to pass flags every time; see [Capabilities](/docs/cli/using#models-and-settings).

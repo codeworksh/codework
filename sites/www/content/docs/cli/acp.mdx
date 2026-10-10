@@ -47,7 +47,7 @@ ACP sessions use the credentials already in your CodeWork home. The editor can't
 codework auth login --openai-codex
 ```
 
-Or pass an API key in the environment the editor launches CodeWork with, such as `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`. See [Models & Pricing](/docs/models) for every provider.
+Or pass an API key in the environment the editor launches CodeWork with, such as `OPENROUTER_API_KEY` or `GEMINI_API_KEY`. See [Models & Pricing](/docs/models) for every provider.
 
 ## Sessions and configuration
 
@@ -111,7 +111,7 @@ Open **Agent Settings**, go to **External Agents**, click **Add Agent**, and cho
 
 - `command` is the CodeWork binary. Use the absolute path from step 1 if `codework` alone doesn't work.
 - `args` must include `acp`. Add any global flags after it, such as `["acp", "--home", "/Users/you/.codework-zed"]`.
-- `env` is passed to CodeWork. Put an API key here if Zed wouldn't otherwise see it, for example `{ "GEMINI_API_KEY": "..." }`.
+- `env` is passed to CodeWork. Put an API key here if Zed wouldn't otherwise see it, for example `{ "OPENROUTER_API_KEY": "..." }`. Then pick a model such as OpenRouter's `deepseek/deepseek-v4.1-flash` from the model picker.
 
 <Placeholder title="Zed settings with the CodeWork agent server">
 	Screenshot: the `agent_servers` block above in Zed's settings editor.

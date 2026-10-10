@@ -34,14 +34,13 @@ Set a default model so you don't have to pass `--provider` and `--model` on ever
 ```jsonc title=".codework/settings.jsonc"
 {
 	"model": {
-		"provider": "anthropic",
-		"id": "claude-sonnet-5-5",
-		"thinkingLevel": "high",
+		"provider": "openrouter",
+		"id": "deepseek/deepseek-v4.1-flash",
 	},
 }
 ```
 
-Flags on `codework run` override settings for that session. Without any settings, CodeWork uses OpenAI's `gpt-5.6-luna` with high thinking.
+Add `"thinkingLevel"` to set a default reasoning effort. Flags on `codework run` override settings for that session. Without any settings, CodeWork uses OpenAI's `gpt-5.6-luna` with high thinking.
 
 Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Each model supports a subset.
 
