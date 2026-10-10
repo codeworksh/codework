@@ -52,6 +52,11 @@ export interface ToolDef<
 	readonly promptSnippet?: string;
 	/** Optional guideline bullets appended to the default system prompt Guidelines section when this tool is active. */
 	readonly promptGuidelines?: ReadonlyArray<string>;
+	/**
+	 * Repair argument shapes models commonly send before they are validated against
+	 * `parameters`. Return a copy; a throw makes the arguments invalid.
+	 */
+	readonly prepareArguments?: (args: unknown) => unknown;
 	readonly parameters: Params;
 	/**
 	 * How the provider constrains the generated arguments. `{ type: "json_schema", strict: "prefer" }` sends
@@ -109,6 +114,7 @@ interface DefineInput<
 	readonly label?: string;
 	readonly promptSnippet?: string;
 	readonly promptGuidelines?: ReadonlyArray<string>;
+	readonly prepareArguments?: (args: unknown) => unknown;
 	readonly parameters: Params;
 	readonly constrainedSampling?: Message.Tool["constrainedSampling"];
 	readonly success: Success;

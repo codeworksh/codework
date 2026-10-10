@@ -16,6 +16,7 @@ import * as Executor from "../src/tool/executor.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { toolTurn } from "./fixtures/llm.ts";
 import { withSettings } from "./fixtures/settings.ts";
+import { gatedProvider } from "./fixtures/gated.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 import { pendingCall } from "./tools.fixture.ts";
 
@@ -108,47 +109,6 @@ describe("write plugin through the local harness", () => {
 			await expect(json + "\n").toMatchFileSnapshot("./__artifacts__/tools.write.json");
 		}));
 });
-
-/**
- * A host-directory provider whose first write blocks until released: a write in
- * flight that an interrupt cannot call back.
- */
-const gatedProvider = (dir: string, started: Deferred.Deferred<void>, release: Deferred.Deferred<void>) => {
-	let writes = 0;
-	const at = (path: string) => join(dir, path);
-	return {
-		secondStarted: () => writes > 1,
-		provider: {
-			readFile: (path) => fs.readFile(at(path), "utf8"),
-			readFileBuffer: async (path) => new Uint8Array(await fs.readFile(at(path))),
-			readBytes: () => Promise.reject(new Error("unused")),
-			writeFile: async (path, content) => {
-				writes++;
-				if (writes === 1) {
-					Deferred.doneUnsafe(started, Effect.void);
-					await Effect.runPromise(Deferred.await(release));
-				}
-				await fs.writeFile(at(path), content);
-			},
-			stat: async (path) => {
-				const stat = await fs.stat(at(path));
-				return { isFile: stat.isFile(), isDirectory: stat.isDirectory() };
-			},
-			readdir: (path) => fs.readdir(at(path)),
-			exists: (path) =>
-				fs.stat(at(path)).then(
-					() => true,
-					() => false,
-				),
-			mkdir: async (path, options) => {
-				await fs.mkdir(at(path), options);
-			},
-			rm: (path, options) => fs.rm(at(path), options),
-			realpath: (path) => fs.realpath(at(path)),
-			scanLines: () => Promise.reject(new Error("unused")),
-		} satisfies SandboxFileSystem.Provider,
-	};
-};
 
 describe("write under cancellation", () => {
 	it("keeps the file locked until an interrupted write settles", () =>

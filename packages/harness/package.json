@@ -90,6 +90,7 @@
 		"@npmcli/config": "^11.0.1",
 		"@platformatic/vfs": "^0.4.0",
 		"@silvia-odwyer/photon-node": "0.3.4",
+		"diff": "9.0.0",
 		"jsonc-parser": "3.3.1",
 		"just-bash": "^3.4.2",
 		"npm-package-arg": "^14.0.0",
