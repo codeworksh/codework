@@ -111,7 +111,7 @@ Open **Agent Settings**, go to **External Agents**, click **Add Agent**, and cho
 
 - `command` is the CodeWork binary. Use the absolute path from step 1 if `codework` alone doesn't work.
 - `args` must include `acp`. Add any global flags after it, such as `["acp", "--home", "/Users/you/.codework-zed"]`.
-- `env` is passed to CodeWork. Put an API key here if Zed wouldn't otherwise see it, for example `{ "OPENROUTER_API_KEY": "..." }`. Then pick a model such as OpenRouter's `deepseek/deepseek-v4.1-flash` from the model picker.
+- `env` is passed to CodeWork. Put an API key here if Zed wouldn't otherwise see it, for example `{ "OPENROUTER_API_KEY": "..." }`. Then pick a model such as **DeepSeek V4.1 Flash** from the model picker.
 
 <Placeholder title="Zed settings with the CodeWork agent server">
 	Screenshot: the `agent_servers` block above in Zed's settings editor.
@@ -133,7 +133,8 @@ You can bind a key to `agent: new external agent thread` to jump straight into a
 ### Working in a thread
 
 - **Add context:** type `@` to mention a file or symbol, or add a selection to the thread. Paste or drop images if your model accepts them.
-- **Switch models and thinking effort:** use the pickers at the bottom of the panel. Changes apply from the next prompt.
+- **Switch models and thinking effort:** use the pickers at the bottom of the panel. Search the model picker by display name, such as "DeepSeek V4.1 Flash", not by its `openrouter/...` ID. Changes apply from the next prompt, and Zed remembers your choice as `default_config_options.model` in the CodeWork entry of its settings.
+- **Set a project default:** to start every thread in a project on the same model, set `model` in that project's [`.codework/settings.jsonc`](/docs/cli/using#models-and-settings).
 - **Stop a turn:** click stop. The partial answer stays in the thread.
 - **Pick up where you left off:** open the Threads Sidebar (`cmd-alt-j` on macOS, `ctrl-alt-j` on Linux and Windows), open **Thread History**, click **Import Threads**, and select CodeWork. Opening an imported thread replays the full conversation.
 
