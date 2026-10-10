@@ -12,7 +12,7 @@
  * drain.
  */
 
-import type { Model, Protocol } from "@codeworksh/aikit";
+import { Model, type Protocol } from "@codeworksh/aikit";
 import { Context, Effect, Layer, Option, Ref, Schema, Semaphore } from "effect";
 import { Event } from "../event/event.ts";
 import { EventList } from "../event/list.ts";
@@ -161,9 +161,14 @@ export interface Interface {
 	/**
 	 * The model and thinking level a session's next exchange runs with: its runtime bindings over
 	 * its chosen `SessionSchema.Config` over the caller's options over settings, resolved the
-	 * way {@link snapshot} resolves them. Nothing is looked up in the catalog.
+	 * way {@link snapshot} resolves them. The level is the one the model will actually run at.
 	 */
-	readonly configuration: (sessionId: SessionId) => Effect.Effect<Configuration, Settings.SettingsError>;
+	readonly configuration: (
+		sessionId: SessionId,
+	) => Effect.Effect<
+		Configuration,
+		Settings.SettingsError | Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError
+	>;
 	/**
 	 * Capture runtime state for one exchange. Called inside a session drain,
 	 * where the mount it reads is already open.
@@ -343,7 +348,17 @@ export const layer = (
 				// Not wrapped: a file the user can fix is more useful to a client as a settings
 				// failure carrying its path and key than as an anonymous snapshot failure.
 				const loadedSettings = yield* settings.load(hostDir);
-				return { hostDir, loadedSettings, configured: compose(loadedSettings, options, sessionOptions) };
+				const composed = compose(loadedSettings, options, sessionOptions);
+				const resolvedModel = yield* LLM.resolve({
+					provider: composed.provider,
+					model: composed.model,
+					settings: composed.block,
+					models: loadedSettings.models,
+				});
+				// The chosen level stays as written. What runs, is stamped on the message and is shown is
+				// the nearest level this model supports, re-fitted whenever the model changes.
+				const thinkingLevel = Model.clampThinkingLevel(resolvedModel, composed.thinkingLevel);
+				return { hostDir, loadedSettings, configured: { ...composed, resolvedModel, thinkingLevel } };
 			});
 			return Service.of({
 				reload: Effect.gen(function* () {
@@ -388,17 +403,10 @@ export const layer = (
 						toolExecution: _toolExecution,
 						...rest
 					} = configured.runtime;
-					const { provider, model, thinkingLevel, toolExecution } = configured;
+					const { provider, model, resolvedModel, thinkingLevel, toolExecution } = configured;
 					const request = merge(resolveOptions(configured.block), rest);
 					const sandbox = yield* SandboxIO.Current;
 					const location = yield* Location.Service;
-
-					const resolvedModel = yield* LLM.resolve({
-						provider,
-						model,
-						settings: configured.block,
-						models: loadedSettings.models,
-					});
 
 					const refs = references(loadedSettings);
 					const failed = (cause: { readonly message: string }) =>
