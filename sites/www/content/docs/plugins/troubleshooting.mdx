@@ -1,0 +1,83 @@
+---
+title: Troubleshooting plugins
+sidebarTitle: Troubleshooting
+description: What each plugin error means, which file it points at, and how to fix it.
+---
+
+When a plugin fails, CodeWork prints a short report with a stable error slug, the entry as you wrote it, the settings file that declared it, and a hint:
+
+```text
+error[plugin-not-compiled]: Stripping types is currently unsupported for files under node_modules
+reference: @acme/codework-tool-proc@1.2.0
+declared in: /work/app/.codework/settings.jsonc
+id: acme.tool.proc
+hint: a plugin installed from git or npm must ship compiled javascript; build it and commit or publish the output
+```
+
+The slug in `error[...]` is the same string `codework plugin list` shows in place of a plugin ID, and the same one that appears in logs. Search for it on this page.
+
+## Start with plugin list
+
+`codework plugin list` checks every configured entry without installing anything. Each row either resolves to a plugin ID or shows the slug of what went wrong:
+
+```bash
+codework plugin list --verbose
+```
+
+`--verbose` adds the full message and the settings file behind each entry, which is usually enough to see the problem.
+
+<Placeholder label="`codework plugin list --verbose` showing a `plugin-not-installed` entry with its declaring settings file" />
+
+## Errors by slug
+
+### The entry itself
+
+| Slug                        | What it means                                                            | Fix                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `plugin-unsupported-source` | The entry is not a path, package spec, or git spec CodeWork can install. | Paths start with `./`, `../`, `~/`, `/`, or `file:///`. Remote tarball URLs are not supported.      |
+| `plugin-not-found`          | A local path points at nothing.                                          | Check the spelling. Relative paths resolve from the folder of the settings file that declares them. |
+| `plugin-escapes-root`       | A local package's `exports` resolve to a file outside the package.       | Keep the package's entrypoint inside its own folder, and give a package with `exports` a `name`.    |
+
+### Installing
+
+| Slug                    | What it means                                                      | Fix                                                                             |
+| ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `plugin-not-installed`  | The plugin is declared but its package is not in the local store.  | Run `codework plugin install`.                                                  |
+| `plugin-resolve-failed` | The registry or git remote could not be asked what the spec means. | Check your network, the registry in `.npmrc`, and that credentials are current. |
+| `plugin-fetch-failed`   | Downloading or installing the package failed.                      | Check the package name and version exist and the registry is reachable.         |
+| `plugin-no-commit`      | A git install finished but its commit could not be determined.     | Name a branch, tag, or full commit SHA after `#`.                               |
+| `plugin-no-entrypoint`  | The package installed but has no module to import.                 | Fix the package's `exports` or `main`.                                          |
+
+`plugin-not-installed` is the one you will see most. CodeWork [never installs while loading](/docs/plugins/install#resolve-only-loading), so a fresh clone, a new machine, or a plugin added by a teammate needs one `codework plugin install`.
+
+### Loading
+
+| Slug                        | What it means                                                                      | Fix                                                                                                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plugin-not-compiled`       | An installed plugin ships TypeScript, which Node will not run from `node_modules`. | The plugin author must publish built JavaScript, or commit it for a git source. See [Publish a plugin](/docs/plugins/authoring#publish-a-plugin). |
+| `plugin-missing-dependency` | The plugin imports a package that is not installed where the plugin lives.         | For a local plugin, install its dependencies (including `@codeworksh/plugin` and `effect`) next to it.                                            |
+| `plugin-import-failed`      | The module threw while being imported.                                             | Import the file directly with `node` to see its own error.                                                                                        |
+| `plugin-invalid-definition` | The module imported, but its default export is not a valid plugin.                 | Default-export one `Plugin.define({ ... })` object with a `setup` function and a `vendor.domain.name` ID.                                         |
+
+`plugin-invalid-definition` also covers a plugin that uses the reserved `codework.` prefix, and a configuration entry with both `plugin` and `package`, or with an `enabled` or `options` of the wrong type.
+
+### The plugin store
+
+| Slug                    | What it means                                      | Fix                                                                                                 |
+| ----------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `plugin-lock-timeout`   | Another install is holding the same plugin.        | Wait for it to finish. If nothing is running, remove the stale `.lock` folder named in the message. |
+| `plugin-marker-invalid` | A store entry is damaged.                          | Remove the entry under `~/.codework/cache/plugins` and install again.                               |
+| `plugin-index-invalid`  | The store's index is damaged.                      | Remove the entry and install again. The index is rebuilt automatically.                             |
+| `plugin-collect-failed` | Old versions in the store could not be cleaned up. | Check the permissions on `~/.codework/cache/plugins`.                                               |
+
+## Common situations
+
+**A plugin I added does not show up in the system prompt.** Check that it is not a configuration entry pointing at nothing. Configuration entries that match no selected plugin are ignored without an error. `codework plugin list` shows only module entries, so if your plugin is missing from it, add the module entry.
+
+**My options have no effect.** The configuration entry must name the plugin exactly as it was loaded: the same package name, path, or the plugin's ID. If two entries configure the same plugin, only the last `options` block applies.
+
+**I edited my local plugin and nothing changed.** A running server keeps local plugins loaded until you run `codework plugin reload`. Each `codework run` starts fresh and always picks up edits.
+
+**`plugin check` exits with an error.** A registry or remote could not be reached. CodeWork reports that instead of saying you are up to date. Try again, or pass `--refresh` once the network is back.
+
+**A tool from my plugin replaced a built-in tool.** Two tools with the same `name` cannot coexist, so the later one wins. Rename your tool, or disable the built-in by ID if replacing it was the goal.
