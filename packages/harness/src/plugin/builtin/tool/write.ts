@@ -26,6 +26,7 @@ export const writeDef = Tool.define({
 	promptSnippet: "Create or overwrite files",
 	promptGuidelines: ["Use write only for new files or complete rewrites."],
 	parameters: WriteParams,
+	constrainedSampling: { type: "json_schema", strict: "prefer" },
 	success: Schema.Struct({ path: Schema.String }),
 	failure: WriteFailed,
 	encodeContent: (success) => [{ type: "text", text: `Successfully wrote to ${success.path}` }],
