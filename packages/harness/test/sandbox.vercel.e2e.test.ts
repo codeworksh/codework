@@ -17,6 +17,7 @@ import { remoteSandboxSpec } from "./fixtures/remote.spec.ts";
 import { runnerCycleSpec } from "./fixtures/runner.cycle.spec.ts";
 import { toolsRegistryVercelSpec } from "./fixtures/tools.registry.vercel.spec.ts";
 import { hasLiveOidc } from "./fixtures/vercel.ts";
+import { searchRemoteSpec } from "./fixtures/search.remote.spec.ts";
 import "./utils/env.ts";
 
 const token = process.env.VERCEL_OIDC_TOKEN;
@@ -86,6 +87,9 @@ suite("Sandbox.EnvVercel (fresh sandbox)", () => {
 	// No nested spec is allowed to provision or destroy a provider resource.
 	runnerCycleSpec(resourceId);
 	toolsRegistryVercelSpec(resourceId);
+	searchRemoteSpec("vercel", async (cwd) =>
+		EnvVercel.services({ sandboxName: await resourceId(), instanceId: SandboxInstance.ID.create(), cwd }),
+	);
 
 	// A second, independent mount of the same underlying resource.
 	const reattach = <A, E>(

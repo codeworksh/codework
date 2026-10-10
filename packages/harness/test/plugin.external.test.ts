@@ -344,3 +344,35 @@ describe("third-party plugins", () => {
 			expect(settled.result.content[0].text).toContain("Unknown tool: bash");
 		}));
 });
+
+describe("opt-in built-ins", () => {
+	it("keeps the search tools off until settings turn them on", () =>
+		withSettings(async ({ root, custom }) => {
+			const before = await exchange({ root, userConfigDir: custom });
+			expect(before.contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "read", "write", "edit"]);
+			// Off, so bash still stands in for them.
+			expect(before.prompts[0]).toContain("Use bash for file operations like ls, rg, find");
+
+			await writeFile(
+				join(custom, "settings.jsonc"),
+				JSON.stringify({
+					plugins: [
+						{ plugin: "codework.tool.grep", enabled: true },
+						{ plugin: "codework.tool.ls", enabled: true },
+					],
+				}),
+			);
+			const after = await exchange({ root, userConfigDir: custom });
+			// Turned on where the built-in list puts them; find, not named, stays off.
+			expect(after.contexts[0]?.tools?.map((entry) => entry.name)).toEqual([
+				"bash",
+				"read",
+				"write",
+				"edit",
+				"grep",
+				"ls",
+			]);
+			expect(after.prompts[0]).toContain("- grep: Search file contents for patterns (respects .gitignore)");
+			expect(after.prompts[0]).not.toContain("Use bash for file operations like ls, rg, find");
+		}));
+});

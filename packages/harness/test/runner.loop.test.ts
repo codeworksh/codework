@@ -1,5 +1,6 @@
 import "./utils/env.ts";
 import type { Plugin } from "../src/plugin/plugin.ts";
+import { Global } from "../src/global.ts";
 import { builtins as plugins } from "../src/plugin/builtin.ts";
 import type { Info } from "../src/settings/schema.ts";
 import { Settings } from "../src/settings/settings.ts";
@@ -67,6 +68,7 @@ const runtime = (
 		Layer.provideMerge(Event.layer),
 		Layer.provideMerge(EventRegistry.layer()),
 		Layer.provideMerge(database),
+		Layer.provideMerge(Layer.succeed(Global.Service, Global.make({ home: "/unused/home" }))),
 	);
 };
 
