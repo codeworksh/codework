@@ -21,6 +21,12 @@ A plugin is a JavaScript module that default-exports one plugin definition. You 
 
 Loading never touches the network. If a plugin is declared but not installed, CodeWork tells you to run `codework plugin install` instead of quietly fetching it. See [resolve-only loading](/docs/plugins/install#resolve-only-loading).
 
+<Callout type="warn" title="Only install plugins you trust">
+	A plugin's code runs inside the CodeWork process with your user's access, and CodeWork has no permission prompts:
+	tools a plugin registers run without asking. CodeWork never runs install scripts, but the plugin itself is trusted
+	once it loads.
+</Callout>
+
 ## Plugin kinds
 
 Every plugin declares a `kind`, which is the part of the agent it extends. The kind also decides when it runs: all tool plugins are set up before any prompt plugin, so a prompt plugin always sees the complete tool set.
