@@ -28,6 +28,7 @@ import { SandboxIO } from "../sandbox/io.ts";
 import { SessionRuntime } from "../session/runtime.ts";
 import type { ID as SessionId } from "../session/schema.ts";
 import { Session as SessionStore } from "../session/session.ts";
+import { Global } from "../global.ts";
 import { merge } from "../settings/merge.ts";
 import { compose, resolveOptions } from "../settings/resolve.ts";
 import type { Block, Info, RetryPolicy } from "../settings/schema.ts";
@@ -249,6 +250,7 @@ export const layer = (
 			const eventRegistry = yield* EventRegistry.Service;
 			const eventService = yield* Event.Service;
 			const events = makeEvents(eventService);
+			const global = yield* Global.Service;
 			/*
 			 * One load pass at a time, for the whole process.
 			 *
@@ -458,6 +460,7 @@ export const layer = (
 					const contributions = yield* setup(chosen.selection, {
 						sessionId,
 						sandbox,
+						paths: global,
 						location,
 						settings: loadedSettings,
 						model: resolvedModel,

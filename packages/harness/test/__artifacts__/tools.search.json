@@ -1,0 +1,214 @@
+{
+	"grep": {
+		"basic": {
+			"status": "completed",
+			"text": ".hidden/secret.ts:1: export const needle = 1;\nREADME.md:2: A needle in a haystack.\nkeep.log:1: needle kept by negation\nsrc/index.ts:1: import { needle } from './util';\nsrc/index.ts:3: console.log(needle);\nsrc/nested/deep.spec.ts:1: describe('needle', () => {});\nsrc/util.ts:2: export const needle = 'NEEDLE';"
+		},
+		"ignore-case": {
+			"status": "completed",
+			"text": ".hidden/secret.ts:1: export const needle = 1;\nREADME.md:1: # Needle\nREADME.md:2: A needle in a haystack.\nkeep.log:1: needle kept by negation\nsrc/index.ts:1: import { needle } from './util';\nsrc/index.ts:3: console.log(needle);\nsrc/nested/deep.spec.ts:1: describe('needle', () => {});\nsrc/util.ts:2: export const needle = 'NEEDLE';"
+		},
+		"case-sensitive": {
+			"status": "completed",
+			"text": "src/util.ts:2: export const needle = 'NEEDLE';"
+		},
+		"regex": {
+			"status": "completed",
+			"text": "a.b.txt:1: literal a.b here\na.b.txt:2: axb is not literal"
+		},
+		"literal": {
+			"status": "completed",
+			"text": "a.b.txt:1: literal a.b here"
+		},
+		"glob-path": {
+			"status": "completed",
+			"text": "src/nested/deep.spec.ts:1: describe('needle', () => {});"
+		},
+		"context": {
+			"status": "completed",
+			"text": "src/index.ts-2- \nsrc/index.ts:3: console.log(needle);\nsrc/index.ts-4- console.log('done');"
+		},
+		"limit-context": {
+			"status": "completed",
+			"text": "context.txt-1- before\ncontext.txt:2: match one\ncontext.txt-3- after\n\n[1 matches limit reached. Use limit=2 for more, or refine pattern]",
+			"details": {
+				"matchLimitReached": 1
+			}
+		},
+		"limit": {
+			"status": "completed",
+			"text": ".hidden/secret.ts:1: export const needle = 1;\nREADME.md:2: A needle in a haystack.\n\n[2 matches limit reached. Use limit=4 for more, or refine pattern]",
+			"details": {
+				"matchLimitReached": 2
+			}
+		},
+		"single-file": {
+			"status": "completed",
+			"text": "util.ts:2: export const needle = 'NEEDLE';"
+		},
+		"subdir": {
+			"status": "completed",
+			"text": "index.ts:1: import { needle } from './util';\nindex.ts:3: console.log(needle);\nnested/deep.spec.ts:1: describe('needle', () => {});\nutil.ts:2: export const needle = 'NEEDLE';"
+		},
+		"dash-pattern": {
+			"status": "completed",
+			"text": "No matches found"
+		},
+		"flag-pattern": {
+			"status": "completed",
+			"text": "No matches found"
+		},
+		"no-match": {
+			"status": "completed",
+			"text": "No matches found"
+		},
+		"long-line": {
+			"status": "completed",
+			"text": "long.txt:1: match xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx... [truncated]\n\n[Some lines truncated to 500 chars. Use read tool to see full lines]",
+			"details": {
+				"linesTruncated": true
+			}
+		},
+		"huge-context": {
+			"status": "completed",
+			"text": "huge.txt-1- before\nhuge.txt:2: hit yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy... [truncated]\nhuge.txt-3- after\n\n[Some lines truncated to 500 chars. Use read tool to see full lines]",
+			"details": {
+				"linesTruncated": true
+			}
+		},
+		"missing-path": {
+			"status": "error",
+			"text": "Path not found: <root>/nope",
+			"details": {
+				"_tag": "GrepFailed",
+				"message": "Path not found: <root>/nope"
+			}
+		},
+		"glob-basename": {
+			"host": {
+				"status": "completed",
+				"text": ".hidden/secret.ts:1: export const needle = 1;\nsrc/generated.ts:1: needle generated\nsrc/index.ts:1: import { needle } from './util';\nsrc/index.ts:3: console.log(needle);\nsrc/nested/deep.spec.ts:1: describe('needle', () => {});\nsrc/util.ts:2: export const needle = 'NEEDLE';"
+			},
+			"memory": {
+				"status": "completed",
+				"text": ".hidden/secret.ts:1: export const needle = 1;\nsrc/index.ts:1: import { needle } from './util';\nsrc/index.ts:3: console.log(needle);\nsrc/nested/deep.spec.ts:1: describe('needle', () => {});\nsrc/util.ts:2: export const needle = 'NEEDLE';"
+			}
+		}
+	},
+	"ls": {
+		"root": {
+			"status": "completed",
+			"text": ".git/\n.gitignore\n.hidden/\na/\na.b.txt\nb/\nbuild.log\ncontext.txt\ndist/\nempty/\nhuge.txt\nkeep.log\nlong.txt\npayload.sh\nREADME.md\nsrc/"
+		},
+		"subdir": {
+			"status": "completed",
+			"text": ".gitignore\ngenerated.ts\nindex.ts\nnested/\nutil.ts"
+		},
+		"limit": {
+			"status": "completed",
+			"text": ".git/\n.gitignore\n\n[2 entries limit reached. Use limit=4 for more]",
+			"details": {
+				"entryLimitReached": 2
+			}
+		},
+		"empty": {
+			"status": "completed",
+			"text": "(empty directory)"
+		},
+		"file": {
+			"status": "error",
+			"text": "Not a directory: <root>/README.md",
+			"details": {
+				"_tag": "LsFailed",
+				"message": "Not a directory: <root>/README.md"
+			}
+		},
+		"missing": {
+			"status": "error",
+			"text": "Path not found: <root>/nope",
+			"details": {
+				"_tag": "LsFailed",
+				"message": "Path not found: <root>/nope"
+			}
+		}
+	},
+	"find": {
+		"host": {
+			"basename": {
+				"status": "completed",
+				"text": ".hidden/secret.ts\nsrc/index.ts\nsrc/nested/deep.spec.ts\nsrc/util.ts"
+			},
+			"with-path": {
+				"status": "completed",
+				"text": "src/index.ts\nsrc/nested/deep.spec.ts\nsrc/util.ts"
+			},
+			"spec-path": {
+				"status": "completed",
+				"text": "src/nested/deep.spec.ts"
+			},
+			"subtree": {
+				"status": "completed",
+				"text": "src/nested/deep.spec.ts"
+			},
+			"leading-globstar": {
+				"status": "completed",
+				"text": "src/nested/deep.spec.ts"
+			},
+			"nested-gitignore": {
+				"status": "completed",
+				"text": "deep/kept.txt\nkept.txt"
+			},
+			"sibling-gitignore": {
+				"status": "completed",
+				"text": "ignored.txt\nkept.txt"
+			},
+			"negated": {
+				"status": "completed",
+				"text": "keep.log"
+			},
+			"directory": {
+				"status": "completed",
+				"text": "src/nested/"
+			},
+			"limit": {
+				"status": "completed",
+				"text": "keep.log\n\n[1 results limit reached. Use limit=2 for more, or refine pattern]",
+				"details": {
+					"resultLimitReached": 1
+				}
+			},
+			"none": {
+				"status": "completed",
+				"text": "No files found matching pattern"
+			},
+			"flag-pattern": {
+				"status": "completed",
+				"text": "No files found matching pattern"
+			},
+			"bad-glob": {
+				"status": "error",
+				"text": "[fd error]: error parsing glob '[': unclosed character class; missing ']'",
+				"details": {
+					"_tag": "FindFailed",
+					"message": "[fd error]: error parsing glob '[': unclosed character class; missing ']'"
+				}
+			},
+			"missing": {
+				"status": "error",
+				"text": "Path not found: <root>/nope",
+				"details": {
+					"_tag": "FindFailed",
+					"message": "Path not found: <root>/nope"
+				}
+			}
+		},
+		"memory": {
+			"status": "error",
+			"text": "fd is not available in this sandbox",
+			"details": {
+				"_tag": "FindFailed",
+				"message": "fd is not available in this sandbox"
+			}
+		}
+	}
+}

@@ -202,8 +202,16 @@ export interface Selected {
 export const select = Effect.fn("PluginCatalog.select")(function* (references: ReadonlyArray<PluginRef>, pool: Pool) {
 	const operations = new Map<string, { enabled: boolean; index: number; options: PluginOptions }>();
 	const missing: string[] = [];
-	const choose = (id: string, index: number) =>
-		operations.set(id, { enabled: true, index, options: operations.get(id)?.options ?? {} });
+	// An `optIn` plugin is selected off; only a configuration entry's `enabled` turns it on, and
+	// naming its module again moves it without undoing that.
+	const choose = (id: string, index: number) => {
+		const previous = operations.get(id);
+		operations.set(id, {
+			enabled: pool.plugins.get(id)?.optIn === true ? (previous?.enabled ?? false) : true,
+			index,
+			options: previous?.options ?? {},
+		});
+	};
 
 	for (const [index, reference] of references.entries()) {
 		if (isPatch(reference)) {

@@ -2,8 +2,8 @@ import type { Effect } from "effect";
 import type { Definition } from "../event.ts";
 import type { Service as LocationService } from "../location.ts";
 import type { SandboxIO } from "../sandbox/io.ts";
-import type { PluginOptions } from "./ref.ts";
 import type { SharedPluginContext } from "./context.ts";
+import type { PluginOptions } from "./ref.ts";
 
 /**
  * The domains a plugin can extend, and the order the harness runs them in.
@@ -46,6 +46,11 @@ export interface Plugin {
 	 * `plugin.<id>.*`.
 	 */
 	readonly events?: ReadonlyArray<Definition>;
+	/**
+	 * Off until a user asks for it. An `optIn` plugin is selected like any other but runs only
+	 * when a settings entry turns it on: `{ "plugin": "<id>", "enabled": true }`.
+	 */
+	readonly optIn?: boolean;
 	/**
 	 * `options` is this plugin's own configuration block, `{}` when its entry carried none.
 	 * Unvalidated: the harness never looks inside it, so a plugin checks whatever shape it

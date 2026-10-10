@@ -202,6 +202,17 @@ describe("plugin catalog and source resolution", () => {
 			reason: "plugin-invalid-definition",
 		});
 	});
+	it("starts an opt-in plugin off, turns it on by configuration, and keeps that when it moves", async () => {
+		const search = define({ id: "acme.tool.search", kind: "tool", optIn: true, setup: () => {} });
+		const on = { plugin: search.id, enabled: true };
+		expect(await run([search])).toEqual([]);
+		expect(selected(await run([search, on]))).toEqual([search]);
+		// Configuration still never selects: written before the module, it has nothing to turn on.
+		expect(await run([on, search])).toEqual([]);
+		// Named again later -- say by a project layer -- it moves, still on.
+		expect(selected(await run([search, on, a, search]))).toEqual([a, search]);
+		expect(await run([search, on, { plugin: search.id, enabled: false }])).toEqual([]);
+	});
 	it("reads a definition carrying its own `plugin` property as a definition", async () => {
 		// `Plugin` permits extra properties and the loader preserves them, so the entry check
 		// cannot be "has a `plugin` key".

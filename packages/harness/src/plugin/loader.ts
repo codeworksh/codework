@@ -28,6 +28,7 @@ const Definition = Schema.Struct({
 			),
 		),
 	),
+	optIn: Schema.optional(Schema.Boolean),
 	setup: Schema.declare<Plugin["setup"]>((value): value is Plugin["setup"] => Predicate.isFunction(value)),
 });
 

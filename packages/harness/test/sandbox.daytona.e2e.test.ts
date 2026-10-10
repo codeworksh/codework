@@ -13,6 +13,7 @@ import { Shell } from "../src/sandbox/shell/shell.ts";
 import { cancellationSpec } from "./fixtures/cancellation.spec.ts";
 import { remoteSandboxSpec } from "./fixtures/remote.spec.ts";
 import { labels, makeRemoteOwner } from "./fixtures/remote-owner.ts";
+import { searchRemoteSpec } from "./fixtures/search.remote.spec.ts";
 import "./utils/env.ts";
 
 const apiKey = process.env.DAYTONA_API_KEY;
@@ -85,6 +86,10 @@ suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 		);
 
 	bashPluginSpec({ driver: Driver.make(), resourceId, streaming: false });
+
+	searchRemoteSpec("daytona", async (cwd) =>
+		EnvDaytona.services({ apiKey, sandboxId: await resourceId(), instanceId: SandboxInstance.ID.create(), cwd }),
+	);
 
 	remoteSandboxSpec({
 		kind: "daytona",
