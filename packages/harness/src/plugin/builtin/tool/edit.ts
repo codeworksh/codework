@@ -83,6 +83,7 @@ export const editDef = Tool.define({
 	],
 	prepareArguments: prepareEditArguments,
 	parameters: EditParams,
+	constrainedSampling: { type: "json_schema", strict: "prefer" },
 	success: EditSuccess,
 	failure: EditFailed,
 	encodeContent: (success) => [
