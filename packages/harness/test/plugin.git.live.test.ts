@@ -116,7 +116,12 @@ live("plugins installed from git, as a third party ships them", () => {
 
 			// The tool reached the provider alongside the built-in, so the plugin's schemas
 			// survived the trip through a *separately installed* copy of effect.
-			expect(contexts[0]?.tools?.map((entry) => entry.name)).toEqual(["bash", "read", "spacex_launch_manifest"]);
+			expect(contexts[0]?.tools?.map((entry) => entry.name)).toEqual([
+				"bash",
+				"read",
+				"write",
+				"spacex_launch_manifest",
+			]);
 			// A prompt plugin runs after every tool plugin, so it indexed the tool above even
 			// though its settings entry is written after it.
 			expect(contexts[0]?.systemPrompt).toContain("## First principles");

@@ -239,7 +239,11 @@ export const fromProvider = (provider: Provider): Interface => {
 		readBytes: Effect.fn("SandboxFileSystem.readBytes")((path: string, offset: number, length: number) =>
 			attempt("readBytes", path, () => provider.readBytes(path, offset, length)),
 		),
-		writeFile: Effect.fn("SandboxFileSystem.writeFile")(writeCreatingParents),
+		// A started write cannot be called back; interrupting would only abandon it while
+		// its bytes still land, after a file's mutation lock has passed to the next writer.
+		writeFile: Effect.fn("SandboxFileSystem.writeFile")((path: string, content: string | Uint8Array) =>
+			Effect.uninterruptible(writeCreatingParents(path, content)),
+		),
 		stat: Effect.fn("SandboxFileSystem.stat")((path: string) => attempt("stat", path, () => provider.stat(path))),
 		// carried through only when the backend actually implements it
 		...(provider.lstat === undefined
