@@ -23,6 +23,8 @@ export interface Interface {
 	readonly cache: string;
 	readonly data: string;
 	readonly log: string;
+	/** Binaries the harness installs for itself on the host, such as the search tools' rg and fd. */
+	readonly bin: string;
 }
 
 export function make(input: Partial<Interface> = {}): Interface {
@@ -32,6 +34,7 @@ export function make(input: Partial<Interface> = {}): Interface {
 		cache: input.cache ?? posix.join(home, "cache"),
 		data: input.data ?? posix.join(home, "data"),
 		log: input.log ?? posix.join(home, "log"),
+		bin: input.bin ?? posix.join(home, "bin"),
 	};
 }
 

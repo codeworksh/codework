@@ -47,6 +47,11 @@ export interface Plugin {
 	 */
 	readonly events?: ReadonlyArray<Definition>;
 	/**
+	 * Off until a user asks for it. An `optIn` plugin is selected like any other but runs only
+	 * when a settings entry turns it on: `{ "plugin": "<id>", "enabled": true }`.
+	 */
+	readonly optIn?: boolean;
+	/**
 	 * `options` is this plugin's own configuration block, `{}` when its entry carried none.
 	 * Unvalidated: the harness never looks inside it, so a plugin checks whatever shape it
 	 * documents. It is a second argument rather than a context field so `ctx` stays one object

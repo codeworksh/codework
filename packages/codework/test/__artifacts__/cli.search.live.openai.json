@@ -1,0 +1,8 @@
+{
+	"off": [],
+	"on": [
+		"spec: src/nested/deep.spec.ts",
+		"other: src/util.ts:3",
+		"a: .gitignore, deep/, ignored.txt, kept.txt"
+	]
+}

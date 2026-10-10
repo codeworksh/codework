@@ -29,10 +29,24 @@ export interface Events {
 	) => Effect.Effect<Payload<D>>;
 }
 
+/**
+ * The harness's own directories on the host, all under its home (`--home`, `~/.codework` by
+ * default). App-level: the same for every session, and never a session's project or its sandbox.
+ */
+export interface Paths {
+	readonly home: string;
+	/** Binaries the harness installs for itself, such as the search tools' rg and fd. */
+	readonly bin: string;
+	readonly cache: string;
+	readonly data: string;
+	readonly log: string;
+}
+
 /** One object, shared by every plugin in one exchange. */
 export interface SharedPluginContext {
 	readonly sessionId: SessionID;
 	readonly sandbox: SandboxIO.Identity;
+	readonly paths: Paths;
 	readonly location: LocationInfo;
 	readonly settings: SettingsInfo;
 	readonly model: Model.Info;
