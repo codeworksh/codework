@@ -2,8 +2,8 @@ import type { Effect } from "effect";
 import type { Definition } from "../event.ts";
 import type { Service as LocationService } from "../location.ts";
 import type { SandboxIO } from "../sandbox/io.ts";
-import type { PluginOptions } from "./ref.ts";
 import type { SharedPluginContext } from "./context.ts";
+import type { PluginOptions } from "./ref.ts";
 
 /**
  * The domains a plugin can extend, and the order the harness runs them in.

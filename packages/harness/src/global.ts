@@ -23,7 +23,6 @@ export interface Interface {
 	readonly cache: string;
 	readonly data: string;
 	readonly log: string;
-	/** Binaries the harness installs for itself on the host, such as the search tools' rg and fd. */
 	readonly bin: string;
 }
 

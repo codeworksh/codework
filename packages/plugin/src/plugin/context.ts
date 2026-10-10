@@ -35,7 +35,6 @@ export interface Events {
  */
 export interface Paths {
 	readonly home: string;
-	/** Binaries the harness installs for itself, such as the search tools' rg and fd. */
 	readonly bin: string;
 	readonly cache: string;
 	readonly data: string;
