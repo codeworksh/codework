@@ -1,0 +1,85 @@
+---
+title: Using the CLI
+sidebarTitle: Capabilities
+description: The tools CodeWork can use, how to configure its model and plugins, and where it runs.
+---
+
+## Tools
+
+CodeWork works in your repository with a small set of built-in tools. It decides which to use; you see each call and its output as it runs.
+
+| Tool    | What it does                                    |
+| ------- | ----------------------------------------------- |
+| `read`  | Read a file, or a range of lines from it        |
+| `write` | Create a file or overwrite one                  |
+| `edit`  | Make targeted replacements in an existing file  |
+| `bash`  | Run a shell command, with an optional timeout   |
+| `grep`  | Search file contents by regex or literal string |
+| `find`  | Find files by glob pattern                      |
+| `ls`    | List a directory                                |
+
+[Plugins](#plugins) can add more.
+
+<Callout type="warn">
+	CodeWork has no permission prompts. It runs every tool, including shell commands and file edits, without asking
+	first. Review its changes with git, and use a [sandbox](#sandboxes) for work you don't want touching your machine.
+</Callout>
+
+## Models and settings
+
+CodeWork reads settings from `~/.codework/settings.jsonc` for your user, then from `.codework/settings.jsonc` in the nearest project folder, so a project can override your defaults.
+
+Set a default model so you don't have to pass `--provider` and `--model` on every run:
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"model": {
+		"provider": "openrouter",
+		"id": "deepseek/deepseek-v4.1-flash",
+	},
+}
+```
+
+Add `"thinkingLevel"` to set a default reasoning effort. Flags on `codework run` override settings for that session. Without any settings, CodeWork uses OpenAI's `gpt-5.6-luna` with high thinking.
+
+Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`. Each model supports a subset.
+
+## Plugins
+
+Plugins add tools and behavior to CodeWork. They're npm packages, git repositories, or local files, recorded in a settings file.
+
+```bash
+# Add to this project
+codework plugin add @acme/codework-tool-proc
+
+# Add for every project you work on
+codework plugin add @acme/codework-tool-proc -g
+
+# See what's configured and whether each one loaded
+codework plugin list
+
+# Install everything a fresh checkout declares
+codework plugin install
+```
+
+`check` and `update` look for and fetch newer versions, `remove` takes a plugin back out, and `reload` picks up changes in a running [server](/docs/cli/rpc).
+
+## Sandboxes
+
+A sandbox gives a session its own isolated machine. Choose a driver when you start a session:
+
+```bash
+codework run --sandbox-driver daytona "Inspect the repository"
+```
+
+| Driver    | Where the session runs                         |
+| --------- | ---------------------------------------------- |
+| `local`   | Your folder, directly (the default)            |
+| `daytona` | A [Daytona](https://daytona.io) sandbox        |
+| `vercel`  | A [Vercel Sandbox](https://vercel.com/sandbox) |
+
+Reuse a sandbox with `--sandbox-id <id>`, or attach to one you created outside CodeWork with `--sandbox-provider-id <id>`.
+
+<Placeholder title="A session running in a remote sandbox">
+	Screenshot: terminal output of a sandboxed run, highlighting the sandbox ID line.
+</Placeholder>
