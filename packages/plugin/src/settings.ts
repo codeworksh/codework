@@ -17,6 +17,7 @@ export const requestFields = {
 	cacheRetention: Schema.optional(Schema.Literals(["none", "short", "long"])),
 	headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 	timeoutMs: Schema.optional(Schema.Finite),
+	idleTimeoutMs: Schema.optional(Schema.Finite),
 	maxRetries: Schema.optional(Schema.Finite),
 	metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
 	thinkingBudgets: Schema.optional(Budgets),
@@ -237,7 +238,7 @@ export const defaults: Info = {
 		id: "gpt-5.6-luna",
 		thinkingLevel: "high",
 		toolExecution: "sequential",
-		options: { timeoutMs: 3_600_000, maxRetries: 0 },
+		options: { timeoutMs: 3_600_000, idleTimeoutMs: 300_000, maxRetries: 0 },
 	},
 	retry: { maxRetries: 3, baseDelayMs: 2_000, maxDelayMs: 60_000 },
 };
