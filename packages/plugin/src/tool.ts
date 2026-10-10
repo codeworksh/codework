@@ -65,6 +65,11 @@ export interface ToolDef<
 	readonly encodeContent?: (success: Success["Type"]) => ModelContent;
 	/** Render an expected failure for the model. Omit → executor falls back to JSON text. */
 	readonly encodeFailureContent?: (failure: Failure["Type"]) => ModelContent;
+	/**
+	 * The `details` kept with a success, for UIs and programmatic consumers. Omit → the encoded
+	 * success. Set it when `encodeContent` already carries the payload, so it is not stored twice.
+	 */
+	readonly encodeDetails?: (success: Success["Type"]) => unknown;
 }
 
 /** A handler: validated params + context → typed success or typed failure. */
@@ -103,12 +108,14 @@ interface DefineInput<
 	readonly description: string;
 	readonly label?: string;
 	readonly promptSnippet?: string;
+	readonly promptGuidelines?: ReadonlyArray<string>;
 	readonly parameters: Params;
 	readonly constrainedSampling?: Message.Tool["constrainedSampling"];
 	readonly success: Success;
 	readonly failure?: Failure;
 	readonly encodeContent?: (success: Success["Type"]) => ModelContent;
 	readonly encodeFailureContent?: (failure: Failure["Type"]) => ModelContent;
+	readonly encodeDetails?: (success: Success["Type"]) => unknown;
 }
 
 /** Define a pure tool (handler attached later via {@link implement} or a toolkit). */

@@ -506,6 +506,9 @@ importers:
       '@platformatic/vfs':
         specifier: ^0.4.0
         version: 0.4.0
+      '@silvia-odwyer/photon-node':
+        specifier: 0.3.4
+        version: 0.3.4
       jsonc-parser:
         specifier: 3.3.1
         version: 3.3.1
@@ -3401,6 +3404,9 @@ packages:
   '@sigstore/verify@4.1.2':
     resolution: {integrity: sha512-BfD9eLrz3A/DG58aSgfgZYmIR6V9Yw96QVN/frtu2bEH7ctSTk2TDvHU12un3JsDPBTqTNkqkIkucjxljpOFqQ==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
+
+  '@silvia-odwyer/photon-node@0.3.4':
+    resolution: {integrity: sha512-bnly4BKB3KDTFxrUIcgCLbaeVVS8lrAkri1pEzskpmxu9MdfGQTy8b8EgcD83ywD3RPMsIulY8xJH5Awa+t9fA==}
 
   '@smithy/core@3.34.1':
     resolution: {integrity: sha512-dLcOUxz8YCv1RZUMKq6GbyUf95pLbrqh34bPvpCZ1+CByFF31BEAFewZjsGCnVsZTKdThNENfGyAgk2TJqVwSw==}
@@ -10197,6 +10203,8 @@ snapshots:
       '@sigstore/bundle': 5.0.0
       '@sigstore/core': 4.0.1
       '@sigstore/protobuf-specs': 0.5.2
+
+  '@silvia-odwyer/photon-node@0.3.4': {}
 
   '@smithy/core@3.34.1':
     dependencies:

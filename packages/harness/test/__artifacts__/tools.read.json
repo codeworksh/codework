@@ -1,0 +1,366 @@
+{
+	"text": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "alpha\nbeta"
+			}
+		]
+	},
+	"empty": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": ""
+			}
+		]
+	},
+	"bom": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "first\nsecond"
+			}
+		]
+	},
+	"offset-limit": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "line 3\nline 4\n\n[6 more lines in file. Use offset=5 to continue.]"
+			}
+		]
+	},
+	"limit-to-end": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "line 2\nline 3"
+			}
+		]
+	},
+	"line-limit": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nl…ine 1987\nline 1988\nline 1989\nline 1990\nline 1991\nline 1992\nline 1993\nline 1994\nline 1995\nline 1996\nline 1997\nline 1998\nline 1999\nline 2000\n\n[Showing lines 1-2000 of 2500. Use offset=2001 to continue.]"
+			}
+		],
+		"details": {
+			"truncation": {
+				"truncated": true,
+				"truncatedBy": "lines",
+				"totalLines": 2500,
+				"outputLines": 2000,
+				"outputBytes": 18892,
+				"firstLineExceedsLimit": false,
+				"maxLines": 2000,
+				"maxBytes": 51200
+			}
+		}
+	},
+	"line-limit-offset": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "line 2001\nline 2002\nline 2003\nline 2004\nline 2005\nline 2006\nline 2007\nline 2008\nline 2009\nline 2010\nline 2011\nline 2012\n…\nline 2481\nline 2482\nline 2483\nline 2484\nline 2485\nline 2486\nline 2487\nline 2488\nline 2489\nline 2490\nline 2491\nline 2492\nline 2493\nline 2494\nline 2495\nline 2496\nline 2497\nline 2498\nline 2499\nline 2500"
+			}
+		]
+	},
+	"exactly-line-limit": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10\nline 11\nline 12\nline 13\nline 14\nline 15\nline 16\nl…\nline 1981\nline 1982\nline 1983\nline 1984\nline 1985\nline 1986\nline 1987\nline 1988\nline 1989\nline 1990\nline 1991\nline 1992\nline 1993\nline 1994\nline 1995\nline 1996\nline 1997\nline 1998\nline 1999\nline 2000"
+			}
+		]
+	},
+	"byte-limit": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "line 1.............................................................................................\nline 2..............….........................\nline 512...........................................................................................\n\n[Showing lines 1-512 of 1000 (50.0KB limit). Use offset=513 to continue.]"
+			}
+		],
+		"details": {
+			"truncation": {
+				"truncated": true,
+				"truncatedBy": "bytes",
+				"totalLines": 1000,
+				"outputLines": 512,
+				"outputBytes": 51199,
+				"firstLineExceedsLimit": false,
+				"maxLines": 2000,
+				"maxBytes": 51200
+			}
+		}
+	},
+	"first-line-too-long": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "[Line 1 is 60.0KB, exceeds 50.0KB limit. Use bash: sed -n '1p' huge-line.txt | head -c 51200]"
+			}
+		],
+		"details": {
+			"truncation": {
+				"truncated": true,
+				"truncatedBy": "bytes",
+				"totalLines": 2,
+				"outputLines": 0,
+				"outputBytes": 0,
+				"firstLineExceedsLimit": true,
+				"maxLines": 2000,
+				"maxBytes": 51200
+			}
+		}
+	},
+	"offset-past-end": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Offset 4 is beyond end of file (3 lines total)"
+			}
+		],
+		"details": {
+			"_tag": "ReadFailed",
+			"message": "Offset 4 is beyond end of file (3 lines total)"
+		}
+	},
+	"offset-huge": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Offset 100000000000000000000 is beyond end of file (3 lines total)"
+			}
+		],
+		"details": {
+			"_tag": "ReadFailed",
+			"message": "Offset 100000000000000000000 is beyond end of file (3 lines total)"
+		}
+	},
+	"missing": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "ENOENT: no such file or directory, open 'missing.txt'"
+			}
+		],
+		"details": {
+			"_tag": "ReadFailed",
+			"message": "ENOENT: no such file or directory, open 'missing.txt'"
+		}
+	},
+	"directory": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "EISDIR: illegal operation on a directory, read"
+			}
+		],
+		"details": {
+			"_tag": "ReadFailed",
+			"message": "EISDIR: illegal operation on a directory, read"
+		}
+	},
+	"binary": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Unsupported read blob.bin: binary file."
+			}
+		],
+		"details": {
+			"_tag": "ReadFailed",
+			"message": "Unsupported read blob.bin: binary file."
+		}
+	},
+	"gif-text": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "GIF is not an image"
+			}
+		]
+	},
+	"fake-png": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "definitely not a png"
+			}
+		]
+	},
+	"png": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Read image file [image/png]"
+			},
+			{
+				"type": "image",
+				"mimeType": "image/png",
+				"base64Bytes": 160
+			}
+		]
+	},
+	"png-resized": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Read image file [image/png]\n[Image: original 3000x1000, displayed at 2000x667. Multiply coordinates by 1.50 to map to original image.]"
+			},
+			{
+				"type": "image",
+				"mimeType": "image/png",
+				"base64Bytes": 35628
+			}
+		]
+	},
+	"png-thin": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Read image file [image/png]\n[Image: original 5000x1, displayed at 2000x1. Multiply coordinates by 2.50 to map to original image.]"
+			},
+			{
+				"type": "image",
+				"mimeType": "image/png",
+				"base64Bytes": 220
+			}
+		]
+	},
+	"bmp-converted": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Read image file [image/png]\n[Image converted from image/bmp to image/png.]"
+			},
+			{
+				"type": "image",
+				"mimeType": "image/png",
+				"base64Bytes": 116
+			}
+		]
+	},
+	"apng": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "Unsupported read moving.png: binary file."
+			}
+		],
+		"details": {
+			"_tag": "ReadFailed",
+			"message": "Unsupported read moving.png: binary file."
+		}
+	},
+	"jpeg-exif-rotated": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Read image file [image/png]\n[Image: original 1000x3000, displayed at 667x2000. Multiply coordinates by 1.50 to map to original image.]"
+			},
+			{
+				"type": "image",
+				"mimeType": "image/png",
+				"base64Bytes": 44828
+			}
+		]
+	},
+	"unreadable": {
+		"status": "error",
+		"content": [
+			{
+				"type": "text",
+				"text": "EACCES: permission denied, open '<root>/secret.txt'"
+			}
+		],
+		"details": {
+			"_tag": "ReadFailed",
+			"message": "EACCES: permission denied, open '<root>/secret.txt'"
+		}
+	},
+	"at-prefix": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "alpha\nbeta"
+			}
+		]
+	},
+	"unicode-space": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "spaced"
+			}
+		]
+	},
+	"nfd-name": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "accented"
+			}
+		]
+	},
+	"curly-quote-name": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "quoted"
+			}
+		]
+	},
+	"screenshot-name-lowercase": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "en_AU"
+			}
+		]
+	},
+	"screenshot-name": {
+		"status": "completed",
+		"content": [
+			{
+				"type": "text",
+				"text": "Read image file [image/png]"
+			},
+			{
+				"type": "image",
+				"mimeType": "image/png",
+				"base64Bytes": 116
+			}
+		]
+	}
+}

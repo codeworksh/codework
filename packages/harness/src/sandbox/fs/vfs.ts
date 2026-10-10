@@ -41,6 +41,14 @@ const make = (vfs: VirtualFileSystem): Interface => {
 
 	const readdir = async (path: string) => vfs.promises.readdir(path);
 
+	// Positional reads through a descriptor: the VFS read stream loads the whole
+	// file first, and the host provider reads only what is asked.
+	const open = (path: string) =>
+		new Promise<number>((resolve, reject) =>
+			vfs.open(path, "r", (error, value) => (error ? reject(error) : resolve(value!))),
+		);
+	const close = (fd: number) => new Promise<void>((resolve) => vfs.close(fd, () => resolve()));
+
 	// Option validation lives in `fromProvider`, ahead of any mutation.
 	const rm = async (path: string, options?: SandboxFileSystem.RmOptions) => {
 		let stats: VirtualStats;
@@ -93,16 +101,26 @@ const make = (vfs: VirtualFileSystem): Interface => {
 		// Every VFS provider resolves symlinks itself (the host one via
 		// `fs.realpath`) and rejects with ENOENT for a missing path.
 		realpath: (path) => vfs.promises.realpath(path),
+		readBytes: async (path, offset, length) => {
+			const fd = await open(path);
+			try {
+				const buffer = Buffer.alloc(length);
+				const read = await new Promise<number>((resolve, reject) =>
+					vfs.read(fd, buffer, 0, length, offset, (error, bytesRead) =>
+						error ? reject(error) : resolve(bytesRead),
+					),
+				);
+				return new Uint8Array(buffer.subarray(0, read));
+			} finally {
+				await close(fd);
+			}
+		},
 		scanLines: async (path, options) => {
 			const scanner = new SandboxFileSystem.Scan.LineScanner(options);
 			// Bounded by the size seen now, so a file that keeps growing ends the scan.
 			const { size } = await vfs.promises.stat(path);
 			if (size === 0) return scanner.finish();
-			// Positional reads through a descriptor: the VFS read stream loads the
-			// whole file first, and the host provider reads only what is asked.
-			const fd = await new Promise<number>((resolve, reject) =>
-				vfs.open(path, "r", (error, value) => (error ? reject(error) : resolve(value!))),
-			);
+			const fd = await open(path);
 			try {
 				const buffer = Buffer.alloc(Math.min(SCAN_CHUNK, size));
 				for (let position = 0; position < size;) {
@@ -117,7 +135,7 @@ const make = (vfs: VirtualFileSystem): Interface => {
 					position += read;
 				}
 			} finally {
-				await new Promise<void>((resolve) => vfs.close(fd, () => resolve()));
+				await close(fd);
 			}
 			return scanner.finish();
 		},

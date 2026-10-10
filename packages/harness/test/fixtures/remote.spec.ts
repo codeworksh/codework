@@ -218,6 +218,43 @@ export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 		);
 
 		it(
+			"reads byte ranges inside the sandbox, binary-safe",
+			async () => {
+				const root = path.join(options.cwd, name(options.kind, "bytes"));
+				const bytes = Uint8Array.from({ length: 300 }, (_, index) => index % 256);
+				const result = await options.run(
+					Effect.gen(function* () {
+						const fs = yield* SandboxFileSystem.Service;
+						const program = Effect.gen(function* () {
+							yield* fs.writeFile(path.join(root, "bytes.dat"), bytes);
+							return {
+								head: [...(yield* fs.readBytes(path.join(root, "bytes.dat"), 0, 4))],
+								middle: [...(yield* fs.readBytes(path.join(root, "bytes.dat"), 254, 4))],
+								end: [...(yield* fs.readBytes(path.join(root, "bytes.dat"), 298, 10))],
+								past: (yield* fs.readBytes(path.join(root, "bytes.dat"), 400, 10)).length,
+								missing: SandboxFileSystem.isNotFoundError(
+									(yield* fs.readBytes(path.join(root, "missing"), 0, 4).pipe(Effect.flip)).cause,
+								),
+							};
+						});
+						return yield* program.pipe(
+							Effect.ensuring(fs.rm(root, { recursive: true, force: true }).pipe(Effect.ignore)),
+						);
+					}),
+				);
+
+				expect(result).toEqual({
+					head: [0, 1, 2, 3],
+					middle: [254, 255, 0, 1],
+					end: [42, 43],
+					past: 0,
+					missing: true,
+				});
+			},
+			options.timeout,
+		);
+
+		it(
 			"implements shell strings, argv, environment, cwd, and filesystem sharing",
 			async () => {
 				const relativeRoot = name(options.kind, "shell");

@@ -1,5 +1,5 @@
-import { fileURLToPath } from "node:url";
 import { recommended } from "@effect/tsgo/oxlint-presets";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 import { configDefaults } from "vite-plus/test/config";
 
@@ -50,6 +50,7 @@ export default defineConfig({
 			"src/sandbox.ts",
 			"src/sandboxes/daytona/index.ts",
 			"src/sandboxes/vercel/index.ts",
+			"src/tool/image/worker.ts",
 		],
 		format: ["esm"],
 		outDir: "dist/pack",
