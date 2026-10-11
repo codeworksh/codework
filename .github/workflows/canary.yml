@@ -35,7 +35,7 @@ jobs:
          - run: vp check packages scripts .github
          - run: vp run --filter './packages/*' --concurrency-limit 2 typecheck
          # One directory per platform package; each package's build stages its binary from here.
-         - uses: actions/download-artifact@v4
+         - uses: actions/download-artifact@v8
            with:
               pattern: tui-*
               path: packages/tui/dist/bin
