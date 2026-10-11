@@ -57,7 +57,7 @@ jobs:
          - if: runner.os == 'Linux'
            name: Require a static binary
            run: file target/${{ matrix.target }}/release/codework-tui | grep -E "static(-pie)? linked|statically linked"
-         - uses: actions/upload-artifact@v4
+         - uses: actions/upload-artifact@v7
            with:
               name: ${{ matrix.package }}
               path: packages/tui/target/${{ matrix.target }}/release/codework-tui
