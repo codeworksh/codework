@@ -1,6 +1,7 @@
 import mdx from "@astrojs/mdx";
 import { unified } from "@astrojs/markdown-remark";
 import react from "@astrojs/react";
+import sitemap from "@astrojs/sitemap";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "astro/config";
 import { rehypeCode, remarkHeading, remarkStructure } from "fumadocs-core/mdx-plugins";
@@ -21,7 +22,7 @@ export default defineConfig({
 			rehypePlugins: [rehypeCode],
 		}),
 	},
-	integrations: [react(), mdx({ extendMarkdownConfig: true, syntaxHighlight: false })],
+	integrations: [react(), sitemap(), mdx({ extendMarkdownConfig: true, syntaxHighlight: false })],
 	server: {
 		// ngrok tunnels to the dev server; a leading dot admits every subdomain.
 		allowedHosts: [".ngrok-free.dev", ".ngrok-free.app", ".ngrok.dev", ".ngrok.app", ".ngrok.io"],

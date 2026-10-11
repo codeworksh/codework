@@ -25,15 +25,31 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 		<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" sizes="180x180" />
 		{description && <meta name="description" content={description} />}
 		<link rel="canonical" href={canonical} />
+		<link rel="sitemap" href="/sitemap-index.xml" />
+		<link rel="alternate" type="application/rss+xml" title="CodeWork Posts" href="/rss.xml" />
 		<meta property="og:site_name" content="CodeWork" />
 		<meta property="og:type" content={type} />
 		<meta property="og:title" content={title} />
 		{description && <meta property="og:description" content={description} />}
 		<meta property="og:url" content={canonical} />
-		<meta name="twitter:card" content="summary" />
+		<meta property="og:image" content={new URL("/og.png", Astro.site)} />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta name="twitter:card" content="summary_large_image" />
 		<slot name="head" />
 		{docs && <ClientRouter />}
 		<script is:inline set:html={themeInitScript} />
+		<script>
+			// MDX code blocks render as static HTML, so their copy buttons are wired here, once, for every page.
+			document.addEventListener("click", async (event) => {
+				const button = (event.target as Element).closest<HTMLButtonElement>('figure button[aria-label="Copy Text"]');
+				const code = button?.closest("figure")?.querySelector("pre");
+				if (!button || !code) return;
+				await navigator.clipboard.writeText(code.innerText.trimEnd());
+				button.dataset.checked = "";
+				setTimeout(() => delete button.dataset.checked, 1500);
+			});
+		</script>
 	</head>
 	{
 		docs ? (
