@@ -1,0 +1,14 @@
+---
+import { Pixels } from "./pixels";
+import { WORDMARK } from "./wordmark";
+
+interface Props {
+	/** The page name, set small under the wordmark; it is the page's h1. */
+	label: string;
+}
+---
+
+<div>
+	<Pixels glyph={WORDMARK} depth className="block h-auto w-full max-w-xs text-brand" />
+	<h1 class="mt-4 font-mono text-xs font-medium tracking-[0.2em] text-text-muted uppercase">{Astro.props.label}</h1>
+</div>

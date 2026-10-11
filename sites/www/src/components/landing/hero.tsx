@@ -3,13 +3,13 @@ import { useState, type CSSProperties } from "react";
 import { hero } from "./content";
 import { Field } from "./field";
 import { GithubIcon } from "./github";
+import { Install } from "./install";
 import { Pixels } from "./pixels";
 import { WORDMARK } from "./wordmark";
 
-const button =
-	"inline-flex h-10 items-center justify-center gap-2 border pr-4 pl-3 text-[15px] font-medium whitespace-nowrap transition-[background-color,transform] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand active:scale-[0.96] [&_svg]:size-5";
+const linkIcons = [BookOpen, GithubIcon];
 
-export function Hero() {
+export function Hero(props: { callout?: { text: string; href: string } | undefined }) {
 	// The SVG word is there before any script runs; it steps aside once the canvas paints the same cells.
 	const [painted, setPainted] = useState(false);
 
@@ -25,19 +25,21 @@ export function Hero() {
 
 			<div className="pointer-events-none relative flex flex-1 flex-col items-center px-6">
 				<div className="flex-1" />
-				<div
-					data-hero-quiet
-					className="pointer-events-auto mb-12 flex w-full justify-center lg:mb-[calc(var(--pxc)*5)]"
-				>
-					<a
-						href={hero.callout.href}
-						data-hero-stagger
-						className="group inline-flex max-w-full items-center gap-2 border border-brand/40 bg-bg/60 px-3.5 py-1.5 text-left text-[13px] leading-snug text-brand transition-colors duration-150 ease-out hover:border-brand hover:bg-brand hover:text-bg"
+				{props.callout && (
+					<div
+						data-hero-quiet
+						className="pointer-events-auto mb-12 flex w-full justify-center lg:mb-[calc(var(--pxc)*5)]"
 					>
-						<span className="min-w-0">{hero.callout.text}</span>
-						<ArrowRight className="size-4 shrink-0 transition-transform duration-150 ease-out group-hover:translate-x-0.5" />
-					</a>
-				</div>
+						<a
+							href={props.callout.href}
+							data-hero-stagger
+							className="group inline-flex max-w-full items-center gap-2 border border-brand/40 bg-bg/60 px-3.5 py-1.5 text-left text-[13px] leading-snug text-brand transition-colors duration-150 ease-out hover:border-brand hover:bg-brand hover:text-bg"
+						>
+							<span className="min-w-0">{props.callout.text}</span>
+							<ArrowRight className="size-4 shrink-0 transition-transform duration-150 ease-out group-hover:translate-x-0.5" />
+						</a>
+					</div>
+				)}
 
 				<div data-hero-wordmark className={`w-[88%] max-w-4xl ${painted ? "invisible" : ""}`}>
 					<span className="sr-only">CodeWork</span>
@@ -70,22 +72,24 @@ export function Hero() {
 					<div
 						data-hero-stagger
 						style={{ "--stagger": 2 } as CSSProperties}
-						className="mt-9 flex w-full max-w-xs flex-col items-stretch gap-3 sm:w-auto sm:max-w-none sm:flex-row lg:gap-[calc(var(--pxc)*2)]"
+						className="mt-9 flex w-full flex-col items-center gap-4"
 					>
-						<a
-							href={hero.primary.href}
-							className={`${button} border-transparent bg-brand text-brand-ink hover:bg-[color-mix(in_oklch,var(--color-brand),white_14%)]`}
-						>
-							<BookOpen />
-							{hero.primary.label}
-						</a>
-						<a
-							href={hero.secondary.href}
-							className={`${button} border-border-strong bg-surface text-text hover:bg-surface-2`}
-						>
-							<GithubIcon />
-							{hero.secondary.label}
-						</a>
+						<Install />
+						<div className="flex items-center gap-5 text-[13px] font-medium">
+							{hero.links.map((link, i) => {
+								const Icon = linkIcons[i]!;
+								return (
+									<a
+										key={link.href}
+										href={link.href}
+										className="inline-flex items-center gap-1.5 text-text-secondary transition-colors duration-150 ease-out hover:text-brand [&_svg]:size-4"
+									>
+										<Icon />
+										{link.label}
+									</a>
+								);
+							})}
+						</div>
 					</div>
 				</div>
 				<div className="flex-1" />

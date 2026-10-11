@@ -1,6 +1,7 @@
 import { glob } from "astro/loaders";
 import { z } from "astro/zod";
 import { defineCollection } from "astro:content";
+import { changelogLoader } from "./lib/changelog";
 
 const docs = defineCollection({
 	loader: glob({ pattern: "**/*.{md,mdx}", base: "./content/docs" }),
@@ -23,4 +24,28 @@ const meta = defineCollection({
 	}),
 });
 
-export const collections = { docs, meta };
+const posts = defineCollection({
+	loader: glob({ pattern: "**/*.{md,mdx}", base: "./content/posts" }),
+	schema: z.object({
+		title: z.string(),
+		description: z.string(),
+		date: z.coerce.date(),
+		updated: z.coerce.date().optional(),
+		tag: z.enum(["announcement", "release", "tutorial", "note"]),
+		/** One line for the landing hero; the newest post that has one is featured there. */
+		callout: z.string().optional(),
+	}),
+});
+
+const changelog = defineCollection({
+	loader: changelogLoader(),
+	schema: z.object({
+		title: z.string(),
+		pkg: z.string().optional(),
+		date: z.coerce.date().optional(),
+		/** Position in CHANGELOG.md, which lists newest first. */
+		order: z.number(),
+	}),
+});
+
+export const collections = { docs, meta, posts, changelog };

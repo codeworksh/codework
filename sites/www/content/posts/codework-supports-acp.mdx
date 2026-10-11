@@ -1,0 +1,177 @@
+---
+title: "Support for the Agent Client Protocol (ACP)"
+description: "CodeWork now speaks the Agent Client Protocol (ACP). Learn what ACP is, how it connects coding agents to editors, and how to run CodeWork in any ACP client."
+date: 2026-10-11
+tag: announcement
+callout: "Adds support for ACP, the Agent Client Protocol"
+---
+
+The Agent Client Protocol (ACP) is an open standard that lets any code editor talk to any coding agent, the same way the Language Server Protocol lets any editor talk to any language server. CodeWork now ships an ACP server: run `codework acp` and an ACP-compatible editor can use CodeWork as its agent. This post explains what ACP is, how it works, why it matters, and how to set CodeWork up in your editor.
+
+## What Is the Agent Client Protocol (ACP)?
+
+ACP standardizes communication between code editors and coding agents. The editor owns the interface: the chat panel, file mentions, the diff view. The agent owns the work: the model, the tools, and the session. ACP defines the messages that pass between them.
+
+The official site, [agentclientprotocol.com](https://agentclientprotocol.com), describes two setups:
+
+- **Local agents** run as a subprocess of the editor and communicate over JSON-RPC on stdio.
+- **Remote agents** run elsewhere and communicate over HTTP or WebSocket. The spec notes that full remote support is still a work in progress.
+
+ACP reuses MCP's JSON representations where it can and adds its own types for things specific to coding agents, such as diffs. User-facing text defaults to Markdown, so an editor doesn't need to render HTML.
+
+## The Problem ACP Solves
+
+Before ACP, every pairing of editor and agent needed its own integration. An agent that wanted to appear inside three editors had to build three plugins against three different extension APIs. An editor that wanted to offer five agents had to maintain five bespoke connectors. The result was duplicated work, uneven feature support, and lock-in: the agent you liked often only worked well in one editor.
+
+Language tooling had the same problem until LSP arrived. Once editors spoke LSP, a single language server worked everywhere. ACP applies that idea to coding agents. An agent implements ACP once and works in every ACP client. An editor implements ACP once and can host every ACP agent.
+
+| Without ACP                                       | With ACP                                       |
+| ------------------------------------------------- | ---------------------------------------------- |
+| One custom integration per editor and agent pair  | One protocol implementation on each side       |
+| Agent features depend on each editor's plugin API | Shared message types for prompts, tools, diffs |
+| Switching editors often means switching agents    | Pick your editor and your agent independently  |
+| New agents wait for editor-specific plugins       | New agents work in existing clients on day one |
+
+<Placeholder type="image" title="Editors and agents connected through ACP">
+	Diagram: several editors on the left (Zed, JetBrains, Neovim, Emacs) and several agents on the right, with CodeWork
+	highlighted. Every line passes through a single ACP layer in the middle, labeled "JSON-RPC over stdio".
+</Placeholder>
+
+## How ACP Works
+
+ACP is built on JSON-RPC 2.0. It has two kinds of messages: methods, which expect a response, and notifications, which don't. A local session follows three phases.
+
+### 1. Initialization
+
+The editor starts the agent as a child process and sends `initialize`. Both sides exchange their protocol version and capabilities, such as whether the agent can reload past sessions or accept images in prompts. If the agent requires it, the editor then calls `authenticate`.
+
+### 2. Session Setup
+
+The editor creates a conversation with `session/new`, passing the project folder the agent should work in. Agents that support it can also reopen an existing conversation with `session/load`.
+
+### 3. Prompt Turns
+
+The editor sends the user's message with `session/prompt`. While the agent works, it streams `session/update` notifications back: message chunks, reasoning, tool calls and their results, plans, and title changes. The editor can interrupt at any time with `session/cancel`. The turn ends when the agent responds to the prompt with a stop reason, such as `end_turn` or `cancelled`.
+
+### Client-Side Capabilities
+
+ACP also lets the agent call back into the editor. The baseline client method is `session/request_permission`, which lets an agent ask the user before running a tool. Editors can optionally offer `fs/read_text_file` and `fs/write_text_file`, so the agent can see unsaved buffers and make edits the editor tracks, plus a set of `terminal/*` methods for running commands in an editor-managed terminal. Each agent chooses which of these it uses.
+
+## Why ACP Matters for Developers
+
+- **No lock-in.** Your choice of editor no longer decides your choice of agent. Use the editor you know with the agent that fits the task.
+- **One agent, many surfaces.** The same agent, settings, and history can follow you from the terminal into an editor.
+- **Editor-native UX.** File mentions, selections, diff views, and model pickers come from the editor, so every agent gets them without building its own UI.
+- **A growing ecosystem.** The [ACP clients list](https://agentclientprotocol.com/overview/clients) includes [Zed](https://zed.dev), JetBrains IDEs, Neovim (through plugins such as CodeCompanion and avante.nvim), Emacs (through agent-shell), Visual Studio Code extensions, and more. Agents including Gemini CLI and Codex CLI already speak the protocol.
+
+## How CodeWork Implements ACP
+
+CodeWork is an open source coding agent CLI. Its ACP support is a built-in subcommand, `codework acp`, which turns the CLI into an ACP server on stdio. It speaks ACP v1, uses newline-delimited JSON-RPC 2.0 on stdout, and writes its logs to stderr so the protocol stream stays clean.
+
+Here is what the ACP coding agent supports today:
+
+- **Sessions rooted at your project.** `session/new` creates a session in the editor's project folder, and that folder's `.codework/settings.jsonc` applies as if you had run the CLI from it.
+- **Shared history with the terminal.** ACP sessions are regular CodeWork sessions, stored in the same database as the ones you start with `codework run`. `session/list` and `session/load` let the editor list past sessions for the folder and reopen one with its full history replayed.
+- **Streaming updates.** Answers, reasoning, and tool calls stream to the editor as `session/update` notifications. CodeWork titles a session from its first prompt and tells the editor.
+- **Model and thinking effort pickers.** Each session exposes a model selector, listing every model from the providers CodeWork has credentials for, and a thinking effort selector for models that support reasoning.
+- **Rich prompt content.** Text, images (for models that accept them), mentioned files and selections as embedded context, and resource links all work. Other binary files are not supported.
+- **Clean shutdown.** When the editor closes the connection, CodeWork interrupts anything still running and stops any sandboxes it manages.
+
+Two things to know up front. First, CodeWork does not use ACP's permission requests: it runs every tool, including shell commands and file edits, without asking the editor first. Second, it works on files directly rather than through the editor's file system methods. Start in a git repository with a clean working tree so every change is easy to review and undo. If you want isolation, [`codework run --sandbox-driver`](/docs/cli/using#sandboxes) runs sessions in a sandbox from the terminal.
+
+## How to Use CodeWork with an ACP Editor
+
+The steps below get CodeWork running in any ACP client. Zed is used as the worked example because it has built-in ACP support, but the command is the same everywhere.
+
+### Step 1: Install CodeWork
+
+You need Node.js 24 or later and pnpm. CodeWork is in alpha, so install the canary release:
+
+```bash
+pnpm add -g @codeworksh/cli@canary
+codework --help
+```
+
+### Step 2: Connect a Model
+
+The editor can't sign you in, so set up credentials once from the terminal. Sign in with a ChatGPT Plus or Pro plan:
+
+```bash
+codework auth login --openai-codex
+```
+
+Or provide an API key, such as `OPENROUTER_API_KEY` or `GEMINI_API_KEY`, in the environment the editor launches CodeWork with. [Models & Pricing](/docs/models) covers every provider.
+
+### Step 3: Find the Binary Path
+
+Editors opened from the Dock or Start menu may not see your shell's `PATH`. Use the absolute path to be safe:
+
+```bash
+which codework
+```
+
+### Step 4: Register CodeWork in Your Editor
+
+Every ACP client needs the same two things: the command (`codework`) and its arguments (`acp`). In Zed, open **Agent Settings**, go to **External Agents**, choose **Add Agent**, then **Add Custom Agent**, and fill in the entry:
+
+```json title="~/.config/zed/settings.json"
+{
+	"agent_servers": {
+		"CodeWork": {
+			"type": "custom",
+			"command": "codework",
+			"args": ["acp"],
+			"env": {}
+		}
+	}
+}
+```
+
+Replace `codework` with the absolute path from step 3 if needed. Global flags such as `--home`, `--database`, and `--user-config-dir` go after `acp` in `args`. Put API keys in `env` if the editor wouldn't otherwise see them.
+
+For other editors, follow their instructions for adding a custom ACP agent and point them at `codework acp`.
+
+### Step 5: Start a Thread
+
+Open a project folder, open your editor's agent panel, and start a new thread with CodeWork. In Zed, choose **CodeWork** under External Agents in the new-thread menu. Type `@` to mention files, pick a model and thinking effort from the pickers, and send your prompt.
+
+<Placeholder type="image" title="CodeWork in an editor's agent panel">
+	Screenshot: CodeWork running in an editor's agent panel, streaming a tool call and a file edit, with the model and
+	thinking effort pickers visible at the bottom.
+</Placeholder>
+
+To set a default model for every thread in a project, add it to that project's settings:
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"model": { "provider": "openrouter", "id": "deepseek/deepseek-v4.1-flash" },
+}
+```
+
+The [ACP docs](/docs/cli/acp/) cover the full Zed walkthrough, prompt content support, and troubleshooting. New to CodeWork? Start with the [Quickstart](/docs/quickstart/).
+
+## FAQ
+
+### What is the Agent Client Protocol?
+
+ACP is an open standard for connecting code editors to coding agents. It uses JSON-RPC 2.0, typically over stdio with the agent running as a subprocess of the editor, so any ACP agent can work in any ACP editor.
+
+### How is ACP different from MCP and LSP?
+
+LSP connects editors to language servers. MCP connects AI models and agents to tools and data sources. ACP connects editors to coding agents. It is modeled on LSP and reuses MCP's JSON representations where possible.
+
+### Which editors support ACP?
+
+Zed has built-in support, and the official clients list includes JetBrains IDEs, Neovim plugins, Emacs, Visual Studio Code extensions, Obsidian plugins, and others. Check [agentclientprotocol.com](https://agentclientprotocol.com/overview/clients) for the current list.
+
+### Is Zed required to use CodeWork with ACP?
+
+No. Zed is one ACP client among many. Any editor that speaks ACP can run CodeWork with `codework acp`.
+
+### Does CodeWork ask for permission before running tools in ACP mode?
+
+No. CodeWork runs tools, including shell commands and file edits, without permission prompts. Work in a clean git tree so changes are easy to review.
+
+### Are ACP sessions shared with the CodeWork CLI?
+
+Yes. ACP sessions are stored in the same database as `codework run` sessions, and editors can list and reload them with their full history.

@@ -6,20 +6,26 @@
 export const GITHUB_URL = "https://github.com/codeworksh/codework";
 
 export const nav = [
+	{ label: "Posts", href: "/posts/" },
 	{ label: "Docs", href: "/docs/" },
-	{ label: "Changelog", href: "#" },
-	{ label: "Blog", href: "#" },
+	{ label: "Changelog", href: "/changelog/" },
 ] as const;
 
 export const hero = {
-	callout: { text: "Adds support for ACP, agent client protocol", href: "#" },
 	title: "Make Code Work for You",
 	lines: [
 		"An open source coding agent that makes shipping great software fun.",
 		"Extend it with plugins like tools, prompts, skills & more, shared via npm or git.",
 	],
-	primary: { label: "Get started", href: "/docs/" },
-	secondary: { label: "View on GitHub", href: GITHUB_URL },
+	install: [
+		{ label: "pnpm", command: "pnpm add -g @codeworksh/cli@canary" },
+		{ label: "npm", command: "npm install -g @codeworksh/cli@canary" },
+		{ label: "bun", command: "bun add -g @codeworksh/cli@canary" },
+	],
+	links: [
+		{ label: "Read the docs", href: "/docs/quickstart/" },
+		{ label: "View on GitHub", href: GITHUB_URL },
+	],
 };
 
 export const about = {
@@ -97,8 +103,8 @@ export const footer = {
 			title: "Explore",
 			links: [
 				{ label: "Docs", href: "/docs/" },
-				{ label: "Changelog", href: "#" },
-				{ label: "Blog", href: "#" },
+				{ label: "Changelog", href: "/changelog/" },
+				{ label: "Posts", href: "/posts/" },
 			],
 		},
 		{

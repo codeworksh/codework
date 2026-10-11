@@ -1,0 +1,49 @@
+/* Fumadocs typography and MDX components, shared by docs and posts. Import after Tailwind. */
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+
+/*
+ * Fumadocs wears the site theme: its colour variables point at the active theme's tokens
+ * (themes.css), so the docs follow whatever was picked on the landing page. `:root.dark` and the
+ * sidebar selectors outrank Fumadocs' own `.dark` palette.
+ */
+:root,
+:root.dark {
+	--color-fd-background: var(--t-bg);
+	--color-fd-foreground: var(--t-text);
+	--color-fd-muted: var(--t-surface);
+	--color-fd-muted-foreground: var(--t-text-muted);
+	--color-fd-popover: var(--t-surface);
+	--color-fd-popover-foreground: var(--t-text);
+	--color-fd-card: var(--t-surface);
+	--color-fd-card-foreground: var(--t-text);
+	--color-fd-border: var(--t-border-subtle);
+	--color-fd-primary: var(--t-brand);
+	--color-fd-primary-foreground: var(--t-brand-ink);
+	--color-fd-secondary: var(--t-surface-2);
+	--color-fd-secondary-foreground: var(--t-text);
+	--color-fd-accent: var(--t-surface-2);
+	--color-fd-accent-foreground: var(--t-text);
+	--color-fd-ring: var(--t-brand);
+}
+
+/* Reading type, after the Omarchy manual: compact body copy under Geist headings. */
+.prose {
+	font-size: 15px;
+	line-height: 1.65;
+	color: var(--t-text-secondary);
+}
+
+.prose :is(h2, h3) {
+	color: var(--t-text);
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.prose h2 {
+	font-size: 1.25rem;
+}
+
+.prose h3 {
+	font-size: 1.05rem;
+}

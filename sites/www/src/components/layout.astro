@@ -7,9 +7,12 @@ interface Props {
 	description?: string | undefined;
 	/** Docs pages swap in place through Astro's client router; the landing page is a plain document. */
 	docs?: boolean;
+	/** Open Graph type; posts are articles. */
+	type?: "website" | "article";
 }
 
-const { title, description, docs = false } = Astro.props;
+const { title, description, docs = false, type = "website" } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
 ---
 
 <html lang="en" class="dark">
@@ -21,6 +24,14 @@ const { title, description, docs = false } = Astro.props;
 		<link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
 		<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" sizes="180x180" />
 		{description && <meta name="description" content={description} />}
+		<link rel="canonical" href={canonical} />
+		<meta property="og:site_name" content="CodeWork" />
+		<meta property="og:type" content={type} />
+		<meta property="og:title" content={title} />
+		{description && <meta property="og:description" content={description} />}
+		<meta property="og:url" content={canonical} />
+		<meta name="twitter:card" content="summary" />
+		<slot name="head" />
 		{docs && <ClientRouter />}
 		<script is:inline set:html={themeInitScript} />
 	</head>

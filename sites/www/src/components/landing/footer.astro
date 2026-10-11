@@ -1,0 +1,39 @@
+---
+import { footer } from "./content";
+import { Field } from "./field";
+import { Logo } from "./logo";
+import { Pixels } from "./pixels";
+import { WORDMARK } from "./wordmark";
+---
+
+<footer class="relative isolate overflow-hidden border-t border-border-subtle bg-field">
+	<div aria-hidden="true" class="pointer-events-none absolute inset-0">
+		<Field variant="field" client:visible />
+	</div>
+	<div class="relative mx-auto flex max-w-6xl flex-col gap-10 px-4 py-14 sm:px-6 lg:flex-row lg:justify-between">
+		<div class="lg:w-96">
+			<a href="/" aria-label="CodeWork home" data-quiet class="block w-max text-brand">
+				<Logo className="mr-3 size-5" /><Pixels glyph={WORDMARK} className="h-6 w-auto" />
+			</a>
+			<p data-quiet class="mt-4 text-sm leading-relaxed text-text-muted">
+				{footer.tagline}
+			</p>
+		</div>
+		<div class="grid grid-cols-2 gap-10 sm:gap-16">
+			{footer.columns.map((column) => (
+				<div data-quiet>
+					<h3 class="font-mono text-sm font-medium text-text">{column.title}</h3>
+					<ul class="mt-3 space-y-2 text-sm">
+						{column.links.map((link) => (
+							<li>
+								<a href={link.href} class="text-text-secondary transition-colors hover:text-brand">
+									{link.label}
+								</a>
+							</li>
+						))}
+					</ul>
+				</div>
+			))}
+		</div>
+	</div>
+</footer>

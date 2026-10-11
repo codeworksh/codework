@@ -22,8 +22,8 @@ export function Header() {
 
 	return (
 		<header
-			className={`sticky top-0 z-50 h-(--nav-h) transition-colors duration-200 ${
-				overHero ? "bg-transparent" : "border-b border-border-subtle bg-bg/90 backdrop-blur"
+			className={`sticky top-0 z-50 h-(--nav-h) border-b transition-colors duration-200 ${
+				overHero ? "border-transparent bg-transparent" : "border-border-subtle bg-bg/90 backdrop-blur"
 			}`}
 		>
 			<div className="mx-auto flex h-full max-w-6xl items-center gap-3 px-4 sm:px-6">
@@ -67,12 +67,6 @@ export function Header() {
 						className="flex size-8 items-center justify-center text-text-secondary transition-colors hover:text-text"
 					>
 						<GithubIcon className="size-5" />
-					</a>
-					<a
-						href="/docs/"
-						className="inline-flex h-8 items-center border border-transparent bg-brand px-3 text-sm font-medium text-brand-ink transition-colors hover:bg-[color-mix(in_oklch,var(--color-brand),white_14%)]"
-					>
-						Get started
 					</a>
 				</div>
 			</div>

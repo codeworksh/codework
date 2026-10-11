@@ -6,6 +6,7 @@ import { defineConfig } from "astro/config";
 import { rehypeCode, remarkHeading, remarkStructure } from "fumadocs-core/mdx-plugins";
 
 export default defineConfig({
+	site: "https://www.codework.sh",
 	markdown: {
 		syntaxHighlight: false,
 		processor: unified({
