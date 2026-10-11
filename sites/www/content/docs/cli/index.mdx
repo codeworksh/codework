@@ -1,10 +1,10 @@
 ---
 title: CodeWork CLI
 sidebarTitle: Overview
-description: Run the CodeWork agent from your terminal, inside your editor over ACP, or as a long-lived server.
+description: Run CodeWork from your terminal, editor, or a server.
 ---
 
-The `codework` CLI is the main way to use CodeWork. It runs agent sessions in your repository or in a sandbox, manages models and plugins, and powers every other interface: `codework acp` serves editors and `codework serve` starts the RPC server.
+The `codework` CLI runs agent sessions and manages models and plugins. It also powers the other interfaces: `codework acp` for editors and `codework serve` for the RPC server.
 
 ## Getting Started
 
@@ -19,53 +19,21 @@ codework run "Explain how this repository is structured"
 ```
 
 <Placeholder type="video" title="Your first CodeWork run">
-	Video: `codework run` exploring a repository, streaming its answer, then continuing the same session with
-	`--session`.
+	Video: `codework run` exploring a repository and streaming its answer.
 </Placeholder>
 
 See [Installation](/docs/cli/installation) for requirements, signing in, and updates.
 
 ## Running a Prompt
 
-`codework run` sends one prompt, streams CodeWork's answer to your terminal, and exits when the turn is done. It prints the session ID so you can continue later.
+`codework run` sends one prompt, streams the answer, and exits when the turn is done. Pass `--cwd` to start somewhere other than the current directory.
 
-```bash
-codework run "Inspect the failing tests"
-```
-
-Start the session somewhere other than the current directory with `--cwd`:
-
-```bash
-codework run --cwd ~/work/api "Add a health check endpoint"
-```
-
-Pick a model per run with `--provider` and `--model`. Add `--thinking` to set reasoning effort on models that support it.
+Pick a model with `--provider` and `--model`, and reasoning effort with `--thinking`:
 
 ```bash
 codework run --provider openrouter --model deepseek/deepseek-v4.1-flash --thinking medium "Plan the database migration"
 ```
 
-Browse what's available with `codework models`. See [Models](/docs/models) to connect a provider.
+Browse models with `codework models`, and see [Models](/docs/models) to connect a provider.
 
-## More
-
-| Topic                                | What you'll find                                                     |
-| ------------------------------------ | -------------------------------------------------------------------- |
-| [Sessions](/docs/agent/sessions)     | Continue a run with `--session` and share sessions across interfaces |
-| [Sandboxes](/docs/sandboxes/)        | Run a session in an isolated machine with `--sandbox-driver`         |
-| [Tools](/docs/agent/tools)           | What CodeWork can do in your repository, and the opt-in tools        |
-| [Settings](/docs/customize/settings) | Default model, thinking level, plugins, and retries                  |
-| [Editors](/docs/integrations/acp)    | `codework acp` for editors such as Zed                               |
-| [Server](/docs/integrations/rpc)     | `codework serve` for a long-lived server                             |
-| [Reference](/docs/cli/reference)     | Every command and flag                                               |
-
-## Related
-
-<Cards>
-	<Card title="Installation" href="/docs/cli/installation">
-		Requirements, signing in, and updates.
-	</Card>
-	<Card title="Reference" href="/docs/cli/reference">
-		Every command and flag.
-	</Card>
-</Cards>
+Every command and flag is in the [CLI Reference](/docs/cli/reference).

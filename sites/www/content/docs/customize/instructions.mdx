@@ -1,16 +1,16 @@
 ---
 title: Project Instructions
 sidebarTitle: Instructions
-description: Give CodeWork standing instructions for a project with AGENTS.md or CLAUDE.md files.
+description: Standing project instructions in AGENTS.md or CLAUDE.md files.
 ---
 
-CodeWork reads `AGENTS.md` and `CLAUDE.md` files from your workspace and adds them to its system prompt. Use them for what every session should know: how to build and test, conventions, and things to avoid.
+CodeWork adds `AGENTS.md` and `CLAUDE.md` files to its system prompt. Use them for what every session should know: how to build and test, conventions, and things to avoid.
 
-This is the built-in `codework.prompt.instruction` plugin. It is on by default.
+This is the built-in `codework.prompt.instruction` plugin. It's on by default.
 
 ## File Names
 
-In each directory, CodeWork uses the first of these files that exists and can be read:
+In each directory, CodeWork uses the first readable file of:
 
 1. `AGENTS.override.md`
 2. `CLAUDE.override.md`
@@ -19,25 +19,20 @@ In each directory, CodeWork uses the first of these files that exists and can be
 5. `CLAUDE.md`
 6. `CLAUDE.MD`
 
-Only one file per directory is used. If a directory has both `AGENTS.md` and `CLAUDE.md`, only `AGENTS.md` is read. An `.override.md` file replaces the regular one in its directory, which is handy for personal instructions you keep out of git.
-
-An empty file still claims its directory. It adds nothing to the prompt, and the names below it in that directory are skipped.
+Only one file per directory is used. An `.override.md` file is handy for personal instructions you keep out of git. An empty file still claims its directory and adds nothing.
 
 ## Which Directories
 
-CodeWork starts at the session's working directory and walks up through every parent to the filesystem root. Each directory along the way can contribute one file.
+CodeWork walks from the session's working directory up to the sandbox root. Each directory adds at most one file.
 
-- **Parents are included.** Instructions at the repository root apply when you work in a subfolder.
-- **Subfolders are not.** Files in directories below the working directory are not read.
-- **Your home folder counts only as a parent.** There is no global instructions file. A `~/AGENTS.md` loads when the working directory is somewhere under your home folder, like any other parent.
-
-The search runs inside the session's [sandbox](/docs/sandboxes/), from the working directory up to the sandbox root. With the default local sandbox that is your own disk. In a virtual or remote sandbox, files on your machine are not read.
-
-When the working directory is a git worktree nested inside the main checkout, a file in the main checkout's root is skipped if the worktree has a file with the same name, so the same instructions are not added twice.
+- Parents are included. Subfolders are not.
+- There's no global file. `~/AGENTS.md` loads only when you work under your home folder.
+- In a virtual or remote sandbox, files on your machine aren't read.
+- In a git worktree nested inside the main checkout, the main root's file is skipped if the worktree has one with the same name.
 
 ## How They Appear in the Prompt
 
-Every file found goes into the `<project_context>` section of the system prompt, farthest directory first and the working directory last, so the closest file has the final word. Each file is wrapped in a tag that names its path:
+Files go into `<project_context>`, farthest directory first, so the closest file has the final word:
 
 ```text title="System prompt"
 <project_context>
@@ -53,7 +48,7 @@ Project-Specific Instructions & Guidelines:
 </project_context>
 ```
 
-File content is added as written. There is no size limit, so keep files short: everything in them is sent with every request. Files are read again before each model call, so edits apply from your next message.
+There's no size limit, and every file is sent with every request, so keep them short. Files are read again before each model call, so edits apply from your next message.
 
 ## Example
 
@@ -66,7 +61,7 @@ File content is added as written. There is no size limit, so keep files short: e
 - Ask before adding a new dependency.
 ```
 
-## Turning It Off
+## Turn It Off
 
 Disable the plugin in your [settings](/docs/customize/settings):
 
@@ -76,17 +71,4 @@ Disable the plugin in your [settings](/docs/customize/settings):
 }
 ```
 
-## Going Further
-
-Project instructions are one prompt plugin. To add rules, context, or whole sections to the system prompt in code, write your own [prompt plugin](/docs/plugins).
-
-## Related
-
-<Cards>
-	<Card title="Settings" href="/docs/customize/settings">
-		Where settings live and every key they accept.
-	</Card>
-	<Card title="Plugins" href="/docs/plugins">
-		Add tools and prompt sections, or turn built-ins off.
-	</Card>
-</Cards>
+To add your own sections to the system prompt, write a [prompt plugin](/docs/plugins).

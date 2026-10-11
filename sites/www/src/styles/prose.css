@@ -47,3 +47,8 @@
 .prose h3 {
 	font-size: 1.05rem;
 }
+
+/* Identifiers in tables stay whole; a wide table scrolls in its wrapper instead. */
+.prose :is(td, th) code {
+	white-space: nowrap;
+}

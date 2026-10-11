@@ -1,79 +1,57 @@
 ---
 title: Virtual
-description: The memory and sqldb drivers, which give a session an in-process filesystem and an emulated bash with nothing spawned on your machine.
+description: An in-process filesystem and emulated bash. Nothing runs on your machine.
 ---
 
 ## How It Works
 
-A virtual sandbox lives entirely inside the CodeWork process. Its filesystem is a tree CodeWork keeps for the session, and its shell is [just-bash](https://github.com/vercel-labs/just-bash), a bash emulator written in TypeScript. When the agent runs a command, CodeWork interprets it in-process against that tree. No real process is ever started on your machine.
+The virtual sandbox is the lightest environment: a filesystem CodeWork keeps in its own process, paired with [just-bash](https://github.com/vercel-labs/just-bash), a bash emulator written in TypeScript. No real process is ever spawned on your machine.
 
-```bash
-codework run --sandbox-driver memory "Write a changelog entry for these notes: ..."
-```
+Two properties define it:
 
-Both virtual drivers are built in; there's nothing to install or configure.
+- **It's isolated.** Commands are emulated in-process, so the model can't reach your files, processes, environment variables, or the network.
+- **It's ephemeral.** It starts empty and disappears with the CodeWork process that created it.
 
-| Driver   | Filesystem               |
-| -------- | ------------------------ |
-| `memory` | A plain in-memory tree.  |
-| `sqldb`  | A tree stored in SQLite. |
+| Driver   | Filesystem              |
+| -------- | ----------------------- |
+| `memory` | An in-memory tree       |
+| `sqldb`  | A tree stored in SQLite |
 
-`read`, `write`, `edit`, and `bash` all act on the same tree, so a file the agent writes with `write` is there for `cat` in `bash`, and the reverse.
+Both are built in. All tools act on the same tree, so a file from `write` is there for `cat`.
+
+From the CLI or the RPC server, `sqldb` keeps its database in memory, so today it behaves like `memory`.
 
 ## It Starts Empty
 
-A virtual sandbox doesn't copy your project in. The session starts at `/` in an empty filesystem, and only sees files the agent creates.
-
-Give the agent what it needs in the prompt, or have it write the files itself. For work on an existing repository, use [local](/docs/sandboxes/local) or a [remote](/docs/sandboxes/remote) sandbox instead.
+Nothing is copied in: the session starts at `/` in an empty filesystem. Put what the agent needs in the prompt, or have it write the files first.
 
 ## What Works
 
-The emulated shell supports bash syntax (pipes, redirects, variables, loops, functions) and a broad set of standard commands, including:
+Bash syntax (pipes, redirects, variables, loops, functions) and common commands:
 
 - **Files:** `ls`, `cat`, `cp`, `mv`, `rm`, `mkdir`, `touch`, `find`, `tree`, `tar`, `gzip`
 - **Text:** `grep`, `rg`, `sed`, `awk`, `sort`, `uniq`, `cut`, `diff`, `head`, `tail`, `wc`, `xargs`
 - **Data:** `jq`, `yq`, `sqlite3`, `xan`
 
-Run `help` inside the sandbox, or `<command> --help`, to see what's available.
+Run `help` or `<command> --help` inside the sandbox for the full list.
 
 ## What Doesn't
 
-- **No real programs.** There's no `git`, `node`, `pnpm`, `python`, compiler, or test runner. Anything that isn't an emulated command fails with "command not found".
+- **No real programs.** No `git`, `node`, `pnpm`, `python`, compilers, or test runners. They fail with "command not found".
 - **No network.** `curl` isn't available.
-- **No processes.** A [plugin](/docs/plugins) tool that spawns a process through the sandbox fails with "process execution is not supported by this sandbox". Plugin code runs in the CodeWork process, so this doesn't stop a plugin that calls Node APIs directly.
-- **No hard links.** `ln` without `-s` fails; symbolic links work.
+- **No processes.** A plugin tool that spawns a process through the sandbox fails. Plugin code that calls Node APIs directly still works.
+- **No hard links.** `ln -s` works; `ln` without it fails.
 
 ## How Long It Lasts
 
-A virtual sandbox exists only in the CodeWork process that created it.
-
-- **With `codework run`,** it's gone when the run ends. Continuing the session later with `--session` can't find its files.
-- **With [`codework serve`](/docs/integrations/rpc),** it lives as long as the server, so several sessions can share it with `--sandbox-id` and pick up each other's files. It's gone when the server shuts down.
-
-When you create it from the CLI or the RPC server, `sqldb` keeps its SQLite database in memory too, so today it behaves like `memory`.
+- **`codework run`:** gone when the run ends. A continued session can't find its files.
+- **`codework serve`:** lives as long as the server, so sessions can share it with `--sandbox-id`.
 
 ## When to Use It
 
-- Writing or reshaping text, docs, config, or data with `jq`, `sed`, and `awk`.
-- Scratch work you want to throw away afterwards.
-- Trying a model or a prompt where you don't trust what it will run.
-- Testing a [plugin](/docs/plugins/authoring) tool that goes through the sandbox, without touching your machine.
+It's enough for any work that only needs files and text:
 
-If the task needs a real toolchain, it's the wrong sandbox. Use a [remote](/docs/sandboxes/remote) one.
-
-## Related
-
-<Cards>
-	<Card title="Sandboxes" href="/docs/sandboxes/">
-		Compare the kinds of sandbox and how to choose.
-	</Card>
-	<Card title="Remote" href="/docs/sandboxes/remote">
-		Isolation with real programs.
-	</Card>
-	<Card title="RPC Server" href="/docs/integrations/rpc">
-		Keep a virtual sandbox alive across sessions.
-	</Card>
-	<Card title="Tools" href="/docs/agent/tools">
-		What the agent can do in a sandbox.
-	</Card>
-</Cards>
+- Writing or reshaping text, docs, config, or data.
+- Scratch work you'll throw away.
+- Trying a model or prompt you don't trust.
+- Testing a plugin tool without touching your machine.

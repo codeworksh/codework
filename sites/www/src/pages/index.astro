@@ -207,15 +207,18 @@ const communityIcons = [GithubIcon, BookOpen, Newspaper, History];
 				<div class="mt-8 grid gap-4 lg:mt-12 lg:grid-cols-3">
 					{
 						sandbox.tiers.map((tier) => (
-							<div data-quiet class="flex flex-col border border-border-subtle bg-bg p-6">
-								<h3 class="font-mono text-sm font-medium tracking-wider text-text uppercase">{tier.name}</h3>
+							<a data-quiet href={tier.href} class="group flex flex-col border border-border-subtle bg-bg p-6 transition-colors hover:border-border-strong">
+								<h3 class="flex items-center gap-1 font-mono text-sm font-medium tracking-wider text-text uppercase">
+									{tier.name}
+									<ArrowRight className="size-3.5 text-text-muted transition-transform group-hover:translate-x-0.5" />
+								</h3>
 								<p class="mt-3 text-sm leading-relaxed text-text-secondary text-pretty">{tier.body}</p>
 								<ul class="mt-auto flex flex-wrap gap-2 pt-5">
 									{tier.drivers.map((driver) => (
 										<li class="border border-brand/40 px-2 font-mono text-xs leading-6 text-brand">{driver}</li>
 									))}
 								</ul>
-							</div>
+							</a>
 						))
 					}
 				</div>

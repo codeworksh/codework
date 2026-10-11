@@ -1,134 +1,66 @@
 ---
 title: Sandboxes
 sidebarTitle: Overview
-description: Where a session's files live and its commands run, and how to pick the right environment for the work.
+description: Where a session's files live and its commands run.
 ---
 
-## What a Sandbox Is
+## What a Sandbox Adds
 
-CodeWork's agent never touches your machine directly. Everything it does goes through two things: a filesystem and a shell. The `read`, `write`, and `edit` tools act on the filesystem, and `bash` runs commands in the shell.
+A sandbox is the environment a session works in: a filesystem and a shell. Every session has exactly one, and choosing it decides several things at once:
 
-A sandbox is what provides those two things. Swap the sandbox and the same tools act somewhere else: your project folder, a filesystem held in memory, or a machine in the cloud. The agent, its tools, and your plugins don't change.
+- **The file and shell tools.** `read`, `write`, and `edit` act on its files, and `bash` runs commands in its shell.
+- **Project instructions.** `AGENTS.md` and `CLAUDE.md` are found by walking up from its working directory.
+- **Plugin tools.** A plugin that works through the sandbox reaches the same files and shell.
+
+Swap the sandbox and all of this moves with it. The agent, its tools, and your plugins stay the same.
 
 <Placeholder title="How tools reach a sandbox">
-	Diagram: the agent calls tools (read, write, edit, bash, plugin tools), which go through one sandbox interface
-	(filesystem + shell), which is backed by one of three kinds: Local (your folder and shell), Virtual (in-process
-	filesystem and emulated bash), or Remote (Daytona or Vercel).
+	Diagram: the agent's tools go through one sandbox (filesystem + shell), backed by Local, Virtual, or Remote.
 </Placeholder>
-
-Each session runs in exactly one sandbox, chosen when the session is created. The sandbox decides:
-
-- **Which files the agent can see and change.** Your real files, an empty in-memory tree, or a remote machine's disk.
-- **What a command can do.** Run any program on your machine, run an emulated shell with no real processes, or run real programs somewhere else.
-- **How long the work lasts.** Changes to your folder stay; a virtual filesystem disappears with the process; a remote machine lasts until it's stopped or deleted.
-
-[Plugin](/docs/plugins) tools that touch files or run commands through the sandbox API work in every kind. Plugin code itself runs inside the CodeWork process, though, so a plugin that reaches for Node APIs directly is not confined by the sandbox. Only install plugins you trust.
 
 ## Kinds of Sandbox
 
-| Kind                                                | Isolation                                   | Lasts                                       |
-| --------------------------------------------------- | ------------------------------------------- | ------------------------------------------- |
-| [Local](/docs/sandboxes/local) `local`              | None: your files, shell, and environment.   | Changes land in your folder.                |
-| [Virtual](/docs/sandboxes/virtual) `memory` `sqldb` | Emulated bash, no real programs or network. | Until the CodeWork process exits.           |
-| [Remote](/docs/sandboxes/remote) `daytona` `vercel` | A separate machine with real programs.      | Until stopped; later sessions can reuse it. |
+| Kind                               | Drivers         | Where the work happens                                          |
+| ---------------------------------- | --------------- | --------------------------------------------------------------- |
+| [Local](/docs/sandboxes/local)     | local           | Your folder and your shell. The default.                        |
+| [Virtual](/docs/sandboxes/virtual) | memory, sqldb   | An in-memory filesystem and an emulated bash. No real programs. |
+| [Remote](/docs/sandboxes/remote)   | daytona, vercel | A separate machine in the cloud.                                |
 
-- **Local** when you want the agent working in your repository, with your toolchain.
-- **Virtual** when the work is text and files only, and nothing should reach your machine.
-- **Remote** when you need real tools and processes, but not on your machine.
-
-Choose the narrowest environment that can do the job. Each step up gives the model more it can read, change, run, and reach.
+Pick the one that fits your use case. The wider the environment, the more model-directed work can read, change, run, and reach.
 
 ## Choose a Sandbox
 
-Pick a driver when you create a session with `--sandbox-driver`. Without it, the session uses `local`.
+Pass `--sandbox-driver` when you start a session:
 
 ```bash
-# Your folder (the default)
-codework run "Inspect the failing tests"
-
-# An in-memory filesystem
 codework run --sandbox-driver memory "Draft a README for a CLI tool"
-
-# A new Daytona sandbox
-codework run --sandbox-driver daytona "Clone the repository and run its tests"
 ```
 
-The sandbox is fixed for the life of a session. When you continue a session with `--session`, leave the sandbox flags off: the session already knows its sandbox, and passing them is an error.
+A session keeps its sandbox for life, so leave the flag off when you continue one with `--session`. Editor sessions over ACP always use your local folder.
 
-`--cwd` sets the working directory for a new session. In a sandbox it's a path inside that sandbox, and a relative path is resolved against the sandbox's default directory.
+## Reuse or Attach
 
-The session header shows which driver and directory you're in:
+Start a new session in a sandbox CodeWork already created with `--sandbox-id <id>`. Its files are still there, and a stopped remote sandbox starts again.
 
-```text
-session  <session-id>
-sandbox  daytona · /home/daytona
-```
-
-There's no settings key for a default driver. Pass the flag on each new session.
-
-[ACP](/docs/integrations/acp) sessions always use your local project folder.
-
-## Reuse a Sandbox
-
-CodeWork records every sandbox it creates and gives it an ID. Pass that ID to `--sandbox-id` to start a new session in the same sandbox, with whatever files earlier sessions left there:
+To use a remote sandbox you created yourself, pass its provider ID with the driver:
 
 ```bash
-codework run --sandbox-id <sandbox-id> "Pick up where the last session left off"
+codework run --sandbox-driver daytona --sandbox-provider-id <id> "Inspect the repository"
 ```
 
-`--sandbox-id` can't be combined with `--sandbox-driver` or `--sandbox-provider-id`; the ID already names the driver. A stopped remote sandbox is started again when the session mounts it.
-
-Sandbox IDs come from the [RPC server](/docs/integrations/rpc): `codework run --server ...` prints a `sandbox-id:` line when the session has a sandbox, and the `sandbox.list` method returns every sandbox the server knows.
-
-## Attach to an Existing Sandbox
-
-To work in a remote sandbox you created outside CodeWork, pass its provider ID along with the driver:
-
-```bash
-codework run --sandbox-driver daytona --sandbox-provider-id <daytona-sandbox-id> "Inspect the repository"
-```
-
-This only works with remote drivers. CodeWork registers the sandbox as external: it uses it, but never stops it. See [Remote](/docs/sandboxes/remote#attach-to-a-sandbox-you-already-have).
+CodeWork uses an attached sandbox but never stops it.
 
 ## When Sandboxes Stop
 
-CodeWork stops sandboxes it created; it never stops one you attached.
+CodeWork stops the sandboxes it creates:
 
-- `codework run` without `--server` stops the sandbox it created when the run ends.
-- `codework serve` keeps sandboxes running between sessions and stops the ones it manages when the server shuts down. Stop one earlier with the `sandbox.stop` method.
-- `codework acp` stops managed sandboxes when the editor disconnects.
-
-What "stopped" means depends on the driver; each driver's page explains it.
+- `codework run` stops its sandbox when the run ends.
+- `codework serve` keeps them running between sessions and stops them when the server shuts down.
+- `codework acp` stops them when the editor disconnects.
 
 ## Safety
 
 <Callout type="warn">
-	CodeWork has no permission prompts. It runs every tool, including shell commands and file edits, without asking. The
-	sandbox is the boundary. With the `local` driver there is no boundary: the agent can do anything you can do from your
-	shell.
+	CodeWork runs every tool without asking. The sandbox is the only boundary, and `local` has none: the agent can do
+	anything you can do from your shell. Plugin code runs inside CodeWork itself, so only install plugins you trust.
 </Callout>
-
-Use `local` in a git repository with a clean working tree so you can review and undo every change. Use a virtual or remote sandbox for work you don't want touching your machine.
-
-## Related
-
-<Cards>
-	<Card title="Local" href="/docs/sandboxes/local">
-		Work directly in your folder with your real shell.
-	</Card>
-	<Card title="Virtual" href="/docs/sandboxes/virtual">
-		An in-process filesystem and emulated bash.
-	</Card>
-	<Card title="Remote" href="/docs/sandboxes/remote">
-		Run sessions on Daytona or Vercel.
-	</Card>
-	<Card title="Tools" href="/docs/agent/tools">
-		The tools that act on the sandbox.
-	</Card>
-	<Card title="RPC Server" href="/docs/integrations/rpc">
-		Create, list, and stop sandboxes from your own client.
-	</Card>
-	<Card title="CLI Reference" href="/docs/cli/reference">
-		Every sandbox flag.
-	</Card>
-</Cards>

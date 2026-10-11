@@ -1,64 +1,30 @@
 ---
 title: Local
-description: The default sandbox, which works directly in your folder with your real shell.
+description: The default sandbox. Your folder and your real shell.
 ---
 
 ## How It Works
 
-`local` is the default driver. A session that doesn't pass `--sandbox-driver` runs here.
+`local` is the default driver. It binds the agent directly to your machine: file tools use your real filesystem, starting in the current directory or in `--cwd`, and `bash` runs real commands through `sh` with the environment CodeWork started with.
 
-```bash
-codework run "Inspect the failing tests"
-```
+Anything you have installed, such as `git`, `node`, or your test runner, the agent can use. There's nothing to provision, so it's the fastest sandbox, and the only one that works on your repository without copying anything.
 
-The agent works on your real filesystem, starting in the directory you ran `codework` from, or in `--cwd` if you pass it:
-
-```bash
-codework run --cwd ~/work/api "Add a health check endpoint"
-```
-
-`bash` runs commands through `sh` on your machine, with the environment variables CodeWork was started with. Anything you have installed, such as `git`, `node`, `pnpm`, or your test runner, the agent can use.
-
-There's nothing to provision or start, so it's the fastest sandbox. It's also the only one that sees your repository without copying anything in.
+Use it when your machine is the workspace: everyday coding in your own repository, with your own toolchain.
 
 ## What It Can Reach
 
-`local` isolates nothing. The working directory is where the agent starts, not a fence:
+There is no isolation, by design. The working directory is a starting point, not a fence. The agent can:
 
-- It can read and write files anywhere your user account can, including outside your project.
-- Its commands inherit your environment, including any API keys or tokens exported in your shell.
-- Its commands can reach the network, other processes, and anything else your shell can.
+- Read and write files anywhere your user account can.
+- Use any API keys or tokens exported in your shell.
+- Reach the network, other processes, and anything else your shell can.
 
-Interrupting a turn stops a running command: CodeWork sends `SIGTERM`, then `SIGKILL` if the command is still running a second later.
+Interrupting a turn sends `SIGTERM` to a running command, then `SIGKILL` a second later.
 
-`--sandbox-provider-id` doesn't apply to `local`; passing it is an error. There's no machine to attach to: every local session simply works in its folder.
+`--sandbox-provider-id` doesn't apply to `local`. Passing it is an error.
 
 ## Work Safely
 
-<Callout type="warn">
-	CodeWork has no permission prompts. With the `local` driver it runs shell commands and edits your files without
-	asking, with the same access you have.
-</Callout>
-
-- **Use git.** Run CodeWork inside a git repository so every change it makes shows up in `git status` and `git diff`.
-- **Start from a clean tree.** Commit or stash your own work first, so you can tell the agent's changes apart from yours and throw them away with `git restore` and `git clean` if you need to.
-- **Review before you commit.** Read the diff the way you would a pull request.
-- **Keep secrets out of the environment.** Don't export credentials the task doesn't need in the shell you start CodeWork from.
-- **Move risky work elsewhere.** For tasks you don't want running on your machine, use a [virtual](/docs/sandboxes/virtual) or [remote](/docs/sandboxes/remote) sandbox.
-
-## Related
-
-<Cards>
-	<Card title="Sandboxes" href="/docs/sandboxes/">
-		Compare the kinds of sandbox and how to choose.
-	</Card>
-	<Card title="Virtual" href="/docs/sandboxes/virtual">
-		Keep the agent off your machine entirely.
-	</Card>
-	<Card title="Remote" href="/docs/sandboxes/remote">
-		Real tools on someone else's machine.
-	</Card>
-	<Card title="Tools" href="/docs/agent/tools">
-		What the agent can do in a sandbox.
-	</Card>
-</Cards>
+- **Use git and start from a clean tree.** The agent's changes then show up alone in `git diff`, and `git restore` and `git clean` undo them.
+- **Review the diff before you commit.**
+- **Keep secrets out of the environment.** Don't export credentials the task doesn't need.

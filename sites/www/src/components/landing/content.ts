@@ -140,16 +140,19 @@ export const sandbox = {
 	tiers: [
 		{
 			name: "Local",
+			href: "/docs/sandboxes/local/",
 			drivers: ["local"],
 			body: "Your folder and your shell. The default, with full access to your machine.",
 		},
 		{
 			name: "Virtual",
+			href: "/docs/sandboxes/virtual/",
 			drivers: ["memory", "sqldb"],
 			body: "An in-memory filesystem and an emulated bash. No process ever runs on your machine.",
 		},
 		{
 			name: "Remote",
+			href: "/docs/sandboxes/remote/",
 			drivers: ["daytona", "vercel"],
 			body: "A full Linux machine in the cloud, for untrusted code and long jobs.",
 		},
