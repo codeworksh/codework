@@ -1,0 +1,35 @@
+name: Dev Checks
+
+on:
+   push:
+      branches: [dev]
+      paths-ignore:
+         - sites/www/**
+   pull_request:
+      branches: [dev]
+      paths-ignore:
+         - sites/www/**
+
+permissions:
+   contents: read
+
+concurrency:
+   group: dev-${{ github.ref }}
+   cancel-in-progress: true
+
+jobs:
+   check:
+      runs-on: ubuntu-latest
+      steps:
+         - uses: actions/checkout@v6
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              run-install: false
+              cache: false
+         - run: vp install --frozen-lockfile --filter '!@codeworksh/www'
+         # Package tsconfigs resolve aikit through its generated declarations.
+         - run: vp run @codeworksh/aikit#build
+         - run: vp check packages scripts .github
+         - run: vp run --filter './packages/*' --concurrency-limit 2 typecheck
+         - run: vp run --filter './packages/*' --concurrency-limit 2 build
