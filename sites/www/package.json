@@ -5,6 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"build": "astro build",
+		"deploy": "alchemy deploy --stage live",
 		"dev": "astro dev",
 		"preview": "astro preview",
 		"typecheck": "astro sync && astro check && tsc --noEmit"
@@ -29,9 +30,13 @@
 	},
 	"devDependencies": {
 		"@astrojs/check": "^0.9.10",
+		"@effect/platform-bun": "4.0.1",
+		"@effect/platform-node": "4.0.1",
 		"@types/mdx": "^2.0.14",
 		"@types/react": "^19.3.0",
 		"@types/react-dom": "^19.3.0",
+		"alchemy": "2.0.0-beta.81",
+		"effect": "4.0.1",
 		"typescript": "^6.0.3"
 	}
 }

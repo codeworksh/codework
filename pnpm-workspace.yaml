@@ -26,5 +26,7 @@ allowBuilds:
    node-liblzma: true
    protobufjs: true
    webgpu: false
+   # Local Workers runtime used by Alchemy dev.
+   workerd: true
 
 storeDir: .pnpm-store

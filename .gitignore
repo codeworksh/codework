@@ -53,3 +53,5 @@ temp
 models.json
 models.gen.json
 .astro
+
+.alchemy
