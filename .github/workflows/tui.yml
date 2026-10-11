@@ -1,0 +1,59 @@
+name: TUI Binaries
+
+# Builds the Rust TUI for every published platform and uploads one artifact per
+# platform package, named after it (`tui-<os>-<arch>`). Publishing workflows call
+# this and stage the artifacts under packages/tui/dist/bin before `publish.mjs`.
+on:
+   workflow_call:
+   workflow_dispatch:
+
+permissions:
+   contents: read
+
+jobs:
+   build:
+      name: build (${{ matrix.package }})
+      runs-on: ${{ matrix.runner }}
+      strategy:
+         fail-fast: true
+         matrix:
+            include:
+               - package: tui-darwin-arm64
+                 runner: macos-14
+                 target: aarch64-apple-darwin
+               - package: tui-darwin-x64
+                 runner: macos-14
+                 target: x86_64-apple-darwin
+               # Linux binaries link musl statically, so one build runs on any distro.
+               - package: tui-linux-arm64
+                 runner: ubuntu-24.04-arm
+                 target: aarch64-unknown-linux-musl
+               - package: tui-linux-x64
+                 runner: ubuntu-24.04
+                 target: x86_64-unknown-linux-musl
+      defaults:
+         run:
+            working-directory: packages/tui
+      steps:
+         - uses: actions/checkout@v6
+         - if: runner.os == 'Linux'
+           run: sudo apt-get update && sudo apt-get install -y musl-tools
+         - uses: dtolnay/rust-toolchain@stable
+           with:
+              targets: ${{ matrix.target }}
+         - uses: Swatinem/rust-cache@v2
+           with:
+              workspaces: packages/tui
+              key: ${{ matrix.target }}
+         - run: cargo build --release --locked --target ${{ matrix.target }}
+         - name: Inspect binary
+           run: file target/${{ matrix.target }}/release/codework-tui
+         - if: runner.os == 'Linux'
+           name: Require a static binary
+           run: file target/${{ matrix.target }}/release/codework-tui | grep -E "static(-pie)? linked|statically linked"
+         - uses: actions/upload-artifact@v4
+           with:
+              name: ${{ matrix.package }}
+              path: packages/tui/target/${{ matrix.target }}/release/codework-tui
+              if-no-files-found: error
+              retention-days: 7

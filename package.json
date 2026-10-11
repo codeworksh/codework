@@ -18,6 +18,7 @@
 		"bump:cli": "pnpm --filter @codeworksh/cli run bump",
 		"bump:harness": "pnpm --filter @codeworksh/harness run bump",
 		"bump:plugin": "pnpm --filter @codeworksh/plugin run bump",
+		"bump:tui": "pnpm --filter @codeworksh/tui run bump",
 		"check": "vp check",
 		"check:packages": "vp run -r check",
 		"dev:desktop": "pnpm --filter @codeworksh/desktop dev",
@@ -36,6 +37,9 @@
 		"release:plugin": "pnpm --filter @codeworksh/plugin run release",
 		"release:plugin:dev": "pnpm --filter @codeworksh/plugin run release:dev",
 		"release:plugin:dry": "pnpm --filter @codeworksh/plugin run release:dry",
+		"release:tui": "pnpm --filter @codeworksh/tui run release",
+		"release:tui:dev": "pnpm --filter @codeworksh/tui run release:dev",
+		"release:tui:dry": "pnpm --filter @codeworksh/tui run release:dry",
 		"test": "vp test",
 		"test:packages": "vp run -r test",
 		"typecheck": "vp run -r --concurrency-limit 2 typecheck"

@@ -9,14 +9,19 @@
 		"tui"
 	],
 	"homepage": "https://www.codework.sh",
-	"author": "Prem (https://github.com/prem315)",
 	"license": "MIT",
-	"type": "module",
+	"author": "Prem (https://github.com/prem315)",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/tui"
+	},
 	"files": [
 		"dist",
 		"src",
 		"README.md"
 	],
+	"type": "module",
 	"exports": {
 		".": {
 			"development": "./src/index.ts",
@@ -30,20 +35,23 @@
 		"build:rust": "cargo build --release",
 		"check": "vp check",
 		"check:rust": "cargo check",
-		"package:binaries": "node scripts/package.mjs",
 		"start": "cargo run",
-		"typecheck": "tsc --noEmit"
-	},
-	"optionalDependencies": {
-		"@codeworksh/tui-darwin-arm64": "0.0.1",
-		"@codeworksh/tui-darwin-x64": "0.0.1",
-		"@codeworksh/tui-linux-arm64": "0.0.1",
-		"@codeworksh/tui-linux-x64": "0.0.1",
-		"@codeworksh/tui-win32-x64": "0.0.1"
+		"typecheck": "tsc --noEmit",
+		"bump": "bumpp",
+		"release": "node ../../scripts/publish.mjs tui",
+		"release:dev": "node ../../scripts/publish.mjs tui --dev",
+		"release:dry": "node ../../scripts/publish.mjs tui --dry-run"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
+		"bumpp": "^12.3.0",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
+	},
+	"optionalDependencies": {
+		"@codeworksh/tui-darwin-arm64": "workspace:*",
+		"@codeworksh/tui-darwin-x64": "workspace:*",
+		"@codeworksh/tui-linux-arm64": "workspace:*",
+		"@codeworksh/tui-linux-x64": "workspace:*"
 	}
 }

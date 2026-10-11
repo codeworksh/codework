@@ -11,11 +11,22 @@ if (!run || !attempt || !sha) {
 }
 
 // Publish dependencies first and pin consumers to this run, rather than a moving dist-tag.
-const packages = ["aikit", "plugin", "harness", "codework"].map((directory) => {
+// The TUI platform packages precede the launcher that pins them, which precedes the CLI.
+const packages = [
+	"aikit",
+	"plugin",
+	"harness",
+	"tui/npm/darwin-arm64",
+	"tui/npm/darwin-x64",
+	"tui/npm/linux-arm64",
+	"tui/npm/linux-x64",
+	"tui",
+	"codework",
+].map((directory) => {
 	const manifest = JSON.parse(readFileSync(resolve(root, "packages", directory, "package.json"), "utf8"));
 	const base = /^\d+\.\d+\.\d+/.exec(manifest.version)?.[0];
 	if (!base) throw new Error(`Invalid package version: ${manifest.version}`);
-	return { directory, manifest, version: `${base}-canary.${run}.${attempt}.g${sha.slice(0, 8)}` };
+	return { manifest, version: `${base}-canary.${run}.${attempt}.g${sha.slice(0, 8)}` };
 });
 const uploadedVersions = new Map();
 
@@ -47,8 +58,8 @@ async function waitForPublishedVersion(name, version) {
 	);
 }
 
-for (const { directory, manifest, version } of packages) {
-	const args = [resolve(root, "scripts/publish.mjs"), directory, "--publish-version", version, "--tag", "canary"];
+for (const { manifest, version } of packages) {
+	const args = [resolve(root, "scripts/publish.mjs"), manifest.name, "--publish-version", version, "--tag", "canary"];
 	const dependencies = { ...manifest.dependencies, ...manifest.peerDependencies, ...manifest.optionalDependencies };
 	for (const [name, range] of Object.entries(dependencies)) {
 		if (typeof range !== "string" || !range.startsWith("workspace:")) continue;
