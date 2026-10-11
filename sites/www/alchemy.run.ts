@@ -14,6 +14,7 @@ export default Alchemy.Stack(
 
 		const site = yield* Cloudflare.Website.StaticSite("Website", {
 			name: "www",
+			domain: { name: "codework.sh", redirects: ["www.codework.sh"] },
 			command: "pnpm run build",
 			outdir: "dist",
 		});

@@ -7,7 +7,7 @@ import { defineConfig } from "astro/config";
 import { rehypeCode, remarkHeading, remarkStructure } from "fumadocs-core/mdx-plugins";
 
 export default defineConfig({
-	site: "https://www.codework.sh",
+	site: "https://codework.sh",
 	// Pages moved when the docs were regrouped by feature; old links keep working.
 	redirects: {
 		"/docs/cli/acp": "/docs/integrations/acp",

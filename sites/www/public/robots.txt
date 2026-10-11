@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.codework.sh/sitemap-index.xml
+Sitemap: https://codework.sh/sitemap-index.xml
