@@ -49,7 +49,7 @@ codework run --sandbox-driver daytona --sandbox-provider-id <remote-id> "Continu
 
 #### Flags:
 
-- `--server <url>` — Connect to a running RPC server, e.g. `ws://127.0.0.1:7433/rpc`.
+- `--server <url>` — Connect to a running RPC server, e.g. `ws://127.0.0.1:7433/rpc/v1`.
 - `-s, --session <id>` — Continue an existing session.
 - `-C, --cwd <path>` — Working directory for a new session.
 - `--sandbox-driver <driver>` — Sandbox driver (`local`, `daytona`, `vercel`, `memory`, `sqldb`). Default: `local`.
@@ -69,9 +69,9 @@ Start a persistent server that owns sessions and sandboxes:
 
 ```bash
 codework serve --host 127.0.0.1 --port 7433
-codework run --server ws://127.0.0.1:7433/rpc "Inspect the failing tests"
-codework run --server ws://127.0.0.1:7433/rpc --session <id> "Now fix them"
-codework run --server ws://127.0.0.1:7433/rpc --sandbox-id <sandbox-id> "Start another session in this sandbox"
+codework run --server ws://127.0.0.1:7433/rpc/v1 "Inspect the failing tests"
+codework run --server ws://127.0.0.1:7433/rpc/v1 --session <id> "Now fix them"
+codework run --server ws://127.0.0.1:7433/rpc/v1 --sandbox-id <sandbox-id> "Start another session in this sandbox"
 ```
 
 The default address is `127.0.0.1:7433`; `--port 0` picks an available port and prints the actual URL. Set `--home`, `--database`, and `--user-config-dir` on the server. Model credentials, plugins, and working directories are resolved by the server. A remote run does not boot a local harness.
@@ -105,7 +105,7 @@ codework auth refresh --openai-codex
 codework auth logout --github-copilot
 
 # Authenticate the home owned by a running RPC server
-codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc
+codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc/v1
 ```
 
 `--home` keeps authentication alongside the rest of that Codework installation; `--auth-file` overrides the credential

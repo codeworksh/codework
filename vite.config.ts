@@ -51,6 +51,10 @@ const aliases = [
 		find: "@codeworksh/harness",
 		replacement: fileURLToPath(new URL("./packages/harness/src/index.ts", import.meta.url)),
 	},
+	{
+		find: "@codeworksh/tui",
+		replacement: fileURLToPath(new URL("./packages/tui/src/index.ts", import.meta.url)),
+	},
 ];
 
 // Packages written against Effect. Kept as a list so lint overrides and the

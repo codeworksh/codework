@@ -1,0 +1,37 @@
+[
+	{
+		"command": "status",
+		"stdout": "stopped\n",
+		"registered": false
+	},
+	{
+		"command": "start --port 7607",
+		"stdout": "ws://127.0.0.1:7607/rpc/v1\n",
+		"registered": true
+	},
+	{
+		"command": "status",
+		"stdout": "ws://127.0.0.1:7607/rpc/v1\n",
+		"registered": true
+	},
+	{
+		"command": "start --port 7607",
+		"stdout": "ws://127.0.0.1:7607/rpc/v1\n",
+		"registered": true
+	},
+	{
+		"command": "restart --port 7607",
+		"stdout": "ws://127.0.0.1:7607/rpc/v1\n",
+		"registered": true
+	},
+	{
+		"command": "stop",
+		"stdout": "",
+		"registered": false
+	},
+	{
+		"command": "status",
+		"stdout": "stopped\n",
+		"registered": false
+	}
+]

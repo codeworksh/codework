@@ -169,7 +169,7 @@ catalogs:
       version: 0.45.0
     '@types/node':
       specifier: ^26.5.1
-      version: 26.5.1
+      version: 26.6.4
     typescript:
       specifier: 7.0.2
       version: 7.0.2
@@ -456,6 +456,9 @@ importers:
       '@codeworksh/harness':
         specifier: workspace:*
         version: link:../harness
+      '@codeworksh/tui':
+        specifier: workspace:*
+        version: link:../tui
       '@effect/platform-node':
         specifier: 4.0.1
         version: 4.0.1(effect@4.0.1)(redis@6.2.1(@opentelemetry/api@1.9.1))
@@ -572,6 +575,42 @@ importers:
         specifier: 4.0.1
         version: 4.0.1
 
+  packages/tui:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      bumpp:
+        specifier: ^12.3.0
+        version: 12.3.0
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.1(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1)
+    optionalDependencies:
+      '@codeworksh/tui-darwin-arm64':
+        specifier: workspace:*
+        version: link:npm/darwin-arm64
+      '@codeworksh/tui-darwin-x64':
+        specifier: workspace:*
+        version: link:npm/darwin-x64
+      '@codeworksh/tui-linux-arm64':
+        specifier: workspace:*
+        version: link:npm/linux-arm64
+      '@codeworksh/tui-linux-x64':
+        specifier: workspace:*
+        version: link:npm/linux-x64
+
+  packages/tui/npm/darwin-arm64: {}
+
+  packages/tui/npm/darwin-x64: {}
+
+  packages/tui/npm/linux-arm64: {}
+
+  packages/tui/npm/linux-x64: {}
+
   sites/www:
     dependencies:
       '@astrojs/markdown-remark':
@@ -643,7 +682,7 @@ importers:
         version: 19.3.0(@types/react@19.3.0)
       alchemy:
         specifier: 2.0.0-beta.81
-        version: 2.0.0-beta.81(@effect/platform-bun@4.0.1(effect@4.0.1))(@effect/platform-node@4.0.1(effect@4.0.1))(@types/node@26.5.1)(@types/react@19.3.0)(effect@4.0.1)(hono@4.11.4)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))(ws@8.22.0)
+        version: 2.0.0-beta.81(@effect/platform-bun@4.0.1(effect@4.0.1))(@effect/platform-node@4.0.1(effect@4.0.1)(redis@6.2.1(@opentelemetry/api@1.9.1)))(@types/node@26.5.1)(@types/react@19.3.0)(effect@4.0.1)(hono@4.11.4)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))(ws@8.22.0)
       effect:
         specifier: 4.0.1
         version: 4.0.1
@@ -8111,7 +8150,7 @@ snapshots:
       '@ai-sdk/provider-utils': 5.0.40(zod@4.6.5)
       zod: 4.6.5
 
-  '@alchemy.run/cloudflare-runtime@2.0.0-beta.81(@distilled.cloud/cloudflare@1.0.0-rc.13(effect@4.0.1))(@effect/platform-bun@4.0.1(effect@4.0.1))(@effect/platform-node@4.0.1(effect@4.0.1))(@types/node@26.5.1)(effect@4.0.1)(rolldown@1.2.5)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))':
+  '@alchemy.run/cloudflare-runtime@2.0.0-beta.81(@distilled.cloud/cloudflare@1.0.0-rc.13(effect@4.0.1))(@effect/platform-bun@4.0.1(effect@4.0.1))(@effect/platform-node@4.0.1(effect@4.0.1)(redis@6.2.1(@opentelemetry/api@1.9.1)))(@types/node@26.5.1)(effect@4.0.1)(rolldown@1.2.5)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))':
     dependencies:
       '@alchemy.run/node-utils': 2.0.0-beta.81
       '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20260918.1)
@@ -12119,9 +12158,9 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  alchemy@2.0.0-beta.81(@effect/platform-bun@4.0.1(effect@4.0.1))(@effect/platform-node@4.0.1(effect@4.0.1))(@types/node@26.5.1)(@types/react@19.3.0)(effect@4.0.1)(hono@4.11.4)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))(ws@8.22.0):
+  alchemy@2.0.0-beta.81(@effect/platform-bun@4.0.1(effect@4.0.1))(@effect/platform-node@4.0.1(effect@4.0.1)(redis@6.2.1(@opentelemetry/api@1.9.1)))(@types/node@26.5.1)(@types/react@19.3.0)(effect@4.0.1)(hono@4.11.4)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))(ws@8.22.0):
     dependencies:
-      '@alchemy.run/cloudflare-runtime': 2.0.0-beta.81(@distilled.cloud/cloudflare@1.0.0-rc.13(effect@4.0.1))(@effect/platform-bun@4.0.1(effect@4.0.1))(@effect/platform-node@4.0.1(effect@4.0.1))(@types/node@26.5.1)(effect@4.0.1)(rolldown@1.2.5)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
+      '@alchemy.run/cloudflare-runtime': 2.0.0-beta.81(@distilled.cloud/cloudflare@1.0.0-rc.13(effect@4.0.1))(@effect/platform-bun@4.0.1(effect@4.0.1))(@effect/platform-node@4.0.1(effect@4.0.1)(redis@6.2.1(@opentelemetry/api@1.9.1)))(@types/node@26.5.1)(effect@4.0.1)(rolldown@1.2.5)(typescript@6.0.3)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
       '@alchemy.run/floci': 2.0.0-beta.81(effect@4.0.1)
       '@alchemy.run/node-utils': 2.0.0-beta.81
       '@alchemy.run/sigil': 0.1.0-alpha.1(@types/react@19.3.0)

@@ -1,0 +1,57 @@
+{
+	"name": "@codeworksh/tui",
+	"version": "0.0.1",
+	"description": "High-performance Terminal User Interface (TUI) for CodeWork in Rust, with a thin TypeScript launcher",
+	"keywords": [
+		"codework",
+		"ratatui",
+		"rust",
+		"tui"
+	],
+	"homepage": "https://www.codework.sh",
+	"license": "MIT",
+	"author": "Prem (https://github.com/prem315)",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/tui"
+	},
+	"files": [
+		"dist",
+		"src",
+		"README.md"
+	],
+	"type": "module",
+	"exports": {
+		".": {
+			"development": "./src/index.ts",
+			"import": "./dist/pack/index.mjs",
+			"default": "./dist/pack/index.mjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"build:rust": "cargo build --release",
+		"check": "vp check",
+		"check:rust": "cargo check",
+		"start": "cargo run",
+		"typecheck": "tsc --noEmit",
+		"bump": "bumpp",
+		"release": "node ../../scripts/publish.mjs tui",
+		"release:dev": "node ../../scripts/publish.mjs tui --dev",
+		"release:dry": "node ../../scripts/publish.mjs tui --dry-run"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"bumpp": "^12.3.0",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	},
+	"optionalDependencies": {
+		"@codeworksh/tui-darwin-arm64": "workspace:*",
+		"@codeworksh/tui-darwin-x64": "workspace:*",
+		"@codeworksh/tui-linux-arm64": "workspace:*",
+		"@codeworksh/tui-linux-x64": "workspace:*"
+	}
+}

@@ -18,7 +18,7 @@ Use it when you want CodeWork to outlive a terminal, to run it on another machin
 codework serve
 ```
 
-The server listens on `ws://127.0.0.1:7433/rpc` and prints the address when it's ready.
+The server listens on `ws://127.0.0.1:7433/rpc/v1` and prints the address when it's ready.
 
 | Flag     | Description                                                  |
 | -------- | ------------------------------------------------------------ |
@@ -38,9 +38,9 @@ The server listens on `ws://127.0.0.1:7433/rpc` and prints the address when it's
 Point any `run`, `auth`, `session`, or `plugin reload` command at the server:
 
 ```bash
-codework run --server ws://127.0.0.1:7433/rpc "Inspect the failing tests"
-codework run --server ws://127.0.0.1:7433/rpc --session <id> "Now fix them"
-codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc
+codework run --server ws://127.0.0.1:7433/rpc/v1 "Inspect the failing tests"
+codework run --server ws://127.0.0.1:7433/rpc/v1 --session <id> "Now fix them"
+codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc/v1
 codework plugin reload
 ```
 
@@ -57,7 +57,7 @@ codework session link <session-id> --unlink
 
 ## Protocol
 
-The endpoint speaks [Effect RPC](https://effect.website) over WebSocket at `/rpc`, with newline-delimited JSON framing. The contract lives in [`packages/codework/src/server/contract.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/server/contract.ts).
+The endpoint speaks [Effect RPC](https://effect.website) over WebSocket at `/rpc/v1`, with newline-delimited JSON framing. The contract lives in [`packages/codework/src/server/contract.ts`](https://github.com/codeworksh/codework/blob/main/packages/codework/src/server/contract.ts).
 
 {/* TODO: document request/response shapes and a minimal client example once the contract is published as a package. */}
 

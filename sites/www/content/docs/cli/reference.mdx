@@ -25,22 +25,27 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 | `codework plugin update [spec]` | Fetch newer revisions                                          |
 | `codework plugin reload`        | Re-import plugins in a running server                          |
 | `codework session link <id>`    | Anchor a session to a project folder, through a running server |
+| `codework tui`                  | Open the terminal UI, starting the background server if needed |
+| `codework service start`        | Start the background server and print its URL                  |
+| `codework service restart`      | Restart the background server and print its URL                |
+| `codework service status`       | Print the background server's URL, or `stopped`                |
+| `codework service stop`         | Stop the background server                                     |
 | `codework serve`                | Start the [RPC server](/docs/integrations/rpc)                 |
 | `codework acp`                  | Start the [ACP server](/docs/integrations/acp) on stdio        |
 
 ## `codework run`
 
-| Flag                         | Description                                                                         |
-| ---------------------------- | ----------------------------------------------------------------------------------- |
-| `-s`, `--session <id>`       | Continue an existing session                                                        |
-| `-C`, `--cwd <path>`         | Working directory for a new session                                                 |
-| `--provider <id>`            | Model catalog provider ID                                                           |
-| `--model <id>`               | Model ID                                                                            |
-| `--thinking <level>`         | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`                        |
-| `--sandbox-driver <driver>`  | Sandbox driver for a new session (default `local`)                                  |
-| `--sandbox-id <id>`          | Reuse an existing sandbox instance                                                  |
-| `--sandbox-provider-id <id>` | Attach to an existing remote sandbox by its provider ID                             |
-| `--server <url>`             | Run against an [RPC server](/docs/integrations/rpc), e.g. `ws://127.0.0.1:7433/rpc` |
+| Flag                         | Description                                                                            |
+| ---------------------------- | -------------------------------------------------------------------------------------- |
+| `-s`, `--session <id>`       | Continue an existing session                                                           |
+| `-C`, `--cwd <path>`         | Working directory for a new session                                                    |
+| `--provider <id>`            | Model catalog provider ID                                                              |
+| `--model <id>`               | Model ID                                                                               |
+| `--thinking <level>`         | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`                           |
+| `--sandbox-driver <driver>`  | Sandbox driver for a new session (default `local`)                                     |
+| `--sandbox-id <id>`          | Reuse an existing sandbox instance                                                     |
+| `--sandbox-provider-id <id>` | Attach to an existing remote sandbox by its provider ID                                |
+| `--server <url>`             | Run against an [RPC server](/docs/integrations/rpc), e.g. `ws://127.0.0.1:7433/rpc/v1` |
 
 ## `codework auth`
 
@@ -73,12 +78,23 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 | `--provider <id>` | `models`   | List only this provider's models        |
 | `--force`         | `refresh`  | Download the catalog even if it's fresh |
 
+## `codework tui` and `codework service`
+
+`codework tui` reuses the background server named in `<home>/service.json`, or starts one, then connects the terminal UI to it. The server keeps running after the UI exits; `codework service stop` stops it. A server from an older CLI version is replaced. Its log is `<home>/log/server.log`.
+
+| Flag             | Applies to                | Description                                                   |
+| ---------------- | ------------------------- | ------------------------------------------------------------- |
+| `--host`         | `tui`, `start`, `restart` | Interface a new background server binds (default `127.0.0.1`) |
+| `--port`         | `tui`, `start`, `restart` | Port a new background server listens on (default `7433`)      |
+| `--server <url>` | `tui`                     | Use this RPC server instead of the background server          |
+
 ## `codework serve`
 
-| Flag     | Description                                                  |
-| -------- | ------------------------------------------------------------ |
-| `--host` | Interface to bind (default `127.0.0.1`)                      |
-| `--port` | Port to listen on, or `0` for any free port (default `7433`) |
+| Flag        | Description                                                      |
+| ----------- | ---------------------------------------------------------------- |
+| `--host`    | Interface to bind (default `127.0.0.1`)                          |
+| `--port`    | Port to listen on, or `0` for any free port (default `7433`)     |
+| `--service` | Run as the background server, logging to `<home>/log/server.log` |
 
 ## Global Flags
 

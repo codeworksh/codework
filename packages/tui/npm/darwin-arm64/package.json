@@ -1,0 +1,24 @@
+{
+	"name": "@codeworksh/tui-darwin-arm64",
+	"version": "0.0.1",
+	"description": "The CodeWork terminal UI binary for macOS on Apple silicon",
+	"homepage": "https://www.codework.sh",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/tui/npm/darwin-arm64"
+	},
+	"os": [
+		"darwin"
+	],
+	"cpu": [
+		"arm64"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "node ../../scripts/stage.mjs"
+	}
+}

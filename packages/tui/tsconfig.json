@@ -1,0 +1,8 @@
+{
+	"$schema": "../../node_modules/@effect/tsgo/schema.json",
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"tsBuildInfoFile": "../../.cache/typescript/tui.tsbuildinfo"
+	},
+	"include": ["src"]
+}

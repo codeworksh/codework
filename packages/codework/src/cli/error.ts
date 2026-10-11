@@ -88,7 +88,11 @@ const providerHint = (error: Runner.ProviderError): string | undefined => {
 const unknownMessage = (error: unknown): string => {
 	if (error instanceof Error && error.message.trim().length > 0) return error.message;
 	if (typeof error === "string" && error.trim().length > 0) return error;
-	if (typeof error === "object" && error !== null && "_tag" in error) return String(error._tag);
+	if (typeof error === "object" && error !== null && "_tag" in error) {
+		// A bare tag such as `ServeError` hides the reason; its cause carries it (`EADDRINUSE`).
+		const cause = "cause" in error ? error.cause : undefined;
+		return cause instanceof Error ? `${String(error._tag)}: ${cause.message}` : String(error._tag);
+	}
 	return "the command failed for an unknown reason";
 };
 

@@ -1,6 +1,7 @@
 packages:
    - apps/*
    - packages/*
+   - packages/tui/npm/*
    - extras/*
    - sites/*
 

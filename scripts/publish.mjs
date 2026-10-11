@@ -15,11 +15,19 @@ const workspaceMap = new Map([
 	["@codeworksh/harness", "packages/harness"],
 	["plugin", "packages/plugin"],
 	["@codeworksh/plugin", "packages/plugin"],
+	["tui", "packages/tui"],
+	["@codeworksh/tui", "packages/tui"],
+	// One prebuilt binary per platform, in lockstep with the launcher; `build` stages the
+	// binary the TUI workflow produced.
+	...["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"].flatMap((platform) => [
+		[`tui-${platform}`, `packages/tui/npm/${platform}`],
+		[`@codeworksh/tui-${platform}`, `packages/tui/npm/${platform}`],
+	]),
 ]);
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|@codeworksh/aikit|@codeworksh/cli|@codeworksh/harness|@codeworksh/plugin> [--dev] [--stage] [--dep <name>@<version>]... [--uploaded-dep <name>@<version>]... [npm publish args]",
+		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|tui|tui-<os>-<arch>|@codeworksh/<name>> [--dev] [--stage] [--dep <name>@<version>]... [--uploaded-dep <name>@<version>]... [npm publish args]",
 	);
 	process.exit(1);
 }
@@ -384,6 +392,9 @@ async function createPublishManifest(manifest, version, dependencyPins, uploaded
 		sideEffects: manifest.sideEffects,
 		publishConfig: manifest.publishConfig,
 		engines: manifest.engines,
+		// A platform package installs only where its binary runs.
+		os: manifest.os,
+		cpu: manifest.cpu,
 		dependencies: await rewriteDependencyMap(manifest.dependencies, dependencyPins, uploadedDependencies),
 		peerDependencies: await rewriteDependencyMap(manifest.peerDependencies, dependencyPins, uploadedDependencies),
 		peerDependenciesMeta: manifest.peerDependenciesMeta,

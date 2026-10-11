@@ -19,6 +19,7 @@ import { Contract } from "../src/server/contract.ts";
 import { Envelope } from "../src/server/envelope.ts";
 import { EventFeed } from "../src/server/feed.ts";
 import { Handlers } from "../src/server/handlers.ts";
+import { Identity } from "../src/server/identity.ts";
 import { OAuth } from "../src/server/oauth.ts";
 import { Server } from "../src/server/server.ts";
 import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
@@ -51,6 +52,7 @@ const layer = (options: Harness.Options = {}) => {
 	return Handlers.layer.pipe(
 		Layer.provide(EventFeed.layer),
 		Layer.provide(OAuth.layer({ home })),
+		Layer.provide(Identity.layer),
 		Layer.provideMerge(Harness.layer({ home, hostCwd: home, database: ":memory:", ...options })),
 	);
 };
@@ -404,7 +406,7 @@ const websocket = (options: Harness.Options = {}) => {
 const connectedClient = Effect.gen(function* () {
 	const server = yield* HttpServer.HttpServer;
 	if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
-	const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${server.address.port}/rpc`));
+	const context = yield* Layer.build(Client.layer(`ws://127.0.0.1:${server.address.port}/rpc/v1`));
 	return yield* Client.make.pipe(Effect.provideContext(context));
 });
 
@@ -511,7 +513,7 @@ describe("WebSocket client", () => {
 			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
 			const port = server.address.port;
 			const result = yield* Effect.promise(() =>
-				execCli(["auth", "status", "--openai-codex", "--server", `ws://127.0.0.1:${port}/rpc`], process.cwd()),
+				execCli(["auth", "status", "--openai-codex", "--server", `ws://127.0.0.1:${port}/rpc/v1`], process.cwd()),
 			);
 
 			expect(result.status).toBe(1);
@@ -524,7 +526,7 @@ describe("WebSocket client", () => {
 		return Effect.gen(function* () {
 			const server = yield* HttpServer.HttpServer;
 			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
-			const url = `ws://127.0.0.1:${server.address.port}/rpc`;
+			const url = `ws://127.0.0.1:${server.address.port}/rpc/v1`;
 			const rpc = yield* connectedClient;
 			const session = yield* rpc["session.create"]({});
 
@@ -553,7 +555,7 @@ describe("WebSocket client", () => {
 		return Effect.gen(function* () {
 			const server = yield* HttpServer.HttpServer;
 			if (server.address._tag === "UnixPathAddress") return yield* Effect.die("Expected TCP listener");
-			const url = `ws://127.0.0.1:${server.address.port}/rpc`;
+			const url = `ws://127.0.0.1:${server.address.port}/rpc/v1`;
 
 			const succeeded = yield* Effect.promise(() => execCli(["plugin", "reload", "--server", url], root));
 			expect(succeeded.status).toBe(0);
@@ -689,7 +691,7 @@ describe("WebSocket client", () => {
 						fileURLToPath(new URL("../src/index.ts", import.meta.url)),
 						"run",
 						"--server",
-						`ws://127.0.0.1:${port}/rpc`,
+						`ws://127.0.0.1:${port}/rpc/v1`,
 						"--sandbox-id",
 						sandbox.id,
 						"--provider",

@@ -33,3 +33,16 @@ jobs:
          - run: vp check packages scripts .github
          - run: vp run --filter './packages/*' --concurrency-limit 2 typecheck
          - run: vp run --filter './packages/*' --concurrency-limit 2 build
+
+   tui:
+      runs-on: ubuntu-latest
+      defaults:
+         run:
+            working-directory: packages/tui
+      steps:
+         - uses: actions/checkout@v6
+         - uses: dtolnay/rust-toolchain@stable
+         - uses: Swatinem/rust-cache@v2
+           with:
+              workspaces: packages/tui
+         - run: cargo check --locked

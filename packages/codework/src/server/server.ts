@@ -1,4 +1,4 @@
-import { Control, Harness, Sandbox } from "@codeworksh/harness/effect";
+import { Control, Global, Harness, Sandbox } from "@codeworksh/harness/effect";
 import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { HttpRouter, HttpServer } from "effect/http";
@@ -9,7 +9,9 @@ import { createServer } from "node:http";
 import { Contract } from "./contract.ts";
 import { EventFeed } from "./feed.ts";
 import { Handlers } from "./handlers.ts";
+import { Identity } from "./identity.ts";
 import { OAuth } from "./oauth.ts";
+import { Registration } from "./registration.ts";
 
 // Managed instances outlive any single RPC; the serve scope is what stops them.
 const managedShutdown = Layer.unwrap(
@@ -49,16 +51,29 @@ const managedShutdown = Layer.unwrap(
 	}),
 );
 
-const listenLog = Layer.unwrap(
+/**
+ * Advertises the listener once it has an address: logs the endpoint and files
+ * the registration later invocations discover it through.
+ */
+const announce = Layer.unwrap(
 	Effect.gen(function* () {
 		const server = yield* HttpServer.HttpServer;
-		yield* Effect.log(`codework serve listening on ${NetAddress.formatUrlUnsafe(server.address, "ws")}/rpc`);
-		return Layer.empty;
+		const global = yield* Global.Service;
+		const identity = yield* Identity.Service;
+		// A ws server always binds TCP; the guard keeps the logger honest if that ever changes.
+		const address = server.address;
+		const url = `${NetAddress.formatUrlUnsafe(address, "ws")}${Contract.path}`;
+		yield* Effect.log(`codework serve listening on ${url}`);
+		if (!NetAddress.isInetAddress(address)) return Layer.empty;
+		return Registration.register({
+			home: global.home,
+			info: { pid: identity.pid, version: identity.version, url, port: address.port },
+		});
 	}),
 );
 
 export const layer = (options: { host: string; port: number; harness: Harness.Options }) => {
-	const rpc = RpcServer.layerHttp({ group: Contract.Api, path: "/rpc", protocol: "websocket" }).pipe(
+	const rpc = RpcServer.layerHttp({ group: Contract.Api, path: Contract.path, protocol: "websocket" }).pipe(
 		Layer.provide(Handlers.layer.pipe(Layer.provide(EventFeed.layer))),
 	);
 	const app = HttpRouter.serve(rpc, { disableListenLog: true }).pipe(
@@ -66,9 +81,10 @@ export const layer = (options: { host: string; port: number; harness: Harness.Op
 		Layer.provide(OAuth.layer(options.harness.home === undefined ? {} : { home: options.harness.home })),
 	);
 	return app.pipe(
-		Layer.provideMerge(listenLog),
+		Layer.provideMerge(announce),
 		Layer.provideMerge(NodeHttpServer.layer(createServer, { host: options.host, port: options.port })),
 		Layer.provide(RpcSerialization.layerNdjson),
+		Layer.provide(Identity.layer),
 		Layer.provide(Harness.layer(options.harness)),
 	);
 };

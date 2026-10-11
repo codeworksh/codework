@@ -1,0 +1,24 @@
+{
+	"name": "@codeworksh/tui-linux-x64",
+	"version": "0.0.1",
+	"description": "The CodeWork terminal UI binary for Linux on x64 (static, musl)",
+	"homepage": "https://www.codework.sh",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/codeworksh/codework.git",
+		"directory": "packages/tui/npm/linux-x64"
+	},
+	"os": [
+		"linux"
+	],
+	"cpu": [
+		"x64"
+	],
+	"publishConfig": {
+		"access": "public"
+	},
+	"scripts": {
+		"build": "node ../../scripts/stage.mjs"
+	}
+}

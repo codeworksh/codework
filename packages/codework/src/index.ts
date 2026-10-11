@@ -17,7 +17,14 @@ const Handlers = Runtime.handlers(Cmd, {
 		logout: () => import("./cli/cmd/handlers/auth/logout.ts"),
 	},
 	run: () => import("./cli/cmd/handlers/run.ts"),
+	tui: () => import("./cli/cmd/handlers/tui.ts"),
 	serve: () => import("./cli/cmd/handlers/serve.ts"),
+	service: {
+		start: () => import("./cli/cmd/handlers/service/start.ts"),
+		restart: () => import("./cli/cmd/handlers/service/restart.ts"),
+		status: () => import("./cli/cmd/handlers/service/status.ts"),
+		stop: () => import("./cli/cmd/handlers/service/stop.ts"),
+	},
 	session: {
 		link: () => import("./cli/cmd/handlers/session/link.ts"),
 	},
