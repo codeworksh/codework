@@ -23,10 +23,23 @@ const AuthParams = {
 		Flag.withDescription("Use GitHub Copilot OAuth (device flow)"),
 		Flag.withDefault(false),
 	),
-	server: Flag.String("server").pipe(Flag.withDescription("RPC server URL (ws://host:port/rpc)"), Flag.optional),
+	server: Flag.String("server").pipe(Flag.withDescription("RPC server URL (ws://host:port/rpc/v1)"), Flag.optional),
 	authFile: Flag.String("auth-file").pipe(
 		Flag.withDescription("Credential file (defaults to <home>/aikit/auth.json)"),
 		Flag.optional,
+	),
+};
+
+/** Where the background server binds when `tui` or `service` has to start one. */
+const ServerAddress = {
+	host: Flag.String("host").pipe(
+		Flag.withDescription("Host interface the background server binds"),
+		Flag.withDefault("127.0.0.1"),
+	),
+	port: Flag.Int("port").pipe(
+		Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 }))),
+		Flag.withDescription("Port the background server listens on"),
+		Flag.withDefault(7433),
 	),
 };
 
@@ -82,7 +95,7 @@ export const Cmd = Spec.make("codework", {
 							description: "Sign in with a device code, no local port",
 						},
 						{
-							command: "codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc",
+							command: "codework auth login --openai-codex --server ws://127.0.0.1:7433/rpc/v1",
 							description: "Sign in the running server",
 						},
 					],
@@ -108,7 +121,7 @@ export const Cmd = Spec.make("codework", {
 			description: "Start or continue an agent session",
 			params: {
 				server: Flag.String("server").pipe(
-					Flag.withDescription("RPC server URL (ws://host:port/rpc)"),
+					Flag.withDescription("RPC server URL (ws://host:port/rpc/v1)"),
 					Flag.optional,
 				),
 				prompt: Argument.String("prompt").pipe(Argument.withDescription("Prompt for the agent")),
@@ -162,21 +175,13 @@ export const Cmd = Spec.make("codework", {
 			],
 		}),
 		Spec.make("tui", {
-			description: "Launch the CodeWork terminal UI against a managed server",
+			description: "Launch the CodeWork terminal UI against the background server",
 			params: {
 				server: Flag.String("server").pipe(
-					Flag.withDescription("RPC server URL to use instead of a managed one (ws://host:port/rpc)"),
+					Flag.withDescription("RPC server URL to use instead of the background server (ws://host:port/rpc/v1)"),
 					Flag.optional,
 				),
-				host: Flag.String("host").pipe(
-					Flag.withDescription("Host interface a managed server binds"),
-					Flag.withDefault("127.0.0.1"),
-				),
-				port: Flag.Int("port").pipe(
-					Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 }))),
-					Flag.withDescription("Port a managed server listens on"),
-					Flag.withDefault(7433),
-				),
+				...ServerAddress,
 				args: Argument.variadic(
 					Argument.String("args").pipe(Argument.withDescription("Arguments forwarded to the terminal UI")),
 				),
@@ -184,7 +189,7 @@ export const Cmd = Spec.make("codework", {
 			examples: [
 				{ command: "codework tui", description: "Start or reuse the local server and open the terminal UI" },
 				{
-					command: "codework tui --server ws://127.0.0.1:7433/rpc",
+					command: "codework tui --server ws://127.0.0.1:7433/rpc/v1",
 					description: "Attach the terminal UI to a server you started yourself",
 				},
 			],
@@ -201,10 +206,25 @@ export const Cmd = Spec.make("codework", {
 					Flag.withDescription("Port to listen on (0 for an ephemeral port)"),
 					Flag.withDefault(7433),
 				),
+				service: Flag.Boolean("service").pipe(
+					Flag.withDescription(
+						"Run as the background server `codework tui` manages, logging to <home>/log/server.log",
+					),
+					Flag.withDefault(false),
+				),
 			},
 			examples: [
 				{ command: "codework serve", description: "Start the RPC server on 127.0.0.1:7433" },
 				{ command: "codework serve --port 0", description: "Choose an available local port" },
+			],
+		}),
+		Spec.make("service", {
+			description: "Manage the background server",
+			commands: [
+				Spec.make("start", { description: "Start the background server", params: ServerAddress }),
+				Spec.make("restart", { description: "Restart the background server", params: ServerAddress }),
+				Spec.make("status", { description: "Show background server status" }),
+				Spec.make("stop", { description: "Stop the background server" }),
 			],
 		}),
 		Spec.make("session", {

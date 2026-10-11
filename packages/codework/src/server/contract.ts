@@ -14,6 +14,9 @@ import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import { EncodingError, EventEnvelope } from "./envelope.ts";
 
+/** The HTTP path the RPC endpoint is served on; the version moves with breaking wire changes. */
+export const path = "/rpc/v1";
+
 export const SandboxInfo = Schema.Struct({
 	id: Sandbox.SandboxInstance.ID,
 	driver: Schema.String,

@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 
 /** The Rust binary, by the package that publishes a prebuilt for this platform. */
 export interface Platform {
-	readonly os: "darwin" | "linux" | "win32";
+	readonly os: "darwin" | "linux";
 	readonly arch: "arm64" | "x64";
 }
 
@@ -16,18 +16,18 @@ export interface Platform {
 export function platform(): Platform | undefined {
 	const os = process.platform;
 	const arch = process.arch;
-	if (os !== "darwin" && os !== "linux" && os !== "win32") return undefined;
+	if (os !== "darwin" && os !== "linux") return undefined;
 	if (arch !== "arm64" && arch !== "x64") return undefined;
 	return { os, arch };
 }
 
 const packageFor = (value: Platform) => `@codeworksh/tui-${value.os}-${value.arch}`;
-const binaryName = (value: Platform) => (value.os === "win32" ? "codework-tui.exe" : "codework-tui");
+const binaryName = "codework-tui";
 
 /** A source-tree build, used when neither an override nor a platform package is present. */
-function devBuild(name: string): string | undefined {
+function devBuild(): string | undefined {
 	for (const profile of ["release", "debug"]) {
-		const candidate = fileURLToPath(new URL(`../target/${profile}/${name}`, import.meta.url));
+		const candidate = fileURLToPath(new URL(`../target/${profile}/${binaryName}`, import.meta.url));
 		if (existsSync(candidate)) return candidate;
 	}
 	return undefined;
@@ -56,19 +56,20 @@ export function resolveBinary(env: NodeJS.ProcessEnv = process.env): string {
 	}
 
 	const current = platform();
-	const name = current === undefined ? "codework-tui" : binaryName(current);
 	if (current !== undefined) {
 		try {
 			// Resolve through the package's own manifest so the binary path is not part of
 			// the platform package's public `exports` surface.
 			const manifest = require.resolve(`${packageFor(current)}/package.json`);
-			return join(dirname(manifest), "bin", name);
+			// In a checkout the platform package is a workspace link with no binary staged.
+			const binary = join(dirname(manifest), "bin", binaryName);
+			if (existsSync(binary)) return binary;
 		} catch {
 			// Fall through to the source-tree build below.
 		}
 	}
 
-	const dev = devBuild(name);
+	const dev = devBuild();
 	if (dev !== undefined) return dev;
 
 	throw new LauncherError(

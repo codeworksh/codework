@@ -15,6 +15,9 @@ export interface Interface {
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/cli/server/identity/Service") {}
 
-export const layer = Layer.succeed(Service, Service.of({ pid: process.pid, version: pkg.version }));
+/** This process: a server answers with it, a client compares a server's version against it. */
+export const current: Interface = { pid: process.pid, version: pkg.version };
+
+export const layer = Layer.succeed(Service, Service.of(current));
 
 export * as Identity from "./identity.ts";

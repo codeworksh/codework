@@ -62,7 +62,7 @@ const announce = Layer.unwrap(
 		const identity = yield* Identity.Service;
 		// A ws server always binds TCP; the guard keeps the logger honest if that ever changes.
 		const address = server.address;
-		const url = `${NetAddress.formatUrlUnsafe(address, "ws")}/rpc`;
+		const url = `${NetAddress.formatUrlUnsafe(address, "ws")}${Contract.path}`;
 		yield* Effect.log(`codework serve listening on ${url}`);
 		if (!NetAddress.isInetAddress(address)) return Layer.empty;
 		return Registration.register({
@@ -73,7 +73,7 @@ const announce = Layer.unwrap(
 );
 
 export const layer = (options: { host: string; port: number; harness: Harness.Options }) => {
-	const rpc = RpcServer.layerHttp({ group: Contract.Api, path: "/rpc", protocol: "websocket" }).pipe(
+	const rpc = RpcServer.layerHttp({ group: Contract.Api, path: Contract.path, protocol: "websocket" }).pipe(
 		Layer.provide(Handlers.layer.pipe(Layer.provide(EventFeed.layer))),
 	);
 	const app = HttpRouter.serve(rpc, { disableListenLog: true }).pipe(

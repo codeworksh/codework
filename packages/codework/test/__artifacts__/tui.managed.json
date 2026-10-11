@@ -1,0 +1,17 @@
+{
+	"serviceJson": {
+		"pid": "<pid>",
+		"version": "0.1.0",
+		"url": "ws://127.0.0.1:7601/rpc/v1",
+		"port": 7601
+	},
+	"tui": {
+		"server": "ws://127.0.0.1:7601/rpc/v1",
+		"home": "<home>",
+		"args": [
+			"hello",
+			"world"
+		],
+		"cwd": "<home>"
+	}
+}

@@ -14,7 +14,7 @@ use crate::rpc::protocol::{
 };
 use crate::types::{SessionInfo, UsageReport};
 
-pub const DEFAULT_SERVER_URL: &str = "ws://127.0.0.1:7433/rpc";
+pub const DEFAULT_SERVER_URL: &str = "ws://127.0.0.1:7433/rpc/v1";
 
 /// How long to wait between reconnection attempts, and how many to make before
 /// giving the turn up. The server outlives this client, so a short window is

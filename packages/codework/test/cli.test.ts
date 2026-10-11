@@ -181,7 +181,7 @@ describe("codework CLI", () => {
 
 	it("documents remote runs and rejects server-owned flags on the client", () => {
 		expect(run("run", "--help").stdout).toContain("--server");
-		const result = run("run", "--server", "ws://127.0.0.1:1/rpc", "--database", ":memory:", "hello");
+		const result = run("run", "--server", "ws://127.0.0.1:1/rpc/v1", "--database", ":memory:", "hello");
 		expect(result.status).toBe(1);
 		expect(result.stdout).toContain("belong on codework serve");
 	});
