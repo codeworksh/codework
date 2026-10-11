@@ -93,7 +93,7 @@ export function openrouterOptions(extras: OpenRouterOptions = {}): OpenRouterOpt
 	return {
 		...fromEnvApiKey(process.env.OPENROUTER_API_KEY),
 		headers: {
-			"HTTP-Referer": "https://www.codework.sh",
+			"HTTP-Referer": "https://codework.sh",
 			"X-OpenRouter-Title": "CodeWork",
 			"X-OpenRouter-Categories": "cli-agent,personal-agent",
 		},

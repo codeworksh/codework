@@ -18,6 +18,7 @@ import { merge } from "../settings/merge.ts";
 import { resolveOverrides, resolveRequest } from "../settings/resolve.ts";
 import { type Block, type DeclaredModel, keyName } from "../settings/schema.ts";
 import type { State } from "../state/state.ts";
+import { Attribution } from "./attribution.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { Runner } from "./run.ts";
 
@@ -192,7 +193,7 @@ const oauthCredentials = async (
 /** Start a provider stream using the model pinned by State. */
 export const openWith = (options: OpenOptions = {}): Open =>
 	Effect.fn("LLM.open")(function* (input, signal) {
-		const model = input.resolvedModel;
+		const model = Attribution.withAttribution(input.resolvedModel);
 		const configured = runtimeOptions(input, model, signal);
 
 		const resolved =
