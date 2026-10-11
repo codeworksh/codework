@@ -77,6 +77,7 @@ const instrumented = (
 			return path in files ? (files[path] ?? "") : unused();
 		},
 		readFileBuffer: unused,
+		readBytes: unused,
 		writeFile: unused,
 		stat: async (path) => {
 			stats.calls += 1;
