@@ -1,9 +1,6 @@
 ---
+import Frame from "@/components/landing/frame.astro";
 import { ArrowRight } from "lucide-react";
-import Layout from "@/components/layout.astro";
-import Footer from "@/components/landing/footer.astro";
-import { Header } from "@/components/landing/header";
-import { Picker } from "@/components/landing/picker";
 import Masthead from "@/components/landing/masthead.astro";
 import { formatDate } from "@/lib/date";
 import { getPosts, postUrl } from "@/lib/posts";
@@ -13,31 +10,26 @@ const posts = await getPosts();
 const description = "Announcements, releases, tutorials and technical notes from the CodeWork team.";
 ---
 
-<Layout title="Posts | CodeWork" description={description}>
-	<Header client:load />
-	<Picker client:load />
-	<main class="mx-auto min-h-[calc(100svh-var(--nav-h))] max-w-2xl px-4 py-12 sm:px-6 lg:py-16">
-		<Masthead label="Posts" />
-		<ul class="mt-12 divide-y divide-border-subtle">
-			{
-				posts.map((post) => (
-					<li>
-						<a href={postUrl(post)} class="group block py-7">
-							<time datetime={post.data.date.toISOString()} class="font-mono text-xs text-text-muted">
-								{formatDate(post.data.date)}
-							</time>
-							<h2 class="mt-2 text-lg font-medium text-text transition-colors group-hover:text-brand">
-								{post.data.title}
-								<ArrowRight className="ml-1 inline size-4 align-[-0.1em] transition-transform group-hover:translate-x-0.5" />
-							</h2>
-							<p class="mt-2 line-clamp-3 text-sm leading-relaxed text-text-secondary text-pretty">
-								{post.data.description}
-							</p>
-						</a>
-					</li>
-				))
-			}
-		</ul>
-	</main>
-	<Footer />
-</Layout>
+<Frame title="Posts | CodeWork" description={description}>
+	<Masthead label="Posts" />
+	<ul class="mt-12 divide-y divide-border-subtle">
+		{
+			posts.map((post) => (
+				<li>
+					<a href={postUrl(post)} class="group block py-7">
+						<time datetime={post.data.date.toISOString()} class="font-mono text-xs text-text-muted">
+							{formatDate(post.data.date)}
+						</time>
+						<h2 class="mt-2 text-lg font-medium text-text transition-colors group-hover:text-brand">
+							{post.data.title}
+							<ArrowRight className="ml-1 inline size-4 align-[-0.1em] transition-transform group-hover:translate-x-0.5" />
+						</h2>
+						<p class="mt-2 line-clamp-3 text-sm leading-relaxed text-text-secondary text-pretty">
+							{post.data.description}
+						</p>
+					</a>
+				</li>
+			))
+		}
+	</ul>
+</Frame>

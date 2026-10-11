@@ -18,13 +18,12 @@ export function Install() {
 			<span className="absolute -top-2 right-3 border border-brand/40 bg-surface px-1.5 font-mono text-[10px] leading-4 tracking-wider text-brand uppercase select-none">
 				alpha
 			</span>
-			<div role="tablist" aria-label="Package manager" className="flex border-b border-border-subtle">
+			<div role="group" aria-label="Package manager" className="flex border-b border-border-subtle">
 				{hero.install.map((item, i) => (
 					<button
 						key={item.label}
 						type="button"
-						role="tab"
-						aria-selected={i === active}
+						aria-pressed={i === active}
 						onClick={() => setActive(i)}
 						className={`-mb-px border-r border-b-2 border-r-border-subtle px-4 py-2 font-mono text-xs font-medium tracking-wider uppercase transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand ${
 							i === active

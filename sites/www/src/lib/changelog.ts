@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { Loader } from "astro/loaders";
+import { GITHUB_URL } from "../components/landing/content";
 
 /** The repo's hand-written CHANGELOG.md is the single source; the site never keeps its own copy. */
 const FILE = resolve("../../CHANGELOG.md");
@@ -21,7 +22,11 @@ export function changelogLoader(): Loader {
 					const [heading, label, date] = match;
 					if (label === "Unreleased") continue;
 					const start = match.index + heading.length;
-					const body = text.slice(start, headings[i + 1]?.index ?? text.length).trim();
+					// Links in CHANGELOG.md are relative to the repo root, which only resolves on GitHub.
+					const body = text
+						.slice(start, headings[i + 1]?.index ?? text.length)
+						.trim()
+						.replaceAll("](./", `](${GITHUB_URL}/blob/main/`);
 					// "@codeworksh/aikit@0.10.0" → package "aikit", version "0.10.0"; "Setup" has neither.
 					const release = /^@codeworksh\/(.+)@(.+)$/.exec(label!);
 					const id = release ? `${release[1]}-${release[2]}` : label!.toLowerCase();
@@ -34,7 +39,7 @@ export function changelogLoader(): Loader {
 							order: i,
 						},
 						body,
-						rendered: await context.renderMarkdown(body),
+						rendered: scopeHeadings(await context.renderMarkdown(body), id),
 					});
 				}
 			}
@@ -43,4 +48,11 @@ export function changelogLoader(): Loader {
 			watcher?.on("change", (path) => path === FILE && sync());
 		},
 	};
+}
+
+type Rendered = Awaited<ReturnType<Parameters<Loader["load"]>[0]["renderMarkdown"]>>;
+
+/** Every release has its own "Added", "Fixed"…; prefixing keeps their ids unique on a page. */
+function scopeHeadings(rendered: Rendered, prefix: string): Rendered {
+	return { ...rendered, html: rendered.html.replace(/<(h[1-6]) id="/g, `<$1 id="${prefix}-`) };
 }

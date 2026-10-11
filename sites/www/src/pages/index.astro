@@ -1,7 +1,8 @@
 ---
-import { ArrowRight, BookOpen, Box, GitBranch, Layers, Rocket, Sparkles, Users } from "lucide-react";
+import { ArrowRight, BookOpen, History, Newspaper } from "lucide-react";
 import Layout from "@/components/layout.astro";
-import { about, community, features, showcase, start } from "@/components/landing/content";
+import { about, community, models, modes, plugins, sandbox, showcase } from "@/components/landing/content";
+import { Field } from "@/components/landing/field";
 import Footer from "@/components/landing/footer.astro";
 import { GithubIcon } from "@/components/landing/github";
 import { Header } from "@/components/landing/header";
@@ -20,14 +21,18 @@ const heading = "text-2xl font-semibold tracking-tight text-text sm:text-[1.75re
 const lede = "mt-2 max-w-xl text-[15px] leading-relaxed text-text-secondary text-pretty";
 const card =
 	"group flex flex-col border border-border-subtle bg-surface p-5 transition-colors duration-150 ease-out hover:border-border-strong";
-const cta = "mt-auto flex items-center gap-1 pt-4 text-[13px] font-medium text-brand";
+const command =
+	"block border border-border-subtle bg-bg px-3 py-2.5 font-mono text-xs break-words text-text sm:text-[13px]";
+const link = "group mt-6 inline-flex items-center gap-1 text-[13px] font-medium text-brand";
 const featured = (await getPosts()).find((post) => post.data.callout);
 const callout = featured && { text: featured.data.callout!, href: postUrl(featured) };
-const featureIcons = [Layers, GitBranch, Sparkles];
-const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
+const communityIcons = [GithubIcon, BookOpen, Newspaper, History];
 ---
 
-<Layout title="CodeWork" description="CodeWork">
+<Layout
+	title="CodeWork - Make Code Work for You"
+	description="An open source coding agent for your terminal, editor or server. Bring any model, extend it with plugins, and run it on your machine or in a sandbox."
+>
 	<Header client:load />
 	<Picker client:load />
 	<main>
@@ -71,43 +76,155 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 			</Videos>
 		</section>
 
-		<section id="install" class="border-t border-border-subtle">
+		<section id="modes" class="border-t border-border-subtle">
 			<div class={section}>
-				<h2 class={heading}>{start.title}</h2>
-				<p class={lede}>{start.description}</p>
-				<div class="mt-6 grid gap-4 lg:mt-10 lg:grid-cols-2">
-					{start.cards.map((item) => (
-						<a href="/docs/" class={`${card} p-6 lg:p-8`}>
-							<Box className="size-6 text-brand" />
-							<h3 class="mt-4 text-lg font-medium text-text">{item.title}</h3>
-							<p class="mt-2 text-sm leading-relaxed text-text-secondary">{item.body}</p>
-							<span class={cta}>
-								{item.cta}
-								<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-							</span>
-						</a>
-					))}
+				<div class="flex flex-wrap items-end justify-between gap-x-8">
+					<div>
+						<h2 class={heading}>{modes.title}</h2>
+						<p class={lede}>{modes.description}</p>
+					</div>
+					<a href={modes.cta.href} class={link}>
+						{modes.cta.label}
+						<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+					</a>
+				</div>
+				<ul class="mt-8 border-t border-border-subtle lg:mt-12">
+					{
+						modes.cards.map((item) => (
+							<li class="border-b border-border-subtle">
+								<a
+									href={item.href}
+									class="group grid gap-3 py-5 transition-colors hover:bg-surface sm:px-4 lg:grid-cols-[7rem_1fr_auto] lg:items-center lg:gap-6"
+								>
+									<h3 class="font-mono text-sm font-medium tracking-wider text-brand uppercase">{item.title}</h3>
+									<p class="text-sm leading-relaxed text-text-secondary text-pretty">{item.body}</p>
+									<code class={`${command} lg:min-w-80 lg:whitespace-nowrap`}>
+										<span class="text-text-muted select-none">$ </span>
+										{item.command}
+									</code>
+								</a>
+							</li>
+						))
+					}
+				</ul>
+				<div class="mt-8 grid gap-4 md:grid-cols-2">
+					{
+						modes.soon.map((item) => (
+							<div class="relative isolate flex min-h-56 flex-col overflow-hidden border border-border-subtle bg-surface p-5 sm:p-6">
+								{/* A blurred stand-in until the real screenshot exists. */}
+								<img
+									src={modes.backdrop}
+									alt=""
+									aria-hidden="true"
+									class="absolute inset-0 -z-10 size-full scale-105 object-cover object-[center_70%] opacity-70 blur-[3px] [mask-image:linear-gradient(to_bottom,transparent_15%,black_70%)]"
+								/>
+								<div class="flex items-center gap-3">
+									<h3 class="font-mono text-sm font-medium tracking-wider text-text uppercase">{item.title}</h3>
+									<span class="border border-border-strong px-1.5 font-mono text-[10px] leading-4 tracking-wider text-text-muted uppercase">
+										Coming soon
+									</span>
+								</div>
+								<p class="mt-3 text-sm leading-relaxed text-text-secondary">{item.body}</p>
+							</div>
+						))
+					}
 				</div>
 			</div>
 		</section>
 
-		<section id="features" class="border-t border-border-subtle">
-			<div class={section}>
-				<h2 class={heading}>{features.title}</h2>
-				<p class={lede}>{features.description}</p>
-				<div class="mt-6 grid gap-4 sm:grid-cols-3 lg:mt-10">
-					{features.cards.map((item, i) => {
-						const Icon = featureIcons[i]!;
-						return (
-							<div class={card}>
-								<div class="flex aspect-4/3 items-center justify-center bg-surface-2 text-text-muted">
-									<Icon className="size-8" />
-								</div>
-								<h3 class="mt-4 text-[15px] font-medium text-text">{item.title}</h3>
-								<p class="mt-1.5 text-[13px] leading-relaxed text-text-secondary">{item.body}</p>
+		<section id="models" class="border-t border-border-subtle">
+			<div class={`${section} grid items-center gap-8 lg:grid-cols-2 lg:gap-16`}>
+				<div>
+					<h2 class={heading}>{models.title}</h2>
+					<p class={lede}>{models.description}</p>
+					<a href={models.cta.href} class={link}>
+						{models.cta.label}
+						<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+					</a>
+				</div>
+				<ul class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+					{
+						models.providers.map((name) => (
+							<li class="border border-border-subtle bg-surface px-3 py-2.5 font-mono text-[13px] text-text-secondary">
+								{name}
+							</li>
+						))
+					}
+				</ul>
+			</div>
+		</section>
+
+		<section id="plugins" class="border-t border-border-subtle">
+			<div class={`${section} grid items-center gap-8 lg:grid-cols-[1.2fr_1fr] lg:gap-16`}>
+				<figure class="order-last min-w-0 border border-border-subtle bg-surface lg:order-first">
+					<figcaption class="border-b border-border-subtle px-4 py-2.5 font-mono text-xs text-text-muted">
+						{plugins.file}
+					</figcaption>
+					<pre class="overflow-x-auto p-4 font-mono text-[13px] leading-relaxed text-text"><code>{
+						plugins.snippet.split("\n").map((line) =>
+							line.trim().startsWith("//") ? (
+								<span class="text-text-muted">{line}</span>
+							) : (
+								line.split(/("[^"]*")/).map((part) => (part.startsWith('"') ? <span class="text-brand">{part}</span> : part))
+							),
+						).flatMap((line) => [line, "\n"])
+					}</code></pre>
+				</figure>
+				<div>
+					<h2 class={heading}>{plugins.title}</h2>
+					<p class={lede}>{plugins.description}</p>
+					<ul class="mt-6 space-y-2.5 text-sm text-text-secondary">
+						{
+							plugins.points.map((point) => (
+								<li class="flex gap-3">
+									<span class="mt-[0.45em] size-1.5 shrink-0 bg-brand" />
+									{point}
+								</li>
+							))
+						}
+					</ul>
+					<a href={plugins.cta.href} class={link}>
+						{plugins.cta.label}
+						<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+					</a>
+				</div>
+			</div>
+		</section>
+
+		<section id="sandbox" class="relative isolate overflow-hidden border-t border-border-subtle bg-field">
+			<div aria-hidden="true" class="pointer-events-none absolute inset-0">
+				<Field variant="field" client:visible />
+			</div>
+			<div class={`${section} relative`}>
+				<div data-quiet class="mx-auto max-w-2xl text-center">
+					<h2 class={heading}>{sandbox.title}</h2>
+					<p class={`${lede} mx-auto`}>{sandbox.description}</p>
+				</div>
+				<code data-quiet class={`${command} mx-auto mt-8 max-w-xl`}>
+					<span class="text-text-muted select-none">$ </span>
+					{sandbox.command}
+				</code>
+				<div class="mt-8 grid gap-4 lg:mt-12 lg:grid-cols-3">
+					{
+						sandbox.tiers.map((tier) => (
+							<div data-quiet class="flex flex-col border border-border-subtle bg-bg p-6">
+								<h3 class="font-mono text-sm font-medium tracking-wider text-text uppercase">{tier.name}</h3>
+								<p class="mt-3 text-sm leading-relaxed text-text-secondary text-pretty">{tier.body}</p>
+								<ul class="mt-auto flex flex-wrap gap-2 pt-5">
+									{tier.drivers.map((driver) => (
+										<li class="border border-brand/40 px-2 font-mono text-xs leading-6 text-brand">{driver}</li>
+									))}
+								</ul>
 							</div>
-						);
-					})}
+						))
+					}
+				</div>
+				<div data-quiet class="mx-auto mt-8 flex max-w-xl flex-col items-center text-center">
+					<p class="text-[13px] leading-relaxed text-text-muted text-pretty">{sandbox.note}</p>
+					<a href={sandbox.cta.href} class={link}>
+						{sandbox.cta.label}
+						<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+					</a>
 				</div>
 			</div>
 		</section>
@@ -115,22 +232,24 @@ const communityIcons = [GithubIcon, BookOpen, Users, Rocket];
 		<section id="community" class="border-t border-border-subtle">
 			<div class={section}>
 				<h2 class={heading}>{community.title}</h2>
-				<p class={lede}>{community.description}</p>
-				<div class="mt-6 grid gap-4 sm:grid-cols-2 lg:mt-10 lg:grid-cols-4">
-					{community.cards.map((item, i) => {
-						const Icon = communityIcons[i]!;
-						return (
-							<a href={item.href} class={card}>
-								<Icon className="size-5 text-brand" />
-								<h3 class="mt-3.5 text-[15px] font-medium text-text">{item.title}</h3>
-								<p class="mt-1.5 text-[13px] leading-relaxed text-text-secondary">{item.body}</p>
-								<span class={cta}>
-									{item.cta}
-									<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-								</span>
-							</a>
-						);
-					})}
+				<div class="mt-8 grid gap-px border border-border-subtle bg-border-subtle sm:grid-cols-2 lg:grid-cols-4">
+					{
+						community.links.map((item, i) => {
+							const Icon = communityIcons[i]!;
+							return (
+								<a href={item.href} class="group flex items-start gap-3 bg-bg p-5 transition-colors hover:bg-surface">
+									<Icon className="mt-0.5 size-5 shrink-0 text-brand" />
+									<span>
+										<span class="flex items-center gap-1 text-[15px] font-medium text-text">
+											{item.label}
+											<ArrowRight className="size-3.5 text-text-muted transition-transform group-hover:translate-x-0.5" />
+										</span>
+										<span class="mt-1 block text-[13px] leading-relaxed text-text-secondary">{item.body}</span>
+									</span>
+								</a>
+							);
+						})
+					}
 				</div>
 			</div>
 		</section>

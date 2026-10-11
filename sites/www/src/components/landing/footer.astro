@@ -1,7 +1,6 @@
 ---
 import { footer } from "./content";
 import { Field } from "./field";
-import { Logo } from "./logo";
 import { Pixels } from "./pixels";
 import { WORDMARK } from "./wordmark";
 ---
@@ -13,7 +12,7 @@ import { WORDMARK } from "./wordmark";
 	<div class="relative mx-auto flex max-w-6xl flex-col gap-10 px-4 py-14 sm:px-6 lg:flex-row lg:justify-between">
 		<div class="lg:w-96">
 			<a href="/" aria-label="CodeWork home" data-quiet class="block w-max text-brand">
-				<Logo className="mr-3 size-5" /><Pixels glyph={WORDMARK} className="h-6 w-auto" />
+				<Pixels glyph={WORDMARK} className="h-6 w-auto" />
 			</a>
 			<p data-quiet class="mt-4 text-sm leading-relaxed text-text-muted">
 				{footer.tagline}

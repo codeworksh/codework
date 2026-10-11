@@ -34,12 +34,12 @@ export function Header() {
 				>
 					<Logo className="size-5" />
 				</a>
-				<nav className="hidden items-center sm:flex">
+				<nav className="flex items-center">
 					{nav.map((link) => (
 						<a
 							key={link.label}
 							href={link.href}
-							className="px-3 py-1.5 text-sm text-text-secondary transition-colors hover:text-text"
+							className="px-2 py-1.5 text-sm text-text-secondary sm:px-3 transition-colors hover:text-text"
 						>
 							{link.label}
 						</a>

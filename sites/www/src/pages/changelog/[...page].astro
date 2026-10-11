@@ -1,12 +1,9 @@
 ---
+import Frame from "@/components/landing/frame.astro";
 import type { GetStaticPaths, Page } from "astro";
 import { type CollectionEntry, getCollection, render } from "astro:content";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import Layout from "@/components/layout.astro";
-import Footer from "@/components/landing/footer.astro";
-import { Header } from "@/components/landing/header";
 import Masthead from "@/components/landing/masthead.astro";
-import { Picker } from "@/components/landing/picker";
 import { formatDate } from "@/lib/date";
 import "@/styles/posts.css";
 
@@ -29,72 +26,67 @@ const pager =
 	"inline-flex h-9 min-w-9 items-center justify-center gap-1.5 border px-3 font-mono text-xs transition-colors [&_svg]:size-4";
 ---
 
-<Layout title={title} description="Release notes for CodeWork and its packages, newest first.">
-	<Header client:load />
-	<Picker client:load />
-	<main class="mx-auto min-h-[calc(100svh-var(--nav-h))] max-w-3xl px-4 py-12 sm:px-6 lg:py-16">
-		<Masthead label="Changelog" />
-		<div class="mt-12 divide-y divide-border-subtle">
-			{
-				releases.map(({ release, Content }) => (
-					<article id={release.id} class="py-10 first:pt-0">
-						<div class="flex items-center gap-3 font-mono text-xs text-text-muted">
-							{release.data.pkg && (
-								<span class="border border-brand/40 px-1.5 leading-5 tracking-wider text-brand uppercase">
-									{release.data.pkg}
-								</span>
-							)}
-							{release.data.date && (
-								<time datetime={release.data.date.toISOString()}>{formatDate(release.data.date)}</time>
-							)}
-						</div>
-						<h2 class="mt-3 text-2xl font-semibold tracking-tight text-text">
-							<a href={`${pageUrl(page.currentPage)}#${release.id}`} class="hover:text-brand">
-								{release.data.title}
-							</a>
-						</h2>
-						<div class="prose mt-4 max-w-none">
-							<Content />
-						</div>
-					</article>
-				))
-			}
-		</div>
+<Frame title={title} description="Release notes for CodeWork and its packages, newest first.">
+	<Masthead label="Changelog" />
+	<div class="mt-12 divide-y divide-border-subtle">
 		{
-			page.lastPage > 1 && (
-				<nav aria-label="Changelog pages" class="mt-6 flex items-center justify-between gap-4 border-t border-border-subtle pt-8">
-					{page.url.prev ? (
-						<a href={page.url.prev} class={`${pager} border-border-strong text-text hover:border-brand hover:text-brand`}>
-							<ArrowLeft />
-							Newer
-						</a>
-					) : (
-						<span />
-					)}
-					<div class="flex items-center gap-1.5">
-						{Array.from({ length: page.lastPage }, (_, i) => i + 1).map((n) =>
-							n === page.currentPage ? (
-								<span aria-current="page" class={`${pager} border-brand text-brand`}>
-									{n}
-								</span>
-							) : (
-								<a href={pageUrl(n)} class={`${pager} border-transparent text-text-secondary hover:text-text`}>
-									{n}
-								</a>
-							),
+			releases.map(({ release, Content }) => (
+				<article id={release.id} class="py-10 first:pt-0">
+					<div class="flex items-center gap-3 font-mono text-xs text-text-muted">
+						{release.data.pkg && (
+							<span class="border border-brand/40 px-1.5 leading-5 tracking-wider text-brand uppercase">
+								{release.data.pkg}
+							</span>
+						)}
+						{release.data.date && (
+							<time datetime={release.data.date.toISOString()}>{formatDate(release.data.date)}</time>
 						)}
 					</div>
-					{page.url.next ? (
-						<a href={page.url.next} class={`${pager} border-border-strong text-text hover:border-brand hover:text-brand`}>
-							Older
-							<ArrowRight />
+					<h2 class="mt-3 text-2xl font-semibold tracking-tight text-text">
+						<a href={`${pageUrl(page.currentPage)}#${release.id}`} class="hover:text-brand">
+							{release.data.title}
 						</a>
-					) : (
-						<span />
-					)}
-				</nav>
-			)
+					</h2>
+					<div class="prose mt-4 max-w-none">
+						<Content />
+					</div>
+				</article>
+			))
 		}
-	</main>
-	<Footer />
-</Layout>
+	</div>
+	{
+		page.lastPage > 1 && (
+			<nav aria-label="Changelog pages" class="mt-6 flex items-center justify-between gap-4 border-t border-border-subtle pt-8">
+				{page.currentPage > 1 ? (
+					<a href={pageUrl(page.currentPage - 1)} class={`${pager} border-border-strong text-text hover:border-brand hover:text-brand`}>
+						<ArrowLeft />
+						Newer
+					</a>
+				) : (
+					<span />
+				)}
+				<div class="flex items-center gap-1.5">
+					{Array.from({ length: page.lastPage }, (_, i) => i + 1).map((n) =>
+						n === page.currentPage ? (
+							<span aria-current="page" class={`${pager} border-brand text-brand`}>
+								{n}
+							</span>
+						) : (
+							<a href={pageUrl(n)} class={`${pager} border-transparent text-text-secondary hover:text-text`}>
+								{n}
+							</a>
+						),
+					)}
+				</div>
+				{page.currentPage < page.lastPage ? (
+					<a href={pageUrl(page.currentPage + 1)} class={`${pager} border-border-strong text-text hover:border-brand hover:text-brand`}>
+						Older
+						<ArrowRight />
+					</a>
+				) : (
+					<span />
+				)}
+			</nav>
+		)
+	}
+</Frame>

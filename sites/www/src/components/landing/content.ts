@@ -57,54 +57,126 @@ export const showcase = {
 	],
 };
 
-export const start = {
-	title: "Get started",
-	description: "Placeholder: how to install CodeWork and run your first task.",
+export const modes = {
+	title: "Use it where you work",
+	description: "One agent and one set of sessions, wherever you are.",
+	cta: { label: "Read the CLI docs", href: "/docs/cli/" },
 	cards: [
-		{ title: "Install placeholder", body: "One or two sentences about the quickest way in.", cta: "Read the guide" },
 		{
-			title: "Second path placeholder",
-			body: "One or two sentences about the alternative way in.",
-			cta: "Learn more",
+			title: "CLI",
+			body: "Run a task, watch every step, and pick the session up later.",
+			command: 'codework run "build me flappy bird"',
+			href: "/docs/cli/using/",
 		},
+		{
+			title: "Editor",
+			body: "The agent inside Zed, or any editor that speaks ACP.",
+			command: "codework acp",
+			href: "/docs/cli/acp/",
+		},
+		{
+			title: "Server",
+			body: "Keep sessions running and drive them from your own tools.",
+			command: "codework serve",
+			href: "/docs/cli/rpc/",
+		},
+	],
+	backdrop: "/images/landing/editor.webp",
+	soon: [
+		{ title: "TUI", body: "A full-screen terminal app for long, hands-on sessions." },
+		{ title: "Desktop", body: "Run, watch and review many sessions side by side." },
 	],
 };
 
-export const features = {
-	title: "Feature section placeholder",
-	description: "Placeholder: one sentence that frames the three features below.",
-	cards: [
-		{ title: "Feature one", body: "Placeholder description of the first feature." },
-		{ title: "Feature two", body: "Placeholder description of the second feature." },
-		{ title: "Feature three", body: "Placeholder description of the third feature." },
+export const models = {
+	title: "Any model, including the plan you pay for",
+	description:
+		"Sign in with a ChatGPT or Copilot subscription, set an API key, or point it at a model on your own machine. Switch per run, per project, or mid-conversation.",
+	cta: { label: "Browse the model catalog", href: "/docs/models/catalog/" },
+	providers: [
+		"ChatGPT",
+		"GitHub Copilot",
+		"OpenRouter",
+		"Anthropic",
+		"OpenAI",
+		"Gemini",
+		"xAI",
+		"Ollama",
+		"LM Studio",
+		"vLLM",
+		"Your gateway",
+		"and more",
 	],
+};
+
+export const plugins = {
+	title: "Everything is a plugin",
+	description:
+		"The built-in tools are plugins too. Switch any of them off, or add your own tools and prompt sections from npm, git, or a file in your repo.",
+	points: [
+		"Tool plugins add or rewrite what the agent can do.",
+		"Prompt plugins shape the system prompt, like your AGENTS.md.",
+		"Local TypeScript files load with no build step.",
+	],
+	cta: { label: "Write a plugin", href: "/docs/plugins/" },
+	file: ".codework/settings.jsonc",
+	snippet: `{
+  "plugins": [
+    // Turn on a built-in search tool
+    { "plugin": "codework.tool.grep", "enabled": true },
+    // Add your own from npm, git, or a local file
+    "@acme/codework-tool-proc@1.2.0",
+    "github:acme/codework-prompt-style#v1.0.0",
+    "./plugins/house-style.ts"
+  ]
+}`,
+};
+
+export const sandbox = {
+	title: "One sandbox, wherever it runs",
+	description:
+		"The agent only sees a filesystem and a shell. The sandbox decides where they live, so the same tools work on your machine, in memory, or in the cloud.",
+	command: 'codework run --sandbox-driver memory "summarize data.csv"',
+	tiers: [
+		{
+			name: "Local",
+			drivers: ["local"],
+			body: "Your folder and your shell. The default, with full access to your machine.",
+		},
+		{
+			name: "Virtual",
+			drivers: ["memory", "sqldb"],
+			body: "An in-memory filesystem and an emulated bash. Nothing runs on your machine. sqldb keeps the files in SQLite.",
+		},
+		{
+			name: "Remote",
+			drivers: ["daytona", "vercel"],
+			body: "A full Linux machine in the cloud, for untrusted code and long jobs.",
+		},
+	],
+	note: "CodeWork doesn't ask before it runs commands or edits files. Work in a git repository, or pick a sandbox.",
+	cta: { label: "About sandboxes", href: "/docs/cli/using/#sandboxes" },
 };
 
 export const community = {
-	title: "Get involved with CodeWork",
-	description: "Placeholder: an invitation to contribute and follow along.",
-	cards: [
-		{
-			title: "GitHub",
-			body: "File issues, fix bugs, and submit features.",
-			cta: "Contribute on GitHub",
-			href: GITHUB_URL,
-		},
-		{ title: "Docs", body: "Placeholder: what the docs cover.", cta: "Read the docs", href: "/docs/" },
-		{ title: "Community placeholder", body: "Placeholder: where people hang out.", cta: "Join", href: "#" },
-		{ title: "Updates placeholder", body: "Placeholder: how to follow releases.", cta: "Follow", href: "#" },
+	title: "Get involved",
+	links: [
+		{ label: "GitHub", body: "Issues, bugs and pull requests", href: GITHUB_URL },
+		{ label: "Docs", body: "How it works and how to change it", href: "/docs/" },
+		{ label: "Posts", body: "Announcements and tutorials", href: "/posts/" },
+		{ label: "Changelog", body: "What shipped, release by release", href: "/changelog/" },
 	],
 };
 
 export const footer = {
-	tagline: "Tagline placeholder for CodeWork.",
+	tagline: "An open source coding agent you can make your own.",
 	columns: [
 		{
 			title: "Explore",
 			links: [
+				{ label: "Posts", href: "/posts/" },
 				{ label: "Docs", href: "/docs/" },
 				{ label: "Changelog", href: "/changelog/" },
-				{ label: "Posts", href: "/posts/" },
 			],
 		},
 		{
