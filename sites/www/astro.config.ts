@@ -19,7 +19,8 @@ export default defineConfig({
 		syntaxHighlight: false,
 		processor: unified({
 			remarkPlugins: [remarkHeading, [remarkStructure, { exportAs: "structuredData" }]],
-			rehypePlugins: [rehypeCode],
+			// Fumadocs sets its own tabIndex on code blocks; Shiki's lowercase one duplicates it and trips React.
+			rehypePlugins: [[rehypeCode, { tabindex: false }]],
 		}),
 	},
 	integrations: [react(), sitemap(), mdx({ extendMarkdownConfig: true, syntaxHighlight: false })],
