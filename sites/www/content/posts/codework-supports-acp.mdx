@@ -77,7 +77,7 @@ Here is what the ACP coding agent supports today:
 - **Rich prompt content.** Text, images (for models that accept them), mentioned files and selections as embedded context, and resource links all work. Other binary files are not supported.
 - **Clean shutdown.** When the editor closes the connection, CodeWork interrupts anything still running and stops any sandboxes it manages.
 
-Two things to know up front. First, CodeWork does not use ACP's permission requests: it runs every tool, including shell commands and file edits, without asking the editor first. Second, it works on files directly rather than through the editor's file system methods. Start in a git repository with a clean working tree so every change is easy to review and undo. If you want isolation, [`codework run --sandbox-driver`](/docs/cli/using#sandboxes) runs sessions in a sandbox from the terminal.
+Two things to know up front. First, CodeWork does not use ACP's permission requests: it runs every tool, including shell commands and file edits, without asking the editor first. Second, it works on files directly rather than through the editor's file system methods. Start in a git repository with a clean working tree so every change is easy to review and undo. If you want isolation, [`codework run --sandbox-driver`](/docs/sandboxes/) runs sessions in a sandbox from the terminal.
 
 ## How to Use CodeWork with an ACP Editor
 
@@ -148,7 +148,7 @@ To set a default model for every thread in a project, add it to that project's s
 }
 ```
 
-The [ACP docs](/docs/cli/acp/) cover the full Zed walkthrough, prompt content support, and troubleshooting. New to CodeWork? Start with the [Quickstart](/docs/quickstart/).
+The [ACP docs](/docs/integrations/acp/) cover the full Zed walkthrough, prompt content support, and troubleshooting. New to CodeWork? Start with the [Quickstart](/docs/quickstart/).
 
 ## FAQ
 

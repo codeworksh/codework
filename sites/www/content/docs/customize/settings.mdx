@@ -60,6 +60,8 @@ CodeWork re-reads settings at every turn, so a change applies from your next mes
 | `toolExecution` | `sequential`   | `parallel` runs the tool calls from one model response at the same time |
 | `options`       |                | Request options, below                                                  |
 
+Without any settings, CodeWork uses OpenAI's `gpt-5.6-luna` with high thinking. Each model supports a subset of the thinking levels; see [Thinking Levels](/docs/models#thinking-levels).
+
 `--provider`, `--model`, and `--thinking` on `codework run`, and the pickers in your editor, override these for one session.
 
 ### `model.options`

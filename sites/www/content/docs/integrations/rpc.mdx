@@ -85,20 +85,20 @@ Each busy period starts with `session.execution.started` and ends with exactly o
 
 ## RPC or ACP?
 
-|           | RPC server                               | ACP                                      |
-| --------- | ---------------------------------------- | ---------------------------------------- |
-| Transport | WebSocket                                | stdio                                    |
-| Lifetime  | Long-lived, outlives clients             | One process per editor connection        |
-| Clients   | CLI, your own tools                      | Editors such as [Zed](/docs/cli/acp#zed) |
-| Sandboxes | Create, share, and reuse across sessions | Local project folder only                |
+|           | RPC server                               | ACP                                               |
+| --------- | ---------------------------------------- | ------------------------------------------------- |
+| Transport | WebSocket                                | stdio                                             |
+| Lifetime  | Long-lived, outlives clients             | One process per editor connection                 |
+| Clients   | CLI, your own tools                      | Editors such as [Zed](/docs/integrations/acp#zed) |
+| Sandboxes | Create, share, and reuse across sessions | Local project folder only                         |
 
 ## Related
 
 <Cards>
-	<Card title="Overview" href="/docs/cli">
+	<Card title="CLI Reference" href="/docs/cli/reference">
 		Every command and flag.
 	</Card>
-	<Card title="ACP" href="/docs/cli/acp">
+	<Card title="ACP" href="/docs/integrations/acp">
 		Use CodeWork inside your editor.
 	</Card>
 </Cards>

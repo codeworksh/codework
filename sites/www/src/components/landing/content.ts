@@ -35,7 +35,7 @@ export const about = {
 		"supports hundreds of models.",
 		"steers rather than terminates.",
 		"is minimal, yet extensible.",
-		"supports sandboxed filesystem & shell.",
+		"runs in any sandbox.",
 		"works with ChatGPT Plus/Pro.",
 		"works with GitHub Copilot.",
 		"is not bloated.",
@@ -64,21 +64,21 @@ export const modes = {
 	cards: [
 		{
 			title: "CLI",
-			body: "Run a task, watch every step, and pick the session up later.",
+			body: "Run a task from your terminal and pick the session up later.",
 			command: 'codework run "build me flappy bird"',
-			href: "/docs/cli/using/",
+			href: "/docs/cli/",
 		},
 		{
 			title: "Editor",
 			body: "The agent inside Zed, or any editor that speaks ACP.",
 			command: "codework acp",
-			href: "/docs/cli/acp/",
+			href: "/docs/integrations/acp/",
 		},
 		{
 			title: "Server",
 			body: "Keep sessions running and drive them from your own tools.",
 			command: "codework serve",
-			href: "/docs/cli/rpc/",
+			href: "/docs/integrations/rpc/",
 		},
 	],
 	backdrop: "/images/landing/editor.webp",
@@ -146,7 +146,7 @@ export const sandbox = {
 		{
 			name: "Virtual",
 			drivers: ["memory", "sqldb"],
-			body: "An in-memory filesystem and an emulated bash. Nothing runs on your machine. sqldb keeps the files in SQLite.",
+			body: "An in-memory filesystem and an emulated bash. No process ever runs on your machine.",
 		},
 		{
 			name: "Remote",
@@ -155,7 +155,7 @@ export const sandbox = {
 		},
 	],
 	note: "CodeWork doesn't ask before it runs commands or edits files. Work in a git repository, or pick a sandbox.",
-	cta: { label: "About sandboxes", href: "/docs/cli/using/#sandboxes" },
+	cta: { label: "About sandboxes", href: "/docs/sandboxes/" },
 };
 
 export const community = {
@@ -169,7 +169,7 @@ export const community = {
 };
 
 export const footer = {
-	tagline: "An open source coding agent you can make your own.",
+	tagline: "An open source coding agent that makes shipping great software fun.",
 	columns: [
 		{
 			title: "Explore",

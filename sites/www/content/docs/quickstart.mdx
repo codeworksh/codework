@@ -34,19 +34,26 @@ export OPENROUTER_API_KEY="..."
 
 ## 3. Ask About Your Codebase
 
-From your project folder:
+From your project folder, pick the provider you connected:
 
-```bash
+```bash title="ChatGPT plan"
+codework run \
+  --provider openai-codex \
+  --model gpt-5.6-luna \
+  "Explain how this repository is structured and how to run its checks."
+```
+
+```bash title="OpenRouter key"
 codework run \
   --provider openrouter \
   --model deepseek/deepseek-v4.1-flash \
   "Explain how this repository is structured and how to run its checks."
 ```
 
-CodeWork searches the repo, reads the files that matter, and summarizes how the project fits together. You see each tool call as it runs. It prints the session ID first, and a usage summary with the run's tokens and cost when it's done.
+CodeWork searches the repo, reads the files that matter, and summarizes how the project fits together. It streams its answer as it writes it. It prints the session ID first, and a usage summary with the run's tokens and cost when it's done.
 
 <Placeholder type="video" title="Your first CodeWork run">
-	Video: `codework run` exploring a repository, streaming `read` and `bash` calls, then printing the usage summary.
+	Video: `codework run` exploring a repository, streaming its answer, then printing the usage summary.
 </Placeholder>
 
 ## 4. Make a Change
@@ -80,6 +87,7 @@ Save the model in your settings so you can drop the flags:
 
 ```jsonc title="~/.codework/settings.jsonc"
 {
+	// With a ChatGPT plan: { "provider": "openai-codex", "id": "gpt-5.6-luna" }
 	"model": { "provider": "openrouter", "id": "deepseek/deepseek-v4.1-flash" },
 }
 ```
@@ -91,7 +99,7 @@ codework run "Find and fix one flaky test"
 ## Next Steps
 
 <Cards>
-	<Card title="Use it in Zed" href="/docs/cli/acp#zed">
+	<Card title="Use it in Zed" href="/docs/integrations/acp#zed">
 		Run the same agent and sessions from your editor.
 	</Card>
 	<Card title="Catalog & Prices" href="/docs/models/catalog">
@@ -100,7 +108,7 @@ codework run "Find and fix one flaky test"
 	<Card title="Plugins" href="/docs/plugins">
 		Give CodeWork new tools and house rules.
 	</Card>
-	<Card title="Sandboxes" href="/docs/cli/using#sandboxes">
+	<Card title="Sandboxes" href="/docs/sandboxes/">
 		Run sessions in an isolated machine.
 	</Card>
 </Cards>

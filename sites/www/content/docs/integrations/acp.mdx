@@ -55,13 +55,13 @@ Each session exposes two selectors the editor shows as pickers:
 - **Model:** every model from the providers CodeWork has credentials for. The session's current model stays listed even if its credentials are gone.
 - **Thinking Effort:** the reasoning levels the current model supports. Hidden for models without reasoning.
 
-New sessions start on the default model from your [settings](/docs/cli/using#models-and-settings). CodeWork titles a session from its first prompt and tells the editor.
+New sessions start on the default model from your [settings](/docs/customize/settings). CodeWork titles a session from its first prompt and tells the editor.
 
 ## Permissions
 
 CodeWork has no permission prompts. It runs every tool, including shell commands and file edits, without asking the editor first, and works on files directly rather than through the editor.
 
-ACP sessions run locally in your project folder. Use [`codework run --sandbox-driver`](/docs/cli/using#sandboxes) when you want isolation.
+ACP sessions run locally in your project folder. Use [`codework run --sandbox-driver`](/docs/sandboxes/) when you want isolation.
 
 ## Prompt Content
 
@@ -127,7 +127,7 @@ You can bind a key to `agent: new external agent thread` to jump straight into a
 
 - **Add context:** type `@` to mention a file or symbol, or add a selection to the thread. Paste or drop images if your model accepts them.
 - **Switch models and thinking effort:** use the pickers at the bottom of the panel. Search the model picker by display name, such as "DeepSeek V4.1 Flash", not by its `openrouter/...` ID. Changes apply from the next prompt, and Zed remembers your choice as `default_config_options.model` in the CodeWork entry of its settings.
-- **Set a project default:** to start every thread in a project on the same model, set `model` in that project's [`.codework/settings.jsonc`](/docs/cli/using#models-and-settings).
+- **Set a project default:** to start every thread in a project on the same model, set `model` in that project's [`.codework/settings.jsonc`](/docs/customize/settings).
 - **Stop a turn:** click stop. The partial answer stays in the thread.
 - **Pick up where you left off:** open the Threads Sidebar (`cmd-alt-j` on macOS, `ctrl-alt-j` on Linux and Windows), open **Thread History**, click **Import Threads**, and select CodeWork. Opening an imported thread replays the full conversation.
 
@@ -155,10 +155,10 @@ Any editor that speaks ACP can run CodeWork with the same command, `codework acp
 ## Related
 
 <Cards>
-	<Card title="Capabilities" href="/docs/cli/using">
-		Tools, settings, plugins, and sandboxes.
+	<Card title="Tools" href="/docs/agent/tools">
+		The built-in tools CodeWork uses in every session.
 	</Card>
-	<Card title="RPC Server" href="/docs/cli/rpc">
+	<Card title="RPC Server" href="/docs/integrations/rpc">
 		Keep sessions running in a long-lived server.
 	</Card>
 </Cards>

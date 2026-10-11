@@ -42,7 +42,7 @@ const communityIcons = [GithubIcon, BookOpen, Newspaper, History];
 			<div class={section}>
 				<div class="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
 					<div>
-						<h2 data-typed-block class={heading}>
+						<h2 data-typed-block class={`${heading} max-sm:text-[22px]`}>
 							<span class="sr-only">
 								{about.lead.trim()}: {about.phrases.map((phrase) => phrase.replace(/\.$/, "")).join("; ")}.
 							</span>

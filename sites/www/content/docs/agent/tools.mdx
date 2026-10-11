@@ -1,0 +1,127 @@
+---
+title: Tools
+description: The built-in tools CodeWork uses to work in your code, and how to turn them on or off.
+---
+
+Tools are how CodeWork does anything beyond writing text: reading files, editing them, and running commands. The model decides which tool to call and with what arguments; CodeWork runs it and sends the output back.
+
+## Built-In Tools
+
+| Tool    | What it does                                                        | Default |
+| ------- | ------------------------------------------------------------------- | ------- |
+| `read`  | Read a text file, or a range of lines from it. Also reads images.   | On      |
+| `write` | Create a file, or overwrite one. Creates parent folders as needed.  | On      |
+| `edit`  | Replace exact pieces of text in an existing file                    | On      |
+| `bash`  | Run a shell command in the working directory, with optional timeout | On      |
+| `grep`  | Search file contents by regex or literal string                     | Off     |
+| `find`  | Find files by glob pattern                                          | Off     |
+| `ls`    | List a directory                                                    | Off     |
+
+Relative paths resolve against the session's working directory.
+
+### Read Files
+
+`read` returns up to 2,000 lines or 50 KB of a file, whichever comes first, and tells the model how to continue from where it stopped. The model can pass a starting line and a line count to read part of a large file. Images (JPEG, PNG, GIF, WebP, BMP) are sent to the model as attachments.
+
+### Write Files
+
+`write` writes the whole file in one call. The model uses it for new files and complete rewrites, and `edit` for everything else.
+
+### Edit Files
+
+`edit` takes a list of replacements, each an exact piece of the original text and what to put in its place. Every piece must appear exactly once in the file and must not overlap another. Several changes to one file go in a single call.
+
+### Run Commands
+
+`bash` runs a command and returns its combined stdout and stderr. Long output is cut to the last 2,000 lines or 50 KB, and the full output is saved to a file in the sandbox so the model can read the rest. A non-zero exit code is reported to the model as an error, along with the output. The model can set a timeout in seconds.
+
+### Search and List
+
+| Tool   | Details                                                                                                             |
+| ------ | ------------------------------------------------------------------------------------------------------------------- |
+| `grep` | Uses ripgrep. Supports case-insensitive and literal search, a file glob, and context lines. 100 matches by default. |
+| `find` | Uses fd. Returns paths relative to the search folder. 1,000 results by default.                                     |
+| `ls`   | Sorted entries, with `/` after folders, including dotfiles. 500 entries by default.                                 |
+
+`grep` and `find` skip files ignored by `.gitignore` and include hidden files.
+
+If ripgrep or fd isn't installed where the session runs, CodeWork downloads it on first use: into `~/.codework/bin` for a local session, or into the sandbox's own `~/.codework/bin` for a remote one. In a [virtual sandbox](/docs/sandboxes/virtual), `grep` works but `find` isn't available.
+
+## Turn On the Search Tools
+
+`grep`, `find`, and `ls` are off until you turn them on. Without them, CodeWork searches with `bash`, using commands like `rg`, `find`, and `ls`.
+
+Each built-in tool is a [plugin](/docs/plugins) with its own ID. Turn one on with a `plugins` entry in your settings:
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"plugins": [
+		{ "plugin": "codework.tool.grep", "enabled": true },
+		{ "plugin": "codework.tool.find", "enabled": true },
+		{ "plugin": "codework.tool.ls", "enabled": true },
+	],
+}
+```
+
+Put this in `~/.codework/settings.jsonc` to turn them on everywhere, or in a project's `.codework/settings.jsonc` for everyone working on it. Settings are read at every turn, so the change applies from your next message.
+
+## Turn Off a Built-In Tool
+
+Set `enabled` to `false` with the tool's ID. For example, to stop CodeWork from writing whole files:
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"plugins": [{ "plugin": "codework.tool.write", "enabled": false }],
+}
+```
+
+| Tool    | Plugin ID             |
+| ------- | --------------------- |
+| `read`  | `codework.tool.read`  |
+| `write` | `codework.tool.write` |
+| `edit`  | `codework.tool.edit`  |
+| `bash`  | `codework.tool.bash`  |
+| `grep`  | `codework.tool.grep`  |
+| `find`  | `codework.tool.find`  |
+| `ls`    | `codework.tool.ls`    |
+
+## Where Tools Run
+
+Every tool runs inside the session's [sandbox](/docs/sandboxes/). By default that's your folder, directly on your machine. In a [remote sandbox](/docs/sandboxes/remote), `bash` runs commands on the remote machine and `read`, `write`, and `edit` work on its files, not yours.
+
+<Callout type="warn">
+	CodeWork has no permission prompts. It runs every tool the model calls, including shell commands and file edits,
+	without asking first. Review its changes with git, and use a [sandbox](/docs/sandboxes/) for work you don't want
+	touching your machine.
+</Callout>
+
+## Parallel Tool Calls
+
+A model can ask for several tools in one response. CodeWork runs them one after another by default. To run them at the same time, set `toolExecution`:
+
+```jsonc title=".codework/settings.jsonc"
+{
+	"model": { "toolExecution": "parallel" },
+}
+```
+
+## More Tools From Plugins
+
+[Plugins](/docs/plugins) can add new tools, change how a built-in tool is described to the model, or check calls before and after they run. A plugin's tools work against the same sandbox as the built-ins.
+
+## Related
+
+<Cards>
+	<Card title="Plugins" href="/docs/plugins">
+		Add tools from npm, git, or a local file.
+	</Card>
+	<Card title="Sandboxes" href="/docs/sandboxes/">
+		Choose where tools run.
+	</Card>
+	<Card title="Settings" href="/docs/customize/settings">
+		Every settings key.
+	</Card>
+	<Card title="How the Agent Works" href="/docs/agent/">
+		The loop that calls the tools.
+	</Card>
+</Cards>

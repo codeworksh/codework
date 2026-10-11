@@ -1,0 +1,111 @@
+---
+title: Sessions
+description: How CodeWork stores conversations, and how to continue one from the terminal, your editor, or a server.
+---
+
+A session is one conversation with CodeWork: your prompts, the model's answers, every tool call and its result, and the model and sandbox it runs with. Every run belongs to a session, and every session is saved, so you can pick it up later.
+
+## Starting a Session
+
+Each `codework run` without `--session` starts a new one. The run prints the session ID first, before the answer:
+
+```text
+session  <session-id>
+sandbox  local · /Users/you/work/api
+```
+
+A new session remembers:
+
+- **Its project folder.** The folder you ran the command from. That folder's `.codework/settings.jsonc` and plugins apply to the session wherever it's continued from.
+- **Its sandbox and working directory.** Set with `--sandbox-driver`, `--sandbox-id`, or `--cwd` when the session is created. See [Sandboxes](/docs/sandboxes/).
+
+## Continuing a Session
+
+Pass the ID with `--session` (or `-s`) to send another prompt to the same conversation:
+
+```bash
+codework run --session <session-id> "Now fix them"
+```
+
+The model sees the whole conversation so far, including what it read and ran. The session keeps its sandbox and working directory, so `--cwd` and the sandbox flags only work when starting a new one.
+
+## Changing the Model
+
+`--provider`, `--model`, and `--thinking` work on a continued session too. The choice is saved with the session, so later runs keep using it until you change it again:
+
+```bash
+codework run --session <session-id> --provider openrouter --model deepseek/deepseek-v4.1-flash "Try a different approach"
+```
+
+A session with no saved choice follows the default model in your [settings](/docs/customize/settings), which is read again at every turn.
+
+## Titles
+
+A new session is called `Session` until its first prompt. CodeWork then titles it from the first line of that prompt, cut to 48 characters. Editors over ACP show this title in their thread history.
+
+## Usage Summary
+
+When a run finishes, `codework run` prints a usage summary to stderr:
+
+```text
+── usage ───────────────────────────────────────────────────────────────
+model    openrouter/deepseek/deepseek-v4.1-flash
+tokens   12,408 input · 1,262 output · 13,670 total
+cache    9,856 read · 0 write
+cost     $0.002104 · 4 turns
+```
+
+| Row      | What it shows                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------ |
+| `model`  | The provider and model that answered                                                             |
+| `tokens` | Input, output, and total tokens. Reasoning tokens are listed when there are any.                 |
+| `cache`  | Tokens read from and written to the provider's prompt cache                                      |
+| `cost`   | Estimated cost from the [model catalog](/docs/models/catalog), and the number of model responses |
+
+The summary covers that run only, not the session's whole history.
+
+## Shared Across Interfaces
+
+Sessions live in one database in your CodeWork home, so every interface that uses the same home sees the same sessions:
+
+- **Terminal.** `codework run --session <id>`.
+- **Editors.** [ACP](/docs/integrations/acp) editors list past sessions for the open project folder and can reopen one with its full history. A session started with `codework run` from that folder shows up there too.
+- **RPC server.** `codework serve` owns its sessions while it runs. Continue one with `codework run --server <url> --session <id>`, or list them with the `session.list` method. See [RPC Server](/docs/integrations/rpc).
+
+There's no CLI command to list sessions. Keep the ID the run prints, or browse them from your editor's thread history.
+
+## Where Sessions Are Stored
+
+By default, sessions are stored in a SQLite database at `~/.codework/data/codework.db`.
+
+| Flag                  | Effect                                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `--home <dir>`        | Use a different CodeWork home. Sessions go to `<dir>/data/codework.db`, along with its own settings and credentials. |
+| `--database <path>`   | Use a different database file. A relative path is placed inside `<home>/data`.                                       |
+| `--database :memory:` | Keep sessions in memory only. They're gone when the process exits.                                                   |
+
+```bash
+# A throwaway run that leaves no history behind
+codework run --database :memory: "Explain this stack trace"
+```
+
+These flags work on `run`, `acp`, and `serve`. With `--server`, set them on `codework serve` instead; the server owns the database.
+
+Two interfaces only share sessions if they use the same home and database. If your editor launches `codework acp --home ~/.codework-zed`, its sessions are separate from the ones `codework run` creates in `~/.codework`.
+
+## Related
+
+<Cards>
+	<Card title="How the Agent Works" href="/docs/agent/">
+		What happens during a run.
+	</Card>
+	<Card title="ACP" href="/docs/integrations/acp">
+		Reopen sessions from your editor.
+	</Card>
+	<Card title="RPC Server" href="/docs/integrations/rpc">
+		Keep sessions running in a long-lived server.
+	</Card>
+	<Card title="CLI Reference" href="/docs/cli/reference">
+		Every command and flag.
+	</Card>
+</Cards>

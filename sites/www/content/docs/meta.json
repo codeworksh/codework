@@ -6,9 +6,16 @@
 		"quickstart",
 		"models",
 		"changelog",
-		"---CLI---",
-		"...cli",
+		"---Agent---",
+		"...agent",
+		"---Sandboxes---",
+		"...sandboxes",
 		"---Customize---",
-		"plugins"
+		"...customize",
+		"plugins",
+		"---Integrations---",
+		"...integrations",
+		"---CLI---",
+		"...cli"
 	]
 }

@@ -22,16 +22,33 @@ CodeWork reads your codebase, plans changes, edits files, and runs commands to c
 	</Card>
 </Cards>
 
+## How It Works
+
+<Cards>
+	<Card title="The agent" href="/docs/agent/">
+		What happens in a run, from your prompt to the last tool call.
+	</Card>
+	<Card title="Tools" href="/docs/agent/tools">
+		The built-in tools, and how to turn them on and off.
+	</Card>
+	<Card title="Sessions" href="/docs/agent/sessions">
+		Every run is saved, so you can continue it from anywhere.
+	</Card>
+	<Card title="Sandboxes" href="/docs/sandboxes/">
+		Run on your machine, in memory, or in a cloud sandbox.
+	</Card>
+</Cards>
+
 ## Use It Where You Work
 
 <Cards>
 	<Card title="Terminal" href="/docs/cli">
-		`codework run` streams answers and tool calls, and keeps every session to continue later.
+		`codework run` streams the answer to your terminal, and keeps every session to continue later.
 	</Card>
-	<Card title="Your editor" href="/docs/cli/acp">
+	<Card title="Your editor" href="/docs/integrations/acp">
 		Use CodeWork as the agent in Zed, or any editor that speaks the Agent Client Protocol.
 	</Card>
-	<Card title="A server" href="/docs/cli/rpc">
+	<Card title="A server" href="/docs/integrations/rpc">
 		Keep sessions and sandboxes running in `codework serve` and drive them from your own tools.
 	</Card>
 </Cards>
@@ -43,10 +60,13 @@ CodeWork reads your codebase, plans changes, edits files, and runs commands to c
 ## Make It Yours
 
 <Cards>
+	<Card title="Instructions" href="/docs/customize/instructions">
+		Give CodeWork your project's rules with an `AGENTS.md` file.
+	</Card>
 	<Card title="Plugins" href="/docs/plugins">
 		Add tools and system prompt sections from npm, git, or a file in your repo.
 	</Card>
-	<Card title="Settings" href="/docs/cli/settings">
+	<Card title="Settings" href="/docs/customize/settings">
 		Set a default model, turn tools on and off, and tune retries per project.
 	</Card>
 	<Card title="Custom Models" href="/docs/models/custom">
@@ -56,4 +76,4 @@ CodeWork reads your codebase, plans changes, edits files, and runs commands to c
 
 ## Work Safely
 
-CodeWork has no permission prompts: it runs shell commands and edits files without asking. Run it in a git repository so you can review and undo its changes, and use a [sandbox](/docs/cli/using#sandboxes) when you don't want it touching your machine.
+CodeWork has no permission prompts: it runs shell commands and edits files without asking. Run it in a git repository so you can review and undo its changes, and use a [sandbox](/docs/sandboxes/) when you don't want it touching your machine.

@@ -1,0 +1,103 @@
+---
+title: How the Agent Works
+sidebarTitle: Overview
+description: What happens between sending CodeWork a prompt and getting an answer back.
+---
+
+CodeWork is a loop around a model. You send a prompt, the model answers or asks to use a tool, CodeWork runs the tool and sends back the result, and the model goes again. The loop ends when the model answers without asking for another tool.
+
+## A Run, Step by Step
+
+1. **You send a prompt.** From `codework run`, an [editor](/docs/integrations/acp), or the [RPC server](/docs/integrations/rpc). The prompt is saved to the [session](/docs/agent/sessions) before any work starts.
+2. **CodeWork builds the request.** It assembles the system prompt, the conversation so far, and the [tools](/docs/agent/tools) the session has turned on.
+3. **The model responds.** It streams text, and on models that support it, reasoning. It may also ask to call one or more tools.
+4. **CodeWork runs the tools.** Each call runs in the session's [sandbox](/docs/sandboxes/), and its output, or its error, goes back to the model as the tool result.
+5. **Repeat.** The model sees the results and decides what to do next. Steps 3 and 4 repeat until it answers without a tool call.
+
+Each model response is one turn. A single prompt usually takes several.
+
+Tool calls from one response run one after another by default. Set `model.toolExecution` to `parallel` in your [settings](/docs/customize/settings#model) to run them at the same time.
+
+## Streaming Output
+
+Everything streams as it happens. What you see depends on where you run CodeWork:
+
+| Interface      | What it shows                                                                          |
+| -------------- | -------------------------------------------------------------------------------------- |
+| `codework run` | The answer text on stdout. The session header and a usage summary go to stderr.        |
+| ACP editors    | The answer, reasoning, and each tool call with its output, in the editor's agent panel |
+| RPC server     | Every event, through `event.subscribe`                                                 |
+
+Because the answer is on stdout and everything else is on stderr, you can pipe or redirect just the answer:
+
+```bash
+codework run "Summarize the open TODOs in this repo" > todos.md
+```
+
+## The System Prompt
+
+Every request starts with a system prompt that CodeWork assembles from [plugins](/docs/plugins):
+
+- **The foundation.** A short base prompt that tells the model it's a coding agent, plus a few standing rules and guidance for the tools it has.
+- **Project instructions.** The contents of `AGENTS.md` or `CLAUDE.md` files from the session's working directory and every folder above it.
+
+Instruction files are read again before every model call, so edits apply from the next turn. See [Instructions](/docs/customize/instructions) for which files are picked up and in what order.
+
+## Retries
+
+When a model request fails with a rate limit, an overload, a server error, a timeout, or a dropped connection, CodeWork waits and sends the same request again. Nothing from the failed attempt is kept in the conversation, so the retry starts clean.
+
+By default it retries up to 3 times, waiting 2 seconds before the first retry and doubling each time, up to 60 seconds. If the provider asks for a longer wait than that, the turn fails instead.
+
+Quota and billing errors are never retried, since waiting won't fix them. Neither are errors such as a bad request or a prompt that's too long for the model.
+
+Change the limits with [`retry`](/docs/customize/settings#retry) in your settings.
+
+## Sending More While It Works
+
+`codework run` sends one prompt and waits for it to finish. Editors over ACP also send one prompt at a time; a second prompt to a busy session is rejected until the first is done or cancelled.
+
+With the [RPC server](/docs/integrations/rpc), a session can take new messages while it's working. `session.prompt` accepts a `delivery` field:
+
+| `delivery`        | When the model sees the message                                                        |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `steer` (default) | Before its next model request in the current run, so it can change course mid-task     |
+| `followUp`        | After the current work finishes, as a new prompt. Queued follow-ups run one at a time. |
+
+`codework run --server <url> --session <id>` sends its prompt as a follow-up, so running it against a busy session waits its turn instead of interrupting.
+
+## Stopping a Run
+
+| Interface      | How to stop                                                          |
+| -------------- | -------------------------------------------------------------------- |
+| `codework run` | Press `ctrl-c`. With `--server`, this interrupts the shared session. |
+| ACP editors    | The editor's stop button, which sends `session/cancel`               |
+| RPC server     | `session.interrupt`                                                  |
+
+Stopping ends the model response and any tool calls in progress. One exception: a command already running in a [Daytona](/docs/sandboxes/remote) sandbox can keep going on that machine. Tool calls that didn't finish are recorded as aborted. The session itself is kept: continue it with another prompt whenever you're ready.
+
+## No Permission Prompts
+
+CodeWork never asks before it acts. Every tool runs as soon as the model calls it, including shell commands, file writes, and edits.
+
+<Callout type="warn">
+	Work in a git repository so every change is easy to review and undo. For work you don't want touching your machine,
+	run the session in a [sandbox](/docs/sandboxes/).
+</Callout>
+
+## Related
+
+<Cards>
+	<Card title="Tools" href="/docs/agent/tools">
+		The built-in tools and how to turn them on or off.
+	</Card>
+	<Card title="Sessions" href="/docs/agent/sessions">
+		Continue, share, and store sessions.
+	</Card>
+	<Card title="Sandboxes" href="/docs/sandboxes/">
+		Choose where a session's tools run.
+	</Card>
+	<Card title="Settings" href="/docs/customize/settings">
+		Models, retries, and tool execution.
+	</Card>
+</Cards>

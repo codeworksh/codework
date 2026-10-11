@@ -25,22 +25,22 @@ Run `codework --help` or `codework <command> --help` to see this from your termi
 | `codework plugin update [spec]` | Fetch newer revisions                                          |
 | `codework plugin reload`        | Re-import plugins in a running server                          |
 | `codework session link <id>`    | Anchor a session to a project folder, through a running server |
-| `codework serve`                | Start the [RPC server](/docs/cli/rpc)                          |
-| `codework acp`                  | Start the [ACP server](/docs/cli/acp) on stdio                 |
+| `codework serve`                | Start the [RPC server](/docs/integrations/rpc)                 |
+| `codework acp`                  | Start the [ACP server](/docs/integrations/acp) on stdio        |
 
 ## `codework run`
 
-| Flag                         | Description                                                                |
-| ---------------------------- | -------------------------------------------------------------------------- |
-| `-s`, `--session <id>`       | Continue an existing session                                               |
-| `-C`, `--cwd <path>`         | Working directory for a new session                                        |
-| `--provider <id>`            | Model catalog provider ID                                                  |
-| `--model <id>`               | Model ID                                                                   |
-| `--thinking <level>`         | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`               |
-| `--sandbox-driver <driver>`  | Sandbox driver for a new session (default `local`)                         |
-| `--sandbox-id <id>`          | Reuse an existing sandbox instance                                         |
-| `--sandbox-provider-id <id>` | Attach to an existing remote sandbox by its provider ID                    |
-| `--server <url>`             | Run against an [RPC server](/docs/cli/rpc), e.g. `ws://127.0.0.1:7433/rpc` |
+| Flag                         | Description                                                                         |
+| ---------------------------- | ----------------------------------------------------------------------------------- |
+| `-s`, `--session <id>`       | Continue an existing session                                                        |
+| `-C`, `--cwd <path>`         | Working directory for a new session                                                 |
+| `--provider <id>`            | Model catalog provider ID                                                           |
+| `--model <id>`               | Model ID                                                                            |
+| `--thinking <level>`         | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`                        |
+| `--sandbox-driver <driver>`  | Sandbox driver for a new session (default `local`)                                  |
+| `--sandbox-id <id>`          | Reuse an existing sandbox instance                                                  |
+| `--sandbox-provider-id <id>` | Attach to an existing remote sandbox by its provider ID                             |
+| `--server <url>`             | Run against an [RPC server](/docs/integrations/rpc), e.g. `ws://127.0.0.1:7433/rpc` |
 
 ## `codework auth`
 
@@ -102,4 +102,4 @@ These work on every command that runs CodeWork locally, including `run`, `serve`
 | `GEMINI_API_KEY`       | Google Gemini API key                                               |
 | `XAI_API_KEY`          | xAI API key                                                         |
 
-Settings files are covered in the [settings reference](/docs/cli/settings).
+Settings files are covered in the [settings reference](/docs/customize/settings).
