@@ -6,6 +6,12 @@ name: TUI Binaries
 on:
    workflow_call:
    workflow_dispatch:
+   # Catch a broken target in review rather than at publish time.
+   pull_request:
+      branches: [canary, dev]
+      paths:
+         - packages/tui/**
+         - .github/workflows/tui.yml
 
 permissions:
    contents: read
