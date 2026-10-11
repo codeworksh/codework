@@ -3,6 +3,7 @@ import { Effect, Option, Stream } from "effect";
 import { Contract, type RuntimeConfig, type SandboxInfo, type SessionInfo } from "./contract.ts";
 import { Envelope } from "./envelope.ts";
 import { EventFeed } from "./feed.ts";
+import { Identity } from "./identity.ts";
 import { OAuth } from "./oauth.ts";
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
@@ -51,8 +52,10 @@ export const layer = Contract.Api.toLayer(
 		const sessions = yield* SessionStore.Service;
 		const state = yield* State.Service;
 		const oauth = yield* OAuth.Service;
+		const identity = yield* Identity.Service;
 
 		return Contract.Api.of({
+			"server.info": () => Effect.succeed({ pid: identity.pid, version: identity.version }),
 			"auth.save": ({ credentials }) => oauth.save(credentials),
 			"auth.status": ({ provider }) => oauth.status(provider),
 			"auth.refresh": ({ provider }) => oauth.refresh(provider),

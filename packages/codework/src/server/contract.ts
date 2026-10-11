@@ -113,6 +113,18 @@ const SandboxErrors = Schema.Union([
 const LocationErrors = Schema.Union([Location.DirectoryNotFoundError, Location.NotDirectoryError]);
 
 export const Api = RpcGroup.make(
+	/**
+	 * The server's own identity: the process and build a client is talking to.
+	 *
+	 * The health probe: a discovery registration names a pid and version, and a
+	 * caller confirms the process answering is the one that registered before it
+	 * trusts the endpoint. Like every other capability it rides the RPC channel,
+	 * so there is no separate HTTP surface to keep in step.
+	 */
+	Rpc.make("server.info", {
+		payload: {},
+		success: Schema.Struct({ pid: Schema.Int, version: Schema.String }),
+	}),
 	Rpc.make("auth.save", {
 		payload: { credentials: OAuthCredentials },
 		success: OAuthInfo,

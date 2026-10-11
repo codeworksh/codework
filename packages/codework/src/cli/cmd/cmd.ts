@@ -161,6 +161,34 @@ export const Cmd = Spec.make("codework", {
 				},
 			],
 		}),
+		Spec.make("tui", {
+			description: "Launch the CodeWork terminal UI against a managed server",
+			params: {
+				server: Flag.String("server").pipe(
+					Flag.withDescription("RPC server URL to use instead of a managed one (ws://host:port/rpc)"),
+					Flag.optional,
+				),
+				host: Flag.String("host").pipe(
+					Flag.withDescription("Host interface a managed server binds"),
+					Flag.withDefault("127.0.0.1"),
+				),
+				port: Flag.Int("port").pipe(
+					Flag.withSchema(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 65535 }))),
+					Flag.withDescription("Port a managed server listens on"),
+					Flag.withDefault(7433),
+				),
+				args: Argument.variadic(
+					Argument.String("args").pipe(Argument.withDescription("Arguments forwarded to the terminal UI")),
+				),
+			},
+			examples: [
+				{ command: "codework tui", description: "Start or reuse the local server and open the terminal UI" },
+				{
+					command: "codework tui --server ws://127.0.0.1:7433/rpc",
+					description: "Attach the terminal UI to a server you started yourself",
+				},
+			],
+		}),
 		Spec.make("serve", {
 			description: "Start the CodeWork RPC server",
 			params: {

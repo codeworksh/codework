@@ -36,6 +36,8 @@ const aliases = {
 	"@codeworksh/aikit/oauth/summary": fileURLToPath(new URL("../aikit/src/oauth/summary.ts", import.meta.url)),
 	"@codeworksh/aikit/failure": fileURLToPath(new URL("../aikit/src/llm/failure.ts", import.meta.url)),
 	"@codeworksh/aikit": fileURLToPath(new URL("../aikit/src/index.ts", import.meta.url)),
+	// The TUI launcher is a workspace package; dev and tests resolve it to source.
+	"@codeworksh/tui": fileURLToPath(new URL("../tui/src/index.ts", import.meta.url)),
 };
 // `@codeworksh/plugin` is the published plugin SDK, resolved to source in this repo so the CLI,
 // the harness and the example plugins all compile against one copy of the contract.

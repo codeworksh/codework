@@ -19,6 +19,7 @@ import { Contract } from "../src/server/contract.ts";
 import { Envelope } from "../src/server/envelope.ts";
 import { EventFeed } from "../src/server/feed.ts";
 import { Handlers } from "../src/server/handlers.ts";
+import { Identity } from "../src/server/identity.ts";
 import { OAuth } from "../src/server/oauth.ts";
 import { Server } from "../src/server/server.ts";
 import { linkedDirectory } from "../src/cli/cmd/handlers/plugin/session.ts";
@@ -51,6 +52,7 @@ const layer = (options: Harness.Options = {}) => {
 	return Handlers.layer.pipe(
 		Layer.provide(EventFeed.layer),
 		Layer.provide(OAuth.layer({ home })),
+		Layer.provide(Identity.layer),
 		Layer.provideMerge(Harness.layer({ home, hostCwd: home, database: ":memory:", ...options })),
 	);
 };

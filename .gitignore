@@ -55,3 +55,6 @@ models.gen.json
 .astro
 
 .alchemy
+
+# Rust build output (packages/tui binary; the launcher loads the built artifact).
+target

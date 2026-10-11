@@ -1,0 +1,49 @@
+{
+	"name": "@codeworksh/tui",
+	"version": "0.0.1",
+	"description": "High-performance Terminal User Interface (TUI) for CodeWork in Rust, with a thin TypeScript launcher",
+	"keywords": [
+		"codework",
+		"ratatui",
+		"rust",
+		"tui"
+	],
+	"homepage": "https://www.codework.sh",
+	"author": "Prem (https://github.com/prem315)",
+	"license": "MIT",
+	"type": "module",
+	"files": [
+		"dist",
+		"src",
+		"README.md"
+	],
+	"exports": {
+		".": {
+			"development": "./src/index.ts",
+			"import": "./dist/pack/index.mjs",
+			"default": "./dist/pack/index.mjs"
+		},
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build": "vp pack",
+		"build:rust": "cargo build --release",
+		"check": "vp check",
+		"check:rust": "cargo check",
+		"package:binaries": "node scripts/package.mjs",
+		"start": "cargo run",
+		"typecheck": "tsc --noEmit"
+	},
+	"optionalDependencies": {
+		"@codeworksh/tui-darwin-arm64": "0.0.1",
+		"@codeworksh/tui-darwin-x64": "0.0.1",
+		"@codeworksh/tui-linux-arm64": "0.0.1",
+		"@codeworksh/tui-linux-x64": "0.0.1",
+		"@codeworksh/tui-win32-x64": "0.0.1"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"typescript": "catalog:",
+		"vite-plus": "catalog:"
+	}
+}
