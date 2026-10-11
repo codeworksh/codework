@@ -2,8 +2,8 @@
 import Frame from "@/components/landing/frame.astro";
 import type { GetStaticPaths, Page } from "astro";
 import { type CollectionEntry, getCollection, render } from "astro:content";
-import { ArrowLeft, ArrowRight } from "lucide-react";
 import Masthead from "@/components/landing/masthead.astro";
+import Pager from "@/components/landing/pager.astro";
 import { formatDate } from "@/lib/date";
 import "@/styles/posts.css";
 
@@ -22,8 +22,6 @@ const { page } = Astro.props;
 const releases = await Promise.all(page.data.map(async (release) => ({ release, ...(await render(release)) })));
 const title = page.currentPage === 1 ? "Changelog | CodeWork" : `Changelog, page ${page.currentPage} | CodeWork`;
 const pageUrl = (n: number) => (n === 1 ? "/changelog/" : `/changelog/${n}/`);
-const pager =
-	"inline-flex h-9 min-w-9 items-center justify-center gap-1.5 border px-3 font-mono text-xs transition-colors [&_svg]:size-4";
 ---
 
 <Frame title={title} description="Release notes for CodeWork and its packages, newest first.">
@@ -34,8 +32,8 @@ const pager =
 				<article id={release.id} class="py-10 first:pt-0">
 					<div class="flex items-center gap-3 font-mono text-xs text-text-muted">
 						{release.data.pkg && (
-							<span class="border border-brand/40 px-1.5 leading-5 tracking-wider text-brand uppercase">
-								{release.data.pkg}
+							<span class="border border-brand/40 px-1.5 leading-5 text-brand">
+								@codeworksh/{release.data.pkg}
 							</span>
 						)}
 						{release.data.date && (
@@ -54,39 +52,5 @@ const pager =
 			))
 		}
 	</div>
-	{
-		page.lastPage > 1 && (
-			<nav aria-label="Changelog pages" class="mt-6 flex items-center justify-between gap-4 border-t border-border-subtle pt-8">
-				{page.currentPage > 1 ? (
-					<a href={pageUrl(page.currentPage - 1)} class={`${pager} border-border-strong text-text hover:border-brand hover:text-brand`}>
-						<ArrowLeft />
-						Newer
-					</a>
-				) : (
-					<span />
-				)}
-				<div class="flex items-center gap-1.5">
-					{Array.from({ length: page.lastPage }, (_, i) => i + 1).map((n) =>
-						n === page.currentPage ? (
-							<span aria-current="page" class={`${pager} border-brand text-brand`}>
-								{n}
-							</span>
-						) : (
-							<a href={pageUrl(n)} class={`${pager} border-transparent text-text-secondary hover:text-text`}>
-								{n}
-							</a>
-						),
-					)}
-				</div>
-				{page.currentPage < page.lastPage ? (
-					<a href={pageUrl(page.currentPage + 1)} class={`${pager} border-border-strong text-text hover:border-brand hover:text-brand`}>
-						Older
-						<ArrowRight />
-					</a>
-				) : (
-					<span />
-				)}
-			</nav>
-		)
-	}
+	<Pager page={page} pageUrl={pageUrl} class="mt-6 border-t border-border-subtle pt-8" />
 </Frame>

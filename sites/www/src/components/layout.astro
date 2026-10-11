@@ -53,7 +53,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 	</head>
 	{
 		docs ? (
-			<body class="flex min-h-screen flex-col" transition:persist transition:animate="none" transition:name="page-layout">
+			<body class="flex min-h-screen flex-col" transition:animate="none" transition:name="page-layout">
 				<slot />
 			</body>
 		) : (

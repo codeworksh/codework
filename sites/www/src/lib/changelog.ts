@@ -32,12 +32,16 @@ export function changelogLoader(): Loader {
 					const id = release ? `${release[1]}-${release[2]}` : label!.toLowerCase();
 					store.set({
 						id,
-						data: {
-							title: release ? `${release[1]} ${release[2]}` : label!,
-							pkg: release?.[1],
-							date,
-							order: i,
-						},
+						// Run through the collection schema, which turns the date string into a Date.
+						data: await context.parseData({
+							id,
+							data: {
+								title: release ? `${release[1]} ${release[2]}` : label!,
+								pkg: release?.[1],
+								date,
+								order: i,
+							},
+						}),
 						body,
 						rendered: scopeHeadings(await context.renderMarkdown(body), id),
 					});

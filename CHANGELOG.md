@@ -29,7 +29,7 @@ This file is the canonical source for unreleased changes and published release n
 - Fixed tools with `constrainedSampling: { type: "json_schema" }` being rejected by Anthropic and other strict providers. aikit set `strict: true` but sent the original schema; it now converts it to the strict subset (closed objects, every property required, optional ones nullable). A `"prefer"` tool whose schema the provider cannot express in strict mode, such as Anthropic with `minimum`, is sent non-strict; a `"require"` tool throws.
 - Fixed an interrupted turn never reporting `session.turn.aborted`. The cleanup that settles the turn's open draft and publishes the event was skipped on interruption, so the draft was only cleaned up on the session's next run.
 
-## [@codeworksh/aikit@0.10.0]
+## [@codeworksh/aikit@0.10.0] - 2026-10-07
 
 Covers every change since 0.9.2, the last release on the `latest` tag, including 0.9.3, which only shipped as dev and canary builds.
 
@@ -59,7 +59,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 
 - The OpenAI, Codex, Anthropic and OpenRouter live e2e suites now run against a model matrix: gpt-6-luna through gpt-5.4-nano for OpenAI, gpt-6-luna, gpt-5.6-luna and gpt-5.5 for Codex, Claude Sonnet 4.6 through Fable 5.1 plus the 4.5 generation for Anthropic, and Muse Spark 1.3, GLM 5.3 Flash, DeepSeek V4.1 Flash and Gemini 3.8 Flash for OpenRouter. New suites cover every reasoning level, context overflow, cross-model and cross-provider handoff, and prompt caching.
 
-## [@codeworksh/aikit@0.9.2]
+## [@codeworksh/aikit@0.9.2] - 2026-09-23
 
 ### Added
 
@@ -72,13 +72,13 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 - Fixed `generateModels` writing the catalog in place, where a concurrent reader could see a partial file. It now writes a temp file and renames it over the catalog.
 - Fixed an error response from models.dev surfacing as a JSON parse error. It now fails with the HTTP status.
 
-## [@codeworksh/aikit@0.9.1]
+## [@codeworksh/aikit@0.9.1] - 2026-09-23
 
 ### Fixed
 
 - Fixed a request that hit `timeoutMs` being reported as if the caller had cancelled it. Only the caller's own `signal` now ends a stream with `stopReason: "aborted"`; an abort raised inside the AI SDK, such as its timeout timer, ends it with `stopReason: "error"` and a `Timeout` failure. Callers can now tell a timeout from a cancel and retry it, and `codework run` prints `error[timeout]` instead of exiting silently as if Ctrl+C had been pressed.
 
-## [@codeworksh/aikit@0.9.0]
+## [@codeworksh/aikit@0.9.0] - 2026-09-23
 
 ### Added
 
@@ -104,7 +104,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 - Removed `--originator`, `--print-headers`, and `--manual` from `aikit auth`. The first two had no caller behind them, and `--device` now covers what `--manual` was for without needing a callback port at all.
 - Removed `onManualCodeInput` from the Codex login options. A callback that never arrives already falls back to `onPrompt`, which is what that option raced against.
 
-## [@codeworksh/aikit@0.8.0]
+## [@codeworksh/aikit@0.8.0] - 2026-09-06
 
 ### Added
 
@@ -156,7 +156,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 - Renamed the Codex OAuth suite for clarity and added CLI coverage for credential status, refresh, and logout wiring.
 - Removed unit coverage for the unused agent lifecycle event schemas.
 
-## [@codeworksh/aikit@0.7.2]
+## [@codeworksh/aikit@0.7.2] - 2026-08-25
 
 ### Added
 
@@ -174,7 +174,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 - Preserved safe provider status, code, request ID, retryability, and retry timing metadata without exposing request bodies, response bodies, or headers.
 - Prevented the underlying AI SDK from logging raw provider exceptions before Aikit can return its normalized terminal failure event.
 
-## [@codeworksh/aikit@0.7.1]
+## [@codeworksh/aikit@0.7.1] - 2026-08-24
 
 ### Fixed
 
@@ -185,7 +185,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 
 - Added real API regression coverage for reasoning metadata persistence and replay with `openai/gpt-5.6-luna`.
 
-## [@codeworksh/aikit@0.7.0]
+## [@codeworksh/aikit@0.7.0] - 2026-08-04
 
 ### Added
 
@@ -203,7 +203,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 
 - Replaced the flattened `ToolCallInFlight` fields on `tool.execution.start`, `tool.execution.update`, and `tool.execution.end` with the complete tool-call part under `event.toolCall`. Consumers must read call identity and lifecycle data from `event.toolCall`.
 
-## [@codeworksh/aikit@0.6.0]
+## [@codeworksh/aikit@0.6.0] - 2026-06-13
 
 ### Added
 
@@ -216,7 +216,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 - Reorganized the test suite into deterministic unit tests (`test/`) and opt-in live-provider end-to-end suites (`test/e2e/`, run via `pnpm test:e2e`), so the default `pnpm test` no longer calls paid provider APIs.
 - Added offline unit coverage for streaming-JSON repair, Unicode surrogate sanitization, the event stream, context-overflow detection, usage and cost mapping, multi-model message transforms, model thinking-level resolution, and the Codex OAuth helpers.
 
-## [@codeworksh/aikit@0.5.0]
+## [@codeworksh/aikit@0.5.0] - 2026-05-31
 
 ### Added
 
@@ -235,7 +235,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 
 - The stateful `Agent` and higher-level agent wrapper modules have been completely removed to simplify the package's scope. The toolkit now focuses strictly on foundational AI capabilities, relying on the consumers to implement the stateful execution harness and specific agent loops.
 
-## [@codeworksh/aikit@0.4.0]
+## [@codeworksh/aikit@0.4.0] - 2026-05-04
 
 ### Added
 
@@ -259,7 +259,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 - Removed direct AJV and `@sinclair/typebox` usage from `@codeworksh/aikit` in favor of `typebox`.
 - Refined package metadata and release scripts for the next npm publish.
 
-## [@codeworksh/aikit@0.3.1]
+## [@codeworksh/aikit@0.3.1] - 2026-04-17
 
 ### Added
 
@@ -275,7 +275,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 - Fixed TypeScript issues around the new OpenAI completions integration.
 - Fixed base URL handling for OpenAI-compatible completions providers, including canonical fallback behavior when the catalog omits an explicit OpenAI base URL.
 
-## [@codeworksh/aikit@0.3.0]
+## [@codeworksh/aikit@0.3.0] - 2026-04-13
 
 ### Added
 
@@ -294,7 +294,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 - Added runtime and live-agent test coverage for Code Mode, sandbox execution, and tool bindings.
 - Updated package publishing and subpath build outputs to support dedicated Code Mode driver artifacts.
 
-## [@codeworksh/aikit@0.2.1]
+## [@codeworksh/aikit@0.2.1] - 2026-04-08
 
 ### Added
 
@@ -309,7 +309,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 
 - Applied general package cleanup as part of the patch release.
 
-## [@codeworksh/aikit@0.2.0]
+## [@codeworksh/aikit@0.2.0] - 2026-04-08
 
 ### Added
 
@@ -331,7 +331,7 @@ Covers every change since 0.9.2, the last release on the `latest` tag, including
 
 - Applied Vite+-driven lint cleanup across provider and stream internals.
 
-## [@codeworksh/utils@0.1.1]
+## [@codeworksh/utils@0.1.1] - 2026-04-08
 
 ### Added
 

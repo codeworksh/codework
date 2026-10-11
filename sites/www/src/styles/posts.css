@@ -1,2 +1,11 @@
 @import "./site.css";
 @import "./prose.css";
+
+/* Long-form reading: Geist for prose, monospace kept for code. */
+.prose {
+	font-family: var(--font-sans);
+	font-size: 16px;
+}
+.prose :is(code, pre, kbd) {
+	font-family: var(--font-mono);
+}

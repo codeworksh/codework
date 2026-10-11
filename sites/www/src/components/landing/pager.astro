@@ -1,0 +1,50 @@
+---
+import type { Page } from "astro";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+
+interface Props {
+	page: Page<unknown>;
+	pageUrl: (n: number) => string;
+	class?: string;
+}
+
+const { page, pageUrl, class: className } = Astro.props;
+const pager =
+	"inline-flex h-9 min-w-9 items-center justify-center gap-1.5 border px-3 font-mono text-xs transition-colors [&_svg]:size-4";
+---
+
+{
+	page.lastPage > 1 && (
+		<nav aria-label="Changelog pages" class:list={["flex items-center justify-between gap-4", className]}>
+			{page.currentPage > 1 ? (
+				<a href={pageUrl(page.currentPage - 1)} class={`${pager} border-border-strong text-text hover:border-brand hover:text-brand`}>
+					<ArrowLeft />
+					Newer
+				</a>
+			) : (
+				<span />
+			)}
+			<div class="flex items-center gap-1.5">
+				{Array.from({ length: page.lastPage }, (_, i) => i + 1).map((n) =>
+					n === page.currentPage ? (
+						<span aria-current="page" class={`${pager} border-brand text-brand`}>
+							{n}
+						</span>
+					) : (
+						<a href={pageUrl(n)} class={`${pager} border-transparent text-text-secondary hover:text-text`}>
+							{n}
+						</a>
+					),
+				)}
+			</div>
+			{page.currentPage < page.lastPage ? (
+				<a href={pageUrl(page.currentPage + 1)} class={`${pager} border-border-strong text-text hover:border-brand hover:text-brand`}>
+					Older
+					<ArrowRight />
+				</a>
+			) : (
+				<span />
+			)}
+		</nav>
+	)
+}
