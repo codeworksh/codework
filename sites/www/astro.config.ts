@@ -8,13 +8,6 @@ import { rehypeCode, remarkHeading, remarkStructure } from "fumadocs-core/mdx-pl
 
 export default defineConfig({
 	site: "https://codework.sh",
-	// Pages moved when the docs were regrouped by feature; old links keep working.
-	redirects: {
-		"/docs/cli/acp": "/docs/integrations/acp",
-		"/docs/cli/rpc": "/docs/integrations/rpc",
-		"/docs/cli/settings": "/docs/customize/settings",
-		"/docs/cli/using": "/docs/agent/tools",
-	},
 	markdown: {
 		syntaxHighlight: false,
 		processor: unified({

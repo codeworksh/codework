@@ -1,0 +1,9 @@
+# Pages moved when the docs were regrouped by feature; old links keep working.
+/docs/cli/acp /docs/integrations/acp/ 301
+/docs/cli/acp/ /docs/integrations/acp/ 301
+/docs/cli/rpc /docs/integrations/rpc/ 301
+/docs/cli/rpc/ /docs/integrations/rpc/ 301
+/docs/cli/settings /docs/customize/settings/ 301
+/docs/cli/settings/ /docs/customize/settings/ 301
+/docs/cli/using /docs/agent/tools/ 301
+/docs/cli/using/ /docs/agent/tools/ 301

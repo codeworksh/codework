@@ -17,6 +17,8 @@ export default Alchemy.Stack(
 			domain: { name: "codework.sh", redirects: ["www.codework.sh"] },
 			command: "pnpm run build",
 			outdir: "dist",
+			workersDev: false,
+			assets: { notFoundHandling: "404-page" },
 		});
 
 		return {

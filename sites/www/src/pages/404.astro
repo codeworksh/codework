@@ -1,0 +1,26 @@
+---
+import { ArrowRight } from "lucide-react";
+import { Arcade } from "@/components/landing/arcade";
+import Frame from "@/components/landing/frame.astro";
+import Masthead from "@/components/landing/masthead.astro";
+import "@/styles/site.css";
+---
+
+<Frame title="Not found | CodeWork">
+	<meta slot="head" name="robots" content="noindex" />
+	<Masthead label="404 · Page not found" />
+	<p class="mt-8 text-sm leading-relaxed text-text-secondary">
+		This page doesn't exist. It may have moved, or the link may be wrong. While you're here:
+	</p>
+	<div class="mt-8">
+		<Arcade client:load />
+	</div>
+	<div class="mt-10 flex gap-6 text-[13px] font-medium text-brand">
+		<a href="/" class="group inline-flex items-center gap-1">
+			Home <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+		</a>
+		<a href="/docs/" class="group inline-flex items-center gap-1">
+			Docs <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+		</a>
+	</div>
+</Frame>

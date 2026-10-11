@@ -132,30 +132,49 @@ export class Chase {
 
 	draw(ctx: CanvasRenderingContext2D, time: number, dpr: number, body: string, accent: string) {
 		const size = this.width < 640 ? 28 : 36;
-		const unit = (size * dpr) / MARK.width;
-		ctx.save();
-		ctx.translate(Math.round(this.x * dpr), Math.round(this.y * dpr));
-		ctx.rotate(this.angle);
-		ctx.fillStyle = body;
-		const open = Math.sin(time * 14) > 0;
-		for (let row = 0; row < MARK.height; row++)
-			for (let col = 0; col < MARK.width; col++) {
-				if (MARK.rows[row]?.[col] !== "1" || (open && col >= 12 && (row < 3 || row >= 12))) continue;
-				const x = Math.round((col - MARK.width / 2) * unit);
-				const y = Math.round((row - MARK.height / 2) * unit);
-				ctx.fillRect(
-					x,
-					y,
-					Math.round((col + 1 - MARK.width / 2) * unit) - x,
-					Math.round((row + 1 - MARK.height / 2) * unit) - y,
-				);
-			}
-		ctx.fillStyle = accent;
-		ctx.fillRect(4.5 * unit, -1.5 * unit, 3 * unit, 3 * unit);
-		if (time - this.bite < 0.3) {
-			const spread = 4 + (time - this.bite) * 30;
-			for (const dy of [-1, 1]) ctx.fillRect((size / 2 + spread) * dpr, dy * spread * dpr, 2 * dpr, 2 * dpr);
-		}
-		ctx.restore();
+		drawMark(ctx, { x: this.x, y: this.y, size, angle: this.angle, time, bite: this.bite, dpr, body, accent });
 	}
+}
+
+/** The chomping C mark, centred on a CSS-pixel point; shared by the hero chase and the 404 arcade. */
+export function drawMark(
+	ctx: CanvasRenderingContext2D,
+	mark: {
+		x: number;
+		y: number;
+		size: number;
+		angle: number;
+		time: number;
+		bite: number;
+		dpr: number;
+		body: string;
+		accent: string;
+	},
+) {
+	const { size, time, bite, dpr } = mark;
+	const unit = (size * dpr) / MARK.width;
+	ctx.save();
+	ctx.translate(Math.round(mark.x * dpr), Math.round(mark.y * dpr));
+	ctx.rotate(mark.angle);
+	ctx.fillStyle = mark.body;
+	const open = Math.sin(time * 14) > 0;
+	for (let row = 0; row < MARK.height; row++)
+		for (let col = 0; col < MARK.width; col++) {
+			if (MARK.rows[row]?.[col] !== "1" || (open && col >= 12 && (row < 3 || row >= 12))) continue;
+			const x = Math.round((col - MARK.width / 2) * unit);
+			const y = Math.round((row - MARK.height / 2) * unit);
+			ctx.fillRect(
+				x,
+				y,
+				Math.round((col + 1 - MARK.width / 2) * unit) - x,
+				Math.round((row + 1 - MARK.height / 2) * unit) - y,
+			);
+		}
+	ctx.fillStyle = mark.accent;
+	ctx.fillRect(4.5 * unit, -1.5 * unit, 3 * unit, 3 * unit);
+	if (time - bite < 0.3) {
+		const spread = 4 + (time - bite) * 30;
+		for (const dy of [-1, 1]) ctx.fillRect((size / 2 + spread) * dpr, dy * spread * dpr, 2 * dpr, 2 * dpr);
+	}
+	ctx.restore();
 }
