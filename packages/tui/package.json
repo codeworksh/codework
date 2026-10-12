@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/tui",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "High-performance Terminal User Interface (TUI) for CodeWork in Rust, with a thin TypeScript launcher",
 	"keywords": [
 		"codework",
