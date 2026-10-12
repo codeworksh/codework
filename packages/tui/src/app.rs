@@ -229,8 +229,7 @@ impl App {
             }
             StreamEvent::Succeeded => {
                 if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    turn.streaming = false;
-                    turn.end_time = Some(chrono::Utc::now().timestamp_millis());
+                    turn.finish();
                     // A call that never settled keeps the line it was titled with.
                     if let Some(running) = turn.active_tool.take() {
                         turn.active_call_id = None;
@@ -241,7 +240,7 @@ impl App {
             }
             StreamEvent::Failed(err) => {
                 if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    turn.streaming = false;
+                    turn.finish();
                     turn.error = Some(err);
                     turn.active_tool = None;
                     turn.active_call_id = None;
@@ -251,7 +250,7 @@ impl App {
             }
             StreamEvent::Interrupted(reason) => {
                 if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    turn.streaming = false;
+                    turn.finish();
                     turn.error = Some(format!("Interrupted: {}", reason));
                     turn.active_tool = None;
                     turn.active_call_id = None;
@@ -524,8 +523,7 @@ impl App {
             }
             "/help" => {
                 let mut help_turn = ConversationTurn::new("help".to_string(), "/help".to_string(), "system".to_string());
-                help_turn.streaming = false;
-                help_turn.end_time = Some(chrono::Utc::now().timestamp_millis());
+                help_turn.finish();
                 help_turn.response = "### CodeWork Help & Commands\n\n| Command | Description |\n| :--- | :--- |\n| `/help` | Show available commands and shortcuts |
 | `/theme` | Change the color theme |\n| `/clear` | Clear conversation history and screen |\n| `/model` | Switch or view active LLM model |\n| `/session` | List or resume recent sessions |\n| `/compact` | Compact current conversation context |\n| `/exit` | Exit CodeWork TUI |\n\n**Shortcuts:**\n- `↑` / `↓` : Scroll chat history (or navigate commands when typing `/`)\n- `Home` / `End` : Jump to top / bottom of chat\n- `Ctrl+C` : Interrupt streaming response / Exit".to_string();
                 self.turns.push(help_turn);
@@ -537,8 +535,7 @@ impl App {
                     let last_turn = self.turns.pop().unwrap();
                     self.turns.clear();
                     let mut compact_turn = ConversationTurn::new("compact".to_string(), "[Context Compacted]".to_string(), "system".to_string());
-                    compact_turn.streaming = false;
-                    compact_turn.end_time = Some(chrono::Utc::now().timestamp_millis());
+                    compact_turn.finish();
                     compact_turn.response = format!("Previous {} turns compacted into session context summary.", old_count - 1);
                     self.turns.push(compact_turn);
                     self.turns.push(last_turn);

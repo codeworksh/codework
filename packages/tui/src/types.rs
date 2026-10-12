@@ -185,6 +185,15 @@ impl ConversationTurn {
             completed_tools: Vec::new(),
         }
     }
+
+    /// The turn is over: stop its clock with it. Every terminal stream event ends
+    /// here, because the footer reads `end_time` for elapsed seconds and falls
+    /// back to the current time while it is unset — so a terminal event that
+    /// forgets this call leaves the timer counting up forever after an error.
+    pub fn finish(&mut self) {
+        self.streaming = false;
+        self.end_time = Some(chrono::Utc::now().timestamp_millis());
+    }
 }
 
 #[derive(Debug, Clone, Default)]
