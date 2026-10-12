@@ -11,6 +11,33 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+## [@codeworksh/cli@0.2.0] - 2026-10-12
+
+### Added
+
+- Added `codework tui`, which opens the terminal UI against a local background server. It reuses the server registered in `<home>/service.json` when that server answers with the registered pid, and otherwise starts a detached `codework serve --service` that logs to `<home>/log/server.log`. A server from another CLI version is replaced, concurrent starts converge on one server, and a server that dies while the TUI runs is restarted on the same port so the TUI reconnects. Pass `--server <url>` to use a server of your own.
+- Added `codework service start|restart|status|stop` to manage that background server.
+- Added the `server.info` RPC, which returns the running server's `{ pid, version }`.
+
+### Changed
+
+- The ACP session config now lists every thinking level the model supports and keeps the selected level as given.
+
+### Fixed
+
+- Fixed a failed `codework serve` reporting only an error tag. It now shows the cause, such as `EADDRINUSE`.
+
+### Breaking Changes
+
+- Moved the RPC route to `/rpc/v1`. Clients that connect with `--server` or their own URL must use `ws://<host>:<port>/rpc/v1`.
+
+## [@codeworksh/tui@0.0.2] - 2026-10-12
+
+### Added
+
+- First release of the terminal UI on `latest`, still in development. The launcher resolves a prebuilt binary from the platform package for macOS (arm64, x64) or Linux (arm64, x64; static musl), falling back to `CODEWORK_TUI_BIN`. Nothing is downloaded at runtime, and Windows is not supported.
+- The TUI connects to the server named in `CODEWORK_RPC_SERVER` instead of starting its own, and shows a reconnecting state after a dropped connection instead of failing the turn.
+
 ## [@codeworksh/harness@0.2.0] - 2026-10-12
 
 ### Added
@@ -20,6 +47,22 @@ This file is the canonical source for unreleased changes and published release n
 ### Fixed
 
 - Fixed an interrupted turn never reporting `session.turn.aborted`. The cleanup that settles the turn's open draft and publishes the event was skipped on interruption, so the draft was only cleaned up on the session's next run.
+
+## [@codeworksh/plugin@0.2.0] - 2026-10-12
+
+### Added
+
+- Added `optIn` to plugin definitions. An opt-in plugin is selected like any other but runs only when a settings entry turns it on: `{ "plugin": "<id>", "enabled": true }`.
+- Added `Paths` to the plugin context: the harness's own `home`, `bin`, `cache`, `data` and `log` directories on the host.
+- Added `prepareArguments`, `constrainedSampling` and `encodeDetails` to tool definitions, to repair common argument shapes before validation, constrain how the provider generates arguments, and control the `details` stored with a result.
+- Added `readBytes` and `scanLines` to the sandbox filesystem. `scanLines` returns a bounded window of a file's lines; a remote backend runs the scan inside the sandbox (`Scan.script`) so only the window crosses the network.
+- Added `SandboxMutation`, which serializes the harness's own read-modify-write of one file across parallel tool calls. Every mount layer provides it through `withMutation`.
+- Added `spillPath` to the runtime config and sandbox mounts: where oversized tool output is written inside the sandbox, `/tmp` by default.
+- Added `idleTimeoutMs` to model options in settings, defaulting to `300000`.
+
+### Breaking Changes
+
+- A sandbox filesystem `Provider` must now implement `readBytes` and `scanLines`. A backend that only runs processes can use `readBytesViaShell` and `Scan.script`.
 
 ## [@codeworksh/aikit@0.11.0] - 2026-10-12
 
