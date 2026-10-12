@@ -1,24 +1,36 @@
-name: TUI Binaries
+name: Publish
 
-# Builds the Rust TUI for every published platform and uploads one artifact per
-# platform package, named after it (`tui-<os>-<arch>`). Publishing workflows call
-# this and stage the artifacts under packages/tui/dist/bin before `publish.mjs`.
+# One workflow publishes every channel, since npm trusted publishing names a single workflow file.
+# - canary / dev: every push to that branch
+# - latest: run by hand on `main`; publishes each package whose version is not on npm yet
 on:
-   workflow_call:
-   workflow_dispatch:
-   # Catch a broken target in review rather than at publish time.
-   pull_request:
+   push:
       branches: [canary, dev]
-      paths:
-         - packages/tui/**
-         - .github/workflows/tui.yml
+      paths-ignore:
+         - sites/www/**
+   workflow_dispatch:
 
 permissions:
    contents: read
+   id-token: write
+
+concurrency:
+   group: publish-${{ github.ref_name }}
+   cancel-in-progress: false
+
+env:
+   CHANNEL: ${{ github.event_name == 'workflow_dispatch' && 'latest' || github.ref_name }}
 
 jobs:
-   build:
-      name: build (${{ matrix.package }})
+   guard:
+      runs-on: ubuntu-latest
+      steps:
+         - if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'
+           run: echo "::error::latest is published from main only" && exit 1
+
+   tui:
+      needs: guard
+      name: tui (${{ matrix.package }})
       runs-on: ${{ matrix.runner }}
       strategy:
          fail-fast: true
@@ -52,14 +64,35 @@ jobs:
               workspaces: packages/tui
               key: ${{ matrix.target }}
          - run: cargo build --release --locked --target ${{ matrix.target }}
-         - name: Inspect binary
-           run: file target/${{ matrix.target }}/release/codework-tui
          - if: runner.os == 'Linux'
            name: Require a static binary
            run: file target/${{ matrix.target }}/release/codework-tui | grep -E "static(-pie)? linked|statically linked"
+         # One artifact per platform package, named after it (`tui-<os>-<arch>`).
          - uses: actions/upload-artifact@v7
            with:
               name: ${{ matrix.package }}
               path: packages/tui/target/${{ matrix.target }}/release/codework-tui
               if-no-files-found: error
-              retention-days: 7
+              retention-days: 1
+
+   publish:
+      needs: tui
+      runs-on: ubuntu-latest
+      steps:
+         - uses: actions/checkout@v6
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              registry-url: https://registry.npmjs.org
+              run-install: false
+              cache: false
+         - run: vp install --frozen-lockfile --filter '!@codeworksh/www'
+         # Canary is push-and-build for quick testing; dev and latest are checked first.
+         - if: env.CHANNEL != 'canary'
+           run: vp run verify
+         # One directory per platform package; each package's build stages its binary from here.
+         - uses: actions/download-artifact@v8
+           with:
+              pattern: tui-*
+              path: packages/tui/dist/bin
+         - run: vp run release "$CHANNEL"

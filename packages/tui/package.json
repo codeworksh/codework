@@ -30,17 +30,16 @@
 		},
 		"./package.json": "./package.json"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "vp pack",
 		"build:rust": "cargo build --release",
 		"check": "vp check",
 		"check:rust": "cargo check",
 		"start": "cargo run",
-		"typecheck": "tsc --noEmit",
-		"bump": "bumpp",
-		"release": "node ../../scripts/publish.mjs tui",
-		"release:dev": "node ../../scripts/publish.mjs tui --dev",
-		"release:dry": "node ../../scripts/publish.mjs tui --dry-run"
+		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",

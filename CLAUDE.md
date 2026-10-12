@@ -78,13 +78,19 @@ Conventional Commit style with optional package scopes, e.g `feat(aikit): ...`, 
 
 ## Releasing
 
-The publishable package `@codeworksh/aikit` owns its release scripts; the root exposes `*:aikit` aliases so every command works from the repo root or from inside the package. Versioning uses `bumpp`, configured in `packages/aikit/bump.config.ts` (tags follow `@codeworksh/aikit@<version>` and pushing is disabled). Build + publish run through `scripts/publish.mjs`, which builds, rewrites the manifest, and publishes from a temp dir. Pushing and publishing stay manual.
+Every package is published by CI from `.github/workflows/publish.yml`, which runs `vp run release <channel>` (`scripts/release.mjs`). It builds the TUI binaries, then publishes the packages in dependency order, derived from their `package.json` workspace dependencies (`scripts/workspace.mjs`), pinning each package to the exact versions uploaded in the same run. `scripts/publish.mjs` builds a single package, rewrites its manifest and publishes it from a temp dir.
+
+- **canary**: every push to `canary`, without `vp check` or typecheck, for quick testing. Versions are `<version>-canary.<run>.<attempt>.g<sha>`.
+- **dev**: every push to `dev`. Versions are `<version>-dev.<YYYYMMDDHHMMSS>` (UTC).
+- **latest**: run the workflow by hand on `main`. It publishes each package whose manifest version is not on npm yet and skips the rest.
+
+Versions are bumped locally with `vp run bump <aikit|plugin|harness|tui|cli> [version]`, which runs `bumpp` with the package's `bump.config.ts` and commits and tags `@codeworksh/<pkg>@<version>` without pushing. `vp run bump tui` moves the launcher and its four platform packages together.
 
 Flow:
 
 1. Update `CHANGELOG.md` — move the entry from `[Unreleased]` into a versioned section.
-2. `pnpm bump:aikit` (or `pnpm run bump` inside `packages/aikit`): pick the bump; it commits and tags `@codeworksh/aikit@<version>` without pushing.
-3. `git push && git push --tag`.
-4. `pnpm release:aikit:dry` to preview the tarball, then `pnpm release:aikit` to publish. Use `pnpm release:aikit:dev` for a prerelease under the `dev` dist-tag.
+2. `vp run bump <pkg>` for each package to release.
+3. `git push && git push --tags`, then merge to `main`.
+4. Run the Publish workflow on `main`.
 
-A workspace dependency is published at its manifest version, which must already be on the registry. A dependency with only dev builds (e.g. plugin, when releasing harness) is pinned explicitly, as a version or a dist-tag resolved at publish time — there is no implicit fallback: `pnpm release:harness:dev --dep @codeworksh/plugin@dev`. Release in dependency order: aikit → plugin → harness → tui platform packages (`tui-<os>-<arch>`) → tui → cli. The TUI's platform packages carry prebuilt binaries built by `.github/workflows/tui.yml` (macOS arm64/x64, Linux arm64/x64 static musl; Unix only) and ship in lockstep with `@codeworksh/tui`; `pnpm bump:tui` moves all five versions. Canary (push to `canary`) builds and publishes the whole chain.
+`vp run release <channel> --dry-run` previews the chain locally; the TUI platform packages need their binaries under `packages/tui/dist/bin`.

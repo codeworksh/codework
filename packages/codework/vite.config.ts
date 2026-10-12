@@ -51,6 +51,12 @@ export default defineConfig({
 	resolve: {
 		alias: pluginAliases,
 	},
+	run: {
+		tasks: {
+			// tsconfig resolves aikit through its generated declarations.
+			typecheck: { command: "tsc --noEmit", dependsOn: ["@codeworksh/aikit#build"], cache: false },
+		},
+	},
 	pack: {
 		entry: ["src/index.ts"],
 		format: ["esm"],

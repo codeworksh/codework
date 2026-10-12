@@ -13,6 +13,12 @@ export default defineConfig({
 	resolve: {
 		alias: aliases,
 	},
+	run: {
+		tasks: {
+			// tsconfig resolves aikit through its generated declarations.
+			typecheck: { command: "tsc --noEmit", dependsOn: ["@codeworksh/aikit#build"], cache: false },
+		},
+	},
 	pack: {
 		// Every subpath in `exports`. A plugin author imports one or two of these; the harness
 		// imports most of them, which is the point — both sides load the same modules.

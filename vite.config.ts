@@ -75,6 +75,21 @@ export default defineConfig({
 	resolve: {
 		alias: aliases,
 	},
+	run: {
+		tasks: {
+			// Uncached tasks see the whole environment, which these need (npm OIDC in CI, git signing).
+			bump: { command: "node scripts/bump.mjs", cache: false },
+			release: { command: "node scripts/release.mjs", cache: false },
+			// CI's check gate; each package's typecheck builds the aikit declarations it needs first.
+			verify: {
+				command: [
+					"vp check packages scripts .github",
+					"vp run --filter './packages/*' --concurrency-limit 2 typecheck",
+				],
+				cache: false,
+			},
+		},
+	},
 	test: {
 		include: ["packages/**/*.test.ts"],
 		exclude:
