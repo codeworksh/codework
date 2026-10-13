@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { Command } from "effect/cli";
 import type { CommandError } from "../cli/error.ts";
+import { Otel } from "./otel.ts";
 import { Spec } from "./spec.ts";
 
 /**
@@ -72,21 +73,33 @@ export function handlers<const Root extends Spec.Any>(
 }
 
 export function run(root: Spec.Any, handlers: ReadonlyArray<LazyHandler>, options: { readonly version: string }) {
-	return Command.run(provide(root, handlers), options);
+	return Command.run(provide(root, handlers, { version: options.version, path: [] }), options);
 }
 
-function provide(node: Spec.Any, handlers: ReadonlyArray<LazyHandler>): ProvidedCommand {
+function provide(
+	node: Spec.Any,
+	handlers: ReadonlyArray<LazyHandler>,
+	context: { readonly version: string; readonly path: ReadonlyArray<string> },
+): ProvidedCommand {
 	const found = handlers.find((entry) => entry.spec === node.spec);
+	const command = context.path.length === 0 ? node.name : context.path.join(" ");
 	const spec = found
 		? node.spec.pipe(
 				Command.withHandler((input) =>
-					Effect.promise(found.load).pipe(Effect.flatMap((module) => module.default(input))),
+					Effect.promise(found.load).pipe(
+						Effect.flatMap((module) => module.default(input)),
+						Effect.provide(Otel.layer({ version: context.version, command })),
+					),
 				),
 			)
 		: node.spec;
 	const children = Object.values(node.commands);
 	if (children.length === 0) return spec as ProvidedCommand;
-	return spec.pipe(Command.withSubcommands(children.map((child) => provide(child, handlers)))) as ProvidedCommand;
+	return spec.pipe(
+		Command.withSubcommands(
+			children.map((child) => provide(child, handlers, { ...context, path: [...context.path, child.name] })),
+		),
+	) as ProvidedCommand;
 }
 
 export * as Runtime from "./runtime.ts";

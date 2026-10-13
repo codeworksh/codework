@@ -16,6 +16,7 @@ import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { SessionSchema } from "../session/schema.ts";
 import { Session } from "../session/session.ts";
 import { State } from "../state/state.ts";
+import { Telemetry } from "../telemetry/telemetry.ts";
 import { errorMessage } from "../util/error.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { LLM } from "./llm.ts";
@@ -65,6 +66,22 @@ const errorPart = (
 	result: terminalResult(`tool execution failed: ${errorMessage(cause)}`),
 	time: { ...call.time, end: endTime(call, now) },
 });
+
+const observeTool = (
+	snapshot: State.Snapshot,
+	call: Message.ToolCallPendingPart,
+	seconds: number,
+	exit: Exit.Exit<Message.ToolCallTerminalPart, unknown>,
+) => {
+	// The model names the tool; an unregistered name would open a new series per hallucination.
+	const tool = snapshot.tools.defs.some((def) => def.name === call.name) ? call.name : "_OTHER";
+	const labels = Exit.isFailure(exit)
+		? { tool, error: Telemetry.errorType(exit.cause) }
+		: exit.value.status === "completed"
+			? { tool }
+			: { tool, error: exit.value.status };
+	return Telemetry.record(Telemetry.toolDuration, seconds, labels);
+};
 
 export const layer = (options: Options = {}) =>
 	Layer.effect(
@@ -116,7 +133,7 @@ export const layer = (options: Options = {}) =>
 				yield* publishFailure(draft, { _tag: "interrupted" });
 			});
 
-			const settleTools = Effect.fn("Loop.settleTools")(function* (
+			const settleTools = Effect.fn("Loop.settleTools", { level: "Info" })(function* (
 				snapshot: State.Snapshot,
 				message: Message.AssistantMessage,
 				reason: "stop" | "length" | "toolUse",
@@ -170,7 +187,14 @@ export const layer = (options: Options = {}) =>
 						}
 
 						const settled = new Set<string>();
-						const handle = Effect.fn("Loop.handleTool")(function* (call: Message.ToolCallPendingPart) {
+						const handle = Effect.fn("Loop.handleTool", { level: "Info" })(function* (
+							call: Message.ToolCallPendingPart,
+						) {
+							yield* Effect.annotateCurrentSpan({
+								"gen_ai.operation.name": "execute_tool",
+								"gen_ai.tool.name": call.name,
+								"gen_ai.tool.call.id": call.callID,
+							});
 							yield* events.publish(EventList.ToolStarted, {
 								timestamp: yield* DateTime.now,
 								sessionId: snapshot.sessionId,
@@ -180,7 +204,7 @@ export const layer = (options: Options = {}) =>
 								label: snapshot.tools.defs.find((def) => def.name === call.name)?.label,
 								arguments: call.arguments,
 							});
-							const handled = yield* snapshot.tools
+							const execute = snapshot.tools
 								.handle(call, {
 									sessionId: snapshot.sessionId,
 									messageId,
@@ -205,6 +229,9 @@ export const layer = (options: Options = {}) =>
 											),
 									),
 								);
+							const handled = yield* Telemetry.timed(execute, (seconds, exit) =>
+								observeTool(snapshot, call, seconds, exit),
+							);
 							// The durable settlement and the in-memory completion marker form one
 							// protected step. Otherwise an interrupt between them could make the
 							// cleanup publish a second terminal transition for the same call.
@@ -237,7 +264,7 @@ export const layer = (options: Options = {}) =>
 				return interruptedCause;
 			});
 
-			const runTurnAttempt = Effect.fn("Loop.runTurnAttempt")(function* (
+			const runTurnAttempt = Effect.fn("Loop.runTurnAttempt", { level: "Info" })(function* (
 				promotion: Promotion,
 				snapshot: State.Snapshot,
 			) {
@@ -386,11 +413,14 @@ export const layer = (options: Options = {}) =>
 				);
 			});
 
-			const runTurn = Effect.fn("Loop.runTurn")(function* (promotion: Promotion, snapshot: State.Snapshot) {
+			const runTurn = Effect.fn("Loop.runTurn", { level: "Info" })(function* (
+				promotion: Promotion,
+				snapshot: State.Snapshot,
+			) {
 				return yield* runTurnAttempt(promotion, snapshot);
 			});
 
-			const run = Effect.fn("Loop.run")(function* (input: {
+			const run = Effect.fn("Loop.run", { level: "Info" })(function* (input: {
 				readonly sessionId: SessionSchema.ID;
 				readonly force: boolean;
 			}) {
@@ -399,20 +429,31 @@ export const layer = (options: Options = {}) =>
 				const hasSteer = yield* inputs.hasPending(input.sessionId, "steer");
 				const hasFollowUp = hasSteer ? false : yield* inputs.hasPending(input.sessionId, "followUp");
 				if (!input.force && !hasSteer && !hasFollowUp) return;
+				yield* Effect.annotateCurrentSpan({
+					"gen_ai.operation.name": "invoke_agent",
+					"gen_ai.agent.name": "codework",
+					"gen_ai.conversation.id": input.sessionId,
+				});
 
 				let promotion: Promotion = hasSteer ? "steer" : hasFollowUp ? "followUp" : undefined;
-				let shouldRun = true;
-				while (shouldRun) {
-					const snapshot = yield* state.snapshot(input.sessionId);
-					let needsContinuation = true;
-					while (needsContinuation) {
-						const result = yield* runTurn(promotion, snapshot);
-						promotion = "steer";
-						needsContinuation = result.needsContinuation || (yield* inputs.hasPending(input.sessionId, "steer"));
+				const drain = Effect.gen(function* () {
+					let shouldRun = true;
+					while (shouldRun) {
+						const snapshot = yield* state.snapshot(input.sessionId);
+						let needsContinuation = true;
+						while (needsContinuation) {
+							const result = yield* runTurn(promotion, snapshot);
+							promotion = "steer";
+							needsContinuation =
+								result.needsContinuation || (yield* inputs.hasPending(input.sessionId, "steer"));
+						}
+						shouldRun = yield* inputs.hasPending(input.sessionId, "followUp");
+						promotion = shouldRun ? "followUp" : undefined;
 					}
-					shouldRun = yield* inputs.hasPending(input.sessionId, "followUp");
-					promotion = shouldRun ? "followUp" : undefined;
-				}
+				});
+				yield* Telemetry.timed(drain, (seconds, exit) =>
+					Telemetry.record(Telemetry.agentDuration, seconds, Telemetry.withError({}, exit)),
+				);
 			});
 
 			return Runner.Service.of({ run });

@@ -16,7 +16,7 @@ const report = (error: unknown) => writeError(renderError(error)).pipe(Effect.an
 
 export default Runtime.handler(
 	Cmd.commands.serve,
-	Effect.fn("CLI.serve")(function* ({ host, port, service }) {
+	Effect.fn("CLI.serve", { level: "Info" })(function* ({ host, port, service }) {
 		const shared = yield* Cmd.spec;
 		const harness = { ...harnessOptions(shared), watchModels: true };
 		const serve = Layer.launch(Server.layer({ host, port, harness }));
