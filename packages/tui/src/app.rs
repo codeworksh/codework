@@ -1,10 +1,24 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+//! Application state, and the only place that mutates it.
+//!
+//! `update` is the single entry point for change: it takes an event and reports
+//! whether the screen needs redrawing. That report is the whole redraw policy —
+//! there is no tick, so an idle TUI does no work and no repaint.
 
-/// The whole UI today: one screen that says hello, and one piece of state — whether
-/// the user has asked to leave. Prompt entry, model selection and the session view
-/// are deliberately not built yet.
+use crossterm::event::KeyEvent;
+
+use crate::action::{Action, Keymap};
+use crate::event::AppEvent;
+
+/// The screens the TUI can show. One, for now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Screen {
+    Welcome,
+}
+
 pub struct App {
+    pub screen: Screen,
     pub should_quit: bool,
+    keymap: Keymap,
 }
 
 impl Default for App {
@@ -15,16 +29,31 @@ impl Default for App {
 
 impl App {
     pub fn new() -> Self {
-        Self { should_quit: false }
+        Self {
+            screen: Screen::Welcome,
+            should_quit: false,
+            keymap: Keymap::new(),
+        }
     }
 
-    pub fn handle_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Esc => self.should_quit = true,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+    /// Apply one event. Returns whether the screen needs to be drawn again.
+    pub fn update(&mut self, event: AppEvent) -> bool {
+        match event {
+            AppEvent::Key(key) => self.handle_key(key),
+            // The view reads its size from the frame it draws into, so a resize
+            // needs no state change — only a repaint.
+            AppEvent::Resize => true,
+        }
+    }
+
+    fn handle_key(&mut self, key: KeyEvent) -> bool {
+        match self.keymap.resolve(key) {
+            // Nothing to redraw: the loop is about to end.
+            Some(Action::Exit) => {
                 self.should_quit = true;
+                false
             }
-            _ => {}
+            None => false,
         }
     }
 }

@@ -14,14 +14,17 @@ The TUI is a thin client. It draws the screen and reads keystrokes, and a CodeWo
 owns the agent, the tools and the model calls. The two talk over a WebSocket carrying
 newline-delimited JSON-RPC.
 
-| Path           | Role                                                                |
-| :------------- | :------------------------------------------------------------------ |
-| `src/main.rs`  | Terminal setup and the event loop.                                  |
-| `src/app.rs`   | The UI state (today: whether the user asked to quit).               |
-| `src/ui.rs`    | Rendering.                                                          |
-| `src/rpc/`     | The transport: WebSocket client and wire protocol.                  |
-| `src/types.rs` | The DTOs the transport speaks in.                                   |
-| `src/index.ts` | Thin TypeScript launcher: resolves the platform binary for the CLI. |
+| Path            | Role                                                                  |
+| :-------------- | :-------------------------------------------------------------------- |
+| `src/main.rs`   | Wiring: build the app, terminal and event loop, then run them.        |
+| `src/tui.rs`    | Terminal lifecycle: raw mode, alternate screen, input modes, restore. |
+| `src/event.rs`  | Input: the reader thread, and the app events it produces.             |
+| `src/action.rs` | Named actions and the keymap, with the `<leader>` prefix.             |
+| `src/app.rs`    | UI state and `update`, the one place state changes.                   |
+| `src/ui.rs`     | Rendering: reads state and draws, nothing else.                       |
+| `src/rpc/`      | The transport: WebSocket client and wire protocol.                    |
+| `src/types.rs`  | The DTOs the transport speaks in.                                     |
+| `src/index.ts`  | Thin TypeScript launcher: resolves the platform binary for the CLI.   |
 
 ---
 
@@ -60,10 +63,12 @@ pnpm start
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action       |
-| :------- | :----------- |
-| `Esc`    | Exit the app |
-| `Ctrl+C` | Exit the app |
+| Shortcut    | Action                            |
+| :---------- | :-------------------------------- |
+| `Esc`       | Exit the app                      |
+| `Ctrl+C`    | Exit the app                      |
+| `Ctrl+D`    | Exit the app                      |
+| `<leader>q` | Exit the app (`Ctrl+X`, then `q`) |
 
 ---
 

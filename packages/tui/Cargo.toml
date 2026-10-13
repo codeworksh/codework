@@ -12,7 +12,9 @@ path = "src/main.rs"
 
 [dependencies]
 ratatui = { version = "0.29", features = ["crossterm"] }
-crossterm = { version = "0.28", features = ["event-stream"] }
+# Defaults include bracketed paste; `event-stream` is not needed because input is
+# read on its own thread.
+crossterm = "0.28"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
