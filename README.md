@@ -11,7 +11,7 @@
   <a href="https://deepwiki.com/codeworksh/codework"><img alt="Ask DeepWiki" src="https://img.shields.io/badge/Ask-DeepWiki-blue?style=flat-square" /></a>
 </p>
 
-An open-source coding agent for your terminal: run sessions in your repo or an isolated sandbox, on any model, extended with plugins.
+An open-source coding agent for code & work: run sessions in your repo or an isolated sandbox, on any model, extended with plugins.
 
 ## Quick start
 
