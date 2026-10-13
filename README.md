@@ -20,7 +20,7 @@ An open-source coding agent for your terminal: run sessions in your repo or an i
 ```bash
 pnpm add -g @codeworksh/cli
 export OPENAI_API_KEY=...
-codework run --provider openai --model gpt-5.6-luna "Inspect and fix the failing tests"
+codework run --provider openai --model gpt-6-luna "Inspect and fix the failing tests"
 ```
 
 Any other provider works the same way with its own key; list providers and models with `codework models`:
