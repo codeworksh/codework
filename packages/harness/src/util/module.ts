@@ -48,8 +48,54 @@ import { Script, constants } from "node:vm";
  * immutable and shared by every project on the machine, while the harness doing the loading is
  * whichever one is running now, and two applications embedding the harness need not agree on
  * where their `effect` lives.
+ *
+ * Each package maps to the `Symbol.for` key of its {@link SharedRegistry}.
  */
-const sharedPackages: ReadonlySet<string> = new Set(["effect", "@codeworksh/plugin"]);
+const sharedPackages: ReadonlyMap<string, string> = new Map([
+	["effect", "codework.v1.effect"],
+	["@codeworksh/plugin", "codework.v1.plugin"],
+]);
+
+/** One module of a shared package, as a bundled host publishes it. */
+export interface SharedModule {
+	/** Its export names; an ES module's exports must be known before it runs. */
+	readonly names: ReadonlyArray<string>;
+	readonly load: () => Promise<Record<string, unknown>>;
+}
+
+/**
+ * A shared package's modules by specifier (`effect/Schema`), published on
+ * `globalThis[Symbol.for(key)]` by a host that is a single bundled file, such as the standalone
+ * binary. Such a host has no `effect` on disk to resolve to, so plugins get virtual modules that
+ * re-export its own instances. Modules load on first import: `effect` alone has hundreds.
+ */
+export type SharedRegistry = Readonly<Record<string, SharedModule>>;
+
+const sharedScheme = "codeworkshared:";
+
+function registryOf(key: string): SharedRegistry | undefined {
+	return (globalThis as Record<symbol, SharedRegistry | undefined>)[Symbol.for(key)];
+}
+
+/** Publish a bundled host's registries, by package name, before any plugin loads. */
+export function share(packages: Readonly<Record<string, SharedRegistry>>): void {
+	for (const [name, registry] of Object.entries(packages)) {
+		const key = sharedPackages.get(name);
+		if (key === undefined) throw new Error(`${name} is not a package shared with plugins`);
+		(globalThis as Record<symbol, SharedRegistry>)[Symbol.for(key)] = registry;
+	}
+}
+
+/** A virtual module re-exporting the host's instance of `specifier`. */
+function sharedSource(key: string, specifier: string, names: ReadonlyArray<string>): string {
+	const registry = `globalThis[Symbol.for(${JSON.stringify(key)})]`;
+	return [
+		`const m = await ${registry}[${JSON.stringify(specifier)}].load();`,
+		...names.map((name, index) => `const $${index} = m[${JSON.stringify(name)}];`),
+		// String export names, since some are reserved words (`Effect.void`).
+		`export { ${names.map((name, index) => `$${index} as ${JSON.stringify(name)}`).join(", ")} };`,
+	].join("\n");
+}
 
 /** The package a bare specifier names: `effect/Schema` -> `effect`, `@a/b/c` -> `@a/b`. */
 function packageOf(specifier: string): string {
@@ -59,18 +105,34 @@ function packageOf(specifier: string): string {
 }
 
 /**
- * Resolve the shared packages as though this module had imported them, for as long as `run`
- * takes. Anything else resolves exactly as it would have.
+ * Resolve the shared packages to the host's own instances, for as long as `run` takes: from its
+ * registry when it published one, otherwise as though this module had imported them. Anything
+ * else resolves exactly as it would have.
  */
-function withSharedModules<A>(run: () => Promise<A>): Promise<A> {
+async function withSharedModules<A>(run: () => Promise<A>): Promise<A> {
 	const hook = registerHooks({
 		resolve(specifier, context, nextResolve) {
-			return sharedPackages.has(packageOf(specifier))
-				? nextResolve(specifier, { ...context, parentURL: import.meta.url })
-				: nextResolve(specifier, context);
+			const key = sharedPackages.get(packageOf(specifier));
+			if (key === undefined) return nextResolve(specifier, context);
+			const registry = registryOf(key);
+			if (registry === undefined) return nextResolve(specifier, { ...context, parentURL: import.meta.url });
+			// Falling back to the plugin's own copy would bring back the two-instance failure above.
+			if (!Object.hasOwn(registry, specifier)) throw new Error(`${specifier} is not shared with plugins`);
+			return { url: `${sharedScheme}${specifier}`, shortCircuit: true };
+		},
+		load(url, context, nextLoad) {
+			if (!url.startsWith(sharedScheme)) return nextLoad(url, context);
+			const specifier = url.slice(sharedScheme.length);
+			const key = sharedPackages.get(packageOf(specifier))!;
+			const shared = registryOf(key)![specifier]!;
+			return { format: "module", source: sharedSource(key, specifier, shared.names), shortCircuit: true };
 		},
 	});
-	return run().finally(() => hook.deregister());
+	try {
+		return await run();
+	} finally {
+		hook.deregister();
+	}
 }
 
 /** Use Node's main loader even when the caller runs inside a bundler or test VM. */

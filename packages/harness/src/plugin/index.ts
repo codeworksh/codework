@@ -22,3 +22,4 @@ export {
 	type Updated,
 } from "./store.ts";
 export * as Tool from "./tool/schema.ts";
+export { share, type SharedModule, type SharedRegistry } from "../util/module.ts";
