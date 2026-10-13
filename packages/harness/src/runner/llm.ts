@@ -11,13 +11,14 @@ import { stream as aikitStream, llm, type Event as AikitEvent, type Message, typ
 import * as AikitFailure from "@codeworksh/aikit/failure";
 import { getGitHubCopilotApiKey, JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
 import { getOpenAICodexApiKey, JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
-import { Duration, Effect, Exit, Fiber, Scope, Stream } from "effect";
+import { Cause, Data, Duration, Effect, Exit, Fiber, Schema, Scope, Stream } from "effect";
 import { ModelCatalog } from "../model/catalog.ts";
 import type { SessionSchema } from "../session/schema.ts";
 import { merge } from "../settings/merge.ts";
 import { resolveOverrides, resolveRequest } from "../settings/resolve.ts";
 import { type Block, type DeclaredModel, keyName } from "../settings/schema.ts";
 import type { State } from "../state/state.ts";
+import { Telemetry } from "../telemetry/telemetry.ts";
 import { Attribution } from "./attribution.ts";
 import { LLMEventPublisher } from "./event.ts";
 import { Runner } from "./run.ts";
@@ -217,12 +218,108 @@ export const openWith = (options: OpenOptions = {}): Open =>
 
 export const open: Open = openWith();
 
+const isProviderError = Schema.is(Runner.ProviderError);
+
+/** `error.type` for a request: the provider's failure reason, so a terminal and a thrown failure agree. */
+const requestErrorType = (input: RequestInput, exit: Exit.Exit<LLMEventPublisher.Terminal, unknown>) => {
+	if (Exit.isFailure(exit)) {
+		const error = Cause.squash(exit.cause);
+		return isProviderError(error) ? error.reason._tag : Telemetry.errorType(exit.cause);
+	}
+	if (exit.value.outcome === "ended") return undefined;
+	if (exit.value.reason === "aborted") return "aborted";
+	return providerError(input, messageFailure(exit.value.message)).reason._tag;
+};
+
+/** Span attributes and GenAI metrics for one settled provider request. */
+const observe = Effect.fnUntraced(function* (
+	input: RequestInput,
+	timing: { readonly start: number; readonly firstToken: number | undefined },
+	exit: Exit.Exit<LLMEventPublisher.Terminal, unknown>,
+) {
+	const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+	const attributes = {
+		"gen_ai.operation.name": "chat",
+		"gen_ai.provider.name": input.provider,
+		"gen_ai.request.model": input.model,
+	};
+	const errorType = requestErrorType(input, exit);
+	yield* Telemetry.record(
+		Telemetry.operationDuration,
+		(now - timing.start) / 1000,
+		errorType === undefined ? attributes : { ...attributes, "error.type": errorType },
+	);
+	if (timing.firstToken !== undefined) {
+		yield* Telemetry.record(Telemetry.timeToFirstToken, (timing.firstToken - timing.start) / 1000, attributes);
+	}
+	if (errorType !== undefined) yield* Effect.annotateCurrentSpan("error.type", errorType);
+	if (Exit.isFailure(exit)) return;
+
+	const { message, outcome } = exit.value;
+	const { usage } = message;
+	// aikit's `input` excludes cached tokens; the conventions count them as input.
+	const inputTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+	// A request that failed before the provider reported usage carries zeros, which are not observations.
+	if (inputTokens > 0 || usage.output > 0) {
+		yield* Telemetry.record(Telemetry.tokenUsage, inputTokens, { ...attributes, "gen_ai.token.type": "input" });
+		yield* Telemetry.record(Telemetry.tokenUsage, usage.output, { ...attributes, "gen_ai.token.type": "output" });
+	}
+	if (usage.cost.total > 0) yield* Telemetry.record(Telemetry.cost, usage.cost.total, attributes);
+	// The interval after the first token covers every token but that one.
+	if (outcome === "ended" && timing.firstToken !== undefined && usage.output > 1) {
+		yield* Telemetry.record(
+			Telemetry.timePerOutputToken,
+			(now - timing.firstToken) / 1000 / (usage.output - 1),
+			attributes,
+		);
+	}
+	yield* Effect.annotateCurrentSpan({
+		"gen_ai.response.model": message.responseModel ?? message.model,
+		...(message.responseId === undefined ? {} : { "gen_ai.response.id": message.responseId }),
+		"gen_ai.response.finish_reasons": [exit.value.reason],
+		"gen_ai.usage.input_tokens": inputTokens,
+		"gen_ai.usage.output_tokens": usage.output,
+		"gen_ai.usage.cache_read.input_tokens": usage.cacheRead,
+		"gen_ai.usage.cache_creation.input_tokens": usage.cacheWrite,
+		...(usage.reasoning === undefined ? {} : { "gen_ai.usage.reasoning_tokens": usage.reasoning }),
+	});
+});
+
+// aikit pushes `start` and block starts before any content, so the first token is the first delta.
+const isToken = (event: AikitEvent.LLMMessageEvent) =>
+	event.type === "text.delta" || event.type === "thinking.delta" || event.type === "toolcall.delta";
+
+/**
+ * A failed terminal is the request's result, not an error. It leaves the
+ * traced request as a failure so the span records an error status, and is
+ * recovered just outside it.
+ */
+class FailedTerminal extends Data.TaggedError("LLM.FailedTerminal")<{
+	readonly terminal: LLMEventPublisher.Terminal;
+}> {}
+
 /**
  * Build a provider request from an opener. Tests use this with deterministic
  * aikit event streams; production uses `open` above.
  */
 export const make = (openStream: Open): Request => {
-	const request = Effect.fn("LLM.run")(function* (input: RequestInput) {
+	const request = Effect.fn("LLM.run", { kind: "client" })(function* (input: RequestInput) {
+		yield* Effect.annotateCurrentSpan({
+			"gen_ai.operation.name": "chat",
+			"gen_ai.provider.name": input.provider,
+			"gen_ai.request.model": input.model,
+		});
+		const start = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+		let firstToken: number | undefined;
+		const markToken = (event: AikitEvent.LLMMessageEvent) =>
+			firstToken !== undefined || !isToken(event)
+				? Effect.void
+				: Effect.clockWith((clock) =>
+						Effect.sync(() => {
+							firstToken = clock.currentTimeMillisUnsafe();
+						}),
+					);
+
 		/*
 		 * Give the transport signal its own closeable scope. Closing it aborts the
 		 * signal immediately without closing this request's outer scope, which must
@@ -233,11 +330,11 @@ export const make = (openStream: Open): Request => {
 		const signal = yield* Effect.abortSignal.pipe(Scope.provide(signalScope));
 		const abort = Scope.close(signalScope, Exit.void);
 
-		return yield* Effect.uninterruptibleMask((restore) =>
+		const settled = Effect.uninterruptibleMask((restore) =>
 			Effect.gen(function* () {
 				const iterable = yield* restore(openStream(input, signal)).pipe(Effect.onInterrupt(() => abort));
 				const consume = Stream.fromAsyncIterable(iterable, (cause) => providerErrorFromUnknown(input, cause)).pipe(
-					Stream.runForEach(input.publisher.publish),
+					Stream.runForEach((event) => Effect.andThen(markToken(event), input.publisher.publish(event))),
 					Effect.andThen(input.publisher.terminal),
 					Effect.interruptible,
 				);
@@ -266,9 +363,16 @@ export const make = (openStream: Open): Request => {
 				return completed.value;
 			}),
 		);
+		const terminal = yield* settled.pipe(Effect.onExit((exit) => observe(input, { start, firstToken }, exit)));
+		if (terminal.outcome === "failed") return yield* new FailedTerminal({ terminal });
+		return terminal;
 	});
 
-	return (input) => request(input).pipe(Effect.scoped);
+	return (input) =>
+		request(input).pipe(
+			Effect.catchTag("LLM.FailedTerminal", (failed) => Effect.succeed(failed.terminal)),
+			Effect.scoped,
+		);
 };
 
 export const run = make(open);

@@ -1,7 +1,20 @@
-import { Cause, Context, DateTime, type Duration, Effect, Layer, LayerMap, Option, Schema, Semaphore } from "effect";
+import {
+	Cause,
+	Context,
+	DateTime,
+	type Duration,
+	Effect,
+	Exit,
+	Layer,
+	LayerMap,
+	Option,
+	Schema,
+	Semaphore,
+} from "effect";
 import { SqlClient } from "effect/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
 import { Space } from "../space/space.ts";
+import { Telemetry } from "../telemetry/telemetry.ts";
 import { SandboxDriver } from "./driver.ts";
 import {
 	providerError,
@@ -125,6 +138,19 @@ const isSandboxProviderError = Schema.is(SandboxProviderError);
 
 const parseJson = (driver: SandboxDriver.Name, operation: string, value: string) =>
 	decodeUnknownJson(value).pipe(Effect.mapError((cause) => providerError({ driver, operation, cause })));
+
+/** Time a driver's provider-side create or wake, the cold start a remote sandbox pays. */
+const provision = <A, E, R>(driver: SandboxDriver.Name, operation: "create" | "wake", self: Effect.Effect<A, E, R>) =>
+	Telemetry.timed(self, (seconds, exit) => {
+		const attributes = { "codework.sandbox.driver": driver, "codework.sandbox.operation": operation };
+		return Telemetry.record(
+			Telemetry.provisionDuration,
+			seconds,
+			Exit.isSuccess(exit)
+				? { ...attributes, outcome: "ok" }
+				: { ...attributes, outcome: "error", "error.type": Telemetry.errorType(exit.cause) },
+		);
+	});
 
 export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Options) {
 	const sql = yield* SqlClient.SqlClient;
@@ -413,9 +439,9 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			metadata: input.metadata,
 		});
 
-		const provisioned = yield* driver
-			.create({ instanceId: id, config })
-			.pipe(Effect.catch((error) => persistProviderFailure(id, "faulted", error)));
+		const provisioned = yield* provision(driver.name, "create", driver.create({ instanceId: id, config })).pipe(
+			Effect.catch((error) => persistProviderFailure(id, "faulted", error)),
+		);
 		const finalize = Effect.gen(function* () {
 			const encoded = yield* registry.encodeRuntimeConfig(driver.name, provisioned.runtimeConfig);
 			const runtimeConfig = yield* encodeUnknownJson(encoded).pipe(
@@ -706,15 +732,11 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			});
 		}
 		if (refCount(id) === 0) yield* transports.invalidate(id);
-		const observed = yield* attached.driver
-			.wake(attached.input)
-			.pipe(
-				Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
-					providerErrorIsNotFound(error)
-						? markUnavailable(id, error)
-						: persistProviderFailure(id, "faulted", error),
-				),
-			);
+		const observed = yield* provision(attached.driver.name, "wake", attached.driver.wake(attached.input)).pipe(
+			Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
+				providerErrorIsNotFound(error) ? markUnavailable(id, error) : persistProviderFailure(id, "faulted", error),
+			),
+		);
 		yield* updateObservation({
 			id,
 			status: observed.status,
