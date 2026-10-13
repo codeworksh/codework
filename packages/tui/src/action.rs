@@ -5,6 +5,10 @@
 //! OpenCode's (`app.exit`, `command.palette.show`, …). Only actions the TUI can
 //! currently perform are listed — each new screen adds its own, instead of this
 //! table binding behaviour that does not exist yet.
+//!
+//! These are the keys that mean one thing everywhere. A key whose meaning depends on what is on
+//! screen — escape, which closes a menu or leaves — stays with the screen, because a keymap can
+//! only hold one answer per key.
 
 use std::time::{Duration, Instant};
 
@@ -46,10 +50,8 @@ impl Keymap {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(Action::Exit),
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(Action::Exit),
             (KeyCode::Char('q'), _) if leader => Some(Action::Exit),
-            // Ours, not OpenCode's: a full-screen app needs a key that leaves, and
-            // there is nothing for escape to close until dialogs exist. Drop it
-            // when the first dialog claims escape *and* a quit key is documented.
-            (KeyCode::Esc, _) => Some(Action::Exit),
+            // Escape is deliberately not bound here, though it is what leaves the app: a menu
+            // claims it first now, so what it means depends on the screen and `App` decides.
             _ => None,
         }
     }

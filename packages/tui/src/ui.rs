@@ -3,15 +3,29 @@
 //! Pure: it reads state and draws. Nothing here mutates the app or performs
 //! I/O, which is what makes a frame reproducible from a `TestBackend`.
 
+mod badge;
 mod field;
 mod glyphs;
+mod input;
+mod menu;
+mod text;
 mod wordmark;
 
+use ratatui::layout::{Alignment, Constraint, Flex, Layout, Rect};
 use ratatui::style::Style;
-use ratatui::widgets::Block;
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Paragraph};
 use ratatui::Frame;
 
 use crate::app::{App, Screen};
+
+/// The air the site leaves between its wordmark, its hero copy and its install box, in cells.
+const GAP: u16 = 2;
+
+/// The line under the prompt, for each thing that can have the keyboard. Only keys the app answers
+/// are listed, so nothing here promises something that does not happen.
+const HINTS: &str = "←→ move · / commands · esc quit";
+const MENU_HINTS: &str = "↑↓ move · enter choose · esc back";
 
 /// Draw the active screen.
 pub fn view(app: &App, frame: &mut Frame) {
@@ -22,25 +36,91 @@ pub fn view(app: &App, frame: &mut Frame) {
 
 fn view_welcome(app: &App, frame: &mut Frame) {
     let area = frame.area();
-    // This screen is the site's hero, so it stands on the canvas ground rather than
-    // the page one: the field is a deeper panel than the page around it, and its
-    // lattice ink is mixed from this ground. Painted every frame, so a theme switch
-    // repaints rather than leaving the previous palette in the gaps.
-    let canvas = Style::default().bg(app.theme.field_bg);
-    frame.render_widget(Block::default().style(canvas), area);
+    let palette = app.theme;
 
-    // Three layers, in the order the site paints them: the ground, the lattice on the
-    // wordmark's own pixel grid, then the word over it. A frame with no room for
-    // either glyph still gets the lattice: the site's field covers the whole canvas
-    // whether or not the word fits.
-    let slot = wordmark::slot(area);
+    // This screen is the site's hero, so it stands on the canvas ground rather than the page one:
+    // the field is a deeper panel than the page around it, and its lattice ink is mixed from this
+    // ground. Painted every frame, so a theme switch repaints rather than leaving the previous
+    // palette in the gaps.
+    frame.render_widget(
+        Block::default().style(Style::default().bg(palette.field_bg)),
+        area,
+    );
+
+    // The hero's column, in the order the site stacks it: the wordmark, the prompt box, and the
+    // line under it — with a menu, when one is open, hung directly under the box like the list a
+    // prompt completes into. Centred as one block, which is the space the site's own elastic
+    // spacers leave above and below it.
+    //
+    // On a frame too short for the whole column it is the wordmark that goes first, then the menu
+    // gives up its rows: the line you type into outranks the word above it and the list below it.
+    let below = GAP + input::HEIGHT + GAP + 1;
+    let menu_rows = app.popup.as_ref().map_or(0, |popup| {
+        menu::height(popup.menu().entries().len()).min(area.height.saturating_sub(below))
+    });
+    let art_rows = wordmark::rows(area.width)
+        .unwrap_or(0)
+        .min(area.height.saturating_sub(below + menu_rows));
+    let [art, _, prompt, picker, _, hint] = Layout::vertical([
+        Constraint::Length(art_rows),
+        Constraint::Length(GAP),
+        Constraint::Length(input::HEIGHT),
+        Constraint::Length(menu_rows),
+        Constraint::Length(GAP),
+        Constraint::Length(1),
+    ])
+    .flex(Flex::Center)
+    .areas(area);
+
+    // The lattice is the wordmark's own grid, so the wordmark decides where it starts. It is laid
+    // down first, and everything else is drawn over it — though a frame with no room for the
+    // wordmark still gets it, because the site's field covers the whole canvas either way.
+    let slot = wordmark::slot(art);
     field::paint(
         frame.buffer_mut(),
         area,
-        app.theme,
+        palette,
         slot.map_or(0, |slot| slot.x),
     );
     if let Some(slot) = slot {
-        wordmark::draw(frame.buffer_mut(), slot, app.theme);
+        wordmark::draw(frame.buffer_mut(), slot, palette);
     }
+
+    if let Some(caret) = input::draw(frame.buffer_mut(), prompt, &app.prompt, palette) {
+        frame.set_cursor_position(caret);
+    }
+    if let Some(popup) = &app.popup {
+        // As wide as its longest row and anchored on the box's left edge, so it reads as the list
+        // the line opens into rather than a panel of its own.
+        let anchor = input::centred(area);
+        let width = menu::width(popup.menu().entries()).min(area.right().saturating_sub(anchor.x));
+        menu::draw(
+            frame.buffer_mut(),
+            Rect {
+                x: anchor.x,
+                y: picker.y,
+                width,
+                height: picker.height,
+            },
+            popup.title(),
+            popup.menu(),
+            palette,
+        );
+    }
+    // A key the prompt cannot honour is answered here rather than dropped. The ink is on the span
+    // rather than the paragraph: a paragraph style would be patched onto every cell of the row,
+    // repainting the lattice behind the line in the hint's colour instead of the grid's.
+    let hints = match (app.notice, &app.popup) {
+        (Some(notice), _) => notice,
+        (None, Some(_)) => MENU_HINTS,
+        (None, None) => HINTS,
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            hints,
+            Style::default().fg(palette.text_muted),
+        )))
+        .alignment(Alignment::Center),
+        hint,
+    );
 }

@@ -15,6 +15,10 @@ use tokio::sync::mpsc;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppEvent {
     Key(KeyEvent),
+    /// Text pasted into the app, carried whole. The terminal brackets it, so a
+    /// paste can never be mistaken for typing, and it arrives as one event
+    /// rather than as a burst of keys the app would have to reassemble.
+    Paste(String),
     /// The terminal changed size. The payload is deliberately not carried: the
     /// view reads its own dimensions from the frame it is drawing into, so a
     /// stale copy in state would be one more thing to keep in sync.
@@ -73,6 +77,7 @@ impl EventHandler {
 fn translate(event: Event) -> Option<AppEvent> {
     match event {
         Event::Key(key) if key.kind != KeyEventKind::Release => Some(AppEvent::Key(key)),
+        Event::Paste(text) => Some(AppEvent::Paste(text)),
         Event::Resize(_, _) => Some(AppEvent::Resize),
         _ => None,
     }

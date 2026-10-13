@@ -71,8 +71,14 @@ fn glyph_for(width: usize) -> Option<&'static Glyph> {
     None
 }
 
-/// Where the wordmark sits in this frame, and which glyph it is. The glyph's pixel grid is the
-/// field's grid too, so the field is anchored on `x`.
+/// How many terminal rows the glyph for a frame this wide needs, or `None` when no glyph fits the
+/// width. The screen stacks its blocks by this before it can ask for a [`Slot`].
+pub fn rows(width: u16) -> Option<u16> {
+    glyph_for(width as usize).map(|glyph| glyph.rows() as u16)
+}
+
+/// Where the wordmark sits in the rect it was given, and which glyph it is. The glyph's pixel grid
+/// is the field's grid too, so the field is anchored on `x`.
 #[derive(Clone, Copy)]
 pub struct Slot {
     /// The column of the glyph's first pixel column, and the row of its first pixel row.
@@ -81,9 +87,9 @@ pub struct Slot {
     glyph: &'static Glyph,
 }
 
-/// The slot for a frame this size: centred, or `None` when the frame cannot hold the glyph — too
-/// narrow for even the mark, or too short for its rows. Nothing is scaled down to fit, because at
-/// any smaller scale a ten-row letter turns to mush.
+/// The slot for `area`: centred in it, or `None` when `area` cannot hold the glyph — too narrow for
+/// even the mark, or too short for its rows. Nothing is scaled down to fit, because at any smaller
+/// scale a ten-row letter turns to mush.
 pub fn slot(area: Rect) -> Option<Slot> {
     let glyph = glyph_for(area.width as usize)?;
     let rows = glyph.rows() as u16;
@@ -91,8 +97,8 @@ pub fn slot(area: Rect) -> Option<Slot> {
         return None;
     }
     Some(Slot {
-        x: area.width.saturating_sub(glyph.width as u16) / 2,
-        y: (area.height - rows) / 2,
+        x: area.x + area.width.saturating_sub(glyph.width as u16) / 2,
+        y: area.y + (area.height - rows) / 2,
         glyph,
     })
 }

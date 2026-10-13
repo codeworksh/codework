@@ -21,3 +21,7 @@ futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
+# Width of a character in cells, for the prompt line's caret and clipping. Already in the
+# tree through ratatui, so it costs no extra build to depend on it directly rather than
+# assume every character is one column wide.
+unicode-width = "0.2"

@@ -21,6 +21,16 @@ pub enum Scheme {
     Light,
 }
 
+impl Scheme {
+    /// What the scheme is called, as the theme picker's note beside a palette's name.
+    pub fn name(self) -> &'static str {
+        match self {
+            Scheme::Dark => "dark",
+            Scheme::Light => "light",
+        }
+    }
+}
+
 /// One palette: the site's 16 tokens plus the ink its canvas derives, and how it is named.
 ///
 /// The tokens are the whole contract, so a palette carries all of them even while the UI draws

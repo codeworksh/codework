@@ -1,6 +1,8 @@
 mod action;
 mod app;
 mod event;
+mod menu;
+mod prompt;
 // The RPC transport (client + wire protocol) is kept whole: it is the layer the
 // session screen will stream prompts over. Nothing on the welcome screen uses it.
 #[allow(dead_code, unused_imports)]
@@ -20,10 +22,11 @@ use tui::TerminalGuard;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     // The app first: it owns the palette, and the terminal's own background is set from it so the
-    // ground beneath the frames matches the ground inside them.
+    // ground beneath the frames matches the ground inside them — which on this screen is the
+    // landing canvas rather than the page.
     let mut app = App::new();
     // Dropping the guard restores the terminal, including on an early return.
-    let mut terminal = TerminalGuard::init(app.theme.bg)?;
+    let mut terminal = TerminalGuard::init(app.theme.field_bg)?;
     let mut events = EventHandler::new();
 
     terminal.draw(|frame| ui::view(&app, frame))?;
