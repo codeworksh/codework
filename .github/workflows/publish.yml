@@ -152,7 +152,10 @@ jobs:
               chmod +x tui/codework-tui
               echo "CODEWORK_TUI_BIN=$GITHUB_WORKSPACE/tui/codework-tui" >> "$GITHUB_ENV"
               echo "CODEWORK_VERSION=$(node scripts/version.mjs "$CHANNEL" packages/codework)" >> "$GITHUB_ENV"
+         # The static xz build downloads xz through GitHub's API, which limits anonymous requests.
          - working-directory: packages/codework
+           env:
+              GITHUB_TOKEN: ${{ github.token }}
            run: vp run bundle && vp run sea
          # Without API keys only the offline case runs: the binary with no Node on PATH unpacks its
          # assets and runs a plugin through its own effect.
