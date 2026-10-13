@@ -1,6 +1,6 @@
 import { Config, ConfigProvider, Effect, Layer, Metric, Option, Schema } from "effect";
-import { FetchHttpClient, type HttpClient } from "effect/http";
-import { OtlpExporter, OtlpMetrics, OtlpSerialization, OtlpTracer } from "effect/observability";
+import { FetchHttpClient } from "effect/http";
+import { OtlpMetrics, OtlpSerialization, OtlpTracer } from "effect/observability";
 import { uuidv7 } from "uuidv7";
 
 /**
@@ -36,31 +36,32 @@ const fiberMetrics = Layer.unwrap(
 	}),
 );
 
+interface OtlpResource {
+	readonly serviceName: string;
+	readonly serviceVersion: string;
+	readonly attributes: Record<string, string>;
+}
+
 /**
- * Serialize each signal by its `OTEL_EXPORTER_OTLP_*PROTOCOL`, defaulting to the
- * spec's `http/protobuf`. Effect has no gRPC exporter, so `grpc` exports nothing
+ * Serialize by `OTEL_EXPORTER_OTLP_PROTOCOL`, defaulting to the spec's
+ * `http/protobuf`. Effect has no gRPC exporter, so `grpc` exports nothing
  * rather than sending HTTP to a gRPC port.
  */
-const serialized = (
-	signal: "TRACES" | "METRICS",
-	self: Layer.Layer<OtlpExporter.Flusher, never, HttpClient.HttpClient | OtlpSerialization.OtlpSerialization>,
-): Layer.Layer<OtlpExporter.Flusher, never, HttpClient.HttpClient> =>
+const exporters = (resource: OtlpResource) =>
 	Layer.unwrap(
 		Effect.gen(function* () {
-			const protocol = yield* Config.String(`OTEL_EXPORTER_OTLP_${signal}_PROTOCOL`).pipe(
-				Config.orElse(() => Config.String("OTEL_EXPORTER_OTLP_PROTOCOL")),
-				Config.withDefault("http/protobuf"),
-			);
-			switch (protocol.trim().toLowerCase()) {
-				case "http/json":
-					return Layer.provide(self, OtlpSerialization.layerJson);
-				case "http/protobuf":
-					return Layer.provide(self, OtlpSerialization.layerProtobuf);
-				default:
-					return OtlpExporter.layerFlusher;
-			}
+			const protocol = yield* Config.String("OTEL_EXPORTER_OTLP_PROTOCOL").pipe(Config.withDefault("http/protobuf"));
+			const format = {
+				"http/json": OtlpSerialization.layerJson,
+				"http/protobuf": OtlpSerialization.layerProtobuf,
+			}[protocol.trim().toLowerCase()];
+			if (format === undefined) return Layer.empty;
+			return Layer.mergeAll(
+				OtlpTracer.layerFromConfig({ resource }),
+				OtlpMetrics.layerFromConfig({ resource }),
+			).pipe(Layer.provide(format));
 		}),
-	).pipe(Layer.orDie);
+	);
 
 /** The release channel a version was published to, from its prerelease tag. */
 const channel = (version: string) =>
@@ -69,7 +70,7 @@ const channel = (version: string) =>
 const instanceId = uuidv7();
 
 export const layer = (options: { readonly version: string; readonly command: string }) => {
-	const resource = {
+	const resource: OtlpResource = {
 		serviceName: "codework",
 		serviceVersion: options.version,
 		attributes: {
@@ -78,11 +79,7 @@ export const layer = (options: { readonly version: string; readonly command: str
 			"codework.command": options.command,
 		},
 	};
-	return Layer.mergeAll(
-		serialized("TRACES", OtlpTracer.layerFromConfig({ resource })),
-		serialized("METRICS", OtlpMetrics.layerFromConfig({ resource })),
-		fiberMetrics,
-	).pipe(
+	return Layer.mergeAll(exporters(resource), fiberMetrics).pipe(
 		Layer.provide(FetchHttpClient.layer),
 		Layer.provide(exporterDefaults),
 		Layer.catchCause(() => Layer.empty),

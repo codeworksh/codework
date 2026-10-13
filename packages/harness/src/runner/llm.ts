@@ -231,48 +231,43 @@ const requestErrorType = (input: RequestInput, exit: Exit.Exit<LLMEventPublisher
 	return providerError(input, messageFailure(exit.value.message)).reason._tag;
 };
 
-/** Span attributes and GenAI metrics for one settled provider request. */
+/** Span attributes and metrics for one settled provider request. */
 const observe = Effect.fnUntraced(function* (
 	input: RequestInput,
 	timing: { readonly start: number; readonly firstToken: number | undefined },
 	exit: Exit.Exit<LLMEventPublisher.Terminal, unknown>,
 ) {
 	const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-	const attributes = {
-		"gen_ai.operation.name": "chat",
-		"gen_ai.provider.name": input.provider,
-		"gen_ai.request.model": input.model,
-	};
+	const labels = { provider: input.provider, model: input.model };
 	const errorType = requestErrorType(input, exit);
 	yield* Telemetry.record(
-		Telemetry.operationDuration,
+		Telemetry.llmDuration,
 		(now - timing.start) / 1000,
-		errorType === undefined ? attributes : { ...attributes, "error.type": errorType },
+		errorType === undefined ? labels : { ...labels, error: errorType },
 	);
 	if (timing.firstToken !== undefined) {
-		yield* Telemetry.record(Telemetry.timeToFirstToken, (timing.firstToken - timing.start) / 1000, attributes);
+		const ttft = (timing.firstToken - timing.start) / 1000;
+		yield* Telemetry.record(Telemetry.llmTtft, ttft, labels);
+		yield* Effect.annotateCurrentSpan("gen_ai.response.time_to_first_chunk", ttft);
 	}
 	if (errorType !== undefined) yield* Effect.annotateCurrentSpan("error.type", errorType);
 	if (Exit.isFailure(exit)) return;
 
-	const { message, outcome } = exit.value;
+	const { message } = exit.value;
 	const { usage } = message;
-	// aikit's `input` excludes cached tokens; the conventions count them as input.
+	// aikit's `input` excludes cached tokens; input counts them, as the GenAI conventions do.
 	const inputTokens = usage.input + usage.cacheRead + usage.cacheWrite;
-	// A request that failed before the provider reported usage carries zeros, which are not observations.
-	if (inputTokens > 0 || usage.output > 0) {
-		yield* Telemetry.record(Telemetry.tokenUsage, inputTokens, { ...attributes, "gen_ai.token.type": "input" });
-		yield* Telemetry.record(Telemetry.tokenUsage, usage.output, { ...attributes, "gen_ai.token.type": "output" });
+	const tokens = {
+		input: inputTokens,
+		output: usage.output,
+		cache_read: usage.cacheRead,
+		cache_write: usage.cacheWrite,
+		reasoning: usage.reasoning ?? 0,
+	};
+	for (const [type, count] of Object.entries(tokens)) {
+		if (count > 0) yield* Telemetry.record(Telemetry.llmTokens, count, { ...labels, type });
 	}
-	if (usage.cost.total > 0) yield* Telemetry.record(Telemetry.cost, usage.cost.total, attributes);
-	// The interval after the first token covers every token but that one.
-	if (outcome === "ended" && timing.firstToken !== undefined && usage.output > 1) {
-		yield* Telemetry.record(
-			Telemetry.timePerOutputToken,
-			(now - timing.firstToken) / 1000 / (usage.output - 1),
-			attributes,
-		);
-	}
+	if (usage.cost.total > 0) yield* Telemetry.record(Telemetry.llmCost, usage.cost.total, labels);
 	yield* Effect.annotateCurrentSpan({
 		"gen_ai.response.model": message.responseModel ?? message.model,
 		...(message.responseId === undefined ? {} : { "gen_ai.response.id": message.responseId }),
@@ -280,8 +275,8 @@ const observe = Effect.fnUntraced(function* (
 		"gen_ai.usage.input_tokens": inputTokens,
 		"gen_ai.usage.output_tokens": usage.output,
 		"gen_ai.usage.cache_read.input_tokens": usage.cacheRead,
-		"gen_ai.usage.cache_creation.input_tokens": usage.cacheWrite,
-		...(usage.reasoning === undefined ? {} : { "gen_ai.usage.reasoning_tokens": usage.reasoning }),
+		"gen_ai.usage.cache_write.input_tokens": usage.cacheWrite,
+		...(usage.reasoning === undefined ? {} : { "gen_ai.usage.reasoning.output_tokens": usage.reasoning }),
 	});
 });
 
@@ -308,6 +303,8 @@ export const make = (openStream: Open): Request => {
 			"gen_ai.operation.name": "chat",
 			"gen_ai.provider.name": input.provider,
 			"gen_ai.request.model": input.model,
+			"gen_ai.conversation.id": input.sessionId,
+			"gen_ai.request.stream": true,
 		});
 		const start = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 		let firstToken: number | undefined;

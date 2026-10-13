@@ -89,7 +89,7 @@ const chunk = (choice: object | undefined, usage?: object) => ({
 });
 
 /**
- * The first successful request answers with one `read` call; the request that
+ * The first successful request answers with one `bash` call; the request that
  * carries its result answers with text. Both report usage, so every GenAI metric records.
  */
 const completion = (body: { readonly messages: ReadonlyArray<{ readonly role: string }> }) => {
@@ -110,7 +110,7 @@ const completion = (body: { readonly messages: ReadonlyArray<{ readonly role: st
 						index: 0,
 						id: "call_otel",
 						type: "function",
-						function: { name: "read", arguments: '{"path":"note.txt"}' },
+						function: { name: "bash", arguments: '{"command":"cat note.txt"}' },
 					},
 				],
 			},
@@ -186,8 +186,15 @@ const value = (input: OtlpValue): unknown => {
 	return (input.arrayValue?.values ?? []).map(value);
 };
 
-/** Ids and versions change per run; everything else in the artifact is fixed by the fake provider. */
-const volatile = new Set(["gen_ai.tool.call.id", "gen_ai.response.id", "service.instance.id", "service.version"]);
+/** Ids, versions and timings change per run; everything else in the artifact is fixed by the fake provider. */
+const volatile = new Set([
+	"gen_ai.conversation.id",
+	"gen_ai.tool.call.id",
+	"gen_ai.response.id",
+	"gen_ai.response.time_to_first_chunk",
+	"service.instance.id",
+	"service.version",
+]);
 
 const attributes = (input: ReadonlyArray<OtlpAttribute> | undefined) =>
 	Object.fromEntries(
@@ -228,12 +235,7 @@ const genAiSpans = (exports: ReadonlyArray<Export>) => {
 };
 
 // Counts and sums that the fake provider fixes; every other recorded value follows timing.
-const exact = new Set([
-	"gen_ai.client.token.usage",
-	"codework.llm.cost",
-	"codework.turn.retries",
-	"codework.tool.output.truncated",
-]);
+const exact = new Set(["codework.llm.tokens", "codework.llm.cost"]);
 const runtime = (name: string) => name.startsWith("child_fiber");
 
 const recorded = (name: string, point: OtlpDataPoint) => {
@@ -299,11 +301,7 @@ describe("OTLP export", () => {
 			const settings = join(home, "settings");
 			mkdirSync(project);
 			mkdirSync(settings);
-			// Longer than `read`'s line limit, so its result is truncated.
-			writeFileSync(
-				join(project, "note.txt"),
-				Array.from({ length: 2500 }, (_, index) => `hello ${index}`).join("\n"),
-			);
+			writeFileSync(join(project, "note.txt"), "hello from the note\n");
 			writeFileSync(
 				join(settings, "settings.jsonc"),
 				JSON.stringify({
@@ -360,7 +358,12 @@ describe("OTLP export", () => {
 
 			// No prompt, file content, or model output may leave in any span, attribute, or event.
 			const traces = JSON.stringify(collector.exports.filter((entry) => entry.path === "/v1/traces"));
-			for (const content of ["What does note.txt say?", "hello 1", "The note says hello."]) {
+			for (const content of [
+				"What does note.txt say?",
+				"cat note.txt",
+				"hello from the note",
+				"The note says hello.",
+			]) {
 				expect(traces).not.toContain(content);
 			}
 

@@ -13,6 +13,8 @@
 			"parent": null,
 			"error": false,
 			"attributes": {
+				"gen_ai.agent.name": "codework",
+				"gen_ai.conversation.id": "<volatile>",
 				"gen_ai.operation.name": "invoke_agent"
 			}
 		},
@@ -23,15 +25,17 @@
 			"error": true,
 			"attributes": {
 				"error.type": "Runner.ProviderUnavailableError",
+				"gen_ai.conversation.id": "<volatile>",
 				"gen_ai.operation.name": "chat",
 				"gen_ai.provider.name": "otel",
 				"gen_ai.request.model": "otel-model",
+				"gen_ai.request.stream": true,
 				"gen_ai.response.finish_reasons": [
 					"error"
 				],
 				"gen_ai.response.model": "otel-model",
-				"gen_ai.usage.cache_creation.input_tokens": 0,
 				"gen_ai.usage.cache_read.input_tokens": 0,
+				"gen_ai.usage.cache_write.input_tokens": 0,
 				"gen_ai.usage.input_tokens": 0,
 				"gen_ai.usage.output_tokens": 0
 			}
@@ -42,19 +46,22 @@
 			"parent": "Loop.run",
 			"error": false,
 			"attributes": {
+				"gen_ai.conversation.id": "<volatile>",
 				"gen_ai.operation.name": "chat",
 				"gen_ai.provider.name": "otel",
 				"gen_ai.request.model": "otel-model",
+				"gen_ai.request.stream": true,
 				"gen_ai.response.finish_reasons": [
 					"toolUse"
 				],
 				"gen_ai.response.id": "<volatile>",
 				"gen_ai.response.model": "otel-model",
-				"gen_ai.usage.cache_creation.input_tokens": 0,
+				"gen_ai.response.time_to_first_chunk": "<volatile>",
 				"gen_ai.usage.cache_read.input_tokens": 0,
+				"gen_ai.usage.cache_write.input_tokens": 0,
 				"gen_ai.usage.input_tokens": 120,
 				"gen_ai.usage.output_tokens": 8,
-				"gen_ai.usage.reasoning_tokens": 0
+				"gen_ai.usage.reasoning.output_tokens": 0
 			}
 		},
 		{
@@ -65,7 +72,7 @@
 			"attributes": {
 				"gen_ai.operation.name": "execute_tool",
 				"gen_ai.tool.call.id": "<volatile>",
-				"gen_ai.tool.name": "read"
+				"gen_ai.tool.name": "bash"
 			}
 		},
 		{
@@ -74,19 +81,22 @@
 			"parent": "Loop.run",
 			"error": false,
 			"attributes": {
+				"gen_ai.conversation.id": "<volatile>",
 				"gen_ai.operation.name": "chat",
 				"gen_ai.provider.name": "otel",
 				"gen_ai.request.model": "otel-model",
+				"gen_ai.request.stream": true,
 				"gen_ai.response.finish_reasons": [
 					"stop"
 				],
 				"gen_ai.response.id": "<volatile>",
 				"gen_ai.response.model": "otel-model",
-				"gen_ai.usage.cache_creation.input_tokens": 0,
+				"gen_ai.response.time_to_first_chunk": "<volatile>",
 				"gen_ai.usage.cache_read.input_tokens": 0,
+				"gen_ai.usage.cache_write.input_tokens": 0,
 				"gen_ai.usage.input_tokens": 120,
 				"gen_ai.usage.output_tokens": 8,
-				"gen_ai.usage.reasoning_tokens": 0
+				"gen_ai.usage.reasoning.output_tokens": 0
 			}
 		}
 	],
@@ -127,156 +137,113 @@
 				}
 			]
 		},
+		"codework.agent.duration": {
+			"unit": "s",
+			"type": "histogram",
+			"series": [
+				{
+					"attributes": {
+						"unit": "s"
+					},
+					"count": 1
+				}
+			]
+		},
 		"codework.llm.cost": {
 			"unit": "USD",
 			"type": "sum",
 			"series": [
 				{
 					"attributes": {
-						"gen_ai.operation.name": "chat",
-						"gen_ai.provider.name": "otel",
-						"gen_ai.request.model": "otel-model",
+						"model": "otel-model",
+						"provider": "otel",
 						"unit": "USD"
 					},
 					"value": 0.00096
 				}
 			]
 		},
-		"codework.llm.time_per_output_token": {
+		"codework.llm.duration": {
 			"unit": "s",
 			"type": "histogram",
 			"series": [
 				{
 					"attributes": {
-						"gen_ai.operation.name": "chat",
-						"gen_ai.provider.name": "otel",
-						"gen_ai.request.model": "otel-model",
-						"unit": "s"
-					},
-					"count": 2
-				}
-			]
-		},
-		"codework.llm.time_to_first_token": {
-			"unit": "s",
-			"type": "histogram",
-			"series": [
-				{
-					"attributes": {
-						"gen_ai.operation.name": "chat",
-						"gen_ai.provider.name": "otel",
-						"gen_ai.request.model": "otel-model",
-						"unit": "s"
-					},
-					"count": 2
-				}
-			]
-		},
-		"codework.tool.output.truncated": {
-			"unit": "{call}",
-			"type": "sum",
-			"series": [
-				{
-					"attributes": {
-						"gen_ai.operation.name": "execute_tool",
-						"gen_ai.tool.name": "read",
-						"unit": "{call}"
-					},
-					"value": 1
-				}
-			]
-		},
-		"codework.turn.retries": {
-			"unit": "{retry}",
-			"type": "sum",
-			"series": [
-				{
-					"attributes": {
-						"gen_ai.provider.name": "otel",
-						"gen_ai.request.model": "otel-model",
-						"unit": "{retry}"
-					},
-					"value": 1
-				}
-			]
-		},
-		"gen_ai.client.operation.duration": {
-			"unit": "s",
-			"type": "histogram",
-			"series": [
-				{
-					"attributes": {
-						"error.type": "Runner.ProviderUnavailableError",
-						"gen_ai.operation.name": "chat",
-						"gen_ai.provider.name": "otel",
-						"gen_ai.request.model": "otel-model",
+						"error": "Runner.ProviderUnavailableError",
+						"model": "otel-model",
+						"provider": "otel",
 						"unit": "s"
 					},
 					"count": 1
 				},
 				{
 					"attributes": {
-						"gen_ai.operation.name": "chat",
-						"gen_ai.provider.name": "otel",
-						"gen_ai.request.model": "otel-model",
+						"model": "otel-model",
+						"provider": "otel",
 						"unit": "s"
 					},
 					"count": 2
 				}
 			]
 		},
-		"gen_ai.client.token.usage": {
+		"codework.llm.tokens": {
 			"unit": "{token}",
-			"type": "histogram",
+			"type": "sum",
 			"series": [
 				{
 					"attributes": {
-						"gen_ai.operation.name": "chat",
-						"gen_ai.provider.name": "otel",
-						"gen_ai.request.model": "otel-model",
-						"gen_ai.token.type": "input",
+						"model": "otel-model",
+						"provider": "otel",
+						"type": "input",
 						"unit": "{token}"
 					},
-					"count": 2,
 					"value": 240
 				},
 				{
 					"attributes": {
-						"gen_ai.operation.name": "chat",
-						"gen_ai.provider.name": "otel",
-						"gen_ai.request.model": "otel-model",
-						"gen_ai.token.type": "output",
+						"model": "otel-model",
+						"provider": "otel",
+						"type": "output",
 						"unit": "{token}"
 					},
-					"count": 2,
 					"value": 16
 				}
 			]
 		},
-		"gen_ai.execute_tool.duration": {
+		"codework.llm.ttft": {
 			"unit": "s",
 			"type": "histogram",
 			"series": [
 				{
 					"attributes": {
-						"gen_ai.operation.name": "execute_tool",
-						"gen_ai.tool.name": "read",
-						"outcome": "ok",
+						"model": "otel-model",
+						"provider": "otel",
+						"unit": "s"
+					},
+					"count": 2
+				}
+			]
+		},
+		"codework.sandbox.exec.duration": {
+			"unit": "s",
+			"type": "histogram",
+			"series": [
+				{
+					"attributes": {
+						"driver": "local",
 						"unit": "s"
 					},
 					"count": 1
 				}
 			]
 		},
-		"gen_ai.invoke_agent.duration": {
+		"codework.tool.duration": {
 			"unit": "s",
 			"type": "histogram",
 			"series": [
 				{
 					"attributes": {
-						"gen_ai.operation.name": "invoke_agent",
-						"gen_ai.provider.name": "otel",
-						"gen_ai.request.model": "otel-model",
+						"tool": "bash",
 						"unit": "s"
 					},
 					"count": 1
