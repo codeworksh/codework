@@ -34,6 +34,7 @@ const NO_KEYBOARD_ENHANCEMENT: &str = "CODEWORK_TUI_NO_KEYBOARD_ENHANCEMENT";
 /// terminal back.
 pub struct TerminalGuard {
     terminal: Tui,
+    background: Color,
 }
 
 impl TerminalGuard {
@@ -70,18 +71,27 @@ impl TerminalGuard {
 
         let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
         terminal.clear()?;
-        Ok(Self { terminal })
+        Ok(Self {
+            terminal,
+            background,
+        })
     }
 
     /// Draw one frame inside a synchronized update.
     ///
     /// The terminal holds the previous screen until the update ends, so a slow
     /// repaint shows one whole frame instead of a half-written one.
-    pub fn draw(&mut self, render: impl FnOnce(&mut Frame)) -> io::Result<()> {
-        execute!(io::stdout(), BeginSynchronizedUpdate)?;
-        let drawn = self.terminal.draw(render);
-        let _ = execute!(io::stdout(), EndSynchronizedUpdate);
-        drawn.map(|_| ())
+    pub fn draw(&mut self, background: Color, render: impl FnOnce(&mut Frame)) -> io::Result<()> {
+        execute!(self.terminal.backend_mut(), BeginSynchronizedUpdate)?;
+        let drawn = (|| {
+            if background != self.background {
+                set_background(self.terminal.backend_mut(), background)?;
+                self.background = background;
+            }
+            self.terminal.draw(render).map(|_| ())
+        })();
+        let _ = execute!(self.terminal.backend_mut(), EndSynchronizedUpdate);
+        drawn
     }
 }
 
@@ -129,7 +139,7 @@ fn install_panic_hook() {
 
 /// Point the terminal's own background at the app's colour (OSC 11), so no
 /// lighter gutter shows through while the screen is painted.
-fn set_background(stdout: &mut Stdout, color: Color) -> io::Result<()> {
+fn set_background(stdout: &mut impl Write, color: Color) -> io::Result<()> {
     let Color::Rgb(red, green, blue) = color else {
         return Ok(());
     };

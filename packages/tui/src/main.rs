@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut terminal = TerminalGuard::init(app.theme.field_bg)?;
     let mut events = EventHandler::new();
 
-    terminal.draw(|frame| ui::view(&app, frame))?;
+    terminal.draw(app.theme.field_bg, |frame| ui::view(&app, frame))?;
 
     while let Some(event) = events.next().await {
         let mut redraw = app.update(event);
@@ -42,7 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             break;
         }
         if redraw {
-            terminal.draw(|frame| ui::view(&app, frame))?;
+            terminal.draw(app.theme.field_bg, |frame| ui::view(&app, frame))?;
         }
     }
 

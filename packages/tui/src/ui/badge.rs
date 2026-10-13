@@ -15,7 +15,21 @@ use crate::theme::Palette;
 /// ink. The cells either side of the label are written with it, because they are part of the tag:
 /// they clear the border line underneath.
 pub fn draw(buffer: &mut Buffer, area: Rect, label: &str, palette: &Palette) {
-    let ink = Style::default().fg(palette.brand);
+    draw_right(buffer, area, label, Style::default().fg(palette.brand));
+}
+
+/// Draw `label` as a tag on the top border of `area`, inset from its left corner.
+pub fn draw_left(buffer: &mut Buffer, area: Rect, label: &str, ink: Style) {
+    let width = text::width(label) as u16 + 2;
+    if width + 4 > area.width {
+        return;
+    }
+    let at = area.x + 2;
+    write_tag(buffer, at, area.y, width, label, ink);
+}
+
+/// Draw `label` as a tag on the top border of `area`, inset from its right corner.
+pub fn draw_right(buffer: &mut Buffer, area: Rect, label: &str, ink: Style) {
     let width = text::width(label) as u16 + 2;
     // The inset is the site's, and a border too short for the tag keeps its line rather than
     // wearing half a label.
@@ -23,7 +37,11 @@ pub fn draw(buffer: &mut Buffer, area: Rect, label: &str, palette: &Palette) {
         return;
     }
     let at = area.right() - width - 2;
-    buffer.set_string(at, area.y, " ", ink);
-    buffer.set_string(at + 1, area.y, label, ink);
-    buffer.set_string(at + width - 1, area.y, " ", ink);
+    write_tag(buffer, at, area.y, width, label, ink);
+}
+
+fn write_tag(buffer: &mut Buffer, at: u16, y: u16, width: u16, label: &str, ink: Style) {
+    buffer.set_string(at, y, " ", ink);
+    buffer.set_string(at + 1, y, label, ink);
+    buffer.set_string(at + width - 1, y, " ", ink);
 }

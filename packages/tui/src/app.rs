@@ -44,20 +44,33 @@ pub enum Screen {
 pub enum Popup {
     /// What a leading slash asks for.
     Commands(Menu),
-    /// The palettes the site ships.
-    Themes(Menu),
+    /// The palettes the site ships, filtered by `search`, and the one that was on screen before
+    /// the picker opened so Escape can put it back.
+    Themes {
+        search: Prompt,
+        menu: Menu,
+        initial: &'static Palette,
+    },
 }
 
 impl Popup {
     pub fn menu(&self) -> &Menu {
         match self {
-            Popup::Commands(menu) | Popup::Themes(menu) => menu,
+            Popup::Commands(menu) | Popup::Themes { menu, .. } => menu,
         }
     }
 
     fn menu_mut(&mut self) -> &mut Menu {
         match self {
-            Popup::Commands(menu) | Popup::Themes(menu) => menu,
+            Popup::Commands(menu) | Popup::Themes { menu, .. } => menu,
+        }
+    }
+
+    /// The menu's own search prompt, when it has one.
+    pub fn search(&self) -> Option<&Prompt> {
+        match self {
+            Popup::Commands(_) => None,
+            Popup::Themes { search, .. } => Some(search),
         }
     }
 
@@ -65,7 +78,7 @@ impl Popup {
     pub fn title(&self) -> &'static str {
         match self {
             Popup::Commands(_) => "commands",
-            Popup::Themes(_) => "themes",
+            Popup::Themes { .. } => "themes",
         }
     }
 }
@@ -110,15 +123,25 @@ impl App {
     pub fn update(&mut self, event: AppEvent) -> bool {
         match event {
             AppEvent::Key(key) => self.handle_key(key),
-            // A paste is text, and a menu takes no text: it is dropped rather than typed into the
-            // line the menu is standing in front of.
+            // A paste is text: into the theme search when the theme picker is open, otherwise into
+            // the prompt line.
             AppEvent::Paste(text) => {
-                if self.popup.is_some() {
-                    return false;
+                if let Some(Popup::Themes {
+                    search,
+                    menu,
+                    initial,
+                }) = &mut self.popup
+                {
+                    if !search.insert_text(&text) {
+                        return false;
+                    }
+                    self.theme = filter_themes(search.text(), menu, *initial);
+                    return true;
                 }
                 let changed = self.prompt.insert_text(&text);
                 if changed {
                     self.notice = None;
+                    self.sync_commands();
                 }
                 changed
             }
@@ -141,10 +164,25 @@ impl App {
         if key.code == KeyCode::Esc {
             return self.escape();
         }
-        // A menu takes the keyboard while it is up. It is modal, so a key it does not want is
-        // dropped rather than typed into the prompt standing behind it.
+        // A menu claims the keys that walk or choose from it. The theme picker takes any other
+        // editing key into its own search line; the command menu leaves editing keys to the prompt
+        // line so typing or erasing `/` filters or closes it.
         if self.popup.is_some() {
-            return self.menu_key(key);
+            if self.menu_key(key) {
+                return true;
+            }
+            if let Some(Popup::Themes {
+                search,
+                menu,
+                initial,
+            }) = &mut self.popup
+            {
+                if !search.edit(key) {
+                    return false;
+                }
+                self.theme = filter_themes(search.text(), menu, *initial);
+                return true;
+            }
         }
         // Enter is the prompt's, not the keymap's, because it only means something once there is
         // something to send.
@@ -157,14 +195,28 @@ impl App {
         let edited = self.prompt.edit(key);
         if edited {
             self.notice = None;
-            // A slash alone on the line asks for the commands, the way a chat prompt does. The
-            // slash stays on the line: it is the command being completed, and what Escape takes
-            // back.
-            if self.prompt.text() == "/" {
-                self.popup = Some(Popup::Commands(Menu::new(COMMANDS.to_vec())));
-            }
+            self.sync_commands();
         }
         edited
+    }
+
+    /// Open, filter, or close the command menu to match a leading slash on the prompt line.
+    fn sync_commands(&mut self) {
+        let Some(query) = self.prompt.text().strip_prefix('/') else {
+            if matches!(self.popup, Some(Popup::Commands(_))) {
+                self.popup = None;
+            }
+            return;
+        };
+        let query = query.to_ascii_lowercase();
+        let mut menu = match self.popup.take() {
+            Some(Popup::Commands(menu)) => menu,
+            _ => Menu::new(COMMANDS.to_vec()),
+        };
+        menu.filter(|entry| entry.name.starts_with(&query));
+        if !menu.entries().is_empty() {
+            self.popup = Some(Popup::Commands(menu));
+        }
     }
 
     /// A key for the menu on screen: the arrows walk it and Enter takes what it is on.
@@ -175,35 +227,54 @@ impl App {
             KeyCode::Enter => return self.choose(),
             _ => return false,
         };
-        self.popup
-            .as_mut()
-            .is_some_and(|popup| popup.menu_mut().step(step))
+        let Some(popup) = &mut self.popup else {
+            return false;
+        };
+        if !popup.menu_mut().step(step) {
+            return false;
+        }
+        // Walking the theme picker previews each palette on the whole screen as the cursor lands
+        // on it; Enter keeps it and Escape puts the initial one back.
+        if let Popup::Themes { menu, .. } = popup {
+            if let Some(palette) = menu.selected().and_then(|entry| theme_named(entry.name)) {
+                self.theme = palette;
+            }
+        }
+        true
     }
 
     /// Take the entry the cursor is on.
     fn choose(&mut self) -> bool {
+        let Some(chosen) = self
+            .popup
+            .as_ref()
+            .and_then(|popup| popup.menu().selected())
+            .map(|entry| entry.name)
+        else {
+            return false;
+        };
         let Some(popup) = self.popup.take() else {
             return false;
         };
-        let chosen = popup.menu().selected().name;
         match popup {
             // The command is spent with the slash that was typed for it, and the picker it opened
             // starts on the palette already in use.
             Popup::Commands(_) => match chosen {
                 "theme" => {
                     self.prompt.clear();
-                    self.popup = Some(Popup::Themes(themes(self.theme.name)));
+                    self.popup = Some(Popup::Themes {
+                        search: Prompt::default(),
+                        menu: themes(self.theme.name),
+                        initial: self.theme,
+                    });
                 }
                 "exit" => self.should_quit = true,
                 _ => {}
             },
-            // A palette: take it. Choosing the one already on screen just closes the picker, as
-            // the site's does.
-            Popup::Themes(_) => {
-                if let Some(palette) = theme::PALETTES
-                    .iter()
-                    .find(|palette| palette.name == chosen)
-                {
+            // A palette: moving the cursor already applied it, so Enter only has to close the
+            // picker and keep what is on screen.
+            Popup::Themes { .. } => {
+                if let Some(palette) = theme_named(chosen) {
                     self.theme = palette;
                 }
             }
@@ -217,14 +288,34 @@ impl App {
             self.should_quit = true;
             return false;
         };
-        // Closing the command menu takes its slash back, so the line is what it was before the
-        // command started and `/` asks for it again. The theme picker was opened by a command that
-        // spent its slash already.
-        if matches!(popup, Popup::Commands(_)) {
-            self.prompt.clear();
+        match popup {
+            // Closing the command menu takes its slash back, so the line is what it was before the
+            // command started and `/` asks for it again.
+            Popup::Commands(_) => self.prompt.clear(),
+            // Leaving the theme picker without choosing puts back the palette that was on screen
+            // before the preview started.
+            Popup::Themes { initial, .. } => self.theme = initial,
         }
         true
     }
+}
+
+fn theme_named(name: &str) -> Option<&'static Palette> {
+    theme::PALETTES.iter().find(|palette| palette.name == name)
+}
+
+/// Filter the theme picker's entries by `query` (matching palette name or scheme) and return the
+/// palette to preview on screen — the selected match when there is one, else `initial`.
+fn filter_themes(query: &str, menu: &mut Menu, initial: &'static Palette) -> &'static Palette {
+    let query = query.trim().to_ascii_lowercase();
+    menu.filter(|entry| {
+        query.is_empty()
+            || entry.name.to_ascii_lowercase().contains(&query)
+            || entry.detail.to_ascii_lowercase().contains(&query)
+    });
+    menu.selected()
+        .and_then(|entry| theme_named(entry.name))
+        .unwrap_or(initial)
 }
 
 /// The theme picker: one entry per palette the site ships, its cursor on `active`.

@@ -17,7 +17,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 use ratatui::Frame;
 
-use crate::app::{App, Screen};
+use crate::app::{App, Popup, Screen};
 
 /// The air the site leaves between its wordmark, its hero copy and its install box, in cells.
 const GAP: u16 = 2;
@@ -25,7 +25,8 @@ const GAP: u16 = 2;
 /// The line under the prompt, for each thing that can have the keyboard. Only keys the app answers
 /// are listed, so nothing here promises something that does not happen.
 const HINTS: &str = "←→ move · / commands · esc quit";
-const MENU_HINTS: &str = "↑↓ move · enter choose · esc back";
+const COMMAND_HINTS: &str = "↑↓ move · enter choose · esc close";
+const THEME_HINTS: &str = "↑↓ move · type to search · enter choose · esc close";
 
 /// Draw the active screen.
 pub fn view(app: &App, frame: &mut Frame) {
@@ -48,24 +49,19 @@ fn view_welcome(app: &App, frame: &mut Frame) {
     );
 
     // The hero's column, in the order the site stacks it: the wordmark, the prompt box, and the
-    // line under it — with a menu, when one is open, hung directly under the box like the list a
-    // prompt completes into. Centred as one block, which is the space the site's own elastic
-    // spacers leave above and below it.
+    // line under it. Centred as one block without the menu, so opening or switching a menu never
+    // shifts the wordmark or the prompt line on screen.
     //
-    // On a frame too short for the whole column it is the wordmark that goes first, then the menu
-    // gives up its rows: the line you type into outranks the word above it and the list below it.
+    // On a frame too short for the whole column it is the wordmark that goes first: the line you
+    // type into outranks the word above it.
     let below = GAP + input::HEIGHT + GAP + 1;
-    let menu_rows = app.popup.as_ref().map_or(0, |popup| {
-        menu::height(popup.menu().entries().len()).min(area.height.saturating_sub(below))
-    });
     let art_rows = wordmark::rows(area.width)
         .unwrap_or(0)
-        .min(area.height.saturating_sub(below + menu_rows));
-    let [art, _, prompt, picker, _, hint] = Layout::vertical([
+        .min(area.height.saturating_sub(below));
+    let [art, _, prompt, _, mut hint] = Layout::vertical([
         Constraint::Length(art_rows),
         Constraint::Length(GAP),
         Constraint::Length(input::HEIGHT),
-        Constraint::Length(menu_rows),
         Constraint::Length(GAP),
         Constraint::Length(1),
     ])
@@ -86,41 +82,66 @@ fn view_welcome(app: &App, frame: &mut Frame) {
         wordmark::draw(frame.buffer_mut(), slot, palette);
     }
 
-    if let Some(caret) = input::draw(frame.buffer_mut(), prompt, &app.prompt, palette) {
-        frame.set_cursor_position(caret);
-    }
+    let prompt_caret = input::draw(frame.buffer_mut(), prompt, &app.prompt, palette);
+    let mut menu_caret = None;
     if let Some(popup) = &app.popup {
-        // As wide as its longest row and anchored on the box's left edge, so it reads as the list
-        // the line opens into rather than a panel of its own.
+        // Hung directly under the prompt box and anchored on its left edge, so it reads as the
+        // list the line opens into without pushing the hero up.
         let anchor = input::centred(area);
-        let width = menu::width(popup.menu().entries()).min(area.right().saturating_sub(anchor.x));
-        menu::draw(
+        let searchable = popup.search().is_some();
+        let wanted = menu::height(popup.menu(), searchable);
+        let room = area.bottom().saturating_sub(prompt.bottom());
+        let reserve = if room >= wanted + GAP + 1 {
+            GAP + 1
+        } else {
+            2
+        };
+        let room_with_hint = room.saturating_sub(reserve);
+        let min_rows = if searchable { 5 } else { 3 };
+        let max_height = if room_with_hint >= min_rows {
+            room_with_hint
+        } else {
+            room
+        };
+        let height = wanted.min(max_height);
+        let width =
+            menu::width(popup.menu(), searchable).min(area.right().saturating_sub(anchor.x));
+        let picker = Rect {
+            x: anchor.x,
+            y: prompt.bottom(),
+            width,
+            height,
+        };
+        menu_caret = menu::draw(
             frame.buffer_mut(),
-            Rect {
-                x: anchor.x,
-                y: picker.y,
-                width,
-                height: picker.height,
-            },
+            picker,
             popup.title(),
             popup.menu(),
+            popup.search(),
             palette,
         );
+        hint.y = (picker.bottom() + GAP).min(area.bottom().saturating_sub(1));
+    }
+    if let Some(caret) = menu_caret.or(prompt_caret) {
+        frame.set_cursor_position(caret);
     }
     // A key the prompt cannot honour is answered here rather than dropped. The ink is on the span
     // rather than the paragraph: a paragraph style would be patched onto every cell of the row,
     // repainting the lattice behind the line in the hint's colour instead of the grid's.
     let hints = match (app.notice, &app.popup) {
         (Some(notice), _) => notice,
-        (None, Some(_)) => MENU_HINTS,
+        (None, Some(Popup::Commands(_))) => COMMAND_HINTS,
+        (None, Some(Popup::Themes { .. })) => THEME_HINTS,
         (None, None) => HINTS,
     };
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            hints,
-            Style::default().fg(palette.text_muted),
-        )))
-        .alignment(Alignment::Center),
-        hint,
-    );
+    if hint.y < area.bottom() {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                hints,
+                Style::default().fg(palette.text_muted),
+            )))
+            .alignment(Alignment::Center),
+            hint,
+        );
+    }
 }

@@ -33,6 +33,7 @@ pub struct Preview {
 
 /// The entries, and where the cursor is among them.
 pub struct Menu {
+    all: Vec<Entry>,
     entries: Vec<Entry>,
     cursor: usize,
 }
@@ -40,7 +41,11 @@ pub struct Menu {
 impl Menu {
     /// A menu over `entries`, its cursor on the first of them.
     pub fn new(entries: Vec<Entry>) -> Self {
-        Self { entries, cursor: 0 }
+        Self {
+            all: entries.clone(),
+            entries,
+            cursor: 0,
+        }
     }
 
     /// A menu over `entries`, its cursor on the entry named `name`.
@@ -52,7 +57,17 @@ impl Menu {
             .iter()
             .position(|entry| entry.name == name)
             .unwrap_or(0);
-        Self { entries, cursor }
+        Self {
+            all: entries.clone(),
+            entries,
+            cursor,
+        }
+    }
+
+    /// Every entry the menu was built with, before filtering. Used to measure column widths so the
+    /// box does not narrow and widen as a search query changes.
+    pub fn all(&self) -> &[Entry] {
+        &self.all
     }
 
     pub fn entries(&self) -> &[Entry] {
@@ -63,9 +78,24 @@ impl Menu {
         self.cursor
     }
 
-    /// The entry under the cursor.
-    pub fn selected(&self) -> &Entry {
-        &self.entries[self.cursor]
+    /// The entry under the cursor, when the menu has any.
+    pub fn selected(&self) -> Option<&Entry> {
+        self.entries.get(self.cursor)
+    }
+
+    /// Keep only the entries from [`Self::all`] that match `keep`, preserving the selected entry
+    /// when it still matches and otherwise starting at the top.
+    pub fn filter(&mut self, mut keep: impl FnMut(&Entry) -> bool) {
+        let active = self.selected().map(|entry| entry.name);
+        self.entries = self
+            .all
+            .iter()
+            .copied()
+            .filter(|entry| keep(entry))
+            .collect();
+        self.cursor = active
+            .and_then(|name| self.entries.iter().position(|entry| entry.name == name))
+            .unwrap_or(0);
     }
 
     /// Move the cursor `step` entries, wrapping at both ends, so the last entry is one key from the

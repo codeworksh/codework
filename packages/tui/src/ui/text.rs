@@ -21,6 +21,21 @@ pub fn fitted(text: &str, width: usize) -> &str {
     text
 }
 
+/// A slice of `text` scrolled so the caret at the end of `before_caret` stays inside `width`
+/// columns, and the column offset of the caret within that slice.
+pub fn scrolled<'a>(text: &'a str, before_caret: &str, width: usize) -> (&'a str, u16) {
+    let (mut used, mut start) = (0, before_caret.len());
+    for (offset, ch) in before_caret.char_indices().rev() {
+        let char_width = ch.width().unwrap_or(0);
+        if used + char_width > width {
+            break;
+        }
+        used += char_width;
+        start = offset;
+    }
+    (fitted(&text[start..], width), used as u16)
+}
+
 /// The columns `text` takes, which is what a layout has to reserve for it.
 pub fn width(text: &str) -> usize {
     text.width()

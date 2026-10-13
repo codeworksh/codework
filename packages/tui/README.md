@@ -22,9 +22,10 @@ newline-delimited JSON-RPC.
 | `src/main.rs`        | Wiring: build the app, terminal and event loop, then run them.        |
 | `src/tui.rs`         | Terminal lifecycle: raw mode, alternate screen, input modes, restore. |
 | `src/event.rs`       | Input: the reader thread, and the app events it produces.             |
-| `src/action.rs`      | Named actions and the keymap, with the `<leader>` prefix.             |     | `src/app.rs` | UI state and `update`, the one place state changes. |
+| `src/action.rs`      | Named actions and the keymap, with the `<leader>` prefix.             |
+| `src/app.rs`         | UI state and `update`, the one place state changes.                   |
 | `src/prompt.rs`      | The prompt line's text and caret, and the keys that edit it.          |
-| `src/menu.rs`        | A menu: its entries, its previews and where the cursor is.             |
+| `src/menu.rs`        | A menu: its entries, its previews and where the cursor is.            |
 | `src/ui.rs`          | Rendering: reads state and draws, nothing else.                       |
 | `src/ui/glyphs.rs`   | Pixel glyphs, generated from the landing site's wordmark.             |
 | `src/ui/wordmark.rs` | Drawing the wordmark, and the mark it falls back to, in half-blocks.  |

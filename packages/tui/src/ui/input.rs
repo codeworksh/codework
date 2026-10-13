@@ -14,10 +14,10 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::widgets::{Block, Widget};
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthStr;
 
 use super::badge;
-use super::text::fitted;
+use super::text::{fitted, scrolled};
 use crate::prompt::Prompt;
 use crate::theme::Palette;
 
@@ -65,28 +65,12 @@ pub fn draw(
 
     buffer.set_string(inner.x, inner.y, MARKER, Style::default().fg(palette.brand));
     let (caret_x, text, ink) = if prompt.text().is_empty() {
-        (text_x, PLACEHOLDER, palette.text_muted)
+        (text_x, fitted(PLACEHOLDER, usable), palette.text_muted)
     } else {
-        // Scroll the line under the caret: take the longest tail of the text before the caret that
-        // fits, so a long line keeps its beginning out of the way rather than running off the box.
-        let (mut used, mut start) = (0, prompt.before_caret().len());
-        for (offset, ch) in prompt.before_caret().char_indices().rev() {
-            let width = ch.width().unwrap_or(0);
-            if used + width > usable {
-                break;
-            }
-            used += width;
-            start = offset;
-        }
-        let text = &prompt.text()[start..];
-        (text_x + used as u16, text, palette.text)
+        let (text, offset) = scrolled(prompt.text(), prompt.before_caret(), usable);
+        (text_x + offset, text, palette.text)
     };
-    buffer.set_string(
-        text_x,
-        inner.y,
-        fitted(text, usable),
-        Style::default().fg(ink),
-    );
+    buffer.set_string(text_x, inner.y, text, Style::default().fg(ink));
     Some((caret_x, inner.y))
 }
 
