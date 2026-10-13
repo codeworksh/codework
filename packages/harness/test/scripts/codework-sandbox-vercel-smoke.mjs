@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const harness = resolve(root, "packages/harness");
 const external = resolve(root, "extras/codework-sandbox-vercel");
-const envFile = resolve(harness, ".env.local");
+const envFile = resolve(root, ".env.local");
 if (existsSync(envFile)) process.loadEnvFile(envFile);
 const manifest = JSON.parse(await readFile(resolve(harness, "package.json"), "utf8"));
 const effectVersion = manifest.dependencies?.effect;
