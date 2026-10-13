@@ -9,6 +9,7 @@ on:
       paths-ignore:
          - sites/**
          - CHANGELOG.md
+         - README.md
    workflow_dispatch:
 
 permissions:

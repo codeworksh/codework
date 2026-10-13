@@ -2,7 +2,7 @@
 
 <p align="center" dir="auto">
   <a href="https://codework.sh" rel="nofollow">
-    <img src="./assets/logo.svg" alt="CODEWORK logo" width="720" style="max-width: 100%;">
+    <img src="./sites/www/public/brand/wordmark.svg" alt="CODEWORK" width="720" style="max-width: 100%;">
   </a>
 </p>
 

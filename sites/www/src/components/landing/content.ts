@@ -18,9 +18,9 @@ export const hero = {
 		"Extend it with plugins like tools, prompts, skills & more, shared via npm or git.",
 	],
 	install: [
-		{ label: "pnpm", command: "pnpm add -g @codeworksh/cli@canary" },
-		{ label: "npm", command: "npm install -g @codeworksh/cli@canary" },
-		{ label: "bun", command: "bun add -g @codeworksh/cli@canary" },
+		{ label: "pnpm", command: "pnpm add -g @codeworksh/cli" },
+		{ label: "npm", command: "npm install -g @codeworksh/cli" },
+		{ label: "bun", command: "bun add -g @codeworksh/cli" },
 	],
 	links: [
 		{ label: "Read the docs", href: "/docs/quickstart/" },
