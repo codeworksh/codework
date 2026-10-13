@@ -9,6 +9,9 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 const cli = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const models = fileURLToPath(new URL("../../../models.gen.json", import.meta.url));
+const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+	version: string;
+};
 
 /**
  * A stand-in for the Rust TUI. It writes what the launcher gave it to its own
@@ -192,7 +195,7 @@ describe("codework tui", () => {
 		await expect(
 			JSON.stringify(
 				{
-					serviceJson: { ...info, pid: "<pid>" },
+					serviceJson: { ...info, pid: "<pid>", version: info.version === version ? "<version>" : info.version },
 					tui: {
 						...message,
 						home: message.home === dir ? "<home>" : message.home,
