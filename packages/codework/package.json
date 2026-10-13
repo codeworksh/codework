@@ -37,6 +37,8 @@
 	},
 	"scripts": {
 		"build": "vp pack",
+		"bundle": "node --conditions=development scripts/bundle.mjs",
+		"sea": "node scripts/sea.mjs",
 		"check": "vp check",
 		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
 		"lint": "vp lint",
@@ -56,7 +58,8 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"bumpp": "^12.3.0"
+		"bumpp": "^12.3.0",
+		"node-gyp": "^13.0.2"
 	},
 	"optionalDependencies": {
 		"@daytona/sdk": "^0.211.2",

@@ -481,6 +481,9 @@ importers:
       bumpp:
         specifier: ^12.3.0
         version: 12.3.0
+      node-gyp:
+        specifier: ^13.0.2
+        version: 13.0.2
     optionalDependencies:
       '@daytona/sdk':
         specifier: ^0.211.2
@@ -596,9 +599,6 @@ importers:
       '@codeworksh/tui-darwin-arm64':
         specifier: workspace:*
         version: link:npm/darwin-arm64
-      '@codeworksh/tui-darwin-x64':
-        specifier: workspace:*
-        version: link:npm/darwin-x64
       '@codeworksh/tui-linux-arm64':
         specifier: workspace:*
         version: link:npm/linux-arm64
@@ -607,8 +607,6 @@ importers:
         version: link:npm/linux-x64
 
   packages/tui/npm/darwin-arm64: {}
-
-  packages/tui/npm/darwin-x64: {}
 
   packages/tui/npm/linux-arm64: {}
 

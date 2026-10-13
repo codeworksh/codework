@@ -1,7 +1,7 @@
 // Publishes the package chain for one channel: `canary`, `dev` or `latest`. CI runs it (see
 // .github/workflows/publish.yml) after the TUI binaries are staged under packages/tui/dist/bin.
 //
-// canary/dev publish every package as a prerelease of its version (see previewId).
+// canary/dev publish every package as a prerelease of its version (see scripts/version.mjs).
 // latest publishes each package whose manifest version is not on npm yet, so a release is a
 // local `vp run bump` followed by a run on main.
 import { spawnSync } from "node:child_process";
@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 
 import { distTags, isPublished } from "./registry.mjs";
+import { releaseId, releaseVersion } from "./version.mjs";
 import { publishablePackages, repoRoot as root, workspaceDependencies } from "./workspace.mjs";
 
 const [channel, ...forwardArgs] = process.argv.slice(2);
@@ -18,24 +19,11 @@ if (!["canary", "dev", "latest"].includes(channel)) {
 }
 const dryRun = forwardArgs.includes("--dry-run");
 
-// dev: `<YYYYMMDDHHMMSS>` (UTC). canary: `<run>.<attempt>.g<sha>`.
-function previewId() {
-	const { GITHUB_RUN_NUMBER: run = "0", GITHUB_RUN_ATTEMPT: attempt = "0" } = process.env;
-	if (!process.env.GITHUB_RUN_NUMBER && !dryRun) {
-		throw new Error(`A ${channel} release runs in CI; locally only --dry-run is supported`);
-	}
-	if (channel === "dev") return new Date().toISOString().slice(0, 19).replace(/\D/g, "");
-	const sha = spawnSync("git", ["rev-parse", "--short=8", "HEAD"], { cwd: root }).stdout.toString().trim();
-	return `${run}.${attempt}.g${sha}`;
-}
-
-const id = channel === "latest" ? undefined : previewId();
+const id = releaseId(channel, { dryRun });
 const packages = [];
 for (const { manifest } of publishablePackages()) {
-	const base = /^\d+\.\d+\.\d+/.exec(manifest.version)?.[0];
-	if (!base) throw new Error(`Invalid package version: ${manifest.version}`);
 	if (id) {
-		packages.push({ manifest, version: `${base}-${channel}.${id}` });
+		packages.push({ manifest, version: releaseVersion(manifest.version, channel, id) });
 	} else if (await isPublished(manifest.name, manifest.version)) {
 		console.error(`Skipping ${manifest.name}@${manifest.version}: already published`);
 	} else {

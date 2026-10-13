@@ -49,7 +49,6 @@
 	},
 	"optionalDependencies": {
 		"@codeworksh/tui-darwin-arm64": "workspace:*",
-		"@codeworksh/tui-darwin-x64": "workspace:*",
 		"@codeworksh/tui-linux-arm64": "workspace:*",
 		"@codeworksh/tui-linux-x64": "workspace:*"
 	}
