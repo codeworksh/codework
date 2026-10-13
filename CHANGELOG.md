@@ -14,9 +14,16 @@ This file is the canonical source for unreleased changes and published release n
 ### Fixed
 
 - `@codeworksh/plugin`: Fixed tools whose parameters are `Schema.Struct({})` being rejected by OpenAI and Anthropic. Their JSON Schema is now `{ "type": "object", "properties": {} }` instead of `{ "not": { "type": "null" } }`.
+- `@codeworksh/cli`: Fixed `codework run` exiting 1 with `statement has been finalized` after printing the response when it created its own sandbox (`--sandbox-driver memory`, `daytona` or `vercel`). The sandbox was stopped after the database had closed, so the stop failed and a Daytona or Vercel sandbox was left running. It is now stopped before the database closes, and the run exits 0.
+- `@codeworksh/cli`: `codework run` now writes logs to stderr, so stdout carries only the response.
+- `@codeworksh/harness`: Fixed Daytona sandboxes logging a warning, with the full HTTP error, for every instruction file (`AGENTS.md`, `CLAUDE.md`, ...) a directory does not have. A missing path on Daytona now reads as not found, as on the other sandboxes, which also gives the `read` tool its usual not-found error there.
+
 ### Internal
 
 - The `codework tui` E2E artifact now records the CLI version as `<version>`, so it no longer goes stale on every version bump.
+- Tests load provider and sandbox credentials from the root `.env.local` instead of one file per package.
+- Added a live E2E test that runs `codework run` on a memory, Daytona and Vercel sandbox and checks the sandbox is stopped on exit.
+- The live runner-cycle test now interrupts a reply long enough that it cannot finish first, so the interrupt no longer races the model.
 
 ## [@codeworksh/cli@0.2.0] - 2026-10-12
 
