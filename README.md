@@ -19,8 +19,15 @@ An open-source coding agent for your terminal: run sessions in your repo or an i
 
 ```bash
 pnpm add -g @codeworksh/cli
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY, XAI_API_KEY, ...
+export OPENAI_API_KEY=...   # the default model is OpenAI gpt-5.6-luna
 codework run "Inspect and fix the failing tests"
+```
+
+Any other provider takes its key plus `--provider` and `--model` (list them with `codework models`):
+
+```bash
+export ANTHROPIC_API_KEY=...
+codework run --provider anthropic --model claude-sonnet-5-5 "Inspect and fix the failing tests"
 ```
 
 Continue a session, pick a model, or move into a sandbox:
