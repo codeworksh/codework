@@ -193,8 +193,10 @@ jobs:
               (cd release && sha256sum *.tar.gz > SHA256SUMS)
               version="$(node scripts/version.mjs "$CHANNEL" packages/codework)"
               if [ "$CHANNEL" = dev ]; then
+                 # Tagged on main: GITHUB_TOKEN may not create a ref at a commit whose workflows
+                 # differ from the default branch, as dev's can. The notes name the built commit.
                  gh release delete devel --cleanup-tag --yes || true
-                 gh release create devel release/* --prerelease --target "$GITHUB_SHA" \
+                 gh release create devel release/* --prerelease --target main \
                     --title "CLI $version" --notes "Development build $version, from $GITHUB_SHA."
               elif gh release view "cli-v$version" > /dev/null 2>&1; then
                  echo "cli-v$version is already released"
