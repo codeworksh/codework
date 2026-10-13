@@ -1,33 +1,23 @@
 mod app;
-mod catalog;
-mod config;
-mod credentials;
-mod diff;
-mod git;
-mod markdown;
+// The RPC transport (client + wire protocol) is kept whole: it is the layer the
+// session screen will stream prompts over. Nothing on the welcome screen uses it.
+#[allow(dead_code, unused_imports)]
 mod rpc;
-mod tool;
+#[allow(dead_code)]
 mod types;
 mod ui;
 
 use std::io::{self, Write};
-use std::time::Duration;
 
-use crossterm::event::{
-    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind,
-};
+use crossterm::event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::backend::CrosstermBackend;
-use ratatui::style::Style;
-use ratatui::widgets::Block;
 use ratatui::Terminal;
-use tokio::time::interval;
 
-use app::{ActiveScreen, App};
-use ui::{render_model_browser, render_session, render_theme_picker, render_welcome};
+use app::App;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,88 +44,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     terminal.clear()?;
 
     let mut app = App::new();
-    let mut ticker = interval(Duration::from_millis(80));
 
     // Dedicated OS thread reading events from standard input.
     // Reading crossterm events on a dedicated thread avoids task cancellation drops
     // during tokio::select!, eliminates multi-thread races on stdin, and ensures fast typing
     // never loses characters.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
-    std::thread::spawn(move || {
-        loop {
-            match event::read() {
-                Ok(ev) => {
-                    if event_tx.send(ev).is_err() {
-                        break;
-                    }
+    std::thread::spawn(move || loop {
+        match event::read() {
+            Ok(ev) => {
+                if event_tx.send(ev).is_err() {
+                    break;
                 }
-                Err(_) => break,
             }
+            Err(_) => break,
         }
     });
 
-    loop {
-        terminal.draw(|f| {
-            let area = f.area();
-            // Fill the entire terminal viewport with Deep Black (#0B0B0F) background
-            f.render_widget(
-                Block::default().style(Style::default().bg(ui::Theme::bg_app())),
-                area,
-            );
-            match app.screen {
-                ActiveScreen::Welcome => {
-                    render_welcome(
-                        f,
-                        area,
-                        &app.welcome_input,
-                        app.welcome_cursor,
-                        app.welcome_dropdown_index,
-                        app.active_config.as_ref(),
-                        app.welcome_status_message.as_deref(),
-                        &app.spinner,
-                    );
-                }
-                ActiveScreen::ModelFlow => {
-                    render_model_browser(f, area, &app.model_browser, &app.spinner);
-                }
-                ActiveScreen::Session => {
-                    if let Some(cfg) = &app.active_config {
-                        render_session(
-                            f,
-                            area,
-                            app.session_info.as_ref(),
-                            &app.turns,
-                            &app.session_stats,
-                            cfg,
-                            &app.session_input,
-                            app.session_cursor,
-                            app.session_scroll_offset,
-                            app.session_dropdown_index,
-                            &app.spinner,
-                            app.is_streaming,
-                            app.reconnecting,
-                        );
-                    }
-                }
-            }
+    terminal.draw(ui::render_welcome)?;
 
-            if app.theme_picker_open {
-                render_theme_picker(f, area, app.theme_picker_index);
-            }
-        })?;
-
-        tokio::select! {
-            _ = ticker.tick() => {
-                app.on_tick();
-            }
-            Some(event) = event_rx.recv() => {
-                handle_event(&mut app, event);
-                // Drain any additional events buffered so fast typing / bursts / pastes don't lag or drop!
-                while let Ok(event) = event_rx.try_recv() {
-                    handle_event(&mut app, event);
-                }
-            }
+    while let Some(event) = event_rx.recv().await {
+        handle_event(&mut app, event);
+        // Drain any additional events buffered so a burst or paste does not lag.
+        while let Ok(event) = event_rx.try_recv() {
+            handle_event(&mut app, event);
         }
+
+        terminal.draw(ui::render_welcome)?;
 
         if app.should_quit {
             break;
@@ -158,19 +93,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn handle_event(app: &mut App, event: Event) {
-    match event {
-        Event::Key(key) => {
-            // Ignore key release events from terminals supporting keyboard protocols
-            if key.kind != KeyEventKind::Release {
-                app.handle_key(key);
-            }
+    if let Event::Key(key) = event {
+        // Ignore key release events from terminals supporting keyboard protocols
+        if key.kind != KeyEventKind::Release {
+            app.handle_key(key);
         }
-        Event::Mouse(mouse) => {
-            app.handle_mouse(mouse);
-        }
-        Event::Paste(text) => {
-            app.handle_paste(&text);
-        }
-        _ => {}
     }
 }
