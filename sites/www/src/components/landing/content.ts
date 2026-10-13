@@ -18,6 +18,7 @@ export const hero = {
 		"Extend it with plugins like tools, prompts, skills & more, shared via npm or git.",
 	],
 	install: [
+		{ label: "curl", command: "curl -fsSL https://codework.sh/install | sh" },
 		{ label: "pnpm", command: "pnpm add -g @codeworksh/cli" },
 		{ label: "npm", command: "npm install -g @codeworksh/cli" },
 		{ label: "bun", command: "bun add -g @codeworksh/cli" },

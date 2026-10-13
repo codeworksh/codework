@@ -16,8 +16,10 @@ An open-source coding agent for code & work: run sessions in your repo or an iso
 ## Quick start
 
 ```bash
-pnpm add -g @codeworksh/cli
+curl -fsSL https://codework.sh/install | sh
 ```
+
+Or with Node.js 24+: `pnpm add -g @codeworksh/cli`.
 
 ### OpenAI:
 
