@@ -19,7 +19,7 @@ import "./utils/env.ts";
 // Real-backend registry tests: the bash tool registered over an ACTUAL remote sandbox
 // (Daytona = buffered exec), executed through `Registry.resolve().handle`
 // with live progress flushed to a File IO temp sink. Gated on provider credentials from
-// `.env.local` (see ./utils/env) — each suite skips when its key is absent.
+// the root `.env.local` (see ./utils/env) — each suite skips when its key is absent.
 //
 // The Vercel streaming case lives in sandbox.vercel.e2e.test.ts so every Vercel
 // contract shares that file's single free-tier resource.

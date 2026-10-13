@@ -1,5 +1,5 @@
 import { EventList, type EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
-import { Effect, Exit, Fiber, Option, Queue, Ref, Schema, Stream } from "effect";
+import { Effect, Exit, Fiber, Logger, Option, Queue, Ref, Schema, Stream } from "effect";
 import { Runtime } from "../../../framework/runtime.ts";
 import { Client } from "../../../server/client.ts";
 import { InvalidInputError, renderError } from "../../error.ts";
@@ -210,12 +210,19 @@ export default Runtime.handler(
 			yield* finish(renderState, columns);
 		});
 
+		// Scope inside the provided layer, so the run's finalizers (stopping a created sandbox) close
+		// while the harness and its database are still open.
 		const execute = Effect.gen(function* () {
-			if (Option.isSome(server)) return yield* remote.pipe(Effect.provide(Client.layer(server.value)));
-			return yield* program.pipe(Effect.provide(Harness.layer(harnessOptions(shared))));
+			if (Option.isSome(server))
+				return yield* remote.pipe(Effect.scoped, Effect.provide(Client.layer(server.value)));
+			// Stdout carries only the response; harness logs go with the rest of the diagnostics.
+			return yield* program.pipe(
+				Effect.scoped,
+				Effect.provide(Harness.layer(harnessOptions(shared))),
+				Effect.provideService(Logger.LogToStderr, true),
+			);
 		});
 		return yield* execute.pipe(
-			Effect.scoped,
 			Effect.catch((error) =>
 				writeError(renderError(error)).pipe(
 					Effect.andThen(
