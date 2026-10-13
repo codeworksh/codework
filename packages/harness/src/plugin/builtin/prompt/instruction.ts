@@ -47,10 +47,6 @@ const ancestors = (directory: string): string[] => {
 /**
  * Which of `paths` are files. Absence is the expected answer and stays silent; any other failure
  * (permissions, a remote blip) is logged so a dropped file is not a mystery, then counts as absent.
- *
- * `exists` answers absence without failing, so only the few paths that exist are stat'ed. A stat
- * on a missing path fails its span, and most candidates are missing: probing them all with `stat`
- * filled every trace with errors that were never errors.
  */
 const present = (fs: SandboxFileSystem.Interface, paths: ReadonlyArray<string>) =>
 	Effect.forEach(

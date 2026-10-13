@@ -66,7 +66,7 @@ const awaitMessage = Effect.fn("CLI.awaitMessage")(function* (ended: Queue.Queue
 	}
 });
 
-const selectSandbox = Effect.fn("CLI.selectSandbox")(function* (input: Sandbox.Selection) {
+const selectSandbox = Effect.fn("CLI.selectSandbox", { level: "Info" })(function* (input: Sandbox.Selection) {
 	const selection = yield* Sandbox.resolve(input);
 	if (selection.created && selection.info !== undefined) {
 		const id = selection.info.id;

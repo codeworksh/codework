@@ -74,7 +74,7 @@ export const Selection = Schema.Union([
 ]);
 export type Selection = typeof Selection.Type;
 
-export const resolve = Effect.fn("Sandbox.resolve")(function* (input: Selection) {
+export const resolve = Effect.fn("Sandbox.resolve", { level: "Info" })(function* (input: Selection) {
 	if ("id" in input) {
 		const found = yield* get(input.id);
 		if (Option.isNone(found)) return yield* new SandboxNotFoundError({ id: input.id });

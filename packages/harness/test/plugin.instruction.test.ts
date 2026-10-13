@@ -68,7 +68,7 @@ const instrumented = (
 	slow: ReadonlySet<string>,
 	failing: ReadonlySet<string>,
 ) => {
-	const stats = { calls: 0, inFlight: 0, peak: 0 };
+	const stats = { calls: 0, inFlight: 0, peak: 0, stats: 0 };
 	const unused = () => Promise.reject(new Error("unused"));
 	const settle = (path: string) => new Promise((resolve) => setTimeout(resolve, slow.has(path) ? 30 : 1));
 	const fs = SandboxFileSystem.fromProvider({
@@ -80,6 +80,7 @@ const instrumented = (
 		readBytes: unused,
 		writeFile: unused,
 		stat: async (path) => {
+			stats.stats += 1;
 			if (!(path in files)) throw Object.assign(new Error(`ENOENT: stat '${path}'`), { code: "ENOENT" });
 			return { isFile: true, isDirectory: false };
 		},
@@ -209,6 +210,8 @@ describe("codework.prompt.instruction", () => {
 		// Seven directories, six names each: all in flight at once instead of 42 serial round trips.
 		expect(stats.calls).toBe(42);
 		expect(stats.peak).toBe(42);
+		// Only the four files that exist are stat'ed; a miss never reaches `stat`.
+		expect(stats.stats).toBe(4);
 		expect(found.map((file) => `${file.path}=${file.content}`)).toEqual([
 			"/AGENTS.md=root",
 			"/a/b/AGENTS.MD=b: wins",

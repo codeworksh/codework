@@ -1,11 +1,5 @@
-/*
- * @file Harness metrics.
- *
- * Effect owns the instruments, the spans, and the export; this module only names
- * them. Metrics use codework's own names and short labels, so a moving draft
- * convention never renames a dashboard. Effect's OTLP exporter reads a metric's
- * unit from its `unit` attribute.
- */
+// Metrics use codework's own names, not the GenAI conventions': those are still a
+// draft and keep renaming. Effect's OTLP exporter reads a unit from the `unit` attribute.
 
 import { Cause, Effect, Exit, Metric } from "effect";
 
@@ -75,11 +69,9 @@ export type Attributes = Readonly<Record<string, string>>;
 export const record = <Input>(metric: Metric.Metric<Input, unknown>, value: Input, attributes: Attributes) =>
 	Metric.update(Metric.withAttributes(metric, attributes), value);
 
-/** Add `delta` to a gauge rather than setting it. */
 export const adjust = (metric: Metric.Metric<number, unknown>, delta: number, attributes: Attributes) =>
 	Metric.modify(Metric.withAttributes(metric, attributes), delta);
 
-/** The `error` label for a failed exit: the error's own tag, or `interrupted`. */
 export const errorType = (cause: Cause.Cause<unknown>): string => {
 	if (Cause.hasInterruptsOnly(cause)) return "interrupted";
 	const error = Cause.squash(cause);
@@ -88,11 +80,9 @@ export const errorType = (cause: Cause.Cause<unknown>): string => {
 		: "_OTHER";
 };
 
-/** `attributes`, plus `error` when the exit failed. */
 export const withError = (attributes: Attributes, exit: Exit.Exit<unknown, unknown>): Attributes =>
 	Exit.isSuccess(exit) ? attributes : { ...attributes, error: errorType(exit.cause) };
 
-/** Run `self`, then hand its duration in seconds and its exit to `observe`. */
 export const timed = <A, E, R, R2>(
 	self: Effect.Effect<A, E, R>,
 	observe: (seconds: number, exit: Exit.Exit<A, E>) => Effect.Effect<void, never, R2>,

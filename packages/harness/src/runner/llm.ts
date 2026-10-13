@@ -231,11 +231,12 @@ const requestErrorType = (input: RequestInput, exit: Exit.Exit<LLMEventPublisher
 	return providerError(input, messageFailure(exit.value.message)).reason._tag;
 };
 
-/** Span attributes and metrics for one settled provider request. */
 const observe = Effect.fnUntraced(function* (
 	input: RequestInput,
 	timing: { readonly start: number; readonly firstToken: number | undefined },
 	exit: Exit.Exit<LLMEventPublisher.Terminal, unknown>,
+	// An interrupted request still drains aikit's terminal, which carries the usage it spent.
+	drained: LLMEventPublisher.Terminal | undefined,
 ) {
 	const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 	const labels = { provider: input.provider, model: input.model };
@@ -251,9 +252,10 @@ const observe = Effect.fnUntraced(function* (
 		yield* Effect.annotateCurrentSpan("gen_ai.response.time_to_first_chunk", ttft);
 	}
 	if (errorType !== undefined) yield* Effect.annotateCurrentSpan("error.type", errorType);
-	if (Exit.isFailure(exit)) return;
+	const terminal = Exit.isSuccess(exit) ? exit.value : drained;
+	if (terminal === undefined) return;
 
-	const { message } = exit.value;
+	const { message } = terminal;
 	const { usage } = message;
 	// aikit's `input` excludes cached tokens; input counts them, as the GenAI conventions do.
 	const inputTokens = usage.input + usage.cacheRead + usage.cacheWrite;
@@ -271,7 +273,7 @@ const observe = Effect.fnUntraced(function* (
 	yield* Effect.annotateCurrentSpan({
 		"gen_ai.response.model": message.responseModel ?? message.model,
 		...(message.responseId === undefined ? {} : { "gen_ai.response.id": message.responseId }),
-		"gen_ai.response.finish_reasons": [exit.value.reason],
+		"gen_ai.response.finish_reasons": [terminal.reason],
 		"gen_ai.usage.input_tokens": inputTokens,
 		"gen_ai.usage.output_tokens": usage.output,
 		"gen_ai.usage.cache_read.input_tokens": usage.cacheRead,
@@ -308,6 +310,7 @@ export const make = (openStream: Open): Request => {
 		});
 		const start = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 		let firstToken: number | undefined;
+		let drained: LLMEventPublisher.Terminal | undefined;
 		const markToken = (event: AikitEvent.LLMMessageEvent) =>
 			firstToken !== undefined || !isToken(event)
 				? Effect.void
@@ -350,8 +353,9 @@ export const make = (openStream: Open): Request => {
 				);
 
 				if (Exit.isFailure(awaited)) {
-					const drained = yield* Fiber.await(consumer);
-					if (Exit.isFailure(drained)) return yield* Effect.failCause(drained.cause);
+					const consumed = yield* Fiber.await(consumer);
+					if (Exit.isFailure(consumed)) return yield* Effect.failCause(consumed.cause);
+					drained = consumed.value;
 					return yield* Effect.failCause(awaited.cause);
 				}
 
@@ -360,7 +364,9 @@ export const make = (openStream: Open): Request => {
 				return completed.value;
 			}),
 		);
-		const terminal = yield* settled.pipe(Effect.onExit((exit) => observe(input, { start, firstToken }, exit)));
+		const terminal = yield* settled.pipe(
+			Effect.onExit((exit) => observe(input, { start, firstToken }, exit, drained)),
+		);
 		if (terminal.outcome === "failed") return yield* new FailedTerminal({ terminal });
 		return terminal;
 	});

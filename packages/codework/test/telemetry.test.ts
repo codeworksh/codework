@@ -1,7 +1,7 @@
 /* @effect-diagnostics nodeBuiltinImport:off -- this suite spawns the CLI and serves a fake provider and collector. */
 /* @effect-diagnostics globalTimers:off -- the subprocess deadline runs outside any Effect. */
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -301,68 +301,81 @@ const exportedSpans = (exports: ReadonlyArray<Export>) => {
 	].sort();
 };
 
-/** Every exported resource, traces and metrics alike, must describe the same process. */
 const resources = (exports: ReadonlyArray<Export>) =>
 	exports.flatMap((entry) => [...(entry.body.resourceSpans ?? []), ...(entry.body.resourceMetrics ?? [])]);
+
+/** Run the CLI once against `collector` as its provider and OTLP endpoint, with no other `OTEL_*` set. */
+const exportRun = async (collector: Awaited<ReturnType<typeof serve>>, traceLevel?: string) => {
+	const home = mkdtempSync(join(tmpdir(), "codework-otel-"));
+	temps.push(home);
+	const project = join(home, "project");
+	const settings = join(home, "settings");
+	mkdirSync(project);
+	mkdirSync(settings);
+	writeFileSync(join(project, "note.txt"), "hello from the note\n");
+	writeFileSync(
+		join(settings, "settings.jsonc"),
+		JSON.stringify({
+			retry: { baseDelayMs: 10 },
+			model: { provider: "otel", id: "otel-model" },
+			models: [
+				{
+					id: "otel-model",
+					name: "otel-model",
+					provider: { id: "otel", name: "Otel", source: "config", env: [] },
+					baseUrl: `${collector.url}/v1`,
+					reasoning: false,
+					input: ["text"],
+					cost: { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 32768,
+					maxTokens: 8192,
+					protocol: "openai-compatible",
+				},
+			],
+		}),
+	);
+
+	const env: NodeJS.ProcessEnv = {
+		...process.env,
+		HOME: home,
+		CODEWORK_MODELS_FILE: models,
+		OTEL_EXPORTER_OTLP_ENDPOINT: collector.url,
+		OTEL_EXPORTER_OTLP_HEADERS: "x-otel-test=present",
+		// The collector reads JSON; protobuf is the default otherwise.
+		OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
+	};
+	const configured = new Set([
+		"OTEL_EXPORTER_OTLP_ENDPOINT",
+		"OTEL_EXPORTER_OTLP_HEADERS",
+		"OTEL_EXPORTER_OTLP_PROTOCOL",
+	]);
+	for (const key of Object.keys(env)) {
+		if (key.startsWith("OTEL_") && !configured.has(key)) delete env[key];
+	}
+	delete env.CODEWORK_TRACE_LEVEL;
+	if (traceLevel !== undefined) env.CODEWORK_TRACE_LEVEL = traceLevel;
+
+	const result = await runCli(
+		["--home", home, "--database", ":memory:", "--user-config-dir", settings, "run", "What does note.txt say?"],
+		{ cwd: project, env },
+	);
+	expect(result.status, result.stderr).toBe(0);
+	expect(result.stdout).toContain("The note says hello.");
+
+	// No prompt, command, file content, or model output may leave in any span, attribute, or event.
+	const traces = JSON.stringify(collector.exports.filter((entry) => entry.path === "/v1/traces"));
+	for (const content of ["What does note.txt say?", "cat note.txt", "hello from the note", "The note says hello."]) {
+		expect(traces).not.toContain(content);
+	}
+};
+
+const artifact = fileURLToPath(new URL("./__artifacts__/telemetry.json", import.meta.url));
 
 describe("OTLP export", () => {
 	it("exports GenAI spans and metrics for a run through the standard OTEL_* environment", async () => {
 		const collector = await serve();
 		try {
-			const home = mkdtempSync(join(tmpdir(), "codework-otel-"));
-			temps.push(home);
-			const project = join(home, "project");
-			const settings = join(home, "settings");
-			mkdirSync(project);
-			mkdirSync(settings);
-			writeFileSync(join(project, "note.txt"), "hello from the note\n");
-			writeFileSync(
-				join(settings, "settings.jsonc"),
-				JSON.stringify({
-					retry: { baseDelayMs: 10 },
-					model: { provider: "otel", id: "otel-model" },
-					models: [
-						{
-							id: "otel-model",
-							name: "otel-model",
-							provider: { id: "otel", name: "Otel", source: "config", env: [] },
-							baseUrl: `${collector.url}/v1`,
-							reasoning: false,
-							input: ["text"],
-							cost: { input: 3, output: 15, cacheRead: 0, cacheWrite: 0 },
-							contextWindow: 32768,
-							maxTokens: 8192,
-							protocol: "openai-compatible",
-						},
-					],
-				}),
-			);
-
-			const env: NodeJS.ProcessEnv = {
-				...process.env,
-				HOME: home,
-				CODEWORK_MODELS_FILE: models,
-				OTEL_EXPORTER_OTLP_ENDPOINT: collector.url,
-				OTEL_EXPORTER_OTLP_HEADERS: "x-otel-test=present",
-				// The collector reads JSON; protobuf is the default otherwise.
-				OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
-			};
-			const configured = new Set([
-				"OTEL_EXPORTER_OTLP_ENDPOINT",
-				"OTEL_EXPORTER_OTLP_HEADERS",
-				"OTEL_EXPORTER_OTLP_PROTOCOL",
-			]);
-			for (const key of Object.keys(env)) {
-				if (key.startsWith("OTEL_") && !configured.has(key)) delete env[key];
-			}
-			delete env.CODEWORK_TRACE_LEVEL;
-
-			const result = await runCli(
-				["--home", home, "--database", ":memory:", "--user-config-dir", settings, "run", "What does note.txt say?"],
-				{ cwd: project, env },
-			);
-			expect(result.status, result.stderr).toBe(0);
-			expect(result.stdout).toContain("The note says hello.");
+			await exportRun(collector);
 
 			expect(collector.exports.length).toBeGreaterThan(0);
 			expect(new Set(collector.exports.map((entry) => entry.path))).toEqual(new Set(["/v1/traces", "/v1/metrics"]));
@@ -370,17 +383,6 @@ describe("OTLP export", () => {
 
 			const exported = resources(collector.exports).map((entry) => JSON.stringify(entry.resource));
 			expect(new Set(exported).size, "every export carries one resource").toBe(1);
-
-			// No prompt, file content, or model output may leave in any span, attribute, or event.
-			const traces = JSON.stringify(collector.exports.filter((entry) => entry.path === "/v1/traces"));
-			for (const content of [
-				"What does note.txt say?",
-				"cat note.txt",
-				"hello from the note",
-				"The note says hello.",
-			]) {
-				expect(traces).not.toContain(content);
-			}
 
 			await expect(
 				`${JSON.stringify(
@@ -394,6 +396,20 @@ describe("OTLP export", () => {
 					"\t",
 				)}\n`,
 			).toMatchFileSnapshot("./__artifacts__/telemetry.json");
+		} finally {
+			await collector.close();
+		}
+	}, 60_000);
+
+	it("exports every span, Effect's own sql.* included, with CODEWORK_TRACE_LEVEL=debug", async () => {
+		const collector = await serve();
+		try {
+			await exportRun(collector, "debug");
+			const spans = exportedSpans(collector.exports);
+			expect(spans.some((pair) => pair.endsWith("> sql.execute"))).toBe(true);
+			// Debug adds spans; it never loses the ones exported by default.
+			const defaults: ReadonlyArray<string> = JSON.parse(readFileSync(artifact, "utf8")).exported;
+			expect(spans).toEqual(expect.arrayContaining([...defaults]));
 		} finally {
 			await collector.close();
 		}

@@ -139,13 +139,11 @@ const isSandboxProviderError = Schema.is(SandboxProviderError);
 const parseJson = (driver: SandboxDriver.Name, operation: string, value: string) =>
 	decodeUnknownJson(value).pipe(Effect.mapError((cause) => providerError({ driver, operation, cause })));
 
-/** Time a driver's provider-side create or wake, the cold start a remote sandbox pays. */
 const provision = <A, E, R>(driver: SandboxDriver.Name, operation: "create" | "wake", self: Effect.Effect<A, E, R>) =>
 	Telemetry.timed(self, (seconds, exit) =>
 		Telemetry.record(Telemetry.sandboxProvisionDuration, seconds, Telemetry.withError({ driver, operation }, exit)),
 	);
 
-/** Time every command a mount's shell runs, labelled by the driver that runs it. */
 const timedShell = (shell: ISandboxExe, driver: SandboxDriver.Name): ISandboxExe => {
 	const time = <A, E, R>(self: Effect.Effect<A, E, R>) =>
 		Telemetry.timed(self, (seconds, exit) =>

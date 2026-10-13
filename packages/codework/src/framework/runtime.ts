@@ -76,7 +76,6 @@ export function run(root: Spec.Any, handlers: ReadonlyArray<LazyHandler>, option
 	return Command.run(provide(root, handlers, { version: options.version, path: [] }), options);
 }
 
-/** Each handler runs inside its own OTLP export, named by its command path below the root. */
 function provide(
 	node: Spec.Any,
 	handlers: ReadonlyArray<LazyHandler>,

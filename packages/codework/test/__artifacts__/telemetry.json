@@ -8,7 +8,9 @@
 	},
 	"exported": [
 		"(root) > CLI.run",
+		"CLI.run > CLI.selectSandbox",
 		"CLI.run > Loop.run",
+		"CLI.selectSandbox > Sandbox.resolve",
 		"Loop.run > Loop.runTurn",
 		"Loop.runTurn > Loop.runTurnAttempt",
 		"Loop.runTurnAttempt > LLM.run",

@@ -3,11 +3,8 @@ import { FetchHttpClient } from "effect/http";
 import { OtlpMetrics, OtlpSerialization, OtlpTracer } from "effect/observability";
 import { uuidv7 } from "uuidv7";
 
-/**
- * OTLP export of the harness's spans and metrics, configured by the standard
- * `OTEL_*` environment variables alone. Without an endpoint every layer is
- * empty; a configuration that fails to build runs the command without export.
- */
+// Configured by the standard `OTEL_*` variables alone. A configuration that fails
+// to build runs the command without export rather than failing it.
 
 // The OTel spec defaults `OTEL_{TRACES,METRICS}_EXPORTER` to `otlp`; Effect reads an
 // unset list as none, so an endpoint alone would export nothing.
@@ -36,13 +33,9 @@ const fiberMetrics = Layer.unwrap(
 	}),
 );
 
-/**
- * Export only the spans marked `level: "Info"`: the command, the agent loop, model
- * and tool calls, and sandbox provisioning. Every other span, Effect's own `sql.*`
- * among them, defaults to `Debug`; `CODEWORK_TRACE_LEVEL=debug` exports those too.
- * Effect drops a span's children with it, so every span on the path from a command
- * to a model call must be `Info`.
- */
+// Only spans marked `level: "Info"` are exported; the rest, Effect's own `sql.*`
+// among them, default to `Debug`. Effect drops a span's children with it, so every
+// span on the path from a command to a model or tool call must be `Info`.
 const levels = { all: "All", trace: "Trace", debug: "Debug", info: "Info", warn: "Warn", error: "Error" } as const;
 
 const traceLevels = Layer.unwrap(
@@ -62,11 +55,7 @@ interface OtlpResource {
 	readonly attributes: Record<string, string>;
 }
 
-/**
- * Serialize by `OTEL_EXPORTER_OTLP_PROTOCOL`, defaulting to the spec's
- * `http/protobuf`. Effect has no gRPC exporter, so `grpc` exports nothing
- * rather than sending HTTP to a gRPC port.
- */
+// Effect has no gRPC exporter: `grpc` exports nothing rather than sending HTTP to a gRPC port.
 const exporters = (resource: OtlpResource) =>
 	Layer.unwrap(
 		Effect.gen(function* () {
@@ -83,7 +72,6 @@ const exporters = (resource: OtlpResource) =>
 		}),
 	);
 
-/** The release channel a version was published to, from its prerelease tag. */
 const channel = (version: string) =>
 	version.includes("-canary.") ? "canary" : version.includes("-dev.") ? "dev" : "latest";
 
