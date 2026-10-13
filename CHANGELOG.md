@@ -4,32 +4,54 @@ This file is the canonical source for unreleased changes and published release n
 
 ## Format
 
-- Add in-progress work under `## [Unreleased]`.
-- Move shipped changes into a versioned release section when publishing.
-- Prefer these labels when writing release notes: `Added`, `Changed`, `Fixed`, `Removed`, `Internal`, `Breaking Changes`, `Reverted`.
-- Keep entries user-facing where possible. Use `Internal` for refactors, tooling, and package housekeeping.
+- Add in-progress work under `## [Unreleased]
 
-## [Unreleased]
+## [@codeworksh/cli@0.3.0] - 2026-10-13
 
 ### Added
 
-- `@codeworksh/cli`: Added OpenTelemetry export. Set `OTEL_EXPORTER_OTLP_ENDPOINT` and every command sends its traces and metrics over OTLP/HTTP, as protobuf by default or JSON with `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`. The standard `OTEL_*` variables configure it (headers, per-signal endpoints, `OTEL_SDK_DISABLED`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`); there is no settings key. Without an endpoint nothing is exported, and a bad configuration never stops a command. Only the high-level spans are exported (command, agent loop, model and tool calls, sandbox create and wake); set `CODEWORK_TRACE_LEVEL=debug` to export every span, including database queries.
-- `@codeworksh/harness`: Spans for model requests, tool calls and agent runs carry the OpenTelemetry GenAI attributes (provider, model, session, response id, finish reason, token counts, time to first token), and a failed model request ends its span with an error. Metrics: `codework.llm.duration`, `codework.llm.ttft`, `codework.llm.tokens` (by `type`: input, output, cache_read, cache_write, reasoning), `codework.llm.cost`, `codework.agent.duration`, `codework.tool.duration` (by `tool`), `codework.sandbox.provision.duration`, `codework.sandbox.exec.duration` and `codework.sandbox.active` (by `driver`), plus Effect's fiber runtime metrics (`child_fibers_*`). Prompts, file contents and model output are never exported.
+- Added a standalone `codework` binary for macOS (Apple silicon) and Linux (arm64, x64; glibc) that needs no Node.js. Install it with `curl -fsSL https://codework.sh/install | sh`, with `--dev` for the newest development build or `--version <version>` for a given release. The script checks the download against the release's `SHA256SUMS`, installs to `~/.codework/bin` and adds it to `PATH`. On first run the binary unpacks its assets to a per-user cache in the temp directory. Plugins installed from npm, git or a path run in it as they do under Node, and the virtual shell's `sqlite3` and its zstd and xz compression work. just-bash's `python` and `js-exec`, which CodeWork does not enable, are not included. Each GitHub Release carries `cli-<os>-<arch>.tar.gz` and `SHA256SUMS`: `cli-v<version>` for a release, and `devel` for the newest dev build.
+- Added OpenTelemetry export. Set `OTEL_EXPORTER_OTLP_ENDPOINT` and every command sends its traces and metrics over OTLP/HTTP, as protobuf by default or JSON with `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`. The standard `OTEL_*` variables configure it (headers, per-signal endpoints, `OTEL_SDK_DISABLED`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`); there is no settings key. Without an endpoint nothing is exported, and a bad configuration never stops a command. Only the high-level spans are exported (command, agent loop, model and tool calls, sandbox create and wake); set `CODEWORK_TRACE_LEVEL=debug` to export every span, including database queries.
 
 ### Fixed
 
-- `@codeworksh/plugin`: Fixed tools whose parameters are `Schema.Struct({})` being rejected by OpenAI and Anthropic. Their JSON Schema is now `{ "type": "object", "properties": {} }` instead of `{ "not": { "type": "null" } }`.
-- `@codeworksh/cli`: Fixed `codework run` exiting 1 with `statement has been finalized` after printing the response when it created its own sandbox (`--sandbox-driver memory`, `daytona` or `vercel`). The sandbox was stopped after the database had closed, so the stop failed and a Daytona or Vercel sandbox was left running. It is now stopped before the database closes, and the run exits 0.
-- `@codeworksh/cli`: `codework run` now writes logs to stderr, so stdout carries only the response.
-- `@codeworksh/harness`: Fixed Daytona sandboxes logging a warning, with the full HTTP error, for every instruction file (`AGENTS.md`, `CLAUDE.md`, ...) a directory does not have. A missing path on Daytona now reads as not found, as on the other sandboxes, which also gives the `read` tool its usual not-found error there.
+- Fixed `codework run` exiting 1 with `statement has been finalized` after printing the response when it created its own sandbox (`--sandbox-driver memory`, `daytona` or `vercel`). The sandbox was stopped after the database had closed, so the stop failed and a Daytona or Vercel sandbox was left running. It is now stopped before the database closes, and the run exits 0.
+- `codework run` now writes logs to stderr, so stdout carries only the response.
+
+### Internal
+
+- The `codework tui` E2E artifact now records the CLI version as `<version>`, so it no longer goes stale on every version bump.
+- Tests load provider and sandbox credentials from the root `.env.local` instead of one file per package.
+- Added a live E2E test that runs `codework run` on a memory, Daytona and Vercel sandbox and checks the sandbox is stopped on exit.
+- Added an E2E test that runs the standalone binary with no Node on `PATH`: it unpacks its assets, runs a plugin through its own `effect`, runs `sqlite3`, zstd and xz in the virtual shell against live models, and, with `CODEWORK_PLUGIN_LIVE=1`, installs and runs plugins from npm and git.
+
+## [@codeworksh/tui@0.0.3] - 2026-10-13
+
+### Removed
+
+- Removed Intel Mac support. No `darwin-x64` binary is built, `@codeworksh/tui-darwin-x64` is deprecated on npm, and on an Intel Mac `codework tui` reports that no prebuilt TUI is published for the platform.
+
+## [@codeworksh/harness@0.3.0] - 2026-10-13
+
+### Added
+
+- Spans for model requests, tool calls and agent runs carry the OpenTelemetry GenAI attributes (provider, model, session, response id, finish reason, token counts, time to first token), and a failed model request ends its span with an error. Metrics: `codework.llm.duration`, `codework.llm.ttft`, `codework.llm.tokens` (by `type`: input, output, cache_read, cache_write, reasoning), `codework.llm.cost`, `codework.agent.duration`, `codework.tool.duration` (by `tool`), `codework.sandbox.provision.duration`, `codework.sandbox.exec.duration` and `codework.sandbox.active` (by `driver`), plus Effect's fiber runtime metrics (`child_fibers_*`). Prompts, file contents and model output are never exported.
+- A host bundled into one file, such as the standalone binary, shares its own `effect` and `@codeworksh/plugin` with plugins through `Plugin.share`. A plugin can import any of their public modules and gets the host's instances, each loaded on first import. Importing an internal path such as `effect/internal/...` fails with `is not shared with plugins`.
+
+### Fixed
+
+- Fixed Daytona sandboxes logging a warning, with the full HTTP error, for every instruction file (`AGENTS.md`, `CLAUDE.md`, ...) a directory does not have. A missing path on Daytona now reads as not found, as on the other sandboxes, which also gives the `read` tool its usual not-found error there.
 
 ### Internal
 
 - Instruction-file discovery probes candidates with `exists` and only stats the files that exist, so a missing `AGENTS.md` or `CLAUDE.md` no longer records a failed span in debug traces.
-- The `codework tui` E2E artifact now records the CLI version as `<version>`, so it no longer goes stale on every version bump.
-- Tests load provider and sandbox credentials from the root `.env.local` instead of one file per package.
-- Added a live E2E test that runs `codework run` on a memory, Daytona and Vercel sandbox and checks the sandbox is stopped on exit.
 - The live runner-cycle test now interrupts a reply long enough that it cannot finish first, so the interrupt no longer races the model.
+
+## [@codeworksh/plugin@0.2.1] - 2026-10-13
+
+### Fixed
+
+- Fixed tools whose parameters are `Schema.Struct({})` being rejected by OpenAI and Anthropic. Their JSON Schema is now `{ "type": "object", "properties": {} }` instead of `{ "not": { "type": "null" } }`.
 
 ## [@codeworksh/cli@0.2.0] - 2026-10-12
 

@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/tui-darwin-arm64",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"description": "The CodeWork terminal UI binary for macOS on Apple silicon",
 	"homepage": "https://www.codework.sh",
 	"license": "MIT",
