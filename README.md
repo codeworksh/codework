@@ -19,16 +19,23 @@ An open-source coding agent for your terminal: run sessions in your repo or an i
 
 ```bash
 pnpm add -g @codeworksh/cli
+```
+
+With OpenAI:
+
+```bash
 export OPENAI_API_KEY=...
 codework run --provider openai --model gpt-6-luna "Inspect and fix the failing tests"
 ```
 
-Any other provider works the same way with its own key; list providers and models with `codework models`:
+With Anthropic:
 
 ```bash
 export ANTHROPIC_API_KEY=...
 codework run --provider anthropic --model claude-sonnet-5-5 "Inspect and fix the failing tests"
 ```
+
+List every provider and model with `codework models`.
 
 ## Features
 
