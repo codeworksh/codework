@@ -1,8 +1,9 @@
 /* oxlint-disable effecttsgo/async-function -- just-bash exposes a Promise-based shell adapter contract. */
 import { RealFSProvider, type VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
-import { Bash, type IFileSystem } from "just-bash";
+import type { Bash, IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
+import { specifier } from "../../util/unpacked.ts";
 import { posix } from "../../util/posix.ts";
 import { Local } from "../fs/vfs.ts";
 import { SandboxIO } from "../io.ts";
@@ -271,14 +272,25 @@ const fromBash = (bash: Bash): ISandboxExe => {
 	return Shell.of(fromExec({ exec }));
 };
 
-const make = (vfs: VirtualFileSystem, cwd: string): ISandboxExe => fromBash(new Bash({ fs: bridge(vfs, cwd), cwd }));
+type JustBash = typeof import("just-bash");
+
+// Imported rather than bundled: its sqlite3 worker, WASM and compressors load from beside its modules.
+const JustBash = Effect.flatMap(specifier("just-bash"), (resolved) =>
+	Effect.promise(() => import(resolved) as Promise<JustBash>),
+);
+
+const make = (module: JustBash, vfs: VirtualFileSystem, cwd: string): ISandboxExe =>
+	fromBash(new module.Bash({ fs: bridge(vfs, cwd), cwd }));
 
 // just-bash only needs the async IFileSystem surface. The lone synchronous
 // touchpoint, getAllPaths for glob expansion, degrades to an empty list.
 const shell = (cwd: string) =>
 	Layer.effect(
 		Shell,
-		Effect.map(Local.Vfs, (vfs) => make(vfs, cwd)),
+		Effect.gen(function* () {
+			const module = yield* JustBash;
+			return make(module, yield* Local.Vfs, cwd);
+		}),
 	);
 
 /**
@@ -292,9 +304,10 @@ export const transport = <E, RIn>(
 	Layer.provideMerge(
 		Layer.effect(
 			Shell,
-			Effect.map(Local.Vfs, (vfs) => {
-				const root = make(vfs, "/");
-				return perMount(root, (cwd) => make(vfs, cwd));
+			Effect.gen(function* () {
+				const module = yield* JustBash;
+				const vfs = yield* Local.Vfs;
+				return perMount(make(module, vfs, "/"), (cwd) => make(module, vfs, cwd));
 			}),
 		),
 		inner,

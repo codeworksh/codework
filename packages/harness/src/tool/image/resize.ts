@@ -1,4 +1,5 @@
-import { Effect, Schema } from "effect";
+import { Config, Effect, Option, Schema } from "effect";
+import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { decode, load } from "./photon.ts";
 
@@ -122,47 +123,53 @@ export const resizeInProcess = (
 	});
 
 // From source the worker sits beside this module; packed, this module lands in a
-// chunk at the package's output root while the worker keeps its own entry path.
-const workerUrl = (): URL =>
-	import.meta.url.endsWith(".ts")
+// chunk at the package's output root while the worker keeps its own entry path. The
+// standalone binary unpacks a bundled worker and names it.
+const workerUrl = Effect.gen(function* () {
+	const unpacked = yield* Config.option(Config.String("CODEWORK_IMAGE_WORKER"));
+	if (Option.isSome(unpacked)) return pathToFileURL(unpacked.value);
+	return import.meta.url.endsWith(".ts")
 		? new URL("./worker.ts", import.meta.url)
 		: new URL("./tool/image/worker.mjs", import.meta.url);
+}).pipe(Effect.orDie);
 
 /** The worker could not resize; the caller falls back to this thread. */
 class WorkerError extends Schema.TaggedError<WorkerError>()("ImageResizeWorkerError", { message: Schema.String }) {}
 
 const inWorker = (input: Uint8Array, mimeType: string, options: ResizeOptions) =>
-	Effect.callback<Resized | null, WorkerError>((resume) => {
-		let worker: Worker;
-		try {
-			worker = new Worker(workerUrl());
-		} catch (cause) {
-			// e.g. a Node permission model without worker access: resize in this thread instead.
-			resume(Effect.fail(new WorkerError({ message: String(cause) })));
-			return;
-		}
-		const done = (effect: Effect.Effect<Resized | null, WorkerError>) => {
-			resume(effect);
-			void worker.terminate().catch(() => undefined);
-		};
-		worker.on("message", (message: unknown) => {
-			const reply = message as Partial<Reply> | null;
-			if (reply?.type !== REPLY) return;
-			done(
-				"error" in reply
-					? Effect.fail(new WorkerError({ message: reply.error }))
-					: Effect.succeed((reply as { result: Resized | null }).result),
+	Effect.flatMap(workerUrl, (url) =>
+		Effect.callback<Resized | null, WorkerError>((resume) => {
+			let worker: Worker;
+			try {
+				worker = new Worker(url);
+			} catch (cause) {
+				// e.g. a Node permission model without worker access: resize in this thread instead.
+				resume(Effect.fail(new WorkerError({ message: String(cause) })));
+				return;
+			}
+			const done = (effect: Effect.Effect<Resized | null, WorkerError>) => {
+				resume(effect);
+				void worker.terminate().catch(() => undefined);
+			};
+			worker.on("message", (message: unknown) => {
+				const reply = message as Partial<Reply> | null;
+				if (reply?.type !== REPLY) return;
+				done(
+					"error" in reply
+						? Effect.fail(new WorkerError({ message: reply.error }))
+						: Effect.succeed((reply as { result: Resized | null }).result),
+				);
+			});
+			worker.once("error", (error: Error) => done(Effect.fail(new WorkerError({ message: error.message }))));
+			worker.once("exit", (code) =>
+				done(Effect.fail(new WorkerError({ message: `Image resize worker exited with code ${code}` }))),
 			);
-		});
-		worker.once("error", (error: Error) => done(Effect.fail(new WorkerError({ message: error.message }))));
-		worker.once("exit", (code) =>
-			done(Effect.fail(new WorkerError({ message: `Image resize worker exited with code ${code}` }))),
-		);
-		// Transferring detaches the buffer, so hand over a copy and leave the caller's bytes intact.
-		const bytes = new Uint8Array(input);
-		worker.postMessage({ input: bytes, mimeType, options }, [bytes.buffer]);
-		return Effect.promise(() => worker.terminate());
-	});
+			// Transferring detaches the buffer, so hand over a copy and leave the caller's bytes intact.
+			const bytes = new Uint8Array(input);
+			worker.postMessage({ input: bytes, mimeType, options }, [bytes.buffer]);
+			return Effect.promise(() => worker.terminate());
+		}),
+	);
 
 /**
  * {@link resizeInProcess} on a worker thread, so decoding and encoding a large
