@@ -60,8 +60,8 @@ const prompt = async (input: { root: string; directory: string; hostCwd: string;
 };
 
 /**
- * A filesystem over `files`. Paths in `slow` answer `stat` and `readFile` late, so a probe that took
- * completion order for candidate order would be caught; `failing` paths fail `stat` with EIO.
+ * A filesystem over `files`. Paths in `slow` answer `exists` and `readFile` late, so a probe that took
+ * completion order for candidate order would be caught; `failing` paths fail `exists` with EIO.
  */
 const instrumented = (
 	files: Readonly<Record<string, string>>,
@@ -80,16 +80,18 @@ const instrumented = (
 		readBytes: unused,
 		writeFile: unused,
 		stat: async (path) => {
+			if (!(path in files)) throw Object.assign(new Error(`ENOENT: stat '${path}'`), { code: "ENOENT" });
+			return { isFile: true, isDirectory: false };
+		},
+		readdir: unused,
+		exists: async (path) => {
 			stats.calls += 1;
 			stats.peak = Math.max(stats.peak, ++stats.inFlight);
 			await settle(path);
 			stats.inFlight -= 1;
 			if (failing.has(path)) throw Object.assign(new Error(`EIO: i/o error, stat '${path}'`), { code: "EIO" });
-			if (!(path in files)) throw Object.assign(new Error(`ENOENT: stat '${path}'`), { code: "ENOENT" });
-			return { isFile: true, isDirectory: false };
+			return path in files;
 		},
-		readdir: unused,
-		exists: unused,
 		mkdir: unused,
 		rm: unused,
 		realpath: unused,

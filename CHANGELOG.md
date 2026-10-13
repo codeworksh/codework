@@ -25,6 +25,7 @@ This file is the canonical source for unreleased changes and published release n
 
 ### Internal
 
+- Instruction-file discovery probes candidates with `exists` and only stats the files that exist, so a missing `AGENTS.md` or `CLAUDE.md` no longer records a failed span in debug traces.
 - The `codework tui` E2E artifact now records the CLI version as `<version>`, so it no longer goes stale on every version bump.
 - Tests load provider and sandbox credentials from the root `.env.local` instead of one file per package.
 - Added a live E2E test that runs `codework run` on a memory, Daytona and Vercel sandbox and checks the sandbox is stopped on exit.
