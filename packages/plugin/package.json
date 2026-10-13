@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/plugin",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"description": "SDK for building CodeWork plugins — the plugin, tool, and sandbox contracts shared with @codeworksh/harness.",
 	"keywords": [
 		"agent",
