@@ -56,5 +56,7 @@ models.gen.json
 
 .alchemy
 
+.freebuff
+
 # Rust build output (packages/tui binary; the launcher loads the built artifact).
 target
