@@ -73,7 +73,7 @@ const run = (binary: string, args: ReadonlyArray<string>, env: Record<string, st
 
 export default Runtime.handler(
 	Cmd.commands.tui,
-	Effect.fn("CLI.tui")(function* ({ server, host, port, args }) {
+	Effect.fn("CLI.tui", { level: "Info" })(function* ({ server, host, port, args }) {
 		const shared = yield* Cmd.spec;
 
 		const program = Effect.gen(function* () {

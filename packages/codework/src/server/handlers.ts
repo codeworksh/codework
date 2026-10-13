@@ -40,6 +40,11 @@ const sessionInfo = Effect.fn("Server.sessionInfo")(function* (sessionId: Sessio
 	return toSessionInfo(yield* found.value.info);
 });
 
+// RpcServer's request span has no level, so it is Debug and drops every Info span under it.
+// Provisioning a sandbox is worth exporting, so it starts a trace of its own.
+const exported = <A, E, R>(name: string, self: Effect.Effect<A, E, R>) =>
+	self.pipe(Effect.withSpan(name, { level: "Info", root: true }));
+
 const releaseOnFailure = (selection: Effect.Success<ReturnType<typeof Sandbox.resolve>> | undefined) =>
 	selection?.created && selection.info !== undefined
 		? Sandbox.stop(selection.info.id).pipe(Effect.catchCause(Effect.logError))
@@ -61,7 +66,8 @@ export const layer = Contract.Api.toLayer(
 			"auth.refresh": ({ provider }) => oauth.refresh(provider),
 			"auth.logout": ({ provider }) => oauth.logout(provider),
 			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime }) {
-				const selection = sandbox === undefined ? undefined : yield* Sandbox.resolve(sandbox);
+				const selection =
+					sandbox === undefined ? undefined : yield* exported("Server.session.create", Sandbox.resolve(sandbox));
 				const selected = selection?.info;
 				const handle = yield* Session.create({
 					...(title === undefined ? {} : { title }),
@@ -93,7 +99,8 @@ export const layer = Contract.Api.toLayer(
 				return toSessionInfo(yield* handle.info);
 			}),
 			"session.relink": Effect.fnUntraced(function* ({ sessionId, sandbox, directory }) {
-				const selection = sandbox === undefined ? undefined : yield* Sandbox.resolve(sandbox);
+				const selection =
+					sandbox === undefined ? undefined : yield* exported("Server.session.relink", Sandbox.resolve(sandbox));
 				const selected = selection?.info;
 				const handle = yield* Session.relink({
 					sessionId,
@@ -132,7 +139,7 @@ export const layer = Contract.Api.toLayer(
 				return (yield* Sandbox.list()).map(toSandboxInfo);
 			}),
 			"sandbox.create": Effect.fnUntraced(function* ({ driver }) {
-				return toSandboxInfo(yield* Sandbox.create({ driver }));
+				return toSandboxInfo(yield* exported("Server.sandbox.create", Sandbox.create({ driver })));
 			}),
 			"sandbox.register": Effect.fnUntraced(function* ({ driver, providerResourceId }) {
 				return toSandboxInfo(yield* Sandbox.register({ driver, providerResourceId }));

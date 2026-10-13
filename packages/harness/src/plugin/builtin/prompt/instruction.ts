@@ -52,8 +52,10 @@ const present = (fs: SandboxFileSystem.Interface, paths: ReadonlyArray<string>) 
 	Effect.forEach(
 		paths,
 		(path) =>
-			fs.stat(path).pipe(
-				Effect.map((stat) => stat.isFile),
+			fs.exists(path).pipe(
+				Effect.flatMap((exists) =>
+					exists ? fs.stat(path).pipe(Effect.map((stat) => stat.isFile)) : Effect.succeed(false),
+				),
 				Effect.catch((error) =>
 					SandboxFileSystem.isNotFoundError(error.cause)
 						? Effect.succeed(false)

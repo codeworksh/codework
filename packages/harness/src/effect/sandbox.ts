@@ -47,7 +47,7 @@ const runtimeOverrides = (driver: SandboxDriver.Name, value: unknown) => {
 	return Effect.succeed(value as Readonly<Record<string, unknown>>);
 };
 
-export const create = Effect.fn("Sandbox.create")(function* (input: CreateInput) {
+export const create = Effect.fn("Sandbox.create", { level: "Info" })(function* (input: CreateInput) {
 	const controller = yield* SandboxController.Controller;
 	const registry = yield* SandboxDriverRegistry.Registry;
 	const driverName = name(input.driver);
@@ -74,7 +74,7 @@ export const Selection = Schema.Union([
 ]);
 export type Selection = typeof Selection.Type;
 
-export const resolve = Effect.fn("Sandbox.resolve")(function* (input: Selection) {
+export const resolve = Effect.fn("Sandbox.resolve", { level: "Info" })(function* (input: Selection) {
 	if ("id" in input) {
 		const found = yield* get(input.id);
 		if (Option.isNone(found)) return yield* new SandboxNotFoundError({ id: input.id });
@@ -133,7 +133,7 @@ export const refresh = Effect.fn("Sandbox.refresh")(function* (id: SandboxInstan
 	return yield* controller.refresh(id);
 });
 
-export const wake = Effect.fn("Sandbox.wake")(function* (id: SandboxInstance.ID) {
+export const wake = Effect.fn("Sandbox.wake", { level: "Info" })(function* (id: SandboxInstance.ID) {
 	const controller = yield* SandboxController.Controller;
 	return yield* controller.wake(id);
 });
