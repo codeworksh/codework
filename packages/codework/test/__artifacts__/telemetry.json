@@ -6,6 +6,15 @@
 		"service.name": "codework",
 		"service.version": "<volatile>"
 	},
+	"exported": [
+		"(root) > CLI.run",
+		"CLI.run > Loop.run",
+		"Loop.run > Loop.runTurn",
+		"Loop.runTurn > Loop.runTurnAttempt",
+		"Loop.runTurnAttempt > LLM.run",
+		"Loop.runTurnAttempt > Loop.settleTools",
+		"Loop.settleTools > Loop.handleTool"
+	],
 	"spans": [
 		{
 			"name": "Loop.run",

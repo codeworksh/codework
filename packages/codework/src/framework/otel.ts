@@ -1,4 +1,4 @@
-import { Config, ConfigProvider, Effect, Layer, Metric, Option, Schema } from "effect";
+import { Config, ConfigProvider, Effect, Layer, Metric, Option, References, Schema } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { OtlpMetrics, OtlpSerialization, OtlpTracer } from "effect/observability";
 import { uuidv7 } from "uuidv7";
@@ -33,6 +33,26 @@ const metricsEnabled = Config.all({
 const fiberMetrics = Layer.unwrap(
 	Effect.gen(function* () {
 		return (yield* metricsEnabled) ? Metric.enableRuntimeMetricsLayer : Layer.empty;
+	}),
+);
+
+/**
+ * Export only the spans marked `level: "Info"`: the command, the agent loop, model
+ * and tool calls, and sandbox provisioning. Every other span, Effect's own `sql.*`
+ * among them, defaults to `Debug`; `CODEWORK_TRACE_LEVEL=debug` exports those too.
+ * Effect drops a span's children with it, so every span on the path from a command
+ * to a model call must be `Info`.
+ */
+const levels = { all: "All", trace: "Trace", debug: "Debug", info: "Info", warn: "Warn", error: "Error" } as const;
+
+const traceLevels = Layer.unwrap(
+	Effect.gen(function* () {
+		const name = yield* Config.String("CODEWORK_TRACE_LEVEL").pipe(Config.withDefault("info"));
+		const minimum = levels[name.trim().toLowerCase() as keyof typeof levels] ?? "Info";
+		return Layer.mergeAll(
+			Layer.succeed(References.CurrentTraceLevel, "Debug"),
+			Layer.succeed(References.MinimumTraceLevel, minimum),
+		);
 	}),
 );
 
@@ -79,7 +99,7 @@ export const layer = (options: { readonly version: string; readonly command: str
 			"codework.command": options.command,
 		},
 	};
-	return Layer.mergeAll(exporters(resource), fiberMetrics).pipe(
+	return Layer.mergeAll(exporters(resource), fiberMetrics, traceLevels).pipe(
 		Layer.provide(FetchHttpClient.layer),
 		Layer.provide(exporterDefaults),
 		Layer.catchCause(() => Layer.empty),

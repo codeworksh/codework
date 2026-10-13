@@ -298,7 +298,7 @@ class FailedTerminal extends Data.TaggedError("LLM.FailedTerminal")<{
  * aikit event streams; production uses `open` above.
  */
 export const make = (openStream: Open): Request => {
-	const request = Effect.fn("LLM.run", { kind: "client" })(function* (input: RequestInput) {
+	const request = Effect.fn("LLM.run", { kind: "client", level: "Info" })(function* (input: RequestInput) {
 		yield* Effect.annotateCurrentSpan({
 			"gen_ai.operation.name": "chat",
 			"gen_ai.provider.name": input.provider,

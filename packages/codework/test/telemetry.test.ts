@@ -287,6 +287,20 @@ const metrics = (exports: ReadonlyArray<Export>) => {
 	);
 };
 
+/**
+ * Every exported span name, with its parent's. By default only the spans marked
+ * `Info` leave the process: Effect's own `sql.*` and the harness internals stay out.
+ */
+const exportedSpans = (exports: ReadonlyArray<Export>) => {
+	const spans = exports.flatMap((entry) =>
+		(entry.body.resourceSpans ?? []).flatMap((resource) => resource.scopeSpans.flatMap((scope) => scope.spans)),
+	);
+	const byId = new Map(spans.map((span) => [span.spanId, span]));
+	return [
+		...new Set(spans.map((span) => `${byId.get(span.parentSpanId ?? "")?.name ?? "(root)"} > ${span.name}`)),
+	].sort();
+};
+
 /** Every exported resource, traces and metrics alike, must describe the same process. */
 const resources = (exports: ReadonlyArray<Export>) =>
 	exports.flatMap((entry) => [...(entry.body.resourceSpans ?? []), ...(entry.body.resourceMetrics ?? [])]);
@@ -341,6 +355,7 @@ describe("OTLP export", () => {
 			for (const key of Object.keys(env)) {
 				if (key.startsWith("OTEL_") && !configured.has(key)) delete env[key];
 			}
+			delete env.CODEWORK_TRACE_LEVEL;
 
 			const result = await runCli(
 				["--home", home, "--database", ":memory:", "--user-config-dir", settings, "run", "What does note.txt say?"],
@@ -371,6 +386,7 @@ describe("OTLP export", () => {
 				`${JSON.stringify(
 					{
 						resource: attributes(resources(collector.exports)[0]?.resource?.attributes),
+						exported: exportedSpans(collector.exports),
 						spans: genAiSpans(collector.exports),
 						metrics: metrics(collector.exports),
 					},

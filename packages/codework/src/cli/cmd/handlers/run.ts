@@ -77,7 +77,7 @@ const selectSandbox = Effect.fn("CLI.selectSandbox")(function* (input: Sandbox.S
 
 export default Runtime.handler(
 	Cmd.commands.run,
-	Effect.fn("CLI.run")(function* ({
+	Effect.fn("CLI.run", { level: "Info" })(function* ({
 		prompt,
 		session,
 		cwd,

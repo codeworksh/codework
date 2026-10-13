@@ -458,7 +458,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		);
 	});
 
-	const create: Interface["create"] = Effect.fn("Sandbox.Controller.create")(function* (input) {
+	const create: Interface["create"] = Effect.fn("Sandbox.Controller.create", { level: "Info" })(function* (input) {
 		const driver = yield* registry.get(input.driver.name);
 		const config = yield* registry.decodeCreateConfig(input.driver.name, input.config);
 		const id = input.instanceId ?? SandboxInstance.ID.create();
@@ -756,7 +756,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		return yield* reload(id);
 	});
 
-	const wake: Interface["wake"] = Effect.fn("Sandbox.Controller.wake")(function* (id) {
+	const wake: Interface["wake"] = Effect.fn("Sandbox.Controller.wake", { level: "Info" })(function* (id) {
 		if (id === SandboxInstance.ID.local) return hostInfo();
 		const row = yield* requireRow(id);
 		if (row.status === "removed") {

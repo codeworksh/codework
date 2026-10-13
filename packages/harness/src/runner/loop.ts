@@ -133,7 +133,7 @@ export const layer = (options: Options = {}) =>
 				yield* publishFailure(draft, { _tag: "interrupted" });
 			});
 
-			const settleTools = Effect.fn("Loop.settleTools")(function* (
+			const settleTools = Effect.fn("Loop.settleTools", { level: "Info" })(function* (
 				snapshot: State.Snapshot,
 				message: Message.AssistantMessage,
 				reason: "stop" | "length" | "toolUse",
@@ -187,7 +187,9 @@ export const layer = (options: Options = {}) =>
 						}
 
 						const settled = new Set<string>();
-						const handle = Effect.fn("Loop.handleTool")(function* (call: Message.ToolCallPendingPart) {
+						const handle = Effect.fn("Loop.handleTool", { level: "Info" })(function* (
+							call: Message.ToolCallPendingPart,
+						) {
 							yield* Effect.annotateCurrentSpan({
 								"gen_ai.operation.name": "execute_tool",
 								"gen_ai.tool.name": call.name,
@@ -262,7 +264,7 @@ export const layer = (options: Options = {}) =>
 				return interruptedCause;
 			});
 
-			const runTurnAttempt = Effect.fn("Loop.runTurnAttempt")(function* (
+			const runTurnAttempt = Effect.fn("Loop.runTurnAttempt", { level: "Info" })(function* (
 				promotion: Promotion,
 				snapshot: State.Snapshot,
 			) {
@@ -411,11 +413,14 @@ export const layer = (options: Options = {}) =>
 				);
 			});
 
-			const runTurn = Effect.fn("Loop.runTurn")(function* (promotion: Promotion, snapshot: State.Snapshot) {
+			const runTurn = Effect.fn("Loop.runTurn", { level: "Info" })(function* (
+				promotion: Promotion,
+				snapshot: State.Snapshot,
+			) {
 				return yield* runTurnAttempt(promotion, snapshot);
 			});
 
-			const run = Effect.fn("Loop.run")(function* (input: {
+			const run = Effect.fn("Loop.run", { level: "Info" })(function* (input: {
 				readonly sessionId: SessionSchema.ID;
 				readonly force: boolean;
 			}) {
