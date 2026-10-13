@@ -11,9 +11,15 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Added
+
+- `@codeworksh/cli`: Added OpenTelemetry export. Set `OTEL_EXPORTER_OTLP_ENDPOINT` and every command sends its traces and metrics over OTLP/HTTP, as protobuf by default or JSON with `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`. The standard `OTEL_*` variables configure it (headers, per-signal endpoints, `OTEL_SDK_DISABLED`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`); there is no settings key. Without an endpoint nothing is exported, and a bad configuration never stops a command.
+- `@codeworksh/harness`: Spans for model requests, tool calls and agent runs carry the OpenTelemetry GenAI attributes (provider, model, response id, finish reason, token counts), and a failed model request ends its span with an error. Metrics cover token usage, request, tool and agent duration, time to first token, time per output token, cost, turn retries, sandbox create and wake duration, and truncated tool output, alongside Effect's fiber runtime metrics. Prompts, file contents and model output are never exported.
+
 ### Fixed
 
 - `@codeworksh/plugin`: Fixed tools whose parameters are `Schema.Struct({})` being rejected by OpenAI and Anthropic. Their JSON Schema is now `{ "type": "object", "properties": {} }` instead of `{ "not": { "type": "null" } }`.
+
 ### Internal
 
 - The `codework tui` E2E artifact now records the CLI version as `<version>`, so it no longer goes stale on every version bump.
