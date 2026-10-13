@@ -41,9 +41,6 @@ jobs:
                - package: tui-darwin-arm64
                  runner: macos-14
                  target: aarch64-apple-darwin
-               - package: tui-darwin-x64
-                 runner: macos-14
-                 target: x86_64-apple-darwin
                # Linux binaries link musl statically, so one build runs on any distro.
                - package: tui-linux-arm64
                  runner: ubuntu-24.04-arm

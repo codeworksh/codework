@@ -593,9 +593,6 @@ importers:
       '@codeworksh/tui-darwin-arm64':
         specifier: workspace:*
         version: link:npm/darwin-arm64
-      '@codeworksh/tui-darwin-x64':
-        specifier: workspace:*
-        version: link:npm/darwin-x64
       '@codeworksh/tui-linux-arm64':
         specifier: workspace:*
         version: link:npm/linux-arm64
@@ -604,8 +601,6 @@ importers:
         version: link:npm/linux-x64
 
   packages/tui/npm/darwin-arm64: {}
-
-  packages/tui/npm/darwin-x64: {}
 
   packages/tui/npm/linux-arm64: {}
 
