@@ -22,6 +22,7 @@ newline-delimited JSON-RPC.
 | `src/action.rs` | Named actions and the keymap, with the `<leader>` prefix.             |
 | `src/app.rs`    | UI state and `update`, the one place state changes.                   |
 | `src/ui.rs`     | Rendering: reads state and draws, nothing else.                       |
+| `src/theme.rs`  | The palette, generated from the landing site's themes.                |
 | `src/rpc/`      | The transport: WebSocket client and wire protocol.                    |
 | `src/types.rs`  | The DTOs the transport speaks in.                                     |
 | `src/index.ts`  | Thin TypeScript launcher: resolves the platform binary for the CLI.   |

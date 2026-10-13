@@ -8,6 +8,7 @@ use crossterm::event::KeyEvent;
 
 use crate::action::{Action, Keymap};
 use crate::event::AppEvent;
+use crate::theme::{self, Palette};
 
 /// The screens the TUI can show. One, for now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,6 +18,9 @@ pub enum Screen {
 
 pub struct App {
     pub screen: Screen,
+    /// The palette every screen draws with. Held here rather than read from a global, so a frame
+    /// is a pure function of the app and can be reproduced from a test backend.
+    pub theme: &'static Palette,
     pub should_quit: bool,
     keymap: Keymap,
 }
@@ -31,6 +35,7 @@ impl App {
     pub fn new() -> Self {
         Self {
             screen: Screen::Welcome,
+            theme: theme::default_palette(),
             should_quit: false,
             keymap: Keymap::new(),
         }
