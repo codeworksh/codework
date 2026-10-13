@@ -188,15 +188,17 @@ jobs:
               pattern: cli-*
               path: release
               merge-multiple: true
+         # codework.sh/install verifies each download against SHA256SUMS.
          - run: |
+              (cd release && sha256sum *.tar.gz > SHA256SUMS)
               version="$(node scripts/version.mjs "$CHANNEL" packages/codework)"
               if [ "$CHANNEL" = dev ]; then
                  gh release delete devel --cleanup-tag --yes || true
-                 gh release create devel release/*.tar.gz --prerelease --target "$GITHUB_SHA" \
+                 gh release create devel release/* --prerelease --target "$GITHUB_SHA" \
                     --title "CLI $version" --notes "Development build $version, from $GITHUB_SHA."
               elif gh release view "cli-v$version" > /dev/null 2>&1; then
                  echo "cli-v$version is already released"
               else
-                 gh release create "cli-v$version" release/*.tar.gz --latest --target "$GITHUB_SHA" \
+                 gh release create "cli-v$version" release/* --latest --target "$GITHUB_SHA" \
                     --title "CLI $version" --generate-notes
               fi
