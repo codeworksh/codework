@@ -1,7 +1,8 @@
 //! The active palette.
 //!
 //! The landing site owns the colours. It ships 22 palettes that each fill the same 16 tokens, and
-//! `scripts/themes.mjs` turns them into [`palettes`] so the two surfaces cannot drift. Widgets read
+//! its canvas derives one more ink from two of them; `scripts/themes.mjs` turns both into
+//! [`palettes`] so the two surfaces cannot drift. Widgets read
 //! roles off these tokens; the semantic layer — feedback colours, diff colours, syntax hues — needs
 //! colours the site does not have, and arrives with the widgets that draw them.
 
@@ -20,10 +21,10 @@ pub enum Scheme {
     Light,
 }
 
-/// One palette: the site's 16 tokens, and how it is named.
+/// One palette: the site's 16 tokens plus the ink its canvas derives, and how it is named.
 ///
-/// The tokens are the whole contract, so a palette carries all 16 even while the UI draws with a
-/// few of them — that is what keeps a new widget from having to re-pull every theme. Every id here
+/// The tokens are the whole contract, so a palette carries all of them even while the UI draws
+/// with a few — that is what keeps a new widget from having to re-pull every theme. Every id here
 /// is generated from the site and cross-checked against its registry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Palette {
@@ -53,6 +54,9 @@ pub struct Palette {
     /// The accent ramp: five steps through `brand`, plus the ground they sit on. The landing
     /// canvas reads these at runtime, and they are the natural source for a banner or a spinner.
     pub field_bg: Color,
+    /// The landing canvas's hairline lattice, mixed 22% from `field_bg` toward `field_dim`. The
+    /// site derives it at runtime rather than storing it; the generator bakes the same mix in.
+    pub field_grid: Color,
     pub field_dim: Color,
     pub field_mid: Color,
     pub field_lit: Color,
