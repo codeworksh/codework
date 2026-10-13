@@ -11,6 +11,10 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Fixed
+
+- `@codeworksh/plugin`: Fixed tools whose parameters are `Schema.Struct({})` being rejected by OpenAI and Anthropic. Their JSON Schema is now `{ "type": "object", "properties": {} }` instead of `{ "not": { "type": "null" } }`.
+
 ## [@codeworksh/cli@0.2.0] - 2026-10-12
 
 ### Added
