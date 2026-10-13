@@ -7,8 +7,19 @@ You'll install the CLI, connect a model, ask CodeWork about your codebase, have 
 
 ## 1. Install CodeWork
 
-```bash
+```bash title="curl"
 curl -fsSL https://codework.sh/install | sh
+```
+
+```bash title="pnpm"
+pnpm add -g @codeworksh/cli
+```
+
+The curl script installs a standalone binary that needs no Node.js, on macOS (Apple silicon) and Linux (arm64, x64, glibc). The pnpm package needs Node.js 24 or later and works on other platforms too.
+
+Check that it's on your path:
+
+```bash
 codework --help
 ```
 

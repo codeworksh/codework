@@ -5,11 +5,17 @@ description: Install the CodeWork CLI, connect a model, and keep it up to date.
 
 ## Install
 
-```bash
+```bash title="curl"
 curl -fsSL https://codework.sh/install | sh
 ```
 
-This installs one `codework` binary to `~/.codework/bin` and adds that folder to your `PATH`. It needs no Node.js, and runs on macOS (Apple silicon) and Linux (arm64, x64, glibc).
+```bash title="pnpm"
+pnpm add -g @codeworksh/cli
+```
+
+The curl script installs a standalone binary that needs no Node.js, on macOS (Apple silicon) and Linux (arm64, x64, glibc). The pnpm package needs Node.js 24 or later and works on other platforms too.
+
+The curl script installs one `codework` binary to `~/.codework/bin` and adds that folder to your `PATH`.
 
 | Flag                  | Installs                            |
 | --------------------- | ----------------------------------- |
@@ -17,12 +23,6 @@ This installs one `codework` binary to `~/.codework/bin` and adds that folder to
 | `--version <version>` | A specific release, such as `0.3.0` |
 
 Pass flags after `sh -s --`, as in `curl -fsSL https://codework.sh/install | sh -s -- --dev`.
-
-On another platform, or to manage it with your Node.js tools, install from npm instead. It needs Node.js 24 or later:
-
-```bash
-pnpm add -g @codeworksh/cli
-```
 
 Check that it's on your path:
 
@@ -70,17 +70,19 @@ Use `--home` on any command to point CodeWork at a different home.
 
 ## Update
 
-Run the install script again, or for npm:
+```bash title="curl"
+curl -fsSL https://codework.sh/install | sh
+```
 
-```bash
+```bash title="pnpm"
 pnpm add -g @codeworksh/cli@latest
 ```
 
 ## Uninstall
 
-Delete `~/.codework/bin/codework` and the `PATH` line the script added to your shell's startup file, or for npm:
+For curl, delete `~/.codework/bin/codework` and the `PATH` line the script added to your shell's startup file.
 
-```bash
+```bash title="pnpm"
 pnpm remove -g @codeworksh/cli
 ```
 
