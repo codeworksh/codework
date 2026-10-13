@@ -13,22 +13,20 @@
 
 An open-source coding agent for your terminal: run sessions in your repo or an isolated sandbox, on any model, extended with plugins.
 
-> Under active development; APIs may change.
-
 ## Quick start
 
 ```bash
 pnpm add -g @codeworksh/cli
 ```
 
-With OpenAI:
+### OpenAI:
 
 ```bash
 export OPENAI_API_KEY=...
 codework run --provider openai --model gpt-6-luna "Inspect and fix the failing tests"
 ```
 
-With Anthropic:
+### Anthropic:
 
 ```bash
 export ANTHROPIC_API_KEY=...
@@ -46,7 +44,7 @@ List every provider and model with `codework models`.
 - **Server mode** — `codework serve` owns sessions and sandboxes; clients attach with `--server`.
 - **Plugins** — `codework plugin add <pkg>` adds tools, prompts, and sandbox drivers, per project or globally (`-g`).
 
-See the [CLI docs](./packages/codework/README.md) for every command and flag.
+See the [docs](https://codework.sh/docs/) for every command and flag.
 
 ## Packages
 
