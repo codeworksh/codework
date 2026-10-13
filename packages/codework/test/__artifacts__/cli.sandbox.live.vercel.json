@@ -1,0 +1,16 @@
+{
+	"status": 0,
+	"bash": [
+		"completed"
+	],
+	"sandboxes": [
+		{
+			"driver": "vercel",
+			"kind": "remote",
+			"ownership": "managed",
+			"status": "offline",
+			"provider_status": "stopped",
+			"last_error": null
+		}
+	]
+}
