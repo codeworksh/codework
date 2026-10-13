@@ -1,7 +1,7 @@
 {
 	"serviceJson": {
 		"pid": "<pid>",
-		"version": "0.1.0",
+		"version": "<version>",
 		"url": "ws://127.0.0.1:7601/rpc/v1",
 		"port": 7601
 	},

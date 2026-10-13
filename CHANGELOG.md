@@ -11,6 +11,10 @@ This file is the canonical source for unreleased changes and published release n
 
 ## [Unreleased]
 
+### Internal
+
+- The `codework tui` E2E artifact now records the CLI version as `<version>`, so it no longer goes stale on every version bump.
+
 ## [@codeworksh/cli@0.2.0] - 2026-10-12
 
 ### Added
