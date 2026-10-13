@@ -7,7 +7,7 @@ on:
    push:
       branches: [canary, dev]
       paths-ignore:
-         - sites/www/**
+         - sites/**
          - CHANGELOG.md
    workflow_dispatch:
 

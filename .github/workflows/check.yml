@@ -4,7 +4,7 @@ on:
    pull_request:
       branches: [main, dev, canary]
       paths-ignore:
-         - sites/www/**
+         - sites/**
 
 permissions:
    contents: read
