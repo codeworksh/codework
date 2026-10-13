@@ -62,7 +62,15 @@ const bundle = (entry, outDir, name, extra = {}) =>
 			outDir,
 			emptyOutDir: false,
 			minify: true,
-			rollupOptions: { output: { format: "esm", entryFileNames: name, codeSplitting: false } },
+			rollupOptions: {
+				output: {
+					format: "esm",
+					entryFileNames: name,
+					codeSplitting: false,
+					// Inlined CommonJS dependencies (npm's installer among them) read these module globals.
+					banner: "const __filename = import.meta.filename, __dirname = import.meta.dirname;",
+				},
+			},
 		},
 	});
 

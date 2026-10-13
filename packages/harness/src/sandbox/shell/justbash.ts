@@ -3,7 +3,7 @@ import { RealFSProvider, type VirtualFileSystem } from "@platformatic/vfs";
 import { Effect, Layer } from "effect";
 import type { Bash, IFileSystem } from "just-bash";
 import { Buffer } from "node:buffer";
-import { specifier } from "../../util/unpacked.ts";
+import { load } from "../../util/unpacked.ts";
 import { posix } from "../../util/posix.ts";
 import { Local } from "../fs/vfs.ts";
 import { SandboxIO } from "../io.ts";
@@ -275,8 +275,9 @@ const fromBash = (bash: Bash): ISandboxExe => {
 type JustBash = typeof import("just-bash");
 
 // Imported rather than bundled: its sqlite3 worker, WASM and compressors load from beside its modules.
-const JustBash = Effect.flatMap(specifier("just-bash"), (resolved) =>
-	Effect.promise(() => import(resolved) as Promise<JustBash>),
+const JustBash = load("just-bash").pipe(
+	Effect.map((module) => module as JustBash),
+	Effect.orDie,
 );
 
 const make = (module: JustBash, vfs: VirtualFileSystem, cwd: string): ISandboxExe =>

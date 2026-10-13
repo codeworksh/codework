@@ -63,4 +63,5 @@ const [{ Plugin }, { default: shared }] = await Promise.all([
 	import("virtual:codework-shared"),
 ]);
 Plugin.share(shared);
+await Plugin.lendResolve();
 await import("./index.ts");

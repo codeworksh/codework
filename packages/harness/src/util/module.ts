@@ -151,6 +151,26 @@ export async function importModule(specifier: string): Promise<unknown> {
 	return Object.assign({}, module, exports);
 }
 
+/**
+ * `import.meta.resolve`. The main module of a single executable application, the standalone
+ * binary, has none, and its own `import()` reaches only built-ins: there the host calls
+ * {@link lendResolve} before anything resolves.
+ */
+let metaResolve = (specifier: string): string => import.meta.resolve(specifier);
+
+/**
+ * Borrow `import.meta.resolve` from a `data:` module loaded through the main loader, when this
+ * module has none. Not done at the top level: the binary bundles this module into an import cycle,
+ * where a top-level `await` never settles.
+ */
+export async function lendResolve(): Promise<void> {
+	if (typeof import.meta.resolve === "function") return;
+	const lender = (await importModule("data:text/javascript,export default (s) => import.meta.resolve(s)")) as {
+		readonly default: (specifier: string) => string;
+	};
+	metaResolve = lender.default;
+}
+
 /** Node resolution scoped synchronously to the caller. */
 export function resolveModule(specifier: string, directory: string, conditions?: ReadonlyArray<string>): string {
 	const hook = registerHooks({
@@ -164,7 +184,7 @@ export function resolveModule(specifier: string, directory: string, conditions?:
 	});
 	try {
 		const resolve = (target: string) => {
-			const resolved = import.meta.resolve(path.isAbsolute(target) ? pathToFileURL(target).href : target);
+			const resolved = metaResolve(path.isAbsolute(target) ? pathToFileURL(target).href : target);
 			if (resolved.startsWith("file:")) statSync(new URL(resolved));
 			return resolved;
 		};
