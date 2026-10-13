@@ -95,7 +95,8 @@ describe.skipIf(!existsSync(binary))("the standalone binary", () => {
 
 		const version = spawn(binary, ["--version"]);
 		expect(version.status, version.stderr).toBe(0);
-		expect(version.stdout.trim()).toBe(`codework v${pkg.version}`);
+		// A canary or dev release builds in the version it publishes under (scripts/version.mjs).
+		expect(version.stdout.trim()).toBe(`codework v${process.env["CODEWORK_VERSION"] ?? pkg.version}`);
 
 		expect(added.status, added.stderr).toBe(0);
 		const listed = spawn(binary, ["plugin", "list"]);
@@ -109,18 +110,16 @@ describe.skipIf(!existsSync(binary))("the standalone binary", () => {
 		const assets = join(cache, unpacked!);
 		expect(statSync(join(assets, "codework-tui")).mode & 0o111).not.toBe(0);
 
+		expect(unpacked).toMatch(new RegExp(`^[0-9a-f]{16}-${process.platform}-${process.arch}$`));
+
+		// One artifact for every platform: what is unpacked does not depend on it.
 		await expect(
 			`${JSON.stringify(
-				{
-					version: version.stdout.trim(),
-					cache: unpacked!.replace(/^[0-9a-f]{16}-/, "<hash>-"),
-					assets: readdirSync(assets).sort(),
-					packages: readdirSync(join(assets, "node_modules")).sort(),
-				},
+				{ assets: readdirSync(assets).sort(), packages: readdirSync(join(assets, "node_modules")).sort() },
 				null,
 				"\t",
 			)}\n`,
-		).toMatchFileSnapshot(`./__artifacts__/sea.${process.platform}-${process.arch}.json`);
+		).toMatchFileSnapshot("./__artifacts__/sea.json");
 	});
 
 	describe.each(LIVE)("against live $name", (live) => {

@@ -1,6 +1,4 @@
 {
-	"version": "codework v0.2.0",
-	"cache": "<hash>-darwin-arm64",
 	"assets": [
 		"codework-tui",
 		"node_modules",

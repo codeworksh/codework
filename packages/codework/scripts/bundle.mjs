@@ -6,7 +6,9 @@
 //                    files from beside their own modules (WASM, workers, native addons)
 //
 // Run under `--conditions=development` (see `scripts/shared.mjs`). The TUI comes from
-// `CODEWORK_TUI_BIN`, else the local release build. Rebuilding xz statically needs cmake.
+// `CODEWORK_TUI_BIN`, else the local release build. `CODEWORK_VERSION` replaces the version the CLI
+// reports, which a canary or dev release computes (scripts/version.mjs). Rebuilding xz statically
+// needs cmake.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -155,6 +157,14 @@ for (const file of files.map((entry) => join(entry.parentPath, entry.name)).sort
 await bundle(join(root, "src/sea.ts"), out, "codework.mjs", {
 	define: { CODEWORK_ASSETS: JSON.stringify(hash.digest("hex").slice(0, 16)) },
 	plugins: [
+		{
+			name: "codework:version",
+			enforce: "pre",
+			load: (id) =>
+				id === join(root, "package.json") && process.env["CODEWORK_VERSION"] !== undefined
+					? JSON.stringify({ ...JSON.parse(readFileSync(id, "utf8")), version: process.env["CODEWORK_VERSION"] })
+					: undefined,
+		},
 		{
 			name: "codework:shared",
 			resolveId: (id) => (id === "virtual:codework-shared" ? "\0virtual:codework-shared" : undefined),
