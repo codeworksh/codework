@@ -6,7 +6,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::action::{Action, Keymap};
+use crate::action::{Action, Keymap, Resolution};
 use crate::event::AppEvent;
 use crate::menu::{Entry, Menu, Preview};
 use crate::prompt::Prompt;
@@ -154,10 +154,14 @@ impl App {
     fn handle_key(&mut self, key: KeyEvent) -> bool {
         // Named actions first, so a key bound to the app is never typed into the prompt. The exits
         // are the terminal's whether or not a menu is up.
-        if let Some(Action::Exit) = self.keymap.resolve(key) {
-            self.should_quit = true;
-            // Nothing to redraw: the loop is about to end.
-            return false;
+        match self.keymap.resolve(key) {
+            Resolution::Action(Action::Exit) => {
+                self.should_quit = true;
+                // Nothing to redraw: the loop is about to end.
+                return false;
+            }
+            Resolution::Consumed => return false,
+            Resolution::Unbound => {}
         }
         // Escape closes what is open and, with nothing open, leaves. It is not in the keymap
         // because a keymap holds one answer per key and this one has two.

@@ -12,7 +12,7 @@
 
 use std::time::{Duration, Instant};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 /// How long the leader stays armed while waiting for the key after it.
 const LEADER_TIMEOUT: Duration = Duration::from_secs(2);
@@ -28,6 +28,17 @@ pub enum Action {
     Exit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resolution {
+    /// The key triggered a named action.
+    Action(Action),
+    /// The key armed or spent the `<leader>` prefix without triggering an action, so it must
+    /// not fall through to the prompt.
+    Consumed,
+    /// The key is not bound here.
+    Unbound,
+}
+
 /// Resolves key presses to actions, including the `<leader>` prefix.
 #[derive(Debug, Default)]
 pub struct Keymap {
@@ -39,33 +50,31 @@ impl Keymap {
         Self::default()
     }
 
-    /// The action this key triggers.
+    /// What this key press means to the keymap.
     ///
     /// Takes `&mut self` because a key can be consumed without triggering
-    /// anything: the leader key arms, and any other key clears the arming.
-    pub fn resolve(&mut self, key: KeyEvent) -> Option<Action> {
-        let leader = self.take_leader(key);
-        match (key.code, key.modifiers) {
-            // OpenCode's defaults for `app.exit`: ctrl+c, ctrl+d, <leader>q.
-            (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(Action::Exit),
-            (KeyCode::Char('d'), KeyModifiers::CONTROL) => Some(Action::Exit),
-            (KeyCode::Char('q'), _) if leader => Some(Action::Exit),
-            // Escape is deliberately not bound here, though it is what leaves the app: a menu
-            // claims it first now, so what it means depends on the screen and `App` decides.
-            _ => None,
+    /// anything: the leader key arms, and any key pressed while it is armed
+    /// spends the prefix rather than typing into the prompt.
+    pub fn resolve(&mut self, key: KeyEvent) -> Resolution {
+        if (key.code, key.modifiers) == LEADER {
+            if key.kind != KeyEventKind::Repeat {
+                self.leader_armed = Some(Instant::now());
+            }
+            return Resolution::Consumed;
         }
-    }
-
-    /// Whether this key press completes a `<leader>` sequence, arming the leader
-    /// if the key is the leader itself.
-    fn take_leader(&mut self, key: KeyEvent) -> bool {
-        let armed = self
+        let leader = self
             .leader_armed
             .take()
             .is_some_and(|at| at.elapsed() < LEADER_TIMEOUT);
-        if (key.code, key.modifiers) == LEADER {
-            self.leader_armed = Some(Instant::now());
+        match (key.code, key.modifiers) {
+            // OpenCode's defaults for `app.exit`: ctrl+c, ctrl+d, <leader>q.
+            (KeyCode::Char('c'), KeyModifiers::CONTROL) => Resolution::Action(Action::Exit),
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) => Resolution::Action(Action::Exit),
+            (KeyCode::Char('q'), KeyModifiers::NONE) if leader => Resolution::Action(Action::Exit),
+            _ if leader => Resolution::Consumed,
+            // Escape is deliberately not bound here, though it is what leaves the app: a menu
+            // claims it first now, so what it means depends on the screen and `App` decides.
+            _ => Resolution::Unbound,
         }
-        armed
     }
 }
