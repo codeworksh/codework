@@ -349,8 +349,10 @@ for (const name of workspaceDependencies(manifest)) {
 	console.error(`  ${name}: ${version}`);
 }
 
-console.error(`Building ${manifest.name}@${manifest.version} in ${packageDir}`);
+console.error(`Building ${manifest.name}@${publishVersion} in ${packageDir}`);
 
+// A bundle that imports its package.json inlines the version, so build with the one being published.
+await writeFile(manifestPath, originalManifestText.replace(/"version": "[^"]*"/, `"version": "${publishVersion}"`));
 const buildExitCode = await run("pnpm", ["run", "build"], packageDir);
 await restoreFile(manifestPath, originalManifestText);
 

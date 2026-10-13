@@ -8,6 +8,7 @@ on:
       branches: [canary, dev]
       paths-ignore:
          - sites/www/**
+         - CHANGELOG.md
    workflow_dispatch:
 
 permissions:
