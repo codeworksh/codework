@@ -30,14 +30,6 @@ export ANTHROPIC_API_KEY=...
 codework run --provider anthropic --model claude-sonnet-5-5 "Inspect and fix the failing tests"
 ```
 
-Continue a session, pick a model, or move into a sandbox:
-
-```bash
-codework run --session <id> "Now add a regression test"
-codework run --provider openai --model gpt-5.5 --thinking high "Plan the migration"
-codework run --sandbox-driver daytona "Inspect repository"
-```
-
 ## Features
 
 - **Any model** — OpenAI, Anthropic, Google, xAI, OpenRouter, and more via one catalog (`codework models`).
