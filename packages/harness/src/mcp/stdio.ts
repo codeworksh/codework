@@ -53,7 +53,7 @@ export interface Options {
  * The process is acquired in the calling scope: closing the scope kills it and its process group,
  * whether or not the transport was closed.
  */
-export const make = Effect.fnUntraced(function* (options: Options) {
+export const make = Effect.fn("McpStdio.make")(function* (options: Options) {
 	const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 	const scope = yield* Effect.scope;
 	const runPromise = Effect.runPromiseWith(yield* Effect.context<never>());

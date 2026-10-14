@@ -148,7 +148,7 @@ const isTransient = (error: unknown) =>
 		: error instanceof TypeError;
 
 /** Connects one MCP server; closing the calling scope tears down the transport and any spawned process. */
-export const connect = Effect.fnUntraced(function* (input: ConnectInput) {
+export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectInput) {
 	const { server, endpoint } = input;
 	const startupTimeout = Duration.toMillis(input.timeout?.startup ?? DEFAULT_STARTUP_TIMEOUT);
 	const requestTimeout = Duration.toMillis(input.timeout?.request ?? DEFAULT_REQUEST_TIMEOUT);
@@ -344,21 +344,21 @@ export const connect = Effect.fnUntraced(function* (input: ConnectInput) {
 		Effect.sync(() => {
 			if (lastError === before) lastError = undefined;
 		});
-	const request = <A>(method: string, run: (signal: AbortSignal) => Promise<A>) =>
+	const attempt = <A>(run: (signal: AbortSignal) => Promise<A>) => Effect.tryPromise({ try: run, catch: fail });
+	// Maps the raw failure to a public error, traced as one span per request.
+	const settle = <A>(method: string, effect: Effect.Effect<A, Failure>) =>
 		Effect.suspend(() => {
 			const before = lastError;
-			return Effect.tryPromise({ try: run, catch: failure(method) }).pipe(Effect.tap(succeeded(before)));
-		});
-	// Listing and reading are read-only, so a transient failure is safe to retry. Tool calls are never
-	// retried: the server may already have run them.
-	const read = <A>(method: string, run: (signal: AbortSignal) => Promise<A>) =>
-		Effect.suspend(() => {
-			const before = lastError;
-			return retrying(method, Effect.tryPromise({ try: run, catch: fail })).pipe(
+			return effect.pipe(
 				Effect.mapError((error) => failure(method)(error.error)),
 				Effect.tap(succeeded(before)),
 			);
-		});
+		}).pipe(Effect.withSpan(`McpClient.${method}`, { attributes: { "mcp.server": server } }));
+	const request = <A>(method: string, run: (signal: AbortSignal) => Promise<A>) => settle(method, attempt(run));
+	// Listing and reading are read-only, so a transient failure is safe to retry. Tool calls are never
+	// retried: the server may already have run them.
+	const read = <A>(method: string, run: (signal: AbortSignal) => Promise<A>) =>
+		settle(method, retrying(method, attempt(run)));
 	// Every progress notification restarts the timeout, so long calls that report progress keep running.
 	const options = (signal: AbortSignal, onProgress?: (progress: Progress) => void) => ({
 		signal,
@@ -391,18 +391,25 @@ export const connect = Effect.fnUntraced(function* (input: ConnectInput) {
 		resourceTemplates: (cursor) =>
 			capabilities?.resources === undefined
 				? Effect.succeed({ resourceTemplates: [] })
-				: read("resources/templates/list", (signal) =>
-						client
-							.request(
-								{ method: "resources/templates/list", params: cursor === undefined ? {} : { cursor } },
-								options(signal),
-							)
-							.catch((error: unknown) => {
-								// Servers that do not implement templates have none.
-								if (error instanceof ProtocolError && error.code === ProtocolErrorCode.MethodNotFound)
-									return { resourceTemplates: [] };
-								throw error;
-							}),
+				: settle(
+						"resources/templates/list",
+						retrying(
+							"resources/templates/list",
+							attempt((signal) =>
+								client.request(
+									{ method: "resources/templates/list", params: cursor === undefined ? {} : { cursor } },
+									options(signal),
+								),
+							),
+						).pipe(
+							// Servers that do not implement templates have none.
+							Effect.catchIf(
+								(failure) =>
+									failure.error instanceof ProtocolError &&
+									failure.error.code === ProtocolErrorCode.MethodNotFound,
+								() => Effect.succeed({ resourceTemplates: [] }),
+							),
+						),
 					),
 		readResource: (uri) => read("resources/read", (signal) => client.readResource({ uri }, options(signal))),
 		callTool: (call) =>
