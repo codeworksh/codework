@@ -5,18 +5,54 @@
 //! command menu and the theme picker are both one of these, and so are the model and session
 //! pickers that come next — the only difference between them is the entries they are given.
 
+use std::borrow::Cow;
+
 use ratatui::style::Color;
 
 /// One choice in a menu.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Entry {
-    /// What the entry is called, and the first thing its row shows. It is also its identity: the
-    /// app matches on it, and [`Menu::at`] finds it.
-    pub name: &'static str,
+    /// What choosing this entry identifies (for a session, its id; otherwise its name).
+    pub id: Cow<'static, str>,
+    /// What the entry is called, and the first thing its row shows.
+    pub name: Cow<'static, str>,
     /// A short note beside the name: what choosing it does, or what it is.
-    pub detail: &'static str,
+    pub detail: Cow<'static, str>,
     /// The colours the entry is about, when it is about colour.
     pub preview: Option<Preview>,
+}
+
+impl Entry {
+    pub const fn item(name: &'static str, detail: &'static str) -> Self {
+        Self {
+            id: Cow::Borrowed(name),
+            name: Cow::Borrowed(name),
+            detail: Cow::Borrowed(detail),
+            preview: None,
+        }
+    }
+
+    pub const fn with_preview(name: &'static str, detail: &'static str, preview: Preview) -> Self {
+        Self {
+            id: Cow::Borrowed(name),
+            name: Cow::Borrowed(name),
+            detail: Cow::Borrowed(detail),
+            preview: Some(preview),
+        }
+    }
+
+    pub fn owned(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: Cow::Owned(id.into()),
+            name: Cow::Owned(name.into()),
+            detail: Cow::Owned(detail.into()),
+            preview: None,
+        }
+    }
 }
 
 /// A ground and an ink an entry wears on its own name.
@@ -48,14 +84,14 @@ impl Menu {
         }
     }
 
-    /// A menu over `entries`, its cursor on the entry named `name`.
+    /// A menu over `entries`, its cursor on the entry named `name` (or matching `id`).
     ///
     /// That is how a picker opens on what is already in use, as the site's does. When the name is
     /// not there the cursor starts at the top rather than nowhere.
     pub fn at(entries: Vec<Entry>, name: &str) -> Self {
         let cursor = entries
             .iter()
-            .position(|entry| entry.name == name)
+            .position(|entry| entry.name == name || entry.id == name)
             .unwrap_or(0);
         Self {
             all: entries.clone(),
@@ -86,15 +122,15 @@ impl Menu {
     /// Keep only the entries from [`Self::all`] that match `keep`, preserving the selected entry
     /// when it still matches and otherwise starting at the top.
     pub fn filter(&mut self, mut keep: impl FnMut(&Entry) -> bool) {
-        let active = self.selected().map(|entry| entry.name);
+        let active = self.selected().map(|entry| entry.id.clone());
         self.entries = self
             .all
             .iter()
-            .copied()
             .filter(|entry| keep(entry))
+            .cloned()
             .collect();
         self.cursor = active
-            .and_then(|name| self.entries.iter().position(|entry| entry.name == name))
+            .and_then(|id| self.entries.iter().position(|entry| entry.id == id))
             .unwrap_or(0);
     }
 

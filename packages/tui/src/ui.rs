@@ -8,6 +8,7 @@ mod field;
 mod glyphs;
 mod input;
 mod menu;
+mod session;
 mod text;
 mod wordmark;
 
@@ -32,6 +33,7 @@ const THEME_HINTS: &str = "↑↓ move · type to search · enter choose · esc 
 pub fn view(app: &App, frame: &mut Frame) {
     match app.screen {
         Screen::Welcome => view_welcome(app, frame),
+        Screen::Session => session::draw(app, frame),
     }
 }
 
@@ -128,10 +130,12 @@ fn view_welcome(app: &App, frame: &mut Frame) {
     // A key the prompt cannot honour is answered here rather than dropped. The ink is on the span
     // rather than the paragraph: a paragraph style would be patched onto every cell of the row,
     // repainting the lattice behind the line in the hint's colour instead of the grid's.
-    let hints = match (app.notice, &app.popup) {
-        (Some(notice), _) => notice,
-        (None, Some(Popup::Commands(_))) => COMMAND_HINTS,
-        (None, Some(Popup::Themes { .. })) => THEME_HINTS,
+    let hints = match (&app.notice, &app.popup) {
+        (Some(notice), _) => notice.as_str(),
+        (None, Some(Popup::Commands(_) | Popup::Thinking(_))) => COMMAND_HINTS,
+        (None, Some(Popup::Themes { .. } | Popup::Models { .. } | Popup::Sessions { .. })) => {
+            THEME_HINTS
+        }
         (None, None) => HINTS,
     };
     if hint.y < area.bottom() {

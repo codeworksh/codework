@@ -27,9 +27,9 @@ const MAX_ROWS: u16 = 8;
 /// names line up.
 const MARKER: &str = "❯ ";
 /// What a menu's search line shows before anything is typed into it.
-const SEARCH_PLACEHOLDER: &str = "search themes...";
+const SEARCH_PLACEHOLDER: &str = "search...";
 /// What a filtered menu shows when no entry matches the search query.
-const EMPTY: &str = "no matching themes";
+const EMPTY: &str = "no matches";
 /// The tag on the top-right border showing how to close the menu.
 const ESC: &str = "esc";
 /// The air between a name and its note.
@@ -52,17 +52,17 @@ pub fn width(menu: &Menu, searchable: bool) -> u16 {
     let entries = menu.all();
     let names = entries
         .iter()
-        .map(|entry| text::width(entry.name))
+        .map(|entry| text::width(&entry.name))
         .max()
         .unwrap_or(0) as u16;
     let notes = entries
         .iter()
-        .map(|entry| text::width(entry.detail))
+        .map(|entry| text::width(&entry.detail))
         .max()
         .unwrap_or(0) as u16;
     let rows_width = marker + names + GAP + notes + PAD + 2;
     if searchable {
-        let search_width = marker + text::width(SEARCH_PLACEHOLDER) as u16 + PAD + 2;
+        let search_width = marker + text::width(SEARCH_PLACEHOLDER) as u16 + PAD + 14;
         rows_width.max(search_width)
     } else {
         rows_width
@@ -165,7 +165,7 @@ pub fn draw(
     let names = menu
         .all()
         .iter()
-        .map(|entry| text::width(entry.name))
+        .map(|entry| text::width(&entry.name))
         .max()
         .unwrap_or(0) as u16;
     let named = names.min(inner.width.saturating_sub(marker + GAP + PAD));
@@ -202,7 +202,7 @@ pub fn draw(
 
         // The name, in its own colours when the entry has some: a theme's row wears that theme's
         // ground and ink, so a list of themes previews itself.
-        let name = fitted(entry.name, named as usize);
+        let name = fitted(&entry.name, named as usize);
         let ink = match entry.preview {
             Some(preview) => Style::default().fg(preview.fg).bg(preview.bg),
             None if selected => Style::default().fg(palette.text),
@@ -213,7 +213,7 @@ pub fn draw(
         buffer.set_string(
             inner.x + marker + named + GAP,
             y,
-            fitted(entry.detail, notes as usize),
+            fitted(&entry.detail, notes as usize),
             Style::default().fg(if selected {
                 palette.text
             } else {
