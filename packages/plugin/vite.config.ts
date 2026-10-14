@@ -28,6 +28,7 @@ export default defineConfig({
 			"src/index.ts",
 			"src/location.ts",
 			"src/plugin.ts",
+			"src/plugin/mcp.ts",
 			"src/plugin/prompt.ts",
 			"src/plugin/section.ts",
 			"src/plugin/tool.ts",

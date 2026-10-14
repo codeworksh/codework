@@ -13,6 +13,7 @@ import { anchor } from "../plugin/loader.ts";
 import { PluginSource } from "../plugin/source.ts";
 import { PluginStore } from "../plugin/store.ts";
 import { RunnerExecute } from "../runner/execute.ts";
+import { Mcp } from "../mcp/mcp.ts";
 import { LLM } from "../runner/llm.ts";
 import { Loop } from "../runner/loop.ts";
 import { SandboxController } from "../sandbox/control.ts";
@@ -21,6 +22,7 @@ import { MemorySandboxDriver } from "../sandbox/drivers/memory.ts";
 import { SqldbSandboxDriver } from "../sandbox/drivers/sqldb.ts";
 import { SandboxDriverLoader } from "../sandbox/loader.ts";
 import { SandboxDriverRegistry } from "../sandbox/registry.ts";
+import { Process } from "../sandbox/utils/process.ts";
 import { SessionLive } from "../session/live.ts";
 import { SessionRuntime } from "../session/runtime.ts";
 import type { Info as SettingsInfo } from "../settings/schema.ts";
@@ -253,6 +255,7 @@ export const layer = (options: Options = {}) =>
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
 				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild, viewOf)),
+				Layer.provideMerge(Mcp.layer({ hostCwd }).pipe(Layer.provide(Process.host))),
 				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),

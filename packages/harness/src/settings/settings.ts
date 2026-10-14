@@ -38,10 +38,11 @@
  */
 
 import { Context, Effect, Layer, Predicate, Result, Schema, SchemaIssue } from "effect";
-import { type ParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 import { Global } from "../global.ts";
+import { McpConfig } from "../mcp/config.ts";
 import { fileSystem, hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
+import * as Jsonc from "../util/jsonc.ts";
 import { merge, normalize } from "./merge.ts";
 import { defaults, Patch, type Declared, type DeclaredModel, type Info, type PluginEntry } from "./schema.ts";
 
@@ -159,12 +160,6 @@ export class SettingsError extends Schema.TaggedError<SettingsError>()("Settings
 	}
 }
 
-/** `line:column`, 1-based, for a parser offset into the source. */
-const at = (source: string, offset: number): string => {
-	const before = source.slice(0, offset).split("\n");
-	return `${before.length}:${(before.at(-1)?.length ?? 0) + 1}`;
-};
-
 /**
  * Decode failures name the field, and explain it only with a message a schema check wrote. Effect's
  * defaults quote the rejected value, and in a settings file that value can be a secret, so any
@@ -178,19 +173,10 @@ const decodeFormatter = SchemaIssue.makeFormatterStandardSchemaV1({
 });
 
 export const parse = Effect.fn("Settings.parse")(function* (path: string, source: string) {
-	// JSONC: a settings file is written by hand, so comments and a trailing comma are part of
-	// the format rather than mistakes. The parser reports offsets, which become `line:column`
-	// below; Schema validates the normalized value after that.
-	const errors: ParseError[] = [];
-	const json: unknown = parseJsonc(source, errors, { allowTrailingComma: true, disallowComments: false });
-	const first = errors[0];
-	if (first !== undefined) {
-		return yield* new SettingsError({
-			path,
-			reason: "parse",
-			detail: `${printParseErrorCode(first.error)} at ${at(source, first.offset)}`,
-		});
-	}
+	// Syntax first; Schema validates the normalized value after that.
+	const parsed = Jsonc.parse(source);
+	if ("error" in parsed) return yield* new SettingsError({ path, reason: "parse", detail: parsed.error });
+	const json = parsed.value;
 	// Normalization reads a `null` as "absent", which is right for a settings patch and wrong
 	// inside a plugin's `options`: that block is opaque, and `{ "endpoint": null }` is a value
 	// its plugin may need. The `plugins` array is therefore decoded exactly as written.
@@ -310,7 +296,10 @@ export const load = Effect.fn("Settings.load")(function* (options: Options & { r
 			return yield* error;
 		}
 	}
-	return { ...settings, plugins: declared.map((one) => one.entry), declared, models };
+	// `mcp.json` sits next to each settings file, but a broken one is reported rather than failing
+	// the read: one bad server must not keep a session from running.
+	const mcp = yield* McpConfig.load({ userDir: options.userConfigDir ?? options.home, root });
+	return { ...settings, plugins: declared.map((one) => one.entry), declared, models, mcp };
 });
 
 /**
