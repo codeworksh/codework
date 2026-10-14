@@ -8,6 +8,7 @@ import {
 	ProtocolErrorCode,
 	type ListResourcesResult,
 	type ListResourceTemplatesResult,
+	type LoggingMessageNotificationParams,
 	type ReadResourceResult,
 	SdkError,
 	SdkErrorCode,
@@ -72,6 +73,8 @@ export interface Connection {
 	readonly onToolsChanged: (handler: Effect.Effect<void>) => void;
 	readonly onResourcesChanged: (handler: Effect.Effect<void>) => void;
 	readonly onSessionExpired: (handler: Effect.Effect<void>) => void;
+	/** The server's `notifications/message` log entries. */
+	readonly onLog: (handler: (entry: LoggingMessageNotificationParams) => Effect.Effect<void>) => void;
 	/**
 	 * The connection dropped (for example the server process exited). Runs right away when it already
 	 * dropped before the handler was set. Never runs for a close caused by closing the owning scope.
@@ -101,9 +104,33 @@ const systemCode = (error: Error): string | undefined => {
 	return typeof code === "string" ? code : undefined;
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
+// The SDK reports a result that fails its schema as `Invalid result for <method>: <issues>`, the issues
+// being the validator's multi-line JSON list. One `path: message` per issue reads better.
+const condense = (message: string) => {
+	const match = /^(Invalid result for [^:]+): (\[[\s\S]*\])$/.exec(message);
+	if (!match) return message;
+	try {
+		const issues: unknown = JSON.parse(match[2]!);
+		if (!Array.isArray(issues) || issues.length === 0) return message;
+		const parts = issues.map((issue) => {
+			if (!isRecord(issue)) return String(issue);
+			const path = Array.isArray(issue.path) && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+			return `${path}${typeof issue.message === "string" ? issue.message : "invalid"}`;
+		});
+		return `${match[1]}: ${parts.join("; ")}`;
+	} catch {
+		return message;
+	}
+};
+const isInvalidResult = (error: unknown) => error instanceof SdkError && error.code === SdkErrorCode.InvalidResult;
+
 // HTTP statuses and network error codes live on error properties and are lost once flattened to a message.
 const describe = (error: unknown) => {
 	if (!(error instanceof Error)) return String(error);
+	if (isInvalidResult(error)) return condense(error.message);
 	const detail =
 		error instanceof SdkHttpError
 			? `HTTP ${error.status}`
@@ -132,6 +159,7 @@ export const connect = Effect.fnUntraced(function* (input: ConnectInput) {
 		tools: Effect.void as Effect.Effect<void>,
 		resources: Effect.void as Effect.Effect<void>,
 		expired: Effect.void as Effect.Effect<void>,
+		log: (_entry: LoggingMessageNotificationParams): Effect.Effect<void> => Effect.void,
 	};
 	// Every connect attempt builds its own client; only the one that connected reports a close.
 	const closed: {
@@ -198,6 +226,9 @@ export const connect = Effect.fnUntraced(function* (input: ConnectInput) {
 		client.setNotificationHandler("notifications/resources/list_changed", () => {
 			runFork(handlers.resources);
 		});
+		client.setNotificationHandler("notifications/message", (notification) => {
+			runFork(handlers.log(notification.params));
+		});
 		const roots = input.roots;
 		if (roots) {
 			client.setRequestHandler("roots/list", () => ({
@@ -222,6 +253,9 @@ export const connect = Effect.fnUntraced(function* (input: ConnectInput) {
 		(method: string) =>
 		(error: unknown): Failed => {
 			if (needsAuth(error)) return new NeedsAuthError({ server, message: describe(error) });
+			// The condensed message drops the validator's raw issue list; keep it for debugging.
+			if (isInvalidResult(error))
+				runFork(Effect.logDebug("mcp invalid result", { server, method, error: (error as Error).message }));
 			const request = () => new RequestError({ server, method, message: explain(error) });
 			if (!(error instanceof SdkHttpError) || session.transport?.sessionId === undefined) return request();
 			const text = (error.data as { readonly text?: unknown }).text;
@@ -383,6 +417,9 @@ export const connect = Effect.fnUntraced(function* (input: ConnectInput) {
 		},
 		onSessionExpired: (handler) => {
 			handlers.expired = handler;
+		},
+		onLog: (handler) => {
+			handlers.log = handler;
 		},
 		onClose: (handler) => {
 			closed.handler = handler;

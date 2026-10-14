@@ -11,7 +11,7 @@ const capabilities =
 		? { resources: { listChanged: true } }
 		: variant === "plain"
 			? { tools: {} }
-			: { tools: { listChanged: true } };
+			: { tools: { listChanged: true }, logging: {} };
 const server = new Server(
 	{ name: "stdio-fixture", version: "1.0.0" },
 	{ capabilities, instructions: "  Use the echo tool.  \n" },
