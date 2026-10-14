@@ -50,12 +50,13 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 	const home = join(dir.path, "home");
 	const project = join(dir.path, "project");
 	const work = join(dir.path, "work");
-	await fs.mkdir(work, { recursive: true });
+	// A server's own relative `cwd` resolves against the session's directory on a host sandbox.
+	await fs.mkdir(join(work, "srv"), { recursive: true });
 	process.env.MCP_E2E_GREETING = "hello";
 
 	await write(join(home, "mcp.json"), {
 		mcpServers: {
-			e2e: stdio({ toolExposure: { secret: "hidden" } }),
+			e2e: stdio({ cwd: "srv", toolExposure: { secret: "hidden" } }),
 			off: stdio(),
 			"my-srv": stdio({ enabled: false }),
 			my_srv: stdio(),
@@ -103,6 +104,20 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 			// Next exchange: arguments the server's schema rejects never reach it.
 			[pendingCall("mcp__e2e__echo", {}, "invalid")],
 			[],
+			// Third exchange: where the server runs, what the model is not shown in full, and resources.
+			[
+				pendingCall("mcp__e2e__cwd", {}, "cwd"),
+				pendingCall("mcp__e2e__link", {}, "link"),
+				pendingCall("mcp__e2e__big", {}, "big"),
+				pendingCall("list_mcp_resources", {}, "resources-all"),
+				pendingCall("list_mcp_resources", { server: "e2e" }, "resources-page"),
+				pendingCall("list_mcp_resources", { server: "e2e", cursor: "page-2" }, "resources-next"),
+				pendingCall("list_mcp_resource_templates", {}, "templates"),
+				pendingCall("read_mcp_resource", { server: "e2e", uri: "fixture://notes.txt" }, "read-text"),
+				pendingCall("read_mcp_resource", { server: "e2e", uri: "fixture://data.bin" }, "read-binary"),
+				pendingCall("read_mcp_resource", { server: "nope", uri: "fixture://x" }, "read-unknown"),
+			],
+			[],
 		],
 		requests,
 	);
@@ -115,6 +130,7 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 		});
 		yield* session.run("Use the fixture.");
 		yield* session.run("Once more.");
+		yield* session.run("Resources.");
 		const path = yield* session.path();
 		const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
 		const status = yield* Mcp.Service.use((mcp) => mcp.status(session.id));
@@ -166,9 +182,27 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 		required: ["text"],
 	});
 
+	// The server reports its directory as the OS resolves it, through any symlink in the temp path.
+	expect(outcome("cwd")?.content).toEqual([await fs.realpath(join(work, "srv"))]);
+
+	// What the model is not shown in full is kept on the host, in files only the user can read.
+	const savedPath = (id: string) =>
+		/(\/\S+codework-mcp-[0-9a-f]+\.\w+)/.exec(outcome(id)?.content.join("\n") ?? "")?.[1];
+	const bigFile = savedPath("big");
+	const binaryFile = savedPath("read-binary");
+	expect(await fs.readFile(bigFile!, "utf8")).toBe(`start ${"x".repeat(30 * 1024)} end`);
+	expect([...(await fs.readFile(binaryFile!))]).toEqual([0, 1, 2, 3]);
+	expect((await fs.stat(binaryFile!)).mode & 0o777).toBe(0o600);
+	const big = outcome("big")!.content[0]!;
+	expect(Buffer.byteLength(big)).toBeLessThan(21 * 1024);
+	expect(big).toMatch(/^start x+…\d+ chars truncated…x+ end$/m);
+
+	const real = await fs.realpath(dir.path);
 	const normalise = (value: unknown) =>
 		JSON.parse(
 			JSON.stringify(value)
+				.replace(/\/\S+?codework-mcp-[0-9a-f]+(\.\w+)/g, "<output>$1")
+				.replaceAll(real, "<tmp>")
 				.replaceAll(dir.path, "<tmp>")
 				.replaceAll(process.execPath, "<node>")
 				.replaceAll(`"${pidBefore}"`, '"<pid-before>"')
@@ -180,8 +214,29 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 		echoTool: firstTools.find((tool) => tool.name === "mcp__e2e__echo"),
 		plugins: observed,
 		calls: Object.fromEntries(
-			["echo", "fail", "structured", "pid-before", "crash", "pid-after", "invalid"].map((id) => [id, outcome(id)]),
+			[
+				"echo",
+				"fail",
+				"structured",
+				"pid-before",
+				"crash",
+				"pid-after",
+				"invalid",
+				"cwd",
+				"link",
+				"resources-all",
+				"resources-page",
+				"resources-next",
+				"templates",
+				"read-text",
+				"read-binary",
+				"read-unknown",
+			].map((id) => [id, outcome(id)]),
 		),
+		// The cut text itself is checked above; its frame is what the model reads around it.
+		big: outcome("big")
+			?.content[0]?.split("\n")
+			.filter((line) => !line.startsWith("start ")),
 		status: result.status,
 		configErrors: result.errors,
 	});

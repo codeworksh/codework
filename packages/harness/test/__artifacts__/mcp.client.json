@@ -306,7 +306,7 @@ second line",
         "type": "image",
       },
       {
-        "text": "[binary resource file:///data.bin (unknown type) omitted]",
+        "text": "[Binary resource file:///data.bin (unknown type, 3B) saved to <output>.bin]",
         "type": "text",
       },
       {
@@ -314,7 +314,7 @@ second line",
         "type": "text",
       },
       {
-        "text": "readme: file:///README.md",
+        "text": "[Resource file:///README.md "readme"]",
         "type": "text",
       },
     ],

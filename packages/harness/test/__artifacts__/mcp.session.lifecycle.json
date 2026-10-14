@@ -64,7 +64,13 @@
 			"mcp__e2e__my_tool_v2",
 			"mcp__e2e__secret",
 			"mcp__e2e__bye",
-			"mcp__remote__echo"
+			"mcp__e2e__cwd",
+			"mcp__e2e__link",
+			"mcp__e2e__big",
+			"mcp__remote__echo",
+			"list_mcp_resources",
+			"list_mcp_resource_templates",
+			"read_mcp_resource"
 		],
 		[
 			"mcp__e2e__echo",
@@ -74,7 +80,13 @@
 			"mcp__e2e__my_tool_v2",
 			"mcp__e2e__secret",
 			"mcp__e2e__bye",
-			"mcp__remote__echo"
+			"mcp__e2e__cwd",
+			"mcp__e2e__link",
+			"mcp__e2e__big",
+			"mcp__remote__echo",
+			"list_mcp_resources",
+			"list_mcp_resource_templates",
+			"read_mcp_resource"
 		],
 		[
 			"mcp__e2e__echo",
@@ -84,7 +96,13 @@
 			"mcp__e2e__my_tool_v2",
 			"mcp__e2e__secret",
 			"mcp__e2e__bye",
-			"mcp__remote__echo"
+			"mcp__e2e__cwd",
+			"mcp__e2e__link",
+			"mcp__e2e__big",
+			"mcp__remote__echo",
+			"list_mcp_resources",
+			"list_mcp_resource_templates",
+			"read_mcp_resource"
 		],
 		[
 			"mcp__e2e__echo",
@@ -93,7 +111,13 @@
 			"mcp__e2e__crash",
 			"mcp__e2e__my_tool_v2",
 			"mcp__e2e__secret",
-			"mcp__remote__echo"
+			"mcp__e2e__cwd",
+			"mcp__e2e__link",
+			"mcp__e2e__big",
+			"mcp__remote__echo",
+			"list_mcp_resources",
+			"list_mcp_resource_templates",
+			"read_mcp_resource"
 		],
 		[
 			"mcp__remote__echo",
@@ -102,7 +126,13 @@
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
 			"mcp__e2e__my_tool_v2",
-			"mcp__e2e__secret"
+			"mcp__e2e__secret",
+			"mcp__e2e__cwd",
+			"mcp__e2e__link",
+			"mcp__e2e__big",
+			"list_mcp_resources",
+			"list_mcp_resource_templates",
+			"read_mcp_resource"
 		]
 	],
 	"remote": [
@@ -130,7 +160,7 @@
 		{
 			"server": "e2e",
 			"state": "connected",
-			"tools": 7
+			"tools": 10
 		}
 	]
 }

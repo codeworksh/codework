@@ -1,4 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -10,6 +11,7 @@ import { describe, expect, vi } from "vite-plus/test";
 import { McpClient } from "../src/mcp/client.ts";
 import { McpContent } from "../src/mcp/content.ts";
 import { McpLog } from "../src/mcp/log.ts";
+import { McpOutput } from "../src/mcp/output.ts";
 import { Process } from "../src/sandbox/utils/process.ts";
 import { listen, raw, sdk } from "./fixtures/mcp/http.ts";
 import { testEffect } from "./utils/effect.ts";
@@ -24,6 +26,8 @@ const stdio = (fixture: string, env: Record<string, string> = {}): McpClient.Std
 	env,
 	cwd: fixtures,
 });
+/** Saved output stays on the host; the fixture servers offer no resources to link to. */
+const content: McpContent.Options = { save: McpOutput.save, readable: false };
 const http = (url: URL): McpClient.Http => ({ _tag: "Http", url, headers: {} });
 
 /** Each scenario's observable outcome, written to the artifact by the last test. */
@@ -68,6 +72,7 @@ const scenarios = [
 
 const normalise = (message: string) =>
 	message
+		.replace(/\S+codework-mcp-[0-9a-f]+(\.\w+)/g, "<output>$1")
 		.replaceAll(fixtures, "<fixtures>/")
 		.replaceAll(process.execPath, "<node>")
 		.replace(/127\.0\.0\.1:\d+/g, "127.0.0.1:<port>")
@@ -129,26 +134,38 @@ describe("mcp client", () => {
 			const echo = yield* connection.callTool({ name: "echo", args: { text: "hi" } });
 			const mixed = yield* connection.callTool({ name: "mixed" });
 			const structured = yield* connection.callTool({ name: "structured" });
+			const converted = {
+				echo: yield* McpContent.fromResult("fixture", echo, content),
+				mixed: yield* McpContent.fromResult("fixture", mixed, content),
+				structured: yield* McpContent.fromResult("fixture", structured, content),
+			};
 			summary.stdioHappy = {
 				serverInfo: connection.serverInfo,
 				instructions: connection.instructions,
 				tools: tools.map((tool) => tool.name),
-				echo: McpContent.fromResult(echo),
-				mixed: McpContent.fromResult(mixed),
-				structured: McpContent.fromResult(structured),
+				echo: converted.echo,
+				mixed: converted.mixed.map((block) =>
+					block.type === "text" ? { ...block, text: normalise(block.text) } : block,
+				),
+				structured: converted.structured,
 			};
 			expect(connection.instructions).toBe("Use the echo tool.");
-			expect(McpContent.fromResult(echo)).toEqual([{ type: "text", text: "hi" }]);
-			expect(McpContent.fromResult(mixed)).toEqual([
+			expect(converted.echo).toEqual([{ type: "text", text: "hi" }]);
+			const saved = /saved to (\S+codework-mcp-[0-9a-f]+\.bin)\]$/.exec(
+				(converted.mixed[4] as { readonly text: string }).text,
+			)?.[1];
+			expect(saved).toBeDefined();
+			expect(yield* Effect.promise(() => readFile(saved!))).toEqual(Buffer.from([0, 1, 2]));
+			expect(converted.mixed).toEqual([
 				{ type: "text", text: "hello" },
 				{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
 				{ type: "text", text: "embedded notes" },
 				{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
-				{ type: "text", text: "[binary resource file:///data.bin (unknown type) omitted]" },
+				{ type: "text", text: `[Binary resource file:///data.bin (unknown type, 3B) saved to ${saved}]` },
 				{ type: "text", text: "[audio audio/wav omitted]" },
-				{ type: "text", text: "readme: file:///README.md" },
+				{ type: "text", text: '[Resource file:///README.md "readme"]' },
 			]);
-			expect(McpContent.fromResult(structured)).toEqual([
+			expect(converted.structured).toEqual([
 				{ type: "text", text: JSON.stringify({ answer: 42, items: ["a", "b"] }, null, 2) },
 			]);
 		}),
@@ -164,7 +181,7 @@ describe("mcp client", () => {
 			summary.httpHappy = {
 				serverInfo: connection.serverInfo,
 				tools: tools.map((tool) => tool.name),
-				echo: McpContent.fromResult(echo),
+				echo: yield* McpContent.fromResult("http", echo, content),
 			};
 			expect(text(echo)).toBe("over http");
 		}),
