@@ -219,8 +219,7 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 				throw cause;
 			}
 		},
-		// The toolbox's `createFolder` creates missing parents, so a non-recursive
-		// mkdir goes through the shell to fail on a missing parent like POSIX does.
+		// `createFolder` is `mkdir -p`; plain `mkdir` fails on a missing parent.
 		mkdir: async (path: string, mkdirOptions?: { recursive?: boolean }) => {
 			const command = mkdirOptions?.recursive ? `mkdir -p ${quote(path)}` : `mkdir ${quote(path)}`;
 			const result = await sandbox.process.executeCommand(command, options.cwd, undefined, options.execTimeout);
