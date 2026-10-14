@@ -53,6 +53,12 @@
 			"import": "./dist/pack/plugin/prompt.mjs",
 			"default": "./dist/pack/plugin/prompt.mjs"
 		},
+		"./plugin/mcp": {
+			"development": "./src/plugin/mcp.ts",
+			"types": "./dist/pack/plugin/mcp.d.mts",
+			"import": "./dist/pack/plugin/mcp.mjs",
+			"default": "./dist/pack/plugin/mcp.mjs"
+		},
 		"./plugin/section": {
 			"development": "./src/plugin/section.ts",
 			"types": "./dist/pack/plugin/section.d.mts",

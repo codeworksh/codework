@@ -27,7 +27,7 @@ const echo = (value: string) =>
 
 describe("plugin domains and exchange host", () => {
 	it("replaces tool and hooks together, patches prose, and closes retained buckets", async () => {
-		const buckets = make();
+		const buckets = make([]);
 		const tools = buckets.registry.tools;
 		let stale = 0;
 		tools.add(echo("first"), {

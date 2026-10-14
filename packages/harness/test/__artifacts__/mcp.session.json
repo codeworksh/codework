@@ -1,0 +1,135 @@
+{
+	"requests": 6,
+	"tools": [
+		"mcp__e2e__echo",
+		"mcp__e2e__fail",
+		"mcp__e2e__pid",
+		"mcp__e2e__crash",
+		"mcp__e2e__my_tool_v2"
+	],
+	"echoTool": {
+		"name": "mcp__e2e__echo",
+		"description": "Echo text back, prefixed with the configured greeting.",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"text": {
+					"type": "string",
+					"description": "What to echo."
+				}
+			},
+			"required": [
+				"text"
+			]
+		}
+	},
+	"plugins": {
+		"mcpDomain": [
+			[
+				[
+					"e2e",
+					true
+				],
+				[
+					"off",
+					false
+				],
+				[
+					"my-srv",
+					false
+				]
+			],
+			[
+				[
+					"e2e",
+					true
+				],
+				[
+					"off",
+					false
+				],
+				[
+					"my-srv",
+					false
+				]
+			]
+		],
+		"toolDomain": [
+			"mcp registry is closed: servers are settled before the tool domain runs",
+			"mcp registry is closed: servers are settled before the tool domain runs"
+		]
+	},
+	"calls": {
+		"echo": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"hello: hi"
+			]
+		},
+		"fail": {
+			"status": "error",
+			"isError": true,
+			"content": [
+				"the fixture refused"
+			]
+		},
+		"structured": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"{\n  \"version\": 2\n}"
+			]
+		},
+		"pid-before": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"<pid-before>"
+			]
+		},
+		"crash": {
+			"status": "error",
+			"isError": true,
+			"content": [
+				"MCP tool \"e2e/crash\" failed: Connection closed: mcp server process exited with code 3: fatal: e2e fixture crashed on purpose"
+			]
+		},
+		"pid-after": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"<pid-after>"
+			]
+		},
+		"invalid": {
+			"status": "error",
+			"isError": true,
+			"content": [
+				"Invalid arguments for mcp__e2e__echo: Missing key\n  at [\"text\"]"
+			]
+		}
+	},
+	"status": [
+		{
+			"server": "e2e",
+			"state": "connected",
+			"tools": 6
+		},
+		{
+			"server": "off",
+			"state": "disabled",
+			"tools": 0
+		},
+		{
+			"server": "my-srv",
+			"state": "disabled",
+			"tools": 0
+		}
+	],
+	"configErrors": [
+		"<tmp>/home/mcp.json: server \"my_srv\" conflicts with \"my-srv\"",
+		"<tmp>/home/mcp.json: server \"broken\": url must be an http or https URL",
+		"<tmp>/project/.codework/mcp.json: server \"ghost\" needs \"command\" or \"url\", or a user server to override"
+	]
+}

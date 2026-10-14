@@ -34,6 +34,8 @@ import * as Tool from "../src/tool/tool.ts";
 import { assistant, immediateOpen } from "./fixtures/llm.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
+import { Mcp } from "../src/mcp/mcp.ts";
+import { Process } from "../src/sandbox/utils/process.ts";
 
 const runtime = (
 	options: {
@@ -57,6 +59,7 @@ const runtime = (
 				pooled(options.plugins ?? plugins),
 			),
 		),
+		Layer.provideMerge(Mcp.layer({ hostCwd: "/" }).pipe(Layer.provide(Process.host))),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Layer.succeed(Settings.Service, { load: () => Effect.succeed(options.settings ?? Settings.defaults) }),
