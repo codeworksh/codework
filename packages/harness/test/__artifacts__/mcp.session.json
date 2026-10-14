@@ -1,5 +1,5 @@
 {
-	"requests": 6,
+	"requests": 8,
 	"tools": [
 		"mcp__e2e__echo",
 		"mcp__e2e__args",
@@ -7,7 +7,13 @@
 		"mcp__e2e__pid",
 		"mcp__e2e__crash",
 		"mcp__e2e__my_tool_v2",
-		"mcp__e2e__bye"
+		"mcp__e2e__bye",
+		"mcp__e2e__cwd",
+		"mcp__e2e__link",
+		"mcp__e2e__big",
+		"list_mcp_resources",
+		"list_mcp_resource_templates",
+		"read_mcp_resource"
 	],
 	"echoTool": {
 		"name": "mcp__e2e__echo",
@@ -62,9 +68,28 @@
 					"badheader",
 					true
 				]
+			],
+			[
+				[
+					"e2e",
+					true
+				],
+				[
+					"off",
+					false
+				],
+				[
+					"my-srv",
+					false
+				],
+				[
+					"badheader",
+					true
+				]
 			]
 		],
 		"toolDomain": [
+			"mcp registry is closed: servers are settled before the tool domain runs",
 			"mcp registry is closed: servers are settled before the tool domain runs",
 			"mcp registry is closed: servers are settled before the tool domain runs"
 		]
@@ -133,19 +158,82 @@
 				"Invalid arguments for mcp__e2e__args: Expected a string matching the RegExp ^[a-z]+$\n  at [\"word\"]"
 			]
 		},
-		"excess": {
+		"cwd": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"<tmp>/work/srv"
+			]
+		},
+		"link": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"[Resource fixture://notes.txt \"notes\" (text/plain, 9B). Read it with read_mcp_resource (server \"e2e\")]"
+			]
+		},
+		"resources-all": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"{\"resources\":[{\"server\":\"e2e\",\"name\":\"notes\",\"uri\":\"fixture://notes.txt\",\"mimeType\":\"text/plain\"},{\"server\":\"e2e\",\"name\":\"data\",\"uri\":\"fixture://data.bin\",\"mimeType\":\"application/octet-stream\"}]}"
+			]
+		},
+		"resources-page": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"{\"server\":\"e2e\",\"resources\":[{\"server\":\"e2e\",\"name\":\"notes\",\"uri\":\"fixture://notes.txt\",\"mimeType\":\"text/plain\"}],\"nextCursor\":\"page-2\"}"
+			]
+		},
+		"resources-next": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"{\"server\":\"e2e\",\"resources\":[{\"server\":\"e2e\",\"name\":\"data\",\"uri\":\"fixture://data.bin\",\"mimeType\":\"application/octet-stream\"}]}"
+			]
+		},
+		"templates": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"{\"resourceTemplates\":[{\"server\":\"e2e\",\"name\":\"daily notes\",\"uriTemplate\":\"fixture://notes/{day}\"}]}"
+			]
+		},
+		"read-text": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"the notes"
+			]
+		},
+		"read-binary": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"[Binary resource fixture://data.bin (application/octet-stream, 4B) saved to <output>.bin]"
+			]
+		},
+		"read-unknown": {
 			"status": "error",
 			"isError": true,
 			"content": [
-				"Invalid arguments for mcp__e2e__args: Expected no excess property\n  at [\"extra\"]"
+				"MCP server \"nope\" has no resources. Servers with resources: e2e"
 			]
 		}
 	},
+	"big": [
+		"Warning: truncated output (original token count: 7683)",
+		"Total output lines: 1",
+		"",
+		"",
+		"[Full output: <output>.txt (read it with offset/limit)]"
+	],
 	"status": [
 		{
 			"server": "e2e",
 			"state": "connected",
-			"tools": 8
+			"tools": 11
 		},
 		{
 			"server": "off",

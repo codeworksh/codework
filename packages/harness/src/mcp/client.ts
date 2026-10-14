@@ -49,7 +49,7 @@ export interface Progress {
 	readonly message?: string | undefined;
 }
 
-type Failed = RequestError | SessionExpiredError | NeedsAuthError;
+export type Failed = RequestError | SessionExpiredError | NeedsAuthError;
 
 /** Handle over a connected MCP server that keeps the SDK `Client` out of the rest of the harness. */
 export interface Connection {
