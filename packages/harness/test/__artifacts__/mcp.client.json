@@ -11,6 +11,35 @@
     "method": "tools/call",
     "reason": "connection closed: mcp server process exited with code 3: fatal: fixture crashed on purpose",
   },
+  "failedConnectSession": {
+    "failedNotification": {
+      "error": {
+        "message": "Error POSTing to endpoint: notification failed (HTTP 500)",
+        "tag": "Mcp.ConnectError",
+      },
+      "seen": [
+        "POST initialize",
+        "POST notifications/initialized",
+        "DELETE",
+        "POST initialize",
+        "POST notifications/initialized",
+        "DELETE",
+        "POST initialize",
+        "POST notifications/initialized",
+        "DELETE",
+      ],
+    },
+    "unsupported": {
+      "error": {
+        "message": "Server's protocol version is not supported: 1999-01-01",
+        "tag": "Mcp.ConnectError",
+      },
+      "seen": [
+        "POST initialize",
+        "DELETE",
+      ],
+    },
+  },
   "frameLimit": {
     "error": {
       "message": "Connection closed: mcp stdio frame exceeded 16 MiB",
@@ -22,6 +51,20 @@
     "after": "still alive",
     "framed": "framed",
     "toolsChanged": true,
+  },
+  "http400": {
+    "notInitialized": {
+      "message": "mcp server session expired: raw",
+      "tag": "Mcp.SessionExpiredError",
+    },
+    "other": {
+      "message": "Error POSTing to endpoint: {"jsonrpc":"2.0","error":{"code":-32000,"message":"Bad Request: something else"},"id":null} (HTTP 400)",
+      "tag": "Mcp.RequestError",
+    },
+  },
+  "httpClose": {
+    "deletes": 1,
+    "hangingDeleteBounded": true,
   },
   "httpHappy": {
     "echo": [
@@ -50,9 +93,28 @@
       "exit",
       "huge",
       "log",
+      "stderr-child",
       "typed-missing",
       "typed-mismatch",
     ],
+  },
+  "httpRetries": {
+    "call": {
+      "message": "Error POSTing to endpoint: overloaded (HTTP 503)",
+      "tag": "Mcp.RequestError",
+    },
+    "callRequests": 1,
+    "listRequests": 2,
+    "tools": [
+      "echo",
+    ],
+  },
+  "initializedTimeout": {
+    "deleted": true,
+    "error": {
+      "message": "mcp connect timed out after <ms>",
+      "tag": "Mcp.ConnectError",
+    },
   },
   "invalidEntry": {
     "message": "Invalid result for tools/list: tools.1.inputSchema: Invalid input: expected object, received undefined",
@@ -126,7 +188,6 @@ second line",
       "message": "fetch failed (ECONNREFUSED)",
       "tag": "Mcp.ConnectError",
     },
-    "retried": true,
   },
   "resources": {
     "first": {
@@ -214,6 +275,9 @@ second line",
     "message": "command not found: codework-mcp-missing-binary",
     "tag": "Mcp.ConnectError",
   },
+  "stderrGrandchild": {
+    "killed": true,
+  },
   "stdioHappy": {
     "echo": [
       {
@@ -286,6 +350,7 @@ second line",
       "exit",
       "huge",
       "log",
+      "stderr-child",
       "typed-missing",
       "typed-mismatch",
     ],

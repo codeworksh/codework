@@ -202,6 +202,25 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			),
 		);
 
+	const http = (endpoint: Http, sessionId?: string) =>
+		new StreamableHTTPClientTransport(endpoint.url, {
+			requestInit: { headers: endpoint.headers },
+			...(input.authProvider === undefined ? {} : { authProvider: input.authProvider }),
+			...(sessionId === undefined ? {} : { sessionId }),
+		});
+	// Ends the HTTP session a transport holds, bounded: the server expires it anyway.
+	const terminate = (transport: StreamableHTTPClientTransport) =>
+		Effect.tryPromise({ try: () => transport.terminateSession(), catch: fail }).pipe(
+			Effect.timeoutOrElse({
+				duration: TERMINATE_TIMEOUT,
+				orElse: () => Effect.fail(fail(`timed out after ${Duration.format(TERMINATE_TIMEOUT)}`)),
+			}),
+			Effect.tapError((failure) =>
+				Effect.logWarning("failed to terminate mcp session", { server, error: describe(failure.error) }),
+			),
+			Effect.ignore,
+		);
+
 	const initialize = Effect.fnUntraced(function* (transport: Transport, timeout: number) {
 		const client = new Client(input.clientInfo ?? { name: "codework", version: "unknown" }, {
 			capabilities: input.roots ? { roots: {} } : {},
@@ -241,7 +260,27 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 		yield* Effect.tryPromise({
 			try: (signal) => client.connect(transport, { timeout, signal }),
 			catch: fail,
-		}).pipe(Effect.onError(() => Effect.promise(() => transport.close()).pipe(Effect.ignore)));
+		}).pipe(
+			// The SDK times only the initialize request, not the initialized notification sent after it.
+			Effect.timeoutOrElse({
+				duration: Duration.millis(timeout),
+				orElse: () => Effect.fail(fail(`mcp connect timed out after ${Duration.format(Duration.millis(timeout))}`)),
+			}),
+			Effect.onError(() =>
+				Effect.gen(function* () {
+					// A failed attempt may already hold a session (unsupported version, failed notification).
+					// The SDK closes the transport itself when the handshake fails, which aborts the signal its
+					// DELETE would use, so the session is ended through a fresh, never-started transport.
+					if (
+						endpoint._tag === "Http" &&
+						transport instanceof StreamableHTTPClientTransport &&
+						transport.sessionId !== undefined
+					)
+						yield* terminate(http(endpoint, transport.sessionId));
+					yield* Effect.promise(() => transport.close()).pipe(Effect.ignore);
+				}),
+			),
+		);
 		return client;
 	});
 
@@ -287,10 +326,7 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 		const deadline = (yield* Clock.currentTimeMillis) + startupTimeout;
 		const open = Effect.gen(function* () {
 			const remaining = Math.max(1, deadline - (yield* Clock.currentTimeMillis));
-			session.transport = new StreamableHTTPClientTransport(endpoint.url, {
-				requestInit: { headers: endpoint.headers },
-				...(input.authProvider === undefined ? {} : { authProvider: input.authProvider }),
-			});
+			session.transport = http(endpoint);
 			return yield* initialize(session.transport, remaining);
 		});
 		return yield* retrying("mcp connect", open, deadline);
@@ -323,17 +359,7 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			const transport = session.transport;
 			// Termination failures are logged below; onerror would report them a second time.
 			client.onerror = () => {};
-			if (transport?.sessionId !== undefined && !session.reported)
-				yield* Effect.tryPromise({ try: () => transport.terminateSession(), catch: fail }).pipe(
-					Effect.timeoutOrElse({
-						duration: TERMINATE_TIMEOUT,
-						orElse: () => Effect.fail(fail(`timed out after ${Duration.format(TERMINATE_TIMEOUT)}`)),
-					}),
-					Effect.tapError((failure) =>
-						Effect.logWarning("failed to terminate mcp session", { server, error: describe(failure.error) }),
-					),
-					Effect.ignore,
-				);
+			if (transport?.sessionId !== undefined && !session.reported) yield* terminate(transport);
 			yield* Effect.tryPromise(() => client.close()).pipe(Effect.ignore);
 		}),
 	);
