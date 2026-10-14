@@ -1,0 +1,384 @@
+{
+  "cancel": {
+    "after": "after cancel",
+    "cancelled": 1,
+  },
+  "crash": {
+    "error": {
+      "message": "Connection closed: mcp server process exited with code 3: fatal: fixture crashed on purpose",
+      "tag": "Mcp.RequestError",
+    },
+    "method": "tools/call",
+    "reason": "connection closed: mcp server process exited with code 3: fatal: fixture crashed on purpose",
+  },
+  "frameLimit": {
+    "error": {
+      "message": "Connection closed: mcp stdio frame exceeded 16 MiB",
+      "tag": "Mcp.RequestError",
+    },
+    "reason": "connection closed: mcp stdio frame exceeded 16 MiB",
+  },
+  "framing": {
+    "after": "still alive",
+    "framed": "framed",
+    "toolsChanged": true,
+  },
+  "httpHappy": {
+    "echo": [
+      {
+        "text": "over http",
+        "type": "text",
+      },
+    ],
+    "serverInfo": {
+      "name": "http-fixture",
+      "version": "1.0.0",
+    },
+    "tools": [
+      "echo",
+      "mixed",
+      "structured",
+      "crash",
+      "progress",
+      "slow",
+      "hang",
+      "cancelled",
+      "roots",
+      "capabilities",
+      "spawn",
+      "frame",
+      "exit",
+      "huge",
+      "typed-missing",
+      "typed-mismatch",
+    ],
+  },
+  "invalidEntry": {
+    "message": "Invalid result for tools/list: [
+  {
+    "expected": "object",
+    "code": "invalid_type",
+    "path": [
+      "tools",
+      1,
+      "inputSchema"
+    ],
+    "message": "Invalid input: expected object, received undefined"
+  }
+]",
+    "tag": "Mcp.RequestError",
+  },
+  "missingCwd": {
+    "message": "working directory not found: <fixtures>/missing-dir",
+    "tag": "Mcp.ConnectError",
+  },
+  "noToolsCapability": {
+    "printed": 0,
+    "tools": [],
+  },
+  "onClose": {
+    "afterDeliberateClose": [],
+    "afterServerExit": "connection closed: mcp server process exited with code 0",
+  },
+  "outputSchema": {
+    "declared": [
+      "typed-missing",
+      "typed-mismatch",
+    ],
+    "mismatch": {
+      "message": "Structured content does not match the tool's output schema: data/answer must be number",
+      "tag": "Mcp.RequestError",
+    },
+    "missing": {
+      "message": "Tool typed-missing has an output schema but did not return structured content",
+      "tag": "Mcp.RequestError",
+    },
+  },
+  "processGroup": {
+    "killed": true,
+  },
+  "progress": {
+    "progressed": "progress done",
+    "sawProgress": true,
+    "silent": {
+      "message": "Request timed out",
+      "tag": "Mcp.RequestError",
+    },
+  },
+  "refused": {
+    "error": {
+      "message": "fetch failed (ECONNREFUSED)",
+      "tag": "Mcp.ConnectError",
+    },
+    "retried": true,
+  },
+  "resources": {
+    "first": {
+      "nextCursor": "page-2",
+      "resources": [
+        {
+          "name": "one",
+          "uri": "fixture://one",
+        },
+      ],
+    },
+    "read": {
+      "contents": [
+        {
+          "mimeType": "text/plain",
+          "text": "contents of fixture://one",
+          "uri": "fixture://one",
+        },
+      ],
+    },
+    "resourcesChanged": true,
+    "second": {
+      "resources": [
+        {
+          "name": "changed",
+          "uri": "fixture://changed",
+        },
+      ],
+    },
+    "templates": {
+      "resourceTemplates": [],
+    },
+  },
+  "retry": {
+    "initializes": 2,
+    "tools": [
+      "echo",
+    ],
+  },
+  "retryCloseReason": {
+    "afterRegister": [],
+    "afterScope": [],
+    "initializes": 2,
+    "tools": [
+      "echo",
+    ],
+  },
+  "roots": {
+    "withRoots": {
+      "capabilities": {
+        "roots": {},
+      },
+      "roots": {
+        "roots": [
+          {
+            "name": "project",
+            "uri": "file:///workspace/project",
+          },
+          {
+            "name": "data dir",
+            "uri": "file:///srv/data%20dir",
+          },
+        ],
+      },
+    },
+    "withoutRoots": {
+      "capabilities": {},
+    },
+  },
+  "sessionExpired": {
+    "errors": [
+      {
+        "message": "mcp server session expired: raw",
+        "tag": "Mcp.SessionExpiredError",
+      },
+      {
+        "message": "mcp server session expired: raw",
+        "tag": "Mcp.SessionExpiredError",
+      },
+    ],
+    "reported": 1,
+    "terminated": false,
+  },
+  "spawnFailure": {
+    "message": "command not found: codework-mcp-missing-binary",
+    "tag": "Mcp.ConnectError",
+  },
+  "stdioHappy": {
+    "echo": [
+      {
+        "text": "hi",
+        "type": "text",
+      },
+    ],
+    "instructions": "Use the echo tool.",
+    "mixed": [
+      {
+        "text": "hello",
+        "type": "text",
+      },
+      {
+        "data": "iVBORw0KGgo=",
+        "mimeType": "image/png",
+        "type": "image",
+      },
+      {
+        "text": "embedded notes",
+        "type": "text",
+      },
+      {
+        "data": "iVBORw0KGgo=",
+        "mimeType": "image/png",
+        "type": "image",
+      },
+      {
+        "text": "[binary resource file:///data.bin (unknown type) omitted]",
+        "type": "text",
+      },
+      {
+        "text": "[audio audio/wav omitted]",
+        "type": "text",
+      },
+      {
+        "text": "readme: file:///README.md",
+        "type": "text",
+      },
+    ],
+    "serverInfo": {
+      "name": "stdio-fixture",
+      "version": "1.0.0",
+    },
+    "structured": [
+      {
+        "text": "{
+  "answer": 42,
+  "items": [
+    "a",
+    "b"
+  ]
+}",
+        "type": "text",
+      },
+    ],
+    "tools": [
+      "echo",
+      "mixed",
+      "structured",
+      "crash",
+      "progress",
+      "slow",
+      "hang",
+      "cancelled",
+      "roots",
+      "capabilities",
+      "spawn",
+      "frame",
+      "exit",
+      "huge",
+      "typed-missing",
+      "typed-mismatch",
+    ],
+  },
+  "strictResources": {
+    "unnamed": {
+      "resources": {
+        "message": "Invalid result for resources/list: [
+  {
+    "expected": "string",
+    "code": "invalid_type",
+    "path": [
+      "resources",
+      0,
+      "name"
+    ],
+    "message": "Invalid input: expected string, received undefined"
+  }
+]",
+        "tag": "Mcp.RequestError",
+      },
+      "templates": {
+        "message": "Invalid result for resources/templates/list: [
+  {
+    "expected": "string",
+    "code": "invalid_type",
+    "path": [
+      "resourceTemplates",
+      0,
+      "name"
+    ],
+    "message": "Invalid input: expected string, received undefined"
+  }
+]",
+        "tag": "Mcp.RequestError",
+      },
+    },
+    "valid": {
+      "resources": {
+        "resources": [
+          {
+            "_meta": {
+              "origin": "fixture",
+            },
+            "description": "A file",
+            "mimeType": "text/plain",
+            "name": "a",
+            "uri": "file:///a.txt",
+          },
+        ],
+      },
+      "templates": {
+        "resourceTemplates": [
+          {
+            "description": "Any file",
+            "name": "files",
+            "uriTemplate": "file:///{path}",
+          },
+        ],
+      },
+    },
+  },
+  "stubborn": {
+    "boundedUnder8s": true,
+    "killed": true,
+  },
+  "toolsPagination": {
+    "duplicate": {
+      "tools": [
+        "t-start",
+        "t-again",
+      ],
+    },
+    "emptyCursor": {
+      "error": {
+        "message": "tools/list: exceeded listMaxPages (64); server pagination did not terminate",
+        "tag": "Mcp.RequestError",
+      },
+    },
+    "nullCursor": {
+      "error": {
+        "message": "Invalid result for tools/list: [
+  {
+    "expected": "string",
+    "code": "invalid_type",
+    "path": [
+      "nextCursor"
+    ],
+    "message": "Invalid input: expected string, received null"
+  }
+]",
+        "tag": "Mcp.RequestError",
+      },
+    },
+  },
+  "unadvertisedListChanged": {
+    "listChanged": {},
+    "toolsChanged": true,
+  },
+  "unauthorized": {
+    "redirects": [
+      "/authorize",
+    ],
+    "withProvider": {
+      "message": "Unauthorized",
+      "tag": "Mcp.NeedsAuthError",
+    },
+    "without": {
+      "message": "Error POSTing to endpoint: unauthorized (HTTP 401)",
+      "tag": "Mcp.ConnectError",
+    },
+  },
+}
