@@ -11,7 +11,7 @@ import * as EnvVercel from "../src/sandboxes/vercel/provider.ts";
 import { SandboxResource } from "../src/sandbox/resource.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { Shell } from "../src/sandbox/shell/shell.ts";
-import { cancellationSpec } from "./fixtures/cancellation.spec.ts";
+import { conformanceSpec } from "./fixtures/conformance.spec.ts";
 import { labels, makeRemoteOwner } from "./fixtures/remote-owner.ts";
 import { remoteSandboxSpec } from "./fixtures/remote.spec.ts";
 import { runnerCycleSpec } from "./fixtures/runner.cycle.spec.ts";
@@ -125,12 +125,17 @@ suite("Sandbox.EnvVercel (fresh sandbox)", () => {
 	// Vercel spawns detached commands and registers `kill("SIGKILL")` as a scope
 	// finalizer, so an interrupt should terminate the remote process rather than
 	// abandon it.
-	cancellationSpec("vercel", () => ({
-		run: (program) => run(program),
-		witness: `${SANDBOX_CWD}/cancel-progress`,
+	conformanceSpec({
+		driver: "vercel",
+		run,
+		cwd: SANDBOX_CWD,
+		combinesOutput: false,
 		cancels: true,
+		inheritsHostEnv: false,
+		linux: true,
+		timeout: PROVISION_TIMEOUT,
 		settleMillis: 5000,
-	}));
+	});
 
 	it(
 		"boots the configured node runtime (node24)",

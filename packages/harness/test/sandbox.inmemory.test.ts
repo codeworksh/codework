@@ -2,15 +2,9 @@ import { Cause, Effect, Exit } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { filesystemSpec, withService } from "./fixtures/sandbox.spec.ts";
+import { withService } from "./fixtures/service.ts";
 
 describe("Sandbox.EnvInMemoryFS", () => {
-	describe("with in-memory filesystem spec", () => {
-		filesystemSpec(async () => ({
-			sandbox: Sandbox.EnvInMemory.layer(),
-		}));
-	});
-
 	// each layer build owns a fresh memory tree: nothing leaks between
 	// independent sandboxes
 	it("should isolate in-memory sandboxes with no leakage", async () => {
