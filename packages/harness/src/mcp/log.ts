@@ -25,7 +25,7 @@ export const format = (server: string, params: LoggingMessageNotificationParams,
  * processes may write to the same file, so the size is re-read before rotating. Write errors are
  * ignored: logging must not break tools.
  */
-export const make = Effect.fnUntraced(function* (path: string) {
+export const make = Effect.fn("McpLog.make")(function* (path: string) {
 	const lock = yield* Semaphore.make(1);
 	let size: number | undefined;
 	const current = fileSystem.stat(path).pipe(
