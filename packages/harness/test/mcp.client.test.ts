@@ -230,22 +230,25 @@ describe("mcp client", () => {
 	);
 
 	it(
-		"stdio: a grandchild holding only stderr is killed after the server exits",
+		"stdio: a grandchild holding only stderr is killed when the server exits, before scope close",
 		Effect.gen(function* () {
 			const outer = yield* Effect.scope;
-			const pids = yield* Effect.gen(function* () {
+			const killed = yield* Effect.gen(function* () {
 				const connection = yield* McpClient.connect({ server: "fixture", endpoint: stdio("server.mjs") });
+				const closed = yield* Deferred.make<void>();
+				connection.onClose(() => Deferred.succeed(closed, undefined).pipe(Effect.asVoid));
 				const spawned = JSON.parse(text(yield* connection.callTool({ name: "stderr-child" }))) as {
 					readonly server: number;
 					readonly grandchild: number;
 				};
 				yield* Scope.addFinalizer(outer, reap([spawned.server, spawned.grandchild]));
-				// The server exits on its own; its grandchild keeps the stderr pipe open.
+				// The server exits on its own; its grandchild keeps the stderr pipe open. The group is killed
+				// as soon as the connection notices the exit, while the connection's scope is still open: the
+				// spawner's own release at scope close would hide a missing kill.
 				yield* gone([spawned.server]);
-				expect(alive(spawned.grandchild)).toBe(true);
-				return [spawned.server, spawned.grandchild];
+				yield* Deferred.await(closed).pipe(Effect.timeout("5 seconds"));
+				return yield* gone([spawned.grandchild]);
 			}).pipe(Effect.scoped);
-			const killed = yield* gone(pids);
 			summary.stderrGrandchild = { killed };
 			expect(killed).toBe(true);
 		}),
