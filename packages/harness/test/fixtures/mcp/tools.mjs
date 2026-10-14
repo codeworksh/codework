@@ -29,6 +29,7 @@ const tools = [
 	"frame",
 	"exit",
 	"huge",
+	"log",
 ]
 	.map((name) => ({ name, inputSchema: { type: "object" } }))
 	.concat(
@@ -120,6 +121,10 @@ export const install = (server) => {
 				// One 17 MiB line that never ends: more than the client's 16 MiB frame limit.
 				process.stdout.write("x".repeat(17 * 1024 * 1024));
 				return new Promise(() => {});
+			case "log":
+				await server.sendLoggingMessage({ level: "info", data: "first line\nsecond line" });
+				await server.sendLoggingMessage({ level: "warning", logger: "db", data: { query: "select 1", ms: 3 } });
+				return text("logged");
 			case "typed-missing":
 				return text("no structured content");
 			case "typed-mismatch":

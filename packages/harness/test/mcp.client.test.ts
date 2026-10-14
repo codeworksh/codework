@@ -1,11 +1,15 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { OAuthClientProvider } from "@modelcontextprotocol/client";
+import type { LoggingMessageNotificationParams, OAuthClientProvider } from "@modelcontextprotocol/client";
 import { Deferred, Effect, Exit, Fiber, Option, Ref } from "effect";
 import { describe, expect, vi } from "vite-plus/test";
 import { McpClient } from "../src/mcp/client.ts";
 import { McpContent } from "../src/mcp/content.ts";
+import { McpLog } from "../src/mcp/log.ts";
 import { Process } from "../src/sandbox/utils/process.ts";
 import { listen, raw, sdk } from "./fixtures/mcp/http.ts";
 import { testEffect } from "./utils/effect.ts";
@@ -55,6 +59,16 @@ const gone = (pids: ReadonlyArray<number>) =>
 		for (let attempt = 0; attempt < 50 && pids.some(alive); attempt++) yield* Effect.sleep("20 millis");
 		return pids.filter(alive).length === 0;
 	});
+
+const logEntries: ReadonlyArray<LoggingMessageNotificationParams> = [
+	{ level: "info", data: "first line\nsecond line" },
+	{ level: "warning", logger: "db", data: { query: "select 1", ms: 3 } },
+];
+
+const tempDir = Effect.acquireRelease(
+	Effect.sync(() => mkdtempSync(join(tmpdir(), "codework-mcp-log-"))),
+	(dir) => Effect.sync(() => rmSync(dir, { recursive: true, force: true })),
+);
 
 describe("mcp client", () => {
 	it(
@@ -554,7 +568,10 @@ describe("mcp client", () => {
 				emptyCursor: outcome(emptyCursor),
 				duplicate: outcome(duplicate),
 			};
-			expect(outcome(nullCursor).error?.tag).toBe("Mcp.RequestError");
+			expect(outcome(nullCursor).error).toEqual({
+				tag: "Mcp.RequestError",
+				message: "Invalid result for tools/list: nextCursor: Invalid input: expected string, received null",
+			});
 			// An empty cursor is followed as a real one, so the pages cycle until the SDK's cap.
 			expect(outcome(emptyCursor).error?.message).toContain("exceeded listMaxPages");
 			// The SDK stops quietly at a repeated cursor and returns the pages it has.
@@ -599,8 +616,16 @@ describe("mcp client", () => {
 			expect(valid.templates.resourceTemplates).toEqual([
 				{ uriTemplate: "file:///{path}", name: "files", description: "Any file" },
 			]);
-			expect(unnamed.resources._tag).toBe("Mcp.RequestError");
-			expect(unnamed.templates._tag).toBe("Mcp.RequestError");
+			expect(failure(unnamed.resources)).toEqual({
+				tag: "Mcp.RequestError",
+				message:
+					"Invalid result for resources/list: resources.0.name: Invalid input: expected string, received undefined",
+			});
+			expect(failure(unnamed.templates)).toEqual({
+				tag: "Mcp.RequestError",
+				message:
+					"Invalid result for resources/templates/list: resourceTemplates.0.name: Invalid input: expected string, received undefined",
+			});
 		}),
 	);
 
@@ -613,7 +638,62 @@ describe("mcp client", () => {
 			});
 			const error = yield* connection.tools().pipe(Effect.flip);
 			summary.invalidEntry = failure(error);
-			expect(error._tag).toBe("Mcp.RequestError");
+			expect(failure(error)).toEqual({
+				tag: "Mcp.RequestError",
+				message:
+					"Invalid result for tools/list: tools.1.inputSchema: Invalid input: expected object, received undefined",
+			});
+		}),
+	);
+
+	it(
+		"onLog: receives the server's notifications/message params",
+		Effect.gen(function* () {
+			const connection = yield* McpClient.connect({ server: "fixture", endpoint: stdio("server.mjs") });
+			const entries = yield* Ref.make<ReadonlyArray<LoggingMessageNotificationParams>>([]);
+			connection.onLog((entry) => Ref.update(entries, (all) => [...all, entry]));
+			yield* connection.callTool({ name: "log" });
+			for (let attempt = 0; attempt < 50 && (yield* Ref.get(entries)).length < 2; attempt++)
+				yield* Effect.sleep("20 millis");
+			const received = yield* Ref.get(entries);
+			summary.onLog = received;
+			expect(received).toEqual(logEntries);
+		}),
+	);
+
+	it(
+		"McpLog: writes formatted lines with indented continuations",
+		Effect.gen(function* () {
+			const dir = yield* tempDir;
+			const log = yield* McpLog.make(join(dir, "logs", "mcp.log"));
+			for (const entry of logEntries) yield* log.write("fixture", entry);
+			const lines = readFileSync(log.path, "utf8").replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z/gm, "<iso>");
+			summary.logFile = lines.split("\n");
+			expect(lines).toBe(
+				[
+					"<iso> [fixture] info first line",
+					"    second line",
+					'<iso> [fixture] warning db: {"query":"select 1","ms":3}',
+					"",
+				].join("\n"),
+			);
+		}),
+	);
+
+	it(
+		"McpLog: rotates a file over 5 MB to <path>.1",
+		Effect.gen(function* () {
+			const dir = yield* tempDir;
+			const path = join(dir, "mcp.log");
+			const old = `${"x".repeat(5 * 1024 * 1024 + 16)}\n`;
+			writeFileSync(path, old);
+			const log = yield* McpLog.make(path);
+			yield* log.write("fixture", logEntries[1]!);
+			const rotated = readFileSync(`${path}.1`, "utf8") === old;
+			const current = readFileSync(path, "utf8").replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z/gm, "<iso>");
+			summary.logRotation = { rotated, current };
+			expect(rotated).toBe(true);
+			expect(current).toBe('<iso> [fixture] warning db: {"query":"select 1","ms":3}\n');
 		}),
 	);
 

@@ -49,24 +49,25 @@
       "frame",
       "exit",
       "huge",
+      "log",
       "typed-missing",
       "typed-mismatch",
     ],
   },
   "invalidEntry": {
-    "message": "Invalid result for tools/list: [
-  {
-    "expected": "object",
-    "code": "invalid_type",
-    "path": [
-      "tools",
-      1,
-      "inputSchema"
-    ],
-    "message": "Invalid input: expected object, received undefined"
-  }
-]",
+    "message": "Invalid result for tools/list: tools.1.inputSchema: Invalid input: expected object, received undefined",
     "tag": "Mcp.RequestError",
+  },
+  "logFile": [
+    "<iso> [fixture] info first line",
+    "    second line",
+    "<iso> [fixture] warning db: {"query":"select 1","ms":3}",
+    "",
+  ],
+  "logRotation": {
+    "current": "<iso> [fixture] warning db: {"query":"select 1","ms":3}
+",
+    "rotated": true,
   },
   "missingCwd": {
     "message": "working directory not found: <fixtures>/missing-dir",
@@ -80,6 +81,21 @@
     "afterDeliberateClose": [],
     "afterServerExit": "connection closed: mcp server process exited with code 0",
   },
+  "onLog": [
+    {
+      "data": "first line
+second line",
+      "level": "info",
+    },
+    {
+      "data": {
+        "ms": 3,
+        "query": "select 1",
+      },
+      "level": "warning",
+      "logger": "db",
+    },
+  ],
   "outputSchema": {
     "declared": [
       "typed-missing",
@@ -269,6 +285,7 @@
       "frame",
       "exit",
       "huge",
+      "log",
       "typed-missing",
       "typed-mismatch",
     ],
@@ -276,33 +293,11 @@
   "strictResources": {
     "unnamed": {
       "resources": {
-        "message": "Invalid result for resources/list: [
-  {
-    "expected": "string",
-    "code": "invalid_type",
-    "path": [
-      "resources",
-      0,
-      "name"
-    ],
-    "message": "Invalid input: expected string, received undefined"
-  }
-]",
+        "message": "Invalid result for resources/list: resources.0.name: Invalid input: expected string, received undefined",
         "tag": "Mcp.RequestError",
       },
       "templates": {
-        "message": "Invalid result for resources/templates/list: [
-  {
-    "expected": "string",
-    "code": "invalid_type",
-    "path": [
-      "resourceTemplates",
-      0,
-      "name"
-    ],
-    "message": "Invalid input: expected string, received undefined"
-  }
-]",
+        "message": "Invalid result for resources/templates/list: resourceTemplates.0.name: Invalid input: expected string, received undefined",
         "tag": "Mcp.RequestError",
       },
     },
@@ -350,16 +345,7 @@
     },
     "nullCursor": {
       "error": {
-        "message": "Invalid result for tools/list: [
-  {
-    "expected": "string",
-    "code": "invalid_type",
-    "path": [
-      "nextCursor"
-    ],
-    "message": "Invalid input: expected string, received null"
-  }
-]",
+        "message": "Invalid result for tools/list: nextCursor: Invalid input: expected string, received null",
         "tag": "Mcp.RequestError",
       },
     },
