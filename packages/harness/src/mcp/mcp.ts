@@ -27,6 +27,8 @@ import type { RegisteredTool } from "../tool/tool.ts";
 import { McpClient } from "./client.ts";
 import { McpTool } from "./tool.ts";
 import { McpValue } from "./value.ts";
+import { hostPath } from "../host.ts";
+import { expandTilde } from "../util/home.ts";
 
 /** The first exchange of a session waits this long for servers whose tools are declared to the model. */
 const STARTUP_WAIT = Duration.seconds(10);
@@ -46,9 +48,10 @@ export interface Input {
 	readonly sessionId: SessionId;
 	readonly servers: ReadonlyArray<readonly [name: string, config: ServerConfig]>;
 	/**
-	 * Where stdio servers start, and the root sent to servers: the session's directory when its
-	 * sandbox is the host's own filesystem. Absent otherwise, since that directory does not exist
-	 * here; servers then start in the session's host directory and are sent no roots.
+	 * Where stdio servers start (a server's own relative `cwd` resolves against it), and the root
+	 * sent to servers: the session's directory when its sandbox is the host's own filesystem. Absent
+	 * otherwise, since that directory does not exist here; servers then start in the session's host
+	 * directory and are sent no roots.
 	 */
 	readonly directory?: string | undefined;
 	readonly hostDir?: string | undefined;
@@ -144,10 +147,11 @@ export const layer = (options: { readonly hostCwd: string }) =>
 					} satisfies McpClient.Http;
 				return {
 					_tag: "Stdio",
-					command: config.command,
-					args: config.args ?? [],
+					// One executable and its arguments, not a command line: only a leading `~/` is expanded.
+					command: expandTilde(config.command, hostPath),
+					args: (config.args ?? []).map((arg) => expandTilde(arg, hostPath)),
 					env: yield* McpValue.resolveAll(config.env ?? {}, `${what} env`),
-					cwd: server.cwd,
+					cwd: hostPath.resolve(server.cwd, expandTilde(config.cwd ?? ".", hostPath)),
 				} satisfies McpClient.Stdio;
 			});
 
