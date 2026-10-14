@@ -49,10 +49,15 @@ const script = (
 ) =>
 	[
 		`f=${quote(file)}`,
+		// The command stays a quoted string, so syntax `sh` lacks cannot break the
+		// wrapper: it runs under bash where the sandbox has one, else under `sh`.
+		`c=${quote(command)}`,
+		"if command -v bash >/dev/null 2>&1; then s=bash; else s=sh; fi",
 		// A function whose body is a subshell: `exit` in the command ends only it,
-		// and the command is written once for both branches below.
+		// and the command is written once for both branches below. No `exec`:
+		// just-bash carries on past it.
 		"run() (",
-		command,
+		'\tif [ "$s" = bash ]; then bash -c "$c"; else eval "$c"; fi',
 		")",
 		// The side files are created the same exclusive way as the output file.
 		// `umask` may be missing where modes mean nothing (an in-process shell over a virtual filesystem).
@@ -83,21 +88,24 @@ const script = (
 		"run 2>&1",
 	].join("\n");
 
-/** The sandbox's own account of the output: its raw size, and whether the file was kept. */
+/** The sandbox's own account of the output: its raw size, whether the file was kept, and the shell that ran it. */
 export interface Report {
 	/** Bytes and newlines in the whole output. */
 	readonly bytes: number;
 	readonly newlines: number;
 	/** Whether the sandbox kept the output file — decided on raw bytes, which the harness only sees decoded. */
 	readonly kept: boolean;
+	/** `sh` when the sandbox has no bash. */
+	readonly shell: "bash" | "sh";
 }
 
-const header = new RegExp(`^${HEADER} (\\d+) (\\d+) ([01])(?: (\\d+))?$`, "m");
+const header = new RegExp(`^${HEADER} (\\d+) (\\d+) ([01]) (bash|sh)(?: (\\d+))?$`, "m");
 
 const parse = (match: RegExpExecArray): Report => ({
 	bytes: Number(match[1]),
 	newlines: Number(match[2]),
 	kept: match[3] === "1",
+	shell: match[4] === "sh" ? "sh" : "bash",
 });
 
 /**
@@ -107,7 +115,7 @@ const parse = (match: RegExpExecArray): Report => ({
  */
 export const streaming = (command: string, file: string, limits: Limits) =>
 	script(command, file, limits, (source) => `${source} | tee -a "$f"`, [
-		`printf '${HEADER} %s %s %s\\n' "$b" "$n" "$keep" >&2`,
+		`printf '${HEADER} %s %s %s %s\\n' "$b" "$n" "$keep" "$s" >&2`,
 	]);
 
 /** Read {@link streaming}'s stderr: the report, if it got that far, and anything else the wrapper said. */
@@ -134,7 +142,11 @@ export const buffered = (command: string, file: string, limits: Limits) => {
 		// The redirect sits on the whole group, not on `cat`: an in-process shell
 		// (just-bash) re-encodes text that a command reading a pipe writes to a file.
 		(source) => `{ ${source} | cat; } >> "$f"`,
-		[`w=$(${tail} | wc -c | awk '{ print $1 }')`, `printf '${HEADER} %s %s %s %s\\n' "$b" "$n" "$keep" "$w"`, tail],
+		[
+			`w=$(${tail} | wc -c | awk '{ print $1 }')`,
+			`printf '${HEADER} %s %s %s %s %s\\n' "$b" "$n" "$keep" "$s" "$w"`,
+			tail,
+		],
 	);
 };
 
@@ -149,8 +161,8 @@ export interface Window extends Report {
 export const window = (stdout: string): Window | undefined => {
 	const newline = stdout.indexOf("\n");
 	const match = header.exec(newline === -1 ? stdout : stdout.slice(0, newline));
-	if (match === null || match[4] === undefined) return undefined;
-	return { ...parse(match), text: stdout.slice(newline + 1), textBytes: Number(match[4]) };
+	if (match === null || match[5] === undefined) return undefined;
+	return { ...parse(match), text: stdout.slice(newline + 1), textBytes: Number(match[5]) };
 };
 
 /**

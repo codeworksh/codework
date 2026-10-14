@@ -6,6 +6,16 @@ This file is the canonical source for unreleased changes and published release n
 
 - Add in-progress work under `## [Unreleased]
 
+## [Unreleased]
+
+### Fixed
+
+- The `bash` tool now runs the model's command under bash on every sandbox. It ran under `sh`, which is dash on Debian and Ubuntu, so bash syntax such as arrays, `[[ ]]`, `{1..3}`, here-strings and `source` worked on a Mac but failed on Linux and in Debian-based containers, and broke the tool's own output handling, so the model got an error pointing into CodeWork's script rather than its command. Where bash is not on `PATH`, the command runs under `sh`, and a failure says so: `Command exited with code 2 (ran under sh: bash is not on PATH in this sandbox)`.
+
+### Internal
+
+- Added E2E tests that run bash-only syntax through the `bash` tool on the host, just-bash, Daytona and Vercel sandboxes and check they print the same output, and that a host without bash runs the command under `sh` and says so when it fails.
+
 ## [@codeworksh/cli@0.3.0] - 2026-10-13
 
 ### Added

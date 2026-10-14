@@ -11,7 +11,7 @@ import type { SandboxDriver } from "../../src/sandbox/driver.ts";
 import { SandboxIO } from "../../src/sandbox/io.ts";
 import { bashPlugin } from "../../src/plugin/builtin/tool/bash.ts";
 import { defaultPromptPlugin } from "../../src/plugin/builtin/prompt/default.ts";
-import { pendingCall } from "../tools.fixture.ts";
+import { BASH_SYNTAX, pendingCall } from "../tools.fixture.ts";
 import { toolTurn } from "./llm.ts";
 import { remoteSuite } from "./live.ts";
 import { withSettings } from "./settings.ts";
@@ -108,6 +108,20 @@ export const bashPluginSpec = (options: {
 						isError: true,
 						details: { _tag: "BashFailed", exitCode: 7, output: "/tmp\nfailure-output\n", truncated: false },
 					});
+				}),
+			180_000,
+		);
+
+		it(
+			"runs bash-only syntax under bash, as every local backend does",
+			() =>
+				withSettings(async (input) => {
+					const { call } = await exchange(input, BASH_SYNTAX);
+					if (call.status !== "completed" && call.status !== "error") throw new Error("bash was not settled");
+					const text = call.result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+					await expect({ status: call.status, text }).toMatchFileSnapshot(
+						"./__artifacts__/tools.bash.syntax.json",
+					);
 				}),
 			180_000,
 		);
