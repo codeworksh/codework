@@ -30,6 +30,7 @@ const tools = [
 	"exit",
 	"huge",
 	"log",
+	"stderr-child",
 ]
 	.map((name) => ({ name, inputSchema: { type: "object" } }))
 	.concat(
@@ -89,14 +90,23 @@ export const install = (server) => {
 			case "slow":
 				await sleep(Number(args.ms), signal);
 				return text("slow done");
-			case "hang":
+			case "hang": {
+				// Acknowledges entering through progress and the cancellation through a log message.
+				const token = request.params._meta?.progressToken;
+				if (token !== undefined)
+					await ctx.mcpReq.notify({
+						method: "notifications/progress",
+						params: { progressToken: token, progress: 1 },
+					});
 				await new Promise((resolve) =>
 					signal.addEventListener("abort", () => {
 						cancelled.push(String(signal.reason?.message ?? signal.reason ?? "aborted"));
 						resolve();
 					}),
 				);
+				await server.sendLoggingMessage({ level: "info", data: "hang cancelled" });
 				return text("hang aborted");
+			}
 			case "cancelled":
 				return text({ cancelled: cancelled.length });
 			case "roots":
@@ -121,6 +131,14 @@ export const install = (server) => {
 				// One 17 MiB line that never ends: more than the client's 16 MiB frame limit.
 				process.stdout.write("x".repeat(17 * 1024 * 1024));
 				return new Promise(() => {});
+			case "stderr-child": {
+				// The grandchild inherits only stderr; the server then exits on its own.
+				const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+					stdio: ["ignore", "ignore", "inherit"],
+				});
+				setTimeout(() => process.exit(0), 50);
+				return text({ server: process.pid, grandchild: child.pid });
+			}
 			case "log":
 				await server.sendLoggingMessage({ level: "info", data: "first line\nsecond line" });
 				await server.sendLoggingMessage({ level: "warning", logger: "db", data: { query: "select 1", ms: 3 } });

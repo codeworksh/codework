@@ -65,7 +65,8 @@ export const make = Effect.fn("McpStdio.make")(function* (options: Options) {
 		phase: "ready" | "starting" | "open" | "closed";
 		handle?: ChildProcessSpawner.ChildProcessHandle | undefined;
 		stdoutOpen: boolean;
-	} = { phase: "ready", stdoutOpen: false };
+		stderrOpen: boolean;
+	} = { phase: "ready", stdoutOpen: false, stderrOpen: false };
 	let startup: Promise<void> | undefined;
 	let closing: Promise<void> | undefined;
 	let untrack = () => {};
@@ -79,7 +80,10 @@ export const make = Effect.fn("McpStdio.make")(function* (options: Options) {
 			Effect.ignore,
 			Effect.andThen(
 				Effect.suspend(() =>
-					Process.terminate(handle, { forceKillAfter: FORCE_KILL_AFTER, pipesOpen: state.stdoutOpen }),
+					Process.terminate(handle, {
+						forceKillAfter: FORCE_KILL_AFTER,
+						pipesOpen: state.stdoutOpen || state.stderrOpen,
+					}),
 				),
 			),
 			Effect.ensuring(Effect.sync(() => untrack())),
@@ -132,6 +136,7 @@ export const make = Effect.fn("McpStdio.make")(function* (options: Options) {
 						);
 					state.handle = handle;
 					state.stdoutOpen = true;
+					state.stderrOpen = true;
 					untrack = track(Number(handle.pid));
 					yield* Effect.addFinalizer(() => Effect.sync(() => untrack()));
 					if (state.phase === "closed") {
@@ -197,6 +202,12 @@ export const make = Effect.fn("McpStdio.make")(function* (options: Options) {
 							: Effect.logDebug("mcp server stderr", { server: options.server, output }),
 					),
 					Effect.ignore,
+					// A descendant holding only stderr keeps the group alive, and the group id ours.
+					Effect.ensuring(
+						Effect.sync(() => {
+							state.stderrOpen = false;
+						}),
+					),
 				),
 			);
 

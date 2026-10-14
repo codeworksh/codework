@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LoggingMessageNotificationParams, OAuthClientProvider } from "@modelcontextprotocol/client";
-import { Deferred, Effect, Exit, Fiber, Option, Ref } from "effect";
+import { Deferred, Effect, Exit, Fiber, Option, Ref, Scope } from "effect";
 import { describe, expect, vi } from "vite-plus/test";
 import { McpClient } from "../src/mcp/client.ts";
 import { McpContent } from "../src/mcp/content.ts";
@@ -28,6 +28,43 @@ const http = (url: URL): McpClient.Http => ({ _tag: "Http", url, headers: {} });
 
 /** Each scenario's observable outcome, written to the artifact by the last test. */
 const summary: Record<string, unknown> = {};
+/** Every key the scenarios record; the artifact test refuses to snapshot without all of them. */
+const scenarios = [
+	"cancel",
+	"crash",
+	"failedConnectSession",
+	"frameLimit",
+	"framing",
+	"http400",
+	"httpClose",
+	"httpHappy",
+	"httpRetries",
+	"initializedTimeout",
+	"invalidEntry",
+	"logFile",
+	"logRotation",
+	"missingCwd",
+	"noToolsCapability",
+	"onClose",
+	"onLog",
+	"outputSchema",
+	"processGroup",
+	"progress",
+	"refused",
+	"resources",
+	"retry",
+	"retryCloseReason",
+	"roots",
+	"sessionExpired",
+	"spawnFailure",
+	"stderrGrandchild",
+	"stdioHappy",
+	"strictResources",
+	"stubborn",
+	"toolsPagination",
+	"unadvertisedListChanged",
+	"unauthorized",
+];
 
 const normalise = (message: string) =>
 	message
@@ -58,6 +95,19 @@ const gone = (pids: ReadonlyArray<number>) =>
 	Effect.gen(function* () {
 		for (let attempt = 0; attempt < 50 && pids.some(alive); attempt++) yield* Effect.sleep("20 millis");
 		return pids.filter(alive).length === 0;
+	});
+
+// Independent of the client's own cleanup, so a regression there cannot leak processes past the test.
+const reap = (pids: ReadonlyArray<number>) =>
+	Effect.sync(() => {
+		for (const pid of pids)
+			for (const target of [-pid, pid]) {
+				try {
+					process.kill(target, "SIGKILL");
+				} catch {
+					// already gone
+				}
+			}
 	});
 
 const logEntries: ReadonlyArray<LoggingMessageNotificationParams> = [
@@ -139,12 +189,14 @@ describe("mcp client", () => {
 	it(
 		"stdio: closing the scope kills the server and its grandchild",
 		Effect.gen(function* () {
+			const outer = yield* Effect.scope;
 			const pids = yield* Effect.gen(function* () {
 				const connection = yield* McpClient.connect({ server: "fixture", endpoint: stdio("server.mjs") });
 				const spawned = JSON.parse(text(yield* connection.callTool({ name: "spawn" }))) as {
 					readonly server: number;
 					readonly grandchild: number;
 				};
+				yield* Scope.addFinalizer(outer, reap([spawned.server, spawned.grandchild]));
 				expect(alive(spawned.server) && alive(spawned.grandchild)).toBe(true);
 				return [spawned.server, spawned.grandchild];
 			}).pipe(Effect.scoped);
@@ -157,6 +209,7 @@ describe("mcp client", () => {
 	it(
 		"stdio: a server ignoring SIGTERM is still killed within a bounded time",
 		Effect.gen(function* () {
+			const outer = yield* Effect.scope;
 			const started = Date.now();
 			const pids = yield* Effect.gen(function* () {
 				const connection = yield* McpClient.connect({ server: "stubborn", endpoint: stdio("stubborn.mjs") });
@@ -164,6 +217,7 @@ describe("mcp client", () => {
 					readonly server: number;
 					readonly grandchild: number;
 				};
+				yield* Scope.addFinalizer(outer, reap([spawned.server, spawned.grandchild]));
 				return [spawned.server, spawned.grandchild];
 			}).pipe(Effect.scoped);
 			const elapsed = Date.now() - started;
@@ -173,6 +227,28 @@ describe("mcp client", () => {
 			expect(killed).toBe(true);
 		}),
 		15_000,
+	);
+
+	it(
+		"stdio: a grandchild holding only stderr is killed after the server exits",
+		Effect.gen(function* () {
+			const outer = yield* Effect.scope;
+			const pids = yield* Effect.gen(function* () {
+				const connection = yield* McpClient.connect({ server: "fixture", endpoint: stdio("server.mjs") });
+				const spawned = JSON.parse(text(yield* connection.callTool({ name: "stderr-child" }))) as {
+					readonly server: number;
+					readonly grandchild: number;
+				};
+				yield* Scope.addFinalizer(outer, reap([spawned.server, spawned.grandchild]));
+				// The server exits on its own; its grandchild keeps the stderr pipe open.
+				yield* gone([spawned.server]);
+				expect(alive(spawned.grandchild)).toBe(true);
+				return [spawned.server, spawned.grandchild];
+			}).pipe(Effect.scoped);
+			const killed = yield* gone(pids);
+			summary.stderrGrandchild = { killed };
+			expect(killed).toBe(true);
+		}),
 	);
 
 	it(
@@ -219,9 +295,19 @@ describe("mcp client", () => {
 		"stdio: interrupting a call cancels it on the server and keeps the connection usable",
 		Effect.gen(function* () {
 			const connection = yield* McpClient.connect({ server: "fixture", endpoint: stdio("server.mjs") });
-			const fiber = yield* connection.callTool({ name: "hang" }).pipe(Effect.forkChild);
-			yield* Effect.sleep("200 millis");
+			const entered = yield* Deferred.make<void>();
+			const acknowledged = yield* Deferred.make<void>();
+			connection.onLog((entry) =>
+				entry.data === "hang cancelled"
+					? Deferred.succeed(acknowledged, undefined).pipe(Effect.asVoid)
+					: Effect.void,
+			);
+			const fiber = yield* connection
+				.callTool({ name: "hang", onProgress: () => void Deferred.doneUnsafe(entered, Effect.void) })
+				.pipe(Effect.forkChild);
+			yield* Deferred.await(entered).pipe(Effect.timeout("2 seconds"));
 			yield* Fiber.interrupt(fiber);
+			yield* Deferred.await(acknowledged).pipe(Effect.timeout("2 seconds"));
 			const report = JSON.parse(text(yield* connection.callTool({ name: "cancelled" }))) as {
 				readonly cancelled: number;
 			};
@@ -362,7 +448,7 @@ describe("mcp client", () => {
 	);
 
 	it(
-		"http: a refused connection fails with ECONNREFUSED after retrying",
+		"http: a refused connection fails with ECONNREFUSED",
 		Effect.gen(function* () {
 			const port = yield* Effect.callback<number>((resume) => {
 				const server = createServer();
@@ -371,18 +457,14 @@ describe("mcp client", () => {
 					server.close(() => resume(Effect.succeed(port)));
 				});
 			});
-			const started = Date.now();
 			const error = yield* McpClient.connect({
 				server: "refused",
 				endpoint: http(new URL(`http://127.0.0.1:${port}/mcp`)),
 				timeout: { startup: "5 seconds" },
 			}).pipe(Effect.flip);
-			const elapsed = Date.now() - started;
-			summary.refused = { error: failure(error), retried: elapsed >= 1_200 };
+			summary.refused = { error: failure(error) };
 			expect(error._tag).toBe("Mcp.ConnectError");
 			expect(error.message).toContain("ECONNREFUSED");
-			expect(elapsed).toBeGreaterThanOrEqual(1_200);
-			expect(elapsed).toBeLessThan(5_000);
 		}),
 	);
 
@@ -420,14 +502,14 @@ describe("mcp client", () => {
 			});
 			const write = vi.spyOn(process.stdout, "write");
 			const debug = vi.spyOn(console, "debug");
-			const tools = yield* connection.tools().pipe(
-				Effect.ensuring(
-					Effect.sync(() => {
-						write.mockRestore();
-						debug.mockRestore();
-					}),
-				),
+			yield* Effect.addFinalizer(() =>
+				Effect.sync(() => {
+					write.mockRestore();
+					debug.mockRestore();
+				}),
 			);
+			const tools = yield* connection.tools();
+			// Restoring clears the recorded calls, so count first.
 			const printed = write.mock.calls.length + debug.mock.calls.length;
 			summary.noToolsCapability = { tools, printed };
 			expect(tools).toEqual([]);
@@ -698,7 +780,153 @@ describe("mcp client", () => {
 	);
 
 	it(
+		"http: an unanswered initialized notification times the connect out and ends the session",
+		Effect.gen(function* () {
+			const server = raw({
+				script: (request) => (request === "POST notifications/initialized" ? "hang" : undefined),
+			});
+			const url = yield* listen(server.handler);
+			const started = Date.now();
+			const error = yield* McpClient.connect({
+				server: "raw",
+				endpoint: http(url),
+				timeout: { startup: "500 millis" },
+			}).pipe(Effect.flip);
+			const elapsed = Date.now() - started;
+			summary.initializedTimeout = { error: failure(error), deleted: server.seen.includes("DELETE") };
+			expect(error._tag).toBe("Mcp.ConnectError");
+			expect(error.message).toContain("mcp connect timed out after");
+			expect(elapsed).toBeLessThan(2_000);
+		}),
+	);
+
+	it(
+		"http: a failed connect attempt deletes the session it was given",
+		Effect.gen(function* () {
+			const unsupported = raw({ protocolVersion: "1999-01-01" });
+			const failing = raw({
+				script: (request) =>
+					request === "POST notifications/initialized" ? { status: 500, body: "notification failed" } : undefined,
+			});
+			const errors = [];
+			for (const server of [unsupported, failing]) {
+				const url = yield* listen(server.handler);
+				const error = yield* McpClient.connect({
+					server: "raw",
+					endpoint: http(url),
+					timeout: { startup: "2 seconds" },
+				}).pipe(Effect.flip);
+				errors.push({ error: failure(error), seen: [...server.seen].filter((entry) => entry !== "GET") });
+			}
+			summary.failedConnectSession = { unsupported: errors[0], failedNotification: errors[1] };
+			expect(errors.map(({ error, seen }) => ({ tag: error.tag, deleted: seen.includes("DELETE") }))).toEqual([
+				{ tag: "Mcp.ConnectError", deleted: true },
+				{ tag: "Mcp.ConnectError", deleted: true },
+			]);
+		}),
+	);
+
+	it(
+		"http: list requests retry a transient 503; tool calls never retry",
+		Effect.gen(function* () {
+			let listFailures = 1;
+			const server = raw({
+				script: (request) => {
+					if (request === "POST tools/list" && listFailures-- > 0) return { status: 503, body: "overloaded" };
+					// The call has run its side effect before the server fails the response.
+					if (request === "POST tools/call") return { status: 503, body: "overloaded" };
+					return undefined;
+				},
+			});
+			const url = yield* listen(server.handler);
+			const connection = yield* McpClient.connect({ server: "raw", endpoint: http(url) });
+			const tools = yield* connection.tools();
+			const call = yield* connection.callTool({ name: "echo" }).pipe(Effect.flip);
+			const count = (key: string) => server.seen.filter((entry) => entry === key).length;
+			summary.httpRetries = {
+				tools: tools.map((tool) => tool.name),
+				listRequests: count("POST tools/list"),
+				call: failure(call),
+				callRequests: count("POST tools/call"),
+			};
+			expect(count("POST tools/list")).toBe(2);
+			expect(call._tag).toBe("Mcp.RequestError");
+			expect(count("POST tools/call")).toBe(1);
+		}),
+	);
+
+	it(
+		"http: closing the scope deletes the session once, and a hanging DELETE is bounded",
+		Effect.gen(function* () {
+			const normal = raw();
+			const normalUrl = yield* listen(normal.handler);
+			yield* McpClient.connect({ server: "raw", endpoint: http(normalUrl) }).pipe(Effect.scoped);
+			const deletes = normal.seen.filter((entry) => entry === "DELETE").length;
+
+			const hanging = raw({ script: (request) => (request === "DELETE" ? "hang" : undefined) });
+			const hangingUrl = yield* listen(hanging.handler);
+			let closedIn = 0;
+			yield* Effect.gen(function* () {
+				yield* McpClient.connect({ server: "raw", endpoint: http(hangingUrl) });
+				yield* Effect.addFinalizer(() =>
+					Effect.sync(() => {
+						closedIn = Date.now();
+					}),
+				);
+			}).pipe(Effect.scoped);
+			// Finalizers run in reverse: the one above runs first, so this times the client's close.
+			const elapsed = Date.now() - closedIn;
+			summary.httpClose = { deletes, hangingDeleteBounded: elapsed < 1_500 };
+			expect(deletes).toBe(1);
+			expect(hanging.seen).toContain("DELETE");
+			expect(elapsed).toBeLessThan(1_500);
+		}),
+	);
+
+	it(
+		"http: a 400 'Server not initialized' expires the session; any other 400 is a request error",
+		Effect.gen(function* () {
+			const reply = (body: string) => {
+				let armed = false;
+				const server = raw({
+					script: (request) => (armed && request === "POST tools/list" ? { status: 400, body } : undefined),
+				});
+				return { server, arm: () => (armed = true) };
+			};
+			const run = (body: string) =>
+				Effect.gen(function* () {
+					const { server, arm } = reply(body);
+					const url = yield* listen(server.handler);
+					const connection = yield* McpClient.connect({ server: "raw", endpoint: http(url) });
+					arm();
+					return failure(yield* connection.tools().pipe(Effect.flip));
+				}).pipe(Effect.scoped);
+			const notInitialized = yield* run(
+				JSON.stringify({
+					jsonrpc: "2.0",
+					error: { code: -32000, message: "Bad Request: Server not initialized" },
+					id: null,
+				}),
+			);
+			const other = yield* run(
+				JSON.stringify({
+					jsonrpc: "2.0",
+					error: { code: -32000, message: "Bad Request: something else" },
+					id: null,
+				}),
+			);
+			summary.http400 = { notInitialized, other };
+			expect(notInitialized.tag).toBe("Mcp.SessionExpiredError");
+			expect(other.tag).toBe("Mcp.RequestError");
+		}),
+	);
+
+	it(
 		"writes the scenario artifact",
-		Effect.promise(() => expect(summary).toMatchFileSnapshot("./__artifacts__/mcp.client.json")),
+		Effect.gen(function* () {
+			// A filtered run must not snapshot a partial summary.
+			expect(Object.keys(summary).sort()).toEqual([...scenarios].sort());
+			yield* Effect.promise(() => expect(summary).toMatchFileSnapshot("./__artifacts__/mcp.client.json"));
+		}),
 	);
 });

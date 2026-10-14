@@ -63,6 +63,9 @@ export const sdk = async (): Promise<Handler> => {
 	};
 };
 
+/** A scripted answer: a status with a text body, or no answer at all. */
+export type Reply = { readonly status: number; readonly body: string } | "hang";
+
 /** Requests a hand-written server saw, as `METHOD rpc-method`. */
 export interface Raw {
 	readonly handler: Handler;
@@ -72,7 +75,16 @@ export interface Raw {
 }
 
 /** A hand-written streamable HTTP server for raw status scenarios. */
-export const raw = (options: { readonly failInitialize?: number; readonly unauthorized?: boolean } = {}): Raw => {
+export const raw = (
+	options: {
+		readonly failInitialize?: number;
+		readonly unauthorized?: boolean;
+		/** Protocol version to answer initialize with, instead of echoing the client's. */
+		readonly protocolVersion?: string;
+		/** Overrides the answer to a request, keyed as in `seen`; `undefined` answers normally. */
+		readonly script?: (request: string) => Reply | undefined;
+	} = {},
+): Raw => {
 	let failures = options.failInitialize ?? 0;
 	const state: Raw = {
 		seen: [],
@@ -87,7 +99,12 @@ export const raw = (options: { readonly failInitialize?: number; readonly unauth
 				return void response.end("unauthorized");
 			}
 			const body = request.method === "POST" ? (JSON.parse((await readBody(request)).toString()) as Rpc) : undefined;
-			state.seen.push(body?.method ? `${request.method} ${body.method}` : `${request.method}`);
+			const key = body?.method ? `${request.method} ${body.method}` : `${request.method}`;
+			state.seen.push(key);
+			const scripted = options.script?.(key);
+			if (scripted === "hang") return;
+			if (scripted !== undefined)
+				return void response.writeHead(scripted.status, { "content-type": "text/plain" }).end(scripted.body);
 			if (state.forget && request.headers["mcp-session-id"] !== undefined) {
 				response.writeHead(404, { "content-type": "text/plain" });
 				return void response.end("session not found");
@@ -102,13 +119,15 @@ export const raw = (options: { readonly failInitialize?: number; readonly unauth
 			const result =
 				body.method === "initialize"
 					? {
-							protocolVersion: body.params?.protocolVersion,
+							protocolVersion: options.protocolVersion ?? body.params?.protocolVersion,
 							capabilities: { tools: {} },
 							serverInfo: { name: "raw-fixture", version: "1.0.0" },
 						}
 					: body.method === "tools/list"
 						? { tools: [{ name: "echo", inputSchema: { type: "object" } }] }
-						: {};
+						: body.method === "tools/call"
+							? { content: [{ type: "text", text: "called" }] }
+							: {};
 			response.writeHead(200, { "content-type": "application/json", "mcp-session-id": "raw-session" });
 			response.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
 		},
