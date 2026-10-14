@@ -1,5 +1,6 @@
 import { defaultPromptPlugin } from "./builtin/prompt/default.ts";
 import { instructionPlugin } from "./builtin/prompt/instruction.ts";
+import { skillPlugin } from "./builtin/prompt/skill.ts";
 import { bashPlugin } from "./builtin/tool/bash.ts";
 import { editPlugin } from "./builtin/tool/edit.ts";
 import { findPlugin } from "./builtin/tool/find.ts";
@@ -24,4 +25,5 @@ export const builtins = Object.freeze([
 	lsPlugin,
 	defaultPromptPlugin,
 	instructionPlugin,
+	skillPlugin,
 ]);

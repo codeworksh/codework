@@ -521,6 +521,9 @@ importers:
       diff:
         specifier: 9.0.0
         version: 9.0.0
+      ignore:
+        specifier: 7.0.8
+        version: 7.0.8
       jsonc-parser:
         specifier: 3.3.1
         version: 3.3.1
@@ -536,6 +539,9 @@ importers:
       uuidv7:
         specifier: ^1.2.1
         version: 1.2.1
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
     devDependencies:
       '@daytona/sdk':
         specifier: ^0.211.2
@@ -5849,6 +5855,10 @@ packages:
   ignore-walk@9.0.0:
     resolution: {integrity: sha512-tCBEZV2z2FNpIDl2vrhiWzIHzs4qOAuIDEO85eS02vZ3L1U3P56qpPL8GuGGAijDktAEaq2swMkO/Fmbo7YmfQ==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
+
+  ignore@7.0.8:
+    resolution: {integrity: sha512-YYNsSlXBjMk92SKnkwvB5LOVSa6OznlFUGcsvrFgNJbJCd0M1XKeFVRc8ZByeCqz32FivYNHJVooLmdqrmvp/Q==}
+    engines: {node: '>= 4'}
 
   import-in-the-middle@3.5.1:
     resolution: {integrity: sha512-mPKuL8bPQzecui2KK6Gb+M8JvJoHnhS1FeYGa22QopBmlevF5F0FE6ued/B5EgHDeIoMTONIpDWWFKUPOG0DBQ==}
@@ -13370,6 +13380,8 @@ snapshots:
   ignore-walk@9.0.0:
     dependencies:
       minimatch: 10.2.6
+
+  ignore@7.0.8: {}
 
   import-in-the-middle@3.5.1:
     dependencies:

@@ -1,0 +1,64 @@
+<skills>
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>long-desc</name>
+    <description>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</description>
+    <location><root>/repo/pkg/.codework/skills/long-desc/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</name>
+    <description>Loads despite 65-char name.</description>
+    <location><root>/repo/pkg/.codework/skills/long-name/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>root-skill</name>
+    <description>Standalone root markdown skill in .codework/skills.</description>
+    <location><root>/repo/pkg/.codework/skills/root-skill.md</location>
+  </skill>
+  <skill>
+    <name>shared-skill</name>
+    <description>Pkg copy wins collision and derives name from parent dir.</description>
+    <location><root>/repo/pkg/.codework/skills/shared-skill/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>unknown-field</name>
+    <description>Ignores unknown frontmatter fields.</description>
+    <location><root>/repo/pkg/.codework/skills/unknown-field/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>Bad--Name_Here</name>
+    <description>Loads despite name warnings.</description>
+    <location><root>/repo/pkg/.codework/skills/warn-skill/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>repo-agent</name>
+    <description>Multiline repo skill
+with &lt;xml&gt; &amp; &quot;quotes&quot;.
+</description>
+    <location><root>/repo/pkg/.agents/skills/repo-agent-link/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>standalone-agent</name>
+    <description>Nested markdown skill in .agents/skills.</description>
+    <location><root>/repo/.agents/skills/third-party/standalone-agent.md</location>
+  </skill>
+</available_skills>
+</skills>
+
+could not parse skill file <root>/repo/pkg/.codework/skills/broken-yaml/SKILL.md YAMLParseError: Flow sequence in block collection must be sufficiently indented and end with a ] at line 2, column 1:
+
+skill <root>/repo/.agents/skills/shared-skill/SKILL.md: name "shared-skill" collision with <root>/repo/pkg/.codework/skills/shared-skill/SKILL.md
+
+skill <root>/repo/pkg/.codework/skills/long-desc/SKILL.md: description exceeds 1024 characters (1025)
+
+skill <root>/repo/pkg/.codework/skills/long-name/SKILL.md: name exceeds 64 characters (65)
+
+skill <root>/repo/pkg/.codework/skills/missing-desc/SKILL.md: description is required
+
+skill <root>/repo/pkg/.codework/skills/warn-skill/SKILL.md: name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)
+
+skill <root>/repo/pkg/.codework/skills/warn-skill/SKILL.md: name must not contain consecutive hyphens
