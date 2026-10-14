@@ -1,5 +1,5 @@
 import { remoteSuite } from "./fixtures/live.ts";
-import { Effect, Layer, ManagedRuntime, Option } from "effect";
+import { Effect, Layer, ManagedRuntime, Metric, Option } from "effect";
 import { SqlClient } from "effect/sql";
 import { expect, it } from "vite-plus/test";
 import { Database } from "../src/db/db.ts";
@@ -11,6 +11,7 @@ import * as DaytonaSandboxDriver from "../src/sandboxes/daytona/index.ts";
 import * as VercelSandboxDriver from "../src/sandboxes/vercel/index.ts";
 import { SandboxInstance } from "../src/sandbox/instance.ts";
 import { SandboxIO } from "../src/sandbox/io.ts";
+import { Telemetry } from "../src/telemetry/telemetry.ts";
 import { hasLiveOidc } from "./fixtures/vercel.ts";
 import "./utils/env.ts";
 
@@ -32,6 +33,13 @@ const cleanup = (controller: SandboxController.Controller["Service"], id: Sandbo
 		yield* controller.destroy(id);
 	});
 
+/** Recorded `codework.sandbox.provision.duration` samples for one driver operation. */
+const provisions = (driver: string, operation: "create" | "wake") =>
+	Effect.map(
+		Metric.value(Metric.withAttributes(Telemetry.sandboxProvisionDuration, { driver, operation })),
+		(state) => state.count,
+	);
+
 const lifecycle = async (input: {
 	readonly remote: SandboxDriver.Registration;
 	readonly config: unknown;
@@ -50,6 +58,8 @@ const lifecycle = async (input: {
 			Effect.gen(function* () {
 				const controller = yield* SandboxController.Controller;
 				const sql = yield* SqlClient.SqlClient;
+				const driver = input.remote.registered.name;
+				const before = { create: yield* provisions(driver, "create"), wake: yield* provisions(driver, "wake") };
 				const created = yield* controller.create({
 					driver: input.remote.registered,
 					config: input.config,
@@ -83,6 +93,13 @@ const lifecycle = async (input: {
 					// Managed Daytona resources disable auto-deletion, so both
 					// providers deterministically finish a successful stop here.
 					expect(stopped.providerStatus).toEqual(Option.some("stopped"));
+
+					const woken = yield* controller.wake(created.id);
+					expect(woken.status).toBe("online");
+					expect({
+						create: (yield* provisions(driver, "create")) - before.create,
+						wake: (yield* provisions(driver, "wake")) - before.wake,
+					}).toEqual({ create: 1, wake: 1 });
 
 					const remounted = yield* Effect.gen(function* () {
 						const fs = yield* SandboxIO.FileSystem;

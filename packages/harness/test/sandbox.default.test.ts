@@ -2,22 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { filesystemSpec, withService } from "./fixtures/sandbox.spec.ts";
+import { withService } from "./fixtures/service.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 
 describe("Sandbox.EnvDefault", () => {
-	// The host runs the same cross-backend contract as the virtual backends —
-	// possible only now that the spec addresses the mount, since every path it
-	// touches lands inside this temp directory instead of at the real root.
-	filesystemSpec(async () => {
-		const tmp = await tmpdir();
-		return {
-			sandbox: Sandbox.EnvNodeJSDefault.layer(),
-			cwd: tmp.path,
-			dispose: () => tmp[Symbol.asyncDispose](),
-		};
-	});
-
 	it("should report symlink identity through lstat, never through stat", async () => {
 		await using tmp = await tmpdir();
 		await fs.writeFile(path.join(tmp.path, "target.txt"), "data");

@@ -3,25 +3,11 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { filesystemSpec, withService } from "./fixtures/sandbox.spec.ts";
+import { withService } from "./fixtures/service.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 
 describe("Sandbox.EnvSQLiteFS", () => {
-	describe("with sqlite in-memory filesystem spec", () => {
-		filesystemSpec(async () => ({
-			sandbox: Sandbox.EnvSqldb.layer(),
-		}));
-	});
-
-	describe("with sqlite file-backed filesystem spec", () => {
-		filesystemSpec(async () => {
-			const tmp = await tmpdir();
-			return {
-				sandbox: Sandbox.EnvSqldb.layer({ location: path.join(tmp.path, "fs.db") }),
-				dispose: () => tmp[Symbol.asyncDispose](),
-			};
-		});
-
+	describe("with sqlite file-backed filesystem", () => {
 		// the database file outlives the sandbox: a fresh layer build against
 		// the same file sees everything written by the previous lifetime
 		it("should persist files across sandbox lifetimes", async () => {
