@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, it } from "vite-plus/test";
+import { expect, it, onTestFinished } from "vite-plus/test";
 import { ContextCodec } from "../src/context/codec.ts";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
@@ -111,7 +111,8 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 				pendingCall("mcp__e2e__big", {}, "big"),
 				pendingCall("list_mcp_resources", {}, "resources-all"),
 				pendingCall("list_mcp_resources", { server: "e2e" }, "resources-page"),
-				pendingCall("list_mcp_resources", { server: "e2e", cursor: "page-2" }, "resources-next"),
+				// The server's cursor goes back exactly as it was given, spaces and all.
+				pendingCall("list_mcp_resources", { server: "e2e", cursor: " page-2 " }, "resources-next"),
 				pendingCall("list_mcp_resource_templates", {}, "templates"),
 				pendingCall("read_mcp_resource", { server: "e2e", uri: "fixture://notes.txt" }, "read-text"),
 				pendingCall("read_mcp_resource", { server: "e2e", uri: "fixture://data.bin" }, "read-binary"),
@@ -186,10 +187,12 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 	expect(outcome("cwd")?.content).toEqual([await fs.realpath(join(work, "srv"))]);
 
 	// What the model is not shown in full is kept on the host, in files only the user can read.
-	const savedPath = (id: string) =>
-		/(\/\S+codework-mcp-[0-9a-f]+\.\w+)/.exec(outcome(id)?.content.join("\n") ?? "")?.[1];
-	const bigFile = savedPath("big");
-	const binaryFile = savedPath("read-binary");
+	// Paths are read between the message's own delimiters, so a temp directory with spaces still parses.
+	const bigFile = /\[Full output: (.+) \(read it with offset\/limit\)\]/.exec(outcome("big")?.content[0] ?? "")?.[1];
+	const binaryFile = /saved to (.+)\]$/.exec(outcome("read-binary")?.content[0] ?? "")?.[1];
+	onTestFinished(async () => {
+		for (const file of [bigFile, binaryFile]) if (file) await fs.rm(file, { force: true });
+	});
 	expect(await fs.readFile(bigFile!, "utf8")).toBe(`start ${"x".repeat(30 * 1024)} end`);
 	expect([...(await fs.readFile(binaryFile!))]).toEqual([0, 1, 2, 3]);
 	expect((await fs.stat(binaryFile!)).mode & 0o777).toBe(0o600);
@@ -201,7 +204,8 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 	const normalise = (value: unknown) =>
 		JSON.parse(
 			JSON.stringify(value)
-				.replace(/\/\S+?codework-mcp-[0-9a-f]+(\.\w+)/g, "<output>$1")
+				.replaceAll(bigFile!, "<output>.txt")
+				.replaceAll(binaryFile!, "<output>.bin")
 				.replaceAll(real, "<tmp>")
 				.replaceAll(dir.path, "<tmp>")
 				.replaceAll(process.execPath, "<node>")

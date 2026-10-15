@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LoggingMessageNotificationParams, OAuthClientProvider } from "@modelcontextprotocol/client";
 import { Deferred, Effect, Exit, Fiber, Option, Ref, Scope } from "effect";
-import { describe, expect, vi } from "vite-plus/test";
+import { describe, expect, onTestFinished, vi } from "vite-plus/test";
 import { McpClient } from "../src/mcp/client.ts";
 import { McpContent } from "../src/mcp/content.ts";
 import { McpLog } from "../src/mcp/log.ts";
@@ -72,7 +72,6 @@ const scenarios = [
 
 const normalise = (message: string) =>
 	message
-		.replace(/\S+codework-mcp-[0-9a-f]+(\.\w+)/g, "<output>$1")
 		.replaceAll(fixtures, "<fixtures>/")
 		.replaceAll(process.execPath, "<node>")
 		.replace(/127\.0\.0\.1:\d+/g, "127.0.0.1:<port>")
@@ -145,16 +144,17 @@ describe("mcp client", () => {
 				tools: tools.map((tool) => tool.name),
 				echo: converted.echo,
 				mixed: converted.mixed.map((block) =>
-					block.type === "text" ? { ...block, text: normalise(block.text) } : block,
+					block.type === "text"
+						? { ...block, text: block.text.replace(/saved to .+\]$/, "saved to <output>.bin]") }
+						: block,
 				),
 				structured: converted.structured,
 			};
 			expect(connection.instructions).toBe("Use the echo tool.");
 			expect(converted.echo).toEqual([{ type: "text", text: "hi" }]);
-			const saved = /saved to (\S+codework-mcp-[0-9a-f]+\.bin)\]$/.exec(
-				(converted.mixed[4] as { readonly text: string }).text,
-			)?.[1];
+			const saved = /saved to (.+)\]$/.exec((converted.mixed[4] as { readonly text: string }).text)?.[1];
 			expect(saved).toBeDefined();
+			onTestFinished(() => rmSync(saved!, { force: true }));
 			expect(yield* Effect.promise(() => readFile(saved!))).toEqual(Buffer.from([0, 1, 2]));
 			expect(converted.mixed).toEqual([
 				{ type: "text", text: "hello" },
