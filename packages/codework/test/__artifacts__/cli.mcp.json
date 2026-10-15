@@ -1,0 +1,19 @@
+{
+	"requests": 2,
+	"declared": {
+		"name": "mcp__fixture__echo",
+		"description": "Echo text back, with the directory the server runs in.",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"text": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"text"
+			]
+		}
+	},
+	"answer": "echo: from the cli (pid <pid>, cwd <project>)"
+}
