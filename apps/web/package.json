@@ -12,8 +12,6 @@
 	"dependencies": {
 		"@codeworksh/server": "workspace:*",
 		"@effect/atom-react": "4.0.1",
-		"@fontsource-variable/geist": "^5.3.0",
-		"@fontsource-variable/jetbrains-mono": "^5.3.0",
 		"@pierre/trees": "1.0.0-beta.6",
 		"@tanstack/react-router": "^1.161.0",
 		"class-variance-authority": "^0.7.1",
