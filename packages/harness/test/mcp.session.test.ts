@@ -385,3 +385,112 @@ it("mcp: a server exiting while idle, reconfiguration, and an expired HTTP sessi
 		"./__artifacts__/mcp.session.lifecycle.json",
 	);
 }, 60_000);
+
+it("mcp: scopes decide who shares a server, and idle servers close", async () => {
+	await using dir = await tmpdir();
+	const home = join(dir.path, "home");
+	const shared = join(dir.path, "shared");
+	const other = join(dir.path, "other");
+	await Promise.all([fs.mkdir(shared, { recursive: true }), fs.mkdir(other, { recursive: true })]);
+	process.env.MCP_E2E_GREETING = "hello";
+	await write(join(home, "mcp.json"), {
+		mcpServers: { mine: stdio(), ours: stdio({ scope: "space" }), all: stdio({ scope: "app" }) },
+	});
+
+	const calls = (prefix: string) =>
+		["mine", "ours", "all"].map((server) => pendingCall(`mcp__${server}__pid`, {}, `${prefix}-${server}`));
+	const requests: LLM.Input[] = [];
+	const llm = scripted([calls("a"), [], calls("b"), [], calls("c"), [], calls("again"), []], requests);
+
+	const result = await Effect.gen(function* () {
+		const model = { provider: "openai", id: "gpt-5.6-luna" };
+		// A and B work in one space, C in another.
+		const a = yield* Session.create({ directory: shared, model });
+		const b = yield* Session.create({ directory: shared, model });
+		const c = yield* Session.create({ directory: other, model });
+		yield* a.run("a");
+		yield* b.run("b");
+		yield* c.run("c");
+		// No drain holds any server now, so every instance closes once the idle timeout passes.
+		const status = Mcp.Service.use((mcp) =>
+			Effect.forEach([a, b, c], (session) => mcp.status(session.id)).pipe(Effect.map((all) => all.flat())),
+		);
+		for (let tries = 0; tries < 250 && (yield* status).some((one) => one.state !== "disconnected"); tries++)
+			yield* Effect.sleep("40 millis");
+		const idle = yield* status;
+		// A closed instance is started again by the next exchange that needs it.
+		yield* a.run("again");
+		const messages = yield* Effect.forEach([a, b, c], (session) =>
+			session.path().pipe(Effect.flatMap((path) => Effect.forEach(path, ContextCodec.decodeMessage))),
+		);
+		return { messages: messages.flat(), idle };
+	}).pipe(
+		Effect.provide(
+			Harness.layer({
+				home,
+				hostCwd: dir.path,
+				database: ":memory:",
+				plugins: [defaultPromptPlugin],
+				llm,
+				// Long enough for the three exchanges to share instances, short enough to watch them close.
+				mcpIdleTimeout: "1500 millis",
+			}),
+		),
+		Effect.scoped,
+		Effect.runPromise,
+	);
+
+	const pids = new Map(
+		result.messages
+			.flatMap((message) => message.parts)
+			.flatMap((part) =>
+				part.type === "toolCall" && "result" in part
+					? [[part.callID, (part.result.content[0] as { readonly text: string }).text] as const]
+					: [],
+			),
+	);
+	const pid = (session: string, server: string) => pids.get(`${session}-${server}`);
+	for (const id of pids.values()) expect(id).toMatch(/^\d+$/);
+	// `session`: each its own. `space`: A and B share, C has its own. `app`: one for all.
+	expect(new Set([pid("a", "mine"), pid("b", "mine"), pid("c", "mine")]).size).toBe(3);
+	expect(pid("a", "ours")).toBe(pid("b", "ours"));
+	expect(pid("c", "ours")).not.toBe(pid("a", "ours"));
+	expect(new Set([pid("a", "all"), pid("b", "all"), pid("c", "all")]).size).toBe(1);
+
+	// Every instance closed, and its process with it.
+	expect(result.idle.every((one) => one.state === "disconnected")).toBe(true);
+	const alive = (value: string) => {
+		try {
+			process.kill(Number(value), 0);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	const before = ["a", "b", "c"].flatMap((session) => ["mine", "ours", "all"].map((server) => pid(session, server)));
+	expect(before.filter((value) => value !== undefined && alive(value))).toEqual([]);
+	for (const server of ["mine", "ours", "all"]) expect(before).not.toContain(pid("again", server));
+
+	// Distinct processes per scope, in the order the sessions first saw them.
+	const order = [
+		...new Set(
+			["a", "b", "c", "again"].flatMap((session) => ["mine", "ours", "all"].map((server) => pid(session, server))),
+		),
+	];
+	const label = (value: string | undefined) => `<process-${order.indexOf(value ?? "") + 1}>`;
+	await expect(
+		`${JSON.stringify(
+			{
+				processes: Object.fromEntries(
+					["a", "b", "c", "again"].map((session) => [
+						session,
+						Object.fromEntries(["mine", "ours", "all"].map((server) => [server, label(pid(session, server))])),
+					]),
+				),
+				idle: result.idle,
+			},
+			null,
+			"\t",
+		)}\n`,
+	).toMatchFileSnapshot("./__artifacts__/mcp.session.scopes.json");
+}, 60_000);

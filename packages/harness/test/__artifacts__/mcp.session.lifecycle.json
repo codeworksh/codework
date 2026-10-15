@@ -58,7 +58,6 @@
 	"declared": [
 		[
 			"mcp__e2e__echo",
-			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -75,7 +74,6 @@
 		],
 		[
 			"mcp__e2e__echo",
-			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -92,7 +90,6 @@
 		],
 		[
 			"mcp__e2e__echo",
-			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -109,7 +106,6 @@
 		],
 		[
 			"mcp__e2e__echo",
-			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -124,9 +120,7 @@
 			"read_mcp_resource"
 		],
 		[
-			"mcp__remote__echo",
 			"mcp__e2e__echo",
-			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -135,6 +129,7 @@
 			"mcp__e2e__cwd",
 			"mcp__e2e__link",
 			"mcp__e2e__big",
+			"mcp__remote__echo",
 			"list_mcp_resources",
 			"list_mcp_resource_templates",
 			"read_mcp_resource"
@@ -158,14 +153,14 @@
 	],
 	"status": [
 		{
+			"server": "e2e",
+			"state": "connected",
+			"tools": 10
+		},
+		{
 			"server": "remote",
 			"state": "connected",
 			"tools": 1
-		},
-		{
-			"server": "e2e",
-			"state": "connected",
-			"tools": 11
 		}
 	]
 }

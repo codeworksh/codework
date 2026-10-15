@@ -1,0 +1,71 @@
+{
+	"processes": {
+		"a": {
+			"mine": "<process-1>",
+			"ours": "<process-2>",
+			"all": "<process-3>"
+		},
+		"b": {
+			"mine": "<process-4>",
+			"ours": "<process-2>",
+			"all": "<process-3>"
+		},
+		"c": {
+			"mine": "<process-5>",
+			"ours": "<process-6>",
+			"all": "<process-3>"
+		},
+		"again": {
+			"mine": "<process-7>",
+			"ours": "<process-8>",
+			"all": "<process-9>"
+		}
+	},
+	"idle": [
+		{
+			"server": "mine",
+			"state": "disconnected",
+			"tools": 10
+		},
+		{
+			"server": "ours",
+			"state": "disconnected",
+			"tools": 10
+		},
+		{
+			"server": "all",
+			"state": "disconnected",
+			"tools": 10
+		},
+		{
+			"server": "mine",
+			"state": "disconnected",
+			"tools": 10
+		},
+		{
+			"server": "ours",
+			"state": "disconnected",
+			"tools": 10
+		},
+		{
+			"server": "all",
+			"state": "disconnected",
+			"tools": 10
+		},
+		{
+			"server": "mine",
+			"state": "disconnected",
+			"tools": 10
+		},
+		{
+			"server": "ours",
+			"state": "disconnected",
+			"tools": 10
+		},
+		{
+			"server": "all",
+			"state": "disconnected",
+			"tools": 10
+		}
+	]
+}
