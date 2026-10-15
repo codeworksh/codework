@@ -20,38 +20,13 @@ const bridge = window.desktopBridge;
 /** Where a new project lives: nowhere yet, only in memory, or a folder on disk. */
 type Place = { kind: "none" } | { kind: "memory" } | { kind: "folder"; path: string };
 
+// A folder shows by its name alone; the trigger's tooltip carries the full path.
 const placeLabel = (place: Place) =>
-	place.kind === "none" ? "No project" : place.kind === "memory" ? "In Memory" : shorten(tildify(place.path));
-
-/** A path under the home directory as `~/…`, the way a shell prompt shows it. */
-const tildify = (path: string) => {
-	const home = bridge?.home;
-	return home !== undefined && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path;
-};
-
-const MAX_PATH = 40;
-
-/**
- * Fits a path in MAX_PATH characters by eliding its middle: the root folder stays, then as many
- * trailing folders as fit, e.g. `~/…/apps/web`. A single overlong name is cut mid-name instead.
- */
-function shorten(path: string) {
-	if (path.length <= MAX_PATH) return path;
-	const parts = path.split("/");
-	// `~/a/b` keeps `~`; `/Users/a/b` keeps `/Users`.
-	const rootEnd = parts[0] === "" ? 1 : 0;
-	const root = parts.slice(0, rootEnd + 1).join("/");
-	let tail = parts.at(-1) ?? "";
-	for (let index = parts.length - 2; index > rootEnd; index--) {
-		const longer = `${parts[index]}/${tail}`;
-		if (root.length + longer.length + 3 > MAX_PATH) break;
-		tail = longer;
-	}
-	const short = `${root}/…/${tail}`;
-	if (short.length <= MAX_PATH) return short;
-	const half = Math.floor((MAX_PATH - 1) / 2);
-	return `${path.slice(0, half)}…${path.slice(-half)}`;
-}
+	place.kind === "none"
+		? "Select Project"
+		: place.kind === "memory"
+			? "In Memory"
+			: (place.path.split("/").findLast(Boolean) ?? place.path);
 
 /** The start page: pick a project to work in. */
 export function Landing() {
@@ -89,41 +64,51 @@ export function Landing() {
 					<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />
 					<div className="mt-10 w-full max-w-2xl shrink-0">
 						<form
-							className="relative z-10 flex flex-col gap-2 rounded-[24px] border border-edge bg-frame p-3 transition-colors focus-within:border-edge-focus"
+							className="relative z-10 flex flex-col rounded-[22px] border border-edge bg-frame shadow-[0_12px_28px_-18px_rgb(0_0_0/0.4)] transition-colors focus-within:border-edge-focus"
 							onSubmit={(event) => {
 								event.preventDefault();
 								if (canOpen) void navigate(workspaceRoute(target));
 							}}
 						>
-							<input
-								autoFocus
-								value={query}
-								onChange={(event) => setQuery(event.target.value)}
-								placeholder="Open a project…"
-								aria-label="Project"
-								className="h-10 bg-transparent px-2 text-[14px] text-ink outline-none placeholder:text-ink-muted"
-							/>
-							<div className="flex justify-end">
+							<div className="px-4 pt-4 pb-2">
+								<textarea
+									autoFocus
+									rows={1}
+									value={query}
+									onChange={(event) => setQuery(event.target.value)}
+									onKeyDown={(event) => {
+										// Enter sends and Shift+Enter breaks the line; an IME composition owns its own Enter.
+										if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+										event.preventDefault();
+										event.currentTarget.form?.requestSubmit();
+									}}
+									placeholder="Ask for changes, send follow-ups, or attach images"
+									aria-label="Prompt"
+									// Grows with its text from four lines up to about nine, then scrolls.
+									className="block max-h-52 min-h-17.5 w-full resize-none bg-transparent text-[14px] leading-relaxed text-ink outline-none [field-sizing:content] placeholder:text-ink-muted/60"
+								/>
+							</div>
+							<div className="flex items-center justify-end gap-2 px-4 pb-4">
 								<button
 									type="submit"
-									aria-label="Open project"
+									aria-label="Send"
 									disabled={!canOpen}
-									className="grid size-8 place-items-center rounded-full bg-brand text-brand-ink transition-opacity disabled:opacity-30"
+									className="grid size-8 place-items-center rounded-full bg-brand text-brand-ink shadow-xs transition-[opacity,scale] duration-150 enabled:hover:scale-105 disabled:opacity-30"
 								>
 									<ArrowUp className="size-4" strokeWidth={2} aria-hidden />
 								</button>
 							</div>
 						</form>
 						{/* A tray tucked under the composer, inset from its rounded corners. */}
-						<div className="mx-5.5 -mt-4 flex items-center rounded-b-[16px] border border-edge bg-frame/60 px-1.5 pt-5 pb-1 text-[12px] text-ink-muted">
+						<div className="mx-5.5 -mt-4 flex items-center rounded-b-[16px] border border-edge bg-frame/60 px-2 pt-5 pb-1 text-[12px] text-ink-muted/70">
 							<DropdownMenu>
 								<DropdownMenuTrigger
 									title={place.kind === "folder" ? place.path : undefined}
-									className="flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
+									className="flex h-6 min-w-0 items-center gap-1 rounded-[8px] px-1.75 leading-4 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
 								>
-									<PlaceIcon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+									<PlaceIcon className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
 									<span className="truncate">{placeLabel(place)}</span>
-									<ChevronDown className="size-3 shrink-0 opacity-60" strokeWidth={2} aria-hidden />
+									<ChevronDown className="size-3 shrink-0 opacity-50" strokeWidth={2} aria-hidden />
 								</DropdownMenuTrigger>
 								<DropdownMenuContent align="start" className="min-w-44">
 									<DropdownMenuLabel>Project</DropdownMenuLabel>
