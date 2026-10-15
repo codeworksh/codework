@@ -33,6 +33,11 @@ export interface Desk {
 // Tag bits of the workspaces the database is seeded with: Main, Code, Notes.
 const [main, code, notes] = [tagBit(0), tagBit(1), tagBit(2)];
 
+const defaultRoot =
+	(typeof window !== "undefined" && window.desktopBridge?.root) ||
+	(import.meta.env.VITE_PROJECT_ROOT as string) ||
+	"";
+
 // Hardcoded until instances live in SQLite. Tile order follows this list, so
 // Files is the master on Main and Projects on Code; Chat and Terminal sit on
 // two workspaces at once.
@@ -41,7 +46,7 @@ const seed: readonly Instance[] = [
 		id: "files",
 		kind: "codework:explorer",
 		tags: main,
-		props: { root: "/Users/sanchitrk/Developer/codeworksh/codework" },
+		props: { root: defaultRoot },
 	},
 	{ id: "projects", kind: "codework:projects", tags: code, props: {} },
 	{ id: "chat", kind: "codework:placeholder", title: "Chat", tags: main | code, props: {} },

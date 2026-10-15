@@ -4,6 +4,8 @@ declare global {
 			platform: string;
 			/** The app server's RPC WebSocket URL. */
 			server: string;
+			/** The default workspace root directory. */
+			root?: string;
 		};
 	}
 }
