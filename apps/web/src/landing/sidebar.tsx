@@ -4,7 +4,16 @@ import { AsyncResult } from "effect/reactivity";
 import { Search } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 
-import { Sidebar, SidebarContent, SidebarHeader, SidebarInput } from "@/components/ui/sidebar";
+import {
+	Sidebar,
+	SidebarContent,
+	SidebarHeader,
+	SidebarInput,
+	SidebarRail,
+	SidebarTrigger,
+	useSidebar,
+} from "@/components/ui/sidebar";
+import { isMac } from "../kernel/platform";
 import { Server } from "../kernel/rpc";
 import { ago } from "../widgets/projects/time";
 
@@ -69,7 +78,7 @@ export function SessionsSidebar() {
 		: [];
 
 	return (
-		<Sidebar collapsible="none" className="border-r border-edge select-none">
+		<Sidebar collapsible="offcanvas" className="select-none">
 			<SidebarHeader className="gap-0 p-0">
 				{/* The window's drag region, clear of the macOS traffic lights. */}
 				<div className={`h-11 shrink-0 [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`} />
@@ -121,6 +130,25 @@ export function SessionsSidebar() {
 					</ul>
 				)}
 			</SidebarContent>
+			<SidebarRail />
 		</Sidebar>
+	);
+}
+
+/**
+ * The main area's title bar: the window's drag region with the sidebar toggle. With the sidebar
+ * hidden it sits in the window's corner, so it moves clear of the macOS traffic lights.
+ */
+export function TitleBar() {
+	const { open } = useSidebar();
+	return (
+		<header
+			className={`flex h-11 shrink-0 items-center px-2 [-webkit-app-region:drag] ${!open && insetTitleBar ? "pl-20" : ""}`}
+		>
+			<SidebarTrigger
+				title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}
+				className="text-ink-muted [-webkit-app-region:no-drag] hover:text-ink"
+			/>
+		</header>
 	);
 }

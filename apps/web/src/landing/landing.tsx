@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useWorkspaces, workspaceRoute } from "../wm/workspaces";
-import { SessionsSidebar } from "./sidebar";
+import { SessionsSidebar, TitleBar } from "./sidebar";
 import { Wordmark } from "./wordmark";
 
 const bridge = window.desktopBridge;
@@ -74,11 +74,14 @@ export function Landing() {
 	const PlaceIcon = place.kind === "memory" ? MemoryStick : Folder;
 
 	return (
-		<SidebarProvider className="h-full min-h-0" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
+		<SidebarProvider
+			className="h-full min-h-0"
+			style={{ "--sidebar-width": "17rem" } as CSSProperties}
+			widthStorageKey="codework.sidebar.width"
+		>
 			<SessionsSidebar />
 			<div className="flex min-w-0 flex-1 flex-col select-none">
-				{/* The window's drag region. */}
-				<header className="h-11 shrink-0 [-webkit-app-region:drag]" />
+				<TitleBar />
 				<main className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-4">
 					<div className="flex-[0.8]" />
 					<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />
