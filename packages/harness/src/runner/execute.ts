@@ -19,6 +19,7 @@ import { SessionFailure } from "../session/failure.ts";
 import type { ID as SessionId } from "../session/schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 import { Session } from "../session/session.ts";
+import { Mcp } from "../mcp/mcp.ts";
 
 export const layer = Layer.effect(
 	RunnerExecution.Service,
@@ -31,6 +32,7 @@ export const layer = Layer.effect(
 		// in the callback would leave the tag in it.
 		const runner = yield* Runner.Service;
 		const events = yield* Event.Service;
+		const mcp = yield* Mcp.Service;
 		// A lifecycle publish that fails is reported, never thrown back into the
 		// coordinator: losing the observation must not change how the drain ends.
 		const reportLifecycle = (sessionId: SessionId, publish: Effect.Effect<unknown>) =>
@@ -114,6 +116,8 @@ export const layer = Layer.effect(
 						),
 					);
 
+					// The session's MCP servers stay open while its drain runs, and idle out after.
+					yield* mcp.lease(sessionId);
 					return yield* runner
 						.run({ sessionId, force })
 						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)));

@@ -8,6 +8,7 @@
 
 import { Config, Duration, Effect, Option, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { ValueError } from "./error.ts";
 
 const COMMAND_TIMEOUT = Duration.seconds(10);
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -84,7 +85,7 @@ export const resolve = Effect.fnUntraced(function* (value: string, what: string)
 	if (value.startsWith("!")) {
 		const output = yield* run(value.slice(1));
 		if (output === undefined)
-			return yield* Effect.fail(`Failed to resolve ${what} from shell command: ${value.slice(1)}`);
+			return yield* new ValueError({ message: `Failed to resolve ${what} from shell command: ${value.slice(1)}` });
 		return output;
 	}
 	const parts = template(value);
@@ -97,9 +98,9 @@ export const resolve = Effect.fnUntraced(function* (value: string, what: string)
 	}
 	const missing = names.filter((name) => !env.has(name));
 	if (missing.length > 0)
-		return yield* Effect.fail(
-			`Failed to resolve ${what} from environment variable${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`,
-		);
+		return yield* new ValueError({
+			message: `Failed to resolve ${what} from environment variable${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`,
+		});
 	return parts.map((part) => (part.type === "literal" ? part.value : env.get(part.name))).join("");
 });
 
