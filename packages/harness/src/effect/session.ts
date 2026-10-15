@@ -8,6 +8,7 @@ import { Location } from "../location/location.ts";
 import * as SandboxController from "../sandbox/control.ts";
 import { SandboxInstance as SandboxInstanceSchema } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
+import type { ProjectSchema } from "../project/schema.ts";
 import { AbsolutePath } from "../schema.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { Delivery } from "../session/prompt/schema.ts";
@@ -93,6 +94,12 @@ export interface Info {
 	 */
 	readonly hasHostLink: boolean;
 	readonly sandbox?: SandboxInfo;
+	/** Absent only when the session's space or project row is missing. */
+	readonly project?: { readonly id: ProjectSchema.ID; readonly name: string };
+	/** Last activity, epoch milliseconds: every appended entry moves it. */
+	readonly updatedAt: number;
+	/** The model chosen for this session over settings; absent when settings decide. */
+	readonly model?: { readonly provider: string; readonly id: string };
 }
 
 export interface Handle {
@@ -167,6 +174,8 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 				? undefined
 				: Option.getOrUndefined(yield* sandboxes.get(space.env));
 		const hostDir = Option.getOrUndefined(row.hostDir);
+		const project = Option.getOrUndefined(yield* sessions.project(id));
+		const model = Option.getOrUndefined(row.config)?.model;
 		return {
 			id,
 			title: row.title,
@@ -174,6 +183,9 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 			...(hostDir === undefined ? {} : { hostDir }),
 			hasHostLink: hostDir !== undefined,
 			...(sandbox === undefined ? {} : { sandbox }),
+			...(project === undefined ? {} : { project: { id: project.id, name: project.name } }),
+			updatedAt: DateTime.toEpochMillis(row.updatedAt),
+			...(model === undefined ? {} : { model }),
 		};
 	}).pipe(Effect.withSpan("Session.info"));
 

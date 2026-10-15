@@ -1,7 +1,8 @@
 import { Clock, Effect, FileSystem, Option, Path, Schema } from "effect";
 import { SqlClient } from "effect/sql";
-import { Contract, type Entry } from "./contract.ts";
-import { findSession, projects } from "./mock.ts";
+import { Codework } from "./codework.ts";
+import { Contract, type Entry, type Project } from "./contract.ts";
+import { findSession } from "./mock.ts";
 import { Workspaces } from "./workspaces.ts";
 
 const JsonText = Schema.fromJsonString(Schema.Json);
@@ -15,6 +16,33 @@ const byKindThenName = (a: Entry, b: Entry) =>
 		: a.kind === "directory"
 			? -1
 			: 1;
+
+/**
+ * Sessions grouped by project, both newest first. A session whose project row is missing gets a
+ * group of its own folder, so it still shows rather than vanishing.
+ */
+const byProject = (sessions: ReadonlyArray<Codework.SessionInfo>): Project[] => {
+	const groups = new Map<string, Project & { sessions: Project["sessions"][number][] }>();
+	for (const session of [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)) {
+		const folder = session.hostDir ?? session.directory;
+		const key = session.project?.id ?? folder;
+		const group = groups.get(key) ?? {
+			id: key,
+			name: session.project?.name ?? folder.split("/").at(-1) ?? folder,
+			// The newest session's folder: where the project was last worked on.
+			path: folder,
+			sessions: [],
+		};
+		group.sessions.push({
+			id: session.id,
+			title: session.title,
+			updated: session.updatedAt,
+			...(session.model === undefined ? {} : { model: session.model }),
+		});
+		groups.set(key, group);
+	}
+	return [...groups.values()];
+};
 
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
@@ -48,7 +76,10 @@ export const layer = Contract.Api.toLayer(
 					.sort(byKindThenName);
 			}),
 
-			"projects.list": () => Effect.succeed(projects),
+			"projects.list": Effect.fn("projects.list")(function* () {
+				const sessions = yield* Codework.call((client) => client["session.list"]({}));
+				return byProject(sessions);
+			}),
 
 			"sessions.get": Effect.fn("sessions.get")(function* ({ id }) {
 				const session = findSession(id);

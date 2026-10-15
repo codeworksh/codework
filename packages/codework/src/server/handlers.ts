@@ -25,6 +25,9 @@ const toSessionInfo = (info: Session.Info): SessionInfo => ({
 	directory: info.directory,
 	...(info.hostDir === undefined ? {} : { hostDir: info.hostDir }),
 	...(info.sandbox === undefined ? {} : { sandbox: toSandboxInfo(info.sandbox) }),
+	...(info.project === undefined ? {} : { project: info.project }),
+	updatedAt: info.updatedAt,
+	...(info.model === undefined ? {} : { model: info.model }),
 });
 
 // Wire configs name only the keys they set, so `undefined` never reaches the

@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowUp, ChevronDown, Folder, FolderPlus, MemoryStick } from "lucide-react";
-import { useState } from "react";
+import { type CSSProperties, useState } from "react";
 
 import {
 	DropdownMenu,
@@ -8,7 +8,9 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { useWorkspaces, workspaceRoute } from "../wm/workspaces";
+import { SessionsSidebar } from "./sidebar";
 import { Wordmark } from "./wordmark";
 
 const bridge = window.desktopBridge;
@@ -72,65 +74,68 @@ export function Landing() {
 	const PlaceIcon = place.kind === "memory" ? MemoryStick : Folder;
 
 	return (
-		<div className="flex h-full flex-col select-none">
-			{/* The window's drag region, clear of the macOS traffic lights. */}
-			<header className="h-11 shrink-0 [-webkit-app-region:drag]" />
-			<main className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-4">
-				<div className="flex-[0.8]" />
-				<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />
-				<div className="mt-10 w-full max-w-2xl shrink-0">
-					<form
-						className="relative z-10 flex flex-col gap-2 rounded-[24px] border border-edge bg-frame p-3 transition-colors focus-within:border-edge-focus"
-						onSubmit={(event) => {
-							event.preventDefault();
-							if (canOpen) void navigate(workspaceRoute(target));
-						}}
-					>
-						<input
-							autoFocus
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							placeholder="Open a project…"
-							aria-label="Project"
-							className="h-10 bg-transparent px-2 text-[14px] text-ink outline-none placeholder:text-ink-muted"
-						/>
-						<div className="flex justify-end">
-							<button
-								type="submit"
-								aria-label="Open project"
-								disabled={!canOpen}
-								className="grid size-8 place-items-center rounded-full bg-brand text-brand-ink transition-opacity disabled:opacity-30"
-							>
-								<ArrowUp className="size-4" strokeWidth={2} aria-hidden />
-							</button>
+		<SidebarProvider className="h-full min-h-0" style={{ "--sidebar-width": "17rem" } as CSSProperties}>
+			<SessionsSidebar />
+			<div className="flex min-w-0 flex-1 flex-col select-none">
+				{/* The window's drag region. */}
+				<header className="h-11 shrink-0 [-webkit-app-region:drag]" />
+				<main className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-4">
+					<div className="flex-[0.8]" />
+					<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />
+					<div className="mt-10 w-full max-w-2xl shrink-0">
+						<form
+							className="relative z-10 flex flex-col gap-2 rounded-[24px] border border-edge bg-frame p-3 transition-colors focus-within:border-edge-focus"
+							onSubmit={(event) => {
+								event.preventDefault();
+								if (canOpen) void navigate(workspaceRoute(target));
+							}}
+						>
+							<input
+								autoFocus
+								value={query}
+								onChange={(event) => setQuery(event.target.value)}
+								placeholder="Open a project…"
+								aria-label="Project"
+								className="h-10 bg-transparent px-2 text-[14px] text-ink outline-none placeholder:text-ink-muted"
+							/>
+							<div className="flex justify-end">
+								<button
+									type="submit"
+									aria-label="Open project"
+									disabled={!canOpen}
+									className="grid size-8 place-items-center rounded-full bg-brand text-brand-ink transition-opacity disabled:opacity-30"
+								>
+									<ArrowUp className="size-4" strokeWidth={2} aria-hidden />
+								</button>
+							</div>
+						</form>
+						{/* A tray tucked under the composer, inset from its rounded corners. */}
+						<div className="mx-5.5 -mt-4 flex items-center rounded-b-[16px] border border-edge bg-frame/60 px-1.5 pt-5 pb-1 text-[12px] text-ink-muted">
+							<DropdownMenu>
+								<DropdownMenuTrigger
+									title={place.kind === "folder" ? place.path : undefined}
+									className="flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
+								>
+									<PlaceIcon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+									<span className="truncate">{placeLabel(place)}</span>
+									<ChevronDown className="size-3 shrink-0 opacity-60" strokeWidth={2} aria-hidden />
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="start" className="min-w-40">
+									<DropdownMenuItem onSelect={() => setPlace({ kind: "memory" })}>
+										<MemoryStick strokeWidth={1.75} />
+										In memory
+									</DropdownMenuItem>
+									<DropdownMenuItem disabled={pickFolder === undefined} onSelect={() => void pickFolder?.()}>
+										<FolderPlus strokeWidth={1.75} />
+										New…
+									</DropdownMenuItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
 						</div>
-					</form>
-					{/* A tray tucked under the composer, inset from its rounded corners. */}
-					<div className="mx-5.5 -mt-4 flex items-center rounded-b-[16px] border border-edge bg-frame/60 px-1.5 pt-5 pb-1 text-[12px] text-ink-muted">
-						<DropdownMenu>
-							<DropdownMenuTrigger
-								title={place.kind === "folder" ? place.path : undefined}
-								className="flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
-							>
-								<PlaceIcon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
-								<span className="truncate">{placeLabel(place)}</span>
-								<ChevronDown className="size-3 shrink-0 opacity-60" strokeWidth={2} aria-hidden />
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="start" className="min-w-40">
-								<DropdownMenuItem onSelect={() => setPlace({ kind: "memory" })}>
-									<MemoryStick strokeWidth={1.75} />
-									In memory
-								</DropdownMenuItem>
-								<DropdownMenuItem disabled={pickFolder === undefined} onSelect={() => void pickFolder?.()}>
-									<FolderPlus strokeWidth={1.75} />
-									New…
-								</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
 					</div>
-				</div>
-				<div className="flex-1" />
-			</main>
-		</div>
+					<div className="flex-1" />
+				</main>
+			</div>
+		</SidebarProvider>
 	);
 }

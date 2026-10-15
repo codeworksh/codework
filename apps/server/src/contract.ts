@@ -19,6 +19,8 @@ export const SessionSummary = Schema.Struct({
 	title: Schema.String,
 	/** Last activity, epoch milliseconds. */
 	updated: Schema.Number,
+	/** The model chosen for the session; absent when settings decide. */
+	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 });
 export type SessionSummary = typeof SessionSummary.Type;
 
@@ -29,6 +31,11 @@ export const Project = Schema.Struct({
 	sessions: Schema.Array(SessionSummary),
 });
 export type Project = typeof Project.Type;
+
+/** The CodeWork server that owns projects and sessions is not running, or did not answer. */
+export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>()("Server.CodeworkUnavailable", {
+	message: Schema.String,
+}) {}
 
 export const Message = Schema.Struct({
 	role: Schema.Literals(["user", "assistant"]),
@@ -93,6 +100,7 @@ export const Api = RpcGroup.make(
 	}),
 	Rpc.make("projects.list", {
 		success: Schema.Array(Project),
+		error: CodeworkUnavailable,
 	}),
 	Rpc.make("sessions.get", {
 		payload: { id: Schema.String },

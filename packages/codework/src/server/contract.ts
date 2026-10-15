@@ -38,6 +38,12 @@ export const SessionInfo = Schema.Struct({
 	/** The host directory this session is anchored to. Absent when it has none. */
 	hostDir: optional(Session.AbsolutePath),
 	sandbox: optional(SandboxInfo),
+	/** The project the session's space belongs to. */
+	project: optional(Schema.Struct({ id: Schema.String, name: Schema.String })),
+	/** Last activity, epoch milliseconds. */
+	updatedAt: Schema.Finite,
+	/** The model chosen for this session; absent when settings decide. */
+	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 });
 export type SessionInfo = typeof SessionInfo.Type;
 

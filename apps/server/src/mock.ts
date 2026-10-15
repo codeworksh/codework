@@ -1,6 +1,6 @@
-import type { Message, Project, Session } from "./contract.ts";
+import type { Message, Session } from "./contract.ts";
 
-// Stand-in data until the server talks to the harness.
+// Stand-in conversations for `sessions.get` until it reads them from the CodeWork server.
 
 const hour = 60 * 60 * 1000;
 const now = Date.now();
@@ -26,18 +26,5 @@ const sessions: readonly Session[] = [
 	{ id: "s5", project: "webwm", title: "Pinned slots", updated: now - 50 * hour },
 	{ id: "s6", project: "notes", title: "Weekly plan", updated: now - 72 * hour },
 ].map((session) => ({ ...session, messages: conversation(session.title.toLowerCase()) }));
-
-const roots = [
-	{ id: "codework", name: "codework", path: "~/Developer/codeworksh/codework" },
-	{ id: "webwm", name: "webwm", path: "~/Developer/codeworksh/webwm" },
-	{ id: "notes", name: "notes", path: "~/Documents/notes" },
-];
-
-export const projects: readonly Project[] = roots.map((root) => ({
-	...root,
-	sessions: sessions
-		.filter((session) => session.project === root.id)
-		.map(({ id, title, updated }) => ({ id, title, updated })),
-}));
 
 export const findSession = (id: string) => sessions.find((session) => session.id === id);
