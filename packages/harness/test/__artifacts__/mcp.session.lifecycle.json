@@ -1,0 +1,136 @@
+{
+	"calls": {
+		"pid-1": {
+			"isError": false,
+			"content": [
+				"<process-1>"
+			]
+		},
+		"remote-1": {
+			"isError": false,
+			"content": [
+				"called"
+			]
+		},
+		"remote-retried": {
+			"isError": false,
+			"content": [
+				"called"
+			]
+		},
+		"bye": {
+			"isError": false,
+			"content": [
+				"bye"
+			]
+		},
+		"pid-2": {
+			"isError": false,
+			"content": [
+				"<process-2>"
+			]
+		},
+		"pid-3": {
+			"isError": false,
+			"content": [
+				"<process-2>"
+			]
+		},
+		"remote-expired-twice": {
+			"isError": true,
+			"content": [
+				"MCP tool \"remote/echo\" failed: mcp server session expired: remote"
+			]
+		},
+		"pid-4": {
+			"isError": false,
+			"content": [
+				"<process-3>"
+			]
+		},
+		"echo-changed": {
+			"isError": false,
+			"content": [
+				"changed: x"
+			]
+		}
+	},
+	"declared": [
+		[
+			"mcp__e2e__echo",
+			"mcp__e2e__fail",
+			"mcp__e2e__pid",
+			"mcp__e2e__crash",
+			"mcp__e2e__my_tool_v2",
+			"mcp__e2e__secret",
+			"mcp__e2e__bye",
+			"mcp__remote__echo"
+		],
+		[
+			"mcp__e2e__echo",
+			"mcp__e2e__fail",
+			"mcp__e2e__pid",
+			"mcp__e2e__crash",
+			"mcp__e2e__my_tool_v2",
+			"mcp__e2e__secret",
+			"mcp__e2e__bye",
+			"mcp__remote__echo"
+		],
+		[
+			"mcp__e2e__echo",
+			"mcp__e2e__fail",
+			"mcp__e2e__pid",
+			"mcp__e2e__crash",
+			"mcp__e2e__my_tool_v2",
+			"mcp__e2e__secret",
+			"mcp__e2e__bye",
+			"mcp__remote__echo"
+		],
+		[
+			"mcp__e2e__echo",
+			"mcp__e2e__fail",
+			"mcp__e2e__pid",
+			"mcp__e2e__crash",
+			"mcp__e2e__my_tool_v2",
+			"mcp__e2e__secret",
+			"mcp__remote__echo"
+		],
+		[
+			"mcp__remote__echo",
+			"mcp__e2e__echo",
+			"mcp__e2e__fail",
+			"mcp__e2e__pid",
+			"mcp__e2e__crash",
+			"mcp__e2e__my_tool_v2",
+			"mcp__e2e__secret"
+		]
+	],
+	"remote": [
+		"POST initialize",
+		"GET",
+		"POST tools/list",
+		"POST tools/call",
+		"POST tools/call",
+		"POST initialize",
+		"GET",
+		"POST tools/list",
+		"POST tools/call",
+		"POST tools/call",
+		"POST initialize",
+		"GET",
+		"POST tools/list",
+		"POST tools/call"
+	],
+	"status": [
+		{
+			"server": "remote",
+			"state": "connected",
+			"tools": 1
+		},
+		{
+			"server": "e2e",
+			"state": "connected",
+			"tools": 7
+		}
+	]
+}

@@ -1,5 +1,6 @@
 import { Model as AikitModel, type Protocol } from "@codeworksh/aikit";
 import { Effect, Schema, type SchemaAST, SchemaGetter, SchemaIssue } from "effect";
+import type { ServerConfig } from "./plugin/mcp.ts";
 import { isAikitModelInfo, NonNegativeInt, validateAikitModelInfo } from "./schema.ts";
 
 export const ThinkingLevel = Schema.Literals(Object.values(AikitModel.ThinkingLevelEnum));
@@ -203,6 +204,22 @@ export interface DeclaredModel {
 	readonly file: string;
 }
 
+/** One server from an `mcp.json`, and the file that defined it. */
+export interface McpServer {
+	readonly name: string;
+	readonly config: ServerConfig;
+	readonly file: string;
+	/** The project `mcp.json` whose entry overrides this user server's `enabled` or exposure. */
+	readonly override?: string;
+}
+
+/** The `mcp.json` layers: the user file, then the project's, whose entries replace same-named ones. */
+export interface McpSettings {
+	readonly servers: ReadonlyArray<McpServer>;
+	/** Files and entries that could not be used. Each is skipped; everything else still loads. */
+	readonly errors: ReadonlyArray<string>;
+}
+
 export interface Info {
 	/**
 	 * Plugin entries added to the harness selection, in order: every layer's entries, lowest
@@ -226,6 +243,7 @@ export interface Info {
 		readonly toolExecution: ToolExecution;
 	};
 	readonly retry: RetryPolicy;
+	readonly mcp: McpSettings;
 }
 
 /** Let aikit supply model-aware generation defaults. */
@@ -241,4 +259,5 @@ export const defaults: Info = {
 		options: { timeoutMs: 3_600_000, idleTimeoutMs: 300_000, maxRetries: 0 },
 	},
 	retry: { maxRetries: 3, baseDelayMs: 2_000, maxDelayMs: 60_000 },
+	mcp: { servers: [], errors: [] },
 };

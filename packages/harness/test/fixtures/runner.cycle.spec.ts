@@ -29,6 +29,8 @@ import { Session } from "../../src/session/session.ts";
 import { builtins } from "../../src/plugin/builtin.ts";
 import { State } from "../../src/state/state.ts";
 import { pooled } from "./pool.ts";
+import { Mcp } from "../../src/mcp/mcp.ts";
+import { Process } from "../../src/sandbox/utils/process.ts";
 
 const database = Database.layer(":memory:");
 const vercel = VercelSandboxDriver.make();
@@ -42,6 +44,7 @@ const runtime = (root: string, custom: string) =>
 		Layer.provideMerge(
 			((seeded) => State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild))(pooled(builtins)),
 		),
+		Layer.provideMerge(Mcp.layer({ hostCwd: "/", home: "/unused/home" }).pipe(Layer.provide(Process.host))),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Settings.layer({ userConfigDir: custom }).pipe(

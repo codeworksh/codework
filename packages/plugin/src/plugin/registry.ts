@@ -1,3 +1,4 @@
+import type { McpRegistry } from "./mcp.ts";
 import type { PromptRegistry } from "./prompt.ts";
 import type { ToolRegistry } from "./tool.ts";
 
@@ -9,6 +10,8 @@ import type { ToolRegistry } from "./tool.ts";
  * effective tool catalog and the final system prompt — is the harness's job, not the contract's.
  */
 export interface PluginRegistry {
+	/** Writable during the `mcp` domain only; later domains read the servers it settled. */
+	readonly mcp: McpRegistry;
 	readonly tools: ToolRegistry;
 	readonly prompt: PromptRegistry;
 }

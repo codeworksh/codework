@@ -19,10 +19,13 @@ import type { PluginOptions } from "./ref.ts";
  * composition actually happens -- a plugin patching another's tool, or appending to the prompt a
  * previous one rendered, is written next to it and deliberately after it.
  *
+ * `mcp` runs first: the MCP servers a session runs are settled before any tool exists, because
+ * their tools join the tool registry before the `tool` domain starts.
+ *
  * Kept as data so a later release can add a domain, or make the order configurable, without
  * touching the loader: `{ tool: 1, skill: 2, prompt: 3 }` needs no code change here.
  */
-export const domains = { tool: 1, prompt: 2 } as const;
+export const domains = { mcp: 1, tool: 2, prompt: 3 } as const;
 
 export type PluginKind = keyof typeof domains;
 
@@ -33,9 +36,9 @@ export type Mount = SandboxIO.Provides | LocationService;
 export interface Plugin {
 	readonly id: string;
 	/**
-	 * The domain this plugin extends, which decides when it runs: every `tool` plugin is set up
-	 * before any `prompt` plugin, whichever settings layer each came from, so a prompt plugin
-	 * always sees the complete tool set. Plugins within one domain run in the order they were
+	 * The domain this plugin extends, which decides when it runs: every `mcp` plugin is set up
+	 * before any `tool` plugin, and every `tool` plugin before any `prompt` plugin, whichever
+	 * settings layer each came from, so a prompt plugin always sees the complete tool set. Plugins within one domain run in the order they were
 	 * written.
 	 */
 	readonly kind: PluginKind;

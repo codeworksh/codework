@@ -80,6 +80,8 @@ export interface Connection {
 	 * dropped before the handler was set. Never runs for a close caused by closing the owning scope.
 	 */
 	readonly onClose: (handler: (reason: string) => Effect.Effect<void>) => void;
+	/** Why the connection dropped, as soon as it has, even before `onClose` handlers run. */
+	readonly dropped: () => string | undefined;
 }
 
 export interface ConnectInput {
@@ -458,6 +460,7 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			closed.handler = handler;
 			if (closed.reason !== undefined) runFork(handler(closed.reason));
 		},
+		dropped: () => closed.reason,
 	};
 	return connection;
 });

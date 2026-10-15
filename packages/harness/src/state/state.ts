@@ -22,6 +22,7 @@ import { select, type Origin, type PluginRef, type Pool } from "../plugin/catalo
 import { makeEvents, type PromptResolver } from "../plugin/context.ts";
 import { run as setup } from "../plugin/host.ts";
 import type { Plugin } from "../plugin/plugin.ts";
+import { Mcp } from "../mcp/mcp.ts";
 import { LLM } from "../runner/llm.ts";
 import type { Runner } from "../runner/run.ts";
 import { SandboxIO } from "../sandbox/io.ts";
@@ -251,6 +252,7 @@ export const layer = (
 			const eventService = yield* Event.Service;
 			const events = makeEvents(eventService);
 			const global = yield* Global.Service;
+			const mcp = yield* Mcp.Service;
 			/*
 			 * One load pass at a time, for the whole process.
 			 *
@@ -457,19 +459,33 @@ export const layer = (
 						});
 					}
 
-					const contributions = yield* setup(chosen.selection, {
-						sessionId,
-						sandbox,
-						paths: global,
-						location,
-						settings: loadedSettings,
-						model: resolvedModel,
-						events,
-						config: {
-							...(promptCustom === undefined ? {} : { promptCustom: resolver(promptCustom) }),
-							...(promptSystemAppend === undefined ? {} : { promptSystemAppend: resolver(promptSystemAppend) }),
+					const contributions = yield* setup(
+						chosen.selection,
+						{
+							sessionId,
+							sandbox,
+							paths: global,
+							location,
+							settings: loadedSettings,
+							model: resolvedModel,
+							events,
+							config: {
+								...(promptCustom === undefined ? {} : { promptCustom: resolver(promptCustom) }),
+								...(promptSystemAppend === undefined
+									? {}
+									: { promptSystemAppend: resolver(promptSystemAppend) }),
+							},
 						},
-					}).pipe(Effect.mapError((cause) => new SnapshotError({ sessionId, reason: cause.message, cause })));
+						(servers) =>
+							mcp.reconcile({
+								sessionId,
+								servers,
+								// MCP servers run on the host, so only a host sandbox's directory exists for them.
+								directory: sandbox.kind === "local" ? location.directory : undefined,
+								hostDir,
+								errors: loadedSettings.mcp.errors,
+							}),
+					).pipe(Effect.mapError((cause) => new SnapshotError({ sessionId, reason: cause.message, cause })));
 
 					return {
 						sessionId,
