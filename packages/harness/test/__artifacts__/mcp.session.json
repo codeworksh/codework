@@ -5,7 +5,8 @@
 		"mcp__e2e__fail",
 		"mcp__e2e__pid",
 		"mcp__e2e__crash",
-		"mcp__e2e__my_tool_v2"
+		"mcp__e2e__my_tool_v2",
+		"mcp__e2e__bye"
 	],
 	"echoTool": {
 		"name": "mcp__e2e__echo",
@@ -114,7 +115,7 @@
 		{
 			"server": "e2e",
 			"state": "connected",
-			"tools": 6
+			"tools": 7
 		},
 		{
 			"server": "off",

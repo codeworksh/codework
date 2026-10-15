@@ -18,6 +18,7 @@ server.setRequestHandler("tools/list", () => ({
 		{ name: "crash", description: "Exit while the call is running.", inputSchema: object() },
 		{ name: "my-tool.v2", inputSchema: { type: "object" } },
 		{ name: "secret", description: "Never declared.", inputSchema: object() },
+		{ name: "bye", description: "Answer, then exit while idle.", inputSchema: object() },
 	],
 }));
 server.setRequestHandler("tools/call", (request) => {
@@ -33,6 +34,9 @@ server.setRequestHandler("tools/call", (request) => {
 			process.stderr.write("fatal: e2e fixture crashed on purpose\n");
 			setTimeout(() => process.exit(3), 20);
 			return new Promise(() => {});
+		case "bye":
+			setTimeout(() => process.exit(0), 20);
+			return text("bye");
 		case "my-tool.v2":
 			return { content: [], structuredContent: { version: 2 } };
 		default:

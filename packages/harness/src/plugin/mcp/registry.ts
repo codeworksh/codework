@@ -5,6 +5,18 @@ import { McpConfig } from "../../mcp/config.ts";
 
 const PATCH_KEYS: ReadonlyArray<string> = ["enabled", "exposure", "toolExposure", "timeout", "description"];
 
+/** A copy no one else holds, frozen all the way down, so a settled server cannot change behind the service. */
+const frozen = <A>(value: A): A => {
+	const freeze = (node: unknown) => {
+		if (!Predicate.isObject(node) || Object.isFrozen(node)) return;
+		for (const child of Object.values(node)) freeze(child);
+		Object.freeze(node);
+	};
+	const copy = structuredClone(value);
+	freeze(copy);
+	return copy;
+};
+
 /**
  * The session's MCP servers for one exchange, seeded from `mcp.json`. A plugin written in plain
  * JavaScript can hand in anything, so every write is checked here with the rules `mcp.json` follows,
@@ -12,14 +24,14 @@ const PATCH_KEYS: ReadonlyArray<string> = ["enabled", "exposure", "toolExposure"
  */
 export const make = (seed: ReadonlyArray<McpServer>) => {
 	let open = true;
-	const servers = new Map<string, ServerConfig>(seed.map((server) => [server.name, server.config]));
+	const servers = new Map<string, ServerConfig>(seed.map((server) => [server.name, frozen(server.config)]));
 	const writable = () => {
 		if (!open) throw new Error("mcp registry is closed: servers are settled before the tool domain runs");
 	};
 	const checked = (name: string, config: unknown) => {
 		const result = McpConfig.validate(name, config);
 		if (Predicate.isString(result)) throw new Error(result);
-		return Object.freeze(result);
+		return frozen(result);
 	};
 	const registry: McpRegistry = Object.freeze({
 		list: () => Object.freeze([...servers].map((entry) => Object.freeze(entry))),

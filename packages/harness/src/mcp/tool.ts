@@ -18,13 +18,19 @@ const MAX_NAME_LENGTH = 64;
 /**
  * `mcp__<server>__<tool>`, with everything but `[A-Za-z0-9_]` replaced by `_`. A name that is too
  * long, or that `taken` reports as used by another MCP tool, ends in a hash of the server and tool
- * instead: sanitizing can map two tools to one name (`a-b` and `a_b`).
+ * instead: sanitizing can map two tools to one name (`a-b` and `a_b`). A server can also offer a tool
+ * already named like that hash, so the hash grows until the name is free.
  */
 export const name = (server: string, tool: string, taken: (candidate: string) => boolean = () => false) => {
 	const plain = `mcp__${server}__${tool}`.replace(/[^A-Za-z0-9_]/g, "_");
 	if (plain.length <= MAX_NAME_LENGTH && !taken(plain)) return plain;
-	const suffix = Hash.sha256(`${server}\0${tool}`).slice(0, 8);
-	return `${plain.slice(0, MAX_NAME_LENGTH - suffix.length - 1)}_${suffix}`;
+	const hash = Hash.sha256(`${server}\0${tool}`);
+	let candidate = plain;
+	for (let length = 8; length <= hash.length; length += 8) {
+		candidate = `${plain.slice(0, MAX_NAME_LENGTH - length - 1)}_${hash.slice(0, length)}`;
+		if (!taken(candidate)) return candidate;
+	}
+	return candidate;
 };
 
 /**

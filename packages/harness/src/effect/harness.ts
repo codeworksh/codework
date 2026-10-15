@@ -255,7 +255,7 @@ export const layer = (options: Options = {}) =>
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),
 				Layer.provideMerge(State.layer({}, pool, references, followStore, rebuild, viewOf)),
-				Layer.provideMerge(Mcp.layer({ hostCwd }).pipe(Layer.provide(Process.host))),
+				Layer.provideMerge(Mcp.layer({ hostCwd, home: paths.home }).pipe(Layer.provide(Process.host))),
 				Layer.provideMerge(Settings.layer(settingsOptions)),
 				Layer.provideMerge(SessionRuntime.layer),
 				Layer.provideMerge(sandboxes),

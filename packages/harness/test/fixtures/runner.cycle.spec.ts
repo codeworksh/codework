@@ -44,7 +44,7 @@ const runtime = (root: string, custom: string) =>
 		Layer.provideMerge(
 			((seeded) => State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild))(pooled(builtins)),
 		),
-		Layer.provideMerge(Mcp.layer({ hostCwd: "/" }).pipe(Layer.provide(Process.host))),
+		Layer.provideMerge(Mcp.layer({ hostCwd: "/", home: "/unused/home" }).pipe(Layer.provide(Process.host))),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Settings.layer({ userConfigDir: custom }).pipe(

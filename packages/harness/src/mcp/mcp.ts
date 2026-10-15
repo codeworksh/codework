@@ -19,18 +19,32 @@
 
 import type { ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/client";
-import { Cause, Context, Deferred, Duration, Effect, Exit, FiberSet, Layer, Schema, Scope, Semaphore } from "effect";
+import {
+	Cause,
+	Context,
+	Deferred,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	FiberSet,
+	Layer,
+	Schema,
+	Scope,
+	Semaphore,
+} from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { NeedsAuthError } from "./error.ts";
 import type { ID as SessionId } from "../session/schema.ts";
 import type { RegisteredTool } from "../tool/tool.ts";
 import { McpClient } from "./client.ts";
+import { McpLog } from "./log.ts";
 import { McpTool } from "./tool.ts";
 import { McpValue } from "./value.ts";
 import { hostPath } from "../host.ts";
 import { expandTilde } from "../util/home.ts";
 
-/** The first exchange of a session waits this long for servers whose tools are declared to the model. */
+/** An exchange waits this long for the servers it started whose tools are declared to the model. */
 const STARTUP_WAIT = Duration.seconds(10);
 const DEFAULT_TIMEOUT_SECONDS = 60;
 
@@ -85,7 +99,9 @@ interface Server {
 	error: string | undefined;
 	tools: ReadonlyArray<Tool>;
 	live: Live | undefined;
-	/** Settles when the attempt in progress, if any, finishes. */
+	/** The connect attempt in progress. Callers share it; closing the server interrupts it. */
+	attempt: Fiber.Fiber<Live, string> | undefined;
+	/** Settles when the first background attempt finishes. */
 	ready: Deferred.Deferred<void> | undefined;
 	closed: boolean;
 	readonly lock: Semaphore.Semaphore;
@@ -96,7 +112,6 @@ interface Session {
 	readonly names: ReturnType<typeof McpTool.names>;
 	readonly lock: Semaphore.Semaphore;
 	readonly reported: Set<string>;
-	waited: boolean;
 }
 
 /** The parts of a config that decide the connection; exposure and description do not. */
@@ -109,13 +124,15 @@ const hasDirectTools = (config: ServerConfig) =>
 	(config.exposure ?? "direct") === "direct" ||
 	Object.values(config.toolExposure ?? {}).some((exposure) => exposure === "direct");
 
-export const layer = (options: { readonly hostCwd: string }) =>
+export const layer = (options: { readonly hostCwd: string; readonly home: string }) =>
 	Layer.effect(
 		Service,
 		Effect.gen(function* () {
 			const root = yield* Effect.scope;
 			const fork = yield* FiberSet.makeRuntime<never, void, never>();
+			const forkAttempt = yield* FiberSet.makeRuntime<never, Live, string>();
 			const context = yield* Effect.context<ChildProcessSpawner.ChildProcessSpawner>();
+			const log = yield* McpLog.make(hostPath.join(options.home, "mcp.log"));
 			const sessions = new Map<SessionId, Session>();
 			// Shared remote endpoints should not see a burst of concurrent startups.
 			const endpoints = new Map<string, Semaphore.Semaphore>();
@@ -156,8 +173,16 @@ export const layer = (options: { readonly hostCwd: string }) =>
 			});
 
 			const watch = (server: Server, live: Live) => {
+				// Callbacks run in the connection's own scope, and retiring closes that scope; run them
+				// in the service's instead, or closing would wait on the callback doing the closing.
 				const current = (effect: Effect.Effect<void>) =>
-					Effect.suspend(() => (server.live === live ? effect : Effect.void)).pipe(server.lock.withPermits(1));
+					Effect.sync(() => {
+						fork(
+							Effect.suspend(() => (server.live === live ? effect : Effect.void)).pipe(
+								server.lock.withPermits(1),
+							),
+						);
+					});
 				live.connection.onClose((reason) =>
 					current(
 						Effect.gen(function* () {
@@ -185,22 +210,12 @@ export const layer = (options: { readonly hostCwd: string }) =>
 						),
 					),
 				);
+				live.connection.onLog((entry) => log.write(server.name, entry));
 			};
 
-			/** The server's current connection, connecting first when it has none. */
-			const open = (server: Server): Effect.Effect<Live, string> =>
+			/** One connect attempt, run apart from any caller so that closing the server can interrupt it. */
+			const attempt = (server: Server): Effect.Effect<Live, string> =>
 				Effect.gen(function* () {
-					if (server.closed) return yield* Effect.fail(`MCP server "${server.name}" is shut down`);
-					const current = server.live;
-					// A drop is known here before its `onClose` handler has run.
-					const reason = current?.connection.dropped();
-					if (current !== undefined && reason === undefined) return current;
-					if (current !== undefined) {
-						server.state = "disconnected";
-						server.error = reason;
-						yield* retire(server, current);
-					}
-					server.state = "connecting";
 					const scope = yield* Scope.fork(root, "sequential");
 					const config = server.config;
 					const connect = Effect.gen(function* () {
@@ -215,7 +230,6 @@ export const layer = (options: { readonly hostCwd: string }) =>
 						return { connection, tools };
 					});
 					const exit = yield* ("url" in config ? endpointLock(config.url).withPermit(connect) : connect).pipe(
-						// An interrupted exchange stops the attempt; the next call starts a fresh one.
 						Effect.onInterrupt(() => Scope.close(scope, Exit.void)),
 						Effect.exit,
 					);
@@ -237,14 +251,54 @@ export const layer = (options: { readonly hostCwd: string }) =>
 					watch(server, live);
 					yield* Effect.logInfo("mcp connected", { server: server.name, tools: server.tools.length });
 					return live;
-				}).pipe(server.lock.withPermits(1), Effect.provide(context));
+				}).pipe(
+					Effect.ensuring(
+						Effect.sync(() => {
+							server.attempt = undefined;
+						}),
+					),
+					Effect.provide(context),
+				);
 
+			/** The server's current connection, connecting first when it has none. */
+			const open = (server: Server): Effect.Effect<Live, string> =>
+				Effect.gen(function* () {
+					const next = yield* Effect.gen(function* () {
+						if (server.closed) return yield* Effect.fail(`MCP server "${server.name}" is shut down`);
+						const current = server.live;
+						// A drop is known here before its `onClose` handler has run.
+						const reason = current?.connection.dropped();
+						if (current !== undefined && reason === undefined) return current;
+						if (current !== undefined) {
+							server.state = "disconnected";
+							server.error = reason;
+							yield* retire(server, current);
+						}
+						if (server.attempt === undefined) {
+							server.state = "connecting";
+							server.attempt = forkAttempt(attempt(server));
+						}
+						return server.attempt;
+					}).pipe(server.lock.withPermits(1));
+					if (!Fiber.isFiber(next)) return next;
+					// An interrupted caller leaves the attempt running for whoever needs the server next.
+					const exit = yield* Fiber.await(next);
+					if (Exit.isSuccess(exit)) return exit.value;
+					return yield* Cause.hasInterruptsOnly(exit.cause)
+						? Effect.fail(`MCP server "${server.name}" is shut down`)
+						: Effect.failCause(exit.cause);
+				});
+
+			/** Stop the server: interrupt a connect in progress, and retire the connection it has. */
 			const close = (server: Server) =>
 				Effect.gen(function* () {
 					server.closed = true;
-					const live = server.live;
-					if (live !== undefined) yield* retire(server, live);
-				}).pipe(server.lock.withPermits(1));
+					const pending = server.attempt;
+					if (pending !== undefined) yield* Fiber.interrupt(pending);
+					yield* Effect.suspend(() =>
+						server.live === undefined ? Effect.void : retire(server, server.live),
+					).pipe(server.lock.withPermits(1));
+				});
 
 			/** One call of one of the server's tools, on whichever connection is current when it runs. */
 			const call =
@@ -315,7 +369,6 @@ export const layer = (options: { readonly hostCwd: string }) =>
 						names: McpTool.names(),
 						lock: Semaphore.makeUnsafe(1),
 						reported: new Set(),
-						waited: false,
 					};
 					sessions.set(sessionId, session);
 				}
@@ -332,6 +385,7 @@ export const layer = (options: { readonly hostCwd: string }) =>
 				const cwd = input.directory ?? input.hostDir ?? options.hostCwd;
 				const roots = input.directory === undefined ? undefined : [input.directory];
 				const wanted = new Map(input.servers);
+				const started: Server[] = [];
 				yield* Effect.gen(function* () {
 					for (const [name, server] of session.servers) {
 						const config = wanted.get(name);
@@ -355,22 +409,24 @@ export const layer = (options: { readonly hostCwd: string }) =>
 							error: undefined,
 							tools: [],
 							live: undefined,
+							attempt: undefined,
 							ready: undefined,
 							closed: false,
 							lock: Semaphore.makeUnsafe(1),
 						};
 						session.servers.set(name, server);
 						start(server);
+						started.push(server);
 					}
 				}).pipe(session.lock.withPermits(1));
 
-				// Wait so a slow server's tools are still declared in the first request, but never
-				// indefinitely: one hanging server must not hold up the prompt.
-				if (!session.waited) {
-					session.waited = true;
-					const pending = [...session.servers.values()].filter(
-						(server) => server.config.enabled !== false && hasDirectTools(server.config),
-					);
+				// Wait for servers this exchange started (all of them at first, then new or restarted ones) so
+				// their tools are declared in its first request, but never indefinitely: one hanging server
+				// must not hold up the prompt.
+				const pending = started.filter(
+					(server) => server.config.enabled !== false && hasDirectTools(server.config),
+				);
+				if (pending.length > 0) {
 					const finished = yield* Effect.forEach(pending, (server) =>
 						server.ready === undefined ? Effect.void : Deferred.await(server.ready),
 					).pipe(Effect.timeoutOption(STARTUP_WAIT));
