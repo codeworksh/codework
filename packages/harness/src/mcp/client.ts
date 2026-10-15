@@ -62,6 +62,10 @@ export interface Connection {
 	readonly resources: (cursor?: string) => Effect.Effect<ListResourcesResult, Failed>;
 	/** One page of resource templates; empty when the server does not implement the method. */
 	readonly resourceTemplates: (cursor?: string) => Effect.Effect<ListResourceTemplatesResult, Failed>;
+	/** Every resource, following pagination with the SDK's limits. */
+	readonly allResources: () => Effect.Effect<ListResourcesResult["resources"], Failed>;
+	/** Every resource template, following pagination; empty when the server does not implement the method. */
+	readonly allResourceTemplates: () => Effect.Effect<ListResourceTemplatesResult["resourceTemplates"], Failed>;
 	readonly readResource: (uri: string) => Effect.Effect<ReadResourceResult, Failed>;
 	readonly callTool: (input: {
 		readonly name: string;
@@ -421,6 +425,21 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			? { signal, timeout: requestTimeout }
 			: { signal, timeout: requestTimeout, resetTimeoutOnProgress: true, onprogress: onProgress };
 	const capabilities = client.getServerCapabilities();
+	// Servers that do not implement templates have none.
+	const templates = (run: (signal: AbortSignal) => Promise<ListResourceTemplatesResult>) =>
+		capabilities?.resources === undefined
+			? Effect.succeed<ListResourceTemplatesResult>({ resourceTemplates: [] })
+			: settle(
+					"resources/templates/list",
+					retryingRead("resources/templates/list", attempt(run)).pipe(
+						Effect.catchIf(
+							(failure) =>
+								failure.error instanceof ProtocolError &&
+								failure.error.code === ProtocolErrorCode.MethodNotFound,
+							() => Effect.succeed<ListResourceTemplatesResult>({ resourceTemplates: [] }),
+						),
+					),
+				);
 
 	const connection: Connection = {
 		serverInfo: client.getServerVersion(),
@@ -443,28 +462,22 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 						),
 					),
 		resourceTemplates: (cursor) =>
+			templates((signal) =>
+				client.request(
+					{ method: "resources/templates/list", params: cursor === undefined ? {} : { cursor } },
+					options(signal),
+				),
+			),
+		allResources: () =>
 			capabilities?.resources === undefined
-				? Effect.succeed({ resourceTemplates: [] })
-				: settle(
-						"resources/templates/list",
-						retryingRead(
-							"resources/templates/list",
-							attempt((signal) =>
-								client.request(
-									{ method: "resources/templates/list", params: cursor === undefined ? {} : { cursor } },
-									options(signal),
-								),
-							),
-						).pipe(
-							// Servers that do not implement templates have none.
-							Effect.catchIf(
-								(failure) =>
-									failure.error instanceof ProtocolError &&
-									failure.error.code === ProtocolErrorCode.MethodNotFound,
-								() => Effect.succeed({ resourceTemplates: [] }),
-							),
-						),
+				? Effect.succeed([])
+				: read("resources/list", (signal) => client.listResources(undefined, options(signal))).pipe(
+						Effect.map((result) => result.resources),
 					),
+		allResourceTemplates: () =>
+			templates((signal) => client.listResourceTemplates(undefined, options(signal))).pipe(
+				Effect.map((result) => result.resourceTemplates),
+			),
 		readResource: (uri) => read("resources/read", (signal) => client.readResource({ uri }, options(signal))),
 		callTool: (call) =>
 			request("tools/call", (signal) =>

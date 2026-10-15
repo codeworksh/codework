@@ -32,6 +32,9 @@ export interface Server {
 	readonly name: string;
 	readonly resources: (cursor?: string) => Effect.Effect<ListResourcesResult, string>;
 	readonly templates: (cursor?: string) => Effect.Effect<ListResourceTemplatesResult, string>;
+	/** Every page, with the SDK's own pagination limits. */
+	readonly allResources: () => Effect.Effect<ReadonlyArray<Resource>, string>;
+	readonly allTemplates: () => Effect.Effect<ReadonlyArray<ResourceTemplate>, string>;
 	readonly read: (uri: string) => Effect.Effect<ReadResourceResult, string>;
 }
 
@@ -70,13 +73,17 @@ const READ_PARAMETERS = {
 	additionalProperties: false,
 };
 
-/** A string argument, trimmed; absent when missing or blank. */
-const argument = (args: Record<string, unknown>, key: string): Effect.Effect<string | undefined, string> => {
+/** A string argument; absent when missing. */
+const raw = (args: Record<string, unknown>, key: string): Effect.Effect<string | undefined, string> => {
 	const value = args[key];
 	if (value === undefined || value === null) return Effect.undefined;
 	if (!Predicate.isString(value)) return Effect.fail(`${key} must be a string`);
-	return Effect.succeed(value.trim() || undefined);
+	return Effect.succeed(value);
 };
+
+/** A name the model typed: trimmed, and absent when blank. */
+const argument = (args: Record<string, unknown>, key: string) =>
+	raw(args, key).pipe(Effect.map((value) => value?.trim() || undefined));
 
 type Item = Resource | ResourceTemplate;
 type Page = { readonly items: ReadonlyArray<Item>; readonly nextCursor?: string | undefined };
@@ -106,10 +113,12 @@ export const make = (input: {
 	const list = (
 		key: "resources" | "resourceTemplates",
 		page: (server: Server, cursor?: string) => Effect.Effect<Page, string>,
+		all: (server: Server) => Effect.Effect<ReadonlyArray<Item>, string>,
 	) =>
 		Effect.fnUntraced(function* (args: Record<string, unknown>) {
 			const name = yield* argument(args, "server");
-			const cursor = yield* argument(args, "cursor");
+			// A cursor is the server's opaque token, handed back exactly as it was given.
+			const cursor = yield* raw(args, "cursor");
 			const visible = (item: Item) => !isMcpApp(item);
 			if (name !== undefined) {
 				const server = yield* find(name);
@@ -122,18 +131,7 @@ export const make = (input: {
 			}
 			if (cursor !== undefined) return yield* Effect.fail("cursor can only be used when a server is specified");
 			const servers = [...input.servers()].sort((a, b) => a.name.localeCompare(b.name));
-			const every = (server: Server) =>
-				Effect.gen(function* () {
-					const items: Item[] = [];
-					let next: string | undefined;
-					do {
-						const result = yield* page(server, next);
-						items.push(...result.items);
-						next = result.nextCursor;
-					} while (next !== undefined);
-					return items;
-				});
-			const results = yield* Effect.forEach(servers, (server) => Effect.result(every(server)), {
+			const results = yield* Effect.forEach(servers, (server) => Effect.result(all(server)), {
 				concurrency: "unbounded",
 			});
 			const items: Record<string, unknown>[] = [];
@@ -178,10 +176,13 @@ export const make = (input: {
 			server: "",
 			tool: LIST_RESOURCES_TOOL,
 			run: ({ args }) =>
-				list("resources", (server, cursor) =>
-					server
-						.resources(cursor)
-						.pipe(Effect.map((result) => ({ items: result.resources, nextCursor: result.nextCursor }))),
+				list(
+					"resources",
+					(server, cursor) =>
+						server
+							.resources(cursor)
+							.pipe(Effect.map((result) => ({ items: result.resources, nextCursor: result.nextCursor }))),
+					(server) => server.allResources(),
 				)(args),
 		}),
 		McpTool.define({
@@ -193,10 +194,15 @@ export const make = (input: {
 			server: "",
 			tool: LIST_TEMPLATES_TOOL,
 			run: ({ args }) =>
-				list("resourceTemplates", (server, cursor) =>
-					server
-						.templates(cursor)
-						.pipe(Effect.map((result) => ({ items: result.resourceTemplates, nextCursor: result.nextCursor }))),
+				list(
+					"resourceTemplates",
+					(server, cursor) =>
+						server
+							.templates(cursor)
+							.pipe(
+								Effect.map((result) => ({ items: result.resourceTemplates, nextCursor: result.nextCursor })),
+							),
+					(server) => server.allTemplates(),
 				)(args),
 		}),
 		McpTool.define({

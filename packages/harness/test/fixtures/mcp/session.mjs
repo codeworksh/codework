@@ -42,9 +42,9 @@ const resources = {
 			{ uri: "fixture://notes.txt", name: "notes", mimeType: "text/plain" },
 			{ uri: "ui://widget", name: "widget" },
 		],
-		nextCursor: "page-2",
+		nextCursor: " page-2 ",
 	},
-	"page-2": { resources: [{ uri: "fixture://data.bin", name: "data", mimeType: "application/octet-stream" }] },
+	" page-2 ": { resources: [{ uri: "fixture://data.bin", name: "data", mimeType: "application/octet-stream" }] },
 };
 const contents = {
 	"fixture://notes.txt": [{ uri: "fixture://notes.txt", mimeType: "text/plain", text: "the notes" }],

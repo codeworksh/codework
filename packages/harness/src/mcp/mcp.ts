@@ -401,6 +401,8 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 					name,
 					resources: (cursor) => reach((connection) => connection.resources(cursor)),
 					templates: (cursor) => reach((connection) => connection.resourceTemplates(cursor)),
+					allResources: () => reach((connection) => connection.allResources()),
+					allTemplates: () => reach((connection) => connection.allResourceTemplates()),
 					read: (uri) => reach((connection) => connection.readResource(uri)),
 				};
 			};

@@ -65,6 +65,7 @@ Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templat
 
 ## Connections
 
-- Servers connect in the background. Your first message waits up to 10 seconds for servers whose tools the model sees.
+- Servers connect in the background. A message waits up to 10 seconds for servers it starts whose tools the model sees: all of them at first, then new or changed ones.
 - If a server stops, the next call starts it again.
-- Edits to `mcp.json` apply from your next message.
+- Edits to `mcp.json` apply from your next message. Changing only `exposure` or `toolExposure` keeps the server running.
+- Server log messages go to `~/.codework/mcp.log`.
