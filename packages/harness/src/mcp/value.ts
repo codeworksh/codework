@@ -14,6 +14,7 @@
 
 import { Config, Duration, Effect, Fiber, Option, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
+import { ValueError } from "./error.ts";
 
 const COMMAND_TIMEOUT = Duration.seconds(10);
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -111,7 +112,7 @@ const command = Effect.fnUntraced(function* (line: string, what: string) {
 		commands.set(line, running);
 	}
 	const output = yield* Fiber.join(running);
-	if (output === undefined) return yield* Effect.fail(`Failed to resolve ${what} from shell command: ${line}`);
+	if (output === undefined) return yield* new ValueError({ message: `Failed to resolve ${what} from shell command: ${line}` });
 	return output;
 });
 
@@ -126,9 +127,9 @@ const variables = Effect.fnUntraced(function* (value: string, what: string) {
 	}
 	const missing = names.filter((name) => !env.has(name));
 	if (missing.length > 0)
-		return yield* Effect.fail(
-			`Failed to resolve ${what} from environment variable${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`,
-		);
+		return yield* new ValueError({
+			message: `Failed to resolve ${what} from environment variable${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}`,
+		});
 	return parts.map((part) => (part.type === "literal" ? part.value : env.get(part.name))).join("");
 });
 
@@ -138,7 +139,7 @@ const variables = Effect.fnUntraced(function* (value: string, what: string) {
  */
 export const resolve = Effect.fnUntraced(function* (value: string, kind: keyof typeof UNSAFE, what: string) {
 	const resolved = yield* value.startsWith("!") ? command(value.slice(1), what) : variables(value, what);
-	if (UNSAFE[kind].pattern.test(resolved)) return yield* Effect.fail(`${what} contains ${UNSAFE[kind].what}`);
+	if (UNSAFE[kind].pattern.test(resolved)) return yield* new ValueError({ message: `${what} contains ${UNSAFE[kind].what}` });
 	return resolved;
 });
 
