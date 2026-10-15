@@ -1,6 +1,12 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Message, Project, Session } from "./contract.ts";
 
 // Stand-in data until the server talks to the harness.
+
+const repoRoot =
+	process.env.CODEWORK_ROOT ??
+	path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 const hour = 60 * 60 * 1000;
 const now = Date.now();
@@ -27,8 +33,9 @@ const sessions: readonly Session[] = [
 	{ id: "s6", project: "notes", title: "Weekly plan", updated: now - 72 * hour },
 ].map((session) => ({ ...session, messages: conversation(session.title.toLowerCase()) }));
 
+
 const roots = [
-	{ id: "codework", name: "codework", path: "~/Developer/codeworksh/codework" },
+	{ id: "codework", name: "codework", path: repoRoot },
 	{ id: "webwm", name: "webwm", path: "~/Developer/codeworksh/webwm" },
 	{ id: "notes", name: "notes", path: "~/Documents/notes" },
 ];

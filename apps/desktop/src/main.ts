@@ -1,7 +1,12 @@
-import { app, BrowserWindow, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { ROOT_CHANNEL } from "./ipc.ts";
 import { startServer } from "./server.ts";
+
+ipcMain.on(ROOT_CHANNEL, (event) => {
+	event.returnValue = process.env.CODEWORK_ROOT ?? path.resolve(app.getAppPath(), app.isPackaged ? ".." : "../..");
+});
 
 const SCHEME = app.isPackaged ? "codework" : "codework-dev";
 const HOST = "app";

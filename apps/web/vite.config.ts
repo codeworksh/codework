@@ -17,4 +17,9 @@ export default defineConfig({
 	// Pinned so the desktop shell can proxy to a fixed address; `localhost`
 	// may bind IPv6-only, which Electron's 127.0.0.1 lookup then misses.
 	server: { host: "127.0.0.1", port: 5173, strictPort: true },
+	define: {
+		"import.meta.env.VITE_PROJECT_ROOT": JSON.stringify(
+			process.env.CODEWORK_ROOT ?? fileURLToPath(new URL("../..", import.meta.url)),
+		),
+	},
 });
