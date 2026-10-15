@@ -149,10 +149,31 @@ interface Session {
 	leases: number;
 }
 
-/** The scope and the parts of a config that decide the connection; exposure and description do not. */
-const instanceKey = (scope: string, config: ServerConfig, cwd: string, roots: ReadonlyArray<string> | undefined) => {
+/** JSON with object keys sorted, so the same settings written in another order give the same key. */
+const canonical = (value: unknown): string =>
+	Array.isArray(value)
+		? `[${value.map(canonical).join(",")}]`
+		: value !== null && typeof value === "object"
+			? `{${Object.keys(value)
+					.sort()
+					.map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`)
+					.join(",")}}`
+			: JSON.stringify(value);
+
+/**
+ * The scope, the server's name and the parts of its config that decide the connection; exposure and
+ * description do not. The name is part of it so that two entries are always two instances, and a
+ * session's servers map one to one onto the instances it uses.
+ */
+const instanceKey = (
+	scope: string,
+	name: string,
+	config: ServerConfig,
+	cwd: string,
+	roots: ReadonlyArray<string> | undefined,
+) => {
 	const { exposure: _exposure, toolExposure: _tools, description: _description, enabled: _enabled, ...rest } = config;
-	return JSON.stringify({ scope, rest, cwd, roots });
+	return canonical({ scope, name, rest, cwd, roots });
 };
 
 const hasDirectTools = (config: ServerConfig) =>
@@ -435,9 +456,8 @@ export const layer = (options: {
 				fork(open(server).pipe(Effect.ignore, Effect.ensuring(Deferred.succeed(ready, undefined))));
 			};
 
-			/** One more or one less drain holding the instance; the last one out starts its idle timer. */
-			const hold = (server: Server, delta: 1 | -1) => {
-				server.leases += delta;
+			/** Close the instance once it has gone the idle timeout with no drain holding it. */
+			const arm = (server: Server) => {
 				server.generation += 1;
 				if (server.leases > 0 || server.closed) return;
 				const generation = server.generation;
@@ -456,20 +476,15 @@ export const layer = (options: {
 				);
 			};
 
-			/** The session stops using the instance; one no session uses closes at once. */
-			const leave = (session: Session, server: Server) =>
-				Effect.suspend(() => {
-					if (!server.users.delete(session.id)) return Effect.void;
-					for (let index = 0; index < session.leases; index++) hold(server, -1);
-					return server.users.size === 0 ? close(server) : Effect.void;
-				});
-
-			/** The session starts using the instance, holding it for each drain it is running. */
-			const join = (session: Session, server: Server) => {
-				if (server.users.has(session.id)) return;
-				server.users.add(session.id);
-				for (let index = 0; index < session.leases; index++) hold(server, 1);
+			/** One more or one less drain holding the instance; the last one out starts its idle timer. */
+			const hold = (server: Server, delta: number) => {
+				server.leases += delta;
+				arm(server);
 			};
+
+			/** The instances a session uses, each once. */
+			const used = (session: Session) =>
+				new Set([...session.servers.values()].flatMap((entry) => (entry.server ? [entry.server] : [])));
 
 			const sessionOf = (sessionId: SessionId) => {
 				let session = sessions.get(sessionId);
@@ -516,8 +531,11 @@ export const layer = (options: {
 					}
 				};
 				const started: Array<readonly [Entry, Server]> = [];
-				yield* Effect.gen(function* () {
+				// All bookkeeping happens in one step, so an interrupted exchange cannot leave an instance
+				// counting a session or a drain it no longer has; closing what nobody uses runs on its own.
+				const closing = yield* Effect.sync(() => {
 					const before = new Map(session.servers);
+					const previous = used(session);
 					session.servers.clear();
 					for (const [name, config] of input.servers) {
 						if (config.enabled === false) {
@@ -525,7 +543,7 @@ export const layer = (options: {
 							continue;
 						}
 						const where = placement(config.scope);
-						const key = instanceKey(where.key, config, where.cwd, where.roots);
+						const key = instanceKey(where.key, name, config, where.cwd, where.roots);
 						let server = instances.get(key);
 						if (server === undefined || server.closed) {
 							server = {
@@ -553,15 +571,23 @@ export const layer = (options: {
 						const entry: Entry = { config, server };
 						session.servers.set(name, entry);
 						if (before.get(name)?.server !== server) started.push([entry, server]);
-						join(session, server);
+						if (!server.users.has(session.id)) {
+							server.users.add(session.id);
+							hold(server, session.leases);
+						}
 					}
-					// Instances this session no longer resolves to: a removed server, or changed settings.
-					for (const [name, entry] of before) {
-						const server = entry.server;
-						if (server !== undefined && session.servers.get(name)?.server !== server)
-							yield* leave(session, server);
+					// Instances this session no longer uses: a removed server, or changed settings.
+					const current = used(session);
+					const unused: Server[] = [];
+					for (const server of previous) {
+						if (current.has(server)) continue;
+						server.users.delete(session.id);
+						hold(server, -session.leases);
+						if (server.users.size === 0) unused.push(server);
 					}
+					return unused;
 				}).pipe(session.lock.withPermits(1));
+				for (const server of closing) fork(close(server));
 
 				// Wait for servers this exchange started (all of them at first, then new or restarted ones) so
 				// their tools are declared in its first request, but never indefinitely: one hanging server
@@ -615,13 +641,13 @@ export const layer = (options: {
 					Effect.sync(() => {
 						const session = sessionOf(sessionId);
 						session.leases += 1;
-						for (const entry of session.servers.values()) if (entry.server) hold(entry.server, 1);
+						for (const server of used(session)) hold(server, 1);
 						return session;
 					}),
 					(session) =>
 						Effect.sync(() => {
 							session.leases -= 1;
-							for (const entry of session.servers.values()) if (entry.server) hold(entry.server, -1);
+							for (const server of used(session)) hold(server, -1);
 						}),
 				).pipe(Effect.asVoid);
 
