@@ -40,6 +40,7 @@ User servers go in `~/.codework/mcp.json`, project servers in `.codework/mcp.jso
 | `command`, `args`, `env`, `cwd`                  | stdio  | One executable and its arguments, not a shell line. `cwd` is relative to where the server starts. |
 | `url`, `headers`                                 | HTTP   | A streamable HTTP endpoint. SSE is not supported.                                                 |
 | `enabled`, `timeout`, `exposure`, `toolExposure` | both   | Off switch, per-request timeout in seconds (default 60), and which tools the model sees.          |
+| `scope`                                          | both   | Who shares one running server: `session` (default), `space` or `app`.                             |
 
 `env` and `headers` values can use `${NAME}` for an environment variable, or `!command` to use a command's output.
 
@@ -52,6 +53,20 @@ A project entry with the same name replaces a user entry. An entry with only `en
 ```json title=".codework/mcp.json"
 { "mcpServers": { "internal-tools": { "enabled": false } } }
 ```
+
+## Sharing a Server
+
+By default each session runs its own copy of a server. `scope` shares one instead:
+
+| Scope     | Shared by                               | A stdio server starts in |
+| --------- | --------------------------------------- | ------------------------ |
+| `session` | One session                             | The session's directory  |
+| `space`   | Sessions in the same folder and sandbox | The folder               |
+| `app`     | Every session                           | Where CodeWork started   |
+
+When the session's sandbox isn't the local one, `session` and `space` servers start in the project directory instead.
+
+Share a server only when it keeps no per-session state. Sessions whose settings for a server differ never share it.
 
 ## Which Tools the Model Sees
 
@@ -68,4 +83,5 @@ Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templat
 - Servers connect in the background. A message waits up to 10 seconds for servers it starts whose tools the model sees: all of them at first, then new or changed ones.
 - If a server stops, the next call starts it again.
 - Edits to `mcp.json` apply from your next message. Changing only `exposure` or `toolExposure` keeps the server running.
+- A server no running session needs closes after 10 minutes, and starts again when one does.
 - Server log messages go to `~/.codework/mcp.log`.
