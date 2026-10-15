@@ -12,6 +12,9 @@ const APP_URL = `${SCHEME}://${HOST}/`;
 // `@codeworksh/web` build is served from disk.
 const DEV_SERVER_URL = process.env.CODEWORK_WEB_URL;
 const CLIENT_ASSETS_DIR = process.env.CODEWORK_WEB_DIR ?? path.resolve(app.getAppPath(), "../web/dist");
+// The 3D brand mark on Apple's icon grid. A packaged build will carry it as an .icns; until then
+// it is set at runtime, or the Dock shows Electron's own icon.
+const ICON = path.join(app.getAppPath(), "resources/icon.png");
 
 const MIME_TYPES: Record<string, string> = {
 	".html": "text/html",
@@ -116,6 +119,8 @@ function createMainWindow(): BrowserWindow {
 			titleBarStyle: "hiddenInset",
 			trafficLightPosition: { x: 14, y: 16 },
 		}),
+		// Windows and Linux take the window's icon; macOS ignores it for the Dock's.
+		icon: ICON,
 		webPreferences: {
 			preload: path.join(app.getAppPath(), "out/preload.cjs"),
 			sandbox: true,
@@ -126,6 +131,7 @@ function createMainWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(async () => {
+	app.dock?.setIcon(ICON);
 	protocol.handle(SCHEME, handleRequest);
 	ipcMain.on(HOME_CHANNEL, (event) => {
 		event.returnValue = app.getPath("home");
