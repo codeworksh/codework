@@ -258,3 +258,40 @@ function truncateStringToBytesFromEnd(str: string, maxBytes: number): string {
 
 	return buf.subarray(start).toString("utf-8");
 }
+
+export interface MiddleTruncationResult {
+	content: string;
+	truncated: boolean;
+	/** Characters cut from the middle. */
+	removedChars: number;
+	totalBytes: number;
+	totalLines: number;
+}
+
+/**
+ * Keep the start and the end of `content` within `maxBytes`, cutting the middle and saying how much
+ * went: for output whose beginning and end both matter. Cuts fall on character boundaries.
+ */
+export function truncateMiddle(content: string, maxBytes: number): MiddleTruncationResult {
+	const buffer = Buffer.from(content, "utf-8");
+	const totalLines = splitLinesForCounting(content).length;
+	if (buffer.length <= maxBytes) {
+		return { content, truncated: false, removedChars: 0, totalBytes: buffer.length, totalLines };
+	}
+	// Continuation bytes (10xxxxxx) are not character starts.
+	const isBoundary = (index: number) => index >= buffer.length || (buffer[index]! & 0xc0) !== 0x80;
+	let headEnd = Math.floor(maxBytes / 2);
+	while (headEnd > 0 && !isBoundary(headEnd)) headEnd--;
+	let tailStart = buffer.length - (maxBytes - Math.floor(maxBytes / 2));
+	while (tailStart < buffer.length && !isBoundary(tailStart)) tailStart++;
+	const head = buffer.subarray(0, headEnd).toString("utf-8");
+	const tail = buffer.subarray(tailStart).toString("utf-8");
+	const removedChars = Array.from(buffer.subarray(headEnd, tailStart).toString("utf-8")).length;
+	return {
+		content: `${head}…${removedChars} chars truncated…${tail}`,
+		truncated: true,
+		removedChars,
+		totalBytes: buffer.length,
+		totalLines,
+	};
+}

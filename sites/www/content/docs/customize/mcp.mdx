@@ -1,0 +1,71 @@
+---
+title: MCP Servers
+sidebarTitle: MCP
+description: Connect Model Context Protocol servers and give their tools to the model.
+---
+
+CodeWork connects to [MCP](https://modelcontextprotocol.io) servers over stdio or streamable HTTP. Their tools reach the model as `mcp__<server>__<tool>`.
+
+## Where Servers Run
+
+MCP servers always run on your machine, the one running CodeWork, whatever sandbox the session uses.
+
+- A stdio server starts in the session's directory when the session runs in the local sandbox, otherwise in the project directory.
+- HTTP servers are called from your machine.
+- Output too large to show, and binary files, are saved to your OS temp directory.
+
+A sandbox is only where files and commands run. To give MCP access to a remote sandbox, build an HTTP MCP server that talks to it.
+
+## Configure Servers
+
+User servers go in `~/.codework/mcp.json`, project servers in `.codework/mcp.json`. The format matches other MCP clients, so you can copy entries over:
+
+```json title="~/.codework/mcp.json"
+{
+	"mcpServers": {
+		"filesystem": {
+			"command": "npx",
+			"args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+		},
+		"docs": {
+			"url": "https://example.com/mcp",
+			"headers": { "Authorization": "Bearer ${DOCS_TOKEN}" }
+		}
+	}
+}
+```
+
+| Field                                            | Server | Meaning                                                                                           |
+| ------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------- |
+| `command`, `args`, `env`, `cwd`                  | stdio  | One executable and its arguments, not a shell line. `cwd` is relative to where the server starts. |
+| `url`, `headers`                                 | HTTP   | A streamable HTTP endpoint. SSE is not supported.                                                 |
+| `enabled`, `timeout`, `exposure`, `toolExposure` | both   | Off switch, per-request timeout in seconds (default 60), and which tools the model sees.          |
+
+`env` and `headers` values can use `${NAME}` for an environment variable, or `!command` to use a command's output.
+
+A broken file or entry is reported and skipped. The other servers still connect.
+
+## Project Overrides
+
+A project entry with the same name replaces a user entry. An entry with only `enabled`, `exposure` or `toolExposure` changes just those, so credentials stay in your user file:
+
+```json title=".codework/mcp.json"
+{ "mcpServers": { "internal-tools": { "enabled": false } } }
+```
+
+## Which Tools the Model Sees
+
+`exposure` is `direct` (the default) or `hidden`. `toolExposure` sets single tools, by name or with `*` patterns:
+
+```json
+{ "exposure": "hidden", "toolExposure": { "search_*": "direct" } }
+```
+
+Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`.
+
+## Connections
+
+- Servers connect in the background. A message waits up to 10 seconds for servers it starts whose tools the model sees: all of them at first, then new or changed ones.
+- If a server stops, the next call starts it again.
+- Edits to `mcp.json` apply from your next message. Changing only `exposure` or `toolExposure` keeps the server running.
+- Server log messages go to `~/.codework/mcp.log`.

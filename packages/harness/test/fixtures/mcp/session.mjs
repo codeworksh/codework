@@ -5,7 +5,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 const object = (properties = {}, required = []) => ({ type: "object", properties, required });
 const text = (value) => ({ content: [{ type: "text", text: String(value) }] });
 
-const server = new Server({ name: "session-fixture", version: "1.0.0" }, { capabilities: { tools: {} } });
+const server = new Server(
+	{ name: "session-fixture", version: "1.0.0" },
+	{ capabilities: { tools: {}, resources: {} } },
+);
 server.setRequestHandler("tools/list", () => ({
 	tools: [
 		{
@@ -19,8 +22,31 @@ server.setRequestHandler("tools/list", () => ({
 		{ name: "my-tool.v2", inputSchema: { type: "object" } },
 		{ name: "secret", description: "Never declared.", inputSchema: object() },
 		{ name: "bye", description: "Answer, then exit while idle.", inputSchema: object() },
+		{ name: "cwd", description: "The server's working directory.", inputSchema: object() },
+		{ name: "link", description: "Point at a resource.", inputSchema: object() },
+		{ name: "big", description: "More text than the model is shown.", inputSchema: object() },
 	],
 }));
+
+const resources = {
+	"": {
+		resources: [
+			{ uri: "fixture://notes.txt", name: "notes", mimeType: "text/plain" },
+			{ uri: "ui://widget", name: "widget" },
+		],
+		nextCursor: " page-2 ",
+	},
+	" page-2 ": { resources: [{ uri: "fixture://data.bin", name: "data", mimeType: "application/octet-stream" }] },
+};
+const contents = {
+	"fixture://notes.txt": [{ uri: "fixture://notes.txt", mimeType: "text/plain", text: "the notes" }],
+	"fixture://data.bin": [{ uri: "fixture://data.bin", mimeType: "application/octet-stream", blob: "AAECAw==" }],
+};
+server.setRequestHandler("resources/list", (request) => resources[request.params?.cursor ?? ""]);
+server.setRequestHandler("resources/templates/list", () => ({
+	resourceTemplates: [{ uriTemplate: "fixture://notes/{day}", name: "daily notes" }],
+}));
+server.setRequestHandler("resources/read", (request) => ({ contents: contents[request.params.uri] ?? [] }));
 server.setRequestHandler("tools/call", (request) => {
 	const args = request.params.arguments ?? {};
 	switch (request.params.name) {
@@ -37,6 +63,16 @@ server.setRequestHandler("tools/call", (request) => {
 		case "bye":
 			setTimeout(() => process.exit(0), 20);
 			return text("bye");
+		case "cwd":
+			return text(process.cwd());
+		case "link":
+			return {
+				content: [
+					{ type: "resource_link", uri: "fixture://notes.txt", name: "notes", mimeType: "text/plain", size: 9 },
+				],
+			};
+		case "big":
+			return text(`start ${"x".repeat(30 * 1024)} end`);
 		case "my-tool.v2":
 			return { content: [], structuredContent: { version: 2 } };
 		default:

@@ -92,55 +92,56 @@ const Outcome = Schema.Struct({
 });
 type Outcome = typeof Outcome.Type;
 
-/** Tool input schemas must be objects; servers may omit `type`, and some providers want `properties`. */
-const parameters = (schema: McpTool["inputSchema"]): Record<string, unknown> => ({
-	...schema,
-	type: schema.type ?? "object",
-	...(schema.properties === undefined ? { properties: {} } : {}),
-});
+/** What running an MCP-backed tool produced. `isError` reaches the model as an error result. */
+export interface Result {
+	readonly content: ReadonlyArray<McpContent.Content>;
+	readonly structuredContent?: unknown;
+	readonly isError?: boolean;
+}
 
-export interface Call {
+export interface Run {
+	/** The arguments as the model wrote them: validation only checks them, and the server decides what they mean. */
 	readonly args: Record<string, unknown>;
 	readonly onProgress: (progress: Progress) => void;
 }
 
 /**
- * A server tool as a harness tool. `call` resolves the server's current connection when it runs, so
- * the definition can outlive the connection it was listed on. A failed call and a result the server
- * flags `isError` both reach the model as an error result.
+ * A harness tool backed by MCP, for a server tool or a resource tool. A failure and an `isError`
+ * result both reach the model as an error result, as text it can act on.
  */
-export const make = (input: {
-	readonly server: string;
-	readonly tool: McpTool;
+export const define = (input: {
 	readonly name: string;
-	readonly call: (call: Call) => Effect.Effect<CallToolResult, string>;
+	readonly label: string;
+	readonly description: string;
+	readonly parameters: Record<string, unknown>;
+	/** Who answers, for the details kept with the result: a server, or none for a tool reaching several. */
+	readonly server: string;
+	readonly tool: string;
+	readonly run: (run: Run) => Effect.Effect<Result, string>;
 }) => {
-	const { server, tool } = input;
-	const title = tool.title ?? tool.annotations?.title;
-	const failed = (message: string): Outcome => ({
-		content: [{ type: "text", text: message }],
-		server,
-		tool: tool.name,
+	const outcome = (result: Result): Outcome => ({
+		content: result.content,
+		server: input.server,
+		tool: input.tool,
+		...(result.structuredContent === undefined ? {} : { structuredContent: result.structuredContent }),
 	});
 	return Tool.register(
 		Tool.make({
 			name: input.name,
-			label: `${server}/${tool.name}`,
-			description: tool.description?.trim() || title || `MCP tool ${tool.name} from server ${server}`,
-			parameters: Tool.fromJsonSchema(parameters(tool.inputSchema)),
+			label: input.label,
+			description: input.description,
+			parameters: Tool.fromJsonSchema(input.parameters),
 			success: Outcome,
 			failure: Outcome,
-			encodeContent: (outcome) => outcome.content as McpContent.Content[],
-			encodeFailureContent: (outcome) => outcome.content as McpContent.Content[],
+			encodeContent: (result) => result.content as McpContent.Content[],
+			encodeFailureContent: (result) => result.content as McpContent.Content[],
 			encodeDetails: ({ content: _content, ...details }) => details,
-			// The arguments as the model wrote them: validation only checks them, and the server, not
-			// a translation of its schema, decides what they mean.
 			handler: (_params, ctx) =>
 				Effect.gen(function* () {
 					const progress = yield* ToolProgress;
 					const report = Effect.runForkWith(yield* Effect.context<never>());
 					const result = yield* input
-						.call({
+						.run({
 							args: ctx.rawArgs,
 							onProgress: (update) => {
 								const total = update.total === undefined ? "" : `/${update.total}`;
@@ -148,20 +149,53 @@ export const make = (input: {
 								report(progress.report({ content: [{ type: "text", text }] }));
 							},
 						})
-						.pipe(Effect.mapError(failed));
-					const content = McpContent.fromResult(result);
-					if (result.isError && !content.some((block) => block.type === "text" && block.text !== ""))
-						content.push({ type: "text", text: `MCP tool ${server}/${tool.name} returned an error` });
-					const outcome: Outcome = {
-						content,
-						server,
-						tool: tool.name,
-						...(result.structuredContent === undefined ? {} : { structuredContent: result.structuredContent }),
-					};
-					return result.isError ? yield* Effect.fail(outcome) : outcome;
+						.pipe(Effect.mapError((message) => outcome({ content: [{ type: "text", text: message }] })));
+					return result.isError ? yield* Effect.fail(outcome(result)) : outcome(result);
 				}),
 		}),
 	);
+};
+
+/** Tool input schemas must be objects; servers may omit `type`, and some providers want `properties`. */
+const parameters = (schema: McpTool["inputSchema"]): Record<string, unknown> => ({
+	...schema,
+	type: schema.type ?? "object",
+	...(schema.properties === undefined ? { properties: {} } : {}),
+});
+
+/**
+ * A server tool as a harness tool. `call` resolves the server's current connection when it runs, so
+ * the definition can outlive the connection it was listed on.
+ */
+export const make = (input: {
+	readonly server: string;
+	readonly tool: McpTool;
+	readonly name: string;
+	readonly call: (run: Run) => Effect.Effect<CallToolResult, string>;
+	readonly content: McpContent.Options;
+}) => {
+	const { server, tool } = input;
+	const title = tool.title ?? tool.annotations?.title;
+	return define({
+		name: input.name,
+		label: `${server}/${tool.name}`,
+		description: tool.description?.trim() || title || `MCP tool ${tool.name} from server ${server}`,
+		parameters: parameters(tool.inputSchema),
+		server,
+		tool: tool.name,
+		run: (run) =>
+			Effect.gen(function* () {
+				const result = yield* input.call(run);
+				const content = yield* McpContent.fromResult(server, result, input.content);
+				if (result.isError && !content.some((block) => block.type === "text" && block.text !== ""))
+					content.push({ type: "text", text: `MCP tool ${server}/${tool.name} returned an error` });
+				return {
+					content,
+					...(result.structuredContent === undefined ? {} : { structuredContent: result.structuredContent }),
+					...(result.isError ? { isError: true } : {}),
+				};
+			}),
+	});
 };
 
 export * as McpTool from "./tool.ts";
