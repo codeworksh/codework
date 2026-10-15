@@ -1,6 +1,7 @@
-import { app, BrowserWindow, net, protocol } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { HOME_CHANNEL, PICK_FOLDER_CHANNEL } from "./ipc.ts";
 import { startServer } from "./server.ts";
 
 const SCHEME = app.isPackaged ? "codework" : "codework-dev";
@@ -123,6 +124,19 @@ function createMainWindow(): BrowserWindow {
 
 void app.whenReady().then(async () => {
 	protocol.handle(SCHEME, handleRequest);
+	ipcMain.on(HOME_CHANNEL, (event) => {
+		event.returnValue = app.getPath("home");
+	});
+	ipcMain.handle(PICK_FOLDER_CHANNEL, async (event, from: string) => {
+		const options: Electron.OpenDialogOptions = {
+			defaultPath: from,
+			properties: ["openDirectory", "createDirectory"],
+		};
+		// Attached to the window, so on macOS it drops down as a sheet.
+		const window = BrowserWindow.fromWebContents(event.sender);
+		const result = await (window === null ? dialog.showOpenDialog(options) : dialog.showOpenDialog(window, options));
+		return result.canceled ? null : (result.filePaths[0] ?? null);
+	});
 	await startServer();
 	createMainWindow();
 

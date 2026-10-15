@@ -22,6 +22,7 @@
 	--cw-scrollbar: color-mix(in oklab, var(--t-text) 16%, transparent);
 	--cw-danger: light-dark(#dc2626, #f87171);
 	--cw-dialog-shadow: 0 24px 64px -24px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.9));
+	--cw-menu-shadow: 0 16px 40px -18px light-dark(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.8));
 }
 
 @theme {
@@ -101,6 +102,13 @@
 }
 
 @layer base {
+	/* Tailwind v4 borders default to the text colour; shadcn components expect the soft edge. */
+	*,
+	::before,
+	::after {
+		border-color: var(--cw-edge);
+	}
+
 	html,
 	body,
 	#root {
