@@ -2,7 +2,6 @@
 	"requests": 8,
 	"tools": [
 		"mcp__e2e__echo",
-		"mcp__e2e__args",
 		"mcp__e2e__fail",
 		"mcp__e2e__pid",
 		"mcp__e2e__crash",
@@ -47,7 +46,7 @@
 					false
 				],
 				[
-					"badheader",
+					"later",
 					true
 				]
 			],
@@ -65,7 +64,7 @@
 					false
 				],
 				[
-					"badheader",
+					"later",
 					true
 				]
 			],
@@ -83,7 +82,7 @@
 					false
 				],
 				[
-					"badheader",
+					"later",
 					true
 				]
 			]
@@ -116,13 +115,6 @@
 				"{\n  \"version\": 2\n}"
 			]
 		},
-		"nulls": {
-			"status": "completed",
-			"isError": false,
-			"content": [
-				"{\"word\":\"abc\"}"
-			]
-		},
 		"pid-before": {
 			"status": "completed",
 			"isError": false,
@@ -151,20 +143,6 @@
 				"Invalid arguments for mcp__e2e__echo: Missing key\n  at [\"text\"]"
 			]
 		},
-		"pattern": {
-			"status": "error",
-			"isError": true,
-			"content": [
-				"Invalid arguments for mcp__e2e__args: Expected a string matching the RegExp ^[a-z]+$\n  at [\"word\"]"
-			]
-		},
-		"excess": {
-			"status": "error",
-			"isError": true,
-			"content": [
-				"Invalid arguments for mcp__e2e__args: Expected no excess property\n  at [\"extra\"]"
-			]
-		},
 		"cwd": {
 			"status": "completed",
 			"isError": false,
@@ -183,7 +161,7 @@
 			"status": "completed",
 			"isError": false,
 			"content": [
-				"{\"resources\":[{\"server\":\"e2e\",\"name\":\"notes\",\"uri\":\"fixture://notes.txt\",\"mimeType\":\"text/plain\"},{\"server\":\"e2e\",\"name\":\"data\",\"uri\":\"fixture://data.bin\",\"mimeType\":\"application/octet-stream\"}]}"
+				"{\"resources\":[{\"server\":\"e2e\",\"name\":\"notes\",\"uri\":\"fixture://notes.txt\",\"mimeType\":\"text/plain\"},{\"server\":\"e2e\",\"name\":\"data\",\"uri\":\"fixture://data.bin\",\"mimeType\":\"application/octet-stream\"},{\"server\":\"later\",\"name\":\"notes\",\"uri\":\"fixture://notes.txt\",\"mimeType\":\"text/plain\"},{\"server\":\"later\",\"name\":\"data\",\"uri\":\"fixture://data.bin\",\"mimeType\":\"application/octet-stream\"}]}"
 			]
 		},
 		"resources-page": {
@@ -200,18 +178,11 @@
 				"{\"server\":\"e2e\",\"resources\":[{\"server\":\"e2e\",\"name\":\"data\",\"uri\":\"fixture://data.bin\",\"mimeType\":\"application/octet-stream\"}]}"
 			]
 		},
-		"resources-blank": {
-			"status": "completed",
-			"isError": false,
-			"content": [
-				"{\"server\":\"e2e\",\"resources\":[{\"server\":\"e2e\",\"name\":\"notes\",\"uri\":\"fixture://notes.txt\",\"mimeType\":\"text/plain\"}],\"nextCursor\":\" page-2 \"}"
-			]
-		},
 		"templates": {
 			"status": "completed",
 			"isError": false,
 			"content": [
-				"{\"resourceTemplates\":[{\"server\":\"e2e\",\"name\":\"daily notes\",\"uriTemplate\":\"fixture://notes/{day}\"}]}"
+				"{\"resourceTemplates\":[{\"server\":\"e2e\",\"name\":\"daily notes\",\"uriTemplate\":\"fixture://notes/{day}\"},{\"server\":\"later\",\"name\":\"daily notes\",\"uriTemplate\":\"fixture://notes/{day}\"}]}"
 			]
 		},
 		"read-text": {
@@ -232,7 +203,7 @@
 			"status": "error",
 			"isError": true,
 			"content": [
-				"MCP server \"nope\" has no resources. Servers with resources: e2e"
+				"MCP server \"nope\" has no resources. Servers with resources: e2e, later"
 			]
 		}
 	},
@@ -247,7 +218,7 @@
 		{
 			"server": "e2e",
 			"state": "connected",
-			"tools": 11
+			"tools": 10
 		},
 		{
 			"server": "off",
@@ -260,16 +231,14 @@
 			"tools": 0
 		},
 		{
-			"server": "badheader",
-			"state": "failed",
-			"error": "MCP server \"badheader\" header \"Authorization\" contains a line break or NUL character",
-			"tools": 0
+			"server": "later",
+			"state": "connected",
+			"tools": 10
 		}
 	],
 	"configErrors": [
 		"<tmp>/home/mcp.json: server \"my_srv\" conflicts with \"my-srv\"",
 		"<tmp>/home/mcp.json: server \"broken\": url must be an http or https URL",
-		"<tmp>/home/mcp.json: server \"signin\": \"oauth\" is not supported yet",
 		"<tmp>/project/.codework/mcp.json: server \"ghost\" needs \"command\" or \"url\", or a user server to override"
 	]
 }

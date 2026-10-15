@@ -11,9 +11,14 @@
  * How a server's tools reach the model.
  *
  * - `direct`: declared to the model like any other tool.
+ * - `codemode`: called from codemode scripts, never declared to the model.
+ * - `deferred`: declared once `tool_search` finds them.
  * - `hidden`: never registered.
+ *
+ * Until codemode and `tool_search` exist, `codemode` and `deferred` tools cannot be reached; a
+ * session using them is warned once. `codemode-deferred` in `mcp.json` is read as `codemode`.
  */
-export type Exposure = "direct" | "hidden";
+export type Exposure = "direct" | "codemode" | "deferred" | "hidden";
 
 /**
  * Who shares one running instance of a server.

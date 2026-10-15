@@ -72,13 +72,21 @@ Share a server only when it keeps no per-session state. Sessions whose settings 
 
 ## Which Tools the Model Sees
 
-`exposure` is `direct` (the default) or `hidden`. `toolExposure` sets single tools, by name or with `*` patterns:
+`exposure` is `direct` (the default), `hidden`, `codemode` or `deferred`:
+
+| Exposure               | The model                                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `direct`               | Sees the tools like any other tool.                                                                         |
+| `hidden`               | Never sees them.                                                                                            |
+| `codemode`, `deferred` | Can't reach them yet: they need codemode or tool search, which are coming. CodeWork warns once per session. |
+
+`toolExposure` sets single tools, by name or with `*` patterns:
 
 ```json
 { "exposure": "hidden", "toolExposure": { "search_*": "direct" } }
 ```
 
-Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`.
+Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`, when at least one of them is `direct`.
 
 ## Connections
 

@@ -71,6 +71,8 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 			broken: { url: "ftp://example.com/mcp" },
 			signin: { url: "https://example.com/mcp", oauth: { clientId: "e2e" } },
 			badheader: { url: "http://127.0.0.1:9/mcp", headers: { Authorization: "${MCP_E2E_BAD_HEADER}" } },
+			// Codemode and deferred exposures are valid; until codemode exists these tools are simply not declared.
+			later: stdio({ exposure: "codemode-deferred" }),
 		},
 	});
 	// The project turns a user server off without restating it, and cannot add an override with no base.
@@ -192,6 +194,8 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 
 	const firstTools = requests[0]?.context.tools ?? [];
 	expect(firstTools.map((tool) => tool.name)).not.toContain("mcp__e2e__secret");
+	expect(firstTools.some((tool) => tool.name.startsWith("mcp__later__"))).toBe(false);
+	expect(result.errors.some((error) => error.includes("later"))).toBe(false);
 	// The tool set is frozen per exchange and stable across them, so every request declares the same tools.
 	for (const request of requests) expect(request.context.tools).toEqual(firstTools);
 	// The server's JSON Schema reaches the provider as written.
