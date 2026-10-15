@@ -1,11 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowUp, ChevronDown, Folder, FolderPlus, MemoryStick } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Folder, FolderPlus, MemoryStick } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarProvider } from "@/components/ui/sidebar";
@@ -19,7 +21,7 @@ const bridge = window.desktopBridge;
 type Place = { kind: "none" } | { kind: "memory" } | { kind: "folder"; path: string };
 
 const placeLabel = (place: Place) =>
-	place.kind === "none" ? "No project" : place.kind === "memory" ? "In memory" : shorten(tildify(place.path));
+	place.kind === "none" ? "No project" : place.kind === "memory" ? "In Memory" : shorten(tildify(place.path));
 
 /** A path under the home directory as `~/…`, the way a shell prompt shows it. */
 const tildify = (path: string) => {
@@ -123,11 +125,16 @@ export function Landing() {
 									<span className="truncate">{placeLabel(place)}</span>
 									<ChevronDown className="size-3 shrink-0 opacity-60" strokeWidth={2} aria-hidden />
 								</DropdownMenuTrigger>
-								<DropdownMenuContent align="start" className="min-w-40">
+								<DropdownMenuContent align="start" className="min-w-44">
+									<DropdownMenuLabel>Project</DropdownMenuLabel>
 									<DropdownMenuItem onSelect={() => setPlace({ kind: "memory" })}>
 										<MemoryStick strokeWidth={1.75} />
-										In memory
+										In Memory
+										{place.kind === "memory" && (
+											<Check className="ml-auto" strokeWidth={2} aria-label="Current" />
+										)}
 									</DropdownMenuItem>
+									<DropdownMenuSeparator />
 									<DropdownMenuItem disabled={pickFolder === undefined} onSelect={() => void pickFolder?.()}>
 										<FolderPlus strokeWidth={1.75} />
 										New…
