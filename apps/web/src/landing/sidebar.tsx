@@ -137,13 +137,15 @@ export function SessionsSidebar() {
 
 /**
  * The main area's title bar: the window's drag region with the sidebar toggle. With the sidebar
- * hidden it sits in the window's corner, so it moves clear of the macOS traffic lights.
+ * hidden, or overlaid as a sheet in a narrow window, it sits in the window's corner, so it moves
+ * clear of the macOS traffic lights.
  */
 export function TitleBar() {
-	const { open } = useSidebar();
+	const { open, isMobile } = useSidebar();
+	const inCorner = !open || isMobile;
 	return (
 		<header
-			className={`flex h-11 shrink-0 items-center px-2 [-webkit-app-region:drag] ${!open && insetTitleBar ? "pl-20" : ""}`}
+			className={`flex h-11 shrink-0 items-center px-2 [-webkit-app-region:drag] ${inCorner && insetTitleBar ? "pl-20" : ""}`}
 		>
 			<SidebarTrigger
 				title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}

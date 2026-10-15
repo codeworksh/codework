@@ -107,6 +107,9 @@ function createMainWindow(): BrowserWindow {
 	const window = new BrowserWindow({
 		width: 1440,
 		height: 900,
+		// Wider than the web app's 768px narrow breakpoint, so the sidebar always sits beside the content.
+		minWidth: 840,
+		minHeight: 620,
 		// The web shell draws its own title bar (workspace switcher) beside the
 		// inset traffic lights, which sit centered in its 44px height.
 		...(process.platform === "darwin" && {
