@@ -145,6 +145,8 @@ interface Session {
 	readonly names: ReturnType<typeof McpTool.names>;
 	readonly lock: Semaphore.Semaphore;
 	readonly reported: Set<string>;
+	/** Whether the session was told its `codemode` or `deferred` tools cannot be reached. */
+	warnedUnreachable: boolean;
 	/** Running drains of this session. */
 	leases: number;
 }
@@ -176,8 +178,10 @@ const instanceKey = (
 	return canonical({ scope, name, rest, cwd, roots });
 };
 
+const exposureOf = (config: ServerConfig) => config.exposure ?? "direct";
+
 const hasDirectTools = (config: ServerConfig) =>
-	(config.exposure ?? "direct") === "direct" ||
+	exposureOf(config) === "direct" ||
 	Object.values(config.toolExposure ?? {}).some((exposure) => exposure === "direct");
 
 export const layer = (options: {
@@ -509,6 +513,7 @@ export const layer = (options: {
 						names: McpTool.names(),
 						lock: Semaphore.makeUnsafe(1),
 						reported: new Set(),
+						warnedUnreachable: false,
 					};
 					sessions.set(sessionId, session);
 				}
@@ -615,6 +620,20 @@ export const layer = (options: {
 				}
 
 				const tools: RegisteredTool[] = [];
+				// Until codemode and `tool_search` exist, nothing reaches these tools; say so once.
+				const unreachable = [...session.servers.values()].some(
+					(entry) =>
+						entry.server !== undefined &&
+						[exposureOf(entry.config), ...Object.values(entry.config.toolExposure ?? {})].some(
+							(exposure) => exposure === "codemode" || exposure === "deferred",
+						),
+				);
+				if (unreachable && !session.warnedUnreachable) {
+					session.warnedUnreachable = true;
+					yield* Effect.logWarning(
+						"MCP tools are only reachable from the codemode or tool_search tool, but neither is active; they cannot be called.",
+					);
+				}
 				const output = { save: McpOutput.save };
 				for (const [name, entry] of session.servers) {
 					const server = entry.server;
@@ -636,7 +655,12 @@ export const layer = (options: {
 						);
 					}
 				}
-				if ([...session.servers.values()].some(withResources))
+				// Resource tools follow their servers' exposure: declared when one of them is `direct`.
+				if (
+					[...session.servers.values()].some(
+						(entry) => withResources(entry) && exposureOf(entry.config) === "direct",
+					)
+				)
 					tools.push(
 						...McpResources.make({
 							servers: () =>
