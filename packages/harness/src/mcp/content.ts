@@ -2,6 +2,7 @@ import type { Message } from "@codeworksh/aikit";
 import type { CallToolResult, ContentBlock } from "@modelcontextprotocol/client";
 import { Effect } from "effect";
 import { formatSize, truncateMiddle } from "../tool/truncate.ts";
+import type { OutputError } from "./error.ts";
 
 export type Content = Message.TextContent | Message.ImageContent;
 
@@ -12,7 +13,7 @@ export const MAX_BYTES = 20 * 1024;
 export const READ_RESOURCE_TOOL = "read_mcp_resource";
 
 /** Keeps data the model is not shown in full in a host file; `extension` includes the dot. */
-export type Save = (data: string | Uint8Array, extension: string) => Effect.Effect<string, string>;
+export type Save = (data: string | Uint8Array, extension: string) => Effect.Effect<string, OutputError>;
 
 export interface Options {
 	readonly save: Save;
@@ -75,9 +76,9 @@ const fromBlock = Effect.fnUntraced(function* (server: string, block: ContentBlo
 					type: "text",
 					text: `[Binary resource ${uri} (${kind}) saved to ${path}]`,
 				}),
-				onFailure: (reason): Content => ({
+				onFailure: (error): Content => ({
 					type: "text",
-					text: `[Binary resource ${uri} (${kind}) could not be saved: ${reason}]`,
+					text: `[Binary resource ${uri} (${kind}) could not be saved: ${error.message}]`,
 				}),
 			}),
 		);
@@ -96,7 +97,7 @@ export const limit = Effect.fnUntraced(function* (content: ReadonlyArray<Content
 	const where = yield* options.save(combined, ".txt").pipe(
 		Effect.match({
 			onSuccess: (path) => `[Full output: ${path} (read it with offset/limit)]`,
-			onFailure: (reason) => `[Could not save the full output: ${reason}]`,
+			onFailure: (error) => `[Could not save the full output: ${error.message}]`,
 		}),
 	);
 	const tokens = Math.ceil(cut.totalBytes / 4);

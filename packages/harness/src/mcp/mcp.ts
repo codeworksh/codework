@@ -42,7 +42,7 @@ import {
 	Semaphore,
 } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
-import { NeedsAuthError } from "./error.ts";
+import { ConnectError, type McpError, NeedsAuthError, ToolCallError, UnavailableError } from "./error.ts";
 import type { ID as SessionId } from "../session/schema.ts";
 import type { RegisteredTool } from "../tool/tool.ts";
 import { McpClient } from "./client.ts";
@@ -120,7 +120,7 @@ interface Server {
 	resources: boolean;
 	live: Live | undefined;
 	/** The connect attempt in progress. Callers share it; closing the server interrupts it. */
-	attempt: Fiber.Fiber<Live, string> | undefined;
+	attempt: Fiber.Fiber<Live, ConnectError> | undefined;
 	/** Settles when the first background attempt finishes. */
 	ready: Deferred.Deferred<void> | undefined;
 	closed: boolean;
@@ -191,7 +191,7 @@ export const layer = (options: {
 		Effect.gen(function* () {
 			const root = yield* Effect.scope;
 			const fork = yield* FiberSet.makeRuntime<never, void, never>();
-			const forkAttempt = yield* FiberSet.makeRuntime<never, Live, string>();
+			const forkAttempt = yield* FiberSet.makeRuntime<never, Live, ConnectError>();
 			const context = yield* Effect.context<ChildProcessSpawner.ChildProcessSpawner>();
 			const log = yield* McpLog.make(hostPath.join(options.home, "mcp.log"));
 			const sessions = new Map<SessionId, Session>();
@@ -277,7 +277,7 @@ export const layer = (options: {
 			};
 
 			/** One connect attempt, run apart from any caller so that closing the server can interrupt it. */
-			const attempt = (server: Server): Effect.Effect<Live, string> =>
+			const attempt = (server: Server): Effect.Effect<Live, ConnectError> =>
 				Effect.gen(function* () {
 					const scope = yield* Scope.fork(root, "sequential");
 					const config = server.config;
@@ -304,7 +304,7 @@ export const layer = (options: {
 						server.state = Schema.is(NeedsAuthError)(error) ? "needs-auth" : "failed";
 						server.error = message;
 						yield* Effect.logWarning("mcp connect failed", { server: server.name, error: message });
-						return yield* Effect.fail(message);
+						return yield* new ConnectError({ server: server.name, message });
 					}
 					const live: Live = { connection: exit.value.connection, scope, inflight: 0, retired: false };
 					server.live = live;
@@ -325,10 +325,14 @@ export const layer = (options: {
 				);
 
 			/** The server's current connection, connecting first when it has none. */
-			const open = (server: Server): Effect.Effect<Live, string> =>
+			const open = (server: Server): Effect.Effect<Live, ConnectError | UnavailableError> =>
 				Effect.gen(function* () {
+					const shutDown = new UnavailableError({
+						server: server.name,
+						message: `MCP server "${server.name}" is shut down`,
+					});
 					const next = yield* Effect.gen(function* () {
-						if (server.closed) return yield* Effect.fail(`MCP server "${server.name}" is shut down`);
+						if (server.closed) return yield* shutDown;
 						const current = server.live;
 						// A drop is known here before its `onClose` handler has run.
 						const reason = current?.connection.dropped();
@@ -348,9 +352,7 @@ export const layer = (options: {
 					// An interrupted caller leaves the attempt running for whoever needs the server next.
 					const exit = yield* Fiber.await(next);
 					if (Exit.isSuccess(exit)) return exit.value;
-					return yield* Cause.hasInterruptsOnly(exit.cause)
-						? Effect.fail(`MCP server "${server.name}" is shut down`)
-						: Effect.failCause(exit.cause);
+					return yield* Cause.hasInterruptsOnly(exit.cause) ? Effect.fail(shutDown) : Effect.failCause(exit.cause);
 				});
 
 			/** Stop the instance: interrupt a connect in progress, and retire the connection it has. */
@@ -371,22 +373,23 @@ export const layer = (options: {
 			 * runs once more on a new one; nothing else is retried here.
 			 */
 			const request =
-				(session: Session, name: string, what: string) =>
+				(session: Session, name: string, failed: (message: string) => ToolCallError) =>
 				<A>(
 					run: (connection: McpClient.Connection) => Effect.Effect<A, McpClient.Failed>,
 					/** Why the server, as it stands, no longer offers what is asked; checked before every attempt. */
 					unavailable: (entry: Entry, server: Server) => string | undefined = () => undefined,
-				): Effect.Effect<A, string> =>
+				): Effect.Effect<A, McpError.Failure> =>
 					Effect.gen(function* () {
+						const refuse = (message: string) => new UnavailableError({ server: name, message });
 						for (let attempt = 1; ; attempt++) {
 							const entry = session.servers.get(name);
 							const server = entry?.server;
 							if (entry === undefined || server === undefined || server.closed)
-								return yield* Effect.fail(`MCP server "${name}" is disabled.`);
+								return yield* refuse(`MCP server "${name}" is disabled.`);
 							const reason = unavailable(entry, server);
-							if (reason !== undefined) return yield* Effect.fail(reason);
+							if (reason !== undefined) return yield* refuse(reason);
 							const live = yield* open(server).pipe(
-								Effect.mapError((error) => `MCP server "${name}" is not connected: ${error}`),
+								Effect.mapError((error) => refuse(`MCP server "${name}" is not connected: ${error.message}`)),
 							);
 							live.inflight += 1;
 							const exit = yield* run(live.connection).pipe(
@@ -412,9 +415,9 @@ export const layer = (options: {
 									server.error = failure.message;
 									yield* retire(server, live);
 								}).pipe(server.lock.withPermits(1));
-								return yield* Effect.fail(`MCP server "${name}" needs sign-in: ${failure.message}`);
+								return yield* refuse(`MCP server "${name}" needs sign-in: ${failure.message}`);
 							}
-							return yield* Effect.fail(`${what} failed: ${failure.message}`);
+							return yield* failed(failure.message);
 						}
 					});
 
@@ -423,7 +426,8 @@ export const layer = (options: {
 				request(
 					session,
 					name,
-					`MCP tool "${name}/${tool}"`,
+					(message) =>
+						new ToolCallError({ server: name, tool, message: `MCP tool "${name}/${tool}" failed: ${message}` }),
 				)(
 					(connection) => connection.callTool({ name: tool, args: run.args, onProgress: run.onProgress }),
 					(entry, server) =>
@@ -438,7 +442,16 @@ export const layer = (options: {
 				entry.server !== undefined && entry.server.resources && (entry.config.exposure ?? "direct") !== "hidden";
 
 			const resourceServer = (session: Session, name: string): McpResources.Server => {
-				const reach = request(session, name, `MCP server "${name}"`);
+				const reach = request(
+					session,
+					name,
+					(message) =>
+						new ToolCallError({
+							server: name,
+							tool: "resources",
+							message: `MCP server "${name}" failed: ${message}`,
+						}),
+				);
 				return {
 					name,
 					resources: (cursor) => reach((connection) => connection.resources(cursor)),

@@ -21,6 +21,7 @@ import type {
 import { Effect, Predicate } from "effect";
 import type { RegisteredTool } from "../tool/tool.ts";
 import { McpContent } from "./content.ts";
+import { type McpError, ResourceError } from "./error.ts";
 import { McpTool } from "./tool.ts";
 
 export const LIST_RESOURCES_TOOL = "list_mcp_resources";
@@ -30,12 +31,12 @@ export const READ_RESOURCE_TOOL = McpContent.READ_RESOURCE_TOOL;
 /** A server that offers resources, reached through its current connection. */
 export interface Server {
 	readonly name: string;
-	readonly resources: (cursor?: string) => Effect.Effect<ListResourcesResult, string>;
-	readonly templates: (cursor?: string) => Effect.Effect<ListResourceTemplatesResult, string>;
+	readonly resources: (cursor?: string) => Effect.Effect<ListResourcesResult, McpError.Failure>;
+	readonly templates: (cursor?: string) => Effect.Effect<ListResourceTemplatesResult, McpError.Failure>;
 	/** Every page, with the SDK's own pagination limits. */
-	readonly allResources: () => Effect.Effect<ReadonlyArray<Resource>, string>;
-	readonly allTemplates: () => Effect.Effect<ReadonlyArray<ResourceTemplate>, string>;
-	readonly read: (uri: string) => Effect.Effect<ReadResourceResult, string>;
+	readonly allResources: () => Effect.Effect<ReadonlyArray<Resource>, McpError.Failure>;
+	readonly allTemplates: () => Effect.Effect<ReadonlyArray<ResourceTemplate>, McpError.Failure>;
+	readonly read: (uri: string) => Effect.Effect<ReadResourceResult, McpError.Failure>;
 }
 
 const isMcpApp = (item: {
@@ -74,10 +75,10 @@ const READ_PARAMETERS = {
 };
 
 /** A string argument; absent when missing. */
-const raw = (args: Record<string, unknown>, key: string): Effect.Effect<string | undefined, string> => {
+const raw = (args: Record<string, unknown>, key: string): Effect.Effect<string | undefined, ResourceError> => {
 	const value = args[key];
 	if (value === undefined || value === null) return Effect.undefined;
-	if (!Predicate.isString(value)) return Effect.fail(`${key} must be a string`);
+	if (!Predicate.isString(value)) return Effect.fail(new ResourceError({ message: `${key} must be a string` }));
 	return Effect.succeed(value);
 };
 
@@ -100,7 +101,9 @@ export const make = (input: {
 		if (server !== undefined) return Effect.succeed(server);
 		const available = servers.map((candidate) => candidate.name).join(", ");
 		return Effect.fail(
-			`MCP server "${name}" has no resources${available ? `. Servers with resources: ${available}` : ""}`,
+			new ResourceError({
+				message: `MCP server "${name}" has no resources${available ? `. Servers with resources: ${available}` : ""}`,
+			}),
 		);
 	};
 
@@ -112,8 +115,8 @@ export const make = (input: {
 	/** One page of one server, or every page of every server. */
 	const list = (
 		key: "resources" | "resourceTemplates",
-		page: (server: Server, cursor?: string) => Effect.Effect<Page, string>,
-		all: (server: Server) => Effect.Effect<ReadonlyArray<Item>, string>,
+		page: (server: Server, cursor?: string) => Effect.Effect<Page, McpError.Failure>,
+		all: (server: Server) => Effect.Effect<ReadonlyArray<Item>, McpError.Failure>,
 	) =>
 		Effect.fnUntraced(function* (args: Record<string, unknown>) {
 			const name = yield* argument(args, "server");
@@ -129,7 +132,8 @@ export const make = (input: {
 					...(result.nextCursor === undefined ? {} : { nextCursor: result.nextCursor }),
 				});
 			}
-			if (cursor !== undefined) return yield* Effect.fail("cursor can only be used when a server is specified");
+			if (cursor !== undefined)
+				return yield* new ResourceError({ message: "cursor can only be used when a server is specified" });
 			const servers = [...input.servers()].sort((a, b) => a.name.localeCompare(b.name));
 			const results = yield* Effect.forEach(servers, (server) => Effect.result(all(server)), {
 				concurrency: "unbounded",
@@ -140,7 +144,7 @@ export const make = (input: {
 				const server = servers[index]!.name;
 				if (result._tag === "Success")
 					items.push(...result.success.filter(visible).map((item) => listed(server, item)));
-				else errors.push({ server, error: result.failure });
+				else errors.push({ server, error: result.failure.message });
 			});
 			return yield* json({ [key]: items, ...(errors.length > 0 ? { errors } : {}) });
 		});
@@ -148,8 +152,8 @@ export const make = (input: {
 	const read = Effect.fnUntraced(function* (args: Record<string, unknown>) {
 		const name = yield* argument(args, "server");
 		const uri = yield* argument(args, "uri");
-		if (name === undefined) return yield* Effect.fail("server must be provided");
-		if (uri === undefined) return yield* Effect.fail("uri must be provided");
+		if (name === undefined) return yield* new ResourceError({ message: "server must be provided" });
+		if (uri === undefined) return yield* new ResourceError({ message: "uri must be provided" });
 		const server = yield* find(name);
 		const result = yield* server.read(uri);
 		// Several contents (a directory, say) are labeled with their URIs.
