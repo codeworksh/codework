@@ -11,7 +11,7 @@ import { settingsShortcut, Switcher, workspaceShortcut } from "./switcher";
 const insetTitleBar = window.desktopBridge?.platform === "darwin";
 
 /**
- * Lives in the root route so switching workspaces (a URL change) never remounts
+ * Lives in the pathless `_shell` layout so switching workspaces (a URL change) never remounts
  * the desktop: widget order, pins, and per-workspace layout survive navigation.
  * Settings opens over the desktop, which stays mounted underneath.
  */
@@ -22,7 +22,7 @@ export function Shell() {
 	// From the location, which changes before route params do: a match-based check lags a
 	// render behind, in which the first workspace would pass for the one settings returns to.
 	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
-	// `/` and an id that no longer exists (a deleted workspace) show the first one.
+	// An id that no longer exists (a deleted workspace) shows the first one.
 	const shown = workspaces.find((workspace) => workspace.id === workspaceId) ?? workspaces[0];
 	// The workspace settings returns to; the one on screen when it opened.
 	const [lastId, setLastId] = useState<string>();
@@ -58,7 +58,7 @@ export function Shell() {
 					aria-label="Settings"
 					title="Settings"
 					aria-current={inSettings ? "page" : undefined}
-					className="ml-auto grid size-7 place-items-center rounded-[10px] text-ink-muted transition-colors [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink aria-[current=page]:bg-ink/8 aria-[current=page]:text-ink"
+					className="ml-auto grid size-7 place-items-center text-ink-muted transition-colors [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink aria-[current=page]:bg-ink/8 aria-[current=page]:text-ink"
 				>
 					<Settings className="size-4" strokeWidth={1.75} aria-hidden />
 				</Link>

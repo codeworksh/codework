@@ -13,7 +13,7 @@ interface SwitcherProps {
 /** Workspace tabs; the active workspace is the URL, so each tab is just a link. */
 export function Switcher({ workspaces, active }: SwitcherProps) {
 	return (
-		<nav className="flex items-center gap-0.5 rounded-xl bg-ink/5 p-0.5 [-webkit-app-region:no-drag]">
+		<nav className="flex items-center gap-0.5 border border-edge p-0.5 [-webkit-app-region:no-drag]">
 			{workspaces.map((workspace, index) => {
 				const Icon = iconOf(workspace.icon);
 				const current = workspace.id === active?.id;
@@ -23,9 +23,9 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 						{...workspaceRoute(workspace)}
 						aria-current={current ? "page" : undefined}
 						title={`${workspace.name} (${shortcutLabel(index + 1)})`}
-						className={`flex h-7 items-center gap-1.5 rounded-[10px] px-3 font-medium max-md:px-2 transition-colors [corner-shape:superellipse(1.25)] ${
+						className={`flex h-7 items-center gap-1.5 px-3 font-medium max-md:px-2 transition-colors ${
 							current
-								? "border border-edge bg-linear-to-b from-frame-top to-frame text-ink shadow-frame"
+								? "border border-edge-focus bg-frame-top text-ink"
 								: "border border-transparent text-ink-muted hover:bg-ink/5 hover:text-ink"
 						}`}
 					>
@@ -51,3 +51,6 @@ export function workspaceShortcut(event: KeyboardEvent, workspaces: readonly Wor
 
 /** Cmd+, on macOS, Ctrl+, elsewhere: the platform's settings shortcut. */
 export const settingsShortcut = (event: KeyboardEvent) => modifier(event) && event.key === ",";
+
+/** Cmd+K on macOS, Ctrl+K elsewhere: the command palette. */
+export const paletteShortcut = (event: KeyboardEvent) => modifier(event) && event.key.toLowerCase() === "k";
