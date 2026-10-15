@@ -394,11 +394,12 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 	await Promise.all([fs.mkdir(shared, { recursive: true }), fs.mkdir(other, { recursive: true })]);
 	process.env.MCP_E2E_GREETING = "hello";
 	await write(join(home, "mcp.json"), {
-		mcpServers: { mine: stdio(), ours: stdio({ scope: "space" }), all: stdio({ scope: "app" }) },
+		// `twin` has exactly `mine`'s settings: still its own server, with its own instance.
+		mcpServers: { mine: stdio(), twin: stdio(), ours: stdio({ scope: "space" }), all: stdio({ scope: "app" }) },
 	});
 
 	const calls = (prefix: string) =>
-		["mine", "ours", "all"].map((server) => pendingCall(`mcp__${server}__pid`, {}, `${prefix}-${server}`));
+		["mine", "twin", "ours", "all"].map((server) => pendingCall(`mcp__${server}__pid`, {}, `${prefix}-${server}`));
 	const requests: LLM.Input[] = [];
 	const llm = scripted([calls("a"), [], calls("b"), [], calls("c"), [], calls("again"), []], requests);
 
@@ -453,6 +454,7 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 	for (const id of pids.values()) expect(id).toMatch(/^\d+$/);
 	// `session`: each its own. `space`: A and B share, C has its own. `app`: one for all.
 	expect(new Set([pid("a", "mine"), pid("b", "mine"), pid("c", "mine")]).size).toBe(3);
+	expect(pid("a", "twin")).not.toBe(pid("a", "mine"));
 	expect(pid("a", "ours")).toBe(pid("b", "ours"));
 	expect(pid("c", "ours")).not.toBe(pid("a", "ours"));
 	expect(new Set([pid("a", "all"), pid("b", "all"), pid("c", "all")]).size).toBe(1);
@@ -467,14 +469,18 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 			return false;
 		}
 	};
-	const before = ["a", "b", "c"].flatMap((session) => ["mine", "ours", "all"].map((server) => pid(session, server)));
+	const before = ["a", "b", "c"].flatMap((session) =>
+		["mine", "twin", "ours", "all"].map((server) => pid(session, server)),
+	);
 	expect(before.filter((value) => value !== undefined && alive(value))).toEqual([]);
-	for (const server of ["mine", "ours", "all"]) expect(before).not.toContain(pid("again", server));
+	for (const server of ["mine", "twin", "ours", "all"]) expect(before).not.toContain(pid("again", server));
 
 	// Distinct processes per scope, in the order the sessions first saw them.
 	const order = [
 		...new Set(
-			["a", "b", "c", "again"].flatMap((session) => ["mine", "ours", "all"].map((server) => pid(session, server))),
+			["a", "b", "c", "again"].flatMap((session) =>
+				["mine", "twin", "ours", "all"].map((server) => pid(session, server)),
+			),
 		),
 	];
 	const label = (value: string | undefined) => `<process-${order.indexOf(value ?? "") + 1}>`;
@@ -484,7 +490,9 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 				processes: Object.fromEntries(
 					["a", "b", "c", "again"].map((session) => [
 						session,
-						Object.fromEntries(["mine", "ours", "all"].map((server) => [server, label(pid(session, server))])),
+						Object.fromEntries(
+							["mine", "twin", "ours", "all"].map((server) => [server, label(pid(session, server))]),
+						),
 					]),
 				),
 				idle: result.idle,
