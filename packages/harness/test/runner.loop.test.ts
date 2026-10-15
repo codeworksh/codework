@@ -59,7 +59,7 @@ const runtime = (
 				pooled(options.plugins ?? plugins),
 			),
 		),
-		Layer.provideMerge(Mcp.layer({ hostCwd: "/" }).pipe(Layer.provide(Process.host))),
+		Layer.provideMerge(Mcp.layer({ hostCwd: "/", home: "/unused/home" }).pipe(Layer.provide(Process.host))),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
 			Layer.succeed(Settings.Service, { load: () => Effect.succeed(options.settings ?? Settings.defaults) }),
