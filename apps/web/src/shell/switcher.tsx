@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Fragment } from "react";
 
 import { isMac } from "../kernel/platform";
-import { chromeAtom, chromeOf } from "../wm/chrome";
+import { chromeAtom, chromeOf, focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { type Workspace, workspaceRoute, workspaceTag } from "../wm/workspaces";
 import { iconOf } from "./icons";
@@ -21,11 +21,17 @@ interface SwitcherProps {
 export function Switcher({ workspaces, active }: SwitcherProps) {
 	const { instances, order } = useAtomValue(deskAtom);
 	const chrome = useAtomValue(chromeAtom);
+	const focusedOn = useAtomValue(focusedAtom);
 	const showing = (workspace: Workspace) => {
 		const tag = workspaceTag(workspace);
-		const focused = order.focusOrder
-			.map((id) => instances.find((instance) => instance.id === id))
-			.find((instance) => instance !== undefined && (instance.tags & tag) !== 0);
+		const onWorkspace = (instance: (typeof instances)[number] | undefined) =>
+			instance !== undefined && (instance.tags & tag) !== 0;
+		// Its own last focus once it has been on screen, else its main frame (first in tile order), so
+		// focusing a frame shared with another workspace never relabels a tab not yet visited.
+		const remembered = instances.find((instance) => instance.id === focusedOn.get(workspace.id));
+		const focused = onWorkspace(remembered)
+			? remembered
+			: order.tileOrder.map((id) => instances.find((instance) => instance.id === id)).find(onWorkspace);
 		const title = focused === undefined ? undefined : chromeOf(focused, chrome.get(focused.id)).title;
 		// A frame named like its workspace adds nothing to the tab.
 		return title?.toLowerCase() === workspace.name.toLowerCase() ? undefined : title;

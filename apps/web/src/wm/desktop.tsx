@@ -19,7 +19,7 @@ import { useArrangedWidgets, useElementSize } from "webwm/react";
 import type { Frame as FrameApi, Shell } from "../sdk";
 import { FrameContext, ShellContext } from "../sdk/shell";
 import { builtins, registry } from "../widgets";
-import { type Chrome, chromeAtom, chromeOf } from "./chrome";
+import { type Chrome, chromeAtom, chromeOf, focusedAtom } from "./chrome";
 import { Divider } from "./divider";
 import { Frame } from "./frame";
 import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
@@ -143,6 +143,13 @@ export function Desktop({ workspace }: DesktopProps) {
 	const setMfact = (next: number) => setView({ mfact: next });
 	// Focus is the most recently focused widget that is visible on this workspace.
 	const focusedId = focus(widgets, order, activeTags).widget?.id;
+	const setFocused = useAtomSet(focusedAtom);
+	useEffect(() => {
+		if (focusedId === undefined) return;
+		setFocused((current) =>
+			current.get(workspace.id) === focusedId ? current : new Map(current).set(workspace.id, focusedId),
+		);
+	}, [workspace.id, focusedId, setFocused]);
 	const bounds: Bounds = { x: 0, y: 0, w: size.width, h: size.height };
 	const tiled = order.tileOrder.flatMap((id) =>
 		widgets.filter((widget) => widget.id === id && isVisible(widget, activeTags)),

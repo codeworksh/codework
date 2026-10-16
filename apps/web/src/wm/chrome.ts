@@ -16,6 +16,12 @@ export interface Chrome {
  */
 export const chromeAtom = Atom.make<ReadonlyMap<string, Chrome>>(new Map()).pipe(Atom.keepAlive);
 
+/**
+ * The frame last focused on each workspace (workspace id → instance id). Focus order is one list for
+ * the whole desk, so a frame shown on two workspaces would otherwise name both tabs when clicked on one.
+ */
+export const focusedAtom = Atom.make<ReadonlyMap<string, string>>(new Map()).pipe(Atom.keepAlive);
+
 /** A frame's title and icon: what the widget set, else the instance's, else its definition's. */
 export function chromeOf(instance: Instance, chrome: Chrome | undefined) {
 	const definition = registry.get(instance.kind);
