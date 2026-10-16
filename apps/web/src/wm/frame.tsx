@@ -58,8 +58,8 @@ export function Frame(props: FrameProps) {
 							className={`size-3.5 shrink-0 text-ink-muted/50 ${canDrag ? "" : "invisible"}`}
 							aria-hidden
 						/>
-						{Icon && <Icon className="mr-0.5 size-3.5 shrink-0 text-ink-muted" strokeWidth={1.75} aria-hidden />}
-						<Title text={title} className="font-medium text-ink-muted group-data-[focused=true]:text-ink" />
+						{Icon && <Icon className="mr-0.5 size-4 shrink-0 text-ink-muted" strokeWidth={1.75} aria-hidden />}
+						<Title text={title} className="font-semibold text-ink-muted group-data-[focused=true]:text-ink" />
 					</div>
 					<Action
 						icon={pinned ? PinOff : Pin}

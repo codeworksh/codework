@@ -8,7 +8,11 @@
 :root {
 	--cw-desktop: var(--t-bg);
 	--cw-frame: var(--t-surface);
-	--cw-frame-top: var(--t-surface-2);
+	/* A touch lighter than the frame (whiter in light palettes), for the panel's top-down gradient. */
+	--cw-frame-top: light-dark(
+		color-mix(in oklab, var(--t-surface) 55%, white),
+		color-mix(in oklab, var(--t-surface) 93%, var(--t-text))
+	);
 	--cw-edge: var(--t-border-subtle);
 	--cw-edge-focus: var(--t-border-strong);
 	--cw-ink: var(--t-text);
@@ -18,6 +22,9 @@
 	--cw-brand-ink: var(--t-brand-ink);
 	--cw-scrollbar: color-mix(in oklab, var(--t-text) 16%, transparent);
 	--cw-danger: light-dark(#dc2626, #f87171);
+	--cw-highlight: light-dark(rgb(255 255 255 / 0.9), color-mix(in oklab, var(--t-text) 9%, transparent));
+	--cw-shadow-near: light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.35));
+	--cw-shadow-far: light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.5));
 	--cw-dialog-shadow: 0 24px 64px -24px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.9));
 	--cw-menu-shadow: 0 16px 40px -18px light-dark(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.8));
 }
@@ -26,15 +33,6 @@
 	/* The platform's own faces (SF Pro and SF Mono on macOS), so the app reads as native. */
 	--font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 	--font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
-	/* Square corners throughout, like codework.sh; rounded-full stays for dots and pills. */
-	--radius-xs: 0;
-	--radius-sm: 0;
-	--radius-md: 0;
-	--radius-lg: 0;
-	--radius-xl: 0;
-	--radius-2xl: 0;
-	--radius-3xl: 0;
-	--radius-4xl: 0;
 }
 
 @theme inline {
@@ -76,11 +74,14 @@
 	--color-sidebar-accent-foreground: var(--cw-ink);
 	--color-sidebar-border: var(--cw-edge);
 	--color-sidebar-ring: color-mix(in oklab, var(--cw-brand) 50%, transparent);
+	/* Inset top highlight plus a tight and a soft drop shadow read as a raised panel. */
+	--shadow-frame:
+		inset 0 1px 0 var(--cw-highlight), 0 1px 2px var(--cw-shadow-near), 0 8px 24px -8px var(--cw-shadow-far);
 }
 
-/* The flat, bordered card every frame and settings pane sits on. */
+/* The raised card every frame and settings pane sits on. */
 @utility panel {
-	@apply border border-edge bg-frame;
+	@apply rounded-[16px] border border-edge bg-linear-to-b from-frame-top to-frame to-40% shadow-frame [corner-shape:superellipse(1.25)];
 }
 
 /* Dialogs float over a blurred desktop: a translucent card with a deep, soft shadow. */

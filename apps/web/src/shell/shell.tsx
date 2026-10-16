@@ -65,7 +65,7 @@ export function Shell() {
 					aria-label="Settings"
 					title="Settings"
 					aria-current={inSettings ? "page" : undefined}
-					className="ml-auto grid size-7 place-items-center text-ink-muted transition-colors [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink aria-[current=page]:bg-ink/8 aria-[current=page]:text-ink"
+					className="ml-auto grid size-7 place-items-center rounded-[10px] text-ink-muted transition-colors [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink aria-[current=page]:bg-ink/8 aria-[current=page]:text-ink"
 				>
 					<Settings className="size-4" strokeWidth={1.75} aria-hidden />
 				</Link>

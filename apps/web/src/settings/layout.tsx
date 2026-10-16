@@ -41,7 +41,7 @@ export function SettingsLayout() {
 							placeholder="Search"
 							aria-label="Search settings"
 							value={query}
-							className="h-9 border-transparent bg-ink/6 pl-9"
+							className="h-9 rounded-full border-transparent bg-ink/6 pl-9"
 							onChange={(event) => setQuery(event.target.value)}
 							onKeyDown={(event) => {
 								const first = matches[0];
