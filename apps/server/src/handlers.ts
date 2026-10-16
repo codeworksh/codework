@@ -42,7 +42,7 @@ export const layer = Contract.Api.toLayer(
 			...workspaces,
 
 			"projects.list": Effect.fn("projects.list")(function* () {
-				const sessions = yield* Codework.call((client) => client["session.list"]({}));
+				const sessions = yield* Codework.call((client) => client("session.list", {}));
 				return byProject(sessions);
 			}),
 
@@ -50,8 +50,8 @@ export const layer = Contract.Api.toLayer(
 				// A missing session is an answer, not an outage, so it is caught before `call` sees it.
 				const found = yield* Codework.call((client) =>
 					Effect.all({
-						info: client["session.info"]({ sessionId: id }),
-						history: client["session.history"]({ sessionId: id }),
+						info: client("session.info", { sessionId: id }),
+						history: client("session.history", { sessionId: id }),
 					}).pipe(Effect.catchTag("SessionNotFoundError", () => Effect.succeed(undefined))),
 				);
 				if (found === undefined) return yield* new Contract.SessionNotFound({ id });

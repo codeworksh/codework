@@ -169,7 +169,7 @@ catalogs:
       version: 0.45.0
     '@types/node':
       specifier: ^26.5.1
-      version: 26.5.1
+      version: 26.6.4
     typescript:
       specifier: 7.0.2
       version: 7.0.2
@@ -227,6 +227,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@codeworksh/web':
+        specifier: workspace:*
+        version: link:../web
       '@codeworksh/widget':
         specifier: workspace:*
         version: link:../widget

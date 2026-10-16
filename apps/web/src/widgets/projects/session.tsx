@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import type { HistoryEntry, Part, ToolCall } from "@codeworksh/server/contract";
+import type { HistoryEntry, Part, ToolCall } from "@codeworksh/widget/codework";
 import { Option } from "effect";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { Brain, ChevronDown, ChevronRight, CircleAlert, MessageSquareText, Terminal, Wrench } from "lucide-react";

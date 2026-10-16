@@ -1,10 +1,8 @@
-import { type Backend, Bus, Kv as WidgetKv } from "@codeworksh/widget/backend";
+import { backends } from "@codeworksh/web/backends";
+import { Bus, Codework, Kv as WidgetKv } from "@codeworksh/widget/backend";
 import { Effect, Layer } from "effect";
 import { Event } from "./event.ts";
 import { Kv } from "./kv.ts";
-
-/** Backends that ship with the app; third-party packages will join them at load time. */
-const builtins: ReadonlyArray<Backend> = [];
 
 /** A topic outside the publisher's package is a bug in the widget, not a runtime condition. */
 const owned = (pkg: string, topic: string) =>
@@ -15,7 +13,9 @@ export const layer = Layer.effectDiscard(
 	Effect.gen(function* () {
 		const events = yield* Event.Service;
 		const kv = yield* Kv.Service;
-		yield* Effect.forEach(builtins, (backend) =>
+		const codework = yield* Codework;
+		// Third-party packages will join the built-in backends at load time.
+		yield* Effect.forEach(backends, (backend) =>
 			backend.run.pipe(
 				Effect.provideService(
 					Bus,
@@ -38,6 +38,7 @@ export const layer = Layer.effectDiscard(
 						set: (key, value) => kv.set(backend.package, key, value),
 					}),
 				),
+				Effect.provideService(Codework, codework),
 				Effect.forkScoped,
 			),
 		);

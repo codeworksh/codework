@@ -5,6 +5,7 @@
 	"description": "SDK for CodeWork desktop widgets: the view and backend halves, and the event contract they share.",
 	"type": "module",
 	"exports": {
+		"./codework": "./src/codework.ts",
 		"./event": "./src/event.ts",
 		"./view": "./src/view.ts",
 		"./backend": "./src/backend.ts"

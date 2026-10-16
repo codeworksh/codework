@@ -3,6 +3,9 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
+	"exports": {
+		"./backends": "./src/widgets/backends.ts"
+	},
 	"scripts": {
 		"build": "vp build",
 		"dev": "vp dev",
