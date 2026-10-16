@@ -65,6 +65,8 @@ export const Update = Schema.Union([
 	Schema.TaggedStruct("Message", { message: HistoryEntry }),
 	/** A message no longer on the session's active branch. */
 	Schema.TaggedStruct("Removed", { id: Schema.String }),
+	/** Whether the agent is working on the session; sent live only, never stored. */
+	Schema.TaggedStruct("Running", { running: Schema.Boolean }),
 ]);
 export type Update = typeof Update.Type;
 

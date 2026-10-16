@@ -53,6 +53,8 @@ export const HistoryEntry = Schema.Struct({
 	state: Schema.Literals(["committed", "draft", "aborted"]),
 	/** Epoch milliseconds. */
 	createdAt: Schema.Finite,
+	/** Epoch milliseconds of the last change; for a reply, when it ended once it is no longer a draft. */
+	updatedAt: Schema.Finite,
 	parts: Schema.Array(Part),
 });
 export type HistoryEntry = typeof HistoryEntry.Type;
@@ -101,6 +103,18 @@ export class PromptConflictError extends Schema.TaggedError<PromptConflictError>
 	messageId: Schema.String,
 }) {}
 
+/** A live subscriber fell too far behind; the server dropped it. */
+export class SubscriptionOverflowError extends Schema.TaggedError<SubscriptionOverflowError>()(
+	"SubscriptionOverflowError",
+	{ capacity: Schema.Int },
+) {}
+
+/** The server could not encode an event for the wire; it disconnects every live subscriber. */
+export class EventEncodingError extends Schema.TaggedError<EventEncodingError>()("EventEncodingError", {
+	type: Schema.String,
+	cause: Schema.Defect(),
+}) {}
+
 export const Api = RpcGroup.make(
 	Rpc.make("server.info", {
 		payload: {},
@@ -145,6 +159,16 @@ export const Api = RpcGroup.make(
 	Rpc.make("session.interrupt", {
 		payload: { sessionId: Schema.String },
 		success: Schema.Struct({ interrupted: Schema.Boolean }),
+	}),
+	/**
+	 * Every event as it happens, durable and live-only alike (text deltas, execution state), after a
+	 * `server.connected` frame. Nothing is replayed: what a reader misses while away is gone.
+	 */
+	Rpc.make("event.subscribe", {
+		payload: {},
+		success: EventEnvelope,
+		error: Schema.Union([SubscriptionOverflowError, EventEncodingError]),
+		stream: true,
 	}),
 );
 

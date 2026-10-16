@@ -142,6 +142,7 @@ export const layer = Contract.Api.toLayer(
 									role: entry.type,
 									state: entry.state,
 									createdAt: DateTime.toEpochMillis(entry.createdAt),
+									updatedAt: DateTime.toEpochMillis(entry.updatedAt),
 									// A part this schema does not render (a future aikit type) is skipped, not fatal.
 									parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
 								},

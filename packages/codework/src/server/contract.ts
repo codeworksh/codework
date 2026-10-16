@@ -59,6 +59,8 @@ export const HistoryEntry = Schema.Struct({
 	state: Schema.Literals(["committed", "draft", "aborted"]),
 	/** Epoch milliseconds. */
 	createdAt: Schema.Finite,
+	/** Epoch milliseconds of the last change; for a reply, when it ended once it is no longer a draft. */
+	updatedAt: Schema.Finite,
 	parts: Schema.Array(Part),
 });
 export type HistoryEntry = typeof HistoryEntry.Type;

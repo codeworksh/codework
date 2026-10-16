@@ -1,5 +1,5 @@
 import { Bus, Codework, defineBackend, handle, Kv } from "@codeworksh/widget/backend";
-import { HistoryEntry, type SessionInfo } from "@codeworksh/widget/codework";
+import { type EventEnvelope, HistoryEntry, type Part, type SessionInfo } from "@codeworksh/widget/codework";
 import { Deferred, Effect, Option, Schedule, Schema, Stream } from "effect";
 
 import {
@@ -45,6 +45,27 @@ const changes = (before: Snapshot | undefined, info: Info, messages: ReadonlyArr
 	];
 };
 
+/** A live text or thinking delta, as `event.subscribe` carries it. */
+const Delta = Schema.Struct({
+	sessionId: Schema.String,
+	messageId: Schema.String,
+	partIndex: Schema.Int,
+	delta: Schema.String,
+	timestamp: Schema.Number,
+});
+const decodeDelta = Schema.decodeUnknownOption(Delta);
+const decodeOfSession = Schema.decodeUnknownOption(Schema.Struct({ sessionId: Schema.String }));
+
+/** Appends a delta to the part it belongs to; a part not seen yet starts with it. */
+const fold = (current: Part | undefined, kind: "text" | "thinking", delta: string): Part =>
+	kind === "text"
+		? current?.type === "text"
+			? { ...current, text: current.text + delta }
+			: { type: "text", text: delta }
+		: current?.type === "thinking"
+			? { ...current, thinking: current.thinking + delta }
+			: { type: "thinking", thinking: delta };
+
 const describe = (error: { readonly _tag: string }) =>
 	error._tag === "SessionNotFoundError"
 		? "This session no longer exists."
@@ -60,7 +81,8 @@ const decodeSnapshot = Schema.decodeUnknownEffect(Json.Snapshot);
 /**
  * Keeps a copy of each followed session in kv and publishes what changes on the session's topic.
  * The copy is CodeWork's own conversation (`session.history`), refetched whenever the session's
- * durable log moves, so this backend never has to fold harness events itself.
+ * durable log moves, so this backend never folds the stored events itself. What CodeWork only says
+ * live, a reply's text as it streams and whether the agent works, it relays as it happens.
  */
 export const session = defineBackend({
 	package: "codework",
@@ -81,6 +103,38 @@ export const session = defineBackend({
 				),
 			);
 
+		/**
+		 * Replies being streamed, folded from live deltas: message id to the draft as it reads now.
+		 * CodeWork stores a reply's text only once it ends, so until then this is the newer copy.
+		 */
+		const streaming = new Map<
+			string,
+			{
+				readonly sessionId: string;
+				message: HistoryEntry;
+				// Keyed by the part index deltas carry, which can skip parts that stream no text.
+				readonly parts: Map<number, Part>;
+			}
+		>();
+		// Drafts changed since they were last published.
+		const dirty = new Set<string>();
+		// Each session's latest snapshot, so a delta can start from the draft CodeWork stored.
+		const latest = new Map<string, Snapshot>();
+
+		/** A draft reads as streamed so far; a reply that has ended stops streaming. */
+		const withStreamed = (entries: ReadonlyArray<HistoryEntry>) =>
+			entries.map((entry) => {
+				const streamed = streaming.get(entry.id);
+				if (streamed === undefined) return entry;
+				if (entry.state !== "draft") {
+					streaming.delete(entry.id);
+					dirty.delete(entry.id);
+					return entry;
+				}
+				streamed.message = { ...entry, parts: streamed.message.parts };
+				return streamed.message;
+			});
+
 		/** Refetches the conversation, publishes what changed, then stores the snapshot. */
 		const refresh = Effect.fn("Session.refresh")(function* (id: string, cursor: number | undefined) {
 			const { info, history } = yield* Effect.all({
@@ -89,9 +143,10 @@ export const session = defineBackend({
 			});
 			const before = yield* load(id);
 			const next = toInfo(info);
+			const messages = withStreamed(history.entries);
 			let seq = before?.seq ?? 0;
 			// Published before the snapshot is stored, so a view never holds a snapshot newer than its cursor.
-			for (const update of changes(before, next, history.entries)) {
+			for (const update of changes(before, next, messages)) {
 				const payload = yield* encodeUpdate(update).pipe(Effect.orDie);
 				seq = (yield* bus.publish({ topic: topics.session(id), payload })).seq ?? seq;
 			}
@@ -99,12 +154,84 @@ export const session = defineBackend({
 			const resume = cursor ?? before?.cursor ?? history.entries.at(-1)?.seq;
 			const snapshot: Snapshot = {
 				info: next,
-				messages: history.entries,
+				messages,
 				seq,
 				...(resume === undefined ? {} : { cursor: resume }),
 			};
 			yield* kv.set(snapshotKey(id), yield* encodeSnapshot(snapshot).pipe(Effect.orDie));
+			latest.set(id, snapshot);
 			return snapshot;
+		});
+
+		/** Publishes to the session's live subscribers without storing it. */
+		const publishLive = (sessionId: string, update: Update) =>
+			encodeUpdate(update).pipe(
+				Effect.orDie,
+				Effect.flatMap((payload) => bus.publish({ topic: topics.session(sessionId), payload, ephemeral: true })),
+				Effect.asVoid,
+			);
+
+		/** Folds what CodeWork only says live: deltas into their drafts, and whether the agent works. */
+		const observe = (envelope: EventEnvelope): Effect.Effect<void> => {
+			switch (envelope.type) {
+				case "session.llm.text.delta":
+				case "session.llm.thinking.delta": {
+					const delta = Option.getOrUndefined(decodeDelta(envelope.data));
+					if (delta === undefined || !following.has(delta.sessionId)) return Effect.void;
+					return Effect.sync(() => {
+						const streamed = streaming.get(delta.messageId);
+						const draft = streamed?.message ??
+							latest.get(delta.sessionId)?.messages.find((message) => message.id === delta.messageId) ?? {
+								id: delta.messageId,
+								seq: latest.get(delta.sessionId)?.cursor ?? 0,
+								role: "assistant",
+								state: "draft",
+								createdAt: delta.timestamp,
+								updatedAt: delta.timestamp,
+								parts: [],
+							};
+						const kind = envelope.type === "session.llm.text.delta" ? "text" : "thinking";
+						const parts = streamed?.parts ?? new Map<number, Part>();
+						parts.set(delta.partIndex, fold(parts.get(delta.partIndex), kind, delta.delta));
+						const ordered = [...parts.entries()].sort(([a], [b]) => a - b).map(([, part]) => part);
+						streaming.set(delta.messageId, {
+							sessionId: delta.sessionId,
+							message: { ...draft, parts: ordered },
+							parts,
+						});
+						dirty.add(delta.messageId);
+					});
+				}
+				case "session.execution.started":
+				case "session.execution.succeeded":
+				case "session.execution.failed":
+				case "session.execution.interrupted": {
+					const sessionId = Option.getOrUndefined(decodeOfSession(envelope.data))?.sessionId;
+					if (sessionId === undefined || !following.has(sessionId)) return Effect.void;
+					return publishLive(sessionId, {
+						_tag: "Running",
+						running: envelope.type === "session.execution.started",
+					});
+				}
+				default:
+					return Effect.void;
+			}
+		};
+
+		// Drafts go out at most every 50ms, however fast the deltas arrive.
+		const flush = Effect.suspend(() => {
+			const ids = [...dirty];
+			dirty.clear();
+			return Effect.forEach(
+				ids,
+				(id) => {
+					const streamed = streaming.get(id);
+					return streamed === undefined
+						? Effect.void
+						: publishLive(streamed.sessionId, { _tag: "Message", message: streamed.message });
+				},
+				{ discard: true },
+			);
 		});
 
 		const following = new Map<string, Deferred.Deferred<Reply>>();
@@ -134,6 +261,15 @@ export const session = defineBackend({
 				Effect.retry(Schedule.spaced("1 second")),
 				Effect.repeat({ while: () => following.has(id), schedule: Schedule.spaced("1 second") }),
 			);
+
+		yield* flush.pipe(Effect.repeat(Schedule.spaced("50 millis")), Effect.forkScoped);
+		// Nothing here is replayed, so a reconnect only resumes from what happens next.
+		yield* codework("event.subscribe", {}).pipe(
+			Stream.runForEach(observe),
+			Effect.retry(Schedule.spaced("1 second")),
+			Effect.repeat(Schedule.spaced("1 second")),
+			Effect.forkScoped,
+		);
 
 		yield* handle(topics.follow, Follow, ({ sessionId }) =>
 			Effect.gen(function* () {

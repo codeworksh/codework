@@ -29,6 +29,8 @@ type State =
 			readonly messages: readonly HistoryEntry[];
 			/** The snapshot's seq: updates are read from after it. */
 			readonly after: number;
+			/** Whether the agent works, once the backend has said; until then a draft reply implies it. */
+			readonly running: boolean | undefined;
 	  };
 
 const apply = (state: State, update: Update): State => {
@@ -38,8 +40,12 @@ const apply = (state: State, update: Update): State => {
 			return { ...state, info: update.info };
 		case "Removed":
 			return { ...state, messages: state.messages.filter((message) => message.id !== update.id) };
+		case "Running":
+			return { ...state, running: update.running };
 		case "Message": {
 			const index = state.messages.findIndex((message) => message.id === update.message.id);
+			// A streamed draft can land just after the reply it belongs to ended; an ended reply stays ended.
+			if (index !== -1 && update.message.state === "draft" && state.messages[index]?.state !== "draft") return state;
 			return {
 				...state,
 				messages: index === -1 ? [...state.messages, update.message] : state.messages.with(index, update.message),
@@ -68,7 +74,7 @@ function useConversation(id: string): State {
 			const snapshot = decodeSnapshot(await kv.get(snapshotKey(id)));
 			if (Option.isNone(snapshot)) return fail(`Could not load session ${id}.`);
 			const { info, messages, seq } = snapshot.value;
-			if (active) setState({ status: "ready", info, messages, after: seq });
+			if (active) setState({ status: "ready", info, messages, after: seq, running: undefined });
 		})().catch(() => fail("The CodeWork server is not reachable."));
 		return () => {
 			active = false;
@@ -102,22 +108,19 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 	if (state.status === "loading") return null;
 	if (state.status === "failed") return <p className="p-3 text-ink-muted">{state.message}</p>;
 	const last = state.messages.at(-1);
+	const running = state.running ?? (last?.role === "assistant" && last.state === "draft");
 	return (
 		<div className="flex h-full flex-col">
-			<Transcript messages={state.messages} />
+			<Transcript messages={state.messages} running={running} />
 			<div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">
-				<SessionComposer
-					sessionId={id}
-					instanceId={instanceId}
-					running={last?.role === "assistant" && last.state === "draft"}
-				/>
+				<SessionComposer sessionId={id} instanceId={instanceId} running={running} />
 			</div>
 		</div>
 	);
 }
 
 /** The conversation, kept scrolled to its end while the reader is there. */
-function Transcript({ messages }: { readonly messages: readonly HistoryEntry[] }) {
+function Transcript({ messages, running }: { readonly messages: readonly HistoryEntry[]; readonly running: boolean }) {
 	const scroller = useRef<HTMLDivElement>(null);
 	const atEnd = useRef(true);
 	useLayoutEffect(() => {
@@ -137,8 +140,12 @@ function Transcript({ messages }: { readonly messages: readonly HistoryEntry[] }
 				<p className="p-3 text-ink-muted">No messages yet.</p>
 			) : (
 				<div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-2 pb-6 text-[14px] leading-relaxed">
-					{turnsOf(messages).map((turn, index) => (
-						<TurnView key={turn.user?.id ?? turn.replies[0]?.id ?? index} turn={turn} />
+					{turnsOf(messages).map((turn, index, turns) => (
+						<TurnView
+							key={turn.user?.id ?? turn.replies[0]?.id ?? index}
+							turn={turn}
+							active={running && index === turns.length - 1}
+						/>
 					))}
 				</div>
 			)}
@@ -168,28 +175,56 @@ function turnsOf(entries: readonly HistoryEntry[]): Turn[] {
  * The answer is the last reply's text; everything before it (thinking, tool calls, notes between
  * calls) is the work that led there, folded under one line.
  */
-function TurnView({ turn }: { readonly turn: Turn }) {
+/**
+ * What the work log can show: a tool call, readable thinking, or a note between calls. Thinking a
+ * provider withholds (redacted, or reasoning sent without a summary) has nothing to show.
+ */
+const isWork = (part: Part) =>
+	part.type === "toolCall" ||
+	(part.type === "thinking" && part.redacted !== true && part.thinking.trim() !== "") ||
+	(part.type === "text" && part.text.trim() !== "");
+
+function TurnView({ turn, active }: { readonly turn: Turn; readonly active: boolean }) {
 	const last = turn.replies.at(-1);
 	const answer = last?.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])) ?? [];
-	const work = turn.replies.flatMap((reply) =>
-		reply.parts.filter((part) => !(reply === last && part.type === "text")),
-	);
+	const work = turn.replies
+		.flatMap((reply) => reply.parts.filter((part) => !(reply === last && part.type === "text")))
+		.filter(isWork);
 	const interrupted = last?.state === "aborted";
+	// While the agent works and no answer is streaming, it is thinking or running a tool.
+	const thinking = active && (last?.state !== "draft" || answer.length === 0);
 
 	return (
 		<section className="flex flex-col gap-3">
 			{turn.user !== undefined && <UserMessage entry={turn.user} />}
 			{work.length > 0 && (
-				<WorkLog parts={work} started={turn.user?.createdAt} ended={endOf(turn.replies)} at={last?.createdAt} />
+				<WorkLog
+					parts={work}
+					started={turn.user?.createdAt}
+					ended={active ? undefined : endOf(turn.replies)}
+					at={last?.updatedAt}
+				/>
 			)}
+			{thinking && <ThinkingRow />}
 			{answer.length > 0 && (
 				<div className="text-ink/90">
 					<Markdown text={answer.join("\n\n")} />
 				</div>
 			)}
-			{last?.state === "draft" && <p className="text-[12px] text-ink-muted">Still replying…</p>}
 			{interrupted && <p className="text-[12px] text-ink-muted">Interrupted</p>}
 		</section>
+	);
+}
+
+/** The agent at work with nothing to show yet; static, so it costs no repaints while it waits. */
+function ThinkingRow() {
+	return (
+		<div className="flex min-h-6 items-center gap-1.5 px-0.5 text-ink-muted">
+			<span className="grid size-6 shrink-0 place-items-center">
+				<Brain className="size-3.5" strokeWidth={1.75} aria-hidden />
+			</span>
+			Thinking
+		</div>
 	);
 }
 
@@ -208,12 +243,12 @@ function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
 	);
 }
 
-/** The latest moment a turn's work is known to have reached: a reply's start or a tool's last update. */
+/** When a settled turn ended: its last reply's last change, or a tool's last update if later. */
 function endOf(replies: readonly HistoryEntry[]) {
 	return Math.max(
 		0,
 		...replies.flatMap((reply) => [
-			reply.createdAt,
+			reply.updatedAt,
 			...reply.parts.flatMap((part) => (part.type === "toolCall" && part.time ? [part.time.end] : [])),
 		]),
 	);
@@ -235,11 +270,17 @@ function WorkLog({
 }: {
 	readonly parts: readonly Part[];
 	readonly started: number | undefined;
-	readonly ended: number;
+	/** Absent while the turn is still running. */
+	readonly ended: number | undefined;
 	readonly at: number | undefined;
 }) {
 	const [open, setOpen] = useState(false);
-	const label = started !== undefined && ended > started ? `Worked for ${duration(ended - started)}` : "Worked";
+	const label =
+		ended === undefined
+			? "Working"
+			: started !== undefined && ended > started
+				? `Worked for ${duration(ended - started)}`
+				: "Worked";
 	return (
 		<div>
 			<div className="flex items-center gap-2 border-b border-edge pb-1.5">
