@@ -41,6 +41,10 @@ const migrations = {
 			].map((workspace, index) => ({ ...workspace, bit: index, pos: index, layout: "tile", mfact: 0.6, created })),
 		)}`;
 	}),
+	"202610160001_workspace_auto": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE workspaces ADD COLUMN auto INTEGER NOT NULL DEFAULT 0`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

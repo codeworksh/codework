@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { Search } from "lucide-react";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, type MouseEvent, useState } from "react";
 
 import {
 	Sidebar,
@@ -15,6 +15,9 @@ import {
 } from "@/components/ui/sidebar";
 import { isMac } from "../kernel/platform";
 import { Server } from "../kernel/rpc";
+import { openMode } from "../sdk";
+import { sessionAddress } from "../widgets/projects/address";
+import { useOpenElsewhere } from "../wm/open";
 import { ago } from "../widgets/projects/time";
 
 const projectsAtom = Server.query("projects.list", undefined);
@@ -68,6 +71,11 @@ function Monogram({ id, name }: { id: string; name: string }) {
 export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const [query, setQuery] = useState("");
+	const openElsewhere = useOpenElsewhere();
+	// Primary and middle clicks open; a right click is left to the context menu.
+	const open = (session: { id: string; project: { name: string } }, event: MouseEvent) => {
+		if (event.button <= 1) void openElsewhere(sessionAddress(session.id), session.project.name, openMode(event));
+	};
 
 	const needle = query.trim().toLowerCase();
 	const sessions = AsyncResult.isSuccess(result)
@@ -111,20 +119,24 @@ export function SessionsSidebar() {
 				) : (
 					<ul className="flex flex-col gap-0.5">
 						{sessions.map((session) => (
-							<li
-								key={session.id}
-								className="rounded-[8px] px-2.5 py-2 transition-colors hover:bg-ink/5"
-								title={session.project.path}
-							>
-								<div className="flex h-5 min-w-0 items-center gap-1.5 text-[12px] text-ink-muted">
-									<Monogram id={session.project.id} name={session.project.name} />
-									<span className="min-w-0 flex-1 truncate">{session.project.name}</span>
-									<span className="shrink-0 tabular-nums">{ago(session.updated)}</span>
-								</div>
-								<div className="mt-1 truncate text-[13px] text-ink">{session.title}</div>
-								{session.model !== undefined && (
-									<div className="mt-0.5 truncate text-[11px] text-ink-muted/60">{session.model.id}</div>
-								)}
+							<li key={session.id}>
+								<button
+									type="button"
+									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame`}
+									className="block w-full rounded-[8px] px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5"
+									onClick={(event) => open(session, event)}
+									onAuxClick={(event) => open(session, event)}
+								>
+									<div className="flex h-5 min-w-0 items-center gap-1.5 text-[12px] text-ink-muted">
+										<Monogram id={session.project.id} name={session.project.name} />
+										<span className="min-w-0 flex-1 truncate">{session.project.name}</span>
+										<span className="shrink-0 tabular-nums">{ago(session.updated)}</span>
+									</div>
+									<div className="mt-1 truncate text-[13px] text-ink">{session.title}</div>
+									{session.model !== undefined && (
+										<div className="mt-0.5 truncate text-[11px] text-ink-muted/60">{session.model.id}</div>
+									)}
+								</button>
 							</li>
 						))}
 					</ul>

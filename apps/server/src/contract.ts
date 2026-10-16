@@ -71,10 +71,16 @@ export const Workspace = Schema.Struct({
 	layout: Layout,
 	/** Master column share of the width, 0–1. */
 	mfact: Schema.Number,
+	/** Created to show something the user opened (a session); removed once it shows nothing. */
+	auto: Schema.Boolean,
 });
 export type Workspace = typeof Workspace.Type;
 
-export const WorkspaceCreate = Schema.Struct({ name: Schema.String, icon: Schema.String });
+export const WorkspaceCreate = Schema.Struct({
+	name: Schema.String,
+	icon: Schema.String,
+	auto: Schema.optionalKey(Schema.Boolean),
+});
 export const WorkspaceUpdate = Schema.Struct({
 	id: Schema.String,
 	name: Schema.optional(Schema.String),

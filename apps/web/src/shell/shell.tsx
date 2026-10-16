@@ -1,9 +1,10 @@
 import { Link, Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { Settings } from "lucide-react";
+import { useAtomSet } from "@effect/atom-react";
 import { useEffect, useState } from "react";
 
 import { Desktop } from "../wm/desktop";
-import { useWorkspaces, workspaceRoute } from "../wm/workspaces";
+import { lastWorkspaceAtom, useWorkspaces, workspaceRoute } from "../wm/workspaces";
 import { settingsShortcut, Switcher, workspaceShortcut } from "./switcher";
 
 // The window has no native title bar on macOS; this bar is its drag region and
@@ -28,6 +29,12 @@ export function Shell() {
 	const [lastId, setLastId] = useState<string>();
 	if (!inSettings && shown !== undefined && shown.id !== lastId) setLastId(shown.id);
 	const back = workspaces.find((workspace) => workspace.id === lastId) ?? workspaces[0];
+
+	// Remembered past this route, so the start page opens things where the user last was.
+	const setLastWorkspace = useAtomSet(lastWorkspaceAtom);
+	useEffect(() => {
+		if (!inSettings && shown !== undefined) setLastWorkspace(shown.id);
+	}, [inSettings, shown, setLastWorkspace]);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {

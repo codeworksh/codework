@@ -1,11 +1,14 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { Workspace } from "@codeworksh/server/contract";
-import { AsyncResult } from "effect/reactivity";
+import { Atom, AsyncResult } from "effect/reactivity";
 import { tagBit } from "webwm";
 
 import { Server } from "../kernel/rpc";
 
 export type { Workspace };
+
+/** webwm tag bits available, and so the Cmd+1–9 keys; the server enforces it too. */
+export const MAX_WORKSPACES = 9;
 
 /** Every mutation names this key, so the list refetches after any change. */
 export const workspacesKey = ["workspaces"];
@@ -28,3 +31,13 @@ export const workspaceTag = (workspace: Workspace) => tagBit(workspace.bit);
 
 export const workspaceRoute = (workspace: Workspace) =>
 	({ to: "/workspaces/$workspaceId", params: { workspaceId: workspace.id } }) as const;
+
+/** The workspace last on screen, for opening things from outside the desktop (the start page). */
+export const lastWorkspaceAtom = Atom.make<string | undefined>(undefined).pipe(Atom.keepAlive);
+
+/** A workspace route that, once shown, opens `address` there (see the route's `open` search). */
+export const openInWorkspaceRoute = (workspace: Workspace, address: string, mode: "replace" | "new") =>
+	({
+		...workspaceRoute(workspace),
+		search: { open: address, ...(mode === "new" ? { mode: "new" as const } : {}) },
+	}) as const;

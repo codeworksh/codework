@@ -24,6 +24,7 @@ import {
 	createWorkspace,
 	deleteWorkspace,
 	reorderWorkspaces,
+	MAX_WORKSPACES,
 	updateWorkspace,
 	useWorkspaces,
 	type Workspace,
@@ -31,9 +32,6 @@ import {
 	workspaceTag,
 } from "../wm/workspaces";
 import { Group, Keys, Page, Row, Section } from "./blocks";
-
-// webwm tag bits available, and so the Cmd+1–9 keys; the server enforces it too.
-const MAX = 9;
 
 const sameOrder = (ids: readonly string[], workspaces: readonly Workspace[]) =>
 	ids.length === workspaces.length && ids.every((id, index) => workspaces[index]?.id === id);
@@ -125,8 +123,10 @@ export function WorkspacesSettings() {
 					))}
 					<button
 						type="button"
-						disabled={workspaces.length >= MAX}
-						title={workspaces.length >= MAX ? `All ${MAX} workspaces are in use` : undefined}
+						disabled={workspaces.length >= MAX_WORKSPACES}
+						title={
+							workspaces.length >= MAX_WORKSPACES ? `All ${MAX_WORKSPACES} workspaces are in use` : undefined
+						}
 						className="flex items-center gap-2 rounded-b-xl px-5 py-4 text-ink-muted transition-colors hover:bg-ink/4 hover:text-ink disabled:pointer-events-none disabled:opacity-50"
 						onClick={addWorkspace}
 					>
@@ -140,7 +140,7 @@ export function WorkspacesSettings() {
 				<Group>
 					<Row title="Switch workspace" description="Jump to a workspace by its place in the list">
 						<Keys>
-							{shortcutLabel(1)}–{MAX}
+							{shortcutLabel(1)}–{MAX_WORKSPACES}
 						</Keys>
 					</Row>
 					<Row title="Open settings">

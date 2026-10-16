@@ -18,18 +18,37 @@ const fail = (message: string) => new Contract.WorkspaceError({ message });
 export const handlers = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
 
-	const list = sql<Workspace>`
-		SELECT id, bit, pos, name, icon, layout, mfact FROM workspaces ORDER BY pos
-	`.pipe(Effect.orDie);
+	// SQLite has no booleans; `auto` is stored as 0 or 1.
+	const list = sql<Omit<Workspace, "auto"> & { auto: number }>`
+		SELECT id, bit, pos, name, icon, layout, mfact, auto FROM workspaces ORDER BY pos
+	`.pipe(
+		Effect.map((rows) => rows.map((row): Workspace => ({ ...row, auto: row.auto === 1 }))),
+		Effect.orDie,
+	);
 
 	// Rewrites positions as 0..n-1 in the given order.
 	const renumber = (ids: readonly string[]) =>
 		Effect.forEach(ids, (id, pos) => sql`UPDATE workspaces SET pos = ${pos} WHERE id = ${id}`, { discard: true });
 
+	// The frames an auto workspace held do not outlive the app, so neither does it. One the user
+	// made always remains, so this never empties the switcher.
+	yield* sql
+		.withTransaction(
+			Effect.gen(function* () {
+				yield* sql`DELETE FROM workspaces WHERE auto = 1 AND EXISTS (SELECT 1 FROM workspaces WHERE auto = 0)`;
+				yield* renumber((yield* list).map((workspace) => workspace.id));
+			}),
+		)
+		.pipe(Effect.orDie);
+
 	return {
 		"workspaces.list": () => list,
 
-		"workspaces.create": Effect.fn("workspaces.create")(function* ({ name, icon }: typeof WorkspaceCreate.Type) {
+		"workspaces.create": Effect.fn("workspaces.create")(function* ({
+			name,
+			icon,
+			auto = false,
+		}: typeof WorkspaceCreate.Type) {
 			return yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
@@ -45,9 +64,10 @@ export const handlers = Effect.gen(function* () {
 							icon,
 							layout: "tile",
 							mfact: 0.6,
+							auto,
 						};
 						const created = yield* Clock.currentTimeMillis;
-						yield* sql`INSERT INTO workspaces ${sql.insert({ ...workspace, created })}`;
+						yield* sql`INSERT INTO workspaces ${sql.insert({ ...workspace, auto: auto ? 1 : 0, created })}`;
 						return workspace;
 					}),
 				)
