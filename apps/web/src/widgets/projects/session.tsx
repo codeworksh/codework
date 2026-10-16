@@ -5,7 +5,9 @@ import { Atom, AsyncResult } from "effect/reactivity";
 import { Brain, ChevronDown, ChevronRight, CircleAlert, MessageSquareText, Terminal, Wrench } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
-import { Server, useFrame, type WidgetProps } from "../../sdk";
+import { useFrame, type WidgetProps } from "@codeworksh/widget/view";
+
+import { Server } from "../../kernel/rpc";
 import { sessionId } from "./address";
 import { Markdown } from "./markdown";
 import { ago } from "./time";

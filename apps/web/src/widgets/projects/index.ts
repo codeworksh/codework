@@ -1,7 +1,7 @@
 import { FolderKanban, MessageSquare } from "lucide-react";
 import { Schema } from "effect";
 
-import { defineWidget } from "../../sdk";
+import { defineWidget } from "@codeworksh/widget/view";
 import { Projects } from "./projects";
 import { Session } from "./session";
 

@@ -1,4 +1,4 @@
-import type { Widget } from "../sdk";
+import type { Widget } from "@codeworksh/widget/view";
 import { projects, session } from "./projects";
 
 /** Widgets that ship with the app. Registry-installed widgets join these by kind. */

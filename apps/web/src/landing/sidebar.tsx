@@ -13,9 +13,8 @@ import {
 	SidebarTrigger,
 	useSidebar,
 } from "@/components/ui/sidebar";
-import { isMac } from "../kernel/platform";
 import { Server } from "../kernel/rpc";
-import { openMode } from "../sdk";
+import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress } from "../widgets/projects/address";
 import { Switcher } from "../shell/switcher";
 import { insetTitleBar, NewWorkspaceButton, SettingsButton } from "../shell/titlebar";

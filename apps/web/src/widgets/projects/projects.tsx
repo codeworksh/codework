@@ -3,7 +3,9 @@ import { AsyncResult } from "effect/reactivity";
 import { Folder } from "lucide-react";
 import type { MouseEvent } from "react";
 
-import { isMac, openMode, Server, useShell } from "../../sdk";
+import { isMac, openMode, useShell } from "@codeworksh/widget/view";
+
+import { Server } from "../../kernel/rpc";
 import { sessionAddress } from "./address";
 import { ago } from "./time";
 

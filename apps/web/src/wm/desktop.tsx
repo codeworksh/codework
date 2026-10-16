@@ -1,6 +1,6 @@
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useAtom, useAtomSet } from "@effect/atom-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RegistryContext, useAtom, useAtomSet } from "@effect/atom-react";
+import { type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
 	focus,
 	hasMasterStack,
@@ -16,8 +16,8 @@ import {
 } from "webwm";
 import { useArrangedWidgets, useElementSize } from "webwm/react";
 
-import type { Frame as FrameApi, Shell } from "../sdk";
-import { FrameContext, ShellContext } from "../sdk/shell";
+import { type Frame as FrameApi, FrameContext, HostContext, type Shell, ShellContext } from "@codeworksh/widget/view";
+import { makeHost } from "../kernel/host";
 import { builtins, registry } from "../widgets";
 import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
@@ -60,13 +60,18 @@ function describe(instance: Instance, chrome: Chrome | undefined) {
 
 interface HostProps {
 	readonly instanceId: string;
+	/** The widget kind, "<package>:<name>"; its package scopes the widget's topics and kv. */
+	readonly kind: string;
 	readonly shell: Shell;
 	readonly decorate: (instanceId: string, chrome: Chrome) => void;
 	readonly children: ReactNode;
 }
 
-/** Gives a widget its shell and frame; the frame stays stable so widgets can use it in effects. */
-function Host({ instanceId, shell, decorate, children }: HostProps) {
+/** Gives a widget its shell, frame and host; these stay stable so widgets can use them in effects. */
+function Host({ instanceId, kind, shell, decorate, children }: HostProps) {
+	const atoms = useContext(RegistryContext);
+	const pkg = kind.split(":")[0] ?? kind;
+	const host = useMemo(() => makeHost({ registry: atoms, package: pkg, instanceId }), [atoms, pkg, instanceId]);
 	const frame = useMemo<FrameApi>(
 		() => ({
 			instanceId,
@@ -78,7 +83,9 @@ function Host({ instanceId, shell, decorate, children }: HostProps) {
 	);
 	return (
 		<ShellContext value={shell}>
-			<FrameContext value={frame}>{children}</FrameContext>
+			<FrameContext value={frame}>
+				<HostContext value={host}>{children}</HostContext>
+			</FrameContext>
 		</ShellContext>
 	);
 }
@@ -373,6 +380,7 @@ export function Desktop({ workspace }: DesktopProps) {
 							<Host
 								key={instance.address}
 								instanceId={widget.id}
+								kind={instance.kind}
 								shell={shellFor(widget.id)}
 								decorate={decorate}
 							>

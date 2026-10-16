@@ -1,6 +1,6 @@
 import { Clock, Context, Duration, Effect, Layer, Option, PubSub, Schema, Semaphore, Stream } from "effect";
 import { SqlClient } from "effect/sql";
-import { Contract, type Event, type Publish, type Request, type Synced } from "./contract.ts";
+import { WidgetEvent, type Event, type Publish, type Request, type Synced } from "@codeworksh/widget/event";
 import { Db } from "./db.ts";
 
 export interface Interface {
@@ -10,7 +10,7 @@ export interface Interface {
 	 */
 	readonly publish: (input: Publish) => Effect.Effect<Event>;
 	/** Publishes `input` and waits for its reply: the first event on its topic caused by it. */
-	readonly request: (input: Request, timeout?: Duration.Input) => Effect.Effect<Event, Contract.EventTimeout>;
+	readonly request: (input: Request, timeout?: Duration.Input) => Effect.Effect<Event, WidgetEvent.EventTimeout>;
 	readonly subscribe: (input: {
 		readonly topics: ReadonlyArray<string>;
 		readonly after?: number | undefined;
@@ -21,7 +21,7 @@ export class Service extends Context.Service<Service, Interface>()("@codeworksh/
 
 const Rows = Schema.Array(
 	Schema.Struct({
-		...Contract.Event.fields,
+		...WidgetEvent.Event.fields,
 		seq: Schema.Int,
 		cause: Schema.NullOr(Schema.String),
 		payload: Db.JsonText,
@@ -125,7 +125,7 @@ export const layer = Layer.effect(
 				).pipe(
 					Effect.timeoutOrElse({
 						duration: timeout,
-						orElse: () => Effect.fail(new Contract.EventTimeout({ id, topic: input.topic })),
+						orElse: () => Effect.fail(new WidgetEvent.EventTimeout({ id, topic: input.topic })),
 					}),
 				);
 			}),
@@ -143,7 +143,7 @@ export const layer = Layer.effect(
 								? []
 								: yield* replay(topics, after, through);
 						return Stream.fromIterable<Event | Synced>(past).pipe(
-							Stream.concat(Stream.make(Contract.Synced.make({ seq: through }))),
+							Stream.concat(Stream.make(WidgetEvent.Synced.make({ seq: through }))),
 							Stream.concat(
 								Stream.fromSubscription(subscription).pipe(
 									Stream.filter(

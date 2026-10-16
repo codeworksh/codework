@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 
-import type { OpenMode } from "../sdk";
+import type { OpenMode } from "@codeworksh/widget/view";
 import { deskAtom } from "./instances";
 import {
 	lastWorkspaceAtom,

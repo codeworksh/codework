@@ -1,7 +1,7 @@
 import { Atom } from "effect/reactivity";
 import { attachWidget, detachWidget, focusWidget, moveWidgetRelative, tagBit, type WidgetOrder } from "webwm";
 
-import type { Params } from "../sdk";
+import type { Params } from "@codeworksh/widget/view";
 
 /**
  * One placed copy of a widget. The window manager owns instances; a widget only

@@ -1,13 +1,9 @@
-import { Clock, Effect, Option, Schema } from "effect";
-import { SqlClient } from "effect/sql";
+import { Effect } from "effect";
 import { Codework } from "./codework.ts";
 import { Contract, type Project } from "./contract.ts";
-import { Db } from "./db.ts";
 import { Event } from "./event.ts";
+import { Kv } from "./kv.ts";
 import { Workspaces } from "./workspaces.ts";
-
-const decodeJson = Schema.decodeUnknownEffect(Db.JsonText);
-const encodeJson = Schema.encodeEffect(Db.JsonText);
 
 /**
  * Sessions grouped by project, both newest first. A session whose project row is missing gets a
@@ -38,9 +34,9 @@ const byProject = (sessions: ReadonlyArray<Codework.SessionInfo>): Project[] => 
 
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
 		const workspaces = yield* Workspaces.handlers;
 		const events = yield* Event.Service;
+		const kv = yield* Kv.Service;
 
 		return Contract.Api.of({
 			...workspaces,
@@ -70,23 +66,8 @@ export const layer = Contract.Api.toLayer(
 				};
 			}),
 
-			"kv.get": Effect.fn("kv.get")(function* ({ package: pkg, key }) {
-				const rows = yield* sql<{ value: string }>`
-					SELECT value FROM kv WHERE package = ${pkg} AND key = ${key}
-				`.pipe(Effect.orDie);
-				const row = rows[0];
-				if (row === undefined) return Option.none();
-				return Option.some(yield* decodeJson(row.value).pipe(Effect.orDie));
-			}),
-
-			"kv.set": Effect.fn("kv.set")(function* ({ package: pkg, key, value }) {
-				const text = yield* encodeJson(value).pipe(Effect.orDie);
-				const updated = yield* Clock.currentTimeMillis;
-				yield* sql`
-					INSERT INTO kv (package, key, value, updated) VALUES (${pkg}, ${key}, ${text}, ${updated})
-					ON CONFLICT (package, key) DO UPDATE SET value = excluded.value, updated = excluded.updated
-				`.pipe(Effect.orDie);
-			}),
+			"kv.get": ({ package: pkg, key }) => kv.get(pkg, key),
+			"kv.set": ({ package: pkg, key, value }) => kv.set(pkg, key, value),
 
 			"event.publish": (input) => events.publish(input),
 			"event.request": (input) => events.request(input),
