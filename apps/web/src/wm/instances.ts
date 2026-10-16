@@ -1,7 +1,7 @@
 import { Atom } from "effect/reactivity";
 import { attachWidget, detachWidget, focusWidget, moveWidgetRelative, tagBit, type WidgetOrder } from "webwm";
 
-import type { Params } from "../sdk";
+import type { Params } from "@codeworksh/widget/view";
 
 /**
  * One placed copy of a widget. The window manager owns instances; a widget only
@@ -30,26 +30,11 @@ export interface Desk {
 	readonly order: WidgetOrder;
 }
 
-// Tag bits of the workspaces the database is seeded with: Main, Code, Notes.
-const [main, code, notes] = [tagBit(0), tagBit(1), tagBit(2)];
+// The Code workspace's tag bit, as the database is seeded.
+const code = tagBit(1);
 
-// Hardcoded until instances live in SQLite. Tile order follows this list, so
-// Files is the master on Main and Projects on Code; Chat and Terminal sit on
-// two workspaces at once.
-const seed: readonly Instance[] = [
-	{
-		id: "files",
-		kind: "codework:explorer",
-		tags: main,
-		props: { root: "/Users/sanchitrk/Developer/codeworksh/codework" },
-	},
-	{ id: "projects", kind: "codework:projects", tags: code, props: {} },
-	{ id: "chat", kind: "codework:placeholder", title: "Chat", tags: main | code, props: {} },
-	{ id: "terminal", kind: "codework:placeholder", title: "Terminal", tags: main | code, props: {} },
-	{ id: "preview", kind: "codework:placeholder", title: "Preview", tags: main, props: {} },
-	{ id: "editor", kind: "codework:placeholder", title: "Editor", tags: code, props: {} },
-	{ id: "notes", kind: "codework:placeholder", title: "Notes", tags: notes, props: {} },
-];
+// Hardcoded until instances live in SQLite.
+const seed: readonly Instance[] = [{ id: "projects", kind: "codework:projects", tags: code, props: {} }];
 
 const ids = seed.map(({ id }) => id);
 

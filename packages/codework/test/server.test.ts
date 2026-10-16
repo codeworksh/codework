@@ -2,7 +2,7 @@
 /* @effect-diagnostics globalFetch:off -- the integration suite calls its local test server. */
 /* @effect-diagnostics globalFetchInEffect:off -- the integration suite calls its local test server. */
 import { Event, EventList, EventSchema, Harness, Sandbox, Session } from "@codeworksh/harness/effect";
-import { DateTime, Deferred, Effect, Fiber, Layer, Option, Queue, Schema, Stream } from "effect";
+import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Option, Queue, Schema, Stream } from "effect";
 import { HttpServer } from "effect/http";
 import { RpcTest } from "effect/rpc";
 import { execFile } from "node:child_process";
@@ -380,6 +380,122 @@ describe("server", () => {
 			}).pipe(Effect.flip);
 			expect(missing._tag).toBe("SandboxNotFoundError");
 		}).pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise));
+
+	it("names a session's project on creation, keeps it once created, and renames it", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-project-")));
+		homes.push(root);
+		const dir = (name: string) => {
+			const path = join(root, name);
+			mkdirSync(path);
+			return path;
+		};
+		const git = (cwd: string, ...args: string[]) => exec("git", args, { cwd });
+		const repo = async (path: string, origin: string) => {
+			await git(path, "init", "-q", "-b", "main");
+			await git(path, "config", "user.email", "test@codework.sh");
+			await git(path, "config", "user.name", "Codework Test");
+			await git(path, "remote", "add", "origin", `https://github.com/org/${origin}`);
+			writeFileSync(join(path, "a.txt"), "a\n");
+			await git(path, "add", "a.txt");
+			await git(path, "commit", "-q", "-m", "init");
+			return path;
+		};
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const projectOf = (sessionId: Session.SessionSchema.ID) =>
+				rpc["session.info"]({ sessionId }).pipe(Effect.map((info) => info.project));
+			const nameOf = (sessionId: Session.SessionSchema.ID) =>
+				projectOf(sessionId).pipe(Effect.map((project) => project?.name));
+
+			// 1. Memory sandbox: the given name, otherwise the empty name it has today.
+			const memoryNamed = yield* rpc["session.create"]({
+				sandbox: { driver: "memory" },
+				project: { name: "In Memory" },
+			});
+			const memoryUnnamed = yield* rpc["session.create"]({ sandbox: { driver: "memory" } });
+
+			// 2. Plain folder: the given name beats the basename.
+			const folderNamed = yield* rpc["session.create"]({
+				directory: dir("plain-named"),
+				project: { name: "Plain" },
+			});
+			const folderUnnamed = yield* rpc["session.create"]({ directory: dir("plain-unnamed") });
+
+			// 3. Git repo: the given name beats the repository's identity name (the origin's, not the folder's).
+			// One origin per repo: a shared remote is a shared project.
+			const checkout = yield* Effect.promise(() => repo(dir("checkout"), "named-upstream"));
+			const repoNamed = yield* rpc["session.create"]({ directory: checkout, project: { name: "Repo" } });
+			const other = yield* Effect.promise(() => repo(dir("other-checkout"), "upstream"));
+			const repoUnnamed = yield* rpc["session.create"]({ directory: other });
+
+			// 4. An existing project keeps its name.
+			const shared = dir("shared");
+			const first = yield* rpc["session.create"]({ directory: shared, project: { name: "A" } });
+			const second = yield* rpc["session.create"]({ directory: shared, project: { name: "B" } });
+			const firstProject = yield* projectOf(first.id);
+			const secondProject = yield* projectOf(second.id);
+			expect(secondProject?.id).toBe(firstProject?.id);
+
+			// 5. Rename shows through every session of the project.
+			const renamed = yield* rpc["project.rename"]({ projectId: firstProject?.id ?? "", name: "C" });
+			const missing = yield* rpc["project.rename"]({ projectId: "prj_missing", name: "C" }).pipe(Effect.flip);
+			expect(missing).toMatchObject({ _tag: "ProjectNotFoundError", projectId: "prj_missing" });
+
+			// 6. Invalid names are refused at the edge and create nothing.
+			const before = (yield* rpc["session.list"]({})).length;
+			const outcome = (exit: Exit.Exit<unknown, unknown>) =>
+				Exit.isFailure(exit) && String(exit.cause).includes("Schema validation failed") ? "rejected" : String(exit);
+			const invalid: Record<string, { create: string; rename: string }> = {};
+			for (const [label, name] of [
+				["empty", ""],
+				["blank", "   "],
+				["padded", " padded "],
+			] as const) {
+				const create = yield* rpc["session.create"]({ directory: shared, project: { name } }).pipe(Effect.exit);
+				const rename = yield* rpc["project.rename"]({ projectId: firstProject?.id ?? "", name }).pipe(Effect.exit);
+				invalid[label] = {
+					create: outcome(create),
+					rename: outcome(rename),
+				};
+			}
+			const after = (yield* rpc["session.list"]({})).length;
+			expect(after).toBe(before);
+
+			const artifact = {
+				memory: { named: yield* nameOf(memoryNamed.id), unnamed: yield* nameOf(memoryUnnamed.id) },
+				folder: { named: yield* nameOf(folderNamed.id), unnamed: yield* nameOf(folderUnnamed.id) },
+				repo: { named: yield* nameOf(repoNamed.id), unnamed: yield* nameOf(repoUnnamed.id) },
+				existing: {
+					first: firstProject?.name,
+					second: secondProject?.name,
+					sameProject: secondProject?.id === firstProject?.id,
+				},
+				rename: {
+					result: { sameId: renamed.id === firstProject?.id, name: renamed.name },
+					first: yield* nameOf(first.id),
+					second: yield* nameOf(second.id),
+					missing: { _tag: missing._tag, projectId: missing.projectId },
+				},
+				invalid,
+				sessionsCreatedByInvalid: after - before,
+			};
+			expect(artifact.memory).toEqual({ named: "In Memory", unnamed: "" });
+			expect(artifact.folder).toEqual({ named: "Plain", unnamed: "plain-unnamed" });
+			expect(artifact.repo).toEqual({ named: "Repo", unnamed: "upstream" });
+			expect(artifact.existing).toEqual({ first: "A", second: "A", sameProject: true });
+			expect(artifact.rename).toMatchObject({ first: "C", second: "C", result: { sameId: true, name: "C" } });
+			for (const outcome of Object.values(invalid))
+				expect(outcome).toEqual({ create: "rejected", rename: "rejected" });
+			return artifact;
+		})
+			.pipe(Effect.scoped, Effect.provide(layer()), Effect.runPromise)
+			.then((artifact) =>
+				expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/server.project-name.json",
+				),
+			);
+	}, 60_000);
 
 	it("session.message reports an unknown prompt as absent", () =>
 		Effect.gen(function* () {

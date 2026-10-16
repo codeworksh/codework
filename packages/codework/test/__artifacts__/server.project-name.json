@@ -1,0 +1,46 @@
+{
+	"memory": {
+		"named": "In Memory",
+		"unnamed": ""
+	},
+	"folder": {
+		"named": "Plain",
+		"unnamed": "plain-unnamed"
+	},
+	"repo": {
+		"named": "Repo",
+		"unnamed": "upstream"
+	},
+	"existing": {
+		"first": "A",
+		"second": "A",
+		"sameProject": true
+	},
+	"rename": {
+		"result": {
+			"sameId": true,
+			"name": "C"
+		},
+		"first": "C",
+		"second": "C",
+		"missing": {
+			"_tag": "ProjectNotFoundError",
+			"projectId": "prj_missing"
+		}
+	},
+	"invalid": {
+		"empty": {
+			"create": "rejected",
+			"rename": "rejected"
+		},
+		"blank": {
+			"create": "rejected",
+			"rename": "rejected"
+		},
+		"padded": {
+			"create": "rejected",
+			"rename": "rejected"
+		}
+	},
+	"sessionsCreatedByInvalid": 0
+}

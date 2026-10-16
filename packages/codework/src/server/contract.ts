@@ -4,6 +4,7 @@ import {
 	Event,
 	Location,
 	optional,
+	Project,
 	PromptSchema,
 	Sandbox,
 	SandboxError,
@@ -59,9 +60,20 @@ export const HistoryEntry = Schema.Struct({
 	state: Schema.Literals(["committed", "draft", "aborted"]),
 	/** Epoch milliseconds. */
 	createdAt: Schema.Finite,
+	/** Epoch milliseconds of the last change; for a reply, when it ended once it is no longer a draft. */
+	updatedAt: Schema.Finite,
 	parts: Schema.Array(Part),
 });
 export type HistoryEntry = typeof HistoryEntry.Type;
+
+/** Ends `session.log`'s replay; `seq` is absent when the session has no durable events yet. */
+export const LogSynced = Schema.Struct({
+	type: Schema.Literal("log.synced"),
+	/** The session the log was read for. */
+	aggregateId: Schema.String,
+	seq: optional(Schema.Int),
+});
+export type LogSynced = typeof LogSynced.Type;
 
 export const RuntimeConfig = Schema.Struct({
 	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
@@ -70,6 +82,9 @@ export const RuntimeConfig = Schema.Struct({
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
 export const SandboxRef = Sandbox.Selection;
+
+/** A project's name as a client sets it: trimmed, never empty. */
+export const ProjectName = Schema.Trimmed.check(Schema.isNonEmpty());
 
 export class OAuthError extends Schema.TaggedError<OAuthError>()("Server.OAuthError", {
 	message: Schema.String,
@@ -187,9 +202,19 @@ export const Api = RpcGroup.make(
 			hostDir: optional(Session.AbsolutePath),
 			sandbox: optional(SandboxRef),
 			runtime: optional(RuntimeConfig),
+			/**
+			 * Names the project when this session creates it, ahead of the repository's and the
+			 * folder's name. A project that already exists keeps its name; `project.rename` changes it.
+			 */
+			project: optional(Schema.Struct({ name: ProjectName })),
 		},
 		success: SessionInfo,
 		error: Schema.Union([SessionErrors, SandboxErrors, LocationErrors]),
+	}),
+	Rpc.make("project.rename", {
+		payload: { projectId: Schema.String, name: ProjectName },
+		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
+		error: Project.ProjectNotFoundError,
 	}),
 	Rpc.make("session.list", {
 		payload: {},
@@ -203,6 +228,20 @@ export const Api = RpcGroup.make(
 		payload: { sessionId: Session.SessionSchema.ID },
 		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
 		error: SessionStore.SessionNotFoundError,
+	}),
+	/**
+	 * A session's durable events after `after` (exclusive; omitted reads from the start), then a
+	 * `log.synced` marker at the head read when the call began. With `follow`, each event then
+	 * streams as it commits; without it the stream ends at the marker.
+	 * Ephemeral events (text and tool progress deltas) are never stored, so they are not here;
+	 * `event.subscribe` carries them live. To resume, pass the higher of the last event's
+	 * `durable.seq` and the last marker's `seq`: the marker can sit past the last event sent.
+	 */
+	Rpc.make("session.log", {
+		payload: { sessionId: Session.SessionSchema.ID, after: optional(Schema.Int), follow: optional(Schema.Boolean) },
+		success: Schema.Union([EventEnvelope, LogSynced]),
+		error: Schema.Union([SessionStore.SessionNotFoundError, EncodingError]),
+		stream: true,
 	}),
 	Rpc.make("session.configure", {
 		payload: { sessionId: Session.SessionSchema.ID, runtime: RuntimeConfig },

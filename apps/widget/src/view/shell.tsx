@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { createContext, useContext } from "react";
 
-import { isMac } from "../kernel/platform";
+import { isMac } from "./platform";
 import type { Params } from "./widget";
 
 /** Where a newly opened widget lands in the tile order. */
@@ -67,7 +67,8 @@ export const openMode = (event: {
 export const ShellContext = createContext<Shell | null>(null);
 export const FrameContext = createContext<Frame | null>(null);
 
-const required = <A,>(value: A | null, hook: string): A => {
+/** A hook's context value, which only a widget rendered by the host has. */
+export const required = <A,>(value: A | null, hook: string): A => {
 	if (value === null) throw new Error(`${hook} must be called inside a widget`);
 	return value;
 };

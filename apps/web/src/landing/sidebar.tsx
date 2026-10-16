@@ -13,17 +13,17 @@ import {
 	SidebarTrigger,
 	useSidebar,
 } from "@/components/ui/sidebar";
-import { isMac } from "../kernel/platform";
 import { Server } from "../kernel/rpc";
-import { openMode } from "../sdk";
-import { sessionAddress } from "../widgets/projects/address";
+import { isMac, openMode } from "@codeworksh/widget/view";
+import { sessionAddress } from "../widgets/session/address";
 import { Switcher } from "../shell/switcher";
 import { insetTitleBar, NewWorkspaceButton, SettingsButton } from "../shell/titlebar";
 import { useOpenElsewhere } from "../wm/open";
 import { useWorkspaces } from "../wm/workspaces";
-import { ago } from "../widgets/projects/time";
+import { ago } from "../widgets/time";
 
-const projectsAtom = Server.query("projects.list", undefined);
+/** The sidebar's sessions; refresh it once a new session exists. */
+export const projectsAtom = Server.query("projects.list", undefined);
 
 /** Badge colours, light-theme ink then dark-theme ink; light-dark() follows the theme's color-scheme. */
 const INKS = [

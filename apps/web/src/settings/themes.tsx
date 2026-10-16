@@ -1,7 +1,7 @@
 import { useAtom } from "@effect/atom-react";
 import { Check } from "lucide-react";
 
-import { isMac } from "../kernel/platform";
+import { isMac } from "@codeworksh/widget/view";
 import { THEMES, themeAtom } from "../theme";
 import { Keys, Page, Section } from "./blocks";
 

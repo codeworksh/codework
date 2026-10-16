@@ -27,14 +27,14 @@ export {
 // `SandboxIO.Current` in the requirements is what makes "mount first" a
 // type-level fact rather than a convention: this Layer cannot be built outside a
 // mount, so there is never a Location without one underneath.
-export const layer = () =>
+export const layer = (options?: Project.ResolveOptions) =>
 	Layer.effect(
 		Service,
 		Effect.gen(function* () {
 			const instance = yield* SandboxIO.Current;
 			const directory = AbsolutePath.make(instance.cwd);
 			const project = yield* Project.Service;
-			const resolved = yield* project.resolveOrCreate(directory);
+			const resolved = yield* project.resolveOrCreate(directory, options);
 			return Service.of(
 				new Info({ directory: resolved.directory, space: resolved.space, project: resolved.project }),
 			);
@@ -46,8 +46,8 @@ export const layer = () =>
  * folded in. What remains is exactly the mount and the database — for callers
  * that already hold both, such as the runner and `Session.create`.
  */
-export const layerMounted = () =>
-	layer().pipe(
+export const layerMounted = (options?: Project.ResolveOptions) =>
+	layer(options).pipe(
 		Layer.provide(
 			Project.layer.pipe(
 				Layer.provide(Layer.mergeAll(Repo.layer, Worktree.layer, Space.layer)),

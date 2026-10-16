@@ -1,4 +1,4 @@
-import type { Priority, Widget } from "../sdk";
+import type { Priority, Widget } from "@codeworksh/widget/view";
 
 const bands: readonly Priority[] = ["extension", "builtin", "fallback"];
 

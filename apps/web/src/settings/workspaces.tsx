@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { isMac } from "../kernel/platform";
+import { isMac } from "@codeworksh/widget/view";
 import { iconOf, icons } from "../shell/icons";
 import { shortcutLabel } from "../shell/switcher";
 import { deskAtom, only, untag } from "../wm/instances";

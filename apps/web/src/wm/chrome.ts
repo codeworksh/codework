@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Atom } from "effect/reactivity";
 
-import type { Tab } from "../sdk";
+import type { Tab } from "@codeworksh/widget/view";
 import { registry } from "../widgets";
 import type { Instance } from "./instances";
 

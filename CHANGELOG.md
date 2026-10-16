@@ -11,6 +11,9 @@ This file is the canonical source for unreleased changes and published release n
 ### Added
 
 - Added Agent Skills (`codework.prompt.skill`). A skill is a directory with a `SKILL.md` whose frontmatter has a `name` and a `description`; `.codework/skills` may also hold standalone `.md` skills. Skills are found in the session's sandbox, local or remote, and never on the host or in `<home>`: `.codework/skills` in the working directory, then `.agents/skills` in the working directory and each parent up to the git root (or up to the sandbox root outside a repository). `.gitignore`, `.ignore` and `.fdignore` are honoured. The system prompt lists only each skill's name, description and location under `<skills>`; the model reads the full file when a task matches. A skill with `disable-model-invocation: true` is not listed. Invalid fields, unreadable files and name collisions log a warning instead of failing; the first skill found keeps the name. The hint names the `read` tool, or `bash` when `read` is off, and names no tool when the reader is hidden from the prompt. Turn it off with `{ "plugin": "codework.prompt.skill", "enabled": false }` in `plugins`.
+- Added `project: { name }` to `session.create`. It names the session's project when the session creates it, ahead of the repository's and the folder's name; a project that already exists keeps its name. The name must be trimmed and not empty.
+- Added the `project.rename` RPC (`{ projectId, name }`), which renames a project and fails with `ProjectNotFoundError` for an unknown id. The harness exposes it as `Project.rename`.
+- The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
 
 ## [@codeworksh/cli@0.3.0] - 2026-10-13
 

@@ -2,8 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { Link } from "@tanstack/react-router";
 import { Fragment, useRef } from "react";
 
-import { isMac } from "../kernel/platform";
-import type { Tab } from "../sdk";
+import { isMac, type Tab } from "@codeworksh/widget/view";
 import { registry } from "../widgets";
 import { chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";

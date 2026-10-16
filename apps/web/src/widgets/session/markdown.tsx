@@ -1,7 +1,9 @@
-import { type ComponentProps, createElement, type JSX } from "react";
+import { type ComponentProps, createElement, type JSX, memo, useMemo } from "react";
 import type { Components, ExtraProps } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
+import { incrementalMarkdown } from "./incremental";
 
 /** An element with fixed classes; react-markdown's `node` prop is dropped so it never reaches the DOM. */
 function styled<Tag extends keyof JSX.IntrinsicElements>(tag: Tag, className: string) {
@@ -50,11 +52,26 @@ const components: Components = {
 	),
 };
 
-/** A message's markdown, rendered as text: raw HTML in it stays escaped. */
-export function Markdown({ text }: { readonly text: string }) {
+const plugins = [remarkGfm];
+
+/**
+ * A message's markdown, rendered as text: raw HTML in it stays escaped. It re-renders only when its
+ * text changes. While a reply streams, text with code fences parses incrementally, so a long code
+ * block is not parsed again on every delta.
+ */
+export const Markdown = memo(function Markdown({
+	text,
+	streaming = false,
+}: {
+	readonly text: string;
+	readonly streaming?: boolean;
+}) {
+	const incremental = useMemo(() => incrementalMarkdown(), []);
+	const fenced = streaming && /(?:^|\n) {0,3}(?:`{3}|~{3})/.test(text);
+	const remarkPlugins = useMemo(() => (fenced ? [remarkGfm, incremental] : plugins), [fenced, incremental]);
 	return (
-		<ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+		<ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
 			{text}
 		</ReactMarkdown>
 	);
-}
+});

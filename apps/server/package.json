@@ -12,6 +12,8 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@codeworksh/web": "workspace:*",
+		"@codeworksh/widget": "workspace:*",
 		"@effect/platform-node": "4.0.1",
 		"@effect/sql-sqlite-node": "4.0.1",
 		"effect": "4.0.1"

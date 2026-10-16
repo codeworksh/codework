@@ -1,6 +1,6 @@
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useAtom, useAtomSet } from "@effect/atom-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RegistryContext, useAtom, useAtomSet } from "@effect/atom-react";
+import { type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
 	focus,
 	hasMasterStack,
@@ -16,12 +16,13 @@ import {
 } from "webwm";
 import { useArrangedWidgets, useElementSize } from "webwm/react";
 
-import type { Frame as FrameApi, Shell } from "../sdk";
-import { FrameContext, ShellContext } from "../sdk/shell";
+import { type Frame as FrameApi, FrameContext, HostContext, type Shell, ShellContext } from "@codeworksh/widget/view";
+import { makeHost } from "../kernel/host";
 import { builtins, registry } from "../widgets";
 import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
-import { Frame } from "./frame";
+import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
+import { Overflow } from "./overflow";
 import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
 import {
@@ -60,13 +61,18 @@ function describe(instance: Instance, chrome: Chrome | undefined) {
 
 interface HostProps {
 	readonly instanceId: string;
+	/** The widget kind, "<package>:<name>"; its package scopes the widget's topics and kv. */
+	readonly kind: string;
 	readonly shell: Shell;
 	readonly decorate: (instanceId: string, chrome: Chrome) => void;
 	readonly children: ReactNode;
 }
 
-/** Gives a widget its shell and frame; the frame stays stable so widgets can use it in effects. */
-function Host({ instanceId, shell, decorate, children }: HostProps) {
+/** Gives a widget its shell, frame and host; these stay stable so widgets can use them in effects. */
+function Host({ instanceId, kind, shell, decorate, children }: HostProps) {
+	const atoms = useContext(RegistryContext);
+	const pkg = kind.split(":")[0] ?? kind;
+	const host = useMemo(() => makeHost({ registry: atoms, package: pkg, instanceId }), [atoms, pkg, instanceId]);
 	const frame = useMemo<FrameApi>(
 		() => ({
 			instanceId,
@@ -78,7 +84,9 @@ function Host({ instanceId, shell, decorate, children }: HostProps) {
 	);
 	return (
 		<ShellContext value={shell}>
-			<FrameContext value={frame}>{children}</FrameContext>
+			<FrameContext value={frame}>
+				<HostContext value={host}>{children}</HostContext>
+			</FrameContext>
 		</ShellContext>
 	);
 }
@@ -173,6 +181,8 @@ export function Desktop({ workspace }: DesktopProps) {
 		...(focusedId === undefined ? {} : { focusedWidgetId: focusedId }),
 		nmaster,
 		mfact: effectiveMfact,
+		// A stack column too short for all its frames folds the least recently focused to their headers.
+		collapsedHeight: FRAME_HEADER_HEIGHT,
 	});
 
 	const targetAt = (clientX: number, clientY: number) => {
@@ -335,7 +345,13 @@ export function Desktop({ workspace }: DesktopProps) {
 				className="relative"
 				style={{ width: arrangement.contentBounds.w, height: arrangement.contentBounds.h }}
 			>
-				{arrangement.placements.map(({ widget, rect }) => {
+				{[
+					...arrangement.placements.map((placement) => ({ ...placement, hidden: false })),
+					// Overflowed frames stay mounted, hidden, so their widgets keep running and keep state.
+					...arrangement.overflow.flatMap(({ widgets: overflowed, rect }) =>
+						overflowed.map((widget) => ({ widget, rect, collapsed: true, hidden: true })),
+					),
+				].map(({ widget, rect, collapsed, hidden }) => {
 					const instance = byId.get(widget.id);
 					if (instance === undefined) return null;
 					const { title, icon, body } = describe(instance, chrome.get(widget.id));
@@ -345,6 +361,8 @@ export function Desktop({ workspace }: DesktopProps) {
 							title={title}
 							icon={icon}
 							rect={rect}
+							collapsed={collapsed === true}
+							hidden={hidden}
 							focused={widget.id === focusedId}
 							pinned={pinned.has(widget.id)}
 							maximized={layout === "monocle"}
@@ -373,6 +391,7 @@ export function Desktop({ workspace }: DesktopProps) {
 							<Host
 								key={instance.address}
 								instanceId={widget.id}
+								kind={instance.kind}
 								shell={shellFor(widget.id)}
 								decorate={decorate}
 							>
@@ -381,6 +400,19 @@ export function Desktop({ workspace }: DesktopProps) {
 						</Frame>
 					);
 				})}
+				{arrangement.overflow.map(({ widgets: overflowed, rect }) => (
+					<Overflow
+						key={`${rect.x}`}
+						rect={rect}
+						hidden={overflowed.flatMap((widget) => {
+							const instance = byId.get(widget.id);
+							return instance === undefined
+								? []
+								: [{ id: widget.id, ...chromeOf(instance, chrome.get(widget.id)) }];
+						})}
+						onPick={focusWidget}
+					/>
+				))}
 				{drag?.target && (
 					<div
 						className="pointer-events-none absolute z-20 h-0.5 -translate-y-px rounded-full bg-ink/40"
