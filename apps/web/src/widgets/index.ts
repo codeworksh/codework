@@ -1,5 +1,6 @@
 import type { Widget } from "@codeworksh/widget/view";
-import { projects, session } from "./projects";
+import { projects } from "./projects";
+import { session } from "./session";
 
 /** Widgets that ship with the app. Registry-installed widgets join these by kind. */
 export const builtins: readonly Widget[] = [projects, session];

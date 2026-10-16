@@ -46,26 +46,6 @@ export const layer = Contract.Api.toLayer(
 				return byProject(sessions);
 			}),
 
-			"sessions.get": Effect.fn("sessions.get")(function* ({ id }) {
-				// A missing session is an answer, not an outage, so it is caught before `call` sees it.
-				const found = yield* Codework.call((client) =>
-					Effect.all({
-						info: client("session.info", { sessionId: id }),
-						history: client("session.history", { sessionId: id }),
-					}).pipe(Effect.catchTag("SessionNotFoundError", () => Effect.succeed(undefined))),
-				);
-				if (found === undefined) return yield* new Contract.SessionNotFound({ id });
-				const { info, history } = found;
-				return {
-					id: info.id,
-					title: info.title,
-					updated: info.updatedAt,
-					...(info.model === undefined ? {} : { model: info.model }),
-					...(info.project === undefined ? {} : { project: info.project }),
-					entries: history.entries,
-				};
-			}),
-
 			"kv.get": ({ package: pkg, key }) => kv.get(pkg, key),
 			"kv.set": ({ package: pkg, key, value }) => kv.set(pkg, key, value),
 

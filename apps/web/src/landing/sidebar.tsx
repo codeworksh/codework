@@ -15,12 +15,12 @@ import {
 } from "@/components/ui/sidebar";
 import { Server } from "../kernel/rpc";
 import { isMac, openMode } from "@codeworksh/widget/view";
-import { sessionAddress } from "../widgets/projects/address";
+import { sessionAddress } from "../widgets/session/address";
 import { Switcher } from "../shell/switcher";
 import { insetTitleBar, NewWorkspaceButton, SettingsButton } from "../shell/titlebar";
 import { useOpenElsewhere } from "../wm/open";
 import { useWorkspaces } from "../wm/workspaces";
-import { ago } from "../widgets/projects/time";
+import { ago } from "../widgets/time";
 
 const projectsAtom = Server.query("projects.list", undefined);
 

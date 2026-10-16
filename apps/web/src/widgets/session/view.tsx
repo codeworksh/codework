@@ -1,30 +1,95 @@
-import { useAtomValue } from "@effect/atom-react";
 import type { HistoryEntry, Part, ToolCall } from "@codeworksh/widget/codework";
-import { Option } from "effect";
-import { Atom, AsyncResult } from "effect/reactivity";
+import { useBus, useEvents, useFrame, useKv, type WidgetProps } from "@codeworksh/widget/view";
+import { Option, Schema } from "effect";
 import { Brain, ChevronDown, ChevronRight, CircleAlert, MessageSquareText, Terminal, Wrench } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { useFrame, type WidgetProps } from "@codeworksh/widget/view";
-
-import { Server } from "../../kernel/rpc";
+import { ago } from "../time";
 import { sessionId } from "./address";
+import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
-import { ago } from "./time";
+import { type Info, Json, snapshotKey, topics, type Update } from "./schema";
 
-const sessions = Atom.family((id: string) => Server.query("sessions.get", { id }));
+const decodeReply = Schema.decodeUnknownOption(Json.Reply);
+const decodeSnapshot = Schema.decodeUnknownOption(Json.Snapshot);
+const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
 
-export function Session({ address }: WidgetProps<unknown>) {
+export function Session({ address, instanceId }: WidgetProps<unknown>) {
 	const id = sessionId(address);
 	if (id === undefined) return <p className="p-3 text-ink-muted">Not a session: {address}</p>;
-	return <Conversation id={id} />;
+	return <Conversation key={id} id={id} instanceId={instanceId} />;
 }
 
-function Conversation({ id }: { readonly id: string }) {
+type State =
+	| { readonly status: "loading" }
+	| { readonly status: "failed"; readonly message: string }
+	| {
+			readonly status: "ready";
+			readonly info: Info;
+			readonly messages: readonly HistoryEntry[];
+			/** The snapshot's seq: updates are read from after it. */
+			readonly after: number;
+	  };
+
+const apply = (state: State, update: Update): State => {
+	if (state.status !== "ready") return state;
+	switch (update._tag) {
+		case "Info":
+			return { ...state, info: update.info };
+		case "Removed":
+			return { ...state, messages: state.messages.filter((message) => message.id !== update.id) };
+		case "Message": {
+			const index = state.messages.findIndex((message) => message.id === update.message.id);
+			return {
+				...state,
+				messages: index === -1 ? [...state.messages, update.message] : state.messages.with(index, update.message),
+			};
+		}
+	}
+};
+
+/**
+ * Asks the session backend to follow the session, loads the snapshot it stored, then applies every
+ * update published after that snapshot. A dropped connection resumes where it left off.
+ */
+function useConversation(id: string): State {
+	const bus = useBus();
+	const kv = useKv();
+	const [state, setState] = useState<State>({ status: "loading" });
+
+	useEffect(() => {
+		let active = true;
+		const fail = (message: string) => {
+			if (active) setState({ status: "failed", message });
+		};
+		void (async () => {
+			const reply = decodeReply((await bus.request({ topic: topics.follow, payload: { sessionId: id } })).payload);
+			if (Option.isSome(reply) && reply.value._tag === "Failed") return fail(reply.value.message);
+			const snapshot = decodeSnapshot(await kv.get(snapshotKey(id)));
+			if (Option.isNone(snapshot)) return fail(`Could not load session ${id}.`);
+			const { info, messages, seq } = snapshot.value;
+			if (active) setState({ status: "ready", info, messages, after: seq });
+		})().catch(() => fail("The CodeWork server is not reachable."));
+		return () => {
+			active = false;
+		};
+	}, [bus, kv, id]);
+
+	const after = state.status === "ready" ? state.after : undefined;
+	useEvents(after === undefined ? undefined : { topics: [topics.session(id)], after }, (item) => {
+		if ("_tag" in item) return;
+		const update = decodeUpdate(item.payload);
+		if (Option.isSome(update)) setState((current) => apply(current, update.value));
+	});
+
+	return state;
+}
+
+function Conversation({ id, instanceId }: { readonly id: string; readonly instanceId: string }) {
 	const { setTitle, setIcon, setTab } = useFrame();
-	const result = useAtomValue(sessions(id));
-	const title = AsyncResult.isSuccess(result) ? result.value.title : undefined;
-	const project = AsyncResult.isSuccess(result) ? result.value.project?.name : undefined;
+	const state = useConversation(id);
+	const title = state.status === "ready" ? state.info.title : undefined;
+	const project = state.status === "ready" ? state.info.project?.name : undefined;
 
 	useEffect(() => {
 		if (title === undefined) return;
@@ -34,34 +99,51 @@ function Conversation({ id }: { readonly id: string }) {
 		setTab({ title: project ?? "Session", subtitle: title });
 	}, [title, project, setTitle, setIcon, setTab]);
 
-	return AsyncResult.match(result, {
-		onInitial: () => null,
-		onFailure: () => (
-			<p className="p-3 text-ink-muted">
-				{Option.match(AsyncResult.error(result), {
-					onSome: (error) =>
-						error._tag === "Server.CodeworkUnavailable"
-							? error.message
-							: error._tag === "Server.SessionNotFound"
-								? "This session no longer exists."
-								: `Could not load session ${id}.`,
-					onNone: () => `Could not load session ${id}.`,
-				})}
-			</p>
-		),
-		onSuccess: ({ value: session }) =>
-			session.entries.length === 0 ? (
+	if (state.status === "loading") return null;
+	if (state.status === "failed") return <p className="p-3 text-ink-muted">{state.message}</p>;
+	const last = state.messages.at(-1);
+	return (
+		<div className="flex h-full flex-col">
+			<Transcript messages={state.messages} />
+			<div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">
+				<SessionComposer
+					sessionId={id}
+					instanceId={instanceId}
+					running={last?.role === "assistant" && last.state === "draft"}
+				/>
+			</div>
+		</div>
+	);
+}
+
+/** The conversation, kept scrolled to its end while the reader is there. */
+function Transcript({ messages }: { readonly messages: readonly HistoryEntry[] }) {
+	const scroller = useRef<HTMLDivElement>(null);
+	const atEnd = useRef(true);
+	useLayoutEffect(() => {
+		const element = scroller.current;
+		if (element !== null && atEnd.current) element.scrollTop = element.scrollHeight;
+	}, [messages]);
+	return (
+		<div
+			ref={scroller}
+			onScroll={(event) => {
+				const element = event.currentTarget;
+				atEnd.current = element.scrollHeight - element.scrollTop - element.clientHeight < 32;
+			}}
+			className="min-h-0 flex-1 overflow-auto"
+		>
+			{messages.length === 0 ? (
 				<p className="p-3 text-ink-muted">No messages yet.</p>
 			) : (
-				<div className="h-full overflow-auto">
-					<div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-2 pb-6 text-[14px] leading-relaxed">
-						{turnsOf(session.entries).map((turn, index) => (
-							<TurnView key={turn.user?.id ?? turn.replies[0]?.id ?? index} turn={turn} />
-						))}
-					</div>
+				<div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-2 pb-6 text-[14px] leading-relaxed">
+					{turnsOf(messages).map((turn, index) => (
+						<TurnView key={turn.user?.id ?? turn.replies[0]?.id ?? index} turn={turn} />
+					))}
 				</div>
-			),
-	});
+			)}
+		</div>
+	);
 }
 
 /** A user message and the agent's replies to it, up to the next user message. */

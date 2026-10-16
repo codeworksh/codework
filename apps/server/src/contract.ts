@@ -1,6 +1,5 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
-import { HistoryEntry } from "@codeworksh/widget/codework";
 import { Event, EventTimeout, Publish, Request, Synced } from "@codeworksh/widget/event";
 
 /** A conversation with the agent, as listed under its project. */
@@ -25,18 +24,6 @@ export type Project = typeof Project.Type;
 /** The CodeWork server that owns projects and sessions is not running, or did not answer. */
 export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>()("Server.CodeworkUnavailable", {
 	message: Schema.String,
-}) {}
-
-/** One session with its conversation. */
-export const Session = Schema.Struct({
-	...SessionSummary.fields,
-	project: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
-	entries: Schema.Array(HistoryEntry),
-});
-export type Session = typeof Session.Type;
-
-export class SessionNotFound extends Schema.TaggedError<SessionNotFound>()("Server.SessionNotFound", {
-	id: Schema.String,
 }) {}
 
 export const Layout = Schema.Literals(["tile", "monocle"]);
@@ -87,11 +74,6 @@ export const Api = RpcGroup.make(
 	Rpc.make("projects.list", {
 		success: Schema.Array(Project),
 		error: CodeworkUnavailable,
-	}),
-	Rpc.make("sessions.get", {
-		payload: { id: Schema.String },
-		success: Session,
-		error: Schema.Union([SessionNotFound, CodeworkUnavailable]),
 	}),
 	Rpc.make("workspaces.list", {
 		success: Schema.Array(Workspace),
