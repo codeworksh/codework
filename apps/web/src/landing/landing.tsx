@@ -17,6 +17,7 @@ import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
+import { ModelPicker, ThinkingPicker, useChoice } from "./model";
 import { projectsAtom, SessionsSidebar, TitleBar } from "./sidebar";
 import { Wordmark } from "./wordmark";
 
@@ -24,9 +25,6 @@ const bridge = window.desktopBridge;
 
 const encodeCreate = Schema.encodeSync(Json.Create);
 const decodeCreated = Schema.decodeUnknownOption(Json.Created);
-
-// Until the start page has a provider and model selector, every new session uses this one.
-const MODEL = { provider: "openai-codex", id: "gpt-6-luna" };
 
 /** Where a new project lives: nowhere yet, only in memory, or a folder on disk. */
 type Place = { kind: "none" } | { kind: "memory" } | { kind: "folder"; path: string };
@@ -53,6 +51,11 @@ export function Landing() {
 	const [place, setPlace] = useState<Place>({ kind: "none" });
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
+	// Remembered across restarts; an absent pick leaves it to settings.
+	const [choice, setChoice] = useChoice();
+	const { model, thinkingLevel: thinking } = choice;
+	// A folder's project settings may add models or change the default; memory has only the user's.
+	const hostDir = place.kind === "folder" ? place.path : undefined;
 
 	const canSend = place.kind !== "none" && query.trim() !== "" && !pending;
 
@@ -68,7 +71,8 @@ export function Landing() {
 					place: where,
 					messageId: crypto.randomUUID(),
 					text: query.trim(),
-					model: MODEL,
+					...(model === undefined ? {} : { model }),
+					...(thinking === undefined ? {} : { thinkingLevel: thinking }),
 				}),
 			})
 			.then((reply) => Option.getOrUndefined(decodeCreated(reply.payload)))
@@ -112,6 +116,21 @@ export function Landing() {
 							onChange={setQuery}
 							onSubmit={() => void send()}
 							placeholder="Ask for changes, send follow-ups, or attach images"
+							controls={
+								<>
+									<ModelPicker
+										hostDir={hostDir}
+										value={model}
+										onChange={(next) => setChoice({ ...choice, model: next })}
+									/>
+									<ThinkingPicker
+										hostDir={hostDir}
+										model={model}
+										value={thinking}
+										onChange={(level) => setChoice({ ...choice, thinkingLevel: level })}
+									/>
+								</>
+							}
 							actions={
 								<ComposerButton label="Send" disabled={!canSend}>
 									<ArrowUp className="size-4" strokeWidth={2} aria-hidden />

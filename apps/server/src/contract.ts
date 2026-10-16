@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
+import { ModelList } from "@codeworksh/widget/codework";
 import { Event, EventTimeout, Publish, Request, Synced } from "@codeworksh/widget/event";
 
 /** A conversation with the agent, as listed under its project. */
@@ -23,6 +24,11 @@ export type Project = typeof Project.Type;
 
 /** The CodeWork server that owns projects and sessions is not running, or did not answer. */
 export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>()("Server.CodeworkUnavailable", {
+	message: Schema.String,
+}) {}
+
+/** The models could not be listed: a settings file or the model catalog is broken. */
+export class ModelsError extends Schema.TaggedError<ModelsError>()("Server.ModelsError", {
 	message: Schema.String,
 }) {}
 
@@ -74,6 +80,12 @@ export const Api = RpcGroup.make(
 	Rpc.make("projects.list", {
 		success: Schema.Array(Project),
 		error: CodeworkUnavailable,
+	}),
+	/** The models a new session can use; `hostDir` is its folder, whose project settings apply. */
+	Rpc.make("models.list", {
+		payload: { hostDir: Schema.optionalKey(Schema.String) },
+		success: ModelList,
+		error: Schema.Union([CodeworkUnavailable, ModelsError]),
 	}),
 	Rpc.make("workspaces.list", {
 		success: Schema.Array(Workspace),

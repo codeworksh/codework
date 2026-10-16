@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { Search } from "lucide-react";
-import { type CSSProperties, type MouseEvent, useState } from "react";
+import { type MouseEvent, useState } from "react";
 
 import {
 	Sidebar,
@@ -21,51 +21,10 @@ import { insetTitleBar, NewWorkspaceButton, SettingsButton } from "../shell/titl
 import { useOpenElsewhere } from "../wm/open";
 import { useWorkspaces } from "../wm/workspaces";
 import { ago } from "../widgets/time";
+import { Monogram } from "./monogram";
 
 /** The sidebar's sessions; refresh it once a new session exists. */
 export const projectsAtom = Server.query("projects.list", undefined);
-
-/** Badge colours, light-theme ink then dark-theme ink; light-dark() follows the theme's color-scheme. */
-const INKS = [
-	["#dc2626", "#f87171"],
-	["#ea580c", "#fb923c"],
-	["#d97706", "#fbbf24"],
-	["#65a30d", "#a3e635"],
-	["#059669", "#34d399"],
-	["#0d9488", "#2dd4bf"],
-	["#0284c7", "#38bdf8"],
-	["#2563eb", "#60a5fa"],
-	["#7c3aed", "#a78bfa"],
-	["#db2777", "#f472b6"],
-] as const;
-
-/** The same project always gets the same colour, without storing one. */
-function inkOf(id: string) {
-	let hash = 0;
-	for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-	const [light, dark] = INKS[Math.abs(hash) % INKS.length]!;
-	return `light-dark(${light}, ${dark})`;
-}
-
-/** Two letters: the first and last word's initials (`codework-prompt-musk` → CM), else a word's first and last letter. */
-function monogram(name: string) {
-	const words = name.split(/[\s._-]+/).filter(Boolean);
-	const first = words[0] ?? "?";
-	const last = words.at(-1) ?? first;
-	return (words.length > 1 ? `${first[0]}${last[0]}` : `${first[0]}${first.at(-1) ?? ""}`).toUpperCase();
-}
-
-function Monogram({ id, name }: { id: string; name: string }) {
-	return (
-		<span
-			aria-hidden
-			style={{ color: inkOf(id) } as CSSProperties}
-			className="grid size-4 shrink-0 place-items-center rounded-[4px] bg-[color-mix(in_oklab,currentColor_14%,transparent)] font-mono text-[8px] font-bold"
-		>
-			{monogram(name)}
-		</span>
-	);
-}
 
 /** Recent sessions across every project, newest first. */
 export function SessionsSidebar() {

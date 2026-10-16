@@ -1,4 +1,4 @@
-import { Delivery, HistoryEntry } from "@codeworksh/widget/codework";
+import { Delivery, HistoryEntry, ThinkingLevel } from "@codeworksh/widget/codework";
 import { Schema } from "effect";
 
 /*
@@ -47,6 +47,8 @@ export const Create = Schema.Struct({
 	text: Schema.String,
 	/** The session's model; omitted leaves it to settings. */
 	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	/** How hard the model reasons; omitted leaves it to settings. */
+	thinkingLevel: Schema.optionalKey(ThinkingLevel),
 });
 export type Create = typeof Create.Type;
 

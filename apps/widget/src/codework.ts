@@ -115,6 +115,51 @@ export class EventEncodingError extends Schema.TaggedError<EventEncodingError>()
 	cause: Schema.Defect(),
 }) {}
 
+/** How hard a model reasons, ascending. */
+export const ThinkingLevel = Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+export type ThinkingLevel = typeof ThinkingLevel.Type;
+
+/** A provider the server can call, with the models a session may use from it. */
+export const ModelProvider = Schema.Struct({
+	id: Schema.String,
+	name: Schema.String,
+	models: Schema.Array(
+		Schema.Struct({
+			id: Schema.String,
+			name: Schema.String,
+			/** In ascending order; `["off"]` for a model that does not reason. */
+			thinkingLevels: Schema.Array(ThinkingLevel),
+		}),
+	),
+});
+export type ModelProvider = typeof ModelProvider.Type;
+
+/** What `model.list` answers: the usable providers, and the model settings pick when none is chosen. */
+export const ModelList = Schema.Struct({
+	providers: Schema.Array(ModelProvider),
+	default: Schema.Struct({
+		provider: Schema.String,
+		id: Schema.String,
+		thinkingLevel: ThinkingLevel,
+		/** Display names from the catalog, present even when its provider is not listed. */
+		name: Schema.optionalKey(Schema.String),
+		providerName: Schema.optionalKey(Schema.String),
+	}),
+});
+export type ModelList = typeof ModelList.Type;
+
+/** A settings file could not be read or decoded. */
+export class SettingsError extends Schema.TaggedError<SettingsError>()("SettingsError", {
+	path: Schema.String,
+	detail: Schema.String,
+}) {}
+
+/** The model catalog is missing or unreadable. */
+export class ModelCatalogError extends Schema.TaggedError<ModelCatalogError>()("Runner.ModelCatalogError", {
+	path: Schema.String,
+	detail: Schema.String,
+}) {}
+
 /** Reuse a sandbox by id, or provision one from a driver, e.g. `{ driver: "memory" }`. */
 export const SandboxSelection = Schema.Union([
 	Schema.Struct({ id: Schema.String }),
@@ -124,7 +169,7 @@ export type SandboxSelection = typeof SandboxSelection.Type;
 
 export const RuntimeConfig = Schema.Struct({
 	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
-	thinkingLevel: Schema.optionalKey(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
+	thinkingLevel: Schema.optionalKey(ThinkingLevel),
 });
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
@@ -171,6 +216,12 @@ export const Api = RpcGroup.make(
 		},
 		success: SessionInfo,
 		error: CreateError,
+	}),
+	/** The models a session anchored at `hostDir` can use; without it, only the user's settings apply. */
+	Rpc.make("model.list", {
+		payload: { hostDir: Schema.optionalKey(Schema.String) },
+		success: ModelList,
+		error: Schema.Union([SettingsError, ModelCatalogError]),
 	}),
 	Rpc.make("session.list", {
 		payload: {},

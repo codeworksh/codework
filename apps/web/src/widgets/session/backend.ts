@@ -375,12 +375,15 @@ export const session = defineBackend({
 
 		// A folder anchors the session on the host and is where its tools run. A memory sandbox has
 		// no folder to name its project after, so it is named here.
-		yield* handle(topics.create, Create, ({ place, messageId, text, model }) =>
+		yield* handle(topics.create, Create, ({ place, messageId, text, model, thinkingLevel }) =>
 			codework("session.create", {
 				...(place._tag === "Folder"
 					? { directory: place.path, hostDir: place.path }
 					: { sandbox: { driver: "memory" }, project: { name: "In Memory" } }),
-				...(model === undefined ? {} : { runtime: { model } }),
+				runtime: {
+					...(model === undefined ? {} : { model }),
+					...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+				},
 			}).pipe(
 				Effect.flatMap((info) => prompt({ sessionId: info.id, messageId, text }).pipe(Effect.as(info.id))),
 				Effect.map((sessionId): Created => ({ _tag: "Created", sessionId })),

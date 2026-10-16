@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { Codework } from "./codework.ts";
-import { Contract, type Project } from "./contract.ts";
+import { Contract, ModelsError, type Project } from "./contract.ts";
 import { Event } from "./event.ts";
 import { Kv } from "./kv.ts";
 import { Workspaces } from "./workspaces.ts";
@@ -44,6 +44,21 @@ export const layer = Contract.Api.toLayer(
 			"projects.list": Effect.fn("projects.list")(function* () {
 				const sessions = yield* Codework.call((client) => client("session.list", {}));
 				return byProject(sessions);
+			}),
+
+			// The catalog's own errors are kept apart from an unreachable server, so their detail shows.
+			"models.list": Effect.fn("models.list")(function* ({ hostDir }) {
+				const listed = yield* Codework.call((client) =>
+					client("model.list", hostDir === undefined ? {} : { hostDir }).pipe(
+						Effect.map((list) => ({ list })),
+						Effect.catchTags({
+							SettingsError: (error) => Effect.succeed({ failed: `${error.path}: ${error.detail}` }),
+							"Runner.ModelCatalogError": (error) => Effect.succeed({ failed: error.detail }),
+						}),
+					),
+				);
+				if ("failed" in listed) return yield* new ModelsError({ message: listed.failed });
+				return listed.list;
 			}),
 
 			"kv.get": ({ package: pkg, key }) => kv.get(pkg, key),

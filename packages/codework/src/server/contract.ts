@@ -6,10 +6,12 @@ import {
 	optional,
 	Project,
 	PromptSchema,
+	Runner,
 	Sandbox,
 	SandboxError,
 	Session,
 	SessionStore,
+	Settings,
 } from "@codeworksh/harness/effect";
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
@@ -82,6 +84,22 @@ export const RuntimeConfig = Schema.Struct({
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
 export const SandboxRef = Sandbox.Selection;
+
+/** A model to choose, by the catalog's id and display name, with the thinking levels it supports. */
+export const ModelOption = Schema.Struct({
+	id: Schema.String,
+	name: Schema.String,
+	/** In ascending order; `["off"]` for a model that does not reason. */
+	thinkingLevels: Schema.Array(Schema.Enum(Model.ThinkingLevelEnum)),
+});
+
+/** A provider this server can call, with the models a session may use from it. */
+export const ModelProvider = Schema.Struct({
+	id: Schema.String,
+	name: Schema.String,
+	models: Schema.Array(ModelOption),
+});
+export type ModelProvider = typeof ModelProvider.Type;
 
 /** A project's name as a client sets it: trimmed, never empty. */
 export const ProjectName = Schema.Trimmed.check(Schema.isNonEmpty());
@@ -215,6 +233,28 @@ export const Api = RpcGroup.make(
 		payload: { projectId: Schema.String, name: ProjectName },
 		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
 		error: Project.ProjectNotFoundError,
+	}),
+	/**
+	 * The models a session anchored at `hostDir` can use: providers this server holds credentials
+	 * for, in the catalog plus that project's settings, and the model settings pick when a session
+	 * names none. Without `hostDir`, only the user's settings apply. Credentials are checked for
+	 * presence, not validity.
+	 */
+	Rpc.make("model.list", {
+		payload: { hostDir: optional(Session.AbsolutePath) },
+		success: Schema.Struct({
+			providers: Schema.Array(ModelProvider),
+			default: Schema.Struct({
+				provider: Schema.String,
+				id: Schema.String,
+				/** As settings name it; a run clamps it to what the model supports. */
+				thinkingLevel: Schema.Enum(Model.ThinkingLevelEnum),
+				/** Display names from the catalog, present even when its provider is not listed. */
+				name: optional(Schema.String),
+				providerName: optional(Schema.String),
+			}),
+		}),
+		error: Schema.Union([Settings.SettingsError, Runner.ModelCatalogError]),
 	}),
 	Rpc.make("session.list", {
 		payload: {},

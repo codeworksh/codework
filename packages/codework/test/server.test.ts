@@ -497,6 +497,100 @@ describe("server", () => {
 			);
 	}, 60_000);
 
+	it("model.list lists credentialed providers and the settings default, per project", () => {
+		const root = realpathSync(mkdtempSync(join(tmpdir(), "codework-server-models-")));
+		homes.push(root);
+		const project = join(root, "project");
+		const broken = join(root, "broken");
+		mkdirSync(join(project, ".codework"), { recursive: true });
+		mkdirSync(join(broken, ".codework"), { recursive: true });
+		writeFileSync(
+			join(project, ".codework", "settings.jsonc"),
+			JSON.stringify({
+				model: { provider: "local", id: "qwen3-coder:30b" },
+				models: [
+					{
+						id: "qwen3-coder:30b",
+						name: "Qwen3 Coder 30B",
+						provider: { id: "local", name: "Local", source: "config", env: [] },
+						baseUrl: "http://127.0.0.1:1/v1",
+						reasoning: false,
+						input: ["text"],
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+						contextWindow: 32768,
+						maxTokens: 8192,
+						protocol: "openai-compatible",
+					},
+				],
+			}),
+		);
+		writeFileSync(join(broken, ".codework", "settings.jsonc"), "{ not json");
+
+		// Every key the catalog names is blanked, so the developer's own keys cannot change the
+		// answer; one fake key shows the env path. The test home holds no OAuth login.
+		const catalog: Record<string, Record<string, { provider: { env?: string[]; key?: string } }>> = JSON.parse(
+			readFileSync(process.env.CODEWORK_MODELS_FILE ?? "", "utf8"),
+		);
+		for (const entries of Object.values(catalog))
+			for (const { provider } of Object.values(entries))
+				for (const name of [...(provider.env ?? []), ...(provider.key ? [provider.key] : [])]) vi.stubEnv(name, "");
+		vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
+
+		return Effect.gen(function* () {
+			const rpc = yield* RpcTest.makeClient(Contract.Api);
+			const user = yield* rpc["model.list"]({});
+			const scoped = yield* rpc["model.list"]({ hostDir: Session.AbsolutePath.make(project) });
+			const invalid = yield* rpc["model.list"]({ hostDir: Session.AbsolutePath.make(broken) }).pipe(Effect.flip);
+
+			const ids = (providers: ReadonlyArray<{ readonly id: string }>) => providers.map(({ id }) => id).sort();
+			const artifact = {
+				user: { providers: ids(user.providers), default: user.default },
+				project: {
+					providers: ids(scoped.providers),
+					local: scoped.providers.find(({ id }) => id === "local"),
+					default: scoped.default,
+				},
+				invalid: {
+					_tag: invalid._tag,
+					message: invalid.message.replaceAll(root, "<root>"),
+				},
+			};
+			expect(artifact.user.default).toMatchObject({
+				provider: "openai",
+				id: "gpt-5.6-luna",
+				thinkingLevel: "medium",
+			});
+			expect(artifact.user.default.providerName).toBe("OpenAI");
+			expect(artifact.user.providers).toContain("anthropic");
+			expect(artifact.user.providers).not.toContain("local");
+			expect(artifact.project.local).toEqual({
+				id: "local",
+				name: "Local",
+				models: [{ id: "qwen3-coder:30b", name: "Qwen3 Coder 30B", thinkingLevels: ["off"] }],
+			});
+			expect(artifact.project.default).toEqual({
+				provider: "local",
+				id: "qwen3-coder:30b",
+				thinkingLevel: "medium",
+				name: "Qwen3 Coder 30B",
+				providerName: "Local",
+			});
+			expect(invalid._tag).toBe("SettingsError");
+			return artifact;
+		})
+			.pipe(
+				Effect.scoped,
+				Effect.provide(layer()),
+				Effect.ensuring(Effect.sync(() => vi.unstubAllEnvs())),
+				Effect.runPromise,
+			)
+			.then((artifact) =>
+				expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/server.model-list.json",
+				),
+			);
+	});
+
 	it("session.message reports an unknown prompt as absent", () =>
 		Effect.gen(function* () {
 			const rpc = yield* RpcTest.makeClient(Contract.Api);

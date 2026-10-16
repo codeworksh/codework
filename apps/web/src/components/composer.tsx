@@ -19,6 +19,7 @@ export function Composer({
 	placeholder,
 	autoFocus,
 	compact = false,
+	controls,
 	actions,
 	tray,
 }: {
@@ -29,6 +30,8 @@ export function Composer({
 	readonly autoFocus?: boolean;
 	/** One line that grows with its text, for a composer sharing a frame with what it talks to. */
 	readonly compact?: boolean;
+	/** Pickers at the bottom left, such as the model; `actions` sit at the bottom right. */
+	readonly controls?: ReactNode;
 	readonly actions: ReactNode;
 	readonly tray?: ReactNode;
 }) {
@@ -56,10 +59,14 @@ export function Composer({
 						placeholder={placeholder}
 						aria-label="Prompt"
 						// Grows with its text, from four lines (one when compact) up to about nine, then scrolls.
-						className={`block max-h-52 w-full resize-none bg-transparent text-[14px] leading-relaxed text-ink outline-none [field-sizing:content] placeholder:text-ink-muted/60 ${compact ? "min-h-6" : "min-h-17.5"}`}
+						className={`block max-h-52 w-full resize-none bg-transparent text-[14px] leading-relaxed text-ink outline-none [field-sizing:content] placeholder:text-ink-muted/60 ${compact ? "min-h-6" : "min-h-19.5"}`}
 					/>
 				</div>
-				<div className={`flex items-center justify-end gap-2 ${compact ? "px-2.5 pb-2.5" : "px-4 pb-4"}`}>
+				<div className={`flex items-center gap-2 ${compact ? "px-2.5 pb-2.5" : "px-4 pb-4"}`}>
+					{/* Pulled left by a control's padding, so the first one's icon lines up with the prompt's text. */}
+					<div className="-ml-2.5 flex min-w-0 flex-1 items-center gap-1 text-[14px] font-medium text-ink-muted">
+						{controls}
+					</div>
 					{actions}
 				</div>
 			</form>
@@ -93,7 +100,7 @@ export function ComposerButton({
 			title={label}
 			disabled={disabled}
 			onClick={onClick}
-			className="grid size-8 place-items-center rounded-full bg-brand text-brand-ink shadow-xs transition-[opacity,scale] duration-150 enabled:hover:scale-105 disabled:opacity-30"
+			className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-brand-ink shadow-xs transition-[opacity,scale,filter] duration-150 enabled:hover:scale-105 enabled:hover:brightness-110 enabled:active:scale-100 disabled:opacity-64"
 		>
 			{children}
 		</button>

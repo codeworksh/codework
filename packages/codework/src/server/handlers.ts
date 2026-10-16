@@ -1,13 +1,16 @@
+import { Model } from "@codeworksh/aikit";
 import {
 	Control,
 	Event,
 	EventRegistry,
 	EventSchema,
+	ModelCatalog,
 	Project,
 	PromptSchema,
 	Sandbox,
 	Session,
 	SessionStore,
+	Settings,
 	State,
 } from "@codeworksh/harness/effect";
 import { DateTime, Effect, Option, Stream } from "effect";
@@ -115,6 +118,40 @@ export const layer = Contract.Api.toLayer(
 					...runtimeInput(runtime),
 				}).pipe(Effect.onError(() => releaseOnFailure(selection)));
 				return toSessionInfo(yield* handle.info);
+			}),
+			"model.list": Effect.fnUntraced(function* ({ hostDir }) {
+				const filter = hostDir === undefined ? {} : { hostDir };
+				const settings = yield* Settings.Service;
+				const loaded = yield* settings.load(hostDir);
+				const { model } = loaded;
+				const providers = yield* ModelCatalog.available(filter);
+				// Named from the whole catalog, so a default without credentials still reads as itself.
+				const entry = (yield* ModelCatalog.effective(loaded.models))[model.provider]?.[model.id];
+				return {
+					providers: providers.flatMap((provider) => {
+						const models = Object.values(provider.models);
+						const first = models[0];
+						return first === undefined
+							? []
+							: [
+									{
+										id: provider.id,
+										name: first.provider.name,
+										models: models.map((info) => ({
+											id: info.id,
+											name: info.name,
+											thinkingLevels: Model.getSupportedThinkingLevels(info),
+										})),
+									},
+								];
+					}),
+					default: {
+						provider: model.provider,
+						id: model.id,
+						thinkingLevel: model.thinkingLevel,
+						...(entry === undefined ? {} : { name: entry.name, providerName: entry.provider.name }),
+					},
+				};
 			}),
 			"project.rename": Effect.fnUntraced(function* ({ projectId, name }) {
 				const renamed = yield* Project.rename({ projectId, name });
