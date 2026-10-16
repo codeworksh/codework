@@ -3,6 +3,8 @@ import { type EventEnvelope, HistoryEntry, type Part, type SessionInfo } from "@
 import { Deferred, Effect, Fiber, Option, Schedule, Schema, Stream } from "effect";
 
 import {
+	Create,
+	type Created,
 	Follow,
 	Info,
 	Interrupt,
@@ -68,14 +70,25 @@ const fold = (current: Part | undefined, kind: "text" | "thinking", delta: strin
 			? { ...current, thinking: current.thinking + delta }
 			: { type: "thinking", thinking: delta };
 
-const describe = (error: { readonly _tag: string }) =>
-	error._tag === "SessionNotFoundError"
-		? "This session no longer exists."
-		: error._tag === "PromptConflictError"
-			? "That message was already sent."
-			: "The CodeWork server is not reachable.";
+const describe = (error: { readonly _tag: string }) => {
+	switch (error._tag) {
+		case "SessionNotFoundError":
+			return "This session no longer exists.";
+		case "PromptConflictError":
+			return "That message was already sent.";
+		case "Location.DirectoryNotFoundError":
+			return "That folder no longer exists.";
+		case "Location.NotDirectoryError":
+			return "That path is not a folder.";
+		case "RpcClientError":
+			return "The CodeWork server is not reachable.";
+		default:
+			return error._tag.startsWith("Sandbox") ? "The sandbox could not start." : "The session could not start.";
+	}
+};
 
 const encodeReply = Schema.encodeEffect(Json.Reply);
+const encodeCreated = Schema.encodeEffect(Json.Created);
 const encodeWindow = Schema.encodeEffect(Json.Window);
 const encodeUpdate = Schema.encodeEffect(Json.Update);
 const encodeSnapshot = Schema.encodeEffect(Json.Snapshot);
@@ -344,16 +357,35 @@ export const session = defineBackend({
 			{ ephemeral: true },
 		);
 
-		yield* handle(topics.prompt, Prompt, ({ sessionId, messageId, text, delivery }) =>
+		const prompt = ({ sessionId, messageId, text, delivery }: Prompt) =>
 			codework("session.prompt", {
 				sessionId,
 				text,
 				id: messageId,
 				...(delivery === undefined ? {} : { delivery }),
-			}).pipe(
+			});
+
+		yield* handle(topics.prompt, Prompt, (input) =>
+			prompt(input).pipe(
 				Effect.as<Reply>({ _tag: "Done" }),
 				Effect.catch((error) => Effect.succeed<Reply>({ _tag: "Failed", message: describe(error) })),
 				Effect.flatMap((reply) => encodeReply(reply).pipe(Effect.orDie)),
+			),
+		);
+
+		// A folder anchors the session on the host and is where its tools run. A memory sandbox has
+		// no folder to name its project after, so it is named here.
+		yield* handle(topics.create, Create, ({ place, messageId, text, model }) =>
+			codework("session.create", {
+				...(place._tag === "Folder"
+					? { directory: place.path, hostDir: place.path }
+					: { sandbox: { driver: "memory" }, project: { name: "In Memory" } }),
+				...(model === undefined ? {} : { runtime: { model } }),
+			}).pipe(
+				Effect.flatMap((info) => prompt({ sessionId: info.id, messageId, text }).pipe(Effect.as(info.id))),
+				Effect.map((sessionId): Created => ({ _tag: "Created", sessionId })),
+				Effect.catch((error) => Effect.succeed<Created>({ _tag: "Failed", message: describe(error) })),
+				Effect.flatMap((created) => encodeCreated(created).pipe(Effect.orDie)),
 			),
 		);
 

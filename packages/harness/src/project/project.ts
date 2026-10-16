@@ -31,8 +31,16 @@ export interface Resolved {
 	readonly isDefault: boolean;
 }
 
+export interface ResolveOptions {
+	/**
+	 * Names the project when this resolution creates it, ahead of the repository's and the
+	 * folder's name. An existing project keeps its name; {@link rename} changes it.
+	 */
+	readonly name?: string;
+}
+
 export interface Interface {
-	readonly resolveOrCreate: (cwd: AbsolutePath) => Effect.Effect<Resolved, LocationError>;
+	readonly resolveOrCreate: (cwd: AbsolutePath, options?: ResolveOptions) => Effect.Effect<Resolved, LocationError>;
 	readonly get: (id: ProjectSchema.ID) => Effect.Effect<Option.Option<ProjectSchema.Info>>;
 	readonly list: () => Effect.Effect<ProjectSchema.Info[]>;
 }
@@ -106,7 +114,10 @@ export const layer = Layer.effect(
 			return members.toSorted((a, b) => Number(b.main) - Number(a.main));
 		});
 
-		const resolveOrCreate = Effect.fn("Project.resolveOrCreate")(function* (cwd: AbsolutePath) {
+		const resolveOrCreate = Effect.fn("Project.resolveOrCreate")(function* (
+			cwd: AbsolutePath,
+			options?: ResolveOptions,
+		) {
 			const exists = yield* fs.exists(cwd).pipe(Effect.orDie);
 			if (!exists) return yield* new DirectoryNotFoundError({ directory: cwd, sandboxInstanceId: env });
 			const stat = yield* fs.stat(cwd).pipe(Effect.orDie);
@@ -118,7 +129,7 @@ export const layer = Layer.effect(
 
 			const worktree = repo?.directory ?? location;
 			const projectId = ident?.id === undefined ? provisional(env, worktree) : ProjectSchema.ID.make(ident.id);
-			const name = ident?.name ?? path.basename(worktree);
+			const name = options?.name ?? ident?.name ?? path.basename(worktree);
 			const vcs: RepoSchema.Vcs | undefined = repo === undefined ? undefined : { type: "git", store: repo.store };
 			const members: ReadonlyArray<Member> =
 				repo === undefined ? [{ location: worktree, main: true }] : yield* family(repo);
@@ -212,6 +223,32 @@ export const layer = Layer.effect(
 		return Service.of({ resolveOrCreate, get, list });
 	}),
 );
+
+export class ProjectNotFoundError extends Schema.TaggedError<ProjectNotFoundError>()("ProjectNotFoundError", {
+	projectId: Schema.String,
+}) {}
+
+/** Renames a project. Needs only the database, not a mount: a name is the same in every env. */
+export const rename = Effect.fn("Project.rename")(function* (input: {
+	readonly projectId: string;
+	readonly name: string;
+}) {
+	const sql = yield* SqlClient.SqlClient;
+	const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+	const update = SqlSchema.findOneOption({
+		Request: Schema.Struct({ id: Schema.String, name: Schema.String }),
+		Result: ProjectRow,
+		execute: ({ id, name }) =>
+			sql`UPDATE project SET name = ${name}, updated_at = ${now} WHERE id = ${id} RETURNING *`,
+	});
+	const row = yield* update({ id: input.projectId, name: input.name }).pipe(Effect.orDie);
+	if (Option.isNone(row)) return yield* new ProjectNotFoundError({ projectId: input.projectId });
+	return new ProjectSchema.Info({
+		id: ProjectSchema.ID.make(row.value.id),
+		name: row.value.name,
+		status: row.value.status,
+	});
+});
 
 /** Takes an assembled sandbox — local or remote — not a local backend. */
 export const layerWith = <E, RIn>(sandbox: Sandbox.Sandbox<E, RIn>) =>

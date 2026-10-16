@@ -9,6 +9,8 @@ import { Schema } from "effect";
 export const topics = {
 	/** Requests: start following a session; answered once its snapshot is stored. */
 	follow: "codework/session.follow",
+	/** Requests: create a session and send its first prompt; answered with its id. */
+	create: "codework/session.create",
 	prompt: "codework/session.prompt",
 	interrupt: "codework/session.interrupt",
 	/** Requests: a window of a followed session's conversation, newest first back from `before`. */
@@ -30,6 +32,30 @@ export const Prompt = Schema.Struct({
 	delivery: Schema.optionalKey(Delivery),
 });
 export type Prompt = typeof Prompt.Type;
+
+/** Where a new session works: a folder on the host, or a sandbox held only in memory. */
+export const Place = Schema.Union([
+	Schema.TaggedStruct("Folder", { path: Schema.String }),
+	Schema.TaggedStruct("Memory", {}),
+]);
+export type Place = typeof Place.Type;
+
+export const Create = Schema.Struct({
+	place: Place,
+	/** Chosen by the view: the id of the first user message. */
+	messageId: Schema.String,
+	text: Schema.String,
+	/** The session's model; omitted leaves it to settings. */
+	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+});
+export type Create = typeof Create.Type;
+
+/** The answer to a create request: the new session, or why there is none. */
+export const Created = Schema.Union([
+	Schema.TaggedStruct("Created", { sessionId: Schema.String }),
+	Schema.TaggedStruct("Failed", { message: Schema.String }),
+]);
+export type Created = typeof Created.Type;
 
 export const Interrupt = Schema.Struct({ sessionId: Schema.String });
 
@@ -97,6 +123,8 @@ export type Update = typeof Update.Type;
 export const Json = {
 	Follow: Schema.toCodecJson(Follow),
 	Prompt: Schema.toCodecJson(Prompt),
+	Create: Schema.toCodecJson(Create),
+	Created: Schema.toCodecJson(Created),
 	Interrupt: Schema.toCodecJson(Interrupt),
 	Window: Schema.toCodecJson(Window),
 	Reply: Schema.toCodecJson(Reply),

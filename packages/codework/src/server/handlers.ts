@@ -3,6 +3,7 @@ import {
 	Event,
 	EventRegistry,
 	EventSchema,
+	Project,
 	PromptSchema,
 	Sandbox,
 	Session,
@@ -99,7 +100,7 @@ export const layer = Contract.Api.toLayer(
 			"auth.status": ({ provider }) => oauth.status(provider),
 			"auth.refresh": ({ provider }) => oauth.refresh(provider),
 			"auth.logout": ({ provider }) => oauth.logout(provider),
-			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime }) {
+			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime, project }) {
 				const selection =
 					sandbox === undefined ? undefined : yield* exported("Server.session.create", Sandbox.resolve(sandbox));
 				const selected = selection?.info;
@@ -110,9 +111,14 @@ export const layer = Contract.Api.toLayer(
 					// session the client did not place has no project, which is a normal state.
 					...(hostDir === undefined ? {} : { hostDir }),
 					...(selected === undefined ? {} : { sandbox: selected }),
+					...(project === undefined ? {} : { project }),
 					...runtimeInput(runtime),
 				}).pipe(Effect.onError(() => releaseOnFailure(selection)));
 				return toSessionInfo(yield* handle.info);
+			}),
+			"project.rename": Effect.fnUntraced(function* ({ projectId, name }) {
+				const renamed = yield* Project.rename({ projectId, name });
+				return { id: renamed.id, name: renamed.name };
 			}),
 			"plugin.reload": Effect.fnUntraced(function* () {
 				return yield* state.reload;

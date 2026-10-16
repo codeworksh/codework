@@ -1,6 +1,7 @@
-import { useNavigate } from "@tanstack/react-router";
+import { RegistryContext, useAtomRefresh } from "@effect/atom-react";
+import { Option, Schema } from "effect";
 import { ArrowUp, Check, ChevronDown, Folder, FolderPlus, MemoryStick } from "lucide-react";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useContext, useMemo, useState } from "react";
 
 import {
 	DropdownMenu,
@@ -12,11 +13,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Composer, ComposerButton } from "@/components/composer";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { useWorkspaces, workspaceRoute } from "../wm/workspaces";
-import { SessionsSidebar, TitleBar } from "./sidebar";
+import { makeHost } from "../kernel/host";
+import { sessionAddress } from "../widgets/session/address";
+import { Json, type Place as Where, topics } from "../widgets/session/schema";
+import { useOpenElsewhere } from "../wm/open";
+import { projectsAtom, SessionsSidebar, TitleBar } from "./sidebar";
 import { Wordmark } from "./wordmark";
 
 const bridge = window.desktopBridge;
+
+const encodeCreate = Schema.encodeSync(Json.Create);
+const decodeCreated = Schema.decodeUnknownOption(Json.Created);
+
+// Until the start page has a provider and model selector, every new session uses this one.
+const MODEL = { provider: "openai-codex", id: "gpt-6-luna" };
 
 /** Where a new project lives: nowhere yet, only in memory, or a folder on disk. */
 type Place = { kind: "none" } | { kind: "memory" } | { kind: "folder"; path: string };
@@ -29,16 +39,48 @@ const placeLabel = (place: Place) =>
 			? "In Memory"
 			: (place.path.split("/").findLast(Boolean) ?? place.path);
 
-/** The start page: pick a project to work in. */
+/**
+ * The start page: pick where to work and send the first prompt. The Session backend creates the
+ * session and sends the prompt; the new session then opens in a workspace. On failure the text stays.
+ */
 export function Landing() {
-	const workspaces = useWorkspaces();
-	const navigate = useNavigate();
+	const registry = useContext(RegistryContext);
+	// The start page asks the Session backend as the "landing" source, outside any widget frame.
+	const bus = useMemo(() => makeHost({ registry, package: "codework", instanceId: "landing" }).bus, [registry]);
+	const openElsewhere = useOpenElsewhere();
+	const refreshProjects = useAtomRefresh(projectsAtom);
 	const [query, setQuery] = useState("");
 	const [place, setPlace] = useState<Place>({ kind: "none" });
+	const [pending, setPending] = useState(false);
+	const [error, setError] = useState<string>();
 
-	// Projects have no workspace of their own yet, so every one opens the default workspace.
-	const target = workspaces[0];
-	const canOpen = target !== undefined && query.trim() !== "";
+	const canSend = place.kind !== "none" && query.trim() !== "" && !pending;
+
+	const send = async () => {
+		if (!canSend) return;
+		const where: Where = place.kind === "folder" ? { _tag: "Folder", path: place.path } : { _tag: "Memory" };
+		setPending(true);
+		setError(undefined);
+		const created = await bus
+			.request({
+				topic: topics.create,
+				payload: encodeCreate({
+					place: where,
+					messageId: crypto.randomUUID(),
+					text: query.trim(),
+					model: MODEL,
+				}),
+			})
+			.then((reply) => Option.getOrUndefined(decodeCreated(reply.payload)))
+			.catch(() => undefined);
+		setPending(false);
+		if (created?._tag !== "Created") {
+			setError(created?.message ?? "The CodeWork server is not reachable.");
+			return;
+		}
+		refreshProjects();
+		await openElsewhere(sessionAddress(created.sessionId), placeLabel(place), "replace");
+	};
 
 	// Only the desktop app can open the native folder dialog (Finder on macOS); it opens on the
 	// current folder, or home before one is picked.
@@ -68,44 +110,47 @@ export function Landing() {
 							autoFocus
 							value={query}
 							onChange={setQuery}
-							onSubmit={() => {
-								if (canOpen) void navigate(workspaceRoute(target));
-							}}
+							onSubmit={() => void send()}
 							placeholder="Ask for changes, send follow-ups, or attach images"
 							actions={
-								<ComposerButton label="Send" disabled={!canOpen}>
+								<ComposerButton label="Send" disabled={!canSend}>
 									<ArrowUp className="size-4" strokeWidth={2} aria-hidden />
 								</ComposerButton>
 							}
 							tray={
-								<DropdownMenu>
-									<DropdownMenuTrigger
-										title={place.kind === "folder" ? place.path : undefined}
-										className="flex h-6 min-w-0 items-center gap-1 rounded-[8px] px-1.75 leading-4 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
-									>
-										<PlaceIcon className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
-										<span className="truncate">{placeLabel(place)}</span>
-										<ChevronDown className="size-3 shrink-0 opacity-50" strokeWidth={2} aria-hidden />
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align="start" className="min-w-44">
-										<DropdownMenuLabel>Project</DropdownMenuLabel>
-										<DropdownMenuItem onSelect={() => setPlace({ kind: "memory" })}>
-											<MemoryStick strokeWidth={1.75} />
-											In Memory
-											{place.kind === "memory" && (
-												<Check className="ml-auto" strokeWidth={2} aria-label="Current" />
-											)}
-										</DropdownMenuItem>
-										<DropdownMenuSeparator />
-										<DropdownMenuItem
-											disabled={pickFolder === undefined}
-											onSelect={() => void pickFolder?.()}
+								<>
+									<DropdownMenu>
+										<DropdownMenuTrigger
+											title={place.kind === "folder" ? place.path : undefined}
+											className="flex h-6 min-w-0 items-center gap-1 rounded-[8px] px-1.75 leading-4 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
 										>
-											<FolderPlus strokeWidth={1.75} />
-											New…
-										</DropdownMenuItem>
-									</DropdownMenuContent>
-								</DropdownMenu>
+											<PlaceIcon className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
+											<span className="truncate">{placeLabel(place)}</span>
+											<ChevronDown className="size-3 shrink-0 opacity-50" strokeWidth={2} aria-hidden />
+										</DropdownMenuTrigger>
+										<DropdownMenuContent align="start" className="min-w-44">
+											<DropdownMenuLabel>Project</DropdownMenuLabel>
+											<DropdownMenuItem onSelect={() => setPlace({ kind: "memory" })}>
+												<MemoryStick strokeWidth={1.75} />
+												In Memory
+												{place.kind === "memory" && (
+													<Check className="ml-auto" strokeWidth={2} aria-label="Current" />
+												)}
+											</DropdownMenuItem>
+											<DropdownMenuSeparator />
+											<DropdownMenuItem
+												disabled={pickFolder === undefined}
+												onSelect={() => void pickFolder?.()}
+											>
+												<FolderPlus strokeWidth={1.75} />
+												New…
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
+									{error !== undefined && (
+										<span className="truncate px-1.75 py-1 text-destructive">{error}</span>
+									)}
+								</>
 							}
 						/>
 					</div>

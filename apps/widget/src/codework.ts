@@ -115,10 +115,62 @@ export class EventEncodingError extends Schema.TaggedError<EventEncodingError>()
 	cause: Schema.Defect(),
 }) {}
 
+/** Reuse a sandbox by id, or provision one from a driver, e.g. `{ driver: "memory" }`. */
+export const SandboxSelection = Schema.Union([
+	Schema.Struct({ id: Schema.String }),
+	Schema.Struct({ driver: Schema.String, providerResourceId: Schema.optionalKey(Schema.String) }),
+]);
+export type SandboxSelection = typeof SandboxSelection.Type;
+
+export const RuntimeConfig = Schema.Struct({
+	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	thinkingLevel: Schema.optionalKey(Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"])),
+});
+export type RuntimeConfig = typeof RuntimeConfig.Type;
+
+/**
+ * Why `session.create` failed, by the server's wire tags. Each keeps only the fields read here;
+ * the rest of what the server sends is ignored on decode.
+ */
+export const CreateError = Schema.Union([
+	SessionNotFoundError,
+	Schema.TaggedStruct("SessionLinkedSpaceNotFoundError", { sessionId: Schema.String }),
+	Schema.TaggedStruct("RelinkError", { sessionId: Schema.String, reason: Schema.String }),
+	Schema.TaggedStruct("SandboxNotFoundError", { id: Schema.String }),
+	Schema.TaggedStruct("SandboxDriverNotRegisteredError", { driver: Schema.String }),
+	Schema.TaggedStruct("SandboxDriverRegistrationError", { driver: Schema.String, reason: Schema.String }),
+	Schema.TaggedStruct("SandboxUnsupportedError", { driver: Schema.String, operation: Schema.String }),
+	Schema.TaggedStruct("SandboxProviderError", { driver: Schema.String, operation: Schema.String }),
+	Schema.TaggedStruct("SandboxUnavailError", { id: Schema.String, reason: Schema.String }),
+	Schema.TaggedStruct("SandboxRemovedError", { id: Schema.String }),
+	Schema.TaggedStruct("SandboxTransitionConflictError", { id: Schema.String }),
+	Schema.TaggedStruct("SandboxBusyError", { id: Schema.String }),
+	Schema.TaggedStruct("Location.DirectoryNotFoundError", { directory: Schema.String }),
+	Schema.TaggedStruct("Location.NotDirectoryError", { directory: Schema.String }),
+]);
+export type CreateError = typeof CreateError.Type;
+
 export const Api = RpcGroup.make(
 	Rpc.make("server.info", {
 		payload: {},
 		success: Schema.Struct({ pid: Schema.Int, version: Schema.String }),
+	}),
+	/**
+	 * `hostDir` anchors the session to a host folder; `directory` is a place inside its space.
+	 * Without either, the server places it in its own working directory.
+	 */
+	Rpc.make("session.create", {
+		payload: {
+			title: Schema.optionalKey(Schema.String),
+			directory: Schema.optionalKey(Schema.String),
+			hostDir: Schema.optionalKey(Schema.String),
+			sandbox: Schema.optionalKey(SandboxSelection),
+			runtime: Schema.optionalKey(RuntimeConfig),
+			/** Names the project if this creates it; an existing project keeps its name. Trimmed, non-empty. */
+			project: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
+		},
+		success: SessionInfo,
+		error: CreateError,
 	}),
 	Rpc.make("session.list", {
 		payload: {},

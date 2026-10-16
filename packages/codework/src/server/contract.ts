@@ -4,6 +4,7 @@ import {
 	Event,
 	Location,
 	optional,
+	Project,
 	PromptSchema,
 	Sandbox,
 	SandboxError,
@@ -81,6 +82,9 @@ export const RuntimeConfig = Schema.Struct({
 export type RuntimeConfig = typeof RuntimeConfig.Type;
 
 export const SandboxRef = Sandbox.Selection;
+
+/** A project's name as a client sets it: trimmed, never empty. */
+export const ProjectName = Schema.Trimmed.check(Schema.isNonEmpty());
 
 export class OAuthError extends Schema.TaggedError<OAuthError>()("Server.OAuthError", {
 	message: Schema.String,
@@ -198,9 +202,19 @@ export const Api = RpcGroup.make(
 			hostDir: optional(Session.AbsolutePath),
 			sandbox: optional(SandboxRef),
 			runtime: optional(RuntimeConfig),
+			/**
+			 * Names the project when this session creates it, ahead of the repository's and the
+			 * folder's name. A project that already exists keeps its name; `project.rename` changes it.
+			 */
+			project: optional(Schema.Struct({ name: ProjectName })),
 		},
 		success: SessionInfo,
 		error: Schema.Union([SessionErrors, SandboxErrors, LocationErrors]),
+	}),
+	Rpc.make("project.rename", {
+		payload: { projectId: Schema.String, name: ProjectName },
+		success: Schema.Struct({ id: Schema.String, name: Schema.String }),
+		error: Project.ProjectNotFoundError,
 	}),
 	Rpc.make("session.list", {
 		payload: {},

@@ -57,6 +57,8 @@ export interface CreateInput extends RuntimeInput {
 	 * own directory. {@link link} assigns one afterwards.
 	 */
 	readonly hostDir?: string;
+	/** Names the session's project if this creates it; an existing project keeps its name. */
+	readonly project?: { readonly name: string };
 }
 
 export interface AttachInput extends RuntimeInput {
@@ -219,7 +221,10 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 	// what makes the directory mean anything, so resolution happens inside it.
 	const location = yield* sandboxes.withMount(
 		sandboxId,
-		Effect.provide(Location.Service.use(Effect.succeed), Location.layerMounted()),
+		Effect.provide(
+			Location.Service.use(Effect.succeed),
+			Location.layerMounted(input.project === undefined ? undefined : { name: input.project.name }),
+		),
 		input.directory === undefined ? undefined : { cwd: input.directory },
 	);
 	yield* sessions.create({
