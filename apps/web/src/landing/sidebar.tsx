@@ -17,13 +17,13 @@ import { isMac } from "../kernel/platform";
 import { Server } from "../kernel/rpc";
 import { openMode } from "../sdk";
 import { sessionAddress } from "../widgets/projects/address";
+import { Switcher } from "../shell/switcher";
+import { insetTitleBar, NewWorkspaceButton, SettingsButton } from "../shell/titlebar";
 import { useOpenElsewhere } from "../wm/open";
+import { useWorkspaces } from "../wm/workspaces";
 import { ago } from "../widgets/projects/time";
 
 const projectsAtom = Server.query("projects.list", undefined);
-
-// macOS draws its traffic lights over the window's top-left corner, which the sidebar now owns.
-const insetTitleBar = window.desktopBridge?.platform === "darwin";
 
 /** Badge colours, light-theme ink then dark-theme ink; light-dark() follows the theme's color-scheme. */
 const INKS = [
@@ -155,14 +155,19 @@ export function SessionsSidebar() {
 export function TitleBar() {
 	const { open, isMobile } = useSidebar();
 	const inCorner = !open || isMobile;
+	const workspaces = useWorkspaces();
 	return (
 		<header
-			className={`flex h-12 shrink-0 items-center px-2 [-webkit-app-region:drag] ${inCorner && insetTitleBar ? "pl-20" : ""}`}
+			className={`flex h-12 shrink-0 items-center gap-1.5 px-2 select-none [-webkit-app-region:drag] ${inCorner && insetTitleBar ? "pl-20" : ""}`}
 		>
 			<SidebarTrigger
 				title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}
 				className="text-ink-muted [-webkit-app-region:no-drag] hover:text-ink"
 			/>
+			{/* The workspaces, to jump straight into one; none is active on the start page. */}
+			<Switcher workspaces={workspaces} active={undefined} />
+			<NewWorkspaceButton />
+			<SettingsButton />
 		</header>
 	);
 }

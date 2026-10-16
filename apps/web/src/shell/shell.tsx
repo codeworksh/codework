@@ -1,22 +1,11 @@
 import { useAtomSet } from "@effect/atom-react";
-import { Link, Outlet, useCanGoBack, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
-import { ChevronLeft, House, Plus, Settings } from "lucide-react";
+import { Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { Desktop } from "../wm/desktop";
-import {
-	createWorkspace,
-	lastWorkspaceAtom,
-	MAX_WORKSPACES,
-	useWorkspaces,
-	workspaceRoute,
-	workspacesKey,
-} from "../wm/workspaces";
+import { lastWorkspaceAtom, useWorkspaces, workspaceRoute } from "../wm/workspaces";
 import { settingsShortcut, Switcher, workspaceShortcut } from "./switcher";
-
-// The window has no native title bar on macOS; this bar is its drag region and
-// leaves room for the inset traffic lights.
-const insetTitleBar = window.desktopBridge?.platform === "darwin";
+import { BackButton, HomeButton, insetTitleBar, NewWorkspaceButton, SettingsButton } from "./titlebar";
 
 /**
  * Lives in the pathless `_shell` layout so switching workspaces (a URL change) never remounts
@@ -36,17 +25,6 @@ export function Shell() {
 	const [lastId, setLastId] = useState<string>();
 	if (!inSettings && shown !== undefined && shown.id !== lastId) setLastId(shown.id);
 	const back = workspaces.find((workspace) => workspace.id === lastId) ?? workspaces[0];
-
-	const router = useRouter();
-	const canGoBack = useCanGoBack();
-	const create = useAtomSet(createWorkspace, { mode: "promise" });
-	const addWorkspace = async () => {
-		const workspace = await create({
-			payload: { name: `Workspace ${workspaces.length + 1}`, icon: "app-window" },
-			reactivityKeys: workspacesKey,
-		});
-		void navigate(workspaceRoute(workspace));
-	};
 
 	// Remembered past this route, so the start page opens things where the user last was.
 	const setLastWorkspace = useAtomSet(lastWorkspaceAtom);
@@ -77,41 +55,11 @@ export function Shell() {
 			<header
 				className={`flex h-12 shrink-0 items-center gap-1.5 px-2 select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`}
 			>
-				<button
-					type="button"
-					aria-label="Back"
-					title="Back"
-					disabled={!canGoBack}
-					onClick={() => router.history.back()}
-					className={chromeButton}
-				>
-					<ChevronLeft className="size-4" strokeWidth={1.75} aria-hidden />
-				</button>
-				<Link to="/" aria-label="Home" title="Home: the start page" className={chromeButton}>
-					<House className="size-4" strokeWidth={1.75} aria-hidden />
-				</Link>
+				<BackButton />
+				<HomeButton />
 				<Switcher workspaces={workspaces} active={inSettings ? undefined : shown} />
-				<button
-					type="button"
-					aria-label="New workspace"
-					title={
-						workspaces.length >= MAX_WORKSPACES ? `All ${MAX_WORKSPACES} workspaces are in use` : "New workspace"
-					}
-					disabled={workspaces.length >= MAX_WORKSPACES}
-					onClick={() => void addWorkspace()}
-					className={`${chromeButton} ml-auto`}
-				>
-					<Plus className="size-4" strokeWidth={1.75} aria-hidden />
-				</button>
-				<Link
-					to="/settings/workspaces"
-					aria-label="Settings"
-					title="Settings"
-					aria-current={inSettings ? "page" : undefined}
-					className={`${chromeButton} aria-[current=page]:bg-ink/8 aria-[current=page]:text-ink`}
-				>
-					<Settings className="size-4" strokeWidth={1.75} aria-hidden />
-				</Link>
+				<NewWorkspaceButton />
+				<SettingsButton current={inSettings} />
 			</header>
 			<div className="relative min-h-0 flex-1">
 				{shown !== undefined && (
@@ -129,10 +77,6 @@ export function Shell() {
 		</div>
 	);
 }
-
-/** A square title-bar button; it opts out of the window's drag region so it can be clicked. */
-const chromeButton =
-	"grid size-7 shrink-0 place-items-center rounded-[10px] text-ink-muted transition-colors [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
 
 const isEditing = (target: EventTarget | null) =>
 	target instanceof HTMLElement &&
