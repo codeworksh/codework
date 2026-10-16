@@ -51,13 +51,16 @@ const migrations = {
 		yield* sql`
 			CREATE TABLE event (
 				seq INTEGER PRIMARY KEY AUTOINCREMENT,
+				id TEXT NOT NULL UNIQUE,
 				topic TEXT NOT NULL,
 				source TEXT NOT NULL,
+				cause TEXT,
 				payload TEXT NOT NULL,
 				created INTEGER NOT NULL
 			)
 		`;
 		yield* sql`CREATE INDEX event_topic_seq ON event (topic, seq)`;
+		yield* sql`CREATE INDEX event_cause ON event (cause)`;
 	}),
 };
 

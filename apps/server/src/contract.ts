@@ -134,17 +134,50 @@ export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()("Server
 	message: Schema.String,
 }) {}
 
-/** One committed event. `seq` orders every event across all topics. */
+/**
+ * One published event. `seq` orders stored events across all topics; an ephemeral event is never
+ * stored, so it has none and reaches only subscribers live at the time.
+ */
 export const Event = Schema.Struct({
-	seq: Schema.Int,
+	/** Chosen by the publisher; publishing the same id again returns the stored event. */
+	id: Schema.String,
+	seq: Schema.optionalKey(Schema.Int),
 	topic: Schema.String,
 	/** Who published it, e.g. a widget instance id. */
 	source: Schema.String,
+	/** The id of the event this one answers, for request and reply. */
+	cause: Schema.optionalKey(Schema.String),
 	payload: Schema.Json,
 	/** Epoch milliseconds. */
 	created: Schema.Number,
 });
 export type Event = typeof Event.Type;
+
+const outgoing = {
+	/** Defaults to a fresh id. */
+	id: Schema.optionalKey(Schema.String),
+	topic: Schema.String,
+	source: Schema.String,
+	cause: Schema.optionalKey(Schema.String),
+	payload: Schema.Json,
+};
+
+export const Publish = Schema.Struct({
+	...outgoing,
+	/** Deliver live only, without storing it. */
+	ephemeral: Schema.optionalKey(Schema.Boolean),
+});
+export type Publish = typeof Publish.Type;
+
+/** A request is always stored: its reply is matched to it, and a retry finds the stored reply. */
+export const Request = Schema.Struct(outgoing);
+export type Request = typeof Request.Type;
+
+/** No reply to a request arrived in time. */
+export class EventTimeout extends Schema.TaggedError<EventTimeout>()("Server.EventTimeout", {
+	id: Schema.String,
+	topic: Schema.String,
+}) {}
 
 /** Ends a subscription's replay: everything through `seq` was sent, live events follow. */
 export const Synced = Schema.TaggedStruct("Synced", { seq: Schema.Int });
@@ -196,8 +229,17 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 	}),
 	Rpc.make("event.publish", {
-		payload: { topic: Schema.String, source: Schema.String, payload: Schema.Json },
+		payload: Publish,
 		success: Event,
+	}),
+	/**
+	 * Publishes a request and returns its reply: the first event on the same topic whose `cause` is
+	 * the request's id. A request republished with its id returns the reply already stored.
+	 */
+	Rpc.make("event.request", {
+		payload: Request,
+		success: Event,
+		error: EventTimeout,
 	}),
 	/**
 	 * Events on `topics`: those after `after` from the log, then `Synced`, then live ones. Without

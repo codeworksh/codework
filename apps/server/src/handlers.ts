@@ -89,6 +89,7 @@ export const layer = Contract.Api.toLayer(
 			}),
 
 			"event.publish": (input) => events.publish(input),
+			"event.request": (input) => events.request(input),
 			"event.subscribe": (input) => events.subscribe(input),
 		});
 	}),
