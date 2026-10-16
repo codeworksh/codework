@@ -1,5 +1,5 @@
 import type { Message } from "@codeworksh/aikit";
-import { Effect, type Layer, Schema } from "effect";
+import { Effect, type Layer, Schema, SchemaAST } from "effect";
 import type { TSchema } from "typebox";
 import { ToolExecutionError } from "./tool/error.ts";
 import type { ToolProgress } from "./tool/progress.ts";
@@ -238,8 +238,19 @@ export const provide = <
  * single boundary that crosses into the provider wire; if a provider rejects a
  * construct, fix it here. Draft-07 inlines the root (no top-level `$ref`).
  */
-export const toProviderJsonSchema = (schema: Schema.Top): Record<string, unknown> =>
-	Schema.toStandardJSONSchemaV1(schema)["~standard"].jsonSchema.input({ target: "draft-07" });
+export const toProviderJsonSchema = (schema: Schema.Top): Record<string, unknown> => {
+	// Effect reads `Struct({})` as TS `{}` (any non-null) and emits `{ not: { type: "null" } }`;
+	// providers require an object, so emit one shaped like a non-empty struct's.
+	const encoded = SchemaAST.toEncoded(schema.ast);
+	if (
+		SchemaAST.isObjects(encoded) &&
+		encoded.propertySignatures.length === 0 &&
+		encoded.indexSignatures.length === 0
+	) {
+		return { type: "object", properties: {}, additionalProperties: true };
+	}
+	return Schema.toStandardJSONSchemaV1(schema)["~standard"].jsonSchema.input({ target: "draft-07" });
+};
 
 /**
  * Build the aikit `Message.Tool` wire view from a definition. The derived JSON

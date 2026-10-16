@@ -53,6 +53,11 @@ export interface WidgetDefinition<Props> extends Navigation {
 	readonly minHeight: number;
 	/** "one" allows a single instance (the shell hides duplicate). */
 	readonly cardinality: "one" | "many";
+	/**
+	 * This widget sets its workspace tab (the frame's `setTab`), possibly once it has loaded. Until it
+	 * does, the tab keeps what it showed rather than flashing this frame's default title.
+	 */
+	readonly ownsTab?: boolean;
 	/** Validates an instance's saved settings before they reach the component. */
 	readonly props: Schema.Decoder<Props>;
 	readonly component: ComponentType<WidgetProps<Props>>;
@@ -66,6 +71,7 @@ export interface Widget extends Navigation {
 	readonly minWidth: number;
 	readonly minHeight: number;
 	readonly cardinality: "one" | "many";
+	readonly ownsTab?: boolean;
 	render(instance: {
 		readonly instanceId: string;
 		readonly props: unknown;

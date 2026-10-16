@@ -1,7 +1,20 @@
-import { Cause, Context, DateTime, type Duration, Effect, Layer, LayerMap, Option, Schema, Semaphore } from "effect";
+import {
+	Cause,
+	Context,
+	DateTime,
+	type Duration,
+	Effect,
+	Layer,
+	LayerMap,
+	Option,
+	Schema,
+	Semaphore,
+	Stream,
+} from "effect";
 import { SqlClient } from "effect/sql";
 import { SandboxInstanceRow } from "../db/schema.sql.ts";
 import { Space } from "../space/space.ts";
+import { Telemetry } from "../telemetry/telemetry.ts";
 import { SandboxDriver } from "./driver.ts";
 import {
 	providerError,
@@ -33,7 +46,7 @@ import { SandboxInstance } from "./instance.ts";
 import { SandboxIO } from "./io.ts";
 import { SandboxDriverRegistry } from "./registry.ts";
 import { HostExe } from "./shell/host.ts";
-import { withCwd as shellWithCwd } from "./shell/shell.ts";
+import { type ISandboxExe, withCwd as shellWithCwd } from "./shell/shell.ts";
 import { SandboxStore } from "./store.ts";
 
 export interface CreateInput<CreateConfig, RuntimeConfig extends SandboxDriver.RuntimeConfigBase> {
@@ -126,6 +139,44 @@ const isSandboxProviderError = Schema.is(SandboxProviderError);
 const parseJson = (driver: SandboxDriver.Name, operation: string, value: string) =>
 	decodeUnknownJson(value).pipe(Effect.mapError((cause) => providerError({ driver, operation, cause })));
 
+const provision = <A, E, R>(driver: SandboxDriver.Name, operation: "create" | "wake", self: Effect.Effect<A, E, R>) =>
+	Telemetry.timed(self, (seconds, exit) =>
+		Telemetry.record(Telemetry.sandboxProvisionDuration, seconds, Telemetry.withError({ driver, operation }, exit)),
+	);
+
+const timedShell = (shell: ISandboxExe, driver: SandboxDriver.Name): ISandboxExe => {
+	const time = <A, E, R>(self: Effect.Effect<A, E, R>) =>
+		Telemetry.timed(self, (seconds, exit) =>
+			Telemetry.record(Telemetry.sandboxExecDuration, seconds, Telemetry.withError({ driver }, exit)),
+		);
+	const stream = shell.stream;
+	return {
+		exec: (command, options) => time(shell.exec(command, options)),
+		execArgv: (argv, options) => time(shell.execArgv(argv, options)),
+		...(stream === undefined
+			? {}
+			: {
+					stream: (command, options) =>
+						Stream.unwrap(
+							Effect.clockWith((clock) => {
+								const start = clock.currentTimeMillisUnsafe();
+								return Effect.succeed(
+									stream(command, options).pipe(
+										Stream.onExit((exit) =>
+											Telemetry.record(
+												Telemetry.sandboxExecDuration,
+												(clock.currentTimeMillisUnsafe() - start) / 1000,
+												Telemetry.withError({ driver }, exit),
+											),
+										),
+									),
+								);
+							}),
+						),
+				}),
+	};
+};
+
 export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Options) {
 	const sql = yield* SqlClient.SqlClient;
 	const registry = yield* SandboxDriverRegistry.Registry;
@@ -141,29 +192,40 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 	interface Lease {
 		held: boolean;
 		mounted: boolean;
+		driver: SandboxDriver.Name | undefined;
 	}
 
+	// A sandbox counts as active from its first lease to its last release.
+	const activeChanged = (lease: Lease, delta: 1 | -1) =>
+		lease.driver === undefined
+			? Effect.void
+			: Telemetry.adjust(Telemetry.sandboxActive, delta, { driver: lease.driver });
+
 	const acquireLease = (id: SandboxInstance.ID, lease: Lease) =>
-		gate.withPermits(1)(
-			Effect.sync(() => {
-				const wasIdle = refCount(id) === 0;
-				refs.set(id, refCount(id) + 1);
-				lease.held = true;
-				return wasIdle;
-			}),
-		);
+		gate
+			.withPermits(1)(
+				Effect.sync(() => {
+					const wasIdle = refCount(id) === 0;
+					refs.set(id, refCount(id) + 1);
+					lease.held = true;
+					return wasIdle;
+				}),
+			)
+			.pipe(Effect.tap((wasIdle) => (wasIdle ? activeChanged(lease, 1) : Effect.void)));
 
 	const releaseLease = (id: SandboxInstance.ID, lease: Lease) =>
 		Effect.gen(function* () {
 			if (!lease.held) return;
-			yield* gate.withPermits(1)(
+			const idle = yield* gate.withPermits(1)(
 				Effect.sync(() => {
 					const next = Math.max(0, refCount(id) - 1);
 					if (next === 0) refs.delete(id);
 					else refs.set(id, next);
 					lease.held = false;
+					return next === 0;
 				}),
 			);
+			if (idle) yield* activeChanged(lease, -1);
 			if (!lease.mounted) return;
 			const now = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
 			yield* sql`
@@ -394,7 +456,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		);
 	});
 
-	const create: Interface["create"] = Effect.fn("Sandbox.Controller.create")(function* (input) {
+	const create: Interface["create"] = Effect.fn("Sandbox.Controller.create", { level: "Info" })(function* (input) {
 		const driver = yield* registry.get(input.driver.name);
 		const config = yield* registry.decodeCreateConfig(input.driver.name, input.config);
 		const id = input.instanceId ?? SandboxInstance.ID.create();
@@ -413,9 +475,9 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			metadata: input.metadata,
 		});
 
-		const provisioned = yield* driver
-			.create({ instanceId: id, config })
-			.pipe(Effect.catch((error) => persistProviderFailure(id, "faulted", error)));
+		const provisioned = yield* provision(driver.name, "create", driver.create({ instanceId: id, config })).pipe(
+			Effect.catch((error) => persistProviderFailure(id, "faulted", error)),
+		);
 		const finalize = Effect.gen(function* () {
 			const encoded = yield* registry.encodeRuntimeConfig(driver.name, provisioned.runtimeConfig);
 			const runtimeConfig = yield* encodeUnknownJson(encoded).pipe(
@@ -531,7 +593,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			Effect.gen(function* () {
 				let identity: SandboxIO.Identity;
 				let invalidateBeforeAttach = false;
-				const lease: Lease = reserved ?? { held: false, mounted: false };
+				const lease: Lease = reserved ?? { held: false, mounted: false, driver: undefined };
 
 				if (id === SandboxInstance.ID.local) {
 					identity = {
@@ -560,6 +622,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 					}
 					invalidateBeforeAttach = row.status !== "online";
 					const attached = yield* runtime(row, "mount");
+					lease.driver = attached.driver.name;
 					identity = {
 						id,
 						driver: attached.driver.name,
@@ -591,7 +654,10 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 									return idle;
 								}),
 							);
-					if (reserved === undefined) yield* Effect.addFinalizer(() => releaseLease(id, lease));
+					if (reserved === undefined) {
+						yield* Effect.addFinalizer(() => releaseLease(id, lease));
+						if (wasIdle) yield* activeChanged(lease, 1);
+					}
 
 					if (wasIdle && invalidateBeforeAttach) yield* transports.invalidate(id);
 				}
@@ -642,7 +708,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 				return Layer.mergeAll(
 					Layer.succeed(SandboxIO.Current, identity),
 					Layer.succeed(SandboxIO.FileSystem, SandboxFileSystem.withCwd(fs, identity.cwd)),
-					Layer.succeed(SandboxIO.Shell, shellWithCwd(shell, identity.cwd)),
+					Layer.succeed(SandboxIO.Shell, timedShell(shellWithCwd(shell, identity.cwd), identity.driver)),
 				).pipe(SandboxIO.withMutation);
 			}),
 		);
@@ -688,7 +754,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 		return yield* reload(id);
 	});
 
-	const wake: Interface["wake"] = Effect.fn("Sandbox.Controller.wake")(function* (id) {
+	const wake: Interface["wake"] = Effect.fn("Sandbox.Controller.wake", { level: "Info" })(function* (id) {
 		if (id === SandboxInstance.ID.local) return hostInfo();
 		const row = yield* requireRow(id);
 		if (row.status === "removed") {
@@ -706,15 +772,11 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 			});
 		}
 		if (refCount(id) === 0) yield* transports.invalidate(id);
-		const observed = yield* attached.driver
-			.wake(attached.input)
-			.pipe(
-				Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
-					providerErrorIsNotFound(error)
-						? markUnavailable(id, error)
-						: persistProviderFailure(id, "faulted", error),
-				),
-			);
+		const observed = yield* provision(attached.driver.name, "wake", attached.driver.wake(attached.input)).pipe(
+			Effect.catch((error): Effect.Effect<never, SandboxProviderError | SandboxUnavailError> =>
+				providerErrorIsNotFound(error) ? markUnavailable(id, error) : persistProviderFailure(id, "faulted", error),
+			),
+		);
 		yield* updateObservation({
 			id,
 			status: observed.status,
@@ -872,7 +934,7 @@ export const make = Effect.fn("Sandbox.Controller.make")(function* (options: Opt
 
 	const createAndMount: Interface["createAndMount"] = (input, mountOptions) => {
 		const id = input.instanceId ?? SandboxInstance.ID.create();
-		const lease: Lease = { held: false, mounted: false };
+		const lease: Lease = { held: false, mounted: false, driver: input.driver.name };
 		return Layer.unwrap(
 			Effect.gen(function* () {
 				// Reserve before the provider call. Once create inserts the

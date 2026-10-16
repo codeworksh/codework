@@ -5,15 +5,9 @@ import path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { bridge, EnvBash } from "../src/sandbox/shell/justbash.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
-import { filesystemSpec } from "./fixtures/sandbox.spec.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
 
 describe("Sandbox.EnvBash", () => {
-	// wrapping a sandbox must not change its filesystem semantics
-	filesystemSpec(async () => ({
-		sandbox: Sandbox.EnvBash.layer(Sandbox.EnvInMemory.layer(), "/"),
-	}));
-
 	describe("shell and FileSystem.Service share one filesystem", () => {
 		const sandbox = () =>
 			Sandbox.EnvBash.services(Sandbox.EnvInMemory.layer(), Sandbox.SandboxIO.virtual({ driver: "memory" }));

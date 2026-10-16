@@ -13,6 +13,7 @@ import {
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 import { EncodingError, EventEnvelope } from "./envelope.ts";
+import { Part } from "./part.ts";
 
 /** The HTTP path the RPC endpoint is served on; the version moves with breaking wire changes. */
 export const path = "/rpc/v1";
@@ -38,8 +39,29 @@ export const SessionInfo = Schema.Struct({
 	/** The host directory this session is anchored to. Absent when it has none. */
 	hostDir: optional(Session.AbsolutePath),
 	sandbox: optional(SandboxInfo),
+	/** The project the session's space belongs to. */
+	project: optional(Schema.Struct({ id: Schema.String, name: Schema.String })),
+	/** Last activity, epoch milliseconds. */
+	updatedAt: Schema.Finite,
+	/** The model chosen for this session; absent when settings decide. */
+	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 });
 export type SessionInfo = typeof SessionInfo.Type;
+
+/** One message on a session's active branch, oldest first. */
+export const HistoryEntry = Schema.Struct({
+	/** The entry id: what live events and `session.message` refer to. */
+	id: Schema.String,
+	/** Its place in the session's durable log; live events continue from it. */
+	seq: Schema.Int,
+	role: Schema.Literals(["user", "assistant"]),
+	/** `draft` is a reply still streaming; `aborted` one that was interrupted. */
+	state: Schema.Literals(["committed", "draft", "aborted"]),
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+	parts: Schema.Array(Part),
+});
+export type HistoryEntry = typeof HistoryEntry.Type;
 
 export const RuntimeConfig = Schema.Struct({
 	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
@@ -172,6 +194,15 @@ export const Api = RpcGroup.make(
 	Rpc.make("session.list", {
 		payload: {},
 		success: Schema.Array(SessionInfo),
+	}),
+	/**
+	 * The conversation on a session's active branch: user and assistant messages, oldest first.
+	 * Other branches and the harness's own entries (compactions, summaries) are left out.
+	 */
+	Rpc.make("session.history", {
+		payload: { sessionId: Session.SessionSchema.ID },
+		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
+		error: SessionStore.SessionNotFoundError,
 	}),
 	Rpc.make("session.configure", {
 		payload: { sessionId: Session.SessionSchema.ID, runtime: RuntimeConfig },

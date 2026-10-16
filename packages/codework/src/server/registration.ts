@@ -1,4 +1,5 @@
 import { Effect, FileSystem, Layer, Option, Path, Schedule, Schema } from "effect";
+import { isSea } from "node:sea";
 
 /**
  * How a running server advertises itself so later invocations can find it
@@ -90,8 +91,10 @@ export const register = (options: { readonly home: string; readonly info: Info }
  * A packaged install runs `dist/pack/index.mjs`; under `--conditions=development`
  * the entry is TypeScript, and `process.execArgv` carries the conditions forward
  * so a managed server resolves workspace sources the same way this process did.
+ * The standalone binary is its own entry.
  */
 export const command = (): ReadonlyArray<string> => {
+	if (isSea()) return [process.execPath];
 	const entry = process.argv[1];
 	if (entry === undefined) return [process.execPath];
 	const runtime = import.meta.url.endsWith(".ts") ? process.execArgv : [];

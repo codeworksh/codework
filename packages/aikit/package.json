@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/aikit",
-	"version": "0.10.0",
+	"version": "0.11.0",
 	"description": "TypeScript SDK that provides a unified API for working with multiple LLM providers, automatic model discovery, and more.",
 	"keywords": [
 		"agent",
@@ -83,13 +83,9 @@
 	},
 	"scripts": {
 		"build": "vp pack",
-		"bump": "bumpp",
 		"check": "vp check",
 		"cli": "tsx --conditions=development src/cli.ts",
 		"lint": "vp lint",
-		"release": "node ../../scripts/publish.mjs aikit",
-		"release:dev": "node ../../scripts/publish.mjs aikit --dev",
-		"release:dry": "node ../../scripts/publish.mjs aikit --dry-run",
 		"test": "vp test --exclude \"test/e2e/**\"",
 		"test:e2e": "vp test",
 		"typecheck": "tsc --noEmit"

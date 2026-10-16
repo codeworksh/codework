@@ -1,6 +1,7 @@
-import { app, BrowserWindow, net, protocol } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { HOME_CHANNEL, PICK_FOLDER_CHANNEL } from "./ipc.ts";
 import { startServer } from "./server.ts";
 
 const SCHEME = app.isPackaged ? "codework" : "codework-dev";
@@ -11,6 +12,9 @@ const APP_URL = `${SCHEME}://${HOST}/`;
 // `@codeworksh/web` build is served from disk.
 const DEV_SERVER_URL = process.env.CODEWORK_WEB_URL;
 const CLIENT_ASSETS_DIR = process.env.CODEWORK_WEB_DIR ?? path.resolve(app.getAppPath(), "../web/dist");
+// The 3D brand mark on Apple's icon grid. A packaged build will carry it as an .icns; until then
+// it is set at runtime, or the Dock shows Electron's own icon.
+const ICON = path.join(app.getAppPath(), "resources/icon.png");
 
 const MIME_TYPES: Record<string, string> = {
 	".html": "text/html",
@@ -106,12 +110,17 @@ function createMainWindow(): BrowserWindow {
 	const window = new BrowserWindow({
 		width: 1440,
 		height: 900,
+		// Wider than the web app's 768px narrow breakpoint, so the sidebar always sits beside the content.
+		minWidth: 840,
+		minHeight: 620,
 		// The web shell draws its own title bar (workspace switcher) beside the
-		// inset traffic lights, which sit centered in its 44px height.
+		// inset traffic lights, which sit centered in its 48px height.
 		...(process.platform === "darwin" && {
 			titleBarStyle: "hiddenInset",
-			trafficLightPosition: { x: 14, y: 16 },
+			trafficLightPosition: { x: 14, y: 18 },
 		}),
+		// Windows and Linux take the window's icon; macOS ignores it for the Dock's.
+		icon: ICON,
 		webPreferences: {
 			preload: path.join(app.getAppPath(), "out/preload.cjs"),
 			sandbox: true,
@@ -122,7 +131,21 @@ function createMainWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(async () => {
+	app.dock?.setIcon(ICON);
 	protocol.handle(SCHEME, handleRequest);
+	ipcMain.on(HOME_CHANNEL, (event) => {
+		event.returnValue = app.getPath("home");
+	});
+	ipcMain.handle(PICK_FOLDER_CHANNEL, async (event, from: string) => {
+		const options: Electron.OpenDialogOptions = {
+			defaultPath: from,
+			properties: ["openDirectory", "createDirectory"],
+		};
+		// Attached to the window, so on macOS it drops down as a sheet.
+		const window = BrowserWindow.fromWebContents(event.sender);
+		const result = await (window === null ? dialog.showOpenDialog(options) : dialog.showOpenDialog(window, options));
+		return result.canceled ? null : (result.filePaths[0] ?? null);
+	});
 	await startServer();
 	createMainWindow();
 

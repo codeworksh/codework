@@ -1,0 +1,37 @@
+<skills>
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>test-runner</name>
+    <description>Run package tests with vp test.</description>
+    <location><sandbox>/repo/pkg/.codework/skills/test-runner/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>deploy</name>
+    <description>Main checkout deploy.</description>
+    <location><sandbox>/repo/.agents/skills/deploy/SKILL.md</location>
+  </skill>
+</available_skills>
+</skills>
+
+<skills>
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>test-runner</name>
+    <description>Run package tests with vp test.</description>
+    <location><sandbox>/repo/.claude/worktrees/x/pkg/.codework/skills/test-runner/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>deploy</name>
+    <description>Worktree deploy.</description>
+    <location><sandbox>/repo/.claude/worktrees/x/.agents/skills/deploy/SKILL.md</location>
+  </skill>
+</available_skills>
+</skills>

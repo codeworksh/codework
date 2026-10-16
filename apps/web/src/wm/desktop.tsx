@@ -1,5 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
-import type { LucideIcon } from "lucide-react";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { useAtom, useAtomSet } from "@effect/atom-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -20,11 +19,13 @@ import { useArrangedWidgets, useElementSize } from "webwm/react";
 import type { Frame as FrameApi, Shell } from "../sdk";
 import { FrameContext, ShellContext } from "../sdk/shell";
 import { builtins, registry } from "../widgets";
+import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
 import { Frame } from "./frame";
 import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
 import {
+	deleteWorkspace,
 	updateWorkspace,
 	useWorkspaces,
 	type Workspace,
@@ -35,18 +36,14 @@ import {
 
 const nmaster = 1;
 
-/** What a widget set on its frame at runtime; it outranks the instance and definition. */
-interface Chrome {
-	readonly title?: string;
-	readonly icon?: LucideIcon;
-}
+/** The opener of what the shell itself opens (an `open` request in the URL), not a widget. */
+const SHELL = "shell";
 
 /** Frame title, icon, and body for one instance, resolved through the widget registry. */
 function describe(instance: Instance, chrome: Chrome | undefined) {
 	const definition = registry.get(instance.kind);
 	return {
-		title: chrome?.title ?? instance.title ?? definition?.title ?? instance.id,
-		icon: chrome?.icon ?? definition?.icon,
+		...chromeOf(instance, chrome),
 		body:
 			definition === undefined ? (
 				<p className="p-3 text-ink-muted">Missing widget: {instance.kind}</p>
@@ -75,6 +72,7 @@ function Host({ instanceId, shell, decorate, children }: HostProps) {
 			instanceId,
 			setTitle: (title) => decorate(instanceId, { title }),
 			setIcon: (icon) => decorate(instanceId, { icon }),
+			setTab: (tab) => decorate(instanceId, { tab }),
 		}),
 		[instanceId, decorate],
 	);
@@ -107,9 +105,12 @@ export function Desktop({ workspace }: DesktopProps) {
 	const workspaces = useWorkspaces();
 	const navigate = useNavigate();
 	const saveWorkspace = useAtomSet(updateWorkspace);
+	const removeWorkspace = useAtomSet(deleteWorkspace, { mode: "promise" });
+	const { open: requested, mode: requestedMode } = useSearch({ strict: false });
+	const { workspaceId: routed } = useParams({ strict: false });
 	// Local edits ahead of the database, so dragging the divider never waits on a round trip.
 	const [views, setViews] = useState<ReadonlyMap<string, View>>(() => new Map());
-	const [chrome, setChrome] = useState<ReadonlyMap<string, Chrome>>(() => new Map());
+	const [chrome, setChrome] = useAtom(chromeAtom);
 	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
 	const [drag, setDrag] = useState<Drag | null>(null);
 	const [resizing, setResizing] = useState(false);
@@ -143,6 +144,22 @@ export function Desktop({ workspace }: DesktopProps) {
 	const setMfact = (next: number) => setView({ mfact: next });
 	// Focus is the most recently focused widget that is visible on this workspace.
 	const focusedId = focus(widgets, order, activeTags).widget?.id;
+	const setFocused = useAtomSet(focusedAtom);
+	useEffect(() => {
+		if (focusedId === undefined) return;
+		setFocused((current) =>
+			current.get(workspace.id) === focusedId ? current : new Map(current).set(workspace.id, focusedId),
+		);
+	}, [workspace.id, focusedId, setFocused]);
+	// The focused frame takes the tab once it has one to show, which may be after it loads.
+	const focusedTab = focusedId === undefined ? undefined : chrome.get(focusedId)?.tab;
+	const setTabOwner = useAtomSet(tabOwnerAtom);
+	useEffect(() => {
+		if (focusedId === undefined || focusedTab === undefined) return;
+		setTabOwner((current) =>
+			current.get(workspace.id) === focusedId ? current : new Map(current).set(workspace.id, focusedId),
+		);
+	}, [workspace.id, focusedId, focusedTab, setTabOwner]);
 	const bounds: Bounds = { x: 0, y: 0, w: size.width, h: size.height };
 	const tiled = order.tileOrder.flatMap((id) =>
 		widgets.filter((widget) => widget.id === id && isVisible(widget, activeTags)),
@@ -190,7 +207,8 @@ export function Desktop({ workspace }: DesktopProps) {
 			setChrome((current) => {
 				const previous = current.get(instanceId) ?? {};
 				const next = { ...previous, ...patch };
-				if (next.title === previous.title && next.icon === previous.icon) return current;
+				const sameTab = next.tab?.title === previous.tab?.title && next.tab?.subtitle === previous.tab?.subtitle;
+				if (next.title === previous.title && next.icon === previous.icon && sameTab) return current;
 				return new Map(current).set(instanceId, next);
 			}),
 		[],
@@ -206,10 +224,23 @@ export function Desktop({ workspace }: DesktopProps) {
 		});
 
 	const close = (instanceId: string) => {
+		const closing = byId.get(instanceId);
 		setDesk((current) =>
 			current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current,
 		);
 		undecorate(instanceId);
+		// An auto workspace exists to show what was opened into it, so it goes with its last frame.
+		const emptied =
+			closing !== undefined &&
+			(closing.tags & activeTags) !== 0 &&
+			!instances.some((instance) => instance.id !== instanceId && (instance.tags & activeTags) !== 0);
+		// Leaving only once the delete lands: leaving first unmounts this and drops the list's refresh.
+		if (workspace.auto && emptied) {
+			void removeWorkspace({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }).then(
+				() => navigate({ to: "/" }),
+				() => undefined,
+			);
+		}
 	};
 
 	/** The shell API as seen by one widget: the default target, and the opener of what it opens. */
@@ -259,6 +290,21 @@ export function Desktop({ workspace }: DesktopProps) {
 		close(instanceId = caller) {
 			close(instanceId);
 		},
+	});
+
+	// Carries out an `open` request from the URL once, then drops it so Back and reloads don't repeat it.
+	// The ref outlives StrictMode's second run; it resets once the URL no longer asks.
+	const handled = useRef<string | undefined>(undefined);
+	useEffect(() => {
+		if (requested === undefined) {
+			handled.current = undefined;
+			return;
+		}
+		// A workspace just created may not be listed yet, and the shell shows another meanwhile.
+		if (handled.current === requested || routed !== workspace.id) return;
+		handled.current = requested;
+		shellFor(SHELL).open(requested, { placement: "end", mode: requestedMode ?? "replace" });
+		void navigate({ ...workspaceRoute(workspace), search: {}, replace: true });
 	});
 
 	const toggleMax = (widgetId: WidgetId) => {

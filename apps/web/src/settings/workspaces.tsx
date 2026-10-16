@@ -21,10 +21,11 @@ import { iconOf, icons } from "../shell/icons";
 import { shortcutLabel } from "../shell/switcher";
 import { deskAtom, only, untag } from "../wm/instances";
 import {
-	createWorkspace,
 	deleteWorkspace,
 	reorderWorkspaces,
+	MAX_WORKSPACES,
 	updateWorkspace,
+	useCreateWorkspace,
 	useWorkspaces,
 	type Workspace,
 	workspacesKey,
@@ -32,16 +33,13 @@ import {
 } from "../wm/workspaces";
 import { Group, Keys, Page, Row, Section } from "./blocks";
 
-// webwm tag bits available, and so the Cmd+1–9 keys; the server enforces it too.
-const MAX = 9;
-
 const sameOrder = (ids: readonly string[], workspaces: readonly Workspace[]) =>
 	ids.length === workspaces.length && ids.every((id, index) => workspaces[index]?.id === id);
 
 /** List, create, rename, re-icon, reorder (drag the grip), and delete workspaces. */
 export function WorkspacesSettings() {
 	const workspaces = useWorkspaces();
-	const create = useAtomSet(createWorkspace, { mode: "promise" });
+	const create = useCreateWorkspace();
 	const reorder = useAtomSet(reorderWorkspaces, { mode: "promise" });
 	const [error, setError] = useState<string | null>(null);
 	// The new workspace, whose name field takes focus.
@@ -61,10 +59,7 @@ export function WorkspacesSettings() {
 
 	const addWorkspace = () =>
 		run(async () => {
-			const workspace = await create({
-				payload: { name: `Workspace ${workspaces.length + 1}`, icon: "app-window" },
-				reactivityKeys: workspacesKey,
-			});
+			const workspace = await create({ name: `Workspace ${workspaces.length + 1}`, icon: "app-window" });
 			setCreated(workspace.id);
 		});
 
@@ -120,13 +115,15 @@ export function WorkspacesSettings() {
 							<IconPicker workspace={workspace} onError={setError} />
 							<NameField workspace={workspace} autoFocus={workspace.id === created} onError={setError} />
 							<Keys>{shortcutLabel(index + 1)}</Keys>
-							<DeleteButton workspace={workspace} disabled={workspaces.length === 1} onError={setError} />
+							<DeleteButton workspace={workspace} onError={setError} />
 						</div>
 					))}
 					<button
 						type="button"
-						disabled={workspaces.length >= MAX}
-						title={workspaces.length >= MAX ? `All ${MAX} workspaces are in use` : undefined}
+						disabled={workspaces.length >= MAX_WORKSPACES}
+						title={
+							workspaces.length >= MAX_WORKSPACES ? `All ${MAX_WORKSPACES} workspaces are in use` : undefined
+						}
 						className="flex items-center gap-2 rounded-b-xl px-5 py-4 text-ink-muted transition-colors hover:bg-ink/4 hover:text-ink disabled:pointer-events-none disabled:opacity-50"
 						onClick={addWorkspace}
 					>
@@ -140,7 +137,7 @@ export function WorkspacesSettings() {
 				<Group>
 					<Row title="Switch workspace" description="Jump to a workspace by its place in the list">
 						<Keys>
-							{shortcutLabel(1)}–{MAX}
+							{shortcutLabel(1)}–{MAX_WORKSPACES}
 						</Keys>
 					</Row>
 					<Row title="Open settings">
@@ -230,7 +227,7 @@ function IconPicker({ workspace, onError }: RowProps) {
 }
 
 /** Deletes after a confirm that says which widgets close with it. */
-function DeleteButton({ workspace, disabled, onError }: RowProps & { readonly disabled: boolean }) {
+function DeleteButton({ workspace, onError }: RowProps) {
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
 	const [desk, setDesk] = useAtom(deskAtom);
 	const tag = workspaceTag(workspace);
@@ -242,9 +239,8 @@ function DeleteButton({ workspace, disabled, onError }: RowProps & { readonly di
 					variant="ghost"
 					size="icon"
 					className="size-8 text-ink-muted hover:text-destructive"
-					disabled={disabled}
 					aria-label={`Delete ${workspace.name}`}
-					title={disabled ? "The last workspace can't be deleted" : `Delete ${workspace.name}`}
+					title={`Delete ${workspace.name}`}
 				>
 					<Trash2 />
 				</Button>

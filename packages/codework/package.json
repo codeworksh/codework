@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/cli",
-	"version": "0.1.0",
+	"version": "0.3.0",
 	"description": "CLI for running CodeWork coding agent harness.",
 	"keywords": [
 		"agent",
@@ -37,16 +37,13 @@
 	},
 	"scripts": {
 		"build": "vp pack",
-		"bump": "bumpp",
+		"bundle": "node --conditions=development scripts/bundle.mjs",
+		"sea": "node scripts/sea.mjs",
 		"check": "vp check",
 		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
 		"lint": "vp lint",
-		"release": "node ../../scripts/publish.mjs cli",
-		"release:dev": "node ../../scripts/publish.mjs cli --dev",
-		"release:dry": "node ../../scripts/publish.mjs cli --dry-run",
 		"test": "vp test",
-		"start": "node --conditions=development src/index.ts",
-		"typecheck": "tsc --noEmit"
+		"start": "node --conditions=development src/index.ts"
 	},
 	"dependencies": {
 		"@agentclientprotocol/sdk": "1.5.1",
@@ -56,11 +53,13 @@
 		"@effect/platform-node": "4.0.1",
 		"effect": "4.0.1",
 		"jsonc-parser": "3.3.1",
+		"uuidv7": "^1.2.1",
 		"zod": "4.6.5"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"bumpp": "^12.3.0"
+		"bumpp": "^12.3.0",
+		"node-gyp": "^13.0.2"
 	},
 	"optionalDependencies": {
 		"@daytona/sdk": "^0.211.2",

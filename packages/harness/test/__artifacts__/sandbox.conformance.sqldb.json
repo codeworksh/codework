@@ -1,0 +1,154 @@
+{
+	"driver": "sqldb",
+	"declared": {
+		"combinesOutput": false,
+		"cancels": true,
+		"inheritsHostEnv": false
+	},
+	"cases": {
+		"write": {
+			"utf8": "héllo\nwörld\n🚀",
+			"overwritten": "second",
+			"nested": "data",
+			"parent": true
+		},
+		"read-errors": {
+			"missing": "not-found",
+			"directory": "SandboxFileSystemError"
+		},
+		"bytes": {
+			"buffer": true,
+			"head": [
+				0,
+				1,
+				2,
+				3
+			],
+			"middle": [
+				254,
+				255,
+				0,
+				1
+			],
+			"end": [
+				42,
+				43
+			],
+			"past": 0,
+			"missing": "not-found"
+		},
+		"scan": {
+			"mismatches": [],
+			"missing": "not-found"
+		},
+		"stat": {
+			"file": {
+				"isFile": true,
+				"isDirectory": false,
+				"size": 4
+			},
+			"dir": {
+				"isFile": false,
+				"isDirectory": true
+			},
+			"linked": 0,
+			"link": {
+				"isFile": true,
+				"isSymbolicLink": false
+			},
+			"lstat": {
+				"file": false,
+				"link": true
+			},
+			"missing": "not-found"
+		},
+		"dirs": {
+			"entries": [
+				".hidden",
+				"a.txt",
+				"sub"
+			],
+			"readdirMissing": "not-found",
+			"exists": {
+				"root": true,
+				"file": true,
+				"dir": true,
+				"missing": false,
+				"missingNested": false
+			},
+			"mkdirWithoutParent": "SandboxFileSystemError"
+		},
+		"rm": {
+			"file": false,
+			"nonEmpty": "SandboxFileSystemError",
+			"tree": false,
+			"missing": "not-found",
+			"forced": "ok"
+		},
+		"paths": {
+			"cwd": "/",
+			"absolute": "resolved",
+			"normalised": "resolved",
+			"pastRoot": "resolved",
+			"pastRootRelative": "resolved"
+		},
+		"shared": {
+			"fromFs": "filesystem",
+			"fromShell": "shell",
+			"overwritten": "overwritten"
+		},
+		"exit": {
+			"ok": {
+				"exitCode": 0,
+				"stdout": "ok",
+				"stderr": ""
+			},
+			"failed": {
+				"exitCode": 7,
+				"stdout": "out",
+				"stderr": "err"
+			},
+			"literal": "two words;$(echo pwned)"
+		},
+		"env": {
+			"scoped": "scoped",
+			"after": "",
+			"host": ""
+		},
+		"cwd": {
+			"pwd": "/",
+			"argvPwd": "/",
+			"override": "/<scratch>",
+			"argvOverride": "/<scratch>",
+			"read": "cwd content",
+			"after": "/",
+			"root": "/<scratch>"
+		},
+		"vocabulary": {
+			"compound": "step1\nstep2\n",
+			"pipe": "3",
+			"redirect": "redirected",
+			"find": "3",
+			"uname": "as declared"
+		},
+		"output": {
+			"exitCode": 0,
+			"lines": 20000,
+			"first": "1",
+			"last": "20000"
+		},
+		"timeout": {
+			"error": {
+				"_tag": "ToolShellTimeout",
+				"millis": 200
+			},
+			"prompt": true
+		},
+		"pre-interrupted": {
+			"started": false
+		},
+		"interrupt": {
+			"stopped": true
+		}
+	}
+}

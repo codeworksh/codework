@@ -1,0 +1,207 @@
+name: Publish
+
+# One workflow publishes every channel, since npm trusted publishing names a single workflow file.
+# - canary / dev: every push to that branch
+# - latest: run by hand on `main`; publishes each package whose version is not on npm yet
+# dev and latest also build the standalone binary and attach it to a GitHub Release: `devel`, one
+# prerelease replaced on every dev push, or `cli-v<version>`, marked latest. canary stays npm-only.
+on:
+   push:
+      branches: [canary, dev]
+      paths-ignore:
+         - sites/**
+         - CHANGELOG.md
+         - README.md
+   workflow_dispatch:
+
+permissions:
+   contents: read
+   id-token: write
+
+concurrency:
+   group: publish-${{ github.ref_name }}
+   cancel-in-progress: false
+
+env:
+   CHANNEL: ${{ github.event_name == 'workflow_dispatch' && 'latest' || github.ref_name }}
+
+jobs:
+   guard:
+      runs-on: ubuntu-latest
+      # The run's release id, computed once so every job publishes under the same version.
+      outputs:
+         id: ${{ steps.release.outputs.id }}
+      steps:
+         - if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'
+           run: echo "::error::latest is published from main only" && exit 1
+         - uses: actions/checkout@v6
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              run-install: false
+              cache: false
+         - id: release
+           run: echo "id=$(node scripts/version.mjs "$CHANNEL")" >> "$GITHUB_OUTPUT"
+
+   tui:
+      needs: guard
+      name: tui (${{ matrix.package }})
+      runs-on: ${{ matrix.runner }}
+      strategy:
+         fail-fast: true
+         matrix:
+            include:
+               - package: tui-darwin-arm64
+                 runner: macos-14
+                 target: aarch64-apple-darwin
+               # Linux binaries link musl statically, so one build runs on any distro.
+               - package: tui-linux-arm64
+                 runner: ubuntu-24.04-arm
+                 target: aarch64-unknown-linux-musl
+               - package: tui-linux-x64
+                 runner: ubuntu-24.04
+                 target: x86_64-unknown-linux-musl
+      defaults:
+         run:
+            working-directory: packages/tui
+      steps:
+         - uses: actions/checkout@v6
+         - if: runner.os == 'Linux'
+           run: sudo apt-get update && sudo apt-get install -y musl-tools
+         - uses: dtolnay/rust-toolchain@stable
+           with:
+              targets: ${{ matrix.target }}
+         - uses: Swatinem/rust-cache@v2
+           with:
+              workspaces: packages/tui
+              key: ${{ matrix.target }}
+         - run: cargo build --release --locked --target ${{ matrix.target }}
+         - if: runner.os == 'Linux'
+           name: Require a static binary
+           run: file target/${{ matrix.target }}/release/codework-tui | grep -E "static(-pie)? linked|statically linked"
+         # One artifact per platform package, named after it (`tui-<os>-<arch>`).
+         - uses: actions/upload-artifact@v7
+           with:
+              name: ${{ matrix.package }}
+              path: packages/tui/target/${{ matrix.target }}/release/codework-tui
+              if-no-files-found: error
+              retention-days: 1
+
+   publish:
+      needs: [guard, tui]
+      runs-on: ubuntu-latest
+      env:
+         CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
+      steps:
+         - uses: actions/checkout@v6
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              registry-url: https://registry.npmjs.org
+              run-install: false
+              cache: false
+         - run: vp install --frozen-lockfile --filter '!@codeworksh/www'
+         # Canary is push-and-build for quick testing; dev and latest are checked first.
+         - if: env.CHANNEL != 'canary'
+           run: vp run verify
+         # One directory per platform package; each package's build stages its binary from here.
+         - uses: actions/download-artifact@v8
+           with:
+              pattern: tui-*
+              path: packages/tui/dist/bin
+         - run: vp run release "$CHANNEL"
+
+   binary:
+      needs: [guard, tui]
+      if: github.ref_name != 'canary'
+      name: binary (${{ matrix.binary }})
+      runs-on: ${{ matrix.runner }}
+      strategy:
+         fail-fast: true
+         matrix:
+            # Each on its own platform: --build-sea runs that platform's Node, and macOS signs.
+            include:
+               - binary: cli-darwin-arm64
+                 tui: tui-darwin-arm64
+                 runner: macos-14
+               - binary: cli-linux-arm64
+                 tui: tui-linux-arm64
+                 runner: ubuntu-24.04-arm
+               - binary: cli-linux-x64
+                 tui: tui-linux-x64
+                 runner: ubuntu-24.04
+      env:
+         CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
+      steps:
+         - uses: actions/checkout@v6
+         # node-liblzma builds against the system liblzma at install. The bundle rebuilds it with xz
+         # linked statically, which needs cmake; the runners ship it.
+         - if: runner.os == 'Linux'
+           run: sudo apt-get update && sudo apt-get install -y liblzma-dev
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              run-install: false
+              cache: false
+         - run: vp install --frozen-lockfile --filter '!@codeworksh/www'
+         - uses: actions/download-artifact@v8
+           with:
+              name: ${{ matrix.tui }}
+              path: tui
+         - run: |
+              chmod +x tui/codework-tui
+              echo "CODEWORK_TUI_BIN=$GITHUB_WORKSPACE/tui/codework-tui" >> "$GITHUB_ENV"
+              echo "CODEWORK_VERSION=$(node scripts/version.mjs "$CHANNEL" packages/codework)" >> "$GITHUB_ENV"
+         # The static xz build downloads xz through GitHub's API, which limits anonymous requests.
+         - working-directory: packages/codework
+           env:
+              GITHUB_TOKEN: ${{ github.token }}
+           run: vp run bundle && vp run sea
+         # Without API keys only the offline case runs: the binary with no Node on PATH unpacks its
+         # assets and runs a plugin through its own effect.
+         - working-directory: packages/codework
+           run: vp test test/sea.test.ts
+         - run: tar -czf ${{ matrix.binary }}.tar.gz -C packages/codework/dist/sea codework
+         - uses: actions/upload-artifact@v7
+           with:
+              name: ${{ matrix.binary }}
+              path: ${{ matrix.binary }}.tar.gz
+              if-no-files-found: error
+              retention-days: 1
+
+   # After npm, so a release never names a version npm does not have.
+   release:
+      needs: [guard, publish, binary]
+      if: github.ref_name != 'canary'
+      runs-on: ubuntu-latest
+      permissions:
+         contents: write
+      env:
+         CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
+         GH_TOKEN: ${{ github.token }}
+      steps:
+         - uses: actions/checkout@v6
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              run-install: false
+              cache: false
+         - uses: actions/download-artifact@v8
+           with:
+              pattern: cli-*
+              path: release
+              merge-multiple: true
+         # codework.sh/install verifies each download against SHA256SUMS.
+         - run: |
+              (cd release && sha256sum *.tar.gz > SHA256SUMS)
+              version="$(node scripts/version.mjs "$CHANNEL" packages/codework)"
+              if [ "$CHANNEL" = dev ]; then
+                 gh release delete devel --cleanup-tag --yes || true
+                 gh release create devel release/* --prerelease --target "$GITHUB_SHA" \
+                    --title "CLI $version" --notes "Development build $version, from $GITHUB_SHA."
+              elif gh release view "cli-v$version" > /dev/null 2>&1; then
+                 echo "cli-v$version is already released"
+              else
+                 gh release create "cli-v$version" release/* --latest --target "$GITHUB_SHA" \
+                    --title "CLI $version" --generate-notes
+              fi

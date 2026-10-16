@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/harness",
-	"version": "0.1.0",
+	"version": "0.3.0",
 	"description": "AI agent harness — agent loop, tools, plugins, sandbox, and more.",
 	"keywords": [
 		"agent",
@@ -68,18 +68,13 @@
 	},
 	"scripts": {
 		"build": "vp pack",
-		"bump": "bumpp",
 		"check": "vp check",
 		"check:effect": "effect-tsgo diagnostics --project tsconfig.json --format text",
 		"lint": "vp lint",
-		"release": "node ../../scripts/publish.mjs harness",
-		"release:dev": "node ../../scripts/publish.mjs harness --dev",
-		"release:dry": "node ../../scripts/publish.mjs harness --dry-run",
 		"test": "vp test",
 		"test:sandbox:package": "node test/scripts/codework-sandbox-vercel-smoke.mjs",
 		"test:sandbox:package:e2e": "node test/scripts/codework-sandbox-vercel-smoke.mjs --e2e",
-		"test:sandbox:e2e": "CODEWORK_SANDBOX_E2E_REQUIRED=1 vp test --no-file-parallelism test/sandbox.vercel.e2e.test.ts test/sandbox.daytona.e2e.test.ts test/sandbox.remote.driver.e2e.test.ts test/tools.registry.remote.e2e.test.ts test/session.relink.e2e.test.ts test/plugin.instruction.e2e.test.ts",
-		"typecheck": "tsc --noEmit"
+		"test:sandbox:e2e": "CODEWORK_SANDBOX_E2E_REQUIRED=1 vp test --no-file-parallelism test/sandbox.vercel.e2e.test.ts test/sandbox.daytona.e2e.test.ts test/sandbox.remote.driver.e2e.test.ts test/tools.registry.remote.e2e.test.ts test/session.relink.e2e.test.ts test/plugin.instruction.e2e.test.ts test/plugin.skill.e2e.test.ts"
 	},
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:^",
@@ -91,11 +86,13 @@
 		"@platformatic/vfs": "^0.4.0",
 		"@silvia-odwyer/photon-node": "0.3.4",
 		"diff": "9.0.0",
+		"ignore": "7.0.8",
 		"jsonc-parser": "3.3.1",
 		"just-bash": "^3.4.2",
 		"npm-package-arg": "^14.0.0",
 		"pacote": "^22.0.0",
-		"uuidv7": "^1.2.1"
+		"uuidv7": "^1.2.1",
+		"yaml": "2.9.1"
 	},
 	"devDependencies": {
 		"@daytona/sdk": "^0.211.2",

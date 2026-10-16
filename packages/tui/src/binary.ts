@@ -18,6 +18,8 @@ export function platform(): Platform | undefined {
 	const arch = process.arch;
 	if (os !== "darwin" && os !== "linux") return undefined;
 	if (arch !== "arm64" && arch !== "x64") return undefined;
+	// Intel Macs are no longer supported; `@codeworksh/tui-darwin-x64` is deprecated.
+	if (os === "darwin" && arch === "x64") return undefined;
 	return { os, arch };
 }
 

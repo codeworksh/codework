@@ -4,30 +4,134 @@ This file is the canonical source for unreleased changes and published release n
 
 ## Format
 
-- Add in-progress work under `## [Unreleased]`.
-- Move shipped changes into a versioned release section when publishing.
-- Prefer these labels when writing release notes: `Added`, `Changed`, `Fixed`, `Removed`, `Internal`, `Breaking Changes`, `Reverted`.
-- Keep entries user-facing where possible. Use `Internal` for refactors, tooling, and package housekeeping.
+- Add in-progress work under `## [Unreleased]
 
 ## [Unreleased]
 
 ### Added
 
+- Added Agent Skills (`codework.prompt.skill`). A skill is a directory with a `SKILL.md` whose frontmatter has a `name` and a `description`; `.codework/skills` may also hold standalone `.md` skills. Skills are found in the session's sandbox, local or remote, and never on the host or in `<home>`: `.codework/skills` in the working directory, then `.agents/skills` in the working directory and each parent up to the git root (or up to the sandbox root outside a repository). `.gitignore`, `.ignore` and `.fdignore` are honoured. The system prompt lists only each skill's name, description and location under `<skills>`; the model reads the full file when a task matches. A skill with `disable-model-invocation: true` is not listed. Invalid fields, unreadable files and name collisions log a warning instead of failing; the first skill found keeps the name. The hint names the `read` tool, or `bash` when `read` is off, and names no tool when the reader is hidden from the prompt. Turn it off with `{ "plugin": "codework.prompt.skill", "enabled": false }` in `plugins`.
+
+## [@codeworksh/cli@0.3.0] - 2026-10-13
+
+### Added
+
+- Added a standalone `codework` binary for macOS (Apple silicon) and Linux (arm64, x64; glibc) that needs no Node.js. Install it with `curl -fsSL https://codework.sh/install | sh`, with `--dev` for the newest development build or `--version <version>` for a given release. The script checks the download against the release's `SHA256SUMS`, installs to `~/.codework/bin` and adds it to `PATH`. On first run the binary unpacks its assets to a per-user cache in the temp directory. Plugins installed from npm, git or a path run in it as they do under Node, and the virtual shell's `sqlite3` and its zstd and xz compression work. just-bash's `python` and `js-exec`, which CodeWork does not enable, are not included. Each GitHub Release carries `cli-<os>-<arch>.tar.gz` and `SHA256SUMS`: `cli-v<version>` for a release, and `devel` for the newest dev build.
+- Added OpenTelemetry export. Set `OTEL_EXPORTER_OTLP_ENDPOINT` and every command sends its traces and metrics over OTLP/HTTP, as protobuf by default or JSON with `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`. The standard `OTEL_*` variables configure it (headers, per-signal endpoints, `OTEL_SDK_DISABLED`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`); there is no settings key. Without an endpoint nothing is exported, and a bad configuration never stops a command. Only the high-level spans are exported (command, agent loop, model and tool calls, sandbox create and wake); set `CODEWORK_TRACE_LEVEL=debug` to export every span, including database queries.
+
+### Fixed
+
+- Fixed `codework run` exiting 1 with `statement has been finalized` after printing the response when it created its own sandbox (`--sandbox-driver memory`, `daytona` or `vercel`). The sandbox was stopped after the database had closed, so the stop failed and a Daytona or Vercel sandbox was left running. It is now stopped before the database closes, and the run exits 0.
+- `codework run` now writes logs to stderr, so stdout carries only the response.
+
+### Internal
+
+- The `codework tui` E2E artifact now records the CLI version as `<version>`, so it no longer goes stale on every version bump.
+- Tests load provider and sandbox credentials from the root `.env.local` instead of one file per package.
+- Added a live E2E test that runs `codework run` on a memory, Daytona and Vercel sandbox and checks the sandbox is stopped on exit.
+- Added an E2E test that runs the standalone binary with no Node on `PATH`: it unpacks its assets, runs a plugin through its own `effect`, runs `sqlite3`, zstd and xz in the virtual shell against live models, and, with `CODEWORK_PLUGIN_LIVE=1`, installs and runs plugins from npm and git.
+
+## [@codeworksh/tui@0.0.3] - 2026-10-13
+
+### Removed
+
+- Removed Intel Mac support. No `darwin-x64` binary is built, `@codeworksh/tui-darwin-x64` is deprecated on npm, and on an Intel Mac `codework tui` reports that no prebuilt TUI is published for the platform.
+
+## [@codeworksh/harness@0.3.0] - 2026-10-13
+
+### Added
+
+- Spans for model requests, tool calls and agent runs carry the OpenTelemetry GenAI attributes (provider, model, session, response id, finish reason, token counts, time to first token), and a failed model request ends its span with an error. Metrics: `codework.llm.duration`, `codework.llm.ttft`, `codework.llm.tokens` (by `type`: input, output, cache_read, cache_write, reasoning), `codework.llm.cost`, `codework.agent.duration`, `codework.tool.duration` (by `tool`), `codework.sandbox.provision.duration`, `codework.sandbox.exec.duration` and `codework.sandbox.active` (by `driver`), plus Effect's fiber runtime metrics (`child_fibers_*`). Prompts, file contents and model output are never exported.
+- A host bundled into one file, such as the standalone binary, shares its own `effect` and `@codeworksh/plugin` with plugins through `Plugin.share`. A plugin can import any of their public modules and gets the host's instances, each loaded on first import. Importing an internal path such as `effect/internal/...` fails with `is not shared with plugins`.
+
+### Fixed
+
+- Fixed Daytona sandboxes logging a warning, with the full HTTP error, for every instruction file (`AGENTS.md`, `CLAUDE.md`, ...) a directory does not have. A missing path on Daytona now reads as not found, as on the other sandboxes, which also gives the `read` tool its usual not-found error there.
+
+### Internal
+
+- Instruction-file discovery probes candidates with `exists` and only stats the files that exist, so a missing `AGENTS.md` or `CLAUDE.md` no longer records a failed span in debug traces.
+- The live runner-cycle test now interrupts a reply long enough that it cannot finish first, so the interrupt no longer races the model.
+
+## [@codeworksh/plugin@0.2.1] - 2026-10-13
+
+### Fixed
+
+- Fixed tools whose parameters are `Schema.Struct({})` being rejected by OpenAI and Anthropic. Their JSON Schema is now `{ "type": "object", "properties": {} }` instead of `{ "not": { "type": "null" } }`.
+
+## [@codeworksh/cli@0.2.0] - 2026-10-12
+
+### Added
+
+- Added `codework tui`, which opens the terminal UI against a local background server. It reuses the server registered in `<home>/service.json` when that server answers with the registered pid, and otherwise starts a detached `codework serve --service` that logs to `<home>/log/server.log`. A server from another CLI version is replaced, concurrent starts converge on one server, and a server that dies while the TUI runs is restarted on the same port so the TUI reconnects. Pass `--server <url>` to use a server of your own.
+- Added `codework service start|restart|status|stop` to manage that background server.
+- Added the `server.info` RPC, which returns the running server's `{ pid, version }`.
+
+### Changed
+
+- The ACP session config now lists every thinking level the model supports and keeps the selected level as given.
+
+### Fixed
+
+- Fixed a failed `codework serve` reporting only an error tag. It now shows the cause, such as `EADDRINUSE`.
+
+### Breaking Changes
+
+- Moved the RPC route to `/rpc/v1`. Clients that connect with `--server` or their own URL must use `ws://<host>:<port>/rpc/v1`.
+
+## [@codeworksh/tui@0.0.2] - 2026-10-12
+
+### Added
+
+- First release of the terminal UI on `latest`, still in development. The launcher resolves a prebuilt binary from the platform package for macOS (arm64, x64) or Linux (arm64, x64; static musl), falling back to `CODEWORK_TUI_BIN`. Nothing is downloaded at runtime, and Windows is not supported.
+- The TUI connects to the server named in `CODEWORK_RPC_SERVER` instead of starting its own, and shows a reconnecting state after a dropped connection instead of failing the turn.
+
+## [@codeworksh/harness@0.2.0] - 2026-10-12
+
+### Added
+
+- Added automatic retry of transient provider failures in the harness loop. A turn whose request fails with a rate limit, overload, 5xx, timeout or dropped connection, including one that fails mid-stream, is retried with exponential backoff. Configure it with a top-level `retry` block in `settings.jsonc`: `{ "maxRetries": 3, "baseDelayMs": 2000, "maxDelayMs": 60000 }`, where `maxRetries: 0` turns it off. Quota errors are never retried, and a server that asks to wait longer than `maxDelayMs` fails the turn. Each failed attempt stays in the session as an aborted entry that the model never sees, and clients receive `session.retry.scheduled` and `session.retry.finished` events to show progress.
+
+### Fixed
+
+- Fixed an interrupted turn never reporting `session.turn.aborted`. The cleanup that settles the turn's open draft and publishes the event was skipped on interruption, so the draft was only cleaned up on the session's next run.
+
+## [@codeworksh/plugin@0.2.0] - 2026-10-12
+
+### Added
+
+- Added `optIn` to plugin definitions. An opt-in plugin is selected like any other but runs only when a settings entry turns it on: `{ "plugin": "<id>", "enabled": true }`.
+- Added `Paths` to the plugin context: the harness's own `home`, `bin`, `cache`, `data` and `log` directories on the host.
+- Added `prepareArguments`, `constrainedSampling` and `encodeDetails` to tool definitions, to repair common argument shapes before validation, constrain how the provider generates arguments, and control the `details` stored with a result.
+- Added `readBytes` and `scanLines` to the sandbox filesystem. `scanLines` returns a bounded window of a file's lines; a remote backend runs the scan inside the sandbox (`Scan.script`) so only the window crosses the network.
+- Added `SandboxMutation`, which serializes the harness's own read-modify-write of one file across parallel tool calls. Every mount layer provides it through `withMutation`.
+- Added `spillPath` to the runtime config and sandbox mounts: where oversized tool output is written inside the sandbox, `/tmp` by default.
+- Added `idleTimeoutMs` to model options in settings, defaulting to `300000`.
+
+### Breaking Changes
+
+- A sandbox filesystem `Provider` must now implement `readBytes` and `scanLines`. A backend that only runs processes can use `readBytesViaShell` and `Scan.script`.
+
+## [@codeworksh/aikit@0.11.0] - 2026-10-12
+
+### Added
+
 - Added `idleTimeoutMs` to the request options in aikit. A stream that goes this long without a chunk is aborted as a retryable timeout, so a dead connection fails instead of waiting out `timeoutMs`. It defaults to `300000` in `model.options`.
 - Added the `normalizeOptionalNulls` export, which drops the `null` a strict tool call sends for an omitted optional argument whose schema does not accept null. `validateToolArguments` now applies it.
-- Added automatic retry of transient provider failures in the harness loop. A turn whose request fails with a rate limit, overload, 5xx, timeout or dropped connection, including one that fails mid-stream, is retried with exponential backoff. Configure it with a top-level `retry` block in `settings.jsonc`: `{ "maxRetries": 3, "baseDelayMs": 2000, "maxDelayMs": 60000 }`, where `maxRetries: 0` turns it off. Quota errors are never retried, and a server that asks to wait longer than `maxDelayMs` fails the turn. Each failed attempt stays in the session as an aborted entry that the model never sees, and clients receive `session.retry.scheduled` and `session.retry.finished` events to show progress.
 
 ### Changed
 
 - A usage-limit error now classifies as `Quota` instead of `RateLimit`, so it is not retried. This covers codes such as `insufficient_quota` and `usage_limit_exceeded`, and messages about credit balance, billing or an exhausted quota. A limit that names a per-minute or per-second window still counts as a rate limit.
 - An Anthropic model that cannot disable thinking now records `providerThinkingLevel: "high"` when asked to run with thinking off, since the request runs at that default effort. The effort is sent on the wire; a caller's own `effort` provider option still wins.
-- `model.options.maxRetries`, the retry inside the provider SDK, now defaults to `0` (was `3`). The SDK retried silently, only before the stream started, and also retried quota errors. Combined with the loop retry, one outage would have cost up to 16 requests. Set it per model if an endpoint needs it.
-- `resolveOpenAICodexToolConstraint` now resolves grammar constraints only, and `Message.resolveJsonSchemaConstraint` is removed; `convertTools` handles JSON-schema strictness for every provider.
 
 ### Fixed
 
 - Fixed tools with `constrainedSampling: { type: "json_schema" }` being rejected by Anthropic and other strict providers. aikit set `strict: true` but sent the original schema; it now converts it to the strict subset (closed objects, every property required, optional ones nullable). A `"prefer"` tool whose schema the provider cannot express in strict mode, such as Anthropic with `minimum`, is sent non-strict; a `"require"` tool throws.
-- Fixed an interrupted turn never reporting `session.turn.aborted`. The cleanup that settles the turn's open draft and publishes the event was skipped on interruption, so the draft was only cleaned up on the session's next run.
+
+### Breaking Changes
+
+- `model.options.maxRetries`, the retry inside the provider SDK, now defaults to `0` (was `3`). The SDK retried silently, only before the stream started, and also retried quota errors. Combined with the loop retry, one outage would have cost up to 16 requests. Set it per model if an endpoint needs it.
+- `resolveOpenAICodexToolConstraint` now resolves grammar constraints only, and `Message.resolveJsonSchemaConstraint` is removed; `convertTools` handles JSON-schema strictness for every provider.
 
 ## [@codeworksh/aikit@0.10.0] - 2026-10-07
 

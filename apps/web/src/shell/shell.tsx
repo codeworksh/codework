@@ -1,17 +1,15 @@
-import { Link, Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import { Settings } from "lucide-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
 import { Desktop } from "../wm/desktop";
-import { useWorkspaces, workspaceRoute } from "../wm/workspaces";
+import { lastWorkspaceAtom, useWorkspaces, workspaceRoute, workspacesAtom } from "../wm/workspaces";
 import { settingsShortcut, Switcher, workspaceShortcut } from "./switcher";
-
-// The window has no native title bar on macOS; this bar is its drag region and
-// leaves room for the inset traffic lights.
-const insetTitleBar = window.desktopBridge?.platform === "darwin";
+import { BackButton, HomeButton, insetTitleBar, NewWorkspaceButton, SettingsButton } from "./titlebar";
 
 /**
- * Lives in the root route so switching workspaces (a URL change) never remounts
+ * Lives in the pathless `_shell` layout so switching workspaces (a URL change) never remounts
  * the desktop: widget order, pins, and per-workspace layout survive navigation.
  * Settings opens over the desktop, which stays mounted underneath.
  */
@@ -22,12 +20,26 @@ export function Shell() {
 	// From the location, which changes before route params do: a match-based check lags a
 	// render behind, in which the first workspace would pass for the one settings returns to.
 	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
-	// `/` and an id that no longer exists (a deleted workspace) show the first one.
+	// An id that no longer exists (a deleted workspace) shows the first one.
 	const shown = workspaces.find((workspace) => workspace.id === workspaceId) ?? workspaces[0];
 	// The workspace settings returns to; the one on screen when it opened.
 	const [lastId, setLastId] = useState<string>();
 	if (!inSettings && shown !== undefined && shown.id !== lastId) setLastId(shown.id);
 	const back = workspaces.find((workspace) => workspace.id === lastId) ?? workspaces[0];
+
+	// With every workspace deleted there is nothing to show here; the start page needs none. Only once
+	// the list has settled: a first load, or the refetch after creating one, must not bounce the user out.
+	const listed = useAtomValue(workspacesAtom);
+	const loaded = AsyncResult.isSuccess(listed) && !listed.waiting;
+	useEffect(() => {
+		if (loaded && workspaces.length === 0 && !inSettings) void navigate({ to: "/", replace: true });
+	}, [loaded, workspaces.length, inSettings, navigate]);
+
+	// Remembered past this route, so the start page opens things where the user last was.
+	const setLastWorkspace = useAtomSet(lastWorkspaceAtom);
+	useEffect(() => {
+		if (!inSettings && shown !== undefined) setLastWorkspace(shown.id);
+	}, [inSettings, shown, setLastWorkspace]);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -50,18 +62,13 @@ export function Shell() {
 	return (
 		<div className="flex h-full flex-col">
 			<header
-				className={`flex h-11 shrink-0 items-center px-2 select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`}
+				className={`flex h-12 shrink-0 items-center gap-1.5 px-2 select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`}
 			>
+				<BackButton />
+				<HomeButton />
 				<Switcher workspaces={workspaces} active={inSettings ? undefined : shown} />
-				<Link
-					to="/settings/workspaces"
-					aria-label="Settings"
-					title="Settings"
-					aria-current={inSettings ? "page" : undefined}
-					className="ml-auto grid size-7 place-items-center rounded-[10px] text-ink-muted transition-colors [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink aria-[current=page]:bg-ink/8 aria-[current=page]:text-ink"
-				>
-					<Settings className="size-4" strokeWidth={1.75} aria-hidden />
-				</Link>
+				<NewWorkspaceButton />
+				<SettingsButton current={inSettings} />
 			</header>
 			<div className="relative min-h-0 flex-1">
 				{shown !== undefined && (

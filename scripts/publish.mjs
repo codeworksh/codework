@@ -1,33 +1,14 @@
 import { spawn } from "node:child_process";
 import { access, copyFile, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const workspaceMap = new Map([
-	["aikit", "packages/aikit"],
-	["@codeworksh/aikit", "packages/aikit"],
-	["codework", "packages/codework"],
-	["cli", "packages/codework"],
-	["@codeworksh/cli", "packages/codework"],
-	["harness", "packages/harness"],
-	["@codeworksh/harness", "packages/harness"],
-	["plugin", "packages/plugin"],
-	["@codeworksh/plugin", "packages/plugin"],
-	["tui", "packages/tui"],
-	["@codeworksh/tui", "packages/tui"],
-	// One prebuilt binary per platform, in lockstep with the launcher; `build` stages the
-	// binary the TUI workflow produced.
-	...["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"].flatMap((platform) => [
-		[`tui-${platform}`, `packages/tui/npm/${platform}`],
-		[`@codeworksh/tui-${platform}`, `packages/tui/npm/${platform}`],
-	]),
-]);
+import { isPublished } from "./registry.mjs";
+import { findPackage, repoRoot, workspaceDependencies } from "./workspace.mjs";
 
 function usage() {
 	console.error(
-		"Usage: node scripts/publish.mjs <aikit|cli|codework|harness|plugin|tui|tui-<os>-<arch>|@codeworksh/<name>> [--dev] [--stage] [--dep <name>@<version>]... [--uploaded-dep <name>@<version>]... [npm publish args]",
+		"Usage: node scripts/publish.mjs <@codeworksh/name> [--publish-version <version>] [--uploaded-dep <name>@<version>]... [npm publish args]",
 	);
 	process.exit(1);
 }
@@ -48,25 +29,12 @@ function optionValue(args, flag) {
 
 function parsePublishOptions(args) {
 	const forwardArgs = [];
-	let dev = false;
-	let stage = false;
 	let publishVersion;
-	const dependencyPins = new Map();
-	const uploadedDependencies = new Set();
+	const uploadedDependencies = new Map();
 
 	for (let index = 0; index < args.length; index++) {
 		const arg = args[index];
 		if (arg === "--") continue;
-
-		if (arg === "--dev") {
-			dev = true;
-			continue;
-		}
-
-		if (arg === "--stage") {
-			stage = true;
-			continue;
-		}
 
 		if (arg === "--publish-version") {
 			publishVersion = args[index + 1];
@@ -84,26 +52,16 @@ function parsePublishOptions(args) {
 			continue;
 		}
 
-		const dependencyFlag = ["--dep", "--uploaded-dep"].find((flag) => arg === flag || arg.startsWith(`${flag}=`));
-		if (dependencyFlag) {
-			const value = arg === dependencyFlag ? args[++index] : arg.slice(dependencyFlag.length + 1);
+		if (arg === "--uploaded-dep" || arg.startsWith("--uploaded-dep=")) {
+			const value = arg === "--uploaded-dep" ? args[++index] : arg.slice("--uploaded-dep=".length);
 			// Split at the version's `@`, not a scope's.
 			const at = value?.lastIndexOf("@") ?? -1;
-			if (at <= 0 || at === value.length - 1) {
-				console.error(`${dependencyFlag} expects <name>@<version>, got ${value ?? "nothing"}`);
+			const version = at > 0 ? value.slice(at + 1) : "";
+			if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+				console.error(`--uploaded-dep expects <name>@<exact version>, got ${value ?? "nothing"}`);
 				process.exit(1);
 			}
-			const name = value.slice(0, at);
-			const version = value.slice(at + 1);
-			if (dependencyFlag === "--uploaded-dep") {
-				if (!/^\d+\.\d+\.\d+-canary\.[0-9A-Za-z.-]+$/.test(version)) {
-					throw new Error("--uploaded-dep requires an exact canary version, not a dist-tag");
-				}
-				uploadedDependencies.add(name);
-			} else {
-				uploadedDependencies.delete(name);
-			}
-			dependencyPins.set(name, version);
+			uploadedDependencies.set(value.slice(0, at), version);
 			continue;
 		}
 
@@ -115,11 +73,7 @@ function parsePublishOptions(args) {
 		process.exit(1);
 	}
 
-	return { dependencyPins, uploadedDependencies, dev, forwardArgs, publishVersion, stage };
-}
-
-async function readJSON(path) {
-	return JSON.parse(await readFile(path, "utf8"));
+	return { uploadedDependencies, forwardArgs, publishVersion };
 }
 
 async function restoreFile(path, content) {
@@ -127,14 +81,6 @@ async function restoreFile(path, content) {
 	if (current !== content) {
 		await writeFile(path, content);
 	}
-}
-
-function resolvePackageDir(target) {
-	const normalized = target.replace(/\/+$/, "");
-	const workspaceDir = workspaceMap.get(normalized);
-	if (!workspaceDir) usage();
-
-	return resolve(repoRoot, workspaceDir);
 }
 
 function run(command, args, cwd, envOverrides = {}, replaceEnv = false) {
@@ -172,39 +118,6 @@ function createSanitizedPublishEnv() {
 
 function compactObject(value) {
 	return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
-}
-
-function createDevPrereleaseId() {
-	const runNumber = process.env.GITHUB_RUN_NUMBER;
-	const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
-	const sha = process.env.GITHUB_SHA?.slice(0, 8);
-
-	if (runNumber && runAttempt && sha) {
-		return `${runNumber}.${runAttempt}.${sha}`;
-	}
-
-	const now = new Date();
-	const timestamp = [
-		now.getUTCFullYear(),
-		String(now.getUTCMonth() + 1).padStart(2, "0"),
-		String(now.getUTCDate()).padStart(2, "0"),
-		String(now.getUTCHours()).padStart(2, "0"),
-		String(now.getUTCMinutes()).padStart(2, "0"),
-		String(now.getUTCSeconds()).padStart(2, "0"),
-	].join("");
-
-	return timestamp;
-}
-
-function createDevVersion(version) {
-	const match = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(version);
-	if (!match) {
-		throw new Error(`Cannot create dev version from invalid semver: ${version}`);
-	}
-
-	// Dev builds are prereleases of the current target version (e.g. 0.6.0 -> 0.6.0-dev.<id>),
-	// so they sort just below the eventual stable 0.6.0 release.
-	return `${match[1]}.${match[2]}.${match[3]}-dev.${createDevPrereleaseId()}`;
 }
 
 function isPrereleaseVersion(version) {
@@ -254,68 +167,20 @@ function rewritePublishValue(value) {
 	return value;
 }
 
-/*
- * Registry questions go to endpoints the npm CDN does not cache. `npm view` reads the full package
- * document, which is cached for up to five minutes (`max-age=300`), so a version published a
- * moment ago looks missing even with `--prefer-online`.
- */
-const registry = "https://registry.npmjs.org";
-const registryPath = (name) => name.replace("/", "%2f");
-
-/** Whether `name@version` is on the registry: the per-version document is served uncached. */
-async function isPublished(name, version) {
-	const response = await fetch(`${registry}/${registryPath(name)}/${version}`);
-	if (response.status === 404) return false;
-	if (!response.ok) throw new Error(`Registry lookup of ${name}@${version} failed: HTTP ${response.status}`);
-	return true;
-}
-
-/** The version a dist-tag points at right now, or undefined. */
-async function distTag(name, tag) {
-	const response = await fetch(`${registry}/-/package/${registryPath(name)}/dist-tags`);
-	return response.ok ? (await response.json())[tag] : undefined;
-}
-
 /**
  * The version of a workspace dependency to write into the published manifest.
  *
- * It is never guessed. The dependency's manifest version is used when the registry has it; a
- * version that is not released yet (a dev-only package) must be named with `--dep`, as a version or
- * as a dist-tag (`--dep @codeworksh/plugin@dev`) resolved to the exact version it points at now.
- * Falling back to a tag unasked once shipped a harness depending on a plugin build older than the
- * one published a minute before it, because the tag lookup was answered from a cache.
- *
- * --uploaded-dep accepts exact canary versions whose uploads already succeeded in this run.
- * The canary orchestrator verifies availability after uploading the complete dependency chain.
+ * It is never guessed. A dependency uploaded earlier in the same release run (`--uploaded-dep`) is
+ * taken as given, since npm may still be scanning it; anything else must already be on the
+ * registry at its manifest version.
  */
-async function resolveWorkspaceVersion(packageName, dependencyPins, uploadedDependencies) {
-	const workspaceDir = workspaceMap.get(packageName);
-	if (!workspaceDir) {
-		throw new Error(`Unknown workspace dependency: ${packageName}`);
-	}
+async function resolveWorkspaceVersion(packageName, uploadedDependencies) {
+	const uploaded = uploadedDependencies.get(packageName);
+	if (uploaded) return uploaded;
 
-	const pinned = dependencyPins.get(packageName);
-	if (pinned) {
-		if (uploadedDependencies.has(packageName)) return pinned;
-		// A version starts with a digit; anything else is a dist-tag.
-		const version = /^\d/.test(pinned) ? pinned : await distTag(packageName, pinned);
-		if (version && (await isPublished(packageName, version))) return version;
-		throw new Error(`--dep ${packageName}@${pinned} is not on the registry.`);
-	}
-
-	const workspaceManifest = await readJSON(resolve(repoRoot, workspaceDir, "package.json"));
-	if (!workspaceManifest.version) {
-		throw new Error(`Workspace package version missing for ${packageName}`);
-	}
-
-	const declared = workspaceManifest.version;
+	const declared = findPackage(packageName).manifest.version;
 	if (await isPublished(packageName, declared)) return declared;
-
-	const dev = await distTag(packageName, "dev");
-	throw new Error(
-		`${packageName}@${declared} is not published. Pin the build to depend on with --dep ${packageName}@<version>` +
-			(dev ? ` (its dev tag is ${dev}).` : "."),
-	);
+	throw new Error(`${packageName}@${declared} is not published; release it first.`);
 }
 
 function rewriteWorkspaceRange(range, version) {
@@ -340,15 +205,16 @@ function rewriteWorkspaceRange(range, version) {
 	return workspaceRange;
 }
 
-async function rewriteDependencyMap(dependencies, dependencyPins, uploadedDependencies) {
+async function rewriteDependencyMap(dependencies, uploadedDependencies) {
 	if (!dependencies) return undefined;
 
 	const rewritten = {};
 
 	for (const [name, range] of Object.entries(dependencies)) {
 		if (typeof range === "string" && range.startsWith("workspace:")) {
-			const version = await resolveWorkspaceVersion(name, dependencyPins, uploadedDependencies);
-			rewritten[name] = uploadedDependencies.has(name) ? version : rewriteWorkspaceRange(range, version);
+			const version = await resolveWorkspaceVersion(name, uploadedDependencies);
+			// A prerelease is pinned exactly; a range would also match other builds of the same channel.
+			rewritten[name] = isPrereleaseVersion(version) ? version : rewriteWorkspaceRange(range, version);
 			continue;
 		}
 
@@ -358,7 +224,7 @@ async function rewriteDependencyMap(dependencies, dependencyPins, uploadedDepend
 	return rewritten;
 }
 
-async function createPublishManifest(manifest, version, dependencyPins, uploadedDependencies) {
+async function createPublishManifest(manifest, version, uploadedDependencies) {
 	return compactObject({
 		name: manifest.name,
 		version,
@@ -395,14 +261,10 @@ async function createPublishManifest(manifest, version, dependencyPins, uploaded
 		// A platform package installs only where its binary runs.
 		os: manifest.os,
 		cpu: manifest.cpu,
-		dependencies: await rewriteDependencyMap(manifest.dependencies, dependencyPins, uploadedDependencies),
-		peerDependencies: await rewriteDependencyMap(manifest.peerDependencies, dependencyPins, uploadedDependencies),
+		dependencies: await rewriteDependencyMap(manifest.dependencies, uploadedDependencies),
+		peerDependencies: await rewriteDependencyMap(manifest.peerDependencies, uploadedDependencies),
 		peerDependenciesMeta: manifest.peerDependenciesMeta,
-		optionalDependencies: await rewriteDependencyMap(
-			manifest.optionalDependencies,
-			dependencyPins,
-			uploadedDependencies,
-		),
+		optionalDependencies: await rewriteDependencyMap(manifest.optionalDependencies, uploadedDependencies),
 	});
 }
 
@@ -431,68 +293,38 @@ if (!target) usage();
 const publishOptions = parsePublishOptions(rawForwardArgs);
 const forwardArgs = publishOptions.forwardArgs;
 
-const packageDir = resolvePackageDir(target);
-const manifestPath = resolve(packageDir, "package.json");
-
+let packageDir;
 try {
-	await access(manifestPath);
-} catch {
-	console.error(`Package manifest not found: ${manifestPath}`);
-	process.exit(1);
+	packageDir = findPackage(target).dir;
+} catch (error) {
+	console.error(error instanceof Error ? error.message : error);
+	usage();
 }
-
+const manifestPath = resolve(packageDir, "package.json");
 const originalManifestText = await readFile(manifestPath, "utf8");
 const manifest = JSON.parse(originalManifestText);
-if (!manifest.name) {
-	console.error(`Package name missing in ${manifestPath}`);
-	process.exit(1);
-}
 
-if (!manifest.name.startsWith("@codeworksh/")) {
-	console.error(`Refusing to publish unscoped package: ${manifest.name}`);
-	process.exit(1);
-}
-
-if (manifest.private) {
-	console.error(`Refusing to publish private package: ${manifest.name}`);
-	process.exit(1);
-}
-
-const publishArgs = publishOptions.stage ? ["stage", "publish", "."] : ["publish"];
-const publishVersion =
-	publishOptions.publishVersion ?? (publishOptions.dev ? createDevVersion(manifest.version) : manifest.version);
+const publishArgs = ["publish"];
+const publishVersion = publishOptions.publishVersion ?? manifest.version;
 
 if (!hasFlag(forwardArgs, "--access")) {
 	publishArgs.push("--access", manifest.publishConfig?.access ?? "public");
-}
-
-if (publishOptions.dev && !hasFlag(forwardArgs, "--tag")) {
-	publishArgs.push("--tag", "dev");
 }
 
 /*
  * `latest` means stable, and a prerelease never reaches it.
  *
  * It is what `npm install <pkg>` hands someone who expressed no opinion, so a prerelease there
- * gives unstable code to everyone who did not ask for it. A developer wanting a dev build says so
- * with `@dev`, and that is the whole signal -- no flag can override this, because the only reason
- * to want one is a mistake.
- *
- * Guarded both ways: a stable version does not belong under `dev` either, or `npm install <pkg>`
- * and `@dev` start serving the same thing and the distinction stops meaning anything.
+ * gives unstable code to everyone who did not ask for it. Guarded both ways: a stable version does
+ * not belong under a preview tag either, or the tags stop meaning anything.
  */
-const publishTag = optionValue([...publishArgs, ...forwardArgs], "--tag");
-if (publishOptions.uploadedDependencies.size > 0 && publishTag !== "canary") {
-	throw new Error("--uploaded-dep is only supported for canary publishing");
-}
-if (publishTag === "dev" && !isPrereleaseVersion(publishVersion)) {
-	console.error(`Refusing to publish stable version ${publishVersion} with the dev dist-tag`);
+const publishTag = optionValue(forwardArgs, "--tag") ?? "latest";
+if (publishTag === "latest" && isPrereleaseVersion(publishVersion)) {
+	console.error(`Refusing to publish prerelease ${publishVersion} to latest`);
 	process.exit(1);
 }
-if (publishTag === undefined && isPrereleaseVersion(publishVersion)) {
-	console.error(
-		`Refusing to publish prerelease ${publishVersion} to latest; publish it with --dev, or release a stable version`,
-	);
+if (publishTag !== "latest" && !isPrereleaseVersion(publishVersion)) {
+	console.error(`Refusing to publish stable version ${publishVersion} under the ${publishTag} tag`);
 	process.exit(1);
 }
 
@@ -500,34 +332,16 @@ publishArgs.push(...forwardArgs);
 
 // State the plan before doing any of it: which version goes up, under which tag, and whether
 // `latest` moves. These are exactly the three things a mis-publish gets wrong.
-console.error(`Publishing ${manifest.name}@${publishVersion} under tag "${publishTag ?? "latest"}"`);
+console.error(`Publishing ${manifest.name}@${publishVersion} under tag "${publishTag}"`);
 // Resolve dependency versions before building, so a missing one fails in seconds, not after a build.
-const workspaceDependencies = new Set(
-	[manifest.dependencies, manifest.peerDependencies, manifest.optionalDependencies].flatMap((map) =>
-		Object.entries(map ?? {})
-			.filter(([, range]) => typeof range === "string" && range.startsWith("workspace:"))
-			.map(([name]) => name),
-	),
-);
-for (const name of publishOptions.dependencyPins.keys()) {
-	if (!workspaceDependencies.has(name)) {
-		console.error(`--dep ${name}: ${manifest.name} has no workspace dependency by that name`);
-		process.exit(1);
-	}
-}
 let publishManifest;
 try {
-	publishManifest = await createPublishManifest(
-		manifest,
-		publishVersion,
-		publishOptions.dependencyPins,
-		publishOptions.uploadedDependencies,
-	);
+	publishManifest = await createPublishManifest(manifest, publishVersion, publishOptions.uploadedDependencies);
 } catch (error) {
 	console.error(error instanceof Error ? error.message : error);
 	process.exit(1);
 }
-for (const name of workspaceDependencies) {
+for (const name of workspaceDependencies(manifest)) {
 	const version =
 		publishManifest.dependencies?.[name] ??
 		publishManifest.peerDependencies?.[name] ??
@@ -535,8 +349,10 @@ for (const name of workspaceDependencies) {
 	console.error(`  ${name}: ${version}`);
 }
 
-console.error(`Building ${manifest.name}@${manifest.version} in ${packageDir}`);
+console.error(`Building ${manifest.name}@${publishVersion} in ${packageDir}`);
 
+// A bundle that imports its package.json inlines the version, so build with the one being published.
+await writeFile(manifestPath, originalManifestText.replace(/"version": "[^"]*"/, `"version": "${publishVersion}"`));
 const buildExitCode = await run("pnpm", ["run", "build"], packageDir);
 await restoreFile(manifestPath, originalManifestText);
 

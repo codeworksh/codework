@@ -9,7 +9,7 @@ const manifest = JSON.parse(readFileSync("package.json", "utf8"));
 const name = manifest.name.split("/")[1];
 const source = resolve("../../dist/bin", name, "codework-tui");
 if (!existsSync(source)) {
-	console.error(`Missing ${source}: binaries are built by the TUI workflow (.github/workflows/tui.yml)`);
+	console.error(`Missing ${source}: binaries are built by the publish workflow (.github/workflows/publish.yml)`);
 	process.exit(1);
 }
 

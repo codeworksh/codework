@@ -1,0 +1,41 @@
+name: Check
+
+on:
+   pull_request:
+      branches: [main, dev, canary]
+      paths-ignore:
+         - sites/**
+
+permissions:
+   contents: read
+
+concurrency:
+   group: check-${{ github.ref }}
+   cancel-in-progress: true
+
+jobs:
+   check:
+      runs-on: ubuntu-latest
+      steps:
+         - uses: actions/checkout@v6
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              run-install: false
+              cache: false
+         - run: vp install --frozen-lockfile --filter '!@codeworksh/www'
+         - run: vp run verify
+         - run: vp run --filter './packages/*' --concurrency-limit 2 build
+
+   tui:
+      runs-on: ubuntu-latest
+      defaults:
+         run:
+            working-directory: packages/tui
+      steps:
+         - uses: actions/checkout@v6
+         - uses: dtolnay/rust-toolchain@stable
+         - uses: Swatinem/rust-cache@v2
+           with:
+              workspaces: packages/tui
+         - run: cargo check --locked

@@ -1,0 +1,129 @@
+#!/bin/sh
+# Installs the CodeWork CLI: one binary, no Node required.
+#
+#   curl -fsSL https://codework.sh/install | sh
+#   curl -fsSL https://codework.sh/install | sh -s -- --dev
+#   curl -fsSL https://codework.sh/install | sh -s -- --version 0.3.0
+#
+# CODEWORK_INSTALL_DIR picks where the binary goes (default ~/.codework/bin), and
+# CODEWORK_RELEASES_URL where releases are downloaded from.
+set -eu
+
+releases="${CODEWORK_RELEASES_URL:-https://github.com/codeworksh/codework/releases}"
+dir="${CODEWORK_INSTALL_DIR:-$HOME/.codework/bin}"
+npm="install it with npm instead: pnpm add -g @codeworksh/cli"
+
+fail() {
+	printf 'codework install: %s\n' "$1" >&2
+	exit 1
+}
+
+usage() {
+	cat <<EOF
+Usage: install [--dev | --version <version>] [--no-modify-path]
+
+  --dev               the newest development build instead of the latest release
+  --version <version> a specific release, such as 0.3.0
+  --no-modify-path    leave your shell's startup file alone
+EOF
+}
+
+release="latest/download"
+modify_path=1
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--dev) release="download/devel" ;;
+		--version)
+			[ $# -ge 2 ] || fail "--version needs a version, such as 0.3.0"
+			release="download/cli-v${2#v}"
+			shift
+			;;
+		--no-modify-path) modify_path=0 ;;
+		-h | --help)
+			usage
+			exit 0
+			;;
+		*) fail "unknown option $1 (see --help)" ;;
+	esac
+	shift
+done
+
+case "$(uname -s)" in
+	Darwin) os=darwin ;;
+	Linux) os=linux ;;
+	*) fail "$(uname -s) has no CodeWork binary; $npm" ;;
+esac
+case "$(uname -m)" in
+	arm64 | aarch64) arch=arm64 ;;
+	x86_64 | amd64) arch=x64 ;;
+	*) fail "$(uname -m) has no CodeWork binary; $npm" ;;
+esac
+if [ "$os-$arch" = darwin-x64 ]; then
+	# A shell under Rosetta reports x86_64 on an Apple silicon Mac.
+	if [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || true)" = 1 ]; then
+		arch=arm64
+	else
+		fail "Intel Macs have no CodeWork binary; $npm"
+	fi
+fi
+if [ "$os" = linux ] && ldd --version 2>&1 | grep -qi musl; then
+	fail "the Linux binary needs glibc, and this system uses musl; $npm"
+fi
+
+download() {
+	if command -v curl > /dev/null 2>&1; then
+		curl -fsSL "$1" -o "$2"
+	elif command -v wget > /dev/null 2>&1; then
+		wget -qO "$2" "$1"
+	else
+		fail "downloading needs curl or wget"
+	fi
+}
+
+sha256() {
+	if command -v sha256sum > /dev/null 2>&1; then
+		sha256sum "$1" | cut -d' ' -f1
+	else
+		shasum -a 256 "$1" | cut -d' ' -f1
+	fi
+}
+
+file="cli-$os-$arch.tar.gz"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+printf 'Downloading %s\n' "$releases/$release/$file"
+download "$releases/$release/$file" "$tmp/$file" || fail "could not download $releases/$release/$file"
+download "$releases/$release/SHA256SUMS" "$tmp/SHA256SUMS" || fail "could not download the release's SHA256SUMS"
+expected="$(grep " $file\$" "$tmp/SHA256SUMS" | cut -d' ' -f1)"
+[ -n "$expected" ] || fail "SHA256SUMS does not list $file"
+[ "$(sha256 "$tmp/$file")" = "$expected" ] || fail "$file does not match its SHA256SUMS entry; nothing was installed"
+
+tar -xzf "$tmp/$file" -C "$tmp"
+mkdir -p "$dir"
+chmod 755 "$tmp/codework"
+mv "$tmp/codework" "$dir/codework"
+printf 'Installed %s\n' "$dir/codework"
+
+case ":$PATH:" in
+	*":$dir:"*) ;;
+	*)
+		case "$(basename "${SHELL:-}")" in
+			zsh) profile="$HOME/.zshrc" line="export PATH=\"$dir:\$PATH\"" ;;
+			bash) profile="$HOME/.bashrc" line="export PATH=\"$dir:\$PATH\"" ;;
+			fish) profile="$HOME/.config/fish/conf.d/codework.fish" line="fish_add_path \"$dir\"" ;;
+			*) profile="" line="export PATH=\"$dir:\$PATH\"" ;;
+		esac
+		if [ "$modify_path" = 1 ] && [ -n "$profile" ]; then
+			if ! grep -qsF "$line" "$profile"; then
+				mkdir -p "$(dirname "$profile")"
+				printf '\n# CodeWork\n%s\n' "$line" >> "$profile"
+				printf 'Added %s to PATH in %s; open a new shell to use it.\n' "$dir" "$profile"
+			fi
+		else
+			printf 'Add %s to your PATH:\n  %s\n' "$dir" "$line"
+		fi
+		;;
+esac
+
+"$dir/codework" --version

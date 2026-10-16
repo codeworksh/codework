@@ -2,7 +2,7 @@
 
 <p align="center" dir="auto">
   <a href="https://codework.sh" rel="nofollow">
-    <img src="./assets/logo.svg" alt="CODEWORK logo" width="720" style="max-width: 100%;">
+    <img src="./sites/www/public/brand/wordmark.svg" alt="CODEWORK" width="720" style="max-width: 100%;">
   </a>
 </p>
 
@@ -11,25 +11,31 @@
   <a href="https://deepwiki.com/codeworksh/codework"><img alt="Ask DeepWiki" src="https://img.shields.io/badge/Ask-DeepWiki-blue?style=flat-square" /></a>
 </p>
 
-An open-source coding agent for your terminal: run sessions in your repo or an isolated sandbox, on any model, extended with plugins.
-
-> Under active development; APIs may change.
+An open-source coding agent for code & work: run sessions in your repo or an isolated sandbox, on any model, extended with plugins.
 
 ## Quick start
 
 ```bash
-pnpm add -g @codeworksh/cli
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY, XAI_API_KEY, ...
-codework run "Inspect and fix the failing tests"
+curl -fsSL https://codework.sh/install | sh
 ```
 
-Continue a session, pick a model, or move into a sandbox:
+Or with Node.js 24+: `pnpm add -g @codeworksh/cli`.
+
+### OpenAI:
 
 ```bash
-codework run --session <id> "Now add a regression test"
-codework run --provider openai --model gpt-5.5 --thinking high "Plan the migration"
-codework run --sandbox-driver daytona "Inspect repository"
+export OPENAI_API_KEY=...
+codework run --provider openai --model gpt-6-luna "Inspect and fix the failing tests"
 ```
+
+### Anthropic:
+
+```bash
+export ANTHROPIC_API_KEY=...
+codework run --provider anthropic --model claude-sonnet-5-5 "Inspect and fix the failing tests"
+```
+
+List every provider and model with `codework models`.
 
 ## Features
 
@@ -40,7 +46,7 @@ codework run --sandbox-driver daytona "Inspect repository"
 - **Server mode** — `codework serve` owns sessions and sandboxes; clients attach with `--server`.
 - **Plugins** — `codework plugin add <pkg>` adds tools, prompts, and sandbox drivers, per project or globally (`-g`).
 
-See the [CLI docs](./packages/codework/README.md) for every command and flag.
+See the [docs](https://codework.sh/docs/) for every command and flag.
 
 ## Packages
 

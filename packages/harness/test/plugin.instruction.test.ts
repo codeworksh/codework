@@ -60,15 +60,15 @@ const prompt = async (input: { root: string; directory: string; hostCwd: string;
 };
 
 /**
- * A filesystem over `files`. Paths in `slow` answer `stat` and `readFile` late, so a probe that took
- * completion order for candidate order would be caught; `failing` paths fail `stat` with EIO.
+ * A filesystem over `files`. Paths in `slow` answer `exists` and `readFile` late, so a probe that took
+ * completion order for candidate order would be caught; `failing` paths fail `exists` with EIO.
  */
 const instrumented = (
 	files: Readonly<Record<string, string>>,
 	slow: ReadonlySet<string>,
 	failing: ReadonlySet<string>,
 ) => {
-	const stats = { calls: 0, inFlight: 0, peak: 0 };
+	const stats = { calls: 0, inFlight: 0, peak: 0, stats: 0 };
 	const unused = () => Promise.reject(new Error("unused"));
 	const settle = (path: string) => new Promise((resolve) => setTimeout(resolve, slow.has(path) ? 30 : 1));
 	const fs = SandboxFileSystem.fromProvider({
@@ -80,16 +80,19 @@ const instrumented = (
 		readBytes: unused,
 		writeFile: unused,
 		stat: async (path) => {
+			stats.stats += 1;
+			if (!(path in files)) throw Object.assign(new Error(`ENOENT: stat '${path}'`), { code: "ENOENT" });
+			return { isFile: true, isDirectory: false };
+		},
+		readdir: unused,
+		exists: async (path) => {
 			stats.calls += 1;
 			stats.peak = Math.max(stats.peak, ++stats.inFlight);
 			await settle(path);
 			stats.inFlight -= 1;
 			if (failing.has(path)) throw Object.assign(new Error(`EIO: i/o error, stat '${path}'`), { code: "EIO" });
-			if (!(path in files)) throw Object.assign(new Error(`ENOENT: stat '${path}'`), { code: "ENOENT" });
-			return { isFile: true, isDirectory: false };
+			return path in files;
 		},
-		readdir: unused,
-		exists: unused,
 		mkdir: unused,
 		rm: unused,
 		realpath: unused,
@@ -207,6 +210,8 @@ describe("codework.prompt.instruction", () => {
 		// Seven directories, six names each: all in flight at once instead of 42 serial round trips.
 		expect(stats.calls).toBe(42);
 		expect(stats.peak).toBe(42);
+		// Only the four files that exist are stat'ed; a miss never reaches `stat`.
+		expect(stats.stats).toBe(4);
 		expect(found.map((file) => `${file.path}=${file.content}`)).toEqual([
 			"/AGENTS.md=root",
 			"/a/b/AGENTS.MD=b: wins",

@@ -244,8 +244,10 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							});
 							yield* Effect.addFinalizer(() => removeDeltaListener);
 
+							// Long enough that it cannot finish streaming before the interrupt lands; a short reply
+							// can complete first and end the turn instead of failing it.
 							const storyPrompt =
-								"Using every established detail about Velora, write a vivid story of exactly 100 words. Do not preface or explain it.";
+								"Using every established detail about Velora, write a vivid story of at least 3,000 words. Do not preface or explain it.";
 							yield* control.prompt({
 								sessionId: session.id,
 								prompt: { parts: [{ type: "text", text: storyPrompt }] },

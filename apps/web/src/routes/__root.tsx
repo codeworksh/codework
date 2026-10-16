@@ -1,7 +1,12 @@
-import { createRootRoute } from "@tanstack/react-router";
+import { createRootRoute, Outlet } from "@tanstack/react-router";
 
-import { Shell } from "../shell/shell";
+import { Palette } from "../shell/palette";
 
 export const Route = createRootRoute({
-	component: Shell,
+	component: () => (
+		<>
+			<Outlet />
+			<Palette />
+		</>
+	),
 });

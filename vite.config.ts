@@ -75,6 +75,23 @@ export default defineConfig({
 	resolve: {
 		alias: aliases,
 	},
+	run: {
+		tasks: {
+			// Uncached tasks see the whole environment, which these need (npm OIDC in CI, git signing).
+			bump: { command: "node scripts/bump.mjs", cache: false },
+			release: { command: "node scripts/release.mjs", cache: false },
+			// CI's check gate. Type-aware lint, like each package's typecheck, resolves aikit through
+			// its generated declarations, so they are built first.
+			verify: {
+				command: [
+					"vp check packages scripts .github",
+					"vp run --filter './packages/*' --concurrency-limit 2 typecheck",
+				],
+				dependsOn: ["@codeworksh/aikit#build"],
+				cache: false,
+			},
+		},
+	},
 	test: {
 		include: ["packages/**/*.test.ts"],
 		exclude:

@@ -166,17 +166,30 @@ type RemoteFilesystemProvider = Pick<
 	| "scanLines"
 >;
 
+const enoent = (operation: string, path: string) =>
+	Object.assign(new Error(`ENOENT: no such file or directory, ${operation} '${path}'`), { code: "ENOENT" });
+
+/** The toolbox rejects a missing path with its own 404; the filesystem contract expects `ENOENT`. */
+const missing =
+	(operation: string, path: string) =>
+	async (cause: unknown): Promise<never> => {
+		const { DaytonaFileNotFoundError } = await import("@daytona/sdk");
+		throw cause instanceof DaytonaFileNotFoundError ? Object.assign(enoent(operation, path), { cause }) : cause;
+	};
+
 const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 	const run = async (argv: ReadonlyArray<string>) => {
 		const result = await sandbox.process.executeCommand(quoteArgv(argv), options.cwd, undefined, options.execTimeout);
 		return { exitCode: result.exitCode, stdout: result.result ?? "" };
 	};
 	const filesystem: RemoteFilesystemProvider = {
-		readFile: async (path: string) => (await sandbox.fs.downloadFile(path)).toString("utf8"),
-		readFileBuffer: async (path: string) => new Uint8Array(await sandbox.fs.downloadFile(path)),
+		readFile: async (path: string) =>
+			(await sandbox.fs.downloadFile(path).catch(missing("open", path))).toString("utf8"),
+		readFileBuffer: async (path: string) =>
+			new Uint8Array(await sandbox.fs.downloadFile(path).catch(missing("open", path))),
 		writeFile: (path: string, content: string | Uint8Array) =>
 			sandbox.fs.uploadFile(typeof content === "string" ? Buffer.from(content, "utf8") : Buffer.from(content), path),
-		stat: async (path: string) => statsFrom(await sandbox.fs.getFileDetails(path)),
+		stat: async (path: string) => statsFrom(await sandbox.fs.getFileDetails(path).catch(missing("stat", path))),
 		// The toolbox file-details endpoint follows symlinks. Detect the entry
 		// with the sandbox shell first so lstat never reports target metadata as
 		// if it described the link itself.
@@ -186,11 +199,13 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 			if (result.exitCode === 0) {
 				return { isFile: false, isDirectory: false, isSymbolicLink: true };
 			}
-			if (result.exitCode === 1) return statsFrom(await sandbox.fs.getFileDetails(path));
+			if (result.exitCode === 1)
+				return statsFrom(await sandbox.fs.getFileDetails(path).catch(missing("lstat", path)));
 			assertCommandSucceeded(command, result);
 			throw new Error(`unreachable lstat result for ${path}`);
 		},
-		readdir: async (path: string) => (await sandbox.fs.listFiles(path)).map((entry) => entry.name),
+		readdir: async (path: string) =>
+			(await sandbox.fs.listFiles(path).catch(missing("scandir", path))).map((entry) => entry.name),
 		// Only a genuine 404 means "absent". Auth, rate-limit, and transport
 		// failures propagate: a caller that deletes records on absence must not
 		// be told a path is gone because the API was briefly unreachable.
@@ -204,13 +219,9 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 				throw cause;
 			}
 		},
+		// `createFolder` is `mkdir -p`; plain `mkdir` fails on a missing parent.
 		mkdir: async (path: string, mkdirOptions?: { recursive?: boolean }) => {
-			if (!mkdirOptions?.recursive) {
-				await sandbox.fs.createFolder(path, "755");
-				return;
-			}
-
-			const command = `mkdir -p ${quote(path)}`;
+			const command = mkdirOptions?.recursive ? `mkdir -p ${quote(path)}` : `mkdir ${quote(path)}`;
 			const result = await sandbox.process.executeCommand(command, options.cwd, undefined, options.execTimeout);
 			assertCommandSucceeded(command, result);
 		},
@@ -219,8 +230,9 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 			try {
 				await sandbox.fs.deleteFile(path, rmOptions?.recursive);
 			} catch (cause) {
-				if (rmOptions?.force && !(await filesystem.exists(path))) return;
-				throw cause;
+				if (await filesystem.exists(path)) throw cause;
+				if (rmOptions?.force) return;
+				throw Object.assign(enoent("rm", path), { cause });
 			}
 		},
 		realpath: async (path: string) => {
@@ -229,8 +241,7 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 				const result = await sandbox.process.executeCommand(command, options.cwd, undefined, options.execTimeout);
 				if (result.exitCode === 0) return (result.result ?? "").trimEnd();
 			}
-			// same shape `fs.stat` rejects with, so `isNotFoundError` recognises it
-			throw Object.assign(new Error(`ENOENT: no such file or directory, realpath '${path}'`), { code: "ENOENT" });
+			throw enoent("realpath", path);
 		},
 		scanLines: SandboxFileSystem.Scan.viaShell(run),
 		readBytes: SandboxFileSystem.readBytesViaShell(run),

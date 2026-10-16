@@ -1,0 +1,16 @@
+{
+	"status": 0,
+	"bash": [
+		"completed"
+	],
+	"sandboxes": [
+		{
+			"driver": "memory",
+			"kind": "virtual",
+			"ownership": "managed",
+			"status": "offline",
+			"provider_status": "retained",
+			"last_error": null
+		}
+	]
+}

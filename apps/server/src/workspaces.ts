@@ -18,18 +18,37 @@ const fail = (message: string) => new Contract.WorkspaceError({ message });
 export const handlers = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
 
-	const list = sql<Workspace>`
-		SELECT id, bit, pos, name, icon, layout, mfact FROM workspaces ORDER BY pos
-	`.pipe(Effect.orDie);
+	// SQLite has no booleans; `auto` is stored as 0 or 1.
+	const list = sql<Omit<Workspace, "auto"> & { auto: number }>`
+		SELECT id, bit, pos, name, icon, layout, mfact, auto FROM workspaces ORDER BY pos
+	`.pipe(
+		Effect.map((rows) => rows.map((row): Workspace => ({ ...row, auto: row.auto === 1 }))),
+		Effect.orDie,
+	);
 
 	// Rewrites positions as 0..n-1 in the given order.
 	const renumber = (ids: readonly string[]) =>
 		Effect.forEach(ids, (id, pos) => sql`UPDATE workspaces SET pos = ${pos} WHERE id = ${id}`, { discard: true });
 
+	// The frames an auto workspace held do not outlive the app, so neither does it. Having none at
+	// all is fine: the start page needs no workspace.
+	yield* sql
+		.withTransaction(
+			Effect.gen(function* () {
+				yield* sql`DELETE FROM workspaces WHERE auto = 1`;
+				yield* renumber((yield* list).map((workspace) => workspace.id));
+			}),
+		)
+		.pipe(Effect.orDie);
+
 	return {
 		"workspaces.list": () => list,
 
-		"workspaces.create": Effect.fn("workspaces.create")(function* ({ name, icon }: typeof WorkspaceCreate.Type) {
+		"workspaces.create": Effect.fn("workspaces.create")(function* ({
+			name,
+			icon,
+			auto = false,
+		}: typeof WorkspaceCreate.Type) {
 			return yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
@@ -45,9 +64,10 @@ export const handlers = Effect.gen(function* () {
 							icon,
 							layout: "tile",
 							mfact: 0.6,
+							auto,
 						};
 						const created = yield* Clock.currentTimeMillis;
-						yield* sql`INSERT INTO workspaces ${sql.insert({ ...workspace, created })}`;
+						yield* sql`INSERT INTO workspaces ${sql.insert({ ...workspace, auto: auto ? 1 : 0, created })}`;
 						return workspace;
 					}),
 				)
@@ -88,7 +108,6 @@ export const handlers = Effect.gen(function* () {
 					Effect.gen(function* () {
 						const current = yield* list;
 						if (!current.some((workspace) => workspace.id === id)) return yield* fail(`No workspace ${id}`);
-						if (current.length === 1) return yield* fail("The last workspace can't be deleted");
 						yield* sql`DELETE FROM workspaces WHERE id = ${id}`;
 						yield* renumber(current.filter((workspace) => workspace.id !== id).map((workspace) => workspace.id));
 					}),

@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/tui",
-	"version": "0.0.1",
+	"version": "0.0.3",
 	"description": "High-performance Terminal User Interface (TUI) for CodeWork in Rust, with a thin TypeScript launcher",
 	"keywords": [
 		"codework",
@@ -30,17 +30,16 @@
 		},
 		"./package.json": "./package.json"
 	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "vp pack",
 		"build:rust": "cargo build --release",
 		"check": "vp check",
 		"check:rust": "cargo check",
 		"start": "cargo run",
-		"typecheck": "tsc --noEmit",
-		"bump": "bumpp",
-		"release": "node ../../scripts/publish.mjs tui",
-		"release:dev": "node ../../scripts/publish.mjs tui --dev",
-		"release:dry": "node ../../scripts/publish.mjs tui --dry-run"
+		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
@@ -50,7 +49,6 @@
 	},
 	"optionalDependencies": {
 		"@codeworksh/tui-darwin-arm64": "workspace:*",
-		"@codeworksh/tui-darwin-x64": "workspace:*",
 		"@codeworksh/tui-linux-arm64": "workspace:*",
 		"@codeworksh/tui-linux-x64": "workspace:*"
 	}
