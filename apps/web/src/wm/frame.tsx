@@ -11,6 +11,10 @@ interface FrameProps {
 	readonly icon?: LucideIcon | undefined;
 	readonly children?: ReactNode;
 	readonly rect: Rect;
+	/** Shown as its header only, at `FRAME_HEADER_HEIGHT`; focusing it opens it again. */
+	readonly collapsed: boolean;
+	/** In a column's overflow: not shown at all, but kept mounted so its widget keeps working. */
+	readonly hidden: boolean;
 	readonly focused: boolean;
 	readonly pinned: boolean;
 	readonly maximized: boolean;
@@ -28,8 +32,11 @@ interface FrameProps {
 	readonly onDragCancel: () => void;
 }
 
+/** A frame's full height when collapsed to its header: the header row plus the frame's inset and border. */
+export const FRAME_HEADER_HEIGHT = 46;
+
 export function Frame(props: FrameProps) {
-	const { title, icon: Icon, rect, focused, pinned, maximized, canDrag, offset, animate } = props;
+	const { title, icon: Icon, rect, collapsed, focused, pinned, maximized, canDrag, offset, animate } = props;
 	const handleRef = useDragHandle<HTMLDivElement>({
 		canDrag: () => props.canDrag,
 		onDragStart: props.onDragStart,
@@ -45,6 +52,8 @@ export function Frame(props: FrameProps) {
 			// Settling into a new slot animates; the dragged frame follows the pointer directly.
 			className={`group absolute top-0 left-0 box-border p-1 ${offset ? "z-10 opacity-90" : animate ? "transition-[transform,width,height] duration-200 ease-out" : ""}`}
 			data-focused={focused}
+			data-collapsed={collapsed}
+			hidden={props.hidden}
 			style={{ width: rect.w, height: rect.h, transform: `translate(${x}px, ${y}px)` }}
 			onPointerDown={props.onFocus}
 		>
@@ -75,7 +84,10 @@ export function Frame(props: FrameProps) {
 					/>
 					<Action icon={X} label="Close" active={false} onClick={props.onClose} />
 				</header>
-				<div className="min-h-0 flex-1 overflow-hidden">{props.children}</div>
+				{/* A collapsed frame keeps its widget mounted, so it keeps working and keeps its state. */}
+				<div className="min-h-0 flex-1 overflow-hidden" hidden={collapsed}>
+					{props.children}
+				</div>
 			</div>
 		</article>
 	);

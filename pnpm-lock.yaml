@@ -310,8 +310,8 @@ importers:
         specifier: ^3.7.0
         version: 3.7.0
       webwm:
-        specifier: https://github.com/codeworksh/webwm/releases/download/v0.1.0/webwm-0.1.0.tgz
-        version: https://github.com/codeworksh/webwm/releases/download/v0.1.0/webwm-0.1.0.tgz(react@19.3.0)
+        specifier: https://github.com/codeworksh/webwm/releases/download/v0.2.0/webwm-0.2.0.tgz
+        version: https://github.com/codeworksh/webwm/releases/download/v0.2.0/webwm-0.2.0.tgz(react@19.3.0)
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.3.3
@@ -7982,9 +7982,9 @@ packages:
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
 
-  webwm@https://github.com/codeworksh/webwm/releases/download/v0.1.0/webwm-0.1.0.tgz:
-    resolution: {integrity: sha512-8znl+Cf98EEZUrwNMrF3KVFJVw8fkTgDVeeFeG4qTyhMjxywVCB0mCu9p3rrzS2TjTqfNQxPsswItBuQ94C9zw==, tarball: https://github.com/codeworksh/webwm/releases/download/v0.1.0/webwm-0.1.0.tgz}
-    version: 0.1.0
+  webwm@https://github.com/codeworksh/webwm/releases/download/v0.2.0/webwm-0.2.0.tgz:
+    resolution: {integrity: sha512-MPDSWjzIpcu4UpoqBeFqAYqdT8w41OoETbrF/Ny1XVGFy1Kv3G1Arn6kE2PGV/ys29PTbB3WVfAUCzh3sBi39Q==, tarball: https://github.com/codeworksh/webwm/releases/download/v0.2.0/webwm-0.2.0.tgz}
+    version: 0.2.0
     peerDependencies:
       react: '>=18.2'
     peerDependenciesMeta:
@@ -15954,7 +15954,7 @@ snapshots:
 
   webpack-virtual-modules@0.6.2: {}
 
-  webwm@https://github.com/codeworksh/webwm/releases/download/v0.1.0/webwm-0.1.0.tgz(react@19.3.0):
+  webwm@https://github.com/codeworksh/webwm/releases/download/v0.2.0/webwm-0.2.0.tgz(react@19.3.0):
     optionalDependencies:
       react: 19.3.0
 

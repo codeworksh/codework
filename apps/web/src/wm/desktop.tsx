@@ -21,7 +21,8 @@ import { makeHost } from "../kernel/host";
 import { builtins, registry } from "../widgets";
 import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
-import { Frame } from "./frame";
+import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
+import { Overflow } from "./overflow";
 import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
 import {
@@ -180,6 +181,8 @@ export function Desktop({ workspace }: DesktopProps) {
 		...(focusedId === undefined ? {} : { focusedWidgetId: focusedId }),
 		nmaster,
 		mfact: effectiveMfact,
+		// A stack column too short for all its frames folds the least recently focused to their headers.
+		collapsedHeight: FRAME_HEADER_HEIGHT,
 	});
 
 	const targetAt = (clientX: number, clientY: number) => {
@@ -342,7 +345,13 @@ export function Desktop({ workspace }: DesktopProps) {
 				className="relative"
 				style={{ width: arrangement.contentBounds.w, height: arrangement.contentBounds.h }}
 			>
-				{arrangement.placements.map(({ widget, rect }) => {
+				{[
+					...arrangement.placements.map((placement) => ({ ...placement, hidden: false })),
+					// Overflowed frames stay mounted, hidden, so their widgets keep running and keep state.
+					...arrangement.overflow.flatMap(({ widgets: overflowed, rect }) =>
+						overflowed.map((widget) => ({ widget, rect, collapsed: true, hidden: true })),
+					),
+				].map(({ widget, rect, collapsed, hidden }) => {
 					const instance = byId.get(widget.id);
 					if (instance === undefined) return null;
 					const { title, icon, body } = describe(instance, chrome.get(widget.id));
@@ -352,6 +361,8 @@ export function Desktop({ workspace }: DesktopProps) {
 							title={title}
 							icon={icon}
 							rect={rect}
+							collapsed={collapsed === true}
+							hidden={hidden}
 							focused={widget.id === focusedId}
 							pinned={pinned.has(widget.id)}
 							maximized={layout === "monocle"}
@@ -389,6 +400,19 @@ export function Desktop({ workspace }: DesktopProps) {
 						</Frame>
 					);
 				})}
+				{arrangement.overflow.map(({ widgets: overflowed, rect }) => (
+					<Overflow
+						key={`${rect.x}`}
+						rect={rect}
+						hidden={overflowed.flatMap((widget) => {
+							const instance = byId.get(widget.id);
+							return instance === undefined
+								? []
+								: [{ id: widget.id, ...chromeOf(instance, chrome.get(widget.id)) }];
+						})}
+						onPick={focusWidget}
+					/>
+				))}
 				{drag?.target && (
 					<div
 						className="pointer-events-none absolute z-20 h-0.5 -translate-y-px rounded-full bg-ink/40"
