@@ -180,7 +180,7 @@ describe("host settings loader", () => {
 					expect(second.model).toMatchObject({ thinkingLevel: "off", options: { timeoutMs: 200 } });
 					expect(first.model.thinkingLevel).toBe("low");
 					yield* Effect.promise(() => unlink(join(custom, "settings.jsonc")));
-					expect((yield* settings.load(root)).model.thinkingLevel).toBe("high");
+					expect((yield* settings.load(root)).model.thinkingLevel).toBe("medium");
 					// An edit that breaks a file reaches the next capture like any other edit. A broken
 					// layer fails the load rather than handing the session to the layers around it,
 					// which would run it on a configuration nobody wrote.

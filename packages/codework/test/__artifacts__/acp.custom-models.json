@@ -1,7 +1,7 @@
 {
 	"project": {
 		"current": "gateway/claude-sonnet",
-		"thinking": "high",
+		"thinking": "medium",
 		"providers": [
 			"gateway",
 			"ollama",
@@ -23,7 +23,7 @@
 	},
 	"userOnly": {
 		"current": "openai/gpt-5.6-luna",
-		"thinking": "high",
+		"thinking": "medium",
 		"providers": [
 			"gateway",
 			"ollama",

@@ -1,6 +1,6 @@
 [
 	{
-		"requested": "high",
+		"requested": "medium",
 		"model": "openai/gpt-4o-mini",
 		"configuration": "off",
 		"request": {
