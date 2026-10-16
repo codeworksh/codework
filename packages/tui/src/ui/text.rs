@@ -40,3 +40,67 @@ pub fn scrolled<'a>(text: &'a str, before_caret: &str, width: usize) -> (&'a str
 pub fn width(text: &str) -> usize {
     text.width()
 }
+
+/// Fit `text` into `max_width` columns, replacing any cut tail with `…`.
+pub fn elide(text: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    if text.width() <= max_width {
+        return text.to_string();
+    }
+    if max_width == 1 {
+        return "…".to_string();
+    }
+    format!("{}…", fitted(text, max_width - 1))
+}
+
+/// Wrap `text` into lines that fit within `max_width` terminal columns.
+pub fn wrap(text: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for raw_line in text.split('\n') {
+        if raw_line.is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        let mut current = String::new();
+        let mut current_width = 0usize;
+        for word in raw_line.split_whitespace() {
+            let word_width = width(word);
+            if current.is_empty() {
+                if word_width <= max_width {
+                    current.push_str(word);
+                    current_width = word_width;
+                } else {
+                    let mut rest = word;
+                    while !rest.is_empty() {
+                        let part = fitted(rest, max_width);
+                        if part.is_empty() {
+                            break;
+                        }
+                        out.push(part.to_string());
+                        rest = &rest[part.len()..];
+                    }
+                }
+            } else if current_width + 1 + word_width <= max_width {
+                current.push(' ');
+                current.push_str(word);
+                current_width += 1 + word_width;
+            } else {
+                out.push(current);
+                current = word.to_string();
+                current_width = word_width;
+            }
+        }
+        if !current.is_empty() {
+            out.push(current);
+        }
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}

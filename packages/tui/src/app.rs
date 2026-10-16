@@ -4,9 +4,10 @@
 //! whether the screen needs redrawing. That report is the whole redraw policy —
 //! there is no tick, so an idle TUI does no work and no repaint.
 
-use crossterm::event::{KeyCode, KeyEvent};
+use std::cell::Cell;
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::Color;
-use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::action::{Action, Keymap, Resolution};
@@ -15,6 +16,7 @@ use crate::menu::{Entry, Menu, Preview};
 use crate::prompt::Prompt;
 use crate::rpc::{RpcClient, StreamEvent};
 use crate::theme::{self, Palette};
+use crate::tool::ToolCall;
 use crate::types::{SessionInfo, UsageReport};
 
 /// What a leading slash offers. Only commands the app can actually perform are listed, and an
@@ -112,22 +114,6 @@ pub enum TurnState {
     Succeeded,
     Failed(String),
     Interrupted(String),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolStatus {
-    Running,
-    Completed,
-    Failed,
-}
-
-#[derive(Debug, Clone)]
-pub struct ToolCall {
-    pub call_id: String,
-    pub name: String,
-    pub summary: String,
-    pub output: Option<String>,
-    pub status: ToolStatus,
 }
 
 #[derive(Debug, Clone)]
@@ -233,6 +219,8 @@ pub struct App {
     pub reconnecting: bool,
     /// Scroll offset in lines from the bottom of the session transcript.
     pub scroll: usize,
+    /// Maximum scroll offset computed by the last transcript render pass.
+    pub max_scroll: Cell<usize>,
     pub should_quit: bool,
     keymap: Keymap,
     tx: mpsc::UnboundedSender<AppEvent>,
@@ -261,6 +249,7 @@ impl App {
             busy: false,
             reconnecting: false,
             scroll: 0,
+            max_scroll: Cell::new(0),
             should_quit: false,
             keymap: Keymap::new(),
             tx,
@@ -290,10 +279,37 @@ impl App {
     pub fn update(&mut self, event: AppEvent) -> bool {
         match event {
             AppEvent::Key(key) => self.handle_key(key),
+            AppEvent::Scroll(delta) => self.handle_scroll(delta),
             AppEvent::Paste(text) => self.handle_paste(&text),
             AppEvent::Resize => true,
             AppEvent::Rpc(rpc) => self.handle_rpc(rpc),
         }
+    }
+
+    fn handle_scroll(&mut self, delta: isize) -> bool {
+        if self.popup.is_some() {
+            let step = if delta > 0 { -1 } else { 1 };
+            return self.step_menu(step);
+        }
+        if self.screen == Screen::Session {
+            return self.scroll_by(delta);
+        }
+        false
+    }
+
+    fn scroll_by(&mut self, delta: isize) -> bool {
+        let cap = self.max_scroll.get();
+        let current = self.scroll.min(cap);
+        let next = if delta >= 0 {
+            current.saturating_add(delta as usize).min(cap)
+        } else {
+            current.saturating_sub((-delta) as usize)
+        };
+        if next == self.scroll {
+            return false;
+        }
+        self.scroll = next;
+        true
     }
 
     fn handle_paste(&mut self, text: &str) -> bool {
@@ -404,13 +420,19 @@ impl App {
 
         if self.screen == Screen::Session {
             match key.code {
-                KeyCode::PageUp => {
-                    self.scroll = self.scroll.saturating_add(5);
-                    return true;
+                KeyCode::PageUp => return self.scroll_by(10),
+                KeyCode::PageDown => return self.scroll_by(-10),
+                KeyCode::Up
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        || self.prompt.text().is_empty() =>
+                {
+                    return self.scroll_by(1);
                 }
-                KeyCode::PageDown => {
-                    self.scroll = self.scroll.saturating_sub(5);
-                    return true;
+                KeyCode::Down
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        || self.prompt.text().is_empty() =>
+                {
+                    return self.scroll_by(-1);
                 }
                 _ => {}
             }
@@ -489,18 +511,13 @@ impl App {
                 arguments,
             } => {
                 if let Some(turn) = self.turns.last_mut() {
-                    let summary = tool_summary(&name, &arguments, label.as_deref());
+                    let started = ToolCall::start(call_id.clone(), name, label, &arguments);
                     if let Some(existing) = turn.tools.iter_mut().find(|t| t.call_id == call_id) {
-                        existing.name = name;
-                        existing.summary = summary;
+                        existing.name = started.name;
+                        existing.target = started.target;
+                        existing.label = started.label;
                     } else {
-                        turn.tools.push(ToolCall {
-                            call_id,
-                            name,
-                            summary,
-                            output: None,
-                            status: ToolStatus::Running,
-                        });
+                        turn.tools.push(started);
                     }
                 }
             }
@@ -510,33 +527,26 @@ impl App {
                 is_error,
                 arguments,
                 output,
-                ..
+                details,
             } => {
                 if let Some(turn) = self.turns.last_mut() {
-                    let status = if is_error {
-                        ToolStatus::Failed
-                    } else {
-                        ToolStatus::Completed
-                    };
                     if let Some(existing) = turn.tools.iter_mut().find(|t| t.call_id == call_id) {
-                        if let Some(name) = name {
-                            existing.name = name;
-                        }
-                        if existing.summary.is_empty() {
-                            existing.summary = tool_summary(&existing.name, &arguments, None);
-                        }
-                        existing.output = output;
-                        existing.status = status;
-                    } else {
-                        let tool_name = name.unwrap_or_else(|| "tool".to_string());
-                        let summary = tool_summary(&tool_name, &arguments, None);
-                        turn.tools.push(ToolCall {
-                            call_id,
-                            name: tool_name,
-                            summary,
+                        existing.apply_settlement(
+                            name,
+                            &arguments,
                             output,
-                            status,
-                        });
+                            details.as_ref(),
+                            is_error,
+                        );
+                    } else {
+                        turn.tools.push(ToolCall::settled(
+                            call_id,
+                            name,
+                            &arguments,
+                            output,
+                            details.as_ref(),
+                            is_error,
+                        ));
                     }
                 }
             }
@@ -684,6 +694,10 @@ impl App {
             KeyCode::Enter => return self.choose(),
             _ => return false,
         };
+        self.step_menu(step)
+    }
+
+    fn step_menu(&mut self, step: isize) -> bool {
         let Some(popup) = &mut self.popup else {
             return false;
         };
@@ -880,21 +894,6 @@ fn parse_model(value: &str) -> Option<(String, String)> {
         value[..slash].to_string(),
         value[slash + 1..].to_string(),
     ))
-}
-
-/// Summarise a tool call's primary argument, matching `acp/feed.ts:title`.
-fn tool_summary(name: &str, args: &Value, label: Option<&str>) -> String {
-    if name == "bash" {
-        if let Some(cmd) = args.get("command").and_then(Value::as_str) {
-            return cmd.lines().next().unwrap_or(cmd).to_string();
-        }
-    }
-    for key in ["path", "pattern", "query", "url", "command"] {
-        if let Some(val) = args.get(key).and_then(Value::as_str) {
-            return val.lines().next().unwrap_or(val).to_string();
-        }
-    }
-    label.unwrap_or("").to_string()
 }
 
 /// Filter the theme picker's entries by `query` (matching palette name or scheme) and return the

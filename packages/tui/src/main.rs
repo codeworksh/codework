@@ -1,10 +1,12 @@
 mod action;
 mod app;
+mod diff;
 mod event;
 mod menu;
 mod prompt;
 mod rpc;
 mod theme;
+mod tool;
 mod tui;
 mod types;
 mod ui;

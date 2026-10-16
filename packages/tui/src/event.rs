@@ -6,7 +6,7 @@
 //! race. The thread ends when the receiver is dropped, which is how shutdown
 //! stops it — there is no flag to check and nothing to join.
 
-use crossterm::event::{Event, KeyEvent, KeyEventKind};
+use crossterm::event::{Event, KeyEvent, KeyEventKind, MouseEventKind};
 use tokio::sync::mpsc;
 
 use crate::rpc::StreamEvent;
@@ -27,6 +27,9 @@ pub enum RpcEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppEvent {
     Key(KeyEvent),
+    /// Mouse wheel / trackpad scroll delta (positive = up into history, negative = down toward
+    /// bottom).
+    Scroll(isize),
     /// Text pasted into the app, carried whole. The terminal brackets it, so a
     /// paste can never be mistaken for typing, and it arrives as one event
     /// rather than as a burst of keys the app would have to reassemble.
@@ -98,6 +101,11 @@ impl EventHandler {
 fn translate(event: Event) -> Option<AppEvent> {
     match event {
         Event::Key(key) if key.kind != KeyEventKind::Release => Some(AppEvent::Key(key)),
+        Event::Mouse(mouse) => match mouse.kind {
+            MouseEventKind::ScrollUp => Some(AppEvent::Scroll(3)),
+            MouseEventKind::ScrollDown => Some(AppEvent::Scroll(-3)),
+            _ => None,
+        },
         Event::Paste(text) => Some(AppEvent::Paste(text)),
         Event::Resize(_, _) => Some(AppEvent::Resize),
         _ => None,

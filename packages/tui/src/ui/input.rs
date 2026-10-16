@@ -35,15 +35,24 @@ const PLACEHOLDER: &str = "build me flappy bird";
 /// is.
 const TAG: &str = "alpha";
 
-/// Draw the prompt in `area`, centred, and report where the caret goes. `None` when the area is
-/// too small to hold the box, or too narrow for the line inside it.
+/// Draw the prompt in `area`, centred to [`WIDTH`], and report where the caret goes.
 pub fn draw(
     buffer: &mut Buffer,
     area: Rect,
     prompt: &Prompt,
     palette: &Palette,
 ) -> Option<(u16, u16)> {
-    let column = centred(area);
+    draw_in(buffer, centred(area), prompt, palette)
+}
+
+/// Draw the prompt filling `column` directly, and report where the caret goes. `None` when
+/// `column` is too small to hold the box or too narrow for the line inside it.
+pub fn draw_in(
+    buffer: &mut Buffer,
+    column: Rect,
+    prompt: &Prompt,
+    palette: &Palette,
+) -> Option<(u16, u16)> {
     // Measured rather than assumed to be two cells: a terminal that draws `❯` wide would
     // otherwise put the caret a column out.
     let marker = MARKER.width() as u16;
@@ -57,6 +66,10 @@ pub fn draw(
 
     // The tag rides the top border, as the site's badge does.
     badge::draw(buffer, column, TAG, palette);
+
+    for x in inner.x..inner.x + inner.width {
+        buffer[(x, inner.y)].set_char(' ');
+    }
 
     // One column stays free at the end of the line, because that is where a terminal puts the
     // caret once the text fills the rest.

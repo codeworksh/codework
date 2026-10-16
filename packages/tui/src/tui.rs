@@ -12,8 +12,9 @@ use std::sync::Once;
 
 use crossterm::cursor::Show;
 use crossterm::event::{
-    DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange,
-    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
+    EnableFocusChange, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -52,7 +53,8 @@ impl TerminalGuard {
             stdout,
             EnterAlternateScreen,
             EnableBracketedPaste,
-            EnableFocusChange
+            EnableFocusChange,
+            EnableMouseCapture
         )?;
         set_background(&mut stdout, background)?;
 
@@ -113,6 +115,7 @@ pub fn restore() {
         stdout,
         EndSynchronizedUpdate,
         PopKeyboardEnhancementFlags,
+        DisableMouseCapture,
         DisableBracketedPaste,
         DisableFocusChange,
         LeaveAlternateScreen

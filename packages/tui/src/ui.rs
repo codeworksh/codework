@@ -7,9 +7,10 @@ mod badge;
 mod field;
 mod glyphs;
 mod input;
+mod markdown;
 mod menu;
 mod session;
-mod text;
+pub(crate) mod text;
 mod wordmark;
 
 use ratatui::layout::{Alignment, Constraint, Flex, Layout, Rect};

@@ -85,3 +85,63 @@ pub fn default_palette() -> &'static Palette {
 pub fn by_id(id: &str) -> Option<&'static Palette> {
     PALETTES.iter().find(|palette| palette.id == id)
 }
+
+impl Palette {
+    /// Positive feedback / added diff lines.
+    pub fn success(&self) -> Color {
+        match self.scheme {
+            Scheme::Dark => Color::Rgb(158, 206, 106),
+            Scheme::Light => Color::Rgb(30, 127, 62),
+        }
+    }
+
+    /// Negative feedback / removed diff lines / errors.
+    pub fn error(&self) -> Color {
+        match self.scheme {
+            Scheme::Dark => Color::Rgb(247, 118, 142),
+            Scheme::Light => Color::Rgb(209, 36, 47),
+        }
+    }
+
+    /// Warning / notice indicator.
+    pub fn warning(&self) -> Color {
+        match self.scheme {
+            Scheme::Dark => Color::Rgb(224, 175, 104),
+            Scheme::Light => Color::Rgb(176, 109, 15),
+        }
+    }
+
+    /// Subtle background fill for added diff lines, blended onto `self.bg`.
+    pub fn diff_add_bg(&self) -> Color {
+        mix(self.bg, self.success(), 14)
+    }
+
+    /// Subtle background fill for removed diff lines, blended onto `self.bg`.
+    pub fn diff_del_bg(&self) -> Color {
+        mix(self.bg, self.error(), 14)
+    }
+
+    /// Gutter (line-number column) background for added diff lines.
+    pub fn diff_add_gutter_bg(&self) -> Color {
+        mix(self.bg, self.success(), 26)
+    }
+
+    /// Gutter (line-number column) background for removed diff lines.
+    pub fn diff_del_gutter_bg(&self) -> Color {
+        mix(self.bg, self.error(), 26)
+    }
+}
+
+fn mix(base: Color, tint: Color, pct: u16) -> Color {
+    match (base, tint) {
+        (Color::Rgb(br, bg, bb), Color::Rgb(tr, tg, tb)) => {
+            let keep = 100u16.saturating_sub(pct);
+            Color::Rgb(
+                ((br as u16 * keep + tr as u16 * pct) / 100) as u8,
+                ((bg as u16 * keep + tg as u16 * pct) / 100) as u8,
+                ((bb as u16 * keep + tb as u16 * pct) / 100) as u8,
+            )
+        }
+        _ => base,
+    }
+}
