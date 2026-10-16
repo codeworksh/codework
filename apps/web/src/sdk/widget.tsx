@@ -43,7 +43,7 @@ export interface Navigation {
 
 /** What a widget author declares. */
 export interface WidgetDefinition<Props> extends Navigation {
-	/** Unique id of the widget type, qualified by its package: "codework:explorer". */
+	/** Unique id of the widget type, qualified by its package: "codework:projects". */
 	readonly kind: string;
 	/** Default frame title; an instance may override it. */
 	readonly title: string;

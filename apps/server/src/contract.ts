@@ -1,18 +1,6 @@
 import { Schema } from "effect";
 import { Rpc, RpcGroup } from "effect/rpc";
 
-export const EntryKind = Schema.Literals(["file", "directory"]);
-export type EntryKind = typeof EntryKind.Type;
-
-/** One direct child of a listed directory. */
-export const Entry = Schema.Struct({ name: Schema.String, kind: EntryKind });
-export type Entry = typeof Entry.Type;
-
-export class FsError extends Schema.TaggedError<FsError>()("Server.FsError", {
-	path: Schema.String,
-	message: Schema.String,
-}) {}
-
 /** A conversation with the agent, as listed under its project. */
 export const SessionSummary = Schema.Struct({
 	id: Schema.String,
@@ -150,11 +138,6 @@ export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()("Server
 const KvKey = { package: Schema.String, key: Schema.String };
 
 export const Api = RpcGroup.make(
-	Rpc.make("fs.list", {
-		payload: { path: Schema.String },
-		success: Schema.Array(Entry),
-		error: FsError,
-	}),
 	Rpc.make("projects.list", {
 		success: Schema.Array(Project),
 		error: CodeworkUnavailable,

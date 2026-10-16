@@ -1,20 +1,12 @@
-import { Clock, Effect, FileSystem, Option, Path, Schema } from "effect";
+import { Clock, Effect, Option, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { Codework } from "./codework.ts";
-import { Contract, type Entry, type Project } from "./contract.ts";
+import { Contract, type Project } from "./contract.ts";
 import { Workspaces } from "./workspaces.ts";
 
 const JsonText = Schema.fromJsonString(Schema.Json);
 const decodeJson = Schema.decodeUnknownEffect(JsonText);
 const encodeJson = Schema.encodeEffect(JsonText);
-
-// Directories first, then names in natural order, so "file10" follows "file9".
-const byKindThenName = (a: Entry, b: Entry) =>
-	a.kind === b.kind
-		? a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
-		: a.kind === "directory"
-			? -1
-			: 1;
 
 /**
  * Sessions grouped by project, both newest first. A session whose project row is missing gets a
@@ -45,35 +37,11 @@ const byProject = (sessions: ReadonlyArray<Codework.SessionInfo>): Project[] => 
 
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem;
-		const path = yield* Path.Path;
 		const sql = yield* SqlClient.SqlClient;
 		const workspaces = yield* Workspaces.handlers;
 
 		return Contract.Api.of({
 			...workspaces,
-
-			"fs.list": Effect.fn("fs.list")(function* ({ path: directory }) {
-				const fail = (cause: unknown) => new Contract.FsError({ path: directory, message: String(cause) });
-				const names = yield* fs.readDirectory(directory).pipe(Effect.mapError(fail));
-				const entries = yield* Effect.forEach(
-					names,
-					(name) =>
-						fs.stat(path.join(directory, name)).pipe(
-							Effect.map((info): Entry => ({
-								name,
-								kind: info.type === "Directory" ? "directory" : "file",
-							})),
-							// A broken symlink or a file removed mid-listing is skipped, not fatal.
-							Effect.option,
-						),
-					{ concurrency: 32 },
-				);
-				return entries
-					.filter(Option.isSome)
-					.map((entry) => entry.value)
-					.sort(byKindThenName);
-			}),
 
 			"projects.list": Effect.fn("projects.list")(function* () {
 				const sessions = yield* Codework.call((client) => client["session.list"]({}));
