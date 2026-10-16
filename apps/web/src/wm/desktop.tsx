@@ -1,5 +1,4 @@
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import type { LucideIcon } from "lucide-react";
 import { useAtom, useAtomSet } from "@effect/atom-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -20,6 +19,7 @@ import { useArrangedWidgets, useElementSize } from "webwm/react";
 import type { Frame as FrameApi, Shell } from "../sdk";
 import { FrameContext, ShellContext } from "../sdk/shell";
 import { builtins, registry } from "../widgets";
+import { type Chrome, chromeAtom, chromeOf } from "./chrome";
 import { Divider } from "./divider";
 import { Frame } from "./frame";
 import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
@@ -39,18 +39,11 @@ const nmaster = 1;
 /** The opener of what the shell itself opens (an `open` request in the URL), not a widget. */
 const SHELL = "shell";
 
-/** What a widget set on its frame at runtime; it outranks the instance and definition. */
-interface Chrome {
-	readonly title?: string;
-	readonly icon?: LucideIcon;
-}
-
 /** Frame title, icon, and body for one instance, resolved through the widget registry. */
 function describe(instance: Instance, chrome: Chrome | undefined) {
 	const definition = registry.get(instance.kind);
 	return {
-		title: chrome?.title ?? instance.title ?? definition?.title ?? instance.id,
-		icon: chrome?.icon ?? definition?.icon,
+		...chromeOf(instance, chrome),
 		body:
 			definition === undefined ? (
 				<p className="p-3 text-ink-muted">Missing widget: {instance.kind}</p>
@@ -116,7 +109,7 @@ export function Desktop({ workspace }: DesktopProps) {
 	const { workspaceId: routed } = useParams({ strict: false });
 	// Local edits ahead of the database, so dragging the divider never waits on a round trip.
 	const [views, setViews] = useState<ReadonlyMap<string, View>>(() => new Map());
-	const [chrome, setChrome] = useState<ReadonlyMap<string, Chrome>>(() => new Map());
+	const [chrome, setChrome] = useAtom(chromeAtom);
 	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
 	const [drag, setDrag] = useState<Drag | null>(null);
 	const [resizing, setResizing] = useState(false);
