@@ -1,6 +1,6 @@
 import { Bus, Codework, defineBackend, handle, Kv } from "@codeworksh/widget/backend";
 import { type EventEnvelope, HistoryEntry, type Part, type SessionInfo } from "@codeworksh/widget/codework";
-import { Deferred, Effect, Option, Schedule, Schema, Stream } from "effect";
+import { Deferred, Effect, Fiber, Option, Schedule, Schema, Stream } from "effect";
 
 import {
 	Follow,
@@ -274,13 +274,39 @@ export const session = defineBackend({
 			Effect.forkScoped,
 		);
 
+		/**
+		 * Stops following a session once no view has watched its topic for a while: a view watches
+		 * from just after it follows until its frame closes, and a closed window stops watching too.
+		 * The snapshot stays in kv, so the next follow refreshes it rather than seeding again.
+		 */
+		const release = (sessionId: string, syncing: Fiber.Fiber<unknown, unknown>) =>
+			bus.watchers(topics.session(sessionId)).pipe(
+				// Long enough to cover a view between its follow and its subscription, or a quick reopen.
+				Stream.debounce("30 seconds"),
+				Stream.filter((count) => count === 0),
+				Stream.runHead,
+				Effect.andThen(
+					Effect.sync(() => {
+						following.delete(sessionId);
+						latest.delete(sessionId);
+						for (const [id, streamed] of streaming) {
+							if (streamed.sessionId !== sessionId) continue;
+							streaming.delete(id);
+							dirty.delete(id);
+						}
+					}),
+				),
+				Effect.andThen(Fiber.interrupt(syncing)),
+			);
+
 		yield* handle(topics.follow, Follow, ({ sessionId }) =>
 			Effect.gen(function* () {
 				let ready = following.get(sessionId);
 				if (ready === undefined) {
 					ready = yield* Deferred.make<Reply>();
 					following.set(sessionId, ready);
-					yield* Effect.forkIn(sync(sessionId, ready), scope);
+					const syncing = yield* Effect.forkIn(sync(sessionId, ready), scope);
+					yield* Effect.forkIn(release(sessionId, syncing), scope);
 				}
 				return yield* encodeReply(yield* Deferred.await(ready)).pipe(Effect.orDie);
 			}),

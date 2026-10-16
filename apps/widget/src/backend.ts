@@ -16,6 +16,11 @@ export class Bus extends Context.Service<
 			readonly topics: ReadonlyArray<string>;
 			readonly after?: number | undefined;
 		}) => Stream.Stream<Event | Synced>;
+		/**
+		 * How many subscribers follow `topic`, now and on each change; a closed window stops counting.
+		 * A backend uses it to keep work going only while someone looks.
+		 */
+		readonly watchers: (topic: string) => Stream.Stream<number>;
 	}
 >()("@codeworksh/widget/backend/Bus") {}
 

@@ -1,4 +1,16 @@
-import { Clock, Context, Duration, Effect, Layer, Option, PubSub, Schema, Semaphore, Stream } from "effect";
+import {
+	Clock,
+	Context,
+	Duration,
+	Effect,
+	Layer,
+	Option,
+	PubSub,
+	Schema,
+	Semaphore,
+	Stream,
+	SubscriptionRef,
+} from "effect";
 import { SqlClient } from "effect/sql";
 import { WidgetEvent, type Event, type Publish, type Request, type Synced } from "@codeworksh/widget/event";
 import { Db } from "./db.ts";
@@ -15,6 +27,8 @@ export interface Interface {
 		readonly topics: ReadonlyArray<string>;
 		readonly after?: number | undefined;
 	}) => Stream.Stream<Event | Synced>;
+	/** How many subscriptions follow `topic`: the current count, then each change. */
+	readonly watchers: (topic: string) => Stream.Stream<number>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/server/event/Service") {}
@@ -42,6 +56,17 @@ export const layer = Layer.effect(
 		const live = yield* PubSub.unbounded<Event>();
 		// Insert and broadcast as one step, so live subscribers see events in seq order.
 		const lock = yield* Semaphore.make(1);
+		const watching = yield* SubscriptionRef.make<ReadonlyMap<string, number>>(new Map());
+		const watch = (topics: ReadonlySet<string>, by: 1 | -1) =>
+			SubscriptionRef.update(watching, (counts) => {
+				const next = new Map(counts);
+				for (const topic of topics) {
+					const count = (next.get(topic) ?? 0) + by;
+					if (count > 0) next.set(topic, count);
+					else next.delete(topic);
+				}
+				return next;
+			});
 
 		const head = sql<{ seq: number | null }>`SELECT MAX(seq) AS seq FROM event`.pipe(
 			Effect.map((rows) => rows[0]?.seq ?? 0),
@@ -105,6 +130,11 @@ export const layer = Layer.effect(
 
 		return Service.of({
 			publish,
+			watchers: (topic) =>
+				SubscriptionRef.changes(watching).pipe(
+					Stream.map((counts) => counts.get(topic) ?? 0),
+					Stream.changes,
+				),
 
 			request: Effect.fn("Event.request")(function* (input, timeout = "30 seconds") {
 				const id = input.id ?? (yield* Effect.sync(() => crypto.randomUUID()));
@@ -138,6 +168,8 @@ export const layer = Layer.effect(
 						const subscription = yield* PubSub.subscribe(live);
 						const through = yield* head;
 						const wanted = new Set(topics);
+						// Counted for the stream's lifetime, so a client that disconnects stops counting.
+						yield* Effect.acquireRelease(watch(wanted, 1), () => watch(wanted, -1));
 						const past =
 							after === undefined || after >= through || wanted.size === 0
 								? []

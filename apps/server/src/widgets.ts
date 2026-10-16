@@ -29,6 +29,7 @@ export const layer = Layer.effectDiscard(
 								Effect.andThen(events.request({ ...input, source: backend.package }, timeout)),
 							),
 						subscribe: events.subscribe,
+						watchers: events.watchers,
 					}),
 				),
 				Effect.provideService(
