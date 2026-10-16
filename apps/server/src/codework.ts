@@ -23,6 +23,24 @@ const SessionInfo = Schema.Struct({
 });
 export type SessionInfo = typeof SessionInfo.Type;
 
+/** A harness event as the server sends it; `data` stays encoded, decoded per `type` by its reader. */
+const EventEnvelope = Schema.Struct({
+	id: Schema.String,
+	type: Schema.String,
+	durable: Schema.optionalKey(Schema.Struct({ aggregateId: Schema.String, seq: Schema.Int, version: Schema.Int })),
+	metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+	data: Schema.Unknown,
+});
+export type EventEnvelope = typeof EventEnvelope.Type;
+
+/** Ends `session.log`'s replay at the head it read; `seq` is absent while the log is empty. */
+const LogSynced = Schema.Struct({
+	type: Schema.Literal("log.synced"),
+	aggregateId: Schema.String,
+	seq: Schema.optionalKey(Schema.Int),
+});
+export type LogSynced = typeof LogSynced.Type;
+
 /** The server's "no such session" (the harness `SessionNotFoundError`), by its wire tag. */
 export class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundError>()("SessionNotFoundError", {
 	sessionId: Schema.String,
@@ -41,6 +59,17 @@ const Api = RpcGroup.make(
 		payload: { sessionId: Schema.String },
 		success: SessionInfo,
 		error: SessionNotFoundError,
+	}),
+	/** Durable events after `after` (exclusive), then `log.synced`; with `follow`, each new one as it commits. */
+	Rpc.make("session.log", {
+		payload: {
+			sessionId: Schema.String,
+			after: Schema.optionalKey(Schema.Int),
+			follow: Schema.optionalKey(Schema.Boolean),
+		},
+		success: Schema.Union([EventEnvelope, LogSynced]),
+		error: SessionNotFoundError,
+		stream: true,
 	}),
 	Rpc.make("session.history", {
 		payload: { sessionId: Schema.String },

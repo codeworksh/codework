@@ -1,7 +1,24 @@
-import { Control, EventSchema, PromptSchema, Sandbox, Session, SessionStore, State } from "@codeworksh/harness/effect";
+import {
+	Control,
+	Event,
+	EventRegistry,
+	EventSchema,
+	PromptSchema,
+	Sandbox,
+	Session,
+	SessionStore,
+	State,
+} from "@codeworksh/harness/effect";
 import { DateTime, Effect, Option, Stream } from "effect";
-import { Contract, type HistoryEntry, type RuntimeConfig, type SandboxInfo, type SessionInfo } from "./contract.ts";
-import { Envelope } from "./envelope.ts";
+import {
+	Contract,
+	type HistoryEntry,
+	type LogSynced,
+	type RuntimeConfig,
+	type SandboxInfo,
+	type SessionInfo,
+} from "./contract.ts";
+import { type EncodingError, Envelope, type EventEnvelope } from "./envelope.ts";
 import { EventFeed } from "./feed.ts";
 import { Identity } from "./identity.ts";
 import { OAuth } from "./oauth.ts";
@@ -54,6 +71,17 @@ const releaseOnFailure = (selection: Effect.Success<ReturnType<typeof Sandbox.re
 		? Sandbox.stop(selection.info.id).pipe(Effect.catchCause(Effect.logError))
 		: Effect.void;
 
+/** A `session.log` item for the wire: a stored event as its envelope, or the replay marker. */
+const toLogItem =
+	(registry: Envelope.Registry) =>
+	(item: Event.LogItem): Effect.Effect<EventEnvelope | LogSynced, EncodingError> =>
+		Event.isSynced(item)
+			? Effect.succeed(item)
+			: Envelope.encode(item, registry).pipe(
+					// Every stored type is a kernel durable one, which the registry always knows.
+					Effect.catchTag("UnknownEventTypeError", Effect.die),
+				);
+
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
 		const control = yield* Control.Service;
@@ -62,6 +90,8 @@ export const layer = Contract.Api.toLayer(
 		const state = yield* State.Service;
 		const oauth = yield* OAuth.Service;
 		const identity = yield* Identity.Service;
+		const events = yield* Event.Service;
+		const registry = yield* EventRegistry.Service;
 
 		return Contract.Api.of({
 			"server.info": () => Effect.succeed({ pid: identity.pid, version: identity.version }),
@@ -120,6 +150,21 @@ export const layer = Contract.Api.toLayer(
 				);
 				return { entries };
 			}),
+			"session.log": ({ sessionId, after, follow }) =>
+				Stream.unwrap(
+					Effect.gen(function* () {
+						if (Option.isNone(yield* sessions.get(sessionId))) {
+							return yield* new SessionStore.SessionNotFoundError({ sessionId });
+						}
+						return events
+							.log({
+								aggregateId: sessionId,
+								follow: follow ?? false,
+								...(after === undefined ? {} : { after }),
+							})
+							.pipe(Stream.mapEffect(toLogItem(registry.get)));
+					}),
+				),
 			"session.link": Effect.fnUntraced(function* ({ sessionId, hostDir }) {
 				const handle = yield* Session.link({ sessionId, hostDir: hostDir ?? null });
 				return toSessionInfo(yield* handle.info);
