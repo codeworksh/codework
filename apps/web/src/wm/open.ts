@@ -1,16 +1,15 @@
-import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 
 import type { OpenMode } from "../sdk";
 import { deskAtom } from "./instances";
 import {
-	createWorkspace,
 	lastWorkspaceAtom,
 	MAX_WORKSPACES,
 	openInWorkspaceRoute,
+	useCreateWorkspace,
 	useWorkspaces,
 	type Workspace,
-	workspacesKey,
 	workspaceTag,
 } from "./workspaces";
 
@@ -26,7 +25,7 @@ export function useOpenElsewhere() {
 	const workspaces = useWorkspaces();
 	const { instances, order } = useAtomValue(deskAtom);
 	const lastId = useAtomValue(lastWorkspaceAtom);
-	const create = useAtomSet(createWorkspace, { mode: "promise" });
+	const create = useCreateWorkspace();
 	const navigate = useNavigate();
 
 	return async (address: string, name: string, mode: OpenMode) => {
@@ -43,10 +42,7 @@ export function useOpenElsewhere() {
 		if (last !== undefined && shows(last).length === 0) return go(last);
 
 		if (workspaces.length < MAX_WORKSPACES) {
-			const created = await create({
-				payload: { name, icon: "messages-square", auto: true },
-				reactivityKeys: workspacesKey,
-			}).catch(() => undefined);
+			const created = await create({ name, icon: "messages-square", auto: true }).catch(() => undefined);
 			if (created !== undefined) return go(created);
 		}
 		if (last !== undefined) return go(last);

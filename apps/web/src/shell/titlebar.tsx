@@ -1,8 +1,7 @@
-import { useAtomSet } from "@effect/atom-react";
 import { Link, useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { ChevronLeft, House, Plus, Settings } from "lucide-react";
 
-import { createWorkspace, MAX_WORKSPACES, useWorkspaces, workspaceRoute, workspacesKey } from "../wm/workspaces";
+import { MAX_WORKSPACES, useCreateWorkspace, useWorkspaces, workspaceRoute } from "../wm/workspaces";
 
 /*
  * Title-bar controls shared by the workspace shell and the start page, so the two bars behave alike.
@@ -45,13 +44,10 @@ export function HomeButton() {
 export function NewWorkspaceButton() {
 	const workspaces = useWorkspaces();
 	const navigate = useNavigate();
-	const create = useAtomSet(createWorkspace, { mode: "promise" });
+	const create = useCreateWorkspace();
 	const full = workspaces.length >= MAX_WORKSPACES;
 	const add = async () => {
-		const workspace = await create({
-			payload: { name: `Workspace ${workspaces.length + 1}`, icon: "app-window" },
-			reactivityKeys: workspacesKey,
-		});
+		const workspace = await create({ name: `Workspace ${workspaces.length + 1}`, icon: "app-window" });
 		void navigate(workspaceRoute(workspace));
 	};
 	return (

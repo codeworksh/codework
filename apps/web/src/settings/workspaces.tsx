@@ -21,11 +21,11 @@ import { iconOf, icons } from "../shell/icons";
 import { shortcutLabel } from "../shell/switcher";
 import { deskAtom, only, untag } from "../wm/instances";
 import {
-	createWorkspace,
 	deleteWorkspace,
 	reorderWorkspaces,
 	MAX_WORKSPACES,
 	updateWorkspace,
+	useCreateWorkspace,
 	useWorkspaces,
 	type Workspace,
 	workspacesKey,
@@ -39,7 +39,7 @@ const sameOrder = (ids: readonly string[], workspaces: readonly Workspace[]) =>
 /** List, create, rename, re-icon, reorder (drag the grip), and delete workspaces. */
 export function WorkspacesSettings() {
 	const workspaces = useWorkspaces();
-	const create = useAtomSet(createWorkspace, { mode: "promise" });
+	const create = useCreateWorkspace();
 	const reorder = useAtomSet(reorderWorkspaces, { mode: "promise" });
 	const [error, setError] = useState<string | null>(null);
 	// The new workspace, whose name field takes focus.
@@ -59,10 +59,7 @@ export function WorkspacesSettings() {
 
 	const addWorkspace = () =>
 		run(async () => {
-			const workspace = await create({
-				payload: { name: `Workspace ${workspaces.length + 1}`, icon: "app-window" },
-				reactivityKeys: workspacesKey,
-			});
+			const workspace = await create({ name: `Workspace ${workspaces.length + 1}`, icon: "app-window" });
 			setCreated(workspace.id);
 		});
 

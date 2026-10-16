@@ -1,9 +1,10 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
 import type { Workspace } from "@codeworksh/server/contract";
 import { Atom, AsyncResult } from "effect/reactivity";
+import { useContext } from "react";
 import { tagBit } from "webwm";
 
-import { Server } from "../kernel/rpc";
+import { runQuery, Server } from "../kernel/rpc";
 
 export type { Workspace };
 
@@ -41,3 +42,17 @@ export const openInWorkspaceRoute = (workspace: Workspace, address: string, mode
 		...workspaceRoute(workspace),
 		search: { open: address, ...(mode === "new" ? { mode: "new" as const } : {}) },
 	}) as const;
+
+/**
+ * Creates a workspace and resolves once the shared list includes it. Going to it before then would
+ * find a stale list: the shell shows nothing, or sends an empty-looking app back to the start page.
+ */
+export function useCreateWorkspace() {
+	const registry = useContext(RegistryContext);
+	const create = useAtomSet(createWorkspace, { mode: "promise" });
+	return async (payload: { readonly name: string; readonly icon: string; readonly auto?: boolean }) => {
+		const workspace = await create({ payload, reactivityKeys: workspacesKey });
+		await runQuery(registry, workspacesAtom);
+		return workspace;
+	};
+}
