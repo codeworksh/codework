@@ -1,9 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
 import { Link } from "@tanstack/react-router";
-import { Fragment } from "react";
+import { Fragment, useRef } from "react";
 
 import { isMac } from "../kernel/platform";
-import { chromeAtom, chromeOf, focusedAtom } from "../wm/chrome";
+import type { Tab } from "../sdk";
+import { registry } from "../widgets";
+import { chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { type Workspace, workspaceRoute, workspaceTag } from "../wm/workspaces";
 import { iconOf } from "./icons";
@@ -22,10 +24,22 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	const { instances, order } = useAtomValue(deskAtom);
 	const chrome = useAtomValue(chromeAtom);
 	const focusedOn = useAtomValue(focusedAtom);
+	const owners = useAtomValue(tabOwnerAtom);
+	// What each tab showed last, kept while a frame that will set the tab is still loading.
+	const shown = useRef(new Map<string, Tab>());
 	const showing = (workspace: Workspace) => {
+		const tab = tabOf(workspace);
+		shown.current.set(workspace.id, tab);
+		return tab;
+	};
+	const tabOf = (workspace: Workspace): Tab => {
 		const tag = workspaceTag(workspace);
 		const onWorkspace = (instance: (typeof instances)[number] | undefined) =>
 			instance !== undefined && (instance.tags & tag) !== 0;
+		// The frame that claimed the tab keeps it while it is still on this workspace.
+		const owner = instances.find((instance) => instance.id === owners.get(workspace.id));
+		const claimed = owner !== undefined && onWorkspace(owner) ? chrome.get(owner.id)?.tab : undefined;
+		if (claimed !== undefined) return claimed;
 		// Its own last focus once it has been on screen, else its main frame (first in tile order), so
 		// focusing a frame shared with another workspace never relabels a tab not yet visited.
 		const remembered = instances.find((instance) => instance.id === focusedOn.get(workspace.id));
@@ -36,6 +50,8 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 		const frame = chrome.get(focused.id);
 		// The focused frame decides what the tab says; without a say, the workspace's name over its title.
 		if (frame?.tab !== undefined) return frame.tab;
+		const kept = shown.current.get(workspace.id);
+		if (registry.get(focused.kind)?.ownsTab === true && kept !== undefined) return kept;
 		const title = chromeOf(focused, frame).title;
 		// A frame named like its workspace adds nothing to the tab.
 		return title.toLowerCase() === workspace.name.toLowerCase()

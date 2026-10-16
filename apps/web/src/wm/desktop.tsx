@@ -19,7 +19,7 @@ import { useArrangedWidgets, useElementSize } from "webwm/react";
 import type { Frame as FrameApi, Shell } from "../sdk";
 import { FrameContext, ShellContext } from "../sdk/shell";
 import { builtins, registry } from "../widgets";
-import { type Chrome, chromeAtom, chromeOf, focusedAtom } from "./chrome";
+import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
 import { Frame } from "./frame";
 import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
@@ -151,6 +151,15 @@ export function Desktop({ workspace }: DesktopProps) {
 			current.get(workspace.id) === focusedId ? current : new Map(current).set(workspace.id, focusedId),
 		);
 	}, [workspace.id, focusedId, setFocused]);
+	// The focused frame takes the tab once it has one to show, which may be after it loads.
+	const focusedTab = focusedId === undefined ? undefined : chrome.get(focusedId)?.tab;
+	const setTabOwner = useAtomSet(tabOwnerAtom);
+	useEffect(() => {
+		if (focusedId === undefined || focusedTab === undefined) return;
+		setTabOwner((current) =>
+			current.get(workspace.id) === focusedId ? current : new Map(current).set(workspace.id, focusedId),
+		);
+	}, [workspace.id, focusedId, focusedTab, setTabOwner]);
 	const bounds: Bounds = { x: 0, y: 0, w: size.width, h: size.height };
 	const tiled = order.tileOrder.flatMap((id) =>
 		widgets.filter((widget) => widget.id === id && isVisible(widget, activeTags)),

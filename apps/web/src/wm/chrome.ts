@@ -25,6 +25,13 @@ export const chromeAtom = Atom.make<ReadonlyMap<string, Chrome>>(new Map()).pipe
  */
 export const focusedAtom = Atom.make<ReadonlyMap<string, string>>(new Map()).pipe(Atom.keepAlive);
 
+/**
+ * The frame that owns each workspace's tab (workspace id → instance id): the last one focused there
+ * that set a tab. Focus alone does not move the tab, so clicking a frame with no tab of its own, or
+ * opening one that has not set it yet, leaves the tab as it was instead of flickering through both.
+ */
+export const tabOwnerAtom = Atom.make<ReadonlyMap<string, string>>(new Map()).pipe(Atom.keepAlive);
+
 /** A frame's title and icon: what the widget set, else the instance's, else its definition's. */
 export function chromeOf(instance: Instance, chrome: Chrome | undefined) {
 	const definition = registry.get(instance.kind);
