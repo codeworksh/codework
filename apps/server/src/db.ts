@@ -1,5 +1,5 @@
 import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
-import { Clock, Effect, Layer, String as Str } from "effect";
+import { Clock, Effect, Layer, Schema, String as Str } from "effect";
 import { Migrator, SqlClient } from "effect/sql";
 
 // Migrations ship as code so they survive bundling. Keys are
@@ -45,6 +45,20 @@ const migrations = {
 		const sql = yield* SqlClient.SqlClient;
 		yield* sql`ALTER TABLE workspaces ADD COLUMN auto INTEGER NOT NULL DEFAULT 0`;
 	}),
+	"202610160002_event": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		// AUTOINCREMENT so a seq is never reused, even after the newest rows are deleted.
+		yield* sql`
+			CREATE TABLE event (
+				seq INTEGER PRIMARY KEY AUTOINCREMENT,
+				topic TEXT NOT NULL,
+				source TEXT NOT NULL,
+				payload TEXT NOT NULL,
+				created INTEGER NOT NULL
+			)
+		`;
+		yield* sql`CREATE INDEX event_topic_seq ON event (topic, seq)`;
+	}),
 };
 
 const setup = Effect.gen(function* () {
@@ -55,6 +69,9 @@ const setup = Effect.gen(function* () {
 	yield* sql`PRAGMA foreign_keys = ON`;
 	yield* SqliteMigrator.run({ loader: Migrator.fromRecord(migrations) });
 });
+
+/** A JSON value stored as TEXT. */
+export const JsonText = Schema.fromJsonString(Schema.Json);
 
 /** `SqlClient` for the database file at `filename`, migrated before first use. */
 export const layer = (filename: string) =>

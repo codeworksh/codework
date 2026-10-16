@@ -134,6 +134,22 @@ export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()("Server
 	message: Schema.String,
 }) {}
 
+/** One committed event. `seq` orders every event across all topics. */
+export const Event = Schema.Struct({
+	seq: Schema.Int,
+	topic: Schema.String,
+	/** Who published it, e.g. a widget instance id. */
+	source: Schema.String,
+	payload: Schema.Json,
+	/** Epoch milliseconds. */
+	created: Schema.Number,
+});
+export type Event = typeof Event.Type;
+
+/** Ends a subscription's replay: everything through `seq` was sent, live events follow. */
+export const Synced = Schema.TaggedStruct("Synced", { seq: Schema.Int });
+export type Synced = typeof Synced.Type;
+
 /** Package-scoped JSON storage: `package` namespaces keys so packages never collide. */
 const KvKey = { package: Schema.String, key: Schema.String };
 
@@ -178,6 +194,19 @@ export const Api = RpcGroup.make(
 	Rpc.make("kv.set", {
 		payload: { ...KvKey, value: Schema.Json },
 		success: Schema.Void,
+	}),
+	Rpc.make("event.publish", {
+		payload: { topic: Schema.String, source: Schema.String, payload: Schema.Json },
+		success: Event,
+	}),
+	/**
+	 * Events on `topics`: those after `after` from the log, then `Synced`, then live ones. Without
+	 * `after` nothing is replayed, so `Synced` comes first and carries the current head.
+	 */
+	Rpc.make("event.subscribe", {
+		payload: { topics: Schema.Array(Schema.String), after: Schema.optional(Schema.Int) },
+		success: Schema.Union([Event, Synced]),
+		stream: true,
 	}),
 );
 

@@ -2,11 +2,12 @@ import { Clock, Effect, Option, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { Codework } from "./codework.ts";
 import { Contract, type Project } from "./contract.ts";
+import { Db } from "./db.ts";
+import { Event } from "./event.ts";
 import { Workspaces } from "./workspaces.ts";
 
-const JsonText = Schema.fromJsonString(Schema.Json);
-const decodeJson = Schema.decodeUnknownEffect(JsonText);
-const encodeJson = Schema.encodeEffect(JsonText);
+const decodeJson = Schema.decodeUnknownEffect(Db.JsonText);
+const encodeJson = Schema.encodeEffect(Db.JsonText);
 
 /**
  * Sessions grouped by project, both newest first. A session whose project row is missing gets a
@@ -39,6 +40,7 @@ export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 		const workspaces = yield* Workspaces.handlers;
+		const events = yield* Event.Service;
 
 		return Contract.Api.of({
 			...workspaces,
@@ -85,6 +87,9 @@ export const layer = Contract.Api.toLayer(
 					ON CONFLICT (package, key) DO UPDATE SET value = excluded.value, updated = excluded.updated
 				`.pipe(Effect.orDie);
 			}),
+
+			"event.publish": (input) => events.publish(input),
+			"event.subscribe": (input) => events.subscribe(input),
 		});
 	}),
 );

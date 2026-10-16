@@ -6,6 +6,7 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { createServer } from "node:http";
 import { Contract } from "./contract.ts";
 import { Db } from "./db.ts";
+import { Event } from "./event.ts";
 import { Handlers } from "./handlers.ts";
 
 // The port is chosen by the OS, so the supervisor learns it from this line.
@@ -23,6 +24,7 @@ const database = Layer.unwrap(Effect.map(Config.String("CODEWORK_DATABASE"), Db.
 
 const rpc = RpcServer.layerHttp({ group: Contract.Api, path: "/rpc", protocol: "websocket" }).pipe(
 	Layer.provide(Handlers.layer),
+	Layer.provide(Event.layer),
 );
 
 export const layer = HttpRouter.serve(rpc, { disableListenLog: true }).pipe(
