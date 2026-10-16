@@ -54,11 +54,15 @@ export const defineBackend = (backend: Backend): Backend => backend;
  * decoded with `request`, and what `handler` returns is published back on the topic, caused by it,
  * which is what a `request` on the other side resolves with. A payload that does not decode is
  * answered with `{ error }`. Each request runs on its own fiber, so a slow one holds up no other.
+ *
+ * `ephemeral` sends replies live only: right for reads whose answer is large and goes stale, which
+ * the log should not keep. A retried request is then answered afresh rather than from the log.
  */
 export const handle = <A, R>(
 	topic: string,
 	request: Schema.Decoder<A>,
 	handler: (payload: A, event: Event) => Effect.Effect<Schema.Json, never, R>,
+	options?: { readonly ephemeral?: boolean },
 ) =>
 	Effect.gen(function* () {
 		const bus = yield* Bus;
@@ -71,7 +75,14 @@ export const handle = <A, R>(
 						onFailure: (error) => Effect.succeed<Schema.Json>({ error: error.message }),
 						onSuccess: (payload) => handler(payload, event),
 					}),
-					Effect.flatMap((payload) => bus.publish({ topic, cause: event.id, payload })),
+					Effect.flatMap((payload) =>
+						bus.publish({
+							topic,
+							cause: event.id,
+							payload,
+							...(options?.ephemeral === true ? { ephemeral: true } : {}),
+						}),
+					),
 					Effect.forkScoped,
 				),
 			),

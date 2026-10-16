@@ -18,6 +18,7 @@ export function Composer({
 	onSubmit,
 	placeholder,
 	autoFocus,
+	compact = false,
 	actions,
 	tray,
 }: {
@@ -26,6 +27,8 @@ export function Composer({
 	readonly onSubmit: (submit: Submit) => void;
 	readonly placeholder: string;
 	readonly autoFocus?: boolean;
+	/** One line that grows with its text, for a composer sharing a frame with what it talks to. */
+	readonly compact?: boolean;
 	readonly actions: ReactNode;
 	readonly tray?: ReactNode;
 }) {
@@ -38,7 +41,7 @@ export function Composer({
 					onSubmit({ alternate: false });
 				}}
 			>
-				<div className="px-4 pt-4 pb-2">
+				<div className={compact ? "px-3.5 pt-2.5 pb-0.5" : "px-4 pt-4 pb-2"}>
 					<textarea
 						autoFocus={autoFocus}
 						rows={1}
@@ -52,11 +55,13 @@ export function Composer({
 						}}
 						placeholder={placeholder}
 						aria-label="Prompt"
-						// Grows with its text from four lines up to about nine, then scrolls.
-						className="block max-h-52 min-h-17.5 w-full resize-none bg-transparent text-[14px] leading-relaxed text-ink outline-none [field-sizing:content] placeholder:text-ink-muted/60"
+						// Grows with its text, from four lines (one when compact) up to about nine, then scrolls.
+						className={`block max-h-52 w-full resize-none bg-transparent text-[14px] leading-relaxed text-ink outline-none [field-sizing:content] placeholder:text-ink-muted/60 ${compact ? "min-h-6" : "min-h-17.5"}`}
 					/>
 				</div>
-				<div className="flex items-center justify-end gap-2 px-4 pb-4">{actions}</div>
+				<div className={`flex items-center justify-end gap-2 ${compact ? "px-2.5 pb-2.5" : "px-4 pb-4"}`}>
+					{actions}
+				</div>
 			</form>
 			{tray !== undefined && (
 				// Inset from the card's rounded corners, tucked under its bottom edge.

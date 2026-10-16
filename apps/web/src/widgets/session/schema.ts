@@ -11,6 +11,8 @@ export const topics = {
 	follow: "codework/session.follow",
 	prompt: "codework/session.prompt",
 	interrupt: "codework/session.interrupt",
+	/** Requests: a window of a followed session's conversation, newest first back from `before`. */
+	page: "codework/session.page",
 	/** Updates to one session's conversation. */
 	session: (id: string) => `codework/session/${id}`,
 };
@@ -30,6 +32,13 @@ export const Prompt = Schema.Struct({
 export type Prompt = typeof Prompt.Type;
 
 export const Interrupt = Schema.Struct({ sessionId: Schema.String });
+
+export const Page = Schema.Struct({
+	sessionId: Schema.String,
+	/** The oldest message the view holds; omitted asks for the newest messages. */
+	before: Schema.optionalKey(Schema.String),
+	limit: Schema.Int,
+});
 
 /** The answer to every request: done, or why not. */
 export const Reply = Schema.Union([
@@ -58,6 +67,20 @@ export const Snapshot = Schema.Struct({
 });
 export type Snapshot = typeof Snapshot.Type;
 
+/** The answer to a page request: messages up to `before`, oldest first. */
+export const Window = Schema.Union([
+	Schema.TaggedStruct("Window", {
+		info: Info,
+		messages: Schema.Array(HistoryEntry),
+		/** The snapshot's seq: a view subscribes for updates after it. */
+		seq: Schema.Int,
+		/** Whether older messages remain. */
+		more: Schema.Boolean,
+	}),
+	Schema.TaggedStruct("Failed", { message: Schema.String }),
+]);
+export type Window = typeof Window.Type;
+
 /** Published on a session's topic as its conversation changes. */
 export const Update = Schema.Union([
 	Schema.TaggedStruct("Info", { info: Info }),
@@ -75,6 +98,7 @@ export const Json = {
 	Follow: Schema.toCodecJson(Follow),
 	Prompt: Schema.toCodecJson(Prompt),
 	Interrupt: Schema.toCodecJson(Interrupt),
+	Window: Schema.toCodecJson(Window),
 	Reply: Schema.toCodecJson(Reply),
 	Snapshot: Schema.toCodecJson(Snapshot),
 	Update: Schema.toCodecJson(Update),

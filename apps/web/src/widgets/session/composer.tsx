@@ -97,6 +97,7 @@ export function SessionComposer({
 	const empty = text.trim() === "";
 	return (
 		<Composer
+			compact
 			value={text}
 			onChange={setText}
 			onSubmit={(submit) => void send(submit)}

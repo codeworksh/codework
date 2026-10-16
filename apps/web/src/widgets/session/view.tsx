@@ -1,18 +1,22 @@
+import { LegendList, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
 import type { HistoryEntry, Part, ToolCall } from "@codeworksh/widget/codework";
-import { useBus, useEvents, useFrame, useKv, type WidgetProps } from "@codeworksh/widget/view";
+import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Brain, ChevronDown, ChevronRight, CircleAlert, MessageSquareText, Terminal, Wrench } from "lucide-react";
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ago } from "../time";
 import { sessionId } from "./address";
 import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
-import { type Info, Json, snapshotKey, topics, type Update } from "./schema";
+import { type Info, Json, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
-const decodeSnapshot = Schema.decodeUnknownOption(Json.Snapshot);
+const decodeWindow = Schema.decodeUnknownOption(Json.Window);
 const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
+
+/** Messages per page: the newest on open, then older ones as the reader scrolls up. */
+const PAGE = 60;
 
 export function Session({ address, instanceId }: WidgetProps<unknown>) {
 	const id = sessionId(address);
@@ -26,12 +30,17 @@ type State =
 	| {
 			readonly status: "ready";
 			readonly info: Info;
+			/** The loaded window of the conversation, oldest first. */
 			readonly messages: readonly HistoryEntry[];
-			/** The snapshot's seq: updates are read from after it. */
+			/** Whether older messages remain to be paged in. */
+			readonly more: boolean;
+			/** The first page's seq: updates are read from after it. */
 			readonly after: number;
 			/** Whether the agent works, once the backend has said; until then a draft reply implies it. */
 			readonly running: boolean | undefined;
 	  };
+
+type Ready = Extract<State, { readonly status: "ready" }>;
 
 const apply = (state: State, update: Update): State => {
 	if (state.status !== "ready") return state;
@@ -44,6 +53,9 @@ const apply = (state: State, update: Update): State => {
 			return { ...state, running: update.running };
 		case "Message": {
 			const index = state.messages.findIndex((message) => message.id === update.message.id);
+			const oldest = state.messages[0];
+			// A message older than the window has not been paged in; its page will carry it.
+			if (index === -1 && state.more && oldest !== undefined && update.message.seq < oldest.seq) return state;
 			// A streamed draft can land just after the reply it belongs to ended; an ended reply stays ended.
 			if (index !== -1 && update.message.state === "draft" && state.messages[index]?.state !== "draft") return state;
 			return {
@@ -55,13 +67,29 @@ const apply = (state: State, update: Update): State => {
 };
 
 /**
- * Asks the session backend to follow the session, loads the snapshot it stored, then applies every
- * update published after that snapshot. A dropped connection resumes where it left off.
+ * Asks the session backend to follow the session, loads its newest page, then applies every update
+ * published after that page. Older pages load on demand. A dropped connection resumes where it
+ * left off.
  */
-function useConversation(id: string): State {
+function useConversation(id: string) {
 	const bus = useBus();
-	const kv = useKv();
 	const [state, setState] = useState<State>({ status: "loading" });
+	const paging = useRef(false);
+
+	const page = useCallback(
+		async (before: string | undefined) => {
+			const reply = decodeWindow(
+				(
+					await bus.request({
+						topic: topics.page,
+						payload: { sessionId: id, limit: PAGE, ...(before === undefined ? {} : { before }) },
+					})
+				).payload,
+			);
+			return Option.getOrUndefined(reply);
+		},
+		[bus, id],
+	);
 
 	useEffect(() => {
 		let active = true;
@@ -71,15 +99,16 @@ function useConversation(id: string): State {
 		void (async () => {
 			const reply = decodeReply((await bus.request({ topic: topics.follow, payload: { sessionId: id } })).payload);
 			if (Option.isSome(reply) && reply.value._tag === "Failed") return fail(reply.value.message);
-			const snapshot = decodeSnapshot(await kv.get(snapshotKey(id)));
-			if (Option.isNone(snapshot)) return fail(`Could not load session ${id}.`);
-			const { info, messages, seq } = snapshot.value;
-			if (active) setState({ status: "ready", info, messages, after: seq, running: undefined });
+			const window = await page(undefined);
+			if (window === undefined) return fail(`Could not load session ${id}.`);
+			if (window._tag === "Failed") return fail(window.message);
+			const { info, messages, more, seq } = window;
+			if (active) setState({ status: "ready", info, messages, more, after: seq, running: undefined });
 		})().catch(() => fail("The CodeWork server is not reachable."));
 		return () => {
 			active = false;
 		};
-	}, [bus, kv, id]);
+	}, [bus, id, page]);
 
 	const after = state.status === "ready" ? state.after : undefined;
 	useEvents(after === undefined ? undefined : { topics: [topics.session(id)], after }, (item) => {
@@ -88,12 +117,31 @@ function useConversation(id: string): State {
 		if (Option.isSome(update)) setState((current) => apply(current, update.value));
 	});
 
-	return state;
+	const oldest = state.status === "ready" && state.more ? state.messages[0]?.id : undefined;
+	const loadOlder = useCallback(() => {
+		if (oldest === undefined || paging.current) return;
+		paging.current = true;
+		void page(oldest)
+			.then((window) => {
+				if (window?._tag !== "Window") return;
+				setState((current) => {
+					if (current.status !== "ready") return current;
+					const known = new Set(current.messages.map((message) => message.id));
+					const older = window.messages.filter((message) => !known.has(message.id));
+					return { ...current, messages: [...older, ...current.messages], more: window.more };
+				});
+			})
+			.finally(() => {
+				paging.current = false;
+			});
+	}, [oldest, page]);
+
+	return { state, loadOlder };
 }
 
 function Conversation({ id, instanceId }: { readonly id: string; readonly instanceId: string }) {
 	const { setTitle, setIcon, setTab } = useFrame();
-	const state = useConversation(id);
+	const { state, loadOlder } = useConversation(id);
 	const title = state.status === "ready" ? state.info.title : undefined;
 	const project = state.status === "ready" ? state.info.project?.name : undefined;
 
@@ -111,45 +159,62 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 	const running = state.running ?? (last?.role === "assistant" && last.state === "draft");
 	return (
 		<div className="flex h-full flex-col">
-			<Transcript messages={state.messages} running={running} />
-			<div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-4">
+			<Transcript state={state} running={running} loadOlder={loadOlder} />
+			<div className="mx-auto w-full max-w-3xl shrink-0 px-3 pb-3">
 				<SessionComposer sessionId={id} instanceId={instanceId} running={running} />
 			</div>
 		</div>
 	);
 }
 
-/** The conversation, kept scrolled to its end while the reader is there. */
-function Transcript({ messages, running }: { readonly messages: readonly HistoryEntry[]; readonly running: boolean }) {
-	const scroller = useRef<HTMLDivElement>(null);
-	const atEnd = useRef(true);
-	useLayoutEffect(() => {
-		const element = scroller.current;
-		if (element !== null && atEnd.current) element.scrollTop = element.scrollHeight;
-	}, [messages]);
+// New turns and growing replies keep the list at its end while the reader is there; the composer
+// below the list never moves what is already on screen.
+const follow = {
+	animated: false,
+	on: { dataChange: true, footerLayout: false, itemLayout: true, layout: true },
+} as const satisfies MaintainScrollAtEndOptions;
+
+// Prepending an older page, or a row growing above the viewport, keeps what the reader sees in place.
+const anchor = { data: true, size: true } as const;
+
+const turnKey = (turn: Turn) => turn.user?.id ?? turn.replies[0]?.id ?? "empty";
+
+/**
+ * The conversation as a virtualized list of turns: only those near the viewport are mounted, and an
+ * update re-renders only the turn whose messages changed.
+ */
+function Transcript({
+	state,
+	running,
+	loadOlder,
+}: {
+	readonly state: Ready;
+	readonly running: boolean;
+	readonly loadOlder: () => void;
+}) {
+	const turns = useMemo(() => turnsOf(state.messages), [state.messages]);
+	const renderItem = useCallback(
+		({ item, index }: { readonly item: Turn; readonly index: number }) => (
+			<TurnView turn={item} active={running && index === turns.length - 1} />
+		),
+		[running, turns.length],
+	);
+	if (turns.length === 0) return <p className="min-h-0 flex-1 p-3 text-ink-muted">No messages yet.</p>;
 	return (
-		<div
-			ref={scroller}
-			onScroll={(event) => {
-				const element = event.currentTarget;
-				atEnd.current = element.scrollHeight - element.scrollTop - element.clientHeight < 32;
-			}}
-			className="min-h-0 flex-1 overflow-auto"
-		>
-			{messages.length === 0 ? (
-				<p className="p-3 text-ink-muted">No messages yet.</p>
-			) : (
-				<div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 pt-2 pb-6 text-[14px] leading-relaxed">
-					{turnsOf(messages).map((turn, index, turns) => (
-						<TurnView
-							key={turn.user?.id ?? turn.replies[0]?.id ?? index}
-							turn={turn}
-							active={running && index === turns.length - 1}
-						/>
-					))}
-				</div>
-			)}
-		</div>
+		<LegendList<Turn>
+			data={turns}
+			keyExtractor={turnKey}
+			renderItem={renderItem}
+			extraData={running}
+			estimatedItemSize={160}
+			// Turns hold their own state (an open work log), so a reused row must not carry it over.
+			recycleItems={false}
+			initialScrollAtEnd
+			maintainScrollAtEnd={follow}
+			maintainVisibleContentPosition={anchor}
+			onStartReached={state.more ? loadOlder : undefined}
+			className="min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]"
+		/>
 	);
 }
 
@@ -171,10 +236,16 @@ function turnsOf(entries: readonly HistoryEntry[]): Turn[] {
 	return turns;
 }
 
-/**
- * The answer is the last reply's text; everything before it (thinking, tool calls, notes between
- * calls) is the work that led there, folded under one line.
- */
+// Turns are rebuilt on every update, but their messages are the same objects unless they changed.
+const sameTurn = (
+	a: { readonly turn: Turn; readonly active: boolean },
+	b: { readonly turn: Turn; readonly active: boolean },
+) =>
+	a.active === b.active &&
+	a.turn.user === b.turn.user &&
+	a.turn.replies.length === b.turn.replies.length &&
+	a.turn.replies.every((reply, index) => reply === b.turn.replies[index]);
+
 /**
  * What the work log can show: a tool call, readable thinking, or a note between calls. Thinking a
  * provider withholds (redacted, or reasoning sent without a summary) has nothing to show.
@@ -184,7 +255,11 @@ const isWork = (part: Part) =>
 	(part.type === "thinking" && part.redacted !== true && part.thinking.trim() !== "") ||
 	(part.type === "text" && part.text.trim() !== "");
 
-function TurnView({ turn, active }: { readonly turn: Turn; readonly active: boolean }) {
+/**
+ * The answer is the last reply's text; everything before it (thinking, tool calls, notes between
+ * calls) is the work that led there, folded under one line.
+ */
+const TurnView = memo(function TurnView({ turn, active }: { readonly turn: Turn; readonly active: boolean }) {
 	const last = turn.replies.at(-1);
 	const answer = last?.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])) ?? [];
 	const work = turn.replies
@@ -195,7 +270,7 @@ function TurnView({ turn, active }: { readonly turn: Turn; readonly active: bool
 	const thinking = active && (last?.state !== "draft" || answer.length === 0);
 
 	return (
-		<section className="flex flex-col gap-3">
+		<section className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-3 text-[14px] leading-relaxed">
 			{turn.user !== undefined && <UserMessage entry={turn.user} />}
 			{work.length > 0 && (
 				<WorkLog
@@ -208,13 +283,13 @@ function TurnView({ turn, active }: { readonly turn: Turn; readonly active: bool
 			{thinking && <ThinkingRow />}
 			{answer.length > 0 && (
 				<div className="text-ink/90">
-					<Markdown text={answer.join("\n\n")} />
+					<Markdown text={answer.join("\n\n")} streaming={last?.state === "draft"} />
 				</div>
 			)}
 			{interrupted && <p className="text-[12px] text-ink-muted">Interrupted</p>}
 		</section>
 	);
-}
+}, sameTurn);
 
 /** The agent at work with nothing to show yet; static, so it costs no repaints while it waits. */
 function ThinkingRow() {

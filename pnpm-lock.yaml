@@ -169,7 +169,7 @@ catalogs:
       version: 0.45.0
     '@types/node':
       specifier: ^26.5.1
-      version: 26.6.4
+      version: 26.5.1
     typescript:
       specifier: 7.0.2
       version: 7.0.2
@@ -264,6 +264,9 @@ importers:
       '@effect/atom-react':
         specifier: 4.0.1
         version: 4.0.1(effect@4.0.1)(react@19.3.0)(scheduler@0.27.0)
+      '@legendapp/list':
+        specifier: 3.3.5
+        version: 3.3.5(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@pierre/trees':
         specifier: 1.0.0-beta.6
         version: 1.0.0-beta.6(@shikijs/themes@4.4.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(shiki@4.4.3)
@@ -316,6 +319,9 @@ importers:
       '@tanstack/router-plugin':
         specifier: ^1.161.0
         version: 1.168.42(@tanstack/react-router@1.170.41(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(esbuild@0.28.2)(rolldown@1.2.9)
+      '@types/mdast':
+        specifier: 4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -337,6 +343,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
+      unified:
+        specifier: 11.0.5
+        version: 11.0.5
       vite:
         specifier: 'catalog:'
         version: '@voidzero-dev/vite-plus-core@0.3.1(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1)'
@@ -1917,6 +1926,18 @@ packages:
 
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
+
+  '@legendapp/list@3.3.5':
+    resolution: {integrity: sha512-XTsLYtpg41SVb5uLBYA+YcDSA3w0tgoPq/W8ZggQ2tx+3lrC/rf+ehTP9KYHea9oFaZIuePAgzACs5/auVMJlQ==}
+    peerDependencies:
+      react: '*'
+      react-dom: '*'
+      react-native: '*'
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+      react-native:
+        optional: true
 
   '@libsql/client@0.17.4':
     resolution: {integrity: sha512-lYayFWasDV78A+TjlEhr6ubb3odBV6OHjb+wdp8VQcyWWAEIjuwbCHaraEUS4m4yWoo0BvZo96It4VdzZRmRWw==}
@@ -9402,6 +9423,13 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   '@js-sdsl/ordered-map@4.4.2': {}
+
+  '@legendapp/list@3.3.5(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+    dependencies:
+      react: 19.3.0
+      use-sync-external-store: 1.7.0(react@19.3.0)
+    optionalDependencies:
+      react-dom: 19.3.0(react@19.3.0)
 
   '@libsql/client@0.17.4':
     dependencies:

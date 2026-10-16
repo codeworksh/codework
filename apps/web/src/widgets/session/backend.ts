@@ -7,12 +7,14 @@ import {
 	Info,
 	Interrupt,
 	Json,
+	Page,
 	Prompt,
 	type Reply,
 	type Snapshot,
 	snapshotKey,
 	topics,
 	type Update,
+	type Window,
 } from "./schema.ts";
 
 const toInfo = (info: SessionInfo): Info => ({
@@ -74,6 +76,7 @@ const describe = (error: { readonly _tag: string }) =>
 			: "The CodeWork server is not reachable.";
 
 const encodeReply = Schema.encodeEffect(Json.Reply);
+const encodeWindow = Schema.encodeEffect(Json.Window);
 const encodeUpdate = Schema.encodeEffect(Json.Update);
 const encodeSnapshot = Schema.encodeEffect(Json.Snapshot);
 const decodeSnapshot = Schema.decodeUnknownEffect(Json.Snapshot);
@@ -281,6 +284,38 @@ export const session = defineBackend({
 				}
 				return yield* encodeReply(yield* Deferred.await(ready)).pipe(Effect.orDie);
 			}),
+		);
+
+		// Read from the stored snapshot, so a page and the seq it answers with always agree.
+		yield* handle(
+			topics.page,
+			Page,
+			({ sessionId, before, limit }) =>
+				Effect.gen(function* () {
+					const snapshot = latest.get(sessionId) ?? (yield* load(sessionId));
+					if (snapshot === undefined) {
+						return yield* encodeWindow({ _tag: "Failed", message: "Follow the session before paging it." }).pipe(
+							Effect.orDie,
+						);
+					}
+					const end =
+						before === undefined
+							? snapshot.messages.length
+							: Math.max(
+									0,
+									snapshot.messages.findIndex((message) => message.id === before),
+								);
+					const start = Math.max(0, end - limit);
+					const window: Window = {
+						_tag: "Window",
+						info: snapshot.info,
+						messages: snapshot.messages.slice(start, end),
+						seq: snapshot.seq,
+						more: start > 0,
+					};
+					return yield* encodeWindow(window).pipe(Effect.orDie);
+				}),
+			{ ephemeral: true },
 		);
 
 		yield* handle(topics.prompt, Prompt, ({ sessionId, messageId, text, delivery }) =>
