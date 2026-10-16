@@ -37,16 +37,67 @@ export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>
 	message: Schema.String,
 }) {}
 
-export const Message = Schema.Struct({
-	role: Schema.Literals(["user", "assistant"]),
-	text: Schema.String,
-});
-export type Message = typeof Message.Type;
+/*
+ * A conversation as the CodeWork server sends it, mirrored from packages/codework/src/server
+ * (part.ts and the `session.history` entry in contract.ts). Keep the two in step until both import
+ * a shared schema package.
+ */
 
+export const TextContent = Schema.Struct({ type: Schema.Literal("text"), text: Schema.String });
+export const ImageContent = Schema.Struct({
+	type: Schema.Literal("image"),
+	data: Schema.String,
+	mimeType: Schema.String,
+});
+export const ThinkingContent = Schema.Struct({
+	type: Schema.Literal("thinking"),
+	thinking: Schema.String,
+	/** The provider withheld the reasoning; `thinking` is then empty. */
+	redacted: Schema.optionalKey(Schema.Boolean),
+});
+
+export const ToolStatus = Schema.Literals(["pending", "running", "completed", "error", "skipped", "aborted"]);
+export type ToolStatus = typeof ToolStatus.Type;
+
+export const ToolResult = Schema.Struct({
+	content: Schema.Array(Schema.Union([TextContent, ImageContent])),
+	isError: Schema.Boolean,
+});
+
+export const ToolCall = Schema.Struct({
+	type: Schema.Literal("toolCall"),
+	callID: Schema.String,
+	name: Schema.String,
+	arguments: Schema.Record(Schema.String, Schema.Json),
+	status: ToolStatus,
+	/** Present once the call settled (completed, error, skipped, aborted). */
+	result: Schema.optionalKey(ToolResult),
+	/** Epoch milliseconds: started, and last lifecycle update. */
+	time: Schema.optionalKey(Schema.Struct({ start: Schema.Finite, end: Schema.Finite })),
+});
+export type ToolCall = typeof ToolCall.Type;
+
+export const Part = Schema.Union([TextContent, ImageContent, ThinkingContent, ToolCall]);
+export type Part = typeof Part.Type;
+
+/** One message on a session's active branch, oldest first. */
+export const HistoryEntry = Schema.Struct({
+	id: Schema.String,
+	seq: Schema.Int,
+	role: Schema.Literals(["user", "assistant"]),
+	/** `draft` is a reply still streaming; `aborted` one that was interrupted. */
+	state: Schema.Literals(["committed", "draft", "aborted"]),
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+	parts: Schema.Array(Part),
+});
+export type HistoryEntry = typeof HistoryEntry.Type;
+
+/** One session with its conversation. */
 export const Session = Schema.Struct({
 	...SessionSummary.fields,
-	project: Schema.String,
-	messages: Schema.Array(Message),
+	project: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
+	entries: Schema.Array(HistoryEntry),
 });
 export type Session = typeof Session.Type;
 
@@ -111,7 +162,7 @@ export const Api = RpcGroup.make(
 	Rpc.make("sessions.get", {
 		payload: { id: Schema.String },
 		success: Session,
-		error: SessionNotFound,
+		error: Schema.Union([SessionNotFound, CodeworkUnavailable]),
 	}),
 	Rpc.make("workspaces.list", {
 		success: Schema.Array(Workspace),

@@ -2,7 +2,6 @@ import { Clock, Effect, FileSystem, Option, Path, Schema } from "effect";
 import { SqlClient } from "effect/sql";
 import { Codework } from "./codework.ts";
 import { Contract, type Entry, type Project } from "./contract.ts";
-import { findSession } from "./mock.ts";
 import { Workspaces } from "./workspaces.ts";
 
 const JsonText = Schema.fromJsonString(Schema.Json);
@@ -82,9 +81,23 @@ export const layer = Contract.Api.toLayer(
 			}),
 
 			"sessions.get": Effect.fn("sessions.get")(function* ({ id }) {
-				const session = findSession(id);
-				if (session === undefined) return yield* new Contract.SessionNotFound({ id });
-				return session;
+				// A missing session is an answer, not an outage, so it is caught before `call` sees it.
+				const found = yield* Codework.call((client) =>
+					Effect.all({
+						info: client["session.info"]({ sessionId: id }),
+						history: client["session.history"]({ sessionId: id }),
+					}).pipe(Effect.catchTag("SessionNotFoundError", () => Effect.succeed(undefined))),
+				);
+				if (found === undefined) return yield* new Contract.SessionNotFound({ id });
+				const { info, history } = found;
+				return {
+					id: info.id,
+					title: info.title,
+					updated: info.updatedAt,
+					...(info.model === undefined ? {} : { model: info.model }),
+					...(info.project === undefined ? {} : { project: info.project }),
+					entries: history.entries,
+				};
 			}),
 
 			"kv.get": Effect.fn("kv.get")(function* ({ package: pkg, key }) {

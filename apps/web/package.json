@@ -22,6 +22,8 @@
 		"radix-ui": "^1.7.0",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0",
+		"react-markdown": "^10.1.0",
+		"remark-gfm": "^4.0.1",
 		"scheduler": "^0.27.0",
 		"tailwind-merge": "^3.7.0",
 		"webwm": "https://github.com/codeworksh/webwm/releases/download/v0.1.0/webwm-0.1.0.tgz"

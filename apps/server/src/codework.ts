@@ -4,7 +4,7 @@ import { Rpc, RpcClient, RpcGroup, RpcSerialization } from "effect/rpc";
 /* @effect-diagnostics nodeBuiltinImport:off -- the default home sits under the OS home directory. */
 import os from "node:os";
 import path from "node:path";
-import { CodeworkUnavailable } from "./contract.ts";
+import { CodeworkUnavailable, HistoryEntry } from "./contract.ts";
 
 /*
  * The CodeWork server's RPC contract, mirrored for the calls this app makes. The source of truth
@@ -23,6 +23,11 @@ const SessionInfo = Schema.Struct({
 });
 export type SessionInfo = typeof SessionInfo.Type;
 
+/** The server's "no such session" (the harness `SessionNotFoundError`), by its wire tag. */
+export class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundError>()("SessionNotFoundError", {
+	sessionId: Schema.String,
+}) {}
+
 const Api = RpcGroup.make(
 	Rpc.make("server.info", {
 		payload: {},
@@ -31,6 +36,16 @@ const Api = RpcGroup.make(
 	Rpc.make("session.list", {
 		payload: {},
 		success: Schema.Array(SessionInfo),
+	}),
+	Rpc.make("session.info", {
+		payload: { sessionId: Schema.String },
+		success: SessionInfo,
+		error: SessionNotFoundError,
+	}),
+	Rpc.make("session.history", {
+		payload: { sessionId: Schema.String },
+		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
+		error: SessionNotFoundError,
 	}),
 );
 

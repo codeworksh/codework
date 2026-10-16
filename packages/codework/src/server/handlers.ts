@@ -1,10 +1,11 @@
 import { Control, EventSchema, PromptSchema, Sandbox, Session, SessionStore, State } from "@codeworksh/harness/effect";
-import { Effect, Option, Stream } from "effect";
-import { Contract, type RuntimeConfig, type SandboxInfo, type SessionInfo } from "./contract.ts";
+import { DateTime, Effect, Option, Stream } from "effect";
+import { Contract, type HistoryEntry, type RuntimeConfig, type SandboxInfo, type SessionInfo } from "./contract.ts";
 import { Envelope } from "./envelope.ts";
 import { EventFeed } from "./feed.ts";
 import { Identity } from "./identity.ts";
 import { OAuth } from "./oauth.ts";
+import { MessagePart } from "./part.ts";
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -96,6 +97,28 @@ export const layer = Contract.Api.toLayer(
 			}),
 			"session.info": Effect.fnUntraced(function* ({ sessionId }) {
 				return yield* sessionInfo(sessionId);
+			}),
+			"session.history": Effect.fnUntraced(function* ({ sessionId }) {
+				if (Option.isNone(yield* sessions.get(sessionId))) {
+					return yield* new SessionStore.SessionNotFoundError({ sessionId });
+				}
+				const path = yield* sessions.path(sessionId);
+				const entries = path.flatMap(({ entry, parts }): ReadonlyArray<HistoryEntry> =>
+					entry.type === "user" || entry.type === "assistant"
+						? [
+								{
+									id: entry.id,
+									seq: entry.seq,
+									role: entry.type,
+									state: entry.state,
+									createdAt: DateTime.toEpochMillis(entry.createdAt),
+									// A part this schema does not render (a future aikit type) is skipped, not fatal.
+									parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
+								},
+							]
+						: [],
+				);
+				return { entries };
 			}),
 			"session.link": Effect.fnUntraced(function* ({ sessionId, hostDir }) {
 				const handle = yield* Session.link({ sessionId, hostDir: hostDir ?? null });
