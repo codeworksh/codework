@@ -12,13 +12,16 @@ path = "src/main.rs"
 
 [dependencies]
 ratatui = { version = "0.29", features = ["crossterm"] }
-crossterm = { version = "0.28", features = ["event-stream"] }
+# Defaults include bracketed paste; `event-stream` is not needed because input is
+# read on its own thread.
+crossterm = "0.28"
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-unicode-width = "0.2"
-dirs = "6.0"
 chrono = "0.4"
+# Width of a character in cells, for the prompt line's caret and clipping. Already in the
+# tree through ratatui, so it costs no extra build to depend on it directly rather than
+# assume every character is one column wide.
+unicode-width = "0.2"

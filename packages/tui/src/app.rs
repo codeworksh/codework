@@ -1,175 +1,528 @@
-use std::sync::Arc;
+//! Application state, and the only place that mutates it.
+//!
+//! `update` is the single entry point for change: it takes an event and reports
+//! whether the screen needs redrawing. That report is the whole redraw policy —
+//! there is no tick, so an idle TUI does no work and no repaint.
+
+use std::cell::Cell;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::style::Color;
 use tokio::sync::mpsc;
 
-use crate::catalog::{
-    copy_to_clipboard, open_browser_url, validate_api_key,
-};
-use crate::config::ConfigManager;
-use crate::credentials::CredentialStore;
+use crate::action::{Action, Keymap, Resolution};
+use crate::event::{AppEvent, RpcEvent};
+use crate::menu::{Entry, Menu, Preview};
+use crate::prompt::Prompt;
 use crate::rpc::{RpcClient, StreamEvent};
-use crate::tool;
-use crate::types::{
-    ConversationTurn, FocusedPanel, ModelConfig, ModelSortMode, SessionInfo, SessionStats,
-};
-use crate::ui::model::ModelBrowserState;
-use crate::ui::spinner::Spinner;
-use crate::ui::welcome::commands;
+use crate::theme::{self, Palette};
+use crate::tool::ToolCall;
+use crate::types::{HistoryEntry, Part, SessionInfo, ToolResultContent, UsageReport};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ActiveScreen {
+/// What a leading slash offers. Only commands the app can actually perform are listed, and an
+/// entry's name is what choosing it matches on.
+const COMMANDS: &[Entry] = &[
+    Entry::item("model", "pick a model"),
+    Entry::item("thinking", "set thinking effort"),
+    Entry::item("session", "switch or resume a session"),
+    Entry::item("new", "start a new session"),
+    Entry::item("reload", "reload server plugins"),
+    Entry::item("theme", "pick a palette"),
+    Entry::item("exit", "close the app"),
+];
+
+/// Thinking effort options, matching `packages/codework/src/acp/config.ts`.
+const THINKING_LEVELS: &[Entry] = &[
+    Entry::item("off", "Off"),
+    Entry::item("minimal", "Minimal"),
+    Entry::item("low", "Low"),
+    Entry::item("medium", "Medium"),
+    Entry::item("high", "High"),
+    Entry::item("xhigh", "Extra High"),
+    Entry::item("max", "Max"),
+];
+
+/// Common `provider/model` presets across supported providers; typing any custom `provider/model`
+/// in the search box also offers that exact identifier.
+const MODELS: &[Entry] = &[
+    Entry::item("google/gemini-4-argon", "Google · Gemini 4 Argon"),
+    Entry::item("google/gemini-3.8-flash", "Google · Gemini 3.8 Flash"),
+    Entry::item("google/gemini-3.7-flash", "Google · Gemini 3.7 Flash"),
+    Entry::item("google/gemini-3.6-flash", "Google · Gemini 3.6 Flash"),
+    Entry::item("google/gemini-3.5-flash", "Google · Gemini 3.5 Flash"),
+    Entry::item(
+        "google/gemini-3.5-flash-lite",
+        "Google · Gemini 3.5 Flash Lite",
+    ),
+    Entry::item(
+        "google/gemini-3.1-pro-preview",
+        "Google · Gemini 3.1 Pro Preview",
+    ),
+    Entry::item(
+        "google/gemini-3.1-flash-lite",
+        "Google · Gemini 3.1 Flash Lite",
+    ),
+    Entry::item(
+        "google/gemini-3-flash-preview",
+        "Google · Gemini 3 Flash Preview",
+    ),
+    Entry::item("google/gemini-flash-latest", "Google · Gemini Flash Latest"),
+    Entry::item(
+        "google/gemini-flash-lite-latest",
+        "Google · Gemini Flash-Lite Latest",
+    ),
+    Entry::item("google/gemini-2.5-pro", "Google · Gemini 2.5 Pro"),
+    Entry::item("google/gemini-2.5-flash", "Google · Gemini 2.5 Flash"),
+    Entry::item(
+        "google/gemini-2.5-flash-lite",
+        "Google · Gemini 2.5 Flash-Lite",
+    ),
+    Entry::item("google/gemma-4-31b-it", "Google · Gemma 4 31B IT"),
+    Entry::item("google/gemma-4-26b-a4b-it", "Google · Gemma 4 26B A4B IT"),
+    Entry::item(
+        "anthropic/claude-sonnet-4-5",
+        "Anthropic · Claude Sonnet 4.5",
+    ),
+    Entry::item("anthropic/claude-opus-4-5", "Anthropic · Claude Opus 4.5"),
+    Entry::item("anthropic/claude-haiku-4-5", "Anthropic · Claude Haiku 4.5"),
+    Entry::item("openai/gpt-5", "OpenAI · GPT-5"),
+    Entry::item("openai/gpt-4.1", "OpenAI · GPT-4.1"),
+    Entry::item("openai/o3", "OpenAI · o3"),
+    Entry::item(
+        "openai-codex/codex-mini-latest",
+        "OpenAI Codex · Codex Mini",
+    ),
+    Entry::item(
+        "github-copilot/claude-sonnet-4",
+        "GitHub Copilot · Claude Sonnet 4",
+    ),
+    Entry::item("xai/grok-4", "xAI · Grok 4"),
+    Entry::item("deepseek/deepseek-reasoner", "DeepSeek · Reasoner"),
+    Entry::item("openrouter/auto", "OpenRouter · Auto"),
+];
+
+/// The screens the TUI can show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Screen {
     Welcome,
-    ModelFlow,
     Session,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnState {
+    Running,
+    Succeeded,
+    Failed(String),
+    Interrupted(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct Turn {
+    pub prompt: String,
+    pub thinking: String,
+    pub text: String,
+    pub tools: Vec<ToolCall>,
+    pub notices: Vec<String>,
+    pub state: TurnState,
+}
+
+/// A menu open over the active screen, taking navigation keys while it is there.
+pub enum Popup {
+    /// What a leading slash asks for.
+    Commands(Menu),
+    /// Selectable `provider/model` identifiers.
+    Models { search: Prompt, menu: Menu },
+    /// Selectable thinking effort levels.
+    Thinking(Menu),
+    /// Sessions on the server (`session.list`).
+    Sessions {
+        search: Prompt,
+        menu: Menu,
+        sessions: Vec<SessionInfo>,
+    },
+    /// The palettes the site ships, filtered by `search`, and the one that was on screen before
+    /// the picker opened so Escape can put it back.
+    Themes {
+        search: Prompt,
+        menu: Menu,
+        initial: &'static Palette,
+    },
+}
+
+impl Popup {
+    pub fn menu(&self) -> &Menu {
+        match self {
+            Popup::Commands(menu)
+            | Popup::Thinking(menu)
+            | Popup::Models { menu, .. }
+            | Popup::Sessions { menu, .. }
+            | Popup::Themes { menu, .. } => menu,
+        }
+    }
+
+    fn menu_mut(&mut self) -> &mut Menu {
+        match self {
+            Popup::Commands(menu)
+            | Popup::Thinking(menu)
+            | Popup::Models { menu, .. }
+            | Popup::Sessions { menu, .. }
+            | Popup::Themes { menu, .. } => menu,
+        }
+    }
+
+    /// The menu's own search prompt, when it has one.
+    pub fn search(&self) -> Option<&Prompt> {
+        match self {
+            Popup::Commands(_) | Popup::Thinking(_) => None,
+            Popup::Models { search, .. }
+            | Popup::Sessions { search, .. }
+            | Popup::Themes { search, .. } => Some(search),
+        }
+    }
+
+    /// What the menu calls itself, on its border.
+    pub fn title(&self) -> &'static str {
+        match self {
+            Popup::Commands(_) => "commands",
+            Popup::Models { .. } => "models",
+            Popup::Thinking(_) => "thinking",
+            Popup::Sessions { .. } => "sessions",
+            Popup::Themes { .. } => "themes",
+        }
+    }
+}
+
 pub struct App {
-    pub screen: ActiveScreen,
-    pub should_quit: bool,
-    pub config_manager: ConfigManager,
-    pub active_config: Option<ModelConfig>,
-    pub spinner: Spinner,
-
-    // Welcome screen state
-    pub welcome_input: String,
-    pub welcome_cursor: usize,
-    pub welcome_dropdown_index: usize,
-    pub welcome_status_message: Option<String>,
-
-    // Model browser state
-    pub model_browser: ModelBrowserState,
-
-    // Session state
-    pub session_info: Option<SessionInfo>,
-    pub turns: Vec<ConversationTurn>,
-    pub session_stats: SessionStats,
-    pub session_input: String,
-    pub session_cursor: usize,
-    pub session_scroll_offset: usize,
-    pub session_dropdown_index: usize,
-    pub is_streaming: bool,
-    /// The socket dropped mid-turn and a reconnect is in flight. Distinct from an
-    /// error: the turn is still running server-side, so the UI shows recovery
-    /// rather than a failure.
+    pub screen: Screen,
+    /// The palette every screen draws with. Held here rather than read from a global, so a frame
+    /// is a pure function of the app and can be reproduced from a test backend.
+    pub theme: &'static Palette,
+    /// The prompt line: its text and where the caret is in it.
+    pub prompt: Prompt,
+    /// The menu on screen, if there is one.
+    pub popup: Option<Popup>,
+    /// A line of plain truth about the prompt or RPC status, shown in place of the key hints.
+    pub notice: Option<String>,
+    /// Active server session, once created or attached.
+    pub session: Option<SessionInfo>,
+    /// Selected `(provider, model)` override; when `None`, the server uses its configured default.
+    pub model: Option<(String, String)>,
+    /// Selected thinking effort level.
+    pub thinking: Option<String>,
+    /// Cumulative token and cost usage for the active session.
+    pub usage: UsageReport,
+    /// Conversation turns in the active session.
+    pub turns: Vec<Turn>,
+    /// Whether a prompt turn is currently streaming from the server.
+    pub busy: bool,
+    /// Whether the stream socket dropped and is reconnecting.
     pub reconnecting: bool,
+    /// Scroll offset in lines from the bottom of the session transcript.
+    pub scroll: usize,
+    /// Maximum scroll offset computed by the last transcript render pass.
+    pub max_scroll: Cell<usize>,
+    pub should_quit: bool,
+    keymap: Keymap,
+    tx: mpsc::UnboundedSender<AppEvent>,
+}
 
-    // Theme picker state
-    pub theme_picker_open: bool,
-    pub theme_picker_index: usize,
-
-    // RPC Client
-    pub rpc_client: Arc<RpcClient>,
-    pub stream_tx: mpsc::UnboundedSender<StreamEvent>,
-    pub stream_rx: mpsc::UnboundedReceiver<StreamEvent>,
+impl Default for App {
+    fn default() -> Self {
+        let (tx, _) = mpsc::unbounded_channel();
+        Self::new(tx)
+    }
 }
 
 impl App {
-    pub fn new() -> Self {
-        let config_manager = ConfigManager::new();
-        let active_config = config_manager.load();
-        let (stream_tx, stream_rx) = mpsc::unbounded_channel();
-
+    pub fn new(tx: mpsc::UnboundedSender<AppEvent>) -> Self {
         Self {
-            screen: ActiveScreen::Welcome,
-            should_quit: false,
-            config_manager,
-            active_config,
-            spinner: Spinner::new(),
-
-            welcome_input: String::new(),
-            welcome_cursor: 0,
-            welcome_dropdown_index: 0,
-            welcome_status_message: None,
-
-            model_browser: ModelBrowserState::new(),
-
-            session_info: None,
+            screen: Screen::Welcome,
+            theme: theme::default_palette(),
+            prompt: Prompt::default(),
+            popup: None,
+            notice: None,
+            session: None,
+            model: None,
+            thinking: None,
+            usage: UsageReport::default(),
             turns: Vec::new(),
-            session_stats: SessionStats::default(),
-            session_input: String::new(),
-            session_cursor: 0,
-            session_scroll_offset: 0,
-            session_dropdown_index: 0,
-            is_streaming: false,
+            busy: false,
             reconnecting: false,
-
-            theme_picker_open: false,
-            theme_picker_index: 0,
-
-            rpc_client: Arc::new(RpcClient::default()),
-            stream_tx,
-            stream_rx,
+            scroll: 0,
+            max_scroll: Cell::new(0),
+            should_quit: false,
+            keymap: Keymap::new(),
+            tx,
         }
     }
 
-    pub fn on_tick(&mut self) {
-        self.spinner.tick();
-
-        // Process any pending stream events from background RPC tasks
-        while let Ok(event) = self.stream_rx.try_recv() {
-            self.handle_stream_event(event);
+    /// The terminal background colour for the active screen.
+    pub fn background(&self) -> Color {
+        match self.screen {
+            Screen::Welcome => self.theme.field_bg,
+            Screen::Session => self.theme.bg,
         }
     }
 
-    pub fn handle_stream_event(&mut self, event: StreamEvent) {
-        if self.screen == ActiveScreen::ModelFlow {
-            match event {
-                StreamEvent::Succeeded => {
-                    self.model_browser.validating = false;
-                    self.model_browser.validation_error = None;
-                    self.model_browser.api_key_modal_open = false;
-                    self.active_config = self.config_manager.load();
-                    if let Some(cfg) = &self.active_config {
-                        self.welcome_status_message = Some(format!("Model configured: {} ({})", cfg.model, cfg.provider));
+    fn apply_session(&mut self, info: SessionInfo) {
+        self.model = info
+            .model
+            .as_ref()
+            .map(|m| (m.provider.clone(), m.id.clone()));
+        self.session = Some(info);
+    }
+
+    /// Display label for the active model.
+    pub fn model_label(&self) -> String {
+        if let Some((provider, id)) = &self.model {
+            return format!("{provider}/{id}");
+        }
+        if let Some(model) = &self.usage.model {
+            return model.clone();
+        }
+        "default model".to_string()
+    }
+
+    /// Apply one event. Returns whether the screen needs to be drawn again.
+    pub fn update(&mut self, event: AppEvent) -> bool {
+        match event {
+            AppEvent::Key(key) => self.handle_key(key),
+            AppEvent::Scroll(delta) => self.handle_scroll(delta),
+            AppEvent::Paste(text) => self.handle_paste(&text),
+            AppEvent::Resize => true,
+            AppEvent::Rpc(rpc) => self.handle_rpc(rpc),
+        }
+    }
+
+    fn handle_scroll(&mut self, delta: isize) -> bool {
+        if self.popup.is_some() {
+            let step = if delta > 0 { -1 } else { 1 };
+            return self.step_menu(step);
+        }
+        if self.screen == Screen::Session {
+            return self.scroll_by(delta);
+        }
+        false
+    }
+
+    fn scroll_by(&mut self, delta: isize) -> bool {
+        let cap = self.max_scroll.get();
+        let current = self.scroll.min(cap);
+        let next = if delta >= 0 {
+            current.saturating_add(delta as usize).min(cap)
+        } else {
+            current.saturating_sub((-delta) as usize)
+        };
+        if next == self.scroll {
+            return false;
+        }
+        self.scroll = next;
+        true
+    }
+
+    fn handle_paste(&mut self, text: &str) -> bool {
+        if let Some(popup) = &mut self.popup {
+            match popup {
+                Popup::Themes {
+                    search,
+                    menu,
+                    initial,
+                } => {
+                    if !search.insert_text(text) {
+                        return false;
                     }
-                    self.screen = ActiveScreen::Welcome;
+                    self.theme = filter_themes(search.text(), menu, *initial);
+                    return true;
                 }
-                StreamEvent::Failed(err) => {
-                    self.model_browser.validating = false;
-                    self.model_browser.validation_error = Some(err);
+                Popup::Models { search, menu } => {
+                    if !search.insert_text(text) {
+                        return false;
+                    }
+                    *menu = filter_models(search.text(), menu.selected().map(|e| e.id.as_ref()));
+                    return true;
+                }
+                Popup::Sessions {
+                    search,
+                    menu,
+                    sessions,
+                } => {
+                    if !search.insert_text(text) {
+                        return false;
+                    }
+                    *menu = filter_sessions(
+                        search.text(),
+                        sessions,
+                        menu.selected().map(|e| e.id.as_ref()),
+                    );
+                    return true;
+                }
+                Popup::Thinking(_) => return false,
+                Popup::Commands(_) => {}
+            }
+        }
+        let changed = self.prompt.insert_text(text);
+        if changed {
+            self.notice = None;
+            self.sync_commands();
+        }
+        changed
+    }
+
+    fn handle_key(&mut self, key: KeyEvent) -> bool {
+        // Named actions first, so a key bound to the app is never typed into the prompt.
+        match self.keymap.resolve(key) {
+            Resolution::Action(Action::Exit) => {
+                self.should_quit = true;
+                return false;
+            }
+            Resolution::Consumed => return false,
+            Resolution::Unbound => {}
+        }
+
+        if key.code == KeyCode::Esc {
+            return self.escape();
+        }
+
+        if self.popup.is_some() {
+            if self.menu_key(key) {
+                return true;
+            }
+            match &mut self.popup {
+                Some(Popup::Themes {
+                    search,
+                    menu,
+                    initial,
+                }) => {
+                    if !search.edit(key) {
+                        return false;
+                    }
+                    self.theme = filter_themes(search.text(), menu, *initial);
+                    return true;
+                }
+                Some(Popup::Models { search, menu }) => {
+                    if !search.edit(key) {
+                        return false;
+                    }
+                    *menu = filter_models(search.text(), menu.selected().map(|e| e.id.as_ref()));
+                    return true;
+                }
+                Some(Popup::Sessions {
+                    search,
+                    menu,
+                    sessions,
+                }) => {
+                    if !search.edit(key) {
+                        return false;
+                    }
+                    *menu = filter_sessions(
+                        search.text(),
+                        sessions,
+                        menu.selected().map(|e| e.id.as_ref()),
+                    );
+                    return true;
+                }
+                Some(Popup::Thinking(_)) => return false,
+                Some(Popup::Commands(_)) | None => {}
+            }
+        }
+
+        if self.screen == Screen::Session {
+            match key.code {
+                KeyCode::PageUp => return self.scroll_by(10),
+                KeyCode::PageDown => return self.scroll_by(-10),
+                KeyCode::Up
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        || self.prompt.text().is_empty() =>
+                {
+                    return self.scroll_by(1);
+                }
+                KeyCode::Down
+                    if key.modifiers.contains(KeyModifiers::SHIFT)
+                        || self.prompt.text().is_empty() =>
+                {
+                    return self.scroll_by(-1);
                 }
                 _ => {}
             }
-            return;
         }
 
-        // Connection state is not tied to a turn: a drop and its recovery can
-        // arrive whether or not the transcript has produced its first turn yet.
-        match &event {
-            StreamEvent::Disconnected => {
-                self.reconnecting = true;
-                return;
-            }
-            StreamEvent::Reconnected => {
-                self.reconnecting = false;
-                return;
-            }
-            _ => {}
+        if key.code == KeyCode::Enter {
+            return self.submit_prompt();
         }
 
-        let last_turn_idx = if self.turns.is_empty() {
-            return;
-        } else {
-            self.turns.len() - 1
-        };
+        let edited = self.prompt.edit(key);
+        if edited {
+            self.notice = None;
+            self.sync_commands();
+        }
+        edited
+    }
 
+    fn handle_rpc(&mut self, event: RpcEvent) -> bool {
+        match event {
+            RpcEvent::SessionsLoaded(Ok(mut sessions)) => {
+                sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                let current_id = self.session.as_ref().map(|s| s.id.as_str());
+                let menu = filter_sessions("", &sessions, current_id);
+                self.popup = Some(Popup::Sessions {
+                    search: Prompt::default(),
+                    menu,
+                    sessions,
+                });
+                true
+            }
+            RpcEvent::SessionsLoaded(Err(err)) => {
+                self.notice = Some(err);
+                true
+            }
+            RpcEvent::SessionHistoryLoaded(Ok(entries)) => {
+                self.turns = turns_from_history(&entries);
+                self.busy = self
+                    .turns
+                    .last()
+                    .is_some_and(|turn| turn.state == TurnState::Running);
+                self.scroll = 0;
+                true
+            }
+            RpcEvent::SessionHistoryLoaded(Err(err)) => {
+                self.notice = Some(err);
+                true
+            }
+            RpcEvent::SessionConfigured(Ok(info)) => {
+                self.apply_session(info);
+                true
+            }
+            RpcEvent::SessionConfigured(Err(err)) => {
+                self.notice = Some(err);
+                true
+            }
+            RpcEvent::PluginsReloaded(Ok((count, failure))) => {
+                self.notice = Some(match failure {
+                    Some(err) => format!("plugin reload failed: {err}"),
+                    None => format!("reloaded {count} plugin(s)"),
+                });
+                true
+            }
+            RpcEvent::PluginsReloaded(Err(err)) => {
+                self.notice = Some(err);
+                true
+            }
+            RpcEvent::Stream(stream) => self.handle_stream(stream),
+        }
+    }
+
+    fn handle_stream(&mut self, event: StreamEvent) -> bool {
         match event {
             StreamEvent::SessionCreated(info) => {
-                self.session_info = Some(info);
+                self.apply_session(info);
             }
             StreamEvent::TextDelta(delta) => {
-                if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    turn.response.push_str(&delta);
-                    let approx_tokens = (delta.len() / 4).max(1) as u64;
-                    turn.tokens += approx_tokens;
-                    let elapsed_sec = (chrono::Utc::now().timestamp_millis() - turn.start_time) as f64 / 1000.0;
-                    if elapsed_sec > 0.1 {
-                        turn.tokens_per_sec = turn.tokens as f64 / elapsed_sec;
-                    }
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.text.push_str(&delta);
                 }
             }
             StreamEvent::ThinkingDelta(delta) => {
-                if let Some(turn) = self.turns.get_mut(last_turn_idx) {
+                if let Some(turn) = self.turns.last_mut() {
                     turn.thinking.push_str(&delta);
                 }
             }
@@ -179,11 +532,15 @@ impl App {
                 label,
                 arguments,
             } => {
-                if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    // Title the running line from the call's arguments, so an in-flight tool
-                    // reads `bash npm test` rather than just `bash`.
-                    turn.active_tool = Some(tool::derive(&name, label.as_deref(), &arguments, None, false));
-                    turn.active_call_id = Some(call_id);
+                if let Some(turn) = self.turns.last_mut() {
+                    let started = ToolCall::start(call_id.clone(), name, label, &arguments);
+                    if let Some(existing) = turn.tools.iter_mut().find(|t| t.call_id == call_id) {
+                        existing.name = started.name;
+                        existing.target = started.target;
+                        existing.label = started.label;
+                    } else {
+                        turn.tools.push(started);
+                    }
                 }
             }
             StreamEvent::ToolSettled {
@@ -191,1481 +548,921 @@ impl App {
                 name,
                 is_error,
                 arguments,
+                output,
                 details,
             } => {
-                if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    // Pair by callID: parallel tool calls settle out of order, so a settle that
-                    // is not the current active call must not clear or steal its line.
-                    let live = if turn.active_call_id.as_deref() == Some(call_id.as_str()) {
-                        turn.active_call_id = None;
-                        turn.active_tool.take()
+                if let Some(turn) = self.turns.last_mut() {
+                    if let Some(existing) = turn.tools.iter_mut().find(|t| t.call_id == call_id) {
+                        existing.apply_settlement(
+                            name,
+                            &arguments,
+                            output,
+                            details.as_ref(),
+                            is_error,
+                        );
                     } else {
-                        None
-                    };
-                    let tool_name = name.clone().unwrap_or_else(|| call_id.clone());
-                    let settled =
-                        tool::derive(&tool_name, None, &arguments, details.as_ref(), is_error);
-                    // The running call already resolved its own identity, including the
-                    // tool's declared label, which the terminal part does not carry.
-                    let result = match live {
-                        Some(running) => tool::settle(running, settled),
-                        None => settled,
-                    };
-                    turn.completed_tools.push(result);
+                        turn.tools.push(ToolCall::settled(
+                            call_id,
+                            name,
+                            &arguments,
+                            output,
+                            details.as_ref(),
+                            is_error,
+                        ));
+                    }
+                }
+            }
+            StreamEvent::Notice(notice) => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.notices.push(notice);
                 }
             }
             StreamEvent::Usage(usage) => {
-                self.session_stats.total_tokens += usage.total_tokens;
-                self.session_stats.cost += usage.cost;
-                self.session_stats.turns_count += 1;
-
-                if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    turn.tokens = usage.output_tokens.max(turn.tokens);
-                    let elapsed_sec = (chrono::Utc::now().timestamp_millis() - turn.start_time) as f64 / 1000.0;
-                    if elapsed_sec > 0.1 {
-                        turn.tokens_per_sec = turn.tokens as f64 / elapsed_sec;
-                    }
+                self.usage.total_tokens += usage.total_tokens;
+                self.usage.input_tokens += usage.input_tokens;
+                self.usage.output_tokens += usage.output_tokens;
+                self.usage.cost += usage.cost;
+                if usage.model.is_some() {
+                    self.usage.model = usage.model;
                 }
+            }
+            StreamEvent::Disconnected => {
+                self.reconnecting = true;
+            }
+            StreamEvent::Reconnected => {
+                self.reconnecting = false;
             }
             StreamEvent::Succeeded => {
-                if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    turn.streaming = false;
-                    turn.end_time = Some(chrono::Utc::now().timestamp_millis());
-                    // A call that never settled keeps the line it was titled with.
-                    if let Some(running) = turn.active_tool.take() {
-                        turn.active_call_id = None;
-                        turn.completed_tools.push(running);
-                    }
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.state = TurnState::Succeeded;
                 }
-                self.is_streaming = false;
+                self.busy = false;
+                self.reconnecting = false;
             }
             StreamEvent::Failed(err) => {
-                if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    turn.streaming = false;
-                    turn.error = Some(err);
-                    turn.active_tool = None;
-                    turn.active_call_id = None;
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.state = TurnState::Failed(err);
                 }
-                self.is_streaming = false;
+                self.busy = false;
                 self.reconnecting = false;
             }
             StreamEvent::Interrupted(reason) => {
-                if let Some(turn) = self.turns.get_mut(last_turn_idx) {
-                    turn.streaming = false;
-                    turn.error = Some(format!("Interrupted: {}", reason));
-                    turn.active_tool = None;
-                    turn.active_call_id = None;
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.state = TurnState::Interrupted(reason);
                 }
-                self.is_streaming = false;
+                self.busy = false;
                 self.reconnecting = false;
             }
-            // Handled before the transcript: they are connection state, not turns.
-            StreamEvent::Disconnected | StreamEvent::Reconnected => {}
         }
+        true
     }
 
-    pub fn get_session_input_width(&self) -> usize {
-        let (term_w, _) = crossterm::terminal::size().unwrap_or((80, 24));
-        let sidebar_width = (term_w / 4).clamp(24, 32);
-        let main_width = term_w.saturating_sub(sidebar_width + 1);
-        (main_width as usize).saturating_sub(6).max(10)
-    }
-
-    pub fn get_welcome_input_width(&self) -> usize {
-        let (term_w, _) = crossterm::terminal::size().unwrap_or((80, 24));
-        let card_width = 78u16.min(term_w.saturating_sub(2));
-        (card_width as usize).saturating_sub(6).max(10)
-    }
-
-    pub fn handle_key(&mut self, key: KeyEvent) {
-        self.spinner.reset_blink();
-
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
-            if self.is_streaming {
-                // Interrupt active session
-                if let Some(sess) = &self.session_info {
-                    let rpc = self.rpc_client.clone();
-                    let s_id = sess.id.clone();
-                    tokio::spawn(async move {
-                        let _ = rpc.interrupt_session(&s_id).await;
-                    });
-                }
-                self.is_streaming = false;
-                return;
-            }
-            self.should_quit = true;
-            return;
+    fn submit_prompt(&mut self) -> bool {
+        let text = self.prompt.text().trim().to_string();
+        if text.is_empty() {
+            return false;
+        }
+        if self.busy {
+            self.notice = Some("a turn is already running · press esc to interrupt".to_string());
+            return true;
         }
 
-        if self.theme_picker_open && self.screen != ActiveScreen::ModelFlow {
-            return self.handle_theme_picker_key(key);
-        }
+        self.prompt.clear();
+        self.notice = None;
+        self.screen = Screen::Session;
+        self.scroll = 0;
+        self.busy = true;
+        self.reconnecting = false;
+        self.turns.push(Turn {
+            prompt: text.clone(),
+            thinking: String::new(),
+            text: String::new(),
+            tools: Vec::new(),
+            notices: Vec::new(),
+            state: TurnState::Running,
+        });
 
-        match self.screen {
-            ActiveScreen::Welcome => self.handle_welcome_key(key),
-            ActiveScreen::ModelFlow => self.handle_model_flow_key(key),
-            ActiveScreen::Session => self.handle_session_key(key),
-        }
-    }
+        let tx = self.tx.clone();
+        let existing_session_id = self.session.as_ref().map(|s| s.id.clone());
+        let model = self.model.clone();
+        let thinking = self.thinking.clone();
 
-    /// Live-preview navigation inside the `/theme` picker: moving the cursor
-    /// switches the palette immediately, so the whole UI recolors as you move.
-    /// Esc dismisses back to the palette you came from; Enter keeps it.
-    fn handle_theme_picker_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Esc => {
-                let _ = crate::ui::theme::set_active(self.theme_picker_index);
-                self.theme_picker_open = false;
-            }
-            KeyCode::Up | KeyCode::Left => {
-                let count = crate::ui::theme::PALETTES.len();
-                self.theme_picker_index = if self.theme_picker_index == 0 {
-                    count - 1
-                } else {
-                    self.theme_picker_index - 1
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let client = RpcClient::default();
+                let session_id = match existing_session_id {
+                    Some(id) => id,
+                    None => match client.create_session(None, model, thinking).await {
+                        Ok(info) => {
+                            let id = info.id.clone();
+                            let _ = tx.send(AppEvent::Rpc(RpcEvent::Stream(
+                                StreamEvent::SessionCreated(info),
+                            )));
+                            id
+                        }
+                        Err(err) => {
+                            let _ = tx
+                                .send(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::Failed(err))));
+                            return;
+                        }
+                    },
                 };
-                let _ = crate::ui::theme::set_active(self.theme_picker_index);
-            }
-            KeyCode::Down | KeyCode::Right => {
-                self.theme_picker_index = (self.theme_picker_index + 1) % crate::ui::theme::PALETTES.len();
-                let _ = crate::ui::theme::set_active(self.theme_picker_index);
-            }
-            KeyCode::Enter => {
-                self.theme_picker_open = false;
-                self.persist_theme();
-            }
-            _ => {}
+
+                let (stream_tx, mut stream_rx) = mpsc::unbounded_channel();
+                let forward_tx = tx.clone();
+                let forward = tokio::spawn(async move {
+                    while let Some(evt) = stream_rx.recv().await {
+                        if forward_tx
+                            .send(AppEvent::Rpc(RpcEvent::Stream(evt)))
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                });
+
+                let _ = client.prompt_session(session_id, text, stream_tx).await;
+                let _ = forward.await;
+            });
         }
+
+        true
     }
 
-    /// Save the active theme id alongside the model config, so the choice
-    /// survives restarts. Without a configured model it stays session-only.
-    fn persist_theme(&self) {
-        if let Some(cfg) = &self.active_config {
-            let cfg = ModelConfig {
-                provider: cfg.provider.clone(),
-                model: cfg.model.clone(),
-                updated_at: cfg.updated_at.clone(),
-                theme: Some(crate::ui::theme::active().id.to_string()),
-            };
-            let _ = self.config_manager.save(&cfg);
-        }
-    }
-
-    fn handle_welcome_key(&mut self, key: KeyEvent) {
-        let is_dropdown_open = self.welcome_input.starts_with('/') && !self.welcome_input.contains(' ');
-        let all_commands = commands();
-        let matching_cmds = if is_dropdown_open {
-            all_commands
-                .iter()
-                .filter(|cmd| cmd.name.starts_with(&self.welcome_input))
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
+    /// Open, filter, or close the command menu to match a leading slash on the prompt line.
+    fn sync_commands(&mut self) {
+        let Some(query) = self.prompt.text().strip_prefix('/') else {
+            if matches!(self.popup, Some(Popup::Commands(_))) {
+                self.popup = None;
+            }
+            return;
         };
-
-        match key.code {
-            KeyCode::Esc => {
-                if is_dropdown_open {
-                    self.welcome_input.clear();
-                    self.welcome_cursor = 0;
-                    self.welcome_dropdown_index = 0;
-                } else {
-                    self.should_quit = true;
-                }
-            }
-            KeyCode::Up => {
-                if is_dropdown_open && !matching_cmds.is_empty() {
-                    if self.welcome_dropdown_index == 0 {
-                        self.welcome_dropdown_index = matching_cmds.len() - 1;
-                    } else {
-                        self.welcome_dropdown_index -= 1;
-                    }
-                } else if !is_dropdown_open {
-                    let w = self.get_welcome_input_width();
-                    if let Some(new_cur) = crate::ui::input::cursor_up_in_input(&self.welcome_input, self.welcome_cursor, w) {
-                        self.welcome_cursor = new_cur;
-                    }
-                }
-            }
-            KeyCode::Down => {
-                if is_dropdown_open && !matching_cmds.is_empty() {
-                    if self.welcome_dropdown_index + 1 >= matching_cmds.len() {
-                        self.welcome_dropdown_index = 0;
-                    } else {
-                        self.welcome_dropdown_index += 1;
-                    }
-                } else if !is_dropdown_open {
-                    let w = self.get_welcome_input_width();
-                    if let Some(new_cur) = crate::ui::input::cursor_down_in_input(&self.welcome_input, self.welcome_cursor, w) {
-                        self.welcome_cursor = new_cur;
-                    }
-                }
-            }
-            KeyCode::Left => {
-                self.welcome_cursor = self.welcome_cursor.saturating_sub(1);
-            }
-            KeyCode::Right => {
-                let char_count = self.welcome_input.chars().count();
-                if self.welcome_cursor < char_count {
-                    self.welcome_cursor += 1;
-                }
-            }
-            KeyCode::Home => {
-                self.welcome_cursor = 0;
-            }
-            KeyCode::End => {
-                self.welcome_cursor = self.welcome_input.chars().count();
-            }
-            KeyCode::Delete => {
-                delete_at(&mut self.welcome_input, self.welcome_cursor);
-            }
-            KeyCode::Tab => {
-                if is_dropdown_open && !matching_cmds.is_empty() {
-                    let cmd_name = matching_cmds[self.welcome_dropdown_index].name;
-                    self.welcome_input = format!("{} ", cmd_name);
-                    self.welcome_cursor = self.welcome_input.chars().count();
-                }
-            }
-            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) || key.modifiers.contains(KeyModifiers::ALT) => {
-                insert_char_at(&mut self.welcome_input, &mut self.welcome_cursor, '\n');
-                self.welcome_dropdown_index = 0;
-            }
-            KeyCode::Enter => {
-                if is_dropdown_open && !matching_cmds.is_empty() {
-                    let cmd_name = matching_cmds[self.welcome_dropdown_index.min(matching_cmds.len() - 1)].name;
-                    self.welcome_input.clear();
-                    self.welcome_cursor = 0;
-                    self.welcome_dropdown_index = 0;
-                    if self.execute_command(cmd_name) {
-                        return;
-                    } else {
-                        self.welcome_input = format!("{} ", cmd_name);
-                        self.welcome_cursor = self.welcome_input.chars().count();
-                        return;
-                    }
-                }
-
-                let trimmed = self.welcome_input.trim().to_string();
-                if trimmed.is_empty() {
-                    return;
-                }
-
-                if self.execute_command(&trimmed) {
-                    self.welcome_input.clear();
-                    self.welcome_cursor = 0;
-                    self.welcome_dropdown_index = 0;
-                    return;
-                }
-
-                if self.active_config.is_none() {
-                    self.welcome_status_message = Some("Please connect a model first (/model)".to_string());
-                    self.open_model_flow();
-                    return;
-                }
-
-                // Start Session
-                self.welcome_input.clear();
-                self.welcome_cursor = 0;
-                self.welcome_dropdown_index = 0;
-                self.start_session(trimmed);
-            }
-            KeyCode::Backspace => {
-                backspace_at(&mut self.welcome_input, &mut self.welcome_cursor);
-                self.welcome_dropdown_index = 0;
-            }
-            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.welcome_cursor = 0;
-            }
-            KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.welcome_cursor = self.welcome_input.chars().count();
-            }
-            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                clear_to_start(&mut self.welcome_input, &mut self.welcome_cursor);
-            }
-            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                delete_word_backward(&mut self.welcome_input, &mut self.welcome_cursor);
-            }
-            KeyCode::Char(c) => {
-                insert_char_at(&mut self.welcome_input, &mut self.welcome_cursor, c);
-                self.welcome_dropdown_index = 0;
-                self.welcome_status_message = None;
-            }
-            _ => {}
+        let query = query.to_ascii_lowercase();
+        let mut menu = match self.popup.take() {
+            Some(Popup::Commands(menu)) => menu,
+            _ => Menu::new(COMMANDS.to_vec()),
+        };
+        menu.filter(|entry| entry.name.starts_with(&query));
+        if !menu.entries().is_empty() {
+            self.popup = Some(Popup::Commands(menu));
         }
     }
 
-    pub fn execute_command(&mut self, cmd: &str) -> bool {
-        let trimmed = cmd.trim();
-        let cmd_name = trimmed.split_whitespace().next().unwrap_or(trimmed);
-
-        match cmd_name {
-            "/model" => {
-                self.open_model_flow();
-                true
-            }
-            "/theme" => {
-                self.theme_picker_open = true;
-                self.theme_picker_index = crate::ui::theme::active_index();
-                true
-            }
-            "/exit" => {
-                self.should_quit = true;
-                true
-            }
-            "/clear" => {
-                self.turns.clear();
-                self.session_scroll_offset = 0;
-                true
-            }
-            "/session" => {
-                self.screen = ActiveScreen::Welcome;
-                true
-            }
-            "/help" => {
-                let mut help_turn = ConversationTurn::new("help".to_string(), "/help".to_string(), "system".to_string());
-                help_turn.streaming = false;
-                help_turn.end_time = Some(chrono::Utc::now().timestamp_millis());
-                help_turn.response = "### CodeWork Help & Commands\n\n| Command | Description |\n| :--- | :--- |\n| `/help` | Show available commands and shortcuts |
-| `/theme` | Change the color theme |\n| `/clear` | Clear conversation history and screen |\n| `/model` | Switch or view active LLM model |\n| `/session` | List or resume recent sessions |\n| `/compact` | Compact current conversation context |\n| `/exit` | Exit CodeWork TUI |\n\n**Shortcuts:**\n- `↑` / `↓` : Scroll chat history (or navigate commands when typing `/`)\n- `Home` / `End` : Jump to top / bottom of chat\n- `Ctrl+C` : Interrupt streaming response / Exit".to_string();
-                self.turns.push(help_turn);
-                true
-            }
-            "/compact" => {
-                if self.turns.len() > 1 {
-                    let old_count = self.turns.len();
-                    let last_turn = self.turns.pop().unwrap();
-                    self.turns.clear();
-                    let mut compact_turn = ConversationTurn::new("compact".to_string(), "[Context Compacted]".to_string(), "system".to_string());
-                    compact_turn.streaming = false;
-                    compact_turn.end_time = Some(chrono::Utc::now().timestamp_millis());
-                    compact_turn.response = format!("Previous {} turns compacted into session context summary.", old_count - 1);
-                    self.turns.push(compact_turn);
-                    self.turns.push(last_turn);
-                    self.session_scroll_offset = 0;
-                }
-                true
-            }
-            _ => false,
-        }
+    /// A key for the menu on screen: the arrows walk it and Enter takes what it is on.
+    fn menu_key(&mut self, key: KeyEvent) -> bool {
+        let step = match key.code {
+            KeyCode::Up => -1,
+            KeyCode::Down => 1,
+            KeyCode::Enter => return self.choose(),
+            _ => return false,
+        };
+        self.step_menu(step)
     }
 
-    pub fn open_model_flow(&mut self) {
-        self.model_browser = ModelBrowserState::new();
-        self.screen = ActiveScreen::ModelFlow;
+    fn step_menu(&mut self, step: isize) -> bool {
+        let Some(popup) = &mut self.popup else {
+            return false;
+        };
+        if !popup.menu_mut().step(step) {
+            return false;
+        }
+        // Walking the theme picker previews each palette on the whole screen as the cursor lands
+        // on it; Enter keeps it and Escape puts the initial one back.
+        if let Popup::Themes { menu, .. } = popup {
+            if let Some(palette) = menu.selected().and_then(|entry| theme_named(&entry.name)) {
+                self.theme = palette;
+            }
+        }
+        true
     }
 
-    fn handle_model_flow_key(&mut self, key: KeyEvent) {
-        // Case 1: Help Modal is Open
-        if self.model_browser.show_help {
-            self.model_browser.show_help = false;
-            return;
-        }
-
-        // Case 2: API Key Modal is Open
-        if self.model_browser.api_key_modal_open {
-            if self.model_browser.validating {
-                return;
-            }
-            match key.code {
-                KeyCode::Esc => {
-                    self.model_browser.api_key_modal_open = false;
-                    self.model_browser.validation_error = None;
-                }
-                KeyCode::Backspace => {
-                    self.model_browser.api_key_input.pop();
-                }
-                KeyCode::Char(c) => {
-                    self.model_browser.api_key_input.push(c);
-                }
-                KeyCode::Enter => {
-                    let api_key = self.model_browser.api_key_input.trim().to_string();
-                    let pending = match &self.model_browser.pending_model {
-                        Some(m) => m.clone(),
-                        None => return,
-                    };
-
-                    if api_key.is_empty() && pending.provider_id != "ollama" {
-                        self.model_browser.validation_error = Some("API key cannot be empty".to_string());
-                        return;
-                    }
-
-                    self.model_browser.validating = true;
-                    self.model_browser.validation_error = None;
-
-                    let tx = self.stream_tx.clone();
-                    tokio::spawn(async move {
-                        let val_res = validate_api_key(&pending.provider_id, &api_key).await;
-                        match val_res {
-                            Ok(_) => {
-                                if !api_key.is_empty() {
-                                    let cred_store = CredentialStore::new();
-                                    let _ = cred_store.set_api_key(&pending.provider_id, &api_key);
-                                }
-
-                                let cfg_mgr = ConfigManager::new();
-                                let _ = cfg_mgr.save(&ModelConfig {
-                                    provider: pending.provider_id.clone(),
-                                    model: pending.id.clone(),
-                                    updated_at: Some(chrono::Utc::now().to_rfc3339()),
-                                    theme: Some(crate::ui::theme::active().id.to_string()),
-                                });
-
-                                let _ = tx.send(StreamEvent::Succeeded);
-                            }
-                            Err(err) => {
-                                let _ = tx.send(StreamEvent::Failed(err));
-                            }
-                        }
-                    });
-                }
-                _ => {}
-            }
-            return;
-        }
-
-        // Case 3: Search mode is active
-        if self.model_browser.is_searching {
-            match self.model_browser.focused_panel {
-                FocusedPanel::Providers => match key.code {
-                    KeyCode::Esc => {
-                        self.model_browser.provider_search.clear();
-                        self.model_browser.is_searching = false;
-                        self.model_browser.provider_index = 0;
-                        self.model_browser.provider_scroll_offset = 0;
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    KeyCode::Enter => {
-                        self.model_browser.is_searching = false;
-                    }
-                    KeyCode::Backspace => {
-                        self.model_browser.provider_search.pop();
-                        let filtered = self.model_browser.filtered_providers();
-                        if self.model_browser.provider_search.is_empty() {
-                            self.model_browser.provider_index = 0;
-                        } else if !filtered.is_empty() {
-                            self.model_browser.provider_index = 1;
-                        } else {
-                            self.model_browser.provider_index = 0;
-                        }
-                        self.model_browser.provider_scroll_offset = 0;
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    KeyCode::Char(c) => {
-                        self.model_browser.provider_search.push(c);
-                        let filtered = self.model_browser.filtered_providers();
-                        if !filtered.is_empty() {
-                            self.model_browser.provider_index = 1;
-                        } else {
-                            self.model_browser.provider_index = 0;
-                        }
-                        self.model_browser.provider_scroll_offset = 0;
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    _ => {}
-                },
-                FocusedPanel::Models => match key.code {
-                    KeyCode::Esc => {
-                        self.model_browser.model_search.clear();
-                        self.model_browser.search_query.clear();
-                        self.model_browser.is_searching = false;
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    KeyCode::Enter => {
-                        self.model_browser.is_searching = false;
-                        self.model_browser.focused_panel = FocusedPanel::Models;
-                    }
-                    KeyCode::Backspace => {
-                        self.model_browser.model_search.pop();
-                        self.model_browser.search_query.pop();
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    KeyCode::Char(c) => {
-                        self.model_browser.model_search.push(c);
-                        self.model_browser.search_query.push(c);
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    _ => {}
-                },
-            }
-            return;
-        }
-
-        // Case 4: Normal browser dashboard navigation
-        match key.code {
-            KeyCode::Char('q') => {
-                self.screen = ActiveScreen::Welcome;
-            }
-            KeyCode::Esc => {
-                match self.model_browser.focused_panel {
-                    FocusedPanel::Providers => {
-                        if !self.model_browser.provider_search.is_empty() {
-                            self.model_browser.provider_search.clear();
-                            self.model_browser.provider_index = 0;
-                            self.model_browser.provider_scroll_offset = 0;
-                            self.model_browser.model_index = 0;
-                            self.model_browser.model_scroll_offset = 0;
-                        } else if !self.model_browser.model_search.is_empty() || !self.model_browser.search_query.is_empty() {
-                            self.model_browser.model_search.clear();
-                            self.model_browser.search_query.clear();
-                            self.model_browser.model_index = 0;
-                            self.model_browser.model_scroll_offset = 0;
-                        } else {
-                            self.screen = ActiveScreen::Welcome;
-                        }
-                    }
-                    FocusedPanel::Models => {
-                        if !self.model_browser.model_search.is_empty() || !self.model_browser.search_query.is_empty() {
-                            self.model_browser.model_search.clear();
-                            self.model_browser.search_query.clear();
-                            self.model_browser.model_index = 0;
-                            self.model_browser.model_scroll_offset = 0;
-                        } else if !self.model_browser.provider_search.is_empty() {
-                            self.model_browser.provider_search.clear();
-                            self.model_browser.provider_index = 0;
-                            self.model_browser.provider_scroll_offset = 0;
-                            self.model_browser.model_index = 0;
-                            self.model_browser.model_scroll_offset = 0;
-                        } else {
-                            self.screen = ActiveScreen::Welcome;
-                        }
-                    }
-                }
-            }
-            KeyCode::Tab | KeyCode::BackTab => {
-                self.model_browser.focused_panel = match self.model_browser.focused_panel {
-                    FocusedPanel::Providers => FocusedPanel::Models,
-                    FocusedPanel::Models => FocusedPanel::Providers,
-                };
-            }
-            KeyCode::Char('/') => {
-                self.model_browser.is_searching = true;
-            }
-            KeyCode::Char('s') => {
-                self.model_browser.sort_mode = match self.model_browser.sort_mode {
-                    ModelSortMode::Id => ModelSortMode::Provider,
-                    ModelSortMode::Provider => ModelSortMode::Context,
-                    ModelSortMode::Context => ModelSortMode::Cost,
-                    ModelSortMode::Cost => ModelSortMode::Id,
-                };
-                self.model_browser.model_index = 0;
-                self.model_browser.model_scroll_offset = 0;
-                let sort_label = match self.model_browser.sort_mode {
-                    ModelSortMode::Id => "Model ID",
-                    ModelSortMode::Provider => "Provider",
-                    ModelSortMode::Context => "Context Window",
-                    ModelSortMode::Cost => "Cost",
-                };
-                self.model_browser.set_notification(format!("Sorted by {}", sort_label));
-            }
-            KeyCode::Char('c') => {
-                match self.model_browser.focused_panel {
-                    FocusedPanel::Providers => {
-                        if let Some(prov) = self.model_browser.provider_for_details() {
-                            let val = prov.env_keys.first().cloned().unwrap_or_else(|| prov.id.clone());
-                            copy_to_clipboard(&val);
-                            self.model_browser.set_notification(format!("Copied \"{}\"", val));
-                        }
-                    }
-                    FocusedPanel::Models => {
-                        if let Some(m) = self.model_browser.current_model() {
-                            copy_to_clipboard(&m.id);
-                            self.model_browser.set_notification(format!("Copied \"{}\"", m.id));
-                        }
-                    }
-                }
-            }
-            KeyCode::Char('o') => {
-                if let Some(prov) = self.model_browser.provider_for_details() {
-                    if let Some(url) = &prov.docs_url {
-                        open_browser_url(url);
-                        self.model_browser.set_notification(format!("Opening {}", url));
-                    }
-                }
-            }
-            KeyCode::Char('?') => {
-                self.model_browser.show_help = true;
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                match self.model_browser.focused_panel {
-                    FocusedPanel::Providers => {
-                        let total_provs = 1 + self.model_browser.filtered_providers().len();
-                        if self.model_browser.provider_index > 0 {
-                            self.model_browser.provider_index -= 1;
-                        } else {
-                            self.model_browser.provider_index = total_provs.saturating_sub(1);
-                        }
-                        if self.model_browser.provider_index < self.model_browser.provider_scroll_offset {
-                            self.model_browser.provider_scroll_offset = self.model_browser.provider_index;
-                        }
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    FocusedPanel::Models => {
-                        if self.model_browser.model_index > 0 {
-                            self.model_browser.model_index -= 1;
-                            if self.model_browser.model_index < self.model_browser.model_scroll_offset {
-                                self.model_browser.model_scroll_offset = self.model_browser.model_index;
-                            }
-                        }
-                    }
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                match self.model_browser.focused_panel {
-                    FocusedPanel::Providers => {
-                        let total_provs = 1 + self.model_browser.filtered_providers().len();
-                        if self.model_browser.provider_index + 1 < total_provs {
-                            self.model_browser.provider_index += 1;
-                        } else {
-                            self.model_browser.provider_index = 0;
-                        }
-                        let visible = 14usize;
-                        if self.model_browser.provider_index >= self.model_browser.provider_scroll_offset + visible {
-                            self.model_browser.provider_scroll_offset = self.model_browser.provider_index + 1 - visible;
-                        }
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    FocusedPanel::Models => {
-                        let models = self.model_browser.filtered_models();
-                        if !models.is_empty() && self.model_browser.model_index + 1 < models.len() {
-                            self.model_browser.model_index += 1;
-                            let visible = 14usize;
-                            if self.model_browser.model_index >= self.model_browser.model_scroll_offset + visible {
-                                self.model_browser.model_scroll_offset = self.model_browser.model_index + 1 - visible;
-                            }
-                        }
-                    }
-                }
-            }
-            KeyCode::PageUp => {
-                match self.model_browser.focused_panel {
-                    FocusedPanel::Providers => {
-                        self.model_browser.provider_index = self.model_browser.provider_index.saturating_sub(12);
-                        self.model_browser.provider_scroll_offset = self.model_browser.provider_index;
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    FocusedPanel::Models => {
-                        self.model_browser.model_index = self.model_browser.model_index.saturating_sub(12);
-                        if self.model_browser.model_index < self.model_browser.model_scroll_offset {
-                            self.model_browser.model_scroll_offset = self.model_browser.model_index;
-                        }
-                    }
-                }
-            }
-            KeyCode::PageDown => {
-                match self.model_browser.focused_panel {
-                    FocusedPanel::Providers => {
-                        let total_provs = 1 + self.model_browser.filtered_providers().len();
-                        self.model_browser.provider_index = (self.model_browser.provider_index + 12).min(total_provs.saturating_sub(1));
-                        let visible = 14usize;
-                        if self.model_browser.provider_index >= self.model_browser.provider_scroll_offset + visible {
-                            self.model_browser.provider_scroll_offset = self.model_browser.provider_index + 1 - visible;
-                        }
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    FocusedPanel::Models => {
-                        let models = self.model_browser.filtered_models();
-                        if !models.is_empty() {
-                            self.model_browser.model_index = (self.model_browser.model_index + 12).min(models.len() - 1);
-                            let visible = 14usize;
-                            if self.model_browser.model_index >= self.model_browser.model_scroll_offset + visible {
-                                self.model_browser.model_scroll_offset = self.model_browser.model_index + 1 - visible;
-                            }
-                        }
-                    }
-                }
-            }
-            KeyCode::Home => {
-                match self.model_browser.focused_panel {
-                    FocusedPanel::Providers => {
-                        self.model_browser.provider_index = 0;
-                        self.model_browser.provider_scroll_offset = 0;
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    FocusedPanel::Models => {
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                }
-            }
-            KeyCode::End => {
-                match self.model_browser.focused_panel {
-                    FocusedPanel::Providers => {
-                        let total_provs = 1 + self.model_browser.filtered_providers().len();
-                        self.model_browser.provider_index = total_provs.saturating_sub(1);
-                        let visible = 14usize;
-                        if self.model_browser.provider_index >= visible {
-                            self.model_browser.provider_scroll_offset = self.model_browser.provider_index + 1 - visible;
-                        }
-                        self.model_browser.model_index = 0;
-                        self.model_browser.model_scroll_offset = 0;
-                    }
-                    FocusedPanel::Models => {
-                        let models = self.model_browser.filtered_models();
-                        if !models.is_empty() {
-                            self.model_browser.model_index = models.len() - 1;
-                            let visible = 14usize;
-                            if self.model_browser.model_index >= visible {
-                                self.model_browser.model_scroll_offset = self.model_browser.model_index + 1 - visible;
-                            }
-                        }
-                    }
-                }
-            }
-            KeyCode::Enter => {
-                if let Some(m) = self.model_browser.current_model() {
-                    let m_clone = m.clone();
-                    let has_key = m.provider_id == "ollama" || {
-                        let mut found = false;
-                        for env_k in &m.env_keys {
-                            if let Ok(v) = std::env::var(env_k) {
-                                if !v.trim().is_empty() {
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if !found {
-                            let cred = CredentialStore::new();
-                            if let Some(k) = cred.get_api_key(&m.provider_id) {
-                                if !k.trim().is_empty() {
-                                    found = true;
-                                }
-                            }
-                        }
-                        found
-                    };
-
-                    if has_key {
-                        let _ = self.config_manager.save(&ModelConfig {
-                            provider: m_clone.provider_id.clone(),
-                            model: m_clone.id.clone(),
-                            updated_at: Some(chrono::Utc::now().to_rfc3339()),
-                            theme: Some(crate::ui::theme::active().id.to_string()),
+    /// Take the entry the cursor is on.
+    fn choose(&mut self) -> bool {
+        let Some(chosen) = self
+            .popup
+            .as_ref()
+            .and_then(|popup| popup.menu().selected())
+            .cloned()
+        else {
+            return false;
+        };
+        let Some(popup) = self.popup.take() else {
+            return false;
+        };
+        match popup {
+            Popup::Commands(_) => {
+                self.prompt.clear();
+                match chosen.id.as_ref() {
+                    "model" => {
+                        let current = self.model_label();
+                        self.popup = Some(Popup::Models {
+                            search: Prompt::default(),
+                            menu: filter_models("", Some(&current)),
                         });
-                        self.active_config = self.config_manager.load();
-                        self.welcome_status_message = Some(format!("Connected to {} ({})", m_clone.name, m_clone.id));
-                        self.screen = ActiveScreen::Welcome;
-                    } else {
-                        self.model_browser.pending_model = Some(m_clone);
-                        self.model_browser.api_key_input.clear();
-                        self.model_browser.validation_error = None;
-                        self.model_browser.validating = false;
-                        self.model_browser.api_key_modal_open = true;
                     }
+                    "thinking" => {
+                        let current = self.thinking.as_deref().unwrap_or("off");
+                        self.popup = Some(Popup::Thinking(Menu::at(
+                            THINKING_LEVELS.to_vec(),
+                            current,
+                        )));
+                    }
+                    "session" => {
+                        self.notice = Some("loading sessions...".to_string());
+                        self.spawn_list_sessions();
+                    }
+                    "new" => {
+                        self.session = None;
+                        self.turns.clear();
+                        self.usage = UsageReport::default();
+                        self.busy = false;
+                        self.reconnecting = false;
+                        self.scroll = 0;
+                        self.notice = Some("started a new session".to_string());
+                    }
+                    "reload" => {
+                        self.notice = Some("reloading plugins...".to_string());
+                        self.spawn_reload_plugins();
+                    }
+                    "theme" => {
+                        self.popup = Some(Popup::Themes {
+                            search: Prompt::default(),
+                            menu: themes(self.theme.name),
+                            initial: self.theme,
+                        });
+                    }
+                    "exit" => self.should_quit = true,
+                    _ => {}
                 }
             }
-            _ => {}
+            Popup::Models { .. } => {
+                if let Some((provider, id)) = parse_model(&chosen.id) {
+                    self.model = Some((provider.clone(), id.clone()));
+                    self.notice = Some(format!("model set to {provider}/{id}"));
+                    self.spawn_configure_session();
+                }
+            }
+            Popup::Thinking(_) => {
+                let level = chosen.id.to_string();
+                self.thinking = Some(level.clone());
+                self.notice = Some(format!("thinking effort set to {level}"));
+                self.spawn_configure_session();
+            }
+            Popup::Sessions { sessions, .. } => {
+                if let Some(info) = sessions.into_iter().find(|s| s.id == chosen.id.as_ref()) {
+                    let session_id = info.id.clone();
+                    let title = info.title.clone();
+                    self.apply_session(info);
+                    self.turns.clear();
+                    self.usage = UsageReport::default();
+                    self.busy = false;
+                    self.reconnecting = false;
+                    self.scroll = 0;
+                    self.screen = Screen::Session;
+                    self.notice = Some(format!("switched to session {title}"));
+                    self.spawn_session_history(&session_id);
+                }
+            }
+            Popup::Themes { .. } => {
+                if let Some(palette) = theme_named(&chosen.name) {
+                    self.theme = palette;
+                }
+            }
+        }
+        true
+    }
+
+    /// Close what is open, interrupt a running turn, or leave when idle.
+    fn escape(&mut self) -> bool {
+        if let Some(popup) = self.popup.take() {
+            match popup {
+                Popup::Commands(_) => self.prompt.clear(),
+                Popup::Themes { initial, .. } => self.theme = initial,
+                Popup::Models { .. } | Popup::Thinking(_) | Popup::Sessions { .. } => {}
+            }
+            return true;
+        }
+        if self.busy {
+            self.spawn_interrupt();
+            self.notice = Some("interrupting turn...".to_string());
+            return true;
+        }
+        if !self.prompt.text().is_empty() {
+            self.prompt.clear();
+            return true;
+        }
+        self.should_quit = true;
+        false
+    }
+
+    fn spawn_list_sessions(&self) {
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let res = RpcClient::default().list_sessions().await;
+                let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionsLoaded(res)));
+            });
         }
     }
 
-    pub fn handle_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
-        if self.screen == ActiveScreen::Session {
-            match mouse.kind {
-                crossterm::event::MouseEventKind::ScrollUp => {
-                    self.session_scroll_offset += 2;
-                }
-                crossterm::event::MouseEventKind::ScrollDown => {
-                    self.session_scroll_offset = self.session_scroll_offset.saturating_sub(2);
-                }
-                _ => {}
-            }
+    fn spawn_session_history(&self, session_id: &str) {
+        let session_id = session_id.to_string();
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let res = RpcClient::default().session_history(&session_id).await;
+                let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionHistoryLoaded(res)));
+            });
         }
     }
 
-    fn handle_session_key(&mut self, key: KeyEvent) {
-        if self.is_streaming {
-            match key.code {
-                KeyCode::Up => {
-                    self.session_scroll_offset += 2;
-                }
-                KeyCode::Down => {
-                    self.session_scroll_offset = self.session_scroll_offset.saturating_sub(2);
-                }
-                KeyCode::PageUp => {
-                    self.session_scroll_offset += 15;
-                }
-                KeyCode::PageDown => {
-                    self.session_scroll_offset = self.session_scroll_offset.saturating_sub(15);
-                }
-                KeyCode::Home => {
-                    self.session_scroll_offset = usize::MAX / 2;
-                }
-                KeyCode::End => {
-                    self.session_scroll_offset = 0;
-                }
-                _ => {}
-            }
+    fn spawn_configure_session(&self) {
+        let Some(session) = &self.session else {
             return;
+        };
+        let session_id = session.id.clone();
+        let model = self.model.clone();
+        let thinking = self.thinking.clone();
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let res = RpcClient::default()
+                    .configure_session(&session_id, model, thinking)
+                    .await;
+                let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionConfigured(res)));
+            });
         }
+    }
 
-        let is_dropdown_open = self.session_input.starts_with('/') && !self.session_input.contains(' ');
-        let all_commands = commands();
-        let matching_cmds = if is_dropdown_open {
-            all_commands
+    fn spawn_reload_plugins(&self) {
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let res = RpcClient::default().reload_plugins().await;
+                let _ = tx.send(AppEvent::Rpc(RpcEvent::PluginsReloaded(res)));
+            });
+        }
+    }
+
+    fn spawn_interrupt(&self) {
+        let Some(session) = &self.session else {
+            return;
+        };
+        let session_id = session.id.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = RpcClient::default().interrupt_session(&session_id).await;
+            });
+        }
+    }
+}
+
+fn theme_named(name: &str) -> Option<&'static Palette> {
+    theme::PALETTES.iter().find(|palette| palette.name == name)
+}
+
+/// Splits a `provider/model` identifier on its first slash (matching `acp/config.ts:parseModel`).
+fn parse_model(value: &str) -> Option<(String, String)> {
+    let slash = value.find('/')?;
+    if slash == 0 || slash + 1 >= value.len() {
+        return None;
+    }
+    Some((
+        value[..slash].to_string(),
+        value[slash + 1..].to_string(),
+    ))
+}
+
+/// Filter the theme picker's entries by `query` (matching palette name or scheme) and return the
+/// palette to preview on screen — the selected match when there is one, else `initial`.
+fn filter_themes(query: &str, menu: &mut Menu, initial: &'static Palette) -> &'static Palette {
+    let query = query.trim().to_ascii_lowercase();
+    menu.filter(|entry| {
+        query.is_empty()
+            || entry.name.to_ascii_lowercase().contains(&query)
+            || entry.detail.to_ascii_lowercase().contains(&query)
+    });
+    menu.selected()
+        .and_then(|entry| theme_named(&entry.name))
+        .unwrap_or(initial)
+}
+
+/// Build the model picker's menu, including any custom `provider/model` typed in the search box.
+fn filter_models(query: &str, active: Option<&str>) -> Menu {
+    let trimmed = query.trim();
+    let needle = trimmed.to_ascii_lowercase();
+    let mut entries = MODELS.to_vec();
+    if parse_model(trimmed).is_some() && !entries.iter().any(|e| e.id.eq_ignore_ascii_case(trimmed))
+    {
+        entries.insert(0, Entry::owned(trimmed, trimmed, "custom"));
+    }
+    let mut menu = Menu::at(entries, active.unwrap_or(""));
+    menu.filter(|entry| {
+        needle.is_empty()
+            || entry.name.to_ascii_lowercase().contains(&needle)
+            || entry.detail.to_ascii_lowercase().contains(&needle)
+    });
+    menu
+}
+
+/// Reconstruct conversation turns from the server's `session.history` entries.
+pub fn turns_from_history(entries: &[HistoryEntry]) -> Vec<Turn> {
+    let mut turns: Vec<Turn> = Vec::new();
+
+    for entry in entries {
+        if entry.role == "user" {
+            let prompt = entry
+                .parts
                 .iter()
-                .filter(|cmd| cmd.name.starts_with(&self.session_input))
+                .filter_map(|part| match part {
+                    Part::Text { text } if !text.is_empty() => Some(text.as_str()),
+                    _ => None,
+                })
                 .collect::<Vec<_>>()
-        } else {
-            Vec::new()
+                .join("\n\n");
+            turns.push(Turn {
+                prompt,
+                thinking: String::new(),
+                text: String::new(),
+                tools: Vec::new(),
+                notices: Vec::new(),
+                state: entry_turn_state(&entry.state),
+            });
+            continue;
+        }
+
+        if turns.is_empty() {
+            turns.push(Turn {
+                prompt: String::new(),
+                thinking: String::new(),
+                text: String::new(),
+                tools: Vec::new(),
+                notices: Vec::new(),
+                state: TurnState::Succeeded,
+            });
+        }
+
+        let Some(turn) = turns.last_mut() else {
+            continue;
         };
+        turn.state = entry_turn_state(&entry.state);
 
-        if is_dropdown_open {
-            match key.code {
-                KeyCode::Esc => {
-                    self.session_input.clear();
-                    self.session_cursor = 0;
-                    self.session_dropdown_index = 0;
-                    return;
+        for part in &entry.parts {
+            match part {
+                Part::Text { text } if !text.is_empty() => {
+                    if !turn.text.is_empty()
+                        && !turn.text.ends_with('\n')
+                        && !text.starts_with('\n')
+                    {
+                        turn.text.push_str("\n\n");
+                    }
+                    turn.text.push_str(text);
                 }
-                KeyCode::Up => {
-                    if !matching_cmds.is_empty() {
-                        if self.session_dropdown_index == 0 {
-                            self.session_dropdown_index = matching_cmds.len() - 1;
+                Part::Thinking { thinking, redacted }
+                    if redacted != &Some(true) && !thinking.is_empty() =>
+                {
+                    if !turn.thinking.is_empty()
+                        && !turn.thinking.ends_with('\n')
+                        && !thinking.starts_with('\n')
+                    {
+                        turn.thinking.push('\n');
+                    }
+                    turn.thinking.push_str(thinking);
+                }
+                Part::ToolCall {
+                    call_id,
+                    name,
+                    arguments,
+                    status,
+                    result,
+                    ..
+                } => {
+                    let tool_call =
+                        if matches!(status.as_str(), "pending" | "running") && result.is_none() {
+                            ToolCall::start(call_id.clone(), name.clone(), None, arguments)
                         } else {
-                            self.session_dropdown_index -= 1;
-                        }
-                    }
-                    return;
-                }
-                KeyCode::Down => {
-                    if !matching_cmds.is_empty() {
-                        if self.session_dropdown_index + 1 >= matching_cmds.len() {
-                            self.session_dropdown_index = 0;
-                        } else {
-                            self.session_dropdown_index += 1;
-                        }
-                    }
-                    return;
-                }
-                KeyCode::Tab => {
-                    if !matching_cmds.is_empty() {
-                        let cmd_name = matching_cmds[self.session_dropdown_index.min(matching_cmds.len() - 1)].name;
-                        self.session_input = format!("{} ", cmd_name);
-                        self.session_cursor = self.session_input.chars().count();
-                    }
-                    return;
-                }
-                KeyCode::Enter => {
-                    if !matching_cmds.is_empty() {
-                        let cmd_name = matching_cmds[self.session_dropdown_index.min(matching_cmds.len() - 1)].name;
-                        self.session_input.clear();
-                        self.session_cursor = 0;
-                        self.session_dropdown_index = 0;
-                        if self.execute_command(cmd_name) {
-                            return;
-                        } else {
-                            self.session_input = format!("{} ", cmd_name);
-                            self.session_cursor = self.session_input.chars().count();
-                            return;
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
+                            let is_error = status != "completed"
+                                || result.as_ref().is_some_and(|r| r.is_error);
+                            let output = result.as_ref().and_then(|r| {
+                                let text = r
+                                    .content
+                                    .iter()
+                                    .filter_map(|block| match block {
+                                        ToolResultContent::Text { text } => Some(text.as_str()),
+                                        ToolResultContent::Image { .. } => None,
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+                                (!text.is_empty()).then_some(text)
+                            });
+                            let details = result.as_ref().and_then(|r| r.details.as_ref());
+                            ToolCall::settled(
+                                call_id.clone(),
+                                Some(name.clone()),
+                                arguments,
+                                output,
+                                details,
+                                is_error,
+                            )
+                        };
 
-        match key.code {
-            KeyCode::Esc => {
-                self.screen = ActiveScreen::Welcome;
-            }
-            KeyCode::Up => {
-                let w = self.get_session_input_width();
-                if let Some(new_cur) = crate::ui::input::cursor_up_in_input(&self.session_input, self.session_cursor, w) {
-                    self.session_cursor = new_cur;
-                } else {
-                    self.session_scroll_offset += 2;
-                }
-            }
-            KeyCode::Down => {
-                let w = self.get_session_input_width();
-                if let Some(new_cur) = crate::ui::input::cursor_down_in_input(&self.session_input, self.session_cursor, w) {
-                    self.session_cursor = new_cur;
-                } else {
-                    self.session_scroll_offset = self.session_scroll_offset.saturating_sub(2);
-                }
-            }
-            KeyCode::PageUp => {
-                self.session_scroll_offset += 15;
-            }
-            KeyCode::PageDown => {
-                self.session_scroll_offset = self.session_scroll_offset.saturating_sub(15);
-            }
-            KeyCode::Left => {
-                self.session_cursor = self.session_cursor.saturating_sub(1);
-            }
-            KeyCode::Right => {
-                let char_count = self.session_input.chars().count();
-                if self.session_cursor < char_count {
-                    self.session_cursor += 1;
-                }
-            }
-            KeyCode::Home => {
-                if self.session_input.is_empty() {
-                    self.session_scroll_offset = usize::MAX / 2;
-                } else {
-                    self.session_cursor = 0;
-                }
-            }
-            KeyCode::End => {
-                if self.session_input.is_empty() {
-                    self.session_scroll_offset = 0;
-                } else {
-                    self.session_cursor = self.session_input.chars().count();
-                }
-            }
-            KeyCode::Delete => {
-                delete_at(&mut self.session_input, self.session_cursor);
-                self.session_dropdown_index = 0;
-            }
-            KeyCode::Backspace => {
-                backspace_at(&mut self.session_input, &mut self.session_cursor);
-                self.session_dropdown_index = 0;
-            }
-            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) || key.modifiers.contains(KeyModifiers::ALT) => {
-                insert_char_at(&mut self.session_input, &mut self.session_cursor, '\n');
-                self.session_dropdown_index = 0;
-            }
-            KeyCode::Enter => {
-                let prompt = self.session_input.trim().to_string();
-                if prompt.is_empty() {
-                    return;
-                }
-                self.session_input.clear();
-                self.session_cursor = 0;
-                self.session_dropdown_index = 0;
-                if self.execute_command(&prompt) {
-                    return;
-                }
-                self.dispatch_turn(prompt);
-            }
-            KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.session_cursor = 0;
-            }
-            KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.session_cursor = self.session_input.chars().count();
-            }
-            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                clear_to_start(&mut self.session_input, &mut self.session_cursor);
-                self.session_dropdown_index = 0;
-            }
-            KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                delete_word_backward(&mut self.session_input, &mut self.session_cursor);
-                self.session_dropdown_index = 0;
-            }
-            KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                let byte_pos = self.session_input.char_indices().nth(self.session_cursor).map(|(i, _)| i).unwrap_or(self.session_input.len());
-                self.session_input.truncate(byte_pos);
-                self.session_dropdown_index = 0;
-            }
-            KeyCode::Char(c) => {
-                insert_char_at(&mut self.session_input, &mut self.session_cursor, c);
-                self.session_dropdown_index = 0;
-            }
-            _ => {}
-        }
-    }
-
-    pub fn handle_paste(&mut self, text: &str) {
-        self.spinner.reset_blink();
-        match self.screen {
-            ActiveScreen::Welcome => {
-                insert_str_at(&mut self.welcome_input, &mut self.welcome_cursor, text);
-                self.welcome_dropdown_index = 0;
-                self.welcome_status_message = None;
-            }
-            ActiveScreen::ModelFlow => {
-                if self.model_browser.api_key_modal_open {
-                    self.model_browser.api_key_input.push_str(text);
-                } else if self.model_browser.is_searching {
-                    match self.model_browser.focused_panel {
-                        FocusedPanel::Providers => {
-                            self.model_browser.provider_search.push_str(text);
-                            let filtered = self.model_browser.filtered_providers();
-                            if !filtered.is_empty() {
-                                self.model_browser.provider_index = 1;
-                            } else {
-                                self.model_browser.provider_index = 0;
-                            }
-                            self.model_browser.provider_scroll_offset = 0;
-                            self.model_browser.model_index = 0;
-                            self.model_browser.model_scroll_offset = 0;
-                        }
-                        FocusedPanel::Models => {
-                            self.model_browser.model_search.push_str(text);
-                            self.model_browser.search_query.push_str(text);
-                            self.model_browser.model_index = 0;
-                            self.model_browser.model_scroll_offset = 0;
-                        }
+                    if let Some(existing) = turn.tools.iter_mut().find(|t| t.call_id == *call_id) {
+                        *existing = tool_call;
+                    } else {
+                        turn.tools.push(tool_call);
                     }
                 }
-            }
-            ActiveScreen::Session => {
-                if !self.is_streaming {
-                    insert_str_at(&mut self.session_input, &mut self.session_cursor, text);
-                    self.session_dropdown_index = 0;
-                }
+                Part::Text { .. } | Part::Thinking { .. } | Part::Image { .. } => {}
             }
         }
     }
 
-    pub fn start_session(&mut self, initial_prompt: String) {
-        self.screen = ActiveScreen::Session;
-        self.session_cursor = 0;
-        self.session_scroll_offset = 0;
-        self.session_dropdown_index = 0;
-        self.reconnecting = false;
+    turns
+}
 
-        let cfg = match &self.active_config {
-            Some(c) => c.clone(),
-            None => return,
-        };
-
-        let rpc = self.rpc_client.clone();
-        let tx = self.stream_tx.clone();
-        let prompt_clone = initial_prompt.clone();
-
-        let model_name = cfg.model.clone();
-        let new_turn = ConversationTurn::new(
-            format!("turn_{}", chrono::Utc::now().timestamp_millis()),
-            initial_prompt,
-            model_name,
-        );
-        self.turns.push(new_turn);
-        self.is_streaming = true;
-
-        tokio::spawn(async move {
-            // The CLI has already made a server ready; this only guards the instant
-            // between it registering and the socket actually accepting. Starting a
-            // server is the CLI's job, never this one's.
-            if !rpc.wait_for_server().await {
-                let _ = tx.send(StreamEvent::Failed(format!(
-                    "Could not connect to the CodeWork server at {}",
-                    rpc.url()
-                )));
-                return;
-            }
-
-            match rpc.create_session(&cfg.provider, &cfg.model, None, Some("high".to_string())).await {
-                Ok(info) => {
-                    let s_id = info.id.clone();
-                    let _ = tx.send(StreamEvent::SessionCreated(info));
-                    let _ = rpc.prompt_session(s_id, prompt_clone, tx).await;
-                }
-                Err(err) => {
-                    let _ = tx.send(StreamEvent::Failed(err));
-                }
-            }
-        });
+fn entry_turn_state(state: &str) -> TurnState {
+    match state {
+        "draft" => TurnState::Running,
+        "aborted" => TurnState::Interrupted("aborted".to_string()),
+        _ => TurnState::Succeeded,
     }
+}
 
-    pub fn dispatch_turn(&mut self, prompt: String) {
-        let cfg = match &self.active_config {
-            Some(c) => c.clone(),
-            None => return,
-        };
+/// Build the session picker's menu from the server's `session.list` response, sorted by
+/// `updated_at` (newest first).
+fn filter_sessions(query: &str, sessions: &[SessionInfo], active: Option<&str>) -> Menu {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    filter_sessions_at(query, sessions, active, now_ms)
+}
 
-        let model_name = cfg.model.clone();
-        let new_turn = ConversationTurn::new(
-            format!("turn_{}", chrono::Utc::now().timestamp_millis()),
-            prompt.clone(),
-            model_name,
-        );
-        self.turns.push(new_turn);
-        self.is_streaming = true;
-        self.session_scroll_offset = 0;
-        self.reconnecting = false;
-
-        let rpc = self.rpc_client.clone();
-        let tx = self.stream_tx.clone();
-        let existing_sess_id = self.session_info.as_ref().map(|s| s.id.clone());
-
-        tokio::spawn(async move {
-            let sess_id = match existing_sess_id {
-                Some(id) => id,
-                None => match rpc.create_session(&cfg.provider, &cfg.model, None, Some("high".to_string())).await {
-                    Ok(info) => {
-                        let id = info.id.clone();
-                        let _ = tx.send(StreamEvent::SessionCreated(info));
-                        id
-                    }
-                    Err(e) => {
-                        let _ = tx.send(StreamEvent::Failed(e));
-                        return;
-                    }
-                },
+fn filter_sessions_at(
+    query: &str,
+    sessions: &[SessionInfo],
+    active: Option<&str>,
+    now_ms: u64,
+) -> Menu {
+    let needle = query.trim().to_ascii_lowercase();
+    let mut ordered: Vec<&SessionInfo> = sessions.iter().collect();
+    ordered.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    let entries: Vec<Entry> = ordered
+        .into_iter()
+        .map(|s| {
+            let title = if s.title.is_empty() {
+                s.id.clone()
+            } else {
+                s.title.clone()
             };
-            let _ = rpc.prompt_session(sess_id, prompt, tx).await;
-        });
+            Entry::owned(s.id.clone(), title, session_detail(s, now_ms))
+        })
+        .collect();
+    let mut menu = Menu::at(entries, active.unwrap_or(""));
+    menu.filter(|entry| {
+        needle.is_empty()
+            || entry.name.to_ascii_lowercase().contains(&needle)
+            || entry.detail.to_ascii_lowercase().contains(&needle)
+            || entry.id.to_ascii_lowercase().contains(&needle)
+    });
+    menu
+}
+
+fn session_detail(session: &SessionInfo, now_ms: u64) -> String {
+    let location = session
+        .project
+        .as_ref()
+        .map(|p| p.name.as_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| session.host_dir.as_deref().unwrap_or(&session.directory));
+    match format_ago(session.updated_at, now_ms) {
+        Some(age) if !location.is_empty() => format!("{location} · {age}"),
+        Some(age) => age,
+        None => location.to_string(),
     }
 }
 
-fn insert_char_at(s: &mut String, cursor: &mut usize, c: char) {
-    let byte_pos = s.char_indices().nth(*cursor).map(|(i, _)| i).unwrap_or(s.len());
-    s.insert(byte_pos, c);
-    *cursor += 1;
+fn format_ago(updated_at: u64, now_ms: u64) -> Option<String> {
+    if updated_at == 0 {
+        return None;
+    }
+    let elapsed = now_ms.saturating_sub(updated_at);
+    const MINUTE: u64 = 60_000;
+    const HOUR: u64 = 60 * MINUTE;
+    const DAY: u64 = 24 * HOUR;
+    Some(if elapsed >= DAY {
+        format!("{}d", elapsed / DAY)
+    } else if elapsed >= HOUR {
+        format!("{}h", elapsed / HOUR)
+    } else if elapsed >= MINUTE {
+        format!("{}m", elapsed / MINUTE)
+    } else {
+        "now".to_string()
+    })
 }
 
-fn insert_str_at(s: &mut String, cursor: &mut usize, text: &str) {
-    let byte_pos = s.char_indices().nth(*cursor).map(|(i, _)| i).unwrap_or(s.len());
-    s.insert_str(byte_pos, text);
-    *cursor += text.chars().count();
-}
-
-fn backspace_at(s: &mut String, cursor: &mut usize) {
-    if *cursor > 0 {
-        *cursor -= 1;
-        let byte_pos = s.char_indices().nth(*cursor).map(|(i, _)| i).unwrap_or(s.len());
-        if let Some((_, ch)) = s[byte_pos..].char_indices().next() {
-            s.drain(byte_pos..byte_pos + ch.len_utf8());
-        }
-    }
-}
-
-fn delete_at(s: &mut String, cursor: usize) {
-    let char_count = s.chars().count();
-    if cursor < char_count {
-        let byte_pos = s.char_indices().nth(cursor).map(|(i, _)| i).unwrap_or(s.len());
-        if let Some((_, ch)) = s[byte_pos..].char_indices().next() {
-            s.drain(byte_pos..byte_pos + ch.len_utf8());
-        }
-    }
-}
-
-fn delete_word_backward(s: &mut String, cursor: &mut usize) {
-    if *cursor == 0 {
-        return;
-    }
-    let chars: Vec<char> = s.chars().collect();
-    let mut new_cursor = *cursor;
-    while new_cursor > 0 && chars[new_cursor - 1].is_whitespace() {
-        new_cursor -= 1;
-    }
-    while new_cursor > 0 && !chars[new_cursor - 1].is_whitespace() {
-        new_cursor -= 1;
-    }
-    let remove_count = *cursor - new_cursor;
-    let start_byte = s.char_indices().nth(new_cursor).map(|(i, _)| i).unwrap_or(s.len());
-    let end_byte = start_byte
-        + chars[new_cursor..new_cursor + remove_count]
+/// The theme picker: one entry per palette the site ships, its cursor on `active`.
+fn themes(active: &str) -> Menu {
+    Menu::at(
+        theme::PALETTES
             .iter()
-            .map(|c| c.len_utf8())
-            .sum::<usize>();
-    s.drain(start_byte..end_byte);
-    *cursor = new_cursor;
-}
-
-fn clear_to_start(s: &mut String, cursor: &mut usize) {
-    let byte_pos = s.char_indices().nth(*cursor).map(|(i, _)| i).unwrap_or(s.len());
-    s.drain(0..byte_pos);
-    *cursor = 0;
+            .map(|palette| {
+                Entry::with_preview(
+                    palette.name,
+                    palette.scheme.name(),
+                    Preview {
+                        bg: palette.field_bg,
+                        fg: palette.text,
+                    },
+                )
+            })
+            .collect(),
+        active,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool::ToolStatus;
+    use crate::types::{ModelRef, ProjectInfo, ToolResult, ToolTime};
+    use serde_json::json;
 
     #[test]
-    fn test_text_editing_operations() {
-        let mut s = String::new();
-        let mut cursor = 0;
+    fn reconstructs_turns_from_history_entries() {
+        let entries = vec![
+            HistoryEntry {
+                id: "u1".to_string(),
+                seq: 1,
+                role: "user".to_string(),
+                state: "committed".to_string(),
+                created_at: 1_000,
+                parts: vec![Part::Text {
+                    text: "Read Cargo.toml and run cargo check".to_string(),
+                }],
+            },
+            HistoryEntry {
+                id: "a1".to_string(),
+                seq: 2,
+                role: "assistant".to_string(),
+                state: "committed".to_string(),
+                created_at: 1_100,
+                parts: vec![
+                    Part::Thinking {
+                        thinking: "Checking Cargo.toml first.".to_string(),
+                        redacted: None,
+                    },
+                    Part::Thinking {
+                        thinking: "secret".to_string(),
+                        redacted: Some(true),
+                    },
+                    Part::ToolCall {
+                        call_id: "call_1".to_string(),
+                        name: "read".to_string(),
+                        arguments: json!({ "path": "Cargo.toml" }),
+                        status: "completed".to_string(),
+                        result: Some(ToolResult {
+                            content: vec![ToolResultContent::Text {
+                                text: "[package]\nname = \"codework-tui\"".to_string(),
+                            }],
+                            is_error: false,
+                            details: None,
+                        }),
+                        time: Some(ToolTime { start: 10, end: 20 }),
+                    },
+                ],
+            },
+            HistoryEntry {
+                id: "a2".to_string(),
+                seq: 3,
+                role: "assistant".to_string(),
+                state: "committed".to_string(),
+                created_at: 1_200,
+                parts: vec![
+                    Part::ToolCall {
+                        call_id: "call_2".to_string(),
+                        name: "bash".to_string(),
+                        arguments: json!({ "command": "cargo check" }),
+                        status: "error".to_string(),
+                        result: Some(ToolResult {
+                            content: vec![ToolResultContent::Text {
+                                text: "compile error".to_string(),
+                            }],
+                            is_error: true,
+                            details: None,
+                        }),
+                        time: None,
+                    },
+                    Part::Text {
+                        text: "The check failed.".to_string(),
+                    },
+                ],
+            },
+            HistoryEntry {
+                id: "u2".to_string(),
+                seq: 4,
+                role: "user".to_string(),
+                state: "committed".to_string(),
+                created_at: 2_000,
+                parts: vec![Part::Text {
+                    text: "Fix it".to_string(),
+                }],
+            },
+            HistoryEntry {
+                id: "a3".to_string(),
+                seq: 5,
+                role: "assistant".to_string(),
+                state: "draft".to_string(),
+                created_at: 2_100,
+                parts: vec![Part::ToolCall {
+                    call_id: "call_3".to_string(),
+                    name: "edit".to_string(),
+                    arguments: json!({ "path": "src/app.rs" }),
+                    status: "running".to_string(),
+                    result: None,
+                    time: None,
+                }],
+            },
+            HistoryEntry {
+                id: "u3".to_string(),
+                seq: 6,
+                role: "user".to_string(),
+                state: "committed".to_string(),
+                created_at: 3_000,
+                parts: vec![Part::Text {
+                    text: "Stop".to_string(),
+                }],
+            },
+            HistoryEntry {
+                id: "a4".to_string(),
+                seq: 7,
+                role: "assistant".to_string(),
+                state: "aborted".to_string(),
+                created_at: 3_100,
+                parts: vec![Part::Text {
+                    text: "Partial reply".to_string(),
+                }],
+            },
+        ];
 
-        // Typing fast
-        for c in "hello world".chars() {
-            insert_char_at(&mut s, &mut cursor, c);
-        }
-        assert_eq!(s, "hello world");
-        assert_eq!(cursor, 11);
+        let turns = turns_from_history(&entries);
+        assert_eq!(turns.len(), 3);
 
-        // Move cursor back
-        cursor = 5;
-        insert_char_at(&mut s, &mut cursor, ',');
-        assert_eq!(s, "hello, world");
-        assert_eq!(cursor, 6);
+        assert_eq!(turns[0].prompt, "Read Cargo.toml and run cargo check");
+        assert_eq!(turns[0].thinking, "Checking Cargo.toml first.");
+        assert_eq!(turns[0].text, "The check failed.");
+        assert_eq!(turns[0].state, TurnState::Succeeded);
+        assert_eq!(turns[0].tools.len(), 2);
+        assert_eq!(turns[0].tools[0].call_id, "call_1");
+        assert_eq!(turns[0].tools[0].target.as_deref(), Some("Cargo.toml"));
+        assert_eq!(turns[0].tools[0].status, ToolStatus::Completed);
+        assert_eq!(turns[0].tools[1].call_id, "call_2");
+        assert_eq!(turns[0].tools[1].target.as_deref(), Some("cargo check"));
+        assert_eq!(turns[0].tools[1].status, ToolStatus::Failed);
+        assert_eq!(turns[0].tools[1].output.as_deref(), Some("compile error"));
 
-        // Backspace
-        backspace_at(&mut s, &mut cursor);
-        assert_eq!(s, "hello world");
-        assert_eq!(cursor, 5);
+        assert_eq!(turns[1].prompt, "Fix it");
+        assert_eq!(turns[1].state, TurnState::Running);
+        assert_eq!(turns[1].tools.len(), 1);
+        assert_eq!(turns[1].tools[0].status, ToolStatus::Running);
+        assert_eq!(turns[1].tools[0].target.as_deref(), Some("src/app.rs"));
 
-        // Delete char at cursor (' ')
-        delete_at(&mut s, cursor);
-        assert_eq!(s, "helloworld");
-        assert_eq!(cursor, 5);
-
-        // Paste
-        insert_str_at(&mut s, &mut cursor, " beautiful ");
-        assert_eq!(s, "hello beautiful world");
-        assert_eq!(cursor, 16);
-
-        // Delete word backward
-        delete_word_backward(&mut s, &mut cursor);
-        assert_eq!(s, "hello world");
-        assert_eq!(cursor, 6);
-
-        // Clear to start
-        clear_to_start(&mut s, &mut cursor);
-        assert_eq!(s, "world");
-        assert_eq!(cursor, 0);
+        assert_eq!(turns[2].prompt, "Stop");
+        assert_eq!(turns[2].text, "Partial reply");
+        assert_eq!(
+            turns[2].state,
+            TurnState::Interrupted("aborted".to_string())
+        );
     }
 
     #[test]
-    fn test_unicode_text_editing() {
-        let mut s = String::new();
-        let mut cursor = 0;
+    fn sorts_sessions_by_updated_at_and_formats_project_activity() {
+        let now_ms = 1_000_000_000u64;
+        let sessions = vec![
+            SessionInfo {
+                id: "ses_older".to_string(),
+                title: "Older session".to_string(),
+                directory: "/workspace/alpha".to_string(),
+                host_dir: Some("/Users/prem/alpha".to_string()),
+                sandbox: None,
+                project: None,
+                updated_at: now_ms - 2 * 3_600_000,
+                model: None,
+            },
+            SessionInfo {
+                id: "ses_newest".to_string(),
+                title: "Newest session".to_string(),
+                directory: "/workspace/codework".to_string(),
+                host_dir: Some("/Users/prem/codework".to_string()),
+                sandbox: None,
+                project: Some(ProjectInfo {
+                    id: "prj_1".to_string(),
+                    name: "codework".to_string(),
+                }),
+                updated_at: now_ms - 5 * 60_000,
+                model: None,
+            },
+            SessionInfo {
+                id: "ses_oldest".to_string(),
+                title: "Oldest session".to_string(),
+                directory: "/workspace/notes".to_string(),
+                host_dir: None,
+                sandbox: None,
+                project: Some(ProjectInfo {
+                    id: "prj_2".to_string(),
+                    name: "notes".to_string(),
+                }),
+                updated_at: now_ms - 3 * 86_400_000,
+                model: None,
+            },
+        ];
 
-        insert_char_at(&mut s, &mut cursor, '🚀');
-        insert_char_at(&mut s, &mut cursor, ' ');
-        insert_char_at(&mut s, &mut cursor, 'h');
-        insert_char_at(&mut s, &mut cursor, 'i');
-        assert_eq!(s, "🚀 hi");
-        assert_eq!(cursor, 4);
-
-        // Backspace 'i'
-        backspace_at(&mut s, &mut cursor);
-        assert_eq!(s, "🚀 h");
-        assert_eq!(cursor, 3);
-
-        // Backspace 'h', ' ', '🚀'
-        backspace_at(&mut s, &mut cursor);
-        backspace_at(&mut s, &mut cursor);
-        backspace_at(&mut s, &mut cursor);
-        assert_eq!(s, "");
-        assert_eq!(cursor, 0);
+        let menu = filter_sessions_at("", &sessions, None, now_ms);
+        let entries = menu.entries();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].id.as_ref(), "ses_newest");
+        assert_eq!(entries[0].detail.as_ref(), "codework · 5m");
+        assert_eq!(entries[1].id.as_ref(), "ses_older");
+        assert_eq!(entries[1].detail.as_ref(), "/Users/prem/alpha · 2h");
+        assert_eq!(entries[2].id.as_ref(), "ses_oldest");
+        assert_eq!(entries[2].detail.as_ref(), "notes · 3d");
     }
 
-    #[tokio::test]
-    async fn test_model_browser_full_flow() {
-        let mut app = App::new();
-        assert_eq!(app.screen, ActiveScreen::Welcome);
+    #[test]
+    fn syncs_model_and_loads_history_on_session_switch() {
+        let mut app = App::default();
 
-        // Type /model and press Enter
-        app.welcome_input = "/model".to_string();
-        app.handle_key(KeyEvent::from(KeyCode::Enter));
-        assert_eq!(app.screen, ActiveScreen::ModelFlow);
+        let first = SessionInfo {
+            id: "ses_1".to_string(),
+            title: "First".to_string(),
+            directory: "/workspace/one".to_string(),
+            host_dir: None,
+            sandbox: None,
+            project: None,
+            updated_at: 1_000,
+            model: Some(ModelRef {
+                provider: "anthropic".to_string(),
+                id: "claude-sonnet-4-5".to_string(),
+            }),
+        };
+        let second = SessionInfo {
+            id: "ses_2".to_string(),
+            title: "Second".to_string(),
+            directory: "/workspace/two".to_string(),
+            host_dir: None,
+            sandbox: None,
+            project: None,
+            updated_at: 2_000,
+            model: None,
+        };
 
-        // Check initial state: 6001 models, focused on Models panel
-        assert_eq!(app.model_browser.focused_panel, FocusedPanel::Models);
-        assert_eq!(app.model_browser.filtered_models().len(), 6001);
+        // Creating a session syncs `app.model` from `info.model`.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::SessionCreated(first.clone()),
+        )));
+        assert_eq!(
+            app.model,
+            Some(("anthropic".to_string(), "claude-sonnet-4-5".to_string()))
+        );
 
-        // Tab switches to Providers panel
-        app.handle_key(KeyEvent::from(KeyCode::Tab));
-        assert_eq!(app.model_browser.focused_panel, FocusedPanel::Providers);
+        // Opening `/session` sorts newest (`ses_2`) first, places the cursor on the active
+        // session (`ses_1`), and choosing `ses_2` clears `app.model` back to `None`.
+        app.update(AppEvent::Rpc(RpcEvent::SessionsLoaded(Ok(vec![
+            first, second,
+        ]))));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Up)));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+        assert_eq!(app.session.as_ref().map(|s| s.id.as_str()), Some("ses_2"));
+        assert_eq!(app.model, None);
+        assert_eq!(app.screen, Screen::Session);
 
-        // Arrow down moves to first provider
-        app.handle_key(KeyEvent::from(KeyCode::Down));
-        assert_eq!(app.model_browser.provider_index, 1);
-        let models_for_p1 = app.model_browser.filtered_models();
-        assert!(!models_for_p1.is_empty() && models_for_p1.len() < 6001);
-
-        // Tab back to Models panel
-        app.handle_key(KeyEvent::from(KeyCode::Tab));
-        assert_eq!(app.model_browser.focused_panel, FocusedPanel::Models);
-
-        // Press / to search
-        app.handle_key(KeyEvent::from(KeyCode::Char('/')));
-        assert!(app.model_browser.is_searching);
-
-        for c in "claude".chars() {
-            app.handle_key(KeyEvent::from(KeyCode::Char(c)));
-        }
-        assert_eq!(app.model_browser.search_query, "claude");
-
-        // Enter finishes typing and focuses Models panel
-        app.handle_key(KeyEvent::from(KeyCode::Enter));
-        assert!(!app.model_browser.is_searching);
-        assert_eq!(app.model_browser.focused_panel, FocusedPanel::Models);
-
-        // Cycle sort with s
-        app.handle_key(KeyEvent::from(KeyCode::Char('s')));
-        assert_eq!(app.model_browser.sort_mode, ModelSortMode::Provider);
-
-        // Press Esc clears search filter
-        app.handle_key(KeyEvent::from(KeyCode::Esc));
-        assert_eq!(app.model_browser.search_query, "");
-
-        // Press q exits back to Welcome screen
-        app.handle_key(KeyEvent::from(KeyCode::Char('q')));
-        assert_eq!(app.screen, ActiveScreen::Welcome);
-    }
-
-    #[tokio::test]
-    async fn test_provider_search_flow() {
-        let mut app = App::new();
-        app.welcome_input = "/model".to_string();
-        app.handle_key(KeyEvent::from(KeyCode::Enter));
-        assert_eq!(app.screen, ActiveScreen::ModelFlow);
-
-        // Switch to Providers panel
-        app.handle_key(KeyEvent::from(KeyCode::Tab));
-        assert_eq!(app.model_browser.focused_panel, FocusedPanel::Providers);
-
-        // Press / to search provider
-        app.handle_key(KeyEvent::from(KeyCode::Char('/')));
-        assert!(app.model_browser.is_searching);
-
-        for c in "openai".chars() {
-            app.handle_key(KeyEvent::from(KeyCode::Char(c)));
-        }
-        assert_eq!(app.model_browser.provider_search, "openai");
-        assert_eq!(app.model_browser.provider_index, 1);
-        assert_eq!(app.model_browser.selected_provider_id(), Some("openai"));
-
-        // Models panel now filtered to openai models
-        let models = app.model_browser.filtered_models();
-        assert!(!models.is_empty());
-        for m in &models {
-            assert_eq!(m.provider_id, "openai");
-        }
-
-        // Enter stops search typing but keeps provider selected
-        app.handle_key(KeyEvent::from(KeyCode::Enter));
-        assert!(!app.model_browser.is_searching);
-        assert_eq!(app.model_browser.provider_search, "openai");
-
-        // Esc clears provider filter and resets to All
-        app.handle_key(KeyEvent::from(KeyCode::Esc));
-        assert_eq!(app.model_browser.provider_search, "");
-        assert_eq!(app.model_browser.provider_index, 0);
-        assert_eq!(app.model_browser.filtered_models().len(), 6001);
-    }
-
-    #[tokio::test]
-    async fn test_session_scrolling() {
-        let mut app = App::new();
-        app.screen = ActiveScreen::Session;
-        assert_eq!(app.session_scroll_offset, 0);
-
-        // Press Up scrolls up
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        assert_eq!(app.session_scroll_offset, 2);
-
-        // PageUp scrolls up 15 lines
-        app.handle_key(KeyEvent::from(KeyCode::PageUp));
-        assert_eq!(app.session_scroll_offset, 17);
-
-        // Down scrolls back down
-        app.handle_key(KeyEvent::from(KeyCode::Down));
-        assert_eq!(app.session_scroll_offset, 15);
-
-        // PageDown scrolls back down
-        app.handle_key(KeyEvent::from(KeyCode::PageDown));
-        assert_eq!(app.session_scroll_offset, 0);
-
-        // Down at bottom stays at 0
-        app.handle_key(KeyEvent::from(KeyCode::Down));
-        assert_eq!(app.session_scroll_offset, 0);
-
-        // Mouse scroll
-        app.handle_mouse(crossterm::event::MouseEvent {
-            kind: crossterm::event::MouseEventKind::ScrollUp,
-            column: 0,
-            row: 0,
-            modifiers: KeyModifiers::NONE,
-        });
-        assert_eq!(app.session_scroll_offset, 2);
-
-        // End resets to 0 (when input empty)
-        app.handle_key(KeyEvent::from(KeyCode::End));
-        assert_eq!(app.session_scroll_offset, 0);
-    }
-
-    #[tokio::test]
-    async fn test_session_command_dropdown() {
-        let mut app = App::new();
-        app.screen = ActiveScreen::Session;
-        assert_eq!(app.session_input, "");
-
-        // Typing '/' opens the command dropdown
-        app.handle_key(KeyEvent::from(KeyCode::Char('/')));
-        assert_eq!(app.session_input, "/");
-        assert_eq!(app.session_dropdown_index, 0);
-
-        // Pressing Down navigates to next command
-        app.handle_key(KeyEvent::from(KeyCode::Down));
-        assert_eq!(app.session_dropdown_index, 1);
-
-        // Pressing Up navigates back
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        assert_eq!(app.session_dropdown_index, 0);
-
-        // Typing 'm' filters commands
-        app.handle_key(KeyEvent::from(KeyCode::Char('m')));
-        assert_eq!(app.session_input, "/m");
-
-        // Pressing Tab auto-completes the selected command
-        app.handle_key(KeyEvent::from(KeyCode::Tab));
-        assert_eq!(app.session_input, "/model ");
-
-        // Pressing Esc clears the input and closes dropdown
-        app.session_input = "/".to_string();
-        app.session_cursor = 1;
-        app.handle_key(KeyEvent::from(KeyCode::Esc));
-        assert_eq!(app.session_input, "");
-        assert_eq!(app.screen, ActiveScreen::Session);
-
-        // Executing /clear clears turns
-        let mut turn = ConversationTurn::new("1".to_string(), "hello".to_string(), "model".to_string());
-        turn.response = "world".to_string();
-        turn.streaming = false;
-        app.turns.push(turn);
+        // Delivering `SessionHistoryLoaded` populates `app.turns`.
+        app.update(AppEvent::Rpc(RpcEvent::SessionHistoryLoaded(Ok(vec![
+            HistoryEntry {
+                id: "m1".to_string(),
+                seq: 1,
+                role: "user".to_string(),
+                state: "committed".to_string(),
+                created_at: 2_000,
+                parts: vec![Part::Text {
+                    text: "Resume me".to_string(),
+                }],
+            },
+            HistoryEntry {
+                id: "m2".to_string(),
+                seq: 2,
+                role: "assistant".to_string(),
+                state: "committed".to_string(),
+                created_at: 2_100,
+                parts: vec![Part::Text {
+                    text: "Resumed!".to_string(),
+                }],
+            },
+        ]))));
         assert_eq!(app.turns.len(), 1);
-        app.session_input = "/clear".to_string();
-        app.session_cursor = 6;
-        app.handle_key(KeyEvent::from(KeyCode::Enter));
-        assert!(app.turns.is_empty());
-        assert_eq!(app.session_input, "");
-    }
-
-    #[tokio::test]
-    async fn test_multiline_session_input_and_navigation() {
-        let mut app = App::new();
-        app.screen = ActiveScreen::Session;
-        app.session_input = "hello world".to_string();
-        app.session_cursor = 11;
-
-        // Shift+Enter inserts newline
-        let shift_enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT);
-        app.handle_key(shift_enter);
-        assert_eq!(app.session_input, "hello world\n");
-        assert_eq!(app.session_cursor, 12);
-
-        // Type second line
-        for c in "next line".chars() {
-            app.handle_key(KeyEvent::from(KeyCode::Char(c)));
-        }
-        assert_eq!(app.session_input, "hello world\nnext line");
-        assert_eq!(app.session_cursor, 21);
-
-        // Press Up should move cursor to line 1 (col 9, which is 'r') instead of scrolling chat
-        let initial_scroll = app.session_scroll_offset;
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        assert_eq!(app.session_scroll_offset, initial_scroll);
-        assert_eq!(app.session_cursor, 9); // col 9 on "hello world"
-
-        // Press Up again from line 0 should scroll chat history
-        app.handle_key(KeyEvent::from(KeyCode::Up));
-        assert_eq!(app.session_scroll_offset, initial_scroll + 2);
-
-        // Press Down moves cursor to line 1
-        app.handle_key(KeyEvent::from(KeyCode::Down));
-        assert_eq!(app.session_cursor, 12 + 9); // col 9 on "next line" (12 + 9 = 21)
-
-        // Press Down again from last line scrolls chat down
-        app.handle_key(KeyEvent::from(KeyCode::Down));
-        assert_eq!(app.session_scroll_offset, initial_scroll);
+        assert_eq!(app.turns[0].prompt, "Resume me");
+        assert_eq!(app.turns[0].text, "Resumed!");
+        assert_eq!(app.turns[0].state, TurnState::Succeeded);
+        assert!(!app.busy);
     }
 }
-
-

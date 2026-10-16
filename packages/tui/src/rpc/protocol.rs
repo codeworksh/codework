@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(unused_imports)]
+pub use crate::types::{HistoryEntry, Part, ToolResult, ToolResultContent, ToolTime};
+
 #[derive(Debug, Serialize)]
 pub struct RpcRequest<T> {
     pub _tag: &'static str,
@@ -98,19 +101,28 @@ pub struct EventEnvelope {
 
 #[derive(Debug, Serialize)]
 pub struct CreateSessionPayload {
-    #[serde(rename = "hostDir")]
-    pub host_dir: String,
+    #[serde(rename = "hostDir", skip_serializing_if = "Option::is_none")]
+    pub host_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<RuntimePayload>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConfigureSessionPayload {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
     pub runtime: RuntimePayload,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RuntimePayload {
-    pub model: ModelRefPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelRefPayload>,
     #[serde(rename = "thinkingLevel", skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ModelRefPayload {
     pub provider: String,
     pub id: String,
@@ -126,7 +138,13 @@ pub struct PromptSessionPayload {
 }
 
 #[derive(Debug, Serialize)]
-pub struct InterruptSessionPayload {
+pub struct SessionIdPayload {
     #[serde(rename = "sessionId")]
     pub session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionHistoryResponse {
+    #[serde(default)]
+    pub entries: Vec<HistoryEntry>,
 }
