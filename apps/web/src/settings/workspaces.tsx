@@ -118,7 +118,7 @@ export function WorkspacesSettings() {
 							<IconPicker workspace={workspace} onError={setError} />
 							<NameField workspace={workspace} autoFocus={workspace.id === created} onError={setError} />
 							<Keys>{shortcutLabel(index + 1)}</Keys>
-							<DeleteButton workspace={workspace} disabled={workspaces.length === 1} onError={setError} />
+							<DeleteButton workspace={workspace} onError={setError} />
 						</div>
 					))}
 					<button
@@ -230,7 +230,7 @@ function IconPicker({ workspace, onError }: RowProps) {
 }
 
 /** Deletes after a confirm that says which widgets close with it. */
-function DeleteButton({ workspace, disabled, onError }: RowProps & { readonly disabled: boolean }) {
+function DeleteButton({ workspace, onError }: RowProps) {
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
 	const [desk, setDesk] = useAtom(deskAtom);
 	const tag = workspaceTag(workspace);
@@ -242,9 +242,8 @@ function DeleteButton({ workspace, disabled, onError }: RowProps & { readonly di
 					variant="ghost"
 					size="icon"
 					className="size-8 text-ink-muted hover:text-destructive"
-					disabled={disabled}
 					aria-label={`Delete ${workspace.name}`}
-					title={disabled ? "The last workspace can't be deleted" : `Delete ${workspace.name}`}
+					title={`Delete ${workspace.name}`}
 				>
 					<Trash2 />
 				</Button>

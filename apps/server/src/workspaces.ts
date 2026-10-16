@@ -30,12 +30,12 @@ export const handlers = Effect.gen(function* () {
 	const renumber = (ids: readonly string[]) =>
 		Effect.forEach(ids, (id, pos) => sql`UPDATE workspaces SET pos = ${pos} WHERE id = ${id}`, { discard: true });
 
-	// The frames an auto workspace held do not outlive the app, so neither does it. One the user
-	// made always remains, so this never empties the switcher.
+	// The frames an auto workspace held do not outlive the app, so neither does it. Having none at
+	// all is fine: the start page needs no workspace.
 	yield* sql
 		.withTransaction(
 			Effect.gen(function* () {
-				yield* sql`DELETE FROM workspaces WHERE auto = 1 AND EXISTS (SELECT 1 FROM workspaces WHERE auto = 0)`;
+				yield* sql`DELETE FROM workspaces WHERE auto = 1`;
 				yield* renumber((yield* list).map((workspace) => workspace.id));
 			}),
 		)
@@ -108,7 +108,6 @@ export const handlers = Effect.gen(function* () {
 					Effect.gen(function* () {
 						const current = yield* list;
 						if (!current.some((workspace) => workspace.id === id)) return yield* fail(`No workspace ${id}`);
-						if (current.length === 1) return yield* fail("The last workspace can't be deleted");
 						yield* sql`DELETE FROM workspaces WHERE id = ${id}`;
 						yield* renumber(current.filter((workspace) => workspace.id !== id).map((workspace) => workspace.id));
 					}),

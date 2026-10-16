@@ -1,9 +1,10 @@
-import { useAtomSet } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { Outlet, useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
 import { Desktop } from "../wm/desktop";
-import { lastWorkspaceAtom, useWorkspaces, workspaceRoute } from "../wm/workspaces";
+import { lastWorkspaceAtom, useWorkspaces, workspaceRoute, workspacesAtom } from "../wm/workspaces";
 import { settingsShortcut, Switcher, workspaceShortcut } from "./switcher";
 import { BackButton, HomeButton, insetTitleBar, NewWorkspaceButton, SettingsButton } from "./titlebar";
 
@@ -25,6 +26,14 @@ export function Shell() {
 	const [lastId, setLastId] = useState<string>();
 	if (!inSettings && shown !== undefined && shown.id !== lastId) setLastId(shown.id);
 	const back = workspaces.find((workspace) => workspace.id === lastId) ?? workspaces[0];
+
+	// With every workspace deleted there is nothing to show here; the start page needs none. Only once
+	// the list has settled: a first load, or the refetch after creating one, must not bounce the user out.
+	const listed = useAtomValue(workspacesAtom);
+	const loaded = AsyncResult.isSuccess(listed) && !listed.waiting;
+	useEffect(() => {
+		if (loaded && workspaces.length === 0 && !inSettings) void navigate({ to: "/", replace: true });
+	}, [loaded, workspaces.length, inSettings, navigate]);
 
 	// Remembered past this route, so the start page opens things where the user last was.
 	const setLastWorkspace = useAtomSet(lastWorkspaceAtom);
