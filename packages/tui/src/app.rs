@@ -17,7 +17,7 @@ use crate::prompt::Prompt;
 use crate::rpc::{RpcClient, StreamEvent};
 use crate::theme::{self, Palette};
 use crate::tool::ToolCall;
-use crate::types::{SessionInfo, UsageReport};
+use crate::types::{HistoryEntry, Part, SessionInfo, ToolResultContent, UsageReport};
 
 /// What a leading slash offers. Only commands the app can actually perform are listed, and an
 /// entry's name is what choosing it matches on.
@@ -264,6 +264,14 @@ impl App {
         }
     }
 
+    fn apply_session(&mut self, info: SessionInfo) {
+        self.model = info
+            .model
+            .as_ref()
+            .map(|m| (m.provider.clone(), m.id.clone()));
+        self.session = Some(info);
+    }
+
     /// Display label for the active model.
     pub fn model_label(&self) -> String {
         if let Some((provider, id)) = &self.model {
@@ -452,7 +460,8 @@ impl App {
 
     fn handle_rpc(&mut self, event: RpcEvent) -> bool {
         match event {
-            RpcEvent::SessionsLoaded(Ok(sessions)) => {
+            RpcEvent::SessionsLoaded(Ok(mut sessions)) => {
+                sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
                 let current_id = self.session.as_ref().map(|s| s.id.as_str());
                 let menu = filter_sessions("", &sessions, current_id);
                 self.popup = Some(Popup::Sessions {
@@ -466,8 +475,21 @@ impl App {
                 self.notice = Some(err);
                 true
             }
+            RpcEvent::SessionHistoryLoaded(Ok(entries)) => {
+                self.turns = turns_from_history(&entries);
+                self.busy = self
+                    .turns
+                    .last()
+                    .is_some_and(|turn| turn.state == TurnState::Running);
+                self.scroll = 0;
+                true
+            }
+            RpcEvent::SessionHistoryLoaded(Err(err)) => {
+                self.notice = Some(err);
+                true
+            }
             RpcEvent::SessionConfigured(Ok(info)) => {
-                self.session = Some(info);
+                self.apply_session(info);
                 true
             }
             RpcEvent::SessionConfigured(Err(err)) => {
@@ -492,7 +514,7 @@ impl App {
     fn handle_stream(&mut self, event: StreamEvent) -> bool {
         match event {
             StreamEvent::SessionCreated(info) => {
-                self.session = Some(info);
+                self.apply_session(info);
             }
             StreamEvent::TextDelta(delta) => {
                 if let Some(turn) = self.turns.last_mut() {
@@ -788,13 +810,17 @@ impl App {
             }
             Popup::Sessions { sessions, .. } => {
                 if let Some(info) = sessions.into_iter().find(|s| s.id == chosen.id.as_ref()) {
+                    let session_id = info.id.clone();
                     let title = info.title.clone();
-                    self.session = Some(info);
+                    self.apply_session(info);
                     self.turns.clear();
                     self.usage = UsageReport::default();
+                    self.busy = false;
+                    self.reconnecting = false;
                     self.scroll = 0;
                     self.screen = Screen::Session;
                     self.notice = Some(format!("switched to session {title}"));
+                    self.spawn_session_history(&session_id);
                 }
             }
             Popup::Themes { .. } => {
@@ -835,6 +861,17 @@ impl App {
             handle.spawn(async move {
                 let res = RpcClient::default().list_sessions().await;
                 let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionsLoaded(res)));
+            });
+        }
+    }
+
+    fn spawn_session_history(&self, session_id: &str) {
+        let session_id = session_id.to_string();
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let res = RpcClient::default().session_history(&session_id).await;
+                let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionHistoryLoaded(res)));
             });
         }
     }
@@ -928,20 +965,157 @@ fn filter_models(query: &str, active: Option<&str>) -> Menu {
     menu
 }
 
-/// Build the session picker's menu from the server's `session.list` response.
+/// Reconstruct conversation turns from the server's `session.history` entries.
+pub fn turns_from_history(entries: &[HistoryEntry]) -> Vec<Turn> {
+    let mut turns: Vec<Turn> = Vec::new();
+
+    for entry in entries {
+        if entry.role == "user" {
+            let prompt = entry
+                .parts
+                .iter()
+                .filter_map(|part| match part {
+                    Part::Text { text } if !text.is_empty() => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            turns.push(Turn {
+                prompt,
+                thinking: String::new(),
+                text: String::new(),
+                tools: Vec::new(),
+                notices: Vec::new(),
+                state: entry_turn_state(&entry.state),
+            });
+            continue;
+        }
+
+        if turns.is_empty() {
+            turns.push(Turn {
+                prompt: String::new(),
+                thinking: String::new(),
+                text: String::new(),
+                tools: Vec::new(),
+                notices: Vec::new(),
+                state: TurnState::Succeeded,
+            });
+        }
+
+        let Some(turn) = turns.last_mut() else {
+            continue;
+        };
+        turn.state = entry_turn_state(&entry.state);
+
+        for part in &entry.parts {
+            match part {
+                Part::Text { text } if !text.is_empty() => {
+                    if !turn.text.is_empty()
+                        && !turn.text.ends_with('\n')
+                        && !text.starts_with('\n')
+                    {
+                        turn.text.push_str("\n\n");
+                    }
+                    turn.text.push_str(text);
+                }
+                Part::Thinking { thinking, redacted }
+                    if redacted != &Some(true) && !thinking.is_empty() =>
+                {
+                    if !turn.thinking.is_empty()
+                        && !turn.thinking.ends_with('\n')
+                        && !thinking.starts_with('\n')
+                    {
+                        turn.thinking.push('\n');
+                    }
+                    turn.thinking.push_str(thinking);
+                }
+                Part::ToolCall {
+                    call_id,
+                    name,
+                    arguments,
+                    status,
+                    result,
+                    ..
+                } => {
+                    let tool_call =
+                        if matches!(status.as_str(), "pending" | "running") && result.is_none() {
+                            ToolCall::start(call_id.clone(), name.clone(), None, arguments)
+                        } else {
+                            let is_error = status != "completed"
+                                || result.as_ref().is_some_and(|r| r.is_error);
+                            let output = result.as_ref().and_then(|r| {
+                                let text = r
+                                    .content
+                                    .iter()
+                                    .filter_map(|block| match block {
+                                        ToolResultContent::Text { text } => Some(text.as_str()),
+                                        ToolResultContent::Image { .. } => None,
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+                                (!text.is_empty()).then_some(text)
+                            });
+                            let details = result.as_ref().and_then(|r| r.details.as_ref());
+                            ToolCall::settled(
+                                call_id.clone(),
+                                Some(name.clone()),
+                                arguments,
+                                output,
+                                details,
+                                is_error,
+                            )
+                        };
+
+                    if let Some(existing) = turn.tools.iter_mut().find(|t| t.call_id == *call_id) {
+                        *existing = tool_call;
+                    } else {
+                        turn.tools.push(tool_call);
+                    }
+                }
+                Part::Text { .. } | Part::Thinking { .. } | Part::Image { .. } => {}
+            }
+        }
+    }
+
+    turns
+}
+
+fn entry_turn_state(state: &str) -> TurnState {
+    match state {
+        "draft" => TurnState::Running,
+        "aborted" => TurnState::Interrupted("aborted".to_string()),
+        _ => TurnState::Succeeded,
+    }
+}
+
+/// Build the session picker's menu from the server's `session.list` response, sorted by
+/// `updated_at` (newest first).
 fn filter_sessions(query: &str, sessions: &[SessionInfo], active: Option<&str>) -> Menu {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    filter_sessions_at(query, sessions, active, now_ms)
+}
+
+fn filter_sessions_at(
+    query: &str,
+    sessions: &[SessionInfo],
+    active: Option<&str>,
+    now_ms: u64,
+) -> Menu {
     let needle = query.trim().to_ascii_lowercase();
-    let entries: Vec<Entry> = sessions
-        .iter()
-        .rev()
+    let mut ordered: Vec<&SessionInfo> = sessions.iter().collect();
+    ordered.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    let entries: Vec<Entry> = ordered
+        .into_iter()
         .map(|s| {
             let title = if s.title.is_empty() {
                 s.id.clone()
             } else {
                 s.title.clone()
             };
-            let dir = s.host_dir.as_deref().unwrap_or(&s.directory).to_string();
-            Entry::owned(s.id.clone(), title, dir)
+            Entry::owned(s.id.clone(), title, session_detail(s, now_ms))
         })
         .collect();
     let mut menu = Menu::at(entries, active.unwrap_or(""));
@@ -952,6 +1126,39 @@ fn filter_sessions(query: &str, sessions: &[SessionInfo], active: Option<&str>) 
             || entry.id.to_ascii_lowercase().contains(&needle)
     });
     menu
+}
+
+fn session_detail(session: &SessionInfo, now_ms: u64) -> String {
+    let location = session
+        .project
+        .as_ref()
+        .map(|p| p.name.as_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| session.host_dir.as_deref().unwrap_or(&session.directory));
+    match format_ago(session.updated_at, now_ms) {
+        Some(age) if !location.is_empty() => format!("{location} · {age}"),
+        Some(age) => age,
+        None => location.to_string(),
+    }
+}
+
+fn format_ago(updated_at: u64, now_ms: u64) -> Option<String> {
+    if updated_at == 0 {
+        return None;
+    }
+    let elapsed = now_ms.saturating_sub(updated_at);
+    const MINUTE: u64 = 60_000;
+    const HOUR: u64 = 60 * MINUTE;
+    const DAY: u64 = 24 * HOUR;
+    Some(if elapsed >= DAY {
+        format!("{}d", elapsed / DAY)
+    } else if elapsed >= HOUR {
+        format!("{}h", elapsed / HOUR)
+    } else if elapsed >= MINUTE {
+        format!("{}m", elapsed / MINUTE)
+    } else {
+        "now".to_string()
+    })
 }
 
 /// The theme picker: one entry per palette the site ships, its cursor on `active`.
@@ -972,4 +1179,290 @@ fn themes(active: &str) -> Menu {
             .collect(),
         active,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tool::ToolStatus;
+    use crate::types::{ModelRef, ProjectInfo, ToolResult, ToolTime};
+    use serde_json::json;
+
+    #[test]
+    fn reconstructs_turns_from_history_entries() {
+        let entries = vec![
+            HistoryEntry {
+                id: "u1".to_string(),
+                seq: 1,
+                role: "user".to_string(),
+                state: "committed".to_string(),
+                created_at: 1_000,
+                parts: vec![Part::Text {
+                    text: "Read Cargo.toml and run cargo check".to_string(),
+                }],
+            },
+            HistoryEntry {
+                id: "a1".to_string(),
+                seq: 2,
+                role: "assistant".to_string(),
+                state: "committed".to_string(),
+                created_at: 1_100,
+                parts: vec![
+                    Part::Thinking {
+                        thinking: "Checking Cargo.toml first.".to_string(),
+                        redacted: None,
+                    },
+                    Part::Thinking {
+                        thinking: "secret".to_string(),
+                        redacted: Some(true),
+                    },
+                    Part::ToolCall {
+                        call_id: "call_1".to_string(),
+                        name: "read".to_string(),
+                        arguments: json!({ "path": "Cargo.toml" }),
+                        status: "completed".to_string(),
+                        result: Some(ToolResult {
+                            content: vec![ToolResultContent::Text {
+                                text: "[package]\nname = \"codework-tui\"".to_string(),
+                            }],
+                            is_error: false,
+                            details: None,
+                        }),
+                        time: Some(ToolTime { start: 10, end: 20 }),
+                    },
+                ],
+            },
+            HistoryEntry {
+                id: "a2".to_string(),
+                seq: 3,
+                role: "assistant".to_string(),
+                state: "committed".to_string(),
+                created_at: 1_200,
+                parts: vec![
+                    Part::ToolCall {
+                        call_id: "call_2".to_string(),
+                        name: "bash".to_string(),
+                        arguments: json!({ "command": "cargo check" }),
+                        status: "error".to_string(),
+                        result: Some(ToolResult {
+                            content: vec![ToolResultContent::Text {
+                                text: "compile error".to_string(),
+                            }],
+                            is_error: true,
+                            details: None,
+                        }),
+                        time: None,
+                    },
+                    Part::Text {
+                        text: "The check failed.".to_string(),
+                    },
+                ],
+            },
+            HistoryEntry {
+                id: "u2".to_string(),
+                seq: 4,
+                role: "user".to_string(),
+                state: "committed".to_string(),
+                created_at: 2_000,
+                parts: vec![Part::Text {
+                    text: "Fix it".to_string(),
+                }],
+            },
+            HistoryEntry {
+                id: "a3".to_string(),
+                seq: 5,
+                role: "assistant".to_string(),
+                state: "draft".to_string(),
+                created_at: 2_100,
+                parts: vec![Part::ToolCall {
+                    call_id: "call_3".to_string(),
+                    name: "edit".to_string(),
+                    arguments: json!({ "path": "src/app.rs" }),
+                    status: "running".to_string(),
+                    result: None,
+                    time: None,
+                }],
+            },
+            HistoryEntry {
+                id: "u3".to_string(),
+                seq: 6,
+                role: "user".to_string(),
+                state: "committed".to_string(),
+                created_at: 3_000,
+                parts: vec![Part::Text {
+                    text: "Stop".to_string(),
+                }],
+            },
+            HistoryEntry {
+                id: "a4".to_string(),
+                seq: 7,
+                role: "assistant".to_string(),
+                state: "aborted".to_string(),
+                created_at: 3_100,
+                parts: vec![Part::Text {
+                    text: "Partial reply".to_string(),
+                }],
+            },
+        ];
+
+        let turns = turns_from_history(&entries);
+        assert_eq!(turns.len(), 3);
+
+        assert_eq!(turns[0].prompt, "Read Cargo.toml and run cargo check");
+        assert_eq!(turns[0].thinking, "Checking Cargo.toml first.");
+        assert_eq!(turns[0].text, "The check failed.");
+        assert_eq!(turns[0].state, TurnState::Succeeded);
+        assert_eq!(turns[0].tools.len(), 2);
+        assert_eq!(turns[0].tools[0].call_id, "call_1");
+        assert_eq!(turns[0].tools[0].target.as_deref(), Some("Cargo.toml"));
+        assert_eq!(turns[0].tools[0].status, ToolStatus::Completed);
+        assert_eq!(turns[0].tools[1].call_id, "call_2");
+        assert_eq!(turns[0].tools[1].target.as_deref(), Some("cargo check"));
+        assert_eq!(turns[0].tools[1].status, ToolStatus::Failed);
+        assert_eq!(turns[0].tools[1].output.as_deref(), Some("compile error"));
+
+        assert_eq!(turns[1].prompt, "Fix it");
+        assert_eq!(turns[1].state, TurnState::Running);
+        assert_eq!(turns[1].tools.len(), 1);
+        assert_eq!(turns[1].tools[0].status, ToolStatus::Running);
+        assert_eq!(turns[1].tools[0].target.as_deref(), Some("src/app.rs"));
+
+        assert_eq!(turns[2].prompt, "Stop");
+        assert_eq!(turns[2].text, "Partial reply");
+        assert_eq!(
+            turns[2].state,
+            TurnState::Interrupted("aborted".to_string())
+        );
+    }
+
+    #[test]
+    fn sorts_sessions_by_updated_at_and_formats_project_activity() {
+        let now_ms = 1_000_000_000u64;
+        let sessions = vec![
+            SessionInfo {
+                id: "ses_older".to_string(),
+                title: "Older session".to_string(),
+                directory: "/workspace/alpha".to_string(),
+                host_dir: Some("/Users/prem/alpha".to_string()),
+                sandbox: None,
+                project: None,
+                updated_at: now_ms - 2 * 3_600_000,
+                model: None,
+            },
+            SessionInfo {
+                id: "ses_newest".to_string(),
+                title: "Newest session".to_string(),
+                directory: "/workspace/codework".to_string(),
+                host_dir: Some("/Users/prem/codework".to_string()),
+                sandbox: None,
+                project: Some(ProjectInfo {
+                    id: "prj_1".to_string(),
+                    name: "codework".to_string(),
+                }),
+                updated_at: now_ms - 5 * 60_000,
+                model: None,
+            },
+            SessionInfo {
+                id: "ses_oldest".to_string(),
+                title: "Oldest session".to_string(),
+                directory: "/workspace/notes".to_string(),
+                host_dir: None,
+                sandbox: None,
+                project: Some(ProjectInfo {
+                    id: "prj_2".to_string(),
+                    name: "notes".to_string(),
+                }),
+                updated_at: now_ms - 3 * 86_400_000,
+                model: None,
+            },
+        ];
+
+        let menu = filter_sessions_at("", &sessions, None, now_ms);
+        let entries = menu.entries();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].id.as_ref(), "ses_newest");
+        assert_eq!(entries[0].detail.as_ref(), "codework · 5m");
+        assert_eq!(entries[1].id.as_ref(), "ses_older");
+        assert_eq!(entries[1].detail.as_ref(), "/Users/prem/alpha · 2h");
+        assert_eq!(entries[2].id.as_ref(), "ses_oldest");
+        assert_eq!(entries[2].detail.as_ref(), "notes · 3d");
+    }
+
+    #[test]
+    fn syncs_model_and_loads_history_on_session_switch() {
+        let mut app = App::default();
+
+        let first = SessionInfo {
+            id: "ses_1".to_string(),
+            title: "First".to_string(),
+            directory: "/workspace/one".to_string(),
+            host_dir: None,
+            sandbox: None,
+            project: None,
+            updated_at: 1_000,
+            model: Some(ModelRef {
+                provider: "anthropic".to_string(),
+                id: "claude-sonnet-4-5".to_string(),
+            }),
+        };
+        let second = SessionInfo {
+            id: "ses_2".to_string(),
+            title: "Second".to_string(),
+            directory: "/workspace/two".to_string(),
+            host_dir: None,
+            sandbox: None,
+            project: None,
+            updated_at: 2_000,
+            model: None,
+        };
+
+        // Creating a session syncs `app.model` from `info.model`.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::SessionCreated(first.clone()),
+        )));
+        assert_eq!(
+            app.model,
+            Some(("anthropic".to_string(), "claude-sonnet-4-5".to_string()))
+        );
+
+        // Opening `/session` sorts newest (`ses_2`) first, places the cursor on the active
+        // session (`ses_1`), and choosing `ses_2` clears `app.model` back to `None`.
+        app.update(AppEvent::Rpc(RpcEvent::SessionsLoaded(Ok(vec![
+            first, second,
+        ]))));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Up)));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+        assert_eq!(app.session.as_ref().map(|s| s.id.as_str()), Some("ses_2"));
+        assert_eq!(app.model, None);
+        assert_eq!(app.screen, Screen::Session);
+
+        // Delivering `SessionHistoryLoaded` populates `app.turns`.
+        app.update(AppEvent::Rpc(RpcEvent::SessionHistoryLoaded(Ok(vec![
+            HistoryEntry {
+                id: "m1".to_string(),
+                seq: 1,
+                role: "user".to_string(),
+                state: "committed".to_string(),
+                created_at: 2_000,
+                parts: vec![Part::Text {
+                    text: "Resume me".to_string(),
+                }],
+            },
+            HistoryEntry {
+                id: "m2".to_string(),
+                seq: 2,
+                role: "assistant".to_string(),
+                state: "committed".to_string(),
+                created_at: 2_100,
+                parts: vec![Part::Text {
+                    text: "Resumed!".to_string(),
+                }],
+            },
+        ]))));
+        assert_eq!(app.turns.len(), 1);
+        assert_eq!(app.turns[0].prompt, "Resume me");
+        assert_eq!(app.turns[0].text, "Resumed!");
+        assert_eq!(app.turns[0].state, TurnState::Succeeded);
+        assert!(!app.busy);
+    }
 }

@@ -11,9 +11,10 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::rpc::protocol::{
     ConfigureSessionPayload, CreateSessionPayload, ExitPayload, ModelRefPayload,
-    PromptSessionPayload, RpcAck, RpcRequest, RuntimePayload, ServerMessage, SessionIdPayload,
+    PromptSessionPayload, RpcAck, RpcRequest, RuntimePayload, ServerMessage,
+    SessionHistoryResponse, SessionIdPayload,
 };
-use crate::types::{SessionInfo, UsageReport};
+use crate::types::{HistoryEntry, SessionInfo, UsageReport};
 
 pub const DEFAULT_SERVER_URL: &str = "ws://127.0.0.1:7433/rpc/v1";
 
@@ -207,6 +208,19 @@ impl RpcClient {
             )
             .await?;
         parse_session_info(&value)
+    }
+
+    /// Fetch a session's active-branch conversation history (`session.history`).
+    pub async fn session_history(&self, session_id: &str) -> Result<Vec<HistoryEntry>, String> {
+        let value = self
+            .call(
+                "session.history",
+                SessionIdPayload {
+                    session_id: session_id.to_string(),
+                },
+            )
+            .await?;
+        parse_session_history(&value)
     }
 
     /// Update a session's model or thinking effort (`session.configure`, matching ACP's
@@ -575,6 +589,12 @@ fn parse_session_info(value: &Value) -> Result<SessionInfo, String> {
         .map_err(|e| format!("Invalid session response: {e}"))
 }
 
+fn parse_session_history(value: &Value) -> Result<Vec<HistoryEntry>, String> {
+    serde_json::from_value::<SessionHistoryResponse>(value.clone())
+        .map(|res| res.entries)
+        .map_err(|e| format!("Invalid session history response: {e}"))
+}
+
 fn format_cause(cause: Option<&Value>) -> String {
     let Some(cause) = cause else {
         return "RPC request failed".to_string();
@@ -792,6 +812,200 @@ mod tests {
             }
             other => panic!("expected ToolSettled, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_full_session_info_metadata() {
+        let payload = json!({
+            "id": "ses_abc",
+            "title": "Refactor TUI",
+            "directory": "/workspace/codework",
+            "hostDir": "/Users/prem/codework",
+            "updatedAt": 1_760_614_701_143u64,
+            "project": {
+                "id": "prj_1",
+                "name": "codework"
+            },
+            "model": {
+                "provider": "anthropic",
+                "id": "claude-sonnet-4-5"
+            },
+            "sandbox": {
+                "id": "sbx_1",
+                "driver": "memory",
+                "kind": "virtual",
+                "providerResourceId": null,
+                "ownership": "managed",
+                "status": "online",
+                "usage": "busy",
+                "refCount": 2,
+                "createdAt": "2026-10-16T11:00:00.000Z",
+                "updatedAt": "2026-10-16T11:30:00.000Z"
+            }
+        });
+
+        let info = parse_session_info(&payload).expect("valid SessionInfo");
+        assert_eq!(info.id, "ses_abc");
+        assert_eq!(info.title, "Refactor TUI");
+        assert_eq!(info.directory, "/workspace/codework");
+        assert_eq!(info.host_dir.as_deref(), Some("/Users/prem/codework"));
+        assert_eq!(info.updated_at, 1_760_614_701_143);
+        let project = info.project.expect("project");
+        assert_eq!(project.id, "prj_1");
+        assert_eq!(project.name, "codework");
+        let model = info.model.expect("model");
+        assert_eq!(model.provider, "anthropic");
+        assert_eq!(model.id, "claude-sonnet-4-5");
+        let sandbox = info.sandbox.expect("sandbox");
+        assert_eq!(sandbox.id, "sbx_1");
+        assert_eq!(sandbox.driver, "memory");
+        assert_eq!(sandbox.kind, "virtual");
+        assert_eq!(sandbox.provider_resource_id, None);
+        assert_eq!(sandbox.ownership, "managed");
+        assert_eq!(sandbox.status, "online");
+        assert_eq!(sandbox.usage, "busy");
+        assert_eq!(sandbox.ref_count, 2);
+    }
+
+    #[test]
+    fn parses_session_history_entries_and_parts() {
+        use crate::types::{Part, ToolResultContent, ToolTime};
+
+        let payload = json!({
+            "entries": [
+                {
+                    "id": "msg_u1",
+                    "seq": 1,
+                    "role": "user",
+                    "state": "committed",
+                    "createdAt": 1_760_614_700_000u64,
+                    "parts": [
+                        { "type": "text", "text": "Inspect Cargo.toml" },
+                        { "type": "image", "data": "aGVsbG8=", "mimeType": "image/png" }
+                    ]
+                },
+                {
+                    "id": "msg_a1",
+                    "seq": 2,
+                    "role": "assistant",
+                    "state": "committed",
+                    "createdAt": 1_760_614_701_000u64,
+                    "parts": [
+                        { "type": "thinking", "thinking": "Reading Cargo.toml first." },
+                        {
+                            "type": "toolCall",
+                            "callID": "call_read_1",
+                            "name": "read",
+                            "arguments": { "path": "packages/tui/Cargo.toml" },
+                            "status": "completed",
+                            "result": {
+                                "content": [{ "type": "text", "text": "[package]\nname = \"codework-tui\"" }],
+                                "isError": false
+                            },
+                            "time": { "start": 100, "end": 150 }
+                        },
+                        { "type": "text", "text": "Here is the package manifest." }
+                    ]
+                }
+            ]
+        });
+
+        let entries = parse_session_history(&payload).expect("valid history");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].id, "msg_u1");
+        assert_eq!(entries[0].role, "user");
+        assert_eq!(entries[0].state, "committed");
+        assert_eq!(entries[0].parts.len(), 2);
+        assert_eq!(
+            entries[0].parts[1],
+            Part::Image {
+                data: "aGVsbG8=".to_string(),
+                mime_type: "image/png".to_string(),
+            }
+        );
+
+        assert_eq!(entries[1].id, "msg_a1");
+        assert_eq!(entries[1].role, "assistant");
+        assert_eq!(entries[1].parts.len(), 3);
+        match &entries[1].parts[1] {
+            Part::ToolCall {
+                call_id,
+                name,
+                status,
+                result,
+                time,
+                ..
+            } => {
+                assert_eq!(call_id, "call_read_1");
+                assert_eq!(name, "read");
+                assert_eq!(status, "completed");
+                assert_eq!(time, &Some(ToolTime { start: 100, end: 150 }));
+                let result = result.as_ref().expect("result");
+                assert!(!result.is_error);
+                assert_eq!(
+                    result.content,
+                    vec![ToolResultContent::Text {
+                        text: "[package]\nname = \"codework-tui\"".to_string(),
+                    }]
+                );
+            }
+            other => panic!("expected ToolCall part, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn session_history_round_trips_over_websocket() {
+        use tokio::net::TcpListener;
+        use tokio_tungstenite::accept_async;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut ws = accept_async(stream).await.expect("ws handshake");
+            let Some(Ok(Message::Text(req_text))) = ws.next().await else {
+                panic!("expected text request");
+            };
+            let req: Value = serde_json::from_str(req_text.trim()).expect("json request");
+            assert_eq!(req.get("tag").and_then(Value::as_str), Some("session.history"));
+            assert_eq!(
+                req.get("payload")
+                    .and_then(|p| p.get("sessionId"))
+                    .and_then(Value::as_str),
+                Some("ses_42")
+            );
+            let req_id = req.get("id").cloned().unwrap_or(json!(1));
+            let reply = json!({
+                "_tag": "Exit",
+                "requestId": req_id,
+                "exit": {
+                    "_tag": "Success",
+                    "value": {
+                        "entries": [
+                            {
+                                "id": "msg_1",
+                                "seq": 1,
+                                "role": "user",
+                                "state": "committed",
+                                "createdAt": 1000,
+                                "parts": [{ "type": "text", "text": "hello" }]
+                            }
+                        ]
+                    }
+                }
+            });
+            ws.send(Message::Text(format!("{reply}\n").into()))
+                .await
+                .expect("send reply");
+        });
+
+        let client = RpcClient::new(format!("ws://{addr}/rpc/v1"));
+        let entries = client.session_history("ses_42").await.expect("history");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "msg_1");
+        assert_eq!(entries[0].role, "user");
+        server.await.expect("server task");
     }
 
     #[tokio::test]

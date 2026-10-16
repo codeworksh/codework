@@ -10,13 +10,14 @@ use crossterm::event::{Event, KeyEvent, KeyEventKind, MouseEventKind};
 use tokio::sync::mpsc;
 
 use crate::rpc::StreamEvent;
-use crate::types::SessionInfo;
+use crate::types::{HistoryEntry, SessionInfo};
 
 /// Asynchronous results arriving from the RPC server.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RpcEvent {
     Stream(StreamEvent),
     SessionsLoaded(Result<Vec<SessionInfo>, String>),
+    SessionHistoryLoaded(Result<Vec<HistoryEntry>, String>),
     SessionConfigured(Result<SessionInfo, String>),
     PluginsReloaded(Result<(u64, Option<String>), String>),
 }

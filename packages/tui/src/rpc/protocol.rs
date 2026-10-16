@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(unused_imports)]
+pub use crate::types::{HistoryEntry, Part, ToolResult, ToolResultContent, ToolTime};
+
 #[derive(Debug, Serialize)]
 pub struct RpcRequest<T> {
     pub _tag: &'static str,
@@ -138,4 +141,10 @@ pub struct PromptSessionPayload {
 pub struct SessionIdPayload {
     #[serde(rename = "sessionId")]
     pub session_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionHistoryResponse {
+    #[serde(default)]
+    pub entries: Vec<HistoryEntry>,
 }
