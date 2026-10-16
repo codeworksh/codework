@@ -72,6 +72,7 @@ function Host({ instanceId, shell, decorate, children }: HostProps) {
 			instanceId,
 			setTitle: (title) => decorate(instanceId, { title }),
 			setIcon: (icon) => decorate(instanceId, { icon }),
+			setTab: (tab) => decorate(instanceId, { tab }),
 		}),
 		[instanceId, decorate],
 	);
@@ -197,7 +198,8 @@ export function Desktop({ workspace }: DesktopProps) {
 			setChrome((current) => {
 				const previous = current.get(instanceId) ?? {};
 				const next = { ...previous, ...patch };
-				if (next.title === previous.title && next.icon === previous.icon) return current;
+				const sameTab = next.tab?.title === previous.tab?.title && next.tab?.subtitle === previous.tab?.subtitle;
+				if (next.title === previous.title && next.icon === previous.icon && sameTab) return current;
 				return new Map(current).set(instanceId, next);
 			}),
 		[],

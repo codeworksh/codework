@@ -19,15 +19,18 @@ export function Session({ address }: WidgetProps<unknown>) {
 }
 
 function Conversation({ id }: { readonly id: string }) {
-	const { setTitle, setIcon } = useFrame();
+	const { setTitle, setIcon, setTab } = useFrame();
 	const result = useAtomValue(sessions(id));
 	const title = AsyncResult.isSuccess(result) ? result.value.title : undefined;
+	const project = AsyncResult.isSuccess(result) ? result.value.project?.name : undefined;
 
 	useEffect(() => {
 		if (title === undefined) return;
 		setTitle(title);
 		setIcon(MessageSquareText);
-	}, [title, setTitle, setIcon]);
+		// While focused, the workspace's tab reads as this session: its project over its title.
+		setTab({ title: project ?? "Session", subtitle: title });
+	}, [title, project, setTitle, setIcon, setTab]);
 
 	return AsyncResult.match(result, {
 		onInitial: () => null,

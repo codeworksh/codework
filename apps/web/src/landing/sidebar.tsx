@@ -89,7 +89,7 @@ export function SessionsSidebar() {
 		<Sidebar collapsible="offcanvas" className="select-none">
 			<SidebarHeader className="gap-0 p-0">
 				{/* The window's drag region, clear of the macOS traffic lights. */}
-				<div className={`h-11 shrink-0 [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`} />
+				<div className={`h-12 shrink-0 [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`} />
 				<div className="relative px-2 pb-2">
 					<Search className="pointer-events-none absolute top-1/2 left-4.5 size-3.5 -translate-y-1/2 text-ink-muted" />
 					<SidebarInput
@@ -157,7 +157,7 @@ export function TitleBar() {
 	const inCorner = !open || isMobile;
 	return (
 		<header
-			className={`flex h-11 shrink-0 items-center px-2 [-webkit-app-region:drag] ${inCorner && insetTitleBar ? "pl-20" : ""}`}
+			className={`flex h-12 shrink-0 items-center px-2 [-webkit-app-region:drag] ${inCorner && insetTitleBar ? "pl-20" : ""}`}
 		>
 			<SidebarTrigger
 				title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}

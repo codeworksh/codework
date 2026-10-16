@@ -75,7 +75,7 @@ export function Shell() {
 	return (
 		<div className="flex h-full flex-col">
 			<header
-				className={`flex h-11 shrink-0 items-center gap-1.5 px-2 select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`}
+				className={`flex h-12 shrink-0 items-center gap-1.5 px-2 select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`}
 			>
 				<button
 					type="button"

@@ -15,8 +15,8 @@ interface SwitcherProps {
 }
 
 /**
- * Workspace tabs, like a browser's: each names its workspace and what it shows (its most recently
- * focused frame), and they shrink together when the bar runs out of room. The active workspace is the URL, so a tab is a link.
+ * Workspace tabs, like a browser's: a title and subtitle that the workspace's focused frame decides
+ * (its `setTab`), and they shrink together when the bar runs out of room. The active workspace is the URL, so a tab is a link.
  */
 export function Switcher({ workspaces, active }: SwitcherProps) {
 	const { instances, order } = useAtomValue(deskAtom);
@@ -32,9 +32,15 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 		const focused = onWorkspace(remembered)
 			? remembered
 			: order.tileOrder.map((id) => instances.find((instance) => instance.id === id)).find(onWorkspace);
-		const title = focused === undefined ? undefined : chromeOf(focused, chrome.get(focused.id)).title;
+		if (focused === undefined) return { title: workspace.name };
+		const frame = chrome.get(focused.id);
+		// The focused frame decides what the tab says; without a say, the workspace's name over its title.
+		if (frame?.tab !== undefined) return frame.tab;
+		const title = chromeOf(focused, frame).title;
 		// A frame named like its workspace adds nothing to the tab.
-		return title?.toLowerCase() === workspace.name.toLowerCase() ? undefined : title;
+		return title.toLowerCase() === workspace.name.toLowerCase()
+			? { title: workspace.name }
+			: { title: workspace.name, subtitle: title };
 	};
 
 	return (
@@ -42,28 +48,30 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 			{workspaces.map((workspace, index) => {
 				const Icon = iconOf(workspace.icon);
 				const current = workspace.id === active?.id;
-				const detail = showing(workspace);
+				const tab = showing(workspace);
 				// A hairline between two resting tabs; the raised active tab needs none beside it.
 				const divider = index > 0 && !current && workspaces[index - 1]?.id !== active?.id;
 				return (
 					<Fragment key={workspace.id}>
-						{divider && <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-ink/12" />}
+						{divider && <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-ink/12" />}
 						<Link
 							{...workspaceRoute(workspace)}
 							aria-current={current ? "page" : undefined}
-							title={`${workspace.name}${detail === undefined ? "" : ` · ${detail}`} (${shortcutLabel(index + 1)})`}
-							className={`flex h-7 w-56 min-w-12 shrink items-center gap-2 rounded-[10px] pr-3 pl-1 transition-colors [corner-shape:superellipse(1.25)] ${
+							title={`${tab.title}${tab.subtitle === undefined ? "" : `\n${tab.subtitle}`}\n${shortcutLabel(index + 1)}`}
+							className={`flex h-9 w-56 min-w-12 shrink items-center gap-2 rounded-[10px] pr-3 pl-1.5 transition-colors [corner-shape:superellipse(1.25)] ${
 								current
 									? "border border-edge bg-linear-to-b from-frame-top to-frame text-ink shadow-frame"
 									: "border border-transparent text-ink-muted hover:bg-ink/5 hover:text-ink"
 							}`}
 						>
-							<span className="grid size-5 shrink-0 place-items-center rounded-[6px] border border-edge bg-frame-top text-ink shadow-xs">
-								<Icon className="size-3" strokeWidth={1.75} aria-hidden />
+							<span className="grid size-6 shrink-0 place-items-center rounded-[7px] border border-edge bg-frame-top text-ink shadow-xs">
+								<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
 							</span>
-							<span className="min-w-0 truncate">
-								<span className="font-medium">{workspace.name}</span>
-								{detail !== undefined && <span className="text-ink-muted"> {detail}</span>}
+							<span className="flex min-w-0 flex-col leading-tight">
+								<span className="truncate text-[12px] font-medium">{tab.title}</span>
+								{tab.subtitle !== undefined && (
+									<span className="truncate text-[11px] text-ink-muted">{tab.subtitle}</span>
+								)}
 							</span>
 						</Link>
 					</Fragment>

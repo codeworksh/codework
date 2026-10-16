@@ -10,6 +10,7 @@ export {
 } from "./widget";
 export {
 	type Frame,
+	type Tab,
 	type OpenMode,
 	openMode,
 	type OpenOptions,

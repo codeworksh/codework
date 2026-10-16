@@ -35,12 +35,23 @@ export interface Shell {
 	close(instanceId?: string): void;
 }
 
+/** What a workspace's tab shows: a title, and a quieter line beneath it. */
+export interface Tab {
+	readonly title: string;
+	readonly subtitle?: string;
+}
+
 export interface Frame {
 	readonly instanceId: string;
 	/** Replaces the default title; a title too long for the frame is shortened in the middle. */
 	readonly setTitle: (title: string) => void;
 	/** Replaces the default icon. */
 	readonly setIcon: (icon: LucideIcon) => void;
+	/**
+	 * What the workspace's tab shows while this frame is the workspace's focused one. Without it the
+	 * tab shows the workspace's name over this frame's title.
+	 */
+	readonly setTab: (tab: Tab) => void;
 }
 
 /**

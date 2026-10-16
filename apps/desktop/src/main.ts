@@ -114,10 +114,10 @@ function createMainWindow(): BrowserWindow {
 		minWidth: 840,
 		minHeight: 620,
 		// The web shell draws its own title bar (workspace switcher) beside the
-		// inset traffic lights, which sit centered in its 44px height.
+		// inset traffic lights, which sit centered in its 48px height.
 		...(process.platform === "darwin" && {
 			titleBarStyle: "hiddenInset",
-			trafficLightPosition: { x: 14, y: 16 },
+			trafficLightPosition: { x: 14, y: 18 },
 		}),
 		// Windows and Linux take the window's icon; macOS ignores it for the Dock's.
 		icon: ICON,

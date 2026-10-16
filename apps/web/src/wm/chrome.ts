@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Atom } from "effect/reactivity";
 
+import type { Tab } from "../sdk";
 import { registry } from "../widgets";
 import type { Instance } from "./instances";
 
@@ -8,6 +9,8 @@ import type { Instance } from "./instances";
 export interface Chrome {
 	readonly title?: string;
 	readonly icon?: LucideIcon;
+	/** What the workspace tab shows while this frame is its focused one. */
+	readonly tab?: Tab;
 }
 
 /**
