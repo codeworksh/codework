@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 
 import { Desktop } from "../wm/desktop";
 import { lastWorkspaceAtom, useWorkspaces, workspaceRoute, workspacesAtom } from "../wm/workspaces";
-import { settingsShortcut, Switcher, workspaceShortcut } from "./switcher";
-import { BackButton, HomeButton, insetTitleBar, NewWorkspaceButton, SettingsButton } from "./titlebar";
+import { settingsShortcut, workspaceShortcut } from "./switcher";
+import { TitleBar } from "./titlebar";
 
 /**
  * Lives in the pathless `_shell` layout so switching workspaces (a URL change) never remounts
@@ -60,16 +60,9 @@ export function Shell() {
 	}, [navigate, workspaces, inSettings, back]);
 
 	return (
-		<div className="flex h-full flex-col">
-			<header
-				className={`flex h-12 shrink-0 items-center gap-1.5 px-2 select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`}
-			>
-				<BackButton />
-				<HomeButton />
-				<Switcher workspaces={workspaces} active={inSettings ? undefined : shown} />
-				<NewWorkspaceButton />
-				<SettingsButton current={inSettings} />
-			</header>
+		<div className="flex h-full min-w-0 flex-col">
+			{/* Settings takes the whole window, with its own bar. */}
+			{!inSettings && <TitleBar active={shown} />}
 			<div className="relative min-h-0 flex-1">
 				{shown !== undefined && (
 					// Hidden, not unmounted, so widgets keep their state behind settings.

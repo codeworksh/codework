@@ -1,46 +1,41 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
 import { Plus, Search } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 
-import {
-	Sidebar,
-	SidebarContent,
-	SidebarHeader,
-	SidebarInput,
-	SidebarRail,
-	SidebarTrigger,
-	useSidebar,
-} from "@/components/ui/sidebar";
-import { Server } from "../kernel/rpc";
+import { Sidebar, SidebarContent, SidebarHeader, SidebarInput, SidebarRail } from "@/components/ui/sidebar";
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress } from "../widgets/session/address";
-import { Switcher } from "../shell/switcher";
-import { insetTitleBar, NewWorkspaceButton, SettingsButton } from "../shell/titlebar";
+import { projectsAtom } from "../widgets/session/projects";
+import { insetTitleBar } from "../shell/titlebar";
+import { focusedAtom } from "../wm/chrome";
+import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
-import { useWorkspaces } from "../wm/workspaces";
 import { ago } from "../widgets/time";
 import { Monogram } from "@/components/monogram";
-
-/** The sidebar's sessions; refresh it once a new session exists. */
-export const projectsAtom = Server.query("projects.list", undefined);
+import { placeAtom, usePickFolder } from "./place";
 
 /**
- * Recent sessions across every project, newest first. With none yet it invites adding a project,
- * the folder the start page's composer then works in; `project` is that folder once picked.
+ * Recent sessions across every project, newest first, beside every page. With none yet it invites
+ * adding a project: the folder the start page's composer then works in.
  */
-export function SessionsSidebar({
-	project,
-	onAddProject,
-}: {
-	readonly project: string | undefined;
-	/** Absent outside the desktop app, which alone can open the folder dialog. */
-	readonly onAddProject: (() => void) | undefined;
-}) {
+export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
+	const place = useAtomValue(placeAtom);
+	const pickFolder = usePickFolder();
+	const navigate = useNavigate();
+	// The session in front on the workspace on screen reads as current.
+	const { workspaceId } = useParams({ strict: false });
+	const { instances } = useAtomValue(deskAtom);
+	const focusedOn = useAtomValue(focusedAtom);
+	const focusedId = workspaceId === undefined ? undefined : focusedOn.get(workspaceId);
+	const current = instances.find((instance) => instance.id === focusedId)?.address;
+	// Picking lands on the start page, where the folder is used.
+	const addProject = pickFolder === undefined ? undefined : () => void pickFolder().then(() => navigate({ to: "/" }));
 	// Primary and middle clicks open; a right click is left to the context menu.
 	const open = (session: { id: string; project: { name: string } }, event: MouseEvent) => {
 		if (event.button <= 1) void openElsewhere(sessionAddress(session.id), session.project.name, openMode(event));
@@ -89,13 +84,13 @@ export function SessionsSidebar({
 						<p className="px-2.5 py-2 text-[12px] text-ink-muted">No sessions match “{query}”.</p>
 					) : (
 						<div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-[12px] text-ink-muted/70">
-							{project === undefined && result.value.length === 0 ? (
+							{place.kind === "none" && result.value.length === 0 ? (
 								<>
 									<span>No Projects Yet</span>
-									{onAddProject !== undefined && (
+									{addProject !== undefined && (
 										<button
 											type="button"
-											onClick={onAddProject}
+											onClick={addProject}
 											className="inline-flex items-center gap-1.5 rounded-md border border-edge px-2.5 py-1 text-[11px] font-medium text-ink-muted transition-colors outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5"
 										>
 											<Plus className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />
@@ -115,7 +110,8 @@ export function SessionsSidebar({
 								<button
 									type="button"
 									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame`}
-									className="block w-full rounded-[8px] px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5"
+									aria-current={sessionAddress(session.id) === current ? "true" : undefined}
+									className="block w-full rounded-[8px] px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5 aria-[current=true]:bg-ink/8"
 									onClick={(event) => open(session, event)}
 									onAuxClick={(event) => open(session, event)}
 								>
@@ -136,30 +132,5 @@ export function SessionsSidebar({
 			</SidebarContent>
 			<SidebarRail />
 		</Sidebar>
-	);
-}
-
-/**
- * The main area's title bar: the window's drag region with the sidebar toggle. With the sidebar
- * hidden, or overlaid as a sheet in a narrow window, it sits in the window's corner, so it moves
- * clear of the macOS traffic lights.
- */
-export function TitleBar() {
-	const { open, isMobile } = useSidebar();
-	const inCorner = !open || isMobile;
-	const workspaces = useWorkspaces();
-	return (
-		<header
-			className={`flex h-12 shrink-0 items-center gap-1.5 px-2 select-none [-webkit-app-region:drag] ${inCorner && insetTitleBar ? "pl-20" : ""}`}
-		>
-			<SidebarTrigger
-				title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}
-				className="text-ink-muted [-webkit-app-region:no-drag] hover:text-ink"
-			/>
-			{/* The workspaces, to jump straight into one; none is active on the start page. */}
-			<Switcher workspaces={workspaces} active={undefined} />
-			<NewWorkspaceButton />
-			<SettingsButton />
-		</header>
 	);
 }
