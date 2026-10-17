@@ -14,6 +14,12 @@ This file is the canonical source for unreleased changes and published release n
 - Added `project: { name }` to `session.create`. It names the session's project when the session creates it, ahead of the repository's and the folder's name; a project that already exists keeps its name. The name must be trimmed and not empty.
 - Added the `project.rename` RPC (`{ projectId, name }`), which renames a project and fails with `ProjectNotFoundError` for an unknown id. The harness exposes it as `Project.rename`.
 - The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
+- Added the `model.list` RPC (`{ hostDir? }`). It returns the providers the server holds credentials for (an API key in its environment, a stored OAuth login, or a keyless provider from settings), each model's supported thinking levels, and the `default` model and thinking level that settings pick for a session anchored at `hostDir`, with its display names. Without `hostDir` only the user's settings apply. Credentials are checked for presence, not validity. A broken settings file fails with `SettingsError`.
+- The desktop start page's composer has a model picker and a Reasoning picker. The model picker lists providers down a rail with their models beside it and searches across all of them. With no model picked, settings decide; a default whose provider has no credentials shows muted and cannot be picked. Reasoning offers only the levels the model supports and marks the settings level as Default. The picks are remembered across restarts.
+
+### Changed
+
+- The default thinking level, for settings that name none, is now `medium` instead of `high`.
 
 ## [@codeworksh/cli@0.3.0] - 2026-10-13
 
