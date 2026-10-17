@@ -10,6 +10,7 @@ import { ago } from "../time";
 import { sessionId } from "./address";
 import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
+import { useListedSession } from "./projects";
 import { type Info, Json, topics, type Update } from "./schema";
 
 const decodeReply = Schema.decodeUnknownOption(Json.Reply);
@@ -168,8 +169,10 @@ function useConversation(id: string) {
 function Conversation({ id, instanceId }: { readonly id: string; readonly instanceId: string }) {
 	const { setTitle, setIcon, setTab } = useFrame();
 	const { state, loadOlder } = useConversation(id);
-	const title = state.status === "ready" ? state.info.title : undefined;
-	const project = state.status === "ready" ? state.info.project?.name : undefined;
+	// Named from the sessions list at once, so the frame never shows its default title while loading.
+	const listed = useListedSession(id);
+	const title = state.status === "ready" ? state.info.title : listed?.title;
+	const project = state.status === "ready" ? state.info.project?.name : listed?.project;
 
 	useEffect(() => {
 		if (title === undefined) return;
