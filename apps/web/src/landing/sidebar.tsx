@@ -36,9 +36,12 @@ export function SessionsSidebar() {
 	const current = instances.find((instance) => instance.id === focusedId)?.address;
 	// Picking lands on the start page, where the folder is used.
 	const addProject = pickFolder === undefined ? undefined : () => void pickFolder().then(() => navigate({ to: "/" }));
-	// Primary and middle clicks open; a right click is left to the context menu.
+	// Primary and middle clicks open; a right click is left to the context menu. Shift, like a
+	// browser's new window, asks for a workspace of its own.
 	const open = (session: { id: string; project: { name: string } }, event: MouseEvent) => {
-		if (event.button <= 1) void openElsewhere(sessionAddress(session.id), session.project.name, openMode(event));
+		if (event.button > 1) return;
+		const placement = event.shiftKey ? "workspace" : openMode(event);
+		void openElsewhere(sessionAddress(session.id), session.project.name, placement);
 	};
 
 	const needle = query.trim().toLowerCase();
@@ -109,7 +112,7 @@ export function SessionsSidebar() {
 							<li key={session.id}>
 								<button
 									type="button"
-									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame`}
+									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 									aria-current={sessionAddress(session.id) === current ? "true" : undefined}
 									className="block w-full rounded-[8px] px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5 aria-[current=true]:bg-ink/8"
 									onClick={(event) => open(session, event)}
