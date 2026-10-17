@@ -31,7 +31,10 @@ const rpc = RpcServer.layerHttp({ group: Contract.Api, path: "/rpc", protocol: "
 
 // One event log, kv and CodeWork connection for the RPC handlers and the widget backends alike.
 export const layer = Layer.mergeAll(HttpRouter.serve(rpc, { disableListenLog: true }), Widgets.layer).pipe(
-	Layer.provide(Layer.mergeAll(Event.layer, Kv.layer, Codework.layer)),
+	Layer.provide(Layer.mergeAll(Event.layer, Codework.layer)),
+	// The home is the app's own setting, and its connection goes through it, so both reach the handlers too.
+	Layer.provideMerge(Codework.homeLayer),
+	Layer.provideMerge(Kv.layer),
 	Layer.provideMerge(announceReady),
 	Layer.provideMerge(NodeHttpServer.layer(createServer, { host: "127.0.0.1", port: 0 })),
 	Layer.provide(RpcSerialization.layerNdjson),

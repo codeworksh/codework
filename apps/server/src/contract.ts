@@ -102,6 +102,72 @@ export class DeskError extends Schema.TaggedError<DeskError>()("Server.DeskError
 	message: Schema.String,
 }) {}
 
+/**
+ * The `codework` executable the app uses, and its `--version`, or why that failed. `custom` when it
+ * is the path chosen in Settings rather than the one found.
+ */
+export const CliInstall = Schema.Union([
+	Schema.Struct({ path: Schema.String, custom: Schema.Boolean, version: Schema.String }),
+	Schema.Struct({ path: Schema.String, custom: Schema.Boolean, failure: Schema.String }),
+]);
+export type CliInstall = typeof CliInstall.Type;
+
+/**
+ * The CodeWork server registered in the home. `Incompatible` answers but its replies do not decode
+ * here: another build, even one with the same version.
+ */
+export const CliServer = Schema.Union([
+	Schema.TaggedStruct("Running", { url: Schema.String, pid: Schema.Int, version: Schema.String }),
+	Schema.TaggedStruct("Incompatible", { url: Schema.String, pid: Schema.Int, version: Schema.String }),
+	Schema.TaggedStruct("Stopped", {}),
+	Schema.TaggedStruct("Unreachable", { url: Schema.String, pid: Schema.Int }),
+]);
+export type CliServer = typeof CliServer.Type;
+
+/**
+ * A variable the server is started with. A sensitive one's value never leaves the app server, so
+ * it comes without `value`; sent back without one, the saved value stays.
+ */
+export const CliEnvVar = Schema.Struct({
+	name: Schema.String,
+	sensitive: Schema.Boolean,
+	value: Schema.optionalKey(Schema.String),
+});
+export type CliEnvVar = typeof CliEnvVar.Type;
+
+export const CliStatus = Schema.Struct({
+	/**
+	 * The CodeWork home whose `service.json` names the server; `custom` when chosen in Settings, and
+	 * `fallback` the one used otherwise.
+	 */
+	home: Schema.Struct({ path: Schema.String, custom: Schema.Boolean, fallback: Schema.String }),
+	/** None when no `codework` was found. */
+	cli: Schema.NullOr(CliInstall),
+	server: CliServer,
+	/** Extra arguments for `codework service start` and `restart`, as typed. */
+	args: Schema.String,
+	env: Schema.Array(CliEnvVar),
+});
+export type CliStatus = typeof CliStatus.Type;
+
+export const CliAction = Schema.Literals(["start", "restart", "stop"]);
+export type CliAction = typeof CliAction.Type;
+
+/**
+ * What is chosen in Settings; an absent field is left as it is. A `null` path goes back to the one
+ * found; `env` replaces every variable.
+ */
+export const CliConfig = Schema.Struct({
+	executable: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	home: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	args: Schema.optionalKey(Schema.String),
+	env: Schema.optionalKey(Schema.Array(CliEnvVar)),
+});
+
+export class CliError extends Schema.TaggedError<CliError>()("Server.CliError", {
+	message: Schema.String,
+}) {}
+
 /** Package-scoped JSON storage: `package` namespaces keys so packages never collide. */
 const KvKey = { package: Schema.String, key: Schema.String };
 
@@ -148,6 +214,21 @@ export const Api = RpcGroup.make(
 		payload: Desk,
 		success: Schema.Void,
 		error: DeskError,
+	}),
+	Rpc.make("cli.status", {
+		success: CliStatus,
+	}),
+	/** Saves the executable and home chosen in Settings; the app reconnects through a new home at once. */
+	Rpc.make("cli.configure", {
+		payload: CliConfig,
+		success: Schema.Void,
+		error: CliError,
+	}),
+	/** Runs `codework service <action>` with the CLI in use, in the home in use. */
+	Rpc.make("cli.service", {
+		payload: { action: CliAction },
+		success: Schema.Void,
+		error: CliError,
 	}),
 	Rpc.make("kv.get", {
 		payload: KvKey,

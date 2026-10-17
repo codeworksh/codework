@@ -1,7 +1,7 @@
-import { Layers, type LucideIcon, Palette } from "lucide-react";
+import { Layers, type LucideIcon, Palette, Server } from "lucide-react";
 
 export interface SettingsSection {
-	readonly to: "/settings/workspaces" | "/settings/themes";
+	readonly to: "/settings/workspaces" | "/settings/themes" | "/settings/servers";
 	readonly label: string;
 	readonly icon: LucideIcon;
 	/** Sidebar heading the section sits under. */
@@ -24,6 +24,13 @@ export const sections: readonly SettingsSection[] = [
 		icon: Palette,
 		group: "App",
 		keywords: ["appearance", "colors", "dark", "light"],
+	},
+	{
+		to: "/settings/servers",
+		label: "Servers",
+		icon: Server,
+		group: "App",
+		keywords: ["local", "remote", "cli", "service", "install", "codework", "version", "rpc"],
 	},
 ];
 

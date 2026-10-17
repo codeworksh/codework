@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
 import { Contract, ModelsError, type Project } from "./contract.ts";
 import { Desk } from "./desk.ts";
@@ -43,6 +44,7 @@ export const layer = Contract.Api.toLayer(
 		return Contract.Api.of({
 			...workspaces,
 			...desk,
+			...Cli.handlers,
 
 			"projects.list": Effect.fn("projects.list")(function* () {
 				const sessions = yield* Codework.call((client) => client("session.list", {}));
