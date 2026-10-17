@@ -17,7 +17,7 @@ use crate::prompt::Prompt;
 use crate::rpc::{RpcClient, StreamEvent};
 use crate::theme::{self, Palette};
 use crate::tool::ToolCall;
-use crate::types::{HistoryEntry, Part, SessionInfo, ToolResultContent, UsageReport};
+use crate::types::{HistoryEntry, ModelList, Part, SessionInfo, ToolResultContent, UsageReport};
 
 /// What a leading slash offers. Only commands the app can actually perform are listed, and an
 /// entry's name is what choosing it matches on.
@@ -31,74 +31,15 @@ const COMMANDS: &[Entry] = &[
     Entry::item("exit", "close the app"),
 ];
 
-/// Thinking effort options, matching `packages/codework/src/acp/config.ts`.
-const THINKING_LEVELS: &[Entry] = &[
-    Entry::item("off", "Off"),
-    Entry::item("minimal", "Minimal"),
-    Entry::item("low", "Low"),
-    Entry::item("medium", "Medium"),
-    Entry::item("high", "High"),
-    Entry::item("xhigh", "Extra High"),
-    Entry::item("max", "Max"),
-];
-
-/// Common `provider/model` presets across supported providers; typing any custom `provider/model`
-/// in the search box also offers that exact identifier.
-const MODELS: &[Entry] = &[
-    Entry::item("google/gemini-4-argon", "Google · Gemini 4 Argon"),
-    Entry::item("google/gemini-3.8-flash", "Google · Gemini 3.8 Flash"),
-    Entry::item("google/gemini-3.7-flash", "Google · Gemini 3.7 Flash"),
-    Entry::item("google/gemini-3.6-flash", "Google · Gemini 3.6 Flash"),
-    Entry::item("google/gemini-3.5-flash", "Google · Gemini 3.5 Flash"),
-    Entry::item(
-        "google/gemini-3.5-flash-lite",
-        "Google · Gemini 3.5 Flash Lite",
-    ),
-    Entry::item(
-        "google/gemini-3.1-pro-preview",
-        "Google · Gemini 3.1 Pro Preview",
-    ),
-    Entry::item(
-        "google/gemini-3.1-flash-lite",
-        "Google · Gemini 3.1 Flash Lite",
-    ),
-    Entry::item(
-        "google/gemini-3-flash-preview",
-        "Google · Gemini 3 Flash Preview",
-    ),
-    Entry::item("google/gemini-flash-latest", "Google · Gemini Flash Latest"),
-    Entry::item(
-        "google/gemini-flash-lite-latest",
-        "Google · Gemini Flash-Lite Latest",
-    ),
-    Entry::item("google/gemini-2.5-pro", "Google · Gemini 2.5 Pro"),
-    Entry::item("google/gemini-2.5-flash", "Google · Gemini 2.5 Flash"),
-    Entry::item(
-        "google/gemini-2.5-flash-lite",
-        "Google · Gemini 2.5 Flash-Lite",
-    ),
-    Entry::item("google/gemma-4-31b-it", "Google · Gemma 4 31B IT"),
-    Entry::item("google/gemma-4-26b-a4b-it", "Google · Gemma 4 26B A4B IT"),
-    Entry::item(
-        "anthropic/claude-sonnet-4-5",
-        "Anthropic · Claude Sonnet 4.5",
-    ),
-    Entry::item("anthropic/claude-opus-4-5", "Anthropic · Claude Opus 4.5"),
-    Entry::item("anthropic/claude-haiku-4-5", "Anthropic · Claude Haiku 4.5"),
-    Entry::item("openai/gpt-5", "OpenAI · GPT-5"),
-    Entry::item("openai/gpt-4.1", "OpenAI · GPT-4.1"),
-    Entry::item("openai/o3", "OpenAI · o3"),
-    Entry::item(
-        "openai-codex/codex-mini-latest",
-        "OpenAI Codex · Codex Mini",
-    ),
-    Entry::item(
-        "github-copilot/claude-sonnet-4",
-        "GitHub Copilot · Claude Sonnet 4",
-    ),
-    Entry::item("xai/grok-4", "xAI · Grok 4"),
-    Entry::item("deepseek/deepseek-reasoner", "DeepSeek · Reasoner"),
-    Entry::item("openrouter/auto", "OpenRouter · Auto"),
+/// Thinking effort levels in ascending order, matching `packages/codework/src/acp/config.ts`.
+const THINKING_LEVELS: &[(&str, &str)] = &[
+    ("off", "Off"),
+    ("minimal", "Minimal"),
+    ("low", "Low"),
+    ("medium", "Medium"),
+    ("high", "High"),
+    ("xhigh", "Extra High"),
+    ("max", "Max"),
 ];
 
 /// The screens the TUI can show.
@@ -205,6 +146,8 @@ pub struct App {
     pub notice: Option<String>,
     /// Active server session, once created or attached.
     pub session: Option<SessionInfo>,
+    /// Available models and the resolved settings default from `model.list`.
+    pub models: Option<ModelList>,
     /// Selected `(provider, model)` override; when `None`, the server uses its configured default.
     pub model: Option<(String, String)>,
     /// Selected thinking effort level.
@@ -235,13 +178,14 @@ impl Default for App {
 
 impl App {
     pub fn new(tx: mpsc::UnboundedSender<AppEvent>) -> Self {
-        Self {
+        let app = Self {
             screen: Screen::Welcome,
             theme: theme::default_palette(),
             prompt: Prompt::default(),
             popup: None,
             notice: None,
             session: None,
+            models: None,
             model: None,
             thinking: None,
             usage: UsageReport::default(),
@@ -253,7 +197,9 @@ impl App {
             should_quit: false,
             keymap: Keymap::new(),
             tx,
-        }
+        };
+        app.spawn_list_models();
+        app
     }
 
     /// The terminal background colour for the active screen.
@@ -264,12 +210,45 @@ impl App {
         }
     }
 
+    fn active_host_dir(&self) -> Option<String> {
+        match &self.session {
+            Some(session) => session.host_dir.clone(),
+            None => std::env::current_dir()
+                .ok()
+                .map(|p| p.to_string_lossy().to_string()),
+        }
+    }
+
     fn apply_session(&mut self, info: SessionInfo) {
+        let host_changed = self.session.as_ref().map(|s| &s.host_dir) != Some(&info.host_dir);
         self.model = info
             .model
             .as_ref()
             .map(|m| (m.provider.clone(), m.id.clone()));
         self.session = Some(info);
+        if host_changed || self.models.is_none() {
+            self.spawn_list_models();
+        }
+    }
+
+    /// Active `(provider, id)` pair: the session override when set, otherwise the resolved
+    /// default from `model.list`.
+    pub fn active_model(&self) -> Option<(&str, &str)> {
+        if let Some((provider, id)) = &self.model {
+            return Some((provider.as_str(), id.as_str()));
+        }
+        self.models
+            .as_ref()
+            .map(|list| (list.default.provider.as_str(), list.default.id.as_str()))
+    }
+
+    /// Thinking levels supported by the active model, when present in `model.list`.
+    pub fn active_thinking_levels(&self) -> Option<&[String]> {
+        let (provider, id) = self.active_model()?;
+        let list = self.models.as_ref()?;
+        let p = list.providers.iter().find(|p| p.id == provider)?;
+        let m = p.models.iter().find(|m| m.id == id)?;
+        (!m.thinking_levels.is_empty()).then_some(m.thinking_levels.as_slice())
     }
 
     /// Display label for the active model.
@@ -277,10 +256,45 @@ impl App {
         if let Some((provider, id)) = &self.model {
             return format!("{provider}/{id}");
         }
+        if let Some(list) = &self.models {
+            return format!("{}/{}", list.default.provider, list.default.id);
+        }
         if let Some(model) = &self.usage.model {
             return model.clone();
         }
         "default model".to_string()
+    }
+
+    /// Effective thinking effort level for the active model: the session override when set, and
+    /// otherwise the resolved default from `model.list` (clamped to the active model's supported
+    /// levels).
+    pub fn thinking_label(&self) -> Option<String> {
+        let requested = self.thinking.as_deref().or_else(|| {
+            self.models
+                .as_ref()
+                .map(|list| list.default.thinking_level.as_str())
+                .filter(|level| !level.is_empty())
+        })?;
+        Some(match self.active_thinking_levels() {
+            Some(supported) => clamp_thinking_level(requested, supported),
+            None => requested.to_string(),
+        })
+    }
+
+    fn thinking_entries(&self) -> Vec<Entry> {
+        match self.active_thinking_levels() {
+            Some(levels) => levels
+                .iter()
+                .map(|level| {
+                    let label = thinking_level_name(level);
+                    Entry::owned(level.clone(), level.clone(), label)
+                })
+                .collect(),
+            None => THINKING_LEVELS
+                .iter()
+                .map(|&(id, label)| Entry::item(id, label))
+                .collect(),
+        }
     }
 
     /// Apply one event. Returns whether the screen needs to be drawn again.
@@ -338,7 +352,8 @@ impl App {
                     if !search.insert_text(text) {
                         return false;
                     }
-                    *menu = filter_models(search.text(), menu.selected().map(|e| e.id.as_ref()));
+                    let selected = menu.selected().map(|e| e.id.to_string());
+                    *menu = filter_models(search.text(), self.models.as_ref(), selected.as_deref());
                     return true;
                 }
                 Popup::Sessions {
@@ -403,7 +418,8 @@ impl App {
                     if !search.edit(key) {
                         return false;
                     }
-                    *menu = filter_models(search.text(), menu.selected().map(|e| e.id.as_ref()));
+                    let selected = menu.selected().map(|e| e.id.to_string());
+                    *menu = filter_models(search.text(), self.models.as_ref(), selected.as_deref());
                     return true;
                 }
                 Some(Popup::Sessions {
@@ -460,6 +476,34 @@ impl App {
 
     fn handle_rpc(&mut self, event: RpcEvent) -> bool {
         match event {
+            RpcEvent::ModelsLoaded(Ok(models)) => {
+                self.models = Some(models);
+                let active_model = self.model_label();
+                let active_thinking = self.thinking_label().unwrap_or_else(|| "off".to_string());
+                let thinking_entries = self.thinking_entries();
+                match &mut self.popup {
+                    Some(Popup::Models { search, menu }) => {
+                        let selected = menu
+                            .selected()
+                            .map(|e| e.id.to_string())
+                            .unwrap_or(active_model);
+                        *menu = filter_models(search.text(), self.models.as_ref(), Some(&selected));
+                    }
+                    Some(Popup::Thinking(menu)) => {
+                        let selected = menu
+                            .selected()
+                            .map(|e| e.id.to_string())
+                            .unwrap_or(active_thinking);
+                        *menu = Menu::at(thinking_entries, &selected);
+                    }
+                    _ => {}
+                }
+                true
+            }
+            RpcEvent::ModelsLoaded(Err(err)) => {
+                self.notice = Some(err);
+                true
+            }
             RpcEvent::SessionsLoaded(Ok(mut sessions)) => {
                 sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
                 let current_id = self.session.as_ref().map(|s| s.id.as_str());
@@ -661,8 +705,8 @@ impl App {
                             id
                         }
                         Err(err) => {
-                            let _ = tx
-                                .send(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::Failed(err))));
+                            let _ =
+                                tx.send(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::Failed(err))));
                             return;
                         }
                     },
@@ -757,15 +801,17 @@ impl App {
                         let current = self.model_label();
                         self.popup = Some(Popup::Models {
                             search: Prompt::default(),
-                            menu: filter_models("", Some(&current)),
+                            menu: filter_models("", self.models.as_ref(), Some(&current)),
                         });
+                        self.spawn_list_models();
                     }
                     "thinking" => {
-                        let current = self.thinking.as_deref().unwrap_or("off");
-                        self.popup = Some(Popup::Thinking(Menu::at(
-                            THINKING_LEVELS.to_vec(),
-                            current,
-                        )));
+                        let current = self.thinking_label().unwrap_or_else(|| "off".to_string());
+                        self.popup =
+                            Some(Popup::Thinking(Menu::at(self.thinking_entries(), &current)));
+                        if self.models.is_none() {
+                            self.spawn_list_models();
+                        }
                     }
                     "session" => {
                         self.notice = Some("loading sessions...".to_string());
@@ -779,6 +825,7 @@ impl App {
                         self.reconnecting = false;
                         self.scroll = 0;
                         self.notice = Some("started a new session".to_string());
+                        self.spawn_list_models();
                     }
                     "reload" => {
                         self.notice = Some("reloading plugins...".to_string());
@@ -798,6 +845,11 @@ impl App {
             Popup::Models { .. } => {
                 if let Some((provider, id)) = parse_model(&chosen.id) {
                     self.model = Some((provider.clone(), id.clone()));
+                    if let (Some(level), Some(supported)) =
+                        (self.thinking.clone(), self.active_thinking_levels())
+                    {
+                        self.thinking = Some(clamp_thinking_level(&level, supported));
+                    }
                     self.notice = Some(format!("model set to {provider}/{id}"));
                     self.spawn_configure_session();
                 }
@@ -853,6 +905,17 @@ impl App {
         }
         self.should_quit = true;
         false
+    }
+
+    fn spawn_list_models(&self) {
+        let host_dir = self.active_host_dir();
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let res = RpcClient::default().list_models(host_dir.as_deref()).await;
+                let _ = tx.send(AppEvent::Rpc(RpcEvent::ModelsLoaded(res)));
+            });
+        }
     }
 
     fn spawn_list_sessions(&self) {
@@ -927,10 +990,7 @@ fn parse_model(value: &str) -> Option<(String, String)> {
     if slash == 0 || slash + 1 >= value.len() {
         return None;
     }
-    Some((
-        value[..slash].to_string(),
-        value[slash + 1..].to_string(),
-    ))
+    Some((value[..slash].to_string(), value[slash + 1..].to_string()))
 }
 
 /// Filter the theme picker's entries by `query` (matching palette name or scheme) and return the
@@ -947,11 +1007,94 @@ fn filter_themes(query: &str, menu: &mut Menu, initial: &'static Palette) -> &'s
         .unwrap_or(initial)
 }
 
-/// Build the model picker's menu, including any custom `provider/model` typed in the search box.
-fn filter_models(query: &str, active: Option<&str>) -> Menu {
+fn thinking_level_name(level: &str) -> &'static str {
+    THINKING_LEVELS
+        .iter()
+        .find_map(|&(id, label)| (id == level).then_some(label))
+        .unwrap_or("Off")
+}
+
+/// Clamp `level` to the active model's `supported` thinking levels: exact match, else next level
+/// up on the ladder, else next level down, else the first supported level (matching the harness).
+fn clamp_thinking_level(level: &str, supported: &[String]) -> String {
+    if supported.is_empty() || supported.iter().any(|s| s == level) {
+        return level.to_string();
+    }
+    if let Some(at) = THINKING_LEVELS.iter().position(|&(id, _)| id == level) {
+        if let Some(&(next_up, _)) = THINKING_LEVELS[at + 1..]
+            .iter()
+            .find(|&&(id, _)| supported.iter().any(|s| s == id))
+        {
+            return next_up.to_string();
+        }
+        if let Some(&(next_down, _)) = THINKING_LEVELS[..at]
+            .iter()
+            .rev()
+            .find(|&&(id, _)| supported.iter().any(|s| s == id))
+        {
+            return next_down.to_string();
+        }
+    }
+    supported[0].clone()
+}
+
+fn model_entries(models: Option<&ModelList>) -> Vec<Entry> {
+    let Some(list) = models else {
+        return Vec::new();
+    };
+    let default_key = format!("{}/{}", list.default.provider, list.default.id);
+    let default_provider_available = list.providers.iter().any(|p| p.id == list.default.provider);
+
+    let mut entries: Vec<Entry> = Vec::new();
+    for provider in &list.providers {
+        for model in &provider.models {
+            let id = format!("{}/{}", provider.id, model.id);
+            let is_default = provider.id == list.default.provider && model.id == list.default.id;
+            let detail = if is_default {
+                format!("{} · {} · default", provider.name, model.name)
+            } else {
+                format!("{} · {}", provider.name, model.name)
+            };
+            entries.push(Entry::owned(id.clone(), id, detail));
+        }
+    }
+
+    if !entries.iter().any(|e| e.id.as_ref() == default_key) {
+        let provider_name = list
+            .default
+            .provider_name
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                list.providers
+                    .iter()
+                    .find(|p| p.id == list.default.provider)
+                    .map(|p| p.name.as_str())
+            })
+            .unwrap_or(&list.default.provider);
+        let model_name = list
+            .default
+            .name
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&list.default.id);
+        let detail = if default_provider_available {
+            format!("{provider_name} · {model_name} · default")
+        } else {
+            format!("{provider_name} · {model_name} · default (no credentials)")
+        };
+        entries.insert(0, Entry::owned(default_key.clone(), default_key, detail));
+    }
+
+    entries
+}
+
+/// Build the model picker's menu from `model.list`, including any custom `provider/model` typed in
+/// the search box.
+fn filter_models(query: &str, models: Option<&ModelList>, active: Option<&str>) -> Menu {
     let trimmed = query.trim();
     let needle = trimmed.to_ascii_lowercase();
-    let mut entries = MODELS.to_vec();
+    let mut entries = model_entries(models);
     if parse_model(trimmed).is_some() && !entries.iter().any(|e| e.id.eq_ignore_ascii_case(trimmed))
     {
         entries.insert(0, Entry::owned(trimmed, trimmed, "custom"));
@@ -961,6 +1104,7 @@ fn filter_models(query: &str, active: Option<&str>) -> Menu {
         needle.is_empty()
             || entry.name.to_ascii_lowercase().contains(&needle)
             || entry.detail.to_ascii_lowercase().contains(&needle)
+            || entry.id.to_ascii_lowercase().contains(&needle)
     });
     menu
 }
@@ -1185,7 +1329,9 @@ fn themes(active: &str) -> Menu {
 mod tests {
     use super::*;
     use crate::tool::ToolStatus;
-    use crate::types::{ModelRef, ProjectInfo, ToolResult, ToolTime};
+    use crate::types::{
+        DefaultModel, ModelOption, ModelProvider, ModelRef, ProjectInfo, ToolResult, ToolTime,
+    };
     use serde_json::json;
 
     #[test]
@@ -1464,5 +1610,148 @@ mod tests {
         assert_eq!(app.turns[0].text, "Resumed!");
         assert_eq!(app.turns[0].state, TurnState::Succeeded);
         assert!(!app.busy);
+    }
+
+    #[test]
+    fn populates_model_picker_and_flags_unavailable_default() {
+        let mut app = App::default();
+        assert_eq!(app.model_label(), "default model");
+        assert_eq!(app.thinking_label(), None);
+
+        let list = ModelList {
+            providers: vec![ModelProvider {
+                id: "anthropic".to_string(),
+                name: "Anthropic".to_string(),
+                models: vec![ModelOption {
+                    id: "claude-sonnet-4-5".to_string(),
+                    name: "Claude Sonnet 4.5".to_string(),
+                    thinking_levels: vec![
+                        "off".to_string(),
+                        "low".to_string(),
+                        "medium".to_string(),
+                        "high".to_string(),
+                    ],
+                }],
+            }],
+            default: DefaultModel {
+                provider: "openai".to_string(),
+                id: "gpt-5.6-luna".to_string(),
+                thinking_level: "medium".to_string(),
+                name: Some("GPT-5.6 Luna".to_string()),
+                provider_name: Some("OpenAI".to_string()),
+            },
+        };
+
+        app.update(AppEvent::Rpc(RpcEvent::ModelsLoaded(Ok(list))));
+        assert_eq!(app.model_label(), "openai/gpt-5.6-luna");
+        assert_eq!(app.thinking_label().as_deref(), Some("medium"));
+
+        // Open `/model` via command menu.
+        app.update(AppEvent::Paste("/model".to_string()));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+
+        let Some(Popup::Models { menu, .. }) = &app.popup else {
+            panic!("expected Models popup");
+        };
+        let entries = menu.entries();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].id.as_ref(), "openai/gpt-5.6-luna");
+        assert_eq!(
+            entries[0].detail.as_ref(),
+            "OpenAI · GPT-5.6 Luna · default (no credentials)"
+        );
+        assert_eq!(entries[1].id.as_ref(), "anthropic/claude-sonnet-4-5");
+        assert_eq!(entries[1].detail.as_ref(), "Anthropic · Claude Sonnet 4.5");
+        assert_eq!(menu.cursor(), 0);
+    }
+
+    #[test]
+    fn filters_thinking_options_to_active_model_and_clamps_default() {
+        let mut app = App::default();
+        let list = ModelList {
+            providers: vec![
+                ModelProvider {
+                    id: "anthropic".to_string(),
+                    name: "Anthropic".to_string(),
+                    models: vec![ModelOption {
+                        id: "claude-sonnet-4-5".to_string(),
+                        name: "Claude Sonnet 4.5".to_string(),
+                        thinking_levels: vec![
+                            "off".to_string(),
+                            "low".to_string(),
+                            "medium".to_string(),
+                            "high".to_string(),
+                        ],
+                    }],
+                },
+                ModelProvider {
+                    id: "local".to_string(),
+                    name: "Local".to_string(),
+                    models: vec![ModelOption {
+                        id: "qwen3-coder:30b".to_string(),
+                        name: "Qwen3 Coder 30B".to_string(),
+                        thinking_levels: vec!["off".to_string()],
+                    }],
+                },
+            ],
+            default: DefaultModel {
+                provider: "local".to_string(),
+                id: "qwen3-coder:30b".to_string(),
+                thinking_level: "medium".to_string(),
+                name: Some("Qwen3 Coder 30B".to_string()),
+                provider_name: Some("Local".to_string()),
+            },
+        };
+
+        app.update(AppEvent::Rpc(RpcEvent::ModelsLoaded(Ok(list))));
+        assert_eq!(app.model_label(), "local/qwen3-coder:30b");
+        // Default thinkingLevel is "medium", clamped to the default model's only supported level ("off").
+        assert_eq!(app.thinking_label().as_deref(), Some("off"));
+
+        // `/thinking` for the non-reasoning default model offers only `["off"]`.
+        app.update(AppEvent::Paste("/thinking".to_string()));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+        let Some(Popup::Thinking(menu)) = &app.popup else {
+            panic!("expected Thinking popup");
+        };
+        let ids: Vec<&str> = menu.entries().iter().map(|e| e.id.as_ref()).collect();
+        assert_eq!(ids, vec!["off"]);
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Esc)));
+
+        // Switch to `anthropic/claude-sonnet-4-5` via `/model`.
+        app.thinking = Some("max".to_string());
+        app.update(AppEvent::Paste("/model".to_string()));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+        let Some(Popup::Models { menu, .. }) = &app.popup else {
+            panic!("expected Models popup");
+        };
+        // Default `local/qwen3-coder:30b` is in `providers`, so it is marked `default` without
+        // `(no credentials)` and the cursor starts on it.
+        assert_eq!(menu.entries().len(), 2);
+        assert_eq!(
+            menu.entries()[1].detail.as_ref(),
+            "Local · Qwen3 Coder 30B · default"
+        );
+        assert_eq!(menu.cursor(), 1);
+
+        // Move up to `anthropic/claude-sonnet-4-5` and choose it.
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Up)));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+        assert_eq!(
+            app.model,
+            Some(("anthropic".to_string(), "claude-sonnet-4-5".to_string()))
+        );
+        // `app.thinking` ("max") is clamped to the highest level `claude-sonnet-4-5` supports ("high").
+        assert_eq!(app.thinking.as_deref(), Some("high"));
+
+        // `/thinking` now offers only `claude-sonnet-4-5`'s supported levels, with cursor on "high".
+        app.update(AppEvent::Paste("/thinking".to_string()));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+        let Some(Popup::Thinking(menu)) = &app.popup else {
+            panic!("expected Thinking popup");
+        };
+        let ids: Vec<&str> = menu.entries().iter().map(|e| e.id.as_ref()).collect();
+        assert_eq!(ids, vec!["off", "low", "medium", "high"]);
+        assert_eq!(menu.selected().map(|e| e.id.as_ref()), Some("high"));
     }
 }

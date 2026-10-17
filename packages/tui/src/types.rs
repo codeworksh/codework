@@ -8,6 +8,45 @@ pub struct ModelRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelOption {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "thinkingLevels", default)]
+    pub thinking_levels: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelProvider {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub models: Vec<ModelOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefaultModel {
+    pub provider: String,
+    pub id: String,
+    #[serde(rename = "thinkingLevel", default)]
+    pub thinking_level: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(
+        rename = "providerName",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub provider_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelList {
+    #[serde(default)]
+    pub providers: Vec<ModelProvider>,
+    pub default: DefaultModel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectInfo {
     pub id: String,
     pub name: String,

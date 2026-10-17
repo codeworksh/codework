@@ -141,10 +141,10 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
         .unwrap_or("session");
 
     let mut meta = app.model_label();
-    if let Some(thinking) = &app.thinking {
+    if let Some(thinking) = app.thinking_label() {
         if thinking != "off" {
             meta.push_str(" · ");
-            meta.push_str(thinking);
+            meta.push_str(&thinking);
         }
     }
     if app.usage.total_tokens > 0 {
