@@ -15,13 +15,13 @@
 	},
 	"devDependencies": {
 		"@types/react": "^19.3.0",
-		"effect": "4.0.1",
+		"effect": "4.0.5",
 		"lucide-react": "^1.52.0",
 		"react": "^19.3.0",
 		"typescript": "catalog:"
 	},
 	"peerDependencies": {
-		"effect": "4.0.1",
+		"effect": "4.0.5",
 		"lucide-react": "^1.52.0",
 		"react": "^19.3.0"
 	}
