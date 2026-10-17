@@ -9,6 +9,7 @@
 	"scripts": {
 		"build": "vp pack",
 		"dev": "vp pack --watch",
+		"test": "vp test",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

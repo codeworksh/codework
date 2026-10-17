@@ -101,14 +101,17 @@ export const handlers = Effect.gen(function* () {
 				.pipe(Effect.catchTag("SqlError", Effect.die));
 		}),
 
-		// Widgets keep their masks here; the client clears the deleted bit from its instances.
+		// The deleted bit leaves every widget's mask with it; a widget left on no workspace goes too.
 		"workspaces.delete": Effect.fn("workspaces.delete")(function* ({ id }: typeof WorkspaceId.Type) {
 			yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
 						const current = yield* list;
-						if (!current.some((workspace) => workspace.id === id)) return yield* fail(`No workspace ${id}`);
+						const deleted = current.find((workspace) => workspace.id === id);
+						if (deleted === undefined) return yield* fail(`No workspace ${id}`);
 						yield* sql`DELETE FROM workspaces WHERE id = ${id}`;
+						yield* sql`UPDATE widget SET tags = tags & ~${1 << deleted.bit}`;
+						yield* sql`DELETE FROM widget WHERE tags = 0`;
 						yield* renumber(current.filter((workspace) => workspace.id !== id).map((workspace) => workspace.id));
 					}),
 				)

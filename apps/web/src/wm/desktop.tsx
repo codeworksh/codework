@@ -25,6 +25,7 @@ import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
 import { Overflow } from "./overflow";
 import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
+import { useSaveDesk } from "./save";
 import {
 	deleteWorkspace,
 	MAX_WORKSPACES,
@@ -122,8 +123,8 @@ export function Desktop({ workspace }: DesktopProps) {
 	// Local edits ahead of the database, so dragging the divider never waits on a round trip.
 	const [views, setViews] = useState<ReadonlyMap<string, View>>(() => new Map());
 	const [chrome, setChrome] = useAtom(chromeAtom);
-	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
 	const [drag, setDrag] = useState<Drag | null>(null);
+	useSaveDesk(drag !== null);
 	const [resizing, setResizing] = useState(false);
 	const [ref, size] = useElementSize<HTMLDivElement>();
 	// A window resize must not tween: frames would trail the window edge by the transition's length.
@@ -296,7 +297,11 @@ export function Desktop({ workspace }: DesktopProps) {
 			const widget = resolve(builtins, address, kind);
 			if (widget === undefined) throw new Error(`No widget opens ${address}`);
 			if (mode === "replace") {
-				const existing = recent.find((instance) => instance.address === address && instance.kind === widget.kind);
+				// A one-per-desk widget is the same frame whatever address it was opened by.
+				const existing = recent.find(
+					(instance) =>
+						instance.kind === widget.kind && (widget.cardinality === "one" || instance.address === address),
+				);
 				if (existing !== undefined) {
 					if (params !== undefined) setDesk((current) => update(current, existing.id, { params }));
 					reveal(existing);
@@ -308,7 +313,7 @@ export function Desktop({ workspace }: DesktopProps) {
 								instance.openedBy === caller &&
 								instance.kind === widget.kind &&
 								(instance.tags & activeTags) !== 0 &&
-								!pinned.has(instance.id),
+								!instance.pinned,
 						)
 					: undefined;
 				if (target !== undefined) {
@@ -322,6 +327,7 @@ export function Desktop({ workspace }: DesktopProps) {
 				kind: widget.kind,
 				tags: activeTags,
 				props: {},
+				pinned: false,
 				address,
 				openedBy: caller,
 				...(params === undefined ? {} : { params }),
@@ -362,12 +368,8 @@ export function Desktop({ workspace }: DesktopProps) {
 		setLayout("monocle");
 	};
 
-	const togglePin = (widgetId: WidgetId) =>
-		setPinned((current) => {
-			const next = new Set(current);
-			if (!next.delete(widgetId)) next.add(widgetId);
-			return next;
-		});
+	const togglePin = (instance: Instance) =>
+		setDesk((current) => update(current, instance.id, { pinned: !instance.pinned }));
 
 	const mainClass = "box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]";
 	// The first measurement is 0×0; frames committed at it would tween from the origin into their slots.
@@ -404,13 +406,13 @@ export function Desktop({ workspace }: DesktopProps) {
 							collapsed={collapsed === true}
 							hidden={hidden}
 							focused={widget.id === focusedId}
-							pinned={pinned.has(widget.id)}
+							pinned={instance.pinned}
 							maximized={layout === "monocle"}
-							canDrag={layout === "tile" && !pinned.has(widget.id)}
+							canDrag={layout === "tile" && !instance.pinned}
 							offset={drag?.widgetId === widget.id ? drag : null}
 							animate={!resizing && !resized}
 							onFocus={() => focusWidget(widget.id)}
-							onPin={() => togglePin(widget.id)}
+							onPin={() => togglePin(instance)}
 							onMaximize={() => toggleMax(widget.id)}
 							destinations={destinations}
 							onMove={(workspaceId) => {

@@ -73,6 +73,35 @@ export class WorkspaceError extends Schema.TaggedError<WorkspaceError>()("Server
 	message: Schema.String,
 }) {}
 
+/**
+ * One placed widget on the desk. `tags` is its webwm mask: the workspaces it shows on, by their
+ * bits. `props` and `params` are the widget's own JSON; the server keeps them as given.
+ */
+export const Instance = Schema.Struct({
+	id: Schema.String,
+	kind: Schema.String,
+	tags: Schema.Number,
+	props: Schema.Json,
+	pinned: Schema.Boolean,
+	title: Schema.optionalKey(Schema.String),
+	address: Schema.optionalKey(Schema.String),
+	params: Schema.optionalKey(Schema.Json),
+	openedBy: Schema.optionalKey(Schema.String),
+});
+export type Instance = typeof Instance.Type;
+
+/** Every widget on every workspace, with the desk-wide tile and focus order over their ids. */
+export const Desk = Schema.Struct({
+	instances: Schema.Array(Instance),
+	tileOrder: Schema.Array(Schema.String),
+	focusOrder: Schema.Array(Schema.String),
+});
+export type Desk = typeof Desk.Type;
+
+export class DeskError extends Schema.TaggedError<DeskError>()("Server.DeskError", {
+	message: Schema.String,
+}) {}
+
 /** Package-scoped JSON storage: `package` namespaces keys so packages never collide. */
 const KvKey = { package: Schema.String, key: Schema.String };
 
@@ -110,6 +139,15 @@ export const Api = RpcGroup.make(
 		payload: WorkspaceId,
 		success: Schema.Void,
 		error: WorkspaceError,
+	}),
+	Rpc.make("desk.get", {
+		success: Desk,
+	}),
+	/** Replaces the whole desk; both orders must name every instance exactly once. */
+	Rpc.make("desk.save", {
+		payload: Desk,
+		success: Schema.Void,
+		error: DeskError,
 	}),
 	Rpc.make("kv.get", {
 		payload: KvKey,
