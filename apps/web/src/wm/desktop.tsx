@@ -18,6 +18,7 @@ import { useArrangedWidgets, useElementSize } from "webwm/react";
 
 import { type Frame as FrameApi, FrameContext, HostContext, type Shell, ShellContext } from "@codeworksh/widget/view";
 import { makeHost } from "../kernel/host";
+import { iconOf } from "../shell/icons";
 import { builtins, registry } from "../widgets";
 import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
@@ -27,7 +28,9 @@ import { add, deskAtom, type Instance, remove, retarget, focus as raise, update 
 import { resolve } from "./resolver";
 import {
 	deleteWorkspace,
+	MAX_WORKSPACES,
 	updateWorkspace,
+	useCreateWorkspace,
 	useWorkspaces,
 	type Workspace,
 	workspaceRoute,
@@ -76,7 +79,7 @@ function Host({ instanceId, kind, shell, decorate, children }: HostProps) {
 	const frame = useMemo<FrameApi>(
 		() => ({
 			instanceId,
-			setTitle: (title) => decorate(instanceId, { title }),
+			setTitle: (title, lead) => decorate(instanceId, { title, lead }),
 			setIcon: (icon) => decorate(instanceId, { icon }),
 			setTab: (tab) => decorate(instanceId, { tab }),
 		}),
@@ -114,6 +117,7 @@ export function Desktop({ workspace }: DesktopProps) {
 	const navigate = useNavigate();
 	const saveWorkspace = useAtomSet(updateWorkspace);
 	const removeWorkspace = useAtomSet(deleteWorkspace, { mode: "promise" });
+	const createWorkspace = useCreateWorkspace();
 	const { open: requested, mode: requestedMode } = useSearch({ strict: false });
 	const { workspaceId: routed } = useParams({ strict: false });
 	// Local edits ahead of the database, so dragging the divider never waits on a round trip.
@@ -218,7 +222,8 @@ export function Desktop({ workspace }: DesktopProps) {
 				const previous = current.get(instanceId) ?? {};
 				const next = { ...previous, ...patch };
 				const sameTab = next.tab?.title === previous.tab?.title && next.tab?.subtitle === previous.tab?.subtitle;
-				if (next.title === previous.title && next.icon === previous.icon && sameTab) return current;
+				if (next.title === previous.title && next.lead === previous.lead && next.icon === previous.icon && sameTab)
+					return current;
 				return new Map(current).set(instanceId, next);
 			}),
 		[],
@@ -233,25 +238,49 @@ export function Desktop({ workspace }: DesktopProps) {
 			return next;
 		});
 
-	const close = (instanceId: string) => {
-		const closing = byId.get(instanceId);
-		setDesk((current) =>
-			current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current,
-		);
-		undecorate(instanceId);
-		// An auto workspace exists to show what was opened into it, so it goes with its last frame.
+	// An auto workspace exists to show what was opened into it, so it goes with its last frame.
+	const leaving = (instanceId: string, to: { readonly to: "/" } | ReturnType<typeof workspaceRoute>) => {
+		const leaver = byId.get(instanceId);
 		const emptied =
-			closing !== undefined &&
-			(closing.tags & activeTags) !== 0 &&
+			leaver !== undefined &&
+			(leaver.tags & activeTags) !== 0 &&
 			!instances.some((instance) => instance.id !== instanceId && (instance.tags & activeTags) !== 0);
 		// Leaving only once the delete lands: leaving first unmounts this and drops the list's refresh.
 		if (workspace.auto && emptied) {
 			void removeWorkspace({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }).then(
-				() => navigate({ to: "/" }),
+				() => navigate(to),
 				() => undefined,
 			);
 		}
 	};
+
+	const close = (instanceId: string) => {
+		leaving(instanceId, { to: "/" });
+		setDesk((current) =>
+			current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current,
+		);
+		undecorate(instanceId);
+	};
+
+	// Moves a frame off this workspace onto another, focused there; this workspace stays on screen.
+	const move = (instanceId: string, destination: Workspace) => {
+		leaving(instanceId, workspaceRoute(destination));
+		setDrag(null);
+		setDesk((current) => raise(update(current, instanceId, { tags: workspaceTag(destination) }), instanceId));
+	};
+
+	// A new workspace is auto, so it goes once the frame leaves it; it is named like the frame's tab would be.
+	const moveNew = async (instanceId: string) => {
+		const instance = byId.get(instanceId);
+		if (instance === undefined) return;
+		const name = chrome.get(instanceId)?.tab?.title ?? chromeOf(instance, chrome.get(instanceId)).title;
+		const created = await createWorkspace({ name, icon: "app-window", auto: true }).catch(() => undefined);
+		if (created !== undefined) move(instanceId, created);
+	};
+
+	const destinations = workspaces
+		.filter((candidate) => candidate.id !== workspace.id)
+		.map(({ id, name, icon }) => ({ id, name, icon: iconOf(icon) }));
 
 	/** The shell API as seen by one widget: the default target, and the opener of what it opens. */
 	const shellFor = (caller: string): Shell => ({
@@ -354,11 +383,12 @@ export function Desktop({ workspace }: DesktopProps) {
 				].map(({ widget, rect, collapsed, hidden }) => {
 					const instance = byId.get(widget.id);
 					if (instance === undefined) return null;
-					const { title, icon, body } = describe(instance, chrome.get(widget.id));
+					const { title, lead, icon, body } = describe(instance, chrome.get(widget.id));
 					return (
 						<Frame
 							key={widget.id}
 							title={title}
+							lead={lead}
 							icon={icon}
 							rect={rect}
 							collapsed={collapsed === true}
@@ -372,6 +402,12 @@ export function Desktop({ workspace }: DesktopProps) {
 							onFocus={() => focusWidget(widget.id)}
 							onPin={() => togglePin(widget.id)}
 							onMaximize={() => toggleMax(widget.id)}
+							destinations={destinations}
+							onMove={(workspaceId) => {
+								const destination = workspaces.find((candidate) => candidate.id === workspaceId);
+								if (destination !== undefined) move(widget.id, destination);
+							}}
+							onMoveNew={workspaces.length < MAX_WORKSPACES ? () => void moveNew(widget.id) : undefined}
 							onClose={() => close(widget.id)}
 							onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
 							onDragMove={({ clientX, clientY, deltaX, deltaY }) =>

@@ -173,7 +173,8 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 
 	useEffect(() => {
 		if (title === undefined) return;
-		setTitle(title);
+		// The project leads, so sessions from different projects tell apart at a glance.
+		setTitle(title, project);
 		setIcon(MessageSquareText);
 		// While focused, the workspace's tab reads as this session: its project over its title.
 		setTab({ title: project ?? "Session", subtitle: title });

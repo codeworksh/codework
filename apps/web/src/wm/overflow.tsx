@@ -11,6 +11,7 @@ import {
 export interface Hidden {
 	readonly id: string;
 	readonly title: string;
+	readonly lead?: string | undefined;
 	readonly icon?: LucideIcon | undefined;
 }
 
@@ -38,10 +39,13 @@ export function Overflow({
 					<span className="font-semibold">+{hidden.length} more</span>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent side="top" align="start" className="max-h-80 min-w-56 overflow-y-auto">
-					{hidden.map(({ id, title, icon: Icon }) => (
+					{hidden.map(({ id, title, lead, icon: Icon }) => (
 						<DropdownMenuItem key={id} onSelect={() => onPick(id)}>
 							{Icon && <Icon strokeWidth={1.75} />}
-							<span className="truncate">{title}</span>
+							<span className="truncate">
+								{lead !== undefined && <span className="text-ink-muted/70">{lead} / </span>}
+								{title}
+							</span>
 						</DropdownMenuItem>
 					))}
 				</DropdownMenuContent>
