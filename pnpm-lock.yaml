@@ -285,6 +285,9 @@ importers:
       effect:
         specifier: 4.0.1
         version: 4.0.1
+      hast-util-to-jsx-runtime:
+        specifier: 2.3.6
+        version: 2.3.6
       lucide-react:
         specifier: ^1.52.0
         version: 1.52.0(@types/react@19.3.0)(react@19.3.0)
@@ -306,6 +309,9 @@ importers:
       scheduler:
         specifier: ^0.27.0
         version: 0.27.0
+      shiki:
+        specifier: 4.4.3
+        version: 4.4.3
       tailwind-merge:
         specifier: ^3.7.0
         version: 3.7.0
