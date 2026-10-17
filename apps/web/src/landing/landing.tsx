@@ -1,6 +1,6 @@
 import { RegistryContext, useAtomRefresh } from "@effect/atom-react";
 import { Option, Schema } from "effect";
-import { ArrowUp, Check, ChevronDown, Folder, FolderPlus, MemoryStick } from "lucide-react";
+import { ArrowUp, ChevronDown, Folder, FolderPlus } from "lucide-react";
 import { type CSSProperties, useContext, useMemo, useState } from "react";
 
 import {
@@ -8,7 +8,6 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuLabel,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Composer, ComposerButton } from "@/components/composer";
@@ -26,16 +25,15 @@ const bridge = window.desktopBridge;
 const encodeCreate = Schema.encodeSync(Json.Create);
 const decodeCreated = Schema.decodeUnknownOption(Json.Created);
 
-/** Where a new project lives: nowhere yet, only in memory, or a folder on disk. */
-type Place = { kind: "none" } | { kind: "memory" } | { kind: "folder"; path: string };
+/**
+ * Where a new project lives: nowhere yet, or a folder on disk. Memory sessions are not offered
+ * until they outlive the server that made them; the Session backend can still create them.
+ */
+type Place = { kind: "none" } | { kind: "folder"; path: string };
 
 // A folder shows by its name alone; the trigger's tooltip carries the full path.
 const placeLabel = (place: Place) =>
-	place.kind === "none"
-		? "Select Project"
-		: place.kind === "memory"
-			? "Memory"
-			: (place.path.split("/").findLast(Boolean) ?? place.path);
+	place.kind === "none" ? "Select Project" : (place.path.split("/").findLast(Boolean) ?? place.path);
 
 /**
  * The start page: pick where to work and send the first prompt. The Session backend creates the
@@ -54,14 +52,14 @@ export function Landing() {
 	// Remembered across restarts; an absent pick leaves it to settings.
 	const [choice, setChoice] = useChoice();
 	const { model, thinkingLevel: thinking } = choice;
-	// A folder's project settings may add models or change the default; memory has only the user's.
+	// A folder's project settings may add models or change the default.
 	const hostDir = place.kind === "folder" ? place.path : undefined;
 
 	const canSend = place.kind !== "none" && query.trim() !== "" && !pending;
 
 	const send = async () => {
-		if (!canSend) return;
-		const where: Where = place.kind === "folder" ? { _tag: "Folder", path: place.path } : { _tag: "Memory" };
+		if (!canSend || place.kind !== "folder") return;
+		const where: Where = { _tag: "Folder", path: place.path };
 		setPending(true);
 		setError(undefined);
 		const created = await bus
@@ -95,7 +93,6 @@ export function Landing() {
 					const picked = await bridge.pickFolder(place.kind === "folder" ? place.path : bridge.home);
 					if (picked !== null) setPlace({ kind: "folder", path: picked });
 				};
-	const PlaceIcon = place.kind === "memory" ? MemoryStick : Folder;
 
 	return (
 		<SidebarProvider
@@ -103,7 +100,7 @@ export function Landing() {
 			style={{ "--sidebar-width": "17rem" } as CSSProperties}
 			widthStorageKey="codework.sidebar.width"
 		>
-			<SessionsSidebar />
+			<SessionsSidebar project={hostDir} onAddProject={pickFolder} />
 			<div className="flex min-w-0 flex-1 flex-col select-none">
 				<TitleBar />
 				<main className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-4">
@@ -143,20 +140,12 @@ export function Landing() {
 											title={place.kind === "folder" ? place.path : undefined}
 											className="flex h-6 min-w-0 items-center gap-1 rounded-[8px] px-1.75 leading-4 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
 										>
-											<PlaceIcon className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
+											<Folder className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
 											<span className="truncate">{placeLabel(place)}</span>
 											<ChevronDown className="size-3 shrink-0 opacity-50" strokeWidth={2} aria-hidden />
 										</DropdownMenuTrigger>
 										<DropdownMenuContent align="start" className="min-w-44">
 											<DropdownMenuLabel>Project</DropdownMenuLabel>
-											<DropdownMenuItem onSelect={() => setPlace({ kind: "memory" })}>
-												<MemoryStick strokeWidth={1.75} />
-												Memory
-												{place.kind === "memory" && (
-													<Check className="ml-auto" strokeWidth={2} aria-label="Current" />
-												)}
-											</DropdownMenuItem>
-											<DropdownMenuSeparator />
 											<DropdownMenuItem
 												disabled={pickFolder === undefined}
 												onSelect={() => void pickFolder?.()}

@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 
 import {
@@ -26,8 +26,18 @@ import { Monogram } from "@/components/monogram";
 /** The sidebar's sessions; refresh it once a new session exists. */
 export const projectsAtom = Server.query("projects.list", undefined);
 
-/** Recent sessions across every project, newest first. */
-export function SessionsSidebar() {
+/**
+ * Recent sessions across every project, newest first. With none yet it invites adding a project,
+ * the folder the start page's composer then works in; `project` is that folder once picked.
+ */
+export function SessionsSidebar({
+	project,
+	onAddProject,
+}: {
+	readonly project: string | undefined;
+	/** Absent outside the desktop app, which alone can open the folder dialog. */
+	readonly onAddProject: (() => void) | undefined;
+}) {
 	const result = useAtomValue(projectsAtom);
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
@@ -49,16 +59,19 @@ export function SessionsSidebar() {
 			<SidebarHeader className="gap-0 p-0">
 				{/* The window's drag region, clear of the macOS traffic lights. */}
 				<div className={`h-12 shrink-0 [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`} />
-				<div className="relative px-2 pb-2">
-					<Search className="pointer-events-none absolute top-1/2 left-4.5 size-3.5 -translate-y-1/2 text-ink-muted" />
-					<SidebarInput
-						type="search"
-						placeholder="Search"
-						aria-label="Search sessions"
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
-						className="h-8 rounded-[8px] border-transparent bg-transparent pl-8 text-[13px] shadow-none focus-visible:bg-ink/5"
-					/>
+				<div className="px-2 pb-2">
+					{/* The icon centers on the input alone, not on the padding below it. */}
+					<div className="relative">
+						<Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-muted" />
+						<SidebarInput
+							type="search"
+							placeholder="Search"
+							aria-label="Search sessions"
+							value={query}
+							onChange={(event) => setQuery(event.target.value)}
+							className="h-8 rounded-[8px] border-transparent bg-transparent pl-8 text-[13px] shadow-none focus-visible:bg-ink/5"
+						/>
+					</div>
 				</div>
 			</SidebarHeader>
 			<SidebarContent className="px-2 pb-2">
@@ -72,9 +85,29 @@ export function SessionsSidebar() {
 						})}
 					</p>
 				) : AsyncResult.isSuccess(result) && sessions.length === 0 ? (
-					<p className="px-2.5 py-2 text-[12px] text-ink-muted">
-						{needle === "" ? "No sessions yet." : `No sessions match “${query}”.`}
-					</p>
+					needle !== "" ? (
+						<p className="px-2.5 py-2 text-[12px] text-ink-muted">No sessions match “{query}”.</p>
+					) : (
+						<div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-[12px] text-ink-muted/70">
+							{project === undefined && result.value.length === 0 ? (
+								<>
+									<span>No Projects Yet</span>
+									{onAddProject !== undefined && (
+										<button
+											type="button"
+											onClick={onAddProject}
+											className="inline-flex items-center gap-1.5 rounded-md border border-edge px-2.5 py-1 text-[11px] font-medium text-ink-muted transition-colors outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5"
+										>
+											<Plus className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />
+											Add Project
+										</button>
+									)}
+								</>
+							) : (
+								<span>No Sessions Yet</span>
+							)}
+						</div>
+					)
 				) : (
 					<ul className="flex flex-col gap-0.5">
 						{sessions.map((session) => (
