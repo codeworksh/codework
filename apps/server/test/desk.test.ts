@@ -16,9 +16,9 @@ const home = mkdtempSync(join(tmpdir(), "codework-desk-"));
 let server: ChildProcess;
 let port: number;
 
-beforeAll(async () => {
-	// CODEWORK_HOME_DIR keeps the server from finding a real CodeWork service; desk and workspace
-	// RPCs never need one.
+// CODEWORK_HOME_DIR keeps the server from finding a real CodeWork service; desk and workspace
+// RPCs never need one. The same database is reused across starts.
+async function start() {
 	server = spawn(process.execPath, [entry], {
 		env: { ...process.env, CODEWORK_DATABASE: join(home, "app.db"), CODEWORK_HOME_DIR: home },
 		stdio: ["ignore", "pipe", "inherit"],
@@ -30,13 +30,19 @@ beforeAll(async () => {
 			if (message.type === "ready" && message.port !== undefined) resolve(message.port);
 		});
 	});
-}, 20_000);
+}
 
-afterAll(async () => {
+async function stop() {
 	const exited = new Promise((resolve) => server.once("exit", resolve));
 	// The server does not yet stop on SIGTERM while no CodeWork service is registered.
 	server.kill("SIGKILL");
 	await exited;
+}
+
+beforeAll(start, 20_000);
+
+afterAll(async () => {
+	await stop();
 	rmSync(home, { recursive: true, force: true });
 });
 
@@ -86,6 +92,15 @@ it("desk round-trips and follows workspace deletion", async () => {
 			focusOrder: [...afterDelete.focusOrder, ...afterDelete.focusOrder],
 		}).pipe(Effect.flip);
 
+		// Two auto workspaces: one keeps a frame, the other is left empty without being closed.
+		const kept = yield* rpc["workspaces.create"]({ name: "Kept", icon: "box", auto: true });
+		yield* rpc["workspaces.create"]({ name: "Stray", icon: "box", auto: true });
+		yield* rpc["desk.save"]({
+			instances: [{ id: "notes-2", kind: "notes", tags: 1 << kept.bit, props: {}, pinned: false }],
+			tileOrder: ["notes-2"],
+			focusOrder: ["notes-2"],
+		});
+
 		return {
 			empty,
 			workspace: { ...workspace, id: "<workspace>" },
@@ -98,5 +113,19 @@ it("desk round-trips and follows workspace deletion", async () => {
 
 	expect(steps.roundTrip).toEqual(steps.saved);
 	expect(steps.afterDelete.instances).toEqual([{ ...steps.saved.instances[0], tags: 1 }]);
-	await expect(`${JSON.stringify(steps, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/desk.json");
-}, 20_000);
+
+	// A restart sweeps the empty auto workspace and keeps the one with a frame.
+	await stop();
+	await start();
+	const afterRestart = await Effect.gen(function* () {
+		const rpc = yield* RpcClient.make(Contract.Api);
+		const workspaces = yield* rpc["workspaces.list"]();
+		const desk = yield* rpc["desk.get"]();
+		return { workspaces: workspaces.map(({ name, auto, pos }) => ({ name, auto, pos })), desk };
+	}).pipe(Effect.scoped, Effect.provide(protocol()), Effect.runPromise);
+	expect(afterRestart.workspaces.map((workspace) => workspace.name)).toEqual(["Main", "Code", "Notes", "Kept"]);
+
+	await expect(`${JSON.stringify({ ...steps, afterRestart }, null, "\t")}\n`).toMatchFileSnapshot(
+		"./__artifacts__/desk.json",
+	);
+}, 30_000);

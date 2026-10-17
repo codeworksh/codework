@@ -126,5 +126,46 @@
 			"tag": "Server.DeskError",
 			"message": "The focus order must name every instance once"
 		}
-	]
+	],
+	"afterRestart": {
+		"workspaces": [
+			{
+				"name": "Main",
+				"auto": false,
+				"pos": 0
+			},
+			{
+				"name": "Code",
+				"auto": false,
+				"pos": 1
+			},
+			{
+				"name": "Notes",
+				"auto": false,
+				"pos": 2
+			},
+			{
+				"name": "Kept",
+				"auto": true,
+				"pos": 3
+			}
+		],
+		"desk": {
+			"instances": [
+				{
+					"id": "notes-2",
+					"kind": "notes",
+					"tags": 8,
+					"props": {},
+					"pinned": false
+				}
+			],
+			"tileOrder": [
+				"notes-2"
+			],
+			"focusOrder": [
+				"notes-2"
+			]
+		}
+	}
 }

@@ -30,12 +30,15 @@ export const handlers = Effect.gen(function* () {
 	const renumber = (ids: readonly string[]) =>
 		Effect.forEach(ids, (id, pos) => sql`UPDATE workspaces SET pos = ${pos} WHERE id = ${id}`, { discard: true });
 
-	// The frames an auto workspace held do not outlive the app, so neither does it. Having none at
-	// all is fine: the start page needs no workspace.
+	// An auto workspace exists to show its frames; one that lost them without being left (a save that
+	// never landed) goes at startup, the only time no client is editing.
 	yield* sql
 		.withTransaction(
 			Effect.gen(function* () {
-				yield* sql`DELETE FROM workspaces WHERE auto = 1`;
+				yield* sql`
+					DELETE FROM workspaces WHERE auto = 1
+					AND NOT EXISTS (SELECT 1 FROM widget WHERE (widget.tags & (1 << workspaces.bit)) != 0)
+				`;
 				yield* renumber((yield* list).map((workspace) => workspace.id));
 			}),
 		)
