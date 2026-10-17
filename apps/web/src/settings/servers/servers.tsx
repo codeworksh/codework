@@ -1,16 +1,25 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import { RefreshCw } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { LocalDetail, LocalItem, statusAtom } from "./local";
+import { AddServer } from "./add";
+import { DefaultSwitch, LocalDetail, LocalItem, serversAtom } from "./local";
 
-/** The CodeWork servers the app can work with, listed beside the one selected; the local one is always there. */
+/** The CodeWork servers the app can work with, listed beside the one selected; the built-in one is always there. */
 export function ServersSettings() {
-	const result = useAtomValue(statusAtom);
-	const refresh = useAtomRefresh(statusAtom);
-	const status = AsyncResult.isSuccess(result) ? result.value : undefined;
+	const result = useAtomValue(serversAtom);
+	const refresh = useAtomRefresh(serversAtom);
+	const servers = AsyncResult.isSuccess(result) ? result.value : undefined;
+	const [selectedId, setSelectedId] = useState<string | null>(null);
+	const [adding, setAdding] = useState(false);
+	// The default until one is picked, and again when the picked one is gone.
+	const selected = servers?.find((server) => server.id === selectedId) ?? servers?.find((server) => server.isDefault);
+	// Shown as the new server's executable default: the binary found without a choice.
+	const detected = servers?.flatMap((server) =>
+		server.cli !== null && !server.cli.custom ? [server.cli.path] : [],
+	)[0];
 
 	return (
 		// The pane is narrower than the window by the settings sidebar, so the layout follows the pane. The
@@ -26,19 +35,53 @@ export function ServersSettings() {
 					onClick={() => refresh()}
 				>
 					<RefreshCw className={`size-3.5 ${result.waiting ? "animate-spin" : ""}`} aria-hidden />
-					{result.waiting ? "Checking…" : <Checked at={status} />}
+					{result.waiting ? "Checking…" : <Checked at={servers} />}
 				</button>
 			</header>
-			<div className="grid min-h-0 flex-1 content-start overflow-y-auto rounded-xl border border-edge @3xl:grid-cols-[16rem_minmax(0,1fr)] @3xl:content-stretch @3xl:overflow-hidden">
+			<div className="grid min-h-0 flex-1 content-start overflow-y-auto rounded-xl border border-edge @3xl:grid-cols-[18rem_minmax(0,1fr)] @3xl:content-stretch @3xl:overflow-hidden">
 				<nav
 					aria-label="Servers"
 					className="flex flex-col border-edge @max-3xl:border-b @3xl:overflow-y-auto @3xl:border-r"
 				>
-					<LocalItem status={status} selected />
+					{servers?.map((server) => (
+						<div
+							key={server.id}
+							className={`flex items-center border-b border-edge transition-colors ${server.id === selected?.id ? "bg-ink/4" : "hover:bg-ink/3"}`}
+						>
+							<button
+								type="button"
+								aria-current={server.id === selected?.id ? "true" : undefined}
+								className="min-w-0 flex-1 text-left"
+								onClick={() => setSelectedId(server.id)}
+							>
+								<LocalItem status={server} />
+							</button>
+							<span className="px-5">
+								<DefaultSwitch status={server} />
+							</span>
+						</div>
+					))}
+					<button
+						type="button"
+						className="flex items-center gap-3 px-5 py-4 text-left text-ink-muted transition-colors hover:bg-ink/3 hover:text-ink"
+						onClick={() => setAdding(true)}
+					>
+						<Plus className="size-4" aria-hidden />
+						Add server
+					</button>
 				</nav>
+				{/* Mounted only while open, so each opening starts fresh and is named after the servers there are. */}
+				{adding && (
+					<AddServer
+						onClose={() => setAdding(false)}
+						defaultName={`CodeWork ${(servers?.length ?? 0) + 1}`}
+						detected={detected}
+						onAdded={setSelectedId}
+					/>
+				)}
 				<div className="min-w-0 @3xl:overflow-y-auto">
-					{status !== undefined ? (
-						<LocalDetail status={status} />
+					{selected !== undefined ? (
+						<LocalDetail key={selected.id} status={selected} />
 					) : AsyncResult.isFailure(result) ? (
 						<p className="p-6 text-ink-muted">The app server did not answer.</p>
 					) : (

@@ -135,12 +135,24 @@ export const CliEnvVar = Schema.Struct({
 });
 export type CliEnvVar = typeof CliEnvVar.Type;
 
-export const CliStatus = Schema.Struct({
+/** Only servers on this machine for now; remote ones come later. */
+export const ServerKind = Schema.Literals(["local"]);
+
+/** The server the app always has, which cannot be removed. */
+export const LOCAL_SERVER = "local";
+
+/** A server and how it is set up, with its executable and process as found when listed. */
+export const ServerStatus = Schema.Struct({
+	id: Schema.String,
+	kind: ServerKind,
+	name: Schema.String,
+	/** The one the app connects to. */
+	isDefault: Schema.Boolean,
 	/**
 	 * The CodeWork home whose `service.json` names the server; `custom` when chosen in Settings, and
-	 * `fallback` the one used otherwise.
+	 * `fallback` the one used otherwise (only the built-in server has one).
 	 */
-	home: Schema.Struct({ path: Schema.String, custom: Schema.Boolean, fallback: Schema.String }),
+	home: Schema.Struct({ path: Schema.String, custom: Schema.Boolean, fallback: Schema.NullOr(Schema.String) }),
 	/** None when no `codework` was found. */
 	cli: Schema.NullOr(CliInstall),
 	server: CliServer,
@@ -148,23 +160,37 @@ export const CliStatus = Schema.Struct({
 	args: Schema.String,
 	env: Schema.Array(CliEnvVar),
 });
-export type CliStatus = typeof CliStatus.Type;
+export type ServerStatus = typeof ServerStatus.Type;
 
 export const CliAction = Schema.Literals(["start", "restart", "stop"]);
 export type CliAction = typeof CliAction.Type;
 
+/** A new local server: it needs a home of its own, since a home names one server. */
+export const ServerAdd = Schema.Struct({
+	name: Schema.String,
+	executable: Schema.NullOr(Schema.String),
+	home: Schema.String,
+	args: Schema.String,
+});
+export type ServerAdd = typeof ServerAdd.Type;
+
 /**
- * What is chosen in Settings; an absent field is left as it is. A `null` path goes back to the one
- * found; `env` replaces every variable.
+ * Changes to a server; an absent field is left as it is. A `null` path goes back to the one found;
+ * `env` replaces every variable.
  */
-export const CliConfig = Schema.Struct({
+export const ServerUpdate = Schema.Struct({
+	id: Schema.String,
+	name: Schema.optionalKey(Schema.String),
 	executable: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	home: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	args: Schema.optionalKey(Schema.String),
 	env: Schema.optionalKey(Schema.Array(CliEnvVar)),
 });
+export type ServerUpdate = typeof ServerUpdate.Type;
 
-export class CliError extends Schema.TaggedError<CliError>()("Server.CliError", {
+export const ServerId = Schema.Struct({ id: Schema.String });
+
+export class ServersError extends Schema.TaggedError<ServersError>()("Server.ServersError", {
 	message: Schema.String,
 }) {}
 
@@ -215,20 +241,38 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 		error: DeskError,
 	}),
-	Rpc.make("cli.status", {
-		success: CliStatus,
+	/** Every server, the built-in one first, then in the order added. */
+	Rpc.make("servers.list", {
+		success: Schema.Array(ServerStatus),
 	}),
-	/** Saves the executable and home chosen in Settings; the app reconnects through a new home at once. */
-	Rpc.make("cli.configure", {
-		payload: CliConfig,
-		success: Schema.Void,
-		error: CliError,
+	Rpc.make("servers.add", {
+		payload: ServerAdd,
+		success: Schema.String,
+		error: ServersError,
 	}),
-	/** Runs `codework service <action>` with the CLI in use, in the home in use. */
-	Rpc.make("cli.service", {
-		payload: { action: CliAction },
+	/** A new home for the default server reconnects the app at once. */
+	Rpc.make("servers.update", {
+		payload: ServerUpdate,
 		success: Schema.Void,
-		error: CliError,
+		error: ServersError,
+	}),
+	/** The default server and the built-in one stay. */
+	Rpc.make("servers.remove", {
+		payload: ServerId,
+		success: Schema.Void,
+		error: ServersError,
+	}),
+	/** The app reconnects through the new default's home at once. */
+	Rpc.make("servers.setDefault", {
+		payload: ServerId,
+		success: Schema.Void,
+		error: ServersError,
+	}),
+	/** Runs `codework service <action>` with the server's executable, home, arguments and variables. */
+	Rpc.make("servers.service", {
+		payload: { id: Schema.String, action: CliAction },
+		success: Schema.Void,
+		error: ServersError,
 	}),
 	Rpc.make("kv.get", {
 		payload: KvKey,

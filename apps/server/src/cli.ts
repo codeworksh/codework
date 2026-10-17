@@ -1,4 +1,4 @@
-import { Config, Effect, FileSystem, Option, Schedule, Schema, Stream } from "effect";
+import { Config, Effect, FileSystem, Option, Schedule, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 /* @effect-diagnostics nodeBuiltinImport:off -- the install folder sits under the OS home directory. */
 import os from "node:os";
@@ -6,67 +6,18 @@ import path from "node:path";
 import { Codework } from "./codework.ts";
 import {
 	type CliAction,
-	type CliConfig,
-	type CliEnvVar,
-	CliError,
 	type CliInstall,
 	type CliServer,
+	type ServerAdd,
+	ServersError,
+	type ServerStatus,
+	type ServerUpdate,
 } from "./contract.ts";
-import { Kv } from "./kv.ts";
-
-const executableKey = { package: "codework", key: "servers.local.executable" } as const;
-const envKey = { package: "codework", key: "servers.local.env" } as const;
-const argsKey = { package: "codework", key: "servers.local.args" } as const;
-
-const savedArgs = Effect.gen(function* () {
-	const saved = yield* (yield* Kv.Service).get(argsKey.package, argsKey.key);
-	return Option.getOrElse(
-		Option.filter(saved, (value): value is string => typeof value === "string"),
-		() => "",
-	);
-});
+import { Servers } from "./servers.ts";
 
 /** Splits typed arguments as a shell would for plain words and quotes: `--name "a b"` is two. */
 const splitArgs = (input: string) =>
 	[...input.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
-
-// Stored with every value; only the app server reads the sensitive ones.
-const StoredEnv = Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.String, sensitive: Schema.Boolean }));
-type StoredEnv = typeof StoredEnv.Type;
-
-const savedEnv = Effect.gen(function* () {
-	const saved = yield* (yield* Kv.Service).get(envKey.package, envKey.key);
-	return Option.getOrElse(Option.flatMap(saved, Schema.decodeUnknownOption(StoredEnv)), (): StoredEnv => []);
-});
-
-const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-/**
- * The variables as chosen: names must be shell names, once each, and leave the home to its own
- * setting; a sensitive one sent without a value keeps the saved value.
- */
-const nextEnv = (chosen: ReadonlyArray<CliEnvVar>, saved: StoredEnv) =>
-	Effect.gen(function* () {
-		const names = new Set<string>();
-		const next: Array<StoredEnv[number]> = [];
-		for (const { name: raw, sensitive, value } of chosen) {
-			const name = raw.trim();
-			if (!VARIABLE_NAME.test(name))
-				return yield* new CliError({
-					message: `${name || "A blank name"} is not a variable name: use letters, digits and _.`,
-				});
-			if (name === "CODEWORK_HOME_DIR")
-				return yield* new CliError({ message: "Set CODEWORK_HOME_DIR with the home path above." });
-			if (names.has(name)) return yield* new CliError({ message: `${name} is set twice.` });
-			names.add(name);
-			// Only a variable that stays sensitive keeps its saved value, so none is ever revealed by unmarking it.
-			const kept = sensitive
-				? saved.find((variable) => variable.name === name && variable.sensitive)?.value
-				: undefined;
-			next.push({ name, sensitive, value: value ?? kept ?? "" });
-		}
-		return next;
-	});
 
 // Where the install script puts the binary unless told otherwise.
 const installDir = Config.String("CODEWORK_INSTALL_DIR").pipe(
@@ -123,23 +74,17 @@ const probe = (file: string, custom: boolean) =>
 		Effect.catch((error) => Effect.succeed<CliInstall>({ path: file, custom, failure: error.message })),
 	);
 
-const chosenExecutable = Effect.gen(function* () {
-	const saved = yield* (yield* Kv.Service).get(executableKey.package, executableKey.key);
-	return Option.getOrUndefined(Option.filter(saved, (value): value is string => typeof value === "string"));
-});
+const exists = (file: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		return yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false));
+	});
 
 /**
- * The `codework` the app uses: the one chosen in Settings; else the install script's, else the login
- * shell's, whichever runs first; when neither runs, the first found, with why.
+ * The `codework` found without a choice: the install script's, else the login shell's, whichever
+ * runs first; when neither runs, the first found, with why.
  */
-const executable = Effect.gen(function* () {
-	const fs = yield* FileSystem.FileSystem;
-	const exists = (file: string) => fs.exists(file).pipe(Effect.orElseSucceed(() => false));
-	const chosen = yield* chosenExecutable;
-	if (chosen !== undefined)
-		return (yield* exists(chosen))
-			? yield* probe(chosen, true)
-			: ({ path: chosen, custom: true, failure: "No file at this path." } satisfies CliInstall);
+const found = Effect.gen(function* () {
 	const candidates = [
 		path.join(yield* installDir, "codework"),
 		...Option.toArray(Option.fromUndefinedOr(yield* onPath)),
@@ -147,24 +92,22 @@ const executable = Effect.gen(function* () {
 	let broken: CliInstall | null = null;
 	for (const file of candidates) {
 		if (!(yield* exists(file))) continue;
-		const found = yield* probe(file, false);
-		if ("version" in found) return found;
-		broken ??= found;
+		const install = yield* probe(file, false);
+		if ("version" in install) return install;
+		broken ??= install;
 	}
 	return broken;
 });
 
-/** A path typed in Settings: `~` is the user's home; blank means none; anything else must be absolute. */
-const chosenPath = (input: string | null) =>
-	Effect.gen(function* () {
-		const trimmed = input?.trim() ?? "";
-		if (trimmed === "") return null;
-		const expanded =
-			trimmed === "~" || trimmed.startsWith("~/") ? path.join(os.homedir(), trimmed.slice(1)) : trimmed;
-		if (!path.isAbsolute(expanded))
-			return yield* new CliError({ message: "Use a full path, such as ~/.codework or /usr/local/bin/codework." });
-		return path.normalize(expanded);
-	});
+/** The `codework` a server runs: the one chosen for it, else the one found. */
+const executableOf = (row: Servers.Row, foundOnce: typeof found) =>
+	row.executable === null
+		? foundOnce
+		: Effect.flatMap(exists(row.executable), (present) =>
+				present
+					? probe(row.executable!, true)
+					: Effect.succeed<CliInstall>({ path: row.executable!, custom: true, failure: "No file at this path." }),
+			);
 
 const alive = (pid: number) =>
 	Effect.sync(() => {
@@ -178,69 +121,114 @@ const alive = (pid: number) =>
 	});
 
 /**
- * The registered server, asked through the app's own connection to it. A build whose replies differ
- * still answers `server.info`, so a call the app depends on decides whether it works with this app.
+ * The server a home names. The default one is asked through the app's own connection, since a build
+ * whose replies differ still answers `server.info`: a call the app depends on decides whether it
+ * works with this app. Any other is taken from its registration and process.
  */
-const server = Effect.gen(function* () {
-	const registered = yield* Codework.registration;
-	if (Option.isNone(registered) || !(yield* alive(registered.value.pid))) return { _tag: "Stopped" } as const;
-	const { url, pid } = registered.value;
-	const info = yield* Codework.call((client) => client("server.info", {})).pipe(Effect.option);
-	if (Option.isNone(info) || info.value.pid !== pid) return { _tag: "Unreachable", url, pid } satisfies CliServer;
-	const { version } = info.value;
-	const usable = yield* Codework.call((client) => client("session.list", {})).pipe(Effect.isSuccess);
-	return { _tag: usable ? "Running" : "Incompatible", url, pid, version } satisfies CliServer;
-});
+const serverAt = (home: string, isDefault: boolean) =>
+	Effect.gen(function* () {
+		const registered = yield* Codework.registrationAt(home);
+		if (Option.isNone(registered) || !(yield* alive(registered.value.pid))) return { _tag: "Stopped" } as const;
+		const { url, pid, version: registeredVersion } = registered.value;
+		if (!isDefault) return { _tag: "Running", url, pid, version: registeredVersion } satisfies CliServer;
+		const info = yield* Codework.call((client) => client("server.info", {})).pipe(Effect.option);
+		if (Option.isNone(info) || info.value.pid !== pid) return { _tag: "Unreachable", url, pid } satisfies CliServer;
+		const { version } = info.value;
+		const usable = yield* Codework.call((client) => client("session.list", {})).pipe(Effect.isSuccess);
+		return { _tag: usable ? "Running" : "Incompatible", url, pid, version } satisfies CliServer;
+	});
 
 // The app's connection reconnects with a backoff; waiting until it reaches the server keeps the
-// status read right after from calling a healthy server unreachable.
-const awaitConnection = Codework.call((client) => client("server.info", {})).pipe(
-	Effect.retry(Schedule.spaced("250 millis")),
-	Effect.timeout("15 seconds"),
-	Effect.ignore,
-);
+// status read right after from calling a healthy server unreachable. Only when there is one to reach.
+const awaitConnection = Effect.gen(function* () {
+	if (Option.isNone(yield* Codework.registration)) return;
+	yield* Codework.call((client) => client("server.info", {})).pipe(
+		Effect.retry(Schedule.spaced("250 millis")),
+		Effect.timeout("15 seconds"),
+		Effect.ignore,
+	);
+});
 
 export const handlers = {
-	"cli.status": Effect.fn("cli.status")(function* () {
-		const [cli, registered] = yield* Effect.all([executable, server], { concurrency: "unbounded" });
-		const env = (yield* savedEnv).map(({ name, sensitive, value }) =>
-			sensitive ? { name, sensitive } : { name, sensitive, value },
+	"servers.list": Effect.fn("servers.list")(function* () {
+		const servers = yield* Servers.Service;
+		const foundOnce = yield* Effect.cached(found);
+		return yield* Effect.forEach(
+			yield* servers.list,
+			(row) =>
+				Effect.gen(function* () {
+					const home = servers.homeOf(row);
+					const [cli, server] = yield* Effect.all(
+						[executableOf(row, foundOnce), serverAt(home.path, row.isDefault)],
+						{
+							concurrency: "unbounded",
+						},
+					);
+					return {
+						id: row.id,
+						kind: row.kind,
+						name: row.name,
+						isDefault: row.isDefault,
+						home,
+						cli,
+						server,
+						args: row.args,
+						env: row.env.map(({ name, sensitive, value }) =>
+							sensitive ? { name, sensitive } : { name, sensitive, value },
+						),
+					} satisfies ServerStatus;
+				}),
+			{ concurrency: "unbounded" },
 		);
-		return { home: yield* (yield* Codework.Home).get, cli, server: registered, args: yield* savedArgs, env };
 	}),
 
-	"cli.configure": Effect.fn("cli.configure")(function* (config: typeof CliConfig.Type) {
-		if (config.executable !== undefined) {
-			const chosen = yield* chosenPath(config.executable);
-			yield* (yield* Kv.Service).set(executableKey.package, executableKey.key, chosen);
-		}
-		if (config.args !== undefined) yield* (yield* Kv.Service).set(argsKey.package, argsKey.key, config.args.trim());
-		if (config.env !== undefined) {
-			const next = yield* nextEnv(config.env, yield* savedEnv);
-			yield* (yield* Kv.Service).set(envKey.package, envKey.key, next);
-		}
-		if (config.home !== undefined) {
-			yield* (yield* Codework.Home).set(yield* chosenPath(config.home));
-			if (Option.isSome(yield* Codework.registration)) yield* awaitConnection;
-		}
+	"servers.add": Effect.fn("servers.add")(function* (input: ServerAdd) {
+		return yield* (yield* Servers.Service).add(input);
 	}),
 
-	// The CLI owns the server's lifecycle; the app only asks it, with the variables chosen and in the
-	// home the app uses, which a variable never overrides.
-	"cli.service": Effect.fn("cli.service")(function* ({ action }: { readonly action: CliAction }) {
-		const cli = yield* executable;
+	"servers.update": Effect.fn("servers.update")(function* (input: ServerUpdate) {
+		const servers = yield* Servers.Service;
+		const before = yield* servers.defaultHome;
+		yield* servers.update(input);
+		if ((yield* servers.defaultHome) !== before) yield* awaitConnection;
+	}),
+
+	"servers.remove": Effect.fn("servers.remove")(function* ({ id }: { readonly id: string }) {
+		yield* (yield* Servers.Service).remove(id);
+	}),
+
+	"servers.setDefault": Effect.fn("servers.setDefault")(function* ({ id }: { readonly id: string }) {
+		const servers = yield* Servers.Service;
+		const before = yield* servers.defaultHome;
+		yield* servers.setDefault(id);
+		if ((yield* servers.defaultHome) !== before) yield* awaitConnection;
+	}),
+
+	// The CLI owns a server's lifecycle; the app only asks it, with the server's variables and in its
+	// home, which a variable never overrides.
+	"servers.service": Effect.fn("servers.service")(function* ({
+		id,
+		action,
+	}: {
+		readonly id: string;
+		readonly action: CliAction;
+	}) {
+		const servers = yield* Servers.Service;
+		const row = yield* servers.get(id);
+		const cli = yield* executableOf(row, found);
 		if (cli === null || !("version" in cli))
-			return yield* new CliError({ message: "No working codework CLI was found." });
-		const home = (yield* (yield* Codework.Home).get).path;
-		const env = Object.fromEntries((yield* savedEnv).map(({ name, value }) => [name, value]));
+			return yield* new ServersError({ message: "No working codework CLI was found." });
+		const env = Object.fromEntries(row.env.map(({ name, value }) => [name, value]));
 		// `stop` takes no server options, so the arguments go only to what starts a server.
-		const args = action === "stop" ? [] : splitArgs(yield* savedArgs);
+		const args = action === "stop" ? [] : splitArgs(row.args);
 		const { output, code } = yield* run(cli.path, ["service", action, ...args], "30 seconds", {
 			...env,
-			CODEWORK_HOME_DIR: home,
-		}).pipe(Effect.mapError((error) => new CliError({ message: `codework service ${action}: ${error.message}` })));
-		if (code !== 0) return yield* new CliError({ message: `codework service ${action} ${reason(output, code)}` });
-		if (action !== "stop") yield* awaitConnection;
+			CODEWORK_HOME_DIR: servers.homeOf(row).path,
+		}).pipe(
+			Effect.mapError((error) => new ServersError({ message: `codework service ${action}: ${error.message}` })),
+		);
+		if (code !== 0) return yield* new ServersError({ message: `codework service ${action} ${reason(output, code)}` });
+		if (row.isDefault && action !== "stop") yield* awaitConnection;
 	}),
 };
 

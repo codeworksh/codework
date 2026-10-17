@@ -69,6 +69,46 @@ const migrations = {
 			)
 		`;
 	}),
+	// The built-in local server takes over its settings, kept until now as single kv entries.
+	"202610180001_servers": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`
+			CREATE TABLE servers (
+				id TEXT PRIMARY KEY,
+				kind TEXT NOT NULL,
+				name TEXT NOT NULL,
+				executable TEXT,
+				home TEXT,
+				args TEXT NOT NULL DEFAULT '',
+				env TEXT NOT NULL DEFAULT '[]',
+				is_default INTEGER NOT NULL DEFAULT 0,
+				pos INTEGER NOT NULL,
+				created INTEGER NOT NULL
+			)
+		`;
+		const rows = yield* sql<{ key: string; value: string }>`
+			SELECT key, value FROM kv WHERE package = 'codework' AND key LIKE 'servers.local.%'
+		`;
+		const saved = new Map(rows.map(({ key, value }) => [key.slice("servers.local.".length), JSON.parse(value)]));
+		const text = (key: string) => {
+			const value: unknown = saved.get(key);
+			return typeof value === "string" && value !== "" ? value : null;
+		};
+		const env: unknown = saved.get("env");
+		yield* sql`INSERT INTO servers ${sql.insert({
+			id: "local",
+			kind: "local",
+			name: text("name") ?? "CodeWork",
+			executable: text("executable"),
+			home: text("home"),
+			args: text("args") ?? "",
+			env: JSON.stringify(Array.isArray(env) ? env : []),
+			isDefault: 1,
+			pos: 0,
+			created: yield* Clock.currentTimeMillis,
+		})}`;
+		yield* sql`DELETE FROM kv WHERE package = 'codework' AND key LIKE 'servers.local.%'`;
+	}),
 };
 
 const setup = Effect.gen(function* () {
