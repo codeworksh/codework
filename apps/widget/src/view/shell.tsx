@@ -43,8 +43,11 @@ export interface Tab {
 
 export interface Frame {
 	readonly instanceId: string;
-	/** Replaces the default title; a title too long for the frame is shortened in the middle. */
-	readonly setTitle: (title: string) => void;
+	/**
+	 * Replaces the default title; a title too long for the frame is shortened in the middle.
+	 * `lead` goes before it, quieter, for what the title belongs to (a session's project).
+	 */
+	readonly setTitle: (title: string, lead?: string) => void;
 	/** Replaces the default icon. */
 	readonly setIcon: (icon: LucideIcon) => void;
 	/**

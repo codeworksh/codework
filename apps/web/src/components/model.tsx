@@ -1,9 +1,9 @@
-import { useAtomValue } from "@effect/atom-react";
 import { type ModelProvider, ThinkingLevel } from "@codeworksh/widget/codework";
-import { Atom, AsyncResult } from "effect/reactivity";
+import { useAtomValue } from "@effect/atom-react";
 import { Command as CommandPrimitive } from "cmdk";
-import { Brain, ChevronDown, Search } from "lucide-react";
 import { Option, Schema } from "effect";
+import { AsyncResult, Atom } from "effect/reactivity";
+import { Brain, ChevronDown, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import {
@@ -61,7 +61,7 @@ const modelsAtom = Atom.family((hostDir: string | undefined) =>
 
 // The composer row's pickers: muted text that brightens on hover, like the prompt's own controls.
 const trigger =
-	"flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 outline-none transition-[background-color,color,scale] hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 active:scale-[0.97] data-[state=open]:bg-ink/5 data-[state=open]:text-ink";
+	"flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 outline-none press hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink";
 
 /** A model's name and its provider's, when the list has it. */
 const lookup = <P extends ModelProvider>(providers: ReadonlyArray<P>, ref: ModelRef) => {
@@ -121,9 +121,11 @@ export function ModelPicker({
 			providers
 				.filter((provider) => needle !== "" || provider.id === shown)
 				.flatMap((provider) => provider.models.map((model) => ({ provider, model })))
-				.filter(({ provider, model }) =>
-					`${model.name} ${model.id} ${provider.name}`.toLowerCase().includes(needle),
-				),
+				// Every word must appear somewhere in the model's name, its id or its provider's name.
+				.filter(({ provider, model }) => {
+					const text = `${model.name} ${model.id} ${provider.name}`.toLowerCase();
+					return needle.split(/\s+/).every((word) => text.includes(word));
+				}),
 		[providers, needle, shown],
 	);
 

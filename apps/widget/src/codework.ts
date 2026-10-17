@@ -59,14 +59,22 @@ export const HistoryEntry = Schema.Struct({
 });
 export type HistoryEntry = typeof HistoryEntry.Type;
 
+/** How hard a model reasons, ascending. */
+export const ThinkingLevel = Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+export type ThinkingLevel = typeof ThinkingLevel.Type;
+
 export const SessionInfo = Schema.Struct({
 	id: Schema.String,
 	title: Schema.String,
 	directory: Schema.String,
 	hostDir: Schema.optionalKey(Schema.String),
+	/** The sandbox the session runs in; absent for the host itself. */
+	sandbox: Schema.optionalKey(Schema.Struct({ driver: Schema.String })),
 	project: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
 	updatedAt: Schema.Finite,
 	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	/** The thinking level chosen for this session; absent when settings decide. */
+	thinkingLevel: Schema.optionalKey(ThinkingLevel),
 });
 export type SessionInfo = typeof SessionInfo.Type;
 
@@ -114,10 +122,6 @@ export class EventEncodingError extends Schema.TaggedError<EventEncodingError>()
 	type: Schema.String,
 	cause: Schema.Defect(),
 }) {}
-
-/** How hard a model reasons, ascending. */
-export const ThinkingLevel = Schema.Literals(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-export type ThinkingLevel = typeof ThinkingLevel.Type;
 
 /** A provider the server can call, with the models a session may use from it. */
 export const ModelProvider = Schema.Struct({
@@ -226,6 +230,12 @@ export const Api = RpcGroup.make(
 	Rpc.make("session.list", {
 		payload: {},
 		success: Schema.Array(SessionInfo),
+	}),
+	/** Sets the session's model and thinking level over its settings; they apply from its next exchange. */
+	Rpc.make("session.configure", {
+		payload: { sessionId: Schema.String, runtime: RuntimeConfig },
+		success: SessionInfo,
+		error: SessionNotFoundError,
 	}),
 	Rpc.make("session.info", {
 		payload: { sessionId: Schema.String },

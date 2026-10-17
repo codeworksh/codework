@@ -1,0 +1,171 @@
+{
+	"empty": {
+		"instances": [],
+		"tileOrder": [],
+		"focusOrder": []
+	},
+	"workspace": {
+		"id": "<workspace>",
+		"bit": 3,
+		"pos": 3,
+		"name": "Scratch",
+		"icon": "box",
+		"layout": "tile",
+		"mfact": 0.6,
+		"auto": false
+	},
+	"saved": {
+		"instances": [
+			{
+				"id": "browser-1",
+				"kind": "browser",
+				"tags": 9,
+				"props": {},
+				"pinned": false,
+				"title": "Docs",
+				"address": "https://example.com",
+				"params": {
+					"zoom": 1.25,
+					"history": [
+						"a",
+						"b"
+					]
+				},
+				"openedBy": "notes-1"
+			},
+			{
+				"id": "notes-1",
+				"kind": "notes",
+				"tags": 8,
+				"props": {
+					"text": "hello"
+				},
+				"pinned": true
+			}
+		],
+		"tileOrder": [
+			"browser-1",
+			"notes-1"
+		],
+		"focusOrder": [
+			"notes-1",
+			"browser-1"
+		]
+	},
+	"roundTrip": {
+		"instances": [
+			{
+				"id": "browser-1",
+				"kind": "browser",
+				"tags": 9,
+				"props": {},
+				"pinned": false,
+				"title": "Docs",
+				"address": "https://example.com",
+				"params": {
+					"zoom": 1.25,
+					"history": [
+						"a",
+						"b"
+					]
+				},
+				"openedBy": "notes-1"
+			},
+			{
+				"id": "notes-1",
+				"kind": "notes",
+				"tags": 8,
+				"props": {
+					"text": "hello"
+				},
+				"pinned": true
+			}
+		],
+		"tileOrder": [
+			"browser-1",
+			"notes-1"
+		],
+		"focusOrder": [
+			"notes-1",
+			"browser-1"
+		]
+	},
+	"afterDelete": {
+		"instances": [
+			{
+				"id": "browser-1",
+				"kind": "browser",
+				"tags": 1,
+				"props": {},
+				"pinned": false,
+				"title": "Docs",
+				"address": "https://example.com",
+				"params": {
+					"zoom": 1.25,
+					"history": [
+						"a",
+						"b"
+					]
+				},
+				"openedBy": "notes-1"
+			}
+		],
+		"tileOrder": [
+			"browser-1"
+		],
+		"focusOrder": [
+			"browser-1"
+		]
+	},
+	"errors": [
+		{
+			"tag": "Server.DeskError",
+			"message": "The tile order must name every instance once"
+		},
+		{
+			"tag": "Server.DeskError",
+			"message": "The focus order must name every instance once"
+		}
+	],
+	"afterRestart": {
+		"workspaces": [
+			{
+				"name": "Main",
+				"auto": false,
+				"pos": 0
+			},
+			{
+				"name": "Code",
+				"auto": false,
+				"pos": 1
+			},
+			{
+				"name": "Notes",
+				"auto": false,
+				"pos": 2
+			},
+			{
+				"name": "Kept",
+				"auto": true,
+				"pos": 3
+			}
+		],
+		"desk": {
+			"instances": [
+				{
+					"id": "notes-2",
+					"kind": "notes",
+					"tags": 8,
+					"props": {},
+					"pinned": false
+				}
+			],
+			"tileOrder": [
+				"notes-2"
+			],
+			"focusOrder": [
+				"notes-2"
+			]
+		}
+	}
+}

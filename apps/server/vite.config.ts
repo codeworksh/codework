@@ -13,4 +13,7 @@ export default defineConfig({
 			clean: true,
 		},
 	],
+	test: {
+		include: ["test/**/*.test.ts"],
+	},
 });

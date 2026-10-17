@@ -48,6 +48,8 @@ export const SessionInfo = Schema.Struct({
 	updatedAt: Schema.Finite,
 	/** The model chosen for this session; absent when settings decide. */
 	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	/** The thinking level chosen for this session; absent when settings decide. */
+	thinkingLevel: optional(Schema.Enum(Model.ThinkingLevelEnum)),
 });
 export type SessionInfo = typeof SessionInfo.Type;
 

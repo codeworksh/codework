@@ -50,6 +50,7 @@ const toSessionInfo = (info: Session.Info): SessionInfo => ({
 	...(info.project === undefined ? {} : { project: info.project }),
 	updatedAt: info.updatedAt,
 	...(info.model === undefined ? {} : { model: info.model }),
+	...(info.thinkingLevel === undefined ? {} : { thinkingLevel: info.thinkingLevel }),
 });
 
 // Wire configs name only the keys they set, so `undefined` never reaches the

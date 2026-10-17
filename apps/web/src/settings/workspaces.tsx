@@ -1,4 +1,4 @@
-import { useAtom, useAtomSet } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
@@ -19,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { isMac } from "@codeworksh/widget/view";
 import { iconOf, icons } from "../shell/icons";
 import { shortcutLabel } from "../shell/switcher";
-import { deskAtom, only, untag } from "../wm/instances";
+import { deskAtom, deskKey, only } from "../wm/instances";
 import {
 	deleteWorkspace,
 	reorderWorkspaces,
@@ -229,7 +229,7 @@ function IconPicker({ workspace, onError }: RowProps) {
 /** Deletes after a confirm that says which widgets close with it. */
 function DeleteButton({ workspace, onError }: RowProps) {
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
-	const [desk, setDesk] = useAtom(deskAtom);
+	const desk = useAtomValue(deskAtom);
 	const tag = workspaceTag(workspace);
 	const closing = only(desk, tag).length;
 	return (
@@ -260,8 +260,8 @@ function DeleteButton({ workspace, onError }: RowProps) {
 					<AlertDialogAction
 						variant="destructive"
 						onClick={() =>
-							remove({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }).then(
-								() => setDesk((current) => untag(current, tag)),
+							// The server drops the workspace's widgets, so the desk reloads with the list.
+							remove({ payload: { id: workspace.id }, reactivityKeys: [...workspacesKey, ...deskKey] }).catch(
 								(cause: unknown) => onError(describe(cause)),
 							)
 						}
