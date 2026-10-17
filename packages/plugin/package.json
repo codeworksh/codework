@@ -198,11 +198,11 @@
 		"@codeworksh/aikit": "workspace:*",
 		"@types/node": "catalog:",
 		"bumpp": "^12.3.0",
-		"effect": "4.0.1"
+		"effect": "4.0.5"
 	},
 	"peerDependencies": {
 		"@codeworksh/aikit": "workspace:^",
-		"effect": "4.0.1"
+		"effect": "4.0.5"
 	},
 	"engines": {
 		"node": ">=22.0.0"

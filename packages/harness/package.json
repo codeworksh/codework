@@ -79,8 +79,9 @@
 	"dependencies": {
 		"@codeworksh/aikit": "workspace:^",
 		"@codeworksh/plugin": "workspace:*",
-		"@effect/platform-node": "4.0.1",
-		"@effect/sql-sqlite-node": "4.0.1",
+		"@effect/platform-node": "4.0.5",
+		"@effect/platform-node-shared": "4.0.5",
+		"@effect/sql-sqlite-node": "4.0.5",
 		"@npmcli/arborist": "^10.0.2",
 		"@npmcli/config": "^11.0.1",
 		"@platformatic/vfs": "^0.4.0",
@@ -101,12 +102,12 @@
 		"@vercel/sandbox": "^3.3.0",
 		"bumpp": "^12.3.0",
 		"dedent": "^1.7.2",
-		"effect": "4.0.1"
+		"effect": "4.0.5"
 	},
 	"peerDependencies": {
 		"@daytona/sdk": "*",
 		"@vercel/sandbox": "*",
-		"effect": "4.0.1"
+		"effect": "4.0.5"
 	},
 	"peerDependenciesMeta": {
 		"@daytona/sdk": {
