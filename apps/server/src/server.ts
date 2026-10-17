@@ -51,7 +51,8 @@ const exitWithParent = Layer.effectDiscard(
 	Effect.gen(function* () {
 		const parent = process.ppid;
 		yield* Effect.sync(() => process.ppid).pipe(
-			Effect.repeat({ while: (ppid) => ppid === parent, schedule: Schedule.spaced("1 second") }),
+			// Adopted by launchd (pid 1) is orphaned too, even when the parent was gone before this started.
+			Effect.repeat({ while: (ppid) => ppid === parent && ppid !== 1, schedule: Schedule.spaced("1 second") }),
 			Effect.andThen(Effect.sync(() => process.kill(process.pid, "SIGTERM"))),
 			Effect.forkScoped,
 		);
