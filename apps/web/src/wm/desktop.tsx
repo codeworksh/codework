@@ -23,7 +23,7 @@ import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./
 import { Divider } from "./divider";
 import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
 import { Overflow } from "./overflow";
-import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
+import { add, type Desk, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
 import { useSaveDesk } from "./save";
 import {
@@ -124,7 +124,7 @@ export function Desktop({ workspace }: DesktopProps) {
 	const [views, setViews] = useState<ReadonlyMap<string, View>>(() => new Map());
 	const [chrome, setChrome] = useAtom(chromeAtom);
 	const [drag, setDrag] = useState<Drag | null>(null);
-	useSaveDesk(drag !== null);
+	const flushDesk = useSaveDesk(drag !== null);
 	const [resizing, setResizing] = useState(false);
 	const [ref, size] = useElementSize<HTMLDivElement>();
 	// A window resize must not tween: frames would trail the window edge by the transition's length.
@@ -244,35 +244,48 @@ export function Desktop({ workspace }: DesktopProps) {
 			return next;
 		});
 
-	// An auto workspace exists to show what was opened into it, so it goes with its last frame.
-	const leaving = (instanceId: string, to: { readonly to: "/" } | ReturnType<typeof workspaceRoute>) => {
+	// Applies `change`, which takes the frame off this workspace. An auto workspace exists to show what
+	// was opened into it, so it goes with its last frame, quietly: the app goes to `to` with the desk at
+	// `bridge` (the frame still on screen) and changes it only then, so nothing passes through an empty
+	// workspace. The desk is saved before the delete, which drops widgets the workspace alone held.
+	const leave = (
+		instanceId: string,
+		change: (desk: Desk) => Desk,
+		to: { readonly to: "/" } | ReturnType<typeof workspaceRoute>,
+		bridge: (desk: Desk) => Desk = (current) => current,
+	) => {
 		const leaver = byId.get(instanceId);
 		const emptied =
 			leaver !== undefined &&
 			(leaver.tags & activeTags) !== 0 &&
 			!instances.some((instance) => instance.id !== instanceId && (instance.tags & activeTags) !== 0);
-		// Leaving only once the delete lands: leaving first unmounts this and drops the list's refresh.
-		if (workspace.auto && emptied) {
-			void removeWorkspace({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }).then(
-				() => navigate(to),
-				() => undefined,
-			);
-		}
+		if (!workspace.auto || !emptied) return setDesk(change);
+		setDesk(bridge);
+		void navigate(to)
+			.then(() => {
+				setDesk(change);
+				return flushDesk();
+			})
+			.then(() => removeWorkspace({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }))
+			.catch(() => undefined);
 	};
 
 	const close = (instanceId: string) => {
-		leaving(instanceId, { to: "/" });
-		setDesk((current) =>
-			current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current,
+		leave(
+			instanceId,
+			(current) => (current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current),
+			{ to: "/" },
 		);
 		undecorate(instanceId);
 	};
 
-	// Moves a frame off this workspace onto another, focused there; this workspace stays on screen.
+	// Moves a frame off this workspace onto another, focused there; this workspace stays on screen
+	// unless the frame was all it showed.
 	const move = (instanceId: string, destination: Workspace) => {
-		leaving(instanceId, workspaceRoute(destination));
+		const tag = workspaceTag(destination);
+		const retag = (tags: number) => (current: Desk) => raise(update(current, instanceId, { tags }), instanceId);
 		setDrag(null);
-		setDesk((current) => raise(update(current, instanceId, { tags: workspaceTag(destination) }), instanceId));
+		leave(instanceId, retag(tag), workspaceRoute(destination), retag((byId.get(instanceId)?.tags ?? 0) | tag));
 	};
 
 	// A new workspace is auto, so it goes once the frame leaves it; it is named like the frame's tab would be.
