@@ -15,6 +15,8 @@ import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
 import { ago } from "../widgets/time";
 import { Monogram } from "@/components/monogram";
+import { Empty, EmptyAction } from "./empty";
+import { ServerOffline } from "./offline";
 import { placeAtom, usePickFolder } from "./place";
 
 /**
@@ -74,37 +76,33 @@ export function SessionsSidebar() {
 			</SidebarHeader>
 			<SidebarContent className="px-2 pb-2">
 				{AsyncResult.isFailure(result) ? (
-					<p className="px-2.5 py-2 text-[12px] text-ink-muted">
-						{Option.match(AsyncResult.error(result), {
-							// Says how to start the CodeWork server when that is the reason.
-							onSome: (error) =>
-								error._tag === "Server.CodeworkUnavailable" ? error.message : "Could not load sessions.",
-							onNone: () => "Could not load sessions.",
-						})}
-					</p>
+					// The CodeWork server is the usual reason, and the sidebar can say which state it is in and fix it.
+					Option.exists(AsyncResult.error(result), (error) => error._tag === "Server.CodeworkUnavailable") ? (
+						<ServerOffline />
+					) : (
+						<p className="px-2.5 py-2 text-[12px] text-ink-muted">Could not load sessions.</p>
+					)
 				) : AsyncResult.isSuccess(result) && sessions.length === 0 ? (
 					needle !== "" ? (
 						<p className="px-2.5 py-2 text-[12px] text-ink-muted">No sessions match “{query}”.</p>
 					) : (
-						<div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-[12px] text-ink-muted/70">
+						<Empty>
 							{place.kind === "none" && result.value.length === 0 ? (
 								<>
 									<span>No Projects Yet</span>
 									{addProject !== undefined && (
-										<button
-											type="button"
+										<EmptyAction
+											icon={<Plus className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />}
 											onClick={addProject}
-											className="inline-flex items-center gap-1.5 rounded-md border border-edge px-2.5 py-1 text-[11px] font-medium text-ink-muted transition-colors outline-none hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5"
 										>
-											<Plus className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />
 											Add Project
-										</button>
+										</EmptyAction>
 									)}
 								</>
 							) : (
 								<span>No Sessions Yet</span>
 							)}
-						</div>
+						</Empty>
 					)
 				) : (
 					<ul className="flex flex-col gap-0.5">

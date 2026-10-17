@@ -52,6 +52,30 @@ const Version = ({ version }: { version: string }) => (
 	<span className="font-mono text-[13px] text-ink-muted">v{version}</span>
 );
 
+/**
+ * Starts, restarts or stops a server through its CLI, as the Servers page and the sidebar both do.
+ * `act` resolves to whether it worked; the server list refreshes either way.
+ */
+export function useServerAction() {
+	const service = useAtomSet(serviceAtom, { mode: "promise" });
+	const [running, setRunning] = useState<CliAction | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const act = (id: string, action: CliAction) => {
+		setError(null);
+		setRunning(action);
+		return service({ payload: { id, action }, reactivityKeys: serversKey })
+			.then(
+				() => true,
+				(cause: unknown) => {
+					setError(messageOf(cause));
+					return false;
+				},
+			)
+			.finally(() => setRunning(null));
+	};
+	return { running, error, act };
+}
+
 /** A server's row in the list: its name and binary, and whether it is the default. */
 export function LocalItem({ status }: { status: ServerStatus }) {
 	const { cli } = status;
@@ -83,9 +107,8 @@ export function LocalItem({ status }: { status: ServerStatus }) {
 
 /** A local server: its name, its state and controls, then how it runs and what it starts with. */
 export function LocalDetail({ status }: { status: ServerStatus }) {
-	const service = useAtomSet(serviceAtom, { mode: "promise" });
 	const update = useAtomSet(updateAtom, { mode: "promise" });
-	const [running, setRunning] = useState<CliAction | null>(null);
+	const { running, error: actionError, act: run } = useServerAction();
 	const [error, setError] = useState<string | null>(null);
 	const [nameError, setNameError] = useState<string | null>(null);
 	const { id, server, cli } = status;
@@ -99,10 +122,7 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 
 	const act = (action: CliAction) => {
 		setError(null);
-		setRunning(action);
-		service({ payload: { id, action }, reactivityKeys: serversKey })
-			.catch((cause: unknown) => setError(messageOf(cause)))
-			.finally(() => setRunning(null));
+		void run(id, action);
 	};
 
 	return (
@@ -158,7 +178,9 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 						</div>
 					)}
 				</div>
-				{error !== null && <p className="px-5 pb-4 text-[13px] text-destructive">{error}</p>}
+				{(actionError ?? error) !== null && (
+					<p className="px-5 pb-4 text-[13px] text-destructive">{actionError ?? error}</p>
+				)}
 			</Card>
 
 			<section className="flex flex-col gap-3">
