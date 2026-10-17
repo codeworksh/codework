@@ -82,12 +82,8 @@ pub enum ServerMessage {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "_tag")]
 pub enum ExitPayload {
-    Success {
-        value: serde_json::Value,
-    },
-    Failure {
-        cause: Option<serde_json::Value>,
-    },
+    Success { value: serde_json::Value },
+    Failure { cause: Option<serde_json::Value> },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -141,6 +137,12 @@ pub struct PromptSessionPayload {
 pub struct SessionIdPayload {
     #[serde(rename = "sessionId")]
     pub session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListModelsPayload<'a> {
+    #[serde(rename = "hostDir", skip_serializing_if = "Option::is_none")]
+    pub host_dir: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

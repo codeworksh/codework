@@ -10,11 +10,11 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::rpc::protocol::{
-    ConfigureSessionPayload, CreateSessionPayload, ExitPayload, ModelRefPayload,
+    ConfigureSessionPayload, CreateSessionPayload, ExitPayload, ListModelsPayload, ModelRefPayload,
     PromptSessionPayload, RpcAck, RpcRequest, RuntimePayload, ServerMessage,
     SessionHistoryResponse, SessionIdPayload,
 };
-use crate::types::{HistoryEntry, SessionInfo, UsageReport};
+use crate::types::{HistoryEntry, ModelList, SessionInfo, UsageReport};
 
 pub const DEFAULT_SERVER_URL: &str = "ws://127.0.0.1:7433/rpc/v1";
 
@@ -195,6 +195,14 @@ impl RpcClient {
             .iter()
             .filter_map(|item| parse_session_info(item).ok())
             .collect())
+    }
+
+    /// List the models available for `host_dir` and the resolved settings default (`model.list`).
+    pub async fn list_models(&self, host_dir: Option<&str>) -> Result<ModelList, String> {
+        let value = self
+            .call("model.list", ListModelsPayload { host_dir })
+            .await?;
+        parse_model_list(&value)
     }
 
     /// Fetch a session's current info (`session.info`), used to pick up auto-generated titles.
@@ -557,7 +565,8 @@ impl RpcClient {
                             exit: ExitPayload::Failure { cause },
                         } => {
                             let id = as_request_id(&request_id);
-                            if id == Some(sub_id) || (prompt_req_id.is_some() && id == prompt_req_id)
+                            if id == Some(sub_id)
+                                || (prompt_req_id.is_some() && id == prompt_req_id)
                             {
                                 return Err(format_cause(cause.as_ref()));
                             }
@@ -595,6 +604,11 @@ fn parse_session_history(value: &Value) -> Result<Vec<HistoryEntry>, String> {
         .map_err(|e| format!("Invalid session history response: {e}"))
 }
 
+fn parse_model_list(value: &Value) -> Result<ModelList, String> {
+    serde_json::from_value::<ModelList>(value.clone())
+        .map_err(|e| format!("Invalid model list response: {e}"))
+}
+
 fn format_cause(cause: Option<&Value>) -> String {
     let Some(cause) = cause else {
         return "RPC request failed".to_string();
@@ -613,9 +627,20 @@ fn format_cause(cause: Option<&Value>) -> String {
 /// Reads a `session.tool.started` payload. Every field is best-effort: a missing
 /// or malformed one yields a plain `tool` line rather than an error.
 fn started_event(data: &Value) -> StreamEvent {
-    let call_id = data.get("callID").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
-    let name = data.get("name").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
-    let label = data.get("label").and_then(|v| v.as_str()).map(str::to_string);
+    let call_id = data
+        .get("callID")
+        .and_then(|v| v.as_str())
+        .unwrap_or("tool")
+        .to_string();
+    let name = data
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("tool")
+        .to_string();
+    let label = data
+        .get("label")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
     let arguments = data.get("arguments").cloned().unwrap_or(Value::Null);
     StreamEvent::ToolStarted {
         call_id,
@@ -693,11 +718,19 @@ mod tests {
             "arguments": { "command": "npm test", "timeout": 30 },
         });
         match started_event(&data) {
-            StreamEvent::ToolStarted { call_id, name, label, arguments } => {
+            StreamEvent::ToolStarted {
+                call_id,
+                name,
+                label,
+                arguments,
+            } => {
                 assert_eq!(call_id, "call_1");
                 assert_eq!(name, "bash");
                 assert_eq!(label.as_deref(), Some("bash"));
-                assert_eq!(arguments.get("command").and_then(Value::as_str), Some("npm test"));
+                assert_eq!(
+                    arguments.get("command").and_then(Value::as_str),
+                    Some("npm test")
+                );
             }
             other => panic!("expected ToolStarted, got {other:?}"),
         }
@@ -772,9 +805,14 @@ mod tests {
             },
         });
         match settled_event(&data) {
-            StreamEvent::ToolSettled { is_error, details, .. } => {
+            StreamEvent::ToolSettled {
+                is_error, details, ..
+            } => {
                 assert!(is_error);
-                assert_eq!(details.and_then(|d| d.get("exitCode").and_then(Value::as_u64)), Some(1));
+                assert_eq!(
+                    details.and_then(|d| d.get("exitCode").and_then(Value::as_u64)),
+                    Some(1)
+                );
             }
             other => panic!("expected ToolSettled, got {other:?}"),
         }
@@ -784,7 +822,9 @@ mod tests {
     fn parses_a_bare_payload_without_arguments_or_details() {
         // A plugin tool, or an older server: nothing to read, nothing to fail on.
         match started_event(&json!({ "callID": "c", "name": "acme_echo" })) {
-            StreamEvent::ToolStarted { arguments, label, .. } => {
+            StreamEvent::ToolStarted {
+                arguments, label, ..
+            } => {
                 assert!(arguments.is_null());
                 assert!(label.is_none());
             }
@@ -939,7 +979,13 @@ mod tests {
                 assert_eq!(call_id, "call_read_1");
                 assert_eq!(name, "read");
                 assert_eq!(status, "completed");
-                assert_eq!(time, &Some(ToolTime { start: 100, end: 150 }));
+                assert_eq!(
+                    time,
+                    &Some(ToolTime {
+                        start: 100,
+                        end: 150
+                    })
+                );
                 let result = result.as_ref().expect("result");
                 assert!(!result.is_error);
                 assert_eq!(
@@ -968,7 +1014,10 @@ mod tests {
                 panic!("expected text request");
             };
             let req: Value = serde_json::from_str(req_text.trim()).expect("json request");
-            assert_eq!(req.get("tag").and_then(Value::as_str), Some("session.history"));
+            assert_eq!(
+                req.get("tag").and_then(Value::as_str),
+                Some("session.history")
+            );
             assert_eq!(
                 req.get("payload")
                     .and_then(|p| p.get("sessionId"))
@@ -1005,6 +1054,121 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].id, "msg_1");
         assert_eq!(entries[0].role, "user");
+        server.await.expect("server task");
+    }
+
+    #[test]
+    fn parses_model_list_response() {
+        let payload = json!({
+            "providers": [
+                {
+                    "id": "anthropic",
+                    "name": "Anthropic",
+                    "models": [
+                        {
+                            "id": "claude-sonnet-4-5",
+                            "name": "Claude Sonnet 4.5",
+                            "thinkingLevels": ["off", "low", "medium", "high"]
+                        }
+                    ]
+                }
+            ],
+            "default": {
+                "provider": "openai",
+                "id": "gpt-5.6-luna",
+                "thinkingLevel": "medium",
+                "name": "GPT-5.6 Luna",
+                "providerName": "OpenAI"
+            }
+        });
+
+        let list = parse_model_list(&payload).expect("valid ModelList");
+        assert_eq!(list.providers.len(), 1);
+        assert_eq!(list.providers[0].id, "anthropic");
+        assert_eq!(list.providers[0].name, "Anthropic");
+        assert_eq!(list.providers[0].models.len(), 1);
+        assert_eq!(list.providers[0].models[0].id, "claude-sonnet-4-5");
+        assert_eq!(list.providers[0].models[0].name, "Claude Sonnet 4.5");
+        assert_eq!(
+            list.providers[0].models[0].thinking_levels,
+            vec!["off", "low", "medium", "high"]
+        );
+        assert_eq!(list.default.provider, "openai");
+        assert_eq!(list.default.id, "gpt-5.6-luna");
+        assert_eq!(list.default.thinking_level, "medium");
+        assert_eq!(list.default.name.as_deref(), Some("GPT-5.6 Luna"));
+        assert_eq!(list.default.provider_name.as_deref(), Some("OpenAI"));
+    }
+
+    #[tokio::test]
+    async fn model_list_round_trips_over_websocket() {
+        use tokio::net::TcpListener;
+        use tokio_tungstenite::accept_async;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+
+        let server = tokio::spawn(async move {
+            for expected_dir in [Some("/Users/prem/codework"), None] {
+                let (stream, _) = listener.accept().await.expect("accept");
+                let mut ws = accept_async(stream).await.expect("ws handshake");
+                let Some(Ok(Message::Text(req_text))) = ws.next().await else {
+                    panic!("expected text request");
+                };
+                let req: Value = serde_json::from_str(req_text.trim()).expect("json request");
+                assert_eq!(req.get("tag").and_then(Value::as_str), Some("model.list"));
+                let payload = req.get("payload").expect("payload");
+                assert_eq!(payload.get("hostDir").and_then(Value::as_str), expected_dir);
+                if expected_dir.is_none() {
+                    assert!(payload.get("hostDir").is_none());
+                }
+                let req_id = req.get("id").cloned().unwrap_or(json!(1));
+                let reply = json!({
+                    "_tag": "Exit",
+                    "requestId": req_id,
+                    "exit": {
+                        "_tag": "Success",
+                        "value": {
+                            "providers": [
+                                {
+                                    "id": "local",
+                                    "name": "Local",
+                                    "models": [
+                                        {
+                                            "id": "qwen3-coder:30b",
+                                            "name": "Qwen3 Coder 30B",
+                                            "thinkingLevels": ["off"]
+                                        }
+                                    ]
+                                }
+                            ],
+                            "default": {
+                                "provider": "local",
+                                "id": "qwen3-coder:30b",
+                                "thinkingLevel": "medium",
+                                "name": "Qwen3 Coder 30B",
+                                "providerName": "Local"
+                            }
+                        }
+                    }
+                });
+                ws.send(Message::Text(format!("{reply}\n")))
+                    .await
+                    .expect("send reply");
+            }
+        });
+
+        let client = RpcClient::new(format!("ws://{addr}/rpc/v1"));
+        let anchored = client
+            .list_models(Some("/Users/prem/codework"))
+            .await
+            .expect("anchored models");
+        assert_eq!(anchored.default.provider, "local");
+        assert_eq!(anchored.default.id, "qwen3-coder:30b");
+
+        let unanchored = client.list_models(None).await.expect("unanchored models");
+        assert_eq!(unanchored.providers.len(), 1);
+        assert_eq!(unanchored.providers[0].models[0].id, "qwen3-coder:30b");
         server.await.expect("server task");
     }
 
@@ -1046,7 +1210,10 @@ mod tests {
         while let Some(evt) = rx.recv().await {
             println!("Got stream event: {:?}", evt);
             events_count += 1;
-            if matches!(evt, StreamEvent::Succeeded | StreamEvent::Failed(_) | StreamEvent::Interrupted(_)) {
+            if matches!(
+                evt,
+                StreamEvent::Succeeded | StreamEvent::Failed(_) | StreamEvent::Interrupted(_)
+            ) {
                 break;
             }
         }
