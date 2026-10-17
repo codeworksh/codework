@@ -22,6 +22,7 @@
 	--cw-brand-ink: var(--t-brand-ink);
 	--cw-scrollbar: color-mix(in oklab, var(--t-text) 16%, transparent);
 	--cw-danger: light-dark(#dc2626, #f87171);
+	--cw-warning: light-dark(#d97706, #fbbf24);
 	--cw-highlight: light-dark(rgb(255 255 255 / 0.9), color-mix(in oklab, var(--t-text) 9%, transparent));
 	--cw-shadow-near: light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.35));
 	--cw-shadow-far: light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.5));
@@ -63,6 +64,7 @@
 	--color-accent: color-mix(in oklab, var(--cw-ink) 8%, transparent);
 	--color-accent-foreground: var(--cw-ink);
 	--color-destructive: var(--cw-danger);
+	--color-warning: var(--cw-warning);
 	--color-border: var(--cw-edge);
 	--color-input: var(--cw-edge-focus);
 	--color-ring: color-mix(in oklab, var(--cw-brand) 50%, transparent);

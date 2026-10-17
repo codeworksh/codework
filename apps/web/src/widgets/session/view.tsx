@@ -5,6 +5,7 @@ import { Option, Schema } from "effect";
 import { Brain, ChevronDown, ChevronRight, CircleAlert, MessageSquareText, Terminal, Wrench } from "lucide-react";
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { ComposerNotice, type Notice } from "@/components/banner";
 import { ago } from "../time";
 import { sessionId } from "./address";
 import { SessionComposer } from "./composer";
@@ -38,9 +39,30 @@ type State =
 			readonly after: number;
 			/** Whether the agent works, once the backend has said; until then a draft reply implies it. */
 			readonly running: boolean | undefined;
+			/** Why the last run failed, until another one starts. */
+			readonly failure?: Notice;
 	  };
 
 type Ready = Extract<State, { readonly status: "ready" }>;
+
+/** What a failed run reads as: in the reader's words, never CodeWork's internal ids. */
+const noticeOf = (kind: string, message: string, sandbox: string | undefined): Notice => {
+	switch (kind) {
+		// The session's sandbox is gone, so it can't run; its conversation is still saved and readable.
+		// A memory one lives only as long as the server that made it.
+		case "sandbox-mount-error":
+			return {
+				title: "Expired",
+				description:
+					sandbox === "memory"
+						? "Memory sessions can’t continue after closed. Start a new session to keep going."
+						: "This session can't be picked up again. Start a new session to keep going.",
+				tone: "expired",
+			};
+		default:
+			return { title: "Something went wrong", description: message, tone: "error" };
+	}
+};
 
 const apply = (state: State, update: Update): State => {
 	if (state.status !== "ready") return state;
@@ -49,8 +71,12 @@ const apply = (state: State, update: Update): State => {
 			return { ...state, info: update.info };
 		case "Removed":
 			return { ...state, messages: state.messages.filter((message) => message.id !== update.id) };
-		case "Running":
-			return { ...state, running: update.running };
+		case "Running": {
+			const { failure: _, ...rest } = state;
+			return update.running ? { ...rest, running: true } : { ...state, running: false };
+		}
+		case "Failed":
+			return { ...state, failure: noticeOf(update.kind, update.message, state.info.sandbox) };
 		case "Message": {
 			const index = state.messages.findIndex((message) => message.id === update.message.id);
 			const oldest = state.messages[0];
@@ -153,6 +179,18 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 		setTab({ title: project ?? "Session", subtitle: title });
 	}, [title, project, setTitle, setIcon, setTab]);
 
+	// A refused send, else why the last run failed; dismissing hides that one notice only.
+	const [sendError, setSendError] = useState<string>();
+	const [dismissed, setDismissed] = useState<Notice>();
+	const notice: Notice | undefined =
+		sendError !== undefined
+			? { title: "Not sent", description: sendError, tone: "error" }
+			: state.status === "ready"
+				? state.failure
+				: undefined;
+	const shown =
+		notice !== undefined && (dismissed?.title !== notice.title || dismissed.description !== notice.description);
+
 	if (state.status === "loading") return null;
 	if (state.status === "failed") return <p className="p-3 text-ink-muted">{state.message}</p>;
 	const last = state.messages.at(-1);
@@ -161,7 +199,24 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 		<div className="flex h-full flex-col">
 			<Transcript state={state} running={running} loadOlder={loadOlder} />
 			<div className="mx-auto w-full max-w-3xl shrink-0 px-3 pb-3">
-				<SessionComposer sessionId={id} instanceId={instanceId} running={running} />
+				{shown && (
+					<ComposerNotice
+						title={notice.title}
+						description={notice.description}
+						tone={notice.tone}
+						onDismiss={() => {
+							setDismissed(notice);
+							setSendError(undefined);
+						}}
+					/>
+				)}
+				<SessionComposer
+					sessionId={id}
+					instanceId={instanceId}
+					running={running}
+					info={state.info}
+					onError={setSendError}
+				/>
 			</div>
 		</div>
 	);

@@ -17,7 +17,7 @@ import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
-import { ModelPicker, ThinkingPicker, useChoice } from "./model";
+import { ModelPicker, ThinkingPicker, useChoice } from "@/components/model";
 import { projectsAtom, SessionsSidebar, TitleBar } from "./sidebar";
 import { Wordmark } from "./wordmark";
 
@@ -34,7 +34,7 @@ const placeLabel = (place: Place) =>
 	place.kind === "none"
 		? "Select Project"
 		: place.kind === "memory"
-			? "In Memory"
+			? "Memory"
 			: (place.path.split("/").findLast(Boolean) ?? place.path);
 
 /**
@@ -151,7 +151,7 @@ export function Landing() {
 											<DropdownMenuLabel>Project</DropdownMenuLabel>
 											<DropdownMenuItem onSelect={() => setPlace({ kind: "memory" })}>
 												<MemoryStick strokeWidth={1.75} />
-												In Memory
+												Memory
 												{place.kind === "memory" && (
 													<Check className="ml-auto" strokeWidth={2} aria-label="Current" />
 												)}

@@ -1,9 +1,9 @@
-import { useAtomValue } from "@effect/atom-react";
 import { type ModelProvider, ThinkingLevel } from "@codeworksh/widget/codework";
-import { Atom, AsyncResult } from "effect/reactivity";
+import { useAtomValue } from "@effect/atom-react";
 import { Command as CommandPrimitive } from "cmdk";
-import { Brain, ChevronDown, Search } from "lucide-react";
 import { Option, Schema } from "effect";
+import { AsyncResult, Atom } from "effect/reactivity";
+import { Brain, ChevronDown, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import {
@@ -121,9 +121,11 @@ export function ModelPicker({
 			providers
 				.filter((provider) => needle !== "" || provider.id === shown)
 				.flatMap((provider) => provider.models.map((model) => ({ provider, model })))
-				.filter(({ provider, model }) =>
-					`${model.name} ${model.id} ${provider.name}`.toLowerCase().includes(needle),
-				),
+				// Every word must appear somewhere in the model's name, its id or its provider's name.
+				.filter(({ provider, model }) => {
+					const text = `${model.name} ${model.id} ${provider.name}`.toLowerCase();
+					return needle.split(/\s+/).every((word) => text.includes(word));
+				}),
 		[providers, needle, shown],
 	);
 

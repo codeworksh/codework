@@ -21,7 +21,7 @@ import { insetTitleBar, NewWorkspaceButton, SettingsButton } from "../shell/titl
 import { useOpenElsewhere } from "../wm/open";
 import { useWorkspaces } from "../wm/workspaces";
 import { ago } from "../widgets/time";
-import { Monogram } from "./monogram";
+import { Monogram } from "@/components/monogram";
 
 /** The sidebar's sessions; refresh it once a new session exists. */
 export const projectsAtom = Server.query("projects.list", undefined);

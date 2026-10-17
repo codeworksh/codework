@@ -38,7 +38,9 @@ export function Composer({
 	return (
 		<div className="w-full">
 			<form
-				className="relative z-10 flex flex-col rounded-[22px] border border-edge bg-frame shadow-[0_12px_28px_-18px_rgb(0_0_0/0.4)] transition-colors focus-within:border-edge-focus"
+				// Raised like a frame (the theme's top-down gradient, top highlight and shadows), with a deeper
+				// drop so it still floats when it sits inside one.
+				className="relative z-10 flex flex-col rounded-[22px] border border-edge bg-linear-to-b from-frame-top to-frame to-60% shadow-[inset_0_1px_0_var(--cw-highlight),0_1px_2px_var(--cw-shadow-near),0_14px_36px_-12px_var(--cw-shadow-far)] transition-colors focus-within:border-edge-focus"
 				onSubmit={(event) => {
 					event.preventDefault();
 					onSubmit({ alternate: false });

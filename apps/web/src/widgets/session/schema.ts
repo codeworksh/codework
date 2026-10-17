@@ -12,6 +12,8 @@ export const topics = {
 	/** Requests: create a session and send its first prompt; answered with its id. */
 	create: "codework/session.create",
 	prompt: "codework/session.prompt",
+	/** Requests: choose a session's model or thinking level; they apply from its next exchange. */
+	configure: "codework/session.configure",
 	interrupt: "codework/session.interrupt",
 	/** Requests: a window of a followed session's conversation, newest first back from `before`. */
 	page: "codework/session.page",
@@ -61,6 +63,14 @@ export type Created = typeof Created.Type;
 
 export const Interrupt = Schema.Struct({ sessionId: Schema.String });
 
+/** A model or thinking level chosen for a session; an absent key is left as it is. */
+export const Configure = Schema.Struct({
+	sessionId: Schema.String,
+	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	thinkingLevel: Schema.optionalKey(ThinkingLevel),
+});
+export type Configure = typeof Configure.Type;
+
 export const Page = Schema.Struct({
 	sessionId: Schema.String,
 	/** The oldest message the view holds; omitted asks for the newest messages. */
@@ -77,8 +87,14 @@ export type Reply = typeof Reply.Type;
 
 export const Info = Schema.Struct({
 	title: Schema.String,
+	/** The host folder the session is anchored to, whose project settings it reads. */
+	hostDir: Schema.optionalKey(Schema.String),
+	/** The sandbox driver the session runs in, `memory` say; absent for the host itself. */
+	sandbox: Schema.optionalKey(Schema.String),
 	project: Schema.optionalKey(Schema.Struct({ id: Schema.String, name: Schema.String })),
 	model: Schema.optionalKey(Schema.Struct({ provider: Schema.String, id: Schema.String })),
+	/** The thinking level chosen for the session; absent when settings decide. */
+	thinkingLevel: Schema.optionalKey(ThinkingLevel),
 	/** Last activity, epoch milliseconds. */
 	updated: Schema.Number,
 });
@@ -118,6 +134,11 @@ export const Update = Schema.Union([
 	Schema.TaggedStruct("Removed", { id: Schema.String }),
 	/** Whether the agent is working on the session; sent live only, never stored. */
 	Schema.TaggedStruct("Running", { running: Schema.Boolean }),
+	/**
+	 * Why the agent's work on the session failed: CodeWork's failure category (`sandbox-mount-error`
+	 * and the like) and its message. Sent live only, never stored.
+	 */
+	Schema.TaggedStruct("Failed", { kind: Schema.String, message: Schema.String }),
 ]);
 export type Update = typeof Update.Type;
 
@@ -128,6 +149,7 @@ export const Json = {
 	Create: Schema.toCodecJson(Create),
 	Created: Schema.toCodecJson(Created),
 	Interrupt: Schema.toCodecJson(Interrupt),
+	Configure: Schema.toCodecJson(Configure),
 	Window: Schema.toCodecJson(Window),
 	Reply: Schema.toCodecJson(Reply),
 	Snapshot: Schema.toCodecJson(Snapshot),
