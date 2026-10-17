@@ -21,6 +21,10 @@ This file is the canonical source for unreleased changes and published release n
 
 - The default thinking level, for settings that name none, is now `medium` instead of `high`.
 
+### Fixed
+
+- Fixed `codework` failing to start after a fresh npm install with `The requested module 'effect/Path' does not provide an export named 'make'`. `@effect/platform-node` pulled in a newer `@effect/platform-node-shared` than the pinned `effect` supports. Every Effect package is now pinned to 4.0.5, and `@effect/platform-node-shared` is pinned with them.
+
 ## [@codeworksh/cli@0.3.0] - 2026-10-13
 
 ### Added
