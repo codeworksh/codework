@@ -13,7 +13,7 @@ export const insetTitleBar = window.desktopBridge?.platform === "darwin";
 
 /** A square title-bar button; it opts out of the window's drag region so it can be clicked. */
 export const chromeButton =
-	"grid size-7 shrink-0 place-items-center rounded-[10px] text-ink-muted transition-colors [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
+	"grid size-7 shrink-0 place-items-center rounded-[10px] text-ink-muted press [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
 
 export function BackButton() {
 	const router = useRouter();

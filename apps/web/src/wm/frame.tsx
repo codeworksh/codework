@@ -10,15 +10,18 @@ import {
 	DropdownMenuItem,
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
+	DropdownMenuShortcut,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { shortcutLabel } from "../shell/switcher";
 import { Title } from "./title";
 
 /** A workspace a frame can move to. */
 export interface Destination {
 	readonly id: string;
 	readonly name: string;
-	readonly icon: LucideIcon;
+	/** Its place in the switcher, which is also its Cmd+N key. */
+	readonly position: number;
 }
 
 interface FrameProps {
@@ -147,12 +150,13 @@ function Move({
 			>
 				<AppWindow className="size-3.5" strokeWidth={1.75} />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="min-w-48">
+			<DropdownMenuContent align="end" className="w-64">
 				<DropdownMenuLabel>Move</DropdownMenuLabel>
-				{destinations.map(({ id, name, icon: Icon }) => (
-					<DropdownMenuItem key={id} onSelect={() => onMove(id)}>
-						<Icon strokeWidth={1.75} />
+				{destinations.map(({ id, name, position }) => (
+					<DropdownMenuItem key={id} title={name} onSelect={() => onMove(id)}>
+						<AppWindow strokeWidth={1.75} />
 						<span className="truncate">{name}</span>
+						<DropdownMenuShortcut>{shortcutLabel(position)}</DropdownMenuShortcut>
 					</DropdownMenuItem>
 				))}
 				{destinations.length > 0 && <DropdownMenuSeparator />}
@@ -166,7 +170,7 @@ function Move({
 }
 
 const actionClass =
-	"grid size-6 place-items-center rounded-md text-ink-muted/60 transition-colors hover:bg-ink/8 hover:text-ink aria-pressed:text-ink";
+	"grid size-6 place-items-center rounded-md text-ink-muted/60 press hover:bg-ink/8 hover:text-ink aria-pressed:text-ink";
 
 interface ActionProps {
 	readonly icon: LucideIcon;

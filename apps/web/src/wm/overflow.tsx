@@ -38,7 +38,7 @@ export function Overflow({
 					<ChevronUp className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
 					<span className="font-semibold">+{hidden.length} more</span>
 				</DropdownMenuTrigger>
-				<DropdownMenuContent side="top" align="start" className="max-h-80 min-w-56 overflow-y-auto">
+				<DropdownMenuContent side="top" align="start" className="max-h-80 w-64 overflow-y-auto">
 					{hidden.map(({ id, title, lead, icon: Icon }) => (
 						<DropdownMenuItem key={id} onSelect={() => onPick(id)}>
 							{Icon && <Icon strokeWidth={1.75} />}

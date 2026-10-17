@@ -64,7 +64,8 @@ export function Palette() {
 			open={open}
 			onOpenChange={show}
 			showCloseButton={false}
-			className="top-[20%] translate-y-0 sm:max-w-xl"
+			// No open/close animation: it is keyboard-opened and used many times a day.
+			className="top-[20%] translate-y-0 data-[state=closed]:animate-none! data-[state=open]:animate-none! sm:max-w-xl"
 			command={{
 				value,
 				disablePointerSelection: true,

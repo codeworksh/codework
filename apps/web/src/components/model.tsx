@@ -61,7 +61,7 @@ const modelsAtom = Atom.family((hostDir: string | undefined) =>
 
 // The composer row's pickers: muted text that brightens on hover, like the prompt's own controls.
 const trigger =
-	"flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 outline-none transition-[background-color,color,scale] hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 active:scale-[0.97] data-[state=open]:bg-ink/5 data-[state=open]:text-ink";
+	"flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 outline-none press hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink";
 
 /** A model's name and its provider's, when the list has it. */
 const lookup = <P extends ModelProvider>(providers: ReadonlyArray<P>, ref: ModelRef) => {

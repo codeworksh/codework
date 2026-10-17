@@ -102,7 +102,7 @@ export function ComposerButton({
 			title={label}
 			disabled={disabled}
 			onClick={onClick}
-			className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-brand-ink shadow-xs transition-[opacity,scale,filter] duration-150 enabled:hover:scale-105 enabled:hover:brightness-110 enabled:active:scale-100 disabled:opacity-64"
+			className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-brand-ink shadow-xs transition-[opacity,scale,filter] duration-150 ease-out enabled:hover:brightness-110 enabled:active:scale-[0.97] disabled:opacity-64"
 		>
 			{children}
 		</button>

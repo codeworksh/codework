@@ -18,7 +18,6 @@ import { useArrangedWidgets, useElementSize } from "webwm/react";
 
 import { type Frame as FrameApi, FrameContext, HostContext, type Shell, ShellContext } from "@codeworksh/widget/view";
 import { makeHost } from "../kernel/host";
-import { iconOf } from "../shell/icons";
 import { builtins, registry } from "../widgets";
 import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
@@ -127,6 +126,12 @@ export function Desktop({ workspace }: DesktopProps) {
 	const [drag, setDrag] = useState<Drag | null>(null);
 	const [resizing, setResizing] = useState(false);
 	const [ref, size] = useElementSize<HTMLDivElement>();
+	// A window resize must not tween: frames would trail the window edge by the transition's length.
+	const lastSize = useRef(size);
+	const resized = lastSize.current !== size;
+	useEffect(() => {
+		lastSize.current = size;
+	}, [size]);
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const activeTags = workspaceTag(workspace);
 	const { instances, order } = desk;
@@ -278,9 +283,10 @@ export function Desktop({ workspace }: DesktopProps) {
 		if (created !== undefined) move(instanceId, created);
 	};
 
-	const destinations = workspaces
-		.filter((candidate) => candidate.id !== workspace.id)
-		.map(({ id, name, icon }) => ({ id, name, icon: iconOf(icon) }));
+	// Numbered by switcher position (the Cmd+N key), so same-named workspaces still tell apart.
+	const destinations = workspaces.flatMap(({ id, name }, index) =>
+		id === workspace.id ? [] : [{ id, name, position: index + 1 }],
+	);
 
 	/** The shell API as seen by one widget: the default target, and the opener of what it opens. */
 	const shellFor = (caller: string): Shell => ({
@@ -363,12 +369,16 @@ export function Desktop({ workspace }: DesktopProps) {
 			return next;
 		});
 
+	const mainClass = "box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]";
+	// The first measurement is 0×0; frames committed at it would tween from the origin into their slots.
+	if (size.width === 0 || size.height === 0) return <main className={mainClass} ref={ref} />;
+
 	// With each frame's p-1 inset, p-1 here gives even 8px gaps at edges and between frames.
 	// The scrollbar gutter is always reserved (on both edges, so gaps stay even): if a
 	// scrollbar could take width only when it shows, it would shrink the layout, the
 	// overflow would vanish with it, and the layout would jitter between both.
 	return (
-		<main className="box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]" ref={ref}>
+		<main className={mainClass} ref={ref}>
 			<div
 				ref={surfaceRef}
 				className="relative"
@@ -398,7 +408,7 @@ export function Desktop({ workspace }: DesktopProps) {
 							maximized={layout === "monocle"}
 							canDrag={layout === "tile" && !pinned.has(widget.id)}
 							offset={drag?.widgetId === widget.id ? drag : null}
-							animate={!resizing}
+							animate={!resizing && !resized}
 							onFocus={() => focusWidget(widget.id)}
 							onPin={() => togglePin(widget.id)}
 							onMaximize={() => toggleMax(widget.id)}
