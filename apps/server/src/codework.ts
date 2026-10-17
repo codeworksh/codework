@@ -68,6 +68,9 @@ export const layer = Layer.effect(Client, RpcClient.make(Mirror.Api, { flatten: 
 					Effect.orDie,
 					Effect.provideService(FileSystem.FileSystem, fs),
 					Effect.provideService(Servers.Service, servers),
+					// The socket reads its URL while opening, which Effect runs uninterruptibly; waiting there
+					// for a server to register would otherwise keep the app server from ever shutting down.
+					Effect.interruptible,
 				);
 				return endOnHomeChange(yield* Socket.makeWebSocket(url), servers.homeChanges);
 			}),
