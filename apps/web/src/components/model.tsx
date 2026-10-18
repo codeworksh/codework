@@ -399,8 +399,6 @@ export function ThinkingPicker({
 	const levels =
 		list === undefined || current === undefined ? [] : (lookup(list.providers, current)?.model.thinkingLevels ?? []);
 	const picked = useRef<HTMLDivElement>(null);
-	// What settings would run this model at, marked so the reader knows what leaving it alone means.
-	const fallback = list === undefined ? undefined : clamp(list.default.thinkingLevel, levels);
 	const shown = list === undefined ? undefined : clamp(value ?? list.default.thinkingLevel, levels);
 	const choosable = shown !== undefined && levels.some((level) => level !== "off");
 
@@ -447,11 +445,6 @@ export function ThinkingPicker({
 							className="gap-1.5 rounded-md py-1 text-[13px] aria-current:bg-ink/[0.08]"
 						>
 							{levelLabels[level]}
-							{level === fallback && (
-								<span className="rounded-[4px] border border-edge px-1 text-[10px] leading-3.5 text-ink-muted">
-									Default
-								</span>
-							)}
 						</DropdownMenuItem>
 					))}
 				</DropdownMenuContent>
