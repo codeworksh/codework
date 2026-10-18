@@ -1,4 +1,4 @@
-import type { Desk as SavedDesk } from "@codeworksh/server/contract";
+import type { Desk as SavedDesk } from "@codeworksh/contract";
 import type { Schema } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { attachWidget, detachWidget, focusWidget, moveWidgetRelative, type WidgetOrder } from "webwm";

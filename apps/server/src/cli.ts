@@ -12,12 +12,8 @@ import {
 	ServersError,
 	type ServerStatus,
 	type ServerUpdate,
-} from "./contract.ts";
+} from "@codeworksh/contract";
 import { Servers } from "./servers.ts";
-
-/** Splits typed arguments as a shell would for plain words and quotes: `--name "a b"` is two. */
-const splitArgs = (input: string) =>
-	[...input.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
 
 // Where the install script puts the binary unless told otherwise.
 const installDir = Config.String("CODEWORK_INSTALL_DIR").pipe(
@@ -64,14 +60,27 @@ const onPath = Effect.gen(function* () {
 		.findLast((line) => line.startsWith("/"));
 }).pipe(Effect.orElseSucceed(() => undefined));
 
-const probe = (file: string, custom: boolean) =>
-	run(file, ["--version"], "10 seconds").pipe(
+interface Command {
+	readonly file: string;
+	/** Arguments that go before the CLI's own, as for a source entry run by `node`. */
+	readonly prefix: ReadonlyArray<string>;
+}
+
+/** A chosen executable, split as typed; a found binary's path is never split, as it may hold spaces. */
+const split = (executable: string): Command => {
+	const [file = executable, ...prefix] = Servers.splitArgs(executable);
+	return { file, prefix };
+};
+
+// `executable` is shown as `path`: a binary's path, or the whole command as stored.
+const probe = ({ file, prefix }: Command, executable: string, custom: boolean) =>
+	run(file, [...prefix, "--version"], "10 seconds").pipe(
 		Effect.map(({ output, code }): CliInstall => {
 			const version = /\bv?(\d+\.\d+\.\d+\S*)/.exec(output)?.[1];
-			if (code === 0 && version !== undefined) return { path: file, custom, version };
-			return { path: file, custom, failure: reason(output, code) };
+			if (code === 0 && version !== undefined) return { path: executable, custom, version };
+			return { path: executable, custom, failure: reason(output, code) };
 		}),
-		Effect.catch((error) => Effect.succeed<CliInstall>({ path: file, custom, failure: error.message })),
+		Effect.catch((error) => Effect.succeed<CliInstall>({ path: executable, custom, failure: error.message })),
 	);
 
 const exists = (file: string) =>
@@ -92,7 +101,7 @@ const found = Effect.gen(function* () {
 	let broken: CliInstall | null = null;
 	for (const file of candidates) {
 		if (!(yield* exists(file))) continue;
-		const install = yield* probe(file, false);
+		const install = yield* probe({ file, prefix: [] }, file, false);
 		if ("version" in install) return install;
 		broken ??= install;
 	}
@@ -100,14 +109,16 @@ const found = Effect.gen(function* () {
 });
 
 /** The `codework` a server runs: the one chosen for it, else the one found. */
-const executableOf = (row: Servers.Row, foundOnce: typeof found) =>
-	row.executable === null
-		? foundOnce
-		: Effect.flatMap(exists(row.executable), (present) =>
-				present
-					? probe(row.executable!, true)
-					: Effect.succeed<CliInstall>({ path: row.executable!, custom: true, failure: "No file at this path." }),
-			);
+const executableOf = (row: Servers.Row, foundOnce: typeof found) => {
+	const { executable } = row;
+	if (executable === null) return foundOnce;
+	const command = split(executable);
+	return Effect.flatMap(exists(command.file), (present) =>
+		present
+			? probe(command, executable, true)
+			: Effect.succeed<CliInstall>({ path: executable, custom: true, failure: "No file at this path." }),
+	);
+};
 
 const alive = (pid: number) =>
 	Effect.sync(() => {
@@ -220,8 +231,9 @@ export const handlers = {
 			return yield* new ServersError({ message: "No working codework CLI was found." });
 		const env = Object.fromEntries(row.env.map(({ name, value }) => [name, value]));
 		// `stop` takes no server options, so the arguments go only to what starts a server.
-		const args = action === "stop" ? [] : splitArgs(row.args);
-		const { output, code } = yield* run(cli.path, ["service", action, ...args], "30 seconds", {
+		const args = action === "stop" ? [] : Servers.splitArgs(row.args);
+		const { file, prefix } = row.executable === null ? { file: cli.path, prefix: [] } : split(row.executable);
+		const { output, code } = yield* run(file, [...prefix, "service", action, ...args], "30 seconds", {
 			...env,
 			CODEWORK_HOME_DIR: servers.homeOf(row).path,
 		}).pipe(

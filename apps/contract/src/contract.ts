@@ -27,8 +27,10 @@ export class CodeworkUnavailable extends Schema.TaggedError<CodeworkUnavailable>
 	message: Schema.String,
 }) {}
 
-/** The models could not be listed: a settings file or the model catalog is broken. */
+/** The models could not be listed: a settings file or the model catalog, at `path`, is broken. */
 export class ModelsError extends Schema.TaggedError<ModelsError>()("Server.ModelsError", {
+	source: Schema.Literals(["settings", "catalog"]),
+	path: Schema.String,
 	message: Schema.String,
 }) {}
 

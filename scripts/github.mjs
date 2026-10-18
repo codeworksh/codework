@@ -1,21 +1,23 @@
-// GitHub Releases for one publish run: `node scripts/github.mjs <dev|latest> <assets dir>`. The
-// release job of .github/workflows/publish.yml runs it after npm, so a release never names a
-// version npm does not have. canary is npm only.
+// GitHub Releases for one publish run: `node scripts/github.mjs <canary|dev|latest> <assets dir>`.
+// The release jobs of .github/workflows/publish.yml run it after npm, so a release never names a
+// version npm does not have.
 //
+// canary: `nightly`, one prerelease replaced on every push, carrying the desktop app, titled with
+// the desktop app's version for the run.
 // dev: `devel`, one prerelease replaced on every push, carrying the CLI binaries, so the installer
 // has a fixed URL for the newest development build.
 // latest: `<pkg>@v<version>` for each package not released yet; the CLI's carries the binaries
 // and is marked latest. The tag is the one `vp run bump` made, or a new one at this commit.
 import { spawnSync } from "node:child_process";
-import { globSync } from "node:fs";
+import { globSync, readFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 
 import { releaseId, releaseVersion } from "./version.mjs";
 import { publishablePackages, repoRoot as root } from "./workspace.mjs";
 
 const [channel, assetsDir] = process.argv.slice(2);
-if (!["dev", "latest"].includes(channel) || !assetsDir) {
-	console.error("Usage: node scripts/github.mjs <dev|latest> <assets dir>");
+if (!["canary", "dev", "latest"].includes(channel) || !assetsDir) {
+	console.error("Usage: node scripts/github.mjs <canary|dev|latest> <assets dir>");
 	process.exit(1);
 }
 const assets = globSync("*", { cwd: assetsDir }).map((file) => resolve(assetsDir, file));
@@ -52,7 +54,31 @@ function previousTag(name, version) {
 
 const cli = publishablePackages().find(({ manifest }) => manifest.name === "@codeworksh/cli").manifest;
 
-if (channel === "dev") {
+if (channel === "canary") {
+	// The desktop app is private: it ships as installers, so it is not among the published packages.
+	const desktop = JSON.parse(readFileSync(resolve(root, "apps/desktop/package.json"), "utf8"));
+	const version = releaseVersion(desktop.version, channel, releaseId(channel));
+	gh("release", "delete", "nightly", "--cleanup-tag", "--yes");
+	ghOrThrow(
+		"release",
+		"create",
+		"nightly",
+		...assets,
+		"--prerelease",
+		"--latest=false",
+		"--target",
+		sha,
+		"--title",
+		`desktop@v${version}`,
+		"--notes",
+		[
+			`CodeWork Canary desktop build ${version}, from ${sha}. Replaced on every canary push.`,
+			"",
+			"macOS builds are not signed or notarized yet. After installing, run:",
+			'`xattr -dr com.apple.quarantine "/Applications/CodeWork Canary.app"`',
+		].join("\n"),
+	);
+} else if (channel === "dev") {
 	const version = releaseVersion(cli.version, channel, releaseId(channel));
 	gh("release", "delete", "devel", "--cleanup-tag", "--yes");
 	ghOrThrow(

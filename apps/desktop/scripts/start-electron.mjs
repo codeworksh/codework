@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const electronBinary = createRequire(import.meta.url)("electron");
 const APP_NAME = "CodeWork";
+// Its own identity, so a local run never shares data or Dock state with an installed channel.
+const APP_ID = "sh.codework.desktop.local";
 
 // macOS names the Dock icon after the running bundle's Info.plist, so on macOS
 // Electron runs from a renamed copy of Electron.app, rebuilt when Electron changes.
@@ -15,7 +17,8 @@ function brandedElectron() {
 	const target = path.join(desktopDir, ".electron-runtime", `${APP_NAME}.app`);
 	const marker = path.join(desktopDir, ".electron-runtime", "source");
 	const binary = path.join(target, "Contents", "MacOS", "Electron");
-	if (existsSync(marker) && readFileSync(marker, "utf8") === source) return binary;
+	const stamp = `${source}\n${APP_ID}`;
+	if (existsSync(marker) && readFileSync(marker, "utf8") === stamp) return binary;
 
 	rmSync(target, { recursive: true, force: true });
 	// Keeps the frameworks' relative symlinks; absolute ones crash the helper processes.
@@ -24,11 +27,11 @@ function brandedElectron() {
 	for (const [key, value] of [
 		["CFBundleName", APP_NAME],
 		["CFBundleDisplayName", APP_NAME],
-		["CFBundleIdentifier", "sh.codework.desktop.dev"],
+		["CFBundleIdentifier", APP_ID],
 	])
 		execFileSync("plutil", ["-replace", key, "-string", value, plist]);
 	execFileSync("codesign", ["--force", "--deep", "--sign", "-", target]);
-	writeFileSync(marker, source);
+	writeFileSync(marker, stamp);
 	return binary;
 }
 

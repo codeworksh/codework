@@ -6,7 +6,7 @@ import { RpcSerialization, RpcServer } from "effect/rpc";
 import { createServer } from "node:http";
 import type { Socket } from "node:net";
 import { Codework } from "./codework.ts";
-import { Contract } from "./contract.ts";
+import { Contract } from "@codeworksh/contract";
 import { Db } from "./db.ts";
 import { Event } from "./event.ts";
 import { Handlers } from "./handlers.ts";

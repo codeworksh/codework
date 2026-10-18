@@ -4,8 +4,10 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { SERVER_CHANNEL } from "./ipc.ts";
 
-// Dev layout: the server bundle sits beside this app in the workspace.
-const ENTRY = path.resolve(app.getAppPath(), "../server/dist/index.mjs");
+// The server bundle: in the app's Resources when packaged, else beside this app in the workspace.
+const ENTRY = app.isPackaged
+	? path.join(process.resourcesPath, "server", "index.mjs")
+	: path.resolve(app.getAppPath(), "../server/dist/index.mjs");
 
 // How long the server gets to stop by itself on quit before it is killed.
 const STOP_GRACE_MS = 5000;

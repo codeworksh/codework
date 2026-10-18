@@ -1,5 +1,5 @@
 import { useAtomSet } from "@effect/atom-react";
-import { type CliAction, LOCAL_SERVER, type ServerStatus, type ServerUpdate } from "@codeworksh/server/contract";
+import { type CliAction, LOCAL_SERVER, type ServerStatus, type ServerUpdate } from "@codeworksh/contract";
 import { Check, Copy, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
@@ -15,7 +15,6 @@ import {
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { messageOf } from "@/lib/utils";
 import brand from "../../assets/codework.png";
 import { Server } from "../../kernel/rpc";
@@ -96,6 +95,7 @@ export function LocalItem({ status }: { status: ServerStatus }) {
 						</TriangleAlert>
 					)}
 				</span>
+				<StatusLine status={status} />
 				<span className="flex flex-wrap gap-1.5">
 					<Badge tone="muted">Local</Badge>
 					{status.isDefault && <Badge tone="info">Default</Badge>}
@@ -104,6 +104,40 @@ export function LocalItem({ status }: { status: ServerStatus }) {
 		</div>
 	);
 }
+
+const DOTS: Record<Tone, string> = {
+	success: "bg-success",
+	warning: "bg-warning",
+	danger: "bg-destructive",
+	info: "bg-info",
+	muted: "bg-ink-muted/50",
+};
+
+/** A server's state in a few words, as its row in the list reads it. */
+function stateOf({ cli, server }: ServerStatus): { tone: Tone; text: string } {
+	if (cli === null) return { tone: "warning", text: "Not installed" };
+	if ("failure" in cli) return { tone: "danger", text: "Won't start" };
+	switch (server._tag) {
+		case "Running":
+			return { tone: "success", text: `Running · ${new URL(server.url).host}` };
+		case "Unreachable":
+			return { tone: "warning", text: "Not answering" };
+		case "Incompatible":
+			return { tone: "danger", text: "Incompatible version" };
+		case "Stopped":
+			return { tone: "muted", text: "Stopped" };
+	}
+}
+
+const StatusLine = ({ status }: { status: ServerStatus }) => {
+	const { tone, text } = stateOf(status);
+	return (
+		<span className="flex items-center gap-1.5 text-[12px] text-ink-muted">
+			<span className={`size-1.5 shrink-0 rounded-full ${DOTS[tone]}`} aria-hidden />
+			<span className="truncate">{text}</span>
+		</span>
+	);
+};
 
 /** A local server: its name, its state and controls, then how it runs and what it starts with. */
 export function LocalDetail({ status }: { status: ServerStatus }) {
@@ -134,6 +168,7 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 				<Badge tone="muted">Local</Badge>
 				{status.isDefault && <Badge tone="info">Default</Badge>}
 				<span className="flex-1" />
+				<MakeDefault status={status} onError={setError} />
 				<ServerActions status={status} onError={setError} />
 			</header>
 
@@ -247,35 +282,26 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 	);
 }
 
-/**
- * Whether the app connects through this server. There is always exactly one default, so the default's
- * switch stays on: turning another one on moves the default there.
- */
-export function DefaultSwitch({ status }: { status: ServerStatus }) {
+/** Moves the default, the server the app connects through, here; the default itself shows none. */
+function MakeDefault({ status, onError }: { status: ServerStatus; onError: (message: string) => void }) {
 	const setDefault = useAtomSet(setDefaultAtom, { mode: "promise" });
 	const [switching, setSwitching] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+	if (status.isDefault) return null;
 	return (
-		<Switch
-			aria-label={`Use ${status.name} as the default server`}
-			title={
-				error ??
-				(status.isDefault
-					? "The default server: turn another one on to switch"
-					: "Make this the default server, the one the app connects through")
-			}
-			checked={status.isDefault}
-			disabled={status.isDefault || switching}
-			className={error === null ? undefined : "ring-2 ring-destructive/50"}
-			onCheckedChange={(on) => {
-				if (!on) return;
+		<Button
+			size="sm"
+			variant="outline"
+			disabled={switching}
+			title="Connect the app through this server"
+			onClick={() => {
 				setSwitching(true);
-				setError(null);
 				setDefault({ payload: { id: status.id }, reactivityKeys: serversKey })
-					.catch((cause: unknown) => setError(messageOf(cause)))
+					.catch((cause: unknown) => onError(messageOf(cause)))
 					.finally(() => setSwitching(false));
 			}}
-		/>
+		>
+			{switching ? "Switching…" : "Make Default"}
+		</Button>
 	);
 }
 

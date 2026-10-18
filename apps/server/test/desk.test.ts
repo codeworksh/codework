@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vite-plus/test";
-import { Contract } from "../src/contract.ts";
+import { Contract } from "@codeworksh/contract";
 
 const entry = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const home = mkdtempSync(join(tmpdir(), "codework-desk-"));

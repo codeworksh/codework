@@ -13,7 +13,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@codeworksh/server": "workspace:*",
+		"@codeworksh/contract": "workspace:*",
 		"@codeworksh/widget": "workspace:*",
 		"@effect/atom-react": "4.0.5",
 		"@legendapp/list": "3.3.5",
@@ -22,8 +22,8 @@
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"cmdk": "^1.1.1",
-		"hast-util-to-jsx-runtime": "2.3.6",
 		"effect": "4.0.5",
+		"hast-util-to-jsx-runtime": "2.3.6",
 		"lucide-react": "^1.52.0",
 		"radix-ui": "^1.7.0",
 		"react": "^19.3.0",

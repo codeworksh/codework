@@ -1,5 +1,5 @@
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
-import type { Workspace } from "@codeworksh/server/contract";
+import type { Workspace } from "@codeworksh/contract";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { useContext } from "react";
 import { tagBit } from "webwm";

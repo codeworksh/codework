@@ -1,4 +1,4 @@
-import { Contract } from "@codeworksh/server/contract";
+import { Contract } from "@codeworksh/contract";
 import { Effect, Layer } from "effect";
 import { type AsyncResult, type Atom, AtomRegistry, AtomRpc } from "effect/reactivity";
 import { RpcClient, RpcSerialization } from "effect/rpc";

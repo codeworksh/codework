@@ -1,10 +1,11 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { AsyncResult } from "effect/reactivity";
-import { Play, RotateCw, Settings } from "lucide-react";
+import { RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { serversAtom, useServerAction } from "../settings/servers/local";
+import { serversAtom } from "../settings/servers/local";
+import { fixIcons, problemOf, useFix } from "../settings/servers/problem";
 import { projectsAtom } from "../widgets/session/projects";
 import { Empty, EmptyAction } from "./empty";
 
@@ -16,24 +17,17 @@ export function ServerOffline() {
 	const servers = useAtomValue(serversAtom);
 	const refreshProjects = useAtomRefresh(projectsAtom);
 	const navigate = useNavigate();
-	const { running, error, act } = useServerAction();
+	const fix = useFix(refreshProjects);
 	const server = AsyncResult.isSuccess(servers) ? servers.value.find((candidate) => candidate.isDefault) : undefined;
-	const settings = () => void navigate({ to: "/settings/servers" });
 	const settingsLink = (
 		<button
 			type="button"
-			onClick={settings}
+			onClick={() => void navigate({ to: "/settings/servers" })}
 			className="text-[11px] text-ink-muted/70 underline-offset-2 outline-none hover:text-ink hover:underline focus-visible:underline"
 		>
 			Server Settings
 		</button>
 	);
-
-	// Asks the server, then loads the list again once it is up.
-	const run = (action: "start" | "restart") => {
-		if (server === undefined) return;
-		void act(server.id, action).then((done) => done && refreshProjects());
-	};
 
 	if (server === undefined)
 		return (
@@ -42,82 +36,33 @@ export function ServerOffline() {
 			</Message>
 		);
 
-	const { cli } = server;
-	if (cli === null)
+	const problem = problemOf(server);
+	if (problem === undefined)
 		return (
-			<Message
-				title="CodeWork Isn't Installed"
-				line="Install it, or point to it, to see your projects and sessions."
-			>
-				<EmptyAction icon={<Settings className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />} onClick={settings}>
-					Set Up
-				</EmptyAction>
-			</Message>
-		);
-	if ("failure" in cli)
-		return (
-			<Message title="CodeWork Won't Start" line={`The codework executable for ${server.name} fails to run.`}>
-				<EmptyAction icon={<Settings className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />} onClick={settings}>
-					Server Settings
+			<Message title="Could Not Load Sessions" line={`${server.name} is running but the list didn't load.`}>
+				<EmptyAction
+					icon={<RotateCw className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />}
+					onClick={() => refreshProjects()}
+				>
+					Try Again
 				</EmptyAction>
 			</Message>
 		);
 
-	switch (server.server._tag) {
-		case "Stopped":
-			return (
-				<Message title="Server Not Running" line={`${server.name} isn't running, so your projects can't load.`}>
-					<EmptyAction
-						icon={<Play className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />}
-						disabled={running !== null}
-						onClick={() => run("start")}
-					>
-						{running === "start" ? "Starting…" : "Start Server"}
-					</EmptyAction>
-					{error !== null && <Failure message={error} />}
-					{settingsLink}
-				</Message>
-			);
-		case "Unreachable":
-			return (
-				<Message title="Server Not Answering" line={`${server.name} is registered but doesn't reply.`}>
-					<EmptyAction
-						icon={<RotateCw className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />}
-						disabled={running !== null}
-						onClick={() => run("restart")}
-					>
-						{running === "restart" ? "Restarting…" : "Restart"}
-					</EmptyAction>
-					{error !== null && <Failure message={error} />}
-					{settingsLink}
-				</Message>
-			);
-		case "Incompatible":
-			return (
-				<Message
-					title="Server Is Another Build"
-					line={`${server.name} runs codework v${server.server.version}, which this app can't read.`}
-				>
-					<EmptyAction
-						icon={<Settings className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />}
-						onClick={settings}
-					>
-						Server Settings
-					</EmptyAction>
-				</Message>
-			);
-		case "Running":
-			return (
-				<Message title="Could Not Load Sessions" line={`${server.name} is running but the list didn't load.`}>
-					<EmptyAction
-						icon={<RotateCw className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />}
-						onClick={() => refreshProjects()}
-					>
-						Try Again
-					</EmptyAction>
-				</Message>
-			);
-	}
+	const Icon = fixIcons[problem.fix];
+	return (
+		<Message title={problem.title} line={problem.line}>
+			<EmptyAction
+				icon={<Icon className="-mx-0.5 size-3" strokeWidth={2} aria-hidden />}
+				disabled={fix.running}
+				onClick={() => fix.run(server, problem)}
+			>
+				{fix.label(problem)}
+			</EmptyAction>
+			{fix.error !== null && <Failure message={fix.error} />}
+			{problem.fix !== "settings" && settingsLink}
+		</Message>
+	);
 }
 
 function Message({ title, line, children }: { title: string; line: string; children?: ReactNode }) {
