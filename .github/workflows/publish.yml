@@ -4,7 +4,8 @@ name: Publish
 # - canary / dev: every push to that branch
 # - latest: run by hand on `main`; publishes each package whose version is not on npm yet
 # dev and latest also build the standalone binary and attach it to a GitHub Release: `devel`, one
-# prerelease replaced on every dev push, or `cli-v<version>`, marked latest. canary stays npm-only.
+# prerelease replaced on every dev push, or `cli-v<version>`, marked latest. canary builds the
+# desktop app instead and attaches it to `nightly`, one prerelease replaced on every canary push.
 on:
    push:
       branches: [canary, dev]
@@ -205,3 +206,84 @@ jobs:
                  gh release create "cli-v$version" release/* --latest --target "$GITHUB_SHA" \
                     --title "CLI $version" --generate-notes
               fi
+
+   desktop:
+      needs: guard
+      if: github.ref_name == 'canary'
+      name: desktop (${{ matrix.target }})
+      runs-on: ${{ matrix.runner }}
+      strategy:
+         fail-fast: true
+         matrix:
+            # Each on its own platform: electron-builder packages for the host, and macOS signs.
+            include:
+               - target: mac-arm64
+                 runner: macos-14
+                 args: --mac --arm64
+               - target: linux-arm64
+                 runner: ubuntu-24.04-arm
+                 args: --linux --arm64
+               - target: linux-x64
+                 runner: ubuntu-24.04
+                 args: --linux --x64
+      env:
+         CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
+      steps:
+         - uses: actions/checkout@v6
+         # The pacman target packs with bsdtar.
+         - if: runner.os == 'Linux'
+           run: sudo apt-get update && sudo apt-get install -y libarchive-tools
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              run-install: false
+              cache: false
+         # The app packages the web app and the app server it builds, so those install too.
+         - run: vp install --frozen-lockfile --filter '@codeworksh/desktop...' --filter '@codeworksh/server...'
+         - working-directory: apps/desktop
+           run: vp run package "$CHANNEL" ${{ matrix.args }}
+         # Installers only; electron-builder's update blockmaps and unpacked app stay behind.
+         - uses: actions/upload-artifact@v7
+           with:
+              name: desktop-${{ matrix.target }}
+              path: |
+                 apps/desktop/dist/codework-desktop-*.dmg
+                 apps/desktop/dist/codework-desktop-*.zip
+                 apps/desktop/dist/codework-desktop-*.AppImage
+                 apps/desktop/dist/codework-desktop-*.deb
+                 apps/desktop/dist/codework-desktop-*.pacman
+              if-no-files-found: error
+              retention-days: 1
+
+   # After npm, so `nightly` never names a commit whose packages did not ship.
+   nightly:
+      needs: [guard, publish, desktop]
+      if: github.ref_name == 'canary'
+      runs-on: ubuntu-latest
+      permissions:
+         contents: write
+      env:
+         CODEWORK_RELEASE_ID: ${{ needs.guard.outputs.id }}
+         GH_TOKEN: ${{ github.token }}
+      steps:
+         - uses: actions/checkout@v6
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              run-install: false
+              cache: false
+         - uses: actions/download-artifact@v8
+           with:
+              pattern: desktop-*
+              path: release
+              merge-multiple: true
+         - run: |
+              (cd release && sha256sum codework-desktop-* > SHA256SUMS)
+              version="$(node scripts/version.mjs canary apps/desktop)"
+              gh release delete nightly --cleanup-tag --yes || true
+              gh release create nightly release/* --prerelease --latest=false --target "$GITHUB_SHA" \
+                 --title "desktop@v$version" \
+                 --notes "CodeWork Canary desktop build $version, from $GITHUB_SHA. Replaced on every canary push.
+
+              macOS builds are not signed or notarized yet. After installing, run:
+              xattr -dr com.apple.quarantine \"/Applications/CodeWork Canary.app\""

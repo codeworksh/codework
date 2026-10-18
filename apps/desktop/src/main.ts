@@ -9,9 +9,12 @@ const HOST = "app";
 const APP_URL = `${SCHEME}://${HOST}/`;
 
 // When set (web dev server), the scheme proxies to it; otherwise the bundled
-// `@codeworksh/web` build is served from disk.
+// `@codeworksh/web` build is served from disk: the app's Resources when packaged,
+// else the workspace beside this app.
 const DEV_SERVER_URL = process.env.CODEWORK_WEB_URL;
-const CLIENT_ASSETS_DIR = process.env.CODEWORK_WEB_DIR ?? path.resolve(app.getAppPath(), "../web/dist");
+const CLIENT_ASSETS_DIR =
+	process.env.CODEWORK_WEB_DIR ??
+	(app.isPackaged ? path.join(process.resourcesPath, "web") : path.resolve(app.getAppPath(), "../web/dist"));
 // The 3D brand mark on Apple's icon grid. A packaged build will carry it as an .icns; until then
 // it is set at runtime, or the Dock shows Electron's own icon.
 const ICON = path.join(app.getAppPath(), "resources/icon.png");

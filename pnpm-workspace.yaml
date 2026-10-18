@@ -29,5 +29,7 @@ allowBuilds:
    webgpu: false
    # Local Workers runtime used by Alchemy dev.
    workerd: true
+   # electron-builder's Windows installer; the desktop app builds no Windows targets.
+   electron-winstaller: false
 
 storeDir: .pnpm-store
