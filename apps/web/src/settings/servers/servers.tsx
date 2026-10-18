@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddServer } from "./add";
-import { DefaultSwitch, LocalDetail, LocalItem, serversAtom } from "./local";
+import { LocalDetail, LocalItem, serversAtom } from "./local";
 
 /** The CodeWork servers the app can work with, listed beside the one selected; the built-in one is always there. */
 export function ServersSettings() {
@@ -49,22 +49,15 @@ export function ServersSettings() {
 					className="flex flex-col border-edge @max-3xl:border-b @3xl:overflow-y-auto @3xl:border-r"
 				>
 					{servers?.map((server) => (
-						<div
+						<button
 							key={server.id}
-							className={`flex items-center border-b border-edge transition-colors ${server.id === selected?.id ? "bg-ink/4" : "hover:bg-ink/3"}`}
+							type="button"
+							aria-current={server.id === selected?.id ? "true" : undefined}
+							className={`border-b border-edge pr-5 text-left transition-colors ${server.id === selected?.id ? "bg-ink/4" : "hover:bg-ink/3"}`}
+							onClick={() => setSelectedId(server.id)}
 						>
-							<button
-								type="button"
-								aria-current={server.id === selected?.id ? "true" : undefined}
-								className="min-w-0 flex-1 text-left"
-								onClick={() => setSelectedId(server.id)}
-							>
-								<LocalItem status={server} />
-							</button>
-							<span className="px-5">
-								<DefaultSwitch status={server} />
-							</span>
-						</div>
+							<LocalItem status={server} />
+						</button>
 					))}
 					<button
 						type="button"

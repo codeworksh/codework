@@ -1,4 +1,4 @@
-import { Clock, Config, Context, Effect, Layer, Schema, Stream, SubscriptionRef } from "effect";
+import { Clock, Config, Context, Effect, FileSystem, Layer, Schema, Stream, SubscriptionRef } from "effect";
 import { SqlClient } from "effect/sql";
 /* @effect-diagnostics nodeBuiltinImport:off -- paths typed in Settings expand against the OS home directory. */
 import os from "node:os";
@@ -14,7 +14,12 @@ export const StoredEnv = Schema.Array(
 );
 export type StoredEnv = typeof StoredEnv.Type;
 
-/** A server as stored. A `null` executable or home is the one found. */
+/** Splits typed arguments as a shell would for plain words and quotes: `--name "a b"` is two. */
+export const splitArgs = (input: string) =>
+	[...input.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
+
+/** A server as stored. A `null` executable or home is the one found. An executable is a path, or a
+ * command whose first word is one (`node --conditions=development …/index.ts`, running from source). */
 export interface Row {
 	readonly id: string;
 	readonly kind: "local";
@@ -40,6 +45,24 @@ const chosenPath = (input: string | null) =>
 		if (!path.isAbsolute(expanded))
 			return yield* fail("Use a full path, such as ~/.codework or /usr/local/bin/codework.");
 		return path.normalize(expanded);
+	});
+
+const quoted = (word: string) => (/\s/.test(word) ? `"${word}"` : word);
+
+/**
+ * An executable typed in Settings: a path as {@link chosenPath}, optionally followed by arguments.
+ * A typed path naming a file is that file even with spaces in it, as an install folder may have.
+ */
+const chosenCommand = (fs: FileSystem.FileSystem, input: string | null) =>
+	Effect.gen(function* () {
+		const whole = yield* chosenPath(input).pipe(Effect.orElseSucceed(() => null));
+		if (whole !== null && (yield* fs.exists(whole).pipe(Effect.orElseSucceed(() => false)))) return quoted(whole);
+		const [program, ...rest] = splitArgs(input ?? "");
+		const file = yield* chosenPath(program ?? null);
+		if (file === null) return null;
+		// `~/…` arguments expand too, so a source entry can be typed as it reads in a terminal.
+		const args = rest.map((word) => (word.startsWith("~/") ? path.join(os.homedir(), word.slice(1)) : word));
+		return [file, ...args].map(quoted).join(" ");
 	});
 
 const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -98,6 +121,7 @@ export const layer = Layer.effect(
 	Service,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const fs = yield* FileSystem.FileSystem;
 		const fallback = yield* cliHome.pipe(Effect.orDie);
 
 		const list = sql<Omit<Row, "env" | "isDefault" | "kind"> & { kind: string; env: string; isDefault: number }>`
@@ -174,7 +198,7 @@ export const layer = Layer.effect(
 							id,
 							kind: "local",
 							name: yield* name(input.name),
-							executable: yield* chosenPath(input.executable),
+							executable: yield* chosenCommand(fs, input.executable),
 							home,
 							args: input.args.trim(),
 							env: "[]",
@@ -193,7 +217,7 @@ export const layer = Layer.effect(
 						const row = yield* get(id);
 						const fields: Record<string, string | null> = {};
 						if (patch.name !== undefined) fields.name = yield* name(patch.name);
-						if (patch.executable !== undefined) fields.executable = yield* chosenPath(patch.executable);
+						if (patch.executable !== undefined) fields.executable = yield* chosenCommand(fs, patch.executable);
 						if (patch.args !== undefined) fields.args = patch.args.trim();
 						if (patch.env !== undefined) fields.env = JSON.stringify(yield* nextEnv(patch.env, row.env));
 						if (patch.home !== undefined) {
