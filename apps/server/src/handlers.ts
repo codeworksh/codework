@@ -57,12 +57,18 @@ export const layer = Contract.Api.toLayer(
 					client("model.list", hostDir === undefined ? {} : { hostDir }).pipe(
 						Effect.map((list) => ({ list })),
 						Effect.catchTags({
-							SettingsError: (error) => Effect.succeed({ failed: `${error.path}: ${error.detail}` }),
-							"Runner.ModelCatalogError": (error) => Effect.succeed({ failed: error.detail }),
+							SettingsError: (error) =>
+								Effect.succeed({
+									failed: new ModelsError({ source: "settings", path: error.path, message: error.detail }),
+								}),
+							"Runner.ModelCatalogError": (error) =>
+								Effect.succeed({
+									failed: new ModelsError({ source: "catalog", path: error.path, message: error.detail }),
+								}),
 						}),
 					),
 				);
-				if ("failed" in listed) return yield* new ModelsError({ message: listed.failed });
+				if ("failed" in listed) return yield* listed.failed;
 				return listed.list;
 			}),
 

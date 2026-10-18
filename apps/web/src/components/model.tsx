@@ -1,10 +1,10 @@
 import { type ModelProvider, ThinkingLevel } from "@codeworksh/widget/codework";
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Command as CommandPrimitive } from "cmdk";
-import { Option, Schema } from "effect";
+import { Cause, Option, Schema } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { Brain, ChevronDown, Search } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { Brain, ChevronDown, FileSearch, RotateCw, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
 	DropdownMenu,
@@ -15,6 +15,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Server } from "../kernel/rpc";
+import { serversAtom } from "../settings/servers/local";
+import { fixIcons, problemOf, useFix } from "../settings/servers/problem";
+import type { Notice } from "./banner";
 import { ProviderIcon } from "./provider";
 
 export interface ModelRef {
@@ -58,6 +61,71 @@ export function useChoice() {
 const modelsAtom = Atom.family((hostDir: string | undefined) =>
 	Server.query("models.list", hostDir === undefined ? {} : { hostDir }),
 );
+
+/**
+ * Why the models for `hostDir` can't be listed, as the composer's notice; undefined while they can.
+ * A down server is named from its own status, which is checked again when it goes down and comes
+ * back. While it fails the list is asked for again every few seconds, so the notice clears itself
+ * and the pickers come back once whatever was wrong is fixed, here or elsewhere.
+ */
+export function useModelsNotice(hostDir: string | undefined): Notice | undefined {
+	const result = useAtomValue(modelsAtom(hostDir));
+	const refresh = useAtomRefresh(modelsAtom(hostDir));
+	const servers = useAtomValue(serversAtom);
+	const refreshServers = useAtomRefresh(serversAtom);
+	const fix = useFix(refresh);
+	const error = AsyncResult.isFailure(result) ? Option.getOrUndefined(Cause.findErrorOption(result.cause)) : undefined;
+	const failed = AsyncResult.isFailure(result);
+	const down = error?._tag === "Server.CodeworkUnavailable";
+
+	useEffect(() => {
+		if (!failed || result.waiting) return;
+		const timer = setTimeout(refresh, 5_000);
+		return () => clearTimeout(timer);
+	}, [failed, result, refresh]);
+	// The server's status costs a login shell and the CLI to read, so only on the way down and back up.
+	const wasDown = useRef(false);
+	useEffect(() => {
+		if (down !== wasDown.current) refreshServers();
+		wasDown.current = down;
+	}, [down, refreshServers]);
+
+	if (!failed) return undefined;
+	const retry = { label: "Try Again", icon: RotateCw, disabled: result.waiting, onClick: refresh };
+	if (error?._tag === "Server.ModelsError") {
+		if (error.source === "catalog")
+			return {
+				title: "Model Catalog Missing or Unavailable",
+				description: error.message,
+				tone: "error",
+				action: retry,
+			};
+		const { reveal } = window.desktopBridge ?? {};
+		return {
+			title: "Settings Error",
+			description: error.message,
+			tone: "error",
+			...(reveal === undefined
+				? {}
+				: { action: { label: "Reveal", icon: FileSearch, onClick: () => void reveal(error.path) } }),
+		};
+	}
+	const server = down && AsyncResult.isSuccess(servers) ? servers.value.find((one) => one.isDefault) : undefined;
+	const problem = server === undefined ? undefined : problemOf(server);
+	if (server === undefined || problem === undefined)
+		return { title: "Couldn't Load Models", tone: "error", action: retry };
+	return {
+		title: problem.title,
+		...((fix.error ?? problem.detail) === undefined ? {} : { description: fix.error ?? problem.detail }),
+		tone: "warning",
+		action: {
+			label: fix.label(problem),
+			icon: fixIcons[problem.fix],
+			disabled: fix.running,
+			onClick: () => fix.run(server, problem),
+		},
+	};
+}
 
 // The composer row's pickers: muted text that brightens on hover, like the prompt's own controls.
 const trigger =
@@ -131,15 +199,11 @@ export function ModelPicker({
 
 	// The settings default can name a provider this server cannot call; it reads muted, not chosen.
 	const unavailable = current !== undefined && list !== undefined && found?.provider.available !== true;
-	const label =
-		found?.model.name ?? current?.id ?? (AsyncResult.isFailure(result) ? "Models unavailable" : "Choose model");
-	const empty = AsyncResult.isFailure(result)
-		? "Could not list models."
-		: list === undefined
-			? "Loading models…"
-			: providers.length === 0
-				? "No provider is signed in."
-				: "No models found";
+	// Why is the composer's notice; the picker only reads as unusable until it clears.
+	const failed = AsyncResult.isFailure(result);
+	const label = failed ? "Unavailable" : (found?.model.name ?? current?.id ?? "Choose model");
+	const empty =
+		list === undefined ? "Loading models…" : providers.length === 0 ? "No provider is signed in." : "No models found";
 
 	return (
 		<Popover
@@ -153,14 +217,15 @@ export function ModelPicker({
 			}}
 		>
 			<PopoverTrigger
+				disabled={failed}
 				title={
-					current === undefined
+					current === undefined || failed
 						? undefined
 						: `${current.provider}/${current.id}${unavailable ? " — no credentials on this server" : ""}`
 				}
-				className={`${trigger} max-w-60`}
+				className={`${trigger} max-w-60 disabled:cursor-default disabled:text-ink-muted/60 disabled:hover:bg-transparent`}
 			>
-				{current !== undefined && (
+				{current !== undefined && !failed && (
 					<ProviderIcon
 						id={current.provider}
 						name={found?.provider.name ?? current.provider}

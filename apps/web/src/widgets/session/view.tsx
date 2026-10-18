@@ -6,6 +6,7 @@ import { Brain, ChevronDown, ChevronRight, CircleAlert, MessageSquareText, Termi
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ComposerNotice, type Notice } from "@/components/banner";
+import { useModelsNotice } from "@/components/model";
 import { ago } from "../time";
 import { sessionId } from "./address";
 import { SessionComposer } from "./composer";
@@ -183,7 +184,9 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 		setTab({ title: project ?? "Session", subtitle: title });
 	}, [title, project, setTitle, setIcon, setTab]);
 
-	// A refused send, else why the last run failed; dismissing hides that one notice only.
+	// Models that can't be listed first: a state that clears itself, so it can't be dismissed. Then a
+	// refused send, else why the last run failed; dismissing hides that one notice only.
+	const models = useModelsNotice(state.status === "ready" ? state.info.hostDir : undefined);
 	const [sendError, setSendError] = useState<string>();
 	const [dismissed, setDismissed] = useState<Notice>();
 	const notice: Notice | undefined =
@@ -203,16 +206,18 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 		<div className="flex h-full flex-col">
 			<Transcript state={state} running={running} loadOlder={loadOlder} />
 			<div className="mx-auto w-full max-w-3xl shrink-0 px-3 pb-3">
-				{shown && (
-					<ComposerNotice
-						title={notice.title}
-						description={notice.description}
-						tone={notice.tone}
-						onDismiss={() => {
-							setDismissed(notice);
-							setSendError(undefined);
-						}}
-					/>
+				{models !== undefined ? (
+					<ComposerNotice {...models} />
+				) : (
+					shown && (
+						<ComposerNotice
+							{...notice}
+							onDismiss={() => {
+								setDismissed(notice);
+								setSendError(undefined);
+							}}
+						/>
+					)
 				)}
 				<SessionComposer
 					sessionId={id}

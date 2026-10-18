@@ -1,7 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { HOME_CHANNEL, PICK_FOLDER_CHANNEL } from "./ipc.ts";
+import { HOME_CHANNEL, PICK_FOLDER_CHANNEL, REVEAL_CHANNEL } from "./ipc.ts";
 import { startServer } from "./server.ts";
 
 const SCHEME = app.isPackaged ? "codework" : "codework-dev";
@@ -146,6 +146,7 @@ void app.whenReady().then(async () => {
 		const result = await (window === null ? dialog.showOpenDialog(options) : dialog.showOpenDialog(window, options));
 		return result.canceled ? null : (result.filePaths[0] ?? null);
 	});
+	ipcMain.handle(REVEAL_CHANNEL, (_event, file: string) => shell.showItemInFolder(file));
 	await startServer();
 	createMainWindow();
 

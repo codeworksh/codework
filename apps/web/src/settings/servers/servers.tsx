@@ -12,6 +12,11 @@ export function ServersSettings() {
 	const result = useAtomValue(serversAtom);
 	const refresh = useAtomRefresh(serversAtom);
 	const servers = AsyncResult.isSuccess(result) ? result.value : undefined;
+	// The status is held from launch (see the root route), so opening the page shows it at once and
+	// checks again behind it.
+	useEffect(() => {
+		if (!result.waiting) refresh();
+	}, []);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [adding, setAdding] = useState(false);
 	// The default until one is picked, and again when the picked one is gone.

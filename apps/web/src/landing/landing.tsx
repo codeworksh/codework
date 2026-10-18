@@ -10,12 +10,13 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ComposerNotice } from "@/components/banner";
 import { Composer, ComposerButton } from "@/components/composer";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
-import { ModelPicker, ThinkingPicker, useChoice } from "@/components/model";
+import { ModelPicker, ThinkingPicker, useChoice, useModelsNotice } from "@/components/model";
 import { TitleBar } from "../shell/titlebar";
 import { placeAtom, placeLabel, usePickFolder } from "./place";
 import { projectsAtom } from "../widgets/session/projects";
@@ -43,6 +44,7 @@ export function Landing() {
 	const { model, thinkingLevel: thinking } = choice;
 	// A folder's project settings may add models or change the default.
 	const hostDir = place.kind === "folder" ? place.path : undefined;
+	const notice = useModelsNotice(hostDir);
 
 	const canSend = place.kind !== "none" && query.trim() !== "" && !pending;
 
@@ -82,6 +84,7 @@ export function Landing() {
 				<div className="flex-[0.8]" />
 				<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />
 				<div className="mt-10 w-full max-w-2xl shrink-0">
+					{notice !== undefined && <ComposerNotice {...notice} />}
 					<Composer
 						autoFocus
 						value={query}
