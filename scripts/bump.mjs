@@ -1,5 +1,5 @@
 // `vp run bump <package> [bumpp args]`: runs bumpp in the package, which reads its bump.config.ts
-// to commit and tag `@codeworksh/<package>@<version>` without pushing.
+// to commit and tag `<package>@v<version>` without pushing.
 import { spawnSync } from "node:child_process";
 
 import { findPackage } from "./workspace.mjs";

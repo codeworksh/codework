@@ -84,7 +84,9 @@ Every package is published by CI from `.github/workflows/publish.yml`, which run
 - **dev**: every push to `dev`. Versions are `<version>-dev.<YYYYMMDDHHMMSS>` (UTC).
 - **latest**: run the workflow by hand on `main`. It publishes each package whose manifest version is not on npm yet and skips the rest.
 
-Versions are bumped locally with `vp run bump <aikit|plugin|harness|tui|cli> [version]`, which runs `bumpp` with the package's `bump.config.ts` and commits and tags `@codeworksh/<pkg>@<version>` without pushing. `vp run bump tui` moves the launcher and its three platform packages together.
+GitHub Releases (`scripts/github.mjs`): dev replaces the `devel` prerelease with the CLI binaries; latest makes a `<pkg>@v<version>` release per package not released yet, the CLI's carrying the binaries. canary has none.
+
+Versions are bumped locally with `vp run bump <aikit|plugin|harness|tui|cli> [version]`, which runs `bumpp` with the package's `bump.config.ts` and commits and tags `<pkg>@v<version>` without pushing. `vp run bump tui` moves the launcher and its three platform packages together.
 
 Flow:
 
