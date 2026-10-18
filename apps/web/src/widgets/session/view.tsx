@@ -263,7 +263,12 @@ function Transcript({
 		),
 		[running, turns.length],
 	);
-	if (turns.length === 0) return <p className="min-h-0 flex-1 p-3 text-ink-muted">No messages yet.</p>;
+	if (turns.length === 0)
+		return (
+			<div className="flex min-h-0 flex-1 items-center justify-center p-3">
+				<p className="text-center text-sm text-ink-muted/40">Send a message to start the conversation.</p>
+			</div>
+		);
 	return (
 		<LegendList<Turn>
 			data={turns}
