@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
-import { Contract, ModelsError, type Project } from "./contract.ts";
+import { Contract, ModelsError, type Project } from "@codeworksh/contract";
 import { Desk } from "./desk.ts";
 import { Event } from "./event.ts";
 import { Kv } from "./kv.ts";

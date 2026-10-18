@@ -12,7 +12,7 @@ import {
 	ServersError,
 	type ServerStatus,
 	type ServerUpdate,
-} from "./contract.ts";
+} from "@codeworksh/contract";
 import { Servers } from "./servers.ts";
 
 // Where the install script puts the binary unless told otherwise.

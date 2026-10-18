@@ -7,7 +7,7 @@ import {
 	type WorkspaceId,
 	type WorkspaceOrder,
 	type WorkspaceUpdate,
-} from "./contract.ts";
+} from "@codeworksh/contract";
 
 // webwm tag bits a workspace may hold; also the Cmd+1–9 keys.
 const MAX = 9;

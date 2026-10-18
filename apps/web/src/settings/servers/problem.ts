@@ -1,4 +1,4 @@
-import type { ServerStatus } from "@codeworksh/server/contract";
+import type { ServerStatus } from "@codeworksh/contract";
 import { useNavigate } from "@tanstack/react-router";
 import { type LucideIcon, Play, RotateCw, Settings } from "lucide-react";
 

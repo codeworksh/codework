@@ -1,5 +1,5 @@
 import { useAtomSet } from "@effect/atom-react";
-import { type CliAction, LOCAL_SERVER, type ServerStatus, type ServerUpdate } from "@codeworksh/server/contract";
+import { type CliAction, LOCAL_SERVER, type ServerStatus, type ServerUpdate } from "@codeworksh/contract";
 import { Check, Copy, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 

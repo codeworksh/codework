@@ -3,7 +3,7 @@ import { SqlClient } from "effect/sql";
 /* @effect-diagnostics nodeBuiltinImport:off -- paths typed in Settings expand against the OS home directory. */
 import os from "node:os";
 import path from "node:path";
-import { type CliEnvVar, LOCAL_SERVER, type ServerAdd, ServersError, type ServerUpdate } from "./contract.ts";
+import { type CliEnvVar, LOCAL_SERVER, type ServerAdd, ServersError, type ServerUpdate } from "@codeworksh/contract";
 
 /** The same home the CLI resolves: CODEWORK_HOME_DIR, else ~/.codework. Only the built-in server falls back to it. */
 const cliHome = Config.String("CODEWORK_HOME_DIR").pipe(Config.withDefault(path.join(os.homedir(), ".codework")));

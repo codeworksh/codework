@@ -1,4 +1,4 @@
-import type { CliEnvVar } from "@codeworksh/server/contract";
+import type { CliEnvVar } from "@codeworksh/contract";
 import { Lock, LockOpen, Plus, X } from "lucide-react";
 import { useState } from "react";
 

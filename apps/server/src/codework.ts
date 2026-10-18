@@ -6,7 +6,7 @@ import { RpcClient, RpcSerialization } from "effect/rpc";
 import { Socket } from "effect/socket";
 /* @effect-diagnostics nodeBuiltinImport:off -- a home's registration is a file path. */
 import path from "node:path";
-import { CodeworkUnavailable } from "./contract.ts";
+import { CodeworkUnavailable } from "@codeworksh/contract";
 import { Servers } from "./servers.ts";
 
 export type SessionInfo = Mirror.SessionInfo;

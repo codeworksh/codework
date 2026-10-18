@@ -1,6 +1,6 @@
 import { Clock, Effect, Schema } from "effect";
 import { SqlClient } from "effect/sql";
-import { Contract, type Instance } from "./contract.ts";
+import { Contract, type Instance } from "@codeworksh/contract";
 import { Db } from "./db.ts";
 
 // SQLite has no booleans; `pinned` is stored as 0 or 1.
