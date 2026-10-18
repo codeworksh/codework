@@ -1,41 +1,28 @@
-import { RegistryContext, useAtomRefresh } from "@effect/atom-react";
+import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option, Schema } from "effect";
-import { ArrowUp, Check, ChevronDown, Folder, FolderPlus, MemoryStick } from "lucide-react";
-import { type CSSProperties, useContext, useMemo, useState } from "react";
+import { ArrowUp, ChevronDown, Folder, FolderPlus } from "lucide-react";
+import { useContext, useMemo, useState } from "react";
 
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuLabel,
-	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Composer, ComposerButton } from "@/components/composer";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
-import { ModelPicker, ThinkingPicker, useChoice } from "./model";
-import { projectsAtom, SessionsSidebar, TitleBar } from "./sidebar";
+import { ModelPicker, ThinkingPicker, useChoice } from "@/components/model";
+import { TitleBar } from "../shell/titlebar";
+import { placeAtom, placeLabel, usePickFolder } from "./place";
+import { projectsAtom } from "../widgets/session/projects";
 import { Wordmark } from "./wordmark";
-
-const bridge = window.desktopBridge;
 
 const encodeCreate = Schema.encodeSync(Json.Create);
 const decodeCreated = Schema.decodeUnknownOption(Json.Created);
-
-/** Where a new project lives: nowhere yet, only in memory, or a folder on disk. */
-type Place = { kind: "none" } | { kind: "memory" } | { kind: "folder"; path: string };
-
-// A folder shows by its name alone; the trigger's tooltip carries the full path.
-const placeLabel = (place: Place) =>
-	place.kind === "none"
-		? "Select Project"
-		: place.kind === "memory"
-			? "In Memory"
-			: (place.path.split("/").findLast(Boolean) ?? place.path);
 
 /**
  * The start page: pick where to work and send the first prompt. The Session backend creates the
@@ -48,20 +35,20 @@ export function Landing() {
 	const openElsewhere = useOpenElsewhere();
 	const refreshProjects = useAtomRefresh(projectsAtom);
 	const [query, setQuery] = useState("");
-	const [place, setPlace] = useState<Place>({ kind: "none" });
+	const place = useAtomValue(placeAtom);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string>();
 	// Remembered across restarts; an absent pick leaves it to settings.
 	const [choice, setChoice] = useChoice();
 	const { model, thinkingLevel: thinking } = choice;
-	// A folder's project settings may add models or change the default; memory has only the user's.
+	// A folder's project settings may add models or change the default.
 	const hostDir = place.kind === "folder" ? place.path : undefined;
 
 	const canSend = place.kind !== "none" && query.trim() !== "" && !pending;
 
 	const send = async () => {
-		if (!canSend) return;
-		const where: Where = place.kind === "folder" ? { _tag: "Folder", path: place.path } : { _tag: "Memory" };
+		if (!canSend || place.kind !== "folder") return;
+		const where: Where = { _tag: "Folder", path: place.path };
 		setPending(true);
 		setError(undefined);
 		const created = await bus
@@ -86,96 +73,70 @@ export function Landing() {
 		await openElsewhere(sessionAddress(created.sessionId), placeLabel(place), "replace");
 	};
 
-	// Only the desktop app can open the native folder dialog (Finder on macOS); it opens on the
-	// current folder, or home before one is picked.
-	const pickFolder =
-		bridge === undefined
-			? undefined
-			: async () => {
-					const picked = await bridge.pickFolder(place.kind === "folder" ? place.path : bridge.home);
-					if (picked !== null) setPlace({ kind: "folder", path: picked });
-				};
-	const PlaceIcon = place.kind === "memory" ? MemoryStick : Folder;
+	const pickFolder = usePickFolder();
 
 	return (
-		<SidebarProvider
-			className="h-full min-h-0"
-			style={{ "--sidebar-width": "17rem" } as CSSProperties}
-			widthStorageKey="codework.sidebar.width"
-		>
-			<SessionsSidebar />
-			<div className="flex min-w-0 flex-1 flex-col select-none">
-				<TitleBar />
-				<main className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-4">
-					<div className="flex-[0.8]" />
-					<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />
-					<div className="mt-10 w-full max-w-2xl shrink-0">
-						<Composer
-							autoFocus
-							value={query}
-							onChange={setQuery}
-							onSubmit={() => void send()}
-							placeholder="Ask for changes, send follow-ups, or attach images"
-							controls={
-								<>
-									<ModelPicker
-										hostDir={hostDir}
-										value={model}
-										onChange={(next) => setChoice({ ...choice, model: next })}
-									/>
-									<ThinkingPicker
-										hostDir={hostDir}
-										model={model}
-										value={thinking}
-										onChange={(level) => setChoice({ ...choice, thinkingLevel: level })}
-									/>
-								</>
-							}
-							actions={
-								<ComposerButton label="Send" disabled={!canSend}>
-									<ArrowUp className="size-4" strokeWidth={2} aria-hidden />
-								</ComposerButton>
-							}
-							tray={
-								<>
-									<DropdownMenu>
-										<DropdownMenuTrigger
-											title={place.kind === "folder" ? place.path : undefined}
-											className="flex h-6 min-w-0 items-center gap-1 rounded-[8px] px-1.75 leading-4 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
+		<div className="flex h-full min-w-0 flex-col select-none">
+			<TitleBar active={undefined} />
+			<main className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-4">
+				<div className="flex-[0.8]" />
+				<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />
+				<div className="mt-10 w-full max-w-2xl shrink-0">
+					<Composer
+						autoFocus
+						value={query}
+						onChange={setQuery}
+						onSubmit={() => void send()}
+						placeholder="Ask for changes, send follow-ups, or attach images"
+						controls={
+							<>
+								<ModelPicker
+									hostDir={hostDir}
+									value={model}
+									onChange={(next) => setChoice({ ...choice, model: next })}
+								/>
+								<ThinkingPicker
+									hostDir={hostDir}
+									model={model}
+									value={thinking}
+									onChange={(level) => setChoice({ ...choice, thinkingLevel: level })}
+								/>
+							</>
+						}
+						actions={
+							<ComposerButton label="Send" disabled={!canSend}>
+								<ArrowUp className="size-4" strokeWidth={2} aria-hidden />
+							</ComposerButton>
+						}
+						tray={
+							<>
+								<DropdownMenu>
+									<DropdownMenuTrigger
+										title={place.kind === "folder" ? place.path : undefined}
+										className="flex h-6 min-w-0 items-center gap-1 rounded-[8px] px-1.75 leading-4 outline-none transition-colors hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink"
+									>
+										<Folder className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
+										<span className="truncate">{placeLabel(place)}</span>
+										<ChevronDown className="size-3 shrink-0 opacity-50" strokeWidth={2} aria-hidden />
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align="start" className="min-w-44">
+										<DropdownMenuLabel>Project</DropdownMenuLabel>
+										<DropdownMenuItem
+											disabled={pickFolder === undefined}
+											onSelect={() => void pickFolder?.()}
 										>
-											<PlaceIcon className="size-3 shrink-0" strokeWidth={1.75} aria-hidden />
-											<span className="truncate">{placeLabel(place)}</span>
-											<ChevronDown className="size-3 shrink-0 opacity-50" strokeWidth={2} aria-hidden />
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align="start" className="min-w-44">
-											<DropdownMenuLabel>Project</DropdownMenuLabel>
-											<DropdownMenuItem onSelect={() => setPlace({ kind: "memory" })}>
-												<MemoryStick strokeWidth={1.75} />
-												In Memory
-												{place.kind === "memory" && (
-													<Check className="ml-auto" strokeWidth={2} aria-label="Current" />
-												)}
-											</DropdownMenuItem>
-											<DropdownMenuSeparator />
-											<DropdownMenuItem
-												disabled={pickFolder === undefined}
-												onSelect={() => void pickFolder?.()}
-											>
-												<FolderPlus strokeWidth={1.75} />
-												New…
-											</DropdownMenuItem>
-										</DropdownMenuContent>
-									</DropdownMenu>
-									{error !== undefined && (
-										<span className="truncate px-1.75 py-1 text-destructive">{error}</span>
-									)}
-								</>
-							}
-						/>
-					</div>
-					<div className="flex-1" />
-				</main>
-			</div>
-		</SidebarProvider>
+											<FolderPlus strokeWidth={1.75} />
+											New…
+										</DropdownMenuItem>
+									</DropdownMenuContent>
+								</DropdownMenu>
+								{error !== undefined && <span className="truncate px-1.75 py-1 text-destructive">{error}</span>}
+							</>
+						}
+					/>
+				</div>
+				<div className="flex-1" />
+			</main>
+		</div>
 	);
 }

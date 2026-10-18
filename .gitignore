@@ -3,6 +3,7 @@ node_modules
 .pnpm-store
 
 out
+.electron-runtime
 dist
 build
 .next

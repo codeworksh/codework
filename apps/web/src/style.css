@@ -22,6 +22,9 @@
 	--cw-brand-ink: var(--t-brand-ink);
 	--cw-scrollbar: color-mix(in oklab, var(--t-text) 16%, transparent);
 	--cw-danger: light-dark(#dc2626, #f87171);
+	--cw-warning: light-dark(#d97706, #fbbf24);
+	--cw-success: light-dark(#16a34a, #4ade80);
+	--cw-info: light-dark(#2563eb, #60a5fa);
 	--cw-highlight: light-dark(rgb(255 255 255 / 0.9), color-mix(in oklab, var(--t-text) 9%, transparent));
 	--cw-shadow-near: light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.35));
 	--cw-shadow-far: light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.5));
@@ -33,6 +36,9 @@
 	/* The platform's own faces (SF Pro and SF Mono on macOS), so the app reads as native. */
 	--font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 	--font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+	/* Tailwind's built-in curves are too weak for UI motion. */
+	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 @theme inline {
@@ -63,6 +69,9 @@
 	--color-accent: color-mix(in oklab, var(--cw-ink) 8%, transparent);
 	--color-accent-foreground: var(--cw-ink);
 	--color-destructive: var(--cw-danger);
+	--color-warning: var(--cw-warning);
+	--color-success: var(--cw-success);
+	--color-info: var(--cw-info);
 	--color-border: var(--cw-edge);
 	--color-input: var(--cw-edge-focus);
 	--color-ring: color-mix(in oklab, var(--cw-brand) 50%, transparent);
@@ -90,6 +99,11 @@
 	box-shadow: var(--cw-dialog-shadow);
 }
 
+/* Pressable icon and trigger buttons: a slight press-in on top of their hover colors. */
+@utility press {
+	@apply transition-[background-color,color,scale] duration-150 active:scale-[0.97];
+}
+
 @utility dialog-backdrop {
 	@apply bg-desktop/60 backdrop-blur-[4px];
 }
@@ -98,6 +112,16 @@
 .no-transitions,
 .no-transitions * {
 	transition: none !important;
+}
+
+/* Reduced motion: transitions and animations finish instantly, so nothing travels across the screen. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	::before,
+	::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
 }
 
 @layer base {

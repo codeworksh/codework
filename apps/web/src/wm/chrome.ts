@@ -8,6 +8,8 @@ import type { Instance } from "./instances";
 /** What a widget set on its frame at runtime; it outranks the instance and definition. */
 export interface Chrome {
 	readonly title?: string;
+	/** Shown before the title, quieter. */
+	readonly lead?: string | undefined;
 	readonly icon?: LucideIcon;
 	/** What the workspace tab shows while this frame is its focused one. */
 	readonly tab?: Tab;
@@ -32,11 +34,12 @@ export const focusedAtom = Atom.make<ReadonlyMap<string, string>>(new Map()).pip
  */
 export const tabOwnerAtom = Atom.make<ReadonlyMap<string, string>>(new Map()).pipe(Atom.keepAlive);
 
-/** A frame's title and icon: what the widget set, else the instance's, else its definition's. */
+/** A frame's title, lead and icon: what the widget set, else the instance's, else its definition's. */
 export function chromeOf(instance: Instance, chrome: Chrome | undefined) {
 	const definition = registry.get(instance.kind);
 	return {
 		title: chrome?.title ?? instance.title ?? definition?.title ?? instance.id,
+		lead: chrome?.title === undefined ? undefined : chrome.lead,
 		icon: chrome?.icon ?? definition?.icon,
 	};
 }

@@ -1,6 +1,8 @@
 import { Effect } from "effect";
+import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
 import { Contract, ModelsError, type Project } from "./contract.ts";
+import { Desk } from "./desk.ts";
 import { Event } from "./event.ts";
 import { Kv } from "./kv.ts";
 import { Workspaces } from "./workspaces.ts";
@@ -35,11 +37,14 @@ const byProject = (sessions: ReadonlyArray<Codework.SessionInfo>): Project[] => 
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
 		const workspaces = yield* Workspaces.handlers;
+		const desk = yield* Desk.handlers;
 		const events = yield* Event.Service;
 		const kv = yield* Kv.Service;
 
 		return Contract.Api.of({
 			...workspaces,
+			...desk,
+			...Cli.handlers,
 
 			"projects.list": Effect.fn("projects.list")(function* () {
 				const sessions = yield* Codework.call((client) => client("session.list", {}));

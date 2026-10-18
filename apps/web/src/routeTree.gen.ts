@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShellRouteImport } from './routes/_shell'
 import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
 import { Route as ShellSettingsIndexRouteImport } from './routes/_shell.settings.index'
+import { Route as ShellSettingsServersRouteImport } from './routes/_shell.settings.servers'
 import { Route as ShellSettingsThemesRouteImport } from './routes/_shell.settings.themes'
 import { Route as ShellSettingsWorkspacesRouteImport } from './routes/_shell.settings.workspaces'
 import { Route as ShellWorkspacesWorkspaceIdRouteImport } from './routes/_shell.workspaces.$workspaceId'
@@ -36,6 +37,11 @@ const ShellSettingsIndexRoute = ShellSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ShellSettingsRoute,
 } as any)
+const ShellSettingsServersRoute = ShellSettingsServersRouteImport.update({
+  id: '/servers',
+  path: '/servers',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
 const ShellSettingsThemesRoute = ShellSettingsThemesRouteImport.update({
   id: '/themes',
   path: '/themes',
@@ -56,6 +62,7 @@ const ShellWorkspacesWorkspaceIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/settings': typeof ShellSettingsRouteWithChildren
+  '/settings/servers': typeof ShellSettingsServersRoute
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/settings/workspaces': typeof ShellSettingsWorkspacesRoute
   '/workspaces/$workspaceId': typeof ShellWorkspacesWorkspaceIdRoute
@@ -63,6 +70,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/settings/servers': typeof ShellSettingsServersRoute
   '/settings/themes': typeof ShellSettingsThemesRoute
   '/settings/workspaces': typeof ShellSettingsWorkspacesRoute
   '/workspaces/$workspaceId': typeof ShellWorkspacesWorkspaceIdRoute
@@ -73,6 +81,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_shell': typeof ShellRouteWithChildren
   '/_shell/settings': typeof ShellSettingsRouteWithChildren
+  '/_shell/settings/servers': typeof ShellSettingsServersRoute
   '/_shell/settings/themes': typeof ShellSettingsThemesRoute
   '/_shell/settings/workspaces': typeof ShellSettingsWorkspacesRoute
   '/_shell/workspaces/$workspaceId': typeof ShellWorkspacesWorkspaceIdRoute
@@ -83,6 +92,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/settings'
+    | '/settings/servers'
     | '/settings/themes'
     | '/settings/workspaces'
     | '/workspaces/$workspaceId'
@@ -90,6 +100,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/settings/servers'
     | '/settings/themes'
     | '/settings/workspaces'
     | '/workspaces/$workspaceId'
@@ -99,6 +110,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_shell'
     | '/_shell/settings'
+    | '/_shell/settings/servers'
     | '/_shell/settings/themes'
     | '/_shell/settings/workspaces'
     | '/_shell/workspaces/$workspaceId'
@@ -140,6 +152,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellSettingsIndexRouteImport
       parentRoute: typeof ShellSettingsRoute
     }
+    '/_shell/settings/servers': {
+      id: '/_shell/settings/servers'
+      path: '/servers'
+      fullPath: '/settings/servers'
+      preLoaderRoute: typeof ShellSettingsServersRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
     '/_shell/settings/themes': {
       id: '/_shell/settings/themes'
       path: '/themes'
@@ -165,12 +184,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface ShellSettingsRouteChildren {
+  ShellSettingsServersRoute: typeof ShellSettingsServersRoute
   ShellSettingsThemesRoute: typeof ShellSettingsThemesRoute
   ShellSettingsWorkspacesRoute: typeof ShellSettingsWorkspacesRoute
   ShellSettingsIndexRoute: typeof ShellSettingsIndexRoute
 }
 
 const ShellSettingsRouteChildren: ShellSettingsRouteChildren = {
+  ShellSettingsServersRoute: ShellSettingsServersRoute,
   ShellSettingsThemesRoute: ShellSettingsThemesRoute,
   ShellSettingsWorkspacesRoute: ShellSettingsWorkspacesRoute,
   ShellSettingsIndexRoute: ShellSettingsIndexRoute,

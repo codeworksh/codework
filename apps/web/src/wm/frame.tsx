@@ -1,13 +1,33 @@
-import { GripVertical, Maximize2, Minimize2, Pin, PinOff, X, type LucideIcon } from "lucide-react";
+import { AppWindow, GripVertical, Maximize2, Minimize2, Pin, PinOff, Plus, X, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Rect } from "webwm";
 import { useDragHandle } from "webwm/react";
 import type { DragMovement } from "webwm/dom";
 
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuShortcut,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { shortcutLabel } from "../shell/switcher";
 import { Title } from "./title";
+
+/** A workspace a frame can move to. */
+export interface Destination {
+	readonly id: string;
+	readonly name: string;
+	/** Its place in the switcher, which is also its Cmd+N key. */
+	readonly position: number;
+}
 
 interface FrameProps {
 	readonly title: string;
+	/** Before the title, quieter: what the title belongs to. */
+	readonly lead?: string | undefined;
 	readonly icon?: LucideIcon | undefined;
 	readonly children?: ReactNode;
 	readonly rect: Rect;
@@ -22,9 +42,14 @@ interface FrameProps {
 	readonly offset: { readonly deltaX: number; readonly deltaY: number } | null;
 	/** Ease into new slots; off while the column divider is dragged so frames track the pointer. */
 	readonly animate: boolean;
+	/** The other workspaces, listed by the move menu. */
+	readonly destinations: readonly Destination[];
 	readonly onFocus: () => void;
 	readonly onPin: () => void;
 	readonly onMaximize: () => void;
+	readonly onMove: (workspaceId: string) => void;
+	/** Moves the frame to a new workspace; unset while all workspaces are in use. */
+	readonly onMoveNew: (() => void) | undefined;
 	readonly onClose: () => void;
 	readonly onDragStart: () => void;
 	readonly onDragMove: (movement: DragMovement) => void;
@@ -36,7 +61,7 @@ interface FrameProps {
 export const FRAME_HEADER_HEIGHT = 46;
 
 export function Frame(props: FrameProps) {
-	const { title, icon: Icon, rect, collapsed, focused, pinned, maximized, canDrag, offset, animate } = props;
+	const { title, lead, icon: Icon, rect, collapsed, focused, pinned, maximized, canDrag, offset, animate } = props;
 	const handleRef = useDragHandle<HTMLDivElement>({
 		canDrag: () => props.canDrag,
 		onDragStart: props.onDragStart,
@@ -68,6 +93,7 @@ export function Frame(props: FrameProps) {
 							aria-hidden
 						/>
 						{Icon && <Icon className="mr-0.5 size-4 shrink-0 text-ink-muted" strokeWidth={1.75} aria-hidden />}
+						{lead !== undefined && <Lead text={lead} />}
 						<Title text={title} className="font-semibold text-ink-muted group-data-[focused=true]:text-ink" />
 					</div>
 					<Action
@@ -82,6 +108,7 @@ export function Frame(props: FrameProps) {
 						active={false}
 						onClick={props.onMaximize}
 					/>
+					<Move destinations={props.destinations} onMove={props.onMove} onMoveNew={props.onMoveNew} />
 					<Action icon={X} label="Close" active={false} onClick={props.onClose} />
 				</header>
 				{/* A collapsed frame keeps its widget mounted, so it keeps working and keeps its state. */}
@@ -92,6 +119,58 @@ export function Frame(props: FrameProps) {
 		</article>
 	);
 }
+
+/** Up to a third of the header, so the title it leads keeps the room. */
+function Lead({ text }: { readonly text: string }) {
+	return (
+		<span className="flex max-w-1/3 shrink-0 items-center gap-1 text-ink-muted/70" title={text}>
+			<span className="truncate">{text}</span>
+			<span className="text-ink-muted/40" aria-hidden>
+				/
+			</span>
+		</span>
+	);
+}
+
+function Move({
+	destinations,
+	onMove,
+	onMoveNew,
+}: {
+	readonly destinations: readonly Destination[];
+	readonly onMove: (workspaceId: string) => void;
+	readonly onMoveNew: (() => void) | undefined;
+}) {
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				aria-label="Move"
+				title="Move"
+				className={`${actionClass} data-[state=open]:bg-ink/8 data-[state=open]:text-ink`}
+			>
+				<AppWindow className="size-3.5" strokeWidth={1.75} />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-64">
+				<DropdownMenuLabel>Move</DropdownMenuLabel>
+				{destinations.map(({ id, name, position }) => (
+					<DropdownMenuItem key={id} title={name} onSelect={() => onMove(id)}>
+						<AppWindow strokeWidth={1.75} />
+						<span className="truncate">{name}</span>
+						<DropdownMenuShortcut>{shortcutLabel(position)}</DropdownMenuShortcut>
+					</DropdownMenuItem>
+				))}
+				{destinations.length > 0 && <DropdownMenuSeparator />}
+				<DropdownMenuItem disabled={onMoveNew === undefined} onSelect={() => onMoveNew?.()}>
+					<Plus strokeWidth={1.75} />
+					<span>New Workspace</span>
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+const actionClass =
+	"grid size-6 place-items-center rounded-md text-ink-muted/60 press hover:bg-ink/8 hover:text-ink aria-pressed:text-ink";
 
 interface ActionProps {
 	readonly icon: LucideIcon;
@@ -107,7 +186,7 @@ function Action({ icon: Icon, label, active, onClick }: ActionProps) {
 			aria-label={label}
 			title={label}
 			aria-pressed={active}
-			className="grid size-6 place-items-center rounded-md text-ink-muted/60 transition-colors hover:bg-ink/8 hover:text-ink aria-pressed:text-ink"
+			className={actionClass}
 			onClick={onClick}
 		>
 			<Icon className="size-3.5" strokeWidth={1.75} />

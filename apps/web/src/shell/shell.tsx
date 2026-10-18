@@ -4,9 +4,10 @@ import { AsyncResult } from "effect/reactivity";
 import { useEffect, useState } from "react";
 
 import { Desktop } from "../wm/desktop";
+import { deskQueryAtom } from "../wm/instances";
 import { lastWorkspaceAtom, useWorkspaces, workspaceRoute, workspacesAtom } from "../wm/workspaces";
-import { settingsShortcut, Switcher, workspaceShortcut } from "./switcher";
-import { BackButton, HomeButton, insetTitleBar, NewWorkspaceButton, SettingsButton } from "./titlebar";
+import { settingsShortcut, workspaceShortcut } from "./switcher";
+import { TitleBar } from "./titlebar";
 
 /**
  * Lives in the pathless `_shell` layout so switching workspaces (a URL change) never remounts
@@ -31,6 +32,9 @@ export function Shell() {
 	// the list has settled: a first load, or the refetch after creating one, must not bounce the user out.
 	const listed = useAtomValue(workspacesAtom);
 	const loaded = AsyncResult.isSuccess(listed) && !listed.waiting;
+	// The desktop edits and saves the whole desk, so it waits for the saved one rather than start empty.
+	const desk = useAtomValue(deskQueryAtom);
+	const ready = AsyncResult.isSuccess(listed) && AsyncResult.isSuccess(desk);
 	useEffect(() => {
 		if (loaded && workspaces.length === 0 && !inSettings) void navigate({ to: "/", replace: true });
 	}, [loaded, workspaces.length, inSettings, navigate]);
@@ -60,23 +64,17 @@ export function Shell() {
 	}, [navigate, workspaces, inSettings, back]);
 
 	return (
-		<div className="flex h-full flex-col">
-			<header
-				className={`flex h-12 shrink-0 items-center gap-1.5 px-2 select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`}
-			>
-				<BackButton />
-				<HomeButton />
-				<Switcher workspaces={workspaces} active={inSettings ? undefined : shown} />
-				<NewWorkspaceButton />
-				<SettingsButton current={inSettings} />
-			</header>
+		<div className="flex h-full min-w-0 flex-col">
+			{/* Settings takes the whole window, with its own bar. */}
+			{!inSettings && <TitleBar active={shown} />}
 			<div className="relative min-h-0 flex-1">
-				{shown !== undefined && (
-					// Hidden, not unmounted, so widgets keep their state behind settings.
-					<div className={`h-full ${inSettings ? "invisible" : ""}`} inert={inSettings}>
-						<Desktop workspace={shown} />
-					</div>
-				)}
+				{ready &&
+					shown !== undefined && (
+						// Hidden, not unmounted, so widgets keep their state behind settings.
+						<div className={`h-full ${inSettings ? "invisible" : ""}`} inert={inSettings}>
+							<Desktop workspace={shown} />
+						</div>
+					)}
 				{inSettings && (
 					<div className="absolute inset-0">
 						<Outlet />

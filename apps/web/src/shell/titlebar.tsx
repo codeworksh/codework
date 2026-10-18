@@ -1,11 +1,10 @@
 import { Link, useCanGoBack, useNavigate, useRouter } from "@tanstack/react-router";
 import { ChevronLeft, House, Plus, Settings } from "lucide-react";
 
-import { MAX_WORKSPACES, useCreateWorkspace, useWorkspaces, workspaceRoute } from "../wm/workspaces";
-
-/*
- * Title-bar controls shared by the workspace shell and the start page, so the two bars behave alike.
- */
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { isMac } from "@codeworksh/widget/view";
+import { MAX_WORKSPACES, useCreateWorkspace, useWorkspaces, type Workspace, workspaceRoute } from "../wm/workspaces";
+import { Switcher } from "./switcher";
 
 // The window has no native title bar on macOS; a title bar is its drag region and leaves room for the
 // inset traffic lights.
@@ -13,9 +12,41 @@ export const insetTitleBar = window.desktopBridge?.platform === "darwin";
 
 /** A square title-bar button; it opts out of the window's drag region so it can be clicked. */
 export const chromeButton =
-	"grid size-7 shrink-0 place-items-center rounded-[10px] text-ink-muted transition-colors [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
+	"grid size-7 shrink-0 place-items-center rounded-[10px] text-ink-muted press [-webkit-app-region:no-drag] hover:bg-ink/5 hover:text-ink disabled:opacity-40 disabled:hover:bg-transparent";
 
-export function BackButton() {
+/**
+ * The title bar over the start page and workspaces: the window's drag region with the sidebar
+ * toggle, navigation, the workspace switcher and settings. With the sidebar hidden, or overlaid as
+ * a sheet in a narrow window, it sits in the window's corner, so it moves clear of the macOS
+ * traffic lights.
+ */
+export function TitleBar({
+	active,
+}: {
+	/** The workspace on screen; none on the start page. */
+	readonly active: Workspace | undefined;
+}) {
+	const { open, isMobile } = useSidebar();
+	const inCorner = !open || isMobile;
+	const workspaces = useWorkspaces();
+	return (
+		<header
+			className={`flex h-12 shrink-0 items-center gap-1.5 px-2 select-none [-webkit-app-region:drag] ${inCorner && insetTitleBar ? "pl-20" : ""}`}
+		>
+			<SidebarTrigger
+				title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}
+				className="text-ink-muted [-webkit-app-region:no-drag] hover:text-ink"
+			/>
+			<BackButton />
+			<HomeButton />
+			<Switcher workspaces={workspaces} active={active} />
+			<NewWorkspaceButton />
+			<SettingsButton />
+		</header>
+	);
+}
+
+function BackButton() {
 	const router = useRouter();
 	const canGoBack = useCanGoBack();
 	return (
@@ -32,7 +63,7 @@ export function BackButton() {
 	);
 }
 
-export function HomeButton() {
+function HomeButton() {
 	return (
 		<Link to="/" aria-label="Home" title="Home: the start page" className={chromeButton}>
 			<House className="size-4" strokeWidth={1.75} aria-hidden />
@@ -41,7 +72,7 @@ export function HomeButton() {
 }
 
 /** Adds a workspace and goes to it; pushed to the bar's right edge. */
-export function NewWorkspaceButton() {
+function NewWorkspaceButton() {
 	const workspaces = useWorkspaces();
 	const navigate = useNavigate();
 	const create = useCreateWorkspace();
@@ -64,15 +95,9 @@ export function NewWorkspaceButton() {
 	);
 }
 
-export function SettingsButton({ current = false }: { readonly current?: boolean }) {
+function SettingsButton() {
 	return (
-		<Link
-			to="/settings/workspaces"
-			aria-label="Settings"
-			title="Settings"
-			aria-current={current ? "page" : undefined}
-			className={`${chromeButton} aria-[current=page]:bg-ink/8 aria-[current=page]:text-ink`}
-		>
+		<Link to="/settings/workspaces" aria-label="Settings" title="Settings" className={chromeButton}>
 			<Settings className="size-4" strokeWidth={1.75} aria-hidden />
 		</Link>
 	);

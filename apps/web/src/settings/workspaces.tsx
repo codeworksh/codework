@@ -1,4 +1,4 @@
-import { useAtom, useAtomSet } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
@@ -14,12 +14,12 @@ import {
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { messageOf } from "@/lib/utils";
 import { isMac } from "@codeworksh/widget/view";
 import { iconOf, icons } from "../shell/icons";
 import { shortcutLabel } from "../shell/switcher";
-import { deskAtom, only, untag } from "../wm/instances";
+import { deskAtom, deskKey, only } from "../wm/instances";
 import {
 	deleteWorkspace,
 	reorderWorkspaces,
@@ -31,7 +31,7 @@ import {
 	workspacesKey,
 	workspaceTag,
 } from "../wm/workspaces";
-import { Group, Keys, Page, Row, Section } from "./blocks";
+import { Group, Keys, SavingInput, Page, Row, Section } from "./blocks";
 
 const sameOrder = (ids: readonly string[], workspaces: readonly Workspace[]) =>
 	ids.length === workspaces.length && ids.every((id, index) => workspaces[index]?.id === id);
@@ -54,7 +54,7 @@ export function WorkspacesSettings() {
 
 	const run = (action: () => Promise<unknown>) => {
 		setError(null);
-		action().catch((cause: unknown) => setError(describe(cause)));
+		action().catch((cause: unknown) => setError(messageOf(cause)));
 	};
 
 	const addWorkspace = () =>
@@ -160,31 +160,19 @@ interface RowProps {
 /** Renames in place: commits on Enter or blur, Escape restores the saved name. */
 function NameField({ workspace, autoFocus, onError }: RowProps & { readonly autoFocus: boolean }) {
 	const save = useAtomSet(updateWorkspace, { mode: "promise" });
-	const [draft, setDraft] = useState<string | null>(null);
-	// Reads the field itself: Escape resets it just before blurring, sooner than state would.
-	const commit = (value: string) => {
-		const name = value.trim();
-		setDraft(null);
-		if (!name || name === workspace.name) return;
-		save({ payload: { id: workspace.id, name }, reactivityKeys: workspacesKey }).catch((cause: unknown) =>
-			onError(describe(cause)),
-		);
-	};
 	return (
-		<Input
-			aria-label="Workspace name"
-			value={draft ?? workspace.name}
+		<SavingInput
+			label="Workspace name"
+			value={workspace.name}
 			autoFocus={autoFocus}
-			onFocus={(event) => autoFocus && event.currentTarget.select()}
+			// Reads as plain text in the row until hovered or focused.
 			className="h-8 min-w-24 flex-1 border-transparent bg-transparent shadow-none hover:border-input focus-visible:border-input dark:bg-transparent"
-			onChange={(event) => setDraft(event.target.value)}
-			onBlur={(event) => commit(event.currentTarget.value)}
-			onKeyDown={(event) => {
-				if (event.key === "Enter") event.currentTarget.blur();
-				if (event.key === "Escape") {
-					event.currentTarget.value = workspace.name;
-					event.currentTarget.blur();
-				}
+			onCommit={(name) => {
+				// A workspace keeps its name when the field is cleared.
+				if (!name) return;
+				save({ payload: { id: workspace.id, name }, reactivityKeys: workspacesKey }).catch((cause: unknown) =>
+					onError(messageOf(cause)),
+				);
 			}}
 		/>
 	);
@@ -214,7 +202,7 @@ function IconPicker({ workspace, onError }: RowProps) {
 							setOpen(false);
 							if (name === workspace.icon) return;
 							save({ payload: { id: workspace.id, icon: name }, reactivityKeys: workspacesKey }).catch(
-								(cause: unknown) => onError(describe(cause)),
+								(cause: unknown) => onError(messageOf(cause)),
 							);
 						}}
 					>
@@ -229,7 +217,7 @@ function IconPicker({ workspace, onError }: RowProps) {
 /** Deletes after a confirm that says which widgets close with it. */
 function DeleteButton({ workspace, onError }: RowProps) {
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
-	const [desk, setDesk] = useAtom(deskAtom);
+	const desk = useAtomValue(deskAtom);
 	const tag = workspaceTag(workspace);
 	const closing = only(desk, tag).length;
 	return (
@@ -260,9 +248,9 @@ function DeleteButton({ workspace, onError }: RowProps) {
 					<AlertDialogAction
 						variant="destructive"
 						onClick={() =>
-							remove({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }).then(
-								() => setDesk((current) => untag(current, tag)),
-								(cause: unknown) => onError(describe(cause)),
+							// The server drops the workspace's widgets, so the desk reloads with the list.
+							remove({ payload: { id: workspace.id }, reactivityKeys: [...workspacesKey, ...deskKey] }).catch(
+								(cause: unknown) => onError(messageOf(cause)),
 							)
 						}
 					>
@@ -273,8 +261,3 @@ function DeleteButton({ workspace, onError }: RowProps) {
 		</AlertDialog>
 	);
 }
-
-const describe = (cause: unknown) =>
-	typeof cause === "object" && cause !== null && "message" in cause && typeof cause.message === "string"
-		? cause.message
-		: String(cause);

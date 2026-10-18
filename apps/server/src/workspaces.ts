@@ -30,12 +30,15 @@ export const handlers = Effect.gen(function* () {
 	const renumber = (ids: readonly string[]) =>
 		Effect.forEach(ids, (id, pos) => sql`UPDATE workspaces SET pos = ${pos} WHERE id = ${id}`, { discard: true });
 
-	// The frames an auto workspace held do not outlive the app, so neither does it. Having none at
-	// all is fine: the start page needs no workspace.
+	// An auto workspace exists to show its frames; one that lost them without being left (a save that
+	// never landed) goes at startup, the only time no client is editing.
 	yield* sql
 		.withTransaction(
 			Effect.gen(function* () {
-				yield* sql`DELETE FROM workspaces WHERE auto = 1`;
+				yield* sql`
+					DELETE FROM workspaces WHERE auto = 1
+					AND NOT EXISTS (SELECT 1 FROM widget WHERE (widget.tags & (1 << workspaces.bit)) != 0)
+				`;
 				yield* renumber((yield* list).map((workspace) => workspace.id));
 			}),
 		)
@@ -101,14 +104,17 @@ export const handlers = Effect.gen(function* () {
 				.pipe(Effect.catchTag("SqlError", Effect.die));
 		}),
 
-		// Widgets keep their masks here; the client clears the deleted bit from its instances.
+		// The deleted bit leaves every widget's mask with it; a widget left on no workspace goes too.
 		"workspaces.delete": Effect.fn("workspaces.delete")(function* ({ id }: typeof WorkspaceId.Type) {
 			yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
 						const current = yield* list;
-						if (!current.some((workspace) => workspace.id === id)) return yield* fail(`No workspace ${id}`);
+						const deleted = current.find((workspace) => workspace.id === id);
+						if (deleted === undefined) return yield* fail(`No workspace ${id}`);
 						yield* sql`DELETE FROM workspaces WHERE id = ${id}`;
+						yield* sql`UPDATE widget SET tags = tags & ~${1 << deleted.bit}`;
+						yield* sql`DELETE FROM widget WHERE tags = 0`;
 						yield* renumber(current.filter((workspace) => workspace.id !== id).map((workspace) => workspace.id));
 					}),
 				)

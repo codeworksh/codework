@@ -3,6 +3,7 @@ import { type EventEnvelope, HistoryEntry, type Part, type SessionInfo } from "@
 import { Deferred, Effect, Fiber, Option, Schedule, Schema, Stream } from "effect";
 
 import {
+	Configure,
 	Create,
 	type Created,
 	Follow,
@@ -22,6 +23,9 @@ import {
 const toInfo = (info: SessionInfo): Info => ({
 	title: info.title,
 	updated: info.updatedAt,
+	...(info.hostDir === undefined ? {} : { hostDir: info.hostDir }),
+	...(info.sandbox === undefined ? {} : { sandbox: info.sandbox.driver }),
+	...(info.thinkingLevel === undefined ? {} : { thinkingLevel: info.thinkingLevel }),
 	...(info.project === undefined ? {} : { project: info.project }),
 	...(info.model === undefined ? {} : { model: info.model }),
 });
@@ -59,6 +63,9 @@ const Delta = Schema.Struct({
 });
 const decodeDelta = Schema.decodeUnknownOption(Delta);
 const decodeOfSession = Schema.decodeUnknownOption(Schema.Struct({ sessionId: Schema.String }));
+const decodeFailed = Schema.decodeUnknownOption(
+	Schema.Struct({ sessionId: Schema.String, error: Schema.Struct({ type: Schema.String, message: Schema.String }) }),
+);
 
 /** Appends a delta to the part it belongs to; a part not seen yet starts with it. */
 const fold = (current: Part | undefined, kind: "text" | "thinking", delta: string): Part =>
@@ -218,9 +225,23 @@ export const session = defineBackend({
 						dirty.add(delta.messageId);
 					});
 				}
+				// A run can fail before it reaches the model, a sandbox that is gone say, and then nothing
+				// in the session's log records it: this is the only place the reason shows.
+				case "session.execution.failed": {
+					const failed = Option.getOrUndefined(decodeFailed(envelope.data));
+					if (failed === undefined || !following.has(failed.sessionId)) return Effect.void;
+					return publishLive(failed.sessionId, { _tag: "Running", running: false }).pipe(
+						Effect.andThen(
+							publishLive(failed.sessionId, {
+								_tag: "Failed",
+								kind: failed.error.type,
+								message: failed.error.message,
+							}),
+						),
+					);
+				}
 				case "session.execution.started":
 				case "session.execution.succeeded":
-				case "session.execution.failed":
 				case "session.execution.interrupted": {
 					const sessionId = Option.getOrUndefined(decodeOfSession(envelope.data))?.sessionId;
 					if (sessionId === undefined || !following.has(sessionId)) return Effect.void;
@@ -278,11 +299,17 @@ export const session = defineBackend({
 				Effect.repeat({ while: () => following.has(id), schedule: Schedule.spaced("1 second") }),
 			);
 
-		yield* flush.pipe(Effect.repeat(Schedule.spaced("50 millis")), Effect.forkScoped);
+		// Both loops outlive anything that stops them, a defect included, and say what it was: one that
+		// stopped quietly would freeze every view's live updates while sends still went through.
+		yield* flush.pipe(
+			Effect.catchCause((cause) => Effect.logWarning("Session drafts stopped; restarting", cause)),
+			Effect.repeat(Schedule.spaced("50 millis")),
+			Effect.forkScoped,
+		);
 		// Nothing here is replayed, so a reconnect only resumes from what happens next.
 		yield* codework("event.subscribe", {}).pipe(
 			Stream.runForEach(observe),
-			Effect.retry(Schedule.spaced("1 second")),
+			Effect.catchCause((cause) => Effect.logWarning("Session live events stopped; resubscribing", cause)),
 			Effect.repeat(Schedule.spaced("1 second")),
 			Effect.forkScoped,
 		);
@@ -379,7 +406,7 @@ export const session = defineBackend({
 			codework("session.create", {
 				...(place._tag === "Folder"
 					? { directory: place.path, hostDir: place.path }
-					: { sandbox: { driver: "memory" }, project: { name: "In Memory" } }),
+					: { sandbox: { driver: "memory" }, project: { name: "Memory" } }),
 				runtime: {
 					...(model === undefined ? {} : { model }),
 					...(thinkingLevel === undefined ? {} : { thinkingLevel }),
@@ -389,6 +416,21 @@ export const session = defineBackend({
 				Effect.map((sessionId): Created => ({ _tag: "Created", sessionId })),
 				Effect.catch((error) => Effect.succeed<Created>({ _tag: "Failed", message: describe(error) })),
 				Effect.flatMap((created) => encodeCreated(created).pipe(Effect.orDie)),
+			),
+		);
+
+		// The session's own log moves with the change, so the refresh that follows publishes the new info.
+		yield* handle(topics.configure, Configure, ({ sessionId, model, thinkingLevel }) =>
+			codework("session.configure", {
+				sessionId,
+				runtime: {
+					...(model === undefined ? {} : { model }),
+					...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+				},
+			}).pipe(
+				Effect.as<Reply>({ _tag: "Done" }),
+				Effect.catch((error) => Effect.succeed<Reply>({ _tag: "Failed", message: describe(error) })),
+				Effect.flatMap((reply) => encodeReply(reply).pipe(Effect.orDie)),
 			),
 		);
 

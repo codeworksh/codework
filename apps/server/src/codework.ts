@@ -1,12 +1,13 @@
 import { Codework as Mirror } from "@codeworksh/widget/codework";
 import { Codework as Client } from "@codeworksh/widget/backend";
 import { NodeSocket } from "@effect/platform-node";
-import { Config, Effect, FileSystem, Layer, Schedule, Schema } from "effect";
+import { Deferred, Effect, FileSystem, Layer, Schedule, Schema, Stream } from "effect";
 import { RpcClient, RpcSerialization } from "effect/rpc";
-/* @effect-diagnostics nodeBuiltinImport:off -- the default home sits under the OS home directory. */
-import os from "node:os";
+import { Socket } from "effect/socket";
+/* @effect-diagnostics nodeBuiltinImport:off -- a home's registration is a file path. */
 import path from "node:path";
 import { CodeworkUnavailable } from "./contract.ts";
+import { Servers } from "./servers.ts";
 
 export type SessionInfo = Mirror.SessionInfo;
 
@@ -15,30 +16,65 @@ const Registration = Schema.fromJsonString(
 	Schema.Struct({ pid: Schema.Int, version: Schema.String, url: Schema.String, port: Schema.Int }),
 );
 
-// The same home the CLI resolves: CODEWORK_HOME_DIR, else ~/.codework.
-const home = Config.String("CODEWORK_HOME_DIR").pipe(Config.withDefault(path.join(os.homedir(), ".codework")));
+/** The server `<home>/service.json` names, read fresh; a missing or unreadable file is none. */
+export const registrationAt = (home: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		return yield* fs
+			.readFileString(path.join(home, "service.json"))
+			.pipe(Effect.flatMap(Schema.decodeUnknownEffect(Registration)), Effect.option);
+	});
+
+/** The server the default server's home names: the one the app connects to. */
+export const registration = Effect.gen(function* () {
+	return yield* registrationAt(yield* (yield* Servers.Service).defaultHome);
+});
 
 /**
- * The app's one connection to the CodeWork server. The registration is read on every connect, so a
- * server restarted on a new port is picked up without restarting this app; until one is
- * registered, connecting waits.
+ * The connection ends when the home changes, as if the server went away: the client reconnects, and
+ * so reads the new home's registration, and its callers resubscribe as after any drop.
+ */
+const endOnHomeChange = (socket: Socket.Socket, changes: Stream.Stream<string>): Socket.Socket => ({
+	...socket,
+	// Watched from when the connection opens, so a change between two reads still ends it.
+	reader: Effect.gen(function* () {
+		const reader = yield* socket.reader;
+		const changed = yield* Deferred.make<void>();
+		yield* Stream.runHead(changes).pipe(Effect.andThen(Deferred.succeed(changed, undefined)), Effect.forkScoped);
+		const closed = Deferred.await(changed).pipe(
+			Effect.andThen(Effect.fail(new Socket.SocketError({ reason: new Socket.SocketCloseError({ code: 1000 }) }))),
+		);
+		return { ...reader, pull: reader.pull.pipe(Effect.raceFirst(closed)) };
+	}),
+});
+
+/**
+ * The app's one connection to a CodeWork server: the default server's. The registration is read on
+ * every connect, so a server restarted on a new port, a new home or a new default is picked up
+ * without restarting this app; until one is registered, connecting waits.
  */
 export const layer = Layer.effect(Client, RpcClient.make(Mirror.Api, { flatten: true })).pipe(
 	Layer.provide(RpcClient.layerProtocolSocket({ retryTransientErrors: true })),
 	Layer.provide(
-		Layer.unwrap(
+		Layer.effect(
+			Socket.Socket,
 			Effect.gen(function* () {
 				const fs = yield* FileSystem.FileSystem;
-				const file = path.join(yield* home, "service.json");
-				const url = fs.readFileString(file).pipe(
-					Effect.flatMap(Schema.decodeUnknownEffect(Registration)),
-					Effect.map((registration) => registration.url),
+				const servers = yield* Servers.Service;
+				const url = registration.pipe(
+					Effect.flatMap(Effect.fromOption),
+					Effect.map((registered) => registered.url),
 					Effect.retry(Schedule.spaced("1 second")),
 					Effect.orDie,
+					Effect.provideService(FileSystem.FileSystem, fs),
+					Effect.provideService(Servers.Service, servers),
+					// The socket reads its URL while opening, which Effect runs uninterruptibly; waiting there
+					// for a server to register would otherwise keep the app server from ever shutting down.
+					Effect.interruptible,
 				);
-				return NodeSocket.layerWebSocket(url);
+				return endOnHomeChange(yield* Socket.makeWebSocket(url), servers.homeChanges);
 			}),
-		),
+		).pipe(Layer.provide(NodeSocket.layerWebSocketConstructor)),
 	),
 	Layer.provide(RpcSerialization.layerNdjson),
 	Layer.orDie,

@@ -157,3 +157,7 @@ void app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
 	if (process.platform !== "darwin") app.quit();
 });
+
+// A signal (the dev runner restarting, a terminal's Ctrl+C) quits as the app does, so the app server
+// is stopped too; left to the default, Electron would exit at once and leave it running.
+for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => app.quit());

@@ -23,11 +23,14 @@ import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./
 import { Divider } from "./divider";
 import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
 import { Overflow } from "./overflow";
-import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
+import { add, type Desk, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
+import { useSaveDesk } from "./save";
 import {
 	deleteWorkspace,
+	MAX_WORKSPACES,
 	updateWorkspace,
+	useCreateWorkspace,
 	useWorkspaces,
 	type Workspace,
 	workspaceRoute,
@@ -76,7 +79,7 @@ function Host({ instanceId, kind, shell, decorate, children }: HostProps) {
 	const frame = useMemo<FrameApi>(
 		() => ({
 			instanceId,
-			setTitle: (title) => decorate(instanceId, { title }),
+			setTitle: (title, lead) => decorate(instanceId, { title, lead }),
 			setIcon: (icon) => decorate(instanceId, { icon }),
 			setTab: (tab) => decorate(instanceId, { tab }),
 		}),
@@ -114,15 +117,22 @@ export function Desktop({ workspace }: DesktopProps) {
 	const navigate = useNavigate();
 	const saveWorkspace = useAtomSet(updateWorkspace);
 	const removeWorkspace = useAtomSet(deleteWorkspace, { mode: "promise" });
+	const createWorkspace = useCreateWorkspace();
 	const { open: requested, mode: requestedMode } = useSearch({ strict: false });
 	const { workspaceId: routed } = useParams({ strict: false });
 	// Local edits ahead of the database, so dragging the divider never waits on a round trip.
 	const [views, setViews] = useState<ReadonlyMap<string, View>>(() => new Map());
 	const [chrome, setChrome] = useAtom(chromeAtom);
-	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
 	const [drag, setDrag] = useState<Drag | null>(null);
+	const flushDesk = useSaveDesk(drag !== null);
 	const [resizing, setResizing] = useState(false);
 	const [ref, size] = useElementSize<HTMLDivElement>();
+	// A window resize must not tween: frames would trail the window edge by the transition's length.
+	const lastSize = useRef(size);
+	const resized = lastSize.current !== size;
+	useEffect(() => {
+		lastSize.current = size;
+	}, [size]);
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const activeTags = workspaceTag(workspace);
 	const { instances, order } = desk;
@@ -218,7 +228,8 @@ export function Desktop({ workspace }: DesktopProps) {
 				const previous = current.get(instanceId) ?? {};
 				const next = { ...previous, ...patch };
 				const sameTab = next.tab?.title === previous.tab?.title && next.tab?.subtitle === previous.tab?.subtitle;
-				if (next.title === previous.title && next.icon === previous.icon && sameTab) return current;
+				if (next.title === previous.title && next.lead === previous.lead && next.icon === previous.icon && sameTab)
+					return current;
 				return new Map(current).set(instanceId, next);
 			}),
 		[],
@@ -233,25 +244,63 @@ export function Desktop({ workspace }: DesktopProps) {
 			return next;
 		});
 
+	// Applies `change`, which takes the frame off this workspace. An auto workspace exists to show what
+	// was opened into it, so it goes with its last frame, quietly: the app goes to `to` with the desk at
+	// `bridge` (the frame still on screen) and changes it only then, so nothing passes through an empty
+	// workspace. The desk is saved before the delete, which drops widgets the workspace alone held.
+	const leave = (
+		instanceId: string,
+		change: (desk: Desk) => Desk,
+		to: { readonly to: "/" } | ReturnType<typeof workspaceRoute>,
+		bridge: (desk: Desk) => Desk = (current) => current,
+	) => {
+		const leaver = byId.get(instanceId);
+		const emptied =
+			leaver !== undefined &&
+			(leaver.tags & activeTags) !== 0 &&
+			!instances.some((instance) => instance.id !== instanceId && (instance.tags & activeTags) !== 0);
+		if (!workspace.auto || !emptied) return setDesk(change);
+		setDesk(bridge);
+		void navigate(to)
+			.then(() => {
+				setDesk(change);
+				return flushDesk();
+			})
+			.then(() => removeWorkspace({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }))
+			.catch(() => undefined);
+	};
+
 	const close = (instanceId: string) => {
-		const closing = byId.get(instanceId);
-		setDesk((current) =>
-			current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current,
+		leave(
+			instanceId,
+			(current) => (current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current),
+			{ to: "/" },
 		);
 		undecorate(instanceId);
-		// An auto workspace exists to show what was opened into it, so it goes with its last frame.
-		const emptied =
-			closing !== undefined &&
-			(closing.tags & activeTags) !== 0 &&
-			!instances.some((instance) => instance.id !== instanceId && (instance.tags & activeTags) !== 0);
-		// Leaving only once the delete lands: leaving first unmounts this and drops the list's refresh.
-		if (workspace.auto && emptied) {
-			void removeWorkspace({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }).then(
-				() => navigate({ to: "/" }),
-				() => undefined,
-			);
-		}
 	};
+
+	// Moves a frame off this workspace onto another, focused there; this workspace stays on screen
+	// unless the frame was all it showed.
+	const move = (instanceId: string, destination: Workspace) => {
+		const tag = workspaceTag(destination);
+		const retag = (tags: number) => (current: Desk) => raise(update(current, instanceId, { tags }), instanceId);
+		setDrag(null);
+		leave(instanceId, retag(tag), workspaceRoute(destination), retag((byId.get(instanceId)?.tags ?? 0) | tag));
+	};
+
+	// A new workspace is auto, so it goes once the frame leaves it; it is named like the frame's tab would be.
+	const moveNew = async (instanceId: string) => {
+		const instance = byId.get(instanceId);
+		if (instance === undefined) return;
+		const name = chrome.get(instanceId)?.tab?.title ?? chromeOf(instance, chrome.get(instanceId)).title;
+		const created = await createWorkspace({ name, icon: "app-window", auto: true }).catch(() => undefined);
+		if (created !== undefined) move(instanceId, created);
+	};
+
+	// Numbered by switcher position (the Cmd+N key), so same-named workspaces still tell apart.
+	const destinations = workspaces.flatMap(({ id, name }, index) =>
+		id === workspace.id ? [] : [{ id, name, position: index + 1 }],
+	);
 
 	/** The shell API as seen by one widget: the default target, and the opener of what it opens. */
 	const shellFor = (caller: string): Shell => ({
@@ -261,7 +310,11 @@ export function Desktop({ workspace }: DesktopProps) {
 			const widget = resolve(builtins, address, kind);
 			if (widget === undefined) throw new Error(`No widget opens ${address}`);
 			if (mode === "replace") {
-				const existing = recent.find((instance) => instance.address === address && instance.kind === widget.kind);
+				// A one-per-desk widget is the same frame whatever address it was opened by.
+				const existing = recent.find(
+					(instance) =>
+						instance.kind === widget.kind && (widget.cardinality === "one" || instance.address === address),
+				);
 				if (existing !== undefined) {
 					if (params !== undefined) setDesk((current) => update(current, existing.id, { params }));
 					reveal(existing);
@@ -273,7 +326,7 @@ export function Desktop({ workspace }: DesktopProps) {
 								instance.openedBy === caller &&
 								instance.kind === widget.kind &&
 								(instance.tags & activeTags) !== 0 &&
-								!pinned.has(instance.id),
+								!instance.pinned,
 						)
 					: undefined;
 				if (target !== undefined) {
@@ -287,6 +340,7 @@ export function Desktop({ workspace }: DesktopProps) {
 				kind: widget.kind,
 				tags: activeTags,
 				props: {},
+				pinned: false,
 				address,
 				openedBy: caller,
 				...(params === undefined ? {} : { params }),
@@ -327,19 +381,19 @@ export function Desktop({ workspace }: DesktopProps) {
 		setLayout("monocle");
 	};
 
-	const togglePin = (widgetId: WidgetId) =>
-		setPinned((current) => {
-			const next = new Set(current);
-			if (!next.delete(widgetId)) next.add(widgetId);
-			return next;
-		});
+	const togglePin = (instance: Instance) =>
+		setDesk((current) => update(current, instance.id, { pinned: !instance.pinned }));
+
+	const mainClass = "box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]";
+	// The first measurement is 0×0; frames committed at it would tween from the origin into their slots.
+	if (size.width === 0 || size.height === 0) return <main className={mainClass} ref={ref} />;
 
 	// With each frame's p-1 inset, p-1 here gives even 8px gaps at edges and between frames.
 	// The scrollbar gutter is always reserved (on both edges, so gaps stay even): if a
 	// scrollbar could take width only when it shows, it would shrink the layout, the
 	// overflow would vanish with it, and the layout would jitter between both.
 	return (
-		<main className="box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]" ref={ref}>
+		<main className={mainClass} ref={ref}>
 			<div
 				ref={surfaceRef}
 				className="relative"
@@ -354,24 +408,31 @@ export function Desktop({ workspace }: DesktopProps) {
 				].map(({ widget, rect, collapsed, hidden }) => {
 					const instance = byId.get(widget.id);
 					if (instance === undefined) return null;
-					const { title, icon, body } = describe(instance, chrome.get(widget.id));
+					const { title, lead, icon, body } = describe(instance, chrome.get(widget.id));
 					return (
 						<Frame
 							key={widget.id}
 							title={title}
+							lead={lead}
 							icon={icon}
 							rect={rect}
 							collapsed={collapsed === true}
 							hidden={hidden}
 							focused={widget.id === focusedId}
-							pinned={pinned.has(widget.id)}
+							pinned={instance.pinned}
 							maximized={layout === "monocle"}
-							canDrag={layout === "tile" && !pinned.has(widget.id)}
+							canDrag={layout === "tile" && !instance.pinned}
 							offset={drag?.widgetId === widget.id ? drag : null}
-							animate={!resizing}
+							animate={!resizing && !resized}
 							onFocus={() => focusWidget(widget.id)}
-							onPin={() => togglePin(widget.id)}
+							onPin={() => togglePin(instance)}
 							onMaximize={() => toggleMax(widget.id)}
+							destinations={destinations}
+							onMove={(workspaceId) => {
+								const destination = workspaces.find((candidate) => candidate.id === workspaceId);
+								if (destination !== undefined) move(widget.id, destination);
+							}}
+							onMoveNew={workspaces.length < MAX_WORKSPACES ? () => void moveNew(widget.id) : undefined}
 							onClose={() => close(widget.id)}
 							onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
 							onDragMove={({ clientX, clientY, deltaX, deltaY }) =>
