@@ -102,6 +102,8 @@ export interface Info {
 	readonly updatedAt: number;
 	/** The model chosen for this session over settings; absent when settings decide. */
 	readonly model?: { readonly provider: string; readonly id: string };
+	/** The thinking level chosen for this session over settings; absent when settings decide. */
+	readonly thinkingLevel?: Model.ThinkingLevel;
 }
 
 export interface Handle {
@@ -177,7 +179,9 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 				: Option.getOrUndefined(yield* sandboxes.get(space.env));
 		const hostDir = Option.getOrUndefined(row.hostDir);
 		const project = Option.getOrUndefined(yield* sessions.project(id));
-		const model = Option.getOrUndefined(row.config)?.model;
+		const config = Option.getOrUndefined(row.config);
+		const model = config?.model;
+		const thinkingLevel = config?.thinkingLevel;
 		return {
 			id,
 			title: row.title,
@@ -188,6 +192,7 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 			...(project === undefined ? {} : { project: { id: project.id, name: project.name } }),
 			updatedAt: DateTime.toEpochMillis(row.updatedAt),
 			...(model === undefined ? {} : { model }),
+			...(thinkingLevel === undefined ? {} : { thinkingLevel }),
 		};
 	}).pipe(Effect.withSpan("Session.info"));
 

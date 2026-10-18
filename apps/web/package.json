@@ -13,7 +13,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@codeworksh/server": "workspace:*",
+		"@codeworksh/contract": "workspace:*",
 		"@codeworksh/widget": "workspace:*",
 		"@effect/atom-react": "4.0.5",
 		"@legendapp/list": "3.3.5",
@@ -23,6 +23,7 @@
 		"clsx": "^2.1.1",
 		"cmdk": "^1.1.1",
 		"effect": "4.0.5",
+		"hast-util-to-jsx-runtime": "2.3.6",
 		"lucide-react": "^1.52.0",
 		"radix-ui": "^1.7.0",
 		"react": "^19.3.0",
@@ -30,6 +31,7 @@
 		"react-markdown": "^10.1.0",
 		"remark-gfm": "^4.0.1",
 		"scheduler": "^0.27.0",
+		"shiki": "4.4.3",
 		"tailwind-merge": "^3.7.0",
 		"webwm": "https://github.com/codeworksh/webwm/releases/download/v0.2.0/webwm-0.2.0.tgz"
 	},

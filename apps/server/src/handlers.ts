@@ -1,6 +1,8 @@
 import { Effect } from "effect";
+import { Cli } from "./cli.ts";
 import { Codework } from "./codework.ts";
-import { Contract, ModelsError, type Project } from "./contract.ts";
+import { Contract, ModelsError, type Project } from "@codeworksh/contract";
+import { Desk } from "./desk.ts";
 import { Event } from "./event.ts";
 import { Kv } from "./kv.ts";
 import { Workspaces } from "./workspaces.ts";
@@ -35,11 +37,14 @@ const byProject = (sessions: ReadonlyArray<Codework.SessionInfo>): Project[] => 
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
 		const workspaces = yield* Workspaces.handlers;
+		const desk = yield* Desk.handlers;
 		const events = yield* Event.Service;
 		const kv = yield* Kv.Service;
 
 		return Contract.Api.of({
 			...workspaces,
+			...desk,
+			...Cli.handlers,
 
 			"projects.list": Effect.fn("projects.list")(function* () {
 				const sessions = yield* Codework.call((client) => client("session.list", {}));
@@ -52,12 +57,18 @@ export const layer = Contract.Api.toLayer(
 					client("model.list", hostDir === undefined ? {} : { hostDir }).pipe(
 						Effect.map((list) => ({ list })),
 						Effect.catchTags({
-							SettingsError: (error) => Effect.succeed({ failed: `${error.path}: ${error.detail}` }),
-							"Runner.ModelCatalogError": (error) => Effect.succeed({ failed: error.detail }),
+							SettingsError: (error) =>
+								Effect.succeed({
+									failed: new ModelsError({ source: "settings", path: error.path, message: error.detail }),
+								}),
+							"Runner.ModelCatalogError": (error) =>
+								Effect.succeed({
+									failed: new ModelsError({ source: "catalog", path: error.path, message: error.detail }),
+								}),
 						}),
 					),
 				);
-				if ("failed" in listed) return yield* new ModelsError({ message: listed.failed });
+				if ("failed" in listed) return yield* listed.failed;
 				return listed.list;
 			}),
 

@@ -1,5 +1,5 @@
 import { RegistryContext, useAtomSet, useAtomValue } from "@effect/atom-react";
-import type { Workspace } from "@codeworksh/server/contract";
+import type { Workspace } from "@codeworksh/contract";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { useContext } from "react";
 import { tagBit } from "webwm";
@@ -19,7 +19,8 @@ export const workspacesAtom = Server.query("workspaces.list", undefined, { react
 export const createWorkspace = Server.mutation("workspaces.create");
 export const updateWorkspace = Server.mutation("workspaces.update");
 export const reorderWorkspaces = Server.mutation("workspaces.reorder");
-export const deleteWorkspace = Server.mutation("workspaces.delete");
+// Kept alive so a delete started as the desktop unmounts (its last frame closed) still lands.
+export const deleteWorkspace = Server.mutation("workspaces.delete").pipe(Atom.keepAlive);
 
 /** Workspaces in switcher order; empty until the server answers. */
 export function useWorkspaces(): readonly Workspace[] {

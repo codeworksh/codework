@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
 		--dev) release="download/devel" ;;
 		--version)
 			[ $# -ge 2 ] || fail "--version needs a version, such as 0.3.0"
-			release="download/cli-v${2#v}"
+			release="download/cli@v${2#v}"
 			shift
 			;;
 		--no-modify-path) modify_path=0 ;;

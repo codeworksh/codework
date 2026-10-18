@@ -73,7 +73,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 							{...workspaceRoute(workspace)}
 							aria-current={current ? "page" : undefined}
 							title={`${tab.title}${tab.subtitle === undefined ? "" : `\n${tab.subtitle}`}\n${shortcutLabel(index + 1)}`}
-							className={`flex h-9 w-56 min-w-12 shrink items-center gap-2 rounded-[10px] pr-3 pl-1.5 transition-colors [corner-shape:superellipse(1.25)] ${
+							className={`flex h-9 w-56 min-w-12 shrink items-center gap-2 rounded-[10px] pr-3 pl-1.5 transition-colors animate-in duration-150 ease-out fade-in-0 zoom-in-95 [corner-shape:superellipse(1.25)] ${
 								current
 									? "border border-edge bg-linear-to-b from-frame-top to-frame text-ink shadow-frame"
 									: "border border-transparent text-ink-muted hover:bg-ink/5 hover:text-ink"

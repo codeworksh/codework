@@ -6,7 +6,7 @@ import { Migrator, SqlClient } from "effect/sql";
 // "YYYYMMDD<counter>_<label>"; the migrator runs by high-water mark, so a new
 // id must sort after every applied one.
 const migrations = {
-	"202610090001_kv": Effect.gen(function* () {
+	"202610170001_init": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
 		yield* sql`
 			CREATE TABLE kv (
@@ -17,9 +17,6 @@ const migrations = {
 				PRIMARY KEY (package, key)
 			)
 		`;
-	}),
-	"202610090002_workspaces": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
 		yield* sql`
 			CREATE TABLE workspaces (
 				id TEXT PRIMARY KEY,
@@ -29,6 +26,7 @@ const migrations = {
 				icon TEXT NOT NULL,
 				layout TEXT NOT NULL,
 				mfact REAL NOT NULL,
+				auto INTEGER NOT NULL DEFAULT 0,
 				created INTEGER NOT NULL
 			)
 		`;
@@ -40,13 +38,6 @@ const migrations = {
 				{ id: "notes", name: "Notes", icon: "notebook-pen" },
 			].map((workspace, index) => ({ ...workspace, bit: index, pos: index, layout: "tile", mfact: 0.6, created })),
 		)}`;
-	}),
-	"202610160001_workspace_auto": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
-		yield* sql`ALTER TABLE workspaces ADD COLUMN auto INTEGER NOT NULL DEFAULT 0`;
-	}),
-	"202610160002_event": Effect.gen(function* () {
-		const sql = yield* SqlClient.SqlClient;
 		// AUTOINCREMENT so a seq is never reused, even after the newest rows are deleted.
 		yield* sql`
 			CREATE TABLE event (
@@ -61,6 +52,62 @@ const migrations = {
 		`;
 		yield* sql`CREATE INDEX event_topic_seq ON event (topic, seq)`;
 		yield* sql`CREATE INDEX event_cause ON event (cause)`;
+		yield* sql`
+			CREATE TABLE widget (
+				id TEXT PRIMARY KEY,
+				kind TEXT NOT NULL,
+				tags INTEGER NOT NULL,
+				tile_pos INTEGER NOT NULL,
+				focus_pos INTEGER NOT NULL,
+				pinned INTEGER NOT NULL DEFAULT 0,
+				props TEXT NOT NULL,
+				title TEXT,
+				address TEXT,
+				params TEXT,
+				opened_by TEXT,
+				created INTEGER NOT NULL
+			)
+		`;
+	}),
+	// The built-in local server takes over its settings, kept until now as single kv entries.
+	"202610180001_servers": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`
+			CREATE TABLE servers (
+				id TEXT PRIMARY KEY,
+				kind TEXT NOT NULL,
+				name TEXT NOT NULL,
+				executable TEXT,
+				home TEXT,
+				args TEXT NOT NULL DEFAULT '',
+				env TEXT NOT NULL DEFAULT '[]',
+				is_default INTEGER NOT NULL DEFAULT 0,
+				pos INTEGER NOT NULL,
+				created INTEGER NOT NULL
+			)
+		`;
+		const rows = yield* sql<{ key: string; value: string }>`
+			SELECT key, value FROM kv WHERE package = 'codework' AND key LIKE 'servers.local.%'
+		`;
+		const saved = new Map(rows.map(({ key, value }) => [key.slice("servers.local.".length), JSON.parse(value)]));
+		const text = (key: string) => {
+			const value: unknown = saved.get(key);
+			return typeof value === "string" && value !== "" ? value : null;
+		};
+		const env: unknown = saved.get("env");
+		yield* sql`INSERT INTO servers ${sql.insert({
+			id: "local",
+			kind: "local",
+			name: text("name") ?? "CodeWork",
+			executable: text("executable"),
+			home: text("home"),
+			args: text("args") ?? "",
+			env: JSON.stringify(Array.isArray(env) ? env : []),
+			isDefault: 1,
+			pos: 0,
+			created: yield* Clock.currentTimeMillis,
+		})}`;
+		yield* sql`DELETE FROM kv WHERE package = 'codework' AND key LIKE 'servers.local.%'`;
 	}),
 };
 

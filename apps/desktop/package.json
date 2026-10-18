@@ -1,20 +1,22 @@
 {
 	"name": "@codeworksh/desktop",
-	"version": "0.0.0",
+	"version": "0.3.0",
 	"private": true,
+	"description": "The CodeWork desktop app.",
 	"type": "module",
 	"main": "out/main.cjs",
 	"scripts": {
 		"build": "vp pack",
 		"dev": "node scripts/dev.mjs",
 		"start": "node scripts/start-electron.mjs",
-		"typecheck": "tsc --noEmit"
-	},
-	"dependencies": {
-		"electron": "44.4.2"
+		"typecheck": "tsc --noEmit",
+		"package": "node scripts/package.mjs"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
+		"bumpp": "^12.3.0",
+		"electron": "44.4.2",
+		"electron-builder": "^26.15.3",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	}

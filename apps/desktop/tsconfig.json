@@ -5,5 +5,5 @@
 		"lib": ["ES2023", "DOM"],
 		"tsBuildInfoFile": "../../.cache/typescript/desktop.tsbuildinfo"
 	},
-	"include": ["src", "vite.config.ts"]
+	"include": ["src", "vite.config.ts", "electron-builder.config.ts", "bump.config.ts"]
 }

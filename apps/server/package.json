@@ -3,15 +3,14 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"exports": {
-		"./contract": "./src/contract.ts"
-	},
 	"scripts": {
 		"build": "vp pack",
 		"dev": "vp pack --watch",
+		"test": "vp test",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@codeworksh/contract": "workspace:*",
 		"@codeworksh/web": "workspace:*",
 		"@codeworksh/widget": "workspace:*",
 		"@effect/platform-node": "4.0.5",

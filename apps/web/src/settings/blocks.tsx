@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
+
+import { Input } from "@/components/ui/input";
 
 /** Building blocks every settings section is made of: a page of titled sections of row groups. */
 
@@ -67,3 +69,55 @@ export function Keys({ children }: { children: ReactNode }) {
 		</kbd>
 	);
 }
+
+/** A field that saves itself: Enter or leaving it passes on a changed value, trimmed; Escape puts the saved one back. */
+export function SavingInput({
+	value,
+	label,
+	placeholder,
+	autoFocus = false,
+	className,
+	onCommit,
+}: {
+	value: string;
+	label: string;
+	placeholder?: string;
+	autoFocus?: boolean;
+	className?: string;
+	onCommit: (name: string) => void;
+}) {
+	const [draft, setDraft] = useState<string | null>(null);
+	// Reads the field itself: Escape resets it just before blurring, sooner than state would.
+	const commit = (next: string) => {
+		const trimmed = next.trim();
+		setDraft(null);
+		if (trimmed !== value) onCommit(trimmed);
+	};
+	return (
+		<Input
+			aria-label={label}
+			value={draft ?? value}
+			placeholder={placeholder}
+			autoFocus={autoFocus}
+			onFocus={(event) => autoFocus && event.currentTarget.select()}
+			className={className}
+			onChange={(event) => setDraft(event.target.value)}
+			onBlur={(event) => commit(event.currentTarget.value)}
+			onKeyDown={(event) => {
+				if (event.key === "Enter") event.currentTarget.blur();
+				if (event.key === "Escape") {
+					event.currentTarget.value = value;
+					event.currentTarget.blur();
+				}
+			}}
+		/>
+	);
+}
+
+/** The quiet look of a settings field on every theme; the stock input fills in dark ones. */
+export const quietField = "rounded-lg border-edge bg-ink/3 shadow-none dark:bg-ink/3";
+
+/** A name as it is typed in a shell: a variable, a command or a flag. */
+export const Code = ({ children }: { children: ReactNode }) => (
+	<code className="rounded bg-ink/8 px-1 py-px font-mono text-[0.9em] text-ink">{children}</code>
+);
