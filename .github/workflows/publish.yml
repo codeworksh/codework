@@ -3,9 +3,10 @@ name: Publish
 # One workflow publishes every channel, since npm trusted publishing names a single workflow file.
 # - canary / dev: every push to that branch
 # - latest: run by hand on `main`; publishes each package whose version is not on npm yet
-# dev and latest also build the standalone binary and attach it to a GitHub Release: `devel`, one
-# prerelease replaced on every dev push, or `cli-v<version>`, marked latest. canary builds the
-# desktop app instead and attaches it to `nightly`, one prerelease replaced on every canary push.
+# dev and latest also make GitHub Releases (scripts/github.mjs): `devel`, one prerelease with the
+# standalone binary replaced on every dev push, or `<pkg>@v<version>` per package released on
+# latest, the CLI's with the binary and marked latest. canary makes `nightly`, one prerelease
+# with the desktop app replaced on every canary push.
 on:
    push:
       branches: [canary, dev]
@@ -193,19 +194,8 @@ jobs:
               path: release
               merge-multiple: true
          # codework.sh/install verifies each download against SHA256SUMS.
-         - run: |
-              (cd release && sha256sum *.tar.gz > SHA256SUMS)
-              version="$(node scripts/version.mjs "$CHANNEL" packages/codework)"
-              if [ "$CHANNEL" = dev ]; then
-                 gh release delete devel --cleanup-tag --yes || true
-                 gh release create devel release/* --prerelease --target "$GITHUB_SHA" \
-                    --title "CLI $version" --notes "Development build $version, from $GITHUB_SHA."
-              elif gh release view "cli-v$version" > /dev/null 2>&1; then
-                 echo "cli-v$version is already released"
-              else
-                 gh release create "cli-v$version" release/* --latest --target "$GITHUB_SHA" \
-                    --title "CLI $version" --generate-notes
-              fi
+         - run: (cd release && sha256sum *.tar.gz > SHA256SUMS)
+         - run: node scripts/github.mjs "$CHANNEL" release
 
    desktop:
       needs: guard
@@ -277,13 +267,5 @@ jobs:
               pattern: desktop-*
               path: release
               merge-multiple: true
-         - run: |
-              (cd release && sha256sum codework-desktop-* > SHA256SUMS)
-              version="$(node scripts/version.mjs canary apps/desktop)"
-              gh release delete nightly --cleanup-tag --yes || true
-              gh release create nightly release/* --prerelease --latest=false --target "$GITHUB_SHA" \
-                 --title "desktop@v$version" \
-                 --notes "CodeWork Canary desktop build $version, from $GITHUB_SHA. Replaced on every canary push.
-
-              macOS builds are not signed or notarized yet. After installing, run:
-              xattr -dr com.apple.quarantine \"/Applications/CodeWork Canary.app\""
+         - run: (cd release && sha256sum codework-desktop-* > SHA256SUMS)
+         - run: node scripts/github.mjs canary release
