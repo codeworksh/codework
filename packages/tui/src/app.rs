@@ -17,7 +17,9 @@ use crate::prompt::Prompt;
 use crate::rpc::{RpcClient, StreamEvent};
 use crate::theme::{self, Palette};
 use crate::tool::ToolCall;
-use crate::types::{HistoryEntry, ModelList, Part, SessionInfo, ToolResultContent, UsageReport};
+use crate::types::{
+    HistoryEntry, ModelList, Part, ServerInfo, SessionInfo, ToolResultContent, UsageReport,
+};
 
 /// What a leading slash offers. Only commands the app can actually perform are listed, and an
 /// entry's name is what choosing it matches on.
@@ -144,6 +146,8 @@ pub struct App {
     pub popup: Option<Popup>,
     /// A line of plain truth about the prompt or RPC status, shown in place of the key hints.
     pub notice: Option<String>,
+    /// Verified server identity (`pid` and `version`) from `server.info`.
+    pub server_info: Option<ServerInfo>,
     /// Active server session, once created or attached.
     pub session: Option<SessionInfo>,
     /// Available models and the resolved settings default from `model.list`.
@@ -184,6 +188,7 @@ impl App {
             prompt: Prompt::default(),
             popup: None,
             notice: None,
+            server_info: None,
             session: None,
             models: None,
             model: None,
@@ -198,6 +203,7 @@ impl App {
             keymap: Keymap::new(),
             tx,
         };
+        app.spawn_server_info();
         app.spawn_list_models();
         app
     }
@@ -476,6 +482,14 @@ impl App {
 
     fn handle_rpc(&mut self, event: RpcEvent) -> bool {
         match event {
+            RpcEvent::ServerInfoLoaded(Ok(info)) => {
+                self.server_info = Some(info);
+                true
+            }
+            RpcEvent::ServerInfoLoaded(Err(err)) => {
+                self.notice = Some(err);
+                true
+            }
             RpcEvent::ModelsLoaded(Ok(models)) => {
                 self.models = Some(models);
                 let active_model = self.model_label();
@@ -905,6 +919,16 @@ impl App {
         }
         self.should_quit = true;
         false
+    }
+
+    fn spawn_server_info(&self) {
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let res = RpcClient::default().verify_server().await;
+                let _ = tx.send(AppEvent::Rpc(RpcEvent::ServerInfoLoaded(res)));
+            });
+        }
     }
 
     fn spawn_list_models(&self) {
@@ -1753,5 +1777,31 @@ mod tests {
         let ids: Vec<&str> = menu.entries().iter().map(|e| e.id.as_ref()).collect();
         assert_eq!(ids, vec!["off", "low", "medium", "high"]);
         assert_eq!(menu.selected().map(|e| e.id.as_ref()), Some("high"));
+    }
+
+    #[test]
+    fn records_server_info_and_surfaces_mismatch_notice() {
+        let mut app = App::default();
+        assert!(app.server_info.is_none());
+        assert!(app.notice.is_none());
+
+        app.update(AppEvent::Rpc(RpcEvent::ServerInfoLoaded(Ok(ServerInfo {
+            pid: 4242,
+            version: "0.3.0".to_string(),
+        }))));
+        assert_eq!(
+            app.server_info,
+            Some(ServerInfo {
+                pid: 4242,
+                version: "0.3.0".to_string(),
+            })
+        );
+        assert!(app.notice.is_none());
+
+        let mismatch = "Server at ws://127.0.0.1:7533/rpc/v1 runs version 0.2.0, expected 0.3.0 from service.json".to_string();
+        app.update(AppEvent::Rpc(RpcEvent::ServerInfoLoaded(Err(
+            mismatch.clone(),
+        ))));
+        assert_eq!(app.notice.as_deref(), Some(mismatch.as_str()));
     }
 }
