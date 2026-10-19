@@ -432,10 +432,10 @@ describe("codework CLI", () => {
 
 	it("refreshes the catalog in the home only when it is stale or forced", () => {
 		const home = mkdtempSync(join(tmpdir(), "codework-refresh-"));
-		const snapshot = join(home, "modelsdev.json");
 		const catalog = join(home, "models.gen.json");
-		const env = { CODEWORK_MODELS_FILE: undefined, CODEWORK_MODELS_DEV_FILE: snapshot };
-		writeFileSync(snapshot, JSON.stringify({}));
+		// aikit's recorded catalog stands in for the published one.
+		const published = new URL("../../aikit/test/__artifacts__/modelgen.json", import.meta.url).href;
+		const env = { CODEWORK_MODELS_FILE: undefined, CODEWORK_CATALOG_URL: published };
 		try {
 			const first = runIn(home, env, "models", "refresh");
 			expect(first.status).toBe(0);
@@ -461,7 +461,7 @@ describe("codework CLI", () => {
 
 	it("reports a failed refresh", () => {
 		const result = runIsolated(
-			{ CODEWORK_MODELS_FILE: undefined, CODEWORK_MODELS_DEV_URL: "http://127.0.0.1:1" },
+			{ CODEWORK_MODELS_FILE: undefined, CODEWORK_CATALOG_URL: "http://127.0.0.1:1/v1/models.json" },
 			"models",
 			"refresh",
 		);

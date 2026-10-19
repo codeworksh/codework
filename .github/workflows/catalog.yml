@@ -1,0 +1,59 @@
+name: Model Catalog
+
+# Publishes the model catalog to https://catalog.codework.sh/v1/models.json, the R2 bucket that
+# `sites/catalog` deploys. `vp run catalog` builds it from models.dev and OpenRouter, refuses one
+# that fails its checks, and reports whether it differs from the published one; only a changed
+# catalog is uploaded.
+on:
+   schedule:
+      - cron: "23 * * * *"
+   workflow_dispatch:
+      inputs:
+         publish:
+            description: "Upload the catalog to R2 when it changed"
+            required: true
+            default: true
+            type: boolean
+
+permissions:
+   contents: read
+
+concurrency:
+   group: catalog
+   cancel-in-progress: false
+
+jobs:
+   publish:
+      runs-on: ubuntu-latest
+      # A bucket-scoped R2 API token (Object Read & Write on catalog-live only), stored as
+      # CATALOG_R2_ACCESS_KEY_ID / CATALOG_R2_SECRET_ACCESS_KEY, and the account's S3 endpoint
+      # (https://<account id>.r2.cloudflarestorage.com) as CATALOG_R2_ENDPOINT.
+      environment: catalog
+      steps:
+         - uses: actions/checkout@v6
+         - uses: voidzero-dev/setup-vp@v1.21.1
+           with:
+              node-version: 24
+              run-install: false
+              cache: false
+         - run: vp install --frozen-lockfile --filter @codeworksh/aikit
+         - id: build
+           run: vp run --filter @codeworksh/aikit catalog "$GITHUB_WORKSPACE/.artifacts/catalog/v1/models.json"
+         - uses: actions/upload-artifact@v4
+           with:
+              name: catalog
+              path: .artifacts/catalog
+              retention-days: 14
+         - if: steps.build.outputs.changed == 'true' && (github.event_name == 'schedule' || inputs.publish)
+           env:
+              AWS_ACCESS_KEY_ID: ${{ secrets.CATALOG_R2_ACCESS_KEY_ID }}
+              AWS_SECRET_ACCESS_KEY: ${{ secrets.CATALOG_R2_SECRET_ACCESS_KEY }}
+              AWS_DEFAULT_REGION: auto
+              R2_ENDPOINT: ${{ secrets.CATALOG_R2_ENDPOINT }}
+           # One PUT, never multipart: R2's ETag is then the file's MD5, which clients send back to get a 304.
+           run: >-
+              aws s3api put-object --bucket catalog-live --key v1/models.json
+              --body .artifacts/catalog/v1/models.json
+              --endpoint-url "$R2_ENDPOINT"
+              --content-type application/json
+              --cache-control "public, max-age=300"

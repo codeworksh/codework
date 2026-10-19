@@ -84,6 +84,7 @@
 	"scripts": {
 		"baseline": "tsx --conditions=development src/cli.ts modelgen src/model/baseline.json --baseline",
 		"build": "vp pack",
+		"catalog": "tsx --conditions=development scripts/catalog.ts",
 		"check": "vp check",
 		"cli": "tsx --conditions=development src/cli.ts",
 		"lint": "vp lint",

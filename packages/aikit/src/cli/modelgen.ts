@@ -732,24 +732,13 @@ export interface GenerateOptions {
 	readonly path?: string | undefined;
 	/** Keep only {@link BASELINE_PROVIDERS}, for the catalog bundled with aikit. */
 	readonly baseline?: boolean | undefined;
-	/** Narrow OpenRouter to the models this key may use, with its limits and prices. */
-	readonly openRouterKey?: string | undefined;
 }
 
 export async function generateModels(args: GenerateOptions = {}): Promise<string> {
 	const path = resolve(args.path ?? ModelCatalog.path());
 	const [modelsDev, openRouter] = await Promise.all([pullModelsDevData(), pullOpenRouterData()]);
-	let catalog = buildCatalog({ modelsDev, openRouter });
-	if (args.baseline) catalog = pick(catalog, BASELINE_PROVIDERS);
-
-	const openrouter = catalog[OpenRouter.PROVIDER_ID];
-	if (args.openRouterKey && openrouter) {
-		// The shared listing still beats none when OpenRouter cannot say what the key may use.
-		catalog[OpenRouter.PROVIDER_ID] = await OpenRouter.personalize(openrouter, args.openRouterKey).catch(
-			() => openrouter,
-		);
-	}
-	await Filesystem.writeJsonAtomic(path, catalog);
+	const catalog = buildCatalog({ modelsDev, openRouter });
+	await Filesystem.writeJsonAtomic(path, args.baseline ? pick(catalog, BASELINE_PROVIDERS) : catalog);
 	return path;
 }
 

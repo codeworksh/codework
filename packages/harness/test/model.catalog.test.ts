@@ -3,49 +3,28 @@ import * as TestClock from "effect/testing/TestClock";
 import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect } from "vite-plus/test";
 import { ModelCatalog } from "../src/model/catalog.ts";
 import { it } from "./utils/effect.ts";
 
-/** A models.dev snapshot with one provider aikit keeps, so a refresh never downloads models.dev. */
-const modelsDev = {
-	anthropic: {
-		id: "anthropic",
-		name: "Anthropic",
-		env: ["ANTHROPIC_API_KEY"],
-		npm: "@ai-sdk/anthropic",
-		models: {
-			"claude-test": {
-				id: "claude-test",
-				name: "Claude Test",
-				family: "claude",
-				attachment: true,
-				tool_call: true,
-				release_date: "2026-01-01",
-				last_updated: "2026-01-01",
-				modalities: { input: ["text"], output: ["text"] },
-				open_weights: false,
-			},
-		},
-	},
-};
-
 describe("ModelCatalog", () => {
-	const saved = { file: process.env.CODEWORK_MODELS_FILE, dev: process.env.CODEWORK_MODELS_DEV_FILE };
+	const saved = { file: process.env.CODEWORK_MODELS_FILE, url: process.env.CODEWORK_CATALOG_URL };
 	let home: string;
 
 	beforeEach(() => {
 		home = mkdtempSync(join(tmpdir(), "codework-catalog-"));
-		const snapshot = join(home, "modelsdev.json");
-		writeFileSync(snapshot, JSON.stringify(modelsDev));
-		process.env.CODEWORK_MODELS_DEV_FILE = snapshot;
+		// A local published catalog, so a refresh never downloads one.
+		const published = join(home, "published.json");
+		writeFileSync(published, JSON.stringify({}));
+		process.env.CODEWORK_CATALOG_URL = pathToFileURL(published).href;
 		Reflect.deleteProperty(process.env, "CODEWORK_MODELS_FILE");
 	});
 
 	afterEach(() => {
 		for (const [key, value] of [
 			["CODEWORK_MODELS_FILE", saved.file],
-			["CODEWORK_MODELS_DEV_FILE", saved.dev],
+			["CODEWORK_CATALOG_URL", saved.url],
 		] as const) {
 			if (value === undefined) Reflect.deleteProperty(process.env, key);
 			else process.env[key] = value;

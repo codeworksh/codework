@@ -2,13 +2,14 @@
  * @file The model catalog a Codework home keeps.
  *
  * aikit reads `models.gen.json` from wherever it is pointed; this module points it at
- * `<home>/models.gen.json` and keeps that file fresh. A one-shot command checks it once, a
+ * `<home>/models.gen.json` and keeps that file fresh from the published catalog
+ * (catalog.codework.sh), narrowed to the host's OpenRouter key. A one-shot command checks it once, a
  * server re-checks on a timer, and both apply the same TTL -- they differ only in how often
  * they ask. `CODEWORK_MODELS_FILE` pins the catalog to a file the user manages: it is read,
  * and reloaded when it changes, but only an explicit refresh ever writes it.
  */
 import { getEnvApiKey, Model } from "@codeworksh/aikit";
-import { generateModels } from "@codeworksh/aikit/modelgen";
+import { downloadCatalog } from "@codeworksh/aikit/modelgen";
 import { JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
 import { JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Clock, Config, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
@@ -73,7 +74,7 @@ const openRouterKey = () => getEnvApiKey({ env: ["OPENROUTER_API_KEY"] });
 
 const download = (path: string) =>
 	Effect.tryPromise({
-		try: () => generateModels({ path, openRouterKey: openRouterKey() }),
+		try: () => downloadCatalog({ path, openRouterKey: openRouterKey() }),
 		catch: (cause) => new RefreshError({ path, detail: cause instanceof Error ? cause.message : String(cause) }),
 	});
 
