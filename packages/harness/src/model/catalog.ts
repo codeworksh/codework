@@ -2,13 +2,14 @@
  * @file The model catalog a Codework home keeps.
  *
  * aikit reads `models.gen.json` from wherever it is pointed; this module points it at
- * `<home>/models.gen.json` and keeps that file fresh. A one-shot command checks it once, a
+ * `<home>/models.gen.json` and keeps that file fresh from the published catalog
+ * (catalog.codework.sh), narrowed to the host's OpenRouter key. A one-shot command checks it once, a
  * server re-checks on a timer, and both apply the same TTL -- they differ only in how often
  * they ask. `CODEWORK_MODELS_FILE` pins the catalog to a file the user manages: it is read,
  * and reloaded when it changes, but only an explicit refresh ever writes it.
  */
 import { getEnvApiKey, Model } from "@codeworksh/aikit";
-import { generateModels } from "@codeworksh/aikit/modelgen";
+import { downloadCatalog } from "@codeworksh/aikit/modelgen";
 import { JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
 import { JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Clock, Config, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
@@ -68,9 +69,12 @@ const stale = Effect.fn("ModelCatalog.stale")(function* (path: string) {
 	return (yield* Clock.currentTimeMillis) - mtime.value >= Duration.toMillis(ttl);
 });
 
+/** OpenRouter's catalog is narrowed to what the host's key may use, when one is set. */
+const openRouterKey = () => getEnvApiKey({ env: ["OPENROUTER_API_KEY"] });
+
 const download = (path: string) =>
 	Effect.tryPromise({
-		try: () => generateModels({ path }),
+		try: () => downloadCatalog({ path, openRouterKey: openRouterKey() }),
 		catch: (cause) => new RefreshError({ path, detail: cause instanceof Error ? cause.message : String(cause) }),
 	});
 
@@ -87,8 +91,7 @@ export const refresh = Effect.fn("ModelCatalog.refresh")(function* (
 
 /**
  * The automatic check: refresh a stale catalog unless it is pinned, and never fail. A failed
- * download leaves the old file in place; a missing one surfaces later as a
- * `Runner.ModelCatalogError` from whatever needed it.
+ * download leaves the old file in place; without one, aikit's bundled baseline is read.
  */
 const check = Effect.fn("ModelCatalog.check")(function* ({ path, pinned }: Target) {
 	if (pinned || !(yield* stale(path))) return;
@@ -144,10 +147,7 @@ export const loadError = (cause: unknown): Runner.ModelCatalogError | undefined 
 		!("message" in data) ||
 		typeof data.message !== "string" ||
 		!("reason" in data) ||
-		(data.reason !== "missing" &&
-			data.reason !== "unreadable" &&
-			data.reason !== "empty" &&
-			data.reason !== "invalid")
+		(data.reason !== "unreadable" && data.reason !== "empty" && data.reason !== "invalid")
 	) {
 		return undefined;
 	}

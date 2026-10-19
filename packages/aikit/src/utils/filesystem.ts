@@ -44,13 +44,17 @@ export async function writeJson(path: string, data: unknown, mode?: number): Pro
  * Write through a temp file and rename it into place, so a concurrent reader
  * sees either the old content or the new, never a partial file.
  */
-export async function writeJsonAtomic(path: string, data: unknown): Promise<void> {
+export async function writeAtomic(path: string, content: string | Buffer | Uint8Array): Promise<void> {
 	const temp = `${path}.${process.pid}.${Date.now()}.tmp`;
 	try {
-		await writeJson(temp, data);
+		await write(temp, content);
 		await rename(temp, path);
 	} catch (error) {
 		await rm(temp, { force: true });
 		throw error;
 	}
+}
+
+export async function writeJsonAtomic(path: string, data: unknown): Promise<void> {
+	return writeAtomic(path, JSON.stringify(data, null, 2));
 }

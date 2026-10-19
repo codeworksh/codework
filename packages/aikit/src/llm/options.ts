@@ -13,7 +13,7 @@ import type {
 	OpenAICompatibleLanguageModelCompletionOptions,
 	OpenAICompatibleProviderSettings,
 } from "@ai-sdk/openai-compatible";
-import type { XaiLanguageModelChatOptions, XaiLanguageModelResponsesOptions, XaiProviderSettings } from "@ai-sdk/xai";
+import type { XaiLanguageModelResponsesOptions, XaiProviderSettings } from "@ai-sdk/xai";
 import type { OpenRouterProviderOptions, OpenRouterProviderSettings } from "@openrouter/ai-sdk-provider";
 import { Type, type Static } from "typebox";
 import * as Model from "../model/model.ts";
@@ -64,7 +64,8 @@ type OpenAILanguageOptions =
 type OpenAICompatibleLanguageOptions =
 	| OpenAICompatibleLanguageModelChatOptions
 	| OpenAICompatibleLanguageModelCompletionOptions;
-type XaiLanguageOptions = XaiLanguageModelResponsesOptions | XaiLanguageModelChatOptions;
+// xAI serves only the Responses API.
+type XaiLanguageOptions = XaiLanguageModelResponsesOptions;
 type GitHubCopilotLanguageOptions =
 	| AnthropicLanguageModelOptions
 	| OpenAILanguageModelResponsesOptions

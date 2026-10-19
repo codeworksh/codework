@@ -16,10 +16,21 @@ This file is the canonical source for unreleased changes and published release n
 - The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
 - Added the `model.list` RPC (`{ hostDir? }`). It returns the providers the server holds credentials for (an API key in its environment, a stored OAuth login, or a keyless provider from settings), each model's supported thinking levels, and the `default` model and thinking level that settings pick for a session anchored at `hostDir`, with its display names. Without `hostDir` only the user's settings apply. Credentials are checked for presence, not validity. A broken settings file fails with `SettingsError`.
 - The desktop start page's composer has a model picker and a Reasoning picker. The model picker lists providers down a rail with their models beside it and searches across all of them. With no model picked, settings decide; a default whose provider has no credentials shows muted and cannot be picked. Reasoning offers only the levels the model supports and marks the settings level as Default. The picks are remembered across restarts.
+- Added a model catalog bundled with `@codeworksh/aikit` for OpenAI, Anthropic and OpenRouter (`vp run baseline` in `packages/aikit` regenerates it). It is read when no catalog has been generated yet, so a first run works offline. A generated catalog replaces each provider it lists.
+- The model catalog is published to `https://catalog.codework.sh/v1/models.json` (an R2 bucket, `infra/catalog`) by a scheduled GitHub Action, which refuses a catalog that fails its schema check, misses a required model or drops more than a fifth of a provider's models. A refresh now downloads that catalog instead of building one from models.dev on every machine, and asks with the MD5 of its last download so an unchanged catalog costs a 304. A model whose protocol or API method this version does not know is left out. `CODEWORK_CATALOG_URL` points a client at another catalog, a `file:` URL at a local copy. `aikit modelgen` still builds one locally.
+- With `OPENROUTER_API_KEY` set, a catalog refresh keeps only the OpenRouter models that key may use, with the key's context limits and prices (`GET /models/user`).
+- Added `gpt-6.1-sol` (500k context), `gpt-6-sol` and `gpt-6-astra` to OpenAI Codex.
 
 ### Changed
 
 - The default thinking level, for settings that name none, is now `medium` instead of `high`.
+- The model catalog generator follows Pi's current rules. OpenAI Codex entries are built from models.dev's OpenAI entries, so their prices and long-context tiers come from there. `gpt-5.4` and `gpt-5.4-mini` are no longer listed for Codex, because the Codex backend rejects them for ChatGPT accounts.
+- OpenAI reasoning levels come from models.dev's `reasoning_options`, and OpenRouter models are listed from OpenRouter's own `/models`, which gives the reasoning efforts each one accepts. `:batch` variants are left out.
+- Prices take models.dev's long-context tiers for every provider, and OpenAI service-tier multipliers come from models.dev's modes (for example ultrafast 6x on GPT-6.1 Sol). Direct OpenAI requests to the GPT-5.4+ and GPT-6 models default to the 272k short-context window; settings can raise `contextWindow`.
+- The generator drops the models.dev alias `gpt-5.6`, which OpenAI's API rejects. Claude Opus 4.7+, Opus 5.x, Sonnet 5.5 and Haiku 5.5 no longer get a `temperature` field, which their API rejects.
+- Renamed `OPENCODE_MODELS_URL` and `OPENCODE_MODELS_DEV_FILE` to `CODEWORK_MODELS_DEV_URL` and `CODEWORK_MODELS_DEV_FILE`.
+- Upgraded the AI SDK packages to their latest releases, including `@ai-sdk/xai` 5, which drops the Chat Completions API: xAI models run on Responses only, as the catalog already set, and `XaiOptions` takes only Responses options. All providers now share one `@ai-sdk/provider` version.
+- A missing model catalog is no longer an error (`model-catalog-missing` is gone); the bundled catalog is read instead.
 
 ### Fixed
 
