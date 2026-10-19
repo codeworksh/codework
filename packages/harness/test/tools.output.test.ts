@@ -1,5 +1,6 @@
 import { Effect, Fiber, Layer, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import { basename } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -14,7 +15,7 @@ import * as Executor from "../src/tool/executor.ts";
 import { fromSandboxShell, ToolShell } from "../src/tool/shell.ts";
 import * as Tool from "../src/tool/tool.ts";
 import { tmpdir } from "./fixtures/tempdir.ts";
-import { pendingCall } from "./tools.fixture.ts";
+import { BASH_SYNTAX, pendingCall } from "./tools.fixture.ts";
 
 /**
  * The bash tool end to end over two real backends — the host shell, which
@@ -33,6 +34,8 @@ import { pendingCall } from "./tools.fixture.ts";
  *   - a backend that cannot cut a command short leaves it running after the deadline
  *   - a backend that hands text rather than bytes reports a file the sandbox removed,
  *     or numbers the shown lines wrongly
+ *   - bash-only syntax fails where `sh` is not bash, or breaks the wrapper itself
+ *   - a sandbox without bash fails the command without saying it ran under `sh`
  */
 
 interface Details {
@@ -172,6 +175,23 @@ describe.each([
 		if (backend !== "justbash") await fs.rm(result.details.fullOutputPath!);
 	});
 
+	it("runs bash-only syntax under bash", async () => {
+		const { dir, layer } = await mount();
+		await using _ = dir;
+		const result = await run(layer, BASH_SYNTAX);
+		await expect({ status: result.status, text: result.text }).toMatchFileSnapshot(
+			"./__artifacts__/tools.bash.syntax.json",
+		);
+	});
+
+	it("keeps a syntax error inside the command", async () => {
+		const { dir, layer } = await mount();
+		await using _ = dir;
+		const result = await run(layer, "echo before; if then");
+		expect(result.details).toMatchObject({ _tag: "BashFailed", exitCode: 2, shell: "bash" });
+		expect(result.text).toMatch(/\n\nCommand exited with code 2$/);
+	});
+
 	it("tells the model when there is no output, and why a silent command failed", async () => {
 		const { dir, layer } = await mount();
 		await using _ = dir;
@@ -289,6 +309,43 @@ describe.each([
 			expect(() => process.kill(pid, 0)).toThrow();
 		});
 	}
+});
+
+// A host without bash: the tools the wrapper needs, and nothing else.
+const withoutBash = async (dir: string) => {
+	const bin = `${dir}/bin`;
+	await fs.mkdir(bin);
+	for (const tool of ["awk", "cat", "mkdir", "ps", "rm", "tail", "tee", "wc"]) {
+		const found = (process.env.PATH ?? "")
+			.split(":")
+			.map((path) => `${path}/${tool}`)
+			.find((path) => existsSync(path));
+		if (found === undefined) throw new Error(`${tool} not on PATH`);
+		await fs.symlink(found, `${bin}/${tool}`);
+	}
+	return HostExe.layer({ shell: "/bin/sh", env: { PATH: bin } });
+};
+
+describe.each([
+	["streams", (shell: Layer.Layer<Shell, never, ChildProcessSpawner.ChildProcessSpawner>) => shell],
+	[
+		"buffers",
+		(shell: Layer.Layer<Shell, never, ChildProcessSpawner.ChildProcessSpawner>) =>
+			Layer.effect(
+				Shell,
+				Effect.map(Shell, (inner) => Shell.of({ exec: inner.exec, execArgv: inner.execArgv })),
+			).pipe(Layer.provide(shell)),
+	],
+] as const)("bash tool on a host without bash (%s)", (_mode, backend) => {
+	it("runs the command under sh, and says so when it fails", async () => {
+		await using dir = await tmpdir();
+		const layer = host(dir.path, backend(await withoutBash(dir.path)));
+		const ok = await run(layer, "echo ok");
+		expect(ok).toMatchObject({ status: "completed", text: "ok\n" });
+		const failed = await run(layer, "echo no; exit 3");
+		expect(failed.details).toMatchObject({ _tag: "BashFailed", exitCode: 3, shell: "sh" });
+		expect(failed.text).toBe("no\n\nCommand exited with code 3 (ran under sh: bash is not on PATH in this sandbox)");
+	});
 });
 
 describe("ToolShell over the host sandbox shell", () => {

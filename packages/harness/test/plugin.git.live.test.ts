@@ -109,8 +109,8 @@ live("plugins installed from git, as a third party ships them", () => {
 	it("runs a git-installed tool and prompt in a real session", { timeout: 300_000 }, async () =>
 		withWorkspace(async (workspace) => {
 			await install(`${TOOL}#v0.1.0`, workspace);
-			await install(`${PROMPT}#v0.1.0`, workspace);
-			await settings(workspace, [`${TOOL}#v0.1.0`, `${PROMPT}#v0.1.0`]);
+			await install(`${PROMPT}#v0.4.0`, workspace);
+			await settings(workspace, [`${TOOL}#v0.1.0`, `${PROMPT}#v0.4.0`]);
 
 			const { contexts } = await exchange(workspace);
 
@@ -120,12 +120,15 @@ live("plugins installed from git, as a third party ships them", () => {
 				"bash",
 				"read",
 				"write",
+				"edit",
 				"spacex_launch_manifest",
 			]);
 			// A prompt plugin runs after every tool plugin, so it indexed the tool above even
 			// though its settings entry is written after it.
-			expect(contexts[0]?.systemPrompt).toContain("## First principles");
-			expect(contexts[0]?.systemPrompt).toContain("Tools available: bash, spacex_launch_manifest.");
+			expect(contexts[0]?.systemPrompt).toContain("<engineering_doctrine>");
+			expect(contexts[0]?.systemPrompt).toContain(
+				"Tools available: bash, read, write, edit, spacex_launch_manifest.",
+			);
 		}),
 	);
 
@@ -163,14 +166,14 @@ live("plugins installed from git, as a third party ships them", () => {
 				// superseding one another -- which is what lets a project pin one while another
 				// project pins the other, out of one shared store.
 				expect(await install(`${PROMPT}#v0.1.0`, workspace)).toMatchObject({ version: "0.1.0" });
-				expect(await install(`${PROMPT}#v0.2.0`, workspace)).toMatchObject({ version: "0.2.0" });
+				expect(await install(`${PROMPT}#v0.4.0`, workspace)).toMatchObject({ version: "0.4.0" });
 
 				// Only the entry the settings file names is loaded, though both are filed.
-				await settings(workspace, [`${PROMPT}#v0.2.0`]);
+				await settings(workspace, [`${PROMPT}#v0.4.0`]);
 
 				const { contexts } = await exchange(workspace);
-				// The 0.2.0 heading, which 0.1.0 does not render.
-				expect(contexts[0]?.systemPrompt).toContain("## Engineering doctrine");
+				// The 0.4.0 section, which 0.1.0 does not render.
+				expect(contexts[0]?.systemPrompt).toContain("<engineering_doctrine>");
 			}),
 	);
 

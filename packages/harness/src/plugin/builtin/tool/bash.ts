@@ -53,6 +53,8 @@ const BashSuccess = Schema.Struct({ ...outputFields, exitCode: Schema.Finite });
 class BashFailed extends Schema.TaggedError<BashFailed>()("BashFailed", {
 	...outputFields,
 	exitCode: Schema.Finite,
+	/** The shell that ran the command, when the sandbox reported it. */
+	shell: Schema.optional(Schema.Literals(["bash", "sh"])),
 }) {}
 
 /** Deadline exceeded — expected, model-visible. Carries the partial output produced so far. */
@@ -71,7 +73,7 @@ const withStatus = (failure: BashFailureError): string => {
 			? `Command timed out after ${failure.timeoutSeconds} seconds`
 			: failure.exitCode === -1
 				? "Command terminated without an exit code"
-				: `Command exited with code ${failure.exitCode}`;
+				: `Command exited with code ${failure.exitCode}${failure.shell === "sh" ? " (ran under sh: bash is not on PATH in this sandbox)" : ""}`;
 	return failure.output ? `${failure.output.replace(/\n$/, "")}\n\n${status}` : status;
 };
 
@@ -134,6 +136,8 @@ const present = (snap: OutputSnapshot, lastLineBytes: number, saved: string | un
 
 const utf8 = new TextEncoder();
 
+const shellOf = (report: Output.Report | undefined) => (report !== undefined ? { shell: report.shell } : {});
+
 /**
  * A command cut off by its deadline never reached the wrapper's own cleanup: kill
  * what is left of it and remove its side files, keeping the output file only when
@@ -195,7 +199,7 @@ const runBuffered = (
 		acc.finish();
 		const presented = present(acc.snapshot(), acc.getLastLineBytes(), window?.kept === true ? file : undefined);
 		if (result.exitCode !== 0) {
-			return yield* new BashFailed({ exitCode: result.exitCode, ...presented });
+			return yield* new BashFailed({ exitCode: result.exitCode, ...presented, ...shellOf(window) });
 		}
 		return { exitCode: result.exitCode, ...presented } satisfies typeof BashSuccess.Type;
 	});
@@ -275,7 +279,7 @@ const runStreaming = (
 		const code = yield* Ref.get(exitCode);
 		// No Exit event (e.g. killed before reporting one) → treat as a failure.
 		if (code === null || code !== 0) {
-			return yield* new BashFailed({ exitCode: code ?? -1, ...presented });
+			return yield* new BashFailed({ exitCode: code ?? -1, ...presented, ...shellOf(report) });
 		}
 		return { exitCode: code, ...presented } satisfies typeof BashSuccess.Type;
 	});

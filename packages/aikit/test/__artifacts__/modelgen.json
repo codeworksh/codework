@@ -2773,66 +2773,6 @@
         "xhigh": "xhigh"
       }
     },
-    "gpt-5.5": {
-      "api": {
-        "id": "gpt-5.5",
-        "method": "responses",
-        "url": "https://chatgpt.com/backend-api"
-      },
-      "baseUrl": "https://chatgpt.com/backend-api",
-      "compat": {
-        "supportsOpenAIGrammarTools": true,
-        "supportsToolSearch": true
-      },
-      "contextWindow": 272000,
-      "cost": {
-        "cacheRead": 0.5,
-        "cacheWrite": 0,
-        "input": 5,
-        "output": 30,
-        "serviceTierMultipliers": {
-          "flex": 0.5,
-          "priority": 2.5
-        },
-        "tiers": [
-          {
-            "cacheRead": 1,
-            "cacheWrite": 0,
-            "input": 10,
-            "inputTokensAbove": 272000,
-            "output": 45
-          }
-        ]
-      },
-      "id": "gpt-5.5",
-      "input": [
-        "text",
-        "image"
-      ],
-      "maxTokens": 128000,
-      "name": "GPT-5.5",
-      "npm": "@codeworksh/ai-sdk-openai-codex",
-      "protocol": "openai-codex",
-      "provider": {
-        "env": [
-          "OPENAI_CODEX_API_KEY"
-        ],
-        "id": "openai-codex",
-        "name": "OpenAI Codex (ChatGPT)",
-        "source": "custom"
-      },
-      "providerOptionsKey": "openai-codex",
-      "reasoning": true,
-      "thinkingLevelMap": {
-        "high": "high",
-        "low": "low",
-        "max": null,
-        "medium": "medium",
-        "minimal": "low",
-        "off": "none",
-        "xhigh": "xhigh"
-      }
-    },
     "gpt-5.6-luna": {
       "api": {
         "id": "gpt-5.6-luna",

@@ -6,35 +6,131 @@ This file is the canonical source for unreleased changes and published release n
 
 - Add in-progress work under `## [Unreleased]
 
-## [Unreleased]
+### Added
+
+- The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
+- The desktop start page's composer has a model picker and a Reasoning picker. The model picker lists providers down a rail with their models beside it and searches across all of them. With no model picked, settings decide; a default whose provider has no credentials shows muted and cannot be picked. Reasoning offers only the levels the model supports and marks the settings level as Default. The picks are remembered across restarts.
+
+## [@codeworksh/cli@0.4.0] - 2026-10-20
 
 ### Added
 
-- Added Agent Skills (`codework.prompt.skill`). A skill is a directory with a `SKILL.md` whose frontmatter has a `name` and a `description`; `.codework/skills` may also hold standalone `.md` skills. Skills are found in the session's sandbox, local or remote, and never on the host or in `<home>`: `.codework/skills` in the working directory, then `.agents/skills` in the working directory and each parent up to the git root (or up to the sandbox root outside a repository). `.gitignore`, `.ignore` and `.fdignore` are honoured. The system prompt lists only each skill's name, description and location under `<skills>`; the model reads the full file when a task matches. A skill with `disable-model-invocation: true` is not listed. Invalid fields, unreadable files and name collisions log a warning instead of failing; the first skill found keeps the name. The hint names the `read` tool, or `bash` when `read` is off, and names no tool when the reader is hidden from the prompt. Turn it off with `{ "plugin": "codework.prompt.skill", "enabled": false }` in `plugins`.
 - Added `project: { name }` to `session.create`. It names the session's project when the session creates it, ahead of the repository's and the folder's name; a project that already exists keeps its name. The name must be trimmed and not empty.
-- Added the `project.rename` RPC (`{ projectId, name }`), which renames a project and fails with `ProjectNotFoundError` for an unknown id. The harness exposes it as `Project.rename`.
-- The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
+- Added the `project.rename` RPC (`{ projectId, name }`), which renames a project and fails with `ProjectNotFoundError` for an unknown id.
 - Added the `model.list` RPC (`{ hostDir? }`). It returns the providers the server holds credentials for (an API key in its environment, a stored OAuth login, or a keyless provider from settings), each model's supported thinking levels, and the `default` model and thinking level that settings pick for a session anchored at `hostDir`, with its display names. Without `hostDir` only the user's settings apply. Credentials are checked for presence, not validity. A broken settings file fails with `SettingsError`.
-- The desktop start page's composer has a model picker and a Reasoning picker. The model picker lists providers down a rail with their models beside it and searches across all of them. With no model picked, settings decide; a default whose provider has no credentials shows muted and cannot be picked. Reasoning offers only the levels the model supports and marks the settings level as Default. The picks are remembered across restarts.
-- Added a model catalog bundled with `@codeworksh/aikit` for OpenAI, Anthropic and OpenRouter (`vp run baseline` in `packages/aikit` regenerates it). It is read when no catalog has been generated yet, so a first run works offline. A generated catalog replaces each provider it lists.
-- The model catalog is published to `https://catalog.codework.sh/v1/models.json` (an R2 bucket, `infra/catalog`) by a scheduled GitHub Action, which refuses a catalog that fails its schema check, misses a required model or drops more than a fifth of a provider's models. A refresh now downloads that catalog instead of building one from models.dev on every machine, and asks with the MD5 of its last download so an unchanged catalog costs a 304. A model whose protocol or API method this version does not know is left out. `CODEWORK_CATALOG_URL` points a client at another catalog, a `file:` URL at a local copy. `aikit modelgen` still builds one locally.
-- With `OPENROUTER_API_KEY` set, a catalog refresh keeps only the OpenRouter models that key may use, with the key's context limits and prices (`GET /models/user`).
-- Added `gpt-6.1-sol` (500k context), `gpt-6-sol` and `gpt-6-astra` to OpenAI Codex.
+- Added the `session.history` RPC (`{ sessionId }`): the user and assistant messages on the session's active branch, oldest first, with their text, thinking, image and tool-call parts. An unknown id fails with `SessionNotFoundError`.
+- Added the `session.log` RPC (`{ sessionId, after?, follow? }`): the session's stored events after `after`, then a `log.synced` marker; with `follow` it keeps streaming events as they commit.
+- Session info carries the session's `project`, its last activity (`updatedAt`), and the `model` and `thinkingLevel` chosen for it.
 
 ### Changed
 
-- The default thinking level, for settings that name none, is now `medium` instead of `high`.
-- The model catalog generator follows Pi's current rules. OpenAI Codex entries are built from models.dev's OpenAI entries, so their prices and long-context tiers come from there. `gpt-5.4` and `gpt-5.4-mini` are no longer listed for Codex, because the Codex backend rejects them for ChatGPT accounts.
-- OpenAI reasoning levels come from models.dev's `reasoning_options`, and OpenRouter models are listed from OpenRouter's own `/models`, which gives the reasoning efforts each one accepts. `:batch` variants are left out.
-- Prices take models.dev's long-context tiers for every provider, and OpenAI service-tier multipliers come from models.dev's modes (for example ultrafast 6x on GPT-6.1 Sol). Direct OpenAI requests to the GPT-5.4+ and GPT-6 models default to the 272k short-context window; settings can raise `contextWindow`.
-- The generator drops the models.dev alias `gpt-5.6`, which OpenAI's API rejects. Claude Opus 4.7+, Opus 5.x, Sonnet 5.5 and Haiku 5.5 no longer get a `temperature` field, which their API rejects.
-- Renamed `OPENCODE_MODELS_URL` and `OPENCODE_MODELS_DEV_FILE` to `CODEWORK_MODELS_DEV_URL` and `CODEWORK_MODELS_DEV_FILE`.
-- Upgraded the AI SDK packages to their latest releases, including `@ai-sdk/xai` 5, which drops the Chat Completions API: xAI models run on Responses only, as the catalog already set, and `XaiOptions` takes only Responses options. All providers now share one `@ai-sdk/provider` version.
-- A missing model catalog is no longer an error (`model-catalog-missing` is gone); the bundled catalog is read instead.
+- ACP sessions default to the `medium` thinking level instead of `high`.
+- The CLI's GitHub Release is tagged `cli@v<version>` instead of `cli-v<version>`; the install script follows.
 
 ### Fixed
 
 - Fixed `codework` failing to start after a fresh npm install with `The requested module 'effect/Path' does not provide an export named 'make'`. `@effect/platform-node` pulled in a newer `@effect/platform-node-shared` than the pinned `effect` supports. Every Effect package is now pinned to 4.0.5, and `@effect/platform-node-shared` is pinned with them.
+
+### Removed
+
+- Removed the `model-catalog-missing` error. A missing model catalog is no longer an error; the catalog bundled with `@codeworksh/aikit` is read instead.
+
+### Internal
+
+- The telemetry E2E test finds Effect's database spans by their `db.system.name` attribute, since Effect 4.0.5 names them after the database instead of `sql.execute`.
+
+## [@codeworksh/tui@0.1.0] - 2026-10-20
+
+### Added
+
+- The TUI runs sessions against the server: send a prompt and watch the reply, thinking and tool calls stream in, with Markdown, diffs, grouped tool calls, and token use and cost. A dropped connection reconnects and catches up from the session's stored events.
+- Added `/model` (the server's models, searchable, or a custom `provider/model`), `/thinking`, `/session` (resume a session with its history), `/new`, `/reload`, `/theme` (the site's palettes, previewed as you move) and `/exit`.
+- While a reply runs, Enter steers it and Alt+Enter (or Ctrl+Enter) queues a follow-up; `/steer <text>` and `/followup <text>` do the same. Esc interrupts the reply.
+- Mouse-wheel and PageUp/PageDown scrolling; Up/Down scroll when the prompt is empty or with Shift. The prompt takes Ctrl+A/E/U/K/W, Home/End, Alt+Backspace and word movement with Alt or Ctrl+←/→, and accepts bracketed paste.
+- The start screen shows the CodeWork wordmark.
+
+### Changed
+
+- Ctrl+C and Ctrl+D exit the app, as does `<leader>q` (Ctrl+X, then q). Esc stops a reply.
+- A new session uses the model settings pick unless one is chosen with `/model`.
+- The TUI needs a server with `model.list`, `session.history` and `session.log` (`@codeworksh/cli` 0.4.0 or later).
+
+### Removed
+
+- Removed `/help`, `/compact` and `/clear`.
+- Removed entering API keys in the TUI and its `~/.codework/config.json` and `~/.codework/credentials.json`; credentials and models come from the server. The theme choice is not remembered across restarts.
+- Removed the sidebar (context window, tok/s, git branch).
+- Removed the `CODEWORK_HOME` spelling; use `CODEWORK_HOME_DIR`.
+
+## [@codeworksh/harness@0.4.0] - 2026-10-20
+
+### Added
+
+- Added Agent Skills (`codework.prompt.skill`). A skill is a directory with a `SKILL.md` whose frontmatter has a `name` and a `description`; `.codework/skills` may also hold standalone `.md` skills. Skills are found in the session's sandbox, local or remote, and never on the host or in `<home>`: `.codework/skills` in the working directory, then `.agents/skills` in the working directory and each parent up to the git root (or up to the sandbox root outside a repository). `.gitignore`, `.ignore` and `.fdignore` are honoured. The system prompt lists only each skill's name, description and location under `<skills>`; the model reads the full file when a task matches. A skill with `disable-model-invocation: true` is not listed. Invalid fields, unreadable files and name collisions log a warning instead of failing; the first skill found keeps the name. The hint names the `read` tool, or `bash` when `read` is off, and names no tool when the reader is hidden from the prompt. Turn it off with `{ "plugin": "codework.prompt.skill", "enabled": false }` in `plugins`.
+- `Session.create` takes `project: { name }`, which names the session's project when the session creates it; a project that already exists keeps its name. Added `Project.rename`, which fails with `ProjectNotFoundError` for an unknown id. `Project` is exported from `@codeworksh/harness/effect`.
+- Session info carries the session's project, its last activity (`updatedAt`), and the model and thinking level chosen for it.
+
+### Changed
+
+- A model catalog refresh downloads the catalog published at `https://catalog.codework.sh/v1/models.json` instead of building one from models.dev on every machine, and asks with the MD5 of its last download so an unchanged catalog costs a 304. A model whose protocol or API method this version does not know is left out. `CODEWORK_CATALOG_URL` points a client at another catalog, a `file:` URL at a local copy. With `OPENROUTER_API_KEY` set, the refresh keeps only the OpenRouter models that key may use, with the key's context limits and prices.
+- Without a catalog file the catalog bundled with `@codeworksh/aikit` is read, so a first run works offline.
+
+### Fixed
+
+- The `bash` tool now runs the model's command under bash on every sandbox. It ran under `sh`, which is dash on Debian and Ubuntu, so bash syntax such as arrays, `[[ ]]`, `{1..3}`, here-strings and `source` worked on a Mac but failed on Linux and in Debian-based containers, and broke the tool's own output handling, so the model got an error pointing into CodeWork's script rather than its command. Where bash is not on `PATH`, the command runs under `sh`, and a failure says so: `Command exited with code 2 (ran under sh: bash is not on PATH in this sandbox)`.
+- Fixed a non-recursive `mkdir` on Daytona creating missing parents. It now fails on a missing parent, as `mkdir` does.
+- Fixed `rm` of a missing path on Daytona failing with the provider's error. It now reports not found, and `force` ignores it.
+- Fixed the startup failure with `effect/Path does not provide an export named 'make'`: every Effect package is pinned to 4.0.5.
+
+### Breaking Changes
+
+- `Runner.ModelCatalogError` has no `missing` reason.
+- `effect` is pinned to 4.0.5.
+
+### Internal
+
+- Added E2E tests that run bash-only syntax through the `bash` tool on the host, just-bash, Daytona and Vercel sandboxes and check they print the same output, and that a host without bash runs the command under `sh` and says so when it fails.
+- One sandbox conformance suite covers files, paths, shell, timeouts and interrupts on host, memory, sqldb, Vercel and Daytona, and writes a per-driver artifact.
+- The live git plugin test installs the prompt plugin's current release tag.
+- Added `run` 2.1.8 (the QuickJS runtime behind just-bash's `js-exec`) as a dependency. A workspace override makes just-bash use the same version, so one copy is installed and shipped in the binary.
+
+## [@codeworksh/plugin@0.3.0] - 2026-10-20
+
+### Changed
+
+- The default thinking level, for settings that name none, is now `medium` instead of `high`.
+
+### Fixed
+
+- Sandbox errors (`SandboxNotFoundError`, `SandboxDriverNotRegisteredError`, `SandboxRemovedError`, `SandboxUnavailError`, `SandboxProviderError`) carry readable messages.
+
+### Breaking Changes
+
+- The `effect` peer dependency is pinned to 4.0.5. Plugins built against 0.2.x and `effect` 4.0.1 still load.
+
+## [@codeworksh/aikit@0.12.0] - 2026-10-20
+
+### Added
+
+- Added a model catalog bundled with the package for OpenAI, Anthropic and OpenRouter (`aikit modelgen --baseline` regenerates it; `vp run baseline` in `packages/aikit`). It is read when no catalog has been generated yet, so a first run works offline. A generated catalog replaces each provider it lists.
+- Added `downloadCatalog` and `catalogURL` to `@codeworksh/aikit/modelgen`, which download the published catalog (see the harness entry). The catalog is published to an R2 bucket (`infra/catalog`) by a scheduled GitHub Action, which refuses a catalog that fails its schema check, misses a required model or drops more than a fifth of a provider's models.
+- Added `gpt-6.1-sol` (500k context), `gpt-6-sol` and `gpt-6-astra` to OpenAI Codex.
+- Added `compat.supportsTemperature`; a model with it set to `false` is called without `temperature`.
+
+### Changed
+
+- OpenAI Codex entries are built from the generated OpenAI entries, so their prices and long-context tiers come from models.dev, and a Codex model models.dev does not list is left out. `gpt-5.4` and `gpt-5.4-mini` are no longer listed for Codex, because the Codex backend rejects them for ChatGPT accounts, and neither is `gpt-5.5`, which OpenAI retired from Codex on October 14, 2026.
+- OpenAI reasoning levels come from models.dev's `reasoning_options`, and OpenRouter models are listed from OpenRouter's own `/models`, which gives the reasoning efforts each one accepts. `:batch` variants are left out. Proxied GPT models keep `xhigh`.
+- Prices take models.dev's long-context tiers for every provider, and OpenAI service-tier multipliers come from models.dev's modes (for example ultrafast 6x on GPT-6.1 Sol). Direct OpenAI requests to the GPT-5.4+ and GPT-6 models default to the 272k short-context window; settings can raise `contextWindow`.
+- The generator drops the models.dev alias `gpt-5.6`, which OpenAI's API rejects. Claude Opus 4.7+, Opus 5.x, Sonnet 5.5 and Haiku 5.5 are called without `temperature`, which their API rejects.
+- Upgraded the AI SDK packages to their latest releases, including `@ai-sdk/xai` 5, which drops the Chat Completions API: xAI models run on Responses only, as the catalog already set, and `XaiOptions` takes only Responses options. All providers now share one `@ai-sdk/provider` version.
+
+### Breaking Changes
+
+- Renamed `OPENCODE_MODELS_URL` and `OPENCODE_MODELS_DEV_FILE` to `CODEWORK_MODELS_DEV_URL` and `CODEWORK_MODELS_DEV_FILE`.
+- A missing model catalog is no longer an error: `ModelCatalogLoadError` has no `missing` reason, and the bundled catalog is read instead.
+
+### Internal
 
 ## [@codeworksh/cli@0.3.0] - 2026-10-13
 

@@ -18,7 +18,7 @@ import { catalogURL } from "../src/model/remote.ts";
 const REQUIRED: Record<string, string[]> = {
 	anthropic: ["claude-opus-5-5", "claude-sonnet-5-5"],
 	openai: ["gpt-6.1-sol", "gpt-6-luna"],
-	"openai-codex": ["gpt-6.1-sol", "gpt-5.5"],
+	"openai-codex": ["gpt-6.1-sol", "gpt-6-luna"],
 	openrouter: ["openai/gpt-6.1-sol", "anthropic/claude-opus-5.5"],
 };
 /** The share of a provider's published models one update may drop. */

@@ -477,7 +477,6 @@ const OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const OPENAI_CODEX_CONTEXT = 272_000;
 const OPENAI_CODEX_MODELS: ReadonlyArray<{ readonly id: string; readonly contextWindow?: number }> = [
 	{ id: "gpt-5.3-codex-spark", contextWindow: 128_000 },
-	{ id: "gpt-5.5" },
 	{ id: "gpt-5.6-luna" },
 	{ id: "gpt-5.6-sol" },
 	{ id: "gpt-5.6-terra" },
@@ -495,9 +494,8 @@ const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
 	"gpt-6-sol",
 	"gpt-6.1-sol",
 ]);
-const OPENAI_CODEX_TOOL_SEARCH_MODEL_IDS = new Set(["gpt-5.5", ...OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS]);
 // Checked live: the Codex backend accepts reasoning.effort "none" for these.
-const OPENAI_CODEX_NONE_REASONING_MODEL_IDS = new Set(["gpt-5.5", "gpt-5.6-luna", "gpt-6-luna", "gpt-6-sol"]);
+const OPENAI_CODEX_NONE_REASONING_MODEL_IDS = new Set(["gpt-5.6-luna", "gpt-6-luna", "gpt-6-sol"]);
 
 /** The Codex models, from the generated `openai` entries; one models.dev does not list is skipped. */
 export function openAICodexBuiltInModels(openai: Record<string, Model.Info>): Record<string, Model.Info> {
@@ -533,8 +531,9 @@ export function openAICodexBuiltInModels(openai: Record<string, Model.Info>): Re
 			providerOptionsKey: OPENAI_CODEX_PROVIDER_ID,
 			compat: {
 				supportsOpenAIGrammarTools: true,
-				...(OPENAI_CODEX_TOOL_SEARCH_MODEL_IDS.has(seed.id) ? { supportsToolSearch: true } : {}),
-				...(OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS.has(seed.id) ? { supportsAdditionalTools: true } : {}),
+				...(OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS.has(seed.id)
+					? { supportsToolSearch: true, supportsAdditionalTools: true }
+					: {}),
 			},
 			protocol: Model.KnownProviderEnum.openaiCodex,
 		};

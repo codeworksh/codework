@@ -17,7 +17,7 @@ import {
 } from "../utils/openai-codex.ts";
 
 describe("request", () => {
-	it.each(["gpt-5.3-codex-spark", "gpt-5.5"])(
+	it.each(["gpt-5.3-codex-spark", "gpt-6-luna"])(
 		"derives image support from %s metadata despite a partial factory override",
 		async (id) => {
 			const metadata = openAICodexModels()[id]!;
@@ -143,12 +143,12 @@ describe("request", () => {
 		]);
 	});
 
-	it("falls back to transcript tool_search items for GPT-5.5 Codex", async () => {
+	it("falls back to transcript tool_search items without additional tools", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
 		await createOpenAICodex({
 			apiKey: OPENAI_CODEX_TEST_API_KEY,
 			fetch,
-			compat: { ...openAICodexModels()["gpt-5.5"]!.compat },
+			compat: { supportsOpenAIGrammarTools: true, supportsToolSearch: true },
 		})("gpt-5.5").doStream({
 			prompt: openAICodexDeferredToolsPrompt,
 			tools: openAICodexDeferredTools,
@@ -283,7 +283,7 @@ describe("request", () => {
 });
 
 describe("transport failures", () => {
-	const model = openAICodexModels()["gpt-5.5"]!;
+	const model = openAICodexModels()["gpt-6-luna"]!;
 
 	it("retries a fetch that never answers, then fails with the request it sent", async () => {
 		let calls = 0;

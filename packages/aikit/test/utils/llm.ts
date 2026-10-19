@@ -75,10 +75,10 @@ export const OPENAI_E2E_MODELS = [
 ] as const;
 
 /**
- * Every Codex suite runs once per model. The Codex backend rejects gpt-5.4, gpt-5.4-mini and
- * gpt-5.4-nano for ChatGPT accounts ("not supported when using Codex with a ChatGPT account").
+ * Every Codex suite runs once per model. The Codex backend rejects gpt-5.5, gpt-5.4, gpt-5.4-mini
+ * and gpt-5.4-nano for ChatGPT accounts ("not supported when using Codex with a ChatGPT account").
  */
-export const OPENAI_CODEX_E2E_MODELS = ["gpt-6-luna", "gpt-5.6-luna", "gpt-5.5"] as const;
+export const OPENAI_CODEX_E2E_MODELS = ["gpt-6-luna", "gpt-5.6-luna"] as const;
 
 /** Suites default to low reasoning; pass `reasoning` to override. */
 export function openaiOptions(extras: OpenAIOptions = {}): OpenAIOptions {
