@@ -26,7 +26,7 @@ This file is the canonical source for unreleased changes and published release n
 - The model catalog generator follows Pi's current rules. OpenAI Codex entries are built from models.dev's OpenAI entries, so their prices and long-context tiers come from there. `gpt-5.4` and `gpt-5.4-mini` are no longer listed for Codex, because the Codex backend rejects them for ChatGPT accounts.
 - OpenAI reasoning levels come from models.dev's `reasoning_options`, and OpenRouter models are listed from OpenRouter's own `/models`, which gives the reasoning efforts each one accepts. `:batch` variants are left out.
 - Prices take models.dev's long-context tiers for every provider, and OpenAI service-tier multipliers come from models.dev's modes (for example ultrafast 6x on GPT-6.1 Sol). Direct OpenAI requests to the GPT-5.4+ and GPT-6 models default to the 272k short-context window; settings can raise `contextWindow`.
-- The generator drops models that models.dev marks deprecated, and the models.dev alias `gpt-5.6`, which OpenAI's API rejects. Claude Opus 4.7+, Opus 5.x, Sonnet 5.5 and Haiku 5.5 no longer get a `temperature` field, which their API rejects.
+- The generator drops the models.dev alias `gpt-5.6`, which OpenAI's API rejects. Claude Opus 4.7+, Opus 5.x, Sonnet 5.5 and Haiku 5.5 no longer get a `temperature` field, which their API rejects.
 - Renamed `OPENCODE_MODELS_URL` and `OPENCODE_MODELS_DEV_FILE` to `CODEWORK_MODELS_DEV_URL` and `CODEWORK_MODELS_DEV_FILE`. `CODEWORK_OPENROUTER_MODELS_FILE` reads OpenRouter's listing from a file instead.
 - A missing model catalog is no longer an error (`model-catalog-missing` is gone); the bundled catalog is read instead.
 

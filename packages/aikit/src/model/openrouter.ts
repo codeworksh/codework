@@ -149,7 +149,7 @@ export function catalog(body: unknown): Record<string, Model.Info> {
 /**
  * Restrict OpenRouter models to those `key` may use, with the key's limits and prices from
  * `GET /models/user` (pi). A missing limit keeps the catalog value. When the endpoint rejects the
- * key (401/403) or does not exist (404), the models come back unchanged.
+ * key (401/403) or does not exist (404), or allows nothing, the models come back unchanged.
  */
 export async function personalize(
 	models: Record<string, Model.Info>,
@@ -176,7 +176,7 @@ export async function personalize(
 			cost: entry.pricing ? cost(entry.pricing) : model.cost,
 		};
 	}
-	return personal;
+	return Object.keys(personal).length > 0 ? personal : models;
 }
 
 export * as OpenRouter from "./openrouter.ts";

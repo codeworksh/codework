@@ -134,7 +134,6 @@ const MODELS_DEV_UNSUPPORTED_MODEL_IDS = new Set(["openai/gpt-5.6"]);
 function usable(providerId: string, provider: ModelsDevProvider, model: ModelsDevModel): boolean {
 	return (
 		Boolean(model.tool_call) &&
-		model.status !== "deprecated" &&
 		!MODELS_DEV_UNSUPPORTED_MODEL_IDS.has(`${providerId}/${model.id}`) &&
 		// If `resolveModelNpm` fallbacks to `@ai-sdk/openai-compatible`
 		// isAISDKPakage will be truthy, modify resolveModelNpm for custom logic if needed.
@@ -370,7 +369,6 @@ function applyOpenAiMetadata(model: Model.Info, source: ModelsDevModel | undefin
 	if (isOpenAiDirect(model) && OPENAI_RESPONSES_NONE_REASONING_MODELS.has(id)) {
 		mergeThinkingLevelMap(model, { off: "none" });
 	}
-	if (supportsOpenAiXhigh(model)) mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	if (supportsOpenAiMax(model)) mergeThinkingLevelMap(model, { max: "max" });
 	if (OPENAI_NO_MINIMAL_REASONING.test(id)) mergeThinkingLevelMap(model, { minimal: null });
 	if (id.endsWith("gpt-5.5-pro")) mergeThinkingLevelMap(model, { off: null, minimal: null, low: null });
@@ -464,6 +462,8 @@ function applyModelMetadata(model: Model.Info, source: ModelsDevModel | undefine
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	}
 	if (isOpenAiResponses(model)) applyOpenAiMetadata(model, source);
+	// By id, for every provider serving these GPT models (pi).
+	if (supportsOpenAiXhigh(model)) mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	if (isAnthropicMessages(model)) applyAnthropicMetadata(model);
 }
 
