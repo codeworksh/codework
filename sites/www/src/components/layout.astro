@@ -1,5 +1,6 @@
 ---
 import { ClientRouter } from "astro:transitions";
+import { GITHUB_URL } from "@/components/landing/content";
 import { themeInitScript } from "@/components/landing/theme";
 import "@/lib/react";
 
@@ -14,6 +15,19 @@ interface Props {
 
 const { title, description, docs = false, type = "website" } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
+// Ties every page to this CodeWork, so search engines don't confuse it with others of the same name.
+const schema = {
+	"@context": "https://schema.org",
+	"@type": "SoftwareApplication",
+	name: "CodeWork",
+	description: "CodeWork is an open source AI coding agent for your terminal, editor or server.",
+	url: Astro.site,
+	applicationCategory: "DeveloperApplication",
+	operatingSystem: "macOS, Linux",
+	license: `${GITHUB_URL}/blob/main/LICENSE`,
+	offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+	sameAs: [GITHUB_URL, "https://www.npmjs.com/package/@codeworksh/cli"],
+};
 ---
 
 <html lang="en" class="dark">
@@ -37,6 +51,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
 		<meta name="twitter:card" content="summary_large_image" />
+		<script is:inline type="application/ld+json" set:html={JSON.stringify(schema)} />
 		<slot name="head" />
 		{docs && <ClientRouter />}
 		<script is:inline set:html={themeInitScript} />

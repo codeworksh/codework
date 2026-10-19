@@ -14,7 +14,7 @@ export const nav = [
 export const hero = {
 	title: "Make Code Work for You",
 	lines: [
-		"An open source coding agent that makes shipping great software fun.",
+		"CodeWork is an open source AI coding agent for your terminal, editor or server.",
 		"Extend it with plugins like tools, prompts, skills & more, shared via npm or git.",
 	],
 	install: [
