@@ -5,6 +5,8 @@
 //! there is no tick, so an idle TUI does no work and no repaint.
 
 use std::cell::Cell;
+use std::collections::BTreeMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::style::Color;
@@ -18,7 +20,8 @@ use crate::rpc::{RpcClient, StreamEvent};
 use crate::theme::{self, Palette};
 use crate::tool::ToolCall;
 use crate::types::{
-    HistoryEntry, ModelList, Part, ServerInfo, SessionInfo, ToolResultContent, UsageReport,
+    HistoryEntry, ModelList, Part, PromptDelivery, ServerInfo, SessionInfo, ToolResultContent,
+    UsageReport,
 };
 
 /// What a leading slash offers. Only commands the app can actually perform are listed, and an
@@ -59,14 +62,194 @@ pub enum TurnState {
     Interrupted(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetryStatus {
+    pub attempt: u64,
+    pub max_retries: u64,
+    pub delay_ms: u64,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueuedPrompt {
+    pub message_id: String,
+    pub prompt: String,
+    pub delivery: PromptDelivery,
+    pub admitted: bool,
+    pub dispatched: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AssistantDraft {
+    pub message_id: String,
+    pub thinking_parts: BTreeMap<usize, String>,
+    pub text_parts: BTreeMap<usize, String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Turn {
+    pub prompt_id: Option<String>,
     pub prompt: String,
     pub thinking: String,
     pub text: String,
     pub tools: Vec<ToolCall>,
     pub notices: Vec<String>,
+    pub retry: Option<RetryStatus>,
     pub state: TurnState,
+    pub drafts: Vec<AssistantDraft>,
+}
+
+impl Turn {
+    pub fn new(prompt: impl Into<String>) -> Self {
+        Self {
+            prompt_id: None,
+            prompt: prompt.into(),
+            thinking: String::new(),
+            text: String::new(),
+            tools: Vec::new(),
+            notices: Vec::new(),
+            retry: None,
+            state: TurnState::Running,
+            drafts: Vec::new(),
+        }
+    }
+
+    pub fn with_id(message_id: impl Into<String>, prompt: impl Into<String>) -> Self {
+        let mut turn = Self::new(prompt);
+        turn.prompt_id = Some(message_id.into());
+        turn
+    }
+
+    fn draft_mut(&mut self, message_id: &str) -> &mut AssistantDraft {
+        if let Some(pos) = self.drafts.iter().position(|d| d.message_id == message_id) {
+            return &mut self.drafts[pos];
+        }
+        self.drafts.push(AssistantDraft {
+            message_id: message_id.to_string(),
+            thinking_parts: BTreeMap::new(),
+            text_parts: BTreeMap::new(),
+        });
+        self.drafts.last_mut().expect("draft inserted")
+    }
+
+    pub fn start_llm(&mut self, message_id: &str) {
+        self.retry = None;
+        let draft = self.draft_mut(message_id);
+        draft.thinking_parts.clear();
+        draft.text_parts.clear();
+        self.sync_thinking();
+        self.sync_text();
+    }
+
+    pub fn fail_llm(&mut self, message_id: &str) {
+        self.drafts.retain(|d| d.message_id != message_id);
+        self.sync_thinking();
+        self.sync_text();
+    }
+
+    pub fn start_text_part(&mut self, message_id: &str, part_index: usize) {
+        self.retry = None;
+        self.draft_mut(message_id)
+            .text_parts
+            .entry(part_index)
+            .or_default();
+    }
+
+    pub fn append_text_delta(
+        &mut self,
+        message_id: Option<&str>,
+        part_index: Option<usize>,
+        delta: &str,
+    ) {
+        self.retry = None;
+        let msg_id = message_id
+            .map(str::to_string)
+            .or_else(|| self.drafts.last().map(|d| d.message_id.clone()))
+            .unwrap_or_default();
+        let idx = part_index.unwrap_or(0);
+        self.draft_mut(&msg_id)
+            .text_parts
+            .entry(idx)
+            .or_default()
+            .push_str(delta);
+        self.sync_text();
+    }
+
+    pub fn end_text_part(&mut self, message_id: &str, part_index: usize, content: String) {
+        self.retry = None;
+        self.draft_mut(message_id)
+            .text_parts
+            .insert(part_index, content);
+        self.sync_text();
+    }
+
+    pub fn start_thinking_part(&mut self, message_id: &str, part_index: usize) {
+        self.retry = None;
+        self.draft_mut(message_id)
+            .thinking_parts
+            .entry(part_index)
+            .or_default();
+    }
+
+    pub fn append_thinking_delta(
+        &mut self,
+        message_id: Option<&str>,
+        part_index: Option<usize>,
+        delta: &str,
+    ) {
+        self.retry = None;
+        let msg_id = message_id
+            .map(str::to_string)
+            .or_else(|| self.drafts.last().map(|d| d.message_id.clone()))
+            .unwrap_or_default();
+        let idx = part_index.unwrap_or(0);
+        self.draft_mut(&msg_id)
+            .thinking_parts
+            .entry(idx)
+            .or_default()
+            .push_str(delta);
+        self.sync_thinking();
+    }
+
+    pub fn end_thinking_part(&mut self, message_id: &str, part_index: usize, content: String) {
+        self.retry = None;
+        self.draft_mut(message_id)
+            .thinking_parts
+            .insert(part_index, content);
+        self.sync_thinking();
+    }
+
+    pub fn sync_text(&mut self) {
+        let mut combined = String::new();
+        for draft in &self.drafts {
+            for part in draft.text_parts.values() {
+                if part.is_empty() {
+                    continue;
+                }
+                if !combined.is_empty() && !combined.ends_with('\n') && !part.starts_with('\n') {
+                    combined.push_str("\n\n");
+                }
+                combined.push_str(part);
+            }
+        }
+        self.text = combined;
+    }
+
+    pub fn sync_thinking(&mut self) {
+        let mut combined = String::new();
+        for draft in &self.drafts {
+            for part in draft.thinking_parts.values() {
+                if part.is_empty() {
+                    continue;
+                }
+                if !combined.is_empty() && !combined.ends_with('\n') && !part.starts_with('\n') {
+                    combined.push('\n');
+                }
+                combined.push_str(part);
+            }
+        }
+        self.thinking = combined;
+    }
 }
 
 /// A menu open over the active screen, taking navigation keys while it is there.
@@ -160,6 +343,8 @@ pub struct App {
     pub usage: UsageReport,
     /// Conversation turns in the active session.
     pub turns: Vec<Turn>,
+    /// Prompts submitted while a turn is running (`steer` or `followUp`), awaiting promotion.
+    pub queued_prompts: Vec<QueuedPrompt>,
     /// Whether a prompt turn is currently streaming from the server.
     pub busy: bool,
     /// Whether the stream socket dropped and is reconnecting.
@@ -169,6 +354,9 @@ pub struct App {
     /// Maximum scroll offset computed by the last transcript render pass.
     pub max_scroll: Cell<usize>,
     pub should_quit: bool,
+    next_prompt_seq: u64,
+    prompt_stream: Option<tokio::task::AbortHandle>,
+    initial_prompt_id: Option<String>,
     keymap: Keymap,
     tx: mpsc::UnboundedSender<AppEvent>,
 }
@@ -177,6 +365,12 @@ impl Default for App {
     fn default() -> Self {
         let (tx, _) = mpsc::unbounded_channel();
         Self::new(tx)
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        self.stop_prompt_stream();
     }
 }
 
@@ -195,17 +389,31 @@ impl App {
             thinking: None,
             usage: UsageReport::default(),
             turns: Vec::new(),
+            queued_prompts: Vec::new(),
             busy: false,
             reconnecting: false,
             scroll: 0,
             max_scroll: Cell::new(0),
             should_quit: false,
+            next_prompt_seq: 1,
+            prompt_stream: None,
+            initial_prompt_id: None,
             keymap: Keymap::new(),
             tx,
         };
         app.spawn_server_info();
         app.spawn_list_models();
         app
+    }
+
+    fn next_message_id(&mut self) -> String {
+        let seq = self.next_prompt_seq;
+        self.next_prompt_seq += 1;
+        let millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        format!("msg_{millis}_{seq}")
     }
 
     /// The terminal background colour for the active screen.
@@ -226,11 +434,15 @@ impl App {
     }
 
     fn apply_session(&mut self, info: SessionInfo) {
+        let same_session = self.session.as_ref().map(|s| &s.id) == Some(&info.id);
         let host_changed = self.session.as_ref().map(|s| &s.host_dir) != Some(&info.host_dir);
         self.model = info
             .model
             .as_ref()
             .map(|m| (m.provider.clone(), m.id.clone()));
+        if info.thinking_level.is_some() || !same_session {
+            self.thinking = info.thinking_level.clone();
+        }
         self.session = Some(info);
         if host_changed || self.models.is_none() {
             self.spawn_list_models();
@@ -469,7 +681,15 @@ impl App {
         }
 
         if key.code == KeyCode::Enter {
-            return self.submit_prompt();
+            let alternate = key
+                .modifiers
+                .intersects(KeyModifiers::ALT | KeyModifiers::CONTROL | KeyModifiers::SUPER);
+            let default_busy = if alternate {
+                PromptDelivery::FollowUp
+            } else {
+                PromptDelivery::Steer
+            };
+            return self.submit_prompt(default_busy);
         }
 
         let edited = self.prompt.edit(key);
@@ -565,7 +785,68 @@ impl App {
                 self.notice = Some(err);
                 true
             }
+            RpcEvent::PromptDispatched {
+                session_id,
+                message_id,
+                result,
+            } => {
+                if self.session.as_ref().is_none_or(|s| s.id != session_id) {
+                    return false;
+                }
+                match result {
+                    Ok(()) => {
+                        if let Some(queued) = self
+                            .queued_prompts
+                            .iter_mut()
+                            .find(|q| q.message_id == message_id)
+                        {
+                            queued.admitted = true;
+                        }
+                    }
+                    Err(err) => {
+                        self.queued_prompts.retain(|q| q.message_id != message_id);
+                        if let Some(turn) = self.turns.last_mut() {
+                            if turn.prompt_id.as_deref() == Some(message_id.as_str()) {
+                                turn.state = TurnState::Failed(err.clone());
+                                self.busy = false;
+                            }
+                        }
+                        self.notice = Some(err);
+                    }
+                }
+                true
+            }
             RpcEvent::Stream(stream) => self.handle_stream(stream),
+            RpcEvent::SessionStream { session_id, event } => {
+                if self.session.as_ref().is_some_and(|s| s.id == session_id) {
+                    self.handle_stream(event)
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    fn refresh_open_config_popups(&mut self) {
+        let active_model = self.model_label();
+        let active_thinking = self.thinking_label().unwrap_or_else(|| "off".to_string());
+        let thinking_entries = self.thinking_entries();
+        match &mut self.popup {
+            Some(Popup::Models { search, menu }) => {
+                let selected = menu
+                    .selected()
+                    .map(|e| e.id.to_string())
+                    .unwrap_or(active_model);
+                *menu = filter_models(search.text(), self.models.as_ref(), Some(&selected));
+            }
+            Some(Popup::Thinking(menu)) => {
+                let selected = menu
+                    .selected()
+                    .map(|e| e.id.to_string())
+                    .unwrap_or(active_thinking);
+                *menu = Menu::at(thinking_entries, &selected);
+            }
+            _ => {}
         }
     }
 
@@ -574,14 +855,282 @@ impl App {
             StreamEvent::SessionCreated(info) => {
                 self.apply_session(info);
             }
-            StreamEvent::TextDelta(delta) => {
-                if let Some(turn) = self.turns.last_mut() {
-                    turn.text.push_str(&delta);
+            StreamEvent::ExecutionStarted => {
+                self.busy = true;
+            }
+            StreamEvent::PromptAdmitted {
+                message_id,
+                prompt,
+                delivery,
+            } => {
+                let initial_admitted =
+                    self.initial_prompt_id.as_deref() == Some(message_id.as_str());
+                let already_in_turns = self
+                    .turns
+                    .iter()
+                    .any(|t| t.prompt_id.as_deref() == Some(message_id.as_str()))
+                    || self.turns.last().is_some_and(|t| {
+                        t.prompt_id.is_none()
+                            && t.prompt == prompt
+                            && t.state == TurnState::Running
+                            && t.text.is_empty()
+                            && t.thinking.is_empty()
+                            && t.tools.is_empty()
+                    });
+                if already_in_turns {
+                    if let Some(last) = self.turns.last_mut() {
+                        if last.prompt_id.is_none() && last.prompt == prompt {
+                            last.prompt_id = Some(message_id);
+                        }
+                    }
+                } else if let Some(existing) = self
+                    .queued_prompts
+                    .iter_mut()
+                    .find(|q| q.message_id == message_id)
+                {
+                    if !prompt.is_empty() {
+                        existing.prompt = prompt;
+                    }
+                    existing.delivery = delivery;
+                    existing.admitted = true;
+                    existing.dispatched = true;
+                } else {
+                    self.queued_prompts.push(QueuedPrompt {
+                        message_id,
+                        prompt,
+                        delivery,
+                        admitted: true,
+                        dispatched: true,
+                    });
+                }
+                if initial_admitted {
+                    self.initial_prompt_id = None;
+                    if let Some(session_id) = self.session.as_ref().map(|s| s.id.clone()) {
+                        self.dispatch_pending_queued_prompts(&session_id);
+                    }
                 }
             }
-            StreamEvent::ThinkingDelta(delta) => {
+            StreamEvent::PromptPromoted {
+                message_id,
+                prompt,
+                delivery: _,
+            } => {
+                let queued_prompt = self
+                    .queued_prompts
+                    .iter()
+                    .position(|q| q.message_id == message_id)
+                    .map(|idx| self.queued_prompts.remove(idx));
+                let resolved_prompt = if !prompt.is_empty() {
+                    prompt
+                } else {
+                    queued_prompt.map(|q| q.prompt).unwrap_or_default()
+                };
+
+                let already_active = self
+                    .turns
+                    .iter()
+                    .any(|t| t.prompt_id.as_deref() == Some(message_id.as_str()));
+                if already_active {
+                    return true;
+                }
+
+                // If the initial turn was created without a `prompt_id` (e.g. in tests) and matches
+                // this prompt before any assistant output arrived, bind `prompt_id` to it in place.
+                if let Some(last) = self.turns.last_mut() {
+                    if last.prompt_id.is_none()
+                        && last.prompt == resolved_prompt
+                        && last.state == TurnState::Running
+                        && last.text.is_empty()
+                        && last.thinking.is_empty()
+                        && last.tools.is_empty()
+                        && last.drafts.is_empty()
+                    {
+                        last.prompt_id = Some(message_id);
+                        return true;
+                    }
+                    if last.state == TurnState::Running {
+                        last.retry = None;
+                        last.state = TurnState::Succeeded;
+                    }
+                }
+
+                self.busy = true;
+                self.screen = Screen::Session;
+                self.turns.push(Turn::with_id(message_id, resolved_prompt));
+                if self.notice.as_deref() == Some("steering current turn...")
+                    || self.notice.as_deref() == Some("queued follow-up prompt")
+                {
+                    self.notice = None;
+                }
+            }
+            StreamEvent::ConfigChanged {
+                model,
+                thinking_level,
+            } => {
+                if let Some(model_ref) = model {
+                    self.model = Some((model_ref.provider.clone(), model_ref.id.clone()));
+                    if let Some(session) = &mut self.session {
+                        session.model = Some(model_ref);
+                    }
+                    if thinking_level.is_none() {
+                        if let (Some(level), Some(supported)) =
+                            (self.thinking.clone(), self.active_thinking_levels())
+                        {
+                            self.thinking = Some(clamp_thinking_level(&level, supported));
+                        }
+                    }
+                }
+                if let Some(level) = thinking_level {
+                    self.thinking = Some(level.clone());
+                    if let Some(session) = &mut self.session {
+                        session.thinking_level = Some(level);
+                    }
+                }
+                self.refresh_open_config_popups();
+            }
+            StreamEvent::SessionForked {
+                session_id,
+                source_session_id,
+                source_entry_id,
+                base_seq: _,
+            } => {
+                let active_id = self.session.as_ref().map(|s| s.id.as_str());
+                let msg = if active_id == Some(source_session_id.as_str())
+                    && session_id != source_session_id
+                {
+                    format!("forked session {session_id} from {source_entry_id}")
+                } else {
+                    format!("session forked from {source_session_id} at {source_entry_id}")
+                };
+                self.notice = Some(msg.clone());
                 if let Some(turn) = self.turns.last_mut() {
-                    turn.thinking.push_str(&delta);
+                    turn.notices.push(msg);
+                }
+            }
+            StreamEvent::TurnStarted => {
+                self.busy = true;
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.retry = None;
+                    if turn.state != TurnState::Running {
+                        turn.state = TurnState::Running;
+                    }
+                } else {
+                    self.turns.push(Turn::new(String::new()));
+                }
+            }
+            StreamEvent::TurnEnded { message_id: _ } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.retry = None;
+                }
+            }
+            StreamEvent::TurnAborted { reason, message } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.retry = None;
+                    if reason == "interrupted" {
+                        turn.state = TurnState::Interrupted(
+                            message.unwrap_or_else(|| "interrupted".to_string()),
+                        );
+                    } else {
+                        turn.state = TurnState::Failed(message.unwrap_or(reason));
+                    }
+                }
+            }
+            StreamEvent::RetryScheduled {
+                attempt,
+                max_retries,
+                delay_ms,
+                message,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.retry = Some(RetryStatus {
+                        attempt,
+                        max_retries,
+                        delay_ms,
+                        message,
+                    });
+                }
+            }
+            StreamEvent::RetryFinished {
+                attempt,
+                success,
+                message,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.retry = None;
+                    if !success {
+                        if let Some(msg) = message.filter(|m| !m.is_empty()) {
+                            turn.notices.push(format!("retry {attempt} failed: {msg}"));
+                        }
+                    }
+                }
+            }
+            StreamEvent::LlmStarted { message_id, model } => {
+                if let Some(model) = model {
+                    self.usage.model = Some(model);
+                }
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.start_llm(&message_id);
+                }
+            }
+            StreamEvent::LlmFailed {
+                message_id,
+                reason: _,
+                error: _,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.fail_llm(&message_id);
+                }
+            }
+            StreamEvent::TextStart {
+                message_id,
+                part_index,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.start_text_part(&message_id, part_index);
+                }
+            }
+            StreamEvent::TextDelta {
+                message_id,
+                part_index,
+                delta,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.append_text_delta(message_id.as_deref(), part_index, &delta);
+                }
+            }
+            StreamEvent::TextEnd {
+                message_id,
+                part_index,
+                content,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.end_text_part(&message_id, part_index, content);
+                }
+            }
+            StreamEvent::ThinkingStart {
+                message_id,
+                part_index,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.start_thinking_part(&message_id, part_index);
+                }
+            }
+            StreamEvent::ThinkingDelta {
+                message_id,
+                part_index,
+                delta,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.append_thinking_delta(message_id.as_deref(), part_index, &delta);
+                }
+            }
+            StreamEvent::ThinkingEnd {
+                message_id,
+                part_index,
+                content,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    turn.end_thinking_part(&message_id, part_index, content);
                 }
             }
             StreamEvent::ToolStarted {
@@ -598,6 +1147,26 @@ impl App {
                         existing.label = started.label;
                     } else {
                         turn.tools.push(started);
+                    }
+                }
+            }
+            StreamEvent::ToolProgress {
+                call_id,
+                output,
+                details,
+            } => {
+                if let Some(turn) = self.turns.last_mut() {
+                    if let Some(existing) = turn.tools.iter_mut().find(|t| t.call_id == call_id) {
+                        existing.apply_progress(output, details.as_ref());
+                    } else {
+                        let mut call = ToolCall::start(
+                            call_id,
+                            "tool".to_string(),
+                            None,
+                            &serde_json::Value::Null,
+                        );
+                        call.apply_progress(output, details.as_ref());
+                        turn.tools.push(call);
                     }
                 }
             }
@@ -649,16 +1218,24 @@ impl App {
             }
             StreamEvent::Reconnected => {
                 self.reconnecting = false;
+                if self.initial_prompt_id.is_none() {
+                    if let Some(session_id) = self.session.as_ref().map(|s| s.id.clone()) {
+                        self.dispatch_pending_queued_prompts(&session_id);
+                    }
+                }
             }
             StreamEvent::Succeeded => {
                 if let Some(turn) = self.turns.last_mut() {
+                    turn.retry = None;
                     turn.state = TurnState::Succeeded;
                 }
                 self.busy = false;
                 self.reconnecting = false;
+                self.spawn_session_refresh();
             }
             StreamEvent::Failed(err) => {
                 if let Some(turn) = self.turns.last_mut() {
+                    turn.retry = None;
                     turn.state = TurnState::Failed(err);
                 }
                 self.busy = false;
@@ -666,6 +1243,7 @@ impl App {
             }
             StreamEvent::Interrupted(reason) => {
                 if let Some(turn) = self.turns.last_mut() {
+                    turn.retry = None;
                     turn.state = TurnState::Interrupted(reason);
                 }
                 self.busy = false;
@@ -675,30 +1253,60 @@ impl App {
         true
     }
 
-    fn submit_prompt(&mut self) -> bool {
-        let text = self.prompt.text().trim().to_string();
-        if text.is_empty() {
+    fn submit_prompt(&mut self, default_busy_delivery: PromptDelivery) -> bool {
+        let Some((text, delivery)) =
+            parse_prompt_submission(self.prompt.text(), default_busy_delivery, self.busy)
+        else {
             return false;
-        }
-        if self.busy {
-            self.notice = Some("a turn is already running · press esc to interrupt".to_string());
+        };
+
+        let message_id = self.next_message_id();
+        self.prompt.clear();
+        self.screen = Screen::Session;
+        self.scroll = 0;
+
+        let stream_running = self
+            .prompt_stream
+            .as_ref()
+            .is_some_and(|task| !task.is_finished());
+        let awaiting_subscription = self.initial_prompt_id.is_some() || self.reconnecting;
+        if self.busy || (stream_running && awaiting_subscription) {
+            let session_id = self
+                .session
+                .as_ref()
+                .filter(|_| self.initial_prompt_id.is_none() && !self.reconnecting)
+                .map(|s| s.id.clone());
+            let dispatched = session_id.is_some();
+            self.queued_prompts.push(QueuedPrompt {
+                message_id: message_id.clone(),
+                prompt: text.clone(),
+                delivery,
+                admitted: false,
+                dispatched,
+            });
+            self.notice = Some(match delivery {
+                PromptDelivery::Steer => "steering current turn...".to_string(),
+                PromptDelivery::FollowUp => "queued follow-up prompt".to_string(),
+            });
+            if let Some(session_id) = session_id {
+                self.spawn_send_prompt(session_id, text, delivery, message_id);
+            }
             return true;
         }
 
-        self.prompt.clear();
         self.notice = None;
-        self.screen = Screen::Session;
-        self.scroll = 0;
         self.busy = true;
         self.reconnecting = false;
-        self.turns.push(Turn {
-            prompt: text.clone(),
-            thinking: String::new(),
-            text: String::new(),
-            tools: Vec::new(),
-            notices: Vec::new(),
-            state: TurnState::Running,
-        });
+        self.turns
+            .push(Turn::with_id(message_id.clone(), text.clone()));
+
+        if stream_running {
+            if let Some(session_id) = self.session.as_ref().map(|s| s.id.clone()) {
+                self.spawn_send_prompt(session_id, text, delivery, message_id);
+                return true;
+            }
+        }
+        self.initial_prompt_id = Some(message_id.clone());
 
         let tx = self.tx.clone();
         let existing_session_id = self.session.as_ref().map(|s| s.id.clone());
@@ -706,7 +1314,7 @@ impl App {
         let thinking = self.thinking.clone();
 
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async move {
+            let task = handle.spawn(async move {
                 let client = RpcClient::default();
                 let session_id = match existing_session_id {
                     Some(id) => id,
@@ -727,24 +1335,102 @@ impl App {
                 };
 
                 let (stream_tx, mut stream_rx) = mpsc::unbounded_channel();
-                let forward_tx = tx.clone();
-                let forward = tokio::spawn(async move {
-                    while let Some(evt) = stream_rx.recv().await {
-                        if forward_tx
-                            .send(AppEvent::Rpc(RpcEvent::Stream(evt)))
-                            .is_err()
-                        {
-                            break;
+                let stream = client.watch_session_with(
+                    session_id.clone(),
+                    text,
+                    delivery,
+                    message_id,
+                    stream_tx,
+                );
+                tokio::pin!(stream);
+                // Own the stream and forwarding in one task so switching sessions cancels both.
+                loop {
+                    tokio::select! {
+                        biased;
+                        Some(event) = stream_rx.recv() => {
+                            if tx.send(AppEvent::Rpc(RpcEvent::SessionStream {
+                                session_id: session_id.clone(), event,
+                            })).is_err() {
+                                break;
+                            }
                         }
+                        _ = &mut stream => break,
                     }
-                });
-
-                let _ = client.prompt_session(session_id, text, stream_tx).await;
-                let _ = forward.await;
+                }
+                while let Ok(event) = stream_rx.try_recv() {
+                    let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionStream {
+                        session_id: session_id.clone(),
+                        event,
+                    }));
+                }
             });
+            self.prompt_stream = Some(task.abort_handle());
         }
 
         true
+    }
+
+    fn dispatch_pending_queued_prompts(&mut self, session_id: &str) {
+        let mut to_send = Vec::new();
+        for queued in &mut self.queued_prompts {
+            if !queued.dispatched && !queued.admitted {
+                queued.dispatched = true;
+                to_send.push((
+                    queued.prompt.clone(),
+                    queued.delivery,
+                    queued.message_id.clone(),
+                ));
+            }
+        }
+        for (text, delivery, message_id) in to_send {
+            self.spawn_send_prompt(session_id.to_string(), text, delivery, message_id);
+        }
+    }
+
+    fn stop_prompt_stream(&mut self) {
+        if let Some(task) = self.prompt_stream.take() {
+            task.abort();
+        }
+        self.initial_prompt_id = None;
+    }
+
+    fn spawn_session_refresh(&self) {
+        let Some(session_id) = self.session.as_ref().map(|s| s.id.clone()) else {
+            return;
+        };
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                if let Ok(info) = RpcClient::default().session_info(&session_id).await {
+                    let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionStream {
+                        session_id,
+                        event: StreamEvent::SessionCreated(info),
+                    }));
+                }
+            });
+        }
+    }
+
+    fn spawn_send_prompt(
+        &self,
+        session_id: String,
+        text: String,
+        delivery: PromptDelivery,
+        message_id: String,
+    ) {
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let result = RpcClient::default()
+                    .send_prompt(&session_id, &text, delivery, &message_id)
+                    .await;
+                let _ = tx.send(AppEvent::Rpc(RpcEvent::PromptDispatched {
+                    session_id,
+                    message_id,
+                    result,
+                }));
+            });
+        }
     }
 
     /// Open, filter, or close the command menu to match a leading slash on the prompt line.
@@ -832,8 +1518,10 @@ impl App {
                         self.spawn_list_sessions();
                     }
                     "new" => {
+                        self.stop_prompt_stream();
                         self.session = None;
                         self.turns.clear();
+                        self.queued_prompts.clear();
                         self.usage = UsageReport::default();
                         self.busy = false;
                         self.reconnecting = false;
@@ -876,10 +1564,12 @@ impl App {
             }
             Popup::Sessions { sessions, .. } => {
                 if let Some(info) = sessions.into_iter().find(|s| s.id == chosen.id.as_ref()) {
+                    self.stop_prompt_stream();
                     let session_id = info.id.clone();
                     let title = info.title.clone();
                     self.apply_session(info);
                     self.turns.clear();
+                    self.queued_prompts.clear();
                     self.usage = UsageReport::default();
                     self.busy = false;
                     self.reconnecting = false;
@@ -1006,6 +1696,34 @@ impl App {
 
 fn theme_named(name: &str) -> Option<&'static Palette> {
     theme::PALETTES.iter().find(|palette| palette.name == name)
+}
+
+fn parse_prompt_submission(
+    raw: &str,
+    default_busy_delivery: PromptDelivery,
+    busy: bool,
+) -> Option<(String, PromptDelivery)> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(rest) = trimmed.strip_prefix('/') {
+        let mut parts = rest.splitn(2, char::is_whitespace);
+        let cmd = parts.next().unwrap_or("");
+        let body = parts.next().map(str::trim).unwrap_or("");
+        if cmd.eq_ignore_ascii_case("steer") {
+            return (!body.is_empty()).then(|| (body.to_string(), PromptDelivery::Steer));
+        }
+        if cmd.eq_ignore_ascii_case("followup") || cmd.eq_ignore_ascii_case("follow-up") {
+            return (!body.is_empty()).then(|| (body.to_string(), PromptDelivery::FollowUp));
+        }
+    }
+    let delivery = if busy {
+        default_busy_delivery
+    } else {
+        PromptDelivery::FollowUp
+    };
+    Some((trimmed.to_string(), delivery))
 }
 
 /// Splits a `provider/model` identifier on its first slash (matching `acp/config.ts:parseModel`).
@@ -1148,26 +1866,16 @@ pub fn turns_from_history(entries: &[HistoryEntry]) -> Vec<Turn> {
                 })
                 .collect::<Vec<_>>()
                 .join("\n\n");
-            turns.push(Turn {
-                prompt,
-                thinking: String::new(),
-                text: String::new(),
-                tools: Vec::new(),
-                notices: Vec::new(),
-                state: entry_turn_state(&entry.state),
-            });
+            let mut turn = Turn::with_id(entry.id.clone(), prompt);
+            turn.state = entry_turn_state(&entry.state);
+            turns.push(turn);
             continue;
         }
 
         if turns.is_empty() {
-            turns.push(Turn {
-                prompt: String::new(),
-                thinking: String::new(),
-                text: String::new(),
-                tools: Vec::new(),
-                notices: Vec::new(),
-                state: TurnState::Succeeded,
-            });
+            let mut turn = Turn::new(String::new());
+            turn.state = TurnState::Succeeded;
+            turns.push(turn);
         }
 
         let Some(turn) = turns.last_mut() else {
@@ -1175,27 +1883,15 @@ pub fn turns_from_history(entries: &[HistoryEntry]) -> Vec<Turn> {
         };
         turn.state = entry_turn_state(&entry.state);
 
-        for part in &entry.parts {
+        for (part_idx, part) in entry.parts.iter().enumerate() {
             match part {
                 Part::Text { text } if !text.is_empty() => {
-                    if !turn.text.is_empty()
-                        && !turn.text.ends_with('\n')
-                        && !text.starts_with('\n')
-                    {
-                        turn.text.push_str("\n\n");
-                    }
-                    turn.text.push_str(text);
+                    turn.end_text_part(&entry.id, part_idx, text.clone());
                 }
                 Part::Thinking { thinking, redacted }
                     if redacted != &Some(true) && !thinking.is_empty() =>
                 {
-                    if !turn.thinking.is_empty()
-                        && !turn.thinking.ends_with('\n')
-                        && !thinking.starts_with('\n')
-                    {
-                        turn.thinking.push('\n');
-                    }
-                    turn.thinking.push_str(thinking);
+                    turn.end_thinking_part(&entry.id, part_idx, thinking.clone());
                 }
                 Part::ToolCall {
                     call_id,
@@ -1359,6 +2055,96 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn waits_for_initial_admission_before_dispatching_pending_prompts() {
+        let mut app = App::default();
+        app.prompt.insert_text("initial");
+        app.submit_prompt(PromptDelivery::FollowUp);
+        let initial_id = app.turns[0].prompt_id.clone().unwrap();
+        app.prompt.insert_text("second");
+        app.submit_prompt(PromptDelivery::Steer);
+        let info = serde_json::from_value(json!({
+            "id": "ses_startup", "title": "Startup", "directory": "/workspace", "updatedAt": 0
+        }))
+        .unwrap();
+        app.handle_stream(StreamEvent::SessionCreated(info));
+        assert!(!app.queued_prompts[0].dispatched);
+        app.handle_stream(StreamEvent::PromptAdmitted {
+            message_id: initial_id,
+            prompt: "initial".to_string(),
+            delivery: PromptDelivery::FollowUp,
+        });
+        assert!(app.queued_prompts[0].dispatched);
+    }
+
+    #[test]
+    fn retains_pending_prompts_across_execution_terminals() {
+        for terminal in [
+            StreamEvent::Succeeded,
+            StreamEvent::Failed("provider failed".to_string()),
+            StreamEvent::Interrupted("user".to_string()),
+        ] {
+            let mut app = App::default();
+            app.turns.push(Turn::with_id("initial", "initial"));
+            app.busy = true;
+            app.queued_prompts.push(QueuedPrompt {
+                message_id: "pending".to_string(),
+                prompt: "next".to_string(),
+                delivery: PromptDelivery::FollowUp,
+                admitted: false,
+                dispatched: true,
+            });
+            app.handle_stream(terminal);
+            assert_eq!(app.queued_prompts.len(), 1);
+            app.handle_stream(StreamEvent::PromptPromoted {
+                message_id: "pending".to_string(),
+                prompt: "next".to_string(),
+                delivery: PromptDelivery::FollowUp,
+            });
+            assert!(app.queued_prompts.is_empty());
+            assert!(app.busy);
+            assert_eq!(
+                app.turns.last().unwrap().prompt_id.as_deref(),
+                Some("pending")
+            );
+        }
+    }
+
+    #[test]
+    fn correlates_identical_queued_prompts_by_id() {
+        let mut app = App::default();
+        for (id, delivery) in [
+            ("follow", PromptDelivery::FollowUp),
+            ("steer", PromptDelivery::Steer),
+        ] {
+            app.queued_prompts.push(QueuedPrompt {
+                message_id: id.to_string(),
+                prompt: "same text".to_string(),
+                delivery,
+                admitted: false,
+                dispatched: true,
+            });
+        }
+        // A different client can submit the same text and delivery.
+        app.handle_stream(StreamEvent::PromptAdmitted {
+            message_id: "external".to_string(),
+            prompt: "same text".to_string(),
+            delivery: PromptDelivery::FollowUp,
+        });
+        assert_eq!(app.queued_prompts.len(), 3);
+        app.handle_stream(StreamEvent::PromptPromoted {
+            message_id: "steer".to_string(),
+            prompt: "same text".to_string(),
+            delivery: PromptDelivery::Steer,
+        });
+        let ids: Vec<_> = app
+            .queued_prompts
+            .iter()
+            .map(|q| q.message_id.as_str())
+            .collect();
+        assert_eq!(ids, ["follow", "external"]);
+    }
+
+    #[test]
     fn reconstructs_turns_from_history_entries() {
         let entries = vec![
             HistoryEntry {
@@ -1518,6 +2304,7 @@ mod tests {
                 project: None,
                 updated_at: now_ms - 2 * 3_600_000,
                 model: None,
+                thinking_level: None,
             },
             SessionInfo {
                 id: "ses_newest".to_string(),
@@ -1531,6 +2318,7 @@ mod tests {
                 }),
                 updated_at: now_ms - 5 * 60_000,
                 model: None,
+                thinking_level: None,
             },
             SessionInfo {
                 id: "ses_oldest".to_string(),
@@ -1544,6 +2332,7 @@ mod tests {
                 }),
                 updated_at: now_ms - 3 * 86_400_000,
                 model: None,
+                thinking_level: None,
             },
         ];
 
@@ -1574,6 +2363,7 @@ mod tests {
                 provider: "anthropic".to_string(),
                 id: "claude-sonnet-4-5".to_string(),
             }),
+            thinking_level: None,
         };
         let second = SessionInfo {
             id: "ses_2".to_string(),
@@ -1584,6 +2374,7 @@ mod tests {
             project: None,
             updated_at: 2_000,
             model: None,
+            thinking_level: None,
         };
 
         // Creating a session syncs `app.model` from `info.model`.
@@ -1800,8 +2591,307 @@ mod tests {
 
         let mismatch = "Server at ws://127.0.0.1:7533/rpc/v1 runs version 0.2.0, expected 0.3.0 from service.json".to_string();
         app.update(AppEvent::Rpc(RpcEvent::ServerInfoLoaded(Err(
-            mismatch.clone(),
+            mismatch.clone()
         ))));
         assert_eq!(app.notice.as_deref(), Some(mismatch.as_str()));
+    }
+
+    #[test]
+    fn submits_steer_and_follow_up_prompts_while_busy_and_promotes_them_into_turns() {
+        let mut app = App::default();
+        app.session = Some(SessionInfo {
+            id: "ses_live".to_string(),
+            title: "Live".to_string(),
+            directory: "/workspace".to_string(),
+            host_dir: None,
+            sandbox: None,
+            project: None,
+            updated_at: 1_000,
+            model: None,
+            thinking_level: None,
+        });
+
+        // 1. Submit initial prompt while idle.
+        app.update(AppEvent::Paste("Build the feature".to_string()));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+        assert!(app.busy);
+        assert_eq!(app.turns.len(), 1);
+        assert_eq!(app.turns[0].prompt, "Build the feature");
+        assert!(app.queued_prompts.is_empty());
+
+        let initial_id = app.turns[0].prompt_id.clone().expect("initial prompt_id");
+        // Admitting & promoting the initial prompt does not duplicate it into queued_prompts or turns.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::PromptAdmitted {
+                message_id: initial_id.clone(),
+                prompt: "Build the feature".to_string(),
+                delivery: PromptDelivery::FollowUp,
+            },
+        )));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::PromptPromoted {
+                message_id: initial_id,
+                prompt: "Build the feature".to_string(),
+                delivery: PromptDelivery::FollowUp,
+            },
+        )));
+        assert!(app.queued_prompts.is_empty());
+        assert_eq!(app.turns.len(), 1);
+
+        // 2. While busy, plain Enter submits a `steer` prompt.
+        app.update(AppEvent::Paste("Keep the public API unchanged".to_string()));
+        app.update(AppEvent::Key(KeyEvent::from(KeyCode::Enter)));
+        assert_eq!(app.prompt.text(), "");
+        assert_eq!(app.queued_prompts.len(), 1);
+        assert_eq!(
+            app.queued_prompts[0].prompt,
+            "Keep the public API unchanged"
+        );
+        assert_eq!(app.queued_prompts[0].delivery, PromptDelivery::Steer);
+        assert!(!app.queued_prompts[0].admitted);
+        assert_eq!(app.notice.as_deref(), Some("steering current turn..."));
+        let steer_id = app.queued_prompts[0].message_id.clone();
+
+        // 3. While busy, Alt+Enter submits a `followUp` prompt.
+        app.update(AppEvent::Paste("Run cargo test afterwards".to_string()));
+        app.update(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::ALT,
+        )));
+        assert_eq!(app.queued_prompts.len(), 2);
+        assert_eq!(app.queued_prompts[1].prompt, "Run cargo test afterwards");
+        assert_eq!(app.queued_prompts[1].delivery, PromptDelivery::FollowUp);
+        assert_eq!(app.notice.as_deref(), Some("queued follow-up prompt"));
+        let follow_id = app.queued_prompts[1].message_id.clone();
+
+        // 4. `session.prompt.admitted` marks the steer as admitted.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::PromptAdmitted {
+                message_id: steer_id.clone(),
+                prompt: "Keep the public API unchanged".to_string(),
+                delivery: PromptDelivery::Steer,
+            },
+        )));
+        assert!(app.queued_prompts[0].admitted);
+
+        // 5. `session.prompt.promoted` removes the steer from `queued_prompts` and promotes it
+        //    into `app.turns`, settling the previous running step.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::PromptPromoted {
+                message_id: steer_id,
+                prompt: "Keep the public API unchanged".to_string(),
+                delivery: PromptDelivery::Steer,
+            },
+        )));
+        assert_eq!(app.queued_prompts.len(), 1);
+        assert_eq!(app.queued_prompts[0].message_id, follow_id);
+        assert_eq!(app.turns.len(), 2);
+        assert_eq!(app.turns[0].state, TurnState::Succeeded);
+        assert_eq!(app.turns[1].prompt, "Keep the public API unchanged");
+        assert_eq!(app.turns[1].state, TurnState::Running);
+
+        // 6. Promoting the follow-up moves it from `queued_prompts` into `app.turns`.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::PromptPromoted {
+                message_id: follow_id,
+                prompt: "Run cargo test afterwards".to_string(),
+                delivery: PromptDelivery::FollowUp,
+            },
+        )));
+        assert!(app.queued_prompts.is_empty());
+        assert_eq!(app.turns.len(), 3);
+        assert_eq!(app.turns[1].state, TurnState::Succeeded);
+        assert_eq!(app.turns[2].prompt, "Run cargo test afterwards");
+        assert_eq!(app.turns[2].state, TurnState::Running);
+    }
+
+    #[test]
+    fn handles_retries_tool_progress_config_changes_fork_and_part_correlation() {
+        let mut app = App::default();
+        app.session = Some(SessionInfo {
+            id: "ses_1".to_string(),
+            title: "Session 1".to_string(),
+            directory: "/workspace".to_string(),
+            host_dir: None,
+            sandbox: None,
+            project: None,
+            updated_at: 1_000,
+            model: None,
+            thinking_level: None,
+        });
+        app.busy = true;
+        app.turns.push(Turn::with_id("msg_u1", "Check and test"));
+
+        // 1. First LLM attempt streams partial thinking + text, then fails and schedules a retry.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::TurnStarted)));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::LlmStarted {
+            message_id: "assistant_1".to_string(),
+            model: Some("openai/gpt-5.6-luna".to_string()),
+        })));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::ThinkingStart {
+                message_id: "assistant_1".to_string(),
+                part_index: 0,
+            },
+        )));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::ThinkingDelta {
+                message_id: Some("assistant_1".to_string()),
+                part_index: Some(0),
+                delta: "aborted thought".to_string(),
+            },
+        )));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::TextStart {
+            message_id: "assistant_1".to_string(),
+            part_index: 1,
+        })));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::TextDelta {
+            message_id: Some("assistant_1".to_string()),
+            part_index: Some(1),
+            delta: "broken partial output".to_string(),
+        })));
+        assert_eq!(app.turns[0].thinking, "aborted thought");
+        assert_eq!(app.turns[0].text, "broken partial output");
+
+        // `session.llm.failed` discards the failed draft's parts.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::LlmFailed {
+            message_id: "assistant_1".to_string(),
+            reason: "error".to_string(),
+            error: Some("503 Service Unavailable".to_string()),
+        })));
+        assert_eq!(app.turns[0].thinking, "");
+        assert_eq!(app.turns[0].text, "");
+
+        // `session.retry.scheduled` records the backoff status on the turn.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::RetryScheduled {
+                attempt: 1,
+                max_retries: 3,
+                delay_ms: 2_000,
+                message: "openai/gpt-5.6-luna: Unavailable".to_string(),
+            },
+        )));
+        assert_eq!(
+            app.turns[0].retry,
+            Some(RetryStatus {
+                attempt: 1,
+                max_retries: 3,
+                delay_ms: 2_000,
+                message: "openai/gpt-5.6-luna: Unavailable".to_string(),
+            })
+        );
+
+        // 2. Second LLM attempt succeeds with multi-part correlation (`partIndex` 0 thinking,
+        //    `partIndex` 1 & 2 text) and `TextEnd` replaces rather than duplicates deltas.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::LlmStarted {
+            message_id: "assistant_2".to_string(),
+            model: Some("openai/gpt-5.6-luna".to_string()),
+        })));
+        assert!(app.turns[0].retry.is_none());
+
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::ThinkingDelta {
+                message_id: Some("assistant_2".to_string()),
+                part_index: Some(0),
+                delta: "First thought".to_string(),
+            },
+        )));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::ThinkingEnd {
+            message_id: "assistant_2".to_string(),
+            part_index: 0,
+            content: "First thought, refined.".to_string(),
+        })));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::TextDelta {
+            message_id: Some("assistant_2".to_string()),
+            part_index: Some(1),
+            delta: "Hello ".to_string(),
+        })));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::TextDelta {
+            message_id: Some("assistant_2".to_string()),
+            part_index: Some(1),
+            delta: "world!".to_string(),
+        })));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::TextEnd {
+            message_id: "assistant_2".to_string(),
+            part_index: 1,
+            content: "Hello world!".to_string(),
+        })));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::TextEnd {
+            message_id: "assistant_2".to_string(),
+            part_index: 2,
+            content: "Second paragraph.".to_string(),
+        })));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::RetryFinished {
+                attempt: 1,
+                success: true,
+                message: None,
+            },
+        )));
+
+        assert_eq!(app.turns[0].thinking, "First thought, refined.");
+        assert_eq!(app.turns[0].text, "Hello world!\n\nSecond paragraph.");
+
+        // 3. Tool starts and streams live `session.tool.progress` before settling.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::ToolStarted {
+            call_id: "call_1".to_string(),
+            name: "bash".to_string(),
+            label: Some("bash".to_string()),
+            arguments: json!({ "command": "cargo test" }),
+        })));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::ToolProgress {
+            call_id: "call_1".to_string(),
+            output: Some("running 5 tests\ntest a ... ok\ntest b ... ok".to_string()),
+            details: None,
+        })));
+        assert_eq!(app.turns[0].tools[0].status, ToolStatus::Running);
+        assert_eq!(app.turns[0].tools[0].summary.as_deref(), Some("3 lines"));
+        assert_eq!(
+            app.turns[0].tools[0].output.as_deref(),
+            Some("running 5 tests\ntest a ... ok\ntest b ... ok")
+        );
+
+        // 4. `session.config.changed` merges model and thinking level independently.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::ConfigChanged {
+                model: Some(ModelRef {
+                    provider: "anthropic".to_string(),
+                    id: "claude-sonnet-4-5".to_string(),
+                }),
+                thinking_level: None,
+            },
+        )));
+        assert_eq!(
+            app.model,
+            Some(("anthropic".to_string(), "claude-sonnet-4-5".to_string()))
+        );
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::ConfigChanged {
+                model: None,
+                thinking_level: Some("high".to_string()),
+            },
+        )));
+        assert_eq!(
+            app.model,
+            Some(("anthropic".to_string(), "claude-sonnet-4-5".to_string()))
+        );
+        assert_eq!(app.thinking.as_deref(), Some("high"));
+
+        // 5. `session.next.forked` surfaces a fork notification.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(
+            StreamEvent::SessionForked {
+                session_id: "ses_2".to_string(),
+                source_session_id: "ses_1".to_string(),
+                source_entry_id: "entry_4".to_string(),
+                base_seq: 9,
+            },
+        )));
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("forked session ses_2 from entry_4")
+        );
+        assert!(app.turns[0]
+            .notices
+            .contains(&"forked session ses_2 from entry_4".to_string()));
     }
 }

@@ -94,11 +94,7 @@ fn view_welcome(app: &App, frame: &mut Frame) {
         let searchable = popup.search().is_some();
         let wanted = menu::height(popup.menu(), searchable);
         let room = area.bottom().saturating_sub(prompt.bottom());
-        let reserve = if room >= wanted + GAP + 1 {
-            GAP + 1
-        } else {
-            2
-        };
+        let reserve = if room >= wanted + GAP + 1 { GAP + 1 } else { 2 };
         let room_with_hint = room.saturating_sub(reserve);
         let min_rows = if searchable { 5 } else { 3 };
         let max_height = if room_with_hint >= min_rows {

@@ -18,7 +18,8 @@ use crate::diff::{self, DEFAULT_MAX_DIFF_LINES};
 use crate::tool::{self, ToolRow, ToolStatus};
 
 const IDLE_HINTS: &str = "enter send · ↑↓/wheel scroll · / commands · esc quit";
-const BUSY_HINTS: &str = "↑↓/wheel scroll · / commands · esc interrupt";
+const BUSY_HINTS: &str =
+    "enter steer · alt+enter follow-up · ↑↓/wheel scroll · / commands · esc interrupt";
 const COMMAND_HINTS: &str = "↑↓ move · enter choose · esc close";
 const SEARCH_HINTS: &str = "↑↓ move · type to search · enter choose · esc close";
 
@@ -313,7 +314,26 @@ fn draw_transcript(app: &App, frame: &mut Frame, area: Rect) {
                     }
                     lines.push(Line::from(spans));
 
-                    if tool.status == ToolStatus::Failed {
+                    if tool.status == ToolStatus::Running {
+                        if let Some(output) = &tool.output {
+                            let mut preview: Vec<&str> = output
+                                .lines()
+                                .rev()
+                                .filter(|line| !line.trim().is_empty())
+                                .take(3)
+                                .collect();
+                            preview.reverse();
+                            for out_line in preview {
+                                lines.push(Line::from(vec![
+                                    Span::raw("    "),
+                                    Span::styled(
+                                        elide(out_line, wrap_width.saturating_sub(2)),
+                                        Style::default().fg(palette.text_muted),
+                                    ),
+                                ]));
+                            }
+                        }
+                    } else if tool.status == ToolStatus::Failed {
                         if let Some(output) = &tool.output {
                             for err_line in output.lines().take(3) {
                                 lines.push(Line::from(vec![
@@ -384,6 +404,38 @@ fn draw_transcript(app: &App, frame: &mut Frame, area: Rect) {
             }
         }
 
+        // Retry backoff status (`session.retry.scheduled`)
+        if let Some(retry) = &turn.retry {
+            let delay = if retry.delay_ms >= 1_000 && retry.delay_ms % 1_000 == 0 {
+                format!("{}s", retry.delay_ms / 1_000)
+            } else if retry.delay_ms >= 1_000 {
+                format!("{:.1}s", retry.delay_ms as f64 / 1_000.0)
+            } else {
+                format!("{}ms", retry.delay_ms)
+            };
+            let summary = if retry.message.is_empty() {
+                format!(
+                    "retrying ({}/{}) in {delay}...",
+                    retry.attempt, retry.max_retries
+                )
+            } else {
+                format!(
+                    "retrying ({}/{}) in {delay} · {}",
+                    retry.attempt, retry.max_retries, retry.message
+                )
+            };
+            for (line_idx, chunk) in wrap(&summary, wrap_width.saturating_sub(2))
+                .into_iter()
+                .enumerate()
+            {
+                let prefix = if line_idx == 0 { "  ↻ " } else { "    " };
+                lines.push(Line::from(vec![
+                    Span::styled(prefix, Style::default().fg(palette.warning())),
+                    Span::styled(chunk, Style::default().fg(palette.warning())),
+                ]));
+            }
+        }
+
         // Turn status
         match &turn.state {
             TurnState::Running => {
@@ -392,7 +444,10 @@ fn draw_transcript(app: &App, frame: &mut Frame, area: Rect) {
                         "  ◌ reconnecting to server...",
                         Style::default().fg(palette.warning()),
                     )));
-                } else if turn.text.is_empty() && turn.thinking.is_empty() && turn.tools.is_empty()
+                } else if turn.retry.is_none()
+                    && turn.text.is_empty()
+                    && turn.thinking.is_empty()
+                    && turn.tools.is_empty()
                 {
                     lines.push(Line::from(Span::styled(
                         "  ● thinking...",
@@ -418,6 +473,30 @@ fn draw_transcript(app: &App, frame: &mut Frame, area: Rect) {
                     format!("  ○ interrupted ({reason})"),
                     Style::default().fg(palette.text_muted),
                 )));
+            }
+        }
+    }
+
+    // Queued prompts (`session.prompt.admitted` / pending steer & follow-up inputs)
+    for queued in &app.queued_prompts {
+        if !lines.is_empty() {
+            lines.push(Line::default());
+        }
+        let status = if queued.admitted { "queued" } else { "sending" };
+        let badge = format!("  ↳ [{} · {status}] ", queued.delivery.label());
+        let badge_width = text::width(&badge);
+        let first_width = wrap_width.saturating_sub(badge_width).max(8);
+        for (line_idx, chunk) in wrap(&queued.prompt, first_width).into_iter().enumerate() {
+            if line_idx == 0 {
+                lines.push(Line::from(vec![
+                    Span::styled(badge.clone(), Style::default().fg(palette.brand)),
+                    Span::styled(chunk, Style::default().fg(palette.text_secondary)),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::raw(" ".repeat(badge_width)),
+                    Span::styled(chunk, Style::default().fg(palette.text_secondary)),
+                ]));
             }
         }
     }

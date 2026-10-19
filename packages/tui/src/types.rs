@@ -15,6 +15,31 @@ pub struct ServiceRegistration {
     pub port: u16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum PromptDelivery {
+    #[serde(rename = "steer")]
+    #[default]
+    Steer,
+    #[serde(rename = "followUp")]
+    FollowUp,
+}
+
+impl PromptDelivery {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Steer => "steer",
+            Self::FollowUp => "followUp",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Steer => "steer",
+            Self::FollowUp => "follow-up",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelRef {
     pub provider: String,
@@ -103,6 +128,12 @@ pub struct SessionInfo {
     pub updated_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<ModelRef>,
+    #[serde(
+        rename = "thinkingLevel",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub thinking_level: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

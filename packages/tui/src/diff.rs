@@ -150,10 +150,7 @@ pub fn patch_path(patch: &str) -> Option<String> {
         .find_map(|line| line.strip_prefix("+++ "))
         .map(|path| {
             let trimmed = path.trim();
-            trimmed
-                .strip_prefix("b/")
-                .unwrap_or(trimmed)
-                .to_string()
+            trimmed.strip_prefix("b/").unwrap_or(trimmed).to_string()
         })
 }
 
@@ -257,13 +254,10 @@ fn render_unified(hunks: &[Hunk], max_width: usize, palette: &Palette) -> Vec<Li
                 let sign_text = if chunk_idx == 0 { sign } else { "   " };
 
                 let mut spans = vec![
-                    Span::styled(
-                        gutter_text,
-                        Style::default().fg(gutter_fg).bg(gutter_bg),
-                    ),
+                    Span::styled(gutter_text, Style::default().fg(gutter_fg).bg(gutter_bg)),
                     Span::styled(
                         sign_text,
-                         match line_bg {
+                        match line_bg {
                             Some(bg) => Style::default().fg(gutter_fg).bg(bg),
                             None => Style::default().fg(gutter_fg),
                         },
@@ -334,7 +328,10 @@ fn render_split(hunks: &[Hunk], max_width: usize, palette: &Palette) -> Vec<Line
             if lines[i].kind == Kind::Context {
                 let mut row_spans =
                     format_split_cell(Some(&lines[i]), true, left_width, gutter_width, palette);
-                row_spans.push(Span::styled("│", Style::default().fg(palette.border_subtle)));
+                row_spans.push(Span::styled(
+                    "│",
+                    Style::default().fg(palette.border_subtle),
+                ));
                 row_spans.extend(format_split_cell(
                     Some(&lines[i]),
                     false,
@@ -367,7 +364,10 @@ fn render_split(hunks: &[Hunk], max_width: usize, palette: &Palette) -> Vec<Line
                     gutter_width,
                     palette,
                 );
-                row_spans.push(Span::styled("│", Style::default().fg(palette.border_subtle)));
+                row_spans.push(Span::styled(
+                    "│",
+                    Style::default().fg(palette.border_subtle),
+                ));
                 row_spans.extend(format_split_cell(
                     added.get(r).copied(),
                     false,
@@ -477,7 +477,10 @@ mod tests {
     const PATCH: &str = "--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,3 +1,3 @@\n let a = 1;\n-let b = 2;\n+let b = 3;\n return a + b;\n";
 
     fn text_of(line: &Line) -> String {
-        line.spans.iter().map(|span| span.content.as_ref()).collect()
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
     }
 
     fn joined(lines: &[Line]) -> String {
@@ -502,8 +505,14 @@ mod tests {
         let text = joined(&lines);
         assert!(!text.contains("---"), "file headers omitted:\n{text}");
         assert!(!text.contains("@@"), "raw hunk header omitted:\n{text}");
-        assert!(text.contains(" 2  - let b = 2;"), "removed line has old line number:\n{text}");
-        assert!(text.contains(" 2  + let b = 3;"), "added line has new line number:\n{text}");
+        assert!(
+            text.contains(" 2  - let b = 2;"),
+            "removed line has old line number:\n{text}"
+        );
+        assert!(
+            text.contains(" 2  + let b = 3;"),
+            "added line has new line number:\n{text}"
+        );
     }
 
     #[test]
@@ -511,15 +520,25 @@ mod tests {
         let multi = "--- a/f.rs\n+++ b/f.rs\n@@ -1,2 +1,2 @@\n-old1\n+new1\n@@ -10,2 +10,2 @@\n-old10\n+new10\n";
         let (lines, _) = render_diff(multi, 80, DEFAULT_MAX_DIFF_LINES, default_palette());
         let text = joined(&lines);
-        assert!(text.contains('⋮'), "expected ⋮ separator between hunks:\n{text}");
+        assert!(
+            text.contains('⋮'),
+            "expected ⋮ separator between hunks:\n{text}"
+        );
     }
 
     #[test]
     fn wide_viewport_uses_side_by_side_split_view() {
         let (lines, _) = render_diff(PATCH, 130, DEFAULT_MAX_DIFF_LINES, default_palette());
         let text = joined(&lines);
-        assert!(text.contains('│'), "expected split divider │ on wide viewport:\n{text}");
+        assert!(
+            text.contains('│'),
+            "expected split divider │ on wide viewport:\n{text}"
+        );
         // In split view, `- let b = 2;` and `+ let b = 3;` sit on the same row!
-        assert_eq!(lines.len(), 3, "context + paired replacement + context = 3 rows:\n{text}");
+        assert_eq!(
+            lines.len(),
+            3,
+            "context + paired replacement + context = 3 rows:\n{text}"
+        );
     }
 }

@@ -38,12 +38,7 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
-    pub fn start(
-        call_id: String,
-        name: String,
-        label: Option<String>,
-        arguments: &Value,
-    ) -> Self {
+    pub fn start(call_id: String, name: String, label: Option<String>, arguments: &Value) -> Self {
         let target = target(&name, arguments);
         let label = label.unwrap_or_else(|| name.clone());
         Self {
@@ -71,6 +66,22 @@ impl ToolCall {
         let mut call = Self::start(call_id, tool_name, None, arguments);
         call.apply_settlement(None, arguments, output, details, is_error);
         call
+    }
+
+    pub fn apply_progress(&mut self, output: Option<String>, details: Option<&Value>) {
+        if self.status != ToolStatus::Running {
+            return;
+        }
+        if let Some(output) = output {
+            self.output = Some(output);
+        }
+        if let Some(detail_summary) =
+            summary(&self.name, details, false).or_else(|| progress_details_summary(details))
+        {
+            self.summary = Some(detail_summary);
+        } else if let Some(output) = &self.output {
+            self.summary = progress_output_summary(output);
+        }
     }
 
     pub fn apply_settlement(
@@ -306,6 +317,31 @@ fn edit_summary(patch: &str, call_path: Option<&str>, first_changed_line: Option
         parts.push(format!("line {line}"));
     }
     parts.join(" · ")
+}
+
+fn progress_details_summary(details: Option<&Value>) -> Option<String> {
+    let details = details?;
+    for key in ["message", "status", "progress"] {
+        if let Some(text) = string_field(Some(details), key) {
+            let clean = collapse_whitespace(&text);
+            if !clean.is_empty() {
+                return Some(clean);
+            }
+        }
+    }
+    None
+}
+
+fn progress_output_summary(output: &str) -> Option<String> {
+    let lines = output.lines().count();
+    if lines > 1 {
+        return Some(format!("{lines} lines"));
+    }
+    output
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .map(collapse_whitespace)
+        .filter(|line| !line.is_empty())
 }
 
 fn collapse_whitespace(text: &str) -> String {
