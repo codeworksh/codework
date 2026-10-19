@@ -16,7 +16,7 @@ export default Alchemy.Stack(
 	Effect.gen(function* () {
 		const stage = yield* Alchemy.Stage;
 		const bucket = yield* Cloudflare.R2.Bucket("Bucket", {
-			name: `catalog-${stage}`,
+			name: `catalog-bucket-${stage}`,
 			domains: stage === "live" ? [{ name: "catalog.codework.sh", minTLS: "1.2" }] : [],
 		});
 

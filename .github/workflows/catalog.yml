@@ -25,7 +25,7 @@ concurrency:
 jobs:
    publish:
       runs-on: ubuntu-latest
-      # A bucket-scoped R2 API token (Object Read & Write on catalog-live only), stored as
+      # A bucket-scoped R2 API token (Object Read & Write on catalog-bucket-live only), stored as
       # CATALOG_R2_ACCESS_KEY_ID / CATALOG_R2_SECRET_ACCESS_KEY, and the account's S3 endpoint
       # (https://<account id>.r2.cloudflarestorage.com) as CATALOG_R2_ENDPOINT.
       environment: catalog
@@ -52,7 +52,7 @@ jobs:
               R2_ENDPOINT: ${{ secrets.CATALOG_R2_ENDPOINT }}
            # One PUT, never multipart: R2's ETag is then the file's MD5, which clients send back to get a 304.
            run: >-
-              aws s3api put-object --bucket catalog-live --key v1/models.json
+              aws s3api put-object --bucket catalog-bucket-live --key v1/models.json
               --body .artifacts/catalog/v1/models.json
               --endpoint-url "$R2_ENDPOINT"
               --content-type application/json
