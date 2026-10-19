@@ -158,7 +158,7 @@ export class SettingsError extends Schema.TaggedError<SettingsError>()("Settings
 	detail: Schema.String,
 }) {}
 
-/** The model catalog is missing or unreadable. */
+/** The model catalog is unreadable or invalid. */
 export class ModelCatalogError extends Schema.TaggedError<ModelCatalogError>()("Runner.ModelCatalogError", {
 	path: Schema.String,
 	detail: Schema.String,

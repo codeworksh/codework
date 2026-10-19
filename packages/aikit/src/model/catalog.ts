@@ -3,6 +3,7 @@ import Type, { type Static } from "typebox";
 import { NamedError } from "../utils/error.ts";
 import * as Filesystem from "../utils/filesystem.ts";
 import { lazy } from "../utils/lazy.ts";
+import bundled from "./baseline.json" with { type: "json" };
 
 // known AI SDK LLM providers
 // used as the public protocol discriminator for the AI SDK transport layer
@@ -39,12 +40,7 @@ export const ModelCatalogLoadError = NamedError.create(
 	"ModelCatalogLoadError",
 	Type.Object({
 		path: Type.String(),
-		reason: Type.Union([
-			Type.Literal("missing"),
-			Type.Literal("unreadable"),
-			Type.Literal("empty"),
-			Type.Literal("invalid"),
-		]),
+		reason: Type.Union([Type.Literal("unreadable"), Type.Literal("empty"), Type.Literal("invalid")]),
 		message: Type.String(),
 	}),
 );
@@ -71,6 +67,17 @@ export function path(): string {
 	return resolve(process.env.CODEWORK_MODELS_FILE ?? configured ?? join(projectRoot(), filename));
 }
 
+/**
+ * The catalog bundled with aikit for OpenAI, Anthropic and OpenRouter (`aikit modelgen --baseline`),
+ * so a first run works before any catalog was generated.
+ */
+export const baseline: GeneratedCatalog = bundled;
+
+/**
+ * The catalog at `catalogPath` over the {@link baseline}: a provider the file lists replaces the
+ * bundled one, so a fresh generated catalog wins and an older one still gets the bundled providers.
+ * A missing file reads as the baseline alone.
+ */
 export async function load(catalogPath = path()): Promise<GeneratedCatalog> {
 	let content: string;
 	try {
@@ -80,16 +87,9 @@ export async function load(catalogPath = path()): Promise<GeneratedCatalog> {
 			typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string"
 				? cause.code
 				: undefined;
-		const reason = value === "ENOENT" ? "missing" : "unreadable";
+		if (value === "ENOENT") return { ...baseline };
 		throw new ModelCatalogLoadError(
-			{
-				path: catalogPath,
-				reason,
-				message:
-					reason === "missing"
-						? `model catalog not found at ${catalogPath}`
-						: `model catalog could not be read at ${catalogPath}`,
-			},
+			{ path: catalogPath, reason: "unreadable", message: `model catalog could not be read at ${catalogPath}` },
 			{ cause },
 		);
 	}
@@ -103,7 +103,7 @@ export async function load(catalogPath = path()): Promise<GeneratedCatalog> {
 	try {
 		const parsed: unknown = JSON.parse(content);
 		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("expected an object");
-		return parsed as GeneratedCatalog;
+		return { ...baseline, ...(parsed as GeneratedCatalog) };
 	} catch (cause) {
 		throw new ModelCatalogLoadError(
 			{

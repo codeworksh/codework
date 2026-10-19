@@ -118,8 +118,9 @@ export default defineConfig({
 		},
 	},
 	fmt: {
-		// A file snapshot is the exact bytes a test wrote; reformatting it would make it drift.
-		ignorePatterns: [...ignoredPaths, "**/__artifacts__/**"],
+		// A file snapshot is the exact bytes a test wrote, and the bundled model catalog the exact
+		// bytes `aikit modelgen --baseline` wrote; reformatting either would make it drift.
+		ignorePatterns: [...ignoredPaths, "**/__artifacts__/**", "packages/aikit/src/model/baseline.json"],
 		printWidth: 120,
 		useTabs: true,
 		tabWidth: 3,

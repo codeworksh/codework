@@ -1,0 +1,470 @@
+{
+	"data": [
+		{
+			"architecture": {
+				"input_modalities": ["text", "image"],
+				"instruct_type": null,
+				"modality": "text+image->text",
+				"output_modalities": ["text"],
+				"tokenizer": "DeepSeek"
+			},
+			"context_length": 1048576,
+			"id": "deepseek/deepseek-v4.1-flash-1017",
+			"name": "DeepSeek: DeepSeek V4.1 Flash 1017",
+			"pricing": {
+				"completion": "0.0000006",
+				"input_cache_read": "0.000000003",
+				"overrides": [
+					{
+						"completion": "0.0000006",
+						"input_cache_read": "0.000000003",
+						"prompt": "0.00000015",
+						"utc_days": ["saturday", "sunday"]
+					},
+					{
+						"completion": "0.0000006",
+						"input_cache_read": "0.000000003",
+						"prompt": "0.00000015",
+						"utc_days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+						"utc_end": 100,
+						"utc_start": 0
+					},
+					{
+						"completion": "0.0000012",
+						"input_cache_read": "0.000000006",
+						"prompt": "0.0000003",
+						"utc_days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+						"utc_end": 400,
+						"utc_start": 100
+					},
+					{
+						"completion": "0.0000006",
+						"input_cache_read": "0.000000003",
+						"prompt": "0.00000015",
+						"utc_days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+						"utc_end": 600,
+						"utc_start": 400
+					},
+					{
+						"completion": "0.0000012",
+						"input_cache_read": "0.000000006",
+						"prompt": "0.0000003",
+						"utc_days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+						"utc_end": 1000,
+						"utc_start": 600
+					},
+					{
+						"completion": "0.0000006",
+						"input_cache_read": "0.000000003",
+						"prompt": "0.00000015",
+						"utc_days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+						"utc_end": 0,
+						"utc_start": 1000
+					}
+				],
+				"prompt": "0.00000015"
+			},
+			"reasoning": {
+				"default_effort": "high",
+				"default_enabled": true,
+				"mandatory": false,
+				"supported_efforts": ["max", "high", "low", "none"]
+			},
+			"supported_parameters": [
+				"frequency_penalty",
+				"include_reasoning",
+				"logit_bias",
+				"logprobs",
+				"max_completion_tokens",
+				"max_tokens",
+				"min_p",
+				"parallel_tool_calls",
+				"presence_penalty",
+				"reasoning",
+				"reasoning_effort",
+				"repetition_penalty",
+				"response_format",
+				"seed",
+				"stop",
+				"structured_outputs",
+				"temperature",
+				"tool_choice",
+				"tools",
+				"top_k",
+				"top_logprobs",
+				"top_p"
+			],
+			"top_provider": {
+				"context_length": 1048576,
+				"is_moderated": false,
+				"max_completion_tokens": 393216
+			}
+		},
+		{
+			"architecture": {
+				"input_modalities": ["text", "image"],
+				"instruct_type": null,
+				"modality": "text+image->text",
+				"output_modalities": ["text"],
+				"tokenizer": "Other"
+			},
+			"context_length": 32000,
+			"id": "moondream/moondream3-preview",
+			"name": "Moondream: Moondream 3 Preview",
+			"pricing": {
+				"completion": "0.0000025",
+				"prompt": "0.0000003"
+			},
+			"reasoning": {
+				"default_enabled": false,
+				"mandatory": false
+			},
+			"supported_parameters": [
+				"include_reasoning",
+				"max_completion_tokens",
+				"max_tokens",
+				"reasoning",
+				"temperature",
+				"top_p"
+			],
+			"top_provider": {
+				"context_length": 32000,
+				"is_moderated": false,
+				"max_completion_tokens": 4096
+			}
+		},
+		{
+			"architecture": {
+				"input_modalities": ["text"],
+				"instruct_type": null,
+				"modality": "text->text",
+				"output_modalities": ["text"],
+				"tokenizer": "Other"
+			},
+			"context_length": 128000,
+			"id": "liquid/lfm-2.5-24b-a2b",
+			"name": "LiquidAI: LFM2.5-24B-A2B",
+			"pricing": {
+				"completion": "0.0000007",
+				"input_cache_read": "0.000000025",
+				"prompt": "0.00000005"
+			},
+			"reasoning": {
+				"mandatory": true
+			},
+			"supported_parameters": [
+				"frequency_penalty",
+				"include_reasoning",
+				"logprobs",
+				"max_completion_tokens",
+				"max_tokens",
+				"min_p",
+				"presence_penalty",
+				"reasoning",
+				"repetition_penalty",
+				"response_format",
+				"seed",
+				"stop",
+				"structured_outputs",
+				"temperature",
+				"tool_choice",
+				"tools",
+				"top_k",
+				"top_logprobs"
+			],
+			"top_provider": {
+				"context_length": 128000,
+				"is_moderated": false,
+				"max_completion_tokens": 8192
+			}
+		},
+		{
+			"architecture": {
+				"input_modalities": ["text", "image", "file"],
+				"instruct_type": null,
+				"modality": "text+image+file->text",
+				"output_modalities": ["text"],
+				"tokenizer": "Claude"
+			},
+			"context_length": 1000000,
+			"id": "anthropic/claude-haiku-5.5",
+			"name": "Anthropic: Claude Haiku 5.5",
+			"pricing": {
+				"completion": "0.0000005",
+				"input_cache_read": "0.00000001",
+				"input_cache_write": "0.000000125",
+				"input_cache_write_1h": "0.0000002",
+				"overrides": [
+					{
+						"completion": "0.0000025",
+						"input_cache_read": "0.00000005",
+						"input_cache_write": "0.000000625",
+						"input_cache_write_1h": "0.000001",
+						"min_prompt_tokens": 100000,
+						"prompt": "0.0000005"
+					}
+				],
+				"prompt": "0.0000001",
+				"web_search": "0.01"
+			},
+			"reasoning": {
+				"default_effort": "medium",
+				"mandatory": false,
+				"supported_efforts": ["max", "xhigh", "high", "medium", "low", "none"]
+			},
+			"supported_parameters": [
+				"include_reasoning",
+				"max_completion_tokens",
+				"max_tokens",
+				"reasoning",
+				"reasoning_effort",
+				"response_format",
+				"stop",
+				"structured_outputs",
+				"tool_choice",
+				"tools",
+				"verbosity"
+			],
+			"top_provider": {
+				"context_length": 1000000,
+				"is_moderated": true,
+				"max_completion_tokens": 128000
+			}
+		},
+		{
+			"architecture": {
+				"input_modalities": ["file", "image", "text"],
+				"instruct_type": null,
+				"modality": "text+image+file->text",
+				"output_modalities": ["text"],
+				"tokenizer": "GPT"
+			},
+			"context_length": 1050000,
+			"id": "openai/gpt-6.1-sol",
+			"name": "OpenAI: GPT-6.1 Sol",
+			"pricing": {
+				"completion": "0.00001",
+				"input_cache_read": "0.0000001",
+				"input_cache_write": "0.0000025",
+				"overrides": [
+					{
+						"completion": "0.000015",
+						"input_cache_read": "0.0000002",
+						"input_cache_write": "0.000005",
+						"min_prompt_tokens": 272000,
+						"prompt": "0.000004"
+					}
+				],
+				"prompt": "0.000002",
+				"web_search": "0.01"
+			},
+			"reasoning": {
+				"default_effort": "medium",
+				"default_enabled": true,
+				"mandatory": true,
+				"supported_efforts": ["max", "xhigh", "high", "medium", "low"]
+			},
+			"supported_parameters": [
+				"include_reasoning",
+				"max_completion_tokens",
+				"max_tokens",
+				"reasoning",
+				"reasoning_effort",
+				"response_format",
+				"seed",
+				"structured_outputs",
+				"tool_choice",
+				"tools",
+				"verbosity"
+			],
+			"top_provider": {
+				"context_length": 1050000,
+				"is_moderated": true,
+				"max_completion_tokens": 128000
+			}
+		},
+		{
+			"architecture": {
+				"input_modalities": ["file", "image", "text"],
+				"instruct_type": null,
+				"modality": "text+image+file->text",
+				"output_modalities": ["text"],
+				"tokenizer": "GPT"
+			},
+			"context_length": 1050000,
+			"id": "openai/gpt-6-sol",
+			"name": "OpenAI: GPT-6 Sol",
+			"pricing": {
+				"completion": "0.00001",
+				"input_cache_read": "0.0000002",
+				"input_cache_write": "0.0000025",
+				"overrides": [
+					{
+						"completion": "0.000015",
+						"input_cache_read": "0.0000004",
+						"input_cache_write": "0.000005",
+						"min_prompt_tokens": 272000,
+						"prompt": "0.000004"
+					}
+				],
+				"prompt": "0.000002",
+				"web_search": "0.01"
+			},
+			"reasoning": {
+				"default_effort": "medium",
+				"default_enabled": true,
+				"mandatory": false,
+				"supported_efforts": ["max", "xhigh", "high", "medium", "low", "none"]
+			},
+			"supported_parameters": [
+				"include_reasoning",
+				"max_completion_tokens",
+				"max_tokens",
+				"reasoning",
+				"reasoning_effort",
+				"response_format",
+				"seed",
+				"structured_outputs",
+				"tool_choice",
+				"tools",
+				"verbosity"
+			],
+			"top_provider": {
+				"context_length": 1050000,
+				"is_moderated": true,
+				"max_completion_tokens": 128000
+			}
+		},
+		{
+			"architecture": {
+				"input_modalities": ["text", "image", "file"],
+				"instruct_type": null,
+				"modality": "text+image+file->text",
+				"output_modalities": ["text"],
+				"tokenizer": "Claude"
+			},
+			"context_length": 1000000,
+			"id": "anthropic/claude-opus-5.5",
+			"name": "Anthropic: Claude Opus 5.5",
+			"pricing": {
+				"completion": "0.00002",
+				"input_cache_read": "0.0000002",
+				"input_cache_write": "0.000005",
+				"input_cache_write_1h": "0.000008",
+				"prompt": "0.000004",
+				"web_search": "0.01"
+			},
+			"reasoning": {
+				"default_effort": "high",
+				"mandatory": true,
+				"supported_efforts": ["max", "xhigh", "high", "medium", "low"]
+			},
+			"supported_parameters": [
+				"include_reasoning",
+				"max_completion_tokens",
+				"max_tokens",
+				"reasoning",
+				"reasoning_effort",
+				"response_format",
+				"stop",
+				"structured_outputs",
+				"tool_choice",
+				"tools",
+				"verbosity"
+			],
+			"top_provider": {
+				"context_length": 1000000,
+				"is_moderated": true,
+				"max_completion_tokens": 128000
+			}
+		},
+		{
+			"architecture": {
+				"input_modalities": ["text", "image", "file"],
+				"instruct_type": null,
+				"modality": "text+image+file->text",
+				"output_modalities": ["text"],
+				"tokenizer": "Claude"
+			},
+			"context_length": 1000000,
+			"id": "anthropic/claude-opus-5.5:batch",
+			"name": "Anthropic: Claude Opus 5.5 (batch)",
+			"pricing": {
+				"completion": "0.00001",
+				"input_cache_read": "0.0000001",
+				"input_cache_write": "0.0000025",
+				"input_cache_write_1h": "0.000004",
+				"prompt": "0.000002",
+				"web_search": "0.01"
+			},
+			"reasoning": {
+				"default_effort": "high",
+				"mandatory": true,
+				"supported_efforts": ["max", "xhigh", "high", "medium", "low"]
+			},
+			"supported_parameters": [
+				"include_reasoning",
+				"max_tokens",
+				"reasoning",
+				"reasoning_effort",
+				"response_format",
+				"stop",
+				"structured_outputs",
+				"tool_choice",
+				"tools",
+				"verbosity"
+			],
+			"top_provider": {
+				"context_length": 1000000,
+				"is_moderated": true,
+				"max_completion_tokens": 128000
+			}
+		},
+		{
+			"architecture": {
+				"input_modalities": ["text", "image", "audio", "file", "video"],
+				"instruct_type": null,
+				"modality": "text+image+file+audio+video->text+image",
+				"output_modalities": ["text", "image"],
+				"tokenizer": "Router"
+			},
+			"context_length": 2000000,
+			"id": "openrouter/auto",
+			"name": "Auto Router",
+			"pricing": {
+				"completion": "-1",
+				"prompt": "-1"
+			},
+			"supported_parameters": [
+				"frequency_penalty",
+				"include_reasoning",
+				"logit_bias",
+				"logprobs",
+				"max_tokens",
+				"min_p",
+				"prediction",
+				"presence_penalty",
+				"reasoning",
+				"reasoning_effort",
+				"repetition_penalty",
+				"response_format",
+				"seed",
+				"stop",
+				"structured_outputs",
+				"temperature",
+				"tool_choice",
+				"tools",
+				"top_a",
+				"top_k",
+				"top_logprobs",
+				"top_p",
+				"web_search_options"
+			],
+			"top_provider": {
+				"context_length": null,
+				"is_moderated": false,
+				"max_completion_tokens": null
+			}
+		}
+	]
+}

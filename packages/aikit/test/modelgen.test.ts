@@ -1,9 +1,10 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Value from "typebox/value";
 import { describe, expect, it } from "vite-plus/test";
-import { githubCopilotApiMethod, githubCopilotBuiltInModels, openAICodexBuiltInModels } from "../src/cli/modelgen.ts";
+import { githubCopilotApiMethod, githubCopilotBuiltInModels } from "../src/cli/modelgen.ts";
 import * as Model from "../src/model/model.ts";
 import * as ModelCatalog from "../src/model/catalog.ts";
 import * as Thinking from "../src/llm/thinking.ts";
@@ -72,7 +73,7 @@ describe("generateModels", () => {
 		const directory = await mkdtemp(join(tmpdir(), "aikit-modelgen-"));
 		const modelsDevPath = join(directory, "modelsdev.json");
 		const outputPath = join(directory, "models.gen.json");
-		const configuredModelsDevPath = process.env.OPENCODE_MODELS_DEV_FILE;
+		const configuredModelsDevPath = process.env.CODEWORK_MODELS_DEV_FILE;
 		const supportedModel = {
 			id: "claude-test",
 			name: "Claude Test",
@@ -133,7 +134,7 @@ describe("generateModels", () => {
 					},
 				}),
 			);
-			process.env.OPENCODE_MODELS_DEV_FILE = modelsDevPath;
+			process.env.CODEWORK_MODELS_DEV_FILE = modelsDevPath;
 
 			await expect(generateModels({ path: outputPath })).resolves.toBe(outputPath);
 			const catalog = (await ModelCatalog.load(outputPath)) as Model.BuiltInModels;
@@ -154,7 +155,8 @@ describe("generateModels", () => {
 				protocol: "anthropic",
 			});
 			expect(catalog.anthropic?.["claude-without-tools"]).toBeUndefined();
-			expect(Object.keys(catalog["openai-codex"] ?? {})).toEqual(Object.keys(openAICodexBuiltInModels()));
+			// Codex builds on the OpenAI entries, which this snapshot has none of.
+			expect(catalog["openai-codex"]).toEqual({});
 			for (const provider of ["google", "google-vertex"]) {
 				for (const id of googleIds) {
 					const generated = catalog[provider]?.[id];
@@ -180,8 +182,37 @@ describe("generateModels", () => {
 				}
 			}
 		} finally {
-			if (configuredModelsDevPath === undefined) delete process.env.OPENCODE_MODELS_DEV_FILE;
-			else process.env.OPENCODE_MODELS_DEV_FILE = configuredModelsDevPath;
+			if (configuredModelsDevPath === undefined) delete process.env.CODEWORK_MODELS_DEV_FILE;
+			else process.env.CODEWORK_MODELS_DEV_FILE = configuredModelsDevPath;
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("generateModels from recorded sources", () => {
+	// models.dev's OpenAI and Anthropic providers and a slice of OpenRouter's listing, recorded
+	// 2026-10-18. The artifact is the catalog those sources produce: re-run with -u after a
+	// deliberate generator change and review its diff.
+	it("builds OpenAI, Codex, Anthropic, and OpenRouter", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "aikit-modelgen-"));
+		const outputPath = join(directory, "models.gen.json");
+		const configuredModelsDevPath = process.env.CODEWORK_MODELS_DEV_FILE;
+		try {
+			process.env.CODEWORK_MODELS_DEV_FILE = fileURLToPath(
+				new URL("./fixtures/modelgen/models.dev.json", import.meta.url),
+			);
+			await generateModels({ path: outputPath });
+			const content = await readFile(outputPath, "utf8");
+			const catalog = JSON.parse(content) as Model.BuiltInModels;
+
+			expect(Object.keys(catalog)).toEqual(["anthropic", "openai", "openai-codex", "openrouter"]);
+			for (const models of Object.values(catalog)) {
+				for (const model of Object.values(models ?? {})) expect(Value.Check(Model.Info, model)).toBe(true);
+			}
+			await expect(`${content}\n`).toMatchFileSnapshot("./__artifacts__/modelgen.json");
+		} finally {
+			if (configuredModelsDevPath === undefined) delete process.env.CODEWORK_MODELS_DEV_FILE;
+			else process.env.CODEWORK_MODELS_DEV_FILE = configuredModelsDevPath;
 			await rm(directory, { recursive: true, force: true });
 		}
 	});
@@ -192,7 +223,7 @@ describe("generateModels refetch", () => {
 		const directory = await mkdtemp(join(tmpdir(), "aikit-modelgen-"));
 		const modelsDevPath = join(directory, "modelsdev.json");
 		const outputPath = join(directory, "models.gen.json");
-		const configuredModelsDevPath = process.env.OPENCODE_MODELS_DEV_FILE;
+		const configuredModelsDevPath = process.env.CODEWORK_MODELS_DEV_FILE;
 		const provider = (id: string) => ({
 			id,
 			name: id,
@@ -213,7 +244,7 @@ describe("generateModels refetch", () => {
 			},
 		});
 		try {
-			process.env.OPENCODE_MODELS_DEV_FILE = modelsDevPath;
+			process.env.CODEWORK_MODELS_DEV_FILE = modelsDevPath;
 			await writeFile(modelsDevPath, JSON.stringify({ first: provider("first") }));
 			await generateModels({ path: outputPath });
 			expect(Object.keys(await ModelCatalog.load(outputPath))).toContain("first");
@@ -224,8 +255,8 @@ describe("generateModels refetch", () => {
 			expect(Object.keys(catalog)).toContain("second");
 			expect(Object.keys(catalog)).not.toContain("first");
 		} finally {
-			if (configuredModelsDevPath === undefined) delete process.env.OPENCODE_MODELS_DEV_FILE;
-			else process.env.OPENCODE_MODELS_DEV_FILE = configuredModelsDevPath;
+			if (configuredModelsDevPath === undefined) delete process.env.CODEWORK_MODELS_DEV_FILE;
+			else process.env.CODEWORK_MODELS_DEV_FILE = configuredModelsDevPath;
 			await rm(directory, { recursive: true, force: true });
 		}
 	});

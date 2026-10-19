@@ -46,6 +46,10 @@ export default defineConfig({
 		include: ["test/**/*.test.ts", "tests/**/*.test.ts"],
 		env: {
 			CODEWORK_MODELS_FILE: fileURLToPath(new URL("../../models.gen.json", import.meta.url)),
+			// Recorded OpenRouter listing, so a test that generates a catalog never fetches it.
+			CODEWORK_OPENROUTER_MODELS_FILE: fileURLToPath(
+				new URL("./test/fixtures/modelgen/openrouter.json", import.meta.url),
+			),
 		},
 	},
 	lint: {

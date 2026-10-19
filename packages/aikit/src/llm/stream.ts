@@ -424,7 +424,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 				toolChoice: runtimeOptions.toolChoice as Parameters<typeof streamText<ToolSet>>[0]["toolChoice"],
 				activeTools,
 				maxOutputTokens: resolveMaxOutputTokens(model, plan),
-				temperature: runtimeOptions.temperature,
+				temperature: model.compat?.supportsTemperature === false ? undefined : runtimeOptions.temperature,
 				providerOptions,
 				// The exact body is where `providerThinkingLevel` is read from.
 				include: { requestBody: true },

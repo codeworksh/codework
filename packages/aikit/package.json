@@ -82,6 +82,7 @@
 		"access": "public"
 	},
 	"scripts": {
+		"baseline": "tsx --conditions=development src/cli.ts modelgen src/model/baseline.json --baseline",
 		"build": "vp pack",
 		"check": "vp check",
 		"cli": "tsx --conditions=development src/cli.ts",

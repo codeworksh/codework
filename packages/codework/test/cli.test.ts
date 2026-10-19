@@ -57,6 +57,13 @@ const runIn = (home: string, env: NodeJS.ProcessEnv, ...args: ReadonlyArray<stri
 	}
 };
 
+/** A catalog file that is not JSON. */
+const invalidCatalog = () => {
+	const path = join(tmpdir(), `invalid-models-${crypto.randomUUID()}.json`);
+	writeFileSync(path, "{");
+	return path;
+};
+
 describe("codework CLI", () => {
 	it("reads custom settings from --user-config-dir without requiring model flags", () => {
 		const dir = mkdtempSync(join(tmpdir(), "codework-cli-settings-"));
@@ -130,9 +137,9 @@ describe("codework CLI", () => {
 		expect(result.stdout).toContain("--sandbox-provider-id requires a remote --sandbox-driver");
 	});
 
-	it("reports a missing model catalog without an Effect stack", () => {
+	it("reports an invalid model catalog without an Effect stack", () => {
 		const result = runIsolated(
-			{ CODEWORK_MODELS_FILE: join(tmpdir(), `missing-models-${crypto.randomUUID()}.json`) },
+			{ CODEWORK_MODELS_FILE: invalidCatalog() },
 			"run",
 			"--provider",
 			"openrouter",
@@ -142,7 +149,7 @@ describe("codework CLI", () => {
 		);
 
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("error[model-catalog-missing]: model catalog not found");
+		expect(result.stderr).toContain("error[model-catalog-invalid]: model catalog contains invalid json");
 		expect(result.stderr).toContain("hint: run `codework models refresh`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");
@@ -413,14 +420,11 @@ describe("codework CLI", () => {
 		expect(result.stderr).toContain("hint: run `codework models providers`");
 	});
 
-	it("reports a missing model catalog from models without an Effect stack", () => {
-		const result = runIsolated(
-			{ CODEWORK_MODELS_FILE: join(tmpdir(), `missing-models-${crypto.randomUUID()}.json`) },
-			"models",
-		);
+	it("reports an invalid model catalog from models without an Effect stack", () => {
+		const result = runIsolated({ CODEWORK_MODELS_FILE: invalidCatalog() }, "models");
 
 		expect(result.status).toBe(1);
-		expect(result.stderr).toContain("error[model-catalog-missing]: model catalog not found");
+		expect(result.stderr).toContain("error[model-catalog-invalid]: model catalog contains invalid json");
 		expect(result.stderr).toContain("hint: run `codework models refresh`");
 		expect(result.stderr).not.toContain("Runner.TurnError");
 		expect(result.stderr).not.toContain("at Loop.runTurn");
@@ -430,7 +434,12 @@ describe("codework CLI", () => {
 		const home = mkdtempSync(join(tmpdir(), "codework-refresh-"));
 		const snapshot = join(home, "modelsdev.json");
 		const catalog = join(home, "models.gen.json");
-		const env = { CODEWORK_MODELS_FILE: undefined, OPENCODE_MODELS_DEV_FILE: snapshot };
+		// An empty snapshot for both sources: nothing is fetched.
+		const env = {
+			CODEWORK_MODELS_FILE: undefined,
+			CODEWORK_MODELS_DEV_FILE: snapshot,
+			CODEWORK_OPENROUTER_MODELS_FILE: snapshot,
+		};
 		writeFileSync(snapshot, JSON.stringify({}));
 		try {
 			const first = runIn(home, env, "models", "refresh");
@@ -457,7 +466,7 @@ describe("codework CLI", () => {
 
 	it("reports a failed refresh", () => {
 		const result = runIsolated(
-			{ CODEWORK_MODELS_FILE: undefined, OPENCODE_MODELS_URL: "http://127.0.0.1:1" },
+			{ CODEWORK_MODELS_FILE: undefined, CODEWORK_MODELS_DEV_URL: "http://127.0.0.1:1" },
 			"models",
 			"refresh",
 		);
