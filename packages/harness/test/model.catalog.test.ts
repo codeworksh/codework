@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect } from "vite-plus/test";
 import { ModelCatalog } from "../src/model/catalog.ts";
 import { it } from "./utils/effect.ts";
 
-/** A models.dev snapshot with one provider aikit keeps; with an empty OpenRouter listing, a refresh never touches the network. */
+/** A models.dev snapshot with one provider aikit keeps, so a refresh never downloads models.dev. */
 const modelsDev = {
 	anthropic: {
 		id: "anthropic",
@@ -31,11 +31,7 @@ const modelsDev = {
 };
 
 describe("ModelCatalog", () => {
-	const saved = {
-		file: process.env.CODEWORK_MODELS_FILE,
-		dev: process.env.CODEWORK_MODELS_DEV_FILE,
-		openRouter: process.env.CODEWORK_OPENROUTER_MODELS_FILE,
-	};
+	const saved = { file: process.env.CODEWORK_MODELS_FILE, dev: process.env.CODEWORK_MODELS_DEV_FILE };
 	let home: string;
 
 	beforeEach(() => {
@@ -43,9 +39,6 @@ describe("ModelCatalog", () => {
 		const snapshot = join(home, "modelsdev.json");
 		writeFileSync(snapshot, JSON.stringify(modelsDev));
 		process.env.CODEWORK_MODELS_DEV_FILE = snapshot;
-		const listing = join(home, "openrouter.json");
-		writeFileSync(listing, JSON.stringify({ data: [] }));
-		process.env.CODEWORK_OPENROUTER_MODELS_FILE = listing;
 		Reflect.deleteProperty(process.env, "CODEWORK_MODELS_FILE");
 	});
 
@@ -53,7 +46,6 @@ describe("ModelCatalog", () => {
 		for (const [key, value] of [
 			["CODEWORK_MODELS_FILE", saved.file],
 			["CODEWORK_MODELS_DEV_FILE", saved.dev],
-			["CODEWORK_OPENROUTER_MODELS_FILE", saved.openRouter],
 		] as const) {
 			if (value === undefined) Reflect.deleteProperty(process.env, key);
 			else process.env[key] = value;

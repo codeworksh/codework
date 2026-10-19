@@ -97,15 +97,16 @@ function modelsDevURL(): string {
 	return process.env.CODEWORK_MODELS_DEV_URL || "https://models.dev";
 }
 
-/** Read a local file instead of fetching, when the variable names one that parses. */
-async function localJson<T>(variable: string): Promise<T | undefined> {
-	const path = process.env[variable];
-	return path ? Filesystem.readJson<T>(path).catch(() => undefined) : undefined;
+function modelsDevPath(): string | undefined {
+	return process.env.CODEWORK_MODELS_DEV_FILE;
 }
 
 async function pullModelsDevData(): Promise<ModelsDevCatalog> {
-	const local = await localJson<ModelsDevCatalog>("CODEWORK_MODELS_DEV_FILE");
-	if (local) return local;
+	const path = modelsDevPath();
+	if (path) {
+		const result = await Filesystem.readJson<ModelsDevCatalog>(path).catch(() => undefined);
+		if (result) return result;
+	}
 
 	const response = await fetch(`${modelsDevURL()}/api.json`);
 	if (!response.ok) throw new Error(`models.dev responded ${response.status} ${response.statusText}`);
@@ -114,8 +115,6 @@ async function pullModelsDevData(): Promise<ModelsDevCatalog> {
 
 /** OpenRouter's public listing, or undefined when it cannot be had: models.dev's copy stands in. */
 async function pullOpenRouterData(): Promise<unknown> {
-	const local = await localJson<unknown>("CODEWORK_OPENROUTER_MODELS_FILE");
-	if (local) return local;
 	try {
 		const response = await fetch(`${OpenRouter.BASE_URL}/models`, { signal: AbortSignal.timeout(30_000) });
 		return response.ok ? await response.json() : undefined;
@@ -701,19 +700,6 @@ function openRouterModels(listing: unknown): Record<string, Model.Info> | undefi
 	}
 }
 
-/** The catalog from fetched sources. OpenRouter's own listing replaces models.dev's copy of it. */
-export function buildCatalog(sources: Sources): BuiltInModels {
-	const modelsDev = loadBuiltInFromModelsDev(sources.modelsDev);
-	const openrouter = openRouterModels(sources.openRouter);
-	const copilotProvider = sources.modelsDev[GITHUB_COPILOT_PROVIDER_ID];
-	return {
-		...modelsDev,
-		...(openrouter ? { [OpenRouter.PROVIDER_ID]: openrouter } : {}),
-		[OPENAI_CODEX_PROVIDER_ID]: openAICodexBuiltInModels(modelsDev.openai ?? {}),
-		...(copilotProvider ? { [GITHUB_COPILOT_PROVIDER_ID]: githubCopilotBuiltInModels(copilotProvider) } : {}),
-	};
-}
-
 /** Object keys in order at every level, so identical content serializes to identical bytes. */
 function sortKeys(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(sortKeys);
@@ -723,6 +709,22 @@ function sortKeys(value: unknown): unknown {
 			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 			.map(([key, entry]) => [key, sortKeys(entry)]),
 	);
+}
+
+/**
+ * The catalog from fetched sources, keys sorted so identical content serializes to identical
+ * bytes. OpenRouter's own listing replaces models.dev's copy of it.
+ */
+export function buildCatalog(sources: Sources): BuiltInModels {
+	const modelsDev = loadBuiltInFromModelsDev(sources.modelsDev);
+	const openrouter = openRouterModels(sources.openRouter);
+	const copilotProvider = sources.modelsDev[GITHUB_COPILOT_PROVIDER_ID];
+	return sortKeys({
+		...modelsDev,
+		...(openrouter ? { [OpenRouter.PROVIDER_ID]: openrouter } : {}),
+		[OPENAI_CODEX_PROVIDER_ID]: openAICodexBuiltInModels(modelsDev.openai ?? {}),
+		...(copilotProvider ? { [GITHUB_COPILOT_PROVIDER_ID]: githubCopilotBuiltInModels(copilotProvider) } : {}),
+	}) as BuiltInModels;
 }
 
 export interface GenerateOptions {
@@ -747,7 +749,7 @@ export async function generateModels(args: GenerateOptions = {}): Promise<string
 			() => openrouter,
 		);
 	}
-	await Filesystem.writeJsonAtomic(path, sortKeys(catalog));
+	await Filesystem.writeJsonAtomic(path, catalog);
 	return path;
 }
 

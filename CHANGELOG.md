@@ -27,7 +27,7 @@ This file is the canonical source for unreleased changes and published release n
 - OpenAI reasoning levels come from models.dev's `reasoning_options`, and OpenRouter models are listed from OpenRouter's own `/models`, which gives the reasoning efforts each one accepts. `:batch` variants are left out.
 - Prices take models.dev's long-context tiers for every provider, and OpenAI service-tier multipliers come from models.dev's modes (for example ultrafast 6x on GPT-6.1 Sol). Direct OpenAI requests to the GPT-5.4+ and GPT-6 models default to the 272k short-context window; settings can raise `contextWindow`.
 - The generator drops the models.dev alias `gpt-5.6`, which OpenAI's API rejects. Claude Opus 4.7+, Opus 5.x, Sonnet 5.5 and Haiku 5.5 no longer get a `temperature` field, which their API rejects.
-- Renamed `OPENCODE_MODELS_URL` and `OPENCODE_MODELS_DEV_FILE` to `CODEWORK_MODELS_DEV_URL` and `CODEWORK_MODELS_DEV_FILE`. `CODEWORK_OPENROUTER_MODELS_FILE` reads OpenRouter's listing from a file instead.
+- Renamed `OPENCODE_MODELS_URL` and `OPENCODE_MODELS_DEV_FILE` to `CODEWORK_MODELS_DEV_URL` and `CODEWORK_MODELS_DEV_FILE`.
 - Upgraded the AI SDK packages to their latest releases, including `@ai-sdk/xai` 5, which drops the Chat Completions API: xAI models run on Responses only, as the catalog already set, and `XaiOptions` takes only Responses options. All providers now share one `@ai-sdk/provider` version.
 - A missing model catalog is no longer an error (`model-catalog-missing` is gone); the bundled catalog is read instead.
 

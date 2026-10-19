@@ -434,12 +434,7 @@ describe("codework CLI", () => {
 		const home = mkdtempSync(join(tmpdir(), "codework-refresh-"));
 		const snapshot = join(home, "modelsdev.json");
 		const catalog = join(home, "models.gen.json");
-		// An empty snapshot for both sources: nothing is fetched.
-		const env = {
-			CODEWORK_MODELS_FILE: undefined,
-			CODEWORK_MODELS_DEV_FILE: snapshot,
-			CODEWORK_OPENROUTER_MODELS_FILE: snapshot,
-		};
+		const env = { CODEWORK_MODELS_FILE: undefined, CODEWORK_MODELS_DEV_FILE: snapshot };
 		writeFileSync(snapshot, JSON.stringify({}));
 		try {
 			const first = runIn(home, env, "models", "refresh");
