@@ -1,0 +1,3580 @@
+{
+  "anthropic": {
+    "claude-fable-5": {
+      "api": {
+        "id": "claude-fable-5",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 1,
+        "cacheWrite": 12.5,
+        "input": 10,
+        "output": 50
+      },
+      "id": "claude-fable-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Fable 5",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "max": "max",
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "claude-fable-5-1": {
+      "api": {
+        "id": "claude-fable-5-1",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.25,
+        "cacheWrite": 12.5,
+        "input": 10,
+        "output": 50
+      },
+      "id": "claude-fable-5-1",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Fable 5.1",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "max": "max",
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "claude-haiku-4-5": {
+      "api": {
+        "id": "claude-haiku-4-5",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0.1,
+        "cacheWrite": 1.25,
+        "input": 1,
+        "output": 5
+      },
+      "id": "claude-haiku-4-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 64000,
+      "name": "Claude Haiku 4.5 (latest)",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true
+    },
+    "claude-haiku-4-5-20251001": {
+      "api": {
+        "id": "claude-haiku-4-5-20251001",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0.1,
+        "cacheWrite": 1.25,
+        "input": 1,
+        "output": 5
+      },
+      "id": "claude-haiku-4-5-20251001",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 64000,
+      "name": "Claude Haiku 4.5",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true
+    },
+    "claude-haiku-5-5": {
+      "api": {
+        "id": "claude-haiku-5-5",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true,
+        "supportsTemperature": false
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.01,
+        "cacheWrite": 0.125,
+        "input": 0.1,
+        "output": 0.5,
+        "tiers": [
+          {
+            "cacheRead": 0.05,
+            "cacheWrite": 0.625,
+            "input": 0.5,
+            "inputTokensAbove": 100000,
+            "output": 2.5
+          }
+        ]
+      },
+      "id": "claude-haiku-5-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Haiku 5.5",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "claude-opus-4-5": {
+      "api": {
+        "id": "claude-opus-4-5",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 6.25,
+        "input": 5,
+        "output": 25
+      },
+      "id": "claude-opus-4-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 64000,
+      "name": "Claude Opus 4.5 (latest)",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true
+    },
+    "claude-opus-4-5-20251101": {
+      "api": {
+        "id": "claude-opus-4-5-20251101",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 6.25,
+        "input": 5,
+        "output": 25
+      },
+      "id": "claude-opus-4-5-20251101",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 64000,
+      "name": "Claude Opus 4.5",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true
+    },
+    "claude-opus-4-6": {
+      "api": {
+        "id": "claude-opus-4-6",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 6.25,
+        "input": 5,
+        "output": 25
+      },
+      "id": "claude-opus-4-6",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Opus 4.6",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "max": "max",
+        "xhigh": "max"
+      }
+    },
+    "claude-opus-4-7": {
+      "api": {
+        "id": "claude-opus-4-7",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true,
+        "supportsTemperature": false
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 6.25,
+        "input": 5,
+        "output": 25
+      },
+      "id": "claude-opus-4-7",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Opus 4.7",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "max": "max",
+        "xhigh": "xhigh"
+      }
+    },
+    "claude-opus-4-8": {
+      "api": {
+        "id": "claude-opus-4-8",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true,
+        "supportsTemperature": false
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 6.25,
+        "input": 5,
+        "output": 25
+      },
+      "id": "claude-opus-4-8",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Opus 4.8",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "max": "max",
+        "xhigh": "xhigh"
+      }
+    },
+    "claude-opus-5": {
+      "api": {
+        "id": "claude-opus-5",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true,
+        "supportsTemperature": false
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 6.25,
+        "input": 5,
+        "output": 25
+      },
+      "id": "claude-opus-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Opus 5",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "max": "max",
+        "xhigh": "xhigh"
+      }
+    },
+    "claude-opus-5-5": {
+      "api": {
+        "id": "claude-opus-5-5",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true,
+        "supportsTemperature": false
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.2,
+        "cacheWrite": 5,
+        "input": 4,
+        "output": 20
+      },
+      "id": "claude-opus-5-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Opus 5.5",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "claude-sonnet-4-5": {
+      "api": {
+        "id": "claude-sonnet-4-5",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0.3,
+        "cacheWrite": 3.75,
+        "input": 3,
+        "output": 15
+      },
+      "id": "claude-sonnet-4-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 64000,
+      "name": "Claude Sonnet 4.5 (latest)",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true
+    },
+    "claude-sonnet-4-5-20250929": {
+      "api": {
+        "id": "claude-sonnet-4-5-20250929",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0.3,
+        "cacheWrite": 3.75,
+        "input": 3,
+        "output": 15
+      },
+      "id": "claude-sonnet-4-5-20250929",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 64000,
+      "name": "Claude Sonnet 4.5",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true
+    },
+    "claude-sonnet-4-6": {
+      "api": {
+        "id": "claude-sonnet-4-6",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.3,
+        "cacheWrite": 3.75,
+        "input": 3,
+        "output": 15
+      },
+      "id": "claude-sonnet-4-6",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Sonnet 4.6",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "max": "max"
+      }
+    },
+    "claude-sonnet-5": {
+      "api": {
+        "id": "claude-sonnet-5",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.2,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 10
+      },
+      "id": "claude-sonnet-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Sonnet 5",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "max": "max",
+        "xhigh": "xhigh"
+      }
+    },
+    "claude-sonnet-5-5": {
+      "api": {
+        "id": "claude-sonnet-5-5",
+        "method": "languageModel",
+        "url": "https://api.anthropic.com/v1"
+      },
+      "baseUrl": "https://api.anthropic.com/v1",
+      "compat": {
+        "forceAdaptiveThinking": true,
+        "supportsTemperature": false
+      },
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.1,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 10
+      },
+      "id": "claude-sonnet-5-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Claude Sonnet 5.5",
+      "npm": "@ai-sdk/anthropic",
+      "protocol": "anthropic",
+      "provider": {
+        "env": [
+          "ANTHROPIC_API_KEY"
+        ],
+        "id": "anthropic",
+        "name": "Anthropic",
+        "source": "api"
+      },
+      "providerOptionsKey": "anthropic",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    }
+  },
+  "openai": {
+    "gpt-4": {
+      "api": {
+        "id": "gpt-4",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 8192,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 30,
+        "output": 60,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-4",
+      "input": [
+        "text"
+      ],
+      "maxTokens": 8192,
+      "name": "GPT-4",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-4-turbo": {
+      "api": {
+        "id": "gpt-4-turbo",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 10,
+        "output": 30,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-4-turbo",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 4096,
+      "name": "GPT-4 Turbo",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-4.1": {
+      "api": {
+        "id": "gpt-4.1",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 1047576,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 0,
+        "input": 2,
+        "output": 8,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 1.75
+        }
+      },
+      "id": "gpt-4.1",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 32768,
+      "name": "GPT-4.1",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-4.1-mini": {
+      "api": {
+        "id": "gpt-4.1-mini",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 1047576,
+      "cost": {
+        "cacheRead": 0.1,
+        "cacheWrite": 0,
+        "input": 0.4,
+        "output": 1.6,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 1.75
+        }
+      },
+      "id": "gpt-4.1-mini",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 32768,
+      "name": "GPT-4.1 mini",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-4.1-nano": {
+      "api": {
+        "id": "gpt-4.1-nano",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 1047576,
+      "cost": {
+        "cacheRead": 0.025,
+        "cacheWrite": 0,
+        "input": 0.1,
+        "output": 0.4,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-4.1-nano",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 32768,
+      "name": "GPT-4.1 nano",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-4o": {
+      "api": {
+        "id": "gpt-4o",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 1.25,
+        "cacheWrite": 0,
+        "input": 2.5,
+        "output": 10,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 1.7
+        }
+      },
+      "id": "gpt-4o",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 16384,
+      "name": "GPT-4o",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-4o-2024-05-13": {
+      "api": {
+        "id": "gpt-4o-2024-05-13",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 5,
+        "output": 15,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 1.75
+        }
+      },
+      "id": "gpt-4o-2024-05-13",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 4096,
+      "name": "GPT-4o (2024-05-13)",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-4o-2024-08-06": {
+      "api": {
+        "id": "gpt-4o-2024-08-06",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 1.25,
+        "cacheWrite": 0,
+        "input": 2.5,
+        "output": 10,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-4o-2024-08-06",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 16384,
+      "name": "GPT-4o (2024-08-06)",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-4o-2024-11-20": {
+      "api": {
+        "id": "gpt-4o-2024-11-20",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 1.25,
+        "cacheWrite": 0,
+        "input": 2.5,
+        "output": 10,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-4o-2024-11-20",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 16384,
+      "name": "GPT-4o (2024-11-20)",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-4o-mini": {
+      "api": {
+        "id": "gpt-4o-mini",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 0.075,
+        "cacheWrite": 0,
+        "input": 0.15,
+        "output": 0.6,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 1.666667
+        }
+      },
+      "id": "gpt-4o-mini",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 16384,
+      "name": "GPT-4o mini",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false
+    },
+    "gpt-5": {
+      "api": {
+        "id": "gpt-5",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0.125,
+        "cacheWrite": 0,
+        "input": 1.25,
+        "output": 10,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": "minimal",
+        "off": null,
+        "xhigh": null
+      }
+    },
+    "gpt-5-mini": {
+      "api": {
+        "id": "gpt-5-mini",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0.025,
+        "cacheWrite": 0,
+        "input": 0.25,
+        "output": 2,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 1.8
+        }
+      },
+      "id": "gpt-5-mini",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5 Mini",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": "minimal",
+        "off": null,
+        "xhigh": null
+      }
+    },
+    "gpt-5-nano": {
+      "api": {
+        "id": "gpt-5-nano",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0.005,
+        "cacheWrite": 0,
+        "input": 0.05,
+        "output": 0.4,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5-nano",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5 Nano",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": "minimal",
+        "off": null,
+        "xhigh": null
+      }
+    },
+    "gpt-5-pro": {
+      "api": {
+        "id": "gpt-5-pro",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 15,
+        "output": 120,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5-pro",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5 Pro",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": null,
+        "max": null,
+        "medium": null,
+        "minimal": null,
+        "off": null,
+        "xhigh": null
+      }
+    },
+    "gpt-5.1": {
+      "api": {
+        "id": "gpt-5.1",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0.125,
+        "cacheWrite": 0,
+        "input": 1.25,
+        "output": 10,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.1",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.1",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": null
+      }
+    },
+    "gpt-5.2": {
+      "api": {
+        "id": "gpt-5.2",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0.175,
+        "cacheWrite": 0,
+        "input": 1.75,
+        "output": 14,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.2",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.2",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.2-chat-latest": {
+      "api": {
+        "id": "gpt-5.2-chat-latest",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 0.175,
+        "cacheWrite": 0,
+        "input": 1.75,
+        "output": 14,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.2-chat-latest",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 16384,
+      "name": "GPT-5.2 Chat",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": null,
+        "low": null,
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.2-pro": {
+      "api": {
+        "id": "gpt-5.2-pro",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 21,
+        "output": 168,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.2-pro",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.2 Pro",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": null,
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.3-chat-latest": {
+      "api": {
+        "id": "gpt-5.3-chat-latest",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 0.175,
+        "cacheWrite": 0,
+        "input": 1.75,
+        "output": 14,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.3-chat-latest",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 16384,
+      "name": "GPT-5.3 Chat (latest)",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": false,
+      "thinkingLevelMap": {
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.3-codex": {
+      "api": {
+        "id": "gpt-5.3-codex",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0.175,
+        "cacheWrite": 0,
+        "input": 1.75,
+        "output": 14,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.3-codex",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.3 Codex",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.3-codex-spark": {
+      "api": {
+        "id": "gpt-5.3-codex-spark",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 0.175,
+        "cacheWrite": 0,
+        "input": 1.75,
+        "output": 14,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.3-codex-spark",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 32000,
+      "name": "GPT-5.3 Codex Spark",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.4": {
+      "api": {
+        "id": "gpt-5.4",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.25,
+        "cacheWrite": 0,
+        "input": 2.5,
+        "output": 15,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.5,
+            "cacheWrite": 0,
+            "input": 5,
+            "inputTokensAbove": 272000,
+            "output": 22.5
+          }
+        ]
+      },
+      "id": "gpt-5.4",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.4",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.4-mini": {
+      "api": {
+        "id": "gpt-5.4-mini",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0.075,
+        "cacheWrite": 0,
+        "input": 0.75,
+        "output": 4.5,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.4-mini",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.4 mini",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.4-nano": {
+      "api": {
+        "id": "gpt-5.4-nano",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 0.02,
+        "cacheWrite": 0,
+        "input": 0.2,
+        "output": 1.25,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.4-nano",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.4 nano",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.4-pro": {
+      "api": {
+        "id": "gpt-5.4-pro",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 1050000,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 30,
+        "output": 180,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "input": 60,
+            "inputTokensAbove": 272000,
+            "output": 270
+          }
+        ]
+      },
+      "id": "gpt-5.4-pro",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.4 Pro",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": null,
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.5": {
+      "api": {
+        "id": "gpt-5.5",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 0,
+        "input": 5,
+        "output": 30,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2.5
+        },
+        "tiers": [
+          {
+            "cacheRead": 1,
+            "cacheWrite": 0,
+            "input": 10,
+            "inputTokensAbove": 272000,
+            "output": 45
+          }
+        ]
+      },
+      "id": "gpt-5.5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.5",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.5-pro": {
+      "api": {
+        "id": "gpt-5.5-pro",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 1050000,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 30,
+        "output": 180,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0,
+            "cacheWrite": 0,
+            "input": 60,
+            "inputTokensAbove": 272000,
+            "output": 270
+          }
+        ]
+      },
+      "id": "gpt-5.5-pro",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.5 Pro",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": null,
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.6-luna": {
+      "api": {
+        "id": "gpt-5.6-luna",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.02,
+        "cacheWrite": 0.25,
+        "input": 0.2,
+        "output": 1.2,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.04,
+            "cacheWrite": 0.5,
+            "input": 0.4,
+            "inputTokensAbove": 272000,
+            "output": 1.8
+          }
+        ]
+      },
+      "id": "gpt-5.6-luna",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.6 Luna",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.6-sol": {
+      "api": {
+        "id": "gpt-5.6-sol",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.4,
+        "cacheWrite": 5,
+        "input": 4,
+        "output": 20,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.8,
+            "cacheWrite": 10,
+            "input": 8,
+            "inputTokensAbove": 272000,
+            "output": 30
+          }
+        ]
+      },
+      "id": "gpt-5.6-sol",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.6 Sol",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.6-terra": {
+      "api": {
+        "id": "gpt-5.6-terra",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.2,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 12,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.4,
+            "cacheWrite": 5,
+            "input": 4,
+            "inputTokensAbove": 272000,
+            "output": 18
+          }
+        ]
+      },
+      "id": "gpt-5.6-terra",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.6 Terra",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-6-astra": {
+      "api": {
+        "id": "gpt-6-astra",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 1,
+        "cacheWrite": 12.5,
+        "input": 10,
+        "output": 50,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2,
+          "ultrafast": 6
+        },
+        "tiers": [
+          {
+            "cacheRead": 2,
+            "cacheWrite": 25,
+            "input": 20,
+            "inputTokensAbove": 272000,
+            "output": 75
+          }
+        ]
+      },
+      "id": "gpt-6-astra",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-6 Astra",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-6-luna": {
+      "api": {
+        "id": "gpt-6-luna",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.01,
+        "cacheWrite": 0.125,
+        "input": 0.1,
+        "output": 0.5,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.02,
+            "cacheWrite": 0.25,
+            "input": 0.2,
+            "inputTokensAbove": 272000,
+            "output": 0.75
+          }
+        ]
+      },
+      "id": "gpt-6-luna",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-6 Luna",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-6-sol": {
+      "api": {
+        "id": "gpt-6-sol",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.2,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 10,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.4,
+            "cacheWrite": 5,
+            "input": 4,
+            "inputTokensAbove": 272000,
+            "output": 15
+          }
+        ]
+      },
+      "id": "gpt-6-sol",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-6 Sol",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-6.1-sol": {
+      "api": {
+        "id": "gpt-6.1-sol",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.1,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 10,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2,
+          "ultrafast": 6
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.2,
+            "cacheWrite": 5,
+            "input": 4,
+            "inputTokensAbove": 272000,
+            "output": 15
+          }
+        ]
+      },
+      "id": "gpt-6.1-sol",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-6.1 Sol",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-daybreak-blue-latest": {
+      "api": {
+        "id": "gpt-daybreak-blue-latest",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 1050000,
+      "cost": {
+        "cacheRead": 0.4,
+        "cacheWrite": 5,
+        "input": 4,
+        "output": 20,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.8,
+            "cacheWrite": 10,
+            "input": 8,
+            "inputTokensAbove": 272000,
+            "output": 30
+          }
+        ]
+      },
+      "id": "gpt-daybreak-blue-latest",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Daybreak Blue",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-daybreak-red-latest": {
+      "api": {
+        "id": "gpt-daybreak-red-latest",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 400000,
+      "cost": {
+        "cacheRead": 1.25,
+        "cacheWrite": 15.625,
+        "input": 12.5,
+        "output": 75,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-daybreak-red-latest",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Daybreak Red",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-realtime-2.1": {
+      "api": {
+        "id": "gpt-realtime-2.1",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 0.4,
+        "cacheWrite": 0,
+        "input": 4,
+        "output": 24,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-realtime-2.1",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 32000,
+      "name": "GPT-Realtime-2.1",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": "minimal",
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "o1": {
+      "api": {
+        "id": "o1",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 7.5,
+        "cacheWrite": 0,
+        "input": 15,
+        "output": 60,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "o1",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 100000,
+      "name": "o1",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": null
+      }
+    },
+    "o1-pro": {
+      "api": {
+        "id": "o1-pro",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 150,
+        "output": 600,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "o1-pro",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 100000,
+      "name": "o1-pro",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": null
+      }
+    },
+    "o3": {
+      "api": {
+        "id": "o3",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 0,
+        "input": 2,
+        "output": 8,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 1.75
+        }
+      },
+      "id": "o3",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 100000,
+      "name": "o3",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": null
+      }
+    },
+    "o3-mini": {
+      "api": {
+        "id": "o3-mini",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0.55,
+        "cacheWrite": 0,
+        "input": 1.1,
+        "output": 4.4,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "o3-mini",
+      "input": [
+        "text"
+      ],
+      "maxTokens": 100000,
+      "name": "o3-mini",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": null
+      }
+    },
+    "o3-pro": {
+      "api": {
+        "id": "o3-pro",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 20,
+        "output": 80,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "o3-pro",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 100000,
+      "name": "o3-pro",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": null
+      }
+    },
+    "o4-mini": {
+      "api": {
+        "id": "o4-mini",
+        "method": "responses",
+        "url": "https://api.openai.com/v1"
+      },
+      "baseUrl": "https://api.openai.com/v1",
+      "contextWindow": 200000,
+      "cost": {
+        "cacheRead": 0.275,
+        "cacheWrite": 0,
+        "input": 1.1,
+        "output": 4.4,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 1.818182
+        }
+      },
+      "id": "o4-mini",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 100000,
+      "name": "o4-mini",
+      "npm": "@ai-sdk/openai",
+      "protocol": "openai",
+      "provider": {
+        "env": [
+          "OPENAI_API_KEY"
+        ],
+        "id": "openai",
+        "name": "OpenAI",
+        "source": "api"
+      },
+      "providerOptionsKey": "openai",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": null
+      }
+    }
+  },
+  "openai-codex": {
+    "gpt-5.3-codex-spark": {
+      "api": {
+        "id": "gpt-5.3-codex-spark",
+        "method": "responses",
+        "url": "https://chatgpt.com/backend-api"
+      },
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "compat": {
+        "supportsOpenAIGrammarTools": true
+      },
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 0.175,
+        "cacheWrite": 0,
+        "input": 1.75,
+        "output": 14,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        }
+      },
+      "id": "gpt-5.3-codex-spark",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.3 Codex Spark",
+      "npm": "@codeworksh/ai-sdk-openai-codex",
+      "protocol": "openai-codex",
+      "provider": {
+        "env": [
+          "OPENAI_CODEX_API_KEY"
+        ],
+        "id": "openai-codex",
+        "name": "OpenAI Codex (ChatGPT)",
+        "source": "custom"
+      },
+      "providerOptionsKey": "openai-codex",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": "low",
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.5": {
+      "api": {
+        "id": "gpt-5.5",
+        "method": "responses",
+        "url": "https://chatgpt.com/backend-api"
+      },
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "compat": {
+        "supportsOpenAIGrammarTools": true,
+        "supportsToolSearch": true
+      },
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.5,
+        "cacheWrite": 0,
+        "input": 5,
+        "output": 30,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2.5
+        },
+        "tiers": [
+          {
+            "cacheRead": 1,
+            "cacheWrite": 0,
+            "input": 10,
+            "inputTokensAbove": 272000,
+            "output": 45
+          }
+        ]
+      },
+      "id": "gpt-5.5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.5",
+      "npm": "@codeworksh/ai-sdk-openai-codex",
+      "protocol": "openai-codex",
+      "provider": {
+        "env": [
+          "OPENAI_CODEX_API_KEY"
+        ],
+        "id": "openai-codex",
+        "name": "OpenAI Codex (ChatGPT)",
+        "source": "custom"
+      },
+      "providerOptionsKey": "openai-codex",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": null,
+        "medium": "medium",
+        "minimal": "low",
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.6-luna": {
+      "api": {
+        "id": "gpt-5.6-luna",
+        "method": "responses",
+        "url": "https://chatgpt.com/backend-api"
+      },
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "compat": {
+        "supportsAdditionalTools": true,
+        "supportsOpenAIGrammarTools": true,
+        "supportsToolSearch": true
+      },
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.02,
+        "cacheWrite": 0.25,
+        "input": 0.2,
+        "output": 1.2,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.04,
+            "cacheWrite": 0.5,
+            "input": 0.4,
+            "inputTokensAbove": 272000,
+            "output": 1.8
+          }
+        ]
+      },
+      "id": "gpt-5.6-luna",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.6 Luna",
+      "npm": "@codeworksh/ai-sdk-openai-codex",
+      "protocol": "openai-codex",
+      "provider": {
+        "env": [
+          "OPENAI_CODEX_API_KEY"
+        ],
+        "id": "openai-codex",
+        "name": "OpenAI Codex (ChatGPT)",
+        "source": "custom"
+      },
+      "providerOptionsKey": "openai-codex",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": "low",
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.6-sol": {
+      "api": {
+        "id": "gpt-5.6-sol",
+        "method": "responses",
+        "url": "https://chatgpt.com/backend-api"
+      },
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "compat": {
+        "supportsAdditionalTools": true,
+        "supportsOpenAIGrammarTools": true,
+        "supportsToolSearch": true
+      },
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.4,
+        "cacheWrite": 5,
+        "input": 4,
+        "output": 20,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.8,
+            "cacheWrite": 10,
+            "input": 8,
+            "inputTokensAbove": 272000,
+            "output": 30
+          }
+        ]
+      },
+      "id": "gpt-5.6-sol",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.6 Sol",
+      "npm": "@codeworksh/ai-sdk-openai-codex",
+      "protocol": "openai-codex",
+      "provider": {
+        "env": [
+          "OPENAI_CODEX_API_KEY"
+        ],
+        "id": "openai-codex",
+        "name": "OpenAI Codex (ChatGPT)",
+        "source": "custom"
+      },
+      "providerOptionsKey": "openai-codex",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": "low",
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-5.6-terra": {
+      "api": {
+        "id": "gpt-5.6-terra",
+        "method": "responses",
+        "url": "https://chatgpt.com/backend-api"
+      },
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "compat": {
+        "supportsAdditionalTools": true,
+        "supportsOpenAIGrammarTools": true,
+        "supportsToolSearch": true
+      },
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.2,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 12,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.4,
+            "cacheWrite": 5,
+            "input": 4,
+            "inputTokensAbove": 272000,
+            "output": 18
+          }
+        ]
+      },
+      "id": "gpt-5.6-terra",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-5.6 Terra",
+      "npm": "@codeworksh/ai-sdk-openai-codex",
+      "protocol": "openai-codex",
+      "provider": {
+        "env": [
+          "OPENAI_CODEX_API_KEY"
+        ],
+        "id": "openai-codex",
+        "name": "OpenAI Codex (ChatGPT)",
+        "source": "custom"
+      },
+      "providerOptionsKey": "openai-codex",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": "low",
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-6-astra": {
+      "api": {
+        "id": "gpt-6-astra",
+        "method": "responses",
+        "url": "https://chatgpt.com/backend-api"
+      },
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "compat": {
+        "supportsAdditionalTools": true,
+        "supportsOpenAIGrammarTools": true,
+        "supportsToolSearch": true
+      },
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 1,
+        "cacheWrite": 12.5,
+        "input": 10,
+        "output": 50,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2,
+          "ultrafast": 6
+        },
+        "tiers": [
+          {
+            "cacheRead": 2,
+            "cacheWrite": 25,
+            "input": 20,
+            "inputTokensAbove": 272000,
+            "output": 75
+          }
+        ]
+      },
+      "id": "gpt-6-astra",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-6 Astra",
+      "npm": "@codeworksh/ai-sdk-openai-codex",
+      "protocol": "openai-codex",
+      "provider": {
+        "env": [
+          "OPENAI_CODEX_API_KEY"
+        ],
+        "id": "openai-codex",
+        "name": "OpenAI Codex (ChatGPT)",
+        "source": "custom"
+      },
+      "providerOptionsKey": "openai-codex",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": "low",
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-6-luna": {
+      "api": {
+        "id": "gpt-6-luna",
+        "method": "responses",
+        "url": "https://chatgpt.com/backend-api"
+      },
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "compat": {
+        "supportsAdditionalTools": true,
+        "supportsOpenAIGrammarTools": true,
+        "supportsToolSearch": true
+      },
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.01,
+        "cacheWrite": 0.125,
+        "input": 0.1,
+        "output": 0.5,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.02,
+            "cacheWrite": 0.25,
+            "input": 0.2,
+            "inputTokensAbove": 272000,
+            "output": 0.75
+          }
+        ]
+      },
+      "id": "gpt-6-luna",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-6 Luna",
+      "npm": "@codeworksh/ai-sdk-openai-codex",
+      "protocol": "openai-codex",
+      "provider": {
+        "env": [
+          "OPENAI_CODEX_API_KEY"
+        ],
+        "id": "openai-codex",
+        "name": "OpenAI Codex (ChatGPT)",
+        "source": "custom"
+      },
+      "providerOptionsKey": "openai-codex",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": "low",
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-6-sol": {
+      "api": {
+        "id": "gpt-6-sol",
+        "method": "responses",
+        "url": "https://chatgpt.com/backend-api"
+      },
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "compat": {
+        "supportsAdditionalTools": true,
+        "supportsOpenAIGrammarTools": true,
+        "supportsToolSearch": true
+      },
+      "contextWindow": 272000,
+      "cost": {
+        "cacheRead": 0.2,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 10,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.4,
+            "cacheWrite": 5,
+            "input": 4,
+            "inputTokensAbove": 272000,
+            "output": 15
+          }
+        ]
+      },
+      "id": "gpt-6-sol",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-6 Sol",
+      "npm": "@codeworksh/ai-sdk-openai-codex",
+      "protocol": "openai-codex",
+      "provider": {
+        "env": [
+          "OPENAI_CODEX_API_KEY"
+        ],
+        "id": "openai-codex",
+        "name": "OpenAI Codex (ChatGPT)",
+        "source": "custom"
+      },
+      "providerOptionsKey": "openai-codex",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": "low",
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "gpt-6.1-sol": {
+      "api": {
+        "id": "gpt-6.1-sol",
+        "method": "responses",
+        "url": "https://chatgpt.com/backend-api"
+      },
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "compat": {
+        "supportsAdditionalTools": true,
+        "supportsOpenAIGrammarTools": true,
+        "supportsToolSearch": true
+      },
+      "contextWindow": 500000,
+      "cost": {
+        "cacheRead": 0.1,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 10,
+        "serviceTierMultipliers": {
+          "flex": 0.5,
+          "priority": 2,
+          "ultrafast": 6
+        },
+        "tiers": [
+          {
+            "cacheRead": 0.2,
+            "cacheWrite": 5,
+            "input": 4,
+            "inputTokensAbove": 272000,
+            "output": 15
+          }
+        ]
+      },
+      "id": "gpt-6.1-sol",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "GPT-6.1 Sol",
+      "npm": "@codeworksh/ai-sdk-openai-codex",
+      "protocol": "openai-codex",
+      "provider": {
+        "env": [
+          "OPENAI_CODEX_API_KEY"
+        ],
+        "id": "openai-codex",
+        "name": "OpenAI Codex (ChatGPT)",
+        "source": "custom"
+      },
+      "providerOptionsKey": "openai-codex",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": "low",
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    }
+  },
+  "openrouter": {
+    "anthropic/claude-haiku-5.5": {
+      "api": {
+        "id": "anthropic/claude-haiku-5.5",
+        "method": "languageModel",
+        "url": "https://openrouter.ai/api/v1"
+      },
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.01,
+        "cacheWrite": 0.125,
+        "input": 0.1,
+        "output": 0.5,
+        "tiers": [
+          {
+            "cacheRead": 0.05,
+            "cacheWrite": 0.625,
+            "input": 0.5,
+            "inputTokensAbove": 100000,
+            "output": 2.5
+          }
+        ]
+      },
+      "id": "anthropic/claude-haiku-5.5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Anthropic: Claude Haiku 5.5",
+      "npm": "@openrouter/ai-sdk-provider",
+      "protocol": "openrouter",
+      "provider": {
+        "env": [
+          "OPENROUTER_API_KEY"
+        ],
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "source": "api"
+      },
+      "providerOptionsKey": "openrouter",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "anthropic/claude-opus-5.5": {
+      "api": {
+        "id": "anthropic/claude-opus-5.5",
+        "method": "languageModel",
+        "url": "https://openrouter.ai/api/v1"
+      },
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "contextWindow": 1000000,
+      "cost": {
+        "cacheRead": 0.2,
+        "cacheWrite": 5,
+        "input": 4,
+        "output": 20
+      },
+      "id": "anthropic/claude-opus-5.5",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 128000,
+      "name": "Anthropic: Claude Opus 5.5",
+      "npm": "@openrouter/ai-sdk-provider",
+      "protocol": "openrouter",
+      "provider": {
+        "env": [
+          "OPENROUTER_API_KEY"
+        ],
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "source": "api"
+      },
+      "providerOptionsKey": "openrouter",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "deepseek/deepseek-v4.1-flash-1017": {
+      "api": {
+        "id": "deepseek/deepseek-v4.1-flash-1017",
+        "method": "languageModel",
+        "url": "https://openrouter.ai/api/v1"
+      },
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "contextWindow": 1048576,
+      "cost": {
+        "cacheRead": 0.003,
+        "cacheWrite": 0,
+        "input": 0.15,
+        "output": 0.6
+      },
+      "id": "deepseek/deepseek-v4.1-flash-1017",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 393216,
+      "name": "DeepSeek: DeepSeek V4.1 Flash 1017",
+      "npm": "@openrouter/ai-sdk-provider",
+      "protocol": "openrouter",
+      "provider": {
+        "env": [
+          "OPENROUTER_API_KEY"
+        ],
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "source": "api"
+      },
+      "providerOptionsKey": "openrouter",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": null,
+        "minimal": null,
+        "off": "none",
+        "xhigh": null
+      }
+    },
+    "liquid/lfm-2.5-24b-a2b": {
+      "api": {
+        "id": "liquid/lfm-2.5-24b-a2b",
+        "method": "languageModel",
+        "url": "https://openrouter.ai/api/v1"
+      },
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "contextWindow": 128000,
+      "cost": {
+        "cacheRead": 0.025,
+        "cacheWrite": 0,
+        "input": 0.05,
+        "output": 0.7
+      },
+      "id": "liquid/lfm-2.5-24b-a2b",
+      "input": [
+        "text"
+      ],
+      "maxTokens": 8192,
+      "name": "LiquidAI: LFM2.5-24B-A2B",
+      "npm": "@openrouter/ai-sdk-provider",
+      "protocol": "openrouter",
+      "provider": {
+        "env": [
+          "OPENROUTER_API_KEY"
+        ],
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "source": "api"
+      },
+      "providerOptionsKey": "openrouter",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "off": null
+      }
+    },
+    "openai/gpt-6-sol": {
+      "api": {
+        "id": "openai/gpt-6-sol",
+        "method": "languageModel",
+        "url": "https://openrouter.ai/api/v1"
+      },
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "contextWindow": 1050000,
+      "cost": {
+        "cacheRead": 0.2,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 10,
+        "tiers": [
+          {
+            "cacheRead": 0.4,
+            "cacheWrite": 5,
+            "input": 4,
+            "inputTokensAbove": 272000,
+            "output": 15
+          }
+        ]
+      },
+      "id": "openai/gpt-6-sol",
+      "input": [
+        "image",
+        "text"
+      ],
+      "maxTokens": 128000,
+      "name": "OpenAI: GPT-6 Sol",
+      "npm": "@openrouter/ai-sdk-provider",
+      "protocol": "openrouter",
+      "provider": {
+        "env": [
+          "OPENROUTER_API_KEY"
+        ],
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "source": "api"
+      },
+      "providerOptionsKey": "openrouter",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": "none",
+        "xhigh": "xhigh"
+      }
+    },
+    "openai/gpt-6.1-sol": {
+      "api": {
+        "id": "openai/gpt-6.1-sol",
+        "method": "languageModel",
+        "url": "https://openrouter.ai/api/v1"
+      },
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "contextWindow": 1050000,
+      "cost": {
+        "cacheRead": 0.1,
+        "cacheWrite": 2.5,
+        "input": 2,
+        "output": 10,
+        "tiers": [
+          {
+            "cacheRead": 0.2,
+            "cacheWrite": 5,
+            "input": 4,
+            "inputTokensAbove": 272000,
+            "output": 15
+          }
+        ]
+      },
+      "id": "openai/gpt-6.1-sol",
+      "input": [
+        "image",
+        "text"
+      ],
+      "maxTokens": 128000,
+      "name": "OpenAI: GPT-6.1 Sol",
+      "npm": "@openrouter/ai-sdk-provider",
+      "protocol": "openrouter",
+      "provider": {
+        "env": [
+          "OPENROUTER_API_KEY"
+        ],
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "source": "api"
+      },
+      "providerOptionsKey": "openrouter",
+      "reasoning": true,
+      "thinkingLevelMap": {
+        "high": "high",
+        "low": "low",
+        "max": "max",
+        "medium": "medium",
+        "minimal": null,
+        "off": null,
+        "xhigh": "xhigh"
+      }
+    },
+    "openrouter/auto": {
+      "api": {
+        "id": "openrouter/auto",
+        "method": "languageModel",
+        "url": "https://openrouter.ai/api/v1"
+      },
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "contextWindow": 2000000,
+      "cost": {
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "input": 0,
+        "output": 0
+      },
+      "id": "openrouter/auto",
+      "input": [
+        "text",
+        "image"
+      ],
+      "maxTokens": 4096,
+      "name": "Auto Router",
+      "npm": "@openrouter/ai-sdk-provider",
+      "protocol": "openrouter",
+      "provider": {
+        "env": [
+          "OPENROUTER_API_KEY"
+        ],
+        "id": "openrouter",
+        "name": "OpenRouter",
+        "source": "api"
+      },
+      "providerOptionsKey": "openrouter",
+      "reasoning": true
+    }
+  }
+}

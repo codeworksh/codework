@@ -1,10 +1,32 @@
-import { Control, EventSchema, PromptSchema, Sandbox, Session, SessionStore, State } from "@codeworksh/harness/effect";
-import { Effect, Option, Stream } from "effect";
-import { Contract, type RuntimeConfig, type SandboxInfo, type SessionInfo } from "./contract.ts";
-import { Envelope } from "./envelope.ts";
+import { Model } from "@codeworksh/aikit";
+import {
+	Control,
+	Event,
+	EventRegistry,
+	EventSchema,
+	ModelCatalog,
+	Project,
+	PromptSchema,
+	Sandbox,
+	Session,
+	SessionStore,
+	Settings,
+	State,
+} from "@codeworksh/harness/effect";
+import { DateTime, Effect, Option, Stream } from "effect";
+import {
+	Contract,
+	type HistoryEntry,
+	type LogSynced,
+	type RuntimeConfig,
+	type SandboxInfo,
+	type SessionInfo,
+} from "./contract.ts";
+import { type EncodingError, Envelope, type EventEnvelope } from "./envelope.ts";
 import { EventFeed } from "./feed.ts";
 import { Identity } from "./identity.ts";
 import { OAuth } from "./oauth.ts";
+import { MessagePart } from "./part.ts";
 
 const toSandboxInfo = (info: Sandbox.Info): SandboxInfo => ({
 	id: info.id,
@@ -25,6 +47,10 @@ const toSessionInfo = (info: Session.Info): SessionInfo => ({
 	directory: info.directory,
 	...(info.hostDir === undefined ? {} : { hostDir: info.hostDir }),
 	...(info.sandbox === undefined ? {} : { sandbox: toSandboxInfo(info.sandbox) }),
+	...(info.project === undefined ? {} : { project: info.project }),
+	updatedAt: info.updatedAt,
+	...(info.model === undefined ? {} : { model: info.model }),
+	...(info.thinkingLevel === undefined ? {} : { thinkingLevel: info.thinkingLevel }),
 });
 
 // Wire configs name only the keys they set, so `undefined` never reaches the
@@ -50,6 +76,17 @@ const releaseOnFailure = (selection: Effect.Success<ReturnType<typeof Sandbox.re
 		? Sandbox.stop(selection.info.id).pipe(Effect.catchCause(Effect.logError))
 		: Effect.void;
 
+/** A `session.log` item for the wire: a stored event as its envelope, or the replay marker. */
+const toLogItem =
+	(registry: Envelope.Registry) =>
+	(item: Event.LogItem): Effect.Effect<EventEnvelope | LogSynced, EncodingError> =>
+		Event.isSynced(item)
+			? Effect.succeed(item)
+			: Envelope.encode(item, registry).pipe(
+					// Every stored type is a kernel durable one, which the registry always knows.
+					Effect.catchTag("UnknownEventTypeError", Effect.die),
+				);
+
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
 		const control = yield* Control.Service;
@@ -58,6 +95,8 @@ export const layer = Contract.Api.toLayer(
 		const state = yield* State.Service;
 		const oauth = yield* OAuth.Service;
 		const identity = yield* Identity.Service;
+		const events = yield* Event.Service;
+		const registry = yield* EventRegistry.Service;
 
 		return Contract.Api.of({
 			"server.info": () => Effect.succeed({ pid: identity.pid, version: identity.version }),
@@ -65,7 +104,7 @@ export const layer = Contract.Api.toLayer(
 			"auth.status": ({ provider }) => oauth.status(provider),
 			"auth.refresh": ({ provider }) => oauth.refresh(provider),
 			"auth.logout": ({ provider }) => oauth.logout(provider),
-			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime }) {
+			"session.create": Effect.fnUntraced(function* ({ title, directory, hostDir, sandbox, runtime, project }) {
 				const selection =
 					sandbox === undefined ? undefined : yield* exported("Server.session.create", Sandbox.resolve(sandbox));
 				const selected = selection?.info;
@@ -76,9 +115,48 @@ export const layer = Contract.Api.toLayer(
 					// session the client did not place has no project, which is a normal state.
 					...(hostDir === undefined ? {} : { hostDir }),
 					...(selected === undefined ? {} : { sandbox: selected }),
+					...(project === undefined ? {} : { project }),
 					...runtimeInput(runtime),
 				}).pipe(Effect.onError(() => releaseOnFailure(selection)));
 				return toSessionInfo(yield* handle.info);
+			}),
+			"model.list": Effect.fnUntraced(function* ({ hostDir }) {
+				const filter = hostDir === undefined ? {} : { hostDir };
+				const settings = yield* Settings.Service;
+				const loaded = yield* settings.load(hostDir);
+				const { model } = loaded;
+				const providers = yield* ModelCatalog.available(filter);
+				// Named from the whole catalog, so a default without credentials still reads as itself.
+				const entry = (yield* ModelCatalog.effective(loaded.models))[model.provider]?.[model.id];
+				return {
+					providers: providers.flatMap((provider) => {
+						const models = Object.values(provider.models);
+						const first = models[0];
+						return first === undefined
+							? []
+							: [
+									{
+										id: provider.id,
+										name: first.provider.name,
+										models: models.map((info) => ({
+											id: info.id,
+											name: info.name,
+											thinkingLevels: Model.getSupportedThinkingLevels(info),
+										})),
+									},
+								];
+					}),
+					default: {
+						provider: model.provider,
+						id: model.id,
+						thinkingLevel: model.thinkingLevel,
+						...(entry === undefined ? {} : { name: entry.name, providerName: entry.provider.name }),
+					},
+				};
+			}),
+			"project.rename": Effect.fnUntraced(function* ({ projectId, name }) {
+				const renamed = yield* Project.rename({ projectId, name });
+				return { id: renamed.id, name: renamed.name };
 			}),
 			"plugin.reload": Effect.fnUntraced(function* () {
 				return yield* state.reload;
@@ -94,6 +172,44 @@ export const layer = Contract.Api.toLayer(
 			"session.info": Effect.fnUntraced(function* ({ sessionId }) {
 				return yield* sessionInfo(sessionId);
 			}),
+			"session.history": Effect.fnUntraced(function* ({ sessionId }) {
+				if (Option.isNone(yield* sessions.get(sessionId))) {
+					return yield* new SessionStore.SessionNotFoundError({ sessionId });
+				}
+				const path = yield* sessions.path(sessionId);
+				const entries = path.flatMap(({ entry, parts }): ReadonlyArray<HistoryEntry> =>
+					entry.type === "user" || entry.type === "assistant"
+						? [
+								{
+									id: entry.id,
+									seq: entry.seq,
+									role: entry.type,
+									state: entry.state,
+									createdAt: DateTime.toEpochMillis(entry.createdAt),
+									updatedAt: DateTime.toEpochMillis(entry.updatedAt),
+									// A part this schema does not render (a future aikit type) is skipped, not fatal.
+									parts: parts.flatMap((part) => Option.toArray(MessagePart.decode(part.data))),
+								},
+							]
+						: [],
+				);
+				return { entries };
+			}),
+			"session.log": ({ sessionId, after, follow }) =>
+				Stream.unwrap(
+					Effect.gen(function* () {
+						if (Option.isNone(yield* sessions.get(sessionId))) {
+							return yield* new SessionStore.SessionNotFoundError({ sessionId });
+						}
+						return events
+							.log({
+								aggregateId: sessionId,
+								follow: follow ?? false,
+								...(after === undefined ? {} : { after }),
+							})
+							.pipe(Stream.mapEffect(toLogItem(registry.get)));
+					}),
+				),
 			"session.link": Effect.fnUntraced(function* ({ sessionId, hostDir }) {
 				const handle = yield* Session.link({ sessionId, hostDir: hostDir ?? null });
 				return toSessionInfo(yield* handle.info);

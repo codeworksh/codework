@@ -10,81 +10,116 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as SettingsIndexRouteImport } from './routes/settings.index'
-import { Route as SettingsWorkspacesRouteImport } from './routes/settings.workspaces'
-import { Route as WorkspacesWorkspaceIdRouteImport } from './routes/workspaces.$workspaceId'
+import { Route as ShellRouteImport } from './routes/_shell'
+import { Route as ShellSettingsRouteImport } from './routes/_shell.settings'
+import { Route as ShellSettingsIndexRouteImport } from './routes/_shell.settings.index'
+import { Route as ShellSettingsServersRouteImport } from './routes/_shell.settings.servers'
+import { Route as ShellSettingsThemesRouteImport } from './routes/_shell.settings.themes'
+import { Route as ShellSettingsWorkspacesRouteImport } from './routes/_shell.settings.workspaces'
+import { Route as ShellWorkspacesWorkspaceIdRouteImport } from './routes/_shell.workspaces.$workspaceId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsRoute = SettingsRouteImport.update({
+const ShellRoute = ShellRouteImport.update({
+  id: '/_shell',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShellSettingsRoute = ShellSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => ShellRoute,
 } as any)
-const SettingsIndexRoute = SettingsIndexRouteImport.update({
+const ShellSettingsIndexRoute = ShellSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => SettingsRoute,
+  getParentRoute: () => ShellSettingsRoute,
 } as any)
-const SettingsWorkspacesRoute = SettingsWorkspacesRouteImport.update({
+const ShellSettingsServersRoute = ShellSettingsServersRouteImport.update({
+  id: '/servers',
+  path: '/servers',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
+const ShellSettingsThemesRoute = ShellSettingsThemesRouteImport.update({
+  id: '/themes',
+  path: '/themes',
+  getParentRoute: () => ShellSettingsRoute,
+} as any)
+const ShellSettingsWorkspacesRoute = ShellSettingsWorkspacesRouteImport.update({
   id: '/workspaces',
   path: '/workspaces',
-  getParentRoute: () => SettingsRoute,
+  getParentRoute: () => ShellSettingsRoute,
 } as any)
-const WorkspacesWorkspaceIdRoute = WorkspacesWorkspaceIdRouteImport.update({
-  id: '/workspaces/$workspaceId',
-  path: '/workspaces/$workspaceId',
-  getParentRoute: () => rootRouteImport,
-} as any)
+const ShellWorkspacesWorkspaceIdRoute =
+  ShellWorkspacesWorkspaceIdRouteImport.update({
+    id: '/workspaces/$workspaceId',
+    path: '/workspaces/$workspaceId',
+    getParentRoute: () => ShellRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRouteWithChildren
-  '/settings/workspaces': typeof SettingsWorkspacesRoute
-  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
-  '/settings/': typeof SettingsIndexRoute
+  '/settings': typeof ShellSettingsRouteWithChildren
+  '/settings/servers': typeof ShellSettingsServersRoute
+  '/settings/themes': typeof ShellSettingsThemesRoute
+  '/settings/workspaces': typeof ShellSettingsWorkspacesRoute
+  '/workspaces/$workspaceId': typeof ShellWorkspacesWorkspaceIdRoute
+  '/settings/': typeof ShellSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/settings/workspaces': typeof SettingsWorkspacesRoute
-  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
-  '/settings': typeof SettingsIndexRoute
+  '/settings/servers': typeof ShellSettingsServersRoute
+  '/settings/themes': typeof ShellSettingsThemesRoute
+  '/settings/workspaces': typeof ShellSettingsWorkspacesRoute
+  '/workspaces/$workspaceId': typeof ShellWorkspacesWorkspaceIdRoute
+  '/settings': typeof ShellSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/settings': typeof SettingsRouteWithChildren
-  '/settings/workspaces': typeof SettingsWorkspacesRoute
-  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
-  '/settings/': typeof SettingsIndexRoute
+  '/_shell': typeof ShellRouteWithChildren
+  '/_shell/settings': typeof ShellSettingsRouteWithChildren
+  '/_shell/settings/servers': typeof ShellSettingsServersRoute
+  '/_shell/settings/themes': typeof ShellSettingsThemesRoute
+  '/_shell/settings/workspaces': typeof ShellSettingsWorkspacesRoute
+  '/_shell/workspaces/$workspaceId': typeof ShellWorkspacesWorkspaceIdRoute
+  '/_shell/settings/': typeof ShellSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/settings'
+    | '/settings/servers'
+    | '/settings/themes'
     | '/settings/workspaces'
     | '/workspaces/$workspaceId'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/settings/workspaces' | '/workspaces/$workspaceId' | '/settings'
+  to:
+    | '/'
+    | '/settings/servers'
+    | '/settings/themes'
+    | '/settings/workspaces'
+    | '/workspaces/$workspaceId'
+    | '/settings'
   id:
     | '__root__'
     | '/'
-    | '/settings'
-    | '/settings/workspaces'
-    | '/workspaces/$workspaceId'
-    | '/settings/'
+    | '/_shell'
+    | '/_shell/settings'
+    | '/_shell/settings/servers'
+    | '/_shell/settings/themes'
+    | '/_shell/settings/workspaces'
+    | '/_shell/workspaces/$workspaceId'
+    | '/_shell/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  SettingsRoute: typeof SettingsRouteWithChildren
-  WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRoute
+  ShellRoute: typeof ShellRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -96,55 +131,91 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings': {
-      id: '/settings'
+    '/_shell': {
+      id: '/_shell'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof ShellRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_shell/settings': {
+      id: '/_shell/settings'
       path: '/settings'
       fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof ShellSettingsRouteImport
+      parentRoute: typeof ShellRoute
     }
-    '/settings/': {
-      id: '/settings/'
+    '/_shell/settings/': {
+      id: '/_shell/settings/'
       path: '/'
       fullPath: '/settings/'
-      preLoaderRoute: typeof SettingsIndexRouteImport
-      parentRoute: typeof SettingsRoute
+      preLoaderRoute: typeof ShellSettingsIndexRouteImport
+      parentRoute: typeof ShellSettingsRoute
     }
-    '/settings/workspaces': {
-      id: '/settings/workspaces'
+    '/_shell/settings/servers': {
+      id: '/_shell/settings/servers'
+      path: '/servers'
+      fullPath: '/settings/servers'
+      preLoaderRoute: typeof ShellSettingsServersRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/themes': {
+      id: '/_shell/settings/themes'
+      path: '/themes'
+      fullPath: '/settings/themes'
+      preLoaderRoute: typeof ShellSettingsThemesRouteImport
+      parentRoute: typeof ShellSettingsRoute
+    }
+    '/_shell/settings/workspaces': {
+      id: '/_shell/settings/workspaces'
       path: '/workspaces'
       fullPath: '/settings/workspaces'
-      preLoaderRoute: typeof SettingsWorkspacesRouteImport
-      parentRoute: typeof SettingsRoute
+      preLoaderRoute: typeof ShellSettingsWorkspacesRouteImport
+      parentRoute: typeof ShellSettingsRoute
     }
-    '/workspaces/$workspaceId': {
-      id: '/workspaces/$workspaceId'
+    '/_shell/workspaces/$workspaceId': {
+      id: '/_shell/workspaces/$workspaceId'
       path: '/workspaces/$workspaceId'
       fullPath: '/workspaces/$workspaceId'
-      preLoaderRoute: typeof WorkspacesWorkspaceIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof ShellWorkspacesWorkspaceIdRouteImport
+      parentRoute: typeof ShellRoute
     }
   }
 }
 
-interface SettingsRouteChildren {
-  SettingsWorkspacesRoute: typeof SettingsWorkspacesRoute
-  SettingsIndexRoute: typeof SettingsIndexRoute
+interface ShellSettingsRouteChildren {
+  ShellSettingsServersRoute: typeof ShellSettingsServersRoute
+  ShellSettingsThemesRoute: typeof ShellSettingsThemesRoute
+  ShellSettingsWorkspacesRoute: typeof ShellSettingsWorkspacesRoute
+  ShellSettingsIndexRoute: typeof ShellSettingsIndexRoute
 }
 
-const SettingsRouteChildren: SettingsRouteChildren = {
-  SettingsWorkspacesRoute: SettingsWorkspacesRoute,
-  SettingsIndexRoute: SettingsIndexRoute,
+const ShellSettingsRouteChildren: ShellSettingsRouteChildren = {
+  ShellSettingsServersRoute: ShellSettingsServersRoute,
+  ShellSettingsThemesRoute: ShellSettingsThemesRoute,
+  ShellSettingsWorkspacesRoute: ShellSettingsWorkspacesRoute,
+  ShellSettingsIndexRoute: ShellSettingsIndexRoute,
 }
 
-const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
-  SettingsRouteChildren,
+const ShellSettingsRouteWithChildren = ShellSettingsRoute._addFileChildren(
+  ShellSettingsRouteChildren,
 )
+
+interface ShellRouteChildren {
+  ShellSettingsRoute: typeof ShellSettingsRouteWithChildren
+  ShellWorkspacesWorkspaceIdRoute: typeof ShellWorkspacesWorkspaceIdRoute
+}
+
+const ShellRouteChildren: ShellRouteChildren = {
+  ShellSettingsRoute: ShellSettingsRouteWithChildren,
+  ShellWorkspacesWorkspaceIdRoute: ShellWorkspacesWorkspaceIdRoute,
+}
+
+const ShellRouteWithChildren = ShellRoute._addFileChildren(ShellRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SettingsRoute: SettingsRouteWithChildren,
-  WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRoute,
+  ShellRoute: ShellRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -142,7 +142,7 @@ export class ProviderError extends Schema.TaggedError<ProviderError>()("Runner.P
 
 export class ModelCatalogError extends Schema.TaggedError<ModelCatalogError>()("Runner.ModelCatalogError", {
 	path: Schema.String,
-	reason: Schema.Literals(["missing", "unreadable", "empty", "invalid"]),
+	reason: Schema.Literals(["unreadable", "empty", "invalid"]),
 	detail: Schema.String,
 }) {
 	override get message(): string {

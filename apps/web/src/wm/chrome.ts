@@ -1,0 +1,45 @@
+import type { LucideIcon } from "lucide-react";
+import { Atom } from "effect/reactivity";
+
+import type { Tab } from "@codeworksh/widget/view";
+import { registry } from "../widgets";
+import type { Instance } from "./instances";
+
+/** What a widget set on its frame at runtime; it outranks the instance and definition. */
+export interface Chrome {
+	readonly title?: string;
+	/** Shown before the title, quieter. */
+	readonly lead?: string | undefined;
+	readonly icon?: LucideIcon;
+	/** What the workspace tab shows while this frame is its focused one. */
+	readonly tab?: Tab;
+}
+
+/**
+ * Runtime frame chrome by instance id. Shared, so the workspace tabs can name what a workspace
+ * shows (like a browser tab shows its page's title) while the desktop draws the frames.
+ */
+export const chromeAtom = Atom.make<ReadonlyMap<string, Chrome>>(new Map()).pipe(Atom.keepAlive);
+
+/**
+ * The frame last focused on each workspace (workspace id → instance id). Focus order is one list for
+ * the whole desk, so a frame shown on two workspaces would otherwise name both tabs when clicked on one.
+ */
+export const focusedAtom = Atom.make<ReadonlyMap<string, string>>(new Map()).pipe(Atom.keepAlive);
+
+/**
+ * The frame that owns each workspace's tab (workspace id → instance id): the last one focused there
+ * that set a tab. Focus alone does not move the tab, so clicking a frame with no tab of its own, or
+ * opening one that has not set it yet, leaves the tab as it was instead of flickering through both.
+ */
+export const tabOwnerAtom = Atom.make<ReadonlyMap<string, string>>(new Map()).pipe(Atom.keepAlive);
+
+/** A frame's title, lead and icon: what the widget set, else the instance's, else its definition's. */
+export function chromeOf(instance: Instance, chrome: Chrome | undefined) {
+	const definition = registry.get(instance.kind);
+	return {
+		title: chrome?.title ?? instance.title ?? definition?.title ?? instance.id,
+		lead: chrome?.title === undefined ? undefined : chrome.lead,
+		icon: chrome?.icon ?? definition?.icon,
+	};
+}

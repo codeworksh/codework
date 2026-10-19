@@ -3,18 +3,19 @@
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
-	"exports": {
-		"./contract": "./src/contract.ts"
-	},
 	"scripts": {
 		"build": "vp pack",
 		"dev": "vp pack --watch",
+		"test": "vp test",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effect/platform-node": "4.0.1",
-		"@effect/sql-sqlite-node": "4.0.1",
-		"effect": "4.0.1"
+		"@codeworksh/contract": "workspace:*",
+		"@codeworksh/web": "workspace:*",
+		"@codeworksh/widget": "workspace:*",
+		"@effect/platform-node": "4.0.5",
+		"@effect/sql-sqlite-node": "4.0.5",
+		"effect": "4.0.5"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",

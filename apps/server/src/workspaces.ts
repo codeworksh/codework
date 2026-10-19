@@ -7,7 +7,7 @@ import {
 	type WorkspaceId,
 	type WorkspaceOrder,
 	type WorkspaceUpdate,
-} from "./contract.ts";
+} from "@codeworksh/contract";
 
 // webwm tag bits a workspace may hold; also the Cmd+1–9 keys.
 const MAX = 9;
@@ -18,18 +18,40 @@ const fail = (message: string) => new Contract.WorkspaceError({ message });
 export const handlers = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
 
-	const list = sql<Workspace>`
-		SELECT id, bit, pos, name, icon, layout, mfact FROM workspaces ORDER BY pos
-	`.pipe(Effect.orDie);
+	// SQLite has no booleans; `auto` is stored as 0 or 1.
+	const list = sql<Omit<Workspace, "auto"> & { auto: number }>`
+		SELECT id, bit, pos, name, icon, layout, mfact, auto FROM workspaces ORDER BY pos
+	`.pipe(
+		Effect.map((rows) => rows.map((row): Workspace => ({ ...row, auto: row.auto === 1 }))),
+		Effect.orDie,
+	);
 
 	// Rewrites positions as 0..n-1 in the given order.
 	const renumber = (ids: readonly string[]) =>
 		Effect.forEach(ids, (id, pos) => sql`UPDATE workspaces SET pos = ${pos} WHERE id = ${id}`, { discard: true });
 
+	// An auto workspace exists to show its frames; one that lost them without being left (a save that
+	// never landed) goes at startup, the only time no client is editing.
+	yield* sql
+		.withTransaction(
+			Effect.gen(function* () {
+				yield* sql`
+					DELETE FROM workspaces WHERE auto = 1
+					AND NOT EXISTS (SELECT 1 FROM widget WHERE (widget.tags & (1 << workspaces.bit)) != 0)
+				`;
+				yield* renumber((yield* list).map((workspace) => workspace.id));
+			}),
+		)
+		.pipe(Effect.orDie);
+
 	return {
 		"workspaces.list": () => list,
 
-		"workspaces.create": Effect.fn("workspaces.create")(function* ({ name, icon }: typeof WorkspaceCreate.Type) {
+		"workspaces.create": Effect.fn("workspaces.create")(function* ({
+			name,
+			icon,
+			auto = false,
+		}: typeof WorkspaceCreate.Type) {
 			return yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
@@ -45,9 +67,10 @@ export const handlers = Effect.gen(function* () {
 							icon,
 							layout: "tile",
 							mfact: 0.6,
+							auto,
 						};
 						const created = yield* Clock.currentTimeMillis;
-						yield* sql`INSERT INTO workspaces ${sql.insert({ ...workspace, created })}`;
+						yield* sql`INSERT INTO workspaces ${sql.insert({ ...workspace, auto: auto ? 1 : 0, created })}`;
 						return workspace;
 					}),
 				)
@@ -81,15 +104,17 @@ export const handlers = Effect.gen(function* () {
 				.pipe(Effect.catchTag("SqlError", Effect.die));
 		}),
 
-		// Widgets keep their masks here; the client clears the deleted bit from its instances.
+		// The deleted bit leaves every widget's mask with it; a widget left on no workspace goes too.
 		"workspaces.delete": Effect.fn("workspaces.delete")(function* ({ id }: typeof WorkspaceId.Type) {
 			yield* sql
 				.withTransaction(
 					Effect.gen(function* () {
 						const current = yield* list;
-						if (!current.some((workspace) => workspace.id === id)) return yield* fail(`No workspace ${id}`);
-						if (current.length === 1) return yield* fail("The last workspace can't be deleted");
+						const deleted = current.find((workspace) => workspace.id === id);
+						if (deleted === undefined) return yield* fail(`No workspace ${id}`);
 						yield* sql`DELETE FROM workspaces WHERE id = ${id}`;
+						yield* sql`UPDATE widget SET tags = tags & ~${1 << deleted.bit}`;
+						yield* sql`DELETE FROM widget WHERE tags = 0`;
 						yield* renumber(current.filter((workspace) => workspace.id !== id).map((workspace) => workspace.id));
 					}),
 				)

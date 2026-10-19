@@ -1,0 +1,56 @@
+<skills>
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>pkg-skill</name>
+    <description>Daytona: pkg.</description>
+    <location><daytona>/repo/pkg/.codework/skills/pkg-skill/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>repo-skill</name>
+    <description>Daytona: repo root.</description>
+    <location><daytona>/repo/.agents/skills/repo-skill/SKILL.md</location>
+  </skill>
+</available_skills>
+</skills>
+
+<skills>
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>pkg-skill</name>
+    <description>Vercel: pkg.</description>
+    <location><vercel>/repo/pkg/.codework/skills/pkg-skill/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>repo-skill</name>
+    <description>Vercel: repo root.</description>
+    <location><vercel>/repo/.agents/skills/repo-skill/SKILL.md</location>
+  </skill>
+</available_skills>
+</skills>
+
+<skills>
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>pkg-skill</name>
+    <description>Host: pkg.</description>
+    <location><host>/repo/pkg/.codework/skills/pkg-skill/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>repo-skill</name>
+    <description>Host: repo root.</description>
+    <location><host>/repo/.agents/skills/repo-skill/SKILL.md</location>
+  </skill>
+</available_skills>
+</skills>

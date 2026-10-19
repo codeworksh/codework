@@ -11,6 +11,7 @@ import {
 	messageEntryTypes,
 	type PartType,
 	partTypes,
+	ProjectRow,
 	SessionEntryPartRow,
 	SessionEntryRow,
 	SessionRow,
@@ -257,6 +258,8 @@ export interface Interface {
 	readonly get: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SessionRow>>;
 	/** The space a session attaches to — its env and absolute location. None when the session is unknown. */
 	readonly space: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SpaceSchema.Info>>;
+	/** The project a session belongs to, through its space. None when the session is unknown. */
+	readonly project: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<ProjectSchema.Info>>;
 	/** Sessions newest first, across the whole database when no scope is given. */
 	readonly list: (input?: ListInput) => Effect.Effect<SessionRow[]>;
 	readonly entry: (entryId: string) => Effect.Effect<Option.Option<HydratedEntry>>;
@@ -332,6 +335,17 @@ export const layer = Layer.effect(
 			Result: SpaceRow,
 			execute: (sessionId) => sql`
 				SELECT p.* FROM space p JOIN session s ON s.space_id = p.id WHERE s.id = ${sessionId}
+			`,
+		});
+
+		const findProject = SqlSchema.findOneOption({
+			Request: Schema.String,
+			Result: ProjectRow,
+			execute: (sessionId) => sql`
+				SELECT p.* FROM project p
+				JOIN space sp ON sp.project_id = p.id
+				JOIN session s ON s.space_id = sp.id
+				WHERE s.id = ${sessionId}
 			`,
 		});
 
@@ -523,6 +537,14 @@ export const layer = Layer.effect(
 
 		const space = Effect.fn("Session.space")(function* (sessionId: string) {
 			return Option.map(yield* findSpace(sessionId).pipe(Effect.orDie), Space.fromRow);
+		});
+
+		// A bare lookup has no checkout to ask, so the info carries no `vcs` (as with `Project.get`).
+		const project = Effect.fn("Session.project")(function* (sessionId: string) {
+			return Option.map(
+				yield* findProject(sessionId).pipe(Effect.orDie),
+				(row) => new ProjectSchema.Info({ id: ProjectSchema.ID.make(row.id), name: row.name, status: row.status }),
+			);
 		});
 
 		const list = Effect.fn("Session.list")(function* (input?: ListInput) {
@@ -1269,6 +1291,7 @@ export const layer = Layer.effect(
 			configure,
 			get,
 			space,
+			project,
 			list,
 			entry,
 			path,

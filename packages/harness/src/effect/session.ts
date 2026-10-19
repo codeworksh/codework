@@ -8,6 +8,7 @@ import { Location } from "../location/location.ts";
 import * as SandboxController from "../sandbox/control.ts";
 import { SandboxInstance as SandboxInstanceSchema } from "../sandbox/instance.ts";
 import { SandboxIO } from "../sandbox/io.ts";
+import type { ProjectSchema } from "../project/schema.ts";
 import { AbsolutePath } from "../schema.ts";
 import { SessionMessageSchema } from "../session/message/schema.ts";
 import type { Delivery } from "../session/prompt/schema.ts";
@@ -56,6 +57,8 @@ export interface CreateInput extends RuntimeInput {
 	 * own directory. {@link link} assigns one afterwards.
 	 */
 	readonly hostDir?: string;
+	/** Names the session's project if this creates it; an existing project keeps its name. */
+	readonly project?: { readonly name: string };
 }
 
 export interface AttachInput extends RuntimeInput {
@@ -93,6 +96,14 @@ export interface Info {
 	 */
 	readonly hasHostLink: boolean;
 	readonly sandbox?: SandboxInfo;
+	/** Absent only when the session's space or project row is missing. */
+	readonly project?: { readonly id: ProjectSchema.ID; readonly name: string };
+	/** Last activity, epoch milliseconds: every appended entry moves it. */
+	readonly updatedAt: number;
+	/** The model chosen for this session over settings; absent when settings decide. */
+	readonly model?: { readonly provider: string; readonly id: string };
+	/** The thinking level chosen for this session over settings; absent when settings decide. */
+	readonly thinkingLevel?: Model.ThinkingLevel;
 }
 
 export interface Handle {
@@ -167,6 +178,10 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 				? undefined
 				: Option.getOrUndefined(yield* sandboxes.get(space.env));
 		const hostDir = Option.getOrUndefined(row.hostDir);
+		const project = Option.getOrUndefined(yield* sessions.project(id));
+		const config = Option.getOrUndefined(row.config);
+		const model = config?.model;
+		const thinkingLevel = config?.thinkingLevel;
 		return {
 			id,
 			title: row.title,
@@ -174,6 +189,10 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 			...(hostDir === undefined ? {} : { hostDir }),
 			hasHostLink: hostDir !== undefined,
 			...(sandbox === undefined ? {} : { sandbox }),
+			...(project === undefined ? {} : { project: { id: project.id, name: project.name } }),
+			updatedAt: DateTime.toEpochMillis(row.updatedAt),
+			...(model === undefined ? {} : { model }),
+			...(thinkingLevel === undefined ? {} : { thinkingLevel }),
 		};
 	}).pipe(Effect.withSpan("Session.info"));
 
@@ -207,7 +226,10 @@ export const create = Effect.fn("Session.create")(function* (input: CreateInput 
 	// what makes the directory mean anything, so resolution happens inside it.
 	const location = yield* sandboxes.withMount(
 		sandboxId,
-		Effect.provide(Location.Service.use(Effect.succeed), Location.layerMounted()),
+		Effect.provide(
+			Location.Service.use(Effect.succeed),
+			Location.layerMounted(input.project === undefined ? undefined : { name: input.project.name }),
+		),
 		input.directory === undefined ? undefined : { cwd: input.directory },
 	);
 	yield* sessions.create({

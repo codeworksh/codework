@@ -1,4 +1,4 @@
-import { Effect, Fiber, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { Buffer } from "node:buffer";
 import { posix as path } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
@@ -13,9 +13,7 @@ import { Sandbox } from "../../src/sandbox/sandbox.ts";
 import { type ISandboxExe, Shell } from "../../src/sandbox/shell/shell.ts";
 import { SandboxStore } from "../../src/sandbox/store.ts";
 import { Session } from "../../src/session/session.ts";
-import { fromSandboxShell, ToolShell, ToolShellTimeout } from "../../src/tool/shell.ts";
 import { Hash } from "../../src/util/hash.ts";
-import { files, label, reference, windows } from "./scan.corpus.ts";
 
 type Run = <A, E>(program: Effect.Effect<A, E, Sandbox.Provides>) => Promise<A>;
 /**
@@ -39,13 +37,6 @@ export interface RemoteSandboxSpecOptions {
 	readonly reattach: Reattach;
 	/** The provider's own locator for the shared sandbox, read from its `Resource` service. */
 	readonly resourceId: () => Promise<string>;
-	/**
-	 * The provider's exec API returns one combined output field and cannot
-	 * separate stderr, so the adapter preserves it as stdout rather than
-	 * fabricating a split. Declared rather than skipped: the day the SDK reports
-	 * the two separately, this suite fails and says so.
-	 */
-	readonly combinesOutput?: boolean;
 	readonly timeout: number;
 	readonly githubPat?: string;
 }
@@ -103,321 +94,20 @@ const prepareRepository = (input: {
 	});
 
 /**
- * Live contract shared by remote providers. The provider test owns one sandbox
- * and supplies two runners: direct access to it, and a second mount reattached
- * by the provider's own locator.
+ * Live contract shared by remote providers, beyond the filesystem and shell
+ * contract `conformanceSpec` covers. The provider test owns one sandbox and
+ * supplies two runners: direct access to it, and a second mount reattached by
+ * the provider's own locator.
  */
 export const remoteSandboxSpec = (options: RemoteSandboxSpecOptions) => {
 	describe("pluggable runtime contract", () => {
 		it(
-			"implements the complete filesystem surface",
+			"inherits the environment baked into the provider sandbox",
 			async () => {
-				const root = path.join(options.cwd, name(options.kind, "fs"));
-				const result = await options.run(
-					Effect.gen(function* () {
-						const fs = yield* SandboxFileSystem.Service;
-						const shell = yield* Shell;
-						const textFile = path.join(root, "nested", "text.txt");
-						const binaryFile = path.join(root, "binary.dat");
-						const hiddenFile = path.join(root, ".hidden");
-						const link = path.join(root, "link.txt");
-
-						const program = Effect.gen(function* () {
-							// writeFile must create missing parents on every backend.
-							yield* fs.writeFile(textFile, "remote text");
-							yield* fs.writeFile(binaryFile, new Uint8Array([0, 1, 127, 128, 255]));
-							yield* fs.writeFile(hiddenFile, "hidden");
-							yield* fs.mkdir(path.join(root, "tree", "deep"), { recursive: true });
-
-							const linked = yield* shell.execArgv(["ln", "-s", textFile, link]);
-							const linkStat = yield* fs.stat(link);
-							const linkLstat = fs.lstat === undefined ? undefined : yield* fs.lstat(link);
-
-							const beforeRemove = {
-								text: yield* fs.readFile(textFile),
-								bytes: Array.from(yield* fs.readFileBuffer(binaryFile)),
-								file: yield* fs.stat(textFile),
-								directory: yield* fs.stat(path.join(root, "nested")),
-								entries: [...(yield* fs.readdir(root))].sort(),
-								present: yield* fs.exists(textFile),
-								missing: yield* fs.exists(path.join(root, "missing")),
-							};
-
-							yield* fs.rm(path.join(root, "tree"), { recursive: true });
-							yield* fs.rm(path.join(root, "already-gone"), { force: true });
-
-							return {
-								beforeRemove,
-								linked,
-								linkStat,
-								linkLstat,
-								treeRemoved: !(yield* fs.exists(path.join(root, "tree"))),
-							};
-						});
-
-						return yield* program.pipe(
-							Effect.ensuring(fs.rm(root, { recursive: true, force: true }).pipe(Effect.ignore)),
-						);
-					}),
+				const inherited = await options.run(
+					Effect.flatMap(Shell, (shell) => shell.execArgv(["printenv", options.inheritedEnv.key])),
 				);
-
-				expect(result.beforeRemove.text).toBe("remote text");
-				expect(result.beforeRemove.bytes).toEqual([0, 1, 127, 128, 255]);
-				expect(result.beforeRemove.file.isFile).toBe(true);
-				expect(result.beforeRemove.directory.isDirectory).toBe(true);
-				expect(result.beforeRemove.entries).toEqual([".hidden", "binary.dat", "link.txt", "nested", "tree"]);
-				expect(result.beforeRemove.present).toBe(true);
-				expect(result.beforeRemove.missing).toBe(false);
-				expect(result.linked.exitCode).toBe(0);
-				expect(result.linkStat.isFile).toBe(true);
-				if (result.linkLstat !== undefined) expect(result.linkLstat.isSymbolicLink).toBe(true);
-				expect(result.treeRemoved).toBe(true);
-			},
-			options.timeout,
-		);
-
-		it(
-			"scans line windows inside the sandbox exactly like the local scanner",
-			async () => {
-				const root = path.join(options.cwd, name(options.kind, "scan"));
-				const result = await options.run(
-					Effect.gen(function* () {
-						const fs = yield* SandboxFileSystem.Service;
-						const program = Effect.gen(function* () {
-							const mismatches: Array<string> = [];
-							for (const [file, bytes] of Object.entries(files)) {
-								yield* fs.writeFile(path.join(root, file), bytes);
-								for (const window of windows) {
-									const scanned = yield* fs.scanLines(path.join(root, file), window);
-									// The provider's SDK decodes the output, and may emit one U+FFFD per
-									// invalid byte where TextDecoder emits one per sequence.
-									const replacements = (scan: SandboxFileSystem.LineScan) => ({
-										...scan,
-										text: scan.text.replace(/\uFFFD+/g, "\uFFFD"),
-									});
-									if (
-										JSON.stringify(replacements(scanned)) !==
-										JSON.stringify(replacements(reference(bytes, window)))
-									)
-										mismatches.push(`${file} ${label(window)}: ${JSON.stringify(scanned)}`);
-								}
-							}
-							const missing = yield* fs.scanLines(path.join(root, "missing"), windows[0]!).pipe(Effect.flip);
-							return { mismatches, missingIsNotFound: SandboxFileSystem.isNotFoundError(missing.cause) };
-						});
-						return yield* program.pipe(
-							Effect.ensuring(fs.rm(root, { recursive: true, force: true }).pipe(Effect.ignore)),
-						);
-					}),
-				);
-
-				expect(result.mismatches).toEqual([]);
-				expect(result.missingIsNotFound).toBe(true);
-			},
-			options.timeout,
-		);
-
-		it(
-			"reads byte ranges inside the sandbox, binary-safe",
-			async () => {
-				const root = path.join(options.cwd, name(options.kind, "bytes"));
-				const bytes = Uint8Array.from({ length: 300 }, (_, index) => index % 256);
-				const result = await options.run(
-					Effect.gen(function* () {
-						const fs = yield* SandboxFileSystem.Service;
-						const program = Effect.gen(function* () {
-							yield* fs.writeFile(path.join(root, "bytes.dat"), bytes);
-							return {
-								head: [...(yield* fs.readBytes(path.join(root, "bytes.dat"), 0, 4))],
-								middle: [...(yield* fs.readBytes(path.join(root, "bytes.dat"), 254, 4))],
-								end: [...(yield* fs.readBytes(path.join(root, "bytes.dat"), 298, 10))],
-								past: (yield* fs.readBytes(path.join(root, "bytes.dat"), 400, 10)).length,
-								missing: SandboxFileSystem.isNotFoundError(
-									(yield* fs.readBytes(path.join(root, "missing"), 0, 4).pipe(Effect.flip)).cause,
-								),
-							};
-						});
-						return yield* program.pipe(
-							Effect.ensuring(fs.rm(root, { recursive: true, force: true }).pipe(Effect.ignore)),
-						);
-					}),
-				);
-
-				expect(result).toEqual({
-					head: [0, 1, 2, 3],
-					middle: [254, 255, 0, 1],
-					end: [42, 43],
-					past: 0,
-					missing: true,
-				});
-			},
-			options.timeout,
-		);
-
-		it(
-			"implements shell strings, argv, environment, cwd, and filesystem sharing",
-			async () => {
-				const relativeRoot = name(options.kind, "shell");
-				const root = path.join(options.cwd, relativeRoot);
-				const result = await options.run(
-					Effect.gen(function* () {
-						const fs = yield* SandboxFileSystem.Service;
-						const shell = yield* Shell;
-
-						const program = Effect.gen(function* () {
-							yield* fs.mkdir(root, { recursive: true });
-							yield* fs.writeFile(path.join(root, "from-fs.txt"), "filesystem");
-
-							const fromFs = yield* shell.execArgv(["cat", path.join(root, "from-fs.txt")]);
-							const literal = yield* shell.execArgv(["printf", "%s", "two words;$(echo pwned)"]);
-							const inherited = yield* shell.execArgv(["printenv", options.inheritedEnv.key]);
-							const overridden = yield* shell.execArgv(["printenv", options.inheritedEnv.key], {
-								env: { [options.inheritedEnv.key]: "from-command" },
-							});
-							const pwd = yield* shell.execArgv(["pwd"], { cwd: relativeRoot });
-							const stringPwd = yield* shell.exec("pwd", { cwd: relativeRoot });
-							const wrote = yield* shell.exec(`printf 'shell' > ${path.join(root, "from-shell.txt")}`);
-							const fromShell = yield* fs.readFile(path.join(root, "from-shell.txt"));
-							const failed = yield* shell.exec("printf 'out'; printf 'err' >&2; exit 7");
-							const uname = yield* shell.execArgv(["uname", "-s"]);
-
-							return { fromFs, literal, inherited, overridden, pwd, stringPwd, wrote, fromShell, failed, uname };
-						});
-
-						return yield* program.pipe(
-							Effect.ensuring(fs.rm(root, { recursive: true, force: true }).pipe(Effect.ignore)),
-						);
-					}),
-				);
-
-				expect(result.fromFs.stdout).toBe("filesystem");
-				expect(result.literal.stdout).toBe("two words;$(echo pwned)");
-				expect(result.inherited.stdout.trim()).toBe(options.inheritedEnv.value);
-				expect(result.overridden.stdout.trim()).toBe("from-command");
-				expect(result.pwd.stdout.trim()).toBe(root);
-				expect(result.stringPwd.stdout.trim()).toBe(root);
-				expect(result.wrote.exitCode).toBe(0);
-				expect(result.fromShell).toBe("shell");
-				expect(result.failed.exitCode).toBe(7);
-				// A failing command is a result, not an error (Flue: `SessionEnv.exec`).
-				if (options.combinesOutput) {
-					expect(result.failed).toMatchObject({ stdout: "outerr", stderr: "" });
-				} else {
-					expect(result.failed).toMatchObject({ stdout: "out", stderr: "err" });
-				}
-				expect(result.uname.stdout.trim()).toBe("Linux");
-			},
-			options.timeout,
-		);
-
-		/**
-		 * Flue parity — `examples/hello-world/src/agents/with-sandbox.ts`, which runs
-		 * exactly this vocabulary against a remote box. Batched into one round-trip:
-		 * the cost of a remote suite is the sandbox, but wall-clock is the commands.
-		 *
-		 * Also pins two things the sibling tests do not: a relative path is resolved
-		 * *lexically* (Flue's `makeResolvePath` normalizes before touching the
-		 * backend, so a `..` through a directory that does not exist still resolves),
-		 * and a per-command env value is scoped to that command alone.
-		 */
-		it(
-			"implements Flue's compound, pipeline, redirection, and find vocabulary",
-			async () => {
-				const relativeRoot = name(options.kind, "primitives");
-				const root = path.join(options.cwd, relativeRoot);
-				const result = await options.run(
-					Effect.gen(function* () {
-						const fs = yield* SandboxFileSystem.Service;
-						const shell = yield* Shell;
-
-						const program = Effect.gen(function* () {
-							yield* fs.writeFile(path.join(root, "file.txt"), "lexical");
-
-							const compound = yield* shell.exec("printf 'step1\\n' && printf 'step2\\n'");
-							const pipe = yield* shell.exec("printf 'a\\nb\\nc\\n' | wc -l");
-							yield* shell.exec(`printf %s 'redirected content' > ${path.join(root, "redirected.txt")}`);
-							const readRedirect = yield* shell.exec(`cat ${path.join(root, "redirected.txt")}`);
-							const findWc = yield* shell.exec(
-								`mkdir -p ${root}/tree && touch ${root}/tree/a ${root}/tree/b ${root}/tree/c && find ${root}/tree -type f | wc -l`,
-							);
-
-							// `nested` never exists; lexical normalization is why this resolves.
-							const normalized = yield* fs.readFile(`${relativeRoot}/./nested/../file.txt`);
-
-							const scoped = yield* shell.exec('printf %s "$CW_SCOPED"', { env: { CW_SCOPED: "scoped" } });
-							const afterScoped = yield* shell.exec('printf %s "$CW_SCOPED"');
-
-							return { compound, pipe, readRedirect, findWc, normalized, scoped, afterScoped };
-						});
-
-						return yield* program.pipe(
-							Effect.ensuring(fs.rm(root, { recursive: true, force: true }).pipe(Effect.ignore)),
-						);
-					}),
-				);
-
-				expect(result.compound).toMatchObject({ exitCode: 0, stdout: "step1\nstep2\n" });
-				expect(result.pipe.stdout.trim()).toBe("3");
-				expect(result.readRedirect.stdout).toBe("redirected content");
-				expect(result.findWc.stdout.trim()).toBe("3");
-				expect(result.normalized).toBe("lexical");
-				expect(result.scoped.stdout).toBe("scoped");
-				// per-command env is scoped to that command and nothing after it
-				expect(result.afterScoped.stdout).toBe("");
-			},
-			options.timeout,
-		);
-
-		/**
-		 * Flue parity — `examples/hello-world/src/agents/with-abort.ts`.
-		 *
-		 * The timeout half is Flue's `exec({ timeoutMs })`, which the Harness owns at
-		 * the `ToolShell` boundary as a typed failure. The pre-interruption half is
-		 * Flue's `if (signal?.aborted) throw` guard, which Effect makes structural —
-		 * what stays testable is that `exec` does no work while its Effect is being
-		 * *constructed*, since it is evaluated eagerly as `andThen`'s argument.
-		 *
-		 * Mid-flight cancellation is a separate property; `cancellationSpec` owns it.
-		 */
-		it(
-			"surfaces a typed timeout and never starts a pre-interrupted command",
-			async () => {
-				const root = path.join(options.cwd, name(options.kind, "abort"));
-				const result = await options.run(
-					Effect.gen(function* () {
-						const fs = yield* SandboxFileSystem.Service;
-						const shell = yield* Shell;
-						const marker = path.join(root, "should-not-exist");
-
-						const program = Effect.gen(function* () {
-							yield* fs.mkdir(root, { recursive: true });
-
-							const started = Date.now();
-							const timedOut = yield* Effect.flatMap(ToolShell, (tool) =>
-								tool.exec("sleep 30", { timeout: "200 millis" }),
-							).pipe(Effect.flip, Effect.provide(fromSandboxShell));
-							const elapsed = Date.now() - started;
-
-							const fiber = yield* Effect.forkChild(
-								Effect.interrupt.pipe(Effect.andThen(shell.exec(`touch ${marker}`))),
-							);
-							yield* Fiber.await(fiber);
-
-							return { timedOut, elapsed, started: yield* fs.exists(marker) };
-						});
-
-						return yield* program.pipe(
-							Effect.ensuring(fs.rm(root, { recursive: true, force: true }).pipe(Effect.ignore)),
-						);
-					}),
-				);
-
-				expect(Schema.is(ToolShellTimeout)(result.timedOut)).toBe(true);
-				if (!Schema.is(ToolShellTimeout)(result.timedOut)) throw result.timedOut;
-				expect(result.timedOut.timeoutMillis).toBe(200);
-				// returned on the timeout, not after the command's own 30s
-				expect(result.elapsed).toBeLessThan(20_000);
-				expect(result.started).toBe(false);
+				expect(inherited.stdout.trim()).toBe(options.inheritedEnv.value);
 			},
 			options.timeout,
 		);

@@ -4,6 +4,12 @@ declare global {
 			platform: string;
 			/** The app server's RPC WebSocket URL. */
 			server: string;
+			/** The user's home directory. */
+			home: string;
+			/** Opens the native folder dialog at `from`; the chosen folder, or null when cancelled. */
+			pickFolder: (from: string) => Promise<string | null>;
+			/** Shows `path` in the file manager, selected. */
+			reveal: (path: string) => Promise<void>;
 		};
 	}
 }

@@ -1,4 +1,4 @@
-import { useAtom, useAtomSet } from "@effect/atom-react";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
@@ -14,26 +14,24 @@ import {
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { isMac } from "../kernel/platform";
+import { messageOf } from "@/lib/utils";
+import { isMac } from "@codeworksh/widget/view";
 import { iconOf, icons } from "../shell/icons";
 import { shortcutLabel } from "../shell/switcher";
-import { deskAtom, only, untag } from "../wm/instances";
+import { deskAtom, deskKey, only } from "../wm/instances";
 import {
-	createWorkspace,
 	deleteWorkspace,
 	reorderWorkspaces,
+	MAX_WORKSPACES,
 	updateWorkspace,
+	useCreateWorkspace,
 	useWorkspaces,
 	type Workspace,
 	workspacesKey,
 	workspaceTag,
 } from "../wm/workspaces";
-import { Group, Keys, Page, Row, Section } from "./blocks";
-
-// webwm tag bits available, and so the Cmd+1–9 keys; the server enforces it too.
-const MAX = 9;
+import { Group, Keys, SavingInput, Page, Row, Section } from "./blocks";
 
 const sameOrder = (ids: readonly string[], workspaces: readonly Workspace[]) =>
 	ids.length === workspaces.length && ids.every((id, index) => workspaces[index]?.id === id);
@@ -41,7 +39,7 @@ const sameOrder = (ids: readonly string[], workspaces: readonly Workspace[]) =>
 /** List, create, rename, re-icon, reorder (drag the grip), and delete workspaces. */
 export function WorkspacesSettings() {
 	const workspaces = useWorkspaces();
-	const create = useAtomSet(createWorkspace, { mode: "promise" });
+	const create = useCreateWorkspace();
 	const reorder = useAtomSet(reorderWorkspaces, { mode: "promise" });
 	const [error, setError] = useState<string | null>(null);
 	// The new workspace, whose name field takes focus.
@@ -56,15 +54,12 @@ export function WorkspacesSettings() {
 
 	const run = (action: () => Promise<unknown>) => {
 		setError(null);
-		action().catch((cause: unknown) => setError(describe(cause)));
+		action().catch((cause: unknown) => setError(messageOf(cause)));
 	};
 
 	const addWorkspace = () =>
 		run(async () => {
-			const workspace = await create({
-				payload: { name: `Workspace ${workspaces.length + 1}`, icon: "app-window" },
-				reactivityKeys: workspacesKey,
-			});
+			const workspace = await create({ name: `Workspace ${workspaces.length + 1}`, icon: "app-window" });
 			setCreated(workspace.id);
 		});
 
@@ -120,13 +115,15 @@ export function WorkspacesSettings() {
 							<IconPicker workspace={workspace} onError={setError} />
 							<NameField workspace={workspace} autoFocus={workspace.id === created} onError={setError} />
 							<Keys>{shortcutLabel(index + 1)}</Keys>
-							<DeleteButton workspace={workspace} disabled={workspaces.length === 1} onError={setError} />
+							<DeleteButton workspace={workspace} onError={setError} />
 						</div>
 					))}
 					<button
 						type="button"
-						disabled={workspaces.length >= MAX}
-						title={workspaces.length >= MAX ? `All ${MAX} workspaces are in use` : undefined}
+						disabled={workspaces.length >= MAX_WORKSPACES}
+						title={
+							workspaces.length >= MAX_WORKSPACES ? `All ${MAX_WORKSPACES} workspaces are in use` : undefined
+						}
 						className="flex items-center gap-2 rounded-b-xl px-5 py-4 text-ink-muted transition-colors hover:bg-ink/4 hover:text-ink disabled:pointer-events-none disabled:opacity-50"
 						onClick={addWorkspace}
 					>
@@ -140,7 +137,7 @@ export function WorkspacesSettings() {
 				<Group>
 					<Row title="Switch workspace" description="Jump to a workspace by its place in the list">
 						<Keys>
-							{shortcutLabel(1)}–{MAX}
+							{shortcutLabel(1)}–{MAX_WORKSPACES}
 						</Keys>
 					</Row>
 					<Row title="Open settings">
@@ -163,31 +160,19 @@ interface RowProps {
 /** Renames in place: commits on Enter or blur, Escape restores the saved name. */
 function NameField({ workspace, autoFocus, onError }: RowProps & { readonly autoFocus: boolean }) {
 	const save = useAtomSet(updateWorkspace, { mode: "promise" });
-	const [draft, setDraft] = useState<string | null>(null);
-	// Reads the field itself: Escape resets it just before blurring, sooner than state would.
-	const commit = (value: string) => {
-		const name = value.trim();
-		setDraft(null);
-		if (!name || name === workspace.name) return;
-		save({ payload: { id: workspace.id, name }, reactivityKeys: workspacesKey }).catch((cause: unknown) =>
-			onError(describe(cause)),
-		);
-	};
 	return (
-		<Input
-			aria-label="Workspace name"
-			value={draft ?? workspace.name}
+		<SavingInput
+			label="Workspace name"
+			value={workspace.name}
 			autoFocus={autoFocus}
-			onFocus={(event) => autoFocus && event.currentTarget.select()}
+			// Reads as plain text in the row until hovered or focused.
 			className="h-8 min-w-24 flex-1 border-transparent bg-transparent shadow-none hover:border-input focus-visible:border-input dark:bg-transparent"
-			onChange={(event) => setDraft(event.target.value)}
-			onBlur={(event) => commit(event.currentTarget.value)}
-			onKeyDown={(event) => {
-				if (event.key === "Enter") event.currentTarget.blur();
-				if (event.key === "Escape") {
-					event.currentTarget.value = workspace.name;
-					event.currentTarget.blur();
-				}
+			onCommit={(name) => {
+				// A workspace keeps its name when the field is cleared.
+				if (!name) return;
+				save({ payload: { id: workspace.id, name }, reactivityKeys: workspacesKey }).catch((cause: unknown) =>
+					onError(messageOf(cause)),
+				);
 			}}
 		/>
 	);
@@ -217,7 +202,7 @@ function IconPicker({ workspace, onError }: RowProps) {
 							setOpen(false);
 							if (name === workspace.icon) return;
 							save({ payload: { id: workspace.id, icon: name }, reactivityKeys: workspacesKey }).catch(
-								(cause: unknown) => onError(describe(cause)),
+								(cause: unknown) => onError(messageOf(cause)),
 							);
 						}}
 					>
@@ -230,9 +215,9 @@ function IconPicker({ workspace, onError }: RowProps) {
 }
 
 /** Deletes after a confirm that says which widgets close with it. */
-function DeleteButton({ workspace, disabled, onError }: RowProps & { readonly disabled: boolean }) {
+function DeleteButton({ workspace, onError }: RowProps) {
 	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
-	const [desk, setDesk] = useAtom(deskAtom);
+	const desk = useAtomValue(deskAtom);
 	const tag = workspaceTag(workspace);
 	const closing = only(desk, tag).length;
 	return (
@@ -242,9 +227,8 @@ function DeleteButton({ workspace, disabled, onError }: RowProps & { readonly di
 					variant="ghost"
 					size="icon"
 					className="size-8 text-ink-muted hover:text-destructive"
-					disabled={disabled}
 					aria-label={`Delete ${workspace.name}`}
-					title={disabled ? "The last workspace can't be deleted" : `Delete ${workspace.name}`}
+					title={`Delete ${workspace.name}`}
 				>
 					<Trash2 />
 				</Button>
@@ -264,9 +248,9 @@ function DeleteButton({ workspace, disabled, onError }: RowProps & { readonly di
 					<AlertDialogAction
 						variant="destructive"
 						onClick={() =>
-							remove({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }).then(
-								() => setDesk((current) => untag(current, tag)),
-								(cause: unknown) => onError(describe(cause)),
+							// The server drops the workspace's widgets, so the desk reloads with the list.
+							remove({ payload: { id: workspace.id }, reactivityKeys: [...workspacesKey, ...deskKey] }).catch(
+								(cause: unknown) => onError(messageOf(cause)),
 							)
 						}
 					>
@@ -277,8 +261,3 @@ function DeleteButton({ workspace, disabled, onError }: RowProps & { readonly di
 		</AlertDialog>
 	);
 }
-
-const describe = (cause: unknown) =>
-	typeof cause === "object" && cause !== null && "message" in cause && typeof cause.message === "string"
-		? cause.message
-		: String(cause);

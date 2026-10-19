@@ -1,4 +1,3 @@
-import { openAICodexBuiltInModels } from "../../src/cli/modelgen.ts";
 import { stream } from "../../src/stream.ts";
 import { makeUserMessage } from "../utils/fixtures.ts";
 /** Request shaping for the OpenAI Codex Responses endpoint. */
@@ -10,6 +9,7 @@ import {
 	OPENAI_CODEX_TEST_API_KEY,
 	openAICodexDeferredTools,
 	openAICodexDeferredToolsPrompt,
+	openAICodexModels,
 	openAICodexSSEResponse,
 	openAICodexTextEvents,
 	openAICodexUserPrompt,
@@ -17,10 +17,10 @@ import {
 } from "../utils/openai-codex.ts";
 
 describe("request", () => {
-	it.each(["gpt-5.3-codex-spark", "gpt-5.4"])(
+	it.each(["gpt-5.3-codex-spark", "gpt-5.5"])(
 		"derives image support from %s metadata despite a partial factory override",
 		async (id) => {
-			const metadata = openAICodexBuiltInModels()[id]!;
+			const metadata = openAICodexModels()[id]!;
 			const model = { ...metadata, id: "custom-model", api: { ...metadata.api, id: "custom-model" } };
 			const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
 			const user = makeUserMessage("Describe the image");
@@ -110,7 +110,7 @@ describe("request", () => {
 		await createOpenAICodex({
 			apiKey: OPENAI_CODEX_TEST_API_KEY,
 			fetch,
-			compat: { ...openAICodexBuiltInModels()["gpt-5.6-luna"]!.compat },
+			compat: { ...openAICodexModels()["gpt-5.6-luna"]!.compat },
 		})("gpt-5.6-luna").doStream({
 			prompt: openAICodexDeferredToolsPrompt,
 			tools: [
@@ -143,13 +143,13 @@ describe("request", () => {
 		]);
 	});
 
-	it("falls back to transcript tool_search items for GPT-5.4 Codex", async () => {
+	it("falls back to transcript tool_search items for GPT-5.5 Codex", async () => {
 		const { fetch, body } = createOpenAICodexMockFetch(openAICodexSSEResponse(openAICodexTextEvents));
 		await createOpenAICodex({
 			apiKey: OPENAI_CODEX_TEST_API_KEY,
 			fetch,
-			compat: { ...openAICodexBuiltInModels()["gpt-5.4"]!.compat },
-		})("gpt-5.4").doStream({
+			compat: { ...openAICodexModels()["gpt-5.5"]!.compat },
+		})("gpt-5.5").doStream({
 			prompt: openAICodexDeferredToolsPrompt,
 			tools: openAICodexDeferredTools,
 		});
@@ -283,7 +283,7 @@ describe("request", () => {
 });
 
 describe("transport failures", () => {
-	const model = openAICodexBuiltInModels()["gpt-5.4"]!;
+	const model = openAICodexModels()["gpt-5.5"]!;
 
 	it("retries a fetch that never answers, then fails with the request it sent", async () => {
 		let calls = 0;

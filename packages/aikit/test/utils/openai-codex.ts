@@ -1,5 +1,7 @@
 import type { LanguageModelV3Prompt, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { zstdDecompressSync } from "node:zlib";
+import { buildCatalog } from "../../src/cli/modelgen.ts";
+import type * as Model from "../../src/model/model.ts";
 
 function makeJwt(payload: Record<string, unknown>): string {
 	const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -10,6 +12,41 @@ export const OPENAI_CODEX_TEST_ACCOUNT_ID = "acct_test_123";
 export const OPENAI_CODEX_TEST_API_KEY = makeJwt({
 	"https://api.openai.com/auth": { chatgpt_account_id: OPENAI_CODEX_TEST_ACCOUNT_ID },
 });
+
+/** The generated Codex entries, from a models.dev snapshot of the OpenAI models they build on. */
+export function openAICodexModels(): Record<string, Model.Info> {
+	const model = (id: string, input: string[]) => ({
+		id,
+		name: id,
+		family: "gpt",
+		attachment: true,
+		reasoning: true,
+		tool_call: true,
+		release_date: "2026-01-01",
+		last_updated: "2026-01-01",
+		modalities: { input, output: ["text"] },
+		open_weights: false,
+		cost: { input: 1, output: 4, cache_read: 0.1 },
+		limit: { context: 1_050_000, output: 128_000 },
+	});
+	const ids: Array<[string, string[]]> = [
+		["gpt-5.3-codex-spark", ["text"]],
+		["gpt-5.5", ["text", "image"]],
+		["gpt-5.6-luna", ["text", "image"]],
+	];
+	const catalog = buildCatalog({
+		modelsDev: {
+			openai: {
+				id: "openai",
+				name: "OpenAI",
+				env: ["OPENAI_API_KEY"],
+				npm: "@ai-sdk/openai",
+				models: Object.fromEntries(ids.map(([id, input]) => [id, model(id, input)])),
+			},
+		},
+	});
+	return catalog["openai-codex"] ?? {};
+}
 
 export function openAICodexSSEBody(events: Array<Record<string, unknown>>): string {
 	return `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`;

@@ -4,6 +4,7 @@ packages:
    - packages/tui/npm/*
    - extras/*
    - sites/*
+   - infra/*
 
 # Effect TS-Go only ships patch artifacts for specific TypeScript versions.
 # Keep these versions aligned and bump them together.
@@ -29,5 +30,7 @@ allowBuilds:
    webgpu: false
    # Local Workers runtime used by Alchemy dev.
    workerd: true
+   # electron-builder's Windows installer; the desktop app builds no Windows targets.
+   electron-winstaller: false
 
 storeDir: .pnpm-store

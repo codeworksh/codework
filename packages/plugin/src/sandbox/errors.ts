@@ -7,7 +7,11 @@ import { SandboxInstance } from "./instance.ts";
  */
 export class SandboxNotFoundError extends Schema.TaggedError<SandboxNotFoundError>()("SandboxNotFoundError", {
 	id: SandboxInstance.ID,
-}) {}
+}) {
+	override get message(): string {
+		return `Sandbox ${this.id} does not exist.`;
+	}
+}
 
 export class SandboxDriverNotRegisteredError extends Schema.TaggedError<SandboxDriverNotRegisteredError>()(
 	"SandboxDriverNotRegisteredError",
@@ -15,7 +19,11 @@ export class SandboxDriverNotRegisteredError extends Schema.TaggedError<SandboxD
 		driver: Schema.String,
 		registered: Schema.optional(Schema.Array(Schema.String)),
 	},
-) {}
+) {
+	override get message(): string {
+		return `No sandbox driver named "${this.driver}" is registered.`;
+	}
+}
 
 export class SandboxDriverRegistrationError extends Schema.TaggedError<SandboxDriverRegistrationError>()(
 	"SandboxDriverRegistrationError",
@@ -59,12 +67,20 @@ export class SandboxMustBeStoppedError extends Schema.TaggedError<SandboxMustBeS
 export class SandboxRemovedError extends Schema.TaggedError<SandboxRemovedError>()("SandboxRemovedError", {
 	id: SandboxInstance.ID,
 	removedAt: Schema.optional(Schema.DateTimeUtc),
-}) {}
+}) {
+	override get message(): string {
+		return `Sandbox ${this.id} was removed.`;
+	}
+}
 
 export class SandboxUnavailError extends Schema.TaggedError<SandboxUnavailError>()("SandboxUnavailError", {
 	id: SandboxInstance.ID,
 	reason: Schema.String,
-}) {}
+}) {
+	override get message(): string {
+		return `Sandbox ${this.id} is unavailable: ${this.reason}`;
+	}
+}
 
 export class SandboxUnsupportedError extends Schema.TaggedError<SandboxUnsupportedError>()("SandboxUnsupportedError", {
 	id: Schema.optional(SandboxInstance.ID),
@@ -92,7 +108,11 @@ export class SandboxProviderError extends Schema.TaggedError<SandboxProviderErro
 	driver: Schema.String,
 	operation: Schema.String,
 	sanitized: SandboxInstance.PersistedError,
-}) {}
+}) {
+	override get message(): string {
+		return `The ${this.driver} sandbox failed to ${this.operation}: ${this.sanitized.message}`;
+	}
+}
 
 const rawCause = Symbol("@codework/sandbox/provider/error/raw/cause");
 const missingResource = Symbol("@codework/sandbox/provider/error/missing/resource");

@@ -1,9 +1,11 @@
-import { FolderKanban, MessageSquare } from "lucide-react";
+import { FolderKanban } from "lucide-react";
 import { Schema } from "effect";
 
-import { defineWidget } from "../../sdk";
+import { defineWidget } from "@codeworksh/widget/view";
 import { Projects } from "./projects";
-import { Session } from "./session";
+
+/** What opens the Projects widget, from the command palette. */
+export const projectsAddress = "codework://projects";
 
 /** Every project with its sessions; picking a session opens it beside the list. */
 export const projects = defineWidget({
@@ -14,21 +16,7 @@ export const projects = defineWidget({
 	minHeight: 200,
 	cardinality: "one",
 	priority: "builtin",
+	opens: [projectsAddress],
 	props: Schema.Struct({}),
 	component: Projects,
-});
-
-/** One session's conversation, opened by its `codework://session/<id>` address. */
-export const session = defineWidget({
-	kind: "codework:session",
-	title: "Session",
-	icon: MessageSquare,
-	minWidth: 280,
-	minHeight: 200,
-	cardinality: "many",
-	priority: "builtin",
-	opens: ["codework://session/*"],
-	replaceable: true,
-	props: Schema.Struct({}),
-	component: Session,
 });

@@ -7,11 +7,12 @@
 
 import * as Section from "@codeworksh/plugin/plugin/section";
 import { Effect, Option } from "effect";
-import { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
+import type { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
 import { posix } from "../../../util/posix.ts";
 import type { SharedPluginContext } from "../../context.ts";
 import { define } from "../../plugin.ts";
+import { ancestors, present, stripBom } from "./walk.ts";
 
 /** First readable match per directory wins. */
 const names: ReadonlyArray<string> = [
@@ -31,39 +32,9 @@ export interface Found {
 }
 
 const content = (raw: string): string | undefined => {
-	const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+	const text = stripBom(raw);
 	return text.trim().length === 0 ? undefined : text;
 };
-
-/** `directory` and every ancestor up to the sandbox root, closest first. */
-const ancestors = (directory: string): string[] => {
-	const chain: string[] = [];
-	for (let current = directory; ; current = posix.dirname(current)) {
-		chain.push(current);
-		if (posix.dirname(current) === current) return chain;
-	}
-};
-
-/**
- * Which of `paths` are files. Absence is the expected answer and stays silent; any other failure
- * (permissions, a remote blip) is logged so a dropped file is not a mystery, then counts as absent.
- */
-const present = (fs: SandboxFileSystem.Interface, paths: ReadonlyArray<string>) =>
-	Effect.forEach(
-		paths,
-		(path) =>
-			fs.exists(path).pipe(
-				Effect.flatMap((exists) =>
-					exists ? fs.stat(path).pipe(Effect.map((stat) => stat.isFile)) : Effect.succeed(false),
-				),
-				Effect.catch((error) =>
-					SandboxFileSystem.isNotFoundError(error.cause)
-						? Effect.succeed(false)
-						: Effect.logWarning(`could not stat instruction file ${path}`, error.cause).pipe(Effect.as(false)),
-				),
-			),
-		{ concurrency: "unbounded" },
-	).pipe(Effect.map((hits) => new Set(paths.filter((_, index) => hits[index]))));
 
 /** A file that stats but does not read falls through to the next candidate. */
 const first = Effect.fnUntraced(function* (
@@ -110,6 +81,8 @@ export const discover = Effect.fnUntraced(function* (
 	const files = yield* present(
 		fs,
 		chain.flatMap((directory) => names.map((name) => posix.join(directory, name))),
+		"file",
+		"instruction file",
 	);
 	const found = yield* Effect.forEach(chain, (directory) => first(fs, directory, files), {
 		concurrency: "unbounded",

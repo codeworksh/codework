@@ -3,9 +3,11 @@ import { AsyncResult } from "effect/reactivity";
 import { Folder } from "lucide-react";
 import type { MouseEvent } from "react";
 
-import { isMac, openMode, Server, useShell } from "../../sdk";
-import { sessionAddress } from "./address";
-import { ago } from "./time";
+import { isMac, openMode, useShell } from "@codeworksh/widget/view";
+
+import { Server } from "../../kernel/rpc";
+import { sessionAddress } from "../session/address";
+import { ago } from "../time";
 
 const list = Server.query("projects.list", undefined);
 

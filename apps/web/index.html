@@ -4,6 +4,12 @@
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>CodeWork</title>
+		<!-- The saved theme (src/theme.ts) lands before first paint; an unknown id falls back to the default. -->
+		<script>
+			try {
+				document.documentElement.dataset.theme = localStorage.getItem("codework-theme") ?? "tokyo-night";
+			} catch {}
+		</script>
 	</head>
 	<body>
 		<div id="root"></div>

@@ -1,49 +1,44 @@
 @import "tailwindcss";
 /* shadcn/ui's enter and exit animations (animate-in, fade-in-0, zoom-in-95, ...). */
 @import "tw-animate-css";
-/* Self-hosted so it works offline; the optical-size axis tunes glyphs for small text vs titles. */
-@import "@fontsource-variable/inter/opsz.css";
+@import "./themes.css";
 
-/* `--cw-*` are the theme contract widgets style against; Tailwind colors map onto
-   them so light/dark switches in one place. */
+/* `--cw-*` are the theme contract widgets style against. They map onto the site palette's `--t-*`
+   tokens, so switching data-theme restyles everything; light-dark() follows the theme's color-scheme. */
 :root {
-	color-scheme: light dark;
-	--cw-desktop: #e9e8e6;
-	--cw-frame: #f7f6f5;
-	--cw-frame-top: #fcfcfb;
-	--cw-edge: rgb(0 0 0 / 0.07);
-	--cw-edge-focus: rgb(0 0 0 / 0.16);
-	--cw-highlight: rgb(255 255 255 / 0.9);
-	--cw-shadow-near: rgb(0 0 0 / 0.06);
-	--cw-shadow-far: rgb(0 0 0 / 0.08);
-	--cw-ink: #3f3f46;
-	--cw-ink-muted: #8a8a93;
-	--cw-scrollbar: rgb(0 0 0 / 0.16);
-	--cw-danger: #dc2626;
-	--cw-dialog-shadow: 0 24px 64px -24px rgb(0 0 0 / 0.35);
+	--cw-desktop: var(--t-bg);
+	--cw-frame: var(--t-surface);
+	/* A touch lighter than the frame (whiter in light palettes), for the panel's top-down gradient. */
+	--cw-frame-top: light-dark(
+		color-mix(in oklab, var(--t-surface) 55%, white),
+		color-mix(in oklab, var(--t-surface) 93%, var(--t-text))
+	);
+	--cw-edge: var(--t-border-subtle);
+	--cw-edge-focus: var(--t-border-strong);
+	--cw-ink: var(--t-text);
+	--cw-ink-secondary: var(--t-text-secondary);
+	--cw-ink-muted: var(--t-text-muted);
+	--cw-brand: var(--t-brand);
+	--cw-brand-ink: var(--t-brand-ink);
+	--cw-scrollbar: color-mix(in oklab, var(--t-text) 16%, transparent);
+	--cw-danger: light-dark(#dc2626, #f87171);
+	--cw-warning: light-dark(#d97706, #fbbf24);
+	--cw-success: light-dark(#16a34a, #4ade80);
+	--cw-info: light-dark(#2563eb, #60a5fa);
+	--cw-highlight: light-dark(rgb(255 255 255 / 0.9), color-mix(in oklab, var(--t-text) 9%, transparent));
+	--cw-shadow-near: light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.35));
+	--cw-shadow-far: light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.5));
+	--cw-dialog-shadow: 0 24px 64px -24px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.9));
+	--cw-menu-shadow: 0 16px 40px -18px light-dark(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.8));
 }
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--cw-desktop: #151413;
-		--cw-frame: #222020;
-		--cw-frame-top: #2a2827;
-		--cw-edge: rgb(255 255 255 / 0.07);
-		--cw-edge-focus: rgb(255 255 255 / 0.14);
-		--cw-highlight: rgb(255 255 255 / 0.09);
-		--cw-shadow-near: rgb(0 0 0 / 0.35);
-		--cw-shadow-far: rgb(0 0 0 / 0.5);
-		--cw-ink: #e4e4e7;
-		--cw-ink-muted: #9b9ba3;
-		--cw-scrollbar: rgb(255 255 255 / 0.14);
-		--cw-danger: #f87171;
-		--cw-dialog-shadow: inset 0 1px rgb(255 255 255 / 0.04), 0 24px 72px -20px rgb(0 0 0 / 0.9);
-	}
-}
-
-/* One token for interface text, so a different face is a one-line change. */
 @theme {
-	--font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+	/* The platform's own faces (SF Pro and SF Mono on macOS), so the app reads as native. */
+	--font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+	--font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+	/* Tailwind's built-in curves are too weak for UI motion. */
+	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 @theme inline {
@@ -53,7 +48,10 @@
 	--color-edge: var(--cw-edge);
 	--color-edge-focus: var(--cw-edge-focus);
 	--color-ink: var(--cw-ink);
+	--color-ink-secondary: var(--cw-ink-secondary);
 	--color-ink-muted: var(--cw-ink-muted);
+	--color-brand: var(--cw-brand);
+	--color-brand-ink: var(--cw-brand-ink);
 
 	/* shadcn/ui's color names, mapped onto the --cw-* contract. */
 	--color-background: var(--cw-frame);
@@ -62,8 +60,8 @@
 	--color-card-foreground: var(--cw-ink);
 	--color-popover: var(--cw-frame-top);
 	--color-popover-foreground: var(--cw-ink);
-	--color-primary: var(--cw-ink);
-	--color-primary-foreground: var(--cw-frame);
+	--color-primary: var(--cw-brand);
+	--color-primary-foreground: var(--cw-brand-ink);
 	--color-secondary: color-mix(in oklab, var(--cw-ink) 8%, transparent);
 	--color-secondary-foreground: var(--cw-ink);
 	--color-muted: color-mix(in oklab, var(--cw-ink) 6%, transparent);
@@ -71,9 +69,12 @@
 	--color-accent: color-mix(in oklab, var(--cw-ink) 8%, transparent);
 	--color-accent-foreground: var(--cw-ink);
 	--color-destructive: var(--cw-danger);
+	--color-warning: var(--cw-warning);
+	--color-success: var(--cw-success);
+	--color-info: var(--cw-info);
 	--color-border: var(--cw-edge);
 	--color-input: var(--cw-edge-focus);
-	--color-ring: color-mix(in oklab, var(--cw-ink) 30%, transparent);
+	--color-ring: color-mix(in oklab, var(--cw-brand) 50%, transparent);
 	--color-sidebar: var(--cw-frame);
 	--color-sidebar-foreground: var(--cw-ink);
 	--color-sidebar-primary: var(--cw-ink);
@@ -81,7 +82,7 @@
 	--color-sidebar-accent: color-mix(in oklab, var(--cw-ink) 8%, transparent);
 	--color-sidebar-accent-foreground: var(--cw-ink);
 	--color-sidebar-border: var(--cw-edge);
-	--color-sidebar-ring: color-mix(in oklab, var(--cw-ink) 30%, transparent);
+	--color-sidebar-ring: color-mix(in oklab, var(--cw-brand) 50%, transparent);
 	/* Inset top highlight plus a tight and a soft drop shadow read as a raised panel. */
 	--shadow-frame:
 		inset 0 1px 0 var(--cw-highlight), 0 1px 2px var(--cw-shadow-near), 0 8px 24px -8px var(--cw-shadow-far);
@@ -98,11 +99,39 @@
 	box-shadow: var(--cw-dialog-shadow);
 }
 
+/* Pressable icon and trigger buttons: a slight press-in on top of their hover colors. */
+@utility press {
+	@apply transition-[background-color,color,scale] duration-150 active:scale-[0.97];
+}
+
 @utility dialog-backdrop {
 	@apply bg-desktop/60 backdrop-blur-[4px];
 }
 
+/* Set for the frame a theme swaps in (src/theme.ts). */
+.no-transitions,
+.no-transitions * {
+	transition: none !important;
+}
+
+/* Reduced motion: transitions and animations finish instantly, so nothing travels across the screen. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	::before,
+	::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
 @layer base {
+	/* Tailwind v4 borders default to the text colour; shadcn components expect the soft edge. */
+	*,
+	::before,
+	::after {
+		border-color: var(--cw-edge);
+	}
+
 	html,
 	body,
 	#root {
@@ -110,10 +139,19 @@
 	}
 
 	body {
-		@apply bg-desktop text-[13px]/[1.4] text-ink antialiased;
+		@apply bg-desktop font-sans text-[13px]/[1.4] text-ink antialiased;
 	}
 
-	/* A 6px rounded thumb on a clear track, widget content included. The standard
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		@apply text-balance;
+	}
+
+	/* A 6px square thumb on a clear track, widget content included. The standard
 	   scrollbar-width/color would override these and bottom out at "thin". */
 	::-webkit-scrollbar {
 		width: 6px;
@@ -126,7 +164,6 @@
 	}
 
 	::-webkit-scrollbar-thumb {
-		border-radius: 3px;
 		background: var(--cw-scrollbar);
 	}
 }

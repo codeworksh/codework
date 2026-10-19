@@ -1,78 +1,83 @@
-import { Clock, Effect, FileSystem, Option, Path, Schema } from "effect";
-import { SqlClient } from "effect/sql";
-import { Contract, type Entry } from "./contract.ts";
-import { findSession, projects } from "./mock.ts";
+import { Effect } from "effect";
+import { Cli } from "./cli.ts";
+import { Codework } from "./codework.ts";
+import { Contract, ModelsError, type Project } from "@codeworksh/contract";
+import { Desk } from "./desk.ts";
+import { Event } from "./event.ts";
+import { Kv } from "./kv.ts";
 import { Workspaces } from "./workspaces.ts";
 
-const JsonText = Schema.fromJsonString(Schema.Json);
-const decodeJson = Schema.decodeUnknownEffect(JsonText);
-const encodeJson = Schema.encodeEffect(JsonText);
-
-// Directories first, then names in natural order, so "file10" follows "file9".
-const byKindThenName = (a: Entry, b: Entry) =>
-	a.kind === b.kind
-		? a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
-		: a.kind === "directory"
-			? -1
-			: 1;
+/**
+ * Sessions grouped by project, both newest first. A session whose project row is missing gets a
+ * group of its own folder, so it still shows rather than vanishing.
+ */
+const byProject = (sessions: ReadonlyArray<Codework.SessionInfo>): Project[] => {
+	const groups = new Map<string, Project & { sessions: Project["sessions"][number][] }>();
+	for (const session of [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)) {
+		const folder = session.hostDir ?? session.directory;
+		const key = session.project?.id ?? folder;
+		const group = groups.get(key) ?? {
+			id: key,
+			name: session.project?.name ?? folder.split("/").at(-1) ?? folder,
+			// The newest session's folder: where the project was last worked on.
+			path: folder,
+			sessions: [],
+		};
+		group.sessions.push({
+			id: session.id,
+			title: session.title,
+			updated: session.updatedAt,
+			...(session.model === undefined ? {} : { model: session.model }),
+		});
+		groups.set(key, group);
+	}
+	return [...groups.values()];
+};
 
 export const layer = Contract.Api.toLayer(
 	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem;
-		const path = yield* Path.Path;
-		const sql = yield* SqlClient.SqlClient;
 		const workspaces = yield* Workspaces.handlers;
+		const desk = yield* Desk.handlers;
+		const events = yield* Event.Service;
+		const kv = yield* Kv.Service;
 
 		return Contract.Api.of({
 			...workspaces,
+			...desk,
+			...Cli.handlers,
 
-			"fs.list": Effect.fn("fs.list")(function* ({ path: directory }) {
-				const fail = (cause: unknown) => new Contract.FsError({ path: directory, message: String(cause) });
-				const names = yield* fs.readDirectory(directory).pipe(Effect.mapError(fail));
-				const entries = yield* Effect.forEach(
-					names,
-					(name) =>
-						fs.stat(path.join(directory, name)).pipe(
-							Effect.map((info): Entry => ({
-								name,
-								kind: info.type === "Directory" ? "directory" : "file",
-							})),
-							// A broken symlink or a file removed mid-listing is skipped, not fatal.
-							Effect.option,
-						),
-					{ concurrency: 32 },
+			"projects.list": Effect.fn("projects.list")(function* () {
+				const sessions = yield* Codework.call((client) => client("session.list", {}));
+				return byProject(sessions);
+			}),
+
+			// The catalog's own errors are kept apart from an unreachable server, so their detail shows.
+			"models.list": Effect.fn("models.list")(function* ({ hostDir }) {
+				const listed = yield* Codework.call((client) =>
+					client("model.list", hostDir === undefined ? {} : { hostDir }).pipe(
+						Effect.map((list) => ({ list })),
+						Effect.catchTags({
+							SettingsError: (error) =>
+								Effect.succeed({
+									failed: new ModelsError({ source: "settings", path: error.path, message: error.detail }),
+								}),
+							"Runner.ModelCatalogError": (error) =>
+								Effect.succeed({
+									failed: new ModelsError({ source: "catalog", path: error.path, message: error.detail }),
+								}),
+						}),
+					),
 				);
-				return entries
-					.filter(Option.isSome)
-					.map((entry) => entry.value)
-					.sort(byKindThenName);
+				if ("failed" in listed) return yield* listed.failed;
+				return listed.list;
 			}),
 
-			"projects.list": () => Effect.succeed(projects),
+			"kv.get": ({ package: pkg, key }) => kv.get(pkg, key),
+			"kv.set": ({ package: pkg, key, value }) => kv.set(pkg, key, value),
 
-			"sessions.get": Effect.fn("sessions.get")(function* ({ id }) {
-				const session = findSession(id);
-				if (session === undefined) return yield* new Contract.SessionNotFound({ id });
-				return session;
-			}),
-
-			"kv.get": Effect.fn("kv.get")(function* ({ package: pkg, key }) {
-				const rows = yield* sql<{ value: string }>`
-					SELECT value FROM kv WHERE package = ${pkg} AND key = ${key}
-				`.pipe(Effect.orDie);
-				const row = rows[0];
-				if (row === undefined) return Option.none();
-				return Option.some(yield* decodeJson(row.value).pipe(Effect.orDie));
-			}),
-
-			"kv.set": Effect.fn("kv.set")(function* ({ package: pkg, key, value }) {
-				const text = yield* encodeJson(value).pipe(Effect.orDie);
-				const updated = yield* Clock.currentTimeMillis;
-				yield* sql`
-					INSERT INTO kv (package, key, value, updated) VALUES (${pkg}, ${key}, ${text}, ${updated})
-					ON CONFLICT (package, key) DO UPDATE SET value = excluded.value, updated = excluded.updated
-				`.pipe(Effect.orDie);
-			}),
+			"event.publish": (input) => events.publish(input),
+			"event.request": (input) => events.request(input),
+			"event.subscribe": (input) => events.subscribe(input),
 		});
 	}),
 );

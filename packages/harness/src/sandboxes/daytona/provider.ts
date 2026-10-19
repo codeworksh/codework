@@ -219,13 +219,9 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 				throw cause;
 			}
 		},
+		// `createFolder` is `mkdir -p`; plain `mkdir` fails on a missing parent.
 		mkdir: async (path: string, mkdirOptions?: { recursive?: boolean }) => {
-			if (!mkdirOptions?.recursive) {
-				await sandbox.fs.createFolder(path, "755");
-				return;
-			}
-
-			const command = `mkdir -p ${quote(path)}`;
+			const command = mkdirOptions?.recursive ? `mkdir -p ${quote(path)}` : `mkdir ${quote(path)}`;
 			const result = await sandbox.process.executeCommand(command, options.cwd, undefined, options.execTimeout);
 			assertCommandSucceeded(command, result);
 		},
@@ -234,8 +230,9 @@ const providerFrom = (sandbox: RemoteSandbox, options: Options) => {
 			try {
 				await sandbox.fs.deleteFile(path, rmOptions?.recursive);
 			} catch (cause) {
-				if (rmOptions?.force && !(await filesystem.exists(path))) return;
-				throw cause;
+				if (await filesystem.exists(path)) throw cause;
+				if (rmOptions?.force) return;
+				throw Object.assign(enoent("rm", path), { cause });
 			}
 		},
 		realpath: async (path: string) => {

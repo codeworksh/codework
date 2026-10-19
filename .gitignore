@@ -3,6 +3,7 @@ node_modules
 .pnpm-store
 
 out
+.electron-runtime
 dist
 build
 .next
@@ -56,5 +57,14 @@ models.gen.json
 
 .alchemy
 
+.freebuff
+opencode.json
+
 # Rust build output (packages/tui binary; the launcher loads the built artifact).
 target
+
+# testing
+videos
+
+# Catalog CI output (.github/workflows/catalog.yml)
+.artifacts

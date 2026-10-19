@@ -236,7 +236,7 @@ export const defaults: Info = {
 	model: {
 		provider: "openai",
 		id: "gpt-5.6-luna",
-		thinkingLevel: "high",
+		thinkingLevel: "medium",
 		toolExecution: "sequential",
 		options: { timeoutMs: 3_600_000, idleTimeoutMs: 300_000, maxRetries: 0 },
 	},

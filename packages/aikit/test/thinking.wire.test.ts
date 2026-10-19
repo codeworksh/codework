@@ -114,7 +114,7 @@ const path = (value: unknown, ...keys: string[]): unknown =>
 
 const openai = makeModel({ id: "gpt-5.5", protocol: "openai", npm: "@ai-sdk/openai", reasoning: true });
 const adaptiveClaude = makeModel({
-	id: "claude-opus-5-5",
+	id: "claude-opus-4-8",
 	npm: "@ai-sdk/anthropic",
 	reasoning: true,
 	maxTokens: 64_000,

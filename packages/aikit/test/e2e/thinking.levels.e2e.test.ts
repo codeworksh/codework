@@ -43,18 +43,19 @@ const OPENAI_LEVELS: Record<(typeof OPENAI_E2E_MODELS)[number], Model.ThinkingLe
 	"gpt-5.4-nano": WITH_XHIGH,
 };
 
-// Checked live: Codex accepts the same efforts, "none" included.
+// Checked live: Codex accepts the same efforts, "none" included, and sends minimal as low.
 const OPENAI_CODEX_LEVELS: Record<(typeof OPENAI_CODEX_E2E_MODELS)[number], Model.ThinkingLevel[]> = {
-	"gpt-6-luna": WITH_MAX,
-	"gpt-5.6-luna": WITH_MAX,
-	"gpt-5.5": WITH_XHIGH,
+	"gpt-6-luna": ["off", "minimal", ...WITH_MAX.slice(1)],
+	"gpt-5.6-luna": ["off", "minimal", ...WITH_MAX.slice(1)],
+	"gpt-5.5": ["off", "minimal", ...WITH_XHIGH.slice(1)],
 };
 
 const ANTHROPIC_BUDGET: Model.ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
 const ANTHROPIC_XHIGH_MAX: Model.ThinkingLevel[] = [...ANTHROPIC_BUDGET, "xhigh", "max"];
 
 // Checked live: 4.6 takes max but not xhigh (Opus maps xhigh onto max), 4.8 and 5.x take
-// both, Opus and Sonnet 5.5 reject disabled thinking, and Haiku 4.5 only takes a budget.
+// both, Opus and Sonnet 5.5 reject disabled thinking, the 5.5 models take no minimal (pi), and
+// Haiku 4.5 only takes a budget.
 const ANTHROPIC_LEVELS: Record<(typeof ANTHROPIC_E2E_MODELS)[number], Model.ThinkingLevel[]> = {
 	"claude-sonnet-4-6": [...ANTHROPIC_BUDGET, "max"],
 	"claude-sonnet-5": ANTHROPIC_XHIGH_MAX,
@@ -62,7 +63,7 @@ const ANTHROPIC_LEVELS: Record<(typeof ANTHROPIC_E2E_MODELS)[number], Model.Thin
 	"claude-opus-4-6": ANTHROPIC_XHIGH_MAX,
 	"claude-opus-4-8": ANTHROPIC_XHIGH_MAX,
 	"claude-opus-5-5": ANTHROPIC_XHIGH_MAX.slice(2),
-	"claude-haiku-5-5": ANTHROPIC_XHIGH_MAX,
+	"claude-haiku-5-5": ANTHROPIC_XHIGH_MAX.filter((level) => level !== "minimal"),
 	"claude-haiku-4-5-20251001": ANTHROPIC_BUDGET,
 };
 
@@ -232,12 +233,19 @@ describeIfAnthropic("Anthropic thinking levels artifact", () => {
 	});
 });
 
-// OpenRouter leaves reasoning to each endpoint: several make it mandatory, so off is
-// never sent, and xhigh and max clamp to high.
+// OpenRouter's listing names the efforts each model accepts and whether reasoning is
+// mandatory; the catalog takes its levels from there (pi), so off is only sent where allowed.
+const OPENROUTER_LEVELS: Record<(typeof OPENROUTER_E2E_MODELS)[number], Model.ThinkingLevel[]> = {
+	"meta/muse-spark-1.3-contributor": ["minimal", "low", "medium", "high", "xhigh", "max"],
+	"z-ai/glm-5.3-flash": ["low", "high", "max"],
+	"deepseek/deepseek-v4.1-flash": ["off", "low", "high", "max"],
+	"google/gemini-3.8-flash": ["low", "medium", "high"],
+};
+
 describeIfOpenRouter.each(OPENROUTER_E2E_MODELS)("OpenRouter thinking levels (%s)", (modelId) => {
-	it("exposes the default levels", async () => {
+	it("exposes the levels OpenRouter lists", async () => {
 		const model = await getOpenRouterModel(modelId);
-		expect(Model.getSupportedThinkingLevels(model)).toEqual(["off", "minimal", "low", "medium", "high"]);
+		expect(Model.getSupportedThinkingLevels(model)).toEqual(OPENROUTER_LEVELS[modelId]);
 	});
 
 	it("answers when no level is requested", { retry: 2, timeout: 60_000 }, async () => {

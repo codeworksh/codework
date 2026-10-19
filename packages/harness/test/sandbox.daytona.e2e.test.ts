@@ -10,7 +10,7 @@ import * as EnvDaytona from "../src/sandboxes/daytona/provider.ts";
 import { SandboxResource } from "../src/sandbox/resource.ts";
 import { Sandbox } from "../src/sandbox/sandbox.ts";
 import { Shell } from "../src/sandbox/shell/shell.ts";
-import { cancellationSpec } from "./fixtures/cancellation.spec.ts";
+import { conformanceSpec } from "./fixtures/conformance.spec.ts";
 import { remoteSandboxSpec } from "./fixtures/remote.spec.ts";
 import { labels, makeRemoteOwner } from "./fixtures/remote-owner.ts";
 import { searchRemoteSpec } from "./fixtures/search.remote.spec.ts";
@@ -98,9 +98,6 @@ suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 		run,
 		reattach,
 		resourceId,
-		// `executeCommand` returns a single `result` string; the adapter keeps it as
-		// stdout rather than inventing a split. See §16.5 of the Sandbox IO spec.
-		combinesOutput: true,
 		timeout: PROVISION_TIMEOUT,
 		...(githubPat === undefined ? {} : { githubPat }),
 	});
@@ -122,12 +119,19 @@ suite("Sandbox.EnvDaytona (fresh sandbox)", () => {
 	// cwd/env to sessions, and this suite fails the day either lands. The bash
 	// tool is not bound by it: on a deadline it kills the wrapper's process tree
 	// with a second exec (see `bashPluginSpec`).
-	cancellationSpec("daytona", () => ({
-		run: (program) => run(program),
-		witness: `${SANDBOX_CWD}/cancel-progress`,
+	conformanceSpec({
+		driver: "daytona",
+		run,
+		cwd: SANDBOX_CWD,
+		// `executeCommand` returns a single `result` string; the adapter keeps it as
+		// stdout rather than inventing a split. See §16.5 of the Sandbox IO spec.
+		combinesOutput: true,
 		cancels: false,
+		inheritsHostEnv: false,
+		linux: true,
+		timeout: PROVISION_TIMEOUT,
 		settleMillis: 5000,
-	}));
+	});
 
 	it(
 		"boots the default snapshot with Node.js available",

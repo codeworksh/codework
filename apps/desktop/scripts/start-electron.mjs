@@ -1,10 +1,41 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const electronPath = createRequire(import.meta.url)("electron");
+const electronBinary = createRequire(import.meta.url)("electron");
+const APP_NAME = "CodeWork";
+// Its own identity, so a local run never shares data or Dock state with an installed channel.
+const APP_ID = "sh.codework.desktop.local";
+
+// macOS names the Dock icon after the running bundle's Info.plist, so on macOS
+// Electron runs from a renamed copy of Electron.app, rebuilt when Electron changes.
+function brandedElectron() {
+	const source = path.resolve(electronBinary, "../../..");
+	const target = path.join(desktopDir, ".electron-runtime", `${APP_NAME}.app`);
+	const marker = path.join(desktopDir, ".electron-runtime", "source");
+	const binary = path.join(target, "Contents", "MacOS", "Electron");
+	const stamp = `${source}\n${APP_ID}`;
+	if (existsSync(marker) && readFileSync(marker, "utf8") === stamp) return binary;
+
+	rmSync(target, { recursive: true, force: true });
+	// Keeps the frameworks' relative symlinks; absolute ones crash the helper processes.
+	cpSync(source, target, { recursive: true, verbatimSymlinks: true });
+	const plist = path.join(target, "Contents", "Info.plist");
+	for (const [key, value] of [
+		["CFBundleName", APP_NAME],
+		["CFBundleDisplayName", APP_NAME],
+		["CFBundleIdentifier", APP_ID],
+	])
+		execFileSync("plutil", ["-replace", key, "-string", value, plist]);
+	execFileSync("codesign", ["--force", "--deep", "--sign", "-", target]);
+	writeFileSync(marker, stamp);
+	return binary;
+}
+
+const electronPath = process.platform === "darwin" ? brandedElectron() : electronBinary;
 
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;

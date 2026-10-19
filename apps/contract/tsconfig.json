@@ -1,0 +1,7 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"tsBuildInfoFile": "../../.cache/typescript/contract.tsbuildinfo"
+	},
+	"include": ["src"]
+}

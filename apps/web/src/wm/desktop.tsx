@@ -1,7 +1,6 @@
-import { useNavigate } from "@tanstack/react-router";
-import type { LucideIcon } from "lucide-react";
-import { useAtom, useAtomSet } from "@effect/atom-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { RegistryContext, useAtom, useAtomSet } from "@effect/atom-react";
+import { type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
 	focus,
 	hasMasterStack,
@@ -17,15 +16,21 @@ import {
 } from "webwm";
 import { useArrangedWidgets, useElementSize } from "webwm/react";
 
-import type { Frame as FrameApi, Shell } from "../sdk";
-import { FrameContext, ShellContext } from "../sdk/shell";
+import { type Frame as FrameApi, FrameContext, HostContext, type Shell, ShellContext } from "@codeworksh/widget/view";
+import { makeHost } from "../kernel/host";
 import { builtins, registry } from "../widgets";
+import { type Chrome, chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "./chrome";
 import { Divider } from "./divider";
-import { Frame } from "./frame";
-import { add, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
+import { Frame, FRAME_HEADER_HEIGHT } from "./frame";
+import { Overflow } from "./overflow";
+import { add, type Desk, deskAtom, type Instance, remove, retarget, focus as raise, update } from "./instances";
 import { resolve } from "./resolver";
+import { useSaveDesk } from "./save";
 import {
+	deleteWorkspace,
+	MAX_WORKSPACES,
 	updateWorkspace,
+	useCreateWorkspace,
 	useWorkspaces,
 	type Workspace,
 	workspaceRoute,
@@ -35,18 +40,14 @@ import {
 
 const nmaster = 1;
 
-/** What a widget set on its frame at runtime; it outranks the instance and definition. */
-interface Chrome {
-	readonly title?: string;
-	readonly icon?: LucideIcon;
-}
+/** The opener of what the shell itself opens (an `open` request in the URL), not a widget. */
+const SHELL = "shell";
 
 /** Frame title, icon, and body for one instance, resolved through the widget registry. */
 function describe(instance: Instance, chrome: Chrome | undefined) {
 	const definition = registry.get(instance.kind);
 	return {
-		title: chrome?.title ?? instance.title ?? definition?.title ?? instance.id,
-		icon: chrome?.icon ?? definition?.icon,
+		...chromeOf(instance, chrome),
 		body:
 			definition === undefined ? (
 				<p className="p-3 text-ink-muted">Missing widget: {instance.kind}</p>
@@ -63,24 +64,32 @@ function describe(instance: Instance, chrome: Chrome | undefined) {
 
 interface HostProps {
 	readonly instanceId: string;
+	/** The widget kind, "<package>:<name>"; its package scopes the widget's topics and kv. */
+	readonly kind: string;
 	readonly shell: Shell;
 	readonly decorate: (instanceId: string, chrome: Chrome) => void;
 	readonly children: ReactNode;
 }
 
-/** Gives a widget its shell and frame; the frame stays stable so widgets can use it in effects. */
-function Host({ instanceId, shell, decorate, children }: HostProps) {
+/** Gives a widget its shell, frame and host; these stay stable so widgets can use them in effects. */
+function Host({ instanceId, kind, shell, decorate, children }: HostProps) {
+	const atoms = useContext(RegistryContext);
+	const pkg = kind.split(":")[0] ?? kind;
+	const host = useMemo(() => makeHost({ registry: atoms, package: pkg, instanceId }), [atoms, pkg, instanceId]);
 	const frame = useMemo<FrameApi>(
 		() => ({
 			instanceId,
-			setTitle: (title) => decorate(instanceId, { title }),
+			setTitle: (title, lead) => decorate(instanceId, { title, lead }),
 			setIcon: (icon) => decorate(instanceId, { icon }),
+			setTab: (tab) => decorate(instanceId, { tab }),
 		}),
 		[instanceId, decorate],
 	);
 	return (
 		<ShellContext value={shell}>
-			<FrameContext value={frame}>{children}</FrameContext>
+			<FrameContext value={frame}>
+				<HostContext value={host}>{children}</HostContext>
+			</FrameContext>
 		</ShellContext>
 	);
 }
@@ -107,13 +116,23 @@ export function Desktop({ workspace }: DesktopProps) {
 	const workspaces = useWorkspaces();
 	const navigate = useNavigate();
 	const saveWorkspace = useAtomSet(updateWorkspace);
+	const removeWorkspace = useAtomSet(deleteWorkspace, { mode: "promise" });
+	const createWorkspace = useCreateWorkspace();
+	const { open: requested, mode: requestedMode } = useSearch({ strict: false });
+	const { workspaceId: routed } = useParams({ strict: false });
 	// Local edits ahead of the database, so dragging the divider never waits on a round trip.
 	const [views, setViews] = useState<ReadonlyMap<string, View>>(() => new Map());
-	const [chrome, setChrome] = useState<ReadonlyMap<string, Chrome>>(() => new Map());
-	const [pinned, setPinned] = useState<ReadonlySet<WidgetId>>(() => new Set());
+	const [chrome, setChrome] = useAtom(chromeAtom);
 	const [drag, setDrag] = useState<Drag | null>(null);
+	const flushDesk = useSaveDesk(drag !== null);
 	const [resizing, setResizing] = useState(false);
 	const [ref, size] = useElementSize<HTMLDivElement>();
+	// A window resize must not tween: frames would trail the window edge by the transition's length.
+	const lastSize = useRef(size);
+	const resized = lastSize.current !== size;
+	useEffect(() => {
+		lastSize.current = size;
+	}, [size]);
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const activeTags = workspaceTag(workspace);
 	const { instances, order } = desk;
@@ -143,6 +162,22 @@ export function Desktop({ workspace }: DesktopProps) {
 	const setMfact = (next: number) => setView({ mfact: next });
 	// Focus is the most recently focused widget that is visible on this workspace.
 	const focusedId = focus(widgets, order, activeTags).widget?.id;
+	const setFocused = useAtomSet(focusedAtom);
+	useEffect(() => {
+		if (focusedId === undefined) return;
+		setFocused((current) =>
+			current.get(workspace.id) === focusedId ? current : new Map(current).set(workspace.id, focusedId),
+		);
+	}, [workspace.id, focusedId, setFocused]);
+	// The focused frame takes the tab once it has one to show, which may be after it loads.
+	const focusedTab = focusedId === undefined ? undefined : chrome.get(focusedId)?.tab;
+	const setTabOwner = useAtomSet(tabOwnerAtom);
+	useEffect(() => {
+		if (focusedId === undefined || focusedTab === undefined) return;
+		setTabOwner((current) =>
+			current.get(workspace.id) === focusedId ? current : new Map(current).set(workspace.id, focusedId),
+		);
+	}, [workspace.id, focusedId, focusedTab, setTabOwner]);
 	const bounds: Bounds = { x: 0, y: 0, w: size.width, h: size.height };
 	const tiled = order.tileOrder.flatMap((id) =>
 		widgets.filter((widget) => widget.id === id && isVisible(widget, activeTags)),
@@ -156,6 +191,8 @@ export function Desktop({ workspace }: DesktopProps) {
 		...(focusedId === undefined ? {} : { focusedWidgetId: focusedId }),
 		nmaster,
 		mfact: effectiveMfact,
+		// A stack column too short for all its frames folds the least recently focused to their headers.
+		collapsedHeight: FRAME_HEADER_HEIGHT,
 	});
 
 	const targetAt = (clientX: number, clientY: number) => {
@@ -190,7 +227,9 @@ export function Desktop({ workspace }: DesktopProps) {
 			setChrome((current) => {
 				const previous = current.get(instanceId) ?? {};
 				const next = { ...previous, ...patch };
-				if (next.title === previous.title && next.icon === previous.icon) return current;
+				const sameTab = next.tab?.title === previous.tab?.title && next.tab?.subtitle === previous.tab?.subtitle;
+				if (next.title === previous.title && next.lead === previous.lead && next.icon === previous.icon && sameTab)
+					return current;
 				return new Map(current).set(instanceId, next);
 			}),
 		[],
@@ -205,12 +244,63 @@ export function Desktop({ workspace }: DesktopProps) {
 			return next;
 		});
 
+	// Applies `change`, which takes the frame off this workspace. An auto workspace exists to show what
+	// was opened into it, so it goes with its last frame, quietly: the app goes to `to` with the desk at
+	// `bridge` (the frame still on screen) and changes it only then, so nothing passes through an empty
+	// workspace. The desk is saved before the delete, which drops widgets the workspace alone held.
+	const leave = (
+		instanceId: string,
+		change: (desk: Desk) => Desk,
+		to: { readonly to: "/" } | ReturnType<typeof workspaceRoute>,
+		bridge: (desk: Desk) => Desk = (current) => current,
+	) => {
+		const leaver = byId.get(instanceId);
+		const emptied =
+			leaver !== undefined &&
+			(leaver.tags & activeTags) !== 0 &&
+			!instances.some((instance) => instance.id !== instanceId && (instance.tags & activeTags) !== 0);
+		if (!workspace.auto || !emptied) return setDesk(change);
+		setDesk(bridge);
+		void navigate(to)
+			.then(() => {
+				setDesk(change);
+				return flushDesk();
+			})
+			.then(() => removeWorkspace({ payload: { id: workspace.id }, reactivityKeys: workspacesKey }))
+			.catch(() => undefined);
+	};
+
 	const close = (instanceId: string) => {
-		setDesk((current) =>
-			current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current,
+		leave(
+			instanceId,
+			(current) => (current.instances.some(({ id }) => id === instanceId) ? remove(current, instanceId) : current),
+			{ to: "/" },
 		);
 		undecorate(instanceId);
 	};
+
+	// Moves a frame off this workspace onto another, focused there; this workspace stays on screen
+	// unless the frame was all it showed.
+	const move = (instanceId: string, destination: Workspace) => {
+		const tag = workspaceTag(destination);
+		const retag = (tags: number) => (current: Desk) => raise(update(current, instanceId, { tags }), instanceId);
+		setDrag(null);
+		leave(instanceId, retag(tag), workspaceRoute(destination), retag((byId.get(instanceId)?.tags ?? 0) | tag));
+	};
+
+	// A new workspace is auto, so it goes once the frame leaves it; it is named like the frame's tab would be.
+	const moveNew = async (instanceId: string) => {
+		const instance = byId.get(instanceId);
+		if (instance === undefined) return;
+		const name = chrome.get(instanceId)?.tab?.title ?? chromeOf(instance, chrome.get(instanceId)).title;
+		const created = await createWorkspace({ name, icon: "app-window", auto: true }).catch(() => undefined);
+		if (created !== undefined) move(instanceId, created);
+	};
+
+	// Numbered by switcher position (the Cmd+N key), so same-named workspaces still tell apart.
+	const destinations = workspaces.flatMap(({ id, name }, index) =>
+		id === workspace.id ? [] : [{ id, name, position: index + 1 }],
+	);
 
 	/** The shell API as seen by one widget: the default target, and the opener of what it opens. */
 	const shellFor = (caller: string): Shell => ({
@@ -220,7 +310,11 @@ export function Desktop({ workspace }: DesktopProps) {
 			const widget = resolve(builtins, address, kind);
 			if (widget === undefined) throw new Error(`No widget opens ${address}`);
 			if (mode === "replace") {
-				const existing = recent.find((instance) => instance.address === address && instance.kind === widget.kind);
+				// A one-per-desk widget is the same frame whatever address it was opened by.
+				const existing = recent.find(
+					(instance) =>
+						instance.kind === widget.kind && (widget.cardinality === "one" || instance.address === address),
+				);
 				if (existing !== undefined) {
 					if (params !== undefined) setDesk((current) => update(current, existing.id, { params }));
 					reveal(existing);
@@ -232,7 +326,7 @@ export function Desktop({ workspace }: DesktopProps) {
 								instance.openedBy === caller &&
 								instance.kind === widget.kind &&
 								(instance.tags & activeTags) !== 0 &&
-								!pinned.has(instance.id),
+								!instance.pinned,
 						)
 					: undefined;
 				if (target !== undefined) {
@@ -246,6 +340,7 @@ export function Desktop({ workspace }: DesktopProps) {
 				kind: widget.kind,
 				tags: activeTags,
 				props: {},
+				pinned: false,
 				address,
 				openedBy: caller,
 				...(params === undefined ? {} : { params }),
@@ -261,6 +356,21 @@ export function Desktop({ workspace }: DesktopProps) {
 		},
 	});
 
+	// Carries out an `open` request from the URL once, then drops it so Back and reloads don't repeat it.
+	// The ref outlives StrictMode's second run; it resets once the URL no longer asks.
+	const handled = useRef<string | undefined>(undefined);
+	useEffect(() => {
+		if (requested === undefined) {
+			handled.current = undefined;
+			return;
+		}
+		// A workspace just created may not be listed yet, and the shell shows another meanwhile.
+		if (handled.current === requested || routed !== workspace.id) return;
+		handled.current = requested;
+		shellFor(SHELL).open(requested, { placement: "end", mode: requestedMode ?? "replace" });
+		void navigate({ ...workspaceRoute(workspace), search: {}, replace: true });
+	});
+
 	const toggleMax = (widgetId: WidgetId) => {
 		setDrag(null);
 		if (layout === "monocle" && widgetId === focusedId) {
@@ -271,43 +381,58 @@ export function Desktop({ workspace }: DesktopProps) {
 		setLayout("monocle");
 	};
 
-	const togglePin = (widgetId: WidgetId) =>
-		setPinned((current) => {
-			const next = new Set(current);
-			if (!next.delete(widgetId)) next.add(widgetId);
-			return next;
-		});
+	const togglePin = (instance: Instance) =>
+		setDesk((current) => update(current, instance.id, { pinned: !instance.pinned }));
+
+	const mainClass = "box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]";
+	// The first measurement is 0×0; frames committed at it would tween from the origin into their slots.
+	if (size.width === 0 || size.height === 0) return <main className={mainClass} ref={ref} />;
 
 	// With each frame's p-1 inset, p-1 here gives even 8px gaps at edges and between frames.
 	// The scrollbar gutter is always reserved (on both edges, so gaps stay even): if a
 	// scrollbar could take width only when it shows, it would shrink the layout, the
 	// overflow would vanish with it, and the layout would jitter between both.
 	return (
-		<main className="box-border h-full overflow-auto p-1 [scrollbar-gutter:stable_both-edges]" ref={ref}>
+		<main className={mainClass} ref={ref}>
 			<div
 				ref={surfaceRef}
 				className="relative"
 				style={{ width: arrangement.contentBounds.w, height: arrangement.contentBounds.h }}
 			>
-				{arrangement.placements.map(({ widget, rect }) => {
+				{[
+					...arrangement.placements.map((placement) => ({ ...placement, hidden: false })),
+					// Overflowed frames stay mounted, hidden, so their widgets keep running and keep state.
+					...arrangement.overflow.flatMap(({ widgets: overflowed, rect }) =>
+						overflowed.map((widget) => ({ widget, rect, collapsed: true, hidden: true })),
+					),
+				].map(({ widget, rect, collapsed, hidden }) => {
 					const instance = byId.get(widget.id);
 					if (instance === undefined) return null;
-					const { title, icon, body } = describe(instance, chrome.get(widget.id));
+					const { title, lead, icon, body } = describe(instance, chrome.get(widget.id));
 					return (
 						<Frame
 							key={widget.id}
 							title={title}
+							lead={lead}
 							icon={icon}
 							rect={rect}
+							collapsed={collapsed === true}
+							hidden={hidden}
 							focused={widget.id === focusedId}
-							pinned={pinned.has(widget.id)}
+							pinned={instance.pinned}
 							maximized={layout === "monocle"}
-							canDrag={layout === "tile" && !pinned.has(widget.id)}
+							canDrag={layout === "tile" && !instance.pinned}
 							offset={drag?.widgetId === widget.id ? drag : null}
-							animate={!resizing}
+							animate={!resizing && !resized}
 							onFocus={() => focusWidget(widget.id)}
-							onPin={() => togglePin(widget.id)}
+							onPin={() => togglePin(instance)}
 							onMaximize={() => toggleMax(widget.id)}
+							destinations={destinations}
+							onMove={(workspaceId) => {
+								const destination = workspaces.find((candidate) => candidate.id === workspaceId);
+								if (destination !== undefined) move(widget.id, destination);
+							}}
+							onMoveNew={workspaces.length < MAX_WORKSPACES ? () => void moveNew(widget.id) : undefined}
 							onClose={() => close(widget.id)}
 							onDragStart={() => setDrag({ widgetId: widget.id, deltaX: 0, deltaY: 0, target: null })}
 							onDragMove={({ clientX, clientY, deltaX, deltaY }) =>
@@ -327,6 +452,7 @@ export function Desktop({ workspace }: DesktopProps) {
 							<Host
 								key={instance.address}
 								instanceId={widget.id}
+								kind={instance.kind}
 								shell={shellFor(widget.id)}
 								decorate={decorate}
 							>
@@ -335,6 +461,19 @@ export function Desktop({ workspace }: DesktopProps) {
 						</Frame>
 					);
 				})}
+				{arrangement.overflow.map(({ widgets: overflowed, rect }) => (
+					<Overflow
+						key={`${rect.x}`}
+						rect={rect}
+						hidden={overflowed.flatMap((widget) => {
+							const instance = byId.get(widget.id);
+							return instance === undefined
+								? []
+								: [{ id: widget.id, ...chromeOf(instance, chrome.get(widget.id)) }];
+						})}
+						onPick={focusWidget}
+					/>
+				))}
 				{drag?.target && (
 					<div
 						className="pointer-events-none absolute z-20 h-0.5 -translate-y-px rounded-full bg-ink/40"

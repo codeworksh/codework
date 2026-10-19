@@ -1,6 +1,7 @@
-import { app, BrowserWindow, net, protocol } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { HOME_CHANNEL, PICK_FOLDER_CHANNEL, REVEAL_CHANNEL } from "./ipc.ts";
 import { startServer } from "./server.ts";
 
 const SCHEME = app.isPackaged ? "codework" : "codework-dev";
@@ -8,9 +9,15 @@ const HOST = "app";
 const APP_URL = `${SCHEME}://${HOST}/`;
 
 // When set (web dev server), the scheme proxies to it; otherwise the bundled
-// `@codeworksh/web` build is served from disk.
+// `@codeworksh/web` build is served from disk: the app's Resources when packaged,
+// else the workspace beside this app.
 const DEV_SERVER_URL = process.env.CODEWORK_WEB_URL;
-const CLIENT_ASSETS_DIR = process.env.CODEWORK_WEB_DIR ?? path.resolve(app.getAppPath(), "../web/dist");
+const CLIENT_ASSETS_DIR =
+	process.env.CODEWORK_WEB_DIR ??
+	(app.isPackaged ? path.join(process.resourcesPath, "web") : path.resolve(app.getAppPath(), "../web/dist"));
+// The 3D brand mark on Apple's icon grid. A packaged build will carry it as an .icns; until then
+// it is set at runtime, or the Dock shows Electron's own icon.
+const ICON = path.join(app.getAppPath(), "resources/icon.png");
 
 const MIME_TYPES: Record<string, string> = {
 	".html": "text/html",
@@ -106,12 +113,17 @@ function createMainWindow(): BrowserWindow {
 	const window = new BrowserWindow({
 		width: 1440,
 		height: 900,
+		// Wider than the web app's 768px narrow breakpoint, so the sidebar always sits beside the content.
+		minWidth: 840,
+		minHeight: 620,
 		// The web shell draws its own title bar (workspace switcher) beside the
-		// inset traffic lights, which sit centered in its 44px height.
+		// inset traffic lights, which sit centered in its 48px height.
 		...(process.platform === "darwin" && {
 			titleBarStyle: "hiddenInset",
-			trafficLightPosition: { x: 14, y: 16 },
+			trafficLightPosition: { x: 14, y: 18 },
 		}),
+		// Windows and Linux take the window's icon; macOS ignores it for the Dock's.
+		icon: ICON,
 		webPreferences: {
 			preload: path.join(app.getAppPath(), "out/preload.cjs"),
 			sandbox: true,
@@ -122,7 +134,22 @@ function createMainWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(async () => {
+	app.dock?.setIcon(ICON);
 	protocol.handle(SCHEME, handleRequest);
+	ipcMain.on(HOME_CHANNEL, (event) => {
+		event.returnValue = app.getPath("home");
+	});
+	ipcMain.handle(PICK_FOLDER_CHANNEL, async (event, from: string) => {
+		const options: Electron.OpenDialogOptions = {
+			defaultPath: from,
+			properties: ["openDirectory", "createDirectory"],
+		};
+		// Attached to the window, so on macOS it drops down as a sheet.
+		const window = BrowserWindow.fromWebContents(event.sender);
+		const result = await (window === null ? dialog.showOpenDialog(options) : dialog.showOpenDialog(window, options));
+		return result.canceled ? null : (result.filePaths[0] ?? null);
+	});
+	ipcMain.handle(REVEAL_CHANNEL, (_event, file: string) => shell.showItemInFolder(file));
 	await startServer();
 	createMainWindow();
 
@@ -134,3 +161,7 @@ void app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
 	if (process.platform !== "darwin") app.quit();
 });
+
+// A signal (the dev runner restarting, a terminal's Ctrl+C) quits as the app does, so the app server
+// is stopped too; left to the default, Electron would exit at once and leave it running.
+for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => app.quit());
