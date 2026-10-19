@@ -61,10 +61,7 @@ pub fn render(text: &str, max_width: usize, palette: &Palette) -> Vec<Line<'stat
 
                 lines.push(Line::from(vec![
                     Span::styled("│ ", border_style.bg(code_bg)),
-                    Span::styled(
-                        display_code,
-                        Style::default().fg(palette.text).bg(code_bg),
-                    ),
+                    Span::styled(display_code, Style::default().fg(palette.text).bg(code_bg)),
                     Span::styled(" ".repeat(pad), Style::default().bg(code_bg)),
                     Span::styled(" │", border_style.bg(code_bg)),
                 ]));

@@ -16,7 +16,8 @@ use crate::rpc::protocol::{
     SessionHistoryResponse, SessionIdPayload,
 };
 use crate::types::{
-    HistoryEntry, ModelList, ServerInfo, ServiceRegistration, SessionInfo, UsageReport,
+    HistoryEntry, ModelList, ModelRef, PromptDelivery, ServerInfo, ServiceRegistration,
+    SessionInfo, UsageReport,
 };
 
 pub const DEFAULT_SERVER_URL: &str = "ws://127.0.0.1:7433/rpc/v1";
@@ -40,10 +41,7 @@ pub fn codework_home_dir() -> Option<PathBuf> {
     )
 }
 
-pub fn resolve_codework_home(
-    env_home: Option<&str>,
-    user_home: Option<&Path>,
-) -> Option<PathBuf> {
+pub fn resolve_codework_home(env_home: Option<&str>, user_home: Option<&Path>) -> Option<PathBuf> {
     if let Some(raw) = env_home.map(str::trim).filter(|s| !s.is_empty()) {
         if raw == "~" {
             return user_home.map(Path::to_path_buf);
@@ -141,14 +139,95 @@ pub fn verify_registration(
 #[derive(Debug, Clone, PartialEq)]
 pub enum StreamEvent {
     SessionCreated(SessionInfo),
-    TextDelta(String),
-    ThinkingDelta(String),
+    PromptAdmitted {
+        message_id: String,
+        prompt: String,
+        delivery: PromptDelivery,
+    },
+    PromptPromoted {
+        message_id: String,
+        prompt: String,
+        delivery: PromptDelivery,
+    },
+    ConfigChanged {
+        model: Option<ModelRef>,
+        thinking_level: Option<String>,
+    },
+    SessionForked {
+        session_id: String,
+        source_session_id: String,
+        source_entry_id: String,
+        base_seq: u64,
+    },
+    TurnStarted,
+    TurnEnded {
+        message_id: String,
+    },
+    TurnAborted {
+        reason: String,
+        message: Option<String>,
+    },
+    RetryScheduled {
+        attempt: u64,
+        max_retries: u64,
+        delay_ms: u64,
+        message: String,
+    },
+    RetryFinished {
+        attempt: u64,
+        success: bool,
+        message: Option<String>,
+    },
+    LlmStarted {
+        message_id: String,
+        model: Option<String>,
+    },
+    LlmFailed {
+        message_id: String,
+        reason: String,
+        error: Option<String>,
+    },
+    TextStart {
+        message_id: String,
+        part_index: usize,
+    },
+    TextDelta {
+        message_id: Option<String>,
+        part_index: Option<usize>,
+        delta: String,
+    },
+    TextEnd {
+        message_id: String,
+        part_index: usize,
+        content: String,
+    },
+    ThinkingStart {
+        message_id: String,
+        part_index: usize,
+    },
+    ThinkingDelta {
+        message_id: Option<String>,
+        part_index: Option<usize>,
+        delta: String,
+    },
+    ThinkingEnd {
+        message_id: String,
+        part_index: usize,
+        content: String,
+    },
     ToolStarted {
         call_id: String,
         name: String,
         label: Option<String>,
         /// The tool call's raw arguments — the command, path, or query.
         arguments: Value,
+    },
+    ToolProgress {
+        call_id: String,
+        /// Partial text output reported while the tool is still running.
+        output: Option<String>,
+        /// Optional structured progress details reported by the tool.
+        details: Option<Value>,
     },
     ToolSettled {
         call_id: String,
@@ -165,6 +244,7 @@ pub enum StreamEvent {
     /// A plugin or runtime warning surfaced during the turn (as ACP's `Feed.notice` does).
     Notice(String),
     Usage(UsageReport),
+    ExecutionStarted,
     Succeeded,
     Failed(String),
     Interrupted(String),
@@ -441,6 +521,28 @@ impl RpcClient {
         Ok((count, failure))
     }
 
+    /// Admit a prompt into a running session (`session.prompt`) with the chosen delivery mode
+    /// (`steer` or `followUp`) and correlation `message_id`.
+    pub async fn send_prompt(
+        &self,
+        session_id: &str,
+        text: &str,
+        delivery: PromptDelivery,
+        message_id: &str,
+    ) -> Result<(), String> {
+        self.call(
+            "session.prompt",
+            PromptSessionPayload {
+                session_id: session_id.to_string(),
+                text: text.to_string(),
+                delivery: delivery.as_str(),
+                id: message_id.to_string(),
+            },
+        )
+        .await
+        .map(|_| ())
+    }
+
     /// Stream one prompt, reconnecting the socket when the transport drops.
     ///
     /// The session lives on the server, not this socket, so a dropped connection
@@ -448,6 +550,7 @@ impl RpcClient {
     /// it terminates or the server has been gone longer than the grace period.
     /// Every drop is announced as `Disconnected` so the UI can show reconnecting,
     /// and the first event after a retry as `Reconnected` so it can clear it.
+    #[allow(dead_code)]
     pub async fn prompt_session(
         &self,
         session_id: String,
@@ -461,6 +564,65 @@ impl RpcClient {
         // One stable id regardless of retries, so a prompt re-admitted on a new
         // connection is recognized as the same message rather than a duplicate.
         let prompt_message_id = format!("msg_{}_{}", millis, self.next_request_id());
+        self.prompt_session_with(
+            session_id,
+            prompt_text,
+            PromptDelivery::FollowUp,
+            prompt_message_id,
+            event_tx,
+        )
+        .await
+    }
+
+    pub async fn prompt_session_with(
+        &self,
+        session_id: String,
+        prompt_text: String,
+        delivery: PromptDelivery,
+        prompt_message_id: String,
+        event_tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<(), String> {
+        self.stream_prompt(
+            session_id,
+            prompt_text,
+            delivery,
+            prompt_message_id,
+            event_tx,
+            false,
+        )
+        .await
+    }
+
+    /// Keep observing the session across busy periods, until the caller cancels the task.
+    pub async fn watch_session_with(
+        &self,
+        session_id: String,
+        prompt_text: String,
+        delivery: PromptDelivery,
+        prompt_message_id: String,
+        event_tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<(), String> {
+        self.stream_prompt(
+            session_id,
+            prompt_text,
+            delivery,
+            prompt_message_id,
+            event_tx,
+            true,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn stream_prompt(
+        &self,
+        session_id: String,
+        prompt_text: String,
+        delivery: PromptDelivery,
+        prompt_message_id: String,
+        event_tx: mpsc::UnboundedSender<StreamEvent>,
+        keep_alive: bool,
+    ) -> Result<(), String> {
         let mut prompt_dispatched = false;
         let mut attempt = 0u32;
 
@@ -469,9 +631,11 @@ impl RpcClient {
                 .stream_session_once(
                     &session_id,
                     &prompt_text,
+                    delivery,
                     &prompt_message_id,
                     &mut prompt_dispatched,
                     attempt > 0,
+                    keep_alive,
                     &event_tx,
                 )
                 .await
@@ -507,13 +671,16 @@ impl RpcClient {
 
     /// One connection's worth of a prompt. `Ok(true)` means the turn ended;
     /// `Ok(false)` means the socket dropped and the caller should retry.
+    #[allow(clippy::too_many_arguments)]
     async fn stream_session_once(
         &self,
         session_id: &str,
         prompt_text: &str,
+        delivery: PromptDelivery,
         prompt_message_id: &str,
         prompt_dispatched: &mut bool,
         is_retry: bool,
+        keep_alive: bool,
         event_tx: &mpsc::UnboundedSender<StreamEvent>,
     ) -> Result<bool, String> {
         let (ws_stream, _) = match connect_async(&self.url).await {
@@ -569,6 +736,10 @@ impl RpcClient {
                             }
 
                             for env in values {
+                                if env.event_type == "server.connected" && reconnected {
+                                    reconnected = false;
+                                    let _ = event_tx.send(StreamEvent::Reconnected);
+                                }
                                 // On server.connected, dispatch prompt if not yet dispatched
                                 if env.event_type == "server.connected" && !*prompt_dispatched {
                                     *prompt_dispatched = true;
@@ -580,7 +751,7 @@ impl RpcClient {
                                         PromptSessionPayload {
                                             session_id: session_id.to_string(),
                                             text: prompt_text.to_string(),
-                                            delivery: "followUp",
+                                            delivery: delivery.as_str(),
                                             id: prompt_message_id.to_string(),
                                         },
                                     );
@@ -619,9 +790,14 @@ impl RpcClient {
                                     continue;
                                 }
 
-                                // Verify sessionId matches
+                                // Verify sessionId matches (or sourceSessionId for fork notices)
                                 let s_id = data.get("sessionId").and_then(|v| v.as_str());
-                                if s_id != Some(session_id) {
+                                let source_id =
+                                    data.get("sourceSessionId").and_then(|v| v.as_str());
+                                let matches_session = s_id == Some(session_id)
+                                    || (env.event_type == "session.next.forked"
+                                        && source_id == Some(session_id));
+                                if !matches_session {
                                     continue;
                                 }
 
@@ -632,91 +808,19 @@ impl RpcClient {
                                     let _ = event_tx.send(StreamEvent::Reconnected);
                                 }
 
-                                match env.event_type.as_str() {
-                                    "session.llm.text.delta" | "session.llm.text-delta" => {
-                                        if let Some(delta) =
-                                            data.get("delta").and_then(|v| v.as_str())
-                                        {
-                                            let _ = event_tx
-                                                .send(StreamEvent::TextDelta(delta.to_string()));
-                                        }
-                                    }
-                                    "session.llm.thinking.delta" | "session.llm.thinking-delta" => {
-                                        if let Some(delta) =
-                                            data.get("delta").and_then(|v| v.as_str())
-                                        {
-                                            let _ = event_tx.send(StreamEvent::ThinkingDelta(
-                                                delta.to_string(),
-                                            ));
-                                        }
-                                    }
-                                    "session.tool.started" => {
-                                        let _ = event_tx.send(started_event(data));
-                                    }
-                                    "session.tool.settled" => {
-                                        let _ = event_tx.send(settled_event(data));
-                                    }
-                                    "session.llm.ended" => {
-                                        if let Some(msg) = data.get("message") {
-                                            if let Some(usage) = msg.get("usage") {
-                                                let total_tokens = usage
-                                                    .get("totalTokens")
-                                                    .and_then(|v| v.as_u64())
-                                                    .unwrap_or(0);
-                                                let input_tokens = usage
-                                                    .get("input")
-                                                    .and_then(|v| v.as_u64())
-                                                    .unwrap_or(0);
-                                                let output_tokens = usage
-                                                    .get("output")
-                                                    .and_then(|v| v.as_u64())
-                                                    .unwrap_or(0);
-                                                let cost = usage
-                                                    .get("cost")
-                                                    .and_then(|c| c.get("total"))
-                                                    .and_then(|v| v.as_f64())
-                                                    .unwrap_or(0.0);
-                                                let model = msg
-                                                    .get("responseModel")
-                                                    .or_else(|| msg.get("model"))
-                                                    .and_then(|v| v.as_str())
-                                                    .map(|s| s.to_string());
-
-                                                let _ = event_tx.send(StreamEvent::Usage(
-                                                    UsageReport {
-                                                        total_tokens,
-                                                        input_tokens,
-                                                        output_tokens,
-                                                        cost,
-                                                        model,
-                                                    },
-                                                ));
-                                            }
-                                        }
-                                    }
-                                    "session.execution.succeeded" => {
-                                        let _ = event_tx.send(StreamEvent::Succeeded);
+                                if let Some(stream_event) =
+                                    decode_session_event(env.event_type.as_str(), data)
+                                {
+                                    let is_terminal = matches!(
+                                        stream_event,
+                                        StreamEvent::Succeeded
+                                            | StreamEvent::Failed(_)
+                                            | StreamEvent::Interrupted(_)
+                                    );
+                                    let _ = event_tx.send(stream_event);
+                                    if is_terminal && !keep_alive {
                                         return Ok(true);
                                     }
-                                    "session.execution.failed" => {
-                                        let err_msg = data
-                                            .get("error")
-                                            .map(|e| format_cause(Some(e)))
-                                            .filter(|msg| !msg.is_empty() && msg != "RPC request failed")
-                                            .unwrap_or_else(|| "Execution failed".to_string());
-                                        let _ = event_tx.send(StreamEvent::Failed(err_msg));
-                                        return Ok(true);
-                                    }
-                                    "session.execution.interrupted" => {
-                                        let reason = data
-                                            .get("reason")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("Interrupted");
-                                        let _ = event_tx
-                                            .send(StreamEvent::Interrupted(reason.to_string()));
-                                        return Ok(true);
-                                    }
-                                    _ => {}
                                 }
                             }
                         }
@@ -869,9 +973,9 @@ fn format_tagged_error(tag: &str, err: &Value) -> String {
                 Some("project_scope_mismatch") => format!(
                     "Cannot relink session {session}: space {space} belongs to a different project"
                 ),
-                Some("directory_outside_space") => format!(
-                    "Cannot relink session {session}: directory is outside space {space}"
-                ),
+                Some("directory_outside_space") => {
+                    format!("Cannot relink session {session}: directory is outside space {space}")
+                }
                 Some(reason) => {
                     format!("Cannot relink session {session} to space {space}: {reason}")
                 }
@@ -1036,14 +1140,16 @@ fn format_tagged_error(tag: &str, err: &Value) -> String {
                 _ => "Model catalog error".to_string(),
             }
         }
-        "Runner.ModelNotFoundError" => match (str_field(err, "provider"), str_field(err, "model")) {
-            (Some(provider), Some(model)) => {
-                format!("Model \"{provider}/{model}\" not found in catalog")
+        "Runner.ModelNotFoundError" => {
+            match (str_field(err, "provider"), str_field(err, "model")) {
+                (Some(provider), Some(model)) => {
+                    format!("Model \"{provider}/{model}\" not found in catalog")
+                }
+                _ => str_field(err, "message")
+                    .unwrap_or("Model not found in catalog")
+                    .to_string(),
             }
-            _ => str_field(err, "message")
-                .unwrap_or("Model not found in catalog")
-                .to_string(),
-        },
+        }
         "Runner.ProviderError" => {
             let provider = str_field(err, "provider");
             let model = str_field(err, "model");
@@ -1102,6 +1208,362 @@ fn format_tagged_error(tag: &str, err: &Value) -> String {
     }
 }
 
+/// Decode one session-scoped `EventEnvelope` payload into a `StreamEvent`.
+pub fn decode_session_event(event_type: &str, data: &Value) -> Option<StreamEvent> {
+    match event_type {
+        "session.prompt.admitted" => Some(prompt_event(data, false)),
+        "session.prompt.promoted" => Some(prompt_event(data, true)),
+        "session.config.changed" => Some(config_changed_event(data)),
+        "session.next.forked" => Some(session_forked_event(data)),
+        "session.turn.started" => Some(StreamEvent::TurnStarted),
+        "session.turn.ended" => Some(turn_ended_event(data)),
+        "session.turn.aborted" => Some(turn_aborted_event(data)),
+        "session.retry.scheduled" => Some(retry_scheduled_event(data)),
+        "session.retry.finished" => Some(retry_finished_event(data)),
+        "session.llm.started" => Some(llm_started_event(data)),
+        "session.llm.failed" => Some(llm_failed_event(data)),
+        "session.llm.text.start" | "session.llm.text-start" => Some(text_start_event(data)),
+        "session.llm.text.delta" | "session.llm.text-delta" => text_delta_event(data),
+        "session.llm.text.end" | "session.llm.text-end" => Some(text_end_event(data)),
+        "session.llm.thinking.start" | "session.llm.thinking-start" => {
+            Some(thinking_start_event(data))
+        }
+        "session.llm.thinking.delta" | "session.llm.thinking-delta" => thinking_delta_event(data),
+        "session.llm.thinking.end" | "session.llm.thinking-end" => Some(thinking_end_event(data)),
+        "session.tool.started" => Some(started_event(data)),
+        "session.tool.progress" => Some(progress_event(data)),
+        "session.tool.settled" => Some(settled_event(data)),
+        "session.llm.ended" => llm_ended_usage_event(data),
+        "session.execution.started" => Some(StreamEvent::ExecutionStarted),
+        "session.execution.succeeded" => Some(StreamEvent::Succeeded),
+        "session.execution.failed" => {
+            let err_msg = data
+                .get("error")
+                .map(|e| format_cause(Some(e)))
+                .filter(|msg| !msg.is_empty() && msg != "RPC request failed")
+                .unwrap_or_else(|| "Execution failed".to_string());
+            Some(StreamEvent::Failed(err_msg))
+        }
+        "session.execution.interrupted" => {
+            let reason = data
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Interrupted");
+            Some(StreamEvent::Interrupted(reason.to_string()))
+        }
+        _ => None,
+    }
+}
+
+fn prompt_event(data: &Value, promoted: bool) -> StreamEvent {
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let delivery = match data.get("delivery").and_then(Value::as_str) {
+        Some("followUp") => PromptDelivery::FollowUp,
+        _ => PromptDelivery::Steer,
+    };
+    let prompt = data
+        .get("prompt")
+        .and_then(|p| {
+            if let Some(s) = p.as_str() {
+                return Some(s.to_string());
+            }
+            p.get("parts").and_then(Value::as_array).map(|parts| {
+                parts
+                    .iter()
+                    .filter_map(|part| {
+                        if part.get("type").and_then(Value::as_str) == Some("text") {
+                            part.get("text").and_then(Value::as_str)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n")
+            })
+        })
+        .or_else(|| data.get("text").and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_default();
+
+    if promoted {
+        StreamEvent::PromptPromoted {
+            message_id,
+            prompt,
+            delivery,
+        }
+    } else {
+        StreamEvent::PromptAdmitted {
+            message_id,
+            prompt,
+            delivery,
+        }
+    }
+}
+
+fn config_changed_event(data: &Value) -> StreamEvent {
+    let model = data
+        .get("model")
+        .and_then(|m| serde_json::from_value::<ModelRef>(m.clone()).ok());
+    let thinking_level = data
+        .get("thinkingLevel")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    StreamEvent::ConfigChanged {
+        model,
+        thinking_level,
+    }
+}
+
+fn session_forked_event(data: &Value) -> StreamEvent {
+    let session_id = data
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let source_session_id = data
+        .get("sourceSessionId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let source_entry_id = data
+        .get("sourceEntryId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let base_seq = data.get("baseSeq").and_then(Value::as_u64).unwrap_or(0);
+    StreamEvent::SessionForked {
+        session_id,
+        source_session_id,
+        source_entry_id,
+        base_seq,
+    }
+}
+
+fn turn_ended_event(data: &Value) -> StreamEvent {
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    StreamEvent::TurnEnded { message_id }
+}
+
+fn turn_aborted_event(data: &Value) -> StreamEvent {
+    let cause = data.get("cause");
+    let reason = cause
+        .and_then(|c| c.get("_tag").and_then(Value::as_str).or_else(|| c.as_str()))
+        .unwrap_or("aborted")
+        .to_string();
+    let message = cause
+        .and_then(|c| c.get("message"))
+        .and_then(Value::as_str)
+        .or_else(|| data.get("message").and_then(Value::as_str))
+        .map(str::to_string);
+    StreamEvent::TurnAborted { reason, message }
+}
+
+fn retry_scheduled_event(data: &Value) -> StreamEvent {
+    let attempt = data.get("attempt").and_then(Value::as_u64).unwrap_or(1);
+    let max_retries = data.get("maxRetries").and_then(Value::as_u64).unwrap_or(0);
+    let delay_ms = data.get("delayMs").and_then(Value::as_u64).unwrap_or(0);
+    let message = data
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    StreamEvent::RetryScheduled {
+        attempt,
+        max_retries,
+        delay_ms,
+        message,
+    }
+}
+
+fn retry_finished_event(data: &Value) -> StreamEvent {
+    let attempt = data.get("attempt").and_then(Value::as_u64).unwrap_or(1);
+    let success = data
+        .get("success")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let message = data
+        .get("message")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    StreamEvent::RetryFinished {
+        attempt,
+        success,
+        message,
+    }
+}
+
+fn llm_started_event(data: &Value) -> StreamEvent {
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let model = data
+        .get("message")
+        .and_then(|m| m.get("responseModel").or_else(|| m.get("model")))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    StreamEvent::LlmStarted { message_id, model }
+}
+
+fn llm_failed_event(data: &Value) -> StreamEvent {
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let reason = data
+        .get("reason")
+        .and_then(Value::as_str)
+        .unwrap_or("error")
+        .to_string();
+    let error = data
+        .get("message")
+        .and_then(|m| m.get("errorMessage").or_else(|| m.get("message")))
+        .and_then(Value::as_str)
+        .or_else(|| data.get("error").and_then(Value::as_str))
+        .map(str::to_string);
+    StreamEvent::LlmFailed {
+        message_id,
+        reason,
+        error,
+    }
+}
+
+fn text_start_event(data: &Value) -> StreamEvent {
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let part_index = data.get("partIndex").and_then(Value::as_u64).unwrap_or(0) as usize;
+    StreamEvent::TextStart {
+        message_id,
+        part_index,
+    }
+}
+
+fn text_delta_event(data: &Value) -> Option<StreamEvent> {
+    let delta = data.get("delta").and_then(Value::as_str)?.to_string();
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let part_index = data
+        .get("partIndex")
+        .and_then(Value::as_u64)
+        .map(|i| i as usize);
+    Some(StreamEvent::TextDelta {
+        message_id,
+        part_index,
+        delta,
+    })
+}
+
+fn text_end_event(data: &Value) -> StreamEvent {
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let part_index = data.get("partIndex").and_then(Value::as_u64).unwrap_or(0) as usize;
+    let content = data
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    StreamEvent::TextEnd {
+        message_id,
+        part_index,
+        content,
+    }
+}
+
+fn thinking_start_event(data: &Value) -> StreamEvent {
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let part_index = data.get("partIndex").and_then(Value::as_u64).unwrap_or(0) as usize;
+    StreamEvent::ThinkingStart {
+        message_id,
+        part_index,
+    }
+}
+
+fn thinking_delta_event(data: &Value) -> Option<StreamEvent> {
+    let delta = data.get("delta").and_then(Value::as_str)?.to_string();
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let part_index = data
+        .get("partIndex")
+        .and_then(Value::as_u64)
+        .map(|i| i as usize);
+    Some(StreamEvent::ThinkingDelta {
+        message_id,
+        part_index,
+        delta,
+    })
+}
+
+fn thinking_end_event(data: &Value) -> StreamEvent {
+    let message_id = data
+        .get("messageId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let part_index = data.get("partIndex").and_then(Value::as_u64).unwrap_or(0) as usize;
+    let content = data
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    StreamEvent::ThinkingEnd {
+        message_id,
+        part_index,
+        content,
+    }
+}
+
+fn llm_ended_usage_event(data: &Value) -> Option<StreamEvent> {
+    let msg = data.get("message")?;
+    let usage = msg.get("usage")?;
+    let total_tokens = usage
+        .get("totalTokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let input_tokens = usage.get("input").and_then(|v| v.as_u64()).unwrap_or(0);
+    let output_tokens = usage.get("output").and_then(|v| v.as_u64()).unwrap_or(0);
+    let cost = usage
+        .get("cost")
+        .and_then(|c| c.get("total"))
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let model = msg
+        .get("responseModel")
+        .or_else(|| msg.get("model"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    Some(StreamEvent::Usage(UsageReport {
+        total_tokens,
+        input_tokens,
+        output_tokens,
+        cost,
+        model,
+    }))
+}
+
 /// Reads a `session.tool.started` payload. Every field is best-effort: a missing
 /// or malformed one yields a plain `tool` line rather than an error.
 fn started_event(data: &Value) -> StreamEvent {
@@ -1125,6 +1587,44 @@ fn started_event(data: &Value) -> StreamEvent {
         name,
         label,
         arguments,
+    }
+}
+
+/// Reads a `session.tool.progress` payload (`{ callID, partial: { content, details } }`).
+fn progress_event(data: &Value) -> StreamEvent {
+    let call_id = data
+        .get("callID")
+        .and_then(|v| v.as_str())
+        .unwrap_or("tool")
+        .to_string();
+    let partial = data.get("partial");
+    let output = partial
+        .and_then(|p| {
+            if let Some(s) = p.as_str() {
+                return Some(s.to_string());
+            }
+            if let Some(blocks) = p.get("content").and_then(Value::as_array) {
+                let text = blocks
+                    .iter()
+                    .filter_map(|block| {
+                        if block.get("type").and_then(Value::as_str) == Some("text") {
+                            block.get("text").and_then(Value::as_str)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                return Some(text);
+            }
+            p.get("output").and_then(Value::as_str).map(str::to_string)
+        })
+        .filter(|text| !text.is_empty());
+    let details = partial.and_then(|p| p.get("details")).cloned();
+    StreamEvent::ToolProgress {
+        call_id,
+        output,
+        details,
     }
 }
 
@@ -2002,13 +2502,615 @@ mod tests {
             "Failed to encode event \"session.llm.ended\": invalid date"
         );
         assert_eq!(
-            format_cause(Some(&json!([{ "_tag": "Die", "defect": "unexpected panic" }]))),
+            format_cause(Some(
+                &json!([{ "_tag": "Die", "defect": "unexpected panic" }])
+            )),
             "unexpected panic"
         );
         assert_eq!(
             format_cause(Some(&json!([{ "_tag": "Interrupt", "fiberId": 7 }]))),
             "RPC request interrupted"
         );
+    }
+
+    #[test]
+    fn decodes_prompt_admitted_and_promoted_events_with_delivery_and_parts() {
+        let admitted = decode_session_event(
+            "session.prompt.admitted",
+            &json!({
+                "sessionId": "ses_1",
+                "timestamp": 1_700_000_000_000u64,
+                "messageId": "msg_steer_1",
+                "delivery": "steer",
+                "prompt": {
+                    "parts": [
+                        { "type": "text", "text": "Keep public API intact" },
+                        { "type": "image", "data": "AAAA", "mimeType": "image/png" },
+                        { "type": "text", "text": "Also add tests" }
+                    ]
+                }
+            }),
+        );
+        assert_eq!(
+            admitted,
+            Some(StreamEvent::PromptAdmitted {
+                message_id: "msg_steer_1".to_string(),
+                prompt: "Keep public API intact\n\nAlso add tests".to_string(),
+                delivery: PromptDelivery::Steer,
+            })
+        );
+
+        let promoted = decode_session_event(
+            "session.prompt.promoted",
+            &json!({
+                "sessionId": "ses_1",
+                "timestamp": 1_700_000_000_100u64,
+                "messageId": "msg_follow_1",
+                "delivery": "followUp",
+                "prompt": {
+                    "parts": [
+                        { "type": "text", "text": "Run cargo check next" }
+                    ]
+                }
+            }),
+        );
+        assert_eq!(
+            promoted,
+            Some(StreamEvent::PromptPromoted {
+                message_id: "msg_follow_1".to_string(),
+                prompt: "Run cargo check next".to_string(),
+                delivery: PromptDelivery::FollowUp,
+            })
+        );
+    }
+
+    #[test]
+    fn decodes_retry_tool_progress_config_fork_turn_and_llm_part_events() {
+        assert_eq!(
+            decode_session_event(
+                "session.retry.scheduled",
+                &json!({
+                    "sessionId": "ses_1",
+                    "attempt": 2,
+                    "maxRetries": 3,
+                    "delayMs": 2000,
+                    "message": "openai/gpt-5.6-luna: rate limit exceeded"
+                })
+            ),
+            Some(StreamEvent::RetryScheduled {
+                attempt: 2,
+                max_retries: 3,
+                delay_ms: 2000,
+                message: "openai/gpt-5.6-luna: rate limit exceeded".to_string(),
+            })
+        );
+
+        assert_eq!(
+            decode_session_event(
+                "session.retry.finished",
+                &json!({
+                    "sessionId": "ses_1",
+                    "attempt": 2,
+                    "success": true
+                })
+            ),
+            Some(StreamEvent::RetryFinished {
+                attempt: 2,
+                success: true,
+                message: None,
+            })
+        );
+
+        assert_eq!(
+            decode_session_event(
+                "session.tool.progress",
+                &json!({
+                    "sessionId": "ses_1",
+                    "messageId": "msg_a1",
+                    "callID": "call_bash_1",
+                    "partial": {
+                        "content": [
+                            { "type": "text", "text": "Compiling crate v0.1.0\nRunning tests..." }
+                        ],
+                        "details": { "lines": 2 }
+                    }
+                })
+            ),
+            Some(StreamEvent::ToolProgress {
+                call_id: "call_bash_1".to_string(),
+                output: Some("Compiling crate v0.1.0\nRunning tests...".to_string()),
+                details: Some(json!({ "lines": 2 })),
+            })
+        );
+
+        assert_eq!(
+            decode_session_event(
+                "session.config.changed",
+                &json!({
+                    "sessionId": "ses_1",
+                    "model": { "provider": "anthropic", "id": "claude-sonnet-4-5" },
+                    "thinkingLevel": "high"
+                })
+            ),
+            Some(StreamEvent::ConfigChanged {
+                model: Some(ModelRef {
+                    provider: "anthropic".to_string(),
+                    id: "claude-sonnet-4-5".to_string(),
+                }),
+                thinking_level: Some("high".to_string()),
+            })
+        );
+
+        assert_eq!(
+            decode_session_event(
+                "session.next.forked",
+                &json!({
+                    "sessionId": "ses_fork_2",
+                    "sourceSessionId": "ses_1",
+                    "sourceEntryId": "entry_7",
+                    "baseSeq": 14
+                })
+            ),
+            Some(StreamEvent::SessionForked {
+                session_id: "ses_fork_2".to_string(),
+                source_session_id: "ses_1".to_string(),
+                source_entry_id: "entry_7".to_string(),
+                base_seq: 14,
+            })
+        );
+
+        assert_eq!(
+            decode_session_event("session.turn.started", &json!({ "sessionId": "ses_1" })),
+            Some(StreamEvent::TurnStarted)
+        );
+        assert_eq!(
+            decode_session_event(
+                "session.turn.ended",
+                &json!({ "sessionId": "ses_1", "messageId": "msg_a1" })
+            ),
+            Some(StreamEvent::TurnEnded {
+                message_id: "msg_a1".to_string(),
+            })
+        );
+        assert_eq!(
+            decode_session_event(
+                "session.turn.aborted",
+                &json!({
+                    "sessionId": "ses_1",
+                    "cause": { "_tag": "error", "message": "provider stream dropped" }
+                })
+            ),
+            Some(StreamEvent::TurnAborted {
+                reason: "error".to_string(),
+                message: Some("provider stream dropped".to_string()),
+            })
+        );
+
+        assert_eq!(
+            decode_session_event(
+                "session.llm.started",
+                &json!({
+                    "sessionId": "ses_1",
+                    "messageId": "msg_a1",
+                    "message": { "model": "claude-sonnet-4-5" }
+                })
+            ),
+            Some(StreamEvent::LlmStarted {
+                message_id: "msg_a1".to_string(),
+                model: Some("claude-sonnet-4-5".to_string()),
+            })
+        );
+        assert_eq!(
+            decode_session_event(
+                "session.llm.failed",
+                &json!({
+                    "sessionId": "ses_1",
+                    "messageId": "msg_a1",
+                    "reason": "error",
+                    "message": { "errorMessage": "503 Service Unavailable" }
+                })
+            ),
+            Some(StreamEvent::LlmFailed {
+                message_id: "msg_a1".to_string(),
+                reason: "error".to_string(),
+                error: Some("503 Service Unavailable".to_string()),
+            })
+        );
+
+        assert_eq!(
+            decode_session_event(
+                "session.llm.text.start",
+                &json!({ "sessionId": "ses_1", "messageId": "msg_a1", "partIndex": 1 })
+            ),
+            Some(StreamEvent::TextStart {
+                message_id: "msg_a1".to_string(),
+                part_index: 1,
+            })
+        );
+        assert_eq!(
+            decode_session_event(
+                "session.llm.text.delta",
+                &json!({
+                    "sessionId": "ses_1",
+                    "messageId": "msg_a1",
+                    "partIndex": 1,
+                    "delta": "Hello"
+                })
+            ),
+            Some(StreamEvent::TextDelta {
+                message_id: Some("msg_a1".to_string()),
+                part_index: Some(1),
+                delta: "Hello".to_string(),
+            })
+        );
+        assert_eq!(
+            decode_session_event(
+                "session.llm.text.end",
+                &json!({
+                    "sessionId": "ses_1",
+                    "messageId": "msg_a1",
+                    "partIndex": 1,
+                    "content": "Hello world"
+                })
+            ),
+            Some(StreamEvent::TextEnd {
+                message_id: "msg_a1".to_string(),
+                part_index: 1,
+                content: "Hello world".to_string(),
+            })
+        );
+
+        assert_eq!(
+            decode_session_event(
+                "session.llm.thinking.start",
+                &json!({ "sessionId": "ses_1", "messageId": "msg_a1", "partIndex": 0 })
+            ),
+            Some(StreamEvent::ThinkingStart {
+                message_id: "msg_a1".to_string(),
+                part_index: 0,
+            })
+        );
+        assert_eq!(
+            decode_session_event(
+                "session.llm.thinking.delta",
+                &json!({
+                    "sessionId": "ses_1",
+                    "messageId": "msg_a1",
+                    "partIndex": 0,
+                    "delta": "Reasoning..."
+                })
+            ),
+            Some(StreamEvent::ThinkingDelta {
+                message_id: Some("msg_a1".to_string()),
+                part_index: Some(0),
+                delta: "Reasoning...".to_string(),
+            })
+        );
+        assert_eq!(
+            decode_session_event(
+                "session.llm.thinking.end",
+                &json!({
+                    "sessionId": "ses_1",
+                    "messageId": "msg_a1",
+                    "partIndex": 0,
+                    "content": "Reasoning complete."
+                })
+            ),
+            Some(StreamEvent::ThinkingEnd {
+                message_id: "msg_a1".to_string(),
+                part_index: 0,
+                content: "Reasoning complete.".to_string(),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn watches_prompts_admitted_after_an_execution_terminal() {
+        use tokio::net::TcpListener;
+        use tokio_tungstenite::accept_async;
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let client = RpcClient::new(format!("ws://{}/rpc/v1", listener.local_addr().unwrap()));
+            let server = tokio::spawn(async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                let mut ws = accept_async(socket).await.unwrap();
+                let Some(Ok(Message::Text(request))) = ws.next().await else { panic!("subscribe") };
+                let request: Value = serde_json::from_str(request.trim()).unwrap();
+                let sub_id = request["id"].clone();
+                let connected = json!({"_tag": "Chunk", "requestId": sub_id,
+                    "values": [{"type": "server.connected"}]});
+                ws.send(Message::Text(format!("{connected}\n"))).await.unwrap();
+                loop {
+                    let Some(Ok(Message::Text(request))) = ws.next().await else { panic!("initial prompt") };
+                    let request: Value = serde_json::from_str(request.trim()).unwrap();
+                    if request["tag"] == "session.prompt" { break; }
+                }
+                let terminal = json!({"_tag": "Chunk", "requestId": sub_id,
+                    "values": [{"type": "session.execution.succeeded", "data": {"sessionId": "ses_boundary"}}]});
+                ws.send(Message::Text(format!("{terminal}\n"))).await.unwrap();
+
+                // The next prompt reaches the server after the previous execution ended.
+                let (socket, _) = listener.accept().await.unwrap();
+                let mut dispatch = accept_async(socket).await.unwrap();
+                let Some(Ok(Message::Text(request))) = dispatch.next().await else { panic!("next prompt") };
+                let request: Value = serde_json::from_str(request.trim()).unwrap();
+                assert_eq!(request["payload"]["id"], "next");
+                let reply = json!({"_tag": "Exit", "requestId": request["id"],
+                    "exit": {"_tag": "Success", "value": null}});
+                dispatch.send(Message::Text(format!("{reply}\n"))).await.unwrap();
+                let promoted = json!({"_tag": "Chunk", "requestId": sub_id,
+                    "values": [
+                        {"type": "session.prompt.promoted", "data": {"sessionId": "ses_boundary",
+                            "messageId": "next", "text": "next", "delivery": "followUp"}},
+                        {"type": "session.llm.text.delta", "data": {"sessionId": "ses_boundary",
+                            "messageId": "answer", "partIndex": 0, "delta": "received"}},
+                        {"type": "session.execution.succeeded", "data": {"sessionId": "ses_boundary"}}
+                    ]});
+                ws.send(Message::Text(format!("{promoted}\n"))).await.unwrap();
+                ws.close(None).await.unwrap();
+            });
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            let stream_client = RpcClient::new(client.url.clone());
+            let stream = tokio::spawn(async move {
+                stream_client.stream_session_once("ses_boundary", "initial", PromptDelivery::FollowUp,
+                    "initial", &mut false, false, true, &tx).await
+            });
+            assert_eq!(rx.recv().await, Some(StreamEvent::Succeeded));
+            client.send_prompt("ses_boundary", "next", PromptDelivery::FollowUp, "next").await.unwrap();
+            assert_eq!(rx.recv().await, Some(StreamEvent::PromptPromoted {
+                message_id: "next".to_string(), prompt: "next".to_string(), delivery: PromptDelivery::FollowUp,
+            }));
+            assert!(matches!(rx.recv().await, Some(StreamEvent::TextDelta { delta, .. }) if delta == "received"));
+            assert_eq!(rx.recv().await, Some(StreamEvent::Succeeded));
+            assert!(!stream.await.unwrap().unwrap());
+            server.await.unwrap();
+        }).await.expect("session stream must survive the first terminal");
+    }
+
+    #[tokio::test]
+    async fn send_prompt_and_live_stream_round_trip_over_websocket() {
+        use tokio::net::TcpListener;
+        use tokio_tungstenite::accept_async;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let url = format!("ws://{addr}/rpc/v1");
+
+        let server = tokio::spawn(async move {
+            // 1. First connection: `send_prompt` with `delivery: "steer"`
+            let (stream, _) = listener.accept().await.expect("accept send_prompt");
+            let mut ws = accept_async(stream).await.expect("ws handshake");
+            let Some(Ok(Message::Text(req_text))) = ws.next().await else {
+                panic!("expected text request");
+            };
+            let req: Value = serde_json::from_str(req_text.trim()).expect("json request");
+            assert_eq!(
+                req.get("tag").and_then(Value::as_str),
+                Some("session.prompt")
+            );
+            let payload = req.get("payload").expect("payload");
+            assert_eq!(
+                payload.get("sessionId").and_then(Value::as_str),
+                Some("ses_stream")
+            );
+            assert_eq!(
+                payload.get("text").and_then(Value::as_str),
+                Some("Steer this turn")
+            );
+            assert_eq!(
+                payload.get("delivery").and_then(Value::as_str),
+                Some("steer")
+            );
+            assert_eq!(
+                payload.get("id").and_then(Value::as_str),
+                Some("msg_steer_42")
+            );
+            let req_id = req.get("id").cloned().unwrap_or(json!(1));
+            let reply = json!({
+                "_tag": "Exit",
+                "requestId": req_id,
+                "exit": { "_tag": "Success", "value": Value::Null }
+            });
+            ws.send(Message::Text(format!("{reply}\n")))
+                .await
+                .expect("send reply");
+
+            // 2. Second connection: `prompt_session_with` streaming live events
+            let (stream, _) = listener.accept().await.expect("accept stream");
+            let mut ws = accept_async(stream).await.expect("ws handshake");
+            let Some(Ok(Message::Text(sub_text))) = ws.next().await else {
+                panic!("expected event.subscribe request");
+            };
+            let sub_req: Value = serde_json::from_str(sub_text.trim()).expect("sub json");
+            assert_eq!(
+                sub_req.get("tag").and_then(Value::as_str),
+                Some("event.subscribe")
+            );
+            let sub_id = sub_req.get("id").cloned().unwrap_or(json!(1));
+
+            // Send `server.connected` chunk
+            let connected = json!({
+                "_tag": "Chunk",
+                "requestId": sub_id,
+                "values": [{ "type": "server.connected" }]
+            });
+            ws.send(Message::Text(format!("{connected}\n")))
+                .await
+                .expect("send server.connected");
+
+            // Read Ack + `session.prompt` request
+            let mut saw_prompt = false;
+            while !saw_prompt {
+                let Some(Ok(Message::Text(txt))) = ws.next().await else {
+                    panic!("expected client message");
+                };
+                for line in txt.lines() {
+                    let msg: Value = serde_json::from_str(line.trim()).expect("client json");
+                    if msg.get("tag").and_then(Value::as_str) == Some("session.prompt") {
+                        saw_prompt = true;
+                    }
+                }
+            }
+
+            // Stream a full sequence of live events including fork on sourceSessionId
+            let events_chunk = json!({
+                "_tag": "Chunk",
+                "requestId": sub_id,
+                "values": [
+                    {
+                        "type": "session.prompt.admitted",
+                        "data": {
+                            "sessionId": "ses_stream",
+                            "messageId": "msg_init",
+                            "delivery": "followUp",
+                            "prompt": { "parts": [{ "type": "text", "text": "Hello" }] }
+                        }
+                    },
+                    {
+                        "type": "session.prompt.promoted",
+                        "data": {
+                            "sessionId": "ses_stream",
+                            "messageId": "msg_init",
+                            "delivery": "followUp",
+                            "prompt": { "parts": [{ "type": "text", "text": "Hello" }] }
+                        }
+                    },
+                    {
+                        "type": "session.retry.scheduled",
+                        "data": {
+                            "sessionId": "ses_stream",
+                            "attempt": 1,
+                            "maxRetries": 2,
+                            "delayMs": 500,
+                            "message": "rate limited"
+                        }
+                    },
+                    {
+                        "type": "session.tool.progress",
+                        "data": {
+                            "sessionId": "ses_stream",
+                            "messageId": "msg_a1",
+                            "callID": "call_1",
+                            "partial": {
+                                "content": [{ "type": "text", "text": "step 1/2" }]
+                            }
+                        }
+                    },
+                    {
+                        "type": "session.config.changed",
+                        "data": {
+                            "sessionId": "ses_stream",
+                            "thinkingLevel": "high"
+                        }
+                    },
+                    {
+                        "type": "session.next.forked",
+                        "data": {
+                            "sessionId": "ses_child",
+                            "sourceSessionId": "ses_stream",
+                            "sourceEntryId": "entry_1",
+                            "baseSeq": 3
+                        }
+                    },
+                    {
+                        "type": "session.execution.succeeded",
+                        "data": { "sessionId": "ses_stream" }
+                    }
+                ]
+            });
+            ws.send(Message::Text(format!("{events_chunk}\n")))
+                .await
+                .expect("send events");
+
+            // 3. Third connection: trailing `session.info` refresh after `Ok(true)`
+            let (stream, _) = listener.accept().await.expect("accept session.info");
+            let mut ws = accept_async(stream).await.expect("ws handshake");
+            let Some(Ok(Message::Text(info_text))) = ws.next().await else {
+                panic!("expected session.info request");
+            };
+            let info_req: Value = serde_json::from_str(info_text.trim()).expect("info json");
+            let info_id = info_req.get("id").cloned().unwrap_or(json!(1));
+            let info_reply = json!({
+                "_tag": "Exit",
+                "requestId": info_id,
+                "exit": {
+                    "_tag": "Success",
+                    "value": {
+                        "id": "ses_stream",
+                        "title": "Hello",
+                        "directory": "/workspace",
+                        "updatedAt": 2000,
+                        "thinkingLevel": "high"
+                    }
+                }
+            });
+            ws.send(Message::Text(format!("{info_reply}\n")))
+                .await
+                .expect("send session.info");
+        });
+
+        let client = RpcClient::new(url);
+        client
+            .send_prompt(
+                "ses_stream",
+                "Steer this turn",
+                PromptDelivery::Steer,
+                "msg_steer_42",
+            )
+            .await
+            .expect("send_prompt");
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        client
+            .prompt_session_with(
+                "ses_stream".to_string(),
+                "Hello".to_string(),
+                PromptDelivery::FollowUp,
+                "msg_init".to_string(),
+                tx,
+            )
+            .await
+            .expect("prompt_session_with");
+
+        let mut received = Vec::new();
+        while let Ok(evt) = rx.try_recv() {
+            received.push(evt);
+        }
+        assert!(received.contains(&StreamEvent::PromptAdmitted {
+            message_id: "msg_init".to_string(),
+            prompt: "Hello".to_string(),
+            delivery: PromptDelivery::FollowUp,
+        }));
+        assert!(received.contains(&StreamEvent::PromptPromoted {
+            message_id: "msg_init".to_string(),
+            prompt: "Hello".to_string(),
+            delivery: PromptDelivery::FollowUp,
+        }));
+        assert!(received.contains(&StreamEvent::RetryScheduled {
+            attempt: 1,
+            max_retries: 2,
+            delay_ms: 500,
+            message: "rate limited".to_string(),
+        }));
+        assert!(received.contains(&StreamEvent::ToolProgress {
+            call_id: "call_1".to_string(),
+            output: Some("step 1/2".to_string()),
+            details: None,
+        }));
+        assert!(received.contains(&StreamEvent::ConfigChanged {
+            model: None,
+            thinking_level: Some("high".to_string()),
+        }));
+        assert!(received.contains(&StreamEvent::SessionForked {
+            session_id: "ses_child".to_string(),
+            source_session_id: "ses_stream".to_string(),
+            source_entry_id: "entry_1".to_string(),
+            base_seq: 3,
+        }));
+        assert!(received.contains(&StreamEvent::Succeeded));
+
+        server.await.expect("server task");
     }
 
     #[tokio::test]

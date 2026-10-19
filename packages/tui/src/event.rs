@@ -16,12 +16,21 @@ use crate::types::{HistoryEntry, ModelList, ServerInfo, SessionInfo};
 #[derive(Debug, Clone, PartialEq)]
 pub enum RpcEvent {
     Stream(StreamEvent),
+    SessionStream {
+        session_id: String,
+        event: StreamEvent,
+    },
     ServerInfoLoaded(Result<ServerInfo, String>),
     ModelsLoaded(Result<ModelList, String>),
     SessionsLoaded(Result<Vec<SessionInfo>, String>),
     SessionHistoryLoaded(Result<Vec<HistoryEntry>, String>),
     SessionConfigured(Result<SessionInfo, String>),
     PluginsReloaded(Result<(u64, Option<String>), String>),
+    PromptDispatched {
+        session_id: String,
+        message_id: String,
+        result: Result<(), String>,
+    },
 }
 
 /// What the app reacts to: the events that actually change the screen. Anything
