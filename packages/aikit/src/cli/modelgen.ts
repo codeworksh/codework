@@ -1,18 +1,26 @@
 import { resolve } from "node:path";
-import { mapValues, pickBy, pipe } from "remeda";
+import { mapValues, pick, pickBy, pipe } from "remeda";
 import type { CommandModule } from "yargs";
 import { DEFAULT_AI_SDK_FALLBACK, isAISDKPackage, protocolForPackage } from "../llm/registry.ts";
 import * as ModelCatalog from "../model/catalog.ts";
 import * as Model from "../model/model.ts";
+import { OpenRouter } from "../model/openrouter.ts";
 import { GITHUB_COPILOT_STATIC_HEADERS } from "../providers/github-copilot/copilot-headers.ts";
 import * as Filesystem from "../utils/filesystem.ts";
 
 const DEFAULT_PROVIDER_BASE_URLS: Partial<Record<Model.KnownProviderEnum, string>> = {
 	[Model.KnownProviderEnum.anthropic]: "https://api.anthropic.com/v1",
 	[Model.KnownProviderEnum.openai]: "https://api.openai.com/v1",
-	[Model.KnownProviderEnum.openrouter]: "https://openrouter.ai/api/v1",
+	[Model.KnownProviderEnum.openrouter]: OpenRouter.BASE_URL,
 	[Model.KnownProviderEnum.xai]: "https://api.x.ai/v1",
 };
+
+interface ModelsDevCost {
+	input?: number;
+	output?: number;
+	cache_read?: number;
+	cache_write?: number;
+}
 
 interface ModelsDevModel {
 	id: string;
@@ -32,22 +40,12 @@ interface ModelsDevModel {
 	open_weights: boolean;
 	baseUrl?: string;
 	headers?: Record<string, string>;
-	cost?: {
-		input?: number;
-		output?: number;
-		cache_read?: number;
-		cache_write?: number;
-		tiers?: Array<{
-			input?: number;
-			output?: number;
-			cache_read?: number;
-			cache_write?: number;
-			tier?: { type?: string; size?: number };
-		}>;
+	cost?: ModelsDevCost & {
+		tiers?: Array<ModelsDevCost & { tier?: { type?: string; size?: number } }>;
 	};
 	reasoning_options?: Array<{
 		type?: string;
-		values?: string[];
+		values?: Array<string | null>;
 		min?: number;
 		max?: number;
 	}>;
@@ -61,6 +59,10 @@ interface ModelsDevModel {
 		npm?: string;
 		api?: string;
 		headers?: Record<string, string>;
+	};
+	/** Request variants such as OpenAI's `service_tier: "priority"`, each with its own price. */
+	experimental?: {
+		modes?: Record<string, { cost?: ModelsDevCost; provider?: { body?: Record<string, unknown> } }>;
 	};
 }
 
@@ -82,12 +84,21 @@ export type BuiltInModels = Model.BuiltInModels;
 // Represents the provider entries on a best-effort basis.
 type ModelsDevCatalog = Record<string, ModelsDevProvider>;
 
+/** The catalog's sources, fetched: models.dev, and OpenRouter's own listing when it answered. */
+export interface Sources {
+	readonly modelsDev: ModelsDevCatalog;
+	readonly openRouter?: unknown;
+}
+
+/** Providers bundled with aikit as the baseline catalog, read until a generated one exists. */
+export const BASELINE_PROVIDERS = ["anthropic", "openai", OpenRouter.PROVIDER_ID] as const;
+
 function modelsDevURL(): string {
-	return process.env.OPENCODE_MODELS_URL || "https://models.dev";
+	return process.env.CODEWORK_MODELS_DEV_URL || "https://models.dev";
 }
 
 function modelsDevPath(): string | undefined {
-	return process.env.OPENCODE_MODELS_DEV_FILE;
+	return process.env.CODEWORK_MODELS_DEV_FILE;
 }
 
 async function pullModelsDevData(): Promise<ModelsDevCatalog> {
@@ -102,25 +113,44 @@ async function pullModelsDevData(): Promise<ModelsDevCatalog> {
 	return (await response.json()) as ModelsDevCatalog;
 }
 
+/** OpenRouter's public listing, or undefined when it cannot be had: models.dev's copy stands in. */
+async function pullOpenRouterData(): Promise<unknown> {
+	try {
+		const response = await fetch(`${OpenRouter.BASE_URL}/models`, { signal: AbortSignal.timeout(30_000) });
+		return response.ok ? await response.json() : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 function toModelValue(providerId: string, provider: ModelsDevProvider, model: ModelsDevModel): Model.Info | undefined {
 	return applyModification(providerId, provider, model);
+}
+
+// models.dev lists this alias, but OpenAI's APIs do not accept it (pi).
+const MODELS_DEV_UNSUPPORTED_MODEL_IDS = new Set(["openai/gpt-5.6"]);
+
+function usable(providerId: string, provider: ModelsDevProvider, model: ModelsDevModel): boolean {
+	return (
+		Boolean(model.tool_call) &&
+		!MODELS_DEV_UNSUPPORTED_MODEL_IDS.has(`${providerId}/${model.id}`) &&
+		// If `resolveModelNpm` fallbacks to `@ai-sdk/openai-compatible`
+		// isAISDKPakage will be truthy, modify resolveModelNpm for custom logic if needed.
+		// Keep `isAISDKPackage` as readonly for supported implemenatations key check
+		isAISDKPackage(resolveModelNpm(provider, model))
+	);
 }
 
 function loadBuiltInFromModelsDev(catalog: ModelsDevCatalog) {
 	return pipe(
 		catalog,
-		pickBy((provider) =>
-			Object.values(provider.models).some(
-				// If `resolveModelNpm` fallbacks to `@ai-sdk/openai-compatible`
-				// isAISDKPakage will be truthy, modify resolveModelNpm for custom logic if needed.
-				// Keep `isAISDKPackage` as readonly for supported implemenatations key check
-				(model) => Boolean(model.tool_call) && isAISDKPackage(resolveModelNpm(provider, model)),
-			),
+		pickBy((provider, providerId) =>
+			Object.values(provider.models).some((model) => usable(providerId, provider, model)),
 		),
 		mapValues((provider, providerId) =>
 			pipe(
 				provider.models,
-				pickBy((model) => Boolean(model.tool_call) && isAISDKPackage(resolveModelNpm(provider, model))),
+				pickBy((model) => usable(providerId, provider, model)),
 				mapValues((model) => toModelValue(providerId, provider, model)),
 				pickBy((model): model is Model.Info => model !== undefined),
 			),
@@ -158,8 +188,62 @@ function resolveProviderOptionsKey(protocol: Model.KnownProviderEnum): string {
 	return protocol;
 }
 
+function roundCost(value: number): number {
+	return Number(value.toFixed(6));
+}
+
+/** models.dev prices, with its context tiers; a rate a tier does not list keeps the base price (pi). */
+function modelsDevCost(cost: ModelsDevModel["cost"]): Model.Info["cost"] {
+	const base = {
+		input: cost?.input ?? 0,
+		output: cost?.output ?? 0,
+		cacheRead: cost?.cache_read ?? 0,
+		cacheWrite: cost?.cache_write ?? 0,
+	};
+	const tiers = cost?.tiers?.flatMap((tier) => {
+		const context = tier.tier;
+		if (context?.type !== "context" || context.size === undefined) return [];
+		return [
+			{
+				inputTokensAbove: context.size,
+				input: tier.input ?? base.input,
+				output: tier.output ?? base.output,
+				cacheRead: tier.cache_read ?? base.cacheRead,
+				cacheWrite: tier.cache_write ?? base.cacheWrite,
+			},
+		];
+	});
+	return tiers && tiers.length > 0 ? { ...base, tiers } : base;
+}
+
+/** The efforts models.dev verified for a model, or undefined when it lists none. */
+function modelsDevEfforts(model: ModelsDevModel | undefined): Array<string | null> | undefined {
+	const efforts = model?.reasoning_options?.flatMap((option) =>
+		option.type === "effort" && Array.isArray(option.values) ? option.values : [],
+	);
+	return efforts && efforts.length > 0 ? efforts : undefined;
+}
+
+function mergeThinkingLevelMap(model: Model.Info, map: ThinkingLevelMap): void {
+	model.thinkingLevelMap = { ...model.thinkingLevelMap, ...map };
+}
+
+function mergeCompat(model: Model.Info, compat: Model.Compatibility): void {
+	model.compat = { ...model.compat, ...compat };
+}
+
+/** Merge the level map models.dev's verified efforts give, when it lists any. */
+function applyEffortThinkingLevels(model: Model.Info, source: ModelsDevModel | undefined): void {
+	const efforts = modelsDevEfforts(source);
+	const map = efforts ? Model.effortThinkingLevels(efforts) : undefined;
+	if (map) mergeThinkingLevelMap(model, map);
+}
+
 //
-// adhoc helpers variations
+// OpenAI (pi).
+const OPENAI_LONG_CONTEXT_INPUT_THRESHOLD = 272_000;
+const OPENAI_MAX_TOKENS = 128_000;
+
 const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
 	"gpt-5.1",
 	"gpt-5.2",
@@ -175,30 +259,166 @@ const OPENAI_RESPONSES_NONE_REASONING_MODELS = new Set([
 	"gpt-6-sol",
 ]);
 
+// Every GPT-6 model takes low through max and rejects "minimal"; Astra and 6.1 Sol also reject "none".
+const OPENAI_GPT6_MODELS = new Set(["gpt-6-astra", "gpt-6-luna", "gpt-6-sol", "gpt-6.1-sol"]);
+const OPENAI_GPT6_NO_NONE_MODELS = new Set(["gpt-6-astra", "gpt-6.1-sol"]);
+
 // Checked live against the Responses and Codex APIs: these families reject
 // reasoning.effort "minimal".
 const OPENAI_NO_MINIMAL_REASONING = /gpt-5\.[456]|gpt-6/;
+
+// Direct requests stay in the short-context price tier by default; the long-context price stays in
+// `cost.tiers` for a settings entry that opts into the full window.
+const OPENAI_SHORT_CONTEXT_CAPPED_MODELS = new Set([
+	"gpt-5.4",
+	"gpt-5.5",
+	"gpt-5.6-luna",
+	"gpt-5.6-sol",
+	"gpt-5.6-terra",
+	"gpt-6-astra",
+	"gpt-6-luna",
+	"gpt-6-sol",
+	"gpt-6.1-sol",
+]);
+
+// Models billed at 2x input / 1.5x output above the threshold, when models.dev has no tier for them.
+const OPENAI_LONG_CONTEXT_PRICING_MODELS = new Set([
+	...OPENAI_SHORT_CONTEXT_CAPPED_MODELS,
+	"gpt-5.4-pro",
+	"gpt-5.5-pro",
+]);
 
 function isOpenAiResponses(model: Model.Info): boolean {
 	return model.protocol === Model.KnownProviderEnum.openai || model.protocol === Model.KnownProviderEnum.openaiCodex;
 }
 
+function isOpenAiDirect(model: Model.Info): boolean {
+	return model.protocol === Model.KnownProviderEnum.openai && model.provider.id === "openai";
+}
+
 function supportsOpenAiXhigh(model: Model.Info): boolean {
-	return /gpt-5\.[2-5]/.test(model.id) || supportsOpenAiMax(model);
+	return /gpt-5\.[2-6]|gpt-6/.test(model.id);
 }
 
 function supportsOpenAiMax(model: Model.Info): boolean {
 	return isOpenAiResponses(model) && /gpt-5\.6|gpt-6/.test(model.id);
 }
 
-function mergeThinkingLevelMap(model: Model.Info, map: ThinkingLevelMap): void {
-	model.thinkingLevelMap = { ...model.thinkingLevelMap, ...map };
+function withOpenAiLongContextPricing(cost: Model.Info["cost"]): Model.Info["cost"] {
+	return {
+		...cost,
+		tiers: [
+			{
+				inputTokensAbove: OPENAI_LONG_CONTEXT_INPUT_THRESHOLD,
+				input: roundCost(cost.input * 2),
+				output: roundCost(cost.output * 1.5),
+				cacheRead: roundCost(cost.cacheRead * 2),
+				cacheWrite: roundCost(cost.cacheWrite * 2),
+			},
+		],
+	};
 }
 
-function mergeCompat(model: Model.Info, compat: Model.Compatibility): void {
-	model.compat = { ...model.compat, ...compat };
+/**
+ * Price multipliers per service tier: models.dev's modes that set `service_tier` (fast is
+ * `priority`), over OpenAI's flex 0.5x / priority 2x list defaults.
+ */
+function serviceTierMultipliers(model: Model.Info, source: ModelsDevModel | undefined): Record<string, number> {
+	const multipliers: Record<string, number> = { flex: 0.5, priority: 2 };
+	for (const mode of Object.values(source?.experimental?.modes ?? {})) {
+		const tier = mode.provider?.body?.service_tier;
+		const input = mode.cost?.input;
+		if (typeof tier !== "string" || input === undefined || model.cost.input <= 0) continue;
+		multipliers[tier] = roundCost(input / model.cost.input);
+	}
+	return multipliers;
 }
 
+function applyOpenAiMetadata(model: Model.Info, source: ModelsDevModel | undefined): void {
+	const id = model.id;
+	if (isOpenAiDirect(model)) {
+		if (OPENAI_SHORT_CONTEXT_CAPPED_MODELS.has(id)) {
+			model.contextWindow = OPENAI_LONG_CONTEXT_INPUT_THRESHOLD;
+			model.maxTokens = OPENAI_MAX_TOKENS;
+		}
+		if (OPENAI_LONG_CONTEXT_PRICING_MODELS.has(id) && !model.cost.tiers) {
+			model.cost = withOpenAiLongContextPricing(model.cost);
+		}
+		// models.dev reports the input sub-limit as gpt-5-pro's output.
+		if (id === "gpt-5-pro") model.maxTokens = OPENAI_MAX_TOKENS;
+	}
+	model.cost.serviceTierMultipliers = serviceTierMultipliers(model, source);
+
+	// models.dev's verified efforts first, then the corrections checked against the API.
+	applyEffortThinkingLevels(model, source);
+	if (model.protocol === Model.KnownProviderEnum.openai && id.startsWith("gpt-5")) {
+		mergeThinkingLevelMap(model, { off: null });
+	}
+	if (OPENAI_GPT6_MODELS.has(id)) {
+		mergeThinkingLevelMap(model, {
+			off: OPENAI_GPT6_NO_NONE_MODELS.has(id) ? null : "none",
+			minimal: null,
+			low: "low",
+			medium: "medium",
+			high: "high",
+			xhigh: "xhigh",
+			max: "max",
+		});
+	}
+	if (isOpenAiDirect(model) && OPENAI_RESPONSES_NONE_REASONING_MODELS.has(id)) {
+		mergeThinkingLevelMap(model, { off: "none" });
+	}
+	if (supportsOpenAiMax(model)) mergeThinkingLevelMap(model, { max: "max" });
+	if (OPENAI_NO_MINIMAL_REASONING.test(id)) mergeThinkingLevelMap(model, { minimal: null });
+	if (id.endsWith("gpt-5.5-pro")) mergeThinkingLevelMap(model, { off: null, minimal: null, low: null });
+}
+
+//
+// Anthropic (pi).
+function isAnthropicMessages(model: Model.Info): boolean {
+	return (
+		model.protocol === Model.KnownProviderEnum.anthropic ||
+		model.protocol === Model.KnownProviderEnum.googleVertexAnthropic
+	);
+}
+
+// The Messages API rejects `temperature` on these.
+const ANTHROPIC_NO_TEMPERATURE = /opus-4[-.][78]|opus-5|(sonnet|haiku)-5[-.]5/;
+
+// Checked live against the Messages API: effort levels each adaptive family
+// accepts, the 5.5 and Fable models that reject `thinking: {type: "disabled"}`, and
+// Sonnet 4.5's window, which is 1M only behind a beta header.
+function applyAnthropicMetadata(model: Model.Info): void {
+	const id = model.id;
+	if (/sonnet-4[-.]5/.test(id)) model.contextWindow = 200_000;
+	// Not models.dev's efforts: Anthropic disables thinking by a toggle, not an effort of "none" (pi).
+	if (Model.isAnthropicAdaptiveThinkingModel(id)) mergeCompat(model, { forceAdaptiveThinking: true });
+	if (/(opus|sonnet)-4[-.]6/.test(id)) {
+		mergeThinkingLevelMap(model, { max: "max" });
+	}
+	if (/opus-4[-.][78]|(opus|sonnet|fable|haiku)-5/.test(id)) {
+		mergeThinkingLevelMap(model, { xhigh: "xhigh", max: "max" });
+	}
+	if (/(opus|sonnet|haiku)-5[-.]5/.test(id)) {
+		// Haiku 5.5 accepts disabled thinking; Opus 5.5 and Sonnet 5.5 reject it.
+		mergeThinkingLevelMap(model, {
+			...(id.includes("haiku") ? {} : { off: null }),
+			minimal: null,
+			low: "low",
+			medium: "medium",
+			high: "high",
+			xhigh: "xhigh",
+			max: "max",
+		});
+	}
+	if (/fable-5/.test(id)) {
+		mergeThinkingLevelMap(model, { off: null });
+	}
+	if (ANTHROPIC_NO_TEMPERATURE.test(id)) mergeCompat(model, { supportsTemperature: false });
+}
+
+//
+// Google.
 function applyGoogleThinkingMetadata(model: Model.Info): void {
 	const id = model.id.toLowerCase();
 	const supportsThinkingLevel =
@@ -222,204 +442,71 @@ function applyGoogleThinkingMetadata(model: Model.Info): void {
 	};
 }
 
-function applyModelMetadata(model: Model.Info): void {
-	if (model.protocol === Model.KnownProviderEnum.google || model.protocol === Model.KnownProviderEnum.googleVertex) {
+function applyModelMetadata(model: Model.Info, source: ModelsDevModel | undefined): void {
+	const isGoogle =
+		model.protocol === Model.KnownProviderEnum.google || model.protocol === Model.KnownProviderEnum.googleVertex;
+	if (isGoogle) {
 		applyGoogleThinkingMetadata(model);
+		if (/gemini-3(?:\.\d+)?-pro|gemini-3\.[78]-flash/.test(model.id.toLowerCase())) {
+			// These models cannot disable thinking or accept minimal. Expose supported
+			// levels to callers and let the shared clamp promote minimal to low.
+			mergeThinkingLevelMap(model, { off: "low", minimal: null });
+		}
 	}
-	if (model.protocol === Model.KnownProviderEnum.openai || model.protocol === Model.KnownProviderEnum.openaiCodex) {
-		model.cost.serviceTierMultipliers = { flex: 0.5, priority: model.id === "gpt-5.5" ? 2.5 : 2 };
-	}
-	if (
-		(model.protocol === Model.KnownProviderEnum.google || model.protocol === Model.KnownProviderEnum.googleVertex) &&
-		/gemini-3(?:\.\d+)?-pro|gemini-3\.[78]-flash/.test(model.id.toLowerCase())
-	) {
-		// These models cannot disable thinking or accept minimal. Expose supported
-		// levels to callers and let the shared clamp promote minimal to low.
-		mergeThinkingLevelMap(model, { off: "low", minimal: null });
-	}
-	if (
-		(model.protocol === Model.KnownProviderEnum.anthropic ||
-			model.protocol === Model.KnownProviderEnum.googleVertexAnthropic) &&
-		Model.isAnthropicAdaptiveThinkingModel(model.id)
-	) {
-		mergeCompat(model, { forceAdaptiveThinking: true });
-	}
-	if (model.protocol === Model.KnownProviderEnum.openai && model.id.startsWith("gpt-5")) {
-		mergeThinkingLevelMap(model, { off: null });
-	}
-	if (
-		model.protocol === Model.KnownProviderEnum.openai &&
-		model.provider.id === "openai" &&
-		OPENAI_RESPONSES_NONE_REASONING_MODELS.has(model.id)
-	) {
-		mergeThinkingLevelMap(model, { off: "none" });
-	}
-	if (supportsOpenAiXhigh(model)) {
-		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
-	}
-	if (isOpenAiResponses(model) && OPENAI_NO_MINIMAL_REASONING.test(model.id)) {
-		mergeThinkingLevelMap(model, { minimal: null });
-	}
-	if (supportsOpenAiMax(model)) {
-		mergeThinkingLevelMap(model, { max: "max" });
-	}
+	// Proxied Claude ids (Copilot) keep the effort aliases the Messages API takes.
 	if (model.id.includes("opus-4-6") || model.id.includes("opus-4.6")) {
 		mergeThinkingLevelMap(model, { xhigh: "max" });
 	}
 	if (model.id.includes("opus-4-7") || model.id.includes("opus-4.7")) {
 		mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	}
+	if (isOpenAiResponses(model)) applyOpenAiMetadata(model, source);
+	// By id, for every provider serving these GPT models (pi).
+	if (supportsOpenAiXhigh(model)) mergeThinkingLevelMap(model, { xhigh: "xhigh" });
 	if (isAnthropicMessages(model)) applyAnthropicMetadata(model);
-}
-
-function isAnthropicMessages(model: Model.Info): boolean {
-	return (
-		model.protocol === Model.KnownProviderEnum.anthropic ||
-		model.protocol === Model.KnownProviderEnum.googleVertexAnthropic
-	);
-}
-
-// Checked live against the Messages API: effort levels each adaptive family
-// accepts, the 5.5 and Fable models that reject `thinking: {type: "disabled"}`, and
-// Sonnet 4.5's window, which is 1M only behind a beta header.
-function applyAnthropicMetadata(model: Model.Info): void {
-	const id = model.id;
-	if (/sonnet-4[-.]5/.test(id)) model.contextWindow = 200_000;
-	if (/(opus|sonnet)-4[-.]6/.test(id)) {
-		mergeThinkingLevelMap(model, { max: "max" });
-	}
-	if (/opus-4[-.][78]|(opus|sonnet|fable|haiku)-5/.test(id)) {
-		mergeThinkingLevelMap(model, { xhigh: "xhigh", max: "max" });
-	}
-	if (/(opus|sonnet)-5[-.]5/.test(id)) {
-		mergeThinkingLevelMap(model, { off: null, minimal: null });
-	}
-	if (/fable-5/.test(id)) {
-		mergeThinkingLevelMap(model, { off: null });
-	}
 }
 
 //
 // OpenAI Codex (ChatGPT OAuth) models.
-// NOTE: These are not fetched from models.dev; we keep a small, explicit list to avoid aliases.
-// Context window is based on observed server limits (400s above ~272k), not marketing numbers.
+// Built from the OpenAI entries: Codex serves the same models at the same list prices, so only
+// which models it offers, its window and its tool support are its own. Context windows are the
+// observed server limits (400s above them), not marketing numbers.
 const OPENAI_CODEX_PROVIDER_ID = "openai-codex";
 const OPENAI_CODEX_NPM = "@codeworksh/ai-sdk-openai-codex";
 const OPENAI_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const OPENAI_CODEX_CONTEXT = 272_000;
-const OPENAI_CODEX_GPT_56_CONTEXT = 272_000;
-const OPENAI_CODEX_SPARK_CONTEXT = 128_000;
-const OPENAI_CODEX_MAX_TOKENS = 128_000;
-const OPENAI_LONG_CONTEXT_INPUT_THRESHOLD = 272_000;
-const OPENAI_CODEX_TOOL_SEARCH_MODEL_IDS = new Set([
-	"gpt-5.4",
-	"gpt-5.4-mini",
-	"gpt-5.5",
+const OPENAI_CODEX_MODELS: ReadonlyArray<{ readonly id: string; readonly contextWindow?: number }> = [
+	{ id: "gpt-5.3-codex-spark", contextWindow: 128_000 },
+	{ id: "gpt-5.5" },
+	{ id: "gpt-5.6-luna" },
+	{ id: "gpt-5.6-sol" },
+	{ id: "gpt-5.6-terra" },
+	{ id: "gpt-6-astra" },
+	{ id: "gpt-6-luna" },
+	{ id: "gpt-6-sol" },
+	{ id: "gpt-6.1-sol", contextWindow: 500_000 },
+];
+const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
 	"gpt-5.6-luna",
 	"gpt-5.6-sol",
 	"gpt-5.6-terra",
+	"gpt-6-astra",
 	"gpt-6-luna",
+	"gpt-6-sol",
+	"gpt-6.1-sol",
 ]);
-const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-6-luna"]);
+const OPENAI_CODEX_TOOL_SEARCH_MODEL_IDS = new Set(["gpt-5.5", ...OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS]);
 // Checked live: the Codex backend accepts reasoning.effort "none" for these.
-const OPENAI_CODEX_NONE_REASONING_MODEL_IDS = new Set(["gpt-5.5", "gpt-5.6-luna", "gpt-6-luna"]);
+const OPENAI_CODEX_NONE_REASONING_MODEL_IDS = new Set(["gpt-5.5", "gpt-5.6-luna", "gpt-6-luna", "gpt-6-sol"]);
 
-type OpenAICodexModelSeed = Pick<Model.Info, "id" | "name" | "input" | "cost" | "contextWindow" | "thinkingLevelMap">;
-
-function roundCost(value: number): number {
-	return Number(value.toFixed(6));
-}
-
-function withOpenAiLongContextPricing(cost: Model.Info["cost"]): Model.Info["cost"] {
-	return {
-		...cost,
-		tiers: [
-			{
-				inputTokensAbove: OPENAI_LONG_CONTEXT_INPUT_THRESHOLD,
-				input: roundCost(cost.input * 2),
-				output: roundCost(cost.output * 1.5),
-				cacheRead: roundCost(cost.cacheRead * 2),
-				cacheWrite: roundCost(cost.cacheWrite * 2),
-			},
-		],
-	};
-}
-
-const OPENAI_CODEX_COSTS = {
-	"gpt-5.6-luna": { input: 0.2, output: 1.2, cacheRead: 0.02, cacheWrite: 0.25 },
-	"gpt-5.6-terra": { input: 2, output: 12, cacheRead: 0.2, cacheWrite: 2.5 },
-	"gpt-6-luna": { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
-} satisfies Record<string, Model.Info["cost"]>;
-
-const OPENAI_CODEX_MODELS: OpenAICodexModelSeed[] = [
-	{
-		id: "gpt-5.3-codex-spark",
-		name: "GPT-5.3 Codex Spark",
-		input: ["text"],
-		cost: { input: 1.75, output: 14, cacheRead: 0.175, cacheWrite: 0 },
-		contextWindow: OPENAI_CODEX_SPARK_CONTEXT,
-	},
-	{
-		id: "gpt-5.4",
-		name: "GPT-5.4",
-		input: ["text", "image"],
-		cost: withOpenAiLongContextPricing({ input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 }),
-		contextWindow: OPENAI_CODEX_CONTEXT,
-	},
-	{
-		id: "gpt-5.4-mini",
-		name: "GPT-5.4 mini",
-		input: ["text", "image"],
-		cost: { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
-		contextWindow: OPENAI_CODEX_CONTEXT,
-	},
-	{
-		id: "gpt-5.5",
-		name: "GPT-5.5",
-		input: ["text", "image"],
-		cost: withOpenAiLongContextPricing({ input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 }),
-		contextWindow: OPENAI_CODEX_CONTEXT,
-	},
-	{
-		id: "gpt-5.6-luna",
-		name: "GPT-5.6 Luna",
-		input: ["text", "image"],
-		cost: withOpenAiLongContextPricing(OPENAI_CODEX_COSTS["gpt-5.6-luna"]),
-		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
-		thinkingLevelMap: { minimal: null },
-	},
-	{
-		id: "gpt-5.6-sol",
-		name: "GPT-5.6 Sol",
-		input: ["text", "image"],
-		cost: withOpenAiLongContextPricing({ input: 5, output: 30, cacheRead: 0.5, cacheWrite: 6.25 }),
-		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
-		thinkingLevelMap: { minimal: null },
-	},
-	{
-		id: "gpt-5.6-terra",
-		name: "GPT-5.6 Terra",
-		input: ["text", "image"],
-		cost: withOpenAiLongContextPricing(OPENAI_CODEX_COSTS["gpt-5.6-terra"]),
-		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
-		thinkingLevelMap: { minimal: null },
-	},
-	{
-		id: "gpt-6-luna",
-		name: "GPT-6 Luna",
-		input: ["text", "image"],
-		cost: withOpenAiLongContextPricing(OPENAI_CODEX_COSTS["gpt-6-luna"]),
-		contextWindow: OPENAI_CODEX_GPT_56_CONTEXT,
-	},
-];
-
-export function openAICodexBuiltInModels(): Record<string, Model.Info> {
+/** The Codex models, from the generated `openai` entries; one models.dev does not list is skipped. */
+export function openAICodexBuiltInModels(openai: Record<string, Model.Info>): Record<string, Model.Info> {
 	const models: Record<string, Model.Info> = {};
 	for (const seed of OPENAI_CODEX_MODELS) {
-		const supportsToolSearch = OPENAI_CODEX_TOOL_SEARCH_MODEL_IDS.has(seed.id);
-		const supportsAdditionalTools = OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS.has(seed.id);
+		const base = openai[seed.id];
+		if (!base) continue;
 		const info: Model.Info = {
-			...seed,
+			...base,
 			provider: {
 				id: OPENAI_CODEX_PROVIDER_ID,
 				name: "OpenAI Codex (ChatGPT)",
@@ -428,12 +515,15 @@ export function openAICodexBuiltInModels(): Record<string, Model.Info> {
 			},
 			baseUrl: OPENAI_CODEX_BASE_URL,
 			reasoning: true,
-			// Codex models reason unless verified to accept "none".
 			thinkingLevelMap: {
+				...base.thinkingLevelMap,
+				// Codex models reason unless verified to accept "none".
 				off: OPENAI_CODEX_NONE_REASONING_MODEL_IDS.has(seed.id) ? "none" : null,
-				...seed.thinkingLevelMap,
+				// The backend takes "low" where the API would reject "minimal" (pi).
+				...(supportsOpenAiXhigh(base) ? { minimal: "low" } : {}),
 			},
-			maxTokens: OPENAI_CODEX_MAX_TOKENS,
+			contextWindow: seed.contextWindow ?? OPENAI_CODEX_CONTEXT,
+			maxTokens: OPENAI_MAX_TOKENS,
 			npm: OPENAI_CODEX_NPM,
 			api: {
 				id: seed.id,
@@ -443,12 +533,12 @@ export function openAICodexBuiltInModels(): Record<string, Model.Info> {
 			providerOptionsKey: OPENAI_CODEX_PROVIDER_ID,
 			compat: {
 				supportsOpenAIGrammarTools: true,
-				...(supportsToolSearch ? { supportsToolSearch: true } : {}),
-				...(supportsAdditionalTools ? { supportsAdditionalTools: true } : {}),
+				...(OPENAI_CODEX_TOOL_SEARCH_MODEL_IDS.has(seed.id) ? { supportsToolSearch: true } : {}),
+				...(OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS.has(seed.id) ? { supportsAdditionalTools: true } : {}),
 			},
 			protocol: Model.KnownProviderEnum.openaiCodex,
 		};
-		applyModelMetadata(info);
+		delete info.headers;
 		models[seed.id] = info;
 	}
 	return models;
@@ -512,21 +602,14 @@ export function githubCopilotApiMethod(modelId: string): Model.APIMethodEnum {
 	return Model.APIMethodEnum.chat;
 }
 
-/** Effort values models.dev advertises for a model, when it lists any. */
-function githubCopilotEffortValues(model: ModelsDevModel): Set<string> | undefined {
-	for (const option of model.reasoning_options ?? []) {
-		if (option.type === "effort" && Array.isArray(option.values)) return new Set(option.values);
-	}
-	return undefined;
-}
-
 /**
  * Derive the level map from models.dev `reasoning_options`: a level maps to
  * itself only when the endpoint actually advertises it. `minimal` degrades to
  * `low` — the lowest effort every reasoning model accepts.
  */
 function githubCopilotThinkingLevels(model: ModelsDevModel, method: Model.APIMethodEnum): ThinkingLevelMap | undefined {
-	const efforts = githubCopilotEffortValues(model);
+	const listed = modelsDevEfforts(model);
+	const efforts = listed ? new Set(listed) : undefined;
 	const map: ThinkingLevelMap = {};
 	// Copilot rejects `reasoningEffort: "none"` (pi), and the chat route has no
 	// reasoning control, so only Messages models can disable thinking.
@@ -539,23 +622,6 @@ function githubCopilotThinkingLevels(model: ModelsDevModel, method: Model.APIMet
 		map[level] = efforts.has(level) ? level : null;
 	}
 	return map;
-}
-
-function githubCopilotCostTiers(model: ModelsDevModel): Model.Info["cost"]["tiers"] | undefined {
-	const tiers = model.cost?.tiers?.flatMap((tier) => {
-		const context = tier.tier;
-		if (context?.type !== "context" || context.size === undefined) return [];
-		return [
-			{
-				inputTokensAbove: context.size,
-				input: tier.input ?? 0,
-				output: tier.output ?? 0,
-				cacheRead: tier.cache_read ?? 0,
-				cacheWrite: tier.cache_write ?? 0,
-			},
-		];
-	});
-	return tiers && tiers.length > 0 ? tiers : undefined;
 }
 
 export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefined): Record<string, Model.Info> {
@@ -571,7 +637,6 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 		if (!base) continue;
 
 		const method = githubCopilotApiMethod(id);
-		const tiers = githubCopilotCostTiers(source);
 		const info: Model.Info = {
 			...base,
 			provider: {
@@ -582,7 +647,6 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 			},
 			baseUrl: GITHUB_COPILOT_BASE_URL,
 			headers: { ...GITHUB_COPILOT_STATIC_HEADERS },
-			cost: { ...base.cost, ...(tiers ? { tiers } : {}) },
 			npm: GITHUB_COPILOT_NPM,
 			api: { id, url: GITHUB_COPILOT_BASE_URL, method },
 			providerOptionsKey: GITHUB_COPILOT_PROVIDER_ID,
@@ -625,32 +689,74 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 	return models;
 }
 
-export async function generateModels(args: { path?: string | undefined } = {}): Promise<string> {
-	const path = resolve(args.path ?? ModelCatalog.path());
-	const catalog = await pullModelsDevData();
-	const modelsDev = loadBuiltInFromModelsDev(catalog);
-	const customCodexModels = openAICodexBuiltInModels();
-	const copilotProvider = catalog[GITHUB_COPILOT_PROVIDER_ID];
+/** OpenRouter's listing as catalog entries, or undefined when it is missing or unreadable. */
+function openRouterModels(listing: unknown): Record<string, Model.Info> | undefined {
+	if (listing === undefined) return undefined;
+	try {
+		const models = OpenRouter.catalog(listing);
+		return Object.keys(models).length > 0 ? models : undefined;
+	} catch {
+		return undefined;
+	}
+}
 
-	const allModels = {
+/** Object keys in order at every level, so identical content serializes to identical bytes. */
+function sortKeys(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(sortKeys);
+	if (typeof value !== "object" || value === null) return value;
+	return Object.fromEntries(
+		Object.entries(value)
+			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+			.map(([key, entry]) => [key, sortKeys(entry)]),
+	);
+}
+
+/**
+ * The catalog from fetched sources, keys sorted so identical content serializes to identical
+ * bytes. OpenRouter's own listing replaces models.dev's copy of it.
+ */
+export function buildCatalog(sources: Sources): BuiltInModels {
+	const modelsDev = loadBuiltInFromModelsDev(sources.modelsDev);
+	const openrouter = openRouterModels(sources.openRouter);
+	const copilotProvider = sources.modelsDev[GITHUB_COPILOT_PROVIDER_ID];
+	return sortKeys({
 		...modelsDev,
-		[OPENAI_CODEX_PROVIDER_ID]: customCodexModels,
+		...(openrouter ? { [OpenRouter.PROVIDER_ID]: openrouter } : {}),
+		[OPENAI_CODEX_PROVIDER_ID]: openAICodexBuiltInModels(modelsDev.openai ?? {}),
 		...(copilotProvider ? { [GITHUB_COPILOT_PROVIDER_ID]: githubCopilotBuiltInModels(copilotProvider) } : {}),
-	};
-	await Filesystem.writeJsonAtomic(path, allModels);
+	}) as BuiltInModels;
+}
+
+export interface GenerateOptions {
+	/** Output file; defaults to `CODEWORK_MODELS_FILE` or `./models.gen.json`. */
+	readonly path?: string | undefined;
+	/** Keep only {@link BASELINE_PROVIDERS}, for the catalog bundled with aikit. */
+	readonly baseline?: boolean | undefined;
+}
+
+export async function generateModels(args: GenerateOptions = {}): Promise<string> {
+	const path = resolve(args.path ?? ModelCatalog.path());
+	const [modelsDev, openRouter] = await Promise.all([pullModelsDevData(), pullOpenRouterData()]);
+	const catalog = buildCatalog({ modelsDev, openRouter });
+	await Filesystem.writeJsonAtomic(path, args.baseline ? pick(catalog, BASELINE_PROVIDERS) : catalog);
 	return path;
 }
 
 //
 // CLI entry
-export const ModelgenCommand: CommandModule<object, { path?: string | undefined }> = {
+export const ModelgenCommand: CommandModule<object, { path?: string | undefined; baseline?: boolean | undefined }> = {
 	command: "modelgen [path]",
 	describe: "generate models.gen.json",
 	builder: (yargs) =>
-		yargs.positional("path", {
-			type: "string",
-			describe: "output path (defaults to CODEWORK_MODELS_FILE or ./models.gen.json)",
-		}),
+		yargs
+			.positional("path", {
+				type: "string",
+				describe: "output path (defaults to CODEWORK_MODELS_FILE or ./models.gen.json)",
+			})
+			.option("baseline", {
+				type: "boolean",
+				describe: `keep only the bundled baseline providers (${BASELINE_PROVIDERS.join(", ")})`,
+			}),
 	handler: async (args) => {
 		const path = await generateModels(args);
 		console.log(`Generated model catalog at ${path}`);
@@ -687,12 +793,7 @@ export function applyModification(
 		baseUrl,
 		reasoning: Boolean(model.reasoning),
 		input: Model.normalizeInput(model.modalities.input),
-		cost: {
-			input: model.cost?.input ?? 0,
-			output: model.cost?.output ?? 0,
-			cacheRead: model.cost?.cache_read ?? 0,
-			cacheWrite: model.cost?.cache_write ?? 0,
-		},
+		cost: modelsDevCost(model.cost),
 		contextWindow: model.limit?.context ?? 4096,
 		maxTokens: model.limit?.output ?? 4096,
 		headers: {
@@ -706,6 +807,6 @@ export function applyModification(
 		protocol,
 	};
 	if (Object.keys(info.headers ?? {}).length === 0) delete info.headers;
-	applyModelMetadata(info);
+	applyModelMetadata(info, model);
 	return info;
 }

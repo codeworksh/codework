@@ -23,16 +23,15 @@ describe("Model.reloadCatalog", () => {
 	it("re-reads a catalog that was missing or has since changed", async () => {
 		const catalogPath = join(directory, "models.json");
 		Model.configureCatalog(catalogPath);
-		await expect(Model.getProviders()).rejects.toMatchObject({ name: "ModelCatalogLoadError" });
+		// Nothing generated yet: the bundled baseline answers.
+		const bundled = ["anthropic", "openai", "openrouter"];
+		await expect(Model.getProviders()).resolves.toEqual(bundled);
 
-		await writeFile(catalogPath, JSON.stringify({ anthropic: {} }));
+		await writeFile(catalogPath, JSON.stringify({ anthropic: {}, xai: {} }));
+		await expect(Model.getProviders()).resolves.toEqual(bundled);
 		Model.reloadCatalog();
-		await expect(Model.getProviders()).resolves.toEqual(["anthropic"]);
-
-		await writeFile(catalogPath, JSON.stringify({ anthropic: {}, openai: {} }));
-		await expect(Model.getProviders()).resolves.toEqual(["anthropic"]);
-		Model.reloadCatalog();
-		await expect(Model.getProviders()).resolves.toEqual(["anthropic", "openai"]);
+		await expect(Model.getProviders()).resolves.toEqual([...bundled, "xai"]);
+		await expect(Model.getModels("anthropic")).resolves.toEqual([]);
 	});
 });
 

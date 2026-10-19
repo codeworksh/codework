@@ -76,7 +76,7 @@ describe("settings at the LLM boundary", () => {
 					},
 				);
 			};
-			const model = await llm("openai-codex", "gpt-5.4");
+			const model = await llm("openai-codex", "gpt-5.5");
 			expect(model).toBeDefined();
 			if (!model) return;
 

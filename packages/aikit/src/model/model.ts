@@ -143,6 +143,19 @@ export const ThinkingLevelMapSchema = Type.Partial(
 );
 export type ThinkingLevelMap = Static<typeof ThinkingLevelMapSchema>;
 
+/**
+ * The level map for a model that lists the reasoning efforts it accepts (models.dev
+ * `reasoning_options`, OpenRouter `supported_efforts`): a level maps to itself only when listed,
+ * and off maps to `none` only when `none` is listed (pi). Undefined when nothing usable is listed.
+ */
+export function effortThinkingLevels(efforts: ReadonlyArray<string | null>): ThinkingLevelMap | undefined {
+	const supported = new Set(efforts);
+	if (!ACTIVE_THINKING_LEVELS.some((level) => supported.has(level)) && !supported.has("none")) return undefined;
+	const map: ThinkingLevelMap = { off: supported.has("none") ? "none" : null };
+	for (const level of ACTIVE_THINKING_LEVELS) map[level] = supported.has(level) ? level : null;
+	return map;
+}
+
 export const CompatibilitySchema = Type.Object({
 	/** The Google protocol accepts thinking levels rather than a token budget. */
 	supportsThinkingLevel: Type.Optional(Type.Boolean()),
@@ -154,6 +167,8 @@ export const CompatibilitySchema = Type.Object({
 	supportsThinkingTokenBudget: Type.Optional(Type.Boolean()),
 	/** Claude model that sizes its own thinking, driven by `effort` instead of a token budget. */
 	forceAdaptiveThinking: Type.Optional(Type.Boolean()),
+	/** False for a model that rejects a `temperature` field; the request then leaves it out. */
+	supportsTemperature: Type.Optional(Type.Boolean()),
 	/** Name of that field, when it is not the conventional `thinking_token_budget`. */
 	thinkingTokenBudgetField: Type.Optional(Type.String()),
 });
