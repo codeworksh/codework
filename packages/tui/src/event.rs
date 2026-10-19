@@ -23,7 +23,15 @@ pub enum RpcEvent {
     ServerInfoLoaded(Result<ServerInfo, String>),
     ModelsLoaded(Result<ModelList, String>),
     SessionsLoaded(Result<Vec<SessionInfo>, String>),
-    SessionHistoryLoaded(Result<Vec<HistoryEntry>, String>),
+    SessionHistoryRefresh {
+        session_id: String,
+    },
+    SessionHistoryLoaded {
+        session_id: String,
+        request_id: u64,
+        revision: u64,
+        result: Result<Vec<HistoryEntry>, String>,
+    },
     SessionConfigured(Result<SessionInfo, String>),
     PluginsReloaded(Result<(u64, Option<String>), String>),
     PromptDispatched {

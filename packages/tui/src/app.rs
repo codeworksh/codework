@@ -134,9 +134,7 @@ impl Turn {
 
     pub fn start_llm(&mut self, message_id: &str) {
         self.retry = None;
-        let draft = self.draft_mut(message_id);
-        draft.thinking_parts.clear();
-        draft.text_parts.clear();
+        let _ = self.draft_mut(message_id);
         self.sync_thinking();
         self.sync_text();
     }
@@ -349,6 +347,8 @@ pub struct App {
     pub busy: bool,
     /// Whether the stream socket dropped and is reconnecting.
     pub reconnecting: bool,
+    /// Durable `session.log` cursor (`max(last durable.seq, last log.synced.seq)`).
+    pub log_cursor: Option<u64>,
     /// Scroll offset in lines from the bottom of the session transcript.
     pub scroll: usize,
     /// Maximum scroll offset computed by the last transcript render pass.
@@ -357,6 +357,8 @@ pub struct App {
     next_prompt_seq: u64,
     prompt_stream: Option<tokio::task::AbortHandle>,
     initial_prompt_id: Option<String>,
+    history_request: Cell<u64>,
+    history_revision: u64,
     keymap: Keymap,
     tx: mpsc::UnboundedSender<AppEvent>,
 }
@@ -392,12 +394,15 @@ impl App {
             queued_prompts: Vec::new(),
             busy: false,
             reconnecting: false,
+            log_cursor: None,
             scroll: 0,
             max_scroll: Cell::new(0),
             should_quit: false,
             next_prompt_seq: 1,
             prompt_stream: None,
             initial_prompt_id: None,
+            history_request: Cell::new(0),
+            history_revision: 0,
             keymap: Keymap::new(),
             tx,
         };
@@ -436,6 +441,10 @@ impl App {
     fn apply_session(&mut self, info: SessionInfo) {
         let same_session = self.session.as_ref().map(|s| &s.id) == Some(&info.id);
         let host_changed = self.session.as_ref().map(|s| &s.host_dir) != Some(&info.host_dir);
+        if !same_session {
+            self.history_request.set(self.history_request.get() + 1);
+            self.log_cursor = None;
+        }
         self.model = info
             .model
             .as_ref()
@@ -753,17 +762,56 @@ impl App {
                 self.notice = Some(err);
                 true
             }
-            RpcEvent::SessionHistoryLoaded(Ok(entries)) => {
-                self.turns = turns_from_history(&entries);
+            RpcEvent::SessionHistoryRefresh { session_id } => {
+                if self.session.as_ref().is_some_and(|s| s.id == session_id) {
+                    self.spawn_session_history(&session_id);
+                }
+                false
+            }
+            RpcEvent::SessionHistoryLoaded {
+                session_id,
+                request_id,
+                revision,
+                result,
+            } => {
+                if !self.session.as_ref().is_some_and(|s| s.id == session_id)
+                    || request_id != self.history_request.get()
+                {
+                    return false;
+                }
+                if revision != self.history_revision {
+                    self.spawn_session_history(&session_id);
+                    return false;
+                }
+                let entries = match result {
+                    Ok(entries) => entries,
+                    Err(err) => {
+                        self.notice = Some(err);
+                        return true;
+                    }
+                };
+                let was_empty = self.turns.is_empty();
+                crate::rpc::client::advance_log_cursor(
+                    &mut self.log_cursor,
+                    crate::rpc::client::history_cursor(&entries),
+                );
+                self.sync_turns_from_history(&entries);
                 self.busy = self
                     .turns
                     .last()
                     .is_some_and(|turn| turn.state == TurnState::Running);
-                self.scroll = 0;
-                true
-            }
-            RpcEvent::SessionHistoryLoaded(Err(err)) => {
-                self.notice = Some(err);
+                if was_empty {
+                    self.scroll = 0;
+                }
+                let stream_running = self
+                    .prompt_stream
+                    .as_ref()
+                    .is_some_and(|task| !task.is_finished());
+                if !stream_running {
+                    if let Some(session_id) = self.session.as_ref().map(|s| s.id.clone()) {
+                        self.spawn_follow_session(session_id, self.log_cursor, self.busy);
+                    }
+                }
                 true
             }
             RpcEvent::SessionConfigured(Ok(info)) => {
@@ -851,6 +899,8 @@ impl App {
     }
 
     fn handle_stream(&mut self, event: StreamEvent) -> bool {
+        // A snapshot requested before this event cannot replace the newer UI state.
+        self.history_revision += 1;
         match event {
             StreamEvent::SessionCreated(info) => {
                 self.apply_session(info);
@@ -1004,7 +1054,9 @@ impl App {
                 };
                 self.notice = Some(msg.clone());
                 if let Some(turn) = self.turns.last_mut() {
-                    turn.notices.push(msg);
+                    if !turn.notices.contains(&msg) {
+                        turn.notices.push(msg);
+                    }
                 }
             }
             StreamEvent::TurnStarted => {
@@ -1213,6 +1265,15 @@ impl App {
                     self.usage.model = usage.model;
                 }
             }
+            StreamEvent::LogSynced { seq } => {
+                let prev = self.log_cursor;
+                crate::rpc::client::advance_log_cursor(&mut self.log_cursor, seq);
+                if self.log_cursor != prev {
+                    if let Some(session_id) = self.session.as_ref().map(|s| s.id.clone()) {
+                        self.spawn_session_history(&session_id);
+                    }
+                }
+            }
             StreamEvent::Disconnected => {
                 self.reconnecting = true;
             }
@@ -1220,14 +1281,17 @@ impl App {
                 self.reconnecting = false;
                 if self.initial_prompt_id.is_none() {
                     if let Some(session_id) = self.session.as_ref().map(|s| s.id.clone()) {
-                        self.dispatch_pending_queued_prompts(&session_id);
+                        self.reconcile_queued_prompts(&session_id);
+                        self.spawn_session_history(&session_id);
                     }
                 }
             }
             StreamEvent::Succeeded => {
                 if let Some(turn) = self.turns.last_mut() {
                     turn.retry = None;
-                    turn.state = TurnState::Succeeded;
+                    if turn.state == TurnState::Running {
+                        turn.state = TurnState::Succeeded;
+                    }
                 }
                 self.busy = false;
                 self.reconnecting = false;
@@ -1260,6 +1324,7 @@ impl App {
             return false;
         };
 
+        self.history_revision += 1;
         let message_id = self.next_message_id();
         self.prompt.clear();
         self.screen = Screen::Session;
@@ -1310,6 +1375,7 @@ impl App {
 
         let tx = self.tx.clone();
         let existing_session_id = self.session.as_ref().map(|s| s.id.clone());
+        let after = self.log_cursor;
         let model = self.model.clone();
         let thinking = self.thinking.clone();
 
@@ -1335,11 +1401,11 @@ impl App {
                 };
 
                 let (stream_tx, mut stream_rx) = mpsc::unbounded_channel();
-                let stream = client.watch_session_with(
+                let stream = client.watch_session_from(
                     session_id.clone(),
-                    text,
-                    delivery,
-                    message_id,
+                    after,
+                    Some((text, delivery, message_id)),
+                    true,
                     stream_tx,
                 );
                 tokio::pin!(stream);
@@ -1370,6 +1436,44 @@ impl App {
         true
     }
 
+    fn spawn_follow_session(
+        &mut self,
+        session_id: String,
+        after: Option<u64>,
+        initially_busy: bool,
+    ) {
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            let task = handle.spawn(async move {
+                let client = RpcClient::default();
+                let (stream_tx, mut stream_rx) = mpsc::unbounded_channel();
+                let stream =
+                    client.follow_session(session_id.clone(), after, initially_busy, stream_tx);
+                tokio::pin!(stream);
+                loop {
+                    tokio::select! {
+                        biased;
+                        Some(event) = stream_rx.recv() => {
+                            if tx.send(AppEvent::Rpc(RpcEvent::SessionStream {
+                                session_id: session_id.clone(), event,
+                            })).is_err() {
+                                break;
+                            }
+                        }
+                        _ = &mut stream => break,
+                    }
+                }
+                while let Ok(event) = stream_rx.try_recv() {
+                    let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionStream {
+                        session_id: session_id.clone(),
+                        event,
+                    }));
+                }
+            });
+            self.prompt_stream = Some(task.abort_handle());
+        }
+    }
+
     fn dispatch_pending_queued_prompts(&mut self, session_id: &str) {
         let mut to_send = Vec::new();
         for queued in &mut self.queued_prompts {
@@ -1384,6 +1488,66 @@ impl App {
         }
         for (text, delivery, message_id) in to_send {
             self.spawn_send_prompt(session_id.to_string(), text, delivery, message_id);
+        }
+    }
+
+    fn reconcile_queued_prompts(&mut self, session_id: &str) {
+        let mut to_send = Vec::new();
+        let mut to_reconcile = Vec::new();
+        for queued in &mut self.queued_prompts {
+            if !queued.dispatched && !queued.admitted {
+                queued.dispatched = true;
+                to_send.push((
+                    queued.prompt.clone(),
+                    queued.delivery,
+                    queued.message_id.clone(),
+                ));
+            } else if queued.dispatched {
+                to_reconcile.push((
+                    queued.prompt.clone(),
+                    queued.delivery,
+                    queued.message_id.clone(),
+                ));
+            }
+        }
+        for (text, delivery, message_id) in to_send {
+            self.spawn_send_prompt(session_id.to_string(), text, delivery, message_id);
+        }
+        for (text, delivery, message_id) in to_reconcile {
+            self.spawn_reconcile_prompt(session_id.to_string(), text, delivery, message_id);
+        }
+    }
+
+    fn spawn_reconcile_prompt(
+        &self,
+        session_id: String,
+        text: String,
+        delivery: PromptDelivery,
+        message_id: String,
+    ) {
+        let tx = self.tx.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let client = RpcClient::default();
+                match client.session_message(&session_id, &message_id).await {
+                    Ok(true) => {
+                        let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionHistoryRefresh {
+                            session_id,
+                        }));
+                    }
+                    Ok(false) => {
+                        let result = client
+                            .send_prompt(&session_id, &text, delivery, &message_id)
+                            .await;
+                        let _ = tx.send(AppEvent::Rpc(RpcEvent::PromptDispatched {
+                            session_id,
+                            message_id,
+                            result,
+                        }));
+                    }
+                    Err(_) => {}
+                }
+            });
         }
     }
 
@@ -1525,6 +1689,7 @@ impl App {
                         self.usage = UsageReport::default();
                         self.busy = false;
                         self.reconnecting = false;
+                        self.log_cursor = None;
                         self.scroll = 0;
                         self.notice = Some("started a new session".to_string());
                         self.spawn_list_models();
@@ -1567,6 +1732,7 @@ impl App {
                     self.stop_prompt_stream();
                     let session_id = info.id.clone();
                     let title = info.title.clone();
+                    self.log_cursor = None;
                     self.apply_session(info);
                     self.turns.clear();
                     self.queued_prompts.clear();
@@ -1576,6 +1742,7 @@ impl App {
                     self.scroll = 0;
                     self.screen = Screen::Session;
                     self.notice = Some(format!("switched to session {title}"));
+                    self.spawn_session_refresh();
                     self.spawn_session_history(&session_id);
                 }
             }
@@ -1644,11 +1811,19 @@ impl App {
 
     fn spawn_session_history(&self, session_id: &str) {
         let session_id = session_id.to_string();
+        let request_id = self.history_request.get() + 1;
+        self.history_request.set(request_id);
+        let revision = self.history_revision;
         let tx = self.tx.clone();
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                let res = RpcClient::default().session_history(&session_id).await;
-                let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionHistoryLoaded(res)));
+                let result = RpcClient::default().session_history(&session_id).await;
+                let _ = tx.send(AppEvent::Rpc(RpcEvent::SessionHistoryLoaded {
+                    session_id,
+                    request_id,
+                    revision,
+                    result,
+                }));
             });
         }
     }
@@ -1691,6 +1866,111 @@ impl App {
                 let _ = RpcClient::default().interrupt_session(&session_id).await;
             });
         }
+    }
+
+    fn sync_turns_from_history(&mut self, entries: &[HistoryEntry]) {
+        self.queued_prompts
+            .retain(|q| !entries.iter().any(|e| e.id == q.message_id));
+
+        let mut next_turns = turns_from_history(entries);
+        let last_entry_is_user = entries.last().is_some_and(|e| e.role == "user");
+        let total_next = next_turns.len();
+
+        for (idx, turn) in next_turns.iter_mut().enumerate() {
+            let Some(prompt_id) = turn.prompt_id.as_deref() else {
+                continue;
+            };
+            let Some(existing) = self
+                .turns
+                .iter()
+                .find(|t| t.prompt_id.as_deref() == Some(prompt_id))
+            else {
+                continue;
+            };
+
+            for notice in &existing.notices {
+                if !turn.notices.contains(notice) {
+                    turn.notices.push(notice.clone());
+                }
+            }
+
+            if idx + 1 == total_next
+                && last_entry_is_user
+                && existing.state == TurnState::Running
+                && self.busy
+            {
+                turn.state = TurnState::Running;
+            }
+
+            if turn.state == TurnState::Running {
+                if turn.retry.is_none() {
+                    turn.retry = existing.retry.clone();
+                }
+                for draft in &existing.drafts {
+                    let target = turn.draft_mut(&draft.message_id);
+                    for (&part_idx, thinking) in &draft.thinking_parts {
+                        let entry = target.thinking_parts.entry(part_idx).or_default();
+                        if entry.len() < thinking.len() {
+                            *entry = thinking.clone();
+                        }
+                    }
+                    for (&part_idx, text) in &draft.text_parts {
+                        let entry = target.text_parts.entry(part_idx).or_default();
+                        if entry.len() < text.len() {
+                            *entry = text.clone();
+                        }
+                    }
+                }
+                turn.sync_thinking();
+                turn.sync_text();
+            }
+
+            if matches!(
+                existing.state,
+                TurnState::Failed(_) | TurnState::Interrupted(_)
+            ) || (existing.state == TurnState::Succeeded && turn.state == TurnState::Running)
+            {
+                turn.state = existing.state.clone();
+                turn.retry = None;
+            }
+
+            for existing_tool in &existing.tools {
+                if let Some(tool) = turn
+                    .tools
+                    .iter_mut()
+                    .find(|t| t.call_id == existing_tool.call_id)
+                {
+                    if tool.patch.is_none() && existing_tool.patch.is_some() {
+                        tool.patch = existing_tool.patch.clone();
+                    }
+                    if tool.output.is_none() && existing_tool.output.is_some() {
+                        tool.output = existing_tool.output.clone();
+                    }
+                    if tool.summary.is_none() && existing_tool.summary.is_some() {
+                        tool.summary = existing_tool.summary.clone();
+                    }
+                } else if turn.state == TurnState::Running {
+                    turn.tools.push(existing_tool.clone());
+                }
+            }
+        }
+
+        if self.busy {
+            if let Some(last_local) = self.turns.last() {
+                if last_local.state == TurnState::Running {
+                    let in_history = last_local.prompt_id.as_deref().is_some_and(|id| {
+                        next_turns
+                            .iter()
+                            .any(|t| t.prompt_id.as_deref() == Some(id))
+                    });
+                    if !in_history {
+                        next_turns.push(last_local.clone());
+                    }
+                }
+            }
+        }
+
+        self.turns = next_turns;
     }
 }
 
@@ -2055,6 +2335,71 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn history_cannot_resurrect_completed_turns_or_cross_sessions() {
+        let mut app = App::default();
+        app.session = Some(
+            serde_json::from_value(json!({
+                "id": "ses", "title": "Session", "directory": "/workspace", "updatedAt": 0
+            }))
+            .unwrap(),
+        );
+        app.turns.push(Turn::with_id("prompt", "Question"));
+        app.busy = true;
+        let entries = vec![
+            HistoryEntry {
+                id: "prompt".into(),
+                seq: 1,
+                role: "user".into(),
+                state: "committed".into(),
+                created_at: 0,
+                parts: vec![],
+            },
+            HistoryEntry {
+                id: "answer".into(),
+                seq: 2,
+                role: "assistant".into(),
+                state: "draft".into(),
+                created_at: 0,
+                parts: vec![],
+            },
+        ];
+        let stale = history_event(&app, entries.clone());
+        app.handle_stream(StreamEvent::TextEnd {
+            message_id: "answer".into(),
+            part_index: 0,
+            content: "Finished".into(),
+        });
+        app.handle_stream(StreamEvent::Succeeded);
+        app.update(stale);
+        assert!(!app.busy);
+        assert_eq!(app.turns[0].state, TurnState::Succeeded);
+        assert_eq!(app.turns[0].text, "Finished");
+
+        let wrong_session = history_event(&app, entries.clone());
+        app.session.as_mut().unwrap().id = "other".into();
+        app.turns.clear();
+        app.log_cursor = None;
+        app.update(wrong_session);
+        assert!(app.turns.is_empty());
+        assert_eq!(app.log_cursor, None);
+
+        // A newer request wins even when there were no intervening stream events.
+        let outdated = history_event(&app, entries);
+        app.history_request.set(app.history_request.get() + 1);
+        app.update(outdated);
+        assert!(app.turns.is_empty());
+    }
+
+    fn history_event(app: &App, entries: Vec<HistoryEntry>) -> AppEvent {
+        AppEvent::Rpc(RpcEvent::SessionHistoryLoaded {
+            session_id: app.session.as_ref().unwrap().id.clone(),
+            request_id: app.history_request.get(),
+            revision: app.history_revision,
+            result: Ok(entries),
+        })
+    }
+
+    #[test]
     fn waits_for_initial_admission_before_dispatching_pending_prompts() {
         let mut app = App::default();
         app.prompt.insert_text("initial");
@@ -2398,28 +2743,31 @@ mod tests {
         assert_eq!(app.screen, Screen::Session);
 
         // Delivering `SessionHistoryLoaded` populates `app.turns`.
-        app.update(AppEvent::Rpc(RpcEvent::SessionHistoryLoaded(Ok(vec![
-            HistoryEntry {
-                id: "m1".to_string(),
-                seq: 1,
-                role: "user".to_string(),
-                state: "committed".to_string(),
-                created_at: 2_000,
-                parts: vec![Part::Text {
-                    text: "Resume me".to_string(),
-                }],
-            },
-            HistoryEntry {
-                id: "m2".to_string(),
-                seq: 2,
-                role: "assistant".to_string(),
-                state: "committed".to_string(),
-                created_at: 2_100,
-                parts: vec![Part::Text {
-                    text: "Resumed!".to_string(),
-                }],
-            },
-        ]))));
+        app.update(history_event(
+            &app,
+            vec![
+                HistoryEntry {
+                    id: "m1".to_string(),
+                    seq: 1,
+                    role: "user".to_string(),
+                    state: "committed".to_string(),
+                    created_at: 2_000,
+                    parts: vec![Part::Text {
+                        text: "Resume me".to_string(),
+                    }],
+                },
+                HistoryEntry {
+                    id: "m2".to_string(),
+                    seq: 2,
+                    role: "assistant".to_string(),
+                    state: "committed".to_string(),
+                    created_at: 2_100,
+                    parts: vec![Part::Text {
+                        text: "Resumed!".to_string(),
+                    }],
+                },
+            ],
+        ));
         assert_eq!(app.turns.len(), 1);
         assert_eq!(app.turns[0].prompt, "Resume me");
         assert_eq!(app.turns[0].text, "Resumed!");
@@ -2893,5 +3241,135 @@ mod tests {
         assert!(app.turns[0]
             .notices
             .contains(&"forked session ses_2 from entry_4".to_string()));
+    }
+
+    #[test]
+    fn tracks_log_cursor_and_merges_history_snapshots_with_live_drafts() {
+        let mut app = App::default();
+        app.session = Some(SessionInfo {
+            id: "ses_sync".to_string(),
+            title: "Sync".to_string(),
+            directory: "/workspace".to_string(),
+            host_dir: None,
+            sandbox: None,
+            project: None,
+            updated_at: 1_000,
+            model: None,
+            thinking_level: None,
+        });
+        app.busy = true;
+
+        // Turn 1 is actively streaming live deltas in memory; a queued prompt is waiting.
+        let mut live_turn = Turn::with_id("u1", "Explain the bug");
+        live_turn.append_thinking_delta(Some("a1"), Some(0), "Inspecting client.rs...");
+        live_turn.append_text_delta(Some("a1"), Some(1), "The socket drops before ");
+        app.turns.push(live_turn);
+        app.queued_prompts.push(QueuedPrompt {
+            message_id: "u2".to_string(),
+            prompt: "Also add a test".to_string(),
+            delivery: PromptDelivery::FollowUp,
+            admitted: true,
+            dispatched: true,
+        });
+
+        // 1. Mid-turn history snapshot arrives while `a1` is still `state: "draft"` (empty in DB):
+        //    live draft deltas are preserved and `log_cursor` advances to 2.
+        app.update(history_event(
+            &app,
+            vec![
+                HistoryEntry {
+                    id: "u1".to_string(),
+                    seq: 1,
+                    role: "user".to_string(),
+                    state: "committed".to_string(),
+                    created_at: 1_000,
+                    parts: vec![Part::Text {
+                        text: "Explain the bug".to_string(),
+                    }],
+                },
+                HistoryEntry {
+                    id: "a1".to_string(),
+                    seq: 2,
+                    role: "assistant".to_string(),
+                    state: "draft".to_string(),
+                    created_at: 1_050,
+                    parts: vec![],
+                },
+            ],
+        ));
+        assert_eq!(app.log_cursor, Some(2));
+        assert!(app.busy);
+        assert_eq!(app.turns.len(), 1);
+        assert_eq!(app.turns[0].thinking, "Inspecting client.rs...");
+        assert_eq!(app.turns[0].text, "The socket drops before ");
+        assert_eq!(app.queued_prompts.len(), 1);
+
+        // 2. `LogSynced` with `seq: 5` advances `log_cursor` to `max(2, 5) = 5`; a smaller seq
+        //    never moves it backwards.
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::LogSynced {
+            seq: Some(5),
+        })));
+        assert_eq!(app.log_cursor, Some(5));
+        app.update(AppEvent::Rpc(RpcEvent::Stream(StreamEvent::LogSynced {
+            seq: Some(3),
+        })));
+        assert_eq!(app.log_cursor, Some(5));
+
+        // 3. Reconnect history snapshot arrives after both turns settled during a disconnect:
+        //    `u2` is removed from `queued_prompts`, both turns are `Succeeded`, and `busy` is false.
+        app.update(history_event(
+            &app,
+            vec![
+                HistoryEntry {
+                    id: "u1".to_string(),
+                    seq: 1,
+                    role: "user".to_string(),
+                    state: "committed".to_string(),
+                    created_at: 1_000,
+                    parts: vec![Part::Text {
+                        text: "Explain the bug".to_string(),
+                    }],
+                },
+                HistoryEntry {
+                    id: "a1".to_string(),
+                    seq: 2,
+                    role: "assistant".to_string(),
+                    state: "committed".to_string(),
+                    created_at: 1_100,
+                    parts: vec![Part::Text {
+                        text: "The socket drops before reconciliation.".to_string(),
+                    }],
+                },
+                HistoryEntry {
+                    id: "u2".to_string(),
+                    seq: 6,
+                    role: "user".to_string(),
+                    state: "committed".to_string(),
+                    created_at: 1_200,
+                    parts: vec![Part::Text {
+                        text: "Also add a test".to_string(),
+                    }],
+                },
+                HistoryEntry {
+                    id: "a2".to_string(),
+                    seq: 7,
+                    role: "assistant".to_string(),
+                    state: "committed".to_string(),
+                    created_at: 1_300,
+                    parts: vec![Part::Text {
+                        text: "Added reconnect tests.".to_string(),
+                    }],
+                },
+            ],
+        ));
+        assert_eq!(app.log_cursor, Some(7));
+        assert!(!app.busy);
+        assert!(app.queued_prompts.is_empty());
+        assert_eq!(app.turns.len(), 2);
+        assert_eq!(app.turns[0].state, TurnState::Succeeded);
+        assert_eq!(app.turns[0].text, "The socket drops before reconciliation.");
+        assert_eq!(app.turns[1].prompt, "Also add a test");
+        assert_eq!(app.turns[1].state, TurnState::Succeeded);
+        assert_eq!(app.turns[1].text, "Added reconnect tests.");
     }
 }
