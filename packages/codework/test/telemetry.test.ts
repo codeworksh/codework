@@ -401,12 +401,17 @@ describe("OTLP export", () => {
 		}
 	}, 60_000);
 
-	it("exports every span, Effect's own sql.* included, with CODEWORK_TRACE_LEVEL=debug", async () => {
+	it("exports every span, Effect's own database spans included, with CODEWORK_TRACE_LEVEL=debug", async () => {
 		const collector = await serve();
 		try {
 			await exportRun(collector, "debug");
 			const spans = exportedSpans(collector.exports);
-			expect(spans.some((pair) => pair.endsWith("> sql.execute"))).toBe(true);
+			expect(
+				collector.exports
+					.flatMap((entry) => entry.body.resourceSpans ?? [])
+					.flatMap((resource) => resource.scopeSpans.flatMap((scope) => scope.spans))
+					.some((span) => span.attributes?.some((attribute) => attribute.key === "db.system.name")),
+			).toBe(true);
 			// Debug adds spans; it never loses the ones exported by default.
 			const defaults: ReadonlyArray<string> = JSON.parse(readFileSync(artifact, "utf8")).exported;
 			expect(spans).toEqual(expect.arrayContaining([...defaults]));

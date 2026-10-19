@@ -31,8 +31,8 @@ export function openAICodexModels(): Record<string, Model.Info> {
 	});
 	const ids: Array<[string, string[]]> = [
 		["gpt-5.3-codex-spark", ["text"]],
-		["gpt-5.5", ["text", "image"]],
 		["gpt-5.6-luna", ["text", "image"]],
+		["gpt-6-luna", ["text", "image"]],
 	];
 	const catalog = buildCatalog({
 		modelsDev: {

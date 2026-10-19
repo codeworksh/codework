@@ -4,7 +4,10 @@
 		"deployment.environment.name": "latest",
 		"service.instance.id": "<volatile>",
 		"service.name": "codework",
-		"service.version": "<volatile>"
+		"service.version": "<volatile>",
+		"telemetry.sdk.language": "nodejs",
+		"telemetry.sdk.name": "effect",
+		"telemetry.sdk.version": "4.0.5"
 	},
 	"exported": [
 		"(root) > CLI.run",

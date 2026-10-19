@@ -183,7 +183,7 @@ describe("codework CLI", () => {
 		expect(result.stderr).toContain("error: SandboxProviderError - Could not get credentials from OIDC context.");
 		expect(result.stderr).toContain("driver: vercel");
 		expect(result.stderr).toContain("operation: create");
-		expect(result.stderr).toContain("traceback:\nSandboxProviderError\n");
+		expect(result.stderr).toContain("traceback:\nSandboxProviderError: The vercel sandbox failed to create:");
 	});
 
 	it("documents remote runs and rejects server-owned flags on the client", () => {

@@ -47,7 +47,6 @@ const OPENAI_LEVELS: Record<(typeof OPENAI_E2E_MODELS)[number], Model.ThinkingLe
 const OPENAI_CODEX_LEVELS: Record<(typeof OPENAI_CODEX_E2E_MODELS)[number], Model.ThinkingLevel[]> = {
 	"gpt-6-luna": ["off", "minimal", ...WITH_MAX.slice(1)],
 	"gpt-5.6-luna": ["off", "minimal", ...WITH_MAX.slice(1)],
-	"gpt-5.5": ["off", "minimal", ...WITH_XHIGH.slice(1)],
 };
 
 const ANTHROPIC_BUDGET: Model.ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
@@ -165,7 +164,7 @@ describeIfOpenAICodex.each(OPENAI_CODEX_E2E_MODELS)("OpenAI Codex thinking level
 	it("exposes the levels the API accepts", async () => {
 		const model = await getOpenAICodexModel(modelId);
 		expect(Model.getSupportedThinkingLevels(model)).toEqual(OPENAI_CODEX_LEVELS[modelId]);
-		expect(Model.clampThinkingLevel(model, "minimal")).toBe("low");
+		expect(Model.clampThinkingLevel(model, "minimal")).toBe("minimal");
 	});
 
 	it("disables reasoning when no level is requested", { retry: 2, timeout: 60_000 }, async () => {

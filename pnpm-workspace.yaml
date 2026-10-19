@@ -33,4 +33,8 @@ allowBuilds:
    # electron-builder's Windows installer; the desktop app builds no Windows targets.
    electron-winstaller: false
 
+# just-bash pins `run` exactly; the harness uses a newer one, and the binary unpacks one copy.
+overrides:
+   run: 2.1.8
+
 storeDir: .pnpm-store

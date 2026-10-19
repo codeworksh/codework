@@ -1,6 +1,6 @@
 {
 	"name": "@codeworksh/harness",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "AI agent harness — agent loop, tools, plugins, sandbox, and more.",
 	"keywords": [
 		"agent",
@@ -92,6 +92,7 @@
 		"just-bash": "^3.4.2",
 		"npm-package-arg": "^14.0.0",
 		"pacote": "^22.0.0",
+		"run": "2.1.8",
 		"uuidv7": "^1.2.1",
 		"yaml": "2.9.1"
 	},
