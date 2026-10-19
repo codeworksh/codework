@@ -13,7 +13,8 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::rpc::protocol::{
     ConfigureSessionPayload, CreateSessionPayload, ExitPayload, ListModelsPayload, ModelRefPayload,
     PromptSessionPayload, RpcAck, RpcRequest, RuntimePayload, ServerMessage,
-    SessionHistoryResponse, SessionIdPayload,
+    SessionHistoryResponse, SessionIdPayload, SessionLogPayload, SessionMessagePayload,
+    SessionMessageResponse,
 };
 use crate::types::{
     HistoryEntry, ModelList, ModelRef, PromptDelivery, ServerInfo, ServiceRegistration,
@@ -244,6 +245,10 @@ pub enum StreamEvent {
     /// A plugin or runtime warning surfaced during the turn (as ACP's `Feed.notice` does).
     Notice(String),
     Usage(UsageReport),
+    /// `session.log` replay reached the head sequence read when the call began.
+    LogSynced {
+        seq: Option<u64>,
+    },
     ExecutionStarted,
     Succeeded,
     Failed(String),
@@ -254,6 +259,19 @@ pub enum StreamEvent {
     Disconnected,
     /// The server answered again after a `Disconnected`.
     Reconnected,
+}
+
+/// Advance a `session.log` cursor (`after`) to `max(cursor, next_seq)`.
+pub fn advance_log_cursor(cursor: &mut Option<u64>, next_seq: Option<u64>) {
+    if let Some(seq) = next_seq {
+        *cursor = Some(cursor.map_or(seq, |prev| prev.max(seq)));
+    }
+}
+
+/// Highest durable sequence in a `session.history` snapshot, used as the initial `after`
+/// cursor when opening or resuming an existing session.
+pub fn history_cursor(entries: &[HistoryEntry]) -> Option<u64> {
+    entries.iter().map(|entry| entry.seq).max()
 }
 
 pub struct RpcClient {
@@ -543,6 +561,229 @@ impl RpcClient {
         .map(|_| ())
     }
 
+    /// Check whether a prompt materialized into the conversation (`session.message`).
+    pub async fn session_message(
+        &self,
+        session_id: &str,
+        message_id: &str,
+    ) -> Result<bool, String> {
+        let value = self
+            .call(
+                "session.message",
+                SessionMessagePayload {
+                    session_id: session_id.to_string(),
+                    message_id: message_id.to_string(),
+                },
+            )
+            .await?;
+        parse_session_message(&value)
+    }
+
+    /// Wait until a session has no work running or queued (`session.wait`).
+    #[allow(dead_code)]
+    pub async fn wait_session(&self, session_id: &str) -> Result<(), String> {
+        self.call(
+            "session.wait",
+            SessionIdPayload {
+                session_id: session_id.to_string(),
+            },
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Stream durable events for `session_id` via `session.log` (`{ sessionId, after, follow }`),
+    /// advancing `cursor` to `max(last durable.seq, last log.synced.seq)` and resuming from
+    /// `cursor` on reconnect when `follow` is `true`.
+    #[allow(dead_code)]
+    pub async fn session_log(
+        &self,
+        session_id: &str,
+        after: Option<u64>,
+        follow: bool,
+        cursor: &mut Option<u64>,
+        event_tx: &mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<(), String> {
+        advance_log_cursor(cursor, after);
+        let mut attempt = 0u32;
+        let mut seen_durable_seqs = std::collections::HashSet::new();
+
+        loop {
+            match self
+                .stream_session_log_once(
+                    session_id,
+                    follow,
+                    cursor,
+                    &mut seen_durable_seqs,
+                    attempt > 0,
+                    event_tx,
+                )
+                .await
+            {
+                Ok(true) => return Ok(()),
+                Ok(false) => {
+                    attempt += 1;
+                    if attempt > RECONNECT_ATTEMPTS {
+                        let _ = event_tx.send(StreamEvent::Failed(format!(
+                            "Lost the connection to {} and could not reconnect",
+                            self.url
+                        )));
+                        return Ok(());
+                    }
+                    let _ = event_tx.send(StreamEvent::Disconnected);
+                    sleep(RECONNECT_DELAY).await;
+                }
+                Err(message) => {
+                    let _ = event_tx.send(StreamEvent::Failed(message));
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    /// One connection's worth of `session.log`. `Ok(true)` means a non-followed replay completed;
+    /// `Ok(false)` means the socket dropped and a follower should reconnect from `cursor`.
+    pub async fn stream_session_log_once(
+        &self,
+        session_id: &str,
+        follow: bool,
+        cursor: &mut Option<u64>,
+        seen_durable_seqs: &mut std::collections::HashSet<u64>,
+        is_retry: bool,
+        event_tx: &mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<bool, String> {
+        let (ws_stream, _) = match connect_async(&self.url).await {
+            Ok(stream) => stream,
+            Err(_) => return Ok(false),
+        };
+
+        let (mut write, mut read) = ws_stream.split();
+        let log_id = self.next_request_id();
+        let log_req = RpcRequest::new(
+            log_id,
+            "session.log",
+            SessionLogPayload {
+                session_id: session_id.to_string(),
+                after: *cursor,
+                follow: Some(follow),
+            },
+        );
+        let mut log_text = serde_json::to_string(&log_req).map_err(|e| e.to_string())?;
+        log_text.push('\n');
+        write
+            .send(Message::Text(log_text))
+            .await
+            .map_err(|e| format!("Failed to subscribe to session.log: {}", e))?;
+
+        let mut reconnected = is_retry;
+        let mut saw_synced = false;
+
+        while let Some(msg_res) = read.next().await {
+            let msg = match msg_res {
+                Ok(m) => m,
+                Err(_) => return Ok(!follow && saw_synced),
+            };
+
+            if let Message::Text(txt) = msg {
+                for line in txt.lines() {
+                    let line = line.trim();
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    let parsed: ServerMessage = match serde_json::from_str(line) {
+                        Ok(m) => m,
+                        Err(_) => continue,
+                    };
+
+                    match parsed {
+                        ServerMessage::Chunk { request_id, values } => {
+                            if let Some(id_num) = as_request_id(&request_id) {
+                                let ack = RpcAck::new(id_num);
+                                if let Ok(mut ack_json) = serde_json::to_string(&ack) {
+                                    ack_json.push('\n');
+                                    let _ = write.send(Message::Text(ack_json)).await;
+                                }
+                            }
+
+                            for env in values {
+                                if env.event_type == "log.synced" {
+                                    if env
+                                        .aggregate_id
+                                        .as_deref()
+                                        .is_none_or(|agg| agg == session_id)
+                                    {
+                                        if reconnected {
+                                            reconnected = false;
+                                            let _ = event_tx.send(StreamEvent::Reconnected);
+                                        }
+                                        advance_log_cursor(cursor, env.seq);
+                                        saw_synced = true;
+                                        let _ =
+                                            event_tx.send(StreamEvent::LogSynced { seq: env.seq });
+                                    }
+                                    continue;
+                                }
+
+                                let data = match &env.data {
+                                    Some(d) => d,
+                                    None => continue,
+                                };
+
+                                let s_id = data.get("sessionId").and_then(|v| v.as_str());
+                                let source_id =
+                                    data.get("sourceSessionId").and_then(|v| v.as_str());
+                                let durable_agg =
+                                    env.durable.as_ref().map(|d| d.aggregate_id.as_str());
+                                let matches_session = s_id == Some(session_id)
+                                    || durable_agg == Some(session_id)
+                                    || (env.event_type == "session.next.forked"
+                                        && source_id == Some(session_id));
+                                if !matches_session {
+                                    continue;
+                                }
+
+                                if reconnected {
+                                    reconnected = false;
+                                    let _ = event_tx.send(StreamEvent::Reconnected);
+                                }
+
+                                if let Some(seq) = env.durable_seq() {
+                                    if durable_agg.is_none_or(|agg| agg == session_id) {
+                                        advance_log_cursor(cursor, Some(seq));
+                                        if !seen_durable_seqs.insert(seq) {
+                                            continue;
+                                        }
+                                    }
+                                }
+
+                                for stream_event in
+                                    decode_durable_session_events(env.event_type.as_str(), data)
+                                {
+                                    let _ = event_tx.send(stream_event);
+                                }
+                            }
+                        }
+                        ServerMessage::Exit { request_id, exit }
+                            if as_request_id(&request_id) == Some(log_id) =>
+                        {
+                            return match exit {
+                                ExitPayload::Success { .. } => Ok(true),
+                                ExitPayload::Failure { cause } => Err(format_cause(cause.as_ref())),
+                            };
+                        }
+                        ServerMessage::Defect { defect } => {
+                            return Err(format_cause(defect.as_ref()));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        Ok(!follow && saw_synced)
+    }
+
     /// Stream one prompt, reconnecting the socket when the transport drops.
     ///
     /// The session lives on the server, not this socket, so a dropped connection
@@ -584,9 +825,11 @@ impl RpcClient {
     ) -> Result<(), String> {
         self.stream_prompt(
             session_id,
+            None,
             prompt_text,
             delivery,
             prompt_message_id,
+            true,
             event_tx,
             false,
         )
@@ -594,6 +837,7 @@ impl RpcClient {
     }
 
     /// Keep observing the session across busy periods, until the caller cancels the task.
+    #[allow(dead_code)]
     pub async fn watch_session_with(
         &self,
         session_id: String,
@@ -604,36 +848,87 @@ impl RpcClient {
     ) -> Result<(), String> {
         self.stream_prompt(
             session_id,
+            None,
             prompt_text,
             delivery,
             prompt_message_id,
+            true,
             event_tx,
             true,
         )
         .await
     }
 
+    /// Keep observing a session starting from `after` in `session.log` and optionally dispatching
+    /// an initial prompt.
+    pub async fn watch_session_from(
+        &self,
+        session_id: String,
+        after: Option<u64>,
+        initial_prompt: Option<(String, PromptDelivery, String)>,
+        initially_busy: bool,
+        event_tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<(), String> {
+        let (prompt_text, delivery, prompt_message_id) = initial_prompt
+            .unwrap_or_else(|| (String::new(), PromptDelivery::FollowUp, String::new()));
+        let turn_active = !prompt_message_id.is_empty() || initially_busy;
+        self.stream_prompt(
+            session_id,
+            after,
+            prompt_text,
+            delivery,
+            prompt_message_id,
+            turn_active,
+            event_tx,
+            true,
+        )
+        .await
+    }
+
+    /// Follow an existing session without dispatching a prompt, combining `session.log` (`after`,
+    /// `follow: true`) and `event.subscribe`.
+    pub async fn follow_session(
+        &self,
+        session_id: String,
+        after: Option<u64>,
+        initially_busy: bool,
+        event_tx: mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<(), String> {
+        self.watch_session_from(session_id, after, None, initially_busy, event_tx)
+            .await
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn stream_prompt(
         &self,
         session_id: String,
+        after: Option<u64>,
         prompt_text: String,
         delivery: PromptDelivery,
         prompt_message_id: String,
+        initially_busy: bool,
         event_tx: mpsc::UnboundedSender<StreamEvent>,
         keep_alive: bool,
     ) -> Result<(), String> {
-        let mut prompt_dispatched = false;
+        let mut prompt_dispatched = prompt_message_id.is_empty();
+        let mut log_cursor = after;
+        let mut turn_active = initially_busy || !prompt_message_id.is_empty();
+        let mut initial_prompt_settled = prompt_message_id.is_empty();
+        let mut seen_durable_seqs = std::collections::HashSet::new();
         let mut attempt = 0u32;
 
         loop {
             match self
-                .stream_session_once(
+                .stream_session_once_with_cursor(
                     &session_id,
                     &prompt_text,
                     delivery,
                     &prompt_message_id,
                     &mut prompt_dispatched,
+                    &mut log_cursor,
+                    &mut turn_active,
+                    &mut initial_prompt_settled,
+                    &mut seen_durable_seqs,
                     attempt > 0,
                     keep_alive,
                     &event_tx,
@@ -671,7 +966,7 @@ impl RpcClient {
 
     /// One connection's worth of a prompt. `Ok(true)` means the turn ended;
     /// `Ok(false)` means the socket dropped and the caller should retry.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, dead_code)]
     async fn stream_session_once(
         &self,
         session_id: &str,
@@ -679,6 +974,46 @@ impl RpcClient {
         delivery: PromptDelivery,
         prompt_message_id: &str,
         prompt_dispatched: &mut bool,
+        is_retry: bool,
+        keep_alive: bool,
+        event_tx: &mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<bool, String> {
+        let mut log_cursor = None;
+        let mut turn_active = !prompt_message_id.is_empty();
+        let mut initial_prompt_settled = prompt_message_id.is_empty();
+        let mut seen_durable_seqs = std::collections::HashSet::new();
+        self.stream_session_once_with_cursor(
+            session_id,
+            prompt_text,
+            delivery,
+            prompt_message_id,
+            prompt_dispatched,
+            &mut log_cursor,
+            &mut turn_active,
+            &mut initial_prompt_settled,
+            &mut seen_durable_seqs,
+            is_retry,
+            keep_alive,
+            event_tx,
+        )
+        .await
+    }
+
+    /// One connection's worth of a session stream, combining `event.subscribe`, `session.log`
+    /// (`follow: true`, `after: *log_cursor`), and on reconnect `session.message` + `session.wait`
+    /// reconciliation.
+    #[allow(clippy::too_many_arguments)]
+    async fn stream_session_once_with_cursor(
+        &self,
+        session_id: &str,
+        prompt_text: &str,
+        delivery: PromptDelivery,
+        prompt_message_id: &str,
+        prompt_dispatched: &mut bool,
+        log_cursor: &mut Option<u64>,
+        turn_active: &mut bool,
+        initial_prompt_settled: &mut bool,
+        seen_durable_seqs: &mut std::collections::HashSet<u64>,
         is_retry: bool,
         keep_alive: bool,
         event_tx: &mpsc::UnboundedSender<StreamEvent>,
@@ -702,9 +1037,16 @@ impl RpcClient {
             .map_err(|e| format!("Failed to subscribe to events: {}", e))?;
 
         let mut prompt_req_id: Option<u64> = None;
+        let mut log_req_id: Option<u64> = None;
+        let mut message_check_req_id: Option<u64> = None;
+        let mut wait_req_id: Option<u64> = None;
+        let mut completion_log_id: Option<u64> = None;
+        let mut pending_terminal: Option<StreamEvent> = None;
+        let mut log_synced = false;
         // On a retry, the first matching event is proof the socket is back.
         let mut reconnected = is_retry;
         let mut notices = std::collections::HashSet::new();
+        let mut seen_event_ids = std::collections::HashSet::new();
 
         while let Some(msg_res) = read.next().await {
             let msg = match msg_res {
@@ -727,7 +1069,8 @@ impl RpcClient {
 
                     match parsed {
                         ServerMessage::Chunk { request_id, values } => {
-                            if let Some(id_num) = as_request_id(&request_id) {
+                            let chunk_req_id = as_request_id(&request_id);
+                            if let Some(id_num) = chunk_req_id {
                                 let ack = RpcAck::new(id_num);
                                 if let Ok(mut ack_json) = serde_json::to_string(&ack) {
                                     ack_json.push('\n');
@@ -735,29 +1078,135 @@ impl RpcClient {
                                 }
                             }
 
+                            let from_log = log_req_id.is_some() && chunk_req_id == log_req_id;
+                            let from_completion_log =
+                                completion_log_id.is_some() && chunk_req_id == completion_log_id;
+                            if chunk_req_id != Some(sub_id) && !from_log && !from_completion_log {
+                                continue;
+                            }
                             for env in values {
-                                if env.event_type == "server.connected" && reconnected {
-                                    reconnected = false;
-                                    let _ = event_tx.send(StreamEvent::Reconnected);
-                                }
-                                // On server.connected, dispatch prompt if not yet dispatched
-                                if env.event_type == "server.connected" && !*prompt_dispatched {
-                                    *prompt_dispatched = true;
-                                    let prompt_id = self.next_request_id();
-                                    prompt_req_id = Some(prompt_id);
-                                    let prompt_req = RpcRequest::new(
-                                        prompt_id,
-                                        "session.prompt",
-                                        PromptSessionPayload {
+                                if env.event_type == "server.connected" {
+                                    if reconnected {
+                                        reconnected = false;
+                                        let _ = event_tx.send(StreamEvent::Reconnected);
+                                    }
+                                    if !prompt_message_id.is_empty() && !*prompt_dispatched {
+                                        *prompt_dispatched = true;
+                                        *turn_active = true;
+                                        let prompt_id = self.next_request_id();
+                                        prompt_req_id = Some(prompt_id);
+                                        let prompt_req = RpcRequest::new(
+                                            prompt_id,
+                                            "session.prompt",
+                                            PromptSessionPayload {
+                                                session_id: session_id.to_string(),
+                                                text: prompt_text.to_string(),
+                                                delivery: delivery.as_str(),
+                                                id: prompt_message_id.to_string(),
+                                            },
+                                        );
+                                        if let Ok(mut p_json) = serde_json::to_string(&prompt_req) {
+                                            p_json.push('\n');
+                                            let _ = write.send(Message::Text(p_json)).await;
+                                        }
+                                    } else if is_retry {
+                                        if !prompt_message_id.is_empty() && !*initial_prompt_settled
+                                        {
+                                            // Reconcile whether `prompt_message_id` materialized
+                                            // into the conversation before the disconnect.
+                                            let msg_id = self.next_request_id();
+                                            message_check_req_id = Some(msg_id);
+                                            let msg_req = RpcRequest::new(
+                                                msg_id,
+                                                "session.message",
+                                                SessionMessagePayload {
+                                                    session_id: session_id.to_string(),
+                                                    message_id: prompt_message_id.to_string(),
+                                                },
+                                            );
+                                            if let Ok(mut m_json) = serde_json::to_string(&msg_req)
+                                            {
+                                                m_json.push('\n');
+                                                let _ = write.send(Message::Text(m_json)).await;
+                                            }
+                                        } else if *turn_active {
+                                            let wait_id = self.next_request_id();
+                                            wait_req_id = Some(wait_id);
+                                            let wait_req = RpcRequest::new(
+                                                wait_id,
+                                                "session.wait",
+                                                SessionIdPayload {
+                                                    session_id: session_id.to_string(),
+                                                },
+                                            );
+                                            if let Ok(mut w_json) = serde_json::to_string(&wait_req)
+                                            {
+                                                w_json.push('\n');
+                                                let _ = write.send(Message::Text(w_json)).await;
+                                            }
+                                        }
+                                    } else if prompt_message_id.is_empty() && *turn_active {
+                                        let wait_id = self.next_request_id();
+                                        wait_req_id = Some(wait_id);
+                                        let wait_req = RpcRequest::new(
+                                            wait_id,
+                                            "session.wait",
+                                            SessionIdPayload {
+                                                session_id: session_id.to_string(),
+                                            },
+                                        );
+                                        if let Ok(mut w_json) = serde_json::to_string(&wait_req) {
+                                            w_json.push('\n');
+                                            let _ = write.send(Message::Text(w_json)).await;
+                                        }
+                                    }
+
+                                    // Subscribe to durable `session.log` (replay after cursor + follow)
+                                    let log_id = self.next_request_id();
+                                    log_req_id = Some(log_id);
+                                    let log_req = RpcRequest::new(
+                                        log_id,
+                                        "session.log",
+                                        SessionLogPayload {
                                             session_id: session_id.to_string(),
-                                            text: prompt_text.to_string(),
-                                            delivery: delivery.as_str(),
-                                            id: prompt_message_id.to_string(),
+                                            after: *log_cursor,
+                                            follow: Some(true),
                                         },
                                     );
-                                    if let Ok(mut p_json) = serde_json::to_string(&prompt_req) {
-                                        p_json.push('\n');
-                                        let _ = write.send(Message::Text(p_json.into())).await;
+                                    if let Ok(mut l_json) = serde_json::to_string(&log_req) {
+                                        l_json.push('\n');
+                                        let _ = write.send(Message::Text(l_json)).await;
+                                    }
+                                    continue;
+                                }
+
+                                if env.event_type == "log.synced" {
+                                    if (from_log || from_completion_log)
+                                        && env
+                                            .aggregate_id
+                                            .as_deref()
+                                            .is_none_or(|agg| agg == session_id)
+                                    {
+                                        if reconnected {
+                                            reconnected = false;
+                                            let _ = event_tx.send(StreamEvent::Reconnected);
+                                        }
+                                        advance_log_cursor(log_cursor, env.seq);
+                                        let _ =
+                                            event_tx.send(StreamEvent::LogSynced { seq: env.seq });
+                                        if from_log {
+                                            log_synced = true;
+                                            if completion_log_id.is_none() {
+                                                if let Some(terminal) = pending_terminal.take() {
+                                                    *turn_active = false;
+                                                    *initial_prompt_settled = true;
+                                                    let _ = event_tx.send(terminal);
+                                                    if !keep_alive {
+                                                        return Ok(true);
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                     continue;
                                 }
@@ -794,7 +1243,10 @@ impl RpcClient {
                                 let s_id = data.get("sessionId").and_then(|v| v.as_str());
                                 let source_id =
                                     data.get("sourceSessionId").and_then(|v| v.as_str());
+                                let durable_agg =
+                                    env.durable.as_ref().map(|d| d.aggregate_id.as_str());
                                 let matches_session = s_id == Some(session_id)
+                                    || durable_agg == Some(session_id)
                                     || (env.event_type == "session.next.forked"
                                         && source_id == Some(session_id));
                                 if !matches_session {
@@ -808,15 +1260,55 @@ impl RpcClient {
                                     let _ = event_tx.send(StreamEvent::Reconnected);
                                 }
 
-                                if let Some(stream_event) =
-                                    decode_session_event(env.event_type.as_str(), data)
-                                {
+                                if let Some(seq) = env.durable_seq() {
+                                    if durable_agg.is_none_or(|agg| agg == session_id) {
+                                        // Only ordered replay/follow may advance `after`. A live
+                                        // event can arrive ahead of unread replay on this socket.
+                                        if from_log || from_completion_log {
+                                            advance_log_cursor(log_cursor, Some(seq));
+                                        }
+                                        if !seen_durable_seqs.insert(seq) {
+                                            continue;
+                                        }
+                                    }
+                                }
+                                if let Some(id) = env.id.as_ref().filter(|s| !s.is_empty()) {
+                                    if !seen_event_ids.insert(id.clone()) {
+                                        continue;
+                                    }
+                                }
+
+                                // Both sources use the same decoder, so either copy recovers
+                                // completed parts when deduplication chooses its winner.
+                                let decoded =
+                                    decode_durable_session_events(env.event_type.as_str(), data);
+
+                                for stream_event in decoded {
+                                    if matches!(
+                                        stream_event,
+                                        StreamEvent::ExecutionStarted
+                                            | StreamEvent::PromptPromoted { .. }
+                                            | StreamEvent::TurnStarted
+                                    ) {
+                                        *turn_active = true;
+                                    }
                                     let is_terminal = matches!(
                                         stream_event,
                                         StreamEvent::Succeeded
                                             | StreamEvent::Failed(_)
                                             | StreamEvent::Interrupted(_)
                                     );
+                                    if is_terminal
+                                        && (completion_log_id.is_some()
+                                            || (is_retry && !log_synced))
+                                    {
+                                        pending_terminal = Some(stream_event);
+                                        continue;
+                                    }
+                                    if is_terminal {
+                                        *turn_active = false;
+                                        *initial_prompt_settled = true;
+                                    }
                                     let _ = event_tx.send(stream_event);
                                     if is_terminal && !keep_alive {
                                         return Ok(true);
@@ -824,15 +1316,130 @@ impl RpcClient {
                                 }
                             }
                         }
-                        ServerMessage::Exit {
-                            request_id,
-                            exit: ExitPayload::Failure { cause },
-                        } => {
+                        ServerMessage::Exit { request_id, exit } => {
                             let id = as_request_id(&request_id);
-                            if id == Some(sub_id)
-                                || (prompt_req_id.is_some() && id == prompt_req_id)
+                            if message_check_req_id.is_some() && id == message_check_req_id {
+                                message_check_req_id = None;
+                                match exit {
+                                    ExitPayload::Success { value } => {
+                                        let found = parse_session_message(&value).unwrap_or(false);
+                                        if found {
+                                            let wait_id = self.next_request_id();
+                                            wait_req_id = Some(wait_id);
+                                            let wait_req = RpcRequest::new(
+                                                wait_id,
+                                                "session.wait",
+                                                SessionIdPayload {
+                                                    session_id: session_id.to_string(),
+                                                },
+                                            );
+                                            if let Ok(mut w_json) = serde_json::to_string(&wait_req)
+                                            {
+                                                w_json.push('\n');
+                                                let _ = write.send(Message::Text(w_json)).await;
+                                            }
+                                        } else {
+                                            *turn_active = true;
+                                            let prompt_id = self.next_request_id();
+                                            prompt_req_id = Some(prompt_id);
+                                            let prompt_req = RpcRequest::new(
+                                                prompt_id,
+                                                "session.prompt",
+                                                PromptSessionPayload {
+                                                    session_id: session_id.to_string(),
+                                                    text: prompt_text.to_string(),
+                                                    delivery: delivery.as_str(),
+                                                    id: prompt_message_id.to_string(),
+                                                },
+                                            );
+                                            if let Ok(mut p_json) =
+                                                serde_json::to_string(&prompt_req)
+                                            {
+                                                p_json.push('\n');
+                                                let _ = write.send(Message::Text(p_json)).await;
+                                            }
+                                        }
+                                    }
+                                    ExitPayload::Failure { cause } => {
+                                        return Err(format_cause(cause.as_ref()));
+                                    }
+                                }
+                            } else if prompt_req_id.is_some() && id == prompt_req_id {
+                                prompt_req_id = None;
+                                if let ExitPayload::Failure { cause } = exit {
+                                    if is_retry && is_prompt_conflict(cause.as_ref()) {
+                                        let wait_id = self.next_request_id();
+                                        wait_req_id = Some(wait_id);
+                                        let wait_req = RpcRequest::new(
+                                            wait_id,
+                                            "session.wait",
+                                            SessionIdPayload {
+                                                session_id: session_id.to_string(),
+                                            },
+                                        );
+                                        if let Ok(mut w_json) = serde_json::to_string(&wait_req) {
+                                            w_json.push('\n');
+                                            let _ = write.send(Message::Text(w_json)).await;
+                                        }
+                                    } else {
+                                        return Err(format_cause(cause.as_ref()));
+                                    }
+                                }
+                            } else if wait_req_id.is_some() && id == wait_req_id {
+                                wait_req_id = None;
+                                match exit {
+                                    ExitPayload::Success { .. } => {
+                                        if *turn_active || pending_terminal.is_some() {
+                                            // `wait` and the follower run independently. Pin a
+                                            // replay AFTER idle so all committed output is drained
+                                            // before reporting completion, even if follow lags.
+                                            pending_terminal.get_or_insert(StreamEvent::Succeeded);
+                                            let drain_id = self.next_request_id();
+                                            completion_log_id = Some(drain_id);
+                                            let req = RpcRequest::new(
+                                                drain_id,
+                                                "session.log",
+                                                SessionLogPayload {
+                                                    session_id: session_id.to_string(),
+                                                    after: *log_cursor,
+                                                    follow: Some(false),
+                                                },
+                                            );
+                                            let mut text = serde_json::to_string(&req)
+                                                .map_err(|e| e.to_string())?;
+                                            text.push('\n');
+                                            if write.send(Message::Text(text)).await.is_err() {
+                                                return Ok(false);
+                                            }
+                                        }
+                                    }
+                                    ExitPayload::Failure { cause } => {
+                                        return Err(format_cause(cause.as_ref()));
+                                    }
+                                }
+                            } else if completion_log_id.is_some() && id == completion_log_id {
+                                match exit {
+                                    ExitPayload::Success { .. } => {
+                                        completion_log_id = None;
+                                        if let Some(terminal) = pending_terminal.take() {
+                                            *turn_active = false;
+                                            *initial_prompt_settled = true;
+                                            let _ = event_tx.send(terminal);
+                                            if !keep_alive {
+                                                return Ok(true);
+                                            }
+                                        }
+                                    }
+                                    ExitPayload::Failure { cause } => {
+                                        return Err(format_cause(cause.as_ref()))
+                                    }
+                                }
+                            } else if id == Some(sub_id)
+                                || (log_req_id.is_some() && id == log_req_id)
                             {
-                                return Err(format_cause(cause.as_ref()));
+                                if let ExitPayload::Failure { cause } = exit {
+                                    return Err(format_cause(cause.as_ref()));
+                                }
                             }
                         }
                         ServerMessage::Defect { defect } => {
@@ -876,6 +1483,31 @@ fn parse_session_history(value: &Value) -> Result<Vec<HistoryEntry>, String> {
 fn parse_model_list(value: &Value) -> Result<ModelList, String> {
     serde_json::from_value::<ModelList>(value.clone())
         .map_err(|e| format!("Invalid model list response: {e}"))
+}
+
+fn parse_session_message(value: &Value) -> Result<bool, String> {
+    serde_json::from_value::<SessionMessageResponse>(value.clone())
+        .map(|res| res.found)
+        .map_err(|e| format!("Invalid session.message response: {e}"))
+}
+
+fn is_prompt_conflict(cause: Option<&Value>) -> bool {
+    let Some(cause) = cause else {
+        return false;
+    };
+    match cause {
+        Value::Array(items) => items.iter().any(|item| is_prompt_conflict(Some(item))),
+        Value::Object(_) => {
+            if str_field(cause, "_tag") == Some("PromptConflictError") {
+                return true;
+            }
+            cause
+                .get("error")
+                .or_else(|| cause.get("failure"))
+                .is_some_and(|inner| is_prompt_conflict(Some(inner)))
+        }
+        _ => false,
+    }
 }
 
 fn str_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
@@ -1206,6 +1838,70 @@ fn format_tagged_error(tag: &str, err: &Value) -> String {
             tag.to_string()
         }
     }
+}
+
+/// Decode one durable `session.log` event into its `StreamEvent`(s), including completed thinking
+/// and text parts carried on `session.llm.ended` when live deltas were not observed.
+pub fn decode_durable_session_events(event_type: &str, data: &Value) -> Vec<StreamEvent> {
+    if event_type == "session.llm.ended" {
+        let mut events = llm_ended_part_events(data);
+        if let Some(usage) = llm_ended_usage_event(data) {
+            events.push(usage);
+        }
+        return events;
+    }
+    decode_session_event(event_type, data).into_iter().collect()
+}
+
+fn llm_ended_part_events(data: &Value) -> Vec<StreamEvent> {
+    let mut out = Vec::new();
+    let Some(msg) = data.get("message") else {
+        return out;
+    };
+    let message_id = data
+        .get("messageId")
+        .or_else(|| msg.get("messageId"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let Some(parts) = msg.get("parts").and_then(Value::as_array) else {
+        return out;
+    };
+    for (part_index, part) in parts.iter().enumerate() {
+        match part.get("type").and_then(Value::as_str) {
+            Some("thinking") => {
+                if part.get("redacted").and_then(Value::as_bool) == Some(true) {
+                    continue;
+                }
+                if let Some(thinking) = part
+                    .get("thinking")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                {
+                    out.push(StreamEvent::ThinkingEnd {
+                        message_id: message_id.clone(),
+                        part_index,
+                        content: thinking.to_string(),
+                    });
+                }
+            }
+            Some("text") => {
+                if let Some(text) = part
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                {
+                    out.push(StreamEvent::TextEnd {
+                        message_id: message_id.clone(),
+                        part_index,
+                        content: text.to_string(),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 /// Decode one session-scoped `EventEnvelope` payload into a `StreamEvent`.
@@ -1684,6 +2380,216 @@ fn settled_event(data: &Value) -> StreamEvent {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    type TestSocket = tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>;
+
+    async fn request(ws: &mut TestSocket, tag: &str) -> Value {
+        while let Some(message) = ws.next().await {
+            if let Message::Text(text) = message.unwrap() {
+                let value: Value = serde_json::from_str(text.trim()).unwrap();
+                if value["tag"] == tag {
+                    return value;
+                }
+            }
+        }
+        panic!("expected {tag}");
+    }
+
+    async fn chunk(ws: &mut TestSocket, id: &Value, values: Value) {
+        let value = json!({"_tag": "Chunk", "requestId": id, "values": values});
+        ws.send(Message::Text(format!("{value}\n"))).await.unwrap();
+    }
+
+    async fn success(ws: &mut TestSocket, id: &Value, value: Value) {
+        let reply = json!({"_tag": "Exit", "requestId": id,
+            "exit": {"_tag": "Success", "value": value}});
+        ws.send(Message::Text(format!("{reply}\n"))).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn live_events_do_not_skip_unread_log_or_suppress_completed_parts() {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let client = RpcClient::new(format!("ws://{}", listener.local_addr().unwrap()));
+            let server = tokio::spawn(async move {
+                let ended = json!({"id": "end", "type": "session.llm.ended",
+                "durable": {"aggregateId": "ses", "seq": 20, "version": 1},
+                "data": {"sessionId": "ses", "messageId": "answer", "message": {
+                    "parts": [{"type": "text", "text": "Recovered answer"}],
+                    "usage": {"totalTokens": 3, "input": 1, "output": 2}
+                }}});
+                for after in [10, 11] {
+                    let (socket, _) = listener.accept().await.unwrap();
+                    let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
+                    let sub = request(&mut ws, "event.subscribe").await;
+                    chunk(&mut ws, &sub["id"], json!([{ "type": "server.connected" }])).await;
+                    let log = request(&mut ws, "session.log").await;
+                    assert_eq!(log["payload"]["after"], after);
+                    if after == 10 {
+                        // The live head arrives before the ordered replay catches up.
+                        chunk(&mut ws, &sub["id"], json!([ended])).await;
+                        chunk(
+                            &mut ws,
+                            &log["id"],
+                            json!([{
+                                "type": "session.config.changed",
+                                "durable": {"aggregateId": "ses", "seq": 11, "version": 1},
+                                "data": {"sessionId": "ses", "thinkingLevel": "low"}
+                            }]),
+                        )
+                        .await;
+                    } else {
+                        chunk(
+                            &mut ws,
+                            &log["id"],
+                            json!([{
+                            "type": "session.config.changed",
+                            "durable": {"aggregateId": "ses", "seq": 12, "version": 1},
+                            "data": {"sessionId": "ses", "thinkingLevel": "high"}
+                        }, ended, {"type": "log.synced", "aggregateId": "ses", "seq": 20}]),
+                        )
+                        .await;
+                    }
+                    ws.close(None).await.unwrap();
+                }
+            });
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            let mut cursor = Some(10);
+            let mut seen = std::collections::HashSet::new();
+            for retry in [false, true] {
+                assert!(!client
+                    .stream_session_once_with_cursor(
+                        "ses",
+                        "",
+                        PromptDelivery::FollowUp,
+                        "",
+                        &mut true,
+                        &mut cursor,
+                        &mut false,
+                        &mut true,
+                        &mut seen,
+                        retry,
+                        true,
+                        &tx
+                    )
+                    .await
+                    .unwrap());
+                if !retry {
+                    assert_eq!(cursor, Some(11));
+                }
+            }
+            assert_eq!(cursor, Some(20));
+            let mut events = Vec::new();
+            while let Ok(event) = rx.try_recv() {
+                events.push(event);
+            }
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|e| matches!(e, StreamEvent::TextEnd { content, .. }
+                if content == "Recovered answer"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|e| matches!(e, StreamEvent::Usage(_)))
+                    .count(),
+                1
+            );
+            assert!(events.contains(&StreamEvent::ConfigChanged {
+                model: None,
+                thinking_level: Some("high".into())
+            }));
+            server.await.unwrap();
+        })
+        .await
+        .expect("ordered replay recovery");
+    }
+
+    #[tokio::test]
+    async fn idle_reconciliation_drains_output_before_completing() {
+        // Exercise wait before initial replay, and wait after the initial replay marker.
+        for synced_first in [false, true] {
+            tokio::time::timeout(Duration::from_secs(5), async {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let client = RpcClient::new(format!("ws://{}", listener.local_addr().unwrap()));
+                let server = tokio::spawn(async move {
+                    let (socket, _) = listener.accept().await.unwrap();
+                    let mut ws = tokio_tungstenite::accept_async(socket).await.unwrap();
+                    let sub = request(&mut ws, "event.subscribe").await;
+                    chunk(&mut ws, &sub["id"], json!([{ "type": "server.connected" }])).await;
+                    let check = request(&mut ws, "session.message").await;
+                    let log = request(&mut ws, "session.log").await;
+                    if synced_first {
+                        chunk(
+                            &mut ws,
+                            &log["id"],
+                            json!([{"type": "log.synced", "aggregateId": "ses", "seq": 1}]),
+                        )
+                        .await;
+                    }
+                    success(&mut ws, &check["id"], json!({"found": true})).await;
+                    let wait = request(&mut ws, "session.wait").await;
+                    success(&mut ws, &wait["id"], Value::Null).await;
+                    // Idle doesn't mean the independent log stream has delivered its tail.
+                    let drain = request(&mut ws, "session.log").await;
+                    assert_eq!(drain["payload"]["follow"], false);
+                    assert_eq!(drain["payload"]["after"], 1);
+                    chunk(
+                        &mut ws,
+                        &drain["id"],
+                        json!([{
+                        "id": "end", "type": "session.llm.ended",
+                        "durable": {"aggregateId": "ses", "seq": 2, "version": 1},
+                        "data": {"sessionId": "ses", "messageId": "answer", "message": {
+                            "parts": [{"type": "text", "text": "Offline output"}]}}
+                    }, {"type": "log.synced", "aggregateId": "ses", "seq": 2}]),
+                    )
+                    .await;
+                    success(&mut ws, &drain["id"], Value::Null).await;
+                });
+                let (tx, mut rx) = mpsc::unbounded_channel();
+                assert!(client
+                    .stream_session_once_with_cursor(
+                        "ses",
+                        "prompt",
+                        PromptDelivery::FollowUp,
+                        "prompt",
+                        &mut true,
+                        &mut Some(1),
+                        &mut true,
+                        &mut false,
+                        &mut std::collections::HashSet::new(),
+                        true,
+                        false,
+                        &tx
+                    )
+                    .await
+                    .unwrap());
+                let mut events = Vec::new();
+                while let Ok(event) = rx.try_recv() {
+                    events.push(event);
+                }
+                let output = events
+                    .iter()
+                    .position(|e| {
+                        matches!(e, StreamEvent::TextEnd {content, ..}
+                    if content == "Offline output")
+                    })
+                    .expect("recovered output");
+                let terminal = events
+                    .iter()
+                    .position(|e| *e == StreamEvent::Succeeded)
+                    .expect("completion");
+                assert!(output < terminal);
+                server.await.unwrap();
+            })
+            .await
+            .expect("completion replay barrier");
+        }
+    }
 
     #[test]
     fn parses_a_started_call_with_its_arguments() {
@@ -3111,6 +4017,580 @@ mod tests {
         assert!(received.contains(&StreamEvent::Succeeded));
 
         server.await.expect("server task");
+    }
+
+    #[tokio::test]
+    async fn reconnect_redispatches_prompt_when_session_message_reports_not_found() {
+        use tokio::net::TcpListener;
+        use tokio_tungstenite::accept_async;
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+            let addr = listener.local_addr().expect("addr");
+            let url = format!("ws://{addr}/rpc/v1");
+
+            let server = tokio::spawn(async move {
+                // 1. First connection: drops right after the client dispatches `session.prompt`.
+                let (socket, _) = listener.accept().await.expect("accept 1");
+                let mut ws = accept_async(socket).await.expect("ws 1");
+                let Some(Ok(Message::Text(sub_text))) = ws.next().await else {
+                    panic!("expected event.subscribe");
+                };
+                let sub_req: Value = serde_json::from_str(sub_text.trim()).expect("sub json");
+                let sub_id = sub_req.get("id").cloned().unwrap_or(json!(1));
+                let connected = json!({
+                    "_tag": "Chunk",
+                    "requestId": sub_id,
+                    "values": [{ "type": "server.connected" }]
+                });
+                ws.send(Message::Text(format!("{connected}\n")))
+                    .await
+                    .expect("send connected 1");
+
+                let mut saw_first_prompt = false;
+                while !saw_first_prompt {
+                    let Some(Ok(Message::Text(txt))) = ws.next().await else {
+                        panic!("expected first session.prompt");
+                    };
+                    for line in txt.lines() {
+                        let msg: Value = serde_json::from_str(line.trim()).expect("json");
+                        if msg.get("tag").and_then(Value::as_str) == Some("session.prompt") {
+                            saw_first_prompt = true;
+                        }
+                    }
+                }
+                // Drop connection before admitting the prompt.
+                drop(ws);
+
+                // 2. Reconnect: client checks `session.message`, receives `{ found: false }`, and
+                //    re-dispatches `session.prompt` with the same `messageId`.
+                let (socket, _) = listener.accept().await.expect("accept 2");
+                let mut ws = accept_async(socket).await.expect("ws 2");
+                let Some(Ok(Message::Text(sub_text))) = ws.next().await else {
+                    panic!("expected event.subscribe on retry");
+                };
+                let sub_req: Value = serde_json::from_str(sub_text.trim()).expect("sub json 2");
+                let sub_id = sub_req.get("id").cloned().unwrap_or(json!(1));
+                let connected = json!({
+                    "_tag": "Chunk",
+                    "requestId": sub_id,
+                    "values": [{ "type": "server.connected" }]
+                });
+                ws.send(Message::Text(format!("{connected}\n")))
+                    .await
+                    .expect("send connected 2");
+
+                let mut msg_check_id = None;
+                while msg_check_id.is_none() {
+                    let Some(Ok(Message::Text(txt))) = ws.next().await else {
+                        panic!("expected session.message request");
+                    };
+                    for line in txt.lines() {
+                        let msg: Value = serde_json::from_str(line.trim()).expect("json");
+                        if msg.get("tag").and_then(Value::as_str) == Some("session.message") {
+                            assert_eq!(msg["payload"]["sessionId"], "ses_retry");
+                            assert_eq!(msg["payload"]["messageId"], "msg_retry_1");
+                            msg_check_id = msg.get("id").cloned();
+                        }
+                    }
+                }
+
+                let log = request(&mut ws, "session.log").await;
+                chunk(
+                    &mut ws,
+                    &log["id"],
+                    json!([{
+                        "type": "log.synced", "aggregateId": "ses_retry"
+                    }]),
+                )
+                .await;
+
+                let not_found = json!({
+                    "_tag": "Exit",
+                    "requestId": msg_check_id.unwrap(),
+                    "exit": { "_tag": "Success", "value": { "found": false } }
+                });
+                ws.send(Message::Text(format!("{not_found}\n")))
+                    .await
+                    .expect("send found: false");
+
+                let mut redispatched_prompt_id = None;
+                while redispatched_prompt_id.is_none() {
+                    let Some(Ok(Message::Text(txt))) = ws.next().await else {
+                        panic!("expected re-dispatched session.prompt");
+                    };
+                    for line in txt.lines() {
+                        let msg: Value = serde_json::from_str(line.trim()).expect("json");
+                        if msg.get("tag").and_then(Value::as_str) == Some("session.prompt") {
+                            assert_eq!(msg["payload"]["sessionId"], "ses_retry");
+                            assert_eq!(msg["payload"]["id"], "msg_retry_1");
+                            assert_eq!(msg["payload"]["text"], "Retry me");
+                            redispatched_prompt_id = msg.get("id").cloned();
+                        }
+                    }
+                }
+
+                let prompt_ok = json!({
+                    "_tag": "Exit",
+                    "requestId": redispatched_prompt_id.unwrap(),
+                    "exit": { "_tag": "Success", "value": Value::Null }
+                });
+                ws.send(Message::Text(format!("{prompt_ok}\n")))
+                    .await
+                    .expect("send prompt ok");
+
+                let chunk = json!({
+                    "_tag": "Chunk",
+                    "requestId": sub_id,
+                    "values": [
+                        {
+                            "type": "session.llm.text.delta",
+                            "data": {
+                                "sessionId": "ses_retry",
+                                "messageId": "msg_a1",
+                                "partIndex": 0,
+                                "delta": "Recovered!"
+                            }
+                        },
+                        {
+                            "type": "session.execution.succeeded",
+                            "data": { "sessionId": "ses_retry" }
+                        }
+                    ]
+                });
+                ws.send(Message::Text(format!("{chunk}\n")))
+                    .await
+                    .expect("send completion chunk");
+            });
+
+            let client = RpcClient::new(url);
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            let mut prompt_dispatched = false;
+            let mut log_cursor = None;
+            let mut turn_active = true;
+            let mut initial_settled = false;
+            let mut seen_seqs = std::collections::HashSet::new();
+
+            // Attempt 1 drops after dispatching `session.prompt`.
+            let first = client
+                .stream_session_once_with_cursor(
+                    "ses_retry",
+                    "Retry me",
+                    PromptDelivery::FollowUp,
+                    "msg_retry_1",
+                    &mut prompt_dispatched,
+                    &mut log_cursor,
+                    &mut turn_active,
+                    &mut initial_settled,
+                    &mut seen_seqs,
+                    false,
+                    false,
+                    &tx,
+                )
+                .await
+                .expect("attempt 1");
+            assert!(!first);
+            assert!(prompt_dispatched);
+
+            // Attempt 2 reconciles via `session.message` (`found: false`) and re-dispatches.
+            let second = client
+                .stream_session_once_with_cursor(
+                    "ses_retry",
+                    "Retry me",
+                    PromptDelivery::FollowUp,
+                    "msg_retry_1",
+                    &mut prompt_dispatched,
+                    &mut log_cursor,
+                    &mut turn_active,
+                    &mut initial_settled,
+                    &mut seen_seqs,
+                    true,
+                    false,
+                    &tx,
+                )
+                .await
+                .expect("attempt 2");
+            assert!(second);
+
+            let mut received = Vec::new();
+            while let Ok(evt) = rx.try_recv() {
+                received.push(evt);
+            }
+            assert!(received.contains(&StreamEvent::Reconnected));
+            assert!(received.contains(&StreamEvent::TextDelta {
+                message_id: Some("msg_a1".to_string()),
+                part_index: Some(0),
+                delta: "Recovered!".to_string(),
+            }));
+            assert!(received.contains(&StreamEvent::Succeeded));
+
+            server.await.expect("server task");
+        })
+        .await
+        .expect("reconnect redispatch test timed out");
+    }
+
+    #[tokio::test]
+    async fn reconnect_resolves_settled_turn_via_session_message_session_wait_and_session_log() {
+        use tokio::net::TcpListener;
+        use tokio_tungstenite::accept_async;
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+            let addr = listener.local_addr().expect("addr");
+            let url = format!("ws://{addr}/rpc/v1");
+
+            let server = tokio::spawn(async move {
+                let (socket, _) = listener.accept().await.expect("accept reconnect");
+                let mut ws = accept_async(socket).await.expect("ws handshake");
+
+                let Some(Ok(Message::Text(sub_text))) = ws.next().await else {
+                    panic!("expected event.subscribe");
+                };
+                let sub_req: Value = serde_json::from_str(sub_text.trim()).expect("sub json");
+                let sub_id = sub_req.get("id").cloned().unwrap_or(json!(1));
+                let connected = json!({
+                    "_tag": "Chunk",
+                    "requestId": sub_id,
+                    "values": [{ "type": "server.connected" }]
+                });
+                ws.send(Message::Text(format!("{connected}\n")))
+                    .await
+                    .expect("send connected");
+
+                let mut msg_check_id = None;
+                let mut log_id = None;
+                while msg_check_id.is_none() || log_id.is_none() {
+                    let Some(Ok(Message::Text(txt))) = ws.next().await else {
+                        panic!("expected session.message and session.log");
+                    };
+                    for line in txt.lines() {
+                        let msg: Value = serde_json::from_str(line.trim()).expect("json");
+                        match msg.get("tag").and_then(Value::as_str) {
+                            Some("session.message") => {
+                                assert_eq!(msg["payload"]["sessionId"], "ses_settled");
+                                assert_eq!(msg["payload"]["messageId"], "msg_settled_1");
+                                msg_check_id = msg.get("id").cloned();
+                            }
+                            Some("session.log") => {
+                                assert_eq!(msg["payload"]["sessionId"], "ses_settled");
+                                assert_eq!(msg["payload"]["after"], 1);
+                                assert_eq!(msg["payload"]["follow"], true);
+                                log_id = msg.get("id").cloned();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                // Replay the durable events that committed during the disconnect window + log.synced.
+                let log_chunk = json!({
+                    "_tag": "Chunk",
+                    "requestId": log_id.unwrap(),
+                    "values": [
+                        {
+                            "id": "evt_2",
+                            "type": "session.llm.started",
+                            "durable": { "aggregateId": "ses_settled", "seq": 2, "version": 1 },
+                            "data": {
+                                "sessionId": "ses_settled",
+                                "messageId": "msg_a1",
+                                "message": { "model": "gpt-5.6-luna" }
+                            }
+                        },
+                        {
+                            "id": "evt_3",
+                            "type": "session.llm.ended",
+                            "durable": { "aggregateId": "ses_settled", "seq": 3, "version": 1 },
+                            "data": {
+                                "sessionId": "ses_settled",
+                                "messageId": "msg_a1",
+                                "reason": "stop",
+                                "message": {
+                                    "messageId": "msg_a1",
+                                    "role": "assistant",
+                                    "model": "gpt-5.6-luna",
+                                    "parts": [
+                                        { "type": "thinking", "thinking": "Settled while offline." },
+                                        { "type": "text", "text": "Completed during disconnect." }
+                                    ],
+                                    "usage": {
+                                        "totalTokens": 90,
+                                        "input": 60,
+                                        "output": 30,
+                                        "cost": { "total": 0.0015 }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "id": "evt_4",
+                            "type": "session.turn.ended",
+                            "durable": { "aggregateId": "ses_settled", "seq": 4, "version": 1 },
+                            "data": {
+                                "sessionId": "ses_settled",
+                                "messageId": "msg_a1"
+                            }
+                        },
+                        {
+                            "type": "log.synced",
+                            "aggregateId": "ses_settled",
+                            "seq": 6
+                        }
+                    ]
+                });
+                ws.send(Message::Text(format!("{log_chunk}\n")))
+                    .await
+                    .expect("send log chunk");
+
+                // Report that `msg_settled_1` materialized into the conversation.
+                let found_reply = json!({
+                    "_tag": "Exit",
+                    "requestId": msg_check_id.unwrap(),
+                    "exit": { "_tag": "Success", "value": { "found": true } }
+                });
+                ws.send(Message::Text(format!("{found_reply}\n")))
+                    .await
+                    .expect("send found: true");
+
+                // Client must now send `session.wait` (and NOT re-send `session.prompt`).
+                let mut wait_id = None;
+                while wait_id.is_none() {
+                    let Some(Ok(Message::Text(txt))) = ws.next().await else {
+                        panic!("expected session.wait request");
+                    };
+                    for line in txt.lines() {
+                        let msg: Value = serde_json::from_str(line.trim()).expect("json");
+                        assert_ne!(
+                            msg.get("tag").and_then(Value::as_str),
+                            Some("session.prompt"),
+                            "must not re-dispatch already promoted prompt"
+                        );
+                        if msg.get("tag").and_then(Value::as_str) == Some("session.wait") {
+                            assert_eq!(msg["payload"]["sessionId"], "ses_settled");
+                            wait_id = msg.get("id").cloned();
+                        }
+                    }
+                }
+
+                // Session is already idle because the turn finished while disconnected.
+                let wait_reply = json!({
+                    "_tag": "Exit",
+                    "requestId": wait_id.unwrap(),
+                    "exit": { "_tag": "Success", "value": Value::Null }
+                });
+                ws.send(Message::Text(format!("{wait_reply}\n")))
+                    .await
+                    .expect("send wait reply");
+
+                let drain = request(&mut ws, "session.log").await;
+                assert_eq!(drain["payload"]["after"], 6);
+                assert_eq!(drain["payload"]["follow"], false);
+                chunk(&mut ws, &drain["id"], json!([{
+                    "type": "log.synced", "aggregateId": "ses_settled", "seq": 6
+                }])).await;
+                success(&mut ws, &drain["id"], Value::Null).await;
+            });
+
+            let client = RpcClient::new(url);
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            let mut prompt_dispatched = true;
+            let mut log_cursor = Some(1);
+            let mut turn_active = true;
+            let mut initial_settled = false;
+            let mut seen_seqs = std::collections::HashSet::new();
+
+            let done = client
+                .stream_session_once_with_cursor(
+                    "ses_settled",
+                    "Hello",
+                    PromptDelivery::FollowUp,
+                    "msg_settled_1",
+                    &mut prompt_dispatched,
+                    &mut log_cursor,
+                    &mut turn_active,
+                    &mut initial_settled,
+                    &mut seen_seqs,
+                    true,
+                    false,
+                    &tx,
+                )
+                .await
+                .expect("stream_session_once_with_cursor");
+            assert!(done);
+            assert!(!turn_active);
+            assert!(initial_settled);
+            // Cursor advances to `max(last durable.seq (4), last log.synced.seq (6))` = 6.
+            assert_eq!(log_cursor, Some(6));
+
+            let mut received = Vec::new();
+            while let Ok(evt) = rx.try_recv() {
+                received.push(evt);
+            }
+            assert!(received.contains(&StreamEvent::Reconnected));
+            assert!(received.contains(&StreamEvent::ThinkingEnd {
+                message_id: "msg_a1".to_string(),
+                part_index: 0,
+                content: "Settled while offline.".to_string(),
+            }));
+            assert!(received.contains(&StreamEvent::TextEnd {
+                message_id: "msg_a1".to_string(),
+                part_index: 1,
+                content: "Completed during disconnect.".to_string(),
+            }));
+            assert!(received.contains(&StreamEvent::LogSynced { seq: Some(6) }));
+            assert!(received.contains(&StreamEvent::Succeeded));
+
+            server.await.expect("server task");
+        })
+        .await
+        .expect("reconnect settled turn test timed out");
+    }
+
+    #[tokio::test]
+    async fn session_log_tracks_max_cursor_across_replay_follow_and_reconnect() {
+        use tokio::net::TcpListener;
+        use tokio_tungstenite::accept_async;
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+            let addr = listener.local_addr().expect("addr");
+            let url = format!("ws://{addr}/rpc/v1");
+
+            let server = tokio::spawn(async move {
+                // 1. First connection: `after` is None; replays seq 0, sends `log.synced` at seq 3
+                //    (head past last event), then follows seq 4 before dropping.
+                let (socket, _) = listener.accept().await.expect("accept 1");
+                let mut ws = accept_async(socket).await.expect("ws 1");
+                let Some(Ok(Message::Text(req_text))) = ws.next().await else {
+                    panic!("expected session.log 1");
+                };
+                let req: Value = serde_json::from_str(req_text.trim()).expect("json 1");
+                assert_eq!(req["tag"], "session.log");
+                assert_eq!(req["payload"]["sessionId"], "ses_log");
+                assert!(req["payload"].get("after").is_none());
+                assert_eq!(req["payload"]["follow"], true);
+                let log_id = req["id"].clone();
+
+                let chunk = json!({
+                    "_tag": "Chunk",
+                    "requestId": log_id,
+                    "values": [
+                        {
+                            "id": "evt_0",
+                            "type": "session.prompt.promoted",
+                            "durable": { "aggregateId": "ses_log", "seq": 0, "version": 1 },
+                            "data": {
+                                "sessionId": "ses_log",
+                                "messageId": "msg_u0",
+                                "delivery": "followUp",
+                                "prompt": { "parts": [{ "type": "text", "text": "First prompt" }] }
+                            }
+                        },
+                        {
+                            "type": "log.synced",
+                            "aggregateId": "ses_log",
+                            "seq": 3
+                        },
+                        {
+                            "id": "evt_4",
+                            "type": "session.turn.ended",
+                            "durable": { "aggregateId": "ses_log", "seq": 4, "version": 1 },
+                            "data": {
+                                "sessionId": "ses_log",
+                                "messageId": "msg_a0"
+                            }
+                        }
+                    ]
+                });
+                ws.send(Message::Text(format!("{chunk}\n")))
+                    .await
+                    .expect("send chunk 1");
+                let _ = ws.next().await;
+                drop(ws);
+
+                // 2. Second connection: resumes with `after: 4` (`max(durable.seq 4, synced.seq 3)`),
+                //    receives `log.synced` with `seq: 7` (forked head above last event), then ends.
+                let (socket, _) = listener.accept().await.expect("accept 2");
+                let mut ws = accept_async(socket).await.expect("ws 2");
+                let Some(Ok(Message::Text(req_text))) = ws.next().await else {
+                    panic!("expected session.log 2");
+                };
+                let req: Value = serde_json::from_str(req_text.trim()).expect("json 2");
+                assert_eq!(req["tag"], "session.log");
+                assert_eq!(req["payload"]["sessionId"], "ses_log");
+                assert_eq!(req["payload"]["after"], 4);
+                assert_eq!(req["payload"]["follow"], false);
+                let log_id = req["id"].clone();
+
+                let chunk = json!({
+                    "_tag": "Chunk",
+                    "requestId": log_id,
+                    "values": [
+                        {
+                            "type": "log.synced",
+                            "aggregateId": "ses_log",
+                            "seq": 7
+                        }
+                    ]
+                });
+                ws.send(Message::Text(format!("{chunk}\n")))
+                    .await
+                    .expect("send chunk 2");
+                let exit = json!({
+                    "_tag": "Exit",
+                    "requestId": log_id,
+                    "exit": { "_tag": "Success", "value": Value::Null }
+                });
+                ws.send(Message::Text(format!("{exit}\n")))
+                    .await
+                    .expect("send exit 2");
+            });
+
+            let client = RpcClient::new(url);
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            let mut cursor = None;
+            let mut seen_seqs = std::collections::HashSet::new();
+
+            let finished_first = client
+                .stream_session_log_once("ses_log", true, &mut cursor, &mut seen_seqs, false, &tx)
+                .await
+                .expect("log 1");
+            assert!(!finished_first);
+            assert_eq!(cursor, Some(4));
+
+            let finished_second = client
+                .stream_session_log_once("ses_log", false, &mut cursor, &mut seen_seqs, true, &tx)
+                .await
+                .expect("log 2");
+            assert!(finished_second);
+            assert_eq!(cursor, Some(7));
+
+            let mut received = Vec::new();
+            while let Ok(evt) = rx.try_recv() {
+                received.push(evt);
+            }
+            assert_eq!(
+                received,
+                vec![
+                    StreamEvent::PromptPromoted {
+                        message_id: "msg_u0".to_string(),
+                        prompt: "First prompt".to_string(),
+                        delivery: PromptDelivery::FollowUp,
+                    },
+                    StreamEvent::LogSynced { seq: Some(3) },
+                    StreamEvent::TurnEnded {
+                        message_id: "msg_a0".to_string(),
+                    },
+                    StreamEvent::Reconnected,
+                    StreamEvent::LogSynced { seq: Some(7) },
+                ]
+            );
+
+            server.await.expect("server task");
+        })
+        .await
+        .expect("session_log cursor test timed out");
     }
 
     #[tokio::test]
