@@ -4,6 +4,7 @@ packages:
    - packages/tui/npm/*
    - extras/*
    - sites/*
+   - infra/*
 
 # Effect TS-Go only ships patch artifacts for specific TypeScript versions.
 # Keep these versions aligned and bump them together.

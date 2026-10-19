@@ -84,7 +84,7 @@ export default defineConfig({
 			// its generated declarations, so they are built first.
 			verify: {
 				command: [
-					"vp check packages scripts .github",
+					"vp check packages scripts .github infra",
 					"vp run --filter './packages/*' --concurrency-limit 2 typecheck",
 				],
 				dependsOn: ["@codeworksh/aikit#build"],

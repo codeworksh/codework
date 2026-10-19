@@ -1,7 +1,7 @@
 name: Model Catalog
 
 # Publishes the model catalog to https://catalog.codework.sh/v1/models.json, the R2 bucket that
-# `sites/catalog` deploys. `vp run catalog` builds it from models.dev and OpenRouter, refuses one
+# `infra/catalog` deploys. `vp run catalog` builds it from models.dev and OpenRouter, refuses one
 # that fails its checks, and reports whether it differs from the published one; only a changed
 # catalog is uploaded.
 on:

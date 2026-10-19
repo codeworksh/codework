@@ -453,6 +453,24 @@ importers:
         specifier: 4.0.5
         version: 4.0.5
 
+  infra/catalog:
+    devDependencies:
+      '@effect/platform-node':
+        specifier: 4.0.5
+        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.5
+      alchemy:
+        specifier: 2.0.0-beta.81
+        version: 2.0.0-beta.81(@effect/platform-bun@4.0.5(effect@4.0.5))(@effect/platform-node@4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1)))(@types/node@26.6.5)(@types/react@19.3.0)(effect@4.0.5)(hono@4.11.4)(typescript@7.0.2)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(ws@8.22.0)
+      effect:
+        specifier: 4.0.5
+        version: 4.0.5
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   packages/aikit:
     dependencies:
       '@ai-sdk/anthropic':
@@ -692,24 +710,6 @@ importers:
   packages/tui/npm/linux-arm64: {}
 
   packages/tui/npm/linux-x64: {}
-
-  sites/catalog:
-    devDependencies:
-      '@effect/platform-node':
-        specifier: 4.0.5
-        version: 4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1))
-      '@types/node':
-        specifier: 'catalog:'
-        version: 26.6.5
-      alchemy:
-        specifier: 2.0.0-beta.81
-        version: 2.0.0-beta.81(@effect/platform-bun@4.0.5(effect@4.0.5))(@effect/platform-node@4.0.5(effect@4.0.5)(redis@6.3.0(@opentelemetry/api@1.9.1)))(@types/node@26.6.5)(@types/react@19.3.0)(effect@4.0.5)(hono@4.11.4)(typescript@7.0.2)(vite@8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(ws@8.22.0)
-      effect:
-        specifier: 4.0.5
-        version: 4.0.5
-      typescript:
-        specifier: 'catalog:'
-        version: 7.0.2
 
   sites/www:
     dependencies:
