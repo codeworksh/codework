@@ -718,12 +718,15 @@ export function buildCatalog(sources: Sources): BuiltInModels {
 	const modelsDev = loadBuiltInFromModelsDev(sources.modelsDev);
 	const openrouter = openRouterModels(sources.openRouter);
 	const copilotProvider = sources.modelsDev[GITHUB_COPILOT_PROVIDER_ID];
-	return sortKeys({
+	const catalog = {
 		...modelsDev,
 		...(openrouter ? { [OpenRouter.PROVIDER_ID]: openrouter } : {}),
 		[OPENAI_CODEX_PROVIDER_ID]: openAICodexBuiltInModels(modelsDev.openai ?? {}),
 		...(copilotProvider ? { [GITHUB_COPILOT_PROVIDER_ID]: githubCopilotBuiltInModels(copilotProvider) } : {}),
-	}) as BuiltInModels;
+	};
+	return sortKeys(
+		Object.fromEntries(Object.entries(catalog).filter(([, models]) => Object.keys(models ?? {}).length > 0)),
+	) as BuiltInModels;
 }
 
 export interface GenerateOptions {

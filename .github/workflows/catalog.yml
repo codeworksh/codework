@@ -6,7 +6,7 @@ name: Model Catalog
 # catalog is uploaded.
 on:
    schedule:
-      - cron: "23 * * * *"
+      - cron: "23 */4 * * *"
    workflow_dispatch:
       inputs:
          publish:

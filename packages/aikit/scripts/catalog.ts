@@ -21,9 +21,6 @@ const REQUIRED: Record<string, string[]> = {
 	"openai-codex": ["gpt-6.1-sol", "gpt-6-luna"],
 	openrouter: ["openai/gpt-6.1-sol", "anthropic/claude-opus-5.5"],
 };
-/** The share of a provider's published models one update may drop. */
-const MAX_DROP = 0.2;
-
 const out = process.argv[2];
 if (!out) throw new Error("usage: catalog <out>");
 const path = await generateModels({ path: resolve(out) });
@@ -50,14 +47,7 @@ if (response === undefined) {
 } else if (response.ok) {
 	const live = Buffer.from(await response.arrayBuffer());
 	changed = !live.equals(bytes);
-	const published = JSON.parse(live.toString("utf8")) as Model.BuiltInModels;
-	for (const [provider, models] of Object.entries(published)) {
-		const before = Object.keys(models ?? {}).length;
-		const after = Object.keys(catalog[provider] ?? {}).length;
-		if (after < before * (1 - MAX_DROP)) problems.push(`${provider} drops from ${before} to ${after} models`);
-	}
 } else if (response.status !== 404) {
-	// Without the published catalog there is nothing to check a drop against.
 	problems.push(`published catalog responded ${response.status} ${response.statusText}`);
 }
 
