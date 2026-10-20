@@ -6,7 +6,7 @@ name: Model Catalog
 # catalog is uploaded.
 on:
    schedule:
-      - cron: "23 * * * *"
+      - cron: "23 */4 * * *"
    workflow_dispatch:
       inputs:
          publish:
@@ -28,7 +28,7 @@ jobs:
       # A bucket-scoped R2 API token (Object Read & Write on catalog-bucket-live only), stored as
       # CATALOG_R2_ACCESS_KEY_ID / CATALOG_R2_SECRET_ACCESS_KEY, and the account's S3 endpoint
       # (https://<account id>.r2.cloudflarestorage.com) as CATALOG_R2_ENDPOINT.
-      environment: catalog
+      environment: R2 Catalog Live
       steps:
          - uses: actions/checkout@v6
          - uses: voidzero-dev/setup-vp@v1.21.1
