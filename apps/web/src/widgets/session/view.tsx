@@ -1,5 +1,5 @@
 import { LegendList, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
-import type { HistoryEntry, Part, ToolCall } from "@codeworksh/widget/codework";
+import type { HistoryEntry, Part, QueuedPrompt, ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
 import { Brain, ChevronDown, ChevronRight, CircleAlert, Terminal, Wrench } from "lucide-react";
@@ -12,6 +12,7 @@ import { sessionId } from "./address";
 import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
 import { Message } from "./message";
+import { Queue } from "./queue";
 import { useListedSession } from "./projects";
 import { type Info, Json, topics, type Update } from "./schema";
 
@@ -41,6 +42,8 @@ type State =
 			readonly messages: readonly HistoryEntry[];
 			/** Whether older messages remain to be paged in. */
 			readonly more: boolean;
+			/** Prompts sent but not yet in the conversation, oldest first. */
+			readonly queued: readonly QueuedPrompt[];
 			/** The first page's seq: updates are read from after it. */
 			readonly after: number;
 			/** Whether the agent works, once the backend has said; until then a draft reply implies it. */
@@ -75,6 +78,8 @@ const apply = (state: State, update: Update): State => {
 	switch (update._tag) {
 		case "Info":
 			return { ...state, info: update.info };
+		case "Queue":
+			return { ...state, queued: update.queued };
 		case "Removed":
 			return { ...state, messages: state.messages.filter((message) => message.id !== update.id) };
 		case "Running": {
@@ -93,6 +98,8 @@ const apply = (state: State, update: Update): State => {
 			return {
 				...state,
 				messages: index === -1 ? [...state.messages, update.message] : state.messages.with(index, update.message),
+				// Promoted: it is in the conversation now, whatever the next queue update says.
+				queued: state.queued.filter((prompt) => prompt.id !== update.message.id),
 			};
 		}
 	}
@@ -134,8 +141,8 @@ function useConversation(id: string) {
 			const window = await page(undefined);
 			if (window === undefined) return fail(`Could not load session ${id}.`);
 			if (window._tag === "Failed") return fail(window.message);
-			const { info, messages, more, seq } = window;
-			if (active) setState({ status: "ready", info, messages, more, after: seq, running: undefined });
+			const { info, messages, more, queued, seq } = window;
+			if (active) setState({ status: "ready", info, messages, more, queued, after: seq, running: undefined });
 		})().catch(() => fail("The CodeWork server is not reachable."));
 		return () => {
 			active = false;
@@ -195,6 +202,8 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 	// refused send, else why the last run failed; dismissing hides that one notice only.
 	const models = useModelsNotice(state.status === "ready" ? state.info.hostDir : undefined);
 	const [sendError, setSendError] = useState<string>();
+	// A queued prompt taken back to edit; the composer puts its text above the draft.
+	const [restored, setRestored] = useState<{ readonly text: string; readonly key: number }>();
 	const [dismissed, setDismissed] = useState<Notice>();
 	const notice: Notice | undefined =
 		sendError !== undefined
@@ -241,23 +250,34 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 						/>
 					)
 				)}
+				{/* Idle too: prompts left waiting by a stop or a failure run with the next message, so they stay in view. */}
+				{state.queued.length > 0 && (
+					<Queue
+						sessionId={id}
+						queued={state.queued}
+						running={running}
+						onError={setSendError}
+						onRestore={(text) => setRestored((current) => ({ text, key: (current?.key ?? 0) + 1 }))}
+					/>
+				)}
 				<SessionComposer
 					sessionId={id}
 					instanceId={instanceId}
 					running={running}
 					info={state.info}
 					onError={setSendError}
+					restored={restored}
 				/>
 			</div>
 		</div>
 	);
 }
 
-// New turns and growing replies keep the list at its end while the reader is there; the composer
-// below the list never moves what is already on screen.
+// New turns, growing replies and a taller composer (queued prompts above it) keep the list at its
+// end while the reader is there; a reader scrolled up stays where they are.
 const follow = {
 	animated: false,
-	on: { dataChange: true, footerLayout: false, itemLayout: true, layout: true },
+	on: { dataChange: true, footerLayout: true, itemLayout: true, layout: true },
 } as const satisfies MaintainScrollAtEndOptions;
 
 // Prepending an older page, or a row growing above the viewport, keeps what the reader sees in place.

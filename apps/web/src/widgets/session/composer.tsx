@@ -34,6 +34,7 @@ export function SessionComposer({
 	running,
 	info,
 	onError,
+	restored,
 }: {
 	readonly sessionId: string;
 	readonly instanceId: string;
@@ -41,6 +42,8 @@ export function SessionComposer({
 	readonly info: Info;
 	/** A send or configure the backend refused, or undefined as a new one starts; the view shows it. */
 	readonly onError: (message: string | undefined) => void;
+	/** A queued prompt taken back: its text goes above the draft, once per `key`. */
+	readonly restored?: { readonly text: string; readonly key: number } | undefined;
 }) {
 	const root = useRef<HTMLDivElement>(null);
 	const input = useRef<HTMLTextAreaElement>(null);
@@ -124,6 +127,12 @@ export function SessionComposer({
 			active = false;
 		};
 	}, [kv, instanceId]);
+
+	useEffect(() => {
+		if (restored === undefined) return;
+		setText((current) => (current.trim() === "" ? restored.text : `${restored.text}\n\n${current}`));
+		setExpanded(true);
+	}, [restored]);
 
 	// Saved only once loaded, so the empty initial text never overwrites a stored draft.
 	useEffect(() => {
