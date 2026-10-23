@@ -274,6 +274,7 @@ function Transcript({
 	readonly running: boolean;
 	readonly loadOlder: () => void;
 }) {
+	const [scrolled, setScrolled] = useState(false);
 	const turns = useMemo(() => turnsOf(state.messages), [state.messages]);
 	const renderItem = useCallback(
 		({ item, index }: { readonly item: Turn; readonly index: number }) => (
@@ -301,7 +302,8 @@ function Transcript({
 			maintainVisibleContentPosition={anchor}
 			onStartReached={state.more ? loadOlder : undefined}
 			ListFooterComponent={<div className="h-[calc(var(--composer-height,60px)+24px)]" />}
-			className="session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]"
+			onScroll={(event) => setScrolled(event.nativeEvent.contentOffset.y > 1)}
+			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""}`}
 		/>
 	);
 }

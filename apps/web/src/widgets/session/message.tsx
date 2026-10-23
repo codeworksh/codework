@@ -34,7 +34,7 @@ export function Message({
 						</time>
 					)}
 				</header>
-				<div className="flex min-w-0 flex-col gap-3 wrap-anywhere text-ink/90">{children}</div>
+				<div className="flex min-w-0 flex-col gap-3 wrap-anywhere text-ink">{children}</div>
 			</div>
 		</article>
 	);

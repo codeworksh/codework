@@ -59,7 +59,9 @@ export function Composer({
 				}}
 			>
 				{header}
-				<div className={compact ? "px-3.5 pt-2.5 pb-0.5" : "px-4 pt-4 pb-2"}>
+				<div
+					className={compact ? "px-3.5 pt-2.5 pb-0.5" : header !== undefined ? "px-4 pt-2 pb-2" : "px-4 pt-4 pb-2"}
+				>
 					<textarea
 						ref={inputRef}
 						autoFocus={autoFocus}
@@ -81,7 +83,7 @@ export function Composer({
 						placeholder={placeholder}
 						aria-label="Prompt"
 						// Grows with its text, from four lines (one when compact) up to about nine, then scrolls.
-						className={`block max-h-52 w-full resize-none bg-transparent text-[14px] leading-relaxed text-ink outline-none [field-sizing:content] placeholder:text-ink-muted/60 ${compact ? "min-h-6" : "min-h-19.5"}`}
+						className={`block max-h-52 w-full resize-none bg-transparent text-[14px] leading-relaxed text-ink outline-none [field-sizing:content] placeholder:text-ink-muted ${compact ? "min-h-6" : "min-h-19.5"}`}
 					/>
 				</div>
 				<div className={`flex items-center gap-2 ${compact ? "px-2.5 pb-2.5" : "px-4 pb-4"}`}>

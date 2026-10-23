@@ -197,9 +197,13 @@
 .session-transcript {
 	mask-image: linear-gradient(
 		to bottom,
-		transparent,
+		var(--transcript-top, black),
 		black 16px,
 		black calc(100% - var(--composer-height, 60px) - 40px),
 		transparent calc(100% - var(--composer-height, 60px) + 32px)
 	);
+}
+
+.session-transcript-scrolled {
+	--transcript-top: transparent;
 }

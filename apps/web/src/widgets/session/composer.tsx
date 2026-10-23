@@ -56,6 +56,20 @@ export function SessionComposer({
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (
+				event.key === "Escape" &&
+				expanded &&
+				!event.defaultPrevented &&
+				root.current?.closest("article[data-focused='true']") &&
+				!Array.from(document.querySelectorAll("[role='dialog'], [role='menu']")).some(
+					(element) => element.getClientRects().length > 0,
+				)
+			) {
+				event.preventDefault();
+				input.current?.blur();
+				setExpanded(false);
+				return;
+			}
+			if (
 				event.defaultPrevented ||
 				event.repeat ||
 				event.isComposing ||
@@ -81,23 +95,11 @@ export function SessionComposer({
 			event.preventDefault();
 			setExpanded(true);
 		};
-		const onPointerDown = (event: PointerEvent) => {
-			const target = event.target;
-			if (
-				!(target instanceof Element) ||
-				root.current?.contains(target) ||
-				target.closest("[data-radix-popper-content-wrapper], [role='dialog'], [role='menu']")
-			)
-				return;
-			setExpanded(false);
-		};
 		window.addEventListener("keydown", onKeyDown);
-		document.addEventListener("pointerdown", onPointerDown);
 		return () => {
 			window.removeEventListener("keydown", onKeyDown);
-			document.removeEventListener("pointerdown", onPointerDown);
 		};
-	}, []);
+	}, [expanded]);
 	const bus = useBus();
 	const kv = useKv();
 	const [text, setText] = useState("");
@@ -160,10 +162,7 @@ export function SessionComposer({
 			}),
 		);
 		setPending(false);
-		if (sent) {
-			setText("");
-			collapse();
-		}
+		if (sent) setText("");
 	};
 
 	const configure = (change: { model?: ModelRef; thinkingLevel?: ThinkingLevel }) => {
@@ -207,7 +206,7 @@ export function SessionComposer({
 								type="button"
 								onClick={collapse}
 								aria-label="Minimize reply"
-								className="flex items-center gap-2 rounded p-1 hover:bg-ink/5"
+								className="flex items-center gap-2 rounded-md p-1 text-ink-muted outline-none hover:bg-ink/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
 							>
 								<kbd className="text-[10px]">esc</kbd>
 								<X className="size-3.5" aria-hidden />
@@ -244,7 +243,7 @@ export function SessionComposer({
 							<button
 								type="submit"
 								disabled={empty || pending}
-								className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-brand px-3 text-[12px] font-medium text-brand-ink press disabled:opacity-50"
+								className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-brand px-3 text-[12px] font-medium text-brand-ink outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame press disabled:pointer-events-none disabled:opacity-50"
 								title={running ? "Steer now; Mod+Enter queues a follow-up" : "Reply (Enter)"}
 							>
 								{running ? "Steer" : "Reply"}
