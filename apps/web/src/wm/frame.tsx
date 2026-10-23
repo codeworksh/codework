@@ -85,7 +85,7 @@ export function Frame(props: FrameProps) {
 			onPointerDown={props.onFocus}
 		>
 			<div
-				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "panel group-data-[focused=true]:border-edge-focus"}`}
+				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "rounded-xl border border-edge bg-frame group-data-[focused=true]:border-edge-focus"}`}
 			>
 				<header className="flex items-center gap-1 py-1.5 pr-2 pl-1.5 select-none">
 					<div
@@ -174,7 +174,7 @@ function Move({
 }
 
 const actionClass =
-	"grid size-6 place-items-center rounded-md text-ink-muted/60 press hover:bg-ink/8 hover:text-ink aria-pressed:text-ink";
+	"grid size-6 place-items-center rounded-md text-ink-muted/80 outline-none press hover:bg-ink/8 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring aria-pressed:text-ink";
 
 interface ActionProps {
 	readonly icon: LucideIcon;
