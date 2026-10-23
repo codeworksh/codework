@@ -1,13 +1,13 @@
-import { useAtomValue } from "@effect/atom-react";
-import { Link } from "@tanstack/react-router";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { AppWindow, X } from "lucide-react";
 import { Fragment, useRef } from "react";
 
 import { isMac, type Tab } from "@codeworksh/widget/view";
 import { registry } from "../widgets";
 import { chromeAtom, chromeOf, focusedAtom, tabOwnerAtom } from "../wm/chrome";
-import { deskAtom } from "../wm/instances";
-import { type Workspace, workspaceRoute, workspaceTag } from "../wm/workspaces";
-import { iconOf } from "./icons";
+import { deskAtom, deskKey } from "../wm/instances";
+import { deleteWorkspace, type Workspace, workspaceRoute, workspacesKey, workspaceTag } from "../wm/workspaces";
 
 interface SwitcherProps {
 	readonly workspaces: readonly Workspace[];
@@ -24,6 +24,19 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	const chrome = useAtomValue(chromeAtom);
 	const focusedOn = useAtomValue(focusedAtom);
 	const owners = useAtomValue(tabOwnerAtom);
+	const navigate = useNavigate();
+	const remove = useAtomSet(deleteWorkspace, { mode: "promise" });
+	// No confirm, like a browser tab; closing the one on screen moves to a neighbour first.
+	const close = async (workspace: Workspace, index: number) => {
+		if (workspace.id === active?.id) {
+			const next = workspaces[index + 1] ?? workspaces[index - 1];
+			await navigate(next === undefined ? { to: "/" } : workspaceRoute(next));
+		}
+		// The server drops the workspace's widgets, so the desk reloads with the list.
+		await remove({ payload: { id: workspace.id }, reactivityKeys: [...workspacesKey, ...deskKey] }).catch(
+			() => undefined,
+		);
+	};
 	// What each tab showed last, kept while a frame that will set the tab is still loading.
 	const shown = useRef(new Map<string, Tab>());
 	const showing = (workspace: Workspace) => {
@@ -64,7 +77,6 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 			className="ml-3 flex min-w-0 items-center rounded-[14px] bg-ink/5 p-1 [-webkit-app-region:no-drag]"
 		>
 			{workspaces.map((workspace, index) => {
-				const Icon = iconOf(workspace.icon);
 				const current = workspace.id === active?.id;
 				const tab = showing(workspace);
 				// Keep separator space reserved when selection hides its hairline.
@@ -74,23 +86,34 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 						{index > 0 && (
 							<span aria-hidden className={`mx-0.5 h-4 w-px shrink-0 bg-ink/12 ${divider ? "" : "invisible"}`} />
 						)}
-						<Link
-							{...workspaceRoute(workspace)}
-							aria-current={current ? "page" : undefined}
-							title={`${tab.title}${tab.subtitle === undefined ? "" : `\n${tab.subtitle}`}\n${shortcutLabel(index + 1)}`}
-							className={`relative flex h-8 w-56 min-w-16 shrink basis-56 items-center gap-2 rounded-[10px] pr-3 pl-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-								current
-									? "border border-edge bg-linear-to-b from-frame-top to-frame text-ink shadow-frame"
-									: "border border-transparent text-ink-muted hover:bg-ink/5 hover:text-ink"
-							}`}
-						>
-							<span
-								className={`grid size-6 shrink-0 place-items-center rounded-[7px] border ${current ? "border-edge bg-frame-top text-ink shadow-xs" : "border-transparent text-ink-muted"}`}
+						<div className="group relative flex h-8 w-56 min-w-16 shrink basis-56">
+							<Link
+								{...workspaceRoute(workspace)}
+								aria-current={current ? "page" : undefined}
+								title={`${tab.title}${tab.subtitle === undefined ? "" : `\n${tab.subtitle}`}\n${shortcutLabel(index + 1)}`}
+								className={`flex size-full min-w-0 items-center gap-2 rounded-[10px] pr-3 pl-1.5 group-hover:pr-8 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+									current
+										? "border border-edge bg-linear-to-b from-frame-top to-frame text-ink shadow-frame"
+										: "border border-transparent text-ink-muted hover:bg-ink/5 hover:text-ink"
+								}`}
 							>
-								<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
-							</span>
-							<span className="truncate text-[12px] font-medium">{tab.subtitle ?? tab.title}</span>
-						</Link>
+								<span
+									className={`grid size-6 shrink-0 place-items-center rounded-[7px] border ${current ? "border-edge bg-frame-top text-ink shadow-xs" : "border-transparent text-ink-muted"}`}
+								>
+									<AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />
+								</span>
+								<span className="truncate text-[12px] font-medium">{tab.subtitle ?? tab.title}</span>
+							</Link>
+							<button
+								type="button"
+								aria-label={`Close ${workspace.name}`}
+								title={`Close ${workspace.name}`}
+								onClick={() => void close(workspace, index)}
+								className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-[6px] text-ink-muted opacity-0 group-hover:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
+							>
+								<X className="size-3" strokeWidth={2} aria-hidden />
+							</button>
+						</div>
 					</Fragment>
 				);
 			})}

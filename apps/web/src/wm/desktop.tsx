@@ -293,7 +293,7 @@ export function Desktop({ workspace }: DesktopProps) {
 		const instance = byId.get(instanceId);
 		if (instance === undefined) return;
 		const name = chrome.get(instanceId)?.tab?.title ?? chromeOf(instance, chrome.get(instanceId)).title;
-		const created = await createWorkspace({ name, icon: "app-window", auto: true }).catch(() => undefined);
+		const created = await createWorkspace({ name, auto: true }).catch(() => undefined);
 		if (created !== undefined) move(instanceId, created);
 	};
 

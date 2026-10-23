@@ -1,5 +1,5 @@
 import { AppWindow, GripVertical, Maximize2, Minimize2, Pin, PinOff, Plus, X, type LucideIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import type { Rect } from "webwm";
 import { useDragHandle } from "webwm/react";
 import type { DragMovement } from "webwm/dom";
@@ -13,6 +13,7 @@ import {
 	DropdownMenuShortcut,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { FrameIcon } from "@codeworksh/widget/view";
 import { shortcutLabel } from "../shell/switcher";
 import { Title } from "./title";
 
@@ -28,7 +29,7 @@ interface FrameProps {
 	readonly title: string;
 	/** Before the title, quieter: what the title belongs to. */
 	readonly lead?: string | undefined;
-	readonly icon?: LucideIcon | undefined;
+	readonly icon?: FrameIcon | undefined;
 	readonly children?: ReactNode;
 	readonly rect: Rect;
 	/** Shown as its header only, at `FRAME_HEADER_HEIGHT`; focusing it opens it again. */
@@ -63,7 +64,7 @@ interface FrameProps {
 export const FRAME_HEADER_HEIGHT = 46;
 
 export function Frame(props: FrameProps) {
-	const { title, lead, icon: Icon, rect, collapsed, focused, pinned, maximized, canDrag, offset, animate } = props;
+	const { title, lead, icon, rect, collapsed, focused, pinned, maximized, canDrag, offset, animate } = props;
 	const handleRef = useDragHandle<HTMLDivElement>({
 		canDrag: () => props.canDrag,
 		onDragStart: props.onDragStart,
@@ -96,7 +97,7 @@ export function Frame(props: FrameProps) {
 							className={`size-3.5 shrink-0 text-ink-muted/50 ${canDrag ? "" : "invisible"}`}
 							aria-hidden
 						/>
-						{Icon && <Icon className="mr-0.5 size-4 shrink-0 text-ink-muted" strokeWidth={1.75} aria-hidden />}
+						{icon !== undefined && <IconOf icon={icon} className="mr-0.5 size-4 shrink-0 text-ink-muted" />}
 						{lead !== undefined && <Lead text={lead} />}
 						<Title text={title} className="font-semibold text-ink-muted group-data-[focused=true]:text-ink" />
 					</div>
@@ -196,4 +197,9 @@ function Action({ icon: Icon, label, active, onClick }: ActionProps) {
 			<Icon className="size-3.5" strokeWidth={1.75} />
 		</button>
 	);
+}
+
+/** A frame icon as drawn: an element as given, a Lucide icon at `className`. */
+export function IconOf({ icon: Icon, className }: { readonly icon: FrameIcon; readonly className?: string }) {
+	return isValidElement(Icon) ? Icon : <Icon className={className} strokeWidth={1.75} aria-hidden />;
 }

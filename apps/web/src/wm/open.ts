@@ -54,7 +54,7 @@ export function useOpenElsewhere() {
 		}
 
 		if (workspaces.length < MAX_WORKSPACES) {
-			const created = await create({ name, icon: "messages-square", auto: true }).catch(() => undefined);
+			const created = await create({ name, auto: true }).catch(() => undefined);
 			if (created !== undefined) return go(created);
 		}
 		if (last !== undefined) return go(last);

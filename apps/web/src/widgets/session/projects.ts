@@ -12,7 +12,7 @@ export function useListedSession(id: string) {
 	if (!AsyncResult.isSuccess(result)) return undefined;
 	for (const project of result.value) {
 		const session = project.sessions.find((candidate) => candidate.id === id);
-		if (session !== undefined) return { title: session.title, project: project.name };
+		if (session !== undefined) return { title: session.title, project: { id: project.id, name: project.name } };
 	}
 	return undefined;
 }

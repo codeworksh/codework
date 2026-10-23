@@ -70,7 +70,7 @@ function NewWorkspaceButton() {
 	const create = useCreateWorkspace();
 	const full = workspaces.length >= MAX_WORKSPACES;
 	const add = async () => {
-		const workspace = await create({ name: `Workspace ${workspaces.length + 1}`, icon: "app-window" });
+		const workspace = await create({ name: `Workspace ${workspaces.length + 1}` });
 		void navigate(workspaceRoute(workspace));
 	};
 	return (

@@ -9,7 +9,6 @@
 		"bit": 3,
 		"pos": 3,
 		"name": "Scratch",
-		"icon": "box",
 		"layout": "tile",
 		"mfact": 0.6,
 		"auto": false

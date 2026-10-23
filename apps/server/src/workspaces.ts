@@ -20,7 +20,7 @@ export const handlers = Effect.gen(function* () {
 
 	// SQLite has no booleans; `auto` is stored as 0 or 1.
 	const list = sql<Omit<Workspace, "auto"> & { auto: number }>`
-		SELECT id, bit, pos, name, icon, layout, mfact, auto FROM workspaces ORDER BY pos
+		SELECT id, bit, pos, name, layout, mfact, auto FROM workspaces ORDER BY pos
 	`.pipe(
 		Effect.map((rows) => rows.map((row): Workspace => ({ ...row, auto: row.auto === 1 }))),
 		Effect.orDie,
@@ -49,7 +49,6 @@ export const handlers = Effect.gen(function* () {
 
 		"workspaces.create": Effect.fn("workspaces.create")(function* ({
 			name,
-			icon,
 			auto = false,
 		}: typeof WorkspaceCreate.Type) {
 			return yield* sql
@@ -64,7 +63,6 @@ export const handlers = Effect.gen(function* () {
 							bit,
 							pos: current.length,
 							name,
-							icon,
 							layout: "tile",
 							mfact: 0.6,
 							auto,

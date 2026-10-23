@@ -109,6 +109,11 @@ const migrations = {
 		})}`;
 		yield* sql`DELETE FROM kv WHERE package = 'codework' AND key LIKE 'servers.local.%'`;
 	}),
+	// Workspace tabs all show the window icon now.
+	"202610230001_drop_workspace_icon": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE workspaces DROP COLUMN icon`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

@@ -60,7 +60,7 @@ it("desk round-trips and follows workspace deletion", async () => {
 		const rpc = yield* RpcClient.make(Contract.Api);
 		const empty = yield* rpc["desk.get"]();
 
-		const workspace = yield* rpc["workspaces.create"]({ name: "Scratch", icon: "box" });
+		const workspace = yield* rpc["workspaces.create"]({ name: "Scratch" });
 		const bit = 1 << workspace.bit;
 		const saved: Contract.Desk = {
 			instances: [
@@ -93,8 +93,8 @@ it("desk round-trips and follows workspace deletion", async () => {
 		}).pipe(Effect.flip);
 
 		// Two auto workspaces: one keeps a frame, the other is left empty without being closed.
-		const kept = yield* rpc["workspaces.create"]({ name: "Kept", icon: "box", auto: true });
-		yield* rpc["workspaces.create"]({ name: "Stray", icon: "box", auto: true });
+		const kept = yield* rpc["workspaces.create"]({ name: "Kept", auto: true });
+		yield* rpc["workspaces.create"]({ name: "Stray", auto: true });
 		yield* rpc["desk.save"]({
 			instances: [{ id: "notes-2", kind: "notes", tags: 1 << kept.bit, props: {}, pinned: false }],
 			tileOrder: ["notes-2"],

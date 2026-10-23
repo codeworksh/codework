@@ -10,6 +10,7 @@ export {
 } from "./view/widget";
 export {
 	type Frame,
+	type FrameIcon,
 	FrameContext,
 	type OpenMode,
 	openMode,

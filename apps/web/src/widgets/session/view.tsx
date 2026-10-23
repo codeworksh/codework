@@ -2,10 +2,11 @@ import { LegendList, type MaintainScrollAtEndOptions } from "@legendapp/list/rea
 import type { HistoryEntry, Part, ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
-import { Brain, ChevronDown, ChevronRight, CircleAlert, MessageSquareText, Terminal, Wrench } from "lucide-react";
+import { Brain, ChevronDown, ChevronRight, CircleAlert, Terminal, Wrench } from "lucide-react";
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ComposerNotice, type Notice } from "@/components/banner";
+import { Monogram } from "@/components/monogram";
 import { useModelsNotice } from "@/components/model";
 import { sessionId } from "./address";
 import { SessionComposer } from "./composer";
@@ -176,16 +177,19 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(id);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
-	const project = state.status === "ready" ? state.info.project?.name : listed?.project;
+	const project = state.status === "ready" ? state.info.project : listed?.project;
+	const projectId = project?.id;
+	const projectName = project?.name;
 
 	useEffect(() => {
 		if (title === undefined) return;
 		// The project leads, so sessions from different projects tell apart at a glance.
-		setTitle(title, project);
-		setIcon(MessageSquareText);
+		setTitle(title, projectName);
+		// The project's badge, as in the sessions sidebar.
+		if (projectId !== undefined && projectName !== undefined) setIcon(<Monogram id={projectId} name={projectName} />);
 		// While focused, the workspace's tab reads as this session: its project over its title.
-		setTab({ title: project ?? "Session", subtitle: title });
-	}, [title, project, setTitle, setIcon, setTab]);
+		setTab({ title: projectName ?? "Session", subtitle: title });
+	}, [title, projectId, projectName, setTitle, setIcon, setTab]);
 
 	// Models that can't be listed first: a state that clears itself, so it can't be dismissed. Then a
 	// refused send, else why the last run failed; dismissing hides that one notice only.

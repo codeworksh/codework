@@ -51,7 +51,7 @@ export const openInWorkspaceRoute = (workspace: Workspace, address: string, mode
 export function useCreateWorkspace() {
 	const registry = useContext(RegistryContext);
 	const create = useAtomSet(createWorkspace, { mode: "promise" });
-	return async (payload: { readonly name: string; readonly icon: string; readonly auto?: boolean }) => {
+	return async (payload: { readonly name: string; readonly auto?: boolean }) => {
 		const workspace = await create({ payload, reactivityKeys: workspacesKey });
 		await runQuery(registry, workspacesAtom);
 		return workspace;

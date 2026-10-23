@@ -16,7 +16,7 @@ export const sections: readonly SettingsSection[] = [
 		label: "Workspaces",
 		icon: Layers,
 		group: "App",
-		keywords: ["tabs", "shortcuts", "reorder", "rename", "icon", "delete"],
+		keywords: ["tabs", "shortcuts", "reorder", "rename", "delete"],
 	},
 	{
 		to: "/settings/themes",

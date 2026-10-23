@@ -14,10 +14,8 @@ import {
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { messageOf } from "@/lib/utils";
 import { isMac } from "@codeworksh/widget/view";
-import { iconOf, icons } from "../shell/icons";
 import { shortcutLabel } from "../shell/switcher";
 import { deskAtom, deskKey, only } from "../wm/instances";
 import {
@@ -36,7 +34,7 @@ import { Group, Keys, SavingInput, Page, Row, Section } from "./blocks";
 const sameOrder = (ids: readonly string[], workspaces: readonly Workspace[]) =>
 	ids.length === workspaces.length && ids.every((id, index) => workspaces[index]?.id === id);
 
-/** List, create, rename, re-icon, reorder (drag the grip), and delete workspaces. */
+/** List, create, rename, reorder (drag the grip), and delete workspaces. */
 export function WorkspacesSettings() {
 	const workspaces = useWorkspaces();
 	const create = useCreateWorkspace();
@@ -59,7 +57,7 @@ export function WorkspacesSettings() {
 
 	const addWorkspace = () =>
 		run(async () => {
-			const workspace = await create({ name: `Workspace ${workspaces.length + 1}`, icon: "app-window" });
+			const workspace = await create({ name: `Workspace ${workspaces.length + 1}` });
 			setCreated(workspace.id);
 		});
 
@@ -112,7 +110,6 @@ export function WorkspacesSettings() {
 							>
 								<GripVertical className="size-4" />
 							</span>
-							<IconPicker workspace={workspace} onError={setError} />
 							<NameField workspace={workspace} autoFocus={workspace.id === created} onError={setError} />
 							<Keys>{shortcutLabel(index + 1)}</Keys>
 							<DeleteButton workspace={workspace} onError={setError} />
@@ -175,42 +172,6 @@ function NameField({ workspace, autoFocus, onError }: RowProps & { readonly auto
 				);
 			}}
 		/>
-	);
-}
-
-function IconPicker({ workspace, onError }: RowProps) {
-	const save = useAtomSet(updateWorkspace, { mode: "promise" });
-	const [open, setOpen] = useState(false);
-	const Icon = iconOf(workspace.icon);
-	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<Button variant="ghost" size="icon" className="size-8" aria-label={`Icon for ${workspace.name}`}>
-					<Icon strokeWidth={1.75} />
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent align="start" className="grid w-auto grid-cols-6 gap-1 p-2">
-				{Object.entries(icons).map(([name, Choice]) => (
-					<Button
-						key={name}
-						variant={name === workspace.icon ? "secondary" : "ghost"}
-						size="icon"
-						className="size-8"
-						aria-label={name}
-						aria-pressed={name === workspace.icon}
-						onClick={() => {
-							setOpen(false);
-							if (name === workspace.icon) return;
-							save({ payload: { id: workspace.id, icon: name }, reactivityKeys: workspacesKey }).catch(
-								(cause: unknown) => onError(messageOf(cause)),
-							);
-						}}
-					>
-						<Choice strokeWidth={1.75} />
-					</Button>
-				))}
-			</PopoverContent>
-		</Popover>
 	);
 }
 

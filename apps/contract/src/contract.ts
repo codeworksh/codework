@@ -46,8 +46,6 @@ export const Workspace = Schema.Struct({
 	bit: Schema.Number,
 	pos: Schema.Number,
 	name: Schema.String,
-	/** A name from the app's icon set, e.g. "code". */
-	icon: Schema.String,
 	layout: Layout,
 	/** Master column share of the width, 0–1. */
 	mfact: Schema.Number,
@@ -58,13 +56,11 @@ export type Workspace = typeof Workspace.Type;
 
 export const WorkspaceCreate = Schema.Struct({
 	name: Schema.String,
-	icon: Schema.String,
 	auto: Schema.optionalKey(Schema.Boolean),
 });
 export const WorkspaceUpdate = Schema.Struct({
 	id: Schema.String,
 	name: Schema.optional(Schema.String),
-	icon: Schema.optional(Schema.String),
 	layout: Schema.optional(Layout),
 	mfact: Schema.optional(Schema.Number),
 });
