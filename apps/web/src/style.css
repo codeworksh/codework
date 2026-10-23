@@ -172,9 +172,11 @@
 .app-shell [data-slot="sidebar"] > .sessions-sidebar {
 	left: 52px;
 	top: 48px;
-	height: calc(100svh - 48px);
+	height: calc(100svh - 56px);
 	border: 0;
-	background: var(--cw-desktop);
+	border-right: 1px solid color-mix(in oklab, var(--cw-edge) 60%, transparent);
+	border-radius: 12px 0 0 12px;
+	background: var(--cw-frame);
 }
 .app-shell [data-collapsible="offcanvas"] > .sessions-sidebar {
 	left: calc(52px - var(--sidebar-width));
@@ -182,4 +184,10 @@
 }
 .app-shell .sessions-sidebar [data-slot="sidebar-inner"] {
 	background: transparent;
+}
+
+/* Sidebar and title-bar tabs follow the same width without trailing one another. */
+.app-shell > div > [data-slot="sidebar"] > [data-slot="sidebar-gap"],
+.app-shell .sessions-sidebar {
+	transition: none;
 }

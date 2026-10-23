@@ -38,6 +38,8 @@ interface FrameProps {
 	readonly focused: boolean;
 	readonly pinned: boolean;
 	readonly maximized: boolean;
+	/** A lone frame shares the app surface instead of drawing a separate card. */
+	readonly integrated: boolean;
 	readonly canDrag: boolean;
 	readonly offset: { readonly deltaX: number; readonly deltaY: number } | null;
 	/** Ease into new slots; off while the column divider is dragged so frames track the pointer. */
@@ -82,7 +84,9 @@ export function Frame(props: FrameProps) {
 			style={{ width: rect.w, height: rect.h, transform: `translate(${x}px, ${y}px)` }}
 			onPointerDown={props.onFocus}
 		>
-			<div className="panel flex h-full flex-col overflow-hidden group-data-[focused=true]:border-edge-focus">
+			<div
+				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "panel group-data-[focused=true]:border-edge-focus"}`}
+			>
 				<header className="flex items-center gap-1 py-1.5 pr-2 pl-1.5 select-none">
 					<div
 						ref={handleRef}

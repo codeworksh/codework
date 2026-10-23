@@ -1,7 +1,7 @@
 import { useCanGoBack, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Plus } from "lucide-react";
 
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { isMac } from "@codeworksh/widget/view";
 import { MAX_WORKSPACES, useCreateWorkspace, useWorkspaces, workspaceRoute } from "../wm/workspaces";
 import { Switcher } from "./switcher";
@@ -16,6 +16,9 @@ export const chromeButton =
 
 /** Window-level navigation remains available on Home, workspaces, and settings. */
 export function NavigationControls() {
+	const { open, isMobile } = useSidebar();
+	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
+	const withSidebar = open && !isMobile && !inSettings;
 	const { workspaceId } = useParams({ strict: false });
 	const workspaces = useWorkspaces();
 	const active = workspaces.find((workspace) => workspace.id === workspaceId);
@@ -24,33 +27,36 @@ export function NavigationControls() {
 	const index = useLocation({ select: (location) => location.state.__TSR_index });
 	const canGoForward = index < router.history.length - 1;
 	return (
-		<header
-			className={`flex h-12 w-full shrink-0 items-center gap-1 border-b border-edge bg-frame/40 px-2 select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`}
-		>
-			<button
-				type="button"
-				aria-label="Back"
-				title="Back"
-				disabled={!canGoBack}
-				onClick={() => router.history.back()}
-				className={chromeButton}
+		<header className="flex h-12 w-full shrink-0 items-center border-b border-edge/50 bg-desktop pr-2 select-none [-webkit-app-region:drag]">
+			<div
+				className={`flex shrink-0 items-center gap-1 px-2 ${insetTitleBar ? "min-w-44 pl-20" : "min-w-28"}`}
+				style={{ width: withSidebar ? "calc(52px + var(--sidebar-width))" : undefined }}
 			>
-				<ArrowLeft className="size-4" strokeWidth={1.5} aria-hidden />
-			</button>
-			<button
-				type="button"
-				aria-label="Forward"
-				title="Forward"
-				disabled={!canGoForward}
-				onClick={() => router.history.forward()}
-				className={chromeButton}
-			>
-				<ArrowRight className="size-4" strokeWidth={1.5} aria-hidden />
-			</button>
-			<SidebarTrigger
-				title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}
-				className="text-ink-muted [-webkit-app-region:no-drag] hover:text-ink"
-			/>
+				<button
+					type="button"
+					aria-label="Back"
+					title="Back"
+					disabled={!canGoBack}
+					onClick={() => router.history.back()}
+					className={chromeButton}
+				>
+					<ArrowLeft className="size-4" strokeWidth={1.5} aria-hidden />
+				</button>
+				<button
+					type="button"
+					aria-label="Forward"
+					title="Forward"
+					disabled={!canGoForward}
+					onClick={() => router.history.forward()}
+					className={chromeButton}
+				>
+					<ArrowRight className="size-4" strokeWidth={1.5} aria-hidden />
+				</button>
+				<SidebarTrigger
+					title={`Toggle sidebar (${isMac ? "⌘B" : "Ctrl+B"})`}
+					className="text-ink-muted [-webkit-app-region:no-drag] hover:text-ink"
+				/>
+			</div>
 			<Switcher workspaces={workspaces} active={active} />
 			<NewWorkspaceButton />
 		</header>

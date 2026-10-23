@@ -421,6 +421,7 @@ export function Desktop({ workspace }: DesktopProps) {
 							focused={widget.id === focusedId}
 							pinned={instance.pinned}
 							maximized={layout === "monocle"}
+							integrated={arrangement.placements.length === 1}
 							canDrag={layout === "tile" && !instance.pinned}
 							offset={drag?.widgetId === widget.id ? drag : null}
 							animate={!resizing && !resized}

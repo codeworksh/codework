@@ -9,7 +9,7 @@ export function Navigation() {
 	return (
 		<nav
 			aria-label="Main navigation"
-			className="fixed top-12 bottom-0 left-0 z-20 flex w-[52px] flex-col items-center gap-2 pt-2 pb-3 select-none"
+			className="fixed top-12 bottom-0 left-0 z-20 flex w-[52px] flex-col items-center gap-2 bg-desktop pt-2 pb-3 select-none"
 		>
 			<Tooltip>
 				<TooltipTrigger asChild>
