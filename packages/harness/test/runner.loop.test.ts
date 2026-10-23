@@ -24,6 +24,7 @@ import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
 import { SessionInput } from "../src/session/input/input.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
+import { PromptSchema } from "../src/session/prompt/schema.ts";
 import { SessionProjector } from "../src/session/projector.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
@@ -42,6 +43,8 @@ const runtime = (
 		readonly state?: State.Options;
 		readonly plugins?: ReadonlyArray<Plugin>;
 		readonly settings?: Info;
+		/** Runs as each turn's snapshot loads settings: after the loop checks for pending input, before it promotes. */
+		readonly beforeSettings?: { run: Effect.Effect<void> };
 	} = {},
 ) => {
 	const database = Database.layer(":memory:");
@@ -59,7 +62,12 @@ const runtime = (
 		),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
-			Layer.succeed(Settings.Service, { load: () => Effect.succeed(options.settings ?? Settings.defaults) }),
+			Layer.succeed(Settings.Service, {
+				load: () =>
+					Effect.suspend(() => options.beforeSettings?.run ?? Effect.void).pipe(
+						Effect.as(options.settings ?? Settings.defaults),
+					),
+			}),
 		),
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
@@ -358,7 +366,7 @@ describe("runner loop — crash healing", () => {
 				sessionId,
 				context: { messages: [] },
 				provider: "openai",
-				model: "gpt-5.5",
+				model: "gpt-6-luna",
 			};
 			const draft = assistant(input, 99, { parts: [] });
 			yield* events.publish(EventList.LLMStarted, {
@@ -794,4 +802,223 @@ describe("runner loop — retry", () => {
 			);
 		}
 	});
+});
+
+describe("runner loop — queued input", () => {
+	const contexts: Message.Context[] = [];
+	const beforeSettings = { run: Effect.void as Effect.Effect<void> };
+	/** What each provider request does, in order; past the end every request answers. */
+	const script: Array<"fail" | "hang"> = [];
+	/** Runs at the start of the next request, while the run is still working. */
+	const during = { run: Effect.void as Effect.Effect<void> };
+	const answer = immediateOpen(contexts);
+	const open: LLM.Open = (input, signal) => {
+		const step = script.shift();
+		const hook = during.run;
+		during.run = Effect.void;
+		if (step === undefined) return Effect.andThen(hook, answer(input, signal));
+		return Effect.andThen(
+			hook,
+			Effect.sync(() => {
+				contexts.push(input.context);
+				const events = createAssistantMessageEventStream();
+				if (step === "fail") {
+					const failed = Object.assign(
+						assistant(input, 0, { stopReason: "error", errorMessage: "provider failed" }),
+						{
+							failure: {
+								_tag: "Authentication",
+								reason: "missing",
+								message: "provider failed",
+								retryable: false,
+							} as const,
+						},
+					);
+					events.push({ type: "start", partial: failed });
+					events.push({ type: "error", reason: "error", error: failed });
+					return events;
+				}
+				// Streams until the run is interrupted.
+				const partial = assistant(input, 0, { parts: [{ type: "text", text: "partial" }] });
+				events.push({ type: "start", partial });
+				events.push({ type: "text.delta", partIndex: 0, delta: "partial", partial });
+				const abort = () =>
+					events.push({
+						type: "error",
+						reason: "aborted",
+						error: assistant(input, 0, { stopReason: "aborted", errorMessage: "Request was aborted" }),
+					});
+				if (signal.aborted) abort();
+				else signal.addEventListener("abort", abort, { once: true });
+				return events;
+			}),
+		);
+	};
+	const { effect: it } = testEffect(runtime({ open, beforeSettings }));
+
+	const reset = Effect.sync(() => {
+		contexts.length = 0;
+		script.length = 0;
+		during.run = Effect.void;
+		beforeSettings.run = Effect.void;
+	});
+
+	const texts = (context: Message.Context) =>
+		context.messages.flatMap((message) =>
+			message.role === "user" ? message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])) : [],
+		);
+
+	/** A user prompt as a client sends one: admitted, then the session woken. */
+	const send = (sessionId: SessionSchema.ID, id: string, delivery: "steer" | "followUp" = "steer") =>
+		Effect.gen(function* () {
+			const control = yield* Control.Service;
+			yield* control.prompt({
+				sessionId,
+				id: SessionMessageSchema.ID.make(id),
+				prompt: PromptSchema.Prompt.fromText(id),
+				delivery,
+			});
+		});
+
+	const settle = (sessionId: SessionSchema.ID) =>
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			yield* execution.awaitIdle(sessionId);
+		});
+
+	/** The busy periods' outcomes, in order. */
+	const outcomes = Effect.gen(function* () {
+		const events = yield* Event.Service;
+		const seen: string[] = [];
+		yield* events.listen((event) =>
+			Effect.sync(() => {
+				if (event.type === EventList.ExecutionSucceeded.type) seen.push("succeeded");
+				if (event.type === EventList.ExecutionFailed.type) seen.push("failed");
+				if (event.type === EventList.ExecutionInterrupted.type) seen.push("interrupted");
+			}),
+		);
+		return seen;
+	});
+
+	/** Cancels `id` the first time a turn loads settings: inside the window between the pending check and promotion. */
+	const cancelBeforePromotion = Effect.fnUntraced(function* (sessionId: SessionSchema.ID, id: string) {
+		const services = yield* Effect.context<SqlClient.SqlClient | Event.Service>();
+		beforeSettings.run = Effect.gen(function* () {
+			beforeSettings.run = Effect.void;
+			const inputs = yield* SessionInput.make;
+			yield* inputs.cancel(sessionId, SessionMessageSchema.ID.make(id));
+		}).pipe(Effect.provideContext(services));
+	});
+
+	it(
+		"asks the model nothing when the only pending prompt is cancelled before promotion",
+		Effect.gen(function* () {
+			yield* reset;
+			const sessions = yield* Session.Service;
+			const inputs = yield* SessionInput.make;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			yield* admit({ id: "msg_withdrawn", sessionId, delivery: "steer" });
+			yield* cancelBeforePromotion(sessionId, "msg_withdrawn");
+
+			// A wake, as a prompt sends: a forced resume would answer regardless.
+			const execution = yield* RunnerExecution.Service;
+			yield* execution.wake(sessionId);
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["succeeded"]);
+			expect(
+				Option.getOrThrow(yield* inputs.find(SessionMessageSchema.ID.make("msg_withdrawn"))).cancelledSeq,
+			).toBeDefined();
+			expect(contexts).toEqual([]);
+			expect(yield* sessions.path(sessionId)).toEqual([]);
+		}),
+	);
+
+	it(
+		"still runs a queued follow-up when the steer that started the run is cancelled before promotion",
+		Effect.gen(function* () {
+			yield* reset;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			yield* send(sessionId, "A");
+			yield* settle(sessionId);
+
+			yield* admit({ id: "B", sessionId, delivery: "followUp" });
+			yield* admit({ id: "S", sessionId, delivery: "steer" });
+			yield* cancelBeforePromotion(sessionId, "S");
+			const execution = yield* RunnerExecution.Service;
+			yield* execution.wake(sessionId);
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["succeeded", "succeeded"]);
+			expect(contexts.map(texts)).toEqual([["A"], ["A", "B"]]);
+		}),
+	);
+
+	// A prompt's wake survives the failure, so what was sent while the run failed goes out after it.
+	it(
+		"runs prompts sent while a run fails right after it, steers first",
+		Effect.gen(function* () {
+			yield* reset;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			const services = yield* Effect.context<Control.Service>();
+			script.push("fail");
+			during.run = Effect.all([send(sessionId, "F1", "followUp"), send(sessionId, "S1")]).pipe(
+				Effect.asVoid,
+				Effect.orDie,
+				Effect.provideContext(services),
+			);
+
+			yield* send(sessionId, "A");
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["failed", "succeeded"]);
+			expect(contexts.map(texts)).toEqual([["A"], ["A", "S1"], ["A", "S1", "F1"]]);
+		}),
+	);
+
+	// A stop claims the wakes of what was sent during the run: it stays queued, and the next prompt
+	// places it, steers with that prompt and follow-ups after.
+	it(
+		"keeps prompts sent before a stop queued until the next prompt places them",
+		Effect.gen(function* () {
+			yield* reset;
+			const events = yield* Event.Service;
+			const execution = yield* RunnerExecution.Service;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			script.push("hang");
+			const streaming = yield* Deferred.make<void>();
+			yield* events.listen((event) =>
+				event.type === "session.llm.text.delta"
+					? Deferred.succeed(streaming, undefined).pipe(Effect.asVoid)
+					: Effect.void,
+			);
+
+			yield* send(sessionId, "A");
+			yield* Deferred.await(streaming);
+			yield* send(sessionId, "S1");
+			yield* send(sessionId, "F1", "followUp");
+			yield* execution.interrupt(sessionId, "user", { awaitSettlement: true });
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["interrupted"]);
+			expect((yield* delivered(sessionId)).map((row) => [row.id, row.promotedSeq !== null])).toEqual([
+				["A", true],
+				["S1", false],
+				["F1", false],
+			]);
+
+			yield* send(sessionId, "N");
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["interrupted", "succeeded"]);
+			expect(contexts.map(texts).slice(1)).toEqual([
+				["A", "S1", "N"],
+				["A", "S1", "N", "F1"],
+			]);
+		}),
+	);
 });

@@ -38,6 +38,30 @@ export const Prompted = EventSchema.define({
 });
 export type Prompted = typeof Prompted.Type;
 
+/** A pending prompt withdrawn before promotion; it never enters the conversation. */
+export const PromptCancelled = EventSchema.define({
+	type: "session.prompt.cancelled",
+	...durableOptions,
+	schema: { ...baseOptions, messageId: SessionMessageSchema.ID },
+});
+export type PromptCancelled = typeof PromptCancelled.Type;
+
+/**
+ * A pending prompt moved to the other lane or rewritten before promotion; it keeps its place. Only
+ * what changed is carried, so two updates of different fields both stand.
+ */
+export const PromptUpdated = EventSchema.define({
+	type: "session.prompt.updated",
+	...durableOptions,
+	schema: {
+		...baseOptions,
+		messageId: SessionMessageSchema.ID,
+		prompt: PromptSchema.Prompt.pipe(optional),
+		delivery: PromptSchema.Delivery.pipe(optional),
+	},
+});
+export type PromptUpdated = typeof PromptUpdated.Type;
+
 export const ConfigChanged = EventSchema.define({
 	type: "session.config.changed",
 	...durableOptions,
@@ -292,6 +316,8 @@ export const Definitions = EventSchema.inventory(
 	ExecutionInterrupted,
 	PromptAdmitted,
 	Prompted,
+	PromptCancelled,
+	PromptUpdated,
 	ConfigChanged,
 	SessionForked,
 	TurnStarted,
@@ -324,6 +350,8 @@ export const PublicDefinitions = Definitions;
 export const DurableDefinitions = EventSchema.inventory(
 	PromptAdmitted,
 	Prompted,
+	PromptCancelled,
+	PromptUpdated,
 	ConfigChanged,
 	SessionForked,
 	TurnEnded,

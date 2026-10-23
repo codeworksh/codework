@@ -12,5 +12,6 @@ export const Admitted = Schema.Struct({
 	delivery: Delivery,
 	timeCreated: DateTimeUtcFromMillis,
 	promotedSeq: NonNegativeInt.pipe(optional),
+	cancelledSeq: NonNegativeInt.pipe(optional),
 }).annotate({ identifier: "SessionInput.Admitted" });
 export interface Admitted extends Schema.Schema.Type<typeof Admitted> {}

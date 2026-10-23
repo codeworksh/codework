@@ -74,6 +74,27 @@ export const layer = Layer.effectDiscard(
 			}),
 		);
 
+		yield* events.project(EventList.PromptCancelled, (event) =>
+			Effect.gen(function* () {
+				if (event.durable === undefined)
+					return yield* Effect.die("PromptCancelled is missing its aggregate sequence");
+				yield* input.projectCancelled({
+					cancelledSeq: event.durable.seq,
+					id: event.data.messageId,
+					sessionId: event.data.sessionId,
+				});
+			}),
+		);
+
+		yield* events.project(EventList.PromptUpdated, (event) =>
+			input.projectUpdated({
+				id: event.data.messageId,
+				sessionId: event.data.sessionId,
+				...(event.data.prompt === undefined ? {} : { prompt: event.data.prompt }),
+				...(event.data.delivery === undefined ? {} : { delivery: event.data.delivery }),
+			}),
+		);
+
 		// Publishing `Prompted` is what promotes an input, so this registration is
 		// what makes `promoteSteers` / `promoteFollowUp` take effect at all.
 		yield* events.project(EventList.Prompted, (event) =>

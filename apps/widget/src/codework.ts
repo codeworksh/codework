@@ -100,6 +100,17 @@ export type LogSynced = typeof LogSynced.Type;
 export const Delivery = Schema.Literals(["steer", "followUp"]);
 export type Delivery = typeof Delivery.Type;
 
+/** A prompt admitted but not yet in the conversation, until the agent takes it in. */
+export const QueuedPrompt = Schema.Struct({
+	/** The id of the user message it becomes. */
+	id: Schema.String,
+	delivery: Delivery,
+	text: Schema.String,
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+});
+export type QueuedPrompt = typeof QueuedPrompt.Type;
+
 /** The server's "no such session" (the harness `SessionNotFoundError`), by its wire tag. */
 export class SessionNotFoundError extends Schema.TaggedError<SessionNotFoundError>()("SessionNotFoundError", {
 	sessionId: Schema.String,
@@ -247,6 +258,12 @@ export const Api = RpcGroup.make(
 		success: Schema.Struct({ entries: Schema.Array(HistoryEntry) }),
 		error: SessionNotFoundError,
 	}),
+	/** Prompts admitted but not yet promoted, in admission order; reread whenever the log moves. */
+	Rpc.make("session.queue", {
+		payload: { sessionId: Schema.String },
+		success: Schema.Struct({ entries: Schema.Array(QueuedPrompt) }),
+		error: SessionNotFoundError,
+	}),
 	/** Durable events after `after` (exclusive), then `log.synced`; with `follow`, each new one as it commits. */
 	Rpc.make("session.log", {
 		payload: {
@@ -268,6 +285,23 @@ export const Api = RpcGroup.make(
 		},
 		success: Schema.Void,
 		error: Schema.Union([SessionNotFoundError, PromptConflictError]),
+	}),
+	/** Withdraws a queued prompt; `cancelled` is false when it was already promoted or is unknown. */
+	Rpc.make("session.cancel", {
+		payload: { sessionId: Schema.String, messageId: Schema.String },
+		success: Schema.Struct({ cancelled: Schema.Boolean }),
+		error: SessionNotFoundError,
+	}),
+	/** Moves a queued prompt to the other lane or rewrites it in place; `delivery: "steer"` also wakes the session. */
+	Rpc.make("session.update", {
+		payload: {
+			sessionId: Schema.String,
+			messageId: Schema.String,
+			delivery: Schema.optionalKey(Delivery),
+			text: Schema.optionalKey(Schema.String),
+		},
+		success: Schema.Struct({ updated: Schema.Boolean }),
+		error: SessionNotFoundError,
 	}),
 	Rpc.make("session.interrupt", {
 		payload: { sessionId: Schema.String },

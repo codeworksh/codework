@@ -269,4 +269,13 @@ export const migrations = {
 		// merges into it. NULL: nothing chosen, the session follows its settings.
 		yield* sql`ALTER TABLE session ADD COLUMN config TEXT`;
 	}),
+
+	"202610230001_session_input_cancel": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+
+		// The sequence of the `session.prompt.cancelled` event that withdrew a pending input.
+		// The row is kept, not deleted: a promotion already in flight then finds it cancelled and
+		// loses, rather than reading a missing row as a replay and appending the prompt anyway.
+		yield* sql`ALTER TABLE session_input ADD COLUMN cancelled_seq INTEGER`;
+	}),
 };

@@ -74,6 +74,20 @@ export interface Interface {
 	) => Effect.Effect<boolean>;
 	/** Sessions this process is currently draining. */
 	readonly active: Effect.Effect<ReadonlySet<SessionSchema.ID>>;
+	/** Prompts admitted but not yet in the conversation, steers and follow-ups, in admission order. */
+	readonly pending: (sessionId: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Admitted>>;
+	/**
+	 * Moves a pending prompt to the other lane or rewrites it, keeping its place; false when it was
+	 * already promoted, cancelled, or is unknown. Asking for the steer lane also wakes the session, so
+	 * a prompt left waiting by a stop or a failure runs now.
+	 */
+	readonly update: (
+		sessionId: SessionSchema.ID,
+		id: SessionMessageSchema.ID,
+		patch: SessionInput.UpdatePatch,
+	) => Effect.Effect<boolean>;
+	/** Withdraws a pending prompt; false when it was already promoted, cancelled, or is unknown. */
+	readonly cancel: (sessionId: SessionSchema.ID, id: SessionMessageSchema.ID) => Effect.Effect<boolean>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/control/Service") {}
@@ -155,7 +169,30 @@ export const layer = Layer.effect(
 			) => Effect.uninterruptible(execution.interrupt(sessionId, options?.reason ?? "user", options)),
 		);
 
-		return Service.of({ prompt, run, wait, resume, interrupt, active: execution.active });
+		// Uninterruptible like `prompt`: a change to the steer lane that commits must also wake.
+		const update = Effect.fn("Control.update")(
+			(sessionId: SessionSchema.ID, id: SessionMessageSchema.ID, patch: SessionInput.UpdatePatch) =>
+				Effect.uninterruptible(
+					Effect.gen(function* () {
+						const updated = yield* inputs.update(sessionId, id, patch);
+						if (Option.isNone(updated)) return false;
+						if (patch.delivery === "steer") yield* execution.wake(sessionId);
+						return true;
+					}),
+				),
+		);
+
+		return Service.of({
+			prompt,
+			run,
+			wait,
+			resume,
+			interrupt,
+			active: execution.active,
+			pending: inputs.pending,
+			cancel: inputs.cancel,
+			update,
+		});
 	}),
 );
 

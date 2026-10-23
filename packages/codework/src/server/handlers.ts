@@ -195,6 +195,20 @@ export const layer = Contract.Api.toLayer(
 				);
 				return { entries };
 			}),
+			"session.queue": Effect.fnUntraced(function* ({ sessionId }) {
+				if (Option.isNone(yield* sessions.get(sessionId))) {
+					return yield* new SessionStore.SessionNotFoundError({ sessionId });
+				}
+				const pending = yield* control.pending(sessionId);
+				return {
+					entries: pending.map((input) => ({
+						id: input.id,
+						delivery: input.delivery,
+						text: PromptSchema.Prompt.text(input.prompt),
+						createdAt: DateTime.toEpochMillis(input.timeCreated),
+					})),
+				};
+			}),
 			"session.log": ({ sessionId, after, follow }) =>
 				Stream.unwrap(
 					Effect.gen(function* () {
@@ -237,6 +251,22 @@ export const layer = Contract.Api.toLayer(
 				// Ack only: the wire answers "was there work to stop", and the caller
 				// uses `session.wait` when it needs cleanup to have finished.
 				return { interrupted: yield* control.interrupt(sessionId, { reason: "user" }) };
+			}),
+			"session.cancel": Effect.fnUntraced(function* ({ sessionId, messageId }) {
+				if (Option.isNone(yield* sessions.get(sessionId))) {
+					return yield* new SessionStore.SessionNotFoundError({ sessionId });
+				}
+				return { cancelled: yield* control.cancel(sessionId, messageId) };
+			}),
+			"session.update": Effect.fnUntraced(function* ({ sessionId, messageId, delivery, text }) {
+				if (Option.isNone(yield* sessions.get(sessionId))) {
+					return yield* new SessionStore.SessionNotFoundError({ sessionId });
+				}
+				const updated = yield* control.update(sessionId, messageId, {
+					...(delivery === undefined ? {} : { delivery }),
+					...(text === undefined ? {} : { prompt: PromptSchema.Prompt.fromText(text) }),
+				});
+				return { updated };
 			}),
 			"session.message": Effect.fnUntraced(function* ({ sessionId, messageId }) {
 				const found = yield* sessions.entry(messageId);

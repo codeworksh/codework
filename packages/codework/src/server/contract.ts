@@ -70,6 +70,17 @@ export const HistoryEntry = Schema.Struct({
 });
 export type HistoryEntry = typeof HistoryEntry.Type;
 
+/** A prompt admitted but not yet in the conversation: a steer waiting for the next model request, or a follow-up for the next turn. */
+export const QueuedPrompt = Schema.Struct({
+	/** The id of the user message it becomes once promoted. */
+	id: Schema.String,
+	delivery: PromptSchema.Delivery,
+	text: Schema.String,
+	/** Epoch milliseconds. */
+	createdAt: Schema.Finite,
+});
+export type QueuedPrompt = typeof QueuedPrompt.Type;
+
 /** Ends `session.log`'s replay; `seq` is absent when the session has no durable events yet. */
 export const LogSynced = Schema.Struct({
 	type: Schema.Literal("log.synced"),
@@ -272,6 +283,15 @@ export const Api = RpcGroup.make(
 		error: SessionStore.SessionNotFoundError,
 	}),
 	/**
+	 * Prompts admitted but not yet promoted, in admission order. Admission and promotion are
+	 * durable events, so a client following `session.log` rereads this whenever the log moves.
+	 */
+	Rpc.make("session.queue", {
+		payload: { sessionId: Session.SessionSchema.ID },
+		success: Schema.Struct({ entries: Schema.Array(QueuedPrompt) }),
+		error: SessionStore.SessionNotFoundError,
+	}),
+	/**
 	 * A session's durable events after `after` (exclusive; omitted reads from the start), then a
 	 * `log.synced` marker at the head read when the call began. With `follow`, each event then
 	 * streams as it commits; without it the stream ends at the marker.
@@ -329,6 +349,30 @@ export const Api = RpcGroup.make(
 		},
 		success: Schema.Void,
 		error: Schema.Union([SessionStore.SessionNotFoundError, Control.PromptConflictError]),
+	}),
+	/**
+	 * Withdraws a queued prompt before it joins the conversation. `cancelled` is false when it had
+	 * already been promoted (it then stays in the conversation) or no pending prompt has that id.
+	 */
+	Rpc.make("session.cancel", {
+		payload: { sessionId: Session.SessionSchema.ID, messageId: Session.SessionMessageSchema.ID },
+		success: Schema.Struct({ cancelled: Schema.Boolean }),
+		error: SessionStore.SessionNotFoundError,
+	}),
+	/**
+	 * Moves a queued prompt to the other lane or rewrites it, keeping its place in the queue.
+	 * `delivery: "steer"` also wakes the session, so a prompt left waiting after a stop runs now.
+	 * `updated` is false when it had already been promoted or cancelled, or no pending prompt has that id.
+	 */
+	Rpc.make("session.update", {
+		payload: {
+			sessionId: Session.SessionSchema.ID,
+			messageId: Session.SessionMessageSchema.ID,
+			delivery: optional(PromptSchema.Delivery),
+			text: optional(Schema.String),
+		},
+		success: Schema.Struct({ updated: Schema.Boolean }),
+		error: SessionStore.SessionNotFoundError,
 	}),
 	Rpc.make("session.interrupt", {
 		payload: { sessionId: Session.SessionSchema.ID },

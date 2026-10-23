@@ -158,6 +158,7 @@ export class SessionInputRow extends Model.Class<SessionInputRow>("SessionInputR
 	delivery: Schema.Literals(inputDeliveries),
 	admittedSeq: Schema.Int,
 	promotedSeq: Model.FieldOption(Schema.Int),
+	cancelledSeq: Model.FieldOption(Schema.Int),
 	createdAt: Model.DateTimeInsertFromNumber,
 }) {}
 
