@@ -116,7 +116,7 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							JSON.stringify({
 								model: {
 									provider: "openai",
-									id: "gpt-5.5",
+									id: "gpt-6-luna",
 									thinkingLevel: "high",
 									providerOptions: {
 										openai: {
@@ -288,7 +288,7 @@ export const runnerCycleSpec = (resourceId: () => Promise<string>) =>
 							expect(recovered.stopReason).toBe("stop");
 							expect(requests).toHaveLength(7);
 							for (const request of requests)
-								expect(request).toMatchObject({ provider: "openai", model: "gpt-5.5" });
+								expect(request).toMatchObject({ provider: "openai", model: "gpt-6-luna" });
 							for (const request of requests.slice(0, 6)) {
 								expect(request.effort).toBe("low");
 								expect(request.headers).toMatchObject({ "x-settings-revision": "low" });

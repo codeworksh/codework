@@ -65,17 +65,10 @@ export function anthropicOptions(extras: AnthropicOptions = {}): AnthropicOption
 }
 
 /** Every OpenAI suite runs once per model, latest to oldest. */
-export const OPENAI_E2E_MODELS = [
-	"gpt-6-luna",
-	"gpt-5.6-luna",
-	"gpt-5.5",
-	"gpt-5.4",
-	"gpt-5.4-mini",
-	"gpt-5.4-nano",
-] as const;
+export const OPENAI_E2E_MODELS = ["gpt-6-luna", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano"] as const;
 
 /**
- * Every Codex suite runs once per model. The Codex backend rejects gpt-5.5, gpt-5.4, gpt-5.4-mini
+ * Every Codex suite runs once per model. The Codex backend rejects gpt-5.4, gpt-5.4-mini
  * and gpt-5.4-nano for ChatGPT accounts ("not supported when using Codex with a ChatGPT account").
  */
 export const OPENAI_CODEX_E2E_MODELS = ["gpt-6-luna", "gpt-5.6-luna"] as const;

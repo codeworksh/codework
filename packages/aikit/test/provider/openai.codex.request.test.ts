@@ -149,7 +149,7 @@ describe("request", () => {
 			apiKey: OPENAI_CODEX_TEST_API_KEY,
 			fetch,
 			compat: { supportsOpenAIGrammarTools: true, supportsToolSearch: true },
-		})("gpt-5.5").doStream({
+		})("gpt-6-luna").doStream({
 			prompt: openAICodexDeferredToolsPrompt,
 			tools: openAICodexDeferredTools,
 		});

@@ -34,7 +34,7 @@ describe("Pricing.serviceTierCostMultiplier", () => {
 	it("uses custom pricing metadata without recognizing the model name", () => {
 		const model = makeModel({ cost: { ...openai.cost, serviceTierMultipliers: { priority: 3 } } });
 		expect(Pricing.serviceTierCostMultiplier(model, "priority")).toBe(3);
-		expect(Pricing.serviceTierCostMultiplier(makeModel({ id: "gpt-5.5" }), "priority")).toBe(1);
+		expect(Pricing.serviceTierCostMultiplier(makeModel({ id: "gpt-6-luna" }), "priority")).toBe(1);
 	});
 });
 

@@ -112,7 +112,14 @@ type Wire = Record<string, unknown>;
 const path = (value: unknown, ...keys: string[]): unknown =>
 	keys.reduce<unknown>((at, key) => (typeof at === "object" && at !== null ? (at as Wire)[key] : undefined), value);
 
-const openai = makeModel({ id: "gpt-5.5", protocol: "openai", npm: "@ai-sdk/openai", reasoning: true });
+// GPT-6 takes no minimal effort; its catalog entry says so, and minimal clamps up to low.
+const openai = makeModel({
+	id: "gpt-6-luna",
+	protocol: "openai",
+	npm: "@ai-sdk/openai",
+	reasoning: true,
+	thinkingLevelMap: { off: "none", minimal: null },
+});
 const adaptiveClaude = makeModel({
 	id: "claude-opus-4-8",
 	npm: "@ai-sdk/anthropic",
