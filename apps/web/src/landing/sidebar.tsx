@@ -1,8 +1,8 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtom, useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, SquarePen } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 
 import { Sidebar, SidebarContent, SidebarHeader, SidebarInput, SidebarRail } from "@/components/ui/sidebar";
@@ -26,7 +26,7 @@ export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
-	const place = useAtomValue(placeAtom);
+	const [place, setPlace] = useAtom(placeAtom);
 	const pickFolder = usePickFolder();
 	const navigate = useNavigate();
 	// The session in front on the workspace on screen reads as current.
@@ -37,6 +37,14 @@ export function SessionsSidebar() {
 	const current = instances.find((instance) => instance.id === focusedId)?.address;
 	// Picking lands on the start page, where the folder is used.
 	const addProject = pickFolder === undefined ? undefined : () => void pickFolder().then(() => navigate({ to: "/" }));
+	// A new session starts on the start page, in the current session's project when one is in front.
+	const startNew = () => {
+		const project = AsyncResult.isSuccess(result)
+			? result.value.find((candidate) => candidate.sessions.some(({ id }) => sessionAddress(id) === current))
+			: undefined;
+		if (project !== undefined) setPlace({ kind: "folder", path: project.path });
+		void navigate({ to: "/" });
+	};
 	// Primary and middle clicks open; a right click is left to the context menu. Shift, like a
 	// browser's new window, asks for a workspace of its own.
 	const open = (session: { id: string; project: { name: string } }, event: MouseEvent) => {
@@ -69,6 +77,14 @@ export function SessionsSidebar() {
 							className="h-8 rounded-[8px] border-transparent bg-transparent pl-8 text-[13px] shadow-none focus-visible:bg-ink/5"
 						/>
 					</div>
+					<button
+						type="button"
+						onClick={startNew}
+						className="mt-1 flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-ink transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5"
+					>
+						<SquarePen className="size-3.5 text-ink-muted" aria-hidden />
+						New
+					</button>
 				</div>
 			</SidebarHeader>
 			<SidebarContent className="px-2 pt-2 pb-2">
@@ -119,9 +135,6 @@ export function SessionsSidebar() {
 										<span className="shrink-0 tabular-nums">{ago(session.updated)}</span>
 									</div>
 									<div className="mt-1 truncate text-[13px] text-ink">{session.title}</div>
-									{session.model !== undefined && (
-										<div className="mt-0.5 truncate text-[11px] text-ink-muted/60">{session.model.id}</div>
-									)}
 								</button>
 							</li>
 						))}
