@@ -17,7 +17,6 @@ import { sessionAddress } from "../widgets/session/address";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
 import { useOpenElsewhere } from "../wm/open";
 import { ModelPicker, ThinkingPicker, useChoice, useModelsNotice } from "@/components/model";
-import { TitleBar } from "../shell/titlebar";
 import { placeAtom, placeLabel, usePickFolder } from "./place";
 import { projectsAtom } from "../widgets/session/projects";
 import { Wordmark } from "./wordmark";
@@ -79,7 +78,6 @@ export function Landing() {
 
 	return (
 		<div className="flex h-full min-w-0 flex-col select-none">
-			<TitleBar active={undefined} />
 			<main className="relative flex min-h-0 flex-1 flex-col items-center overflow-auto px-4">
 				<div className="flex-[0.8]" />
 				<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />

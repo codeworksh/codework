@@ -7,7 +7,6 @@ import { Desktop } from "../wm/desktop";
 import { deskQueryAtom } from "../wm/instances";
 import { lastWorkspaceAtom, useWorkspaces, workspaceRoute, workspacesAtom } from "../wm/workspaces";
 import { settingsShortcut, workspaceShortcut } from "./switcher";
-import { TitleBar } from "./titlebar";
 
 /**
  * Lives in the pathless `_shell` layout so switching workspaces (a URL change) never remounts
@@ -65,8 +64,6 @@ export function Shell() {
 
 	return (
 		<div className="flex h-full min-w-0 flex-col">
-			{/* Settings takes the whole window, with its own bar. */}
-			{!inSettings && <TitleBar active={shown} />}
 			<div className="relative min-h-0 flex-1">
 				{ready &&
 					shown !== undefined && (

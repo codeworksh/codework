@@ -9,7 +9,6 @@ import { Sidebar, SidebarContent, SidebarHeader, SidebarInput, SidebarRail } fro
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress } from "../widgets/session/address";
 import { projectsAtom } from "../widgets/session/projects";
-import { insetTitleBar } from "../shell/titlebar";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
@@ -55,11 +54,9 @@ export function SessionsSidebar() {
 		: [];
 
 	return (
-		<Sidebar collapsible="offcanvas" className="select-none">
+		<Sidebar collapsible="offcanvas" className="sessions-sidebar select-none">
 			<SidebarHeader className="gap-0 p-0">
-				{/* The window's drag region, clear of the macOS traffic lights. */}
-				<div className={`h-12 shrink-0 [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`} />
-				<div className="px-2 pb-2">
+				<div className="px-2 pt-2 pb-2">
 					{/* The icon centers on the input alone, not on the padding below it. */}
 					<div className="relative">
 						<Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-muted" />
@@ -74,7 +71,7 @@ export function SessionsSidebar() {
 					</div>
 				</div>
 			</SidebarHeader>
-			<SidebarContent className="px-2 pb-2">
+			<SidebarContent className="px-2 pt-2 pb-2">
 				{AsyncResult.isFailure(result) ? (
 					// The CodeWork server is the usual reason, and the sidebar can say which state it is in and fix it.
 					Option.exists(AsyncResult.error(result), (error) => error._tag === "Server.CodeworkUnavailable") ? (

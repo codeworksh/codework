@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 /** The sidebar's message when it has nothing to list: a few quiet lines, centered, and what to do next. */
 export function Empty({ children }: { children: ReactNode }) {
 	return (
-		<div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-[12px] text-ink-muted/70">
+		<div className="flex w-full min-w-0 flex-col items-center gap-2 px-2 py-6 text-center text-[12px] text-ink-muted/70">
 			{children}
 		</div>
 	);

@@ -59,35 +59,37 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	};
 
 	return (
-		<nav className="flex min-w-0 items-center rounded-[14px] bg-ink/5 p-1 [-webkit-app-region:no-drag]">
+		<nav
+			aria-label="Workspaces"
+			className="ml-3 flex min-w-0 items-center rounded-[14px] bg-ink/5 p-1 [-webkit-app-region:no-drag]"
+		>
 			{workspaces.map((workspace, index) => {
 				const Icon = iconOf(workspace.icon);
 				const current = workspace.id === active?.id;
 				const tab = showing(workspace);
-				// A hairline between two resting tabs; the raised active tab needs none beside it.
+				// Keep separator space reserved when selection hides its hairline.
 				const divider = index > 0 && !current && workspaces[index - 1]?.id !== active?.id;
 				return (
 					<Fragment key={workspace.id}>
-						{divider && <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-ink/12" />}
+						{index > 0 && (
+							<span aria-hidden className={`mx-0.5 h-4 w-px shrink-0 bg-ink/12 ${divider ? "" : "invisible"}`} />
+						)}
 						<Link
 							{...workspaceRoute(workspace)}
 							aria-current={current ? "page" : undefined}
 							title={`${tab.title}${tab.subtitle === undefined ? "" : `\n${tab.subtitle}`}\n${shortcutLabel(index + 1)}`}
-							className={`flex h-9 w-56 min-w-12 shrink items-center gap-2 rounded-[10px] pr-3 pl-1.5 transition-colors animate-in duration-150 ease-out fade-in-0 zoom-in-95 [corner-shape:superellipse(1.25)] ${
+							className={`relative flex h-8 w-56 min-w-16 shrink basis-56 items-center gap-2 rounded-[10px] pr-3 pl-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
 								current
 									? "border border-edge bg-linear-to-b from-frame-top to-frame text-ink shadow-frame"
 									: "border border-transparent text-ink-muted hover:bg-ink/5 hover:text-ink"
 							}`}
 						>
-							<span className="grid size-6 shrink-0 place-items-center rounded-[7px] border border-edge bg-frame-top text-ink shadow-xs">
+							<span
+								className={`grid size-6 shrink-0 place-items-center rounded-[7px] border ${current ? "border-edge bg-frame-top text-ink shadow-xs" : "border-transparent text-ink-muted"}`}
+							>
 								<Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
 							</span>
-							<span className="flex min-w-0 flex-col leading-tight">
-								<span className="truncate text-[12px] font-medium">{tab.title}</span>
-								{tab.subtitle !== undefined && (
-									<span className="truncate text-[11px] text-ink-muted">{tab.subtitle}</span>
-								)}
-							</span>
+							<span className="truncate text-[12px] font-medium">{tab.subtitle ?? tab.title}</span>
 						</Link>
 					</Fragment>
 				);

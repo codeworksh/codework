@@ -167,3 +167,19 @@
 		background: var(--cw-scrollbar);
 	}
 }
+
+/* The navigation rail stays put when the shadcn sessions sidebar folds away. */
+.app-shell [data-slot="sidebar"] > .sessions-sidebar {
+	left: 52px;
+	top: 48px;
+	height: calc(100svh - 48px);
+	border: 0;
+	background: var(--cw-desktop);
+}
+.app-shell [data-collapsible="offcanvas"] > .sessions-sidebar {
+	left: calc(52px - var(--sidebar-width));
+	visibility: hidden;
+}
+.app-shell .sessions-sidebar [data-slot="sidebar-inner"] {
+	background: transparent;
+}
