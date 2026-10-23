@@ -1,7 +1,6 @@
 @import "tailwindcss";
 /* shadcn/ui's enter and exit animations (animate-in, fade-in-0, zoom-in-95, ...). */
 @import "tw-animate-css";
-@import "./themes.css";
 
 /* `--cw-*` are the theme contract widgets style against. They map onto the site palette's `--t-*`
    tokens, so switching data-theme restyles everything; light-dark() follows the theme's color-scheme. */

@@ -12,10 +12,14 @@ import "./style.css";
 const history = isElectron ? createHashHistory() : createBrowserHistory();
 const router = getRouter(history);
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-	<React.StrictMode>
-		<RegistryProvider>
-			<RouterProvider router={router} />
-		</RegistryProvider>
-	</React.StrictMode>,
-);
+// The splash in index.html stays up until the first route's split chunks have loaded, so the app
+// mounts whole instead of flashing an empty shell.
+export const startup = router.load().then(() => {
+	ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+		<React.StrictMode>
+			<RegistryProvider>
+				<RouterProvider router={router} />
+			</RegistryProvider>
+		</React.StrictMode>,
+	);
+});
