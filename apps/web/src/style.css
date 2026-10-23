@@ -192,3 +192,14 @@
 .app-shell .sessions-sidebar {
 	transition: none;
 }
+
+/* The transcript continues beneath the floating reply card rather than ending at a hard seam. */
+.session-transcript {
+	mask-image: linear-gradient(
+		to bottom,
+		transparent,
+		black 16px,
+		black calc(100% - var(--composer-height, 60px) - 40px),
+		transparent calc(100% - var(--composer-height, 60px) + 32px)
+	);
+}

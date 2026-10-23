@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
+import { cn } from "@/lib/utils";
 import { isMac } from "@codeworksh/widget/view";
 
 /** How a send was asked for: `alternate` is Mod+Enter, which a caller may give its own meaning. */
@@ -22,6 +23,10 @@ export function Composer({
 	controls,
 	actions,
 	tray,
+	header,
+	inputRef,
+	onEscape,
+	className,
 }: {
 	readonly value: string;
 	readonly onChange: (value: string) => void;
@@ -34,25 +39,40 @@ export function Composer({
 	readonly controls?: ReactNode;
 	readonly actions: ReactNode;
 	readonly tray?: ReactNode;
+	readonly header?: ReactNode;
+	readonly inputRef?: Ref<HTMLTextAreaElement>;
+	readonly onEscape?: () => void;
+	readonly className?: string;
 }) {
 	return (
 		<div className="w-full">
 			<form
 				// Raised like a frame (the theme's top-down gradient, top highlight and shadows), with a deeper
 				// drop so it still floats when it sits inside one.
-				className="relative z-10 flex flex-col rounded-[22px] border border-edge bg-linear-to-b from-frame-top to-frame to-60% shadow-[inset_0_1px_0_var(--cw-highlight),0_1px_2px_var(--cw-shadow-near),0_14px_36px_-12px_var(--cw-shadow-far)] transition-colors focus-within:border-edge-focus"
+				className={cn(
+					"relative z-10 flex flex-col rounded-[22px] border border-edge bg-linear-to-b from-frame-top to-frame to-60% shadow-[inset_0_1px_0_var(--cw-highlight),0_1px_2px_var(--cw-shadow-near),0_14px_36px_-12px_var(--cw-shadow-far)] transition-colors focus-within:border-edge-focus",
+					className,
+				)}
 				onSubmit={(event) => {
 					event.preventDefault();
 					onSubmit({ alternate: false });
 				}}
 			>
+				{header}
 				<div className={compact ? "px-3.5 pt-2.5 pb-0.5" : "px-4 pt-4 pb-2"}>
 					<textarea
+						ref={inputRef}
 						autoFocus={autoFocus}
 						rows={1}
 						value={value}
 						onChange={(event) => onChange(event.target.value)}
 						onKeyDown={(event) => {
+							if (event.key === "Escape" && !event.defaultPrevented && onEscape !== undefined) {
+								event.preventDefault();
+								event.stopPropagation();
+								onEscape();
+								return;
+							}
 							// An IME composition owns its own Enter.
 							if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
 							event.preventDefault();

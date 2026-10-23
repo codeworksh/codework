@@ -21,7 +21,7 @@ const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
 /** Messages per page: the newest on open, then older ones as the reader scrolls up. */
 const PAGE = 60;
 
-// Shared by the transcript and composer so their reading edges stay aligned.
+// Shared reading width for the transcript and floating composer.
 const contentWidth = "mx-auto w-full max-w-[62rem]";
 
 export function Session({ address, instanceId }: WidgetProps<unknown>) {
@@ -201,14 +201,29 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 	const shown =
 		notice !== undefined && (dismissed?.title !== notice.title || dismissed.description !== notice.description);
 
+	const surface = useRef<HTMLDivElement>(null);
+	const composer = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const element = composer.current;
+		if (element === null) return;
+		const observer = new ResizeObserver(() => {
+			surface.current?.style.setProperty("--composer-height", `${element.getBoundingClientRect().height}px`);
+		});
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [state.status]);
+
 	if (state.status === "loading") return null;
 	if (state.status === "failed") return <p className="p-3 text-ink-muted">{state.message}</p>;
 	const last = state.messages.at(-1);
 	const running = state.running ?? (last?.role === "assistant" && last.state === "draft");
 	return (
-		<div className="flex h-full flex-col">
+		<div ref={surface} className="relative flex h-full flex-col">
 			<Transcript state={state} running={running} loadOlder={loadOlder} />
-			<div className={`${contentWidth} shrink-0 px-3 pb-3`}>
+			<div
+				ref={composer}
+				className={`${contentWidth} pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 [&>*]:pointer-events-auto`}
+			>
 				{models !== undefined ? (
 					<ComposerNotice {...models} />
 				) : (
@@ -285,7 +300,8 @@ function Transcript({
 			maintainScrollAtEnd={follow}
 			maintainVisibleContentPosition={anchor}
 			onStartReached={state.more ? loadOlder : undefined}
-			className="min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]"
+			ListFooterComponent={<div className="h-[calc(var(--composer-height,60px)+24px)]" />}
+			className="session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]"
 		/>
 	);
 }
@@ -427,12 +443,12 @@ function WorkLog({
 				: "Worked";
 	return (
 		<div>
-			<div className="flex items-center gap-2 text-[12px] text-ink-muted">
+			<div className="flex items-center gap-2 border-b border-edge/50 pb-2 text-[12px] text-ink-muted">
 				<button
 					type="button"
 					aria-expanded={open}
 					onClick={() => setOpen(!open)}
-					className="-mx-1 flex items-center gap-1 rounded-md px-1 text-ink transition-colors hover:bg-ink/5"
+					className="-mx-1 flex items-center gap-1 rounded-md px-1 text-ink-muted transition-colors outline-none hover:bg-ink/5 focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					{label}
 					{open ? (
@@ -465,7 +481,7 @@ function WorkRow({ part }: { readonly part: Part }) {
 			);
 		case "text":
 			return (
-				<div className="py-1 text-ink/80">
+				<div className="py-1 text-ink-muted">
 					<Markdown text={part.text} />
 				</div>
 			);
