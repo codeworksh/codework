@@ -44,8 +44,12 @@ export function ServersSettings() {
 			}
 		>
 			<div className="@container">
-				<div className="grid items-start rounded-lg border border-edge/60 @3xl:grid-cols-[16rem_minmax(0,1fr)]">
-					<nav aria-label="Providers" className="flex flex-col border-edge/60 @max-3xl:border-b @3xl:border-r">
+				{/* Side by side, the split keeps a fixed height and each side scrolls on its own; stacked, the page scrolls. */}
+				<div className="grid items-start rounded-lg border border-edge/60 @3xl:h-[min(44rem,calc(100dvh-12.5rem))] @3xl:min-h-[32rem] @3xl:grid-cols-[16rem_minmax(0,1fr)] @3xl:items-stretch @3xl:overflow-hidden">
+					<nav
+						aria-label="Providers"
+						className="flex flex-col border-edge/60 @max-3xl:border-b @3xl:min-h-0 @3xl:overflow-y-auto @3xl:border-r"
+					>
 						{servers?.map((server) => (
 							<button
 								key={server.id}
@@ -75,7 +79,7 @@ export function ServersSettings() {
 							onAdded={setSelectedId}
 						/>
 					)}
-					<div className="min-w-0">
+					<div className="min-w-0 @3xl:min-h-0 @3xl:overflow-y-auto">
 						{selected !== undefined ? (
 							<LocalDetail key={selected.id} status={selected} />
 						) : AsyncResult.isFailure(result) ? (
