@@ -1,7 +1,6 @@
-import { useAtomValue } from "@effect/atom-react";
 import { Link, Outlet, useMatchRoute, useNavigate } from "@tanstack/react-router";
-import { Search, X } from "lucide-react";
-import { type CSSProperties, useState } from "react";
+import { Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import {
 	Sidebar,
@@ -13,103 +12,111 @@ import {
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
-	SidebarProvider,
+	SidebarRail,
 } from "@/components/ui/sidebar";
-import { chromeButton, insetTitleBar } from "../shell/titlebar";
-import { lastWorkspaceAtom, useWorkspaces, workspaceRoute } from "../wm/workspaces";
 import { search } from "./sections";
 
-/**
- * Settings fills the window: a flat section list on the window chrome beside one pane for the
- * open section, under its own bar with the way out (also Esc).
- */
-export function SettingsLayout() {
+/** Settings replaces the sessions list within the same app shell and sidebar controls. */
+export function SettingsSidebar() {
 	const matchRoute = useMatchRoute();
 	const navigate = useNavigate();
 	const [query, setQuery] = useState("");
 	const matches = search(query);
 	const groups = [...new Set(matches.map((section) => section.group))];
-	// Closing returns to the workspace that was on screen, like Esc does.
-	const lastId = useAtomValue(lastWorkspaceAtom);
-	const back = useWorkspaces().find((workspace) => workspace.id === lastId);
-
 	return (
-		// Wider than shadcn's 16rem default, so section names never crowd the icons;
-		// below md the sidebar folds to an icon rail so the section keeps the room.
-		<SidebarProvider
-			className="h-full min-h-0 flex-col gap-0 p-2 pt-0"
-			style={{ "--sidebar-width": "20rem" } as CSSProperties}
-		>
-			<header
-				className={`flex h-12 shrink-0 items-center justify-end select-none [-webkit-app-region:drag] ${insetTitleBar ? "pl-18" : ""}`}
-			>
-				<button
-					type="button"
-					aria-label="Close settings"
-					title="Close settings (Esc)"
-					className={chromeButton}
-					onClick={() => void navigate(back === undefined ? { to: "/" } : workspaceRoute(back))}
-				>
-					<X className="size-4" strokeWidth={1.75} aria-hidden />
-				</button>
-			</header>
-			<div className="flex min-h-0 flex-1 gap-2">
-				<Sidebar collapsible="none" className="bg-transparent max-md:w-14">
-					<SidebarHeader className="gap-3 px-2 pt-3 max-md:hidden">
-						<h1 className="px-2 text-lg font-semibold">Settings</h1>
-						<div className="relative">
-							<Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-muted" />
-							<SidebarInput
-								type="search"
-								placeholder="Search"
-								aria-label="Search settings"
-								value={query}
-								className="h-9 rounded-full border-transparent bg-ink/6 pl-9"
-								onChange={(event) => setQuery(event.target.value)}
-								onKeyDown={(event) => {
-									const first = matches[0];
-									if (event.key === "Enter" && first !== undefined) void navigate({ to: first.to });
-									if (event.key === "Escape" && query !== "") {
-										// Clears the query instead of leaving settings.
-										event.preventDefault();
-										setQuery("");
-									}
-								}}
-							/>
-						</div>
-					</SidebarHeader>
-					<SidebarContent>
-						{groups.map((group) => (
-							<SidebarGroup key={group}>
-								<SidebarGroupLabel className="text-ink-muted max-md:sr-only">{group}</SidebarGroupLabel>
-								<SidebarMenu>
-									{matches
-										.filter((section) => section.group === group)
-										.map(({ to, label, icon: Icon }) => (
+		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
+			<SidebarHeader className="gap-1 px-2 pt-2 pb-2">
+				<h1 className="flex h-8 items-center px-2.5 text-[13px] font-semibold text-ink">Settings</h1>
+				<div className="relative">
+					<Search
+						className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-muted"
+						aria-hidden
+					/>
+					<SidebarInput
+						type="search"
+						placeholder="Search"
+						aria-label="Search settings"
+						value={query}
+						className="h-8 rounded-lg border-transparent bg-transparent pl-8 text-[13px] shadow-none focus-visible:bg-ink/5"
+						onChange={(event) => setQuery(event.target.value)}
+						onKeyDown={(event) => {
+							const first = matches[0];
+							if (event.key === "Enter" && first !== undefined) void navigate({ to: first.to });
+							if (event.key === "Escape" && query !== "") {
+								event.preventDefault();
+								setQuery("");
+							}
+						}}
+					/>
+				</div>
+			</SidebarHeader>
+			<SidebarContent className="px-2 pb-2">
+				<nav aria-label="Settings navigation">
+					{groups.map((group) => (
+						<SidebarGroup key={group} className="px-0">
+							<SidebarGroupLabel className="px-2.5 text-[11px] text-ink-muted">{group}</SidebarGroupLabel>
+							<SidebarMenu>
+								{matches
+									.filter((section) => section.group === group)
+									.map(({ to, label, icon: Icon }) => {
+										const current = matchRoute({ to }) !== false;
+										return (
 											<SidebarMenuItem key={to}>
 												<SidebarMenuButton
 													asChild
-													size="lg"
-													isActive={matchRoute({ to }) !== false}
-													className="h-9 text-[14px] max-md:justify-center"
+													isActive={current}
+													className="h-8 rounded-lg px-2.5 text-[13px] text-ink-muted data-[active=true]:bg-ink/8 data-[active=true]:text-ink"
 												>
-													<Link to={to} title={label}>
-														<Icon strokeWidth={1.75} />
-														<span className="max-md:sr-only">{label}</span>
+													<Link to={to} aria-current={current ? "page" : undefined}>
+														<Icon className="size-4" strokeWidth={1.5} aria-hidden />
+														<span>{label}</span>
 													</Link>
 												</SidebarMenuButton>
 											</SidebarMenuItem>
-										))}
-								</SidebarMenu>
-							</SidebarGroup>
-						))}
-						{matches.length === 0 && <p className="px-4 py-2 text-ink-muted">No settings match “{query}”.</p>}
-					</SidebarContent>
-				</Sidebar>
-				<main className="panel min-w-0 flex-1 overflow-auto">
-					<Outlet />
-				</main>
+										);
+									})}
+							</SidebarMenu>
+						</SidebarGroup>
+					))}
+					{matches.length === 0 && (
+						<p className="px-2.5 py-2 text-[12px] text-ink-muted">No settings match “{query}”.</p>
+					)}
+				</nav>
+			</SidebarContent>
+			<SidebarRail />
+		</Sidebar>
+	);
+}
+
+export function SettingsLayout() {
+	const viewport = useRef<HTMLElement>(null);
+	const content = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const element = viewport.current;
+		const body = content.current;
+		if (element === null || body === null) return;
+		const update = () => {
+			element.style.setProperty("--scroll-top", element.scrollTop > 1 ? "transparent" : "black");
+			element.style.setProperty(
+				"--scroll-bottom",
+				element.scrollTop + element.clientHeight < element.scrollHeight - 1 ? "transparent" : "black",
+			);
+		};
+		const observer = new ResizeObserver(update);
+		observer.observe(element);
+		observer.observe(body);
+		element.addEventListener("scroll", update, { passive: true });
+		update();
+		return () => {
+			observer.disconnect();
+			element.removeEventListener("scroll", update);
+		};
+	}, []);
+	return (
+		<main ref={viewport} className="settings-scroll h-full min-h-0 min-w-0 overflow-auto">
+			<div ref={content}>
+				<Outlet />
 			</div>
-		</SidebarProvider>
+		</main>
 	);
 }

@@ -132,15 +132,15 @@ export function WorkspacesSettings() {
 			</Section>
 			<Section title="Shortcuts">
 				<Group>
-					<Row title="Switch workspace" description="Jump to a workspace by its place in the list">
+					<Row title="Switch Workspace" description="Jump to a workspace by its place in the list">
 						<Keys>
 							{shortcutLabel(1)}–{MAX_WORKSPACES}
 						</Keys>
 					</Row>
-					<Row title="Open settings">
+					<Row title="Open Settings">
 						<Keys>{isMac ? "⌘," : "Ctrl+,"}</Keys>
 					</Row>
-					<Row title="Close settings" description="Back to the workspace you came from">
+					<Row title="Close Settings" description="Back to the workspace you came from">
 						<Keys>Esc</Keys>
 					</Row>
 				</Group>

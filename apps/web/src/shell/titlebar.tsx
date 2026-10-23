@@ -1,9 +1,10 @@
+import { useAtomValue } from "@effect/atom-react";
 import { useCanGoBack, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight, Plus } from "lucide-react";
+import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
 
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { isMac } from "@codeworksh/widget/view";
-import { MAX_WORKSPACES, useCreateWorkspace, useWorkspaces, workspaceRoute } from "../wm/workspaces";
+import { lastWorkspaceAtom, MAX_WORKSPACES, useCreateWorkspace, useWorkspaces, workspaceRoute } from "../wm/workspaces";
 import { Switcher } from "./switcher";
 
 // The window has no native title bar on macOS; a title bar is its drag region and leaves room for the
@@ -18,7 +19,7 @@ export const chromeButton =
 export function NavigationControls() {
 	const { open, isMobile } = useSidebar();
 	const inSettings = useLocation({ select: (location) => location.pathname.startsWith("/settings") });
-	const withSidebar = open && !isMobile && !inSettings;
+	const withSidebar = open && !isMobile;
 	const { workspaceId } = useParams({ strict: false });
 	const workspaces = useWorkspaces();
 	const active = workspaces.find((workspace) => workspace.id === workspaceId);
@@ -57,9 +58,32 @@ export function NavigationControls() {
 					className="text-ink-muted [-webkit-app-region:no-drag] hover:text-ink"
 				/>
 			</div>
-			<Switcher workspaces={workspaces} active={active} />
-			<NewWorkspaceButton />
+			{inSettings ? (
+				<CloseSettings />
+			) : (
+				<>
+					<Switcher workspaces={workspaces} active={active} />
+					<NewWorkspaceButton />
+				</>
+			)}
 		</header>
+	);
+}
+
+function CloseSettings() {
+	const navigate = useNavigate();
+	const lastId = useAtomValue(lastWorkspaceAtom);
+	const back = useWorkspaces().find((workspace) => workspace.id === lastId);
+	return (
+		<button
+			type="button"
+			aria-label="Close settings"
+			title="Close settings (Esc)"
+			className={`${chromeButton} ml-auto`}
+			onClick={() => void navigate(back === undefined ? { to: "/" } : workspaceRoute(back))}
+		>
+			<X className="size-4" strokeWidth={1.5} aria-hidden />
+		</button>
 	);
 }
 

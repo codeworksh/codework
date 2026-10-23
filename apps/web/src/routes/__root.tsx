@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { SessionsSidebar } from "../landing/sidebar";
+import { SettingsSidebar } from "../settings/layout";
 import { serversAtom } from "../settings/servers/local";
 import { Navigation } from "../shell/navigation";
 import { NavigationControls } from "../shell/titlebar";
@@ -24,7 +25,7 @@ function Root() {
 			<NavigationControls />
 			<div className="mb-2 mr-2 ml-[52px] flex min-h-0 flex-1 overflow-hidden rounded-xl bg-frame">
 				<Navigation />
-				{!inSettings && <SessionsSidebar />}
+				{inSettings ? <SettingsSidebar /> : <SessionsSidebar />}
 				<div className="flex min-w-0 flex-1 flex-col overflow-hidden">
 					<Outlet />
 				</div>

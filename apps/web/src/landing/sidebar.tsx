@@ -62,7 +62,7 @@ export function SessionsSidebar() {
 		: [];
 
 	return (
-		<Sidebar collapsible="offcanvas" className="sessions-sidebar select-none">
+		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-0 p-0">
 				<div className="px-2 pt-2 pb-2">
 					{/* The icon centers on the input alone, not on the padding below it. */}

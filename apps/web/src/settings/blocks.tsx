@@ -7,16 +7,21 @@ import { Input } from "@/components/ui/input";
 export function Page({
 	title,
 	description,
+	actions,
 	children,
 }: {
 	title: string;
 	description?: ReactNode;
+	actions?: ReactNode;
 	children: ReactNode;
 }) {
 	return (
-		<div className="mx-auto flex max-w-3xl flex-col gap-10 px-4 py-8 text-[14px] md:px-10 md:py-14">
+		<div className="mx-auto flex w-full max-w-[62rem] flex-col gap-8 px-5 py-8 text-[14px] sm:px-8 sm:py-10">
 			<header className="flex flex-col gap-2">
-				<h1 className="text-[28px]/tight font-semibold tracking-tight">{title}</h1>
+				<div className="flex items-center gap-4">
+					<h1 className="min-w-0 flex-1 text-[24px]/tight font-semibold tracking-tight">{title}</h1>
+					{actions}
+				</div>
 				{description !== undefined && <p className="text-ink-muted">{description}</p>}
 			</header>
 			{children}
@@ -27,7 +32,7 @@ export function Page({
 export function Section({ title, children }: { title: string; children: ReactNode }) {
 	return (
 		<section className="flex flex-col gap-3">
-			<h2 className="text-[15px] font-semibold">{title}</h2>
+			<h2 className="text-[14px] font-semibold">{title}</h2>
 			{children}
 		</section>
 	);
@@ -35,9 +40,7 @@ export function Section({ title, children }: { title: string; children: ReactNod
 
 /** A card of rows with a divider between each. */
 export function Group({ children }: { children: ReactNode }) {
-	return (
-		<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge bg-ink/[0.02]">{children}</div>
-	);
+	return <div className="flex flex-col divide-y divide-edge/60 rounded-lg border border-edge/60">{children}</div>;
 }
 
 /** A labelled setting: title and a one-line description on the left, its control on the right. */
@@ -51,7 +54,7 @@ export function Row({
 	children?: ReactNode;
 }) {
 	return (
-		<div className="flex items-center gap-4 px-5 py-4">
+		<div className="flex flex-col items-start gap-3 px-4 py-4 sm:flex-row sm:items-center sm:gap-4">
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<span className="font-medium">{title}</span>
 				{description !== undefined && <span className="text-[13px] text-ink-muted">{description}</span>}

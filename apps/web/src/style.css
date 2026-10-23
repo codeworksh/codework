@@ -170,7 +170,7 @@
 }
 
 /* The navigation rail stays put when the shadcn sessions sidebar folds away. */
-.app-shell [data-slot="sidebar"] > .sessions-sidebar {
+.app-shell [data-slot="sidebar"] > .shell-sidebar {
 	left: 52px;
 	top: 48px;
 	height: calc(100svh - 56px);
@@ -179,17 +179,17 @@
 	border-radius: 12px 0 0 12px;
 	background: var(--cw-frame);
 }
-.app-shell [data-collapsible="offcanvas"] > .sessions-sidebar {
+.app-shell [data-collapsible="offcanvas"] > .shell-sidebar {
 	left: calc(52px - var(--sidebar-width));
 	visibility: hidden;
 }
-.app-shell .sessions-sidebar [data-slot="sidebar-inner"] {
+.app-shell .shell-sidebar [data-slot="sidebar-inner"] {
 	background: transparent;
 }
 
 /* Sidebar and title-bar tabs follow the same width without trailing one another. */
 .app-shell > div > [data-slot="sidebar"] > [data-slot="sidebar-gap"],
-.app-shell .sessions-sidebar {
+.app-shell .shell-sidebar {
 	transition: none;
 }
 
@@ -206,4 +206,15 @@
 
 .session-transcript-scrolled {
 	--transcript-top: transparent;
+}
+
+/* Only soften edges that have more settings content beyond them. */
+.settings-scroll {
+	mask-image: linear-gradient(
+		to bottom,
+		var(--scroll-top, black),
+		black 16px,
+		black calc(100% - 24px),
+		var(--scroll-bottom, black)
+	);
 }

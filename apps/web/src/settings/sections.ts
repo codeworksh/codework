@@ -27,10 +27,10 @@ export const sections: readonly SettingsSection[] = [
 	},
 	{
 		to: "/settings/servers",
-		label: "Servers",
+		label: "Providers",
 		icon: Server,
 		group: "App",
-		keywords: ["local", "remote", "cli", "service", "install", "codework", "version", "rpc"],
+		keywords: ["servers", "provider", "local", "remote", "cli", "service", "install", "codework", "version", "rpc"],
 	},
 ];
 

@@ -68,7 +68,7 @@ export function AddServer({
 		<Dialog open onOpenChange={(next) => !next && onClose()}>
 			<DialogContent className="gap-5 text-[14px] sm:max-w-2xl">
 				<DialogHeader>
-					<DialogTitle>Add server</DialogTitle>
+					<DialogTitle>Add Provider</DialogTitle>
 					<DialogDescription>Run another codework server on this machine, with its own home.</DialogDescription>
 				</DialogHeader>
 
@@ -106,7 +106,7 @@ export function AddServer({
 
 				{step === 1 && (
 					<div className="flex flex-col divide-y divide-edge rounded-xl border border-edge">
-						<Row title="Name" description="Shown in the server list.">
+						<Row title="Name" description="Shown in the provider list.">
 							<Input
 								aria-label="Name"
 								value={name}
@@ -184,7 +184,7 @@ export function AddServer({
 						</Button>
 					) : (
 						<Button disabled={!canContinue || adding} onClick={submit}>
-							{adding ? "Adding…" : "Add server"}
+							{adding ? "Adding…" : "Add Provider"}
 						</Button>
 					)}
 				</DialogFooter>
