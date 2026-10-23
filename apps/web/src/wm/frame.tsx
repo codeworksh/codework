@@ -85,7 +85,7 @@ export function Frame(props: FrameProps) {
 			onPointerDown={props.onFocus}
 		>
 			<div
-				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "rounded-xl border border-edge bg-frame group-data-[focused=true]:border-edge-focus"}`}
+				className={`flex h-full flex-col overflow-hidden ${props.integrated ? "bg-transparent" : "rounded-xl border border-edge bg-frame group-data-[focused=true]:border-edge-focus"} ${offset ? "shadow-[0_12px_32px_-12px_var(--cw-shadow-far)]" : ""}`}
 			>
 				<header className="flex items-center gap-1 py-1.5 pr-2 pl-1.5 select-none">
 					<div

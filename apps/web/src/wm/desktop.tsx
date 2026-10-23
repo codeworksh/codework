@@ -477,7 +477,7 @@ export function Desktop({ workspace }: DesktopProps) {
 				))}
 				{drag?.target && (
 					<div
-						className="pointer-events-none absolute z-20 h-0.5 -translate-y-px rounded-full bg-ink/40"
+						className="pointer-events-none absolute z-20 h-4 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,var(--cw-drop-shadow),transparent_70%)]"
 						style={{
 							left: drag.target.indicator.x + 12,
 							top: drag.target.indicator.y,

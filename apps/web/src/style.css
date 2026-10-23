@@ -27,6 +27,7 @@
 	--cw-success: light-dark(#16a34a, #4ade80);
 	--cw-info: light-dark(#2563eb, #60a5fa);
 	--cw-highlight: light-dark(rgb(255 255 255 / 0.9), color-mix(in oklab, var(--t-text) 9%, transparent));
+	--cw-drop-shadow: color-mix(in oklab, var(--t-text) 20%, transparent);
 	--cw-shadow-near: light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.22));
 	--cw-shadow-far: light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.3));
 	--cw-dialog-shadow: 0 24px 64px -24px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.9));
