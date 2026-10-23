@@ -7,10 +7,10 @@ import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState
 
 import { ComposerNotice, type Notice } from "@/components/banner";
 import { useModelsNotice } from "@/components/model";
-import { ago } from "../time";
 import { sessionId } from "./address";
 import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
+import { Message } from "./message";
 import { useListedSession } from "./projects";
 import { type Info, Json, topics, type Update } from "./schema";
 
@@ -20,6 +20,9 @@ const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
 
 /** Messages per page: the newest on open, then older ones as the reader scrolls up. */
 const PAGE = 60;
+
+// Shared by the transcript and composer so their reading edges stay aligned.
+const contentWidth = "mx-auto w-full max-w-[62rem]";
 
 export function Session({ address, instanceId }: WidgetProps<unknown>) {
 	const id = sessionId(address);
@@ -205,7 +208,7 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 	return (
 		<div className="flex h-full flex-col">
 			<Transcript state={state} running={running} loadOlder={loadOlder} />
-			<div className="mx-auto w-full max-w-3xl shrink-0 px-3 pb-3">
+			<div className={`${contentWidth} shrink-0 px-3 pb-3`}>
 				{models !== undefined ? (
 					<ComposerNotice {...models} />
 				) : (
@@ -339,23 +342,26 @@ const TurnView = memo(function TurnView({ turn, active }: { readonly turn: Turn;
 	const thinking = active && (last?.state !== "draft" || answer.length === 0);
 
 	return (
-		<section className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-3 text-[14px] leading-relaxed">
+		<section className={`${contentWidth} flex flex-col gap-5 px-4 py-3 text-[14px] leading-relaxed`}>
 			{turn.user !== undefined && <UserMessage entry={turn.user} />}
-			{work.length > 0 && (
-				<WorkLog
-					parts={work}
-					started={turn.user?.createdAt}
-					ended={active ? undefined : endOf(turn.replies)}
-					at={last?.updatedAt}
-				/>
+			{(work.length > 0 || thinking || answer.length > 0 || interrupted) && (
+				<Message role="assistant" at={turn.replies[0]?.createdAt}>
+					{work.length > 0 && (
+						<WorkLog
+							parts={work}
+							started={turn.user?.createdAt}
+							ended={active ? undefined : endOf(turn.replies)}
+						/>
+					)}
+					{thinking && <ThinkingRow />}
+					{answer.length > 0 && (
+						<div>
+							<Markdown text={answer.join("\n\n")} streaming={last?.state === "draft"} />
+						</div>
+					)}
+					{interrupted && <p className="text-[12px] text-ink-muted">Interrupted</p>}
+				</Message>
 			)}
-			{thinking && <ThinkingRow />}
-			{answer.length > 0 && (
-				<div className="text-ink/90">
-					<Markdown text={answer.join("\n\n")} streaming={last?.state === "draft"} />
-				</div>
-			)}
-			{interrupted && <p className="text-[12px] text-ink-muted">Interrupted</p>}
 		</section>
 	);
 }, sameTurn);
@@ -376,14 +382,10 @@ function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
 	const text = entry.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n\n");
 	const images = entry.parts.filter((part) => part.type === "image").length;
 	return (
-		<div className="flex justify-end">
-			<div className="max-w-[80%] rounded-2xl bg-ink/6 px-3.5 py-2.5 whitespace-pre-wrap text-ink">
-				{text}
-				{images > 0 && (
-					<p className="mt-1 text-[12px] text-ink-muted">{images === 1 ? "1 image" : `${images} images`}</p>
-				)}
-			</div>
-		</div>
+		<Message role="user" at={entry.createdAt}>
+			{text !== "" && <p className="whitespace-pre-wrap">{text}</p>}
+			{images > 0 && <p className="text-[12px] text-ink-muted">{images === 1 ? "1 image" : `${images} images`}</p>}
+		</Message>
 	);
 }
 
@@ -410,13 +412,11 @@ function WorkLog({
 	parts,
 	started,
 	ended,
-	at,
 }: {
 	readonly parts: readonly Part[];
 	readonly started: number | undefined;
 	/** Absent while the turn is still running. */
 	readonly ended: number | undefined;
-	readonly at: number | undefined;
 }) {
 	const [open, setOpen] = useState(false);
 	const label =
@@ -427,7 +427,7 @@ function WorkLog({
 				: "Worked";
 	return (
 		<div>
-			<div className="flex items-center gap-2 border-b border-edge pb-1.5">
+			<div className="flex items-center gap-2 text-[12px] text-ink-muted">
 				<button
 					type="button"
 					aria-expanded={open}
@@ -441,7 +441,6 @@ function WorkLog({
 						<ChevronRight className="size-3.5 text-ink-muted" aria-hidden />
 					)}
 				</button>
-				{at !== undefined && <span className="ml-auto text-[12px] text-ink-muted tabular-nums">{ago(at)}</span>}
 			</div>
 			{open && (
 				<div className="flex flex-col pt-1.5">
