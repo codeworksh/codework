@@ -197,10 +197,13 @@ export default Runtime.handler(
 					columns,
 				}),
 			);
-			// The local command joins execution to retain typed error details.
-			const execution = yield* handle
-				.prompt({ text: prompt, delivery: "followUp" })
-				.pipe(Effect.andThen(handle.resume()), Effect.exit);
+			// The local command joins execution to retain typed error details. Ctrl+C is the user stopping
+			// the run, as on the remote path: named so, the next server start does not resume it.
+			const execution = yield* handle.prompt({ text: prompt, delivery: "followUp" }).pipe(
+				Effect.andThen(handle.resume()),
+				Effect.onInterrupt(() => handle.interrupt().pipe(Effect.timeout("5 seconds"), Effect.ignore)),
+				Effect.exit,
+			);
 			yield* handle.wait();
 			if (Exit.isFailure(execution)) return yield* Effect.failCause(execution.cause);
 			const path = yield* handle.path();

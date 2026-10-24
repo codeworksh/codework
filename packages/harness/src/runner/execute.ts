@@ -45,11 +45,19 @@ export const layer = Layer.effect(
 				Effect.ignore,
 			);
 
+		// Sessions being recovered: their run neither marks the session nor runs once it is unmarked.
+		const recovering = new Set<SessionId>();
+		// The log position at each user stop: prompts admitted after it are new work, not parked by it.
+		const stoppedAt = new Map<SessionId, number>();
+
 		const coordinator = yield* RunCoordinator.make<SessionId, Runner.RunError, SessionSchema.InterruptReason>({
+			// The run is recorded unfinished before it starts, so a process dying anywhere in it
+			// leaves the session for the next server start to resume. A recovered one already is.
 			started: (sessionId) =>
 				reportLifecycle(
 					sessionId,
-					DateTime.now.pipe(
+					(recovering.has(sessionId) ? Effect.void : store.markRunning(sessionId)).pipe(
+						Effect.andThen(DateTime.now),
 						Effect.andThen((timestamp) => events.publish(EventList.ExecutionStarted, { sessionId, timestamp })),
 					),
 				),
@@ -58,6 +66,16 @@ export const layer = Layer.effect(
 				reportLifecycle(
 					sessionId,
 					Effect.gen(function* () {
+						// A shutdown leaves the run to resume on the next start; a user stop or any other end
+						// finishes it.
+						const interrupted = Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause);
+						const stop = stoppedAt.get(sessionId);
+						stoppedAt.delete(sessionId);
+						yield* store.endExecution(
+							sessionId,
+							!interrupted ? "finished" : reason === "user" ? "stopped" : "closed",
+							stop,
+						);
 						const timestamp = yield* DateTime.now;
 						if (Exit.isSuccess(exit))
 							return yield* events.publish(EventList.ExecutionSucceeded, { sessionId, timestamp });
@@ -78,6 +96,8 @@ export const layer = Layer.effect(
 			drain: Effect.fnUntraced(function* (sessionId: SessionId, force) {
 				const session = yield* store.get(sessionId);
 				if (Option.isNone(session)) return yield* new Session.SessionNotFoundError({ sessionId });
+				const recovered = recovering.delete(sessionId);
+				if (recovered && Option.isNone(session.value.execution)) return;
 				const space = yield* store.space(sessionId);
 				// Unreachable while the FK holds; typed so a UI can offer relink
 				// as the repair instead of surfacing a defect.
@@ -115,7 +135,7 @@ export const layer = Layer.effect(
 					);
 
 					return yield* runner
-						.run({ sessionId, force })
+						.run({ sessionId, force, recovered })
 						.pipe(Effect.provideContext(Context.merge(locationContext, mountContext)));
 				});
 
@@ -130,10 +150,34 @@ export const layer = Layer.effect(
 			}),
 		});
 
+		const interrupt: RunnerExecution.Interface["interrupt"] = (sessionId, reason, options) =>
+			Effect.gen(function* () {
+				// The first stop of a run sets its position; a repeat while it settles keeps that one.
+				const recorded = reason === "user" && !stoppedAt.has(sessionId);
+				if (recorded) stoppedAt.set(sessionId, yield* events.latestSequence(sessionId));
+				const accepted = yield* coordinator.interrupt(sessionId, reason, options);
+				// Nothing was running, so no settlement will read the position this call set.
+				if (recorded && !accepted) stoppedAt.delete(sessionId);
+				return accepted;
+			});
+
+		const recover = (sessionId: SessionId) =>
+			Effect.suspend(() => {
+				recovering.add(sessionId);
+				return coordinator.run(sessionId);
+			}).pipe(
+				Effect.ensuring(
+					Effect.sync(() => {
+						recovering.delete(sessionId);
+					}),
+				),
+			);
+
 		return RunnerExecution.Service.of({
 			active: coordinator.active,
-			interrupt: coordinator.interrupt,
+			interrupt,
 			resume: coordinator.run,
+			recover,
 			wake: coordinator.wake,
 			awaitIdle: coordinator.awaitIdle,
 		});

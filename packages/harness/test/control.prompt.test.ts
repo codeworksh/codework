@@ -329,6 +329,7 @@ const watched = Control.layer.pipe(
 			RunnerExecution.Service.of({
 				active: Effect.succeed(new Set()),
 				resume: () => Effect.void,
+				recover: () => Effect.void,
 				wake: (sessionId) => Effect.sync(() => wakes.push(sessionId)),
 				interrupt: () => Effect.succeed(false),
 				awaitIdle: () => Effect.void,
@@ -578,5 +579,59 @@ describe("Control queue races", () => {
 
 			expect(Exit.isFailure(exit)).toBe(true);
 			expect(yield* control.pending(sessionId)).toEqual([]);
+		}));
+});
+
+describe("Control unfinished runs", () => {
+	const executionOf = (sessionId: string) =>
+		Effect.gen(function* () {
+			const sql = yield* SqlClient.SqlClient;
+			const [row] = yield* sql<{ execution: string | null }>`SELECT execution FROM session WHERE id = ${sessionId}`;
+			return row?.execution;
+		});
+
+	// Marked before the wake: a crash between accepting the prompt and its run starting must not lose it.
+	it("marks a session running as soon as a prompt is accepted", () =>
+		Effect.gen(function* () {
+			const { control, sessionId } = yield* setup;
+			expect(yield* executionOf(sessionId)).toBeNull();
+
+			yield* control.prompt({ sessionId, prompt: prompt(text) });
+
+			expect(yield* executionOf(sessionId)).toBe("running");
+		}));
+
+	it("keeps a finished run marked while accepted prompts are still pending", () =>
+		Effect.gen(function* () {
+			const { sessions, control, sessionId } = yield* setup;
+			const admitted = yield* control.prompt({ sessionId, prompt: prompt(text) });
+
+			yield* sessions.endExecution(sessionId, "finished");
+			expect(yield* executionOf(sessionId)).toBe("running");
+
+			// Cancelling leaves the mark alone; the run that next ends with nothing pending clears it.
+			yield* control.cancel(sessionId, admitted.id);
+			expect(yield* executionOf(sessionId)).toBe("running");
+			yield* sessions.endExecution(sessionId, "finished");
+			expect(yield* executionOf(sessionId)).toBeNull();
+		}));
+
+	it("keeps a closed run, and clears a stopped one unless a prompt came after the stop", () =>
+		Effect.gen(function* () {
+			const { sessions, control, sessionId } = yield* setup;
+			const events = yield* Event.Service;
+			yield* control.prompt({ sessionId, prompt: prompt("Parked by the stop") });
+
+			yield* sessions.endExecution(sessionId, "closed");
+			expect(yield* executionOf(sessionId)).toBe("closed");
+
+			// Sent while the stop was being cleaned up: its wake survives, so the mark must too.
+			const stop = yield* events.latestSequence(sessionId);
+			yield* control.prompt({ sessionId, prompt: prompt("Sent after the stop") });
+			yield* sessions.endExecution(sessionId, "stopped", stop);
+			expect(yield* executionOf(sessionId)).toBe("running");
+
+			yield* sessions.endExecution(sessionId, "stopped", yield* events.latestSequence(sessionId));
+			expect(yield* executionOf(sessionId)).toBeNull();
 		}));
 });

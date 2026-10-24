@@ -209,11 +209,13 @@ export const layer = Layer.effectDiscard(
 		);
 
 		yield* events.project(EventList.TurnEnded, (event) =>
-			sessions.setEntryState({
-				id: event.data.messageId,
-				sessionId: event.data.sessionId,
-				state: "committed",
-			}),
+			sessions
+				.setEntryState({
+					id: event.data.messageId,
+					sessionId: event.data.sessionId,
+					state: "committed",
+				})
+				.pipe(Effect.andThen(sessions.resetRestarts(event.data.sessionId))),
 		);
 	}),
 );

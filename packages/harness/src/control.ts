@@ -43,6 +43,12 @@ export interface PromptInput {
 	readonly delivery?: Delivery;
 }
 
+/**
+ * Times a run may be cut off by a dying process before the session is parked instead of resumed.
+ * Pi's default; a committed turn starts the count over.
+ */
+export const RESTART_LIMIT = 5;
+
 export interface Interface {
 	/**
 	 * Records a prompt in the session's durable inbox, then wakes its drain.
@@ -74,6 +80,12 @@ export interface Interface {
 	) => Effect.Effect<boolean>;
 	/** Sessions this process is currently draining. */
 	readonly active: Effect.Effect<ReadonlySet<SessionSchema.ID>>;
+	/**
+	 * Resumes the runs the last process left unfinished, as the server starts. One a crash cut off
+	 * counts a restart, one a shutdown closed does not; at {@link RESTART_LIMIT} the session is parked
+	 * and waits for its next prompt. Resolves once every resumed run has settled.
+	 */
+	readonly resumeUnfinished: Effect.Effect<void>;
 	/** Prompts admitted but not yet in the conversation, steers and follow-ups, in admission order. */
 	readonly pending: (sessionId: SessionSchema.ID) => Effect.Effect<ReadonlyArray<Admitted>>;
 	/**
@@ -99,6 +111,10 @@ export const layer = Layer.effect(
 		const inputs = yield* SessionInput.make;
 		const execution = yield* RunnerExecution.Service;
 		const isLifecycleConflict = Schema.is(SessionInput.LifecycleConflict);
+
+		// Marked before the wake, so a prompt accepted here survives a crash before its run starts.
+		const wake = (sessionId: SessionSchema.ID) =>
+			sessions.markRunning(sessionId).pipe(Effect.andThen(execution.wake(sessionId)));
 
 		/**
 		 * Uninterruptible end to end: a client that disconnects mid-call must not
@@ -136,14 +152,14 @@ export const layer = Layer.effect(
 		});
 
 		const prompt = Effect.fn("Control.prompt")((input: PromptInput) =>
-			Effect.uninterruptible(admit(input).pipe(Effect.tap((admitted) => execution.wake(admitted.sessionId)))),
+			Effect.uninterruptible(admit(input).pipe(Effect.tap((admitted) => wake(admitted.sessionId)))),
 		);
 
 		const run = Effect.fn("Control.run")((input: PromptInput) =>
 			Effect.uninterruptibleMask((restore) =>
 				Effect.gen(function* () {
 					const admitted = yield* admit(input);
-					yield* execution.wake(admitted.sessionId);
+					yield* wake(admitted.sessionId);
 					yield* restore(execution.awaitIdle(admitted.sessionId));
 					return admitted;
 				}),
@@ -159,6 +175,7 @@ export const layer = Layer.effect(
 		const resume = Effect.fn("Control.resume")(function* (sessionId: SessionSchema.ID) {
 			const session = yield* sessions.get(sessionId);
 			if (Option.isNone(session)) return yield* new Session.SessionNotFoundError({ sessionId });
+			yield* sessions.markRunning(sessionId);
 			yield* execution.resume(sessionId);
 		});
 
@@ -176,11 +193,35 @@ export const layer = Layer.effect(
 					Effect.gen(function* () {
 						const updated = yield* inputs.update(sessionId, id, patch);
 						if (Option.isNone(updated)) return false;
-						if (patch.delivery === "steer") yield* execution.wake(sessionId);
+						if (patch.delivery === "steer") yield* wake(sessionId);
 						return true;
 					}),
 				),
 		);
+
+		const resumeUnfinished = Effect.gen(function* () {
+			const running = yield* execution.active;
+			const unfinished = (yield* sessions.unfinished).filter((row) => !running.has(row.id));
+			yield* Effect.forEach(
+				unfinished,
+				Effect.fnUntraced(function* (row) {
+					if ((yield* execution.active).has(row.id)) return;
+					// Claimed again here, not from the list: a stop since then cleared it, and must stand.
+					// Counted before resuming, so a crash inside the resumed run is counted too.
+					const restarts = yield* sessions.claimRestart(row.id);
+					if (Option.isNone(restarts) || restarts.value >= RESTART_LIMIT) return;
+					yield* execution.recover(row.id).pipe(
+						Effect.tapCause((cause) =>
+							Effect.logWarning("Resuming an unfinished session failed", cause).pipe(
+								Effect.annotateLogs({ sessionId: row.id }),
+							),
+						),
+						Effect.ignore,
+					);
+				}),
+				{ concurrency: "unbounded", discard: true },
+			);
+		}).pipe(Effect.withSpan("Control.resumeUnfinished"));
 
 		return Service.of({
 			prompt,
@@ -189,6 +230,7 @@ export const layer = Layer.effect(
 			resume,
 			interrupt,
 			active: execution.active,
+			resumeUnfinished,
 			pending: inputs.pending,
 			cancel: inputs.cancel,
 			update,

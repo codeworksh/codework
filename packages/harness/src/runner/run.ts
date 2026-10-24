@@ -188,6 +188,8 @@ export interface Interface {
 	readonly run: (input: {
 		readonly sessionId: SessionId;
 		readonly force: boolean;
+		/** Resuming a run a previous process left unfinished: its cut-off reply is answered first. */
+		readonly recovered?: boolean;
 	}) => Effect.Effect<void, RunError, SandboxIO.Provides | Location.Service>;
 }
 

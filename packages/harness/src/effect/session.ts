@@ -104,6 +104,11 @@ export interface Info {
 	readonly model?: { readonly provider: string; readonly id: string };
 	/** The thinking level chosen for this session over settings; absent when settings decide. */
 	readonly thinkingLevel?: Model.ThinkingLevel;
+	/**
+	 * Its unfinished run was cut off {@link Control.RESTART_LIMIT} times, so the server no longer
+	 * resumes it; the next prompt runs it again.
+	 */
+	readonly parked: boolean;
 }
 
 export interface Handle {
@@ -182,6 +187,8 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 		const config = Option.getOrUndefined(row.config);
 		const model = config?.model;
 		const thinkingLevel = config?.thinkingLevel;
+		const parked =
+			Option.isSome(row.execution) && row.restarts >= Control.RESTART_LIMIT && !(yield* control.active).has(id);
 		return {
 			id,
 			title: row.title,
@@ -193,6 +200,7 @@ const makeHandle = Effect.fn("Session.makeHandle")(function* (id: SessionSchema.
 			updatedAt: DateTime.toEpochMillis(row.updatedAt),
 			...(model === undefined ? {} : { model }),
 			...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+			parked,
 		};
 	}).pipe(Effect.withSpan("Session.info"));
 

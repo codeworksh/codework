@@ -278,4 +278,15 @@ export const migrations = {
 		// loses, rather than reading a missing row as a replay and appending the prompt anyway.
 		yield* sql`ALTER TABLE session_input ADD COLUMN cancelled_seq INTEGER`;
 	}),
+
+	"202610240001_session_execution": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+
+		// The run a session has unfinished (`SessionSchema.Execution`), written as it starts and
+		// ends, so a server starting finds what the last process left without its cooperation.
+		yield* sql`ALTER TABLE session ADD COLUMN execution TEXT`;
+		// Times that run was cut off by a process dying. A committed turn is progress and resets it;
+		// at the limit the session is parked rather than resumed again.
+		yield* sql`ALTER TABLE session ADD COLUMN restarts INTEGER NOT NULL DEFAULT 0`;
+	}),
 };

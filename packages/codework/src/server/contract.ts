@@ -50,6 +50,8 @@ export const SessionInfo = Schema.Struct({
 	model: optional(Schema.Struct({ provider: Schema.String, id: Schema.String })),
 	/** The thinking level chosen for this session; absent when settings decide. */
 	thinkingLevel: optional(Schema.Enum(Model.ThinkingLevelEnum)),
+	/** Its unfinished run was cut off by restarts too often to resume on its own; the next prompt runs it. */
+	parked: optional(Schema.Boolean),
 });
 export type SessionInfo = typeof SessionInfo.Type;
 

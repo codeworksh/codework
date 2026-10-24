@@ -145,6 +145,9 @@ export class SessionRow extends Model.Class<SessionRow>("SessionRow")({
 	tokensOutput: Model.GeneratedByDb(Schema.Int),
 	tokensCacheRead: Model.GeneratedByDb(Schema.Int),
 	tokensCacheWrite: Model.GeneratedByDb(Schema.Int),
+	// The run left unfinished, and how often a dying process cut it off; see `SessionSchema.Execution`.
+	execution: Model.FieldOption(SessionSchema.Execution),
+	restarts: Model.GeneratedByDb(Schema.Int),
 	...Timestamps,
 }) {}
 

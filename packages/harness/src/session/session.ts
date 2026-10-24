@@ -255,6 +255,29 @@ export interface Interface {
 	 * value. The projection of `session.config.changed`, so it runs inside that event's commit.
 	 */
 	readonly configure: (sessionId: SessionSchema.ID, config: SessionSchema.Config) => Effect.Effect<void>;
+	/** Records that the session has a run to do: one starting, or one a prompt just woke. */
+	readonly markRunning: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
+	/**
+	 * Records how a run ended. `closed` (a shutdown) leaves it to resume. `stopped` (the user) and
+	 * `finished` clear it and the restart count, except that a finished run with prompts still
+	 * pending stays marked: they are accepted work a successor, or the next server start, runs.
+	 */
+	readonly endExecution: (
+		sessionId: SessionSchema.ID,
+		end: "finished" | "stopped" | "closed",
+		/** For a stop: the log position it was asked at. A prompt admitted after it keeps the mark. */
+		stoppedAt?: number,
+	) => Effect.Effect<void>;
+	/**
+	 * Claims a session's unfinished run for recovery: marks it running again, counting a restart when
+	 * a dying process left it running (a shutdown's closed run is not counted). The new count, or none
+	 * when nothing is unfinished any more, say because the user stopped it since.
+	 */
+	readonly claimRestart: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<number>>;
+	/** A committed turn is progress: the restart count starts over. Runs inside `TurnEnded`'s commit. */
+	readonly resetRestarts: (sessionId: SessionSchema.ID) => Effect.Effect<void>;
+	/** Sessions with a run left unfinished, oldest first. */
+	readonly unfinished: Effect.Effect<ReadonlyArray<SessionRow>>;
 	readonly get: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SessionRow>>;
 	/** The space a session attaches to — its env and absolute location. None when the session is unknown. */
 	readonly space: (sessionId: SessionSchema.ID) => Effect.Effect<Option.Option<SpaceSchema.Info>>;
@@ -517,6 +540,7 @@ export const layer = Layer.effect(
 					directory: input.directory,
 					hostDir: Option.fromUndefinedOr(input.hostDir),
 					config: Option.none(),
+					execution: Option.none(),
 					title: input.title,
 					tag: Option.fromUndefinedOr(input.tag),
 					metadata: Option.fromUndefinedOr(input.metadata as Record<string, string> | undefined),
@@ -1049,6 +1073,8 @@ export const layer = Layer.effect(
 							hostDir: source.value.hostDir,
 							// And runs the same model, until the fork chooses another.
 							config: source.value.config,
+							// Nothing runs in a fork yet, whatever the source was doing.
+							execution: Option.none(),
 							title: input.title ?? source.value.title,
 							tag: input.tag === undefined ? source.value.tag : Option.some(input.tag),
 							metadata: source.value.metadata,
@@ -1204,6 +1230,53 @@ export const layer = Layer.effect(
 			`;
 		}, Effect.orDie);
 
+		const markRunning = Effect.fn("Session.markRunning")(function* (sessionId: SessionSchema.ID) {
+			yield* sql`UPDATE session SET execution = 'running' WHERE id = ${sessionId}`;
+		}, Effect.orDie);
+
+		const endExecution = Effect.fn("Session.endExecution")(function* (
+			sessionId: SessionSchema.ID,
+			end: "finished" | "stopped" | "closed",
+			stoppedAt?: number,
+		) {
+			if (end === "closed") {
+				yield* sql`UPDATE session SET execution = 'closed' WHERE id = ${sessionId}`;
+				return;
+			}
+			// Pending prompts that keep the mark: any for a finished run; for a stop, only those sent
+			// after it, since what was queued before it stays parked by the user's choice.
+			const after = end === "stopped" ? (stoppedAt ?? Number.MAX_SAFE_INTEGER) : -1;
+			yield* sql`
+				UPDATE session SET execution = NULL, restarts = 0
+				WHERE id = ${sessionId} AND NOT EXISTS (
+					SELECT 1 FROM session_input
+					WHERE session_id = ${sessionId} AND promoted_seq IS NULL AND cancelled_seq IS NULL
+						AND admitted_seq > ${after}
+				)
+			`;
+		}, Effect.orDie);
+
+		const claimRestart = Effect.fn("Session.claimRestart")(function* (sessionId: SessionSchema.ID) {
+			const rows = yield* sql<{ restarts: number }>`
+				UPDATE session
+				SET restarts = restarts + (CASE WHEN execution = 'running' THEN 1 ELSE 0 END), execution = 'running'
+				WHERE id = ${sessionId} AND execution IS NOT NULL
+				RETURNING restarts
+			`;
+			return Option.fromUndefinedOr(rows[0]?.restarts);
+		}, Effect.orDie);
+
+		const resetRestarts = Effect.fn("Session.resetRestarts")(function* (sessionId: SessionSchema.ID) {
+			yield* sql`UPDATE session SET restarts = 0 WHERE id = ${sessionId} AND restarts > 0`;
+		}, Effect.orDie);
+
+		const findUnfinished = SqlSchema.findAll({
+			Request: Schema.Void,
+			Result: SessionRow,
+			execute: () => sql`SELECT * FROM session WHERE execution IS NOT NULL ORDER BY updated_at`,
+		});
+		const unfinished = findUnfinished(undefined).pipe(Effect.orDie, Effect.withSpan("Session.unfinished"));
+
 		const relink = Effect.fn("Session.relink")(function* (input: RelinkInput) {
 			const reject = (reason: RelinkReason) =>
 				new RelinkError({ sessionId: input.sessionId, spaceId: input.spaceId, reason });
@@ -1289,6 +1362,11 @@ export const layer = Layer.effect(
 			link,
 			retitle,
 			configure,
+			markRunning,
+			endExecution,
+			claimRestart,
+			resetRestarts,
+			unfinished,
 			get,
 			space,
 			project,

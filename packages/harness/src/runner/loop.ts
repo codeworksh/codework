@@ -429,6 +429,7 @@ export const layer = (options: Options = {}) =>
 			const run = Effect.fn("Loop.run", { level: "Info" })(function* (input: {
 				readonly sessionId: SessionSchema.ID;
 				readonly force: boolean;
+				readonly recovered?: boolean;
 			}) {
 				yield* healDanglingDraft(input.sessionId);
 
@@ -441,7 +442,24 @@ export const layer = (options: Options = {}) =>
 					"gen_ai.conversation.id": input.sessionId,
 				});
 
-				let promotion: Promotion = hasSteer ? "steer" : hasFollowUp ? "followUp" : undefined;
+				// A recovered run finishes the reply it was cut off in before a queued follow-up goes in, as
+				// Pi resends the same committed messages; steers join it either way.
+				const cutOff =
+					input.recovered === true &&
+					!hasSteer &&
+					hasFollowUp &&
+					(yield* context.assemble(input.sessionId).pipe(
+						Effect.map((assembled) => {
+							const leaf =
+								assembled.lastAssistant?.entryId === assembled.leafEntryId
+									? assembled.lastAssistant.message
+									: undefined;
+							return (
+								assembled.messages.length > 0 && leaf?.stopReason !== "stop" && leaf?.stopReason !== "length"
+							);
+						}),
+					));
+				let promotion: Promotion = hasSteer ? "steer" : hasFollowUp && !cutOff ? "followUp" : undefined;
 				const drain = Effect.gen(function* () {
 					let shouldRun = true;
 					let continuing = input.force;
