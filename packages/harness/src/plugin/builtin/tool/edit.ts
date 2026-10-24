@@ -99,7 +99,7 @@ export const editDef = Tool.define({
 
 const fail = (message: string) => Effect.fail(new EditFailed({ message }));
 
-/** Filesystem failures name the backend's error code, as Pi's do. */
+/** Filesystem failures name the backend's error code. */
 const accessFailure = (path: string) => (error: SandboxFileSystem.FileSystemError) => {
 	const code = (error.cause as { code?: unknown } | undefined)?.code;
 	return fail(`Could not edit file: ${path}. Error code: ${typeof code === "string" ? code : "unknown"}.`);

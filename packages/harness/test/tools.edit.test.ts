@@ -25,7 +25,7 @@ const sp = " ";
 const gap = Array.from({ length: 600 }, (_, i) => `line ${String(i + 1).padStart(3, "0")}`).join("\n") + "\n";
 
 /**
- * Pi's edit cases, each on its own file: the file before the turn (`null` for
+ * Edit cases, each on its own file: the file before the turn (`null` for
  * none) and the raw arguments of one `edit` call, exactly as a model sent them.
  */
 const cases: ReadonlyArray<{ readonly name: string; readonly before: string | null; readonly args: unknown }> = [
@@ -287,7 +287,7 @@ describe("edit plugin through the local harness", () => {
 					throw new Error(`${name} was not settled`);
 				const after = await fs.readFile(join(work, `${name}.txt`), "utf8").catch(() => null);
 				const details = call.result.details as { patch?: string } | undefined;
-				// Pi's own check: the patch turns the file as it was into the file as it is.
+				// The patch turns the file as it was into the file as it is.
 				if (call.status === "completed" && before !== null)
 					expect(applyPatch(before.replace(/^﻿/, "").replace(/\r\n/g, "\n"), details?.patch ?? "")).toBe(
 						after?.replace(/^﻿/, "").replace(/\r\n/g, "\n"),

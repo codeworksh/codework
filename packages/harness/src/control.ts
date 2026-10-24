@@ -45,7 +45,7 @@ export interface PromptInput {
 
 /**
  * Times a run may be cut off by a dying process before the session is parked instead of resumed.
- * Pi's default; a committed turn starts the count over.
+ * A committed turn starts the count over.
  */
 export const RESTART_LIMIT = 5;
 

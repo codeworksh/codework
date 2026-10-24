@@ -442,8 +442,8 @@ export const layer = (options: Options = {}) =>
 					"gen_ai.conversation.id": input.sessionId,
 				});
 
-				// A recovered run finishes the reply it was cut off in before a queued follow-up goes in, as
-				// Pi resends the same committed messages; steers join it either way.
+				// A recovered run first answers the reply it was cut off in, from the same committed messages,
+				// before a queued follow-up goes in; steers join it either way.
 				const cutOff =
 					input.recovered === true &&
 					!hasSteer &&

@@ -1267,7 +1267,7 @@ describe("runner loop — resume after restart", () => {
 		}),
 	);
 
-	// Pi's rule: a run that makes progress has not crash-looped, so its count starts over mid-run.
+	// A run that makes progress has not crash-looped, so its count starts over mid-run.
 	it(
 		"starts the restart count over once a turn commits, while the run goes on",
 		Effect.gen(function* () {
