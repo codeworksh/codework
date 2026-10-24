@@ -54,10 +54,15 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 	process.env.MCP_E2E_GREETING = "hello";
 	// A `!command` printing a notice after the token, say: never sent, and never shown.
 	process.env.MCP_E2E_BAD_HEADER = "Bearer sk-e2e-secret\nnotice";
+	// Unlike a header, a variable may span lines.
+	process.env.MCP_E2E_PEM = "-----BEGIN KEY-----\nabc\n-----END KEY-----";
 
 	await write(join(home, "mcp.json"), {
 		mcpServers: {
-			e2e: stdio({ toolExposure: { secret: "hidden" } }),
+			e2e: stdio({
+				toolExposure: { secret: "hidden" },
+				env: { E2E_GREETING: "${MCP_E2E_GREETING}", E2E_PEM: "${MCP_E2E_PEM}" },
+			}),
 			off: stdio(),
 			"my-srv": stdio({ enabled: false }),
 			my_srv: stdio(),
@@ -107,7 +112,11 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 			[pendingCall("mcp__e2e__pid", {}, "pid-after")],
 			[],
 			// Next exchange: arguments the server's schema rejects never reach it.
-			[pendingCall("mcp__e2e__echo", {}, "invalid"), pendingCall("mcp__e2e__args", { word: "ABC" }, "pattern")],
+			[
+				pendingCall("mcp__e2e__echo", {}, "invalid"),
+				pendingCall("mcp__e2e__args", { word: "ABC" }, "pattern"),
+				pendingCall("mcp__e2e__args", { word: "abc", extra: true }, "excess"),
+			],
 			[],
 		],
 		requests,
@@ -186,10 +195,18 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 		echoTool: firstTools.find((tool) => tool.name === "mcp__e2e__echo"),
 		plugins: observed,
 		calls: Object.fromEntries(
-			["echo", "fail", "structured", "nulls", "pid-before", "crash", "pid-after", "invalid", "pattern"].map((id) => [
-				id,
-				outcome(id),
-			]),
+			[
+				"echo",
+				"fail",
+				"structured",
+				"nulls",
+				"pid-before",
+				"crash",
+				"pid-after",
+				"invalid",
+				"pattern",
+				"excess",
+			].map((id) => [id, outcome(id)]),
 		),
 		status: result.status,
 		configErrors: result.errors,

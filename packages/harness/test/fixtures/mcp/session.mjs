@@ -16,7 +16,10 @@ server.setRequestHandler("tools/list", () => ({
 		{
 			name: "args",
 			description: "The arguments as received.",
-			inputSchema: object({ word: { type: "string", pattern: "^[a-z]+$" }, limit: { type: "integer" } }, ["word"]),
+			inputSchema: {
+				...object({ word: { type: "string", pattern: "^[a-z]+$" }, limit: { type: "integer" } }, ["word"]),
+				additionalProperties: false,
+			},
 		},
 		{ name: "fail", description: "Answer with an error result.", inputSchema: object() },
 		{ name: "pid", description: "The server's process id.", inputSchema: object() },

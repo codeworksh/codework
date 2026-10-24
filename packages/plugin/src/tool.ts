@@ -259,6 +259,14 @@ export const fromJsonSchema = (schema: Record<string, unknown>): Schema.Top => {
 };
 
 /**
+ * Whether `schema` came from {@link fromJsonSchema}. Its arguments are checked as JSON Schema checks
+ * them: a key a closed object does not declare is an error, not dropped, since the tool receives the
+ * arguments as written.
+ */
+export const isFromJsonSchema = (schema: Schema.Top) =>
+	SchemaAST.resolveAt<Record<string, unknown>>(providerJsonSchema)(schema.ast) !== undefined;
+
+/**
  * Derive a provider-safe JSON Schema object from an Effect Schema. This is the
  * single boundary that crosses into the provider wire; if a provider rejects a
  * construct, fix it here. Draft-07 inlines the root (no top-level `$ref`).

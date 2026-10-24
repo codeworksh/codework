@@ -2,22 +2,28 @@
  * Values of a server's `env` and `headers`, resolved when the server connects:
  *
  * - `!command` runs the rest through `/bin/sh` and uses its trimmed stdout, once per process: later
- *   connects reuse it. A command that fails runs again next time, since the host outlives sessions.
+ *   and concurrent connects share it. A command that fails runs again next time, since the host
+ *   outlives sessions.
  * - Otherwise `$NAME` and `${NAME}` are replaced by host environment variables; `$$` is a literal
  *   `$` and `$!` a literal `!`. Anything else is literal.
  *
- * A value holding a line break or NUL is refused without being shown: it cannot be sent as a header
- * or set as a variable, and the error the runtime would raise quotes the value, often a secret.
+ * A header holding a line break or NUL, or a variable holding NUL, is refused without being shown: it
+ * cannot be sent or set, and the error the runtime would raise quotes the value, often a secret. A
+ * variable may span lines (a PEM key, say).
  */
 
-import { Config, Duration, Effect, Option, Stream } from "effect";
+import { Config, Duration, Effect, Fiber, Option, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 const COMMAND_TIMEOUT = Duration.seconds(10);
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const NAME_PREFIX = /^[A-Za-z_][A-Za-z0-9_]*/;
-const UNSAFE = /[\r\n\0]/;
-const commands = new Map<string, string>();
+const COMMAND_KILL_AFTER = Duration.seconds(2);
+const UNSAFE = {
+	header: { pattern: /[\r\n\0]/, what: "a line break or NUL character" },
+	env: { pattern: /\0/, what: "a NUL character" },
+} as const;
+const commands = new Map<string, Fiber.Fiber<string | undefined>>();
 
 type Part = { readonly type: "literal"; readonly value: string } | { readonly type: "env"; readonly name: string };
 
@@ -73,7 +79,12 @@ const run = (command: string) =>
 	Effect.gen(function* () {
 		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 		const handle = yield* spawner.spawn(
-			ChildProcess.make("/bin/sh", ["-c", command], { stdin: "ignore", stderr: "ignore" }),
+			// A helper that ignores SIGTERM must not outlast the timeout.
+			ChildProcess.make("/bin/sh", ["-c", command], {
+				stdin: "ignore",
+				stderr: "ignore",
+				forceKillAfter: COMMAND_KILL_AFTER,
+			}),
 		);
 		const [output, code] = yield* Effect.all([Stream.mkString(Stream.decodeText(handle.stdout)), handle.exitCode], {
 			concurrency: 2,
@@ -88,11 +99,17 @@ const run = (command: string) =>
 	);
 
 const command = Effect.fnUntraced(function* (line: string, what: string) {
-	const cached = commands.get(line);
-	if (cached !== undefined) return cached;
-	const output = yield* run(line);
-	if (output === undefined) return yield* Effect.fail(`Failed to resolve ${what} from shell command: ${line}`);
-	commands.set(line, output);
+	let running = commands.get(line);
+	if (running === undefined) {
+		// Detached, so a caller giving up does not stop it for the others waiting on it.
+		running = yield* Effect.forkDetach(run(line));
+		commands.set(line, running);
+	}
+	const output = yield* Fiber.join(running);
+	if (output === undefined) {
+		if (commands.get(line) === running) commands.delete(line);
+		return yield* Effect.fail(`Failed to resolve ${what} from shell command: ${line}`);
+	}
 	return output;
 });
 
@@ -113,17 +130,24 @@ const variables = Effect.fnUntraced(function* (value: string, what: string) {
 	return parts.map((part) => (part.type === "literal" ? part.value : env.get(part.name))).join("");
 });
 
-/** One value. `what` names it in the failure, for example `MCP server "docs" header "Authorization"`. */
-export const resolve = Effect.fnUntraced(function* (value: string, what: string) {
+/**
+ * One value, used as `kind`. `what` names it in the failure, for example
+ * `MCP server "docs" header "Authorization"`.
+ */
+export const resolve = Effect.fnUntraced(function* (value: string, kind: keyof typeof UNSAFE, what: string) {
 	const resolved = yield* value.startsWith("!") ? command(value.slice(1), what) : variables(value, what);
-	if (UNSAFE.test(resolved)) return yield* Effect.fail(`${what} contains a line break or NUL character`);
+	if (UNSAFE[kind].pattern.test(resolved)) return yield* Effect.fail(`${what} contains ${UNSAFE[kind].what}`);
 	return resolved;
 });
 
 /** Every value of a record, failing on the first that does not resolve. */
-export const resolveAll = Effect.fnUntraced(function* (values: Readonly<Record<string, string>>, what: string) {
+export const resolveAll = Effect.fnUntraced(function* (
+	values: Readonly<Record<string, string>>,
+	kind: keyof typeof UNSAFE,
+	what: string,
+) {
 	const resolved: Record<string, string> = {};
-	for (const [key, value] of Object.entries(values)) resolved[key] = yield* resolve(value, `${what} "${key}"`);
+	for (const [key, value] of Object.entries(values)) resolved[key] = yield* resolve(value, kind, `${what} "${key}"`);
 	return resolved;
 });
 
