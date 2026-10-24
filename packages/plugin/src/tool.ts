@@ -237,9 +237,10 @@ const providerJsonSchema = "codework/providerJsonSchema";
 
 /**
  * Parameters from a JSON Schema someone else wrote, such as an MCP server's `inputSchema`. The
- * provider receives it exactly as written; arguments are validated against its Effect translation.
- * A schema the translation cannot express (a `pattern`, an external `$ref`) validates nothing,
- * since rejecting arguments the schema allows would be worse than letting the server check them.
+ * provider receives it exactly as written; arguments are validated against its Effect translation,
+ * `pattern`s included: the user chose the server. A schema the translation cannot express (an
+ * external `$ref`, a pattern invalid in Unicode mode) validates nothing, since rejecting arguments
+ * the schema allows would be worse than letting the server check them.
  */
 export const fromJsonSchema = (schema: Record<string, unknown>): Schema.Top => {
 	const validator = (() => {
@@ -248,6 +249,7 @@ export const fromJsonSchema = (schema: Record<string, unknown>): Schema.Top => {
 				(typeof schema.$schema === "string" && schema.$schema.includes("draft-07")) || "definitions" in schema;
 			return SchemaRepresentation.fromJsonSchemaDocument(
 				draft07 ? JsonSchema.fromSchemaDraft07(schema) : JsonSchema.fromSchemaDraft2020_12(schema),
+				{ patterns: "apply" },
 			);
 		} catch {
 			return Schema.Unknown;

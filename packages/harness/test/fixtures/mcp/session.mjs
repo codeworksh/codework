@@ -13,6 +13,11 @@ server.setRequestHandler("tools/list", () => ({
 			description: "Echo text back, prefixed with the configured greeting.",
 			inputSchema: object({ text: { type: "string", description: "What to echo." } }, ["text"]),
 		},
+		{
+			name: "args",
+			description: "The arguments as received.",
+			inputSchema: object({ word: { type: "string", pattern: "^[a-z]+$" }, limit: { type: "integer" } }, ["word"]),
+		},
 		{ name: "fail", description: "Answer with an error result.", inputSchema: object() },
 		{ name: "pid", description: "The server's process id.", inputSchema: object() },
 		{ name: "crash", description: "Exit while the call is running.", inputSchema: object() },
@@ -26,6 +31,8 @@ server.setRequestHandler("tools/call", (request) => {
 	switch (request.params.name) {
 		case "echo":
 			return text(`${process.env.E2E_GREETING}: ${String(args.text)}`);
+		case "args":
+			return text(JSON.stringify(args));
 		case "fail":
 			return { isError: true, content: [{ type: "text", text: "the fixture refused" }] };
 		case "pid":

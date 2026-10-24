@@ -3,6 +3,7 @@
  * reaches it.
  */
 
+import { normalizeOptionalNulls } from "@codeworksh/aikit";
 import type { Exposure, ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import type { CallToolResult, Tool as McpTool } from "@modelcontextprotocol/client";
 import { Effect, Schema } from "effect";
@@ -26,7 +27,8 @@ export const name = (server: string, tool: string, taken: (candidate: string) =>
 	if (plain.length <= MAX_NAME_LENGTH && !taken(plain)) return plain;
 	const hash = Hash.sha256(`${server}\0${tool}`);
 	let candidate = plain;
-	for (let length = 8; length <= hash.length; length += 8) {
+	// The executor refuses two tools of one name, so the hash grows, while `mcp__` still fits before it.
+	for (let length = 8; length <= MAX_NAME_LENGTH - "mcp__".length - 1; length += 8) {
 		candidate = `${plain.slice(0, MAX_NAME_LENGTH - length - 1)}_${hash.slice(0, length)}`;
 		if (!taken(candidate)) return candidate;
 	}
@@ -99,6 +101,12 @@ const parameters = (schema: McpTool["inputSchema"]): Record<string, unknown> => 
 	...(schema.properties === undefined ? { properties: {} } : {}),
 });
 
+const withoutOptionalNulls = (args: Record<string, unknown>, schema: Record<string, unknown>) => {
+	const normalized = structuredClone(args);
+	normalizeOptionalNulls(normalized, schema);
+	return normalized;
+};
+
 export interface Call {
 	readonly args: Record<string, unknown>;
 	readonly onProgress: (progress: Progress) => void;
@@ -122,26 +130,28 @@ export const make = (input: {
 		server,
 		tool: tool.name,
 	});
+	const schema = parameters(tool.inputSchema);
 	return Tool.register(
 		Tool.make({
 			name: input.name,
 			label: `${server}/${tool.name}`,
 			description: tool.description?.trim() || title || `MCP tool ${tool.name} from server ${server}`,
-			parameters: Tool.fromJsonSchema(parameters(tool.inputSchema)),
+			parameters: Tool.fromJsonSchema(schema),
 			success: Outcome,
 			failure: Outcome,
 			encodeContent: (outcome) => outcome.content as McpContent.Content[],
 			encodeFailureContent: (outcome) => outcome.content as McpContent.Content[],
 			encodeDetails: ({ content: _content, ...details }) => details,
-			// The arguments as the model wrote them: validation only checks them, and the server, not
-			// a translation of its schema, decides what they mean.
+			// The arguments as the model wrote them, minus the `null`s strict sampling writes for omitted
+			// optional ones: validation only checks them, and the server, not a translation of its schema,
+			// decides what they mean.
 			handler: (_params, ctx) =>
 				Effect.gen(function* () {
 					const progress = yield* ToolProgress;
 					const report = Effect.runForkWith(yield* Effect.context<never>());
 					const result = yield* input
 						.call({
-							args: ctx.rawArgs,
+							args: withoutOptionalNulls(ctx.rawArgs, schema),
 							onProgress: (update) => {
 								const total = update.total === undefined ? "" : `/${update.total}`;
 								const text = update.message ?? `Progress ${update.progress}${total}`;

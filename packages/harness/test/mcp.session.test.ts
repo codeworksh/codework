@@ -52,6 +52,8 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 	const work = join(dir.path, "work");
 	await fs.mkdir(work, { recursive: true });
 	process.env.MCP_E2E_GREETING = "hello";
+	// A `!command` printing a notice after the token, say: never sent, and never shown.
+	process.env.MCP_E2E_BAD_HEADER = "Bearer sk-e2e-secret\nnotice";
 
 	await write(join(home, "mcp.json"), {
 		mcpServers: {
@@ -60,6 +62,8 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 			"my-srv": stdio({ enabled: false }),
 			my_srv: stdio(),
 			broken: { url: "ftp://example.com/mcp" },
+			signin: { url: "https://example.com/mcp", oauth: { clientId: "e2e" } },
+			badheader: { url: "http://127.0.0.1:9/mcp", headers: { Authorization: "${MCP_E2E_BAD_HEADER}" } },
 		},
 	});
 	// The project turns a user server off without restating it, and cannot add an override with no base.
@@ -95,13 +99,15 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 				pendingCall("mcp__e2e__echo", { text: "hi" }, "echo"),
 				pendingCall("mcp__e2e__fail", {}, "fail"),
 				pendingCall("mcp__e2e__my_tool_v2", {}, "structured"),
+				// Strict sampling writes `null` for an omitted optional argument; the server never sees it.
+				pendingCall("mcp__e2e__args", { word: "abc", limit: null }, "nulls"),
 			],
 			[pendingCall("mcp__e2e__pid", {}, "pid-before"), pendingCall("mcp__e2e__crash", {}, "crash")],
 			// Same exchange: the server is gone, so this call reconnects first.
 			[pendingCall("mcp__e2e__pid", {}, "pid-after")],
 			[],
 			// Next exchange: arguments the server's schema rejects never reach it.
-			[pendingCall("mcp__e2e__echo", {}, "invalid")],
+			[pendingCall("mcp__e2e__echo", {}, "invalid"), pendingCall("mcp__e2e__args", { word: "ABC" }, "pattern")],
 			[],
 		],
 		requests,
@@ -180,11 +186,15 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 		echoTool: firstTools.find((tool) => tool.name === "mcp__e2e__echo"),
 		plugins: observed,
 		calls: Object.fromEntries(
-			["echo", "fail", "structured", "pid-before", "crash", "pid-after", "invalid"].map((id) => [id, outcome(id)]),
+			["echo", "fail", "structured", "nulls", "pid-before", "crash", "pid-after", "invalid", "pattern"].map((id) => [
+				id,
+				outcome(id),
+			]),
 		),
 		status: result.status,
 		configErrors: result.errors,
 	});
+	expect(JSON.stringify(result)).not.toContain("sk-e2e-secret");
 	await expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot("./__artifacts__/mcp.session.json");
 }, 60_000);
 

@@ -58,6 +58,7 @@
 	"declared": [
 		[
 			"mcp__e2e__echo",
+			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -68,6 +69,7 @@
 		],
 		[
 			"mcp__e2e__echo",
+			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -78,6 +80,7 @@
 		],
 		[
 			"mcp__e2e__echo",
+			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -88,6 +91,7 @@
 		],
 		[
 			"mcp__e2e__echo",
+			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -98,6 +102,7 @@
 		[
 			"mcp__remote__echo",
 			"mcp__e2e__echo",
+			"mcp__e2e__args",
 			"mcp__e2e__fail",
 			"mcp__e2e__pid",
 			"mcp__e2e__crash",
@@ -130,7 +135,7 @@
 		{
 			"server": "e2e",
 			"state": "connected",
-			"tools": 7
+			"tools": 8
 		}
 	]
 }

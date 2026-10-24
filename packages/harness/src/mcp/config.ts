@@ -55,6 +55,9 @@ export const validate = (name: string, value: unknown): ServerConfig | string =>
 		return `server "${name}": description must be a string`;
 	if (timeout !== undefined && !(Predicate.isNumber(timeout) && timeout > 0))
 		return `server "${name}": timeout must be a positive number of seconds`;
+	// Until sign-in exists, an entry relying on it could only fail; say so instead of ignoring the key.
+	for (const key of ["auth", "oauth"])
+		if (value[key] !== undefined) return `server "${name}": "${key}" is not supported yet`;
 	if (type === "sse") return `server "${name}": legacy SSE transport is not supported; use the streamable HTTP URL`;
 
 	if (Predicate.isString(value.url) && (type === undefined || type === "http" || type === "streamable-http")) {

@@ -194,21 +194,22 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 				);
 				// Calls replace an expired session themselves; this covers a background request seeing it first.
 				live.connection.onSessionExpired(current(retire(server, live)));
+				// Listed without the server's lock, which calls and closing need: the listing can take a while.
 				live.connection.onToolsChanged(
-					current(
-						live.connection.tools().pipe(
-							Effect.tap((tools) =>
-								Effect.sync(() => {
-									server.tools = tools;
+					Effect.sync(() => {
+						fork(
+							live.connection.tools().pipe(
+								Effect.match({
+									onSuccess: (tools) => {
+										if (server.live === live) server.tools = tools;
+									},
+									onFailure: (error) => {
+										if (server.live === live) server.error = `failed to refresh tools: ${error.message}`;
+									},
 								}),
 							),
-							Effect.catch((error) =>
-								Effect.sync(() => {
-									server.error = `failed to refresh tools: ${error.message}`;
-								}),
-							),
-						),
-					),
+						);
+					}),
 				);
 				live.connection.onLog((entry) => log.write(server.name, entry));
 			};
@@ -392,10 +393,14 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 						// Exposure and description apply to the next exchange without reconnecting.
 						if (config !== undefined && connectionKey(config, cwd, roots) === server.key) {
 							server.config = config;
+							// A server that could not connect declares no tools, so no call would retry it.
+							// Retry in the background; waiting for it would hold up every prompt while it is down.
+							if (server.state === "failed" && server.attempt === undefined) start(server);
 							continue;
 						}
 						session.servers.delete(name);
-						yield* close(server);
+						// Stopping can take seconds; the prompt does not wait for it.
+						fork(close(server));
 					}
 					for (const [name, config] of wanted) {
 						if (session.servers.has(name)) continue;

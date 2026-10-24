@@ -2,6 +2,7 @@
 	"requests": 6,
 	"tools": [
 		"mcp__e2e__echo",
+		"mcp__e2e__args",
 		"mcp__e2e__fail",
 		"mcp__e2e__pid",
 		"mcp__e2e__crash",
@@ -38,6 +39,10 @@
 				[
 					"my-srv",
 					false
+				],
+				[
+					"badheader",
+					true
 				]
 			],
 			[
@@ -52,6 +57,10 @@
 				[
 					"my-srv",
 					false
+				],
+				[
+					"badheader",
+					true
 				]
 			]
 		],
@@ -82,6 +91,13 @@
 				"{\n  \"version\": 2\n}"
 			]
 		},
+		"nulls": {
+			"status": "completed",
+			"isError": false,
+			"content": [
+				"{\"word\":\"abc\"}"
+			]
+		},
 		"pid-before": {
 			"status": "completed",
 			"isError": false,
@@ -109,13 +125,20 @@
 			"content": [
 				"Invalid arguments for mcp__e2e__echo: Missing key\n  at [\"text\"]"
 			]
+		},
+		"pattern": {
+			"status": "error",
+			"isError": true,
+			"content": [
+				"Invalid arguments for mcp__e2e__args: Expected a string matching the RegExp ^[a-z]+$\n  at [\"word\"]"
+			]
 		}
 	},
 	"status": [
 		{
 			"server": "e2e",
 			"state": "connected",
-			"tools": 7
+			"tools": 8
 		},
 		{
 			"server": "off",
@@ -126,11 +149,18 @@
 			"server": "my-srv",
 			"state": "disabled",
 			"tools": 0
+		},
+		{
+			"server": "badheader",
+			"state": "failed",
+			"error": "MCP server \"badheader\" header \"Authorization\" contains a line break or NUL character",
+			"tools": 0
 		}
 	],
 	"configErrors": [
 		"<tmp>/home/mcp.json: server \"my_srv\" conflicts with \"my-srv\"",
 		"<tmp>/home/mcp.json: server \"broken\": url must be an http or https URL",
+		"<tmp>/home/mcp.json: server \"signin\": \"oauth\" is not supported yet",
 		"<tmp>/project/.codework/mcp.json: server \"ghost\" needs \"command\" or \"url\", or a user server to override"
 	]
 }
