@@ -1,0 +1,90 @@
+{
+	"processes": {
+		"a": {
+			"mine": "<process-1>",
+			"twin": "<process-2>",
+			"ours": "<process-3>",
+			"all": "<process-4>"
+		},
+		"b": {
+			"mine": "<process-5>",
+			"twin": "<process-6>",
+			"ours": "<process-3>",
+			"all": "<process-4>"
+		},
+		"c": {
+			"mine": "<process-7>",
+			"twin": "<process-8>",
+			"ours": "<process-9>",
+			"all": "<process-4>"
+		},
+		"again": {
+			"mine": "<process-10>",
+			"twin": "<process-11>",
+			"ours": "<process-12>",
+			"all": "<process-13>"
+		}
+	},
+	"idle": [
+		{
+			"server": "mine",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "twin",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "ours",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "all",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "mine",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "twin",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "ours",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "all",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "mine",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "twin",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "ours",
+			"state": "disconnected",
+			"tools": 11
+		},
+		{
+			"server": "all",
+			"state": "disconnected",
+			"tools": 11
+		}
+	]
+}

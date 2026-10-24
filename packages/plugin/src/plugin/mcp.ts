@@ -11,9 +11,23 @@
  * How a server's tools reach the model.
  *
  * - `direct`: declared to the model like any other tool.
+ * - `codemode`: called from codemode scripts, never declared to the model.
+ * - `deferred`: declared once `tool_search` finds them.
  * - `hidden`: never registered.
+ *
+ * Until codemode and `tool_search` exist, `codemode` and `deferred` tools cannot be reached; a
+ * session using them is warned once. `codemode-deferred` in `mcp.json` is read as `codemode`.
  */
-export type Exposure = "direct" | "hidden";
+export type Exposure = "direct" | "codemode" | "deferred" | "hidden";
+
+/**
+ * Who shares one running instance of a server.
+ *
+ * - `session`: each session runs its own.
+ * - `space`: sessions in the same space (sandbox and folder) share one.
+ * - `app`: every session shares one.
+ */
+export type Scope = "session" | "space" | "app";
 
 interface Base {
 	/** Default: `direct`. */
@@ -26,6 +40,8 @@ interface Base {
 	readonly toolExposure?: Readonly<Record<string, Exposure>>;
 	/** `false` keeps the entry without connecting. Default: `true`. */
 	readonly enabled?: boolean;
+	/** Default: `session`. Share a server only when it is safe to share. */
+	readonly scope?: Scope;
 	/** Per-request timeout in seconds. Progress notifications from the server reset it. Default: 60. */
 	readonly timeout?: number;
 	/** What the server offers, in a sentence. */

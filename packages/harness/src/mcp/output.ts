@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { Effect } from "effect";
 import { Hex } from "effect/encoding";
 import { crypto, fileSystem, hostPath } from "../host.ts";
+import { OutputError } from "./error.ts";
 
 /** Output can carry private data, so only the user may read the files. */
 const MODE = 0o600;
@@ -17,7 +18,9 @@ export const save = Effect.fn("Mcp.saveOutput")(function* (data: string | Uint8A
 	const path = hostPath.join(tmpdir(), `codework-mcp-${Hex.encode(random)}${extension}`);
 	const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
 	// `wx` never follows a link someone else placed at the path.
-	yield* fileSystem.writeFile(path, bytes, { flag: "wx", mode: MODE }).pipe(Effect.mapError((error) => error.message));
+	yield* fileSystem
+		.writeFile(path, bytes, { flag: "wx", mode: MODE })
+		.pipe(Effect.mapError((error) => new OutputError({ message: error.message })));
 	return path;
 });
 

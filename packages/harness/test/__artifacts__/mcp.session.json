@@ -49,23 +49,9 @@
 				[
 					"badheader",
 					true
-				]
-			],
-			[
-				[
-					"e2e",
-					true
 				],
 				[
-					"off",
-					false
-				],
-				[
-					"my-srv",
-					false
-				],
-				[
-					"badheader",
+					"later",
 					true
 				]
 			],
@@ -84,6 +70,32 @@
 				],
 				[
 					"badheader",
+					true
+				],
+				[
+					"later",
+					true
+				]
+			],
+			[
+				[
+					"e2e",
+					true
+				],
+				[
+					"off",
+					false
+				],
+				[
+					"my-srv",
+					false
+				],
+				[
+					"badheader",
+					true
+				],
+				[
+					"later",
 					true
 				]
 			]
@@ -183,7 +195,7 @@
 			"status": "completed",
 			"isError": false,
 			"content": [
-				"{\"resources\":[{\"server\":\"e2e\",\"name\":\"notes\",\"uri\":\"fixture://notes.txt\",\"mimeType\":\"text/plain\"},{\"server\":\"e2e\",\"name\":\"data\",\"uri\":\"fixture://data.bin\",\"mimeType\":\"application/octet-stream\"}]}"
+				"{\"resources\":[{\"server\":\"e2e\",\"name\":\"notes\",\"uri\":\"fixture://notes.txt\",\"mimeType\":\"text/plain\"},{\"server\":\"e2e\",\"name\":\"data\",\"uri\":\"fixture://data.bin\",\"mimeType\":\"application/octet-stream\"},{\"server\":\"later\",\"name\":\"notes\",\"uri\":\"fixture://notes.txt\",\"mimeType\":\"text/plain\"},{\"server\":\"later\",\"name\":\"data\",\"uri\":\"fixture://data.bin\",\"mimeType\":\"application/octet-stream\"}]}"
 			]
 		},
 		"resources-page": {
@@ -211,7 +223,7 @@
 			"status": "completed",
 			"isError": false,
 			"content": [
-				"{\"resourceTemplates\":[{\"server\":\"e2e\",\"name\":\"daily notes\",\"uriTemplate\":\"fixture://notes/{day}\"}]}"
+				"{\"resourceTemplates\":[{\"server\":\"e2e\",\"name\":\"daily notes\",\"uriTemplate\":\"fixture://notes/{day}\"},{\"server\":\"later\",\"name\":\"daily notes\",\"uriTemplate\":\"fixture://notes/{day}\"}]}"
 			]
 		},
 		"read-text": {
@@ -232,7 +244,7 @@
 			"status": "error",
 			"isError": true,
 			"content": [
-				"MCP server \"nope\" has no resources. Servers with resources: e2e"
+				"MCP server \"nope\" has no resources. Servers with resources: e2e, later"
 			]
 		}
 	},
@@ -264,6 +276,11 @@
 			"state": "failed",
 			"error": "MCP server \"badheader\" header \"Authorization\" contains a line break or NUL character",
 			"tools": 0
+		},
+		{
+			"server": "later",
+			"state": "connected",
+			"tools": 11
 		}
 	],
 	"configErrors": [
