@@ -159,12 +159,13 @@ describe("mcp client", () => {
 			expect(yield* Effect.promise(() => readFile(saved!))).toEqual(Buffer.from([0, 1, 2]));
 			expect(converted.mixed).toEqual([
 				{ type: "text", text: "hello" },
-				{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+				{ type: "image", data: expect.any(String), mimeType: "image/png" },
 				{ type: "text", text: "embedded notes" },
-				{ type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+				{ type: "image", data: expect.any(String), mimeType: "image/png" },
 				{ type: "text", text: `[Binary resource file:///data.bin (unknown type, 3B) saved to ${saved}]` },
 				{ type: "text", text: "[audio audio/wav omitted]" },
 				{ type: "text", text: '[Resource file:///README.md "readme"]' },
+				{ type: "text", text: "[Image omitted: could not be converted to a supported inline image format.]" },
 			]);
 			expect(converted.structured).toEqual([
 				{ type: "text", text: JSON.stringify({ answer: 42, items: ["a", "b"] }, null, 2) },

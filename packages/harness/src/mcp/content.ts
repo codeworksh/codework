@@ -1,6 +1,7 @@
 import type { Message } from "@codeworksh/aikit";
 import type { CallToolResult, ContentBlock } from "@modelcontextprotocol/client";
 import { Effect } from "effect";
+import { Image } from "../tool/image/index.ts";
 import { formatSize, truncateMiddle } from "../tool/truncate.ts";
 
 export type Content = Message.TextContent | Message.ImageContent;
@@ -33,56 +34,76 @@ const extensionOf = (uri: string) => {
 	return /\.[A-Za-z0-9]{1,8}$/.exec(path)?.[0] ?? ".bin";
 };
 
+/**
+ * An image as the model can take it inline, as the read tool does: in a supported format and within
+ * the provider's limits, or a note saying why it was left out.
+ */
+const image = (data: string, mimeType: string) =>
+	Image.inline(Buffer.from(data, "base64"), mimeType).pipe(
+		Effect.map((inline): ReadonlyArray<Content> =>
+			inline.ok
+				? [
+						{ type: "image", data: inline.data, mimeType: inline.mimeType },
+						...inline.hints.map((text): Content => ({ type: "text", text })),
+					]
+				: [{ type: "text", text: inline.message }],
+		),
+	);
+
 /** Blocks that need neither a file nor the server's name. */
-const plain = (block: ContentBlock): Content => {
+const plain = (block: ContentBlock): Effect.Effect<ReadonlyArray<Content>> => {
 	switch (block.type) {
 		case "text":
-			return { type: "text", text: block.text };
+			return Effect.succeed([{ type: "text", text: block.text }]);
 		case "image":
-			return { type: "image", data: block.data, mimeType: block.mimeType };
+			return image(block.data, block.mimeType);
 		case "audio":
-			return { type: "text", text: `[audio ${block.mimeType} omitted]` };
+			return Effect.succeed([{ type: "text", text: `[audio ${block.mimeType} omitted]` }]);
 		case "resource": {
 			const resource = block.resource;
 			return "text" in resource
-				? { type: "text", text: resource.text }
-				: { type: "image", data: resource.blob, mimeType: resource.mimeType ?? "image/png" };
+				? Effect.succeed([{ type: "text", text: resource.text }])
+				: image(resource.blob, resource.mimeType ?? "image/png");
 		}
 		default:
-			return { type: "text", text: `[unsupported MCP content ${block.type}]` };
+			return Effect.succeed([{ type: "text", text: `[unsupported MCP content ${block.type}]` }]);
 	}
 };
 
 /** One block of `server`'s output as model content. */
-const fromBlock = Effect.fnUntraced(function* (server: string, block: ContentBlock, options: Options) {
+const fromBlock = Effect.fnUntraced(function* (
+	server: string,
+	block: ContentBlock,
+	options: Options,
+): Effect.fn.Return<ReadonlyArray<Content>> {
 	if (block.type === "resource_link") {
 		const details = [block.mimeType, block.size === undefined ? undefined : formatSize(block.size)].filter(Boolean);
 		const read = options.readable ? `. Read it with ${READ_RESOURCE_TOOL} (server "${server}")` : "";
 		const description = block.description ? `: ${block.description}` : "";
-		return {
-			type: "text",
-			text: `[Resource ${block.uri} "${block.title ?? block.name}"${details.length > 0 ? ` (${details.join(", ")})` : ""}${description}${read}]`,
-		} satisfies Content;
+		return [
+			{
+				type: "text",
+				text: `[Resource ${block.uri} "${block.title ?? block.name}"${details.length > 0 ? ` (${details.join(", ")})` : ""}${description}${read}]`,
+			},
+		];
 	}
 	if (block.type === "resource" && "blob" in block.resource && !block.resource.mimeType?.startsWith("image/")) {
 		const { uri, mimeType, blob } = block.resource;
 		const data = Buffer.from(blob, "base64");
-		if (isText(mimeType)) return { type: "text", text: data.toString("utf8") } satisfies Content;
+		if (isText(mimeType)) return [{ type: "text", text: data.toString("utf8") }];
 		const kind = `${mimeType ?? "unknown type"}, ${formatSize(data.length)}`;
 		return yield* options.save(data, extensionOf(uri)).pipe(
 			Effect.match({
-				onSuccess: (path): Content => ({
-					type: "text",
-					text: `[Binary resource ${uri} (${kind}) saved to ${path}]`,
-				}),
-				onFailure: (reason): Content => ({
-					type: "text",
-					text: `[Binary resource ${uri} (${kind}) could not be saved: ${reason}]`,
-				}),
+				onSuccess: (path): ReadonlyArray<Content> => [
+					{ type: "text", text: `[Binary resource ${uri} (${kind}) saved to ${path}]` },
+				],
+				onFailure: (reason): ReadonlyArray<Content> => [
+					{ type: "text", text: `[Binary resource ${uri} (${kind}) could not be saved: ${reason}]` },
+				],
 			}),
 		);
 	}
-	return plain(block);
+	return yield* plain(block);
 });
 
 /**
@@ -106,7 +127,7 @@ export const limit = Effect.fnUntraced(function* (content: ReadonlyArray<Content
 
 /** Blocks of `server`'s output as model content, before {@link limit}. */
 export const fromBlocks = (server: string, blocks: ReadonlyArray<ContentBlock>, options: Options) =>
-	Effect.forEach(blocks, (block) => fromBlock(server, block, options));
+	Effect.forEach(blocks, (block) => fromBlock(server, block, options)).pipe(Effect.map((all) => all.flat()));
 
 /**
  * A tool result as model content. A result without content blocks but with `structuredContent`

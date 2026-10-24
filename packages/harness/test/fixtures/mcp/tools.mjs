@@ -1,7 +1,8 @@
 // Tools shared by the stdio fixture and the in-process streamable HTTP fixture.
 import { spawn } from "node:child_process";
 
-const PNG = "iVBORw0KGgo=";
+// One transparent pixel.
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==";
 const sleep = (ms, signal) =>
 	new Promise((resolve) => {
 		const timer = setTimeout(resolve, ms);
@@ -71,6 +72,8 @@ export const install = (server) => {
 						{ type: "resource", resource: { uri: "file:///data.bin", blob: "AAEC" } },
 						{ type: "audio", data: "AAAA", mimeType: "audio/wav" },
 						{ type: "resource_link", name: "readme", uri: "file:///README.md" },
+						// No provider takes SVG inline.
+						{ type: "image", data: Buffer.from("<svg/>").toString("base64"), mimeType: "image/svg+xml" },
 					],
 				};
 			case "structured":

@@ -158,6 +158,13 @@
 				"Invalid arguments for mcp__e2e__args: Expected a string matching the RegExp ^[a-z]+$\n  at [\"word\"]"
 			]
 		},
+		"excess": {
+			"status": "error",
+			"isError": true,
+			"content": [
+				"Invalid arguments for mcp__e2e__args: Expected no excess property\n  at [\"extra\"]"
+			]
+		},
 		"cwd": {
 			"status": "completed",
 			"isError": false,
