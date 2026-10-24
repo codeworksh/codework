@@ -10,6 +10,7 @@ import { SqlClient, SqlSchema } from "effect/sql";
 import { describe, expect } from "vite-plus/test";
 import { Context } from "../src/context/context.ts";
 import { Control } from "../src/control.ts";
+import { Session as SessionApi } from "../src/effect/session.ts";
 import { Database } from "../src/db/db.ts";
 import { SessionInputRow } from "../src/db/schema.sql.ts";
 import { Event } from "../src/event/event.ts";
@@ -24,6 +25,7 @@ import { SandboxController } from "../src/sandbox/control.ts";
 import { SandboxDriverRegistry } from "../src/sandbox/registry.ts";
 import { SessionInput } from "../src/session/input/input.ts";
 import { SessionMessageSchema } from "../src/session/message/schema.ts";
+import { PromptSchema } from "../src/session/prompt/schema.ts";
 import { SessionProjector } from "../src/session/projector.ts";
 import { SessionSchema } from "../src/session/schema.ts";
 import { Session } from "../src/session/session.ts";
@@ -42,6 +44,8 @@ const runtime = (
 		readonly state?: State.Options;
 		readonly plugins?: ReadonlyArray<Plugin>;
 		readonly settings?: Info;
+		/** Runs as each turn's snapshot loads settings: after the loop checks for pending input, before it promotes. */
+		readonly beforeSettings?: { run: Effect.Effect<void> };
 	} = {},
 ) => {
 	const database = Database.layer(":memory:");
@@ -59,7 +63,12 @@ const runtime = (
 		),
 		Layer.provideMerge(SessionRuntime.layer),
 		Layer.provideMerge(
-			Layer.succeed(Settings.Service, { load: () => Effect.succeed(options.settings ?? Settings.defaults) }),
+			Layer.succeed(Settings.Service, {
+				load: () =>
+					Effect.suspend(() => options.beforeSettings?.run ?? Effect.void).pipe(
+						Effect.as(options.settings ?? Settings.defaults),
+					),
+			}),
 		),
 		Layer.provideMerge(sandbox),
 		Layer.provideMerge(Context.layer),
@@ -358,7 +367,7 @@ describe("runner loop — crash healing", () => {
 				sessionId,
 				context: { messages: [] },
 				provider: "openai",
-				model: "gpt-5.5",
+				model: "gpt-6-luna",
 			};
 			const draft = assistant(input, 99, { parts: [] });
 			yield* events.publish(EventList.LLMStarted, {
@@ -794,4 +803,525 @@ describe("runner loop — retry", () => {
 			);
 		}
 	});
+});
+
+/**
+ * A provider that follows a script, one step per request: "fail" fails it the way a provider does,
+ * "hang" streams until the run is interrupted; past the script every request answers. `during`
+ * runs at the start of the next request, while the run is still working.
+ */
+const scriptedProvider = () => {
+	const contexts: Message.Context[] = [];
+	/** What each provider request does, in order; past the end every request answers. */
+	const script: Array<"answer" | "fail" | "hang"> = [];
+	/** Runs at the start of the next request, while the run is still working. */
+	const during = { run: Effect.void as Effect.Effect<void> };
+	const answer = immediateOpen(contexts);
+	const open: LLM.Open = (input, signal) => {
+		const step = script.shift();
+		const hook = during.run;
+		during.run = Effect.void;
+		if (step === undefined || step === "answer") return Effect.andThen(hook, answer(input, signal));
+		return Effect.andThen(
+			hook,
+			Effect.sync(() => {
+				contexts.push(input.context);
+				const events = createAssistantMessageEventStream();
+				if (step === "fail") {
+					const failed = Object.assign(
+						assistant(input, 0, { stopReason: "error", errorMessage: "provider failed" }),
+						{
+							failure: {
+								_tag: "Authentication",
+								reason: "missing",
+								message: "provider failed",
+								retryable: false,
+							} as const,
+						},
+					);
+					events.push({ type: "start", partial: failed });
+					events.push({ type: "error", reason: "error", error: failed });
+					return events;
+				}
+				// Streams until the run is interrupted.
+				const partial = assistant(input, 0, { parts: [{ type: "text", text: "partial" }] });
+				events.push({ type: "start", partial });
+				events.push({ type: "text.delta", partIndex: 0, delta: "partial", partial });
+				const abort = () =>
+					events.push({
+						type: "error",
+						reason: "aborted",
+						error: assistant(input, 0, { stopReason: "aborted", errorMessage: "Request was aborted" }),
+					});
+				if (signal.aborted) abort();
+				else signal.addEventListener("abort", abort, { once: true });
+				return events;
+			}),
+		);
+	};
+	const reset = Effect.sync(() => {
+		contexts.length = 0;
+		script.length = 0;
+		during.run = Effect.void;
+	});
+	return { contexts, script, during, open, reset };
+};
+
+const texts = (context: Message.Context) =>
+	context.messages.flatMap((message) =>
+		message.role === "user" ? message.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])) : [],
+	);
+
+/** A user prompt as a client sends one: admitted, then the session woken. */
+const send = (sessionId: SessionSchema.ID, id: string, delivery: "steer" | "followUp" = "steer") =>
+	Effect.gen(function* () {
+		const control = yield* Control.Service;
+		yield* control.prompt({
+			sessionId,
+			id: SessionMessageSchema.ID.make(id),
+			prompt: PromptSchema.Prompt.fromText(id),
+			delivery,
+		});
+	});
+
+const settle = (sessionId: SessionSchema.ID) =>
+	Effect.gen(function* () {
+		const execution = yield* RunnerExecution.Service;
+		yield* execution.awaitIdle(sessionId);
+	});
+
+/** The busy periods' outcomes, in order. */
+const outcomes = Effect.gen(function* () {
+	const events = yield* Event.Service;
+	const seen: string[] = [];
+	yield* events.listen((event) =>
+		Effect.sync(() => {
+			if (event.type === EventList.ExecutionSucceeded.type) seen.push("succeeded");
+			if (event.type === EventList.ExecutionFailed.type) seen.push("failed");
+			if (event.type === EventList.ExecutionInterrupted.type) seen.push("interrupted");
+		}),
+	);
+	return seen;
+});
+
+describe("runner loop — queued input", () => {
+	const provider = scriptedProvider();
+	const { contexts, script, during } = provider;
+	const beforeSettings = { run: Effect.void as Effect.Effect<void> };
+	const { effect: it } = testEffect(runtime({ open: provider.open, beforeSettings }));
+
+	const reset = provider.reset.pipe(
+		Effect.andThen(
+			Effect.sync(() => {
+				beforeSettings.run = Effect.void;
+			}),
+		),
+	);
+
+	/** Cancels `id` the first time a turn loads settings: inside the window between the pending check and promotion. */
+	const cancelBeforePromotion = Effect.fnUntraced(function* (sessionId: SessionSchema.ID, id: string) {
+		const services = yield* Effect.context<SqlClient.SqlClient | Event.Service>();
+		beforeSettings.run = Effect.gen(function* () {
+			beforeSettings.run = Effect.void;
+			const inputs = yield* SessionInput.make;
+			yield* inputs.cancel(sessionId, SessionMessageSchema.ID.make(id));
+		}).pipe(Effect.provideContext(services));
+	});
+
+	it(
+		"asks the model nothing when the only pending prompt is cancelled before promotion",
+		Effect.gen(function* () {
+			yield* reset;
+			const sessions = yield* Session.Service;
+			const inputs = yield* SessionInput.make;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			yield* admit({ id: "msg_withdrawn", sessionId, delivery: "steer" });
+			yield* cancelBeforePromotion(sessionId, "msg_withdrawn");
+
+			// A wake, as a prompt sends: a forced resume would answer regardless.
+			const execution = yield* RunnerExecution.Service;
+			yield* execution.wake(sessionId);
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["succeeded"]);
+			expect(
+				Option.getOrThrow(yield* inputs.find(SessionMessageSchema.ID.make("msg_withdrawn"))).cancelledSeq,
+			).toBeDefined();
+			expect(contexts).toEqual([]);
+			expect(yield* sessions.path(sessionId)).toEqual([]);
+		}),
+	);
+
+	it(
+		"still runs a queued follow-up when the steer that started the run is cancelled before promotion",
+		Effect.gen(function* () {
+			yield* reset;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			yield* send(sessionId, "A");
+			yield* settle(sessionId);
+
+			yield* admit({ id: "B", sessionId, delivery: "followUp" });
+			yield* admit({ id: "S", sessionId, delivery: "steer" });
+			yield* cancelBeforePromotion(sessionId, "S");
+			const execution = yield* RunnerExecution.Service;
+			yield* execution.wake(sessionId);
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["succeeded", "succeeded"]);
+			expect(contexts.map(texts)).toEqual([["A"], ["A", "B"]]);
+		}),
+	);
+
+	// A prompt's wake survives the failure, so what was sent while the run failed goes out after it.
+	it(
+		"runs prompts sent while a run fails right after it, steers first",
+		Effect.gen(function* () {
+			yield* reset;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			const services = yield* Effect.context<Control.Service>();
+			script.push("fail");
+			during.run = Effect.all([send(sessionId, "F1", "followUp"), send(sessionId, "S1")]).pipe(
+				Effect.asVoid,
+				Effect.orDie,
+				Effect.provideContext(services),
+			);
+
+			yield* send(sessionId, "A");
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["failed", "succeeded"]);
+			expect(contexts.map(texts)).toEqual([["A"], ["A", "S1"], ["A", "S1", "F1"]]);
+		}),
+	);
+
+	// A stop claims the wakes of what was sent during the run: it stays queued, and the next prompt
+	// places it, steers with that prompt and follow-ups after.
+	it(
+		"keeps prompts sent before a stop queued until the next prompt places them",
+		Effect.gen(function* () {
+			yield* reset;
+			const events = yield* Event.Service;
+			const execution = yield* RunnerExecution.Service;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			script.push("hang");
+			const streaming = yield* Deferred.make<void>();
+			yield* events.listen((event) =>
+				event.type === "session.llm.text.delta"
+					? Deferred.succeed(streaming, undefined).pipe(Effect.asVoid)
+					: Effect.void,
+			);
+
+			yield* send(sessionId, "A");
+			yield* Deferred.await(streaming);
+			yield* send(sessionId, "S1");
+			yield* send(sessionId, "F1", "followUp");
+			yield* execution.interrupt(sessionId, "user", { awaitSettlement: true });
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["interrupted"]);
+			expect((yield* delivered(sessionId)).map((row) => [row.id, row.promotedSeq !== null])).toEqual([
+				["A", true],
+				["S1", false],
+				["F1", false],
+			]);
+
+			yield* send(sessionId, "N");
+			yield* settle(sessionId);
+
+			expect(seen).toEqual(["interrupted", "succeeded"]);
+			expect(contexts.map(texts).slice(1)).toEqual([
+				["A", "S1", "N"],
+				["A", "S1", "N", "F1"],
+			]);
+		}),
+	);
+});
+
+describe("runner loop — resume after restart", () => {
+	const provider = scriptedProvider();
+	const { contexts, script } = provider;
+	const { effect: it } = testEffect(runtime({ open: provider.open }));
+
+	const stateOf = (sessionId: SessionSchema.ID) =>
+		Effect.gen(function* () {
+			const sql = yield* SqlClient.SqlClient;
+			const [row] = yield* sql<{ execution: string | null; restarts: number }>`
+				SELECT execution, restarts FROM session WHERE id = ${sessionId}
+			`;
+			return row;
+		});
+
+	/** The session's state each time a run starts, as it starts. */
+	const atEachStart = (sessionId: SessionSchema.ID) =>
+		Effect.gen(function* () {
+			const events = yield* Event.Service;
+			const sql = yield* SqlClient.SqlClient;
+			const seen: Array<{ execution: string | null; restarts: number } | undefined> = [];
+			yield* events.listen((event) =>
+				Schema.is(EventList.ExecutionStarted)(event) && event.data.sessionId === sessionId
+					? stateOf(sessionId).pipe(
+							Effect.map((state) => {
+								seen.push(state);
+							}),
+							Effect.orDie,
+							Effect.provideService(SqlClient.SqlClient, sql),
+						)
+					: Effect.void,
+			);
+			return seen;
+		});
+
+	/** Resolves once a request that streams until stopped is streaming. */
+	const hanging = Effect.gen(function* () {
+		const events = yield* Event.Service;
+		const streaming = yield* Deferred.make<void>();
+		yield* events.listen((event) =>
+			Schema.is(EventList.LLMTextDelta)(event) && event.data.delta === "partial"
+				? Deferred.succeed(streaming, undefined).pipe(Effect.asVoid)
+				: Effect.void,
+		);
+		return Deferred.await(streaming);
+	});
+
+	/**
+	 * What a process that died mid-reply leaves: the prompt in the conversation, the reply it was
+	 * streaming still a draft, and the run still marked running.
+	 */
+	const crashedMidReply = Effect.fnUntraced(function* (sessionId: SessionSchema.ID, id: string) {
+		const events = yield* Event.Service;
+		const sessions = yield* Session.Service;
+		const inputs = yield* SessionInput.make;
+		yield* admit({ id, sessionId, delivery: "steer" });
+		yield* inputs.promoteSteers(sessionId, Number.MAX_SAFE_INTEGER);
+		const input: LLM.Input = {
+			resolvedModel: yield* LLM.resolve({ provider: "openai", model: "gpt-4o-mini" }),
+			sessionId,
+			context: { messages: [] },
+			provider: "openai",
+			model: "gpt-6-luna",
+		};
+		const draft = assistant(input, 99, { parts: [{ type: "text", text: "half a reply" }] });
+		yield* events.publish(EventList.LLMStarted, {
+			timestamp: DateTime.makeUnsafe(1),
+			sessionId,
+			messageId: SessionMessageSchema.ID.from(draft.messageId),
+			message: draft,
+		});
+		yield* sessions.markRunning(sessionId);
+	});
+
+	it(
+		"does not resume a run the user stopped",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const execution = yield* RunnerExecution.Service;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			const streaming = yield* hanging;
+			script.push("hang");
+			yield* send(sessionId, "A");
+			yield* streaming;
+			yield* send(sessionId, "S1");
+			yield* execution.interrupt(sessionId, "user", { awaitSettlement: true });
+			yield* settle(sessionId);
+
+			// The stop is the user's: what was queued behind it stays queued, unmarked.
+			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
+			yield* control.resumeUnfinished;
+
+			expect(seen).toEqual(["interrupted"]);
+			expect(contexts.map(texts)).toEqual([["A"]]);
+			expect((yield* delivered(sessionId)).map((row) => [row.id, row.promotedSeq !== null])).toEqual([
+				["A", true],
+				["S1", false],
+			]);
+		}),
+	);
+
+	// A shutdown is no crash: the run resumes uncounted, and what was queued behind it runs too.
+	it(
+		"resumes a run a shutdown closed without counting a restart, and runs its queue",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const execution = yield* RunnerExecution.Service;
+			const seen = yield* outcomes;
+			const sessionId = yield* seedSession();
+			const streaming = yield* hanging;
+			script.push("hang");
+			yield* send(sessionId, "A");
+			yield* streaming;
+			yield* send(sessionId, "S1");
+			yield* send(sessionId, "F1", "followUp");
+			yield* execution.interrupt(sessionId, "shutdown", { awaitSettlement: true });
+			yield* settle(sessionId);
+
+			expect(yield* stateOf(sessionId)).toEqual({ execution: "closed", restarts: 0 });
+			const atStart = yield* atEachStart(sessionId);
+			yield* control.resumeUnfinished;
+
+			expect(atStart).toEqual([{ execution: "running", restarts: 0 }]);
+			expect(seen).toEqual(["interrupted", "succeeded"]);
+			expect(contexts.map(texts).slice(1)).toEqual([
+				["A", "S1"],
+				["A", "S1", "F1"],
+			]);
+			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
+		}),
+	);
+
+	// Pi resends the cut-off request as it was; a follow-up queued behind it waits for the answer.
+	it(
+		"answers the reply a shutdown cut off before a queued follow-up goes in",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const execution = yield* RunnerExecution.Service;
+			const sessionId = yield* seedSession();
+			const streaming = yield* hanging;
+			script.push("hang");
+			yield* send(sessionId, "A");
+			yield* streaming;
+			yield* send(sessionId, "B", "followUp");
+			yield* execution.interrupt(sessionId, "shutdown", { awaitSettlement: true });
+			yield* settle(sessionId);
+
+			yield* control.resumeUnfinished;
+
+			expect(contexts.map(texts).slice(1)).toEqual([["A"], ["A", "B"]]);
+		}),
+	);
+
+	it(
+		"resumes a run a crash cut off, counting one restart, and answers the prompt again",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const sessions = yield* Session.Service;
+			const sessionId = yield* seedSession();
+			yield* crashedMidReply(sessionId, "A");
+			const atStart = yield* atEachStart(sessionId);
+
+			yield* control.resumeUnfinished;
+
+			expect(atStart).toEqual([{ execution: "running", restarts: 1 }]);
+			expect(contexts.map(texts)).toEqual([["A"]]);
+			const path = yield* sessions.path(sessionId);
+			expect(path.map((entry) => [entry.entry.type, entry.entry.state])).toEqual([
+				["user", "committed"],
+				["assistant", "aborted"],
+				["assistant", "committed"],
+			]);
+			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
+		}),
+	);
+
+	// Recovery chose the session, then the user ran and stopped it: the stop cleared the mark, and the
+	// recovered run must find nothing to resume rather than force another turn.
+	it(
+		"runs nothing when a session recovery chose was stopped before its run began",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const sessions = yield* Session.Service;
+			const execution = yield* RunnerExecution.Service;
+			const sessionId = yield* seedSession();
+			yield* crashedMidReply(sessionId, "A");
+			yield* sessions.endExecution(sessionId, "stopped");
+
+			yield* execution.recover(sessionId);
+
+			expect(contexts).toEqual([]);
+			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
+		}),
+	);
+
+	it(
+		"parks a session at the restart limit, and its next prompt runs it again",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const sql = yield* SqlClient.SqlClient;
+			const sessionId = yield* seedSession();
+			yield* crashedMidReply(sessionId, "A");
+			yield* sql`UPDATE session SET restarts = ${Control.RESTART_LIMIT - 1} WHERE id = ${sessionId}`;
+
+			yield* control.resumeUnfinished;
+
+			expect(contexts).toEqual([]);
+			expect(yield* stateOf(sessionId)).toEqual({ execution: "running", restarts: Control.RESTART_LIMIT });
+			expect((yield* (yield* SessionApi.get(sessionId).pipe(Effect.map(Option.getOrThrow))).info).parked).toBe(true);
+
+			yield* send(sessionId, "B");
+			yield* settle(sessionId);
+
+			expect(contexts.map(texts)).toEqual([["A", "B"]]);
+			expect(yield* stateOf(sessionId)).toEqual({ execution: null, restarts: 0 });
+			expect((yield* (yield* SessionApi.get(sessionId).pipe(Effect.map(Option.getOrThrow))).info).parked).toBe(
+				false,
+			);
+		}),
+	);
+
+	// A run that makes progress has not crash-looped, so its count starts over mid-run.
+	it(
+		"starts the restart count over once a turn commits, while the run goes on",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const sql = yield* SqlClient.SqlClient;
+			const execution = yield* RunnerExecution.Service;
+			const sessionId = yield* seedSession();
+			yield* sql`UPDATE session SET restarts = 3 WHERE id = ${sessionId}`;
+			const streaming = yield* hanging;
+			const services = yield* Effect.context<Control.Service>();
+			script.push("answer", "hang");
+			provider.during.run = send(sessionId, "S").pipe(Effect.orDie, Effect.provideContext(services));
+
+			yield* send(sessionId, "A");
+			yield* streaming;
+
+			expect(yield* stateOf(sessionId)).toEqual({ execution: "running", restarts: 0 });
+			yield* execution.interrupt(sessionId, "user", { awaitSettlement: true });
+		}),
+	);
+});
+
+describe("runner loop — cancel and unfinished replies", () => {
+	const provider = scriptedProvider();
+	const { effect: it } = testEffect(runtime({ open: provider.open }));
+
+	// A shutdown cut off the reply to A while B waited. Cancelling B must not drop A's unfinished
+	// reply: the session stays marked for the next start.
+	it(
+		"keeps a session marked when cancelling the last queued prompt leaves a reply cut off",
+		Effect.gen(function* () {
+			yield* provider.reset;
+			const control = yield* Control.Service;
+			const execution = yield* RunnerExecution.Service;
+			const events = yield* Event.Service;
+			const sql = yield* SqlClient.SqlClient;
+			const sessionId = yield* seedSession();
+			const streaming = yield* Deferred.make<void>();
+			yield* events.listen((event) =>
+				Schema.is(EventList.LLMTextDelta)(event) && event.data.delta === "partial"
+					? Deferred.succeed(streaming, undefined).pipe(Effect.asVoid)
+					: Effect.void,
+			);
+			provider.script.push("hang");
+			yield* send(sessionId, "A");
+			yield* Deferred.await(streaming);
+			yield* send(sessionId, "B", "followUp");
+			yield* execution.interrupt(sessionId, "shutdown", { awaitSettlement: true });
+			yield* settle(sessionId);
+
+			yield* control.cancel(sessionId, SessionMessageSchema.ID.make("B"));
+
+			const [row] = yield* sql<{ execution: string | null }>`SELECT execution FROM session WHERE id = ${sessionId}`;
+			expect(row?.execution).toBe("closed");
+		}),
+	);
 });

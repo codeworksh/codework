@@ -1,15 +1,14 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtom, useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Option } from "effect";
 import { AsyncResult } from "effect/reactivity";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, SquarePen } from "lucide-react";
 import { type MouseEvent, useState } from "react";
 
 import { Sidebar, SidebarContent, SidebarHeader, SidebarInput, SidebarRail } from "@/components/ui/sidebar";
 import { isMac, openMode } from "@codeworksh/widget/view";
 import { sessionAddress } from "../widgets/session/address";
 import { projectsAtom } from "../widgets/session/projects";
-import { insetTitleBar } from "../shell/titlebar";
 import { focusedAtom } from "../wm/chrome";
 import { deskAtom } from "../wm/instances";
 import { useOpenElsewhere } from "../wm/open";
@@ -27,7 +26,7 @@ export function SessionsSidebar() {
 	const result = useAtomValue(projectsAtom);
 	const [query, setQuery] = useState("");
 	const openElsewhere = useOpenElsewhere();
-	const place = useAtomValue(placeAtom);
+	const [place, setPlace] = useAtom(placeAtom);
 	const pickFolder = usePickFolder();
 	const navigate = useNavigate();
 	// The session in front on the workspace on screen reads as current.
@@ -38,6 +37,14 @@ export function SessionsSidebar() {
 	const current = instances.find((instance) => instance.id === focusedId)?.address;
 	// Picking lands on the start page, where the folder is used.
 	const addProject = pickFolder === undefined ? undefined : () => void pickFolder().then(() => navigate({ to: "/" }));
+	// A new session starts on the start page, in the current session's project when one is in front.
+	const startNew = () => {
+		const project = AsyncResult.isSuccess(result)
+			? result.value.find((candidate) => candidate.sessions.some(({ id }) => sessionAddress(id) === current))
+			: undefined;
+		if (project !== undefined) setPlace({ kind: "folder", path: project.path });
+		void navigate({ to: "/" });
+	};
 	// Primary and middle clicks open; a right click is left to the context menu. Shift, like a
 	// browser's new window, asks for a workspace of its own.
 	const open = (session: { id: string; project: { name: string } }, event: MouseEvent) => {
@@ -55,11 +62,9 @@ export function SessionsSidebar() {
 		: [];
 
 	return (
-		<Sidebar collapsible="offcanvas" className="select-none">
+		<Sidebar collapsible="offcanvas" className="shell-sidebar select-none">
 			<SidebarHeader className="gap-0 p-0">
-				{/* The window's drag region, clear of the macOS traffic lights. */}
-				<div className={`h-12 shrink-0 [-webkit-app-region:drag] ${insetTitleBar ? "pl-20" : ""}`} />
-				<div className="px-2 pb-2">
+				<div className="px-2 pt-2 pb-2">
 					{/* The icon centers on the input alone, not on the padding below it. */}
 					<div className="relative">
 						<Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-muted" />
@@ -69,22 +74,30 @@ export function SessionsSidebar() {
 							aria-label="Search sessions"
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
-							className="h-8 rounded-[8px] border-transparent bg-transparent pl-8 text-[13px] shadow-none focus-visible:bg-ink/5"
+							className="h-8 rounded-lg border-transparent bg-transparent pl-8 text-sm shadow-none focus-visible:bg-ink/5"
 						/>
 					</div>
+					<button
+						type="button"
+						onClick={startNew}
+						className="mt-1 flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm text-ink transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5"
+					>
+						<SquarePen className="size-3.5 text-ink-muted" aria-hidden />
+						New
+					</button>
 				</div>
 			</SidebarHeader>
-			<SidebarContent className="px-2 pb-2">
+			<SidebarContent className="px-2 pt-2 pb-2">
 				{AsyncResult.isFailure(result) ? (
 					// The CodeWork server is the usual reason, and the sidebar can say which state it is in and fix it.
 					Option.exists(AsyncResult.error(result), (error) => error._tag === "Server.CodeworkUnavailable") ? (
 						<ServerOffline />
 					) : (
-						<p className="px-2.5 py-2 text-[12px] text-ink-muted">Could not load sessions.</p>
+						<p className="px-2.5 py-2 text-xs text-ink-muted">Could not load sessions.</p>
 					)
 				) : AsyncResult.isSuccess(result) && sessions.length === 0 ? (
 					needle !== "" ? (
-						<p className="px-2.5 py-2 text-[12px] text-ink-muted">No sessions match “{query}”.</p>
+						<p className="px-2.5 py-2 text-xs text-ink-muted">No sessions match “{query}”.</p>
 					) : (
 						<Empty>
 							{place.kind === "none" && result.value.length === 0 ? (
@@ -112,19 +125,16 @@ export function SessionsSidebar() {
 									type="button"
 									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 									aria-current={sessionAddress(session.id) === current ? "true" : undefined}
-									className="block w-full rounded-[8px] px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5 aria-[current=true]:bg-ink/8"
+									className="block w-full rounded-lg px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5 aria-current:bg-ink/8"
 									onClick={(event) => open(session, event)}
 									onAuxClick={(event) => open(session, event)}
 								>
-									<div className="flex h-5 min-w-0 items-center gap-1.5 text-[12px] text-ink-muted">
+									<div className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-ink-muted">
 										<Monogram id={session.project.id} name={session.project.name} />
 										<span className="min-w-0 flex-1 truncate">{session.project.name}</span>
 										<span className="shrink-0 tabular-nums">{ago(session.updated)}</span>
 									</div>
-									<div className="mt-1 truncate text-[13px] text-ink">{session.title}</div>
-									{session.model !== undefined && (
-										<div className="mt-0.5 truncate text-[11px] text-ink-muted/60">{session.model.id}</div>
-									)}
+									<div className="mt-1 truncate text-sm text-ink">{session.title}</div>
 								</button>
 							</li>
 						))}

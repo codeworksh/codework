@@ -10,9 +10,63 @@
 				document.documentElement.dataset.theme = localStorage.getItem("codework-theme") ?? "tokyo-night";
 			} catch {}
 		</script>
+		<!-- Linked here rather than imported by style.css, so the splash paints in the theme before the app's JS runs. -->
+		<link rel="stylesheet" href="/src/themes.css" />
+		<style>
+			html,
+			body,
+			#root {
+				height: 100%;
+				margin: 0;
+			}
+
+			/* The app's desktop tint (--cw-desktop in style.css), so the swap to the app does not shift colour. */
+			body {
+				background: color-mix(in oklab, var(--t-bg) 96%, var(--t-text));
+				color: var(--t-text);
+				font:
+					13px/1.4 system-ui,
+					-apple-system,
+					"Segoe UI",
+					sans-serif;
+			}
+
+			#boot-shell {
+				display: flex;
+				height: 100%;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 16px;
+				-webkit-app-region: drag;
+				user-select: none;
+			}
+
+			#boot-shell img {
+				width: 64px;
+				height: 64px;
+				border-radius: 14px;
+			}
+
+			#boot-shell button {
+				padding: 6px 14px;
+				border: 1px solid currentColor;
+				border-radius: 6px;
+				background: transparent;
+				color: inherit;
+				font: inherit;
+				cursor: pointer;
+				-webkit-app-region: no-drag;
+			}
+		</style>
 	</head>
 	<body>
-		<div id="root"></div>
+		<!-- The splash: shown until the app mounts and replaces it. -->
+		<div id="root">
+			<div id="boot-shell">
+				<img src="/src/assets/codework.png" alt="CodeWork" />
+			</div>
+		</div>
 		<script type="module" src="/src/bootstrap.ts"></script>
 	</body>
 </html>

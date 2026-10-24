@@ -644,7 +644,7 @@ describe("convertMessages", () => {
 
 	it("omits item ids when replaying a prior Codex model id", () => {
 		const target = makeCodexModel({ id: "gpt-5.6-luna" });
-		const assistant = makeAssistantMessage(makeCodexModel({ id: "gpt-5.5" }), {
+		const assistant = makeAssistantMessage(makeCodexModel({ id: "gpt-6-luna" }), {
 			stopReason: "toolUse",
 			parts: [makeCompletedToolCall("call_1|fc_1", "search")],
 		});

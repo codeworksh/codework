@@ -37,7 +37,6 @@ const WITH_XHIGH: Model.ThinkingLevel[] = ["off", "low", "medium", "high", "xhig
 const OPENAI_LEVELS: Record<(typeof OPENAI_E2E_MODELS)[number], Model.ThinkingLevel[]> = {
 	"gpt-6-luna": WITH_MAX,
 	"gpt-5.6-luna": WITH_MAX,
-	"gpt-5.5": WITH_XHIGH,
 	"gpt-5.4": WITH_XHIGH,
 	"gpt-5.4-mini": WITH_XHIGH,
 	"gpt-5.4-nano": WITH_XHIGH,

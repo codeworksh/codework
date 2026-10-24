@@ -81,8 +81,8 @@ export function resolvePlan(model: Model.Info, context: Message.Context, options
 
 	/*
 	 * Preserve an explicit small answer allowance when it fits, and apply the
-	 * 1024-token reserve when context pressure reduces it. Pi's Anthropic wrapper
-	 * applies this reserve unconditionally; aikit deliberately permits small answers.
+	 * 1024-token reserve only when context pressure reduces it, rather than always:
+	 * aikit deliberately permits small answers.
 	 */
 	const budget =
 		maxTokens < adjusted.maxTokens

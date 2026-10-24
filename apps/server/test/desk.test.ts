@@ -60,7 +60,7 @@ it("desk round-trips and follows workspace deletion", async () => {
 		const rpc = yield* RpcClient.make(Contract.Api);
 		const empty = yield* rpc["desk.get"]();
 
-		const workspace = yield* rpc["workspaces.create"]({ name: "Scratch", icon: "box" });
+		const workspace = yield* rpc["workspaces.create"]({ name: "Scratch" });
 		const bit = 1 << workspace.bit;
 		const saved: Contract.Desk = {
 			instances: [
@@ -93,8 +93,10 @@ it("desk round-trips and follows workspace deletion", async () => {
 		}).pipe(Effect.flip);
 
 		// Two auto workspaces: one keeps a frame, the other is left empty without being closed.
-		const kept = yield* rpc["workspaces.create"]({ name: "Kept", icon: "box", auto: true });
-		yield* rpc["workspaces.create"]({ name: "Stray", icon: "box", auto: true });
+		const kept = yield* rpc["workspaces.create"]({ name: "Kept", auto: true });
+		// What its tab last read, as its frame set it.
+		yield* rpc["workspaces.update"]({ id: kept.id, tab: "Kept / A session" });
+		yield* rpc["workspaces.create"]({ name: "Stray", auto: true });
 		yield* rpc["desk.save"]({
 			instances: [{ id: "notes-2", kind: "notes", tags: 1 << kept.bit, props: {}, pinned: false }],
 			tileOrder: ["notes-2"],
@@ -121,9 +123,16 @@ it("desk round-trips and follows workspace deletion", async () => {
 		const rpc = yield* RpcClient.make(Contract.Api);
 		const workspaces = yield* rpc["workspaces.list"]();
 		const desk = yield* rpc["desk.get"]();
-		return { workspaces: workspaces.map(({ name, auto, pos }) => ({ name, auto, pos })), desk };
+		return { workspaces: workspaces.map(({ name, auto, pos, tab }) => ({ name, auto, pos, tab })), desk };
 	}).pipe(Effect.scoped, Effect.provide(protocol()), Effect.runPromise);
 	expect(afterRestart.workspaces.map((workspace) => workspace.name)).toEqual(["Main", "Code", "Notes", "Kept"]);
+	// A workspace's last tab survives the restart, so it names what it shows before its frame loads.
+	expect(afterRestart.workspaces.map((workspace) => workspace.tab)).toEqual([
+		undefined,
+		undefined,
+		undefined,
+		"Kept / A session",
+	]);
 
 	await expect(`${JSON.stringify({ ...steps, afterRestart }, null, "\t")}\n`).toMatchFileSnapshot(
 		"./__artifacts__/desk.json",

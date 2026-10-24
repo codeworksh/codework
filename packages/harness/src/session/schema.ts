@@ -48,6 +48,14 @@ export type Config = typeof Config.Type;
 export const InterruptReason = Schema.Literals(["user", "shutdown"]);
 export type InterruptReason = typeof InterruptReason.Type;
 
+/**
+ * A run left unfinished: `running` while one is in flight, and still after the process died during
+ * it; `closed` once a shutdown stopped it. Either resumes when the server starts again; a run that
+ * ended any other way leaves none.
+ */
+export const Execution = Schema.Literals(["running", "closed"]);
+export type Execution = typeof Execution.Type;
+
 // Shared persistence-boundary codecs. Append validates before writing; fork
 // decodes again because legacy/imported rows may predate that validation.
 export const JsonObject = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown));

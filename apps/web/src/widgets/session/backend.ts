@@ -1,8 +1,17 @@
 import { Bus, Codework, defineBackend, handle, Kv } from "@codeworksh/widget/backend";
-import { type EventEnvelope, HistoryEntry, type Part, type SessionInfo } from "@codeworksh/widget/codework";
+import {
+	type EventEnvelope,
+	HistoryEntry,
+	type Part,
+	QueuedPrompt,
+	type SessionInfo,
+} from "@codeworksh/widget/codework";
 import { Deferred, Effect, Fiber, Option, Schedule, Schema, Stream } from "effect";
 
 import {
+	Cancel,
+	type Cancelled,
+	Change,
 	Configure,
 	Create,
 	type Created,
@@ -32,12 +41,18 @@ const toInfo = (info: SessionInfo): Info => ({
 
 const sameInfo = Schema.toEquivalence(Info);
 const sameMessage = Schema.toEquivalence(HistoryEntry);
+const sameQueue = Schema.toEquivalence(Schema.Array(QueuedPrompt));
 
 /**
  * What changed from `before` to the fresh info and messages, in conversation order. A first seed
  * publishes nothing: no view holds a snapshot yet, and the one it loads already has everything.
  */
-const changes = (before: Snapshot | undefined, info: Info, messages: ReadonlyArray<HistoryEntry>): Update[] => {
+const changes = (
+	before: Snapshot | undefined,
+	info: Info,
+	messages: ReadonlyArray<HistoryEntry>,
+	queued: ReadonlyArray<QueuedPrompt>,
+): Update[] => {
 	if (before === undefined) return [];
 	const previous = new Map(before.messages.map((message) => [message.id, message]));
 	const current = new Set(messages.map((message) => message.id));
@@ -50,6 +65,8 @@ const changes = (before: Snapshot | undefined, info: Info, messages: ReadonlyArr
 				return old === undefined || !sameMessage(old, message);
 			})
 			.map((message) => ({ _tag: "Message" as const, message })),
+		// After the messages, so a prompt that was promoted is in the conversation before it leaves the queue.
+		...(sameQueue(before.queued, queued) ? [] : [{ _tag: "Queue" as const, queued }]),
 	];
 };
 
@@ -95,6 +112,7 @@ const describe = (error: { readonly _tag: string }) => {
 };
 
 const encodeReply = Schema.encodeEffect(Json.Reply);
+const encodeCancelled = Schema.encodeEffect(Json.Cancelled);
 const encodeCreated = Schema.encodeEffect(Json.Created);
 const encodeWindow = Schema.encodeEffect(Json.Window);
 const encodeUpdate = Schema.encodeEffect(Json.Update);
@@ -160,16 +178,21 @@ export const session = defineBackend({
 
 		/** Refetches the conversation, publishes what changed, then stores the snapshot. */
 		const refresh = Effect.fn("Session.refresh")(function* (id: string, cursor: number | undefined) {
-			const { info, history } = yield* Effect.all({
+			// In this order: a prompt promoted between the queue and history reads is then in both, never in neither.
+			const { info, queue, history } = yield* Effect.all({
 				info: codework("session.info", { sessionId: id }),
+				queue: codework("session.queue", { sessionId: id }),
 				history: codework("session.history", { sessionId: id }),
 			});
 			const before = yield* load(id);
 			const next = toInfo(info);
 			const messages = withStreamed(history.entries);
+			// One that is in both has been promoted: the conversation wins.
+			const listed = new Set(messages.map((message) => message.id));
+			const queued = queue.entries.filter((prompt) => !listed.has(prompt.id));
 			let seq = before?.seq ?? 0;
 			// Published before the snapshot is stored, so a view never holds a snapshot newer than its cursor.
-			for (const update of changes(before, next, messages)) {
+			for (const update of changes(before, next, messages, queued)) {
 				const payload = yield* encodeUpdate(update).pipe(Effect.orDie);
 				seq = (yield* bus.publish({ topic: topics.session(id), payload })).seq ?? seq;
 			}
@@ -178,6 +201,7 @@ export const session = defineBackend({
 			const snapshot: Snapshot = {
 				info: next,
 				messages,
+				queued,
 				seq,
 				...(resume === undefined ? {} : { cursor: resume }),
 			};
@@ -376,6 +400,7 @@ export const session = defineBackend({
 						_tag: "Window",
 						info: snapshot.info,
 						messages: snapshot.messages.slice(start, end),
+						queued: snapshot.queued,
 						seq: snapshot.seq,
 						more: start > 0,
 					};
@@ -429,6 +454,31 @@ export const session = defineBackend({
 				},
 			}).pipe(
 				Effect.as<Reply>({ _tag: "Done" }),
+				Effect.catch((error) => Effect.succeed<Reply>({ _tag: "Failed", message: describe(error) })),
+				Effect.flatMap((reply) => encodeReply(reply).pipe(Effect.orDie)),
+			),
+		);
+
+		// A cancel that lost to promotion answers `Sent`: the prompt is in the conversation, and the
+		// refresh that follows the log moving shows it there.
+		yield* handle(topics.cancel, Cancel, ({ sessionId, messageId }) =>
+			codework("session.cancel", { sessionId, messageId }).pipe(
+				Effect.map(({ cancelled }): Cancelled => (cancelled ? { _tag: "Cancelled" } : { _tag: "Sent" })),
+				Effect.catch((error) => Effect.succeed<Cancelled>({ _tag: "Failed", message: describe(error) })),
+				Effect.flatMap((reply) => encodeCancelled(reply).pipe(Effect.orDie)),
+			),
+		);
+
+		yield* handle(topics.change, Change, ({ sessionId, messageId, delivery, text }) =>
+			codework("session.update", {
+				sessionId,
+				messageId,
+				...(delivery === undefined ? {} : { delivery }),
+				...(text === undefined ? {} : { text }),
+			}).pipe(
+				Effect.map(({ updated }): Reply =>
+					updated ? { _tag: "Done" } : { _tag: "Failed", message: "That message was already sent." },
+				),
 				Effect.catch((error) => Effect.succeed<Reply>({ _tag: "Failed", message: describe(error) })),
 				Effect.flatMap((reply) => encodeReply(reply).pipe(Effect.orDie)),
 			),

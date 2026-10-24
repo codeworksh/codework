@@ -52,6 +52,17 @@ const managedShutdown = Layer.unwrap(
 );
 
 /**
+ * Resumes the runs the last server left unfinished, whether it crashed or shut down: the session
+ * table records them as they start, so this needs nothing from the previous process.
+ */
+const resumeUnfinished = Layer.effectDiscard(
+	Effect.gen(function* () {
+		const control = yield* Control.Service;
+		yield* Effect.forkScoped(control.resumeUnfinished);
+	}),
+);
+
+/**
  * Advertises the listener once it has an address: logs the endpoint and files
  * the registration later invocations discover it through.
  */
@@ -78,6 +89,7 @@ export const layer = (options: { host: string; port: number; harness: Harness.Op
 	);
 	const app = HttpRouter.serve(rpc, { disableListenLog: true }).pipe(
 		Layer.provideMerge(managedShutdown),
+		Layer.provideMerge(resumeUnfinished),
 		Layer.provide(OAuth.layer(options.harness.home === undefined ? {} : { home: options.harness.home })),
 	);
 	return app.pipe(

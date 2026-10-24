@@ -787,7 +787,7 @@ describe("WebSocket client", () => {
 	it("subscribes before a fast prompt and renders through completion, including continuation", () =>
 		Effect.gen(function* () {
 			const rpc = yield* connectedClient;
-			const session = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-5.5" } } });
+			const session = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-6-luna" } } });
 			const text: string[] = [];
 			const render = (event: EventSchema.Payload) =>
 				Effect.sync(() => {
@@ -801,7 +801,7 @@ describe("WebSocket client", () => {
 	it("session.message finds a prompt that ran, scoped to its own session", () =>
 		Effect.gen(function* () {
 			const rpc = yield* connectedClient;
-			const session = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-5.5" } } });
+			const session = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-6-luna" } } });
 			const messageId = Session.SessionMessageSchema.ID.create();
 
 			yield* rpc["session.prompt"]({ sessionId: session.id, text: "hello", id: messageId });
@@ -824,7 +824,7 @@ describe("WebSocket client", () => {
 			yield* Effect.gen(function* () {
 				const rpc = yield* connectedClient;
 				const session = yield* rpc["session.create"]({
-					runtime: { model: { provider: "openai", id: "gpt-5.5" } },
+					runtime: { model: { provider: "openai", id: "gpt-6-luna" } },
 				});
 				// Watch admissions over the wire. The connected frame is the readiness
 				// barrier: past it, nothing published can be missed.
@@ -907,7 +907,7 @@ describe("WebSocket client", () => {
 						"--provider",
 						"openai",
 						"--model",
-						"gpt-5.5",
+						"gpt-6-luna",
 						"hello",
 					],
 					{ timeout: 10000 },
@@ -928,7 +928,9 @@ describe("WebSocket client", () => {
 			let completed = false;
 			const program = Effect.gen(function* () {
 				const rpc = yield* connectedClient;
-				const session = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-5.5" } } });
+				const session = yield* rpc["session.create"]({
+					runtime: { model: { provider: "openai", id: "gpt-6-luna" } },
+				});
 				const running = yield* Client.run(rpc, { sessionId: session.id, text: "hello" }, () => Effect.void).pipe(
 					Effect.forkChild,
 				);
@@ -959,7 +961,9 @@ describe("WebSocket client", () => {
 			const entered = yield* Deferred.make<void>();
 			const program = Effect.gen(function* () {
 				const rpc = yield* connectedClient;
-				const session = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-5.5" } } });
+				const session = yield* rpc["session.create"]({
+					runtime: { model: { provider: "openai", id: "gpt-6-luna" } },
+				});
 				const running = yield* Client.run(rpc, { sessionId: session.id, text: "hello" }, () => Effect.void).pipe(
 					Effect.flip,
 					Effect.forkChild,
@@ -990,7 +994,9 @@ describe("WebSocket client", () => {
 			let cleaned = false;
 			const program = Effect.gen(function* () {
 				const rpc = yield* connectedClient;
-				const session = yield* rpc["session.create"]({ runtime: { model: { provider: "openai", id: "gpt-5.5" } } });
+				const session = yield* rpc["session.create"]({
+					runtime: { model: { provider: "openai", id: "gpt-6-luna" } },
+				});
 				yield* rpc["session.prompt"]({ sessionId: session.id, text: "hello" });
 				yield* Deferred.await(entered);
 				expect(

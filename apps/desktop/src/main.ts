@@ -124,11 +124,16 @@ function createMainWindow(): BrowserWindow {
 		}),
 		// Windows and Linux take the window's icon; macOS ignores it for the Dock's.
 		icon: ICON,
+		// Hidden until the page's first paint, the splash in the saved theme, so it never opens blank.
+		show: false,
 		webPreferences: {
 			preload: path.join(app.getAppPath(), "out/preload.cjs"),
 			sandbox: true,
 		},
 	});
+	window.once("ready-to-show", () => window.show());
+	// Linux can miss ready-to-show; the load finishing reveals the window there.
+	if (process.platform === "linux") window.webContents.once("did-finish-load", () => window.show());
 	void window.loadURL(APP_URL);
 	return window;
 }

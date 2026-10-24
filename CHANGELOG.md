@@ -4,12 +4,58 @@ This file is the canonical source for unreleased changes and published release n
 
 ## Format
 
-- Add in-progress work under `## [Unreleased]
+- Add in-progress work under `## [Unreleased]`.
+
+## [Unreleased]
 
 ### Added
 
 - The desktop start page creates a session in the folder you pick, or in a memory sandbox, sends your first prompt and opens the session. A memory session's project is named "In Memory".
 - The desktop start page's composer has a model picker and a Reasoning picker. The model picker lists providers down a rail with their models beside it and searches across all of them. With no model picked, settings decide; a default whose provider has no credentials shows muted and cannot be picked. Reasoning offers only the levels the model supports and marks the settings level as Default. The picks are remembered across restarts.
+
+### @codeworksh/harness
+
+#### Added
+
+- Prompts queued while the agent works can be read and changed before it takes them in. `Control.pending` lists them, steers and follow-ups, in the order they were sent. `Control.cancel` withdraws one, recorded as a `session.prompt.cancelled` event; it returns `false` when the prompt was already taken in, and a cancelled message id may be sent again. `Control.update` moves one to the other lane or rewrites its text, keeping its place, recorded as a `session.prompt.updated` event; moving it to the steer lane also wakes the session, so a prompt left queued by a stop runs now.
+- A run cut off by a crash or a shutdown resumes when the server starts again (`Control.resumeUnfinished`). A crash counts as a restart and a shutdown does not; a committed turn starts the count over. After 5 restarts (`Control.RESTART_LIMIT`) the session is parked instead of resumed: `Session.Info.parked` is `true`, and its next prompt runs it again. A resumed run answers the reply it was cut off in before a queued follow-up goes in; steers join it at once. A run the user stopped is not resumed, and what was queued behind it stays queued.
+
+#### Fixed
+
+- A turn started for a prompt that was cancelled just before it joined the conversation no longer asks the model anything.
+- A prompt changed, cancelled or sent again while it was being taken in no longer fails the run; the run takes in the prompt as it now stands.
+
+#### Internal
+
+- Migrations add `session_input.cancelled_seq`, and `session.execution` and `session.restarts`.
+- Tests use `gpt-6-luna` in place of the deprecated `gpt-5.5`.
+
+### @codeworksh/cli
+
+#### Added
+
+- Added the `session.queue` RPC (`{ sessionId }`): the prompts sent while the agent works and not yet taken in, steers and follow-ups, in the order they were sent.
+- Added the `session.cancel` RPC (`{ sessionId, messageId }`), which withdraws a queued prompt. `cancelled` is `false` when the prompt was already taken in.
+- Added the `session.update` RPC (`{ sessionId, messageId, delivery?, text? }`), which moves a queued prompt to the other lane or rewrites its text, keeping its place. `delivery: "steer"` also wakes the session. `updated` is `false` when the prompt was already taken in.
+- `codework serve` resumes the sessions a crash or a shutdown cut off when it starts. Session info carries `parked: true` for a session that restarted too often to resume on its own; its next prompt runs it again.
+
+#### Fixed
+
+- Ctrl+C on `codework run` without `--server` stops the run as a user stop, so `codework serve` does not resume it later.
+
+#### Internal
+
+- Tests use `gpt-6-luna` in place of the deprecated `gpt-5.5`.
+
+### @codeworksh/aikit
+
+#### Fixed
+
+- `modelgen` leaves out providers with no models instead of writing them as empty entries.
+
+#### Internal
+
+- `gpt-5.5` is out of the live OpenAI test models; tests use `gpt-6-luna`.
 
 ## [@codeworksh/cli@0.4.0] - 2026-10-20
 

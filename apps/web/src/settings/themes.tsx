@@ -35,7 +35,7 @@ export function ThemesSettings() {
 								{/* The theme's own tokens apply under its data-theme. */}
 								<span
 									data-theme={theme.id}
-									className={`flex aspect-[16/10] flex-col gap-1.5 border bg-(--t-bg) p-2.5 transition-colors ${
+									className={`flex aspect-16/10 flex-col gap-1.5 border bg-(--t-bg) p-2.5 transition-colors ${
 										selected
 											? "border-brand ring-1 ring-brand"
 											: "border-edge group-hover:border-edge-focus group-focus-visible:border-edge-focus"
@@ -48,7 +48,7 @@ export function ThemesSettings() {
 									</span>
 									<span className="h-2.5 w-1/3 bg-(--t-brand)" />
 								</span>
-								<span className="flex items-center gap-1.5 text-[13px]">
+								<span className="flex items-center gap-1.5 text-sm">
 									{theme.name}
 									{selected && <Check className="size-3.5 text-brand" strokeWidth={2} aria-hidden />}
 								</span>

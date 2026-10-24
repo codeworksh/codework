@@ -1,9 +1,9 @@
 import { useBus, useKv } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
-import { ArrowUp, Square } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Reply, Square } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
-import { Composer, ComposerButton, type Submit } from "@/components/composer";
+import { PromptComposer, ComposerHeader, ComposerSubmit, ComposerButton, type Submit } from "@/components/composer";
 import { ModelPicker, type ModelRef, ThinkingPicker } from "@/components/model";
 import type { Delivery, ThinkingLevel } from "@codeworksh/widget/codework";
 import { type Info, Json, topics } from "./schema";
@@ -34,6 +34,7 @@ export function SessionComposer({
 	running,
 	info,
 	onError,
+	restored,
 }: {
 	readonly sessionId: string;
 	readonly instanceId: string;
@@ -41,7 +42,67 @@ export function SessionComposer({
 	readonly info: Info;
 	/** A send or configure the backend refused, or undefined as a new one starts; the view shows it. */
 	readonly onError: (message: string | undefined) => void;
+	/** A queued prompt taken back: its text goes above the draft, once per `key`. */
+	readonly restored?: { readonly text: string; readonly key: number } | undefined;
 }) {
+	const root = useRef<HTMLDivElement>(null);
+	const input = useRef<HTMLTextAreaElement>(null);
+	const [expanded, setExpanded] = useState(false);
+	const expand = () => setExpanded(true);
+	const collapse = () => {
+		input.current?.blur();
+		setExpanded(false);
+	};
+	useEffect(() => {
+		if (expanded) input.current?.focus();
+	}, [expanded]);
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (
+				event.key === "Escape" &&
+				expanded &&
+				!event.defaultPrevented &&
+				root.current?.closest("article[data-focused='true']") &&
+				!Array.from(document.querySelectorAll("[role='dialog'], [role='menu']")).some(
+					(element) => element.getClientRects().length > 0,
+				)
+			) {
+				event.preventDefault();
+				input.current?.blur();
+				setExpanded(false);
+				return;
+			}
+			if (
+				event.defaultPrevented ||
+				event.repeat ||
+				event.isComposing ||
+				event.metaKey ||
+				event.ctrlKey ||
+				event.altKey ||
+				event.shiftKey ||
+				event.key.toLowerCase() !== "r"
+			)
+				return;
+			const target = event.target;
+			if (
+				target instanceof HTMLElement &&
+				(target.isContentEditable || target.closest("input, textarea, select, [role='dialog'], [role='menu']"))
+			)
+				return;
+			if (
+				root.current?.closest("article[data-focused='true']") === null ||
+				!root.current?.getClientRects().length ||
+				window.getSelection()?.toString()
+			)
+				return;
+			event.preventDefault();
+			setExpanded(true);
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => {
+			window.removeEventListener("keydown", onKeyDown);
+		};
+	}, [expanded]);
 	const bus = useBus();
 	const kv = useKv();
 	const [text, setText] = useState("");
@@ -66,6 +127,12 @@ export function SessionComposer({
 			active = false;
 		};
 	}, [kv, instanceId]);
+
+	useEffect(() => {
+		if (restored === undefined) return;
+		setText((current) => (current.trim() === "" ? restored.text : `${restored.text}\n\n${current}`));
+		setExpanded(true);
+	}, [restored]);
 
 	// Saved only once loaded, so the empty initial text never overwrites a stored draft.
 	useEffect(() => {
@@ -114,34 +181,68 @@ export function SessionComposer({
 
 	const empty = text.trim() === "";
 	return (
-		<Composer
-			value={text}
-			onChange={setText}
-			onSubmit={(submit) => void send(submit)}
-			placeholder={running ? "Steer the agent, or queue a follow-up" : "Ask for changes or send a follow-up"}
-			controls={
-				<>
-					<ModelPicker hostDir={info.hostDir} value={model} onChange={(next) => configure({ model: next })} />
-					<ThinkingPicker
-						hostDir={info.hostDir}
-						model={model}
-						value={thinkingLevel}
-						onChange={(level) => configure({ thinkingLevel: level })}
-					/>
-				</>
-			}
-			actions={
-				<>
-					{running && (
-						<ComposerButton label="Stop" onClick={() => void ask(topics.interrupt, { sessionId })}>
-							<Square className="size-3" fill="currentColor" strokeWidth={0} aria-hidden />
-						</ComposerButton>
-					)}
-					<ComposerButton label={running ? "Steer" : "Send"} disabled={empty || pending}>
-						<ArrowUp className="size-4" strokeWidth={2} aria-hidden />
-					</ComposerButton>
-				</>
-			}
-		/>
+		<div
+			ref={root}
+			onKeyDown={(event) => {
+				if (expanded && event.key === "Escape" && !event.defaultPrevented) {
+					event.preventDefault();
+					event.stopPropagation();
+					collapse();
+				}
+			}}
+		>
+			{!expanded ? (
+				<button
+					type="button"
+					onClick={expand}
+					aria-label="Write a reply"
+					className="flex h-12 w-full items-center gap-2 rounded-xl border border-edge bg-frame-top/95 px-4 text-left text-[13px] text-ink-muted shadow-frame outline-none hover:border-edge-focus focus-visible:ring-2 focus-visible:ring-ring"
+				>
+					<Reply className="size-4 shrink-0" strokeWidth={1.5} aria-hidden />
+					<span className="min-w-0 flex-1 truncate">{text || "Write a reply…"}</span>
+					<kbd className="rounded border border-edge px-1 text-[10px]">R</kbd>
+				</button>
+			) : (
+				<PromptComposer
+					inputRef={input}
+					onEscape={collapse}
+					header={<ComposerHeader title="Reply" icon={Reply} onClose={collapse} />}
+
+					value={text}
+					onChange={setText}
+					onSubmit={(submit) => void send(submit)}
+					placeholder={running ? "Steer the agent, or queue a follow-up" : "Ask for changes or send a follow-up"}
+					controls={
+						<>
+							<ModelPicker
+								hostDir={info.hostDir}
+								value={model}
+								onChange={(next) => configure({ model: next })}
+							/>
+							<ThinkingPicker
+								hostDir={info.hostDir}
+								model={model}
+								value={thinkingLevel}
+								onChange={(level) => configure({ thinkingLevel: level })}
+							/>
+						</>
+					}
+					actions={
+						<>
+							{running && (
+								<ComposerButton label="Stop" onClick={() => void ask(topics.interrupt, { sessionId })}>
+									<Square className="size-3" fill="currentColor" strokeWidth={0} aria-hidden />
+								</ComposerButton>
+							)}
+							<ComposerSubmit
+								label={running ? "Steer" : "Reply"}
+								disabled={empty || pending}
+								title={running ? "Steer now; Mod+Enter queues a follow-up" : "Reply (Enter)"}
+							/>
+						</>
+					}
+				/>
+			)}
+		</div>
 	);
 }

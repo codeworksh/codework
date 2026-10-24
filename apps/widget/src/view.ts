@@ -10,6 +10,7 @@ export {
 } from "./view/widget";
 export {
 	type Frame,
+	type FrameIcon,
 	FrameContext,
 	type OpenMode,
 	openMode,
@@ -17,7 +18,6 @@ export {
 	type Placement,
 	type Shell,
 	ShellContext,
-	type Tab,
 	useFrame,
 	useShell,
 } from "./view/shell";

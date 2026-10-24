@@ -1,16 +1,18 @@
 import { LegendList, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
-import type { HistoryEntry, Part, ToolCall } from "@codeworksh/widget/codework";
+import type { HistoryEntry, Part, QueuedPrompt, ToolCall } from "@codeworksh/widget/codework";
 import { useBus, useEvents, useFrame, type WidgetProps } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
-import { Brain, ChevronDown, ChevronRight, CircleAlert, MessageSquareText, Terminal, Wrench } from "lucide-react";
+import { Brain, ChevronDown, ChevronRight, CircleAlert, Terminal, Wrench } from "lucide-react";
 import { memo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ComposerNotice, type Notice } from "@/components/banner";
+import { Monogram } from "@/components/monogram";
 import { useModelsNotice } from "@/components/model";
-import { ago } from "../time";
 import { sessionId } from "./address";
 import { SessionComposer } from "./composer";
 import { Markdown } from "./markdown";
+import { Message } from "./message";
+import { Queue } from "./queue";
 import { useListedSession } from "./projects";
 import { type Info, Json, topics, type Update } from "./schema";
 
@@ -20,6 +22,9 @@ const decodeUpdate = Schema.decodeUnknownOption(Json.Update);
 
 /** Messages per page: the newest on open, then older ones as the reader scrolls up. */
 const PAGE = 60;
+
+// Shared reading width for the transcript and floating composer.
+const contentWidth = "mx-auto w-full max-w-[62rem]";
 
 export function Session({ address, instanceId }: WidgetProps<unknown>) {
 	const id = sessionId(address);
@@ -37,6 +42,8 @@ type State =
 			readonly messages: readonly HistoryEntry[];
 			/** Whether older messages remain to be paged in. */
 			readonly more: boolean;
+			/** Prompts sent but not yet in the conversation, oldest first. */
+			readonly queued: readonly QueuedPrompt[];
 			/** The first page's seq: updates are read from after it. */
 			readonly after: number;
 			/** Whether the agent works, once the backend has said; until then a draft reply implies it. */
@@ -71,6 +78,8 @@ const apply = (state: State, update: Update): State => {
 	switch (update._tag) {
 		case "Info":
 			return { ...state, info: update.info };
+		case "Queue":
+			return { ...state, queued: update.queued };
 		case "Removed":
 			return { ...state, messages: state.messages.filter((message) => message.id !== update.id) };
 		case "Running": {
@@ -89,6 +98,8 @@ const apply = (state: State, update: Update): State => {
 			return {
 				...state,
 				messages: index === -1 ? [...state.messages, update.message] : state.messages.with(index, update.message),
+				// Promoted: it is in the conversation now, whatever the next queue update says.
+				queued: state.queued.filter((prompt) => prompt.id !== update.message.id),
 			};
 		}
 	}
@@ -130,8 +141,8 @@ function useConversation(id: string) {
 			const window = await page(undefined);
 			if (window === undefined) return fail(`Could not load session ${id}.`);
 			if (window._tag === "Failed") return fail(window.message);
-			const { info, messages, more, seq } = window;
-			if (active) setState({ status: "ready", info, messages, more, after: seq, running: undefined });
+			const { info, messages, more, queued, seq } = window;
+			if (active) setState({ status: "ready", info, messages, more, queued, after: seq, running: undefined });
 		})().catch(() => fail("The CodeWork server is not reachable."));
 		return () => {
 			active = false;
@@ -173,21 +184,26 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 	// Named from the sessions list at once, so the frame never shows its default title while loading.
 	const listed = useListedSession(id);
 	const title = state.status === "ready" ? state.info.title : listed?.title;
-	const project = state.status === "ready" ? state.info.project?.name : listed?.project;
+	const project = state.status === "ready" ? state.info.project : listed?.project;
+	const projectId = project?.id;
+	const projectName = project?.name;
 
 	useEffect(() => {
 		if (title === undefined) return;
 		// The project leads, so sessions from different projects tell apart at a glance.
-		setTitle(title, project);
-		setIcon(MessageSquareText);
-		// While focused, the workspace's tab reads as this session: its project over its title.
-		setTab({ title: project ?? "Session", subtitle: title });
-	}, [title, project, setTitle, setIcon, setTab]);
+		setTitle(title, projectName);
+		// The project's badge, as in the sessions sidebar.
+		if (projectId !== undefined && projectName !== undefined) setIcon(<Monogram id={projectId} name={projectName} />);
+		// While focused, the workspace's tab reads as this session: its project, then its title.
+		setTab(projectName === undefined ? title : `${projectName} / ${title}`);
+	}, [title, projectId, projectName, setTitle, setIcon, setTab]);
 
 	// Models that can't be listed first: a state that clears itself, so it can't be dismissed. Then a
 	// refused send, else why the last run failed; dismissing hides that one notice only.
 	const models = useModelsNotice(state.status === "ready" ? state.info.hostDir : undefined);
 	const [sendError, setSendError] = useState<string>();
+	// A queued prompt taken back to edit; the composer puts its text above the draft.
+	const [restored, setRestored] = useState<{ readonly text: string; readonly key: number }>();
 	const [dismissed, setDismissed] = useState<Notice>();
 	const notice: Notice | undefined =
 		sendError !== undefined
@@ -198,14 +214,29 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 	const shown =
 		notice !== undefined && (dismissed?.title !== notice.title || dismissed.description !== notice.description);
 
+	const surface = useRef<HTMLDivElement>(null);
+	const composer = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const element = composer.current;
+		if (element === null) return;
+		const observer = new ResizeObserver(() => {
+			surface.current?.style.setProperty("--composer-height", `${element.getBoundingClientRect().height}px`);
+		});
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [state.status]);
+
 	if (state.status === "loading") return null;
 	if (state.status === "failed") return <p className="p-3 text-ink-muted">{state.message}</p>;
 	const last = state.messages.at(-1);
 	const running = state.running ?? (last?.role === "assistant" && last.state === "draft");
 	return (
-		<div className="flex h-full flex-col">
+		<div ref={surface} className="relative flex h-full flex-col">
 			<Transcript state={state} running={running} loadOlder={loadOlder} />
-			<div className="mx-auto w-full max-w-3xl shrink-0 px-3 pb-3">
+			<div
+				ref={composer}
+				className={`${contentWidth} pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 *:pointer-events-auto`}
+			>
 				{models !== undefined ? (
 					<ComposerNotice {...models} />
 				) : (
@@ -219,23 +250,34 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 						/>
 					)
 				)}
+				{/* Idle too: prompts left waiting by a stop or a failure run with the next message, so they stay in view. */}
+				{state.queued.length > 0 && (
+					<Queue
+						sessionId={id}
+						queued={state.queued}
+						running={running}
+						onError={setSendError}
+						onRestore={(text) => setRestored((current) => ({ text, key: (current?.key ?? 0) + 1 }))}
+					/>
+				)}
 				<SessionComposer
 					sessionId={id}
 					instanceId={instanceId}
 					running={running}
 					info={state.info}
 					onError={setSendError}
+					restored={restored}
 				/>
 			</div>
 		</div>
 	);
 }
 
-// New turns and growing replies keep the list at its end while the reader is there; the composer
-// below the list never moves what is already on screen.
+// New turns, growing replies and a taller composer (queued prompts above it) keep the list at its
+// end while the reader is there; a reader scrolled up stays where they are.
 const follow = {
 	animated: false,
-	on: { dataChange: true, footerLayout: false, itemLayout: true, layout: true },
+	on: { dataChange: true, footerLayout: true, itemLayout: true, layout: true },
 } as const satisfies MaintainScrollAtEndOptions;
 
 // Prepending an older page, or a row growing above the viewport, keeps what the reader sees in place.
@@ -256,6 +298,7 @@ function Transcript({
 	readonly running: boolean;
 	readonly loadOlder: () => void;
 }) {
+	const [scrolled, setScrolled] = useState(false);
 	const turns = useMemo(() => turnsOf(state.messages), [state.messages]);
 	const renderItem = useCallback(
 		({ item, index }: { readonly item: Turn; readonly index: number }) => (
@@ -282,7 +325,9 @@ function Transcript({
 			maintainScrollAtEnd={follow}
 			maintainVisibleContentPosition={anchor}
 			onStartReached={state.more ? loadOlder : undefined}
-			className="min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none]"
+			ListFooterComponent={<div className="h-[calc(var(--composer-height,60px)+24px)]" />}
+			onScroll={(event) => setScrolled(event.nativeEvent.contentOffset.y > 1)}
+			className={`session-transcript min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [overflow-anchor:none] ${scrolled ? "session-transcript-scrolled" : ""}`}
 		/>
 	);
 }
@@ -339,23 +384,26 @@ const TurnView = memo(function TurnView({ turn, active }: { readonly turn: Turn;
 	const thinking = active && (last?.state !== "draft" || answer.length === 0);
 
 	return (
-		<section className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-3 text-[14px] leading-relaxed">
+		<section className={`${contentWidth} flex flex-col gap-5 px-4 py-3 text-sm leading-relaxed`}>
 			{turn.user !== undefined && <UserMessage entry={turn.user} />}
-			{work.length > 0 && (
-				<WorkLog
-					parts={work}
-					started={turn.user?.createdAt}
-					ended={active ? undefined : endOf(turn.replies)}
-					at={last?.updatedAt}
-				/>
+			{(work.length > 0 || thinking || answer.length > 0 || interrupted) && (
+				<Message role="assistant" at={turn.replies[0]?.createdAt}>
+					{work.length > 0 && (
+						<WorkLog
+							parts={work}
+							started={turn.user?.createdAt}
+							ended={active ? undefined : endOf(turn.replies)}
+						/>
+					)}
+					{thinking && <ThinkingRow />}
+					{answer.length > 0 && (
+						<div>
+							<Markdown text={answer.join("\n\n")} streaming={last?.state === "draft"} />
+						</div>
+					)}
+					{interrupted && <p className="text-xs text-ink-muted">Interrupted</p>}
+				</Message>
 			)}
-			{thinking && <ThinkingRow />}
-			{answer.length > 0 && (
-				<div className="text-ink/90">
-					<Markdown text={answer.join("\n\n")} streaming={last?.state === "draft"} />
-				</div>
-			)}
-			{interrupted && <p className="text-[12px] text-ink-muted">Interrupted</p>}
 		</section>
 	);
 }, sameTurn);
@@ -376,14 +424,10 @@ function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
 	const text = entry.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n\n");
 	const images = entry.parts.filter((part) => part.type === "image").length;
 	return (
-		<div className="flex justify-end">
-			<div className="max-w-[80%] rounded-2xl bg-ink/6 px-3.5 py-2.5 whitespace-pre-wrap text-ink">
-				{text}
-				{images > 0 && (
-					<p className="mt-1 text-[12px] text-ink-muted">{images === 1 ? "1 image" : `${images} images`}</p>
-				)}
-			</div>
-		</div>
+		<Message role="user" at={entry.createdAt}>
+			{text !== "" && <p className="whitespace-pre-wrap">{text}</p>}
+			{images > 0 && <p className="text-xs text-ink-muted">{images === 1 ? "1 image" : `${images} images`}</p>}
+		</Message>
 	);
 }
 
@@ -410,13 +454,11 @@ function WorkLog({
 	parts,
 	started,
 	ended,
-	at,
 }: {
 	readonly parts: readonly Part[];
 	readonly started: number | undefined;
 	/** Absent while the turn is still running. */
 	readonly ended: number | undefined;
-	readonly at: number | undefined;
 }) {
 	const [open, setOpen] = useState(false);
 	const label =
@@ -427,12 +469,12 @@ function WorkLog({
 				: "Worked";
 	return (
 		<div>
-			<div className="flex items-center gap-2 border-b border-edge pb-1.5">
+			<div className="flex items-center gap-2 border-b border-edge/50 pb-2 text-xs text-ink-muted">
 				<button
 					type="button"
 					aria-expanded={open}
 					onClick={() => setOpen(!open)}
-					className="-mx-1 flex items-center gap-1 rounded-md px-1 text-ink transition-colors hover:bg-ink/5"
+					className="-mx-1 flex items-center gap-1 rounded-md px-1 text-ink-muted transition-colors outline-none hover:bg-ink/5 focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					{label}
 					{open ? (
@@ -441,7 +483,6 @@ function WorkLog({
 						<ChevronRight className="size-3.5 text-ink-muted" aria-hidden />
 					)}
 				</button>
-				{at !== undefined && <span className="ml-auto text-[12px] text-ink-muted tabular-nums">{ago(at)}</span>}
 			</div>
 			{open && (
 				<div className="flex flex-col pt-1.5">
@@ -466,7 +507,7 @@ function WorkRow({ part }: { readonly part: Part }) {
 			);
 		case "text":
 			return (
-				<div className="py-1 text-ink/80">
+				<div className="py-1 text-ink-muted">
 					<Markdown text={part.text} />
 				</div>
 			);
@@ -487,7 +528,7 @@ function ToolRow({ call }: { readonly call: ToolCall }) {
 	);
 	return (
 		<Row icon={icon} label={summarize(call)}>
-			<div className="flex flex-col gap-2 font-mono text-[12px]">
+			<div className="flex flex-col gap-2 font-mono text-xs">
 				<pre className="overflow-x-auto whitespace-pre-wrap text-ink-muted">
 					{JSON.stringify(call.arguments, null, 2)}
 				</pre>

@@ -37,7 +37,7 @@ export function Divider({ left, height, mfact, range, onResizeStart, onResize, o
 			aria-valuemax={Math.round(range.max * 100)}
 			aria-valuenow={Math.round(mfact * 100)}
 			tabIndex={0}
-			className="group/divider absolute top-0 z-20 flex w-2 -translate-x-1/2 cursor-col-resize justify-center outline-none"
+			className="absolute top-0 z-20 w-2 -translate-x-1/2 cursor-col-resize rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
 			style={{ left, height }}
 			onKeyDown={(event) => {
 				if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -45,8 +45,6 @@ export function Divider({ left, height, mfact, range, onResizeStart, onResize, o
 				const step = event.key === "ArrowLeft" ? -0.05 : 0.05;
 				onChange(Math.min(range.max, Math.max(range.min, mfact + step)));
 			}}
-		>
-			<div className="my-4 w-0.5 rounded-full bg-ink/0 transition-colors group-hover/divider:bg-ink/25 group-focus-visible/divider:bg-ink/25 group-active/divider:bg-ink/40" />
-		</div>
+		/>
 	);
 }

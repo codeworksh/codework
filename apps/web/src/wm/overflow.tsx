@@ -1,4 +1,5 @@
-import { ChevronUp, type LucideIcon } from "lucide-react";
+import type { FrameIcon } from "@codeworksh/widget/view";
+import { ChevronUp } from "lucide-react";
 import type { Rect } from "webwm";
 
 import {
@@ -7,12 +8,13 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { IconOf } from "./frame";
 
 export interface Hidden {
 	readonly id: string;
 	readonly title: string;
 	readonly lead?: string | undefined;
-	readonly icon?: LucideIcon | undefined;
+	readonly icon?: FrameIcon | undefined;
 }
 
 /**
@@ -39,9 +41,9 @@ export function Overflow({
 					<span className="font-semibold">+{hidden.length} more</span>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent side="top" align="start" className="max-h-80 w-64 overflow-y-auto">
-					{hidden.map(({ id, title, lead, icon: Icon }) => (
+					{hidden.map(({ id, title, lead, icon }) => (
 						<DropdownMenuItem key={id} onSelect={() => onPick(id)}>
-							{Icon && <Icon strokeWidth={1.75} />}
+							{icon !== undefined && <IconOf icon={icon} />}
 							<span className="truncate">
 								{lead !== undefined && <span className="text-ink-muted/70">{lead} / </span>}
 								{title}

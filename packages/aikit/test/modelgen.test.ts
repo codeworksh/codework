@@ -154,8 +154,8 @@ describe("generateModels", () => {
 				protocol: "anthropic",
 			});
 			expect(catalog.anthropic?.["claude-without-tools"]).toBeUndefined();
-			// Codex builds on the OpenAI entries, which this snapshot has none of.
-			expect(catalog["openai-codex"]).toEqual({});
+			// Codex builds on the OpenAI entries, which this snapshot has none of, so it is left out.
+			expect(catalog["openai-codex"]).toBeUndefined();
 			for (const provider of ["google", "google-vertex"]) {
 				for (const id of googleIds) {
 					const generated = catalog[provider]?.[id];

@@ -1,7 +1,6 @@
-import type { LucideIcon } from "lucide-react";
 import { Atom } from "effect/reactivity";
 
-import type { Tab } from "@codeworksh/widget/view";
+import type { FrameIcon } from "@codeworksh/widget/view";
 import { registry } from "../widgets";
 import type { Instance } from "./instances";
 
@@ -10,9 +9,9 @@ export interface Chrome {
 	readonly title?: string;
 	/** Shown before the title, quieter. */
 	readonly lead?: string | undefined;
-	readonly icon?: LucideIcon;
+	readonly icon?: FrameIcon;
 	/** What the workspace tab shows while this frame is its focused one. */
-	readonly tab?: Tab;
+	readonly tab?: string;
 }
 
 /**

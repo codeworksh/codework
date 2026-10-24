@@ -46,27 +46,26 @@ export const Workspace = Schema.Struct({
 	bit: Schema.Number,
 	pos: Schema.Number,
 	name: Schema.String,
-	/** A name from the app's icon set, e.g. "code". */
-	icon: Schema.String,
 	layout: Layout,
 	/** Master column share of the width, 0–1. */
 	mfact: Schema.Number,
 	/** Created to show something the user opened (a session); removed once it shows nothing. */
 	auto: Schema.Boolean,
+	/** What its tab last read, as its focused widget set it; absent until a widget has. */
+	tab: Schema.optionalKey(Schema.String),
 });
 export type Workspace = typeof Workspace.Type;
 
 export const WorkspaceCreate = Schema.Struct({
 	name: Schema.String,
-	icon: Schema.String,
 	auto: Schema.optionalKey(Schema.Boolean),
 });
 export const WorkspaceUpdate = Schema.Struct({
 	id: Schema.String,
 	name: Schema.optional(Schema.String),
-	icon: Schema.optional(Schema.String),
 	layout: Schema.optional(Layout),
 	mfact: Schema.optional(Schema.Number),
+	tab: Schema.optional(Schema.String),
 });
 export const WorkspaceOrder = Schema.Struct({ ids: Schema.Array(Schema.String) });
 export const WorkspaceId = Schema.Struct({ id: Schema.String });

@@ -28,7 +28,7 @@ export interface ConformanceOptions {
 	readonly combinesOutput: boolean;
 	/** Interrupting the fiber stops the command (Daytona's exec API cannot). */
 	readonly cancels: boolean;
-	/** Commands see the harness process environment (the host, like Pi's `getShellEnv`). */
+	/** Commands see the harness process environment (the host's). */
 	readonly inheritsHostEnv: boolean;
 	/** `uname -s` reports Linux. */
 	readonly linux: boolean;

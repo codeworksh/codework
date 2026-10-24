@@ -1,24 +1,24 @@
 @import "tailwindcss";
 /* shadcn/ui's enter and exit animations (animate-in, fade-in-0, zoom-in-95, ...). */
 @import "tw-animate-css";
-@import "./themes.css";
 
 /* `--cw-*` are the theme contract widgets style against. They map onto the site palette's `--t-*`
    tokens, so switching data-theme restyles everything; light-dark() follows the theme's color-scheme. */
 :root {
-	--cw-desktop: var(--t-bg);
+	/* A quiet shell tint keeps even White and near-black palettes spatially legible. */
+	--cw-desktop: color-mix(in oklab, var(--t-bg) 96%, var(--t-text));
 	--cw-frame: var(--t-surface);
 	/* A touch lighter than the frame (whiter in light palettes), for the panel's top-down gradient. */
 	--cw-frame-top: light-dark(
-		color-mix(in oklab, var(--t-surface) 55%, white),
-		color-mix(in oklab, var(--t-surface) 93%, var(--t-text))
+		color-mix(in oklab, var(--t-surface) 88%, white),
+		color-mix(in oklab, var(--t-surface) 97%, var(--t-text))
 	);
-	--cw-edge: var(--t-border-subtle);
-	--cw-edge-focus: var(--t-border-strong);
-	--cw-ink: var(--t-text);
-	--cw-ink-secondary: var(--t-text-secondary);
-	--cw-ink-muted: var(--t-text-muted);
-	--cw-brand: var(--t-brand);
+	--cw-edge: color-mix(in oklab, var(--t-surface) 88%, var(--t-text));
+	--cw-edge-focus: color-mix(in oklab, var(--t-surface) 76%, var(--t-text));
+	--cw-ink: color-mix(in oklab, var(--t-text) 96%, var(--t-surface));
+	--cw-ink-secondary: color-mix(in oklab, var(--t-text) 85%, var(--t-surface));
+	--cw-ink-muted: color-mix(in oklab, var(--t-text) 75%, var(--t-surface));
+	--cw-brand: light-dark(color-mix(in oklab, var(--t-brand) 85%, var(--t-text)), var(--t-brand));
 	--cw-brand-ink: var(--t-brand-ink);
 	--cw-scrollbar: color-mix(in oklab, var(--t-text) 16%, transparent);
 	--cw-danger: light-dark(#dc2626, #f87171);
@@ -26,8 +26,9 @@
 	--cw-success: light-dark(#16a34a, #4ade80);
 	--cw-info: light-dark(#2563eb, #60a5fa);
 	--cw-highlight: light-dark(rgb(255 255 255 / 0.9), color-mix(in oklab, var(--t-text) 9%, transparent));
-	--cw-shadow-near: light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.35));
-	--cw-shadow-far: light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.5));
+	--cw-drop-shadow: color-mix(in oklab, var(--t-text) 20%, transparent);
+	--cw-shadow-near: light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.22));
+	--cw-shadow-far: light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.3));
 	--cw-dialog-shadow: 0 24px 64px -24px light-dark(rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.9));
 	--cw-menu-shadow: 0 16px 40px -18px light-dark(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.8));
 }
@@ -39,6 +40,13 @@
 	/* Tailwind's built-in curves are too weak for UI motion. */
 	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 	--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+	/* Sizes below Tailwind's xs, for dense chrome: badges, kbd hints, metadata. */
+	--text-2xs: 0.6875rem;
+	--text-2xs--line-height: calc(1 / 0.6875);
+	--text-3xs: 0.625rem;
+	--text-3xs--line-height: calc(0.875 / 0.625);
+	--text-4xs: 0.5rem;
+	--text-4xs--line-height: 1;
 }
 
 @theme inline {
@@ -166,4 +174,54 @@
 	::-webkit-scrollbar-thumb {
 		background: var(--cw-scrollbar);
 	}
+}
+
+/* The navigation rail stays put when the shadcn sessions sidebar folds away. */
+.app-shell [data-slot="sidebar"] > .shell-sidebar {
+	left: 52px;
+	top: 48px;
+	height: calc(100svh - 56px);
+	border: 0;
+	border-right: 1px solid color-mix(in oklab, var(--cw-edge) 60%, transparent);
+	border-radius: 12px 0 0 12px;
+	background: var(--cw-frame);
+}
+.app-shell [data-collapsible="offcanvas"] > .shell-sidebar {
+	left: calc(52px - var(--sidebar-width));
+	visibility: hidden;
+}
+.app-shell .shell-sidebar [data-slot="sidebar-inner"] {
+	background: transparent;
+}
+
+/* Sidebar and title-bar tabs follow the same width without trailing one another. */
+.app-shell > div > [data-slot="sidebar"] > [data-slot="sidebar-gap"],
+.app-shell .shell-sidebar {
+	transition: none;
+}
+
+/* The transcript continues beneath the floating reply card rather than ending at a hard seam. */
+.session-transcript {
+	mask-image: linear-gradient(
+		to bottom,
+		var(--transcript-top, black),
+		black 16px,
+		black calc(100% - var(--composer-height, 60px) - 40px),
+		transparent calc(100% - var(--composer-height, 60px) + 32px)
+	);
+}
+
+.session-transcript-scrolled {
+	--transcript-top: transparent;
+}
+
+/* Only soften edges that have more settings content beyond them. */
+.settings-scroll {
+	mask-image: linear-gradient(
+		to bottom,
+		var(--scroll-top, black),
+		black 16px,
+		black calc(100% - 24px),
+		var(--scroll-bottom, black)
+	);
 }

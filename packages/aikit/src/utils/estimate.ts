@@ -120,8 +120,8 @@ function estimateMessages(messages: ReadonlyArray<Message.Message>): ContextUsag
 	const usage = lastAssistantUsage(messages);
 	if (usage) {
 		const usageTokens = calculateContextTokens(usage.usage);
-		// Unlike Pi's separate tool-result messages, our results are attached to
-		// the assistant turn after its usage was reported. Only its output is counted.
+		// Tool results are attached to the assistant turn after its usage was
+		// reported, not sent as separate messages. Only its output is counted.
 		const latest = messages[usage.index]!;
 		let resultChars = 0;
 		for (const part of latest.parts) {

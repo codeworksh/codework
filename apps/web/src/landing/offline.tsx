@@ -23,9 +23,9 @@ export function ServerOffline() {
 		<button
 			type="button"
 			onClick={() => void navigate({ to: "/settings/servers" })}
-			className="text-[11px] text-ink-muted/70 underline-offset-2 outline-none hover:text-ink hover:underline focus-visible:underline"
+			className="text-2xs text-ink-muted/70 underline-offset-2 outline-none hover:text-ink hover:underline focus-visible:underline"
 		>
-			Server Settings
+			Provider Settings
 		</button>
 	);
 

@@ -10,8 +10,8 @@ import { pendingCall } from "../tools.fixture.ts";
 
 /**
  * One tree and one set of grep / find / ls calls, run on every sandbox the search
- * tools support. The cases follow Pi's own tool tests and regressions (#3302 path
- * globs, #3303 nested .gitignore), plus the limits and truncation Pi documents.
+ * tools support. The cases cover path globs, nested .gitignore files, and the
+ * tools' limits and truncation.
  */
 
 export const files: Record<string, string> = {

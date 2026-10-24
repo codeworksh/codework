@@ -227,8 +227,12 @@ export function Desktop({ workspace }: DesktopProps) {
 			setChrome((current) => {
 				const previous = current.get(instanceId) ?? {};
 				const next = { ...previous, ...patch };
-				const sameTab = next.tab?.title === previous.tab?.title && next.tab?.subtitle === previous.tab?.subtitle;
-				if (next.title === previous.title && next.lead === previous.lead && next.icon === previous.icon && sameTab)
+				if (
+					next.title === previous.title &&
+					next.lead === previous.lead &&
+					next.icon === previous.icon &&
+					next.tab === previous.tab
+				)
 					return current;
 				return new Map(current).set(instanceId, next);
 			}),
@@ -288,12 +292,14 @@ export function Desktop({ workspace }: DesktopProps) {
 		leave(instanceId, retag(tag), workspaceRoute(destination), retag((byId.get(instanceId)?.tags ?? 0) | tag));
 	};
 
-	// A new workspace is auto, so it goes once the frame leaves it; it is named like the frame's tab would be.
+	// A new workspace is auto, so it goes once the frame leaves it; it is named for what the frame belongs
+	// to (a session's project), else for the frame.
 	const moveNew = async (instanceId: string) => {
 		const instance = byId.get(instanceId);
 		if (instance === undefined) return;
-		const name = chrome.get(instanceId)?.tab?.title ?? chromeOf(instance, chrome.get(instanceId)).title;
-		const created = await createWorkspace({ name, icon: "app-window", auto: true }).catch(() => undefined);
+		const { lead, title } = chromeOf(instance, chrome.get(instanceId));
+		const name = lead ?? title;
+		const created = await createWorkspace({ name, auto: true }).catch(() => undefined);
 		if (created !== undefined) move(instanceId, created);
 	};
 
@@ -421,6 +427,7 @@ export function Desktop({ workspace }: DesktopProps) {
 							focused={widget.id === focusedId}
 							pinned={instance.pinned}
 							maximized={layout === "monocle"}
+							integrated={arrangement.placements.length === 1}
 							canDrag={layout === "tile" && !instance.pinned}
 							offset={drag?.widgetId === widget.id ? drag : null}
 							animate={!resizing && !resized}
@@ -476,7 +483,7 @@ export function Desktop({ workspace }: DesktopProps) {
 				))}
 				{drag?.target && (
 					<div
-						className="pointer-events-none absolute z-20 h-0.5 -translate-y-px rounded-full bg-ink/40"
+						className="pointer-events-none absolute z-20 h-4 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,var(--cw-drop-shadow),transparent_70%)]"
 						style={{
 							left: drag.target.indicator.x + 12,
 							top: drag.target.indicator.y,

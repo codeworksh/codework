@@ -9,7 +9,6 @@
 		"bit": 3,
 		"pos": 3,
 		"name": "Scratch",
-		"icon": "box",
 		"layout": "tile",
 		"mfact": 0.6,
 		"auto": false
@@ -147,7 +146,8 @@
 			{
 				"name": "Kept",
 				"auto": true,
-				"pos": 3
+				"pos": 3,
+				"tab": "Kept / A session"
 			}
 		],
 		"desk": {

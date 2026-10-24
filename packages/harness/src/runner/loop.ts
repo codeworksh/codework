@@ -267,12 +267,16 @@ export const layer = (options: Options = {}) =>
 			const runTurnAttempt = Effect.fn("Loop.runTurnAttempt", { level: "Info" })(function* (
 				promotion: Promotion,
 				snapshot: State.Snapshot,
+				continuing: boolean,
 			) {
 				const sessionId = snapshot.sessionId;
 				if (promotion !== undefined) {
 					const cutoff = yield* events.latestSequence(sessionId);
-					if (promotion === "followUp") yield* inputs.promoteFollowUp(sessionId);
-					yield* inputs.promoteSteers(sessionId, cutoff);
+					const followUp = promotion === "followUp" && (yield* inputs.promoteFollowUp(sessionId));
+					const steers = yield* inputs.promoteSteers(sessionId, cutoff);
+					// The pending input this turn was started for was cancelled before promotion: with no
+					// earlier work to continue there is nothing to answer, so no provider request.
+					if (!continuing && !followUp && steers === 0) return { needsContinuation: false } satisfies TurnResult;
 				}
 
 				const assembled = yield* context.assemble(sessionId);
@@ -413,16 +417,19 @@ export const layer = (options: Options = {}) =>
 				);
 			});
 
+			/** `continuing`: earlier work (tool results, a forced resume) needs a reply even when nothing is promoted. */
 			const runTurn = Effect.fn("Loop.runTurn", { level: "Info" })(function* (
 				promotion: Promotion,
 				snapshot: State.Snapshot,
+				continuing: boolean,
 			) {
-				return yield* runTurnAttempt(promotion, snapshot);
+				return yield* runTurnAttempt(promotion, snapshot, continuing);
 			});
 
 			const run = Effect.fn("Loop.run", { level: "Info" })(function* (input: {
 				readonly sessionId: SessionSchema.ID;
 				readonly force: boolean;
+				readonly recovered?: boolean;
 			}) {
 				yield* healDanglingDraft(input.sessionId);
 
@@ -435,18 +442,38 @@ export const layer = (options: Options = {}) =>
 					"gen_ai.conversation.id": input.sessionId,
 				});
 
-				let promotion: Promotion = hasSteer ? "steer" : hasFollowUp ? "followUp" : undefined;
+				// A recovered run first answers the reply it was cut off in, from the same committed messages,
+				// before a queued follow-up goes in; steers join it either way.
+				const cutOff =
+					input.recovered === true &&
+					!hasSteer &&
+					hasFollowUp &&
+					(yield* context.assemble(input.sessionId).pipe(
+						Effect.map((assembled) => {
+							const leaf =
+								assembled.lastAssistant?.entryId === assembled.leafEntryId
+									? assembled.lastAssistant.message
+									: undefined;
+							return (
+								assembled.messages.length > 0 && leaf?.stopReason !== "stop" && leaf?.stopReason !== "length"
+							);
+						}),
+					));
+				let promotion: Promotion = hasSteer ? "steer" : hasFollowUp && !cutOff ? "followUp" : undefined;
 				const drain = Effect.gen(function* () {
 					let shouldRun = true;
+					let continuing = input.force;
 					while (shouldRun) {
 						const snapshot = yield* state.snapshot(input.sessionId);
 						let needsContinuation = true;
 						while (needsContinuation) {
-							const result = yield* runTurn(promotion, snapshot);
+							const result = yield* runTurn(promotion, snapshot, continuing);
 							promotion = "steer";
+							continuing = result.needsContinuation;
 							needsContinuation =
 								result.needsContinuation || (yield* inputs.hasPending(input.sessionId, "steer"));
 						}
+						continuing = false;
 						shouldRun = yield* inputs.hasPending(input.sessionId, "followUp");
 						promotion = shouldRun ? "followUp" : undefined;
 					}
