@@ -101,15 +101,17 @@ const run = (command: string) =>
 const command = Effect.fnUntraced(function* (line: string, what: string) {
 	let running = commands.get(line);
 	if (running === undefined) {
-		// Detached, so a caller giving up does not stop it for the others waiting on it.
-		running = yield* Effect.forkDetach(run(line));
+		// Detached, so a caller giving up does not stop it for the others waiting on it. A failure is
+		// forgotten when it happens, whether or not anyone still waits.
+		const forget = (output: string | undefined) =>
+			Effect.sync(() => {
+				if (output === undefined && commands.get(line) === running) commands.delete(line);
+			});
+		running = yield* Effect.forkDetach(Effect.andThen(Effect.yieldNow, run(line).pipe(Effect.tap(forget))));
 		commands.set(line, running);
 	}
 	const output = yield* Fiber.join(running);
-	if (output === undefined) {
-		if (commands.get(line) === running) commands.delete(line);
-		return yield* Effect.fail(`Failed to resolve ${what} from shell command: ${line}`);
-	}
+	if (output === undefined) return yield* Effect.fail(`Failed to resolve ${what} from shell command: ${line}`);
 	return output;
 });
 
