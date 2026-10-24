@@ -29,62 +29,62 @@
 		{
 			"server": "mine",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "twin",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "ours",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "all",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "mine",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "twin",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "ours",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "all",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "mine",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "twin",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "ours",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		},
 		{
 			"server": "all",
 			"state": "disconnected",
-			"tools": 10
+			"tools": 11
 		}
 	]
 }

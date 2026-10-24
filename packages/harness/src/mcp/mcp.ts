@@ -261,21 +261,22 @@ export const layer = (options: {
 				);
 				// Calls replace an expired session themselves; this covers a background request seeing it first.
 				live.connection.onSessionExpired(current(retire(server, live)));
+				// Listed without the server's lock, which calls and closing need: the listing can take a while.
 				live.connection.onToolsChanged(
-					current(
-						live.connection.tools().pipe(
-							Effect.tap((tools) =>
-								Effect.sync(() => {
-									server.tools = tools;
+					Effect.sync(() => {
+						fork(
+							live.connection.tools().pipe(
+								Effect.match({
+									onSuccess: (tools) => {
+										if (server.live === live) server.tools = tools;
+									},
+									onFailure: (error) => {
+										if (server.live === live) server.error = `failed to refresh tools: ${error.message}`;
+									},
 								}),
 							),
-							Effect.catch((error) =>
-								Effect.sync(() => {
-									server.error = `failed to refresh tools: ${error.message}`;
-								}),
-							),
-						),
-					),
+						);
+					}),
 				);
 				live.connection.onLog((entry) => log.write(server.name, entry));
 			};
@@ -453,7 +454,8 @@ export const layer = (options: {
 						new ToolCallError({
 							server: name,
 							tool: "resources",
-							message: `MCP server "${name}" failed: ${message}`,
+							// Listings name the server beside each failure already.
+							message,
 						}),
 				);
 				return {
@@ -585,6 +587,11 @@ export const layer = (options: {
 							};
 							instances.set(key, server);
 							start(server);
+						} else if (server.state === "failed" && server.attempt === undefined) {
+							// A server that could not connect declares no tools, so no call would retry it, and
+							// shared instances would keep every later session on it. Retry in the background;
+							// waiting would hold up every prompt while it is down.
+							start(server);
 						}
 						const entry: Entry = { config, server };
 						session.servers.set(name, entry);
@@ -635,6 +642,10 @@ export const layer = (options: {
 					);
 				}
 				const output = { save: McpOutput.save };
+				// Resource tools follow their servers' exposure: declared when one of them is `direct`.
+				const resourceTools = [...session.servers.values()].some(
+					(entry) => withResources(entry) && exposureOf(entry.config) === "direct",
+				);
 				for (const [name, entry] of session.servers) {
 					const server = entry.server;
 					if (server === undefined || server.tools.length === 0) continue;
@@ -650,23 +661,26 @@ export const layer = (options: {
 								tool,
 								name: names.get(tool.name)!,
 								call: call(session, name, tool.name),
-								content: { ...output, readable: withResources(entry) },
+								// A resource link points to `read_mcp_resource` only when the model has it.
+								content: { ...output, readable: resourceTools && withResources(entry) },
 							}),
 						);
 					}
 				}
-				// Resource tools follow their servers' exposure: declared when one of them is `direct`.
-				if (
-					[...session.servers.values()].some(
-						(entry) => withResources(entry) && exposureOf(entry.config) === "direct",
-					)
-				)
+				if (resourceTools)
 					tools.push(
 						...McpResources.make({
 							servers: () =>
 								[...session.servers]
 									.filter(([, entry]) => withResources(entry))
 									.map(([name]) => resourceServer(session, name)),
+							// A server still connecting may offer resources once it has.
+							ready: () =>
+								Effect.forEach(
+									[...session.servers.values()],
+									({ server }) => (server?.ready === undefined ? Effect.void : Deferred.await(server.ready)),
+									{ discard: true },
+								),
 							content: output,
 						}),
 					);
@@ -685,6 +699,9 @@ export const layer = (options: {
 						Effect.sync(() => {
 							session.leases -= 1;
 							for (const server of used(session)) hold(server, -1);
+							// Every session drains, MCP or not; one with no servers has nothing worth keeping.
+							if (session.leases === 0 && session.servers.size === 0 && sessions.get(session.id) === session)
+								sessions.delete(session.id);
 						}),
 				).pipe(Effect.asVoid);
 

@@ -413,9 +413,14 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 		const a = yield* Session.create({ directory: shared, model });
 		const b = yield* Session.create({ directory: shared, model });
 		const c = yield* Session.create({ directory: other, model });
-		yield* a.run("a");
-		yield* b.run("b");
-		yield* c.run("c");
+		// A lease on A's servers spans the three runs, so a slow runner cannot idle out the shared
+		// instances between them; the short timeout only matters once it is released.
+		yield* Effect.gen(function* () {
+			yield* Mcp.Service.use((mcp) => mcp.lease(a.id));
+			yield* a.run("a");
+			yield* b.run("b");
+			yield* c.run("c");
+		}).pipe(Effect.scoped);
 		// No drain holds any server now, so every instance closes once the idle timeout passes.
 		const status = Mcp.Service.use((mcp) =>
 			Effect.forEach([a, b, c], (session) => mcp.status(session.id)).pipe(Effect.map((all) => all.flat())),
@@ -437,7 +442,7 @@ it("mcp: scopes decide who shares a server, and idle servers close", async () =>
 				database: ":memory:",
 				plugins: [defaultPromptPlugin],
 				llm,
-				// Long enough for the three exchanges to share instances, short enough to watch them close.
+				// Short, to watch idle instances close.
 				mcpIdleTimeout: "1500 millis",
 			}),
 		),
