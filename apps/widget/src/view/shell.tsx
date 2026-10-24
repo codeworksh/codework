@@ -38,12 +38,6 @@ export interface Shell {
 /** A frame's icon: a Lucide icon, or an element drawn at icon size (a project's badge). */
 export type FrameIcon = LucideIcon | ReactElement;
 
-/** What a workspace's tab shows: a title, and a quieter line beneath it. */
-export interface Tab {
-	readonly title: string;
-	readonly subtitle?: string;
-}
-
 export interface Frame {
 	readonly instanceId: string;
 	/**
@@ -54,10 +48,11 @@ export interface Frame {
 	/** Replaces the default icon. */
 	readonly setIcon: (icon: FrameIcon) => void;
 	/**
-	 * What the workspace's tab shows while this frame is the workspace's focused one. Without it the
-	 * tab shows the workspace's name over this frame's title.
+	 * What the workspace's tab reads while this frame is the workspace's focused one, as
+	 * "Project / Title" say; the tab shortens it to fit. Without it the tab reads the workspace's name
+	 * and this frame's title.
 	 */
-	readonly setTab: (tab: Tab) => void;
+	readonly setTab: (title: string) => void;
 }
 
 /**

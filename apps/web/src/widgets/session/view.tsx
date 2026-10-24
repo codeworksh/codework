@@ -194,8 +194,8 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 		setTitle(title, projectName);
 		// The project's badge, as in the sessions sidebar.
 		if (projectId !== undefined && projectName !== undefined) setIcon(<Monogram id={projectId} name={projectName} />);
-		// While focused, the workspace's tab reads as this session: its project over its title.
-		setTab({ title: projectName ?? "Session", subtitle: title });
+		// While focused, the workspace's tab reads as this session: its project, then its title.
+		setTab(projectName === undefined ? title : `${projectName} / ${title}`);
 	}, [title, projectId, projectName, setTitle, setIcon, setTab]);
 
 	// Models that can't be listed first: a state that clears itself, so it can't be dismissed. Then a

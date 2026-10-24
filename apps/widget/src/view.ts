@@ -18,7 +18,6 @@ export {
 	type Placement,
 	type Shell,
 	ShellContext,
-	type Tab,
 	useFrame,
 	useShell,
 } from "./view/shell";

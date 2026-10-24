@@ -227,8 +227,12 @@ export function Desktop({ workspace }: DesktopProps) {
 			setChrome((current) => {
 				const previous = current.get(instanceId) ?? {};
 				const next = { ...previous, ...patch };
-				const sameTab = next.tab?.title === previous.tab?.title && next.tab?.subtitle === previous.tab?.subtitle;
-				if (next.title === previous.title && next.lead === previous.lead && next.icon === previous.icon && sameTab)
+				if (
+					next.title === previous.title &&
+					next.lead === previous.lead &&
+					next.icon === previous.icon &&
+					next.tab === previous.tab
+				)
 					return current;
 				return new Map(current).set(instanceId, next);
 			}),
@@ -288,11 +292,13 @@ export function Desktop({ workspace }: DesktopProps) {
 		leave(instanceId, retag(tag), workspaceRoute(destination), retag((byId.get(instanceId)?.tags ?? 0) | tag));
 	};
 
-	// A new workspace is auto, so it goes once the frame leaves it; it is named like the frame's tab would be.
+	// A new workspace is auto, so it goes once the frame leaves it; it is named for what the frame belongs
+	// to (a session's project), else for the frame.
 	const moveNew = async (instanceId: string) => {
 		const instance = byId.get(instanceId);
 		if (instance === undefined) return;
-		const name = chrome.get(instanceId)?.tab?.title ?? chromeOf(instance, chrome.get(instanceId)).title;
+		const { lead, title } = chromeOf(instance, chrome.get(instanceId));
+		const name = lead ?? title;
 		const created = await createWorkspace({ name, auto: true }).catch(() => undefined);
 		if (created !== undefined) move(instanceId, created);
 	};
