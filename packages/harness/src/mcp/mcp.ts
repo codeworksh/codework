@@ -102,6 +102,8 @@ interface Live {
 	readonly scope: Scope.Closeable;
 	inflight: number;
 	retired: boolean;
+	/** Bumped by every `tools/list_changed`, so only the latest listing is kept. */
+	refreshes: number;
 }
 
 /** One running instance of a server, shared by the sessions whose servers resolve to its key. */
@@ -194,6 +196,9 @@ export const layer = (options: {
 		Service,
 		Effect.gen(function* () {
 			const root = yield* Effect.scope;
+			// Connections close in parallel on shutdown, so one slow server's stop grace does not hold up
+			// the rest. Made before the fibers below, so connect attempts are interrupted before it closes.
+			const servers = yield* Scope.fork(root, "parallel");
 			const fork = yield* FiberSet.makeRuntime<never, void, never>();
 			const forkAttempt = yield* FiberSet.makeRuntime<never, Live, ConnectError>();
 			const context = yield* Effect.context<ChildProcessSpawner.ChildProcessSpawner>();
@@ -227,14 +232,14 @@ export const layer = (options: {
 					return {
 						_tag: "Http",
 						url: new URL(config.url),
-						headers: yield* McpValue.resolveAll(config.headers ?? {}, `${what} header`),
+						headers: yield* McpValue.resolveAll(config.headers ?? {}, "header", `${what} header`),
 					} satisfies McpClient.Http;
 				return {
 					_tag: "Stdio",
 					// One executable and its arguments, not a command line: only a leading `~/` is expanded.
 					command: expandTilde(config.command, hostPath),
 					args: (config.args ?? []).map((arg) => expandTilde(arg, hostPath)),
-					env: yield* McpValue.resolveAll(config.env ?? {}, `${what} env`),
+					env: yield* McpValue.resolveAll(config.env ?? {}, "env", `${what} env`),
 					cwd: hostPath.resolve(server.cwd, expandTilde(config.cwd ?? ".", hostPath)),
 				} satisfies McpClient.Stdio;
 			});
@@ -262,29 +267,31 @@ export const layer = (options: {
 				// Calls replace an expired session themselves; this covers a background request seeing it first.
 				live.connection.onSessionExpired(current(retire(server, live)));
 				// Listed without the server's lock, which calls and closing need: the listing can take a while.
+				// Listings can finish out of order; only the latest one counts.
 				live.connection.onToolsChanged(
 					Effect.sync(() => {
+						const refresh = ++live.refreshes;
+						const latest = () => server.live === live && live.refreshes === refresh;
 						fork(
 							live.connection.tools().pipe(
 								Effect.match({
 									onSuccess: (tools) => {
-										if (server.live === live) server.tools = tools;
+										if (latest()) server.tools = tools;
 									},
 									onFailure: (error) => {
-										if (server.live === live) server.error = `failed to refresh tools: ${error.message}`;
+										if (latest()) server.error = `failed to refresh tools: ${error.message}`;
 									},
 								}),
 							),
 						);
 					}),
 				);
-				live.connection.onLog((entry) => log.write(server.name, entry));
 			};
 
 			/** One connect attempt, run apart from any caller so that closing the server can interrupt it. */
 			const attempt = (server: Server): Effect.Effect<Live, ConnectError> =>
 				Effect.gen(function* () {
-					const scope = yield* Scope.fork(root, "sequential");
+					const scope = yield* Scope.fork(servers, "sequential");
 					const config = server.config;
 					const connect = Effect.gen(function* () {
 						const target = yield* endpoint(server);
@@ -293,6 +300,7 @@ export const layer = (options: {
 							endpoint: target,
 							...(server.roots === undefined ? {} : { roots: server.roots }),
 							timeout: { request: Duration.seconds(config.timeout ?? DEFAULT_TIMEOUT_SECONDS) },
+							onLog: (entry) => log.write(server.name, entry),
 						}).pipe(Scope.provide(scope));
 						const tools = yield* connection.tools();
 						return { connection, tools };
@@ -311,7 +319,13 @@ export const layer = (options: {
 						yield* Effect.logWarning("mcp connect failed", { server: server.name, error: message });
 						return yield* new ConnectError({ server: server.name, message });
 					}
-					const live: Live = { connection: exit.value.connection, scope, inflight: 0, retired: false };
+					const live: Live = {
+						connection: exit.value.connection,
+						scope,
+						inflight: 0,
+						retired: false,
+						refreshes: 0,
+					};
 					server.live = live;
 					server.tools = exit.value.tools;
 					server.resources = exit.value.connection.capabilities?.resources !== undefined;
@@ -349,7 +363,9 @@ export const layer = (options: {
 						}
 						if (server.attempt === undefined) {
 							server.state = "connecting";
-							server.attempt = forkAttempt(attempt(server));
+							// Started after the assignment: an attempt that fails at once would otherwise clear
+							// `attempt` before it is set, and the finished fiber would stand in for every retry.
+							server.attempt = forkAttempt(Effect.andThen(Effect.yieldNow, attempt(server)));
 						}
 						return server.attempt;
 					}).pipe(server.lock.withPermits(1));

@@ -139,7 +139,8 @@ const variables = Effect.fnUntraced(function* (value: string, what: string) {
  */
 export const resolve = Effect.fnUntraced(function* (value: string, kind: keyof typeof UNSAFE, what: string) {
 	const resolved = yield* value.startsWith("!") ? command(value.slice(1), what) : variables(value, what);
-	if (UNSAFE[kind].pattern.test(resolved)) return yield* new ValueError({ message: `${what} contains ${UNSAFE[kind].what}` });
+	if (UNSAFE[kind].pattern.test(resolved))
+		return yield* new ValueError({ message: `${what} contains ${UNSAFE[kind].what}` });
 	return resolved;
 });
 
