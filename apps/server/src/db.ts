@@ -114,6 +114,11 @@ const migrations = {
 		const sql = yield* SqlClient.SqlClient;
 		yield* sql`ALTER TABLE workspaces DROP COLUMN icon`;
 	}),
+	// What the workspace's tab last read, so a workspace not yet opened since a restart names what it shows.
+	"202610240001_workspace_tab": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		yield* sql`ALTER TABLE workspaces ADD COLUMN tab TEXT`;
+	}),
 };
 
 const setup = Effect.gen(function* () {

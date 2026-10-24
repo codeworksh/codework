@@ -146,7 +146,8 @@
 			{
 				"name": "Kept",
 				"auto": true,
-				"pos": 3
+				"pos": 3,
+				"tab": "Kept / A session"
 			}
 		],
 		"desk": {

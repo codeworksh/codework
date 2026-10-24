@@ -18,11 +18,17 @@ const fail = (message: string) => new Contract.WorkspaceError({ message });
 export const handlers = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
 
-	// SQLite has no booleans; `auto` is stored as 0 or 1.
-	const list = sql<Omit<Workspace, "auto"> & { auto: number }>`
-		SELECT id, bit, pos, name, layout, mfact, auto FROM workspaces ORDER BY pos
+	// SQLite has no booleans; `auto` is stored as 0 or 1. A tab never set is NULL.
+	const list = sql<Omit<Workspace, "auto" | "tab"> & { auto: number; tab: string | null }>`
+		SELECT id, bit, pos, name, layout, mfact, auto, tab FROM workspaces ORDER BY pos
 	`.pipe(
-		Effect.map((rows) => rows.map((row): Workspace => ({ ...row, auto: row.auto === 1 }))),
+		Effect.map((rows) =>
+			rows.map(({ auto, tab, ...row }): Workspace => ({
+				...row,
+				auto: auto === 1,
+				...(tab === null ? {} : { tab }),
+			})),
+		),
 		Effect.orDie,
 	);
 
