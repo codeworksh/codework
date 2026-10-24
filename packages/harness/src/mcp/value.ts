@@ -112,7 +112,8 @@ const command = Effect.fnUntraced(function* (line: string, what: string) {
 		commands.set(line, running);
 	}
 	const output = yield* Fiber.join(running);
-	if (output === undefined) return yield* new ValueError({ message: `Failed to resolve ${what} from shell command: ${line}` });
+	if (output === undefined)
+		return yield* new ValueError({ message: `Failed to resolve ${what} from shell command: ${line}` });
 	return output;
 });
 

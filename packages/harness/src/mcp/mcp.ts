@@ -300,7 +300,9 @@ export const layer = (options: {
 							endpoint: target,
 							...(server.roots === undefined ? {} : { roots: server.roots }),
 							timeout: { request: Duration.seconds(config.timeout ?? DEFAULT_TIMEOUT_SECONDS) },
-							onLog: (entry) => log.write(server.name, entry),
+							// Written on the service's fibers: a failed handshake closes the connection's, and
+							// its last messages usually say why.
+							onLog: (entry) => Effect.sync(() => fork(log.write(server.name, entry))),
 						}).pipe(Scope.provide(scope));
 						const tools = yield* connection.tools();
 						return { connection, tools };
