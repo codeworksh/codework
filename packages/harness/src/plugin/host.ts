@@ -1,4 +1,6 @@
+import type { ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import { Cause, Effect, Schema } from "effect";
+import type { RegisteredTool } from "../tool/tool.ts";
 import type { Prepared } from "./catalog.ts";
 import type { SharedPluginContext } from "./context.ts";
 import { make } from "./registry.ts";
@@ -12,11 +14,21 @@ export class SetupError extends Schema.TaggedError<SetupError>()("Plugin.SetupEr
 export const run = Effect.fn("PluginHost.run")(function* (
 	selection: ReadonlyArray<Prepared>,
 	input: Omit<SharedPluginContext, "plugin">,
+	/** The tools of the MCP servers the `mcp` domain settled on, added before the `tool` domain runs. */
+	mcp: (servers: ReadonlyArray<readonly [string, ServerConfig]>) => Effect.Effect<ReadonlyArray<RegisteredTool>>,
 ) {
-	const buckets = make();
+	const buckets = make(input.settings.mcp.servers);
 	const ctx = Object.freeze({ ...input, plugin: buckets.registry });
+	let settled = false;
+	const settle = Effect.gen(function* () {
+		if (settled) return;
+		settled = true;
+		const tools = yield* mcp(buckets.settle());
+		for (const tool of tools) buckets.registry.tools.add(tool);
+	});
 	const setup = Effect.gen(function* () {
 		for (const { plugin, options } of selection) {
+			if (plugin.kind !== "mcp") yield* settle;
 			yield* Effect.suspend(() => {
 				const result = plugin.setup(ctx, options);
 				if (Effect.isEffect(result))
@@ -56,6 +68,7 @@ export const run = Effect.fn("PluginHost.run")(function* (
 				}),
 			);
 		}
+		yield* settle;
 		return yield* Effect.try({
 			try: () => buckets.freeze(input.location.directory),
 			catch: (cause) =>
