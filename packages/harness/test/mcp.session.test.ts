@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, it } from "vite-plus/test";
+import { expect, it, onTestFinished } from "vite-plus/test";
 import { ContextCodec } from "../src/context/codec.ts";
 import { Harness } from "../src/effect/harness.ts";
 import { Session } from "../src/effect/session.ts";
@@ -50,7 +50,8 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 	const home = join(dir.path, "home");
 	const project = join(dir.path, "project");
 	const work = join(dir.path, "work");
-	await fs.mkdir(work, { recursive: true });
+	// A server's own relative `cwd` resolves against the session's directory on a host sandbox.
+	await fs.mkdir(join(work, "srv"), { recursive: true });
 	process.env.MCP_E2E_GREETING = "hello";
 	// A `!command` printing a notice after the token, say: never sent, and never shown.
 	process.env.MCP_E2E_BAD_HEADER = "Bearer sk-e2e-secret\nnotice";
@@ -60,6 +61,7 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 	await write(join(home, "mcp.json"), {
 		mcpServers: {
 			e2e: stdio({
+				cwd: "srv",
 				toolExposure: { secret: "hidden" },
 				env: { E2E_GREETING: "${MCP_E2E_GREETING}", E2E_PEM: "${MCP_E2E_PEM}" },
 			}),
@@ -118,6 +120,23 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 				pendingCall("mcp__e2e__args", { word: "abc", extra: true }, "excess"),
 			],
 			[],
+			// Third exchange: where the server runs, what the model is not shown in full, and resources.
+			[
+				pendingCall("mcp__e2e__cwd", {}, "cwd"),
+				pendingCall("mcp__e2e__link", {}, "link"),
+				pendingCall("mcp__e2e__big", {}, "big"),
+				pendingCall("list_mcp_resources", {}, "resources-all"),
+				pendingCall("list_mcp_resources", { server: "e2e" }, "resources-page"),
+				// The server's cursor goes back exactly as it was given, spaces and all.
+				pendingCall("list_mcp_resources", { server: "e2e", cursor: " page-2 " }, "resources-next"),
+				// Models fill optional strings with "": a blank cursor is no cursor.
+				pendingCall("list_mcp_resources", { server: "e2e", cursor: "" }, "resources-blank"),
+				pendingCall("list_mcp_resource_templates", {}, "templates"),
+				pendingCall("read_mcp_resource", { server: "e2e", uri: "fixture://notes.txt" }, "read-text"),
+				pendingCall("read_mcp_resource", { server: "e2e", uri: "fixture://data.bin" }, "read-binary"),
+				pendingCall("read_mcp_resource", { server: "nope", uri: "fixture://x" }, "read-unknown"),
+			],
+			[],
 		],
 		requests,
 	);
@@ -130,6 +149,7 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 		});
 		yield* session.run("Use the fixture.");
 		yield* session.run("Once more.");
+		yield* session.run("Resources.");
 		const path = yield* session.path();
 		const messages = yield* Effect.forEach(path, ContextCodec.decodeMessage);
 		const status = yield* Mcp.Service.use((mcp) => mcp.status(session.id));
@@ -181,9 +201,30 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 		required: ["text"],
 	});
 
+	// The server reports its directory as the OS resolves it, through any symlink in the temp path.
+	expect(outcome("cwd")?.content).toEqual([await fs.realpath(join(work, "srv"))]);
+
+	// What the model is not shown in full is kept on the host, in files only the user can read.
+	// Paths are read between the message's own delimiters, so a temp directory with spaces still parses.
+	const bigFile = /\[Full output: (.+) \(read it with offset\/limit\)\]/.exec(outcome("big")?.content[0] ?? "")?.[1];
+	const binaryFile = /saved to (.+)\]$/.exec(outcome("read-binary")?.content[0] ?? "")?.[1];
+	onTestFinished(async () => {
+		for (const file of [bigFile, binaryFile]) if (file) await fs.rm(file, { force: true });
+	});
+	expect(await fs.readFile(bigFile!, "utf8")).toBe(`start ${"x".repeat(30 * 1024)} end`);
+	expect([...(await fs.readFile(binaryFile!))]).toEqual([0, 1, 2, 3]);
+	expect((await fs.stat(binaryFile!)).mode & 0o777).toBe(0o600);
+	const big = outcome("big")!.content[0]!;
+	expect(Buffer.byteLength(big)).toBeLessThan(21 * 1024);
+	expect(big).toMatch(/^start x+…\d+ chars truncated…x+ end$/m);
+
+	const real = await fs.realpath(dir.path);
 	const normalise = (value: unknown) =>
 		JSON.parse(
 			JSON.stringify(value)
+				.replaceAll(bigFile!, "<output>.txt")
+				.replaceAll(binaryFile!, "<output>.bin")
+				.replaceAll(real, "<tmp>")
 				.replaceAll(dir.path, "<tmp>")
 				.replaceAll(process.execPath, "<node>")
 				.replaceAll(`"${pidBefore}"`, '"<pid-before>"')
@@ -206,8 +247,22 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 				"invalid",
 				"pattern",
 				"excess",
+				"cwd",
+				"link",
+				"resources-all",
+				"resources-page",
+				"resources-next",
+				"resources-blank",
+				"templates",
+				"read-text",
+				"read-binary",
+				"read-unknown",
 			].map((id) => [id, outcome(id)]),
 		),
+		// The cut text itself is checked above; its frame is what the model reads around it.
+		big: outcome("big")
+			?.content[0]?.split("\n")
+			.filter((line) => !line.startsWith("start ")),
 		status: result.status,
 		configErrors: result.errors,
 	});
