@@ -1,6 +1,6 @@
 import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { Option, Schema } from "effect";
-import { ArrowUp, ChevronDown, Folder, FolderPlus } from "lucide-react";
+import { ChevronDown, Folder, FolderPlus, SquarePen } from "lucide-react";
 import { useContext, useMemo, useState } from "react";
 
 import {
@@ -11,7 +11,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ComposerNotice } from "@/components/banner";
-import { Composer, ComposerButton } from "@/components/composer";
+import { PromptComposer, ComposerHeader, ComposerSubmit } from "@/components/composer";
 import { makeHost } from "../kernel/host";
 import { sessionAddress } from "../widgets/session/address";
 import { Json, type Place as Where, topics } from "../widgets/session/schema";
@@ -83,7 +83,8 @@ export function Landing() {
 				<Wordmark className="pointer-events-none w-[min(88%,44rem)] shrink-0 text-brand opacity-15" />
 				<div className="mt-10 w-full max-w-2xl shrink-0">
 					{notice !== undefined && <ComposerNotice {...notice} />}
-					<Composer
+					<PromptComposer
+						header={<ComposerHeader title="New Session" icon={SquarePen} />}
 						autoFocus
 						value={query}
 						onChange={setQuery}
@@ -104,11 +105,7 @@ export function Landing() {
 								/>
 							</>
 						}
-						actions={
-							<ComposerButton label="Send" disabled={!canSend}>
-								<ArrowUp className="size-4" strokeWidth={2} aria-hidden />
-							</ComposerButton>
-						}
+						actions={<ComposerSubmit label="Start Session" disabled={!canSend} />}
 						tray={
 							<>
 								<DropdownMenu>

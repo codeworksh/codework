@@ -1,9 +1,9 @@
 import { useBus, useKv } from "@codeworksh/widget/view";
 import { Option, Schema } from "effect";
-import { CornerDownLeft, Reply, Square, X } from "lucide-react";
+import { Reply, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { Composer, ComposerButton, type Submit } from "@/components/composer";
+import { PromptComposer, ComposerHeader, ComposerSubmit, ComposerButton, type Submit } from "@/components/composer";
 import { ModelPicker, type ModelRef, ThinkingPicker } from "@/components/model";
 import type { Delivery, ThinkingLevel } from "@codeworksh/widget/codework";
 import { type Info, Json, topics } from "./schema";
@@ -203,25 +203,10 @@ export function SessionComposer({
 					<kbd className="rounded border border-edge px-1 text-[10px]">R</kbd>
 				</button>
 			) : (
-				<Composer
+				<PromptComposer
 					inputRef={input}
 					onEscape={collapse}
-					className="rounded-xl bg-frame-top [&_textarea]:rounded-lg [&_textarea]:bg-ink/4 [&_textarea]:px-3 [&_textarea]:py-2"
-					header={
-						<div className="flex h-10 items-center gap-2 px-4 text-[12px] text-ink-muted">
-							<Reply className="size-3.5 text-brand" aria-hidden />
-							<span className="flex-1 font-medium text-ink">Reply</span>
-							<button
-								type="button"
-								onClick={collapse}
-								aria-label="Minimize reply"
-								className="flex items-center gap-2 rounded-md p-1 text-ink-muted outline-none hover:bg-ink/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
-							>
-								<kbd className="text-[10px]">esc</kbd>
-								<X className="size-3.5" aria-hidden />
-							</button>
-						</div>
-					}
+					header={<ComposerHeader title="Reply" icon={Reply} onClose={collapse} />}
 
 					value={text}
 					onChange={setText}
@@ -249,17 +234,11 @@ export function SessionComposer({
 									<Square className="size-3" fill="currentColor" strokeWidth={0} aria-hidden />
 								</ComposerButton>
 							)}
-							<button
-								type="submit"
+							<ComposerSubmit
+								label={running ? "Steer" : "Reply"}
 								disabled={empty || pending}
-								className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-brand px-3 text-[12px] font-medium text-brand-ink outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame press disabled:pointer-events-none disabled:opacity-50"
 								title={running ? "Steer now; Mod+Enter queues a follow-up" : "Reply (Enter)"}
-							>
-								{running ? "Steer" : "Reply"}
-								<span className="flex items-center gap-0.5 opacity-70" aria-hidden>
-									<CornerDownLeft className="size-3.5" />
-								</span>
-							</button>
+							/>
 						</>
 					}
 				/>

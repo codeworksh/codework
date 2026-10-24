@@ -1,4 +1,5 @@
-import type { ReactNode, Ref } from "react";
+import { CornerDownLeft, X, type LucideIcon } from "lucide-react";
+import type { ComponentProps, ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
 import { isMac } from "@codeworksh/widget/view";
@@ -101,6 +102,69 @@ export function Composer({
 				</div>
 			)}
 		</div>
+	);
+}
+
+/** Shared expanded surface for starting a session and replying to one. */
+export function PromptComposer(props: ComponentProps<typeof Composer>) {
+	return (
+		<Composer
+			{...props}
+			className={cn(
+				"rounded-xl bg-frame-top [&_textarea]:rounded-lg [&_textarea]:bg-ink/4 [&_textarea]:px-3 [&_textarea]:py-2",
+				props.className,
+			)}
+		/>
+	);
+}
+
+export function ComposerHeader({
+	title,
+	icon: Icon,
+	onClose,
+}: {
+	readonly title: string;
+	readonly icon: LucideIcon;
+	readonly onClose?: () => void;
+}) {
+	return (
+		<div className="flex h-10 items-center gap-2 px-4 text-[12px] text-ink-muted">
+			<Icon className="size-3.5 text-brand" aria-hidden />
+			<span className="flex-1 font-medium text-ink">{title}</span>
+			{onClose !== undefined && (
+				<button
+					type="button"
+					onClick={onClose}
+					aria-label="Minimize reply"
+					className="flex items-center gap-2 rounded-md p-1 text-ink-muted outline-none hover:bg-ink/5 hover:text-ink focus-visible:ring-2 focus-visible:ring-ring press"
+				>
+					<kbd className="text-[10px]">esc</kbd>
+					<X className="size-3.5" aria-hidden />
+				</button>
+			)}
+		</div>
+	);
+}
+
+export function ComposerSubmit({
+	label,
+	disabled,
+	title,
+}: {
+	readonly label: string;
+	readonly disabled?: boolean;
+	readonly title?: string;
+}) {
+	return (
+		<button
+			type="submit"
+			disabled={disabled}
+			className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-brand px-3 text-[12px] font-medium text-brand-ink outline-none hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-frame press disabled:pointer-events-none disabled:opacity-50"
+			title={title ?? `${label} (Enter)`}
+		>
+			{label}
+			<CornerDownLeft className="size-3.5 opacity-70" aria-hidden />
+		</button>
 	);
 }
 
