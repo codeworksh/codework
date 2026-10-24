@@ -1,4 +1,4 @@
-import type { LanguageModelV3Prompt, LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import type { LanguageModelV3FunctionTool, LanguageModelV3Prompt, LanguageModelV3StreamPart } from "@ai-sdk/provider";
 import { zstdDecompressSync } from "node:zlib";
 import { buildCatalog } from "../../src/cli/modelgen.ts";
 import type * as Model from "../../src/model/model.ts";
@@ -132,15 +132,15 @@ export const openAICodexDeferredToolsPrompt: LanguageModelV3Prompt = [
 	{ role: "user", content: [{ type: "text", text: "Continue" }] },
 ];
 
-export const openAICodexDeferredTools = [
+export const openAICodexDeferredTools: LanguageModelV3FunctionTool[] = [
 	{
-		type: "function" as const,
+		type: "function",
 		name: "base_tool",
 		description: "Base tool",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{
-		type: "function" as const,
+		type: "function",
 		name: "late_tool",
 		description: "Late tool",
 		inputSchema: { type: "object", properties: { value: { type: "string" } } },
