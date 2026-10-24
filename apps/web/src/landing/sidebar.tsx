@@ -125,7 +125,7 @@ export function SessionsSidebar() {
 									type="button"
 									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 									aria-current={sessionAddress(session.id) === current ? "true" : undefined}
-									className="block w-full rounded-[8px] px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5 aria-[current=true]:bg-ink/8"
+									className="block w-full rounded-[8px] px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5 aria-current:bg-ink/8"
 									onClick={(event) => open(session, event)}
 									onAuxClick={(event) => open(session, event)}
 								>

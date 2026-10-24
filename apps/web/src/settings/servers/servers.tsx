@@ -35,7 +35,7 @@ export function ServersSettings() {
 					type="button"
 					title="Check again"
 					disabled={result.waiting}
-					className="flex items-center gap-1.5 rounded-md px-2 py-1 text-ink-muted transition-colors hover:bg-ink/6 hover:text-ink disabled:pointer-events-none"
+					className="flex items-center gap-1.5 rounded-md px-2 py-1 text-ink-muted transition-colors hover:bg-muted hover:text-ink disabled:pointer-events-none"
 					onClick={() => refresh()}
 				>
 					<RefreshCw className={`size-3.5 ${result.waiting ? "animate-spin" : ""}`} aria-hidden />
@@ -45,7 +45,7 @@ export function ServersSettings() {
 		>
 			<div className="@container">
 				{/* Side by side, the split keeps a fixed height and each side scrolls on its own; stacked, the page scrolls. */}
-				<div className="grid items-start rounded-lg border border-edge/60 @3xl:h-[min(44rem,calc(100dvh-12.5rem))] @3xl:min-h-[32rem] @3xl:grid-cols-[16rem_minmax(0,1fr)] @3xl:items-stretch @3xl:overflow-hidden">
+				<div className="grid items-start rounded-lg border border-edge/60 @3xl:h-[min(44rem,calc(100dvh-12.5rem))] @3xl:min-h-128 @3xl:grid-cols-[16rem_minmax(0,1fr)] @3xl:items-stretch @3xl:overflow-hidden">
 					<nav
 						aria-label="Providers"
 						className="flex flex-col border-edge/60 @max-3xl:border-b @3xl:min-h-0 @3xl:overflow-y-auto @3xl:border-r"

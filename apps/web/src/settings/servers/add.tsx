@@ -77,7 +77,7 @@ export function AddServer({
 						<li
 							key={label}
 							aria-current={index === step ? "step" : undefined}
-							className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] ${index === step ? "bg-ink/6 text-ink" : "text-ink-muted"}`}
+							className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] ${index === step ? "bg-muted text-ink" : "text-ink-muted"}`}
 						>
 							<span
 								className={`grid size-5 place-items-center rounded-full text-[11px] ${index < step ? "bg-info text-white" : "bg-ink/8"}`}

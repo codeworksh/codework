@@ -235,7 +235,7 @@ function Conversation({ id, instanceId }: { readonly id: string; readonly instan
 			<Transcript state={state} running={running} loadOlder={loadOlder} />
 			<div
 				ref={composer}
-				className={`${contentWidth} pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 [&>*]:pointer-events-auto`}
+				className={`${contentWidth} pointer-events-none absolute inset-x-0 bottom-0 z-10 px-3 pb-3 *:pointer-events-auto`}
 			>
 				{models !== undefined ? (
 					<ComposerNotice {...models} />

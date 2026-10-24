@@ -100,7 +100,7 @@ export function Queue({
 			{queued.length > 3 && <p className="pb-1 font-medium text-ink-muted tabular-nums">{queued.length} queued</p>}
 			<ol
 				aria-label="Queued messages"
-				className={`flex flex-col gap-0.5 ${many ? "max-h-[97px] overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-10px),transparent)]" : ""}`}
+				className={`flex flex-col gap-0.5 ${many ? "max-h-[97px] overflow-y-auto mask-[linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-10px),transparent)]" : ""}`}
 			>
 				{queued.map((prompt) => {
 					const steer = prompt.delivery === "steer";

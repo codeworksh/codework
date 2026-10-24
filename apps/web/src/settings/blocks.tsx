@@ -16,7 +16,7 @@ export function Page({
 	children: ReactNode;
 }) {
 	return (
-		<div className="mx-auto flex w-full max-w-[62rem] flex-col gap-8 px-5 py-8 text-[14px] sm:px-8 sm:py-10">
+		<div className="mx-auto flex w-full max-w-248 flex-col gap-8 px-5 py-8 text-[14px] sm:px-8 sm:py-10">
 			<header className="flex flex-col gap-2">
 				<div className="flex items-center gap-4">
 					<h1 className="min-w-0 flex-1 text-[24px]/tight font-semibold tracking-tight">{title}</h1>

@@ -1,6 +1,7 @@
 import { recommended } from "@effect/tsgo/oxlint-presets";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import type { DummyRuleMap } from "vite-plus/lint";
 import { configDefaults } from "vite-plus/test/config";
 
 const ignoredPaths = [
@@ -71,6 +72,22 @@ const effectRules = {
 	"effecttsgo/lazy-effect": "off",
 } as const;
 
+// Tailwind rules for the web app, from @shadcn/lint and eslint-plugin-better-tailwindcss. shadcn's
+// components/ui stays as the generator wrote it. The checked rules are clean and gate `vp check`;
+// `vp run lint:tailwind` adds the rest until each is clean enough to join them.
+const tailwindChecked: DummyRuleMap = {
+	"shadcn/no-unknown-classes": "error",
+	"shadcn/no-raw-colors": "error",
+};
+
+const tailwindOptional: DummyRuleMap = {
+	"shadcn/require-static-classes": "error",
+	"shadcn/no-arbitrary-values": ["error", { allow: ["layout", "transition"] }],
+	"shadcn/no-restyle": ["error", { allow: ["layout"] }],
+	// One class at a time, as the editor's Tailwind hints are.
+	"better-tailwindcss/enforce-canonical-classes": ["error", { collapse: false, logical: false }],
+};
+
 export default defineConfig({
 	resolve: {
 		alias: aliases,
@@ -82,6 +99,7 @@ export default defineConfig({
 			release: { command: "node scripts/release.mjs", cache: false },
 			// CI's check gate. Type-aware lint, like each package's typecheck, resolves aikit through
 			// its generated declarations, so they are built first.
+			"lint:tailwind": { command: "CODEWORK_LINT_TAILWIND=1 vp lint apps/web/src", cache: false },
 			verify: {
 				command: [
 					"vp check packages scripts .github infra",
@@ -104,11 +122,23 @@ export default defineConfig({
 		// is plain TypeScript and would drown in false positives. Overrides cannot
 		// `extends`, so the preset's plugins/rules are spread in directly. These need Oxlint's
 		// type-aware mode, which the patched oxlint-tsgolint binary provides (`prepare`).
+		jsPlugins: ["@shadcn/lint", { name: "better-tailwindcss", specifier: "eslint-plugin-better-tailwindcss" }],
+		settings: {
+			"better-tailwindcss": { entryPoint: "src/style.css", cwd: "apps/web" },
+		},
 		overrides: [
 			{
 				files: effectPackages,
 				...(recommended.plugins && { plugins: recommended.plugins }),
 				rules: effectRules,
+			},
+			{
+				files: ["apps/web/src/**/*.tsx"],
+				excludeFiles: ["apps/web/src/components/ui/**"],
+				rules: {
+					...tailwindChecked,
+					...(process.env.CODEWORK_LINT_TAILWIND === "1" ? tailwindOptional : {}),
+				},
 			},
 		],
 		ignorePatterns: ignoredPaths,

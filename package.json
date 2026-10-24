@@ -31,7 +31,9 @@
 		"@acme/codework-sandbox-vercel": "workspace:*",
 		"@acme/codework-tool-proc": "workspace:*",
 		"@effect/tsgo": "catalog:",
+		"@shadcn/lint": "0.1.5",
 		"@types/node": "catalog:",
+		"eslint-plugin-better-tailwindcss": "4.10.0",
 		"typescript": "catalog:",
 		"vite-plus": "catalog:"
 	},

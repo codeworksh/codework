@@ -253,7 +253,7 @@ export function ModelPicker({
 						role="toolbar"
 						aria-label="Providers"
 						aria-orientation="vertical"
-						className="w-11 shrink-0 overflow-y-auto bg-ink/[0.015] p-1 [scrollbar-width:none]"
+						className="w-11 shrink-0 overflow-y-auto bg-ink/1.5 p-1 scrollbar-none"
 					>
 						<div className="flex flex-col gap-1">
 							{providers.map((provider) => {
@@ -287,7 +287,7 @@ export function ModelPicker({
 						shouldFilter={false}
 						// Opens on the current model, as the highlighted row.
 						{...(current === undefined ? {} : { defaultValue: `${current.provider}/${current.id}` })}
-						className="flex min-w-0 flex-1 flex-col border-l border-edge/70 bg-ink/[0.025]"
+						className="flex min-w-0 flex-1 flex-col border-l border-edge/70 bg-ink/2.5"
 					>
 						<div className="px-3 pt-2.5">
 							<div className="relative border-b border-edge/70 pb-1.5 transition-colors focus-within:border-brand">
@@ -305,7 +305,7 @@ export function ModelPicker({
 								/>
 							</div>
 						</div>
-						<CommandPrimitive.List className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-1.5 pr-1.5 pl-2 [scrollbar-width:thin]">
+						<CommandPrimitive.List className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto py-1.5 pr-1.5 pl-2 scrollbar-thin">
 							<CommandPrimitive.Empty className="py-6 text-center text-xs text-ink-muted">
 								{empty}
 							</CommandPrimitive.Empty>
@@ -323,7 +323,7 @@ export function ModelPicker({
 											onChange({ provider: provider.id, id: model.id });
 											setOpen(false);
 										}}
-										className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 py-1 outline-none select-none data-[disabled=true]:cursor-not-allowed data-[selected=true]:bg-ink/[0.08]"
+										className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 py-1 outline-none select-none data-[disabled=true]:cursor-not-allowed data-[selected=true]:bg-ink/8"
 									>
 										<div className="min-w-0 flex-1">
 											<div className="flex min-w-0 items-center gap-2">
@@ -442,7 +442,7 @@ export function ThinkingPicker({
 							onSelect={() => onChange(level)}
 							aria-current={level === shown}
 							{...(level === shown ? { ref: picked } : {})}
-							className="gap-1.5 rounded-md py-1 text-[13px] aria-current:bg-ink/[0.08]"
+							className="gap-1.5 rounded-md py-1 text-[13px] aria-current:bg-ink/8"
 						>
 							{levelLabels[level]}
 						</DropdownMenuItem>
