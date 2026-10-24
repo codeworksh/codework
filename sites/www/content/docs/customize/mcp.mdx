@@ -10,7 +10,7 @@ CodeWork connects to [MCP](https://modelcontextprotocol.io) servers over stdio o
 
 MCP servers always run on your machine, the one running CodeWork, whatever sandbox the session uses.
 
-- A stdio server starts in the session's directory when the session runs in the local sandbox, otherwise in the project directory.
+- A stdio server starts in the session's directory when the session runs in the local sandbox, otherwise in the session's folder on your machine.
 - HTTP servers are called from your machine.
 - Output too large to show, and binary files, are saved to your OS temp directory.
 
@@ -41,7 +41,9 @@ User servers go in `~/.codework/mcp.json`, project servers in `.codework/mcp.jso
 | `url`, `headers`                                 | HTTP   | A streamable HTTP endpoint. SSE is not supported.                                                 |
 | `enabled`, `timeout`, `exposure`, `toolExposure` | both   | Off switch, per-request timeout in seconds (default 60), and which tools the model sees.          |
 
-`env` and `headers` values can use `${NAME}` for an environment variable, or `!command` to use a command's output.
+`env` and `headers` values can use `${NAME}` or `$NAME` for an environment variable (`$$` for a literal `$`), or `!command` to use a command's output. A command runs once, and its output is reused until CodeWork restarts.
+
+Servers that need you to sign in are not supported yet.
 
 A broken file or entry is reported and skipped. The other servers still connect.
 
@@ -66,6 +68,6 @@ Servers with resources also add `list_mcp_resources`, `list_mcp_resource_templat
 ## Connections
 
 - Servers connect in the background. A message waits up to 10 seconds for servers it starts whose tools the model sees: all of them at first, then new or changed ones.
-- If a server stops, the next call starts it again.
+- If a server stops, the next call starts it again. If it fails to connect, your next message tries again.
 - Edits to `mcp.json` apply from your next message. Changing only `exposure` or `toolExposure` keeps the server running.
 - Server log messages go to `~/.codework/mcp.log`.

@@ -81,6 +81,10 @@ const raw = (args: Record<string, unknown>, key: string): Effect.Effect<string |
 	return Effect.succeed(value);
 };
 
+/** A cursor the model passed back: exactly as the server gave it, and absent when blank. */
+const cursorArgument = (args: Record<string, unknown>) =>
+	raw(args, "cursor").pipe(Effect.map((value) => (value?.trim() === "" ? undefined : value)));
+
 /** A name the model typed: trimmed, and absent when blank. */
 const argument = (args: Record<string, unknown>, key: string) =>
 	raw(args, key).pipe(Effect.map((value) => value?.trim() || undefined));
@@ -91,6 +95,8 @@ type Page = { readonly items: ReadonlyArray<Item>; readonly nextCursor?: string 
 /** The three resource tools. `servers` answers, when a tool runs, which servers it reaches. */
 export const make = (input: {
 	readonly servers: () => ReadonlyArray<Server>;
+	/** Settles once no server these tools may reach is still connecting. */
+	readonly ready: () => Effect.Effect<void>;
 	readonly content: Omit<McpContent.Options, "readable">;
 }): ReadonlyArray<RegisteredTool> => {
 	const options = { ...input.content, readable: true };
@@ -117,8 +123,8 @@ export const make = (input: {
 	) =>
 		Effect.fnUntraced(function* (args: Record<string, unknown>) {
 			const name = yield* argument(args, "server");
-			// A cursor is the server's opaque token, handed back exactly as it was given.
-			const cursor = yield* raw(args, "cursor");
+			const cursor = yield* cursorArgument(args);
+			yield* input.ready();
 			const visible = (item: Item) => !isMcpApp(item);
 			if (name !== undefined) {
 				const server = yield* find(name);
@@ -150,6 +156,7 @@ export const make = (input: {
 		const uri = yield* argument(args, "uri");
 		if (name === undefined) return yield* Effect.fail("server must be provided");
 		if (uri === undefined) return yield* Effect.fail("uri must be provided");
+		yield* input.ready();
 		const server = yield* find(name);
 		const result = yield* server.read(uri);
 		// Several contents (a directory, say) are labeled with their URIs.

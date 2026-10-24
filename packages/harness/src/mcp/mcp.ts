@@ -330,51 +330,54 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 			 * runs once more on a new one; nothing else is retried here.
 			 */
 			const request =
-				(session: Session, name: string, what: string) =>
-				<A>(
-					run: (connection: McpClient.Connection) => Effect.Effect<A, McpClient.Failed>,
-					/** Why the server, as it stands, no longer offers what is asked; checked before every attempt. */
-					unavailable: (server: Server) => string | undefined = () => undefined,
-				): Effect.Effect<A, string> =>
-					Effect.gen(function* () {
-						for (let attempt = 1; ; attempt++) {
-							const server = session.servers.get(name);
-							if (server === undefined || server.closed || server.config.enabled === false)
-								return yield* Effect.fail(`MCP server "${name}" is disabled.`);
-							const reason = unavailable(server);
-							if (reason !== undefined) return yield* Effect.fail(reason);
-							const live = yield* open(server).pipe(
-								Effect.mapError((error) => `MCP server "${name}" is not connected: ${error}`),
-							);
-							live.inflight += 1;
-							const exit = yield* run(live.connection).pipe(
-								Effect.exit,
-								Effect.ensuring(
-									Effect.suspend(() => {
-										live.inflight -= 1;
-										return release(live);
-									}),
-								),
-							);
-							if (Exit.isSuccess(exit)) return exit.value;
-							const error = Cause.findErrorOption(exit.cause);
-							if (error._tag === "None") return yield* Effect.failCause(exit.cause as Cause.Cause<never>);
-							const failure = error.value;
-							if (failure._tag === "Mcp.SessionExpiredError" && attempt === 1) {
-								yield* retire(server, live).pipe(server.lock.withPermits(1));
-								continue;
+				/** `what` prefixes a failure, naming what failed; without it the server's message is the failure. */
+				(session: Session, name: string, what: string | undefined) =>
+					<A>(
+						run: (connection: McpClient.Connection) => Effect.Effect<A, McpClient.Failed>,
+						/** Why the server, as it stands, no longer offers what is asked; checked before every attempt. */
+						unavailable: (server: Server) => string | undefined = () => undefined,
+					): Effect.Effect<A, string> =>
+						Effect.gen(function* () {
+							for (let attempt = 1; ; attempt++) {
+								const server = session.servers.get(name);
+								if (server === undefined || server.closed || server.config.enabled === false)
+									return yield* Effect.fail(`MCP server "${name}" is disabled.`);
+								const reason = unavailable(server);
+								if (reason !== undefined) return yield* Effect.fail(reason);
+								const live = yield* open(server).pipe(
+									Effect.mapError((error) => `MCP server "${name}" is not connected: ${error}`),
+								);
+								live.inflight += 1;
+								const exit = yield* run(live.connection).pipe(
+									Effect.exit,
+									Effect.ensuring(
+										Effect.suspend(() => {
+											live.inflight -= 1;
+											return release(live);
+										}),
+									),
+								);
+								if (Exit.isSuccess(exit)) return exit.value;
+								const error = Cause.findErrorOption(exit.cause);
+								if (error._tag === "None") return yield* Effect.failCause(exit.cause as Cause.Cause<never>);
+								const failure = error.value;
+								if (failure._tag === "Mcp.SessionExpiredError" && attempt === 1) {
+									yield* retire(server, live).pipe(server.lock.withPermits(1));
+									continue;
+								}
+								if (failure._tag === "Mcp.NeedsAuthError") {
+									yield* Effect.gen(function* () {
+										server.state = "needs-auth";
+										server.error = failure.message;
+										yield* retire(server, live);
+									}).pipe(server.lock.withPermits(1));
+									return yield* Effect.fail(`MCP server "${name}" needs sign-in: ${failure.message}`);
+								}
+								return yield* Effect.fail(
+									what === undefined ? failure.message : `${what} failed: ${failure.message}`,
+								);
 							}
-							if (failure._tag === "Mcp.NeedsAuthError") {
-								yield* Effect.gen(function* () {
-									server.state = "needs-auth";
-									server.error = failure.message;
-									yield* retire(server, live);
-								}).pipe(server.lock.withPermits(1));
-								return yield* Effect.fail(`MCP server "${name}" needs sign-in: ${failure.message}`);
-							}
-							return yield* Effect.fail(`${what} failed: ${failure.message}`);
-						}
-					});
+						});
 
 			/** One call of one of the server's tools. A tool call is never retried after the server may have run it. */
 			const call = (session: Session, name: string, tool: string) => (run: McpTool.Run) =>
@@ -396,7 +399,8 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 				server.config.enabled !== false && server.resources && (server.config.exposure ?? "direct") !== "hidden";
 
 			const resourceServer = (session: Session, name: string): McpResources.Server => {
-				const reach = request(session, name, `MCP server "${name}"`);
+				// Listings name the server beside each failure already, as Pi does.
+				const reach = request(session, name, undefined);
 				return {
 					name,
 					resources: (cursor) => reach((connection) => connection.resources(cursor)),
@@ -525,6 +529,16 @@ export const layer = (options: { readonly hostCwd: string; readonly home: string
 								[...session.servers.values()]
 									.filter(withResources)
 									.map((server) => resourceServer(session, server.name)),
+							// A server still connecting may offer resources once it has.
+							ready: () =>
+								Effect.forEach(
+									[...session.servers.values()],
+									(server) =>
+										server.config.enabled === false || server.ready === undefined
+											? Effect.void
+											: Deferred.await(server.ready),
+									{ discard: true },
+								),
 							content: output,
 						}),
 					);

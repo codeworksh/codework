@@ -129,6 +129,8 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 				pendingCall("list_mcp_resources", { server: "e2e" }, "resources-page"),
 				// The server's cursor goes back exactly as it was given, spaces and all.
 				pendingCall("list_mcp_resources", { server: "e2e", cursor: " page-2 " }, "resources-next"),
+				// Models fill optional strings with "": a blank cursor is no cursor.
+				pendingCall("list_mcp_resources", { server: "e2e", cursor: "" }, "resources-blank"),
 				pendingCall("list_mcp_resource_templates", {}, "templates"),
 				pendingCall("read_mcp_resource", { server: "e2e", uri: "fixture://notes.txt" }, "read-text"),
 				pendingCall("read_mcp_resource", { server: "e2e", uri: "fixture://data.bin" }, "read-binary"),
@@ -250,6 +252,7 @@ it("mcp: config layers, plugin bucket, direct tools, a crash mid-exchange and th
 				"resources-all",
 				"resources-page",
 				"resources-next",
+				"resources-blank",
 				"templates",
 				"read-text",
 				"read-binary",
