@@ -1,7 +1,7 @@
 //! Renders a unified diff (the `patch` field tools such as `edit` return in
 //! their result `details`) into styled terminal lines.
 //!
-//! Diff rendering:
+//! Matches OpenCode and Codex TUI diff rendering:
 //! - Wide viewports (`max_width >= SPLIT_MIN_WIDTH`) render side-by-side (`old │ new`) split
 //!   diffs for file updates; narrower viewports (or pure file additions/deletions) render unified
 //!   diffs.
@@ -21,7 +21,7 @@ use crate::ui::text::{elide, width};
 pub const DEFAULT_MAX_DIFF_LINES: usize = 60;
 
 /// Minimum width (in columns) at which update diffs switch from unified to side-by-side split view
-/// (a 120-column threshold minus the 4-column transcript indent).
+/// (matching OpenCode's `ctx.width > 120` threshold minus the 4-column transcript indent).
 pub const SPLIT_MIN_WIDTH: usize = 116;
 
 /// Added/removed counts for the whole patch, before any truncation.
