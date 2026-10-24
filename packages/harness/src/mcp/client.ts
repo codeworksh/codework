@@ -160,9 +160,23 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 
 	// Handlers the owner registers after connect; notifications can arrive before that.
 	const handlers = {
-		tools: Effect.void as Effect.Effect<void>,
-		resources: Effect.void as Effect.Effect<void>,
+		tools: undefined as Effect.Effect<void> | undefined,
+		resources: undefined as Effect.Effect<void> | undefined,
 		expired: Effect.void as Effect.Effect<void>,
+	};
+	// A list that changed before its handler was set, during the first listing say, is reported once
+	// the handler is set: the owner may be holding the list from before the change.
+	const missed = { tools: false, resources: false };
+	const changed = (list: "tools" | "resources") => {
+		const handler = handlers[list];
+		if (handler === undefined) missed[list] = true;
+		else runFork(handler);
+	};
+	const listen = (list: "tools" | "resources", handler: Effect.Effect<void>) => {
+		handlers[list] = handler;
+		if (!missed[list]) return;
+		missed[list] = false;
+		runFork(handler);
 	};
 	// Every connect attempt builds its own client; only the one that connected reports a close.
 	const closed: {
@@ -257,12 +271,8 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			else if (!early.has(client)) early.set(client, reason);
 		};
 		// Handled whether or not the server advertises `listChanged`, since some servers send them anyway.
-		client.setNotificationHandler("notifications/tools/list_changed", () => {
-			runFork(handlers.tools);
-		});
-		client.setNotificationHandler("notifications/resources/list_changed", () => {
-			runFork(handlers.resources);
-		});
+		client.setNotificationHandler("notifications/tools/list_changed", () => changed("tools"));
+		client.setNotificationHandler("notifications/resources/list_changed", () => changed("resources"));
 		client.setNotificationHandler("notifications/message", (notification) => {
 			if (input.onLog) runFork(input.onLog(notification.params));
 		});
@@ -458,12 +468,8 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			request("tools/call", (signal) =>
 				client.callTool({ name: call.name, arguments: call.args ?? {} }, options(signal, call.onProgress)),
 			),
-		onToolsChanged: (handler) => {
-			handlers.tools = handler;
-		},
-		onResourcesChanged: (handler) => {
-			handlers.resources = handler;
-		},
+		onToolsChanged: (handler) => listen("tools", handler),
+		onResourcesChanged: (handler) => listen("resources", handler),
 		onSessionExpired: (handler) => {
 			handlers.expired = handler;
 		},

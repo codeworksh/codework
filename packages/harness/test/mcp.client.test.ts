@@ -63,6 +63,7 @@ const scenarios = [
 	"stubborn",
 	"toolsPagination",
 	"unadvertisedListChanged",
+	"listChangedWhileListing",
 	"unauthorized",
 ];
 
@@ -519,6 +520,21 @@ describe("mcp client", () => {
 			summary.noToolsCapability = { tools, printed };
 			expect(tools).toEqual([]);
 			expect(printed).toBe(0);
+		}),
+	);
+
+	it(
+		"tools: a list_changed during the first listing reaches a handler set after it",
+		Effect.gen(function* () {
+			const connection = yield* McpClient.connect({
+				server: "fixture",
+				endpoint: stdio("server.mjs", { MCP_FIXTURE_CHANGE_ON_LIST: "1" }),
+			});
+			yield* connection.tools();
+			const changed = yield* Deferred.make<void>();
+			connection.onToolsChanged(Deferred.succeed(changed, undefined).pipe(Effect.asVoid));
+			yield* Deferred.await(changed).pipe(Effect.timeout("2 seconds"));
+			summary.listChangedWhileListing = { toolsChanged: true };
 		}),
 	);
 

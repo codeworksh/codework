@@ -45,7 +45,13 @@ const tools = [
 export const install = (server) => {
 	const cancelled = [];
 
-	server.setRequestHandler("tools/list", () => ({ tools }));
+	let listed = false;
+	server.setRequestHandler("tools/list", async () => {
+		// MCP_FIXTURE_CHANGE_ON_LIST: the list changes while the first listing is answered.
+		if (process.env.MCP_FIXTURE_CHANGE_ON_LIST && !listed) await server.sendToolListChanged();
+		listed = true;
+		return { tools };
+	});
 	server.setRequestHandler("tools/call", async (request, ctx) => {
 		const args = request.params.arguments ?? {};
 		const signal = ctx.mcpReq.signal;

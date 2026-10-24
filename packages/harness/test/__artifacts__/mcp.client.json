@@ -120,6 +120,9 @@
     "message": "Invalid result for tools/list: tools.1.inputSchema: Invalid input: expected object, received undefined",
     "tag": "Mcp.RequestError",
   },
+  "listChangedWhileListing": {
+    "toolsChanged": true,
+  },
   "logFile": [
     "<iso> [fixture] info first line",
     "    second line",
