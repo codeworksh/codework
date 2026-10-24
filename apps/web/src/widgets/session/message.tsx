@@ -17,12 +17,12 @@ export function Message({
 		<article aria-label={user ? "Your message" : "Assistant message"} className="flex min-w-0 items-start gap-2.5">
 			<div
 				aria-hidden
-				className={`grid size-7 shrink-0 place-items-center rounded-md text-[12px] font-medium select-none ${user ? "bg-brand/15 text-brand" : "bg-ink/8 text-ink-secondary"}`}
+				className={`grid size-7 shrink-0 place-items-center rounded-md text-xs font-medium select-none ${user ? "bg-brand/15 text-brand" : "bg-ink/8 text-ink-secondary"}`}
 			>
 				{user ? "U" : "A"}
 			</div>
 			<div className={`min-w-0 flex-1 rounded-lg px-3.5 py-3 ${user ? "bg-brand/8" : "bg-ink/3"}`}>
-				<header className="mb-2 flex min-h-4 items-center gap-2 text-[12px] leading-4">
+				<header className="mb-2 flex min-h-4 items-center gap-2 text-xs leading-4">
 					{user && <span className="font-medium text-ink">You</span>}
 					{at !== undefined && (
 						<time

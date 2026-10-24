@@ -74,13 +74,13 @@ export function SessionsSidebar() {
 							aria-label="Search sessions"
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
-							className="h-8 rounded-[8px] border-transparent bg-transparent pl-8 text-[13px] shadow-none focus-visible:bg-ink/5"
+							className="h-8 rounded-lg border-transparent bg-transparent pl-8 text-sm shadow-none focus-visible:bg-ink/5"
 						/>
 					</div>
 					<button
 						type="button"
 						onClick={startNew}
-						className="mt-1 flex h-8 w-full items-center gap-2 rounded-[8px] px-2.5 text-left text-[13px] text-ink transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5"
+						className="mt-1 flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-sm text-ink transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5"
 					>
 						<SquarePen className="size-3.5 text-ink-muted" aria-hidden />
 						New
@@ -93,11 +93,11 @@ export function SessionsSidebar() {
 					Option.exists(AsyncResult.error(result), (error) => error._tag === "Server.CodeworkUnavailable") ? (
 						<ServerOffline />
 					) : (
-						<p className="px-2.5 py-2 text-[12px] text-ink-muted">Could not load sessions.</p>
+						<p className="px-2.5 py-2 text-xs text-ink-muted">Could not load sessions.</p>
 					)
 				) : AsyncResult.isSuccess(result) && sessions.length === 0 ? (
 					needle !== "" ? (
-						<p className="px-2.5 py-2 text-[12px] text-ink-muted">No sessions match “{query}”.</p>
+						<p className="px-2.5 py-2 text-xs text-ink-muted">No sessions match “{query}”.</p>
 					) : (
 						<Empty>
 							{place.kind === "none" && result.value.length === 0 ? (
@@ -125,16 +125,16 @@ export function SessionsSidebar() {
 									type="button"
 									title={`${session.project.path}\n${isMac ? "⌘" : "Ctrl"}-click opens it in a new frame\n⇧-click opens it in a new workspace`}
 									aria-current={sessionAddress(session.id) === current ? "true" : undefined}
-									className="block w-full rounded-[8px] px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5 aria-current:bg-ink/8"
+									className="block w-full rounded-lg px-2.5 py-2 text-left transition-colors outline-none hover:bg-ink/5 focus-visible:bg-ink/5 aria-current:bg-ink/8"
 									onClick={(event) => open(session, event)}
 									onAuxClick={(event) => open(session, event)}
 								>
-									<div className="flex h-5 min-w-0 items-center gap-1.5 text-[12px] text-ink-muted">
+									<div className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-ink-muted">
 										<Monogram id={session.project.id} name={session.project.name} />
 										<span className="min-w-0 flex-1 truncate">{session.project.name}</span>
 										<span className="shrink-0 tabular-nums">{ago(session.updated)}</span>
 									</div>
-									<div className="mt-1 truncate text-[13px] text-ink">{session.title}</div>
+									<div className="mt-1 truncate text-sm text-ink">{session.title}</div>
 								</button>
 							</li>
 						))}

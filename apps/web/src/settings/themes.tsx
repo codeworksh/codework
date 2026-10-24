@@ -48,7 +48,7 @@ export function ThemesSettings() {
 									</span>
 									<span className="h-2.5 w-1/3 bg-(--t-brand)" />
 								</span>
-								<span className="flex items-center gap-1.5 text-[13px]">
+								<span className="flex items-center gap-1.5 text-sm">
 									{theme.name}
 									{selected && <Check className="size-3.5 text-brand" strokeWidth={2} aria-hidden />}
 								</span>

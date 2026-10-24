@@ -129,7 +129,7 @@ export function useModelsNotice(hostDir: string | undefined): Notice | undefined
 
 // The composer row's pickers: muted text that brightens on hover, like the prompt's own controls.
 const trigger =
-	"flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 outline-none press hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink";
+	"flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-lg px-2.5 outline-none press hover:bg-ink/5 hover:text-ink focus-visible:bg-ink/5 data-[state=open]:bg-ink/5 data-[state=open]:text-ink";
 
 /** A model's name and its provider's, when the list has it. */
 const lookup = <P extends ModelProvider>(providers: ReadonlyArray<P>, ref: ModelRef) => {
@@ -246,7 +246,7 @@ export function ModelPicker({
 					event.preventDefault();
 					search.current?.focus();
 				}}
-				className="w-90 overflow-hidden rounded-[10px] border-ink/10 bg-popover/85 p-0 shadow-[0_16px_40px_-18px_rgb(0_0_0/0.55)] backdrop-blur-xl"
+				className="w-90 overflow-hidden rounded-lg border-ink/10 bg-popover/85 p-0 shadow-[0_16px_40px_-18px_rgb(0_0_0/0.55)] backdrop-blur-xl"
 			>
 				<div className="flex max-h-62 min-h-0 flex-row">
 					<div
@@ -431,7 +431,7 @@ export function ThinkingPicker({
 					side="bottom"
 					sideOffset={4}
 					collisionPadding={5}
-					className="min-w-36 rounded-[10px] border-ink/10 bg-popover/85 p-1 shadow-[0_16px_40px_-18px_rgb(0_0_0/0.55)] backdrop-blur-xl"
+					className="min-w-36 rounded-lg border-ink/10 bg-popover/85 p-1 shadow-[0_16px_40px_-18px_rgb(0_0_0/0.55)] backdrop-blur-xl"
 				>
 					<DropdownMenuLabel className="px-2 pt-1 pb-0.5 text-xs font-normal text-ink-muted">
 						Reasoning
@@ -442,7 +442,7 @@ export function ThinkingPicker({
 							onSelect={() => onChange(level)}
 							aria-current={level === shown}
 							{...(level === shown ? { ref: picked } : {})}
-							className="gap-1.5 rounded-md py-1 text-[13px] aria-current:bg-ink/8"
+							className="gap-1.5 rounded-md py-1 text-sm aria-current:bg-ink/8"
 						>
 							{levelLabels[level]}
 						</DropdownMenuItem>

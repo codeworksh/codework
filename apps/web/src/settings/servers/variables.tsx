@@ -73,7 +73,7 @@ export function Variables({
 						placeholder="VARIABLE_NAME"
 						value={row.name}
 						autoFocus={row.name === "" && !row.kept}
-						className={`${quietField} w-2/5 font-mono text-[12px] md:text-[12px]`}
+						className={`${quietField} w-2/5 font-mono text-xs md:text-xs`}
 						onChange={(event) => update(row.id, { name: event.target.value })}
 						onBlur={() => save(rows)}
 					/>
@@ -83,7 +83,7 @@ export function Variables({
 						type={row.sensitive ? "password" : "text"}
 						placeholder={row.kept ? "Saved; type to replace" : "value"}
 						value={row.value}
-						className={`${quietField} flex-1 font-mono text-[12px] md:text-[12px]`}
+						className={`${quietField} flex-1 font-mono text-xs md:text-xs`}
 						onChange={(event) => update(row.id, { value: event.target.value })}
 						onBlur={() => save(rows)}
 					/>
@@ -123,11 +123,11 @@ export function Variables({
 				</span>
 			))}
 			{rows.some((row) => row.sensitive) && (
-				<span className="text-[13px] text-ink-muted">
+				<span className="text-sm text-ink-muted">
 					Sensitive values stay with the app server and are never shown here again.
 				</span>
 			)}
-			{error !== undefined && <span className="text-[13px] text-destructive">{error}</span>}
+			{error !== undefined && <span className="text-sm text-destructive">{error}</span>}
 		</div>
 	);
 }

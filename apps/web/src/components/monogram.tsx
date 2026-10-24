@@ -36,7 +36,7 @@ export function Monogram({ id, name, large = false }: { id: string; name: string
 		<span
 			aria-hidden
 			style={{ color: inkOf(id) } as CSSProperties}
-			className={`grid shrink-0 place-items-center bg-[color-mix(in_oklab,currentColor_14%,transparent)] font-mono font-bold ${large ? "size-6 rounded-[6px] text-[10px]" : "size-4 rounded-[4px] text-[8px]"}`}
+			className={`grid shrink-0 place-items-center bg-[color-mix(in_oklab,currentColor_14%,transparent)] font-mono font-bold ${large ? "size-6 rounded-md text-3xs" : "size-4 rounded-sm text-4xs"}`}
 		>
 			{monogram(name)}
 		</span>

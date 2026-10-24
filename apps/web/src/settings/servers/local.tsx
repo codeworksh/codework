@@ -42,13 +42,13 @@ const TONES: Record<Tone, string> = {
 
 /** A small coloured pill: a server's state, or a fixed fact such as "Default". */
 export const Badge = ({ tone, children }: { tone: Tone; children: ReactNode }) => (
-	<span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${TONES[tone]}`}>{children}</span>
+	<span className={`shrink-0 rounded-full px-2 py-0.5 text-2xs font-medium ${TONES[tone]}`}>{children}</span>
 );
 
 export const Mark = () => <img src={brand} alt="" className="size-5 shrink-0" />;
 
 const Version = ({ version }: { version: string }) => (
-	<span className="font-mono text-[13px] text-ink-muted">v{version}</span>
+	<span className="font-mono text-sm text-ink-muted">v{version}</span>
 );
 
 /**
@@ -132,7 +132,7 @@ function stateOf({ cli, server }: ServerStatus): { tone: Tone; text: string } {
 const StatusLine = ({ status }: { status: ServerStatus }) => {
 	const { tone, text } = stateOf(status);
 	return (
-		<span className="flex items-center gap-1.5 text-[12px] text-ink-muted">
+		<span className="flex items-center gap-1.5 text-xs text-ink-muted">
 			<span className={`size-1.5 shrink-0 rounded-full ${DOTS[tone]}`} aria-hidden />
 			<span className="truncate">{text}</span>
 		</span>
@@ -164,7 +164,7 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 			{/* As tall as its buttons, so a server that can be removed does not sit lower than one that cannot. */}
 			<header className="flex h-8 items-center gap-3 px-2">
 				<Mark />
-				<span className="truncate text-[15px] font-medium">{status.name}</span>
+				<span className="truncate text-base font-medium">{status.name}</span>
 				<Badge tone="muted">Local</Badge>
 				{status.isDefault && <Badge tone="info">Default</Badge>}
 				<span className="flex-1" />
@@ -185,7 +185,7 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 							void configure({ name: next }).then((failure) => setNameError(failure ?? null));
 						}}
 					/>
-					{nameError !== null && <span className="text-[13px] text-destructive">{nameError}</span>}
+					{nameError !== null && <span className="text-sm text-destructive">{nameError}</span>}
 				</Field>
 			</Card>
 
@@ -193,7 +193,7 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 				<div className="flex flex-wrap items-start gap-x-4 gap-y-3 px-5 py-4">
 					<div className="flex min-w-60 flex-1 flex-col gap-1">
 						<span className="font-medium">Server</span>
-						<span className="text-[13px] text-ink-muted">
+						<span className="text-sm text-ink-muted">
 							<ServerLine status={status} />
 						</span>
 					</div>
@@ -214,12 +214,12 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 					)}
 				</div>
 				{(actionError ?? error) !== null && (
-					<p className="px-5 pb-4 text-[13px] text-destructive">{actionError ?? error}</p>
+					<p className="px-5 pb-4 text-sm text-destructive">{actionError ?? error}</p>
 				)}
 			</Card>
 
 			<section className="flex flex-col gap-3">
-				<h3 className="px-2 text-[14px] text-ink-muted">Runtime</h3>
+				<h3 className="px-2 text-sm text-ink-muted">Runtime</h3>
 				<Card>
 					<SettingField
 						title="Executable"
@@ -234,9 +234,7 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 						onSave={(next) => configure({ executable: next || null })}
 					>
 						{cli === null && <CopyCommand command={INSTALL} />}
-						{cli !== null && "failure" in cli && (
-							<span className="text-[13px] text-destructive">{cli.failure}</span>
-						)}
+						{cli !== null && "failure" in cli && <span className="text-sm text-destructive">{cli.failure}</span>}
 					</SettingField>
 					<SettingField
 						title={
@@ -268,7 +266,7 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 			</section>
 
 			<section className="flex flex-col gap-3">
-				<h3 className="px-2 text-[14px] text-ink-muted">Environment</h3>
+				<h3 className="px-2 text-sm text-ink-muted">Environment</h3>
 				<Card>
 					<Field
 						title="Variables"
@@ -362,7 +360,7 @@ function Field({ title, description, children }: { title: ReactNode; description
 	return (
 		<div className="flex flex-col gap-1 px-5 py-4">
 			<span className="font-medium">{title}</span>
-			<span className="text-[13px] text-ink-muted">{description}</span>
+			<span className="text-sm text-ink-muted">{description}</span>
 			<div className="mt-2 flex flex-col gap-1">{children}</div>
 		</div>
 	);
@@ -410,7 +408,7 @@ function SettingField({
 					label={label}
 					value={value}
 					placeholder={placeholder}
-					className={`${field} font-mono text-[12px] md:text-[12px]`}
+					className={`${field} font-mono text-xs md:text-xs`}
 					onCommit={save}
 				/>
 				{resettable && value !== "" && (
@@ -426,7 +424,7 @@ function SettingField({
 					</Button>
 				)}
 			</span>
-			{error !== undefined && <span className="text-[13px] text-destructive">{error}</span>}
+			{error !== undefined && <span className="text-sm text-destructive">{error}</span>}
 			{children}
 		</Field>
 	);
@@ -460,7 +458,7 @@ export function CopyCommand({ command }: { command: string }) {
 	const [copied, setCopied] = useState(false);
 	return (
 		<span className="flex items-center gap-1 rounded-lg border border-edge bg-ink/3 py-1 pr-1 pl-3">
-			<code className="flex-1 font-mono text-[12px]">{command}</code>
+			<code className="flex-1 font-mono text-xs">{command}</code>
 			<Button
 				size="icon-xs"
 				variant="ghost"

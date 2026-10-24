@@ -74,7 +74,7 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 	return (
 		<nav
 			aria-label="Workspaces"
-			className="ml-3 flex min-w-0 items-center rounded-[14px] bg-ink/5 p-1 [-webkit-app-region:no-drag]"
+			className="ml-3 flex min-w-0 items-center rounded-xl bg-ink/5 p-1 [-webkit-app-region:no-drag]"
 		>
 			{workspaces.map((workspace, index) => {
 				const current = workspace.id === active?.id;
@@ -91,25 +91,25 @@ export function Switcher({ workspaces, active }: SwitcherProps) {
 								{...workspaceRoute(workspace)}
 								aria-current={current ? "page" : undefined}
 								title={`${tab.title}${tab.subtitle === undefined ? "" : `\n${tab.subtitle}`}\n${shortcutLabel(index + 1)}`}
-								className={`flex size-full min-w-0 items-center gap-2 rounded-[10px] pr-3 pl-1.5 group-hover:pr-8 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+								className={`flex size-full min-w-0 items-center gap-2 rounded-lg pr-3 pl-1.5 group-hover:pr-8 outline-none focus-visible:ring-2 focus-visible:ring-ring ${
 									current
 										? "border border-edge bg-linear-to-b from-frame-top to-frame text-ink shadow-frame"
 										: "border border-transparent text-ink-muted hover:bg-ink/5 hover:text-ink"
 								}`}
 							>
 								<span
-									className={`grid size-6 shrink-0 place-items-center rounded-[7px] border ${current ? "border-edge bg-frame-top text-ink shadow-xs" : "border-transparent text-ink-muted"}`}
+									className={`grid size-6 shrink-0 place-items-center rounded-md border ${current ? "border-edge bg-frame-top text-ink shadow-xs" : "border-transparent text-ink-muted"}`}
 								>
 									<AppWindow className="size-3.5" strokeWidth={1.75} aria-hidden />
 								</span>
-								<span className="truncate text-[12px] font-medium">{tab.subtitle ?? tab.title}</span>
+								<span className="truncate text-xs font-medium">{tab.subtitle ?? tab.title}</span>
 							</Link>
 							<button
 								type="button"
 								aria-label={`Close ${workspace.name}`}
 								title={`Close ${workspace.name}`}
 								onClick={() => void close(workspace, index)}
-								className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-[6px] text-ink-muted opacity-0 group-hover:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
+								className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded-md text-ink-muted opacity-0 group-hover:opacity-100 hover:bg-ink/8 hover:text-ink focus-visible:opacity-100"
 							>
 								<X className="size-3" strokeWidth={2} aria-hidden />
 							</button>

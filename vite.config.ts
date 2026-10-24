@@ -82,7 +82,23 @@ const tailwindChecked: DummyRuleMap = {
 
 const tailwindOptional: DummyRuleMap = {
 	"shadcn/require-static-classes": "error",
-	"shadcn/no-arbitrary-values": ["error", { allow: ["layout", "transition"] }],
+	"shadcn/no-arbitrary-values": [
+		"error",
+		{
+			allow: [
+				"layout",
+				"transition",
+				// One-off effects with no place on a scale: frame and menu shadows, the drop target's glow,
+				// the queue strip's fade, a monogram's tint, and inline code sized to its text.
+				"shadow-[0_12px_32px_-12px_var(--cw-shadow-far)]",
+				"shadow-[0_16px_40px_-18px_rgb(0_0_0/0.55)]",
+				"bg-[radial-gradient(ellipse_at_center,var(--cw-drop-shadow),transparent_70%)]",
+				"mask-[linear-gradient(to_bottom,transparent,black_6px,black_calc(100%-10px),transparent)]",
+				"bg-[color-mix(in_oklab,currentColor_14%,transparent)]",
+				"text-[0.9em]",
+			],
+		},
+	],
 	"shadcn/no-restyle": ["error", { allow: ["layout"] }],
 	// One class at a time, as the editor's Tailwind hints are.
 	"better-tailwindcss/enforce-canonical-classes": ["error", { collapse: false, logical: false }],

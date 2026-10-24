@@ -384,7 +384,7 @@ const TurnView = memo(function TurnView({ turn, active }: { readonly turn: Turn;
 	const thinking = active && (last?.state !== "draft" || answer.length === 0);
 
 	return (
-		<section className={`${contentWidth} flex flex-col gap-5 px-4 py-3 text-[14px] leading-relaxed`}>
+		<section className={`${contentWidth} flex flex-col gap-5 px-4 py-3 text-sm leading-relaxed`}>
 			{turn.user !== undefined && <UserMessage entry={turn.user} />}
 			{(work.length > 0 || thinking || answer.length > 0 || interrupted) && (
 				<Message role="assistant" at={turn.replies[0]?.createdAt}>
@@ -401,7 +401,7 @@ const TurnView = memo(function TurnView({ turn, active }: { readonly turn: Turn;
 							<Markdown text={answer.join("\n\n")} streaming={last?.state === "draft"} />
 						</div>
 					)}
-					{interrupted && <p className="text-[12px] text-ink-muted">Interrupted</p>}
+					{interrupted && <p className="text-xs text-ink-muted">Interrupted</p>}
 				</Message>
 			)}
 		</section>
@@ -426,7 +426,7 @@ function UserMessage({ entry }: { readonly entry: HistoryEntry }) {
 	return (
 		<Message role="user" at={entry.createdAt}>
 			{text !== "" && <p className="whitespace-pre-wrap">{text}</p>}
-			{images > 0 && <p className="text-[12px] text-ink-muted">{images === 1 ? "1 image" : `${images} images`}</p>}
+			{images > 0 && <p className="text-xs text-ink-muted">{images === 1 ? "1 image" : `${images} images`}</p>}
 		</Message>
 	);
 }
@@ -469,7 +469,7 @@ function WorkLog({
 				: "Worked";
 	return (
 		<div>
-			<div className="flex items-center gap-2 border-b border-edge/50 pb-2 text-[12px] text-ink-muted">
+			<div className="flex items-center gap-2 border-b border-edge/50 pb-2 text-xs text-ink-muted">
 				<button
 					type="button"
 					aria-expanded={open}
@@ -528,7 +528,7 @@ function ToolRow({ call }: { readonly call: ToolCall }) {
 	);
 	return (
 		<Row icon={icon} label={summarize(call)}>
-			<div className="flex flex-col gap-2 font-mono text-[12px]">
+			<div className="flex flex-col gap-2 font-mono text-xs">
 				<pre className="overflow-x-auto whitespace-pre-wrap text-ink-muted">
 					{JSON.stringify(call.arguments, null, 2)}
 				</pre>

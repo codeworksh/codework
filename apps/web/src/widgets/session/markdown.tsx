@@ -67,7 +67,7 @@ function CodeBlock(props: ComponentProps<"pre"> & ExtraProps) {
 	if (block === undefined) return <pre className={preClass}>{props.children}</pre>;
 	return (
 		<div className="my-2 overflow-hidden rounded-lg border border-edge bg-desktop/60">
-			<div className="flex h-7 items-center justify-between border-b border-edge pr-1 pl-3 text-[11px] text-ink-muted select-none">
+			<div className="flex h-7 items-center justify-between border-b border-edge pr-1 pl-3 text-2xs text-ink-muted select-none">
 				<span>{block.language ?? "text"}</span>
 				<CopyButton text={block.code} />
 			</div>
@@ -78,8 +78,8 @@ function CodeBlock(props: ComponentProps<"pre"> & ExtraProps) {
 	);
 }
 
-const preClass = "overflow-x-auto px-3 py-2 font-mono text-[12px] leading-relaxed";
-const Table = styled("table", "border-collapse text-[13px]");
+const preClass = "overflow-x-auto px-3 py-2 font-mono text-xs leading-relaxed";
+const Table = styled("table", "border-collapse text-sm");
 
 // GitHub-flavoured markdown at reading size.
 const components: Components = {
@@ -88,13 +88,13 @@ const components: Components = {
 	ol: styled("ol", "my-2 list-decimal pl-5"),
 	li: styled("li", "my-0.5"),
 	h1: styled("h1", "mt-4 mb-2 text-[17px] font-semibold"),
-	h2: styled("h2", "mt-4 mb-2 text-[15px] font-semibold"),
+	h2: styled("h2", "mt-4 mb-2 text-base font-semibold"),
 	h3: styled("h3", "mt-3 mb-1.5 font-semibold"),
 	strong: styled("strong", "font-semibold text-ink"),
 	blockquote: styled("blockquote", "my-2 border-l-2 border-edge pl-3 text-ink-muted"),
 	pre: CodeBlock,
 	// Inline code reads as a small chip; inside a fence the block renders the text itself.
-	code: styled("code", "rounded-md border border-edge bg-ink/5 px-1.5 py-px font-mono text-[12px] text-ink"),
+	code: styled("code", "rounded-md border border-edge bg-ink/5 px-1.5 py-px font-mono text-xs text-ink"),
 	th: styled("th", "border border-edge px-2 py-1 text-left font-semibold"),
 	td: styled("td", "border border-edge px-2 py-1"),
 	a: (props) => {

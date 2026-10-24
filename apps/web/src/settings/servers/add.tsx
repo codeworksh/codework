@@ -66,7 +66,7 @@ export function AddServer({
 
 	return (
 		<Dialog open onOpenChange={(next) => !next && onClose()}>
-			<DialogContent className="gap-5 text-[14px] sm:max-w-2xl">
+			<DialogContent className="gap-5 text-sm sm:max-w-2xl">
 				<DialogHeader>
 					<DialogTitle>Add Provider</DialogTitle>
 					<DialogDescription>Run another codework server on this machine, with its own home.</DialogDescription>
@@ -77,10 +77,10 @@ export function AddServer({
 						<li
 							key={label}
 							aria-current={index === step ? "step" : undefined}
-							className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] ${index === step ? "bg-muted text-ink" : "text-ink-muted"}`}
+							className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-sm ${index === step ? "bg-muted text-ink" : "text-ink-muted"}`}
 						>
 							<span
-								className={`grid size-5 place-items-center rounded-full text-[11px] ${index < step ? "bg-info text-white" : "bg-ink/8"}`}
+								className={`grid size-5 place-items-center rounded-full text-2xs ${index < step ? "bg-info text-white" : "bg-ink/8"}`}
 							>
 								{index < step ? <Check className="size-3" /> : index + 1}
 							</span>
@@ -126,7 +126,7 @@ export function AddServer({
 								aria-label="Executable"
 								value={executable}
 								placeholder={detected ?? "codework"}
-								className={`${quietField} font-mono text-[12px] md:text-[12px]`}
+								className={`${quietField} font-mono text-xs md:text-xs`}
 								onChange={(event) => setExecutable(event.target.value)}
 							/>
 						</Row>
@@ -143,7 +143,7 @@ export function AddServer({
 								value={home}
 								autoFocus
 								placeholder="~/.codework-2"
-								className={`${quietField} font-mono text-[12px] md:text-[12px]`}
+								className={`${quietField} font-mono text-xs md:text-xs`}
 								onChange={(event) => setHome(event.target.value)}
 							/>
 						</Row>
@@ -159,14 +159,14 @@ export function AddServer({
 							<Input
 								aria-label="Launch Args"
 								value={args}
-								className={`${quietField} font-mono text-[12px] md:text-[12px]`}
+								className={`${quietField} font-mono text-xs md:text-xs`}
 								onChange={(event) => setArgs(event.target.value)}
 							/>
 						</Row>
 					</div>
 				)}
 
-				{error !== null && <p className="text-[13px] text-destructive">{error}</p>}
+				{error !== null && <p className="text-sm text-destructive">{error}</p>}
 
 				<DialogFooter>
 					{step === 0 ? (
@@ -217,7 +217,7 @@ function KindTile({
 			{icon}
 			<span className="flex min-w-0 flex-1 flex-col">
 				<span className="font-medium">{title}</span>
-				<span className="text-[12px] text-ink-muted">{detail}</span>
+				<span className="text-xs text-ink-muted">{detail}</span>
 			</span>
 			{badge}
 			{selected && <Check className="size-4 text-info" />}
@@ -231,7 +231,7 @@ function Row({ title, description, children }: { title: ReactNode; description: 
 		<div className="grid items-center gap-x-6 gap-y-2 px-5 py-4 sm:grid-cols-[1fr_16rem]">
 			<span className="flex flex-col gap-1">
 				<span className="font-medium">{title}</span>
-				<span className="text-[13px] text-ink-muted">{description}</span>
+				<span className="text-sm text-ink-muted">{description}</span>
 			</span>
 			{children}
 		</div>
