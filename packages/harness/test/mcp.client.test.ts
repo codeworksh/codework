@@ -297,14 +297,16 @@ describe("mcp client", () => {
 	it(
 		"stdio: interrupting a call cancels it on the server and keeps the connection usable",
 		Effect.gen(function* () {
-			const connection = yield* McpClient.connect({ server: "fixture", endpoint: stdio("server.mjs") });
 			const entered = yield* Deferred.make<void>();
 			const acknowledged = yield* Deferred.make<void>();
-			connection.onLog((entry) =>
-				entry.data === "hang cancelled"
-					? Deferred.succeed(acknowledged, undefined).pipe(Effect.asVoid)
-					: Effect.void,
-			);
+			const connection = yield* McpClient.connect({
+				server: "fixture",
+				endpoint: stdio("server.mjs"),
+				onLog: (entry) =>
+					entry.data === "hang cancelled"
+						? Deferred.succeed(acknowledged, undefined).pipe(Effect.asVoid)
+						: Effect.void,
+			});
 			const fiber = yield* connection
 				.callTool({ name: "hang", onProgress: () => void Deferred.doneUnsafe(entered, Effect.void) })
 				.pipe(Effect.forkChild);
@@ -732,17 +734,21 @@ describe("mcp client", () => {
 	);
 
 	it(
-		"onLog: receives the server's notifications/message params",
+		"onLog: receives the server's notifications/message params, from the handshake on",
 		Effect.gen(function* () {
-			const connection = yield* McpClient.connect({ server: "fixture", endpoint: stdio("server.mjs") });
 			const entries = yield* Ref.make<ReadonlyArray<LoggingMessageNotificationParams>>([]);
-			connection.onLog((entry) => Ref.update(entries, (all) => [...all, entry]));
+			const connection = yield* McpClient.connect({
+				server: "fixture",
+				endpoint: stdio("server.mjs"),
+				onLog: (entry) => Ref.update(entries, (all) => [...all, entry]),
+			});
 			yield* connection.callTool({ name: "log" });
-			for (let attempt = 0; attempt < 50 && (yield* Ref.get(entries)).length < 2; attempt++)
+			for (let attempt = 0; attempt < 50 && (yield* Ref.get(entries)).length < 3; attempt++)
 				yield* Effect.sleep("20 millis");
 			const received = yield* Ref.get(entries);
 			summary.onLog = received;
-			expect(received).toEqual(logEntries);
+			// The handshake's own message arrives before any the client asked for.
+			expect(received).toEqual([{ level: "info", logger: "startup", data: "ready" }, ...logEntries]);
 		}),
 	);
 

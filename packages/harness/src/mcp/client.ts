@@ -72,8 +72,6 @@ export interface Connection {
 	readonly onToolsChanged: (handler: Effect.Effect<void>) => void;
 	readonly onResourcesChanged: (handler: Effect.Effect<void>) => void;
 	readonly onSessionExpired: (handler: Effect.Effect<void>) => void;
-	/** The server's `notifications/message` log entries. */
-	readonly onLog: (handler: (entry: LoggingMessageNotificationParams) => Effect.Effect<void>) => void;
 	/**
 	 * The connection dropped (for example the server process exited). Runs right away when it already
 	 * dropped before the handler was set. Never runs for a close caused by closing the owning scope.
@@ -91,6 +89,8 @@ export interface ConnectInput {
 	/** `startup` bounds connecting and initializing, and defaults to `request`. */
 	readonly timeout?: { readonly startup?: Duration.Input; readonly request?: Duration.Input };
 	readonly clientInfo?: Implementation;
+	/** The server's `notifications/message` log entries, from the handshake on: startup failures log too. */
+	readonly onLog?: (entry: LoggingMessageNotificationParams) => Effect.Effect<void>;
 }
 
 /** A raw SDK or transport failure, before it is mapped to one of the public errors. */
@@ -163,7 +163,6 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 		tools: Effect.void as Effect.Effect<void>,
 		resources: Effect.void as Effect.Effect<void>,
 		expired: Effect.void as Effect.Effect<void>,
-		log: (_entry: LoggingMessageNotificationParams): Effect.Effect<void> => Effect.void,
 	};
 	// Every connect attempt builds its own client; only the one that connected reports a close.
 	const closed: {
@@ -265,7 +264,7 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			runFork(handlers.resources);
 		});
 		client.setNotificationHandler("notifications/message", (notification) => {
-			runFork(handlers.log(notification.params));
+			if (input.onLog) runFork(input.onLog(notification.params));
 		});
 		const roots = input.roots;
 		if (roots) {
@@ -467,9 +466,6 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 		},
 		onSessionExpired: (handler) => {
 			handlers.expired = handler;
-		},
-		onLog: (handler) => {
-			handlers.log = handler;
 		},
 		onClose: (handler) => {
 			closed.handler = handler;

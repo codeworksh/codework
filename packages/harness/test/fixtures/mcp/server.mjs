@@ -30,4 +30,8 @@ if (variant === "resources") {
 	});
 } else install(server);
 
+// A message sent right after the handshake, before the client has listed anything.
+if (capabilities.logging)
+	server.oninitialized = () => void server.sendLoggingMessage({ level: "info", logger: "startup", data: "ready" });
+
 await server.connect(new StdioServerTransport());
