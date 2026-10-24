@@ -82,6 +82,7 @@
 		"@effect/platform-node": "4.0.5",
 		"@effect/platform-node-shared": "4.0.5",
 		"@effect/sql-sqlite-node": "4.0.5",
+		"@modelcontextprotocol/client": "2.3.1",
 		"@npmcli/arborist": "^10.0.2",
 		"@npmcli/config": "^11.0.1",
 		"@platformatic/vfs": "^0.4.0",
@@ -98,6 +99,7 @@
 	},
 	"devDependencies": {
 		"@daytona/sdk": "^0.211.2",
+		"@modelcontextprotocol/server": "2.3.1",
 		"@types/node": "catalog:",
 		"@types/npm-package-arg": "^6.1.4",
 		"@vercel/sandbox": "^3.3.0",
