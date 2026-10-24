@@ -24,7 +24,6 @@ import { hostPath } from "../host.ts";
 import { ConnectError, NeedsAuthError, RequestError, SessionExpiredError } from "./error.ts";
 import { McpStdio } from "./stdio.ts";
 
-const DEFAULT_STARTUP_TIMEOUT = Duration.seconds(30);
 const DEFAULT_REQUEST_TIMEOUT = Duration.seconds(60);
 const TERMINATE_TIMEOUT = Duration.seconds(1);
 
@@ -89,6 +88,7 @@ export interface ConnectInput {
 	readonly roots?: ReadonlyArray<string>;
 	/** HTTP only. */
 	readonly authProvider?: OAuthClientProvider;
+	/** `startup` bounds connecting and initializing, and defaults to `request`. */
 	readonly timeout?: { readonly startup?: Duration.Input; readonly request?: Duration.Input };
 	readonly clientInfo?: Implementation;
 }
@@ -140,18 +140,22 @@ const describe = (error: unknown) => {
 	return detail && !error.message.includes(detail) ? `${error.message} (${detail})` : error.message;
 };
 
-// Overloaded or restarting servers and dropped connections usually recover within a second.
-// 501 means the server will never support the request.
+// Overloaded or restarting servers usually recover within a second. 501 means the server will never
+// support the request.
+const isTransientHttp = (error: unknown) =>
+	error instanceof SdkHttpError &&
+	(error.status === 408 || error.status === 429 || (error.status >= 500 && error.status !== 501));
+// Only a failure that carries a system code is a network one; any other `TypeError` (an invalid header
+// value, say) would fail again, and its message may hold the value.
 const isTransient = (error: unknown) =>
-	error instanceof SdkHttpError
-		? error.status === 408 || error.status === 429 || (error.status >= 500 && error.status !== 501)
-		: error instanceof TypeError;
+	isTransientHttp(error) || (error instanceof TypeError && systemCode(error) !== undefined);
 
 /** Connects one MCP server; closing the calling scope tears down the transport and any spawned process. */
 export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectInput) {
 	const { server, endpoint } = input;
-	const startupTimeout = Duration.toMillis(input.timeout?.startup ?? DEFAULT_STARTUP_TIMEOUT);
 	const requestTimeout = Duration.toMillis(input.timeout?.request ?? DEFAULT_REQUEST_TIMEOUT);
+	const startupTimeout =
+		input.timeout?.startup === undefined ? requestTimeout : Duration.toMillis(input.timeout.startup);
 	const runFork = yield* FiberSet.makeRuntime<never, void, never>();
 
 	// Handlers the owner registers after connect; notifications can arrive before that.
@@ -198,6 +202,21 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 						: Effect.logWarning(`retrying ${what}`, { server, error: describe(input.error) }).pipe(
 								Effect.as(true),
 							),
+				),
+			),
+		);
+	// Listing and reading are read-only: one more attempt, 250 ms later, after a transient HTTP error.
+	const retryingRead = <A>(what: string, effect: Effect.Effect<A, Failure>) =>
+		Effect.retry(
+			effect,
+			Schedule.max([Schedule.spaced("250 millis"), Schedule.recurs(1)]).pipe(
+				Schedule.setInputType<Failure>(),
+				Schedule.while(({ input }) =>
+					isTransientHttp(input.error)
+						? Effect.logWarning(`retrying ${what}`, { server, error: describe(input.error) }).pipe(
+								Effect.as(true),
+							)
+						: Effect.succeed(false),
 				),
 			),
 		);
@@ -381,17 +400,15 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 			);
 		}).pipe(Effect.withSpan(`McpClient.${method}`, { attributes: { "mcp.server": server } }));
 	const request = <A>(method: string, run: (signal: AbortSignal) => Promise<A>) => settle(method, attempt(run));
-	// Listing and reading are read-only, so a transient failure is safe to retry. Tool calls are never
-	// retried: the server may already have run them.
+	// Tool calls are never retried: the server may already have run them.
 	const read = <A>(method: string, run: (signal: AbortSignal) => Promise<A>) =>
-		settle(method, retrying(method, attempt(run)));
-	// Every progress notification restarts the timeout, so long calls that report progress keep running.
-	const options = (signal: AbortSignal, onProgress?: (progress: Progress) => void) => ({
-		signal,
-		timeout: requestTimeout,
-		resetTimeoutOnProgress: true,
-		onprogress: onProgress ?? (() => {}),
-	});
+		settle(method, retryingRead(method, attempt(run)));
+	// Only a request given a progress handler asks for progress; each notification restarts its timeout,
+	// so long calls that report progress keep running.
+	const options = (signal: AbortSignal, onProgress?: (progress: Progress) => void) =>
+		onProgress === undefined
+			? { signal, timeout: requestTimeout }
+			: { signal, timeout: requestTimeout, resetTimeoutOnProgress: true, onprogress: onProgress };
 	const capabilities = client.getServerCapabilities();
 
 	const connection: Connection = {
@@ -419,7 +436,7 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 				? Effect.succeed({ resourceTemplates: [] })
 				: settle(
 						"resources/templates/list",
-						retrying(
+						retryingRead(
 							"resources/templates/list",
 							attempt((signal) =>
 								client.request(

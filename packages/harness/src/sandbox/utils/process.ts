@@ -17,43 +17,54 @@ export const unsupported = Layer.succeed(
 	ChildProcessSpawner.make(() => Effect.die(new Error("process execution is not supported by this sandbox"))),
 );
 
+const signalGroup = (handle: ChildProcessSpawner.ChildProcessHandle, signal: NodeJS.Signals) =>
+	Effect.sync(() => {
+		try {
+			process.kill(-Number(handle.pid), signal);
+		} catch {
+			// the group is already gone
+		}
+	});
+
 /**
  * Stops a spawned process and its group.
  *
  * The spawner's own release sends SIGTERM and then waits for exit, so a process
  * that ignores SIGTERM (and children inheriting that) would make a scope close
- * wait forever. This SIGTERMs the group, SIGKILLs it if it outlives
+ * wait forever. This SIGTERMs the leader, SIGKILLs it if it outlives
  * `forceKillAfter`, then SIGKILLs whatever is left of the group — children can
- * outlive a leader that already exited. Only while the leader runs or one of
- * its pipes is still open: either keeps the group id ours, so it cannot have
- * been reused by someone else.
+ * outlive a leader that already exited.
+ *
+ * `graceful` gives the rest of the group a SIGTERM first: when the leader has
+ * already exited it SIGTERMs the group (children that dropped their pipes
+ * included), and SIGKILLs it `forceKillAfter` later only while a pipe is still
+ * open. Otherwise an exited leader whose pipes are closed leaves the group alone.
  */
 export const terminate = (
 	handle: ChildProcessSpawner.ChildProcessHandle,
-	options: { readonly forceKillAfter: Duration.Input; readonly pipesOpen: boolean },
+	options: { readonly forceKillAfter: Duration.Input; readonly pipesOpen: boolean; readonly graceful?: boolean },
 ) =>
 	Effect.gen(function* () {
 		const running = yield* handle.isRunning.pipe(Effect.orElseSucceed(() => false));
-		if (!running && !options.pipesOpen) return;
-		if (running) {
-			yield* handle.kill({ killSignal: "SIGTERM" }).pipe(
-				Effect.timeoutOption(options.forceKillAfter),
-				Effect.flatMap(
-					Option.match({
-						onSome: () => Effect.void,
-						onNone: () => handle.kill({ killSignal: "SIGKILL" }),
-					}),
-				),
-				Effect.ignore,
-			);
+		if (!running) {
+			if (options.graceful) {
+				yield* signalGroup(handle, "SIGTERM");
+				if (!options.pipesOpen) return;
+				yield* Effect.sleep(options.forceKillAfter);
+			} else if (!options.pipesOpen) return;
+			return yield* signalGroup(handle, "SIGKILL");
 		}
-		yield* Effect.sync(() => {
-			try {
-				process.kill(-Number(handle.pid), "SIGKILL");
-			} catch {
-				// the group is already gone
-			}
-		});
+		yield* handle.kill({ killSignal: "SIGTERM" }).pipe(
+			Effect.timeoutOption(options.forceKillAfter),
+			Effect.flatMap(
+				Option.match({
+					onSome: () => Effect.void,
+					onNone: () => handle.kill({ killSignal: "SIGKILL" }),
+				}),
+			),
+			Effect.ignore,
+		);
+		yield* signalGroup(handle, "SIGKILL");
 	});
 
 export * as Process from "./process.ts";

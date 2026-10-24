@@ -83,6 +83,7 @@ export const make = Effect.fn("McpStdio.make")(function* (options: Options) {
 					Process.terminate(handle, {
 						forceKillAfter: FORCE_KILL_AFTER,
 						pipesOpen: state.stdoutOpen || state.stderrOpen,
+						graceful: true,
 					}),
 				),
 			),
