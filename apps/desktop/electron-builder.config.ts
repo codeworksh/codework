@@ -41,12 +41,15 @@ export default {
 			{ target: "zip", arch: "arm64" },
 		],
 		category: "public.app-category.developer-tools",
-		icon: "resources/icon.png",
+		// A prebuilt icns: electron-builder's own PNG conversion garbles the small sizes, which the
+		// DMG title bar shows.
+		icon: "resources/icon.icns",
 		// Ad-hoc: Apple silicon runs nothing unsigned. A downloaded build still needs its quarantine
 		// flag removed until builds are signed and notarized.
 		identity: "-",
 		hardenedRuntime: false,
 	},
+	dmg: { icon: "resources/icon.icns" },
 	linux: {
 		// Each format names x64 and arm64 its own way (x86_64, amd64, aarch64); one name for all,
 		// from the arch scripts/package.mjs builds for.
