@@ -72,9 +72,9 @@ fi
 
 download() {
 	if command -v curl > /dev/null 2>&1; then
-		curl -fsSL "$1" -o "$2"
+		curl -fL --progress-bar "$1" -o "$2"
 	elif command -v wget > /dev/null 2>&1; then
-		wget -qO "$2" "$1"
+		wget -q --show-progress -O "$2" "$1"
 	else
 		fail "downloading needs curl or wget"
 	fi
