@@ -1,10 +1,10 @@
 import { type ModelProvider, ThinkingLevel } from "@codeworksh/widget/codework";
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { useAtomValue } from "@effect/atom-react";
 import { Command as CommandPrimitive } from "cmdk";
 import { Cause, Option, Schema } from "effect";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { Brain, ChevronDown, FileSearch, RotateCw, Search } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Brain, ChevronDown, FileSearch, Search } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 
 import {
 	DropdownMenu,
@@ -15,9 +15,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Server } from "../kernel/rpc";
-import { serversAtom } from "../settings/servers/local";
-import { fixIcons, problemOf, useFix } from "../settings/servers/problem";
+import { codeworkKey, problemAtom } from "../kernel/servers";
 import type { Notice } from "./banner";
+import { OpenProviderSettings } from "./offline";
 import { ProviderIcon } from "./provider";
 
 export interface ModelRef {
@@ -59,71 +59,25 @@ export function useChoice() {
 
 /** The models a session in `hostDir` can use; each folder has its own, since its settings may add some. */
 const modelsAtom = Atom.family((hostDir: string | undefined) =>
-	Server.query("models.list", hostDir === undefined ? {} : { hostDir }),
+	Server.query("models.list", hostDir === undefined ? {} : { hostDir }, { reactivityKeys: codeworkKey }),
 );
 
 /**
- * Why the models for `hostDir` can't be listed, as the composer's notice; undefined while they can.
- * A down server is named from its own status, which is checked again when it goes down and comes
- * back. While it fails the list is asked for again every few seconds, so the notice clears itself
- * and the pickers come back once whatever was wrong is fixed, here or elsewhere.
+ * A broken settings file, as the composer's notice; it names the file, which the reader fixes. Any
+ * other failure is the server's, which the pickers' place already points to.
  */
 export function useModelsNotice(hostDir: string | undefined): Notice | undefined {
 	const result = useAtomValue(modelsAtom(hostDir));
-	const refresh = useAtomRefresh(modelsAtom(hostDir));
-	const servers = useAtomValue(serversAtom);
-	const refreshServers = useAtomRefresh(serversAtom);
-	const fix = useFix(refresh);
 	const error = AsyncResult.isFailure(result) ? Option.getOrUndefined(Cause.findErrorOption(result.cause)) : undefined;
-	const failed = AsyncResult.isFailure(result);
-	const down = error?._tag === "Server.CodeworkUnavailable";
-
-	useEffect(() => {
-		if (!failed || result.waiting) return;
-		const timer = setTimeout(refresh, 5_000);
-		return () => clearTimeout(timer);
-	}, [failed, result, refresh]);
-	// The server's status costs a login shell and the CLI to read, so only on the way down and back up.
-	const wasDown = useRef(false);
-	useEffect(() => {
-		if (down !== wasDown.current) refreshServers();
-		wasDown.current = down;
-	}, [down, refreshServers]);
-
-	if (!failed) return undefined;
-	const retry = { label: "Try Again", icon: RotateCw, disabled: result.waiting, onClick: refresh };
-	if (error?._tag === "Server.ModelsError") {
-		if (error.source === "catalog")
-			return {
-				title: "Model Catalog Missing or Unavailable",
-				description: error.message,
-				tone: "error",
-				action: retry,
-			};
-		const { reveal } = window.desktopBridge ?? {};
-		return {
-			title: "Settings Error",
-			description: error.message,
-			tone: "error",
-			...(reveal === undefined
-				? {}
-				: { action: { label: "Reveal", icon: FileSearch, onClick: () => void reveal(error.path) } }),
-		};
-	}
-	const server = down && AsyncResult.isSuccess(servers) ? servers.value.find((one) => one.isDefault) : undefined;
-	const problem = server === undefined ? undefined : problemOf(server);
-	if (server === undefined || problem === undefined)
-		return { title: "Couldn't Load Models", tone: "error", action: retry };
+	if (error?._tag !== "Server.ModelsError" || error.source !== "settings") return undefined;
+	const { reveal } = window.desktopBridge ?? {};
 	return {
-		title: problem.title,
-		...((fix.error ?? problem.detail) === undefined ? {} : { description: fix.error ?? problem.detail }),
-		tone: "warning",
-		action: {
-			label: fix.label(problem),
-			icon: fixIcons[problem.fix],
-			disabled: fix.running,
-			onClick: () => fix.run(server, problem),
-		},
+		title: "Settings Error",
+		description: error.message,
+		tone: "error",
+		...(reveal === undefined
+			? {}
+			: { action: { label: "Reveal", icon: FileSearch, onClick: () => void reveal(error.path) } }),
 	};
 }
 
@@ -143,15 +97,23 @@ const lookup = <P extends ModelProvider>(providers: ReadonlyArray<P>, ref: Model
  * right, and a search across all of them. `value` undefined means settings decide; the trigger
  * then shows the model they pick, muted when this server has no credentials for it.
  */
-export function ModelPicker({
-	hostDir,
-	value,
-	onChange,
-}: {
+interface ModelPickerProps {
 	readonly hostDir: string | undefined;
 	readonly value: ModelRef | undefined;
 	readonly onChange: (model: ModelRef) => void;
-}) {
+}
+
+/** The model picker, or, while the default server has a problem, the way to the provider settings. */
+export function ModelPicker(props: ModelPickerProps) {
+	const problem = useAtomValue(problemAtom);
+	return problem === undefined ? (
+		<Models {...props} />
+	) : (
+		<OpenProviderSettings problem={problem} className="shrink-0" />
+	);
+}
+
+function Models({ hostDir, value, onChange }: ModelPickerProps) {
 	const result = useAtomValue(modelsAtom(hostDir));
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
@@ -382,17 +344,19 @@ const clamp = (level: ThinkingLevel, levels: ReadonlyArray<ThinkingLevel>) => {
  * settings decide. Always in the row: for a model that does not reason, or one the list cannot
  * call, it reads "Reasoning" and does not open.
  */
-export function ThinkingPicker({
-	hostDir,
-	model,
-	value,
-	onChange,
-}: {
+interface ThinkingPickerProps {
 	readonly hostDir: string | undefined;
 	readonly model: ModelRef | undefined;
 	readonly value: ThinkingLevel | undefined;
 	readonly onChange: (level: ThinkingLevel) => void;
-}) {
+}
+
+/** The reasoning picker; gone while the default server has a problem, as the model picker is. */
+export function ThinkingPicker(props: ThinkingPickerProps) {
+	return useAtomValue(problemAtom) === undefined ? <Thinking {...props} /> : null;
+}
+
+function Thinking({ hostDir, model, value, onChange }: ThinkingPickerProps) {
 	const result = useAtomValue(modelsAtom(hostDir));
 	const list = AsyncResult.isSuccess(result) ? result.value : undefined;
 	const current = model ?? list?.default;

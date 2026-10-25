@@ -163,6 +163,15 @@ export const ServerStatus = Schema.Struct({
 });
 export type ServerStatus = typeof ServerStatus.Type;
 
+/** How often every server is checked again in the background. */
+export const ServerHealth = Schema.Struct({
+	/** Seconds between checks; 0 turns them off. */
+	interval: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export type ServerHealth = typeof ServerHealth.Type;
+
+export const DEFAULT_SERVER_HEALTH: ServerHealth = { interval: 300 };
+
 export const CliAction = Schema.Literals(["start", "restart", "stop"]);
 export type CliAction = typeof CliAction.Type;
 
@@ -242,9 +251,24 @@ export const Api = RpcGroup.make(
 		success: Schema.Void,
 		error: DeskError,
 	}),
-	/** Every server, the built-in one first, then in the order added. */
-	Rpc.make("servers.list", {
+	/**
+	 * Every server, the built-in one first, then in the order added: as last checked, then again each
+	 * time a check finds a change.
+	 */
+	Rpc.make("servers.watch", {
 		success: Schema.Array(ServerStatus),
+		stream: true,
+	}),
+	/** Checks every server now; done once the new statuses are out. */
+	Rpc.make("servers.check", {
+		success: Schema.Void,
+	}),
+	Rpc.make("servers.health", {
+		success: ServerHealth,
+	}),
+	Rpc.make("servers.setHealth", {
+		payload: ServerHealth,
+		success: Schema.Void,
 	}),
 	Rpc.make("servers.add", {
 		payload: ServerAdd,
