@@ -2,9 +2,10 @@ import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult } from "effect/reactivity";
 
 import { Server } from "../../kernel/rpc";
+import { codeworkKey } from "../../kernel/servers";
 
 /** Every project with its sessions, as the sidebar lists them; refresh it once a new session exists. */
-export const projectsAtom = Server.query("projects.list", undefined);
+export const projectsAtom = Server.query("projects.list", undefined, { reactivityKeys: codeworkKey });
 
 /** What the list already says about a session: its title and project name, before it is loaded. */
 export function useListedSession(id: string) {

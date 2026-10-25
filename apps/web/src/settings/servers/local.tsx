@@ -21,8 +21,6 @@ import { Server } from "../../kernel/rpc";
 import { Code, quietField as field, SavingInput } from "../blocks";
 import { Variables } from "./variables";
 
-export const serversKey = ["servers"];
-export const serversAtom = Server.query("servers.list", undefined, { reactivityKeys: serversKey });
 const serviceAtom = Server.mutation("servers.service");
 const updateAtom = Server.mutation("servers.update");
 const removeAtom = Server.mutation("servers.remove");
@@ -52,17 +50,17 @@ const Version = ({ version }: { version: string }) => (
 );
 
 /**
- * Starts, restarts or stops a server through its CLI, as the Servers page and the sidebar both do.
- * `act` resolves to whether it worked; the server list refreshes either way.
+ * Starts, restarts or stops a server through its CLI.
+ * `act` resolves to whether it worked; the app server checks the servers again either way.
  */
-export function useServerAction() {
+function useServerAction() {
 	const service = useAtomSet(serviceAtom, { mode: "promise" });
 	const [running, setRunning] = useState<CliAction | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const act = (id: string, action: CliAction) => {
 		setError(null);
 		setRunning(action);
-		return service({ payload: { id, action }, reactivityKeys: serversKey })
+		return service({ payload: { id, action } })
 			.then(
 				() => true,
 				(cause: unknown) => {
@@ -149,7 +147,7 @@ export function LocalDetail({ status }: { status: ServerStatus }) {
 	const usable = cli !== null && "version" in cli;
 
 	const configure = (patch: Omit<ServerUpdate, "id">) =>
-		update({ payload: { id, ...patch }, reactivityKeys: serversKey }).then(
+		update({ payload: { id, ...patch } }).then(
 			() => undefined,
 			(cause: unknown) => messageOf(cause),
 		);
@@ -293,7 +291,7 @@ function MakeDefault({ status, onError }: { status: ServerStatus; onError: (mess
 			title="Connect the app through this server"
 			onClick={() => {
 				setSwitching(true);
-				setDefault({ payload: { id: status.id }, reactivityKeys: serversKey })
+				setDefault({ payload: { id: status.id } })
 					.catch((cause: unknown) => onError(messageOf(cause)))
 					.finally(() => setSwitching(false));
 			}}
@@ -338,9 +336,7 @@ function ServerActions({ status, onError }: { status: ServerStatus; onError: (me
 						</AlertDialogHeader>
 						<AlertDialogFooter>
 							<AlertDialogCancel>Cancel</AlertDialogCancel>
-							<AlertDialogAction
-								onClick={() => run(() => remove({ payload: { id: status.id }, reactivityKeys: serversKey }))}
-							>
+							<AlertDialogAction onClick={() => run(() => remove({ payload: { id: status.id } }))}>
 								Remove
 							</AlertDialogAction>
 						</AlertDialogFooter>
