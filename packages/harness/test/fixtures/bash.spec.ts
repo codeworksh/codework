@@ -119,7 +119,7 @@ export const bashPluginSpec = (options: {
 					const { call } = await exchange(input, BASH_SYNTAX);
 					if (call.status !== "completed" && call.status !== "error") throw new Error("bash was not settled");
 					const text = call.result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
-					await expect({ status: call.status, text }).toMatchFileSnapshot(
+					await expect(`${JSON.stringify({ status: call.status, text }, null, "\t")}\n`).toMatchFileSnapshot(
 						"./__artifacts__/tools.bash.syntax.json",
 					);
 				}),

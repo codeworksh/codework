@@ -1,46 +1,46 @@
 [
-  {
-    "type": "session.turn.started",
-  },
-  {
-    "type": "session.llm.started",
-  },
-  {
-    "reason": "error",
-    "type": "session.llm.failed",
-  },
-  {
-    "attempt": 1,
-    "delayMs": 300,
-    "maxRetries": 3,
-    "type": "session.retry.scheduled",
-  },
-  {
-    "type": "session.llm.started",
-  },
-  {
-    "reason": "error",
-    "type": "session.llm.failed",
-  },
-  {
-    "attempt": 2,
-    "delayMs": 400,
-    "maxRetries": 3,
-    "type": "session.retry.scheduled",
-  },
-  {
-    "type": "session.llm.started",
-  },
-  {
-    "reason": "stop",
-    "type": "session.llm.ended",
-  },
-  {
-    "attempt": 2,
-    "success": true,
-    "type": "session.retry.finished",
-  },
-  {
-    "type": "session.turn.ended",
-  },
+	{
+		"type": "session.turn.started"
+	},
+	{
+		"type": "session.llm.started"
+	},
+	{
+		"type": "session.llm.failed",
+		"reason": "error"
+	},
+	{
+		"type": "session.retry.scheduled",
+		"attempt": 1,
+		"maxRetries": 3,
+		"delayMs": 300
+	},
+	{
+		"type": "session.llm.started"
+	},
+	{
+		"type": "session.llm.failed",
+		"reason": "error"
+	},
+	{
+		"type": "session.retry.scheduled",
+		"attempt": 2,
+		"maxRetries": 3,
+		"delayMs": 400
+	},
+	{
+		"type": "session.llm.started"
+	},
+	{
+		"type": "session.llm.ended",
+		"reason": "stop"
+	},
+	{
+		"type": "session.retry.finished",
+		"attempt": 2,
+		"success": true
+	},
+	{
+		"type": "session.turn.ended"
+	}
 ]

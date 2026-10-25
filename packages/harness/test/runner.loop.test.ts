@@ -736,7 +736,9 @@ describe("runner loop — retry", () => {
 				expect(contexts[1]).toEqual(contexts[0]);
 				expect(contexts[2]).toEqual(contexts[0]);
 				yield* Effect.promise(() =>
-					expect({ events: seen, path }).toMatchFileSnapshot("./__artifacts__/runner.retry.json"),
+					expect(`${JSON.stringify({ events: seen, path }, null, "\t")}\n`).toMatchFileSnapshot(
+						"./__artifacts__/runner.retry.json",
+					),
 				);
 			}),
 		);
