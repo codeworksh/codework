@@ -18,6 +18,7 @@ This file is the canonical source for unreleased changes and published release n
 #### Added
 
 - Prompts queued while the agent works can be read and changed before it takes them in. `Control.pending` lists them, steers and follow-ups, in the order they were sent. `Control.cancel` withdraws one, recorded as a `session.prompt.cancelled` event; it returns `false` when the prompt was already taken in, and a cancelled message id may be sent again. `Control.update` moves one to the other lane or rewrites its text, keeping its place, recorded as a `session.prompt.updated` event; moving it to the steer lane also wakes the session, so a prompt left queued by a stop runs now.
+- `read` tells a model without image input that the image it read is left out of the request: `[Current model does not support images. The image will be omitted from this request.]` is added to its note.
 - A run cut off by a crash or a shutdown resumes when the server starts again (`Control.resumeUnfinished`). A crash counts as a restart and a shutdown does not; a committed turn starts the count over. After 5 restarts (`Control.RESTART_LIMIT`) the session is parked instead of resumed: `Session.Info.parked` is `true`, and its next prompt runs it again. A resumed run answers the reply it was cut off in before a queued follow-up goes in; steers join it at once. A run the user stopped is not resumed, and what was queued behind it stays queued.
 
 #### Fixed
@@ -52,10 +53,19 @@ This file is the canonical source for unreleased changes and published release n
 #### Fixed
 
 - `modelgen` leaves out providers with no models instead of writing them as empty entries.
+- Images in a failed tool result reach the model instead of being dropped. On the Anthropic wire the result is sent as text with `(image attached after the tool results)`, and the images follow the turn's tool results under `Images from the error result of tool call <id> (<name>):`. Other wires keep the images in the result; there the AI SDK sends it without an error flag.
+- On Chat Completions wires (OpenAI-compatible, Copilot chat, OpenAI with `method: chat`) and Gemini before 3, tool result images are sent in a user message after the tool results. Chat Completions sent them as JSON text, and Gemini before 3 lost the function response of a result with only images.
+- Thinking from another provider, protocol or model is dropped from the request instead of being sent as text. Text and tool calls from other models are kept.
 
 #### Internal
 
 - `gpt-5.5` is out of the live OpenAI test models; tests use `gpt-6-luna`.
+
+### @codeworksh/plugin
+
+#### Added
+
+- `ToolCallContext.modelInput`: the input modalities of the model the tool call answers, such as `["text"]` or `["text", "image"]`. It is optional, and tool hooks receive it too.
 
 ## [@codeworksh/cli@0.4.0] - 2026-10-20
 
