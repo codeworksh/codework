@@ -19,6 +19,7 @@ import { EventRegistry } from "../src/event/registry.ts";
 import type { EventSchema } from "../src/event/schema.ts";
 import { RunnerExecute } from "../src/runner/execute.ts";
 import { RunnerExecution } from "../src/runner/execution.ts";
+import { Hooks } from "../src/runner/hooks.ts";
 import { LLM } from "../src/runner/llm.ts";
 import { Loop } from "../src/runner/loop.ts";
 import { SandboxController } from "../src/sandbox/control.ts";
@@ -33,7 +34,7 @@ import { SessionRuntime } from "../src/session/runtime.ts";
 import { State } from "../src/state/state.ts";
 import { pooled } from "./fixtures/pool.ts";
 import * as Tool from "../src/tool/tool.ts";
-import { assistant, immediateOpen } from "./fixtures/llm.ts";
+import { assistant, immediateOpen, toolTurn } from "./fixtures/llm.ts";
 import { seedSpace } from "./fixtures/space.ts";
 import { testEffect } from "./utils/effect.ts";
 
@@ -44,6 +45,7 @@ const runtime = (
 		readonly state?: State.Options;
 		readonly plugins?: ReadonlyArray<Plugin>;
 		readonly settings?: Info;
+		readonly hooks?: Hooks.Interface;
 		/** Runs as each turn's snapshot loads settings: after the loop checks for pending input, before it promotes. */
 		readonly beforeSettings?: { run: Effect.Effect<void> };
 	} = {},
@@ -55,7 +57,17 @@ const runtime = (
 		Layer.provideMerge(database),
 	);
 	return Control.layer.pipe(
-		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer({ request })))),
+		Layer.provideMerge(
+			RunnerExecute.layer.pipe(
+				Layer.provide(
+					Loop.layer({ request }).pipe(
+						Layer.provide(
+							options.hooks === undefined ? Hooks.layer : Layer.succeed(Hooks.Service, options.hooks),
+						),
+					),
+				),
+			),
+		),
 		Layer.provideMerge(
 			((seeded) => State.layer(options.state ?? {}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild))(
 				pooled(options.plugins ?? plugins),
@@ -80,6 +92,14 @@ const runtime = (
 		Layer.provideMerge(Layer.succeed(Global.Service, Global.make({ home: "/unused/home" }))),
 	);
 };
+
+/** Hooks that do nothing, except where overridden. */
+const hooksOf = (overrides: Partial<Hooks.Interface>): Hooks.Interface => ({
+	prepareNextTurn: (_turn, next) => Effect.succeed(next),
+	prepareRequest: (request) => Effect.succeed(request),
+	finishTurn: () => Effect.undefined,
+	...overrides,
+});
 
 const inputsFor = (sql: SqlClient.SqlClient) =>
 	SqlSchema.findAll({
@@ -298,7 +318,7 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 	);
 
 	it(
-		"continues after toolUse with no steer, pins state, and never moves the assistant seq",
+		"continues after toolUse with no steer, re-snapshots each turn, and never moves the assistant seq",
 		Effect.gen(function* () {
 			contexts.length = 0;
 			snapshots = 0;
@@ -312,7 +332,7 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 			yield* execution.resume(sessionId);
 
 			expect(contexts).toHaveLength(2);
-			expect(snapshots).toBe(1);
+			expect(snapshots).toBe(2);
 			const firstTool = contexts[1]!.messages[1]!.parts.find((part) => part.type === "toolCall");
 			expect(firstTool).toMatchObject({ callID: "call_echo", status: "completed" });
 
@@ -635,49 +655,51 @@ describe("runner loop — provider failure", () => {
 	);
 });
 
-describe("runner loop — retry", () => {
-	type Failure = { readonly _tag: string; readonly retryable: boolean; readonly retryAfterMs?: number };
+type Failure = { readonly _tag: string; readonly retryable: boolean; readonly retryAfterMs?: number };
 
-	/** Each call takes the next script entry: a failure (optionally after streaming text), else success. */
-	const scripted = (
-		script: ReadonlyArray<{ readonly failure: Failure; readonly streamed?: string } | "ok">,
-		contexts: Message.Context[] = [],
-	): LLM.Open => {
-		let index = 0;
-		return (input) =>
-			Effect.sync(() => {
-				index += 1;
-				contexts.push(structuredClone(input.context));
-				const step = script[index - 1] ?? "ok";
-				const events = createAssistantMessageEventStream();
-				if (step === "ok") {
-					const message = assistant(input, index);
-					events.push({ type: "start", partial: message });
-					events.push({ type: "done", reason: "stop", message });
-					return events;
-				}
-				const failed = Object.assign(
-					assistant(input, index, {
-						stopReason: "error",
-						errorMessage: `${step.failure._tag} failure`,
-						parts: step.streamed === undefined ? [] : [{ type: "text", text: step.streamed }],
-					}),
-					{ failure: { ...step.failure, message: `${step.failure._tag} failure` } },
-				);
-				events.push({ type: "start", partial: failed });
-				if (step.streamed !== undefined) {
-					events.push({ type: "text.delta", partIndex: 0, delta: step.streamed, partial: failed });
-				}
-				events.push({ type: "error", reason: "error", error: failed });
+/** Each call takes the next script entry: a failure (optionally after streaming text), else success. */
+const scripted = (
+	script: ReadonlyArray<{ readonly failure: Failure; readonly streamed?: string } | "ok">,
+	contexts: Message.Context[] = [],
+	models: string[] = [],
+): LLM.Open => {
+	let index = 0;
+	return (input) =>
+		Effect.sync(() => {
+			index += 1;
+			contexts.push(structuredClone(input.context));
+			models.push(input.model);
+			const step = script[index - 1] ?? "ok";
+			const events = createAssistantMessageEventStream();
+			if (step === "ok") {
+				const message = assistant(input, index);
+				events.push({ type: "start", partial: message });
+				events.push({ type: "done", reason: "stop", message });
 				return events;
-			});
-	};
+			}
+			const failed = Object.assign(
+				assistant(input, index, {
+					stopReason: "error",
+					errorMessage: `${step.failure._tag} failure`,
+					parts: step.streamed === undefined ? [] : [{ type: "text", text: step.streamed }],
+				}),
+				{ failure: { ...step.failure, message: `${step.failure._tag} failure` } },
+			);
+			events.push({ type: "start", partial: failed });
+			if (step.streamed !== undefined) {
+				events.push({ type: "text.delta", partIndex: 0, delta: step.streamed, partial: failed });
+			}
+			events.push({ type: "error", reason: "error", error: failed });
+			return events;
+		});
+};
 
-	const settings = (retry: Partial<Info["retry"]>): Info => ({
-		...Settings.defaults,
-		retry: { ...Settings.defaults.retry, ...retry },
-	});
+const settings = (retry: Partial<Info["retry"]>): Info => ({
+	...Settings.defaults,
+	retry: { ...Settings.defaults.retry, ...retry },
+});
 
+describe("runner loop — retry", () => {
 	/** The turn's lifecycle as a client sees it, without timestamps or ids. */
 	const journal = Effect.fnUntraced(function* () {
 		const events = yield* Event.Service;
@@ -1326,4 +1348,296 @@ describe("runner loop — cancel and unfinished replies", () => {
 			expect(row?.execution).toBe("closed");
 		}),
 	);
+});
+
+describe("runner loop — lifecycle hooks", () => {
+	const echo = Tool.register(
+		Tool.make({
+			name: "echo",
+			description: "echoes text",
+			parameters: Schema.Struct({ value: Schema.String }),
+			success: Schema.String,
+			encodeContent: (value: string) => [{ type: "text", text: value }],
+			handler: ({ value }) => Effect.succeed(value),
+		}),
+	);
+	const late = Tool.register(
+		Tool.make({
+			name: "echo_late",
+			description: "declared from the second snapshot on",
+			parameters: Schema.Struct({ value: Schema.String }),
+			success: Schema.String,
+			encodeContent: (value: string) => [{ type: "text", text: value }],
+			handler: ({ value }) => Effect.succeed(value),
+		}),
+	);
+	const echoCall = {
+		type: "toolCall" as const,
+		callID: "call_echo",
+		name: "echo",
+		arguments: { value: "hello" },
+		status: "pending" as const,
+		time: { start: 1, end: 1 },
+	};
+	/** A fresh tool turn per test, since it counts its own requests. */
+	const recording = (contexts: Message.Context[]): LLM.Open => {
+		const next = toolTurn(echoCall);
+		return (input, signal) => {
+			contexts.push(input.context);
+			return next(input, signal);
+		};
+	};
+	const toolNames = (context: Message.Context) =>
+		(context.tools ?? []).map((tool) => tool.name).filter((name) => name.startsWith("echo"));
+
+	describe("a tool-use chain", () => {
+		const contexts: Message.Context[] = [];
+		const calls: Array<Record<string, unknown>> = [];
+		let snapshots = 0;
+		const hooks: Hooks.Interface = {
+			prepareNextTurn: (turn, next) =>
+				Effect.sync(() => {
+					calls.push({
+						hook: "prepareNextTurn",
+						completed: turn.reason,
+						needsContinuation: turn.needsContinuation,
+						tools: next.tools.defs.map((def) => def.name).filter((name) => name.startsWith("echo")),
+					});
+					return next;
+				}),
+			prepareRequest: (request, attempt) =>
+				Effect.sync(() => {
+					calls.push({ hook: "prepareRequest", retry: attempt.retry });
+					return request;
+				}),
+			finishTurn: (turn) =>
+				Effect.sync(() => {
+					calls.push({ hook: "finishTurn", reason: turn.reason, needsContinuation: turn.needsContinuation });
+					return undefined;
+				}),
+		};
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks,
+				plugins: [
+					...plugins,
+					{
+						id: "test.tool.echo",
+						kind: "tool",
+						setup: (ctx) => {
+							snapshots += 1;
+							ctx.plugin.tools.add(echo);
+							// A tool the plugin only declares from the second snapshot on.
+							if (snapshots > 1) ctx.plugin.tools.add(late);
+						},
+					},
+				],
+			}),
+		);
+
+		it(
+			"snapshots before each turn, so a tool declared mid-chain reaches the next request",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_chain", sessionId, delivery: "steer" });
+
+				yield* execution.resume(sessionId);
+
+				expect(snapshots).toBe(2);
+				expect(contexts.map(toolNames)).toEqual([["echo"], ["echo", "echo_late"]]);
+				yield* Effect.promise(() =>
+					expect(
+						`${JSON.stringify({ calls, requestTools: contexts.map(toolNames) }, null, "\t")}\n`,
+					).toMatchFileSnapshot("./__artifacts__/runner.hooks.json"),
+				);
+			}),
+		);
+	});
+
+	describe("pending input", () => {
+		const seen: Array<ReadonlyArray<string>> = [];
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording([]),
+				hooks: hooksOf({
+					finishTurn: (turn) =>
+						Effect.sync(() => {
+							seen.push(turn.pending.map((item) => `${item.delivery}:${item.id}`));
+							return undefined;
+						}),
+				}),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"shows the queued steers, else the oldest follow-up, without promoting them",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_first", sessionId, delivery: "steer" });
+				yield* admit({ id: "msg_later", sessionId, delivery: "followUp" });
+				yield* admit({ id: "msg_next", sessionId, delivery: "followUp" });
+
+				yield* execution.resume(sessionId);
+
+				// Turn 1 (toolUse), turn 2 (stop), turn 3 (first follow-up), turn 4 (second follow-up).
+				expect(seen).toEqual([["followUp:msg_later"], ["followUp:msg_later"], ["followUp:msg_next"], []]);
+			}),
+		);
+	});
+
+	describe("finishTurn end", () => {
+		const contexts: Message.Context[] = [];
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks: hooksOf({ finishTurn: (turn) => Effect.succeed(turn.reason === "toolUse" ? "end" : undefined) }),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"stops the run after the committed turn and leaves queued input for the next run",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_first", sessionId, delivery: "steer" });
+				yield* admit({ id: "msg_queued", sessionId, delivery: "followUp" });
+
+				yield* execution.resume(sessionId);
+
+				expect(contexts).toHaveLength(1);
+				const sessions = yield* Session.Service;
+				const path = yield* sessions.path(sessionId);
+				expect(path.map((item) => [item.entry.type, item.entry.state])).toEqual([
+					["user", "committed"],
+					["assistant", "committed"],
+				]);
+				const tool = path[1]!.parts.find((part) => part.type === "toolCall");
+				expect(tool).toBeDefined();
+				const rows = yield* delivered(sessionId);
+				expect(rows.find((row) => row.id === "msg_queued")?.promotedSeq).toBeNull();
+
+				// The next run answers the tool results first, then picks the queued follow-up up.
+				yield* execution.resume(sessionId);
+				expect(contexts).toHaveLength(3);
+				expect(contexts[1]!.messages).toHaveLength(2);
+				expect(contexts[2]!.messages).toHaveLength(4);
+				const next = yield* delivered(sessionId);
+				expect(next.find((row) => row.id === "msg_queued")?.promotedSeq).not.toBeNull();
+			}),
+		);
+	});
+
+	describe("a steer landing while a resume loads", () => {
+		const contexts: Message.Context[] = [];
+		const gate: { run: Effect.Effect<void> } = { run: Effect.void };
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				beforeSettings: gate,
+				hooks: hooksOf({ finishTurn: (turn) => Effect.succeed(turn.reason === "toolUse" ? "end" : undefined) }),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"joins the reply being answered, ahead of the queued follow-up",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_first", sessionId, delivery: "steer" });
+				yield* admit({ id: "msg_queued", sessionId, delivery: "followUp" });
+				yield* execution.resume(sessionId);
+
+				const services = yield* Effect.context<Effect.Services<ReturnType<typeof admit>>>();
+				gate.run = admit({ id: "msg_late", sessionId, delivery: "steer" }).pipe(
+					Effect.andThen(
+						Effect.sync(() => {
+							gate.run = Effect.void;
+						}),
+					),
+					Effect.provideContext(services),
+				);
+				yield* execution.resume(sessionId);
+
+				expect(contexts.map(texts)).toEqual([
+					["msg_first"],
+					["msg_first", "msg_late"],
+					["msg_first", "msg_late", "msg_queued"],
+				]);
+			}),
+		);
+	});
+
+	describe("finishTurn continue", () => {
+		const contexts: Message.Context[] = [];
+		const completed: string[] = [];
+		const { effect: it } = testEffect(
+			runtime({
+				contexts,
+				hooks: hooksOf({
+					finishTurn: () => Effect.succeed("continue"),
+					prepareNextTurn: (turn, next) => Effect.sync(() => (completed.push(turn.reason), next)),
+				}),
+			}),
+		);
+
+		it(
+			"sends nothing after a finished reply when nothing was appended",
+			Effect.gen(function* () {
+				contexts.length = 0;
+				completed.length = 0;
+				const execution = yield* RunnerExecution.Service;
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_done", sessionId, delivery: "steer" });
+
+				yield* execution.resume(sessionId);
+
+				// The decision was honoured (another turn was scheduled) and the leaf guard sent nothing.
+				expect(completed).toEqual(["stop"]);
+				expect(contexts).toHaveLength(1);
+			}),
+		);
+	});
+
+	describe("prepareRequest on a retry", () => {
+		const models: string[] = [];
+		const attempts: Array<{ readonly retry: number; readonly failed?: string }> = [];
+		const open = scripted([{ failure: { _tag: "Unavailable", retryable: true } }], [], models);
+		const { live: it } = testEffect(
+			runtime({
+				open,
+				settings: settings({ baseDelayMs: 5, maxDelayMs: 8 }),
+				hooks: hooksOf({
+					prepareRequest: (request, attempt) =>
+						Effect.sync(() => {
+							attempts.push(attempt);
+							return attempt.retry > 0 ? { ...request, model: "routed-model" } : request;
+						}),
+				}),
+			}),
+		);
+
+		it(
+			"sees the retry number and failure, and its replacement model reaches the request",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_route", sessionId, delivery: "steer" });
+
+				yield* execution.resume(sessionId);
+
+				expect(attempts).toMatchObject([
+					{ retry: 0 },
+					{ retry: 1, failed: expect.stringContaining("Unavailable failure") },
+				]);
+				expect(models[1]).toBe("routed-model");
+				expect(models[0]).not.toBe("routed-model");
+			}),
+		);
+	});
 });

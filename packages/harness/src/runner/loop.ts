@@ -19,6 +19,7 @@ import { State } from "../state/state.ts";
 import { Telemetry } from "../telemetry/telemetry.ts";
 import { errorMessage } from "../util/error.ts";
 import { LLMEventPublisher } from "./event.ts";
+import { Hooks } from "./hooks.ts";
 import { LLM } from "./llm.ts";
 import { Retry } from "./retry.ts";
 import { Runner } from "./run.ts";
@@ -27,7 +28,9 @@ export type Promotion = "steer" | "followUp" | undefined;
 
 export interface TurnResult {
 	readonly needsContinuation: boolean;
+	/** Set with `reason` when the turn committed an assistant message. */
 	readonly messageId?: string;
+	readonly reason?: Hooks.Completed["reason"];
 }
 
 export interface Options {
@@ -89,6 +92,7 @@ export const layer = (options: Options = {}) =>
 		Effect.gen(function* () {
 			const context = yield* Context.Service;
 			const events = yield* Event.Service;
+			const hooks = yield* Hooks.Service;
 			const inputs = yield* SessionInput.make;
 			const sessions = yield* Session.Service;
 			const state = yield* State.Service;
@@ -291,6 +295,7 @@ export const layer = (options: Options = {}) =>
 				let publisher: LLMEventPublisher.Publisher | undefined;
 				let committed = false;
 				let retries = 0;
+				let failed: string | undefined;
 
 				/** Abort the latest attempt's draft, unless its own terminal event already did. */
 				const settleDraft = (cause: EventList.TurnAbortCause) =>
@@ -306,26 +311,28 @@ export const layer = (options: Options = {}) =>
 					publisher = yield* LLMEventPublisher.make({ sessionId }).pipe(
 						Effect.provideService(Event.Service, events),
 					);
-					const terminal = yield* requestLLM({
-						sessionId,
-						context: {
-							systemPrompt: snapshot.systemPrompt,
-							messages: [...assembled.messages],
-							tools: [...snapshot.tools.wire],
+					const prepared = yield* hooks.prepareRequest(
+						{
+							context: {
+								systemPrompt: snapshot.systemPrompt,
+								messages: [...assembled.messages],
+								tools: [...snapshot.tools.wire],
+							},
+							provider: snapshot.provider,
+							model: snapshot.model,
+							resolvedModel: snapshot.resolvedModel,
+							thinkingLevel: snapshot.thinkingLevel,
+							options: snapshot.request,
+							settings: snapshot.settings,
 						},
-						provider: snapshot.provider,
-						model: snapshot.model,
-						resolvedModel: snapshot.resolvedModel,
-						thinkingLevel: snapshot.thinkingLevel,
-						options: snapshot.request,
-						settings: snapshot.settings,
-						publisher,
-					});
+						{ retry: retries, ...(failed === undefined ? {} : { failed }) },
+					);
+					const terminal = yield* requestLLM({ sessionId, ...prepared, publisher });
 
 					if (terminal.outcome === "failed") {
 						if (terminal.reason === "aborted") return yield* Effect.interrupt;
 						return yield* LLM.providerError(
-							{ provider: snapshot.provider, model: snapshot.model },
+							{ provider: prepared.provider, model: prepared.model },
 							LLM.messageFailure(terminal.message),
 						);
 					}
@@ -349,6 +356,7 @@ export const layer = (options: Options = {}) =>
 							if (delayMs === undefined) return Effect.fail(error);
 							return Effect.gen(function* () {
 								retries += 1;
+								failed = error.message;
 								yield* Effect.uninterruptible(settleDraft({ _tag: "error", message: error.message }));
 								yield* events.publish(EventList.RetryScheduled, {
 									timestamp: yield* DateTime.now,
@@ -395,6 +403,7 @@ export const layer = (options: Options = {}) =>
 					return {
 						needsContinuation: terminal.reason === "toolUse",
 						messageId: terminal.message.messageId,
+						reason: terminal.reason,
 					} satisfies TurnResult;
 				});
 
@@ -443,10 +452,11 @@ export const layer = (options: Options = {}) =>
 					"gen_ai.conversation.id": input.sessionId,
 				});
 
-				// A recovered run first answers the reply it was cut off in, from the same committed messages,
-				// before a queued follow-up goes in; steers join it either way.
+				// A recovered or explicitly resumed run first answers the reply it stopped in (cut off, or ended
+				// after a tool batch), from the same committed messages, before a queued follow-up goes in; steers
+				// join it either way. A wake from a new prompt is neither: its input goes in where it lands.
 				const cutOff =
-					input.recovered === true &&
+					(input.recovered === true || input.force) &&
 					!hasSteer &&
 					hasFollowUp &&
 					(yield* context.assemble(input.sessionId).pipe(
@@ -460,23 +470,48 @@ export const layer = (options: Options = {}) =>
 							);
 						}),
 					));
-				let promotion: Promotion = hasSteer ? "steer" : hasFollowUp && !cutOff ? "followUp" : undefined;
+				// A cut-off run still promotes steers that land while it loads: they join the reply being answered.
+				let promotion: Promotion = hasSteer || cutOff ? "steer" : hasFollowUp ? "followUp" : undefined;
+				/** Steers when there are any, else the oldest follow-up: what a run promotes first. */
+				const peekPending = (sessionId: SessionSchema.ID) =>
+					Effect.map(inputs.pending(sessionId), (queued) => {
+						const steers = queued.filter((item) => item.delivery === "steer");
+						return steers.length > 0 ? steers : queued.slice(0, 1);
+					});
+
 				const drain = Effect.gen(function* () {
-					let shouldRun = true;
+					let snapshot = yield* state.snapshot(input.sessionId);
 					let continuing = input.force;
-					while (shouldRun) {
-						const snapshot = yield* state.snapshot(input.sessionId);
-						let needsContinuation = true;
-						while (needsContinuation) {
-							const result = yield* runTurn(promotion, snapshot, continuing);
-							promotion = "steer";
-							continuing = result.needsContinuation;
-							needsContinuation =
-								result.needsContinuation || (yield* inputs.hasPending(input.sessionId, "steer"));
-						}
-						continuing = false;
-						shouldRun = yield* inputs.hasPending(input.sessionId, "followUp");
-						promotion = shouldRun ? "followUp" : undefined;
+					// Tool results and steers continue first; a follow-up only once both are exhausted.
+					while (true) {
+						const result: TurnResult = yield* runTurn(promotion, snapshot, continuing);
+						const completed: Hooks.Completed | undefined =
+							result.messageId === undefined || result.reason === undefined
+								? undefined
+								: {
+										snapshot,
+										messageId: result.messageId,
+										reason: result.reason,
+										needsContinuation: result.needsContinuation,
+										pending: yield* peekPending(input.sessionId),
+									};
+						const decision = completed === undefined ? undefined : yield* hooks.finishTurn(completed);
+						// Queued steers and follow-ups stay for the next run.
+						if (decision === "end") return;
+
+						// A forced continuation after a finished reply sends nothing: the leaf guard in
+						// `runTurnAttempt` ends the turn unless something was appended after it.
+						continuing = result.needsContinuation || decision === "continue";
+						const steer = yield* inputs.hasPending(input.sessionId, "steer");
+						// Only tool results outrank a follow-up. A forced continuation rides along with it, as in
+						// Pi, where the follow-up is the natural next request and the continuation its fallback.
+						const followUp =
+							!result.needsContinuation && !steer && (yield* inputs.hasPending(input.sessionId, "followUp"));
+						if (!continuing && !steer && !followUp) return;
+						promotion = followUp ? "followUp" : "steer";
+
+						const next = yield* state.snapshot(input.sessionId);
+						snapshot = completed === undefined ? next : yield* hooks.prepareNextTurn(completed, next);
 					}
 				});
 				yield* Telemetry.timed(drain, (seconds, exit) =>

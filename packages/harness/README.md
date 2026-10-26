@@ -22,7 +22,7 @@ that owns the plugin, tool and sandbox contract this package consumes — a plug
 on it rather than on the whole harness. The same types are re-exported here as `Plugin` and `Tool`
 for embedders who already hold the harness.
 
-Pass a plugin list when constructing the harness. Each plugin declares an ID and the domain it extends — `tool` or `prompt` — and contributes during setup. Setup runs once per exchange, after model resolution; its tools, hooks, and prompt remain pinned through tool continuations.
+Pass a plugin list when constructing the harness. Each plugin declares an ID and the domain it extends — `tool` or `prompt` — and contributes during setup. Setup runs before every turn, after model resolution; its tools, hooks, and prompt are pinned for that turn.
 
 ```ts
 import { Effect, Schema } from "effect";

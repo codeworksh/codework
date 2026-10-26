@@ -1,10 +1,10 @@
 /*
- * @file Runtime state snapshot for one exchange.
+ * @file Runtime state snapshot for one turn.
  *
  * State.Snapshot answers "what is this agent, right now": its system prompt, its tool
- * set, and the provider options a request is built from. It is captured once per
- * exchange and pinned for every turn inside it, so a turn's continuations all
- * see the same prompt and the same tools.
+ * set, and the provider options a request is built from. It is captured before every
+ * turn and pinned for that turn, so a change (a model switch, a tool declared mid-chain)
+ * lands on the next request and never inside a turn's tool batch.
  *
  * State.Snapshot should read the mount; it never acquires one. `snapshot` therefore declares
  * `SandboxIO.Provides | Location.Service` in its requirements, which makes
@@ -39,7 +39,7 @@ import type { Resolved } from "../tool/registry.ts";
  * How a turn's tool calls are scheduled once the array has been re-read.
  *
  * Pinned in the snapshot so a configuration change cannot switch scheduling
- * halfway through an exchange. State supplies the value; Loop implements it.
+ * halfway through a turn. State supplies the value; Loop implements it.
  */
 export type ToolExecutionMode = "sequential" | "parallel";
 
@@ -155,12 +155,12 @@ export interface Interface {
 	 * is reported: a long-running server that empties its tool registry because someone typo'd a
 	 * settings file is worse than one that keeps working and says so.
 	 *
-	 * A reload lands at the next exchange, never inside one, because `snapshot` reads the loaded
+	 * A reload lands at the next turn, never inside one, because `snapshot` reads the loaded
 	 * set once at its top.
 	 */
 	readonly reload: Effect.Effect<Reloaded>;
 	/**
-	 * The model and thinking level a session's next exchange runs with: its runtime bindings over
+	 * The model and thinking level a session's next turn runs with: its runtime bindings over
 	 * its chosen `SessionSchema.Config` over the caller's options over settings, resolved the
 	 * way {@link snapshot} resolves them. The level is the one the model will actually run at.
 	 */
@@ -171,7 +171,7 @@ export interface Interface {
 		Settings.SettingsError | Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError
 	>;
 	/**
-	 * Capture runtime state for one exchange. Called inside a session drain,
+	 * Capture runtime state for one turn. Called inside a session drain,
 	 * where the mount it reads is already open.
 	 */
 	readonly snapshot: (
@@ -199,7 +199,7 @@ const resolver = (input: string | PromptResolver): PromptResolver => (typeof inp
  * modules already in memory, so it happens at every exchange. That is why editing `options` in a
  * settings file takes effect at the next turn without anything being re-imported.
  *
- * `snapshot` reads the `Ref` once, at the top, so a reload lands on the next exchange and never
+ * `snapshot` reads the `Ref` once, at the top, so a reload lands on the next turn and never
  * mid-turn. Combined with generations, a reload that brings new bytes for a loaded plugin imports
  * a genuinely different URL, so the module registry cannot hand back the old one.
  *
@@ -331,9 +331,9 @@ export const layer = (
 					...("reference" in cause && typeof cause.reference === "string" ? { reference: cause.reference } : {}),
 					...(sessionId === undefined ? {} : { sessionId }),
 				});
-			/** Settings and composed configuration for a session's next exchange. */
+			/** Settings and composed configuration for a session's next turn. */
 			const configure = Effect.fnUntraced(function* (sessionId: SessionId) {
-				// Read per exchange, not captured at creation, so `Session.link` takes effect at
+				// Read per turn, not captured at creation, so `Session.link` takes effect at
 				// the next one. A session with none discovers no project layer: there is no
 				// fallback to the process's directory, which would hand it a stranger's project
 				// (it is a long-running server; one process serves sessions in many projects, or
@@ -365,7 +365,7 @@ export const layer = (
 			return Service.of({
 				reload: Effect.gen(function* () {
 					// Swaps the module set of every view. Which of those a given session runs stays
-					// that session's own question, answered by its config pass at the next exchange.
+					// that session's own question, answered by its config pass at the next turn.
 					// A view that fails keeps its previous set; the others still swap. A broken user-layer
 					// entry breaks every view the same way, and is one failure, reported once.
 					const failures = new Map<string, { readonly message: string }>();

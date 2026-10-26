@@ -48,8 +48,8 @@ const terminal = (input: LLM.Input, index: number, tool = false) => {
 	return stream;
 };
 
-describe("settings at exchange boundaries", () => {
-	it("pins settings through a blocked request, tool continuation and steer; refreshes follow-up and idle prompts", () =>
+describe("settings at turn boundaries", () => {
+	it("pins settings through a blocked request, and applies an edit made during a tool batch at the next turn", () =>
 		withSettings(async ({ root, custom, local }) => {
 			await file(custom, "low");
 			// This belongs to the session directory, not host startup, and must not be loaded.
@@ -96,8 +96,10 @@ describe("settings at exchange boundaries", () => {
 						yield* handle.prompt({ text: "later", delivery: "followUp" });
 						yield* Deferred.succeed(toolRelease, undefined);
 						yield* handle.wait();
-						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "low", "high"]);
-						expect(inputs.map((input) => input.options?.headers?.revision)).toEqual(["low", "low", "high"]);
+						// The "medium" edit landed while request 1 was blocked; the request already built stays "low".
+						// The "high" edit landed during the tool batch, so the continuation turn reads it.
+						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "high", "high"]);
+						expect(inputs.map((input) => input.options?.headers?.revision)).toEqual(["low", "high", "high"]);
 						expect(inputs[1]?.context.systemPrompt).toBe(inputs[0]?.context.systemPrompt);
 						yield* Effect.promise(() => file(custom, "off"));
 						yield* handle.run("idle steer");
@@ -127,7 +129,7 @@ describe("settings at exchange boundaries", () => {
 			);
 		}));
 
-	it("pins matching parallel tool execution through continuations and refreshes it next exchange", () =>
+	it("pins parallel tool execution for the running batch and refreshes it at the next turn", () =>
 		withSettings(async ({ root, custom }) => {
 			const configure = (toolExecution: string) =>
 				writeFile(
@@ -139,7 +141,7 @@ describe("settings at exchange boundaries", () => {
 			await configure("parallel");
 			await Effect.runPromise(
 				Effect.gen(function* () {
-					const gates = [yield* Deferred.make<void>(), yield* Deferred.make<void>()];
+					const gates = [yield* Deferred.make<void>()];
 					const starts = [0, 0, 0];
 					const trace: string[] = [];
 					let request = 0;
@@ -157,7 +159,8 @@ describe("settings at exchange boundaries", () => {
 									if (batch === 0 && starts[batch] === 1) yield* Effect.promise(() => configure("sequential"));
 									const gate = gates[batch];
 									if (gate !== undefined) {
-										// A sequential scheduler deadlocks here: both calls must enter before either finishes.
+										// Only the batch that started parallel has a gate: a sequential scheduler would deadlock
+										// here, since both calls must enter before either finishes.
 										if (starts[batch] === 2) yield* Deferred.succeed(gate, undefined);
 										yield* Deferred.await(gate);
 									}
@@ -193,12 +196,16 @@ describe("settings at exchange boundaries", () => {
 						yield* handle.run("parallel, including continuation");
 						yield* handle.run("fresh sequential");
 						expect(starts).toEqual([2, 2, 2]);
-						expect(trace.filter((item) => item.startsWith("2:"))).toEqual([
-							"2:start",
-							"2:end",
-							"2:start",
-							"2:end",
-						]);
+						// Batch 0 ran parallel through the edit made inside it; the next turn and the next
+						// exchange read the edited file and run sequentially.
+						for (const batch of [1, 2]) {
+							expect(trace.filter((item) => item.startsWith(`${batch}:`))).toEqual([
+								`${batch}:start`,
+								`${batch}:end`,
+								`${batch}:start`,
+								`${batch}:end`,
+							]);
+						}
 					}).pipe(
 						Effect.provide(
 							Harness.layer({
@@ -322,7 +329,7 @@ describe("settings at exchange boundaries", () => {
 			expect(failures[0]?.data.error.message).toContain("model.options.timeoutMs");
 		}));
 
-	it("applies a session binding change at the next capture, not inside the running exchange", () =>
+	it("applies a session binding change at the next turn, not inside the running one", () =>
 		withSettings(async ({ root, custom }) => {
 			await file(custom, "low");
 			const inputs: LLM.Input[] = [];
@@ -353,13 +360,13 @@ describe("settings at exchange boundaries", () => {
 						const handle = yield* Session.create({ directory: root });
 						yield* handle.prompt("first");
 						yield* Deferred.await(toolEntered);
-						// A binding set mid-exchange must not disturb the snapshot already pinned.
+						// A binding set during a tool batch must not disturb the turn already running.
 						yield* Session.attach({ sessionId: handle.id, thinkingLevel: "max" });
 						yield* Deferred.succeed(toolRelease, undefined);
 						yield* handle.wait();
-						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "low"]);
+						expect(inputs.map((input) => input.thinkingLevel)).toEqual(["low", "max"]);
 						yield* handle.run("second");
-						// The next capture reads it, and a binding outranks the file.
+						// A binding outranks the file.
 						expect(inputs.at(-1)?.thinkingLevel).toBe("max");
 					}).pipe(
 						Effect.provide(
