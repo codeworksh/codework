@@ -26,6 +26,19 @@ const model = (id: string, input: Model.Info["input"]): Model.Info => ({
 	protocol: "openai",
 });
 
+/** A BMP header with no pixel data: detected as an image, but it cannot be converted to inline. */
+const truncatedBmp = () => {
+	const header = Buffer.alloc(54);
+	header.write("BM", 0, "ascii");
+	header.writeUInt32LE(54, 10);
+	header.writeUInt32LE(40, 14);
+	header.writeInt32LE(2, 18);
+	header.writeInt32LE(2, 22);
+	header.writeUInt16LE(1, 26);
+	header.writeUInt16LE(24, 28);
+	return header;
+};
+
 const textOnly = model("text-only", ["text"]);
 const vision = model("vision", ["text", "image"]);
 
@@ -48,9 +61,10 @@ const view = (input: LLM.Input) =>
 	});
 
 describe("read on a text-only model, then a model switch", () => {
-	it("tells a text-only model the image is omitted and sends it once the model sees images", () =>
+	it("tells a text-only model each image is omitted and sends them once the model sees images", () =>
 		withSettings(async ({ root, custom }) => {
 			await copyFile(image, join(root, "red-circle.png"));
+			await writeFile(join(root, "broken.bmp"), truncatedBmp());
 			const select = (selected: Model.Info) =>
 				writeFile(
 					join(custom, "settings.jsonc"),
@@ -68,14 +82,14 @@ describe("read on a text-only model, then a model switch", () => {
 							? {
 									stopReason: "toolUse",
 									parts: [
-										{
-											type: "toolCall",
-											callID: "read_1",
+										...["red-circle.png", "broken.bmp"].map((path, index) => ({
+											type: "toolCall" as const,
+											callID: `read_${index + 1}`,
 											name: "read",
-											arguments: { path: "red-circle.png" },
-											status: "pending",
+											arguments: { path },
+											status: "pending" as const,
 											time: { start: 1, end: 1 },
-										},
+										})),
 									],
 								}
 							: {},
