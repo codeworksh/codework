@@ -323,7 +323,7 @@ const USER_IMAGE_PLACEHOLDER = "(image omitted: model does not support images)";
 const TOOL_IMAGE_PLACEHOLDER = "(tool image omitted: model does not support images)";
 
 // Consecutive images collapse into a single placeholder.
-function omitImages(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
+export function omitImages(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
 	const result: TextContent[] = [];
 	for (const [index, block] of content.entries()) {
 		if (block.type === "text") result.push(block);

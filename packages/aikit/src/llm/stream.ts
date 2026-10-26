@@ -403,7 +403,7 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 			const plan = Thinking.resolvePlan(model, context, runtimeOptions);
 			const languageModel = await resolveAISDKLanguageModel(model, runtimeOptions, plan.budget);
 			const tools = convertTools(context.tools, model);
-			const messages = convertMessages(context, model);
+			const messages = convertMessages(context, model, runtimeOptions.method);
 			const providerOptions = resolveProviderOptions(model, runtimeOptions, plan) as Parameters<
 				typeof streamText<ToolSet>
 			>[0]["providerOptions"];
