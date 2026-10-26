@@ -1,0 +1,30 @@
+[
+	{
+		"role": "tool",
+		"content": [
+			{
+				"type": "tool-result",
+				"toolCallId": "<call-id>",
+				"toolName": "check_screenshot",
+				"output": {
+					"type": "error-text",
+					"value": "Screenshot assertion failed: the page did not match.\n(image attached after the tool results)"
+				}
+			}
+		]
+	},
+	{
+		"role": "user",
+		"content": [
+			{
+				"type": "text",
+				"text": "Images from the error result of tool call <call-id> (check_screenshot):"
+			},
+			{
+				"type": "file",
+				"data": "<red-circle.png>",
+				"mediaType": "image/png"
+			}
+		]
+	}
+]

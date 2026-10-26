@@ -17,6 +17,7 @@ import { shortHash } from "../utils/hash.ts";
 import { parseStreamingJson } from "../utils/jsonparse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize.ts";
 import { resolveStrictParameters } from "./strict.ts";
+import { isAnthropicMessagesModel } from "./thinking.ts";
 
 type ToolCallPart = Extract<Message.AssistantMessage["parts"][number], { type: "toolCall" }>;
 type TerminalToolCall = Exclude<ToolCallPart, Message.ToolCallPendingPart | Message.ToolCallRunningPart>;
@@ -82,14 +83,31 @@ function sanitizeRecord(value: Record<string, unknown>): Record<string, unknown>
 	return sanitizeValue(value) as Record<string, unknown>;
 }
 
-function toolResultOutput(toolCall: TerminalToolCall) {
-	const text = toolCall.result.content
+const ERROR_TOOL_IMAGE_PLACEHOLDER = "(image attached after the tool results)";
+
+// Anthropic rejects images in error tool results, so they follow the turn's tool results instead.
+function splitsErrorImages(toolCall: TerminalToolCall, model: Model.Info): boolean {
+	return (
+		toolCall.result.isError &&
+		isAnthropicMessagesModel(model) &&
+		toolCall.result.content.some((content) => content.type === "image")
+	);
+}
+
+function toolResultOutput(toolCall: TerminalToolCall, model: Model.Info) {
+	const split = splitsErrorImages(toolCall, model);
+	const content = split
+		? Message.omitImages(toolCall.result.content, ERROR_TOOL_IMAGE_PLACEHOLDER)
+		: toolCall.result.content;
+	const text = content
 		.filter((content) => content.type === "text")
 		.map((content) => sanitizeSurrogates(content.text))
 		.join("\n");
-	const images = toolCall.result.content.filter((content) => content.type === "image");
+	const images = content.filter((content) => content.type === "image");
 
-	if (toolCall.result.isError) {
+	// The AI SDK's content output has no error flag, so other providers keep the images and lose
+	// the flag: Google drops its `error` key, OpenAI-family wires have no flag to lose.
+	if (toolCall.result.isError && images.length === 0) {
 		return {
 			type: "error-text" as const,
 			value: text || "tool returned an error",
@@ -215,6 +233,7 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 
 	const assistantContent: Exclude<AssistantModelMessage["content"], string> = [];
 	const toolResults: ToolModelMessage["content"] = [];
+	const errorImages: Exclude<UserModelMessage["content"], string> = [];
 	const googleReplay =
 		(model.protocol === "google" || model.protocol === "google-vertex") &&
 		message.protocol === model.protocol &&
@@ -330,12 +349,22 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 				? { providerOptions: { "openai-codex": { addedToolNames: terminal.addedToolNames } } }
 				: {}),
 			output: terminal
-				? toolResultOutput(terminal)
+				? toolResultOutput(terminal, model)
 				: {
 						type: "error-text",
 						value: "no result provided",
 					},
 		});
+		if (terminal && splitsErrorImages(terminal, model)) {
+			errorImages.push(
+				{ type: "text", text: `Images from the error result of tool call ${part.callID} (${part.name}):` },
+				...terminal.result.content.flatMap((content) =>
+					content.type === "image"
+						? [{ type: "file" as const, data: content.data, mediaType: content.mimeType }]
+						: [],
+				),
+			);
+		}
 	}
 
 	const result: ModelMessage[] = [];
@@ -344,6 +373,10 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 	}
 	if (toolResults.length > 0) {
 		result.push({ role: "tool", content: toolResults });
+	}
+	// @ai-sdk/anthropic merges this into the tool results' user message, after the tool_result blocks.
+	if (errorImages.length > 0) {
+		result.push({ role: "user", content: errorImages });
 	}
 	return result;
 }

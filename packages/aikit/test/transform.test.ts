@@ -12,12 +12,15 @@ import * as Message from "../src/message/message.ts";
 import * as Model from "../src/model/model.ts";
 import { openAICodexTools } from "../src/providers/openai-codex/index.ts";
 import { shortHash } from "../src/utils/hash.ts";
+import { stream } from "../src/llm/stream.ts";
+import { fakeAnthropic, textReply } from "./utils/anthropic.ts";
 import {
 	makeAssistantMessage,
 	makeLanguageModelUsage,
 	makeCompletedToolCall,
 	makeModel,
 	makePendingToolCall,
+	makeUserMessage,
 } from "./utils/fixtures.ts";
 
 const PNG = "aGVsbG8=";
@@ -682,8 +685,9 @@ describe("convertMessages", () => {
 		});
 	});
 
-	it("uses only text from error results that also include images", () => {
-		const assistant = makeAssistantMessage(imageModel, {
+	it("keeps error result images in place for providers outside the Anthropic wire", () => {
+		const openai = makeOpenAIModel({ input: ["text", "image"] });
+		const assistant = makeAssistantMessage(openai, {
 			stopReason: "toolUse",
 			parts: [
 				makeErrorToolCall("call-1", [
@@ -692,11 +696,25 @@ describe("convertMessages", () => {
 				]),
 			],
 		});
-		expect(
-			convertMessages({ messages: [assistant] }, imageModel).find((message) => message.role === "tool"),
-		).toMatchObject({
-			content: [{ output: { type: "error-text", value: "failed" } }],
-		});
+		expect(convertMessages({ messages: [assistant] }, openai).slice(1)).toEqual([
+			{
+				role: "tool",
+				content: [
+					{
+						type: "tool-result",
+						toolCallId: "call-1",
+						toolName: "search",
+						output: {
+							type: "content",
+							value: [
+								{ type: "text", text: "failed" },
+								{ type: "file", data: { type: "data", data: PNG }, mediaType: "image/png" },
+							],
+						},
+					},
+				],
+			},
+		]);
 	});
 
 	it("sanitizes unpaired surrogates in tool arguments and results", () => {
@@ -717,5 +735,90 @@ describe("convertMessages", () => {
 		expect(messages[1]).toMatchObject({
 			content: [{ output: { value: "out  put" } }],
 		});
+	});
+});
+
+describe("Anthropic error tool results with images", () => {
+	const claude = makeModel({ npm: "@ai-sdk/anthropic", input: ["text", "image"] });
+	const image = (data: string) => ({ type: "image", source: { type: "base64", media_type: "image/png", data } });
+
+	async function wireMessages(parts: Message.AssistantMessage["parts"]) {
+		const server = fakeAnthropic(textReply);
+		const context: Message.Context = {
+			messages: [
+				makeUserMessage("Show the screenshots"),
+				makeAssistantMessage(claude, { stopReason: "toolUse", parts }),
+			],
+		};
+		await stream(claude, context, { apiKey: "test-key", factoryOptions: { fetch: server.fetch } }).result();
+		return (server.body() as { messages: unknown[] }).messages;
+	}
+
+	it("moves the images after the tool results of the turn", async () => {
+		const messages = await wireMessages([
+			makeErrorToolCall(
+				"call-1",
+				[
+					{ type: "text", text: "Script failed" },
+					{ type: "image", data: "AAAA", mimeType: "image/png" },
+					{ type: "image", data: "CCCC", mimeType: "image/png" },
+					{ type: "text", text: "Script error" },
+				],
+				"codemode",
+			),
+			makeCompletedToolCall("call-2", "read", [{ type: "image", data: "BBBB", mimeType: "image/png" }]),
+		]);
+
+		expect(messages[2]).toEqual({
+			role: "user",
+			content: [
+				{
+					type: "tool_result",
+					tool_use_id: "call-1",
+					content: "Script failed\n(image attached after the tool results)\nScript error",
+					is_error: true,
+				},
+				{ type: "tool_result", tool_use_id: "call-2", content: [image("BBBB")] },
+				{ type: "text", text: "Images from the error result of tool call call-1 (codemode):" },
+				image("AAAA"),
+				image("CCCC"),
+			],
+		});
+	});
+
+	it("keeps error tool results without images unchanged", async () => {
+		const messages = await wireMessages([
+			makeErrorToolCall("call-1", [{ type: "text", text: "Script failed" }], "codemode"),
+		]);
+
+		expect(messages[2]).toEqual({
+			role: "user",
+			content: [{ type: "tool_result", tool_use_id: "call-1", content: "Script failed", is_error: true }],
+		});
+	});
+
+	it("omits error result images for a text-only model without splitting", async () => {
+		const assistant = makeAssistantMessage(sameModel, {
+			stopReason: "toolUse",
+			parts: [
+				makeErrorToolCall("call-1", [
+					{ type: "text", text: "failed" },
+					{ type: "image", data: PNG, mimeType: "image/png" },
+				]),
+			],
+		});
+		expect(convertMessages({ messages: [assistant] }, sameModel).slice(1)).toMatchObject([
+			{
+				role: "tool",
+				content: [
+					{
+						output: {
+							type: "error-text",
+							value: "failed\n(tool image omitted: model does not support images)",
+						},
+					},
+				],
+			},
+		]);
 	});
 });

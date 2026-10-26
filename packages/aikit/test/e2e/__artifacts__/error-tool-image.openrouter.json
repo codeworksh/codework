@@ -1,0 +1,29 @@
+[
+	{
+		"role": "tool",
+		"content": [
+			{
+				"type": "tool-result",
+				"toolCallId": "<call-id>",
+				"toolName": "check_screenshot",
+				"output": {
+					"type": "content",
+					"value": [
+						{
+							"type": "text",
+							"text": "Screenshot assertion failed: the page did not match."
+						},
+						{
+							"type": "file",
+							"data": {
+								"type": "data",
+								"data": "<red-circle.png>"
+							},
+							"mediaType": "image/png"
+						}
+					]
+				}
+			}
+		]
+	}
+]
