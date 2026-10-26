@@ -208,6 +208,7 @@ export const layer = (options: Options = {}) =>
 								.handle(call, {
 									sessionId: snapshot.sessionId,
 									messageId,
+									modelInput: snapshot.resolvedModel.input,
 									onProgress: (progress) =>
 										events
 											.publish(EventList.ToolProgress, {

@@ -1,0 +1,85 @@
+[
+	{
+		"model": "text-only",
+		"messages": [
+			{
+				"role": "user",
+				"content": [
+					"read the image"
+				]
+			}
+		]
+	},
+	{
+		"model": "text-only",
+		"messages": [
+			{
+				"role": "user",
+				"content": [
+					"read the image"
+				]
+			},
+			{
+				"role": "assistant",
+				"parts": [
+					{
+						"toolCall": "read",
+						"result": [
+							"Read image file [image/png]\n[Current model does not support images. The image will be omitted from this request.]",
+							"(tool image omitted: model does not support images)"
+						]
+					},
+					{
+						"toolCall": "read",
+						"result": [
+							"Read image file [image/bmp]\n[Image omitted: could not be converted to a supported inline image format.]\n[Current model does not support images. The image will be omitted from this request.]"
+						]
+					}
+				]
+			}
+		]
+	},
+	{
+		"model": "vision",
+		"messages": [
+			{
+				"role": "user",
+				"content": [
+					"read the image"
+				]
+			},
+			{
+				"role": "assistant",
+				"parts": [
+					{
+						"toolCall": "read",
+						"result": [
+							"Read image file [image/png]\n[Current model does not support images. The image will be omitted from this request.]",
+							{
+								"image": "image/png"
+							}
+						]
+					},
+					{
+						"toolCall": "read",
+						"result": [
+							"Read image file [image/bmp]\n[Image omitted: could not be converted to a supported inline image format.]\n[Current model does not support images. The image will be omitted from this request.]"
+						]
+					}
+				]
+			},
+			{
+				"role": "assistant",
+				"parts": [
+					"response 2"
+				]
+			},
+			{
+				"role": "user",
+				"content": [
+					"what do you see now?"
+				]
+			}
+		]
+	}
+]
