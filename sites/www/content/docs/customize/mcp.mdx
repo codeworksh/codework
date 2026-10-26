@@ -46,6 +46,19 @@ User servers go in `~/.codework/mcp.json`, project servers in `.codework/mcp.jso
 
 A broken file or entry is reported and skipped. The other servers still connect.
 
+## Add and Check Servers
+
+`codework mcp add` writes an entry for you, and leaves the rest of the file as it is:
+
+```bash
+codework mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
+codework mcp add docs --url https://example.com/mcp --bearer-token-env-var DOCS_TOKEN
+```
+
+It writes the user file; `-l` writes the project's. `codework mcp remove <name>` removes an entry.
+
+`codework mcp list` connects to every enabled server and shows its state, tools and errors. It exits with 1 if an entry is broken or an enabled server does not connect.
+
 ## Signing In
 
 An HTTP server without an `Authorization` header signs in with OAuth when it asks for it. Sign in from a terminal:

@@ -1,15 +1,11 @@
 import { Global, Plugin, Settings } from "@codeworksh/harness/effect";
 import { Effect, FileSystem, Option, Path } from "effect";
-import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser";
 import { InvalidInputError } from "../../../error.ts";
+import { Jsonc } from "../../../jsonc.ts";
 
 /**
- * Reading and rewriting the `plugins` array of one settings file.
- *
- * Edits go through `jsonc-parser`, so a hand-written file keeps its comments, key order and
- * formatting: a plugin added by the CLI must not reformat a file its owner maintains. The write
- * is a temp file renamed over the original, so an interrupted run leaves the previous settings
- * intact rather than a half-written document.
+ * Reading and rewriting the `plugins` array of one settings file, through {@link Jsonc}: a plugin
+ * added by the CLI must not reformat a file its owner maintains.
  */
 
 export interface Shared {
@@ -179,62 +175,22 @@ export const matching = (entries: ReadonlyArray<Entry>, spelled: ReadonlySet<str
 };
 
 export const readPlugins = Effect.fn("CLI.plugin.readPlugins")(function* (path: string) {
-	const fs = yield* FileSystem.FileSystem;
-	const exists = yield* fs.exists(path);
-	const source = exists ? yield* fs.readFileString(path) : "{}";
-	const errors: ParseError[] = [];
-	const document: unknown = parseJsonc(source, errors, { allowTrailingComma: true });
-	if (errors.length > 0 || typeof document !== "object" || document === null || Array.isArray(document)) {
-		return yield* new InvalidInputError({ message: `${path} is not a valid settings file` });
-	}
-	const plugins = (document as { plugins?: unknown }).plugins;
+	const { source, document } = yield* Jsonc.read(path, "settings file");
+	const plugins = document.plugins;
 	if (plugins !== undefined && !Array.isArray(plugins)) {
 		return yield* new InvalidInputError({ message: `${path}: "plugins" must be an array` });
 	}
 	return { source, plugins: (plugins ?? []) as ReadonlyArray<unknown> };
 });
 
-export const writePlugins = Effect.fn("CLI.plugin.writePlugins")(function* (
-	path: string,
-	source: string,
-	plugins: ReadonlyArray<unknown>,
-) {
-	const fs = yield* FileSystem.FileSystem;
-	const nodePath = yield* Path.Path;
-	const edited = applyEdits(
-		source,
-		modify(source, ["plugins"], plugins, { formattingOptions: { tabSize: 2, insertSpaces: false } }),
-	);
-	const directory = nodePath.dirname(path);
-	yield* fs.makeDirectory(directory, { recursive: true });
-	const mode = (yield* fs.exists(path)) ? (yield* fs.stat(path)).mode & 0o777 : 0o600;
-	const temporary = yield* fs.makeTempFile({ directory, prefix: `.${nodePath.basename(path)}.`, suffix: ".tmp" });
-	yield* fs
-		.writeFileString(temporary, edited.endsWith("\n") ? edited : `${edited}\n`)
-		.pipe(
-			Effect.andThen(fs.chmod(temporary, mode)),
-			Effect.andThen(fs.rename(temporary, path)),
-			Effect.ensuring(fs.remove(temporary, { force: true }).pipe(Effect.ignore)),
-		);
-});
+export const writePlugins = (path: string, source: string, plugins: ReadonlyArray<unknown>) =>
+	Jsonc.write(path, source, ["plugins"], plugins);
 
 /**
- * Serialize one settings read-modify-rename across CLI processes.
- *
- * The install or inspection that precedes an edit stays outside this scope; only the local edit is
- * locked, so unrelated downloads do not wait behind one another.
+ * Serialize one settings read-modify-rename across CLI processes. The install or inspection that
+ * precedes an edit stays outside it, so unrelated downloads do not wait behind one another.
  */
-export const withPluginsLock = <A, E, R>(path: string, edit: Effect.Effect<A, E, R>) =>
-	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem;
-		const nodePath = yield* Path.Path;
-		yield* fs.makeDirectory(nodePath.dirname(path), { recursive: true });
-		yield* Plugin.settingsLock(
-			`${path}.lock`,
-			() => new InvalidInputError({ message: `timed out waiting to edit ${path}` }),
-		);
-		return yield* edit;
-	}).pipe(Effect.scoped);
+export const withPluginsLock = Jsonc.locked;
 
 /**
  * Which file the edit lands in.

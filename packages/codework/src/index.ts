@@ -17,6 +17,9 @@ const Handlers = Runtime.handlers(Cmd, {
 		logout: () => import("./cli/cmd/handlers/auth/logout.ts"),
 	},
 	mcp: {
+		add: () => import("./cli/cmd/handlers/mcp/add.ts"),
+		remove: () => import("./cli/cmd/handlers/mcp/remove.ts"),
+		list: () => import("./cli/cmd/handlers/mcp/list.ts"),
 		login: () => import("./cli/cmd/handlers/mcp/login.ts"),
 		logout: () => import("./cli/cmd/handlers/mcp/logout.ts"),
 	},
