@@ -139,7 +139,7 @@ export type Resolve = (
 	input: ResolutionInput,
 ) => Effect.Effect<Model.Info, Runner.ModelCatalogError | Runner.ModelNotFoundError | Runner.ProviderError>;
 
-/** Resolve once before exchange setup; execution reuses this exact instance. */
+/** Resolve once before turn setup; execution reuses this exact instance. */
 export const resolve: Resolve = Effect.fn("LLM.resolve")(function* (input) {
 	const overrides = resolveOverrides(input.settings ?? {});
 	const declared = ModelCatalog.entry(input.models ?? [], input.provider, input.model);

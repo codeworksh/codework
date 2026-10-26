@@ -75,7 +75,7 @@ const tree = async (dir: string, prefix = ""): Promise<Record<string, string>> =
 };
 
 describe("write plugin through the local harness", () => {
-	it("creates, overwrites and reports failures like Pi", () =>
+	it("creates, overwrites and reports failures", () =>
 		withSettings(async ({ root, custom }) => {
 			const work = join(root, "work");
 			await fs.mkdir(work);

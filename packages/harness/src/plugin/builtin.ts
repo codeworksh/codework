@@ -12,7 +12,7 @@ import { writePlugin } from "./builtin/tool/write.ts";
 /**
  * Every plugin the harness ships, and the selection a caller who passes no `plugins` gets. Tool
  * contributors come first; within the prompt domain, declaration order is run order. The search
- * tools (grep, find, ls) are `optIn`, as Pi ships them off: settings turn each on with
+ * tools (grep, find, ls) are `optIn` and ship off: settings turn each on with
  * `{ "plugin": "codework.tool.grep", "enabled": true }`.
  */
 export const builtins = Object.freeze([

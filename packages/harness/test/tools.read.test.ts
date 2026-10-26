@@ -171,7 +171,7 @@ const summarise = (content: ReadonlyArray<{ type: string; text?: string; data?: 
 	);
 
 describe("read plugin through the local harness", () => {
-	it("reads text, pages, images and failures like Pi", () =>
+	it("reads text, pages, images and failures", () =>
 		withSettings(async ({ root, custom }) => {
 			for (const { file } of cases) {
 				if (file === undefined) continue;

@@ -91,9 +91,9 @@ const emptyPool: Pool = {
 /**
  * The **load pass**: store lookup and ESM import, never the network.
  *
- * Runs at boot, at `reload`, and at any exchange that finds a reference it cannot satisfy. It
+ * Runs at boot, at `reload`, and at any turn that finds a reference it cannot satisfy. It
  * deliberately knows nothing about `enabled`, options or order -- those are data over modules that
- * are already loaded, they cost a walk of a short array, and they belong to every exchange.
+ * are already loaded, they cost a walk of a short array, and they belong to every turn.
  *
  * Loading is keyed by what a reference resolves to, so naming one module twice imports it once.
  */
@@ -186,7 +186,7 @@ export interface Selected {
 }
 
 /**
- * The **config pass**: pure data over modules that are already loaded, run at every exchange.
+ * The **config pass**: pure data over modules that are already loaded, run at every turn.
  *
  * An array entry is a **module** — a definition object, a path, a `file:` URL, or a package
  * spec. It takes the position it is written at, so naming a module again moves it.
@@ -285,9 +285,9 @@ export const select = Effect.fn("PluginCatalog.select")(function* (references: R
 });
 
 /**
- * The exchange-boundary check: has the store moved under this pool?
+ * The turn-boundary check: has the store moved under this pool?
  *
- * Every exchange already re-reads every settings layer from disk, and the config pass already
+ * Every turn already re-reads every settings layer from disk, and the config pass already
  * walks those entries against the loaded set. Two things can be settled right there, and they are
  * the same question asked twice:
  *
@@ -305,15 +305,15 @@ export const select = Effect.fn("PluginCatalog.select")(function* (references: R
  *
  * **This is not a watcher.** Nothing polls and no fiber exists; it is the observation that we were
  * already paying for the I/O that would tell us, and discarding the answer. Three bounds keep it
- * safe: the store only and never the network, so an exchange cannot block on a registry;
- * resolve-only, so it cannot install; and once, at the top of a snapshot, so an exchange already
+ * safe: the store only and never the network, so a turn cannot block on a registry;
+ * resolve-only, so it cannot install; and once, at the top of a snapshot, so a turn already
  * running is unaffected.
  */
 export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	references: ReadonlyArray<PluginRef>,
 	pool: Pool,
 	/**
-	 * `install` is required and must be resolve-only. Making it non-optional is how "an exchange
+	 * `install` is required and must be resolve-only. Making it non-optional is how "a turn
 	 * follows the store, it does not fill it" becomes a fact of the signature rather than a rule
 	 * someone has to remember: the default installer fetches, and there is no way to reach it here.
 	 */
@@ -327,7 +327,7 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	 * exists and covers only it.
 	 *
 	 * `from` is the `.npmrc` anchor the lookup computes the store key under: the project that
-	 * declared the reference, so an exchange answers about the same artifact `plugin install`
+	 * declared the reference, so a turn answers about the same artifact `plugin install`
 	 * filed rather than the one the server's own directory would name.
 	 */
 	filed: (reference: string, from: string) => Effect.Effect<Option.Option<{ readonly generation?: number }>>,
@@ -382,7 +382,7 @@ export const follow = Effect.fn("PluginCatalog.follow")(function* (
 	//
 	// A retained origin's source may have vanished since it loaded -- a file deleted, a store
 	// entry removed. It is nobody's declaration now, so it drops out of the pool with a warning
-	// rather than failing the exchange for plugins nothing was wrong with. A reference the
+	// rather than failing the turn for plugins nothing was wrong with. A reference the
 	// session itself still configures stays strict: the drift check above covered it, and `load`
 	// still fails on it.
 	const retained: Origin[] = [];

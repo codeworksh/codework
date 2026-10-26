@@ -1199,7 +1199,7 @@ describe("runner loop — resume after restart", () => {
 		}),
 	);
 
-	// Pi resends the cut-off request as it was; a follow-up queued behind it waits for the answer.
+	// The cut-off request is resent as it was; a follow-up queued behind it waits for the answer.
 	it(
 		"answers the reply a shutdown cut off before a queued follow-up goes in",
 		Effect.gen(function* () {
@@ -1400,7 +1400,6 @@ describe("runner loop — lifecycle hooks", () => {
 					calls.push({
 						hook: "prepareNextTurn",
 						completed: turn.reason,
-						needsContinuation: turn.needsContinuation,
 						tools: next.tools.defs.map((def) => def.name).filter((name) => name.startsWith("echo")),
 					});
 					return next;
@@ -1412,7 +1411,7 @@ describe("runner loop — lifecycle hooks", () => {
 				}),
 			finishTurn: (turn) =>
 				Effect.sync(() => {
-					calls.push({ hook: "finishTurn", reason: turn.reason, needsContinuation: turn.needsContinuation });
+					calls.push({ hook: "finishTurn", reason: turn.reason });
 					return undefined;
 				}),
 		};
@@ -1491,10 +1490,14 @@ describe("runner loop — lifecycle hooks", () => {
 
 	describe("finishTurn end", () => {
 		const contexts: Message.Context[] = [];
+		let prepared = 0;
 		const { effect: it } = testEffect(
 			runtime({
 				open: recording(contexts),
-				hooks: hooksOf({ finishTurn: (turn) => Effect.succeed(turn.reason === "toolUse" ? "end" : undefined) }),
+				hooks: hooksOf({
+					finishTurn: (turn) => Effect.succeed(turn.reason === "toolUse" ? "end" : undefined),
+					prepareNextTurn: (_turn, next) => Effect.sync(() => ((prepared += 1), next)),
+				}),
 				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
 			}),
 		);
@@ -1510,6 +1513,7 @@ describe("runner loop — lifecycle hooks", () => {
 				yield* execution.resume(sessionId);
 
 				expect(contexts).toHaveLength(1);
+				expect(prepared).toBe(0);
 				const sessions = yield* Session.Service;
 				const path = yield* sessions.path(sessionId);
 				expect(path.map((item) => [item.entry.type, item.entry.state])).toEqual([
@@ -1600,6 +1604,114 @@ describe("runner loop — lifecycle hooks", () => {
 				// The decision was honoured (another turn was scheduled) and the leaf guard sent nothing.
 				expect(completed).toEqual(["stop"]);
 				expect(contexts).toHaveLength(1);
+			}),
+		);
+	});
+
+	describe("finishTurn continue after a tool batch", () => {
+		const contexts: Message.Context[] = [];
+		const completed: string[] = [];
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks: hooksOf({
+					finishTurn: () => Effect.succeed("continue"),
+					prepareNextTurn: (turn, next) => Effect.sync(() => (completed.push(turn.reason), next)),
+				}),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"is met by the tool-result request and adds none of its own",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_tool", sessionId, delivery: "steer" });
+
+				yield* execution.resume(sessionId);
+
+				expect(completed).toEqual(["toolUse", "stop"]);
+				expect(contexts).toHaveLength(2);
+			}),
+		);
+	});
+
+	describe("prepareNextTurn", () => {
+		const contexts: Message.Context[] = [];
+		const during: { run: Effect.Effect<void> } = { run: Effect.void };
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks: hooksOf({
+					prepareNextTurn: (_turn, next) => during.run.pipe(Effect.as({ ...next, systemPrompt: "replaced" })),
+				}),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"its snapshot reaches the next request, with a steer queued while it ran",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_first", sessionId, delivery: "steer" });
+				const services = yield* Effect.context<Effect.Services<ReturnType<typeof admit>>>();
+				during.run = admit({ id: "msg_during", sessionId, delivery: "steer" }).pipe(
+					Effect.andThen(
+						Effect.sync(() => {
+							during.run = Effect.void;
+						}),
+					),
+					Effect.provideContext(services),
+				);
+
+				yield* execution.resume(sessionId);
+
+				expect(contexts.map((context) => context.systemPrompt === "replaced")).toEqual([false, true]);
+				expect(contexts.map(texts)).toEqual([["msg_first"], ["msg_first", "msg_during"]]);
+			}),
+		);
+	});
+
+	describe("prepareRequest and queued input", () => {
+		const contexts: Message.Context[] = [];
+		const seen: Array<ReadonlyArray<string>> = [];
+		const during: { run: Effect.Effect<void> } = { run: Effect.void };
+		const { effect: it } = testEffect(
+			runtime({
+				open: recording(contexts),
+				hooks: hooksOf({
+					prepareRequest: (request) =>
+						Effect.sync(() => seen.push(texts(request.context))).pipe(
+							Effect.andThen(during.run),
+							Effect.as(request),
+						),
+				}),
+				plugins: [...plugins, { id: "test.tool.echo", kind: "tool", setup: (ctx) => ctx.plugin.tools.add(echo) }],
+			}),
+		);
+
+		it(
+			"sees promoted input, and a steer queued while it runs waits for the next turn",
+			Effect.gen(function* () {
+				const execution = yield* RunnerExecution.Service;
+				const sessionId = yield* seedSession();
+				yield* admit({ id: "msg_first", sessionId, delivery: "steer" });
+				const services = yield* Effect.context<Effect.Services<ReturnType<typeof admit>>>();
+				during.run = admit({ id: "msg_during", sessionId, delivery: "steer" }).pipe(
+					Effect.andThen(
+						Effect.sync(() => {
+							during.run = Effect.void;
+						}),
+					),
+					Effect.provideContext(services),
+				);
+
+				yield* execution.resume(sessionId);
+
+				expect(seen).toEqual([["msg_first"], ["msg_first", "msg_during"]]);
+				expect(contexts.map(texts)).toEqual(seen);
 			}),
 		);
 	});

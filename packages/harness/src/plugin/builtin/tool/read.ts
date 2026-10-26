@@ -78,7 +78,7 @@ export const readDef = Tool.define({
 const fail = (message: string) => Effect.fail(new ReadFailed({ message }));
 
 /**
- * Filesystem failures are the model's to see, as Pi shows them: a missing path in
+ * Filesystem failures are the model's to see: a missing path in
  * one wording on every backend, anything else (EACCES, …) as the backend reported it.
  */
 const fsFailure = (path: string) => (error: SandboxFileSystem.FileSystemError) =>
