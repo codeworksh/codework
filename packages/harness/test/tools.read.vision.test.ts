@@ -81,16 +81,14 @@ describe("read on a text-only model, then a model switch", () => {
 						first
 							? {
 									stopReason: "toolUse",
-									parts: [
-										...["red-circle.png", "broken.bmp"].map((path, index) => ({
-											type: "toolCall" as const,
-											callID: `read_${index + 1}`,
-											name: "read",
-											arguments: { path },
-											status: "pending" as const,
-											time: { start: 1, end: 1 },
-										})),
-									],
+									parts: ["red-circle.png", "broken.bmp"].map((path, index) => ({
+										type: "toolCall" as const,
+										callID: `read_${index + 1}`,
+										name: "read",
+										arguments: { path },
+										status: "pending" as const,
+										time: { start: 1, end: 1 },
+									})),
 								}
 							: {},
 					);
