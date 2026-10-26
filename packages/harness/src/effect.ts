@@ -14,6 +14,8 @@ export { Session as SessionStore } from "./session/session.ts";
 export { Runner } from "./runner/run.ts";
 export { Location } from "./location/location.ts";
 export { Project } from "./project/project.ts";
+export { McpConfig } from "./mcp/config.ts";
+export { McpOAuth } from "./mcp/oauth.ts";
 export { ModelCatalog } from "./model/catalog.ts";
 export * as Tool from "./tool/tool.ts";
 

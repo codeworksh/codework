@@ -9,8 +9,6 @@
 
 import { stream as aikitStream, llm, type Event as AikitEvent, type Message, type Model } from "@codeworksh/aikit";
 import * as AikitFailure from "@codeworksh/aikit/failure";
-import { getGitHubCopilotApiKey, JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
-import { getOpenAICodexApiKey, JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Cause, Data, Duration, Effect, Exit, Fiber, Schema, Scope, Stream } from "effect";
 import { ModelCatalog } from "../model/catalog.ts";
 import type { SessionSchema } from "../session/schema.ts";
@@ -158,39 +156,6 @@ export const resolve: Resolve = Effect.fn("LLM.resolve")(function* (input) {
 	return apiKey === undefined ? model : { ...model, provider: { ...model.provider, key: keyName(apiKey) } };
 });
 
-/**
- * Fill in what an OAuth provider needs and the model catalog cannot carry: the
- * stored access token, and for Copilot the plan-specific inference host chosen
- * at login. Anything the request already pins is left alone, and a provider
- * with no stored login resolves to `{}` so aikit reports the missing key.
- */
-// oxlint-disable-next-line effecttsgo/async-function -- aikit's OAuth clients are Promise-based.
-const oauthCredentials = async (
-	protocol: string,
-	options: OpenOptions,
-): Promise<{ apiKey?: string; baseURL?: string }> => {
-	const storage = ModelCatalog.oauthStorage(options.authFile);
-
-	if (protocol === "openai-codex") {
-		const apiKey = await getOpenAICodexApiKey({ storage: new JsonOpenAICodexAuthStorage(storage) });
-		return apiKey === undefined ? {} : { apiKey };
-	}
-
-	if (protocol === "github-copilot") {
-		const store = new JsonGitHubCopilotAuthStorage(storage);
-		const stored = await store.get();
-		const apiKey = await getGitHubCopilotApiKey({ storage: store });
-		if (apiKey === undefined) return {};
-		// The plan-specific host belongs to the account the login was issued for,
-		// so it only travels with that credential -- an environment token may be a
-		// different account entirely, and routing it to this host would 401.
-		const apiEndpoint = apiKey === stored?.access ? stored.apiEndpoint : undefined;
-		return { apiKey, ...(apiEndpoint === undefined ? {} : { baseURL: apiEndpoint }) };
-	}
-
-	return {};
-};
-
 /** Start a provider stream using the model pinned by State. */
 export const openWith = (options: OpenOptions = {}): Open =>
 	Effect.fn("LLM.open")(function* (input, signal) {
@@ -200,7 +165,7 @@ export const openWith = (options: OpenOptions = {}): Open =>
 		const resolved =
 			configured.apiKey === undefined
 				? yield* Effect.tryPromise({
-						try: () => oauthCredentials(model.protocol, options),
+						try: () => ModelCatalog.oauthCredentials(model.protocol, options.authFile),
 						catch: (cause) => providerErrorFromUnknown(input, cause),
 					})
 				: {};

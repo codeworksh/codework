@@ -117,6 +117,40 @@ export const Cmd = Spec.make("codework", {
 				}),
 			],
 		}),
+		Spec.make("mcp", {
+			description: "Manage MCP servers",
+			commands: [
+				Spec.make("login", {
+					description: "Sign in to an MCP server with OAuth",
+					params: {
+						name: Argument.String("name").pipe(Argument.withDescription("Server name in mcp.json")),
+						browser: Flag.Boolean("browser").pipe(
+							Flag.withDescription("Open the authorization URL in the default browser"),
+							Flag.withDefault(true),
+						),
+						timeout: Flag.Int("timeout").pipe(
+							Flag.withSchema(Schema.Int.check(Schema.isGreaterThan(0))),
+							Flag.withDescription("Seconds the whole sign-in may take"),
+							Flag.withDefault(300),
+						),
+					},
+					examples: [
+						{ command: "codework mcp login linear", description: "Sign in to the linear server" },
+						{
+							command: "codework mcp login linear --browser=false",
+							description: "Print the URL; paste the redirected URL back if the browser is elsewhere",
+						},
+					],
+				}),
+				Spec.make("logout", {
+					description: "Remove the stored OAuth credentials of an MCP server",
+					params: {
+						name: Argument.String("name").pipe(Argument.withDescription("Server name in mcp.json")),
+					},
+					examples: [{ command: "codework mcp logout linear", description: "Sign out of the linear server" }],
+				}),
+			],
+		}),
 		Spec.make("run", {
 			description: "Start or continue an agent session",
 			params: {

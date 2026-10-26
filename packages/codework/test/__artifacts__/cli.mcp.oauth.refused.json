@@ -1,0 +1,9 @@
+{
+	"unknown server": "error: no MCP server named \"missing\" in mcp.json",
+	"stdio server": "error: MCP server \"local\" runs over stdio; only HTTP servers sign in",
+	"provider credential": "error: MCP server \"keyed\" sends the credential of provider \"openai\"; sign in to the provider with codework auth login",
+	"own Authorization header": "error: MCP server \"token\" sends its own Authorization header; remove it to sign in with OAuth",
+	"logout of an unknown server": "error: no MCP server named \"missing\" in mcp.json",
+	"logout of a provider-keyed server": "error: MCP server \"keyed\" sends the credential of provider \"openai\"; sign in to the provider with codework auth login",
+	"logout without a sign-in": "MCP server \"secure\" has no stored sign-in."
+}

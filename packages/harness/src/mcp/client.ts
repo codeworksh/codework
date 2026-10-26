@@ -1,9 +1,10 @@
 import { pathToFileURL } from "node:url";
 import {
+	type AuthProvider,
 	type CallToolResult,
 	Client,
 	type Implementation,
-	type OAuthClientProvider,
+	InsufficientScopeError,
 	ProtocolError,
 	ProtocolErrorCode,
 	type ListResourcesResult,
@@ -90,8 +91,8 @@ export interface ConnectInput {
 	readonly endpoint: Endpoint;
 	/** Directories sent as roots; only when the session's sandbox is local, where these paths exist for the server. */
 	readonly roots?: ReadonlyArray<string>;
-	/** HTTP only. */
-	readonly authProvider?: OAuthClientProvider;
+	/** HTTP only: the bearer token for each request, and what to do after a 401. */
+	readonly authProvider?: AuthProvider;
 	/** `startup` bounds connecting and initializing, and defaults to `request`. */
 	readonly timeout?: { readonly startup?: Duration.Input; readonly request?: Duration.Input };
 	readonly clientInfo?: Implementation;
@@ -204,10 +205,25 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 		error instanceof SdkError && error.code === SdkErrorCode.ConnectionClosed && lastError
 			? `${describe(error)}: ${lastError}`
 			: describe(error);
-	// A server that wants (new) credentials. Without an auth provider a 401 is a configuration error.
+	// A server that wants (new) credentials, or more scope than they grant. Without an auth provider a
+	// 401 is a configuration error.
 	const needsAuth = (error: unknown) =>
 		error instanceof UnauthorizedError ||
+		error instanceof InsufficientScopeError ||
 		(input.authProvider !== undefined && error instanceof SdkHttpError && error.status === 401);
+	const needsAuthError = (error: unknown) =>
+		new NeedsAuthError({
+			server,
+			message: describe(error),
+			...(error instanceof InsufficientScopeError
+				? {
+						...(error.requiredScope === undefined ? {} : { scope: error.requiredScope }),
+						...(error.resourceMetadataUrl === undefined
+							? {}
+							: { resourceMetadataUrl: error.resourceMetadataUrl.href }),
+					}
+				: {}),
+		});
 
 	// Two more attempts, 250 ms and 1 s later, while the failure is transient and the deadline has not passed.
 	const retrying = <A>(what: string, effect: Effect.Effect<A, Failure>, deadline = Infinity) =>
@@ -325,7 +341,7 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 	const failure =
 		(method: string) =>
 		(error: unknown): Failed => {
-			if (needsAuth(error)) return new NeedsAuthError({ server, message: describe(error) });
+			if (needsAuth(error)) return needsAuthError(error);
 			// The condensed message drops the validator's raw issue list; keep it for debugging.
 			if (isInvalidResult(error))
 				runFork(Effect.logDebug("mcp invalid result", { server, method, error: (error as Error).message }));
@@ -369,7 +385,7 @@ export const connect = Effect.fn("McpClient.connect")(function* (input: ConnectI
 	if (Exit.isFailure(exit)) {
 		const squashed = Cause.squash(exit.cause);
 		const error = squashed instanceof Failure ? squashed.error : squashed;
-		if (needsAuth(error)) return yield* new NeedsAuthError({ server, message: describe(error) });
+		if (needsAuth(error)) return yield* needsAuthError(error);
 		// A server that fails to start usually says why on stderr.
 		const message = explain(error);
 		const tail = stderr().trim();

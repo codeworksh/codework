@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { LoggingMessageNotificationParams, OAuthClientProvider } from "@modelcontextprotocol/client";
+import type { LoggingMessageNotificationParams, AuthProvider } from "@modelcontextprotocol/client";
 import { Deferred, Effect, Exit, Fiber, Option, Ref, Scope } from "effect";
 import { describe, expect, onTestFinished, vi } from "vite-plus/test";
 import { McpClient } from "../src/mcp/client.ts";
@@ -594,24 +594,12 @@ describe("mcp client", () => {
 		Effect.gen(function* () {
 			const server = raw({ unauthorized: true });
 			const url = yield* listen(server.handler);
-			const redirects: string[] = [];
-			const authProvider: OAuthClientProvider = {
-				redirectUrl: "http://127.0.0.1/callback",
-				clientMetadata: { redirect_uris: ["http://127.0.0.1/callback"], client_name: "codework-test" },
-				clientInformation: () => ({ client_id: "codework-test" }),
-				tokens: () => undefined,
-				saveTokens: () => {},
-				redirectToAuthorization: (authorizationUrl) => {
-					redirects.push(authorizationUrl.pathname);
-				},
-				saveCodeVerifier: () => {},
-				codeVerifier: () => "verifier",
-			};
+			const authProvider: AuthProvider = { token: async () => undefined };
 			const withProvider = yield* McpClient.connect({ server: "oauth", endpoint: http(url), authProvider }).pipe(
 				Effect.flip,
 			);
 			const without = yield* McpClient.connect({ server: "oauth", endpoint: http(url) }).pipe(Effect.flip);
-			summary.unauthorized = { withProvider: failure(withProvider), redirects, without: failure(without) };
+			summary.unauthorized = { withProvider: failure(withProvider), without: failure(without) };
 			expect(withProvider._tag).toBe("Mcp.NeedsAuthError");
 			expect(without._tag).toBe("Mcp.ConnectError");
 			expect(without.message).toContain("HTTP 401");

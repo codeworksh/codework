@@ -1,0 +1,80 @@
+{
+	"refused": {
+		"declared": [
+			"mcp__secure__whoami"
+		],
+		"answer": "Tool said: MCP server \"secure\" requires sign-in. Run \"codework mcp login secure\"."
+	},
+	"challenge": {
+		"scope": "tools admin",
+		"resourceMetadataUrl": "<fixture>/.well-known/oauth-protected-resource/mcp",
+		"error": "insufficient_scope"
+	},
+	"stepUp": "Signed in to MCP server \"secure\" (1 tool).\n",
+	"allowed": {
+		"declared": [
+			"mcp__secure__whoami"
+		],
+		"answer": "Tool said: called with access-2"
+	},
+	"server": [
+		{
+			"metadata": "resource",
+			"query": ""
+		},
+		{
+			"metadata": "authorization-server",
+			"query": ""
+		},
+		{
+			"register": {
+				"application_type": "native",
+				"client_name": "CodeWork",
+				"client_uri": "https://codework.sh",
+				"logo_uri": "https://codework.sh/brand/icon.png",
+				"grant_types": [
+					"authorization_code",
+					"refresh_token"
+				],
+				"token_endpoint_auth_method": "none"
+			}
+		},
+		{
+			"authorize": {
+				"scope": "tools",
+				"resource": "<fixture>/mcp"
+			}
+		},
+		{
+			"token": "authorization_code",
+			"verified": true
+		},
+		{
+			"mcp": "tools/call",
+			"token": "access-1",
+			"insufficientScope": true
+		},
+		{
+			"metadata": "resource",
+			"query": ""
+		},
+		{
+			"metadata": "authorization-server",
+			"query": ""
+		},
+		{
+			"authorize": {
+				"scope": "tools admin",
+				"resource": "<fixture>/mcp"
+			}
+		},
+		{
+			"token": "authorization_code",
+			"verified": true
+		},
+		{
+			"mcp": "tools/call",
+			"token": "access-2"
+		}
+	]
+}

@@ -93,6 +93,7 @@
 		"just-bash": "^3.4.2",
 		"npm-package-arg": "^14.0.0",
 		"pacote": "^22.0.0",
+		"proper-lockfile": "4.1.2",
 		"run": "2.1.8",
 		"uuidv7": "^1.2.1",
 		"yaml": "2.9.1"
@@ -102,6 +103,7 @@
 		"@modelcontextprotocol/server": "2.3.1",
 		"@types/node": "catalog:",
 		"@types/npm-package-arg": "^6.1.4",
+		"@types/proper-lockfile": "4.1.4",
 		"@vercel/sandbox": "^3.3.0",
 		"bumpp": "^12.3.0",
 		"dedent": "^1.7.2",

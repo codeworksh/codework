@@ -10,8 +10,8 @@
  */
 import { getEnvApiKey, Model } from "@codeworksh/aikit";
 import { downloadCatalog } from "@codeworksh/aikit/modelgen";
-import { JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
-import { JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
+import { getGitHubCopilotApiKey, JsonGitHubCopilotAuthStorage } from "@codeworksh/aikit/oauth/github/copilot";
+import { getOpenAICodexApiKey, JsonOpenAICodexAuthStorage } from "@codeworksh/aikit/oauth/openai/codex";
 import { Clock, Config, Context, Duration, Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { fileSystem, hostPath } from "../host.ts";
 import { Runner } from "../runner/run.ts";
@@ -177,6 +177,56 @@ export class Credentials extends Context.Service<Credentials, { readonly authFil
 
 /** The storage options an aikit OAuth store takes for {@link Credentials.authFile}. */
 export const oauthStorage = (authFile: string | undefined) => (authFile === undefined ? {} : { path: authFile });
+
+/**
+ * Fill in what an OAuth provider needs and the model catalog cannot carry: the
+ * stored access token, and for Copilot the plan-specific inference host chosen
+ * at login. Anything the request already pins is left alone, and a provider
+ * with no stored login resolves to `{}` so aikit reports the missing key.
+ */
+// oxlint-disable-next-line effecttsgo/async-function -- aikit's OAuth clients are Promise-based.
+export const oauthCredentials = async (
+	protocol: string,
+	authFile: string | undefined,
+): Promise<{ apiKey?: string; baseURL?: string }> => {
+	const storage = oauthStorage(authFile);
+
+	if (protocol === "openai-codex") {
+		const apiKey = await getOpenAICodexApiKey({ storage: new JsonOpenAICodexAuthStorage(storage) });
+		return apiKey === undefined ? {} : { apiKey };
+	}
+
+	if (protocol === "github-copilot") {
+		const store = new JsonGitHubCopilotAuthStorage(storage);
+		const stored = await store.get();
+		const apiKey = await getGitHubCopilotApiKey({ storage: store });
+		if (apiKey === undefined) return {};
+		// The plan-specific host belongs to the account the login was issued for,
+		// so it only travels with that credential -- an environment token may be a
+		// different account entirely, and routing it to this host would 401.
+		const apiEndpoint = apiKey === stored?.access ? stored.apiEndpoint : undefined;
+		return { apiKey, ...(apiEndpoint === undefined ? {} : { baseURL: apiEndpoint }) };
+	}
+
+	return {};
+};
+
+/**
+ * The credential a model call to `provider` sends: its OAuth login token, else its API key from
+ * the environment. Undefined when it has neither, or the catalog does not know the provider.
+ */
+export const providerToken = Effect.fn("ModelCatalog.providerToken")(function* (
+	provider: string,
+	authFile: string | undefined,
+) {
+	const [model] = yield* Effect.tryPromise({ try: () => Model.getModels(provider), catch: catalogError });
+	if (model === undefined) return undefined;
+	const { apiKey } = yield* Effect.tryPromise({
+		try: () => oauthCredentials(model.protocol, authFile),
+		catch: catalogError,
+	});
+	return apiKey ?? getEnvApiKey(model.provider);
+});
 
 /** Whether an OAuth login is stored for the protocol. Reads the file; never refreshes a token. */
 const loggedIn = (protocol: string, authFile: string | undefined) => {

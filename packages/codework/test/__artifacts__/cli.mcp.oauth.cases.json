@@ -1,0 +1,39 @@
+{
+	"configured metadata": {
+		"status": "signed in",
+		"tokens": true
+	},
+	"iss from the issuer": {
+		"status": "signed in",
+		"tokens": true
+	},
+	"metadata from another issuer": {
+		"status": "refused",
+		"error": "error: Issuer mismatch in authorization server metadata (RFC 8414 §3.3): expected \"<fixture>\", received \"http://127.0.0.1:<port>\"",
+		"tokens": false
+	},
+	"file: authorization endpoint": {
+		"status": "refused",
+		"error": "error: Invalid authorization_endpoint file:///etc/passwd: only http and https URLs are accepted",
+		"tokens": false
+	},
+	"iss without metadata": {
+		"status": "refused",
+		"error": "error: The authorization response names issuer <fixture>, but no authorization server metadata was discovered to check it against",
+		"tokens": false
+	},
+	"iss from another server": {
+		"status": "refused",
+		"error": "error: Issuer mismatch in authorization response (RFC 9207): expected \"<fixture>\", received \"https://evil.example\"",
+		"tokens": false
+	},
+	"rejected code": {
+		"status": "refused",
+		"error": "error: code rejected",
+		"tokens": false
+	},
+	"cancelled": {
+		"status": "refused",
+		"tokens": false
+	}
+}
