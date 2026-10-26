@@ -80,7 +80,7 @@ export interface Options extends RequestOptions {
 }
 
 /**
- * Exchange plugin setup failed.
+ * A plugin's setup failed while capturing a turn's snapshot.
  *
  * Typed rather than a defect: a caller's callback failing is a caller bug, but it
  * is one the session should report and survive rather than crash on. The turn
@@ -97,7 +97,7 @@ export class SnapshotError extends Schema.TaggedError<SnapshotError>()("State.Sn
 }
 
 /**
- * Immutable runtime state for one exchange.
+ * Immutable runtime state for one turn.
  *
  * `tools.handle` is executable, and that is deliberate: the definitions the model
  * is shown, the wire schemas it is given, and the handlers that run all come from
@@ -142,7 +142,7 @@ export interface Interface {
 	/**
 	 * Re-import every configured plugin, and swap the loaded set if it works.
 	 *
-	 * This covers exactly one case the exchange boundary cannot: a **local** plugin whose contents
+	 * This covers exactly one case the turn boundary cannot: a **local** plugin whose contents
 	 * changed while its path did not. Nothing in settings changed and no generation moved -- there
 	 * is none, because a local source is never copied into the store -- so neither boundary check
 	 * fires, and the module registry holds the old module against an unchanged URL.
@@ -196,7 +196,7 @@ const resolver = (input: string | PromptResolver): PromptResolver => (typeof inp
  *
  * The split it enables: **loading** a module costs a store lookup and an ESM import, so it happens
  * at boot and at `reload`; **configuring** one -- `enabled`, `options`, order -- is pure data over
- * modules already in memory, so it happens at every exchange. That is why editing `options` in a
+ * modules already in memory, so it happens at every turn. That is why editing `options` in a
  * settings file takes effect at the next turn without anything being re-imported.
  *
  * `snapshot` reads the `Ref` once, at the top, so a reload lands on the next turn and never
@@ -204,7 +204,7 @@ const resolver = (input: string | PromptResolver): PromptResolver => (typeof inp
  * a genuinely different URL, so the module registry cannot hand back the old one.
  *
  * `references` says which entries the config pass walks. It is a function of the settings that
- * exchange read, so a caller that pinned an explicit list keeps it and everyone else follows the
+ * turn read, so a caller that pinned an explicit list keeps it and everyone else follows the
  * files.
  *
  * `pool` is the **process view**: what boot loaded from the user layers. A session in a project
@@ -218,7 +218,7 @@ export const layer = (
 	pool: Ref.Ref<Pool>,
 	references: (settings: Info) => ReadonlyArray<PluginRef>,
 	/**
-	 * The exchange-boundary check: the new pool when the store has moved, nothing when it has not.
+	 * The turn-boundary check: the new pool when the store has moved, nothing when it has not.
 	 * State does not know what a store is, so whoever built the pool answers this.
 	 */
 	follow: (
@@ -254,7 +254,7 @@ export const layer = (
 			/*
 			 * One load pass at a time, for the whole process.
 			 *
-			 * Two sessions can reach an exchange boundary together and both find the same entry
+			 * Two sessions can reach a turn boundary together and both find the same entry
 			 * unloaded -- someone ran `plugin add` in a directory they share. Without this they
 			 * both run a load pass and both swap the pool, so the work happens twice and the
 			 * loser's result is discarded.
@@ -431,7 +431,7 @@ export const layer = (
 					}).pipe(loading.withPermits(1), Effect.mapError(failed));
 
 					// The config pass: pure data over what is already loaded, so it runs every
-					// exchange.
+					// turn.
 					const chosen = yield* select(refs, loaded).pipe(Effect.mapError(failed));
 					// An entry naming a module the pool does not hold is the one case the pass
 					// cannot satisfy, so it is free to report -- which is what a watcher was

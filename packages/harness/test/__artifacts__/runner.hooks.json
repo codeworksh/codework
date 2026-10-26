@@ -6,13 +6,11 @@
 		},
 		{
 			"hook": "finishTurn",
-			"reason": "toolUse",
-			"needsContinuation": true
+			"reason": "toolUse"
 		},
 		{
 			"hook": "prepareNextTurn",
 			"completed": "toolUse",
-			"needsContinuation": true,
 			"tools": [
 				"echo",
 				"echo_late"
@@ -24,8 +22,7 @@
 		},
 		{
 			"hook": "finishTurn",
-			"reason": "stop",
-			"needsContinuation": false
+			"reason": "stop"
 		}
 	],
 	"requestTools": [

@@ -17,8 +17,8 @@ export interface Completed {
 	/** The snapshot the turn ran on. */
 	readonly snapshot: State.Snapshot;
 	readonly messageId: string;
+	/** `toolUse` means tool results wait for a reply. */
 	readonly reason: "stop" | "length" | "toolUse";
-	readonly needsContinuation: boolean;
 	/**
 	 * What the next run would promote, read without promoting it: the queued steers, or the oldest
 	 * follow-up when there are none. As of the commit; input admitted later is not in it.

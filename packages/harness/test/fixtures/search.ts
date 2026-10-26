@@ -54,13 +54,13 @@ export const grepCases: Cases = {
 	"glob-basename": { pattern: "needle", glob: "*.ts" },
 	"glob-path": { pattern: "needle", glob: "**/*.spec.ts" },
 	context: { pattern: "console.log\\(needle", context: 1 },
-	// Pi: the limit is global, and the context of the one match shown still comes with it.
+	// The limit is global, and the context of the one match shown still comes with it.
 	"limit-context": { pattern: "match", path: "context.txt", limit: 1, context: 1 },
 	limit: { pattern: "needle", limit: 2 },
 	"single-file": { pattern: "needle", path: "src/util.ts" },
 	subdir: { pattern: "needle", path: "src" },
 	"dash-pattern": { pattern: "-x" },
-	// Pi: a pattern that looks like a flag is searched for, never obeyed.
+	// A pattern that looks like a flag is searched for, never obeyed.
 	"flag-pattern": { pattern: "--pre=./payload.sh" },
 	"no-match": { pattern: "absent-token" },
 	"long-line": { pattern: "match x" },
@@ -77,7 +77,7 @@ export const grepCases: Cases = {
 export const VARIANCE = "glob-basename";
 
 export const lsCases: Cases = {
-	// Pi: dotfiles and dot-directories are listed.
+	// Dotfiles and dot-directories are listed.
 	root: {},
 	subdir: { path: "src" },
 	limit: { limit: 2 },
@@ -87,14 +87,14 @@ export const lsCases: Cases = {
 };
 
 export const findCases: Cases = {
-	// Pi: hidden files are found unless ignored.
+	// Hidden files are found unless ignored.
 	basename: { pattern: "*.ts" },
 	"with-path": { pattern: "src/**/*.ts" },
-	// Pi #3302: a pattern with a directory in it matches the path, not the basename.
+	// A pattern with a directory in it matches the path, not the basename.
 	"spec-path": { pattern: "src/**/*.spec.ts" },
 	subtree: { pattern: "src/nested/**" },
 	"leading-globstar": { pattern: "**/nested/*" },
-	// Pi #3303: each .gitignore applies to its own subtree only.
+	// Each .gitignore applies to its own subtree only.
 	"nested-gitignore": { pattern: "*.txt", path: "a" },
 	"sibling-gitignore": { pattern: "*.txt", path: "b" },
 	negated: { pattern: "*.log" },
@@ -102,7 +102,7 @@ export const findCases: Cases = {
 	// fd stops at whichever match a thread finds first, so the limit is hit by the only match.
 	limit: { pattern: "*.log", limit: 1 },
 	none: { pattern: "*.nothing" },
-	// Pi: a flag-like pattern is a pattern; a glob fd cannot parse is reported.
+	// A flag-like pattern is a pattern; a glob fd cannot parse is reported.
 	"flag-pattern": { pattern: "--help" },
 	"bad-glob": { pattern: "[" },
 	missing: { pattern: "*.ts", path: "nope" },

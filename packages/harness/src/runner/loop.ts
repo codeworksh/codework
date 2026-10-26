@@ -26,12 +26,8 @@ import { Runner } from "./run.ts";
 
 export type Promotion = "steer" | "followUp" | undefined;
 
-export interface TurnResult {
-	readonly needsContinuation: boolean;
-	/** Set with `reason` when the turn committed an assistant message. */
-	readonly messageId?: string;
-	readonly reason?: Hooks.Completed["reason"];
-}
+/** A turn that committed an assistant message; `undefined` when it sent no request. */
+export type TurnResult = Pick<Hooks.Completed, "messageId" | "reason"> | undefined;
 
 export interface Options {
 	/** Deterministic provider seam for tests. */
@@ -281,14 +277,14 @@ export const layer = (options: Options = {}) =>
 					const steers = yield* inputs.promoteSteers(sessionId, cutoff);
 					// The pending input this turn was started for was cancelled before promotion: with no
 					// earlier work to continue there is nothing to answer, so no provider request.
-					if (!continuing && !followUp && steers === 0) return { needsContinuation: false } satisfies TurnResult;
+					if (!continuing && !followUp && steers === 0) return undefined;
 				}
 
 				const assembled = yield* context.assemble(sessionId);
 				const leaf =
 					assembled.lastAssistant?.entryId === assembled.leafEntryId ? assembled.lastAssistant.message : undefined;
 				if (leaf !== undefined && (leaf.stopReason === "stop" || leaf.stopReason === "length")) {
-					return { needsContinuation: false } satisfies TurnResult;
+					return undefined;
 				}
 
 				// The latest attempt's publisher; a retried turn has one per provider request.
@@ -400,11 +396,7 @@ export const layer = (options: Options = {}) =>
 						committed = true;
 					});
 					if (interrupted !== undefined) return yield* Effect.failCause(interrupted);
-					return {
-						needsContinuation: terminal.reason === "toolUse",
-						messageId: terminal.message.messageId,
-						reason: terminal.reason,
-					} satisfies TurnResult;
+					return { messageId: terminal.message.messageId, reason: terminal.reason } satisfies TurnResult;
 				});
 
 				// `onError`, not `catchCause`: a catch handler never runs on an interrupted fiber, and
@@ -485,28 +477,22 @@ export const layer = (options: Options = {}) =>
 					// Tool results and steers continue first; a follow-up only once both are exhausted.
 					while (true) {
 						const result: TurnResult = yield* runTurn(promotion, snapshot, continuing);
+						const toolUse = result?.reason === "toolUse";
 						const completed: Hooks.Completed | undefined =
-							result.messageId === undefined || result.reason === undefined
+							result === undefined
 								? undefined
-								: {
-										snapshot,
-										messageId: result.messageId,
-										reason: result.reason,
-										needsContinuation: result.needsContinuation,
-										pending: yield* peekPending(input.sessionId),
-									};
+								: { ...result, snapshot, pending: yield* peekPending(input.sessionId) };
 						const decision = completed === undefined ? undefined : yield* hooks.finishTurn(completed);
 						// Queued steers and follow-ups stay for the next run.
 						if (decision === "end") return;
 
 						// A forced continuation after a finished reply sends nothing: the leaf guard in
 						// `runTurnAttempt` ends the turn unless something was appended after it.
-						continuing = result.needsContinuation || decision === "continue";
+						continuing = toolUse || decision === "continue";
 						const steer = yield* inputs.hasPending(input.sessionId, "steer");
-						// Only tool results outrank a follow-up. A forced continuation rides along with it, as in
-						// Pi, where the follow-up is the natural next request and the continuation its fallback.
-						const followUp =
-							!result.needsContinuation && !steer && (yield* inputs.hasPending(input.sessionId, "followUp"));
+						// Only tool results outrank a follow-up. A forced continuation rides along with it: the
+						// follow-up is the natural next request, and the continuation only its fallback.
+						const followUp = !toolUse && !steer && (yield* inputs.hasPending(input.sessionId, "followUp"));
 						if (!continuing && !steer && !followUp) return;
 						promotion = followUp ? "followUp" : "steer";
 

@@ -142,7 +142,7 @@ describe("settings at the LLM boundary", () => {
 						id: "1",
 						object: "chat.completion.chunk",
 						created: 1,
-						model: "gemini-3.6-flash",
+						model: "gemini-3.8-flash",
 						choices: [{ index: 0, delta, finish_reason: finish }],
 					})}\n\n`;
 				return new Response(
@@ -153,7 +153,7 @@ describe("settings at the LLM boundary", () => {
 				);
 			};
 
-			const model = await llm("github-copilot", "gemini-3.6-flash");
+			const model = await llm("github-copilot", "gemini-3.8-flash");
 			expect(model).toBeDefined();
 			if (!model) return;
 

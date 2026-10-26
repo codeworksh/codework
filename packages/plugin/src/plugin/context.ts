@@ -41,7 +41,7 @@ export interface Paths {
 	readonly log: string;
 }
 
-/** One object, shared by every plugin in one exchange. */
+/** One object, shared by every plugin in one turn. */
 export interface SharedPluginContext {
 	readonly sessionId: SessionID;
 	readonly sandbox: SandboxIO.Identity;

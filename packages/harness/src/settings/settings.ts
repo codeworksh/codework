@@ -217,7 +217,7 @@ export const parse = Effect.fn("Settings.parse")(function* (path: string, source
 
 export interface Interface {
 	/**
-	 * Await fresh host files at each exchange. No cache, mutation, or reload API. Fails when a
+	 * Await fresh host files at each turn. No cache, mutation, or reload API. Fails when a
 	 * file exists and cannot be used, including on an edit made mid-session.
 	 *
 	 * The discovery root is an argument rather than a property of the layer because it is a

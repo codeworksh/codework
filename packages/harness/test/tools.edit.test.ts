@@ -267,7 +267,7 @@ const editAll = (root: string, custom: string) =>
 	);
 
 describe("edit plugin through the local harness", () => {
-	it("replaces, matches fuzzily, keeps line endings and reports failures like Pi", () =>
+	it("replaces, matches fuzzily, keeps line endings and reports failures", () =>
 		withSettings(async ({ root, custom }) => {
 			const work = join(root, "work");
 			await fs.mkdir(work);

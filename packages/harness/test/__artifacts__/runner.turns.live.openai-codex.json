@@ -1,0 +1,29 @@
+{
+	"requests": [
+		{
+			"revision": "a",
+			"tools": [
+				"first"
+			]
+		},
+		{
+			"revision": "b",
+			"tools": [
+				"first",
+				"second"
+			]
+		},
+		{
+			"revision": "b",
+			"tools": [
+				"first",
+				"second"
+			]
+		}
+	],
+	"calls": [
+		"first:completed",
+		"second:completed"
+	],
+	"reply": true
+}
