@@ -177,18 +177,19 @@ describe("Message.transformMessages", () => {
 		});
 
 		it("does not send another model's readable thinking as text", () => {
+			const toolCall = makeCompletedToolCall("call-1");
 			const assistant = makeAssistantMessage(otherModel, {
 				stopReason: "toolUse",
 				parts: [
 					{ type: "thinking", thinking: "Candidates: proxy, IPv6, TLS.", thinkingSignature: "reasoning_content" },
 					{ type: "text", text: "Let me check the TLS versions." },
-					makeCompletedToolCall("call-1"),
+					toolCall,
 				],
 			});
 
 			expect(expectSingleAssistant(Message.transformMessages([assistant], sameModel)).parts).toEqual([
 				{ type: "text", text: "Let me check the TLS versions." },
-				makeCompletedToolCall("call-1"),
+				toolCall,
 			]);
 		});
 
