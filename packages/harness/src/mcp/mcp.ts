@@ -25,7 +25,7 @@
  * service down, stops the server process and ends the HTTP session.
  */
 
-import type { ServerConfig } from "@codeworksh/plugin/plugin/mcp";
+import type { Exposure, ServerConfig } from "@codeworksh/plugin/plugin/mcp";
 import type { AuthProvider, Tool } from "@modelcontextprotocol/client";
 import {
 	Cause,
@@ -43,7 +43,7 @@ import {
 } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ConnectError, type McpError, NeedsAuthError, ToolCallError, UnavailableError } from "./error.ts";
-import type { ID as SessionId } from "../session/schema.ts";
+import { ID as SessionId } from "../session/schema.ts";
 import type { RegisteredTool } from "../tool/tool.ts";
 import { McpClient } from "./client.ts";
 import { McpLog } from "./log.ts";
@@ -68,8 +68,10 @@ export interface Status {
 	readonly server: string;
 	readonly state: State;
 	readonly error?: string;
-	/** Tools the server offered when last listed. */
-	readonly tools: number;
+	/** Tools the server offered when last listed, each with its exposure in the session. */
+	readonly tools: ReadonlyArray<{ readonly name: string; readonly exposure: Exposure }>;
+	/** Whether the server offered resources when it last connected. */
+	readonly resources: boolean;
 }
 
 export interface Input {
@@ -95,6 +97,8 @@ export interface Interface {
 	/** Keep the session's instances open for as long as the calling scope, a drain, runs. */
 	readonly lease: (sessionId: SessionId) => Effect.Effect<void, never, Scope.Scope>;
 	readonly status: (sessionId: SessionId) => Effect.Effect<ReadonlyArray<Status>>;
+	/** Wait until each of the session's servers has finished its first connect attempt. */
+	readonly settle: (sessionId: SessionId) => Effect.Effect<void>;
 }
 
 export class Service extends Context.Service<Service, Interface>()("@codeworksh/harness/mcp/mcp/Service") {}
@@ -816,15 +820,39 @@ export const layer = (options: {
 				lease,
 				status: (sessionId) =>
 					Effect.sync(() =>
-						[...(sessions.get(sessionId)?.servers ?? [])].map(([name, { server }]) => ({
+						[...(sessions.get(sessionId)?.servers ?? [])].map(([name, { config, server }]) => ({
 							server: name,
 							state: server === undefined ? "disabled" : server.closed ? "disconnected" : server.state,
 							...(server?.error === undefined ? {} : { error: server.error }),
-							tools: server?.tools.length ?? 0,
+							tools: (server?.tools ?? []).map((tool) => ({
+								name: tool.name,
+								exposure: McpTool.exposure(config, tool.name),
+							})),
+							resources: server?.resources ?? false,
 						})),
+					),
+				settle: (sessionId) =>
+					Effect.forEach(
+						[...(sessions.get(sessionId)?.servers.values() ?? [])],
+						({ server }) => (server?.ready === undefined ? Effect.void : Deferred.await(server.ready)),
+						{ discard: true, concurrency: "unbounded" },
 					),
 			});
 		}),
 	);
+
+/**
+ * Connect each of `servers` once, apart from any session, and report how every one stands; a server
+ * that cannot connect is reported, not failed. Its instances close with the calling scope's service.
+ */
+export const check = Effect.fn("Mcp.check")(function* (
+	input: Pick<Input, "servers" | "directory" | "hostDir" | "errors">,
+) {
+	const mcp = yield* Service;
+	const sessionId = SessionId.create();
+	yield* mcp.reconcile({ ...input, sessionId, space: { id: sessionId, root: input.directory } });
+	yield* mcp.settle(sessionId);
+	return yield* mcp.status(sessionId);
+});
 
 export * as Mcp from "./mcp.ts";

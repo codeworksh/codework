@@ -29,62 +29,614 @@
 		{
 			"server": "mine",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "twin",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "ours",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "all",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "mine",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "twin",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "ours",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "all",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "mine",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "twin",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "ours",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		},
 		{
 			"server": "all",
 			"state": "disconnected",
-			"tools": 11
+			"tools": [
+				{
+					"name": "echo",
+					"exposure": "direct"
+				},
+				{
+					"name": "args",
+					"exposure": "direct"
+				},
+				{
+					"name": "fail",
+					"exposure": "direct"
+				},
+				{
+					"name": "pid",
+					"exposure": "direct"
+				},
+				{
+					"name": "crash",
+					"exposure": "direct"
+				},
+				{
+					"name": "my-tool.v2",
+					"exposure": "direct"
+				},
+				{
+					"name": "secret",
+					"exposure": "direct"
+				},
+				{
+					"name": "bye",
+					"exposure": "direct"
+				},
+				{
+					"name": "cwd",
+					"exposure": "direct"
+				},
+				{
+					"name": "link",
+					"exposure": "direct"
+				},
+				{
+					"name": "big",
+					"exposure": "direct"
+				}
+			],
+			"resources": true
 		}
 	]
 }
