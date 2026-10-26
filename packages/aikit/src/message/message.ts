@@ -363,13 +363,13 @@ export function transformMessages<TProtocol extends Model.KnownProviderEnum>(
 
 		const transformedParts = assistantMsg.parts.flatMap((block) => {
 			if (block.type === "thinking") {
-				if (isSameModel && block.thinkingSignature) return block;
+				// Signatures only verify on the model that made them, and readable thinking sent as
+				// text makes the new model treat it as part of its visible reply.
+				if (!isSameModel) return [];
+				// Signed or redacted blocks replay even when empty (OpenAI encrypted reasoning).
+				if (block.redacted || block.thinkingSignature) return block;
 				if (!block.thinking || block.thinking.trim() === "") return [];
-				if (isSameModel) return block;
-				return {
-					type: "text" as const,
-					text: block.thinking,
-				};
+				return block;
 			}
 
 			if (block.type === "text") {

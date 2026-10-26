@@ -151,26 +151,79 @@ describe("Message.transformMessages", () => {
 			]);
 		});
 
-		it("downgrades thinking to text when handing off to another model", () => {
+		it("keeps redacted thinking parts without a signature for the same model", () => {
 			const assistant = makeAssistantMessage(sameModel, {
-				parts: [{ type: "thinking", thinking: "reasoning here", thinkingSignature: "sig-1" }],
+				parts: [{ type: "thinking", thinking: "", redacted: true }],
 			});
 
 			expect(expectSingleAssistant(Message.transformMessages([assistant], sameModel)).parts).toEqual([
-				{ type: "thinking", thinking: "reasoning here", thinkingSignature: "sig-1" },
-			]);
-
-			expect(expectSingleAssistant(Message.transformMessages([assistant], otherModel)).parts).toEqual([
-				{ type: "text", text: "reasoning here" },
+				{ type: "thinking", thinking: "", redacted: true },
 			]);
 		});
 
-		it("drops empty thinking parts when handing off to another model", () => {
+		it("drops signed, unsigned and redacted thinking when handing off to another model", () => {
 			const assistant = makeAssistantMessage(sameModel, {
-				parts: [{ type: "thinking", thinking: "  ", thinkingSignature: "sig-1", redacted: true }],
+				parts: [
+					{ type: "thinking", thinking: "signed reasoning", thinkingSignature: "sig-1" },
+					{ type: "thinking", thinking: "unsigned reasoning" },
+					{ type: "thinking", thinking: "", thinkingSignature: "sig-2", redacted: true },
+				],
 			});
 
+			expect(expectSingleAssistant(Message.transformMessages([assistant], sameModel)).parts).toEqual(
+				assistant.parts,
+			);
 			expect(expectSingleAssistant(Message.transformMessages([assistant], otherModel)).parts).toEqual([]);
+		});
+
+		it("does not send another model's readable thinking as text", () => {
+			const assistant = makeAssistantMessage(otherModel, {
+				stopReason: "toolUse",
+				parts: [
+					{ type: "thinking", thinking: "Candidates: proxy, IPv6, TLS.", thinkingSignature: "reasoning_content" },
+					{ type: "text", text: "Let me check the TLS versions." },
+					makeCompletedToolCall("call-1"),
+				],
+			});
+
+			expect(expectSingleAssistant(Message.transformMessages([assistant], sameModel)).parts).toEqual([
+				{ type: "text", text: "Let me check the TLS versions." },
+				makeCompletedToolCall("call-1"),
+			]);
+		});
+
+		it("keeps thinking only from the target model when models alternate", () => {
+			const modelB = makeModel({ id: "model-b" });
+			const turn = (model: Model.Info, text: string) =>
+				makeAssistantMessage(model, {
+					parts: [
+						{ type: "thinking", thinking: `${text} thinking`, thinkingSignature: "reasoning_content" },
+						{ type: "text", text },
+					],
+				});
+			const messages = [
+				makeUserMessage("1"),
+				turn(sameModel, "a1"),
+				makeUserMessage("2"),
+				turn(modelB, "b"),
+				makeUserMessage("3"),
+				turn(sameModel, "a2"),
+			];
+
+			const parts = Message.transformMessages(messages, sameModel)
+				.filter((message) => message.role === "assistant")
+				.map((message) => (message as Message.AssistantMessage).parts);
+			expect(parts).toEqual([
+				[
+					{ type: "thinking", thinking: "a1 thinking", thinkingSignature: "reasoning_content" },
+					{ type: "text", text: "a1" },
+				],
+				[{ type: "text", text: "b" }],
+				[
+					{ type: "thinking", thinking: "a2 thinking", thinkingSignature: "reasoning_content" },
+					{ type: "text", text: "a2" },
+				],
+			]);
 		});
 	});
 
