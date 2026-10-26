@@ -1,29 +1,19 @@
 [
 	{
 		"role": "tool",
+		"tool_call_id": "<call-id-0>",
 		"content": [
 			{
-				"type": "tool-result",
-				"toolCallId": "<call-id>",
-				"toolName": "check_screenshot",
-				"output": {
-					"type": "content",
-					"value": [
-						{
-							"type": "text",
-							"text": "Screenshot assertion failed: the page did not match."
-						},
-						{
-							"type": "file",
-							"data": {
-								"type": "data",
-								"data": "<red-circle.png>"
-							},
-							"mediaType": "image/png"
-						}
-					]
+				"type": "text",
+				"text": "Screenshot assertion failed: the page did not match."
+			},
+			{
+				"type": "image_url",
+				"image_url": {
+					"url": "data:image/png;base64,<red-circle.png>"
 				}
 			}
-		]
+		],
+		"name": "check_screenshot"
 	}
 ]

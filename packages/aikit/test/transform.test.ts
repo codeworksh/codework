@@ -786,6 +786,44 @@ describe("Anthropic error tool results with images", () => {
 		});
 	});
 
+	it("sends the images of every error result after all tool results, in call order", async () => {
+		const messages = await wireMessages([
+			makeErrorToolCall("call-1", [{ type: "image", data: "AAAA", mimeType: "image/png" }], "screenshot"),
+			makeCompletedToolCall("call-2", "search", [{ type: "text", text: "found" }]),
+			makeErrorToolCall(
+				"call-3",
+				[
+					{ type: "text", text: "Render failed" },
+					{ type: "image", data: "BBBB", mimeType: "image/png" },
+				],
+				"render",
+			),
+		]);
+
+		expect(messages[2]).toEqual({
+			role: "user",
+			content: [
+				{
+					type: "tool_result",
+					tool_use_id: "call-1",
+					content: "(image attached after the tool results)",
+					is_error: true,
+				},
+				{ type: "tool_result", tool_use_id: "call-2", content: "found" },
+				{
+					type: "tool_result",
+					tool_use_id: "call-3",
+					content: "Render failed\n(image attached after the tool results)",
+					is_error: true,
+				},
+				{ type: "text", text: "Images from the error result of tool call call-1 (screenshot):" },
+				image("AAAA"),
+				{ type: "text", text: "Images from the error result of tool call call-3 (render):" },
+				image("BBBB"),
+			],
+		});
+	});
+
 	it("keeps error tool results without images unchanged", async () => {
 		const messages = await wireMessages([
 			makeErrorToolCall("call-1", [{ type: "text", text: "Script failed" }], "codemode"),
