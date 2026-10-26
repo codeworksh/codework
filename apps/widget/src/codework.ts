@@ -242,7 +242,7 @@ export const Api = RpcGroup.make(
 		payload: {},
 		success: Schema.Array(SessionInfo),
 	}),
-	/** Sets the session's model and thinking level over its settings; they apply from its next exchange. */
+	/** Sets the session's model and thinking level over its settings; they apply from its next turn. */
 	Rpc.make("session.configure", {
 		payload: { sessionId: Schema.String, runtime: RuntimeConfig },
 		success: SessionInfo,

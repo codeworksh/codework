@@ -28,7 +28,7 @@
  * directory, because that would answer with the wrong project rather than with no project.
  *
  * `load` re-reads all layers on every call. There is no cache to invalidate and no reload
- * API: an edit lands at the next exchange capture because the next capture goes to disk.
+ * API: an edit lands at the next turn capture because the next capture goes to disk.
  *
  * A missing file is ordinary; a file that exists and cannot be used is not. An unreadable,
  * unparseable or invalid file fails the read with the path, the reason and the offending key.

@@ -14,6 +14,7 @@ import { PluginSource } from "../plugin/source.ts";
 import { PluginStore } from "../plugin/store.ts";
 import { RunnerExecute } from "../runner/execute.ts";
 import { LLM } from "../runner/llm.ts";
+import { Hooks } from "../runner/hooks.ts";
 import { Loop } from "../runner/loop.ts";
 import { SandboxController } from "../sandbox/control.ts";
 import { SandboxDriver } from "../sandbox/driver.ts";
@@ -248,7 +249,7 @@ export const layer = (options: Options = {}) =>
 			);
 			const authFile = Global.authFile(options.home === undefined ? undefined : paths.home);
 			const open = options.llm ?? LLM.openWith(authFile === undefined ? {} : { authFile });
-			const loop = Loop.layer({ request: LLM.make(open) });
+			const loop = Loop.layer({ request: LLM.make(open) }).pipe(Layer.provide(Hooks.layer));
 
 			return Control.layer.pipe(
 				Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(loop))),

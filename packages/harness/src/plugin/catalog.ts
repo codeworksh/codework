@@ -197,7 +197,7 @@ export interface Selected {
  * is ignored rather than failing the boot — a typo costs a debug line, never a fetch.
  *
  * Nothing here touches the disk, which is the whole point of the split: an `options` edit, an
- * `enabled` flip or a reordering applies at the next exchange without importing anything.
+ * `enabled` flip or a reordering applies at the next turn without importing anything.
  */
 export const select = Effect.fn("PluginCatalog.select")(function* (references: ReadonlyArray<PluginRef>, pool: Pool) {
 	const operations = new Map<string, { enabled: boolean; index: number; options: PluginOptions }>();

@@ -346,7 +346,7 @@ export const attach = Effect.fn("Session.attach")(function* (input: AttachInput)
 });
 
 /**
- * The model and thinking level the session's next exchange runs with. A choice made through
+ * The model and thinking level the session's next turn runs with. A choice made through
  * {@link create} or {@link attach} is saved with the session and outlives the process; without
  * one, the session follows its settings.
  */

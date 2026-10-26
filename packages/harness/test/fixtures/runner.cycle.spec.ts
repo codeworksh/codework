@@ -18,6 +18,7 @@ import { Database } from "../../src/db/db.ts";
 import { Event } from "../../src/event/event.ts";
 import { EventRegistry } from "../../src/event/registry.ts";
 import { RunnerExecute } from "../../src/runner/execute.ts";
+import { Hooks } from "../../src/runner/hooks.ts";
 import { Loop } from "../../src/runner/loop.ts";
 import { SandboxController } from "../../src/sandbox/control.ts";
 import { SandboxDriverRegistry } from "../../src/sandbox/registry.ts";
@@ -38,7 +39,7 @@ const sandbox = SandboxController.layer({ hostCwd: "/" }).pipe(
 );
 const runtime = (root: string, custom: string) =>
 	Control.layer.pipe(
-		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer()))),
+		Layer.provideMerge(RunnerExecute.layer.pipe(Layer.provide(Loop.layer().pipe(Layer.provide(Hooks.layer))))),
 		Layer.provideMerge(
 			((seeded) => State.layer({}, seeded.ref, seeded.references, seeded.follow, seeded.rebuild))(pooled(builtins)),
 		),
