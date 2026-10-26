@@ -255,8 +255,8 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 				 * Copilot signs reasoning differently per endpoint family: Responses
 				 * models round-trip encoded item metadata, Messages models carry
 				 * Anthropic signatures, and the chat endpoint cannot replay thinking
-				 * at all. A signature from the wrong family is foreign material, so
-				 * the text survives as plain text instead of going out unsigned.
+				 * at all. Thinking that cannot be replayed natively survives as plain
+				 * text instead of going out unsigned.
 				 */
 				const method = model.api?.method;
 				const openai = part.thinkingSignature ? decodeOpenAIReasoningSignature(part.thinkingSignature) : undefined;
