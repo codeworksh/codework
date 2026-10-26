@@ -58,6 +58,7 @@ export interface ProgressEvent {
 export interface HandleOptions<RProgress = never, EProgress = never> {
 	readonly sessionId?: ToolBefore["sessionId"];
 	readonly messageId?: ToolBefore["messageId"];
+	readonly modelInput?: ToolCallContext["modelInput"];
 	/** Sliding-queue capacity for best-effort progress. Bounded default (64); tunable. */
 	readonly progressBuffer?: number;
 	/**
@@ -335,7 +336,12 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): E
 				});
 			}
 
-			const ctx: ToolCallContext = { callID: call.callID, toolName: call.name, rawArgs: call.arguments };
+			const ctx: ToolCallContext = {
+				callID: call.callID,
+				toolName: call.name,
+				rawArgs: call.arguments,
+				...(options?.modelInput === undefined ? {} : { modelInput: options.modelInput }),
+			};
 
 			const hasHooks = hooks.beforeToolCall !== undefined || hooks.afterToolCall !== undefined;
 			if (hasHooks && (options?.sessionId === undefined || options.messageId === undefined)) {

@@ -28,6 +28,8 @@ export const ToolCallContext = Schema.Struct({
 	callID: Schema.String,
 	toolName: Schema.String,
 	rawArgs: Schema.Record(Schema.String, Schema.Unknown),
+	/** Input modalities of the model the call answers, e.g. `["text", "image"]`. */
+	modelInput: Schema.optional(Schema.Array(Schema.Literals(["text", "image"]))),
 });
 export type ToolCallContext = typeof ToolCallContext.Type;
 

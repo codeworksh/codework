@@ -1,0 +1,73 @@
+[
+	{
+		"model": "text-only",
+		"messages": [
+			{
+				"role": "user",
+				"content": [
+					"read the image"
+				]
+			}
+		]
+	},
+	{
+		"model": "text-only",
+		"messages": [
+			{
+				"role": "user",
+				"content": [
+					"read the image"
+				]
+			},
+			{
+				"role": "assistant",
+				"parts": [
+					{
+						"toolCall": "read",
+						"result": [
+							"Read image file [image/png]\n[Current model does not support images. The image will be omitted from this request.]",
+							"(tool image omitted: model does not support images)"
+						]
+					}
+				]
+			}
+		]
+	},
+	{
+		"model": "vision",
+		"messages": [
+			{
+				"role": "user",
+				"content": [
+					"read the image"
+				]
+			},
+			{
+				"role": "assistant",
+				"parts": [
+					{
+						"toolCall": "read",
+						"result": [
+							"Read image file [image/png]\n[Current model does not support images. The image will be omitted from this request.]",
+							{
+								"image": "image/png"
+							}
+						]
+					}
+				]
+			},
+			{
+				"role": "assistant",
+				"parts": [
+					"response 2"
+				]
+			},
+			{
+				"role": "user",
+				"content": [
+					"what do you see now?"
+				]
+			}
+		]
+	}
+]

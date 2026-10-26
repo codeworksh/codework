@@ -90,14 +90,26 @@ const fsFailure = (path: string) => (error: SandboxFileSystem.FileSystemError) =
 				: `Could not read file: ${path}`,
 	);
 
-const readImage = (fs: SandboxFileSystem.Interface, resolved: string, mimeType: string) =>
+const NON_VISION_IMAGE_NOTE = "[Current model does not support images. The image will be omitted from this request.]";
+
+const readImage = (
+	fs: SandboxFileSystem.Interface,
+	resolved: string,
+	mimeType: string,
+	modelInput: Tool.ToolCallContext["modelInput"],
+) =>
 	Effect.gen(function* () {
 		const bytes = yield* fs.readFileBuffer(resolved);
 		const inline: Image.Inline = yield* Image.inline(bytes, mimeType);
-		if (!inline.ok) return { type: "image" as const, note: `Read image file [${mimeType}]\n${inline.message}` };
+		const nonVision = modelInput !== undefined && !modelInput.includes("image") ? [NON_VISION_IMAGE_NOTE] : [];
+		if (!inline.ok)
+			return {
+				type: "image" as const,
+				note: [`Read image file [${mimeType}]`, inline.message, ...nonVision].join("\n"),
+			};
 		return {
 			type: "image" as const,
-			note: [`Read image file [${inline.mimeType}]`, ...inline.hints].join("\n"),
+			note: [`Read image file [${inline.mimeType}]`, ...inline.hints, ...nonVision].join("\n"),
 			image: { data: inline.data, mimeType: inline.mimeType },
 		};
 	});
@@ -177,7 +189,7 @@ export const readHandler: Tool.Handler<
 	typeof ReadSuccess,
 	typeof ReadFailed,
 	SandboxIO.FileSystem
-> = (params) =>
+> = (params, ctx) =>
 	Effect.gen(function* () {
 		const fs = yield* SandboxIO.FileSystem;
 		const resolved = yield* ToolPath.resolveRead(fs, params.path);
@@ -195,7 +207,7 @@ export const readHandler: Tool.Handler<
 					? Effect.succeed(head.subarray(offset, offset + length))
 					: fs.readBytes(resolved, offset, length),
 		});
-		if (mimeType !== undefined) return yield* readImage(fs, resolved, mimeType);
+		if (mimeType !== undefined) return yield* readImage(fs, resolved, mimeType, ctx.modelInput);
 		if (head.includes(0)) return yield* fail(`Unsupported read ${params.path}: binary file.`);
 		return yield* readText(fs, resolved, params);
 	}).pipe(Effect.catchTag("SandboxFileSystemError", fsFailure(params.path)));
