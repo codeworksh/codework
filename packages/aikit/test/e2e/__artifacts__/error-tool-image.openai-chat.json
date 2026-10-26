@@ -1,0 +1,22 @@
+[
+	{
+		"role": "tool",
+		"tool_call_id": "<call-id-0>",
+		"content": "{\"error\":\"Screenshot assertion failed: the page did not match.\"}"
+	},
+	{
+		"role": "user",
+		"content": [
+			{
+				"type": "text",
+				"text": "Attached image(s) from tool result:"
+			},
+			{
+				"type": "image_url",
+				"image_url": {
+					"url": "data:image/png;base64,<red-circle.png>"
+				}
+			}
+		]
+	}
+]

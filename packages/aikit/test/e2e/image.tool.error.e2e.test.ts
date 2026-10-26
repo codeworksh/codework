@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
 import * as Message from "../../src/message/message.ts";
+import * as Model from "../../src/model/model.ts";
 import { complete } from "../../src/stream.ts";
 import {
 	ANTHROPIC_E2E_MODELS,
@@ -145,6 +146,15 @@ describe("Error tool results with images", () => {
 		});
 	});
 
+	describeIfOpenAI("OpenAI Chat Completions", () => {
+		it("gpt-6-luna", { retry: 2, timeout: 60_000 }, async () => {
+			const model = await getOpenAIModel("gpt-6-luna");
+			// gpt-6-luna takes no function tools with a reasoning effort on Chat Completions.
+			const { reasoning: _, ...options } = openaiOptions({ maxTokens: 1_024, method: Model.APIMethodEnum.chat });
+			await handleErrorToolWithImageResult(model, options, "openai-chat", chatTail);
+		});
+	});
+
 	describeIfOpenAICodex("OpenAI Codex provider", () => {
 		it("gpt-6-luna", { retry: 2, timeout: 120_000 }, async () => {
 			const model = await getOpenAICodexModel("gpt-6-luna");
@@ -156,6 +166,18 @@ describe("Error tool results with images", () => {
 		it("meta/muse-spark-1.3-contributor", { retry: 2, timeout: 60_000 }, async () => {
 			const model = await getOpenRouterModel("meta/muse-spark-1.3-contributor");
 			await handleErrorToolWithImageResult(model, openrouterOptions(), "openrouter", chatTail);
+		});
+	});
+
+	describeIfGoogle("Google provider (Gemini before 3)", () => {
+		it("gemini-2.5-flash", { retry: 2, timeout: 90_000 }, async () => {
+			const model = await getGoogleModel("gemini-2.5-flash");
+			await handleErrorToolWithImageResult(
+				model,
+				googleOptions({ maxTokens: 4_096 }),
+				"google-gemini-2",
+				googleTail,
+			);
 		});
 	});
 

@@ -1,3 +1,4 @@
+import type { ModelMessage } from "ai";
 import Type from "typebox";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -685,8 +686,8 @@ describe("convertMessages", () => {
 		});
 	});
 
-	it("keeps error result images in place for providers outside the Anthropic wire", () => {
-		const openai = makeOpenAIModel({ input: ["text", "image"] });
+	it("keeps error result images in place on the OpenAI Responses wire", () => {
+		const openai = makeOpenAIModel({ npm: "@ai-sdk/openai", input: ["text", "image"] });
 		const assistant = makeAssistantMessage(openai, {
 			stopReason: "toolUse",
 			parts: [
@@ -857,6 +858,202 @@ describe("Anthropic error tool results with images", () => {
 					},
 				],
 			},
+		]);
+	});
+});
+
+describe("tool result images on wires that cannot carry them", () => {
+	const turn = (model: Model.Info) =>
+		makeAssistantMessage(model, {
+			stopReason: "toolUse",
+			parts: [
+				makeCompletedToolCall("call-1", "screenshot", [{ type: "image", data: "AAAA", mimeType: "image/png" }]),
+				makeErrorToolCall(
+					"call-2",
+					[
+						{ type: "text", text: "Render failed" },
+						{ type: "image", data: "BBBB", mimeType: "image/png" },
+					],
+					"render",
+				),
+			],
+		});
+	const file = (data: string) => ({ type: "file", data, mediaType: "image/png" });
+	const outputs = (messages: ModelMessage[]) =>
+		messages.flatMap((message) =>
+			message.role === "tool" ? message.content.map((part) => ("output" in part ? part.output : part)) : [],
+		);
+
+	it("sends Chat Completions tool results as text and their images in one user message", () => {
+		const chat = makeModel({
+			npm: "@ai-sdk/openai-compatible",
+			protocol: "openai-compatible",
+			input: ["text", "image"],
+		});
+		const messages = convertMessages({ messages: [turn(chat)] }, chat);
+
+		expect(outputs(messages)).toEqual([
+			{ type: "text", value: "(see attached image)" },
+			{ type: "error-text", value: "Render failed" },
+		]);
+		expect(messages.at(-1)).toEqual({
+			role: "user",
+			content: [{ type: "text", text: "Attached image(s) from tool result:" }, file("AAAA"), file("BBBB")],
+		});
+	});
+
+	it("uses Chat Completions for OpenAI only when the request picks the chat method", () => {
+		const openai = makeOpenAIModel({ npm: "@ai-sdk/openai", input: ["text", "image"] });
+
+		expect(convertMessages({ messages: [turn(openai)] }, openai).at(-1)?.role).toBe("tool");
+		expect(convertMessages({ messages: [turn(openai)] }, openai, Model.APIMethodEnum.chat).at(-1)).toMatchObject({
+			role: "user",
+			content: [{ type: "text", text: "Attached image(s) from tool result:" }, file("AAAA"), file("BBBB")],
+		});
+	});
+
+	it("sends each tool result's images after the results for Gemini before 3", () => {
+		const gemini = makeModel({
+			id: "gemini-2.5-flash",
+			npm: "@ai-sdk/google",
+			protocol: "google",
+			input: ["text", "image"],
+		});
+		const messages = convertMessages({ messages: [turn(gemini)] }, gemini);
+
+		expect(outputs(messages)).toEqual([
+			{ type: "text", value: "(see attached image)" },
+			{ type: "error-text", value: "Render failed" },
+		]);
+		expect(messages.at(-1)).toEqual({
+			role: "user",
+			content: [
+				{ type: "text", text: "Tool result image:" },
+				file("AAAA"),
+				{ type: "text", text: "Tool result image:" },
+				file("BBBB"),
+			],
+		});
+	});
+
+	it("keeps images inside the function response from Gemini 3", () => {
+		const gemini = makeModel({
+			id: "gemini-3.5-flash",
+			npm: "@ai-sdk/google",
+			protocol: "google",
+			input: ["text", "image"],
+		});
+		const messages = convertMessages({ messages: [turn(gemini)] }, gemini);
+
+		expect(messages.at(-1)?.role).toBe("tool");
+		expect(outputs(messages).map((output) => (output as { type: string }).type)).toEqual(["content", "content"]);
+	});
+
+	it("follows the Copilot endpoint the request resolves to", () => {
+		const copilot = (method: Model.APIMethodEnum) =>
+			makeModel({
+				npm: "@codeworksh/ai-sdk-github-copilot",
+				protocol: "github-copilot",
+				input: ["text", "image"],
+				api: { method },
+			});
+		const messagesEntry = copilot(Model.APIMethodEnum.messages);
+		const chatEntry = copilot(Model.APIMethodEnum.chat);
+		const last = (model: Model.Info, method?: Model.APIMethodEnum) =>
+			convertMessages({ messages: [turn(model)] }, model, method).at(-1);
+
+		expect(last(messagesEntry)).toMatchObject({
+			role: "user",
+			content: [{ type: "text", text: "Images from the error result of tool call call-2 (render):" }, file("BBBB")],
+		});
+		expect(last(messagesEntry, Model.APIMethodEnum.chat)).toMatchObject({
+			role: "user",
+			content: [{ type: "text", text: "Attached image(s) from tool result:" }, file("AAAA"), file("BBBB")],
+		});
+		expect(last(chatEntry, Model.APIMethodEnum.messages)).toMatchObject({
+			role: "user",
+			content: [{ type: "text", text: "Images from the error result of tool call call-2 (render):" }, file("BBBB")],
+		});
+		expect(last(chatEntry, Model.APIMethodEnum.responses)?.role).toBe("tool");
+	});
+
+	it("matches the Google adapter's legacy models, on Gemini and Vertex", () => {
+		const legacy = [
+			"gemini-2.5-flash",
+			"gemini-1.5-pro",
+			"gemini-pro-vision",
+			"gemini-robotics-er-1.5",
+			"gemma-3-27b-it",
+		];
+		for (const id of legacy) {
+			for (const [protocol, npm] of [
+				["google", "@ai-sdk/google"],
+				["google-vertex", "@ai-sdk/google-vertex"],
+			] as const) {
+				const model = makeModel({ id, protocol, npm, input: ["text", "image"] });
+				expect(convertMessages({ messages: [turn(model)] }, model).at(-1)?.role, `${protocol}/${id}`).toBe("user");
+			}
+		}
+		const current = makeModel({
+			id: "gemini-3.5-flash",
+			protocol: "google-vertex",
+			npm: "@ai-sdk/google-vertex",
+			input: ["text", "image"],
+		});
+		expect(convertMessages({ messages: [turn(current)] }, current).at(-1)?.role).toBe("tool");
+	});
+
+	it("keeps every round's images after its own tool results", () => {
+		const chat = makeModel({
+			npm: "@ai-sdk/openai-compatible",
+			protocol: "openai-compatible",
+			input: ["text", "image"],
+		});
+		const round = (callID: string, data: string) =>
+			makeAssistantMessage(chat, {
+				stopReason: "toolUse",
+				parts: [makeCompletedToolCall(callID, "screenshot", [{ type: "image", data, mimeType: "image/png" }])],
+			});
+		const messages = convertMessages(
+			{
+				messages: [
+					makeUserMessage("go"),
+					round("call-1", "AAAA"),
+					round("call-2", "BBBB"),
+					makeUserMessage("next"),
+				],
+			},
+			chat,
+		);
+
+		expect(messages.map((message) => message.role)).toEqual([
+			"user",
+			"assistant",
+			"tool",
+			"user",
+			"assistant",
+			"tool",
+			"user",
+			"user",
+		]);
+		expect(messages[3]).toEqual({
+			role: "user",
+			content: [{ type: "text", text: "Attached image(s) from tool result:" }, file("AAAA")],
+		});
+		expect(messages[6]).toEqual({
+			role: "user",
+			content: [{ type: "text", text: "Attached image(s) from tool result:" }, file("BBBB")],
+		});
+	});
+
+	it("moves nothing for a text-only model, whose images are already placeholders", () => {
+		const chat = makeModel({ npm: "@ai-sdk/openai-compatible", protocol: "openai-compatible", input: ["text"] });
+		const messages = convertMessages({ messages: [turn(chat)] }, chat);
+
+		expect(messages.at(-1)?.role).toBe("tool");
+		expect(outputs(messages)).toEqual([
+			{ type: "text", value: "(tool image omitted: model does not support images)" },
+			{ type: "error-text", value: "Render failed\n(tool image omitted: model does not support images)" },
 		]);
 	});
 });

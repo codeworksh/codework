@@ -16,6 +16,7 @@ import { resolveOpenAICodexToolConstraint } from "../providers/openai-codex/code
 import { shortHash } from "../utils/hash.ts";
 import { parseStreamingJson } from "../utils/jsonparse.ts";
 import { sanitizeSurrogates } from "../utils/sanitize.ts";
+import { packageForModel, resolveMethod } from "./registry.ts";
 import { resolveStrictParameters } from "./strict.ts";
 import { isAnthropicMessagesModel } from "./thinking.ts";
 
@@ -84,25 +85,72 @@ function sanitizeRecord(value: Record<string, unknown>): Record<string, unknown>
 }
 
 const ERROR_TOOL_IMAGE_PLACEHOLDER = "(image attached after the tool results)";
+const MOVED_TOOL_IMAGE_PLACEHOLDER = "(see attached image)";
+const CHAT_TOOL_IMAGES_CAPTION = "Attached image(s) from tool result:";
+const GEMINI_TOOL_IMAGES_CAPTION = "Tool result image:";
 
-// Anthropic rejects images in error tool results, so they follow the turn's tool results instead.
-function splitsErrorImages(toolCall: TerminalToolCall, model: Model.Info): boolean {
-	return (
-		toolCall.result.isError &&
-		isAnthropicMessagesModel(model) &&
-		toolCall.result.content.some((content) => content.type === "image")
-	);
+/**
+ * Where a tool result's images go when the wire cannot carry them inside the result. Each case
+ * sends them in a user message after the turn's tool results:
+ * - `anthropicError`: Anthropic rejects images in error tool results.
+ * - `chat`: Chat Completions adapters serialize tool result images as JSON text.
+ * - `gemini`: before Gemini 3 (and for non-Gemini models), an image-only result loses its function response.
+ */
+type MovedImages = "anthropicError" | "chat" | "gemini";
+
+const COPILOT = "@codeworksh/ai-sdk-github-copilot";
+
+function isAnthropicWire(model: Model.Info, method: Model.APIMethodEnum): boolean {
+	if (packageForModel(model) === COPILOT) return method === Model.APIMethodEnum.messages;
+	return isAnthropicMessagesModel(model);
 }
 
-function toolResultOutput(toolCall: TerminalToolCall, model: Model.Info) {
-	const split = splitsErrorImages(toolCall, model);
-	const content = split
-		? Message.omitImages(toolCall.result.content, ERROR_TOOL_IMAGE_PLACEHOLDER)
-		: toolCall.result.content;
-	const text = content
+function isChatCompletions(model: Model.Info, method: Model.APIMethodEnum): boolean {
+	const npm = packageForModel(model);
+	// The compatible adapter falls back to its chat model for every other method.
+	if (npm === "@ai-sdk/openai-compatible") return true;
+	if (npm === COPILOT) return method !== Model.APIMethodEnum.responses && method !== Model.APIMethodEnum.messages;
+	return npm === "@ai-sdk/openai" && method === Model.APIMethodEnum.chat;
+}
+
+/** The Google adapter's own split: anything but Gemini 3 and later gets the legacy function response. */
+function isLegacyGoogleToolResults(model: Model.Info): boolean {
+	if (model.protocol !== Model.KnownProviderEnum.google && model.protocol !== Model.KnownProviderEnum.googleVertex) {
+		return false;
+	}
+	const id = model.api?.id ?? model.id;
+	const gemini = /(^|[/.])gemini-/i.test(id);
+	const legacy =
+		/(^|[/.])gemini-[12](?:[.-]|$)/i.test(id) ||
+		/(^|[/.])gemini-pro(?:-vision)?$/i.test(id) ||
+		/(^|[/.])gemini-robotics-er-1\.5(?:[.-]|$)/i.test(id);
+	return !gemini || legacy;
+}
+
+function movedImages(
+	toolCall: TerminalToolCall,
+	model: Model.Info,
+	method: Model.APIMethodEnum,
+): MovedImages | undefined {
+	if (!toolCall.result.content.some((content) => content.type === "image")) return;
+	if (isAnthropicWire(model, method)) return toolCall.result.isError ? "anthropicError" : undefined;
+	if (isChatCompletions(model, method)) return "chat";
+	if (isLegacyGoogleToolResults(model)) return "gemini";
+}
+
+function toolResultOutput(toolCall: TerminalToolCall, moved: MovedImages | undefined) {
+	const content =
+		moved === "anthropicError"
+			? Message.omitImages(toolCall.result.content, ERROR_TOOL_IMAGE_PLACEHOLDER)
+			: moved
+				? toolCall.result.content.filter((content) => content.type === "text")
+				: toolCall.result.content;
+	const joined = content
 		.filter((content) => content.type === "text")
 		.map((content) => sanitizeSurrogates(content.text))
 		.join("\n");
+	const text =
+		moved && moved !== "anthropicError" && joined.trim().length === 0 ? MOVED_TOOL_IMAGE_PLACEHOLDER : joined;
 	const images = content.filter((content) => content.type === "image");
 
 	// The AI SDK's content output has no error flag, so other providers keep the images and lose
@@ -228,12 +276,16 @@ export function googleThoughtSignature(metadata: unknown): string | undefined {
 	}
 }
 
-function assistantMessages(message: Message.AssistantMessage, model: Model.Info): ModelMessage[] {
+function assistantMessages(
+	message: Message.AssistantMessage,
+	model: Model.Info,
+	method: Model.APIMethodEnum,
+): ModelMessage[] {
 	if (message.stopReason === "error" || message.stopReason === "aborted") return [];
 
 	const assistantContent: Exclude<AssistantModelMessage["content"], string> = [];
 	const toolResults: ToolModelMessage["content"] = [];
-	const errorImages: Exclude<UserModelMessage["content"], string> = [];
+	const movedImageContent: Exclude<UserModelMessage["content"], string> = [];
 	const googleReplay =
 		(model.protocol === "google" || model.protocol === "google-vertex") &&
 		message.protocol === model.protocol &&
@@ -341,6 +393,7 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 		});
 
 		const terminal = part.status === "pending" || part.status === "running" ? undefined : part;
+		const moved = terminal ? movedImages(terminal, model, method) : undefined;
 		toolResults.push({
 			type: "tool-result",
 			toolCallId: part.callID,
@@ -349,15 +402,23 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 				? { providerOptions: { "openai-codex": { addedToolNames: terminal.addedToolNames } } }
 				: {}),
 			output: terminal
-				? toolResultOutput(terminal, model)
+				? toolResultOutput(terminal, moved)
 				: {
 						type: "error-text",
 						value: "no result provided",
 					},
 		});
-		if (terminal && splitsErrorImages(terminal, model)) {
-			errorImages.push(
-				{ type: "text", text: `Images from the error result of tool call ${part.callID} (${part.name}):` },
+		if (terminal && moved) {
+			const caption =
+				moved === "anthropicError"
+					? `Images from the error result of tool call ${part.callID} (${part.name}):`
+					: moved === "gemini"
+						? GEMINI_TOOL_IMAGES_CAPTION
+						: movedImageContent.length === 0
+							? CHAT_TOOL_IMAGES_CAPTION
+							: undefined;
+			movedImageContent.push(
+				...(caption === undefined ? [] : [{ type: "text" as const, text: caption }]),
 				...terminal.result.content.flatMap((content) =>
 					content.type === "image"
 						? [{ type: "file" as const, data: content.data, mediaType: content.mimeType }]
@@ -375,13 +436,18 @@ function assistantMessages(message: Message.AssistantMessage, model: Model.Info)
 		result.push({ role: "tool", content: toolResults });
 	}
 	// @ai-sdk/anthropic merges this into the tool results' user message, after the tool_result blocks.
-	if (errorImages.length > 0) {
-		result.push({ role: "user", content: errorImages });
+	if (movedImageContent.length > 0) {
+		result.push({ role: "user", content: movedImageContent });
 	}
 	return result;
 }
 
-export function convertMessages(context: Message.Context, model: Model.Info): ModelMessage[] {
+export function convertMessages(
+	context: Message.Context,
+	model: Model.Info,
+	methodOverride?: Model.APIMethodEnum,
+): ModelMessage[] {
+	const method = resolveMethod(model, methodOverride);
 	const messages: ModelMessage[] = [];
 	const transformedMessages = Message.transformMessages(context.messages, model, toolCallIdNormalizer(model));
 
@@ -390,7 +456,7 @@ export function convertMessages(context: Message.Context, model: Model.Info): Mo
 			messages.push(...userContent(msg.parts));
 			continue;
 		}
-		messages.push(...assistantMessages(msg, model));
+		messages.push(...assistantMessages(msg, model, method));
 	}
 
 	return messages;
