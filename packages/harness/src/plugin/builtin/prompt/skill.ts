@@ -12,6 +12,7 @@ import { Global } from "../../../global.ts";
 import { SandboxFileSystem } from "../../../sandbox/fs/filesystem.ts";
 import { SandboxFs } from "../../../sandbox/fs/util.ts";
 import { SandboxIO } from "../../../sandbox/io.ts";
+import { declared } from "../../../tool/tool.ts";
 import { posix } from "../../../util/posix.ts";
 import type { SharedPluginContext } from "../../context.ts";
 import { define } from "../../plugin.ts";
@@ -382,11 +383,13 @@ export const skillPlugin = define({
 	kind: "prompt",
 	setup: Effect.fn("SkillPlugin.setup")(function* (ctx) {
 		const tools = ctx.plugin.tools;
-		const visible = (name: string) => {
+		const callable = (name: string) => {
 			const tool = tools.get(name);
-			return tool !== undefined && tool.promptSnippet !== undefined && tool.promptSnippet.length > 0;
+			return tool !== undefined && declared(tool) ? tool : undefined;
 		};
-		const fileReadTool = readers.find(visible) ?? (readers.some((name) => tools.has(name)) ? "indirect" : undefined);
+		const visible = (name: string) => (callable(name)?.promptSnippet ?? "").length > 0;
+		const fileReadTool =
+			readers.find(visible) ?? (readers.some((name) => callable(name) !== undefined) ? "indirect" : undefined);
 		if (fileReadTool === undefined) return;
 
 		const fs = yield* SandboxIO.FileSystem;

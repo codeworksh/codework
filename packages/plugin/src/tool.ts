@@ -34,6 +34,18 @@ export const ToolCallContext = Schema.Struct({
 export type ToolCallContext = typeof ToolCallContext.Type;
 
 /**
+ * Where a tool is reachable. `direct` and `model` tools are declared to the model each turn;
+ * `model` ones are never callable from other tools. `codemode` and `deferred` tools stay off the
+ * wire until loaded, and `hidden` ones never reach the model.
+ */
+export const ToolExposure = Schema.Literals(["direct", "model", "codemode", "deferred", "hidden"]);
+export type ToolExposure = typeof ToolExposure.Type;
+
+/** Whether a tool is declared to the model every turn. Omitted exposure means `direct`. */
+export const declared = (def: { readonly exposure?: ToolExposure }): boolean =>
+	def.exposure === undefined || def.exposure === "direct" || def.exposure === "model";
+
+/**
  * A pure tool definition. Parametrised over the *schema* instances so the
  * decoded parameter/success/failure types can be recovered via `["Type"]`.
  */
@@ -54,6 +66,8 @@ export interface ToolDef<
 	readonly promptSnippet?: string;
 	/** Optional guideline bullets appended to the default system prompt Guidelines section when this tool is active. */
 	readonly promptGuidelines?: ReadonlyArray<string>;
+	/** Where the tool is reachable. Omit → `direct`. */
+	readonly exposure?: ToolExposure;
 	/**
 	 * Repair argument shapes models commonly send before they are validated against
 	 * `parameters`. Return a copy; a throw makes the arguments invalid.
@@ -116,6 +130,7 @@ interface DefineInput<
 	readonly label?: string;
 	readonly promptSnippet?: string;
 	readonly promptGuidelines?: ReadonlyArray<string>;
+	readonly exposure?: ToolExposure;
 	readonly prepareArguments?: (args: unknown) => unknown;
 	readonly parameters: Params;
 	readonly constrainedSampling?: Message.Tool["constrainedSampling"];

@@ -2,7 +2,7 @@ import type { ToolRegistration } from "../plugin/tool/schema.ts";
 import type { Message } from "@codeworksh/aikit";
 import { Context, Layer } from "effect";
 import * as Executor from "./executor.ts";
-import type { AnyToolDef, RegisteredTool } from "./tool.ts";
+import { type AnyToolDef, declared, type RegisteredTool } from "./tool.ts";
 
 /**
  * `ToolRegistry` — the loop-facing entry point to the tool catalog
@@ -37,12 +37,12 @@ export interface Resolved {
 
 /** The catalog: an immutable set of registered tools + a resolver. A plain list of tools. */
 export interface Registry {
-	/** Metadata listing (name / description / …). */
+	/** Metadata listing (name / description / …) of every registered tool, whatever its exposure. */
 	readonly defs: ReadonlyArray<AnyToolDef>;
 	readonly names: ReadonlyArray<string>;
 	/** Metadata lookup only — never exposes the executable impl. */
 	readonly getDef: (name: string) => AnyToolDef | undefined;
-	/** Resolve a frozen snapshot of the effective tool set. */
+	/** Resolve a frozen snapshot of the tools declared to the model. */
 	readonly resolve: () => Resolved;
 }
 
@@ -68,11 +68,13 @@ export const make = (tools: ReadonlyArray<RegisteredTool | ToolRegistration>): R
 	const defs = Object.freeze(effective.map((entry) => entry.tool.definition));
 	const names = Object.freeze(effective.map((entry) => entry.tool.definition.name));
 
+	// Only declared tools run: a call to any other gets the executor's `Unknown tool` result.
+	const declaredSet = effective.filter((entry) => declared(entry.tool.definition));
 	// The effective set is unique, so the executor's own duplicate guard never trips.
-	const executor = Executor.make(effective);
+	const executor = Executor.make(declaredSet);
 
 	const resolved: Resolved = Object.freeze({
-		defs,
+		defs: Object.freeze(declaredSet.map((entry) => entry.tool.definition)),
 		wire: Object.freeze([...executor.wire]),
 		handle: executor.handle,
 	});
