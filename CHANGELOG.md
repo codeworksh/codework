@@ -25,10 +25,12 @@ This file is the canonical source for unreleased changes and published release n
 
 - A turn started for a prompt that was cancelled just before it joined the conversation no longer asks the model anything.
 - A prompt changed, cancelled or sent again while it was being taken in no longer fails the run; the run takes in the prompt as it now stands.
+- GitHub Copilot lists only the models its login can reach, by the `availableModelIds` recorded at login. A settings model that aliases another is matched by its API id.
 
 #### Internal
 
 - Migrations add `session_input.cancelled_seq`, and `session.execution` and `session.restarts`.
+- Stored context messages are user and assistant messages only; a stored system message fails to decode with "system messages are not stored as entries".
 - Tests use `gpt-6-luna` in place of the deprecated `gpt-5.5`.
 
 ### @codeworksh/cli
@@ -43,6 +45,7 @@ This file is the canonical source for unreleased changes and published release n
 #### Fixed
 
 - Ctrl+C on `codework run` without `--server` stops the run as a user stop, so `codework serve` does not resume it later.
+- `model.list` lists only the GitHub Copilot models the login can reach.
 
 #### Internal
 
@@ -50,7 +53,30 @@ This file is the canonical source for unreleased changes and published release n
 
 ### @codeworksh/aikit
 
+#### Added
+
+- Transcript system messages change the tools mid-conversation: `Message.createSystemMessage({ toolsAdded?, toolsRemoved?, metadata? })`. `Context.tools` is the initial set. OpenAI Codex and GitHub Copilot Responses models that support it declare every tool in place, in `additional_tools` items, and announce removals as text, so the cached prompt prefix holds across tool changes; models with tool search only get later additions as a tool search result; every other model gets the current tools top-level.
+- `Transcript` helpers: `getCurrentTools`, `getDeclaredTools`, `getToolStateChanges`, `declarationsEqual`, `toToolDeclaration` and `resolveTranscriptTools`.
+- `filterGitHubCopilotModels` keeps the catalog models a Copilot login can reach.
+- GitHub Copilot GPT models turn reasoning off with `reasoning.effort: "none"` where OpenAI accepts it, such as gpt-5.3-codex, gpt-5.6-luna and gpt-6-luna.
+
+#### Changed
+
+- GitHub Copilot Responses requests go through aikit's own Responses model, shared with OpenAI Codex. They carry `prompt_cache_key` from the session id, put the system prompt in a developer message, and send `max_output_tokens` of at least 16.
+- Copilot's 1M-token context list now holds claude-fable-5, claude-opus-4.8, claude-opus-5, claude-opus-5.5, claude-sonnet-4.6, claude-sonnet-5, gpt-5.3-codex, gpt-6-astra, gpt-6-luna and gpt-6-sol.
+
+#### Removed
+
+- `ToolCall.addedToolNames`. A system message's `toolsAdded` takes its place, and token estimates count it.
+
 #### Fixed
+
+- GitHub Copilot Claude models that cannot disable thinking (Opus 5.5, Sonnet 5.5, Fable 5) no longer fail with thinking off; the request leaves thinking out.
+- A GitHub Copilot Responses tool call no longer splits into an empty call and a call with the arguments; Copilot changes the item id on every stream event.
+- GitHub Copilot Grok models no longer fail on a request without tools: `tool_choice` and `parallel_tool_calls` are sent only when the call names a tool choice. OpenAI Codex still sends both on every request.
+- A provider error the adapter cannot parse keeps its message and code, read from the response body. Copilot's Claude route reported "bad Request" for a model the account cannot use.
+- A grammar tool's earlier calls replay as grammar calls after the tool is removed.
+- A request limited by `activeTools` sends no tools outside that list.
 
 - `modelgen` leaves out providers with no models instead of writing them as empty entries.
 - Images in a failed tool result reach the model instead of being dropped. On the Anthropic wire the result is sent as text with `(image attached after the tool results)`, and the images follow the turn's tool results under `Images from the error result of tool call <id> (<name>):`. Other wires keep the images in the result; there the AI SDK sends it without an error flag.
