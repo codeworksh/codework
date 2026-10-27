@@ -1,0 +1,12 @@
+{
+	"topLevelTools": [
+		"late_tool"
+	],
+	"input": [
+		"developer: You complete tasks by calling tools. Never answer in text when a tool can do the step.",
+		"user",
+		"function_call: base_tool",
+		"function_call_output"
+	],
+	"called": "late_tool"
+}

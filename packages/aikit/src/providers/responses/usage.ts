@@ -1,6 +1,6 @@
 import type { JSONObject, LanguageModelV3FinishReason, LanguageModelV3Usage } from "@ai-sdk/provider";
 
-export type OpenAICodexUsage = {
+export type ResponsesUsage = {
 	input_tokens?: number;
 	output_tokens?: number;
 	total_tokens?: number;
@@ -8,7 +8,7 @@ export type OpenAICodexUsage = {
 	output_tokens_details?: { reasoning_tokens?: number };
 };
 
-export function convertOpenAICodexUsage(usage: OpenAICodexUsage | undefined): LanguageModelV3Usage {
+export function convertResponsesUsage(usage: ResponsesUsage | undefined): LanguageModelV3Usage {
 	const inputTotal = usage?.input_tokens;
 	const cachedTokens = usage?.input_tokens_details?.cached_tokens ?? 0;
 	const cacheWriteTokens = usage?.input_tokens_details?.cache_write_tokens ?? 0;
@@ -31,7 +31,7 @@ export function convertOpenAICodexUsage(usage: OpenAICodexUsage | undefined): La
 	};
 }
 
-export function mapOpenAICodexFinishReason(
+export function mapResponsesFinishReason(
 	status: string | undefined,
 	hasToolCalls: boolean,
 	incompleteReason?: string,

@@ -3,13 +3,13 @@ import { DateTime, Effect, Schema } from "effect";
 import { optional } from "../schema.ts";
 import { SessionSchema } from "../session/schema.ts";
 import type { Session } from "../session/session.ts";
-import { decodeMessage, decodeSyntheticMessage } from "./codec.ts";
+import { decodeMessage, decodeSyntheticMessage, type ContextMessage } from "./codec.ts";
 import { ContextDecodeError } from "./errors.ts";
 
 export interface Snapshot {
 	readonly sessionId: string;
 	readonly leafEntryId: string | null;
-	readonly messages: ReadonlyArray<Message.Message>;
+	readonly messages: ReadonlyArray<ContextMessage>;
 	readonly lastAssistant?: {
 		readonly entryId: string;
 		readonly message: Message.AssistantMessage;
@@ -84,7 +84,7 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 	let lastAssistant: Snapshot["lastAssistant"];
 	let latestCompaction: { readonly index: number; readonly data: SessionSchema.CompactionData } | undefined;
 
-	const messagesByEntry = new Map<string, Message.Message>();
+	const messagesByEntry = new Map<string, ContextMessage>();
 	const compactions = new Map<string, SessionSchema.CompactionData>();
 	const branchSummaries = new Map<string, string>();
 
@@ -165,7 +165,7 @@ export const assemblePath = Effect.fn("Context.assemblePath")(function* (
 		effectivePath = [committedPath[index]!, ...kept, ...committedPath.slice(index + 1)];
 	}
 
-	const messages: Message.Message[] = [];
+	const messages: ContextMessage[] = [];
 	for (const hydrated of effectivePath) {
 		const { entry } = hydrated;
 		const message = messagesByEntry.get(entry.id);

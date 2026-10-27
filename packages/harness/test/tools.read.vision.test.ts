@@ -47,6 +47,7 @@ const view = (input: LLM.Input) =>
 	Message.transformMessages(input.context.messages, input.resolvedModel).map((message) => {
 		const content = (parts: ReadonlyArray<Message.TextContent | Message.ImageContent>) =>
 			parts.map((part) => (part.type === "text" ? part.text : { image: part.mimeType }));
+		if (message.role === "system") return { role: "system" };
 		if (message.role === "user") return { role: "user", content: content(message.parts) };
 		return {
 			role: "assistant",

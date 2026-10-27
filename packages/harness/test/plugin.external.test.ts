@@ -138,7 +138,8 @@ describe("third-party plugins", () => {
 				},
 			});
 			// The continuation request carries the terminal part, not a pending one.
-			const continued = contexts[1]?.messages.at(-1)?.parts.find((part) => part.type === "toolCall");
+			const last = contexts[1]?.messages.at(-1);
+			const continued = last?.role === "assistant" ? last.parts.find((part) => part.type === "toolCall") : undefined;
 			expect(continued).toMatchObject({ callID: "call_echo", status: "completed" });
 		}));
 

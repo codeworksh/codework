@@ -17,6 +17,9 @@ export interface EncodedMessage {
 
 type AikitPart = Message.AssistantMessage["parts"][number] | Message.UserMessage["parts"][number];
 
+/** A message the session stores as an entry. Transcript system messages are not stored yet. */
+export type ContextMessage = Message.UserMessage | Message.AssistantMessage;
+
 const reasonOf = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 const decodeJsonObject = Schema.decodeUnknownEffect(SessionSchema.JsonObject);
 const encodeJsonObject = Schema.encodeEffect(SessionSchema.JsonObject);
@@ -57,11 +60,16 @@ const validateDecoded = (
 	value: unknown,
 	entryId: string,
 	type: string,
-): Effect.Effect<Message.Message, ContextDecodeError> =>
+): Effect.Effect<ContextMessage, ContextDecodeError> =>
 	Effect.try({
 		try: () => validateAikitMessage(value, `context entry ${entryId}`),
 		catch: (cause) => new ContextDecodeError({ entryId, type, reason: reasonOf(cause) }),
-	});
+	}).pipe(
+		Effect.filterOrFail(
+			(message): message is ContextMessage => message.role !== "system",
+			() => new ContextDecodeError({ entryId, type, reason: "system messages are not stored as entries" }),
+		),
+	);
 
 export const validateUserMessage = (
 	value: unknown,
@@ -74,10 +82,10 @@ export const validateUserMessage = (
 	});
 
 export const encodeMessage = Effect.fn("Context.encodeMessage")(function* (
-	message: Message.Message,
+	message: ContextMessage,
 ): Effect.fn.Return<EncodedMessage, ContextEncodeError> {
 	const validated = yield* Effect.try({
-		try: () => validateAikitMessage(message, `context message ${message.messageId}`),
+		try: () => validateAikitMessage(message, `context message ${message.messageId}`) as ContextMessage,
 		catch: (cause) =>
 			new ContextEncodeError({
 				messageId: message.messageId,
@@ -193,7 +201,7 @@ export const decodeSyntheticMessage = Effect.fn("Context.decodeSyntheticMessage"
 
 export const decodeMessage = Effect.fn("Context.decodeMessage")(function* (
 	hydrated: Session.HydratedEntry,
-): Effect.fn.Return<Message.Message, ContextDecodeError> {
+): Effect.fn.Return<ContextMessage, ContextDecodeError> {
 	const { entry } = hydrated;
 	if (entry.type !== "user" && entry.type !== "assistant") {
 		return yield* new ContextDecodeError({

@@ -1,9 +1,13 @@
-import type { LanguageModelV3CallOptions, LanguageModelV3ToolChoice, SharedV3Warning } from "@ai-sdk/provider";
+import type {
+	LanguageModelV3CallOptions,
+	LanguageModelV3FunctionTool,
+	LanguageModelV3ToolChoice,
+	SharedV3Warning,
+} from "@ai-sdk/provider";
 import type { TSchema } from "typebox";
 import * as Message from "../../message/message.ts";
-import type { OpenAICodexCompatibility } from "./codex-language-model.ts";
 
-export type OpenAICodexTool =
+export type ResponsesTool =
 	| {
 			type: "function";
 			name: string;
@@ -24,21 +28,21 @@ export type OpenAICodexTool =
 			defer_loading?: boolean;
 	  };
 
-export type OpenAICodexGrammarConstraint = {
+export type ResponsesGrammarConstraint = {
 	type: "grammar";
 	format: "lark" | "regex";
 	definition: string;
 	inputProperty: string;
 };
 
-export type OpenAICodexGrammarInputBuffer = {
+export type GrammarInputBuffer = {
 	input: string;
 	started: boolean;
 	closed: boolean;
 };
 
-export function appendOpenAICodexGrammarInputJsonDelta(
-	buffer: OpenAICodexGrammarInputBuffer,
+export function appendGrammarInputJsonDelta(
+	buffer: GrammarInputBuffer,
 	inputProperty: string,
 	nextInput: string,
 	close: boolean,
@@ -91,10 +95,10 @@ function inferGrammarInputProperty(parameters: TSchema): string {
 	return inputProperty;
 }
 
-export function resolveOpenAICodexToolConstraint(
+export function resolveToolGrammar(
 	tool: Message.Tool,
-	compat?: OpenAICodexCompatibility,
-): OpenAICodexGrammarConstraint | undefined {
+	compat?: { supportsOpenAIGrammarTools?: boolean },
+): ResponsesGrammarConstraint | undefined {
 	const config = tool.constrainedSampling;
 	if (!config || config.type !== "grammar") return undefined;
 	if (!(compat?.supportsOpenAIGrammarTools ?? false)) return undefined;
@@ -121,130 +125,115 @@ export function resolveOpenAICodexToolConstraint(
 	}
 }
 
-export const openAICodexTools = {
-	custom<TParameters extends TSchema>(args: {
-		name: string;
-		description: string;
-		parameters: TParameters;
-		format: { type: "grammar"; syntax: "lark" | "regex"; definition: string };
-	}): Message.Tool<TParameters> {
-		return {
-			name: args.name,
-			description: args.description,
-			parameters: args.parameters,
-			constrainedSampling: {
-				type: "grammar",
-				variants:
-					args.format.syntax === "lark"
-						? { openai_lark: args.format.definition }
-						: { openai_regex: args.format.definition },
-			},
-		};
-	},
+export type ResponsesToolChoice = "auto" | "none" | "required";
+
+/**
+ * Tool changes declared at a system message's position, carried in its
+ * `providerOptions[<provider>].toolChange`. `changes` declares tools in
+ * `additional_tools` items; `additions` declares them as a synthetic tool search.
+ */
+export type ResponsesToolChange = {
+	mode: "changes" | "additions";
+	tools: LanguageModelV3FunctionTool[];
+	removed: string[];
 };
 
-export type OpenAICodexToolChoice = "auto" | "none" | "required";
-export type OpenAICodexDeferredToolsMode = "additional-tools" | "tool-search";
-
-export function resolveOpenAICodexDeferredToolsMode(
-	compat?: OpenAICodexCompatibility,
-): OpenAICodexDeferredToolsMode | undefined {
-	const supportsAdditionalTools = compat?.supportsAdditionalTools ?? false;
-	if (supportsAdditionalTools) return "additional-tools";
-
-	const supportsToolSearch = compat?.supportsToolSearch ?? false;
-	return supportsToolSearch ? "tool-search" : undefined;
+/** A function tool carries its grammar in `providerOptions[<provider>].grammar`. */
+function toolGrammar(tool: LanguageModelV3FunctionTool, provider: string): ResponsesGrammarConstraint | undefined {
+	const metadata = tool.providerOptions?.[provider] as Record<string, unknown> | undefined;
+	const grammar = metadata?.grammar as ResponsesGrammarConstraint | undefined;
+	return grammar?.type === "grammar" ? grammar : undefined;
 }
 
-export function prepareOpenAICodexTools({
+export function toResponsesTool(tool: LanguageModelV3FunctionTool, provider: string): ResponsesTool {
+	const grammar = toolGrammar(tool, provider);
+	return grammar
+		? {
+				type: "custom",
+				name: tool.name,
+				...(tool.description !== undefined && { description: tool.description }),
+				format: {
+					type: "grammar",
+					syntax: grammar.format,
+					definition: grammar.definition,
+				},
+			}
+		: {
+				type: "function",
+				name: tool.name,
+				...(tool.description !== undefined && { description: tool.description }),
+				parameters: tool.inputSchema as Record<string, unknown>,
+				strict: tool.strict ?? null,
+			};
+}
+
+export function prepareResponsesTools({
+	provider,
 	tools,
 	toolChoice,
-	deferredToolNames,
+	inPlaceToolNames,
 }: {
+	provider: string;
 	tools: LanguageModelV3CallOptions["tools"];
 	toolChoice: LanguageModelV3ToolChoice | undefined;
-	deferredToolNames?: ReadonlySet<string>;
+	/** Tools declared in place in the input; they stay out of the top-level list. */
+	inPlaceToolNames?: ReadonlySet<string>;
 }): {
-	codexTools: OpenAICodexTool[] | undefined;
-	deferredCodexTools: ReadonlyMap<string, OpenAICodexTool>;
+	responsesTools: ResponsesTool[] | undefined;
 	grammarToolInputProperties: ReadonlyMap<string, string>;
-	codexToolChoice: OpenAICodexToolChoice | undefined;
+	toolChoiceValue: ResponsesToolChoice | undefined;
 	warnings: SharedV3Warning[];
 } {
 	const warnings: SharedV3Warning[] = [];
-	const deferredCodexTools = new Map<string, OpenAICodexTool>();
 	const grammarToolInputProperties = new Map<string, string>();
 
 	if (!tools || tools.length === 0) {
 		return {
-			codexTools: undefined,
-			deferredCodexTools,
+			responsesTools: undefined,
 			grammarToolInputProperties,
-			codexToolChoice: undefined,
+			toolChoiceValue: undefined,
 			warnings,
 		};
 	}
 
-	const codexTools: OpenAICodexTool[] = [];
+	const responsesTools: ResponsesTool[] = [];
 	for (const tool of tools) {
 		if (tool.type !== "function") {
 			warnings.push({
 				type: "unsupported",
 				feature: `tool type ${tool.type}`,
-				details: `OpenAI Codex only supports function tools; ignoring ${tool.name}.`,
+				details: `Only function tools are supported; ignoring ${tool.name}.`,
 			});
 			continue;
 		}
-		const metadata = tool.providerOptions?.["openai-codex"] as Record<string, unknown> | undefined;
-		const grammar = metadata?.grammar as OpenAICodexGrammarConstraint | undefined;
-		const codexTool: OpenAICodexTool =
-			grammar?.type === "grammar"
-				? {
-						type: "custom",
-						name: tool.name,
-						...(tool.description !== undefined && { description: tool.description }),
-						format: {
-							type: "grammar",
-							syntax: grammar.format,
-							definition: grammar.definition,
-						},
-					}
-				: {
-						type: "function",
-						name: tool.name,
-						...(tool.description !== undefined && { description: tool.description }),
-						parameters: tool.inputSchema as Record<string, unknown>,
-						strict: tool.strict ?? null,
-					};
-		if (grammar?.type === "grammar") grammarToolInputProperties.set(tool.name, grammar.inputProperty);
-		if (deferredToolNames?.has(tool.name)) deferredCodexTools.set(tool.name, codexTool);
-		else codexTools.push(codexTool);
+		const grammar = toolGrammar(tool, provider);
+		if (grammar) grammarToolInputProperties.set(tool.name, grammar.inputProperty);
+		if (!inPlaceToolNames?.has(tool.name)) responsesTools.push(toResponsesTool(tool, provider));
 	}
 
-	let codexToolChoice: OpenAICodexToolChoice | undefined;
+	let toolChoiceValue: ResponsesToolChoice | undefined;
 	switch (toolChoice?.type) {
 		case undefined:
 			break;
 		case "auto":
 		case "none":
 		case "required":
-			codexToolChoice = toolChoice.type;
+			toolChoiceValue = toolChoice.type;
 			break;
 		case "tool":
 			warnings.push({
 				type: "unsupported",
 				feature: "toolChoice tool name",
-				details: "OpenAI Codex does not support forcing a specific tool; using 'required' instead.",
+				details: "Forcing a specific tool is not supported; using 'required' instead.",
 			});
-			codexToolChoice = "required";
+			toolChoiceValue = "required";
 			break;
 	}
 
 	return {
-		codexTools: codexTools.length > 0 ? codexTools : undefined,
-		deferredCodexTools,
+		responsesTools: responsesTools.length > 0 ? responsesTools : undefined,
 		grammarToolInputProperties,
-		codexToolChoice,
+		toolChoiceValue,
 		warnings,
 	};
 }

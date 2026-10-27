@@ -11,30 +11,26 @@ import type {
 	SharedV3Warning,
 } from "@ai-sdk/provider";
 import {
-	createOpenAICodexAPICallError,
-	openAICodexFetchError,
-	createOpenAICodexPrematureCloseError,
-	createOpenAICodexStreamError,
-} from "./codex-error.ts";
-import { collectOpenAICodexDeferredToolNames, convertToOpenAICodexPrompt, joinToolCallId } from "./codex-prompt.ts";
-import { parseOpenAICodexSSEStream } from "./codex-sse.ts";
-import {
-	appendOpenAICodexGrammarInputJsonDelta,
-	prepareOpenAICodexTools,
-	resolveOpenAICodexDeferredToolsMode,
-	type OpenAICodexGrammarInputBuffer,
-} from "./codex-tools.ts";
-import { convertOpenAICodexUsage, mapOpenAICodexFinishReason, type OpenAICodexUsage } from "./codex-usage.ts";
+	createResponsesAPICallError,
+	responsesFetchError,
+	createResponsesPrematureCloseError,
+	createResponsesStreamError,
+} from "./error.ts";
+import { collectInPlaceToolNames, convertToResponsesPrompt, joinToolCallId } from "./prompt.ts";
+import { parseResponsesSSEStream } from "./sse.ts";
+import { appendGrammarInputJsonDelta, prepareResponsesTools, type GrammarInputBuffer } from "./tools.ts";
+import { convertResponsesUsage, mapResponsesFinishReason, type ResponsesUsage } from "./usage.ts";
 
-export const OPENAI_CODEX_DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
-export const OPENAI_CODEX_PROMPT_CACHE_KEY_MAX_LENGTH = 64;
+export const PROMPT_CACHE_KEY_MAX_LENGTH = 64;
 const REQUEST_COMPRESSION_ZSTD_LEVEL = 3;
+// The Responses API rejects max_output_tokens below 16.
+const MIN_OUTPUT_TOKENS = 16;
 
 type ProcessWithBuiltinModule = typeof process & {
 	getBuiltinModule?: (id: "node:zlib") => typeof NodeZlib;
 };
 
-function compressOpenAICodexRequest(body: string): Uint8Array | undefined {
+function compressRequest(body: string): Uint8Array | undefined {
 	if (typeof process === "undefined" || !(process.versions?.node || process.versions?.bun)) return undefined;
 	const zlib = (process as ProcessWithBuiltinModule).getBuiltinModule?.("node:zlib");
 	if (!zlib || typeof zlib.zstdCompressSync !== "function") return undefined;
@@ -48,74 +44,77 @@ function compressOpenAICodexRequest(body: string): Uint8Array | undefined {
 	}
 }
 
-export function clampOpenAICodexPromptCacheKey(key: string | undefined): string | undefined {
+export function clampPromptCacheKey(key: string | undefined): string | undefined {
 	if (key === undefined) return undefined;
 	const characters = Array.from(key);
-	return characters.length <= OPENAI_CODEX_PROMPT_CACHE_KEY_MAX_LENGTH
+	return characters.length <= PROMPT_CACHE_KEY_MAX_LENGTH
 		? key
-		: characters.slice(0, OPENAI_CODEX_PROMPT_CACHE_KEY_MAX_LENGTH).join("");
+		: characters.slice(0, PROMPT_CACHE_KEY_MAX_LENGTH).join("");
 }
 
-export type OpenAICodexModelId =
-	| "gpt-5.3-codex-spark"
-	| "gpt-5.4"
-	| "gpt-5.4-mini"
-	| "gpt-5.5"
-	| "gpt-5.6-luna"
-	| "gpt-5.6-sol"
-	| "gpt-5.6-terra"
-	| (string & {});
+export type ResponsesServiceTier = "auto" | "default" | "flex" | "scale" | "priority";
 
-export type OpenAICodexServiceTier = "auto" | "default" | "flex" | "scale" | "priority";
-
-export type OpenAICodexCompatibility = {
-	supportsToolSearch?: boolean;
-	supportsAdditionalTools?: boolean;
-	supportsStrictMode?: boolean;
-	supportsOpenAIGrammarTools?: boolean;
+export type ResponsesCompatibility = {
 	/** Internal transport capability derived from the model's input modalities. */
 	supportsImages?: boolean;
 };
 
 /**
- * Per-call options, passed via `providerOptions["openai-codex"]`.
+ * Per-call options, passed via `providerOptions[<provider>]`.
  */
-export type OpenAICodexLanguageModelOptions = {
+export type ResponsesLanguageModelOptions = {
 	/** Reasoning effort forwarded as `reasoning.effort`. */
 	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | (string & {});
 	/** Reasoning summary verbosity; defaults to `auto` when an effort is set. */
 	reasoningSummary?: "auto" | "concise" | "detailed" | "off" | "on" | null;
-	/** Output text verbosity; defaults to `low`. */
+	/** Output text verbosity; defaults to the backend's `request.textVerbosity`. */
 	textVerbosity?: "low" | "medium" | "high";
-	serviceTier?: OpenAICodexServiceTier;
+	serviceTier?: ResponsesServiceTier;
+	/**
+	 * The string input property of each grammar tool the conversation declared, including tools
+	 * since removed, so their earlier calls replay as grammar calls. The current tools win.
+	 */
+	grammarToolInputProperties?: Record<string, string>;
 };
 
-export type OpenAICodexLanguageModelConfig = {
+/** How one Responses backend takes a request. */
+export type ResponsesRequestProfile = {
+	/** Where system prompt text goes: the `instructions` field, or a developer message in place. */
+	systemPrompt: "instructions" | "developer";
+	/** Whether `max_output_tokens` is sent; the ChatGPT Codex backend rejects it. */
+	maxOutputTokens: boolean;
+	/** Whether `reasoning.encrypted_content` is requested on every call or only with an effort. */
+	encryptedReasoning: "always" | "withEffort";
+	/** zstd-compress the body; a fetch that reads the JSON body needs it uncompressed. */
+	compress: boolean;
+	/**
+	 * Whether `tool_choice: "auto"` and `parallel_tool_calls` go on every request, as the Codex
+	 * backend expects. Otherwise only a tool choice the call names is sent: some proxied models
+	 * (Grok on Copilot) reject either field on a request without tools.
+	 */
+	toolDefaults: boolean;
+	/** `text.verbosity` when the call sets none. */
+	textVerbosity?: ResponsesLanguageModelOptions["textVerbosity"];
+};
+
+export type ResponsesLanguageModelConfig = {
+	/** Provider name, and the providerOptions / providerMetadata key. */
 	provider: string;
-	baseURL: string;
+	/** Backend name for error messages, e.g. "OpenAI Codex". */
+	label: string;
+	url: string;
 	headers: () => PromiseLike<Record<string, string | undefined>> | Record<string, string | undefined>;
 	fetch?: typeof globalThis.fetch;
-	sessionId?: string;
-	serviceTier?: OpenAICodexServiceTier;
-	compat?: OpenAICodexCompatibility;
+	promptCacheKey?: string;
+	serviceTier?: ResponsesServiceTier;
+	compat?: ResponsesCompatibility;
+	request: ResponsesRequestProfile;
 };
 
-/**
- * Resolve the Codex responses endpoint from a base URL that may already
- * include the `/codex` or `/codex/responses` suffix.
- */
-export function resolveOpenAICodexUrl(baseUrl?: string): string {
-	const raw = baseUrl?.trim() ? baseUrl : OPENAI_CODEX_DEFAULT_BASE_URL;
-	const normalized = raw.replace(/\/+$/, "");
-	if (normalized.endsWith("/codex/responses")) return normalized;
-	if (normalized.endsWith("/codex")) return `${normalized}/responses`;
-	return `${normalized}/codex/responses`;
-}
-
-type CodexEvent = Record<string, unknown>;
+type ResponsesEvent = Record<string, unknown>;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-	return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as CodexEvent) : undefined;
+	return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as ResponsesEvent) : undefined;
 }
 
 function asString(value: unknown): string | undefined {
@@ -130,13 +129,13 @@ function cleanHeaders(headers: Record<string, string | undefined>): Record<strin
 	return result;
 }
 
-export class OpenAICodexLanguageModel implements LanguageModelV3 {
+export class ResponsesLanguageModel implements LanguageModelV3 {
 	readonly specificationVersion = "v3" as const;
-	readonly modelId: OpenAICodexModelId;
+	readonly modelId: string;
 
-	private readonly config: OpenAICodexLanguageModelConfig;
+	private readonly config: ResponsesLanguageModelConfig;
 
-	constructor(modelId: OpenAICodexModelId, config: OpenAICodexLanguageModelConfig) {
+	constructor(modelId: string, config: ResponsesLanguageModelConfig) {
 		this.modelId = modelId;
 		this.config = config;
 	}
@@ -162,65 +161,74 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		if (options.frequencyPenalty != null) warnings.push({ type: "unsupported", feature: "frequencyPenalty" });
 		if (options.seed != null) warnings.push({ type: "unsupported", feature: "seed" });
 		if (options.stopSequences != null) warnings.push({ type: "unsupported", feature: "stopSequences" });
-		if (options.maxOutputTokens != null) {
-			// The ChatGPT Codex backend rejects max_output_tokens with a 400.
+		if (options.maxOutputTokens != null && !this.config.request.maxOutputTokens) {
 			warnings.push({ type: "unsupported", feature: "maxOutputTokens" });
 		}
 		if (options.responseFormat?.type === "json" && options.responseFormat.schema === undefined) {
 			warnings.push({ type: "unsupported", feature: "responseFormat" });
 		}
 
-		const codexOptions = (options.providerOptions?.["openai-codex"] ?? {}) as OpenAICodexLanguageModelOptions;
-		const deferredToolsMode = resolveOpenAICodexDeferredToolsMode(this.config.compat);
-		const deferredToolNames = deferredToolsMode ? collectOpenAICodexDeferredToolNames(options.prompt) : undefined;
-		const tools = prepareOpenAICodexTools({
+		const { provider, request } = this.config;
+		const callOptions = (options.providerOptions?.[provider] ?? {}) as ResponsesLanguageModelOptions;
+		const tools = prepareResponsesTools({
+			provider,
 			tools: options.tools,
 			toolChoice: options.toolChoice,
-			...(deferredToolNames !== undefined && { deferredToolNames }),
+			inPlaceToolNames: collectInPlaceToolNames(options.prompt, provider),
 		});
-		const { instructions, input } = convertToOpenAICodexPrompt(options.prompt, {
-			deferredTools: tools.deferredCodexTools,
-			...(deferredToolsMode !== undefined && { deferredToolsMode }),
-			grammarToolInputProperties: tools.grammarToolInputProperties,
+		const { instructions, input } = convertToResponsesPrompt(options.prompt, {
+			provider,
+			systemPrompt: request.systemPrompt,
+			grammarToolInputProperties: new Map([
+				...Object.entries(callOptions.grammarToolInputProperties ?? {}),
+				...tools.grammarToolInputProperties,
+			]),
 			supportsImages: this.config.compat?.supportsImages ?? false,
 		});
 		warnings.push(...tools.warnings);
 
-		const text: Record<string, unknown> = { verbosity: codexOptions.textVerbosity ?? "low" };
+		const verbosity = callOptions.textVerbosity ?? request.textVerbosity;
+		const text: Record<string, unknown> = verbosity ? { verbosity } : {};
 		if (options.responseFormat?.type === "json" && options.responseFormat.schema !== undefined) {
 			text.format = {
 				type: "json_schema",
 				strict: true,
 				schema: options.responseFormat.schema,
-				name: options.responseFormat.name ?? "codex_output_schema",
+				name: options.responseFormat.name ?? "output_schema",
 			};
 		}
 
 		const args: Record<string, unknown> = {
 			model: this.modelId,
-			// The ChatGPT backend rejects stored responses for Codex subscriptions.
+			// Reasoning replays from encrypted content, so nothing is stored server-side.
 			store: false,
-			instructions,
+			...(instructions !== undefined && { instructions }),
 			input,
-			tool_choice: tools.codexToolChoice ?? "auto",
-			parallel_tool_calls: true,
-			include: ["reasoning.encrypted_content"],
-			text,
+			...(request.toolDefaults
+				? { tool_choice: tools.toolChoiceValue ?? "auto", parallel_tool_calls: true }
+				: tools.toolChoiceValue !== undefined && { tool_choice: tools.toolChoiceValue }),
+			...((request.encryptedReasoning === "always" || callOptions.reasoningEffort) && {
+				include: ["reasoning.encrypted_content"],
+			}),
+			...(Object.keys(text).length > 0 && { text }),
 		};
 
-		if (tools.codexTools) args.tools = tools.codexTools;
+		if (tools.responsesTools) args.tools = tools.responsesTools;
 		if (options.temperature != null) args.temperature = options.temperature;
+		if (request.maxOutputTokens && options.maxOutputTokens != null) {
+			args.max_output_tokens = Math.max(options.maxOutputTokens, MIN_OUTPUT_TOKENS);
+		}
 
-		const promptCacheKey = clampOpenAICodexPromptCacheKey(this.config.sessionId);
+		const promptCacheKey = clampPromptCacheKey(this.config.promptCacheKey);
 		if (promptCacheKey) args.prompt_cache_key = promptCacheKey;
 
-		const serviceTier = codexOptions.serviceTier ?? this.config.serviceTier;
+		const serviceTier = callOptions.serviceTier ?? this.config.serviceTier;
 		if (serviceTier) args.service_tier = serviceTier;
 
-		if (codexOptions.reasoningEffort) {
+		if (callOptions.reasoningEffort) {
 			args.reasoning = {
-				effort: codexOptions.reasoningEffort,
-				summary: codexOptions.reasoningSummary ?? "auto",
+				effort: callOptions.reasoningEffort,
+				summary: callOptions.reasoningSummary ?? "auto",
 			};
 		}
 
@@ -235,7 +243,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		const reasoningBlocks = new Map<string, Extract<LanguageModelV3Content, { type: "reasoning" }>>();
 		const warnings: SharedV3Warning[] = [];
 		let finishReason: LanguageModelV3FinishReason = { unified: "other", raw: undefined };
-		let usage: LanguageModelV3Usage = convertOpenAICodexUsage(undefined);
+		let usage: LanguageModelV3Usage = convertResponsesUsage(undefined);
 		let responseId: string | undefined;
 		let responseModelId: string | undefined;
 
@@ -317,14 +325,14 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 	async doStream(options: LanguageModelV3CallOptions): Promise<LanguageModelV3StreamResult> {
 		const { args, warnings, grammarToolInputProperties } = this.getArgs(options);
 		const body = { ...args, stream: true };
-		const url = resolveOpenAICodexUrl(this.config.baseURL);
+		const { url, label } = this.config;
 
 		const headers = cleanHeaders({
 			...(await this.config.headers()),
 			...options.headers,
 		});
 		const bodyJson = JSON.stringify(body);
-		const compressedBody = compressOpenAICodexRequest(bodyJson);
+		const compressedBody = this.config.request.compress ? compressRequest(bodyJson) : undefined;
 		if (compressedBody) headers["content-encoding"] = "zstd";
 
 		const fetchImpl = this.config.fetch ?? globalThis.fetch;
@@ -334,14 +342,14 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			body: compressedBody ?? bodyJson,
 			...(options.abortSignal !== undefined && { signal: options.abortSignal }),
 		}).catch((error: unknown) => {
-			throw openAICodexFetchError(error, url, body);
+			throw responsesFetchError(error, url, body);
 		});
 
 		if (!response.ok) {
-			throw await createOpenAICodexAPICallError({ response, url, requestBodyValues: body });
+			throw await createResponsesAPICallError({ label, response, url, requestBodyValues: body });
 		}
 		if (!response.body) {
-			throw new Error("openAI codex response has no body");
+			throw new Error(`${label} response has no body`);
 		}
 
 		const responseHeaders: Record<string, string> = {};
@@ -350,8 +358,9 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		});
 
 		return {
-			stream: parseOpenAICodexSSEStream(response.body).pipeThrough(
+			stream: parseResponsesSSEStream(response.body).pipeThrough(
 				this.createTransformStream(warnings, options.includeRawChunks ?? false, grammarToolInputProperties, {
+					label,
 					url,
 					requestBodyValues: body,
 					responseHeaders,
@@ -367,40 +376,51 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 		includeRawChunks: boolean,
 		grammarToolInputProperties: ReadonlyMap<string, string>,
 		request: {
+			label: string;
 			url: string;
 			requestBodyValues: unknown;
 			responseHeaders: Record<string, string>;
 		},
-	): TransformStream<CodexEvent, LanguageModelV3StreamPart> {
+	): TransformStream<ResponsesEvent, LanguageModelV3StreamPart> {
+		const { provider } = this.config;
 		let finishReason: LanguageModelV3FinishReason = { unified: "other", raw: undefined };
-		let usage: OpenAICodexUsage | undefined;
+		let usage: ResponsesUsage | undefined;
 		let hasToolCalls = false;
 		let finished = false;
 		let servedServiceTier: string | undefined;
-		// function_call argument deltas arrive keyed by item id; tool parts use the
-		// composite `call_id|item_id` so multi-turn replay can recover both halves.
-		const toolCallIdsByItemId = new Map<string, string>();
-		const customToolInputsByItemId = new Map<
-			string,
-			{
-				toolCallId: string;
-				toolName: string;
-				inputProperty: string;
-				buffer: OpenAICodexGrammarInputBuffer;
-			}
-		>();
+		/*
+		 * Items are tracked by `output_index`: Copilot sends a different item id on every
+		 * event of the same item. Tool parts use the composite `call_id|item_id` from the
+		 * item's first event so multi-turn replay can recover both halves.
+		 */
+		type Slot =
+			| { kind: "text"; id: string }
+			| { kind: "reasoning"; id: string }
+			| { kind: "function"; toolCallId: string; toolName: string }
+			| {
+					kind: "custom";
+					toolCallId: string;
+					toolName: string;
+					inputProperty: string;
+					buffer: GrammarInputBuffer;
+			  };
+		const slots = new Map<string, Slot>();
+		const slotKey = (event: ResponsesEvent, item?: ResponsesEvent): string | undefined =>
+			typeof event.output_index === "number"
+				? `#${event.output_index}`
+				: (asString(event.item_id) ?? asString(item?.id));
 		const finish = (controller: TransformStreamDefaultController<LanguageModelV3StreamPart>): void => {
 			if (finished) return;
 			finished = true;
 			controller.enqueue({
 				type: "finish",
 				finishReason,
-				usage: convertOpenAICodexUsage(usage),
+				usage: convertResponsesUsage(usage),
 				// The tier the response was served at decides what it costs, and it is
 				// not always the tier that was requested.
 				...(servedServiceTier === undefined
 					? {}
-					: { providerMetadata: { "openai-codex": { serviceTier: servedServiceTier } } }),
+					: { providerMetadata: { [provider]: { serviceTier: servedServiceTier } } }),
 			});
 		};
 		const fail = (controller: TransformStreamDefaultController<LanguageModelV3StreamPart>, error: unknown): void => {
@@ -410,98 +430,88 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 			controller.terminate();
 		};
 
-		const handleOutputItemAdded = (
-			item: CodexEvent,
+		const startSlot = (
+			key: string,
+			item: ResponsesEvent,
 			controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
-		) => {
+		): Slot | undefined => {
 			const itemType = asString(item.type);
 			const itemId = asString(item.id);
 			if (!itemType || !itemId) return;
 
+			let slot: Slot | undefined;
 			if (itemType === "message") {
+				slot = { kind: "text", id: itemId };
 				controller.enqueue({ type: "text-start", id: itemId });
 			} else if (itemType === "reasoning") {
+				slot = { kind: "reasoning", id: itemId };
 				controller.enqueue({ type: "reasoning-start", id: itemId });
 			} else if (itemType === "function_call") {
-				const toolCallId = joinToolCallId(asString(item.call_id) ?? itemId, itemId);
-				toolCallIdsByItemId.set(itemId, toolCallId);
+				const toolName = asString(item.name) ?? "";
+				slot = { kind: "function", toolCallId: joinToolCallId(asString(item.call_id) ?? itemId, itemId), toolName };
 				hasToolCalls = true;
-				controller.enqueue({
-					type: "tool-input-start",
-					id: toolCallId,
-					toolName: asString(item.name) ?? "",
-				});
+				controller.enqueue({ type: "tool-input-start", id: slot.toolCallId, toolName });
 			} else if (itemType === "custom_tool_call") {
 				const toolName = asString(item.name) ?? "";
-				const inputProperty = grammarToolInputProperties.get(toolName) ?? "input";
-				const toolCallId = joinToolCallId(asString(item.call_id) ?? itemId, itemId);
-				customToolInputsByItemId.set(itemId, {
-					toolCallId,
+				slot = {
+					kind: "custom",
+					toolCallId: joinToolCallId(asString(item.call_id) ?? itemId, itemId),
 					toolName,
-					inputProperty,
+					inputProperty: grammarToolInputProperties.get(toolName) ?? "input",
 					buffer: { input: "", started: false, closed: false },
-				});
+				};
 				hasToolCalls = true;
-				controller.enqueue({ type: "tool-input-start", id: toolCallId, toolName });
+				controller.enqueue({ type: "tool-input-start", id: slot.toolCallId, toolName });
 			}
+			if (slot) slots.set(key, slot);
+			return slot;
 		};
 
-		const handleOutputItemDone = (
-			item: CodexEvent,
+		const endSlot = (
+			key: string,
+			item: ResponsesEvent,
 			controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
 		) => {
-			const itemType = asString(item.type);
-			const itemId = asString(item.id);
-			if (!itemType || !itemId) return;
+			const slot = slots.get(key) ?? startSlot(key, item, controller);
+			if (!slot) return;
+			slots.delete(key);
+			const namespace = asString(item.namespace);
+			const namespaceMetadata = namespace ? { providerMetadata: { [provider]: { namespace } } } : {};
 
-			if (itemType === "message") {
-				controller.enqueue({
-					type: "text-end",
-					id: itemId,
-					providerMetadata: { "openai-codex": { messageId: itemId } },
-				});
-			} else if (itemType === "reasoning") {
+			if (slot.kind === "text") {
+				const messageId = asString(item.id) ?? slot.id;
+				controller.enqueue({ type: "text-end", id: slot.id, providerMetadata: { [provider]: { messageId } } });
+			} else if (slot.kind === "reasoning") {
 				controller.enqueue({
 					type: "reasoning-end",
-					id: itemId,
-					providerMetadata: { "openai-codex": { reasoningItem: JSON.stringify(item) } },
+					id: slot.id,
+					providerMetadata: { [provider]: { reasoningItem: JSON.stringify(item) } },
 				});
-			} else if (itemType === "function_call") {
-				const toolCallId =
-					toolCallIdsByItemId.get(itemId) ?? joinToolCallId(asString(item.call_id) ?? itemId, itemId);
-				hasToolCalls = true;
-				controller.enqueue({ type: "tool-input-end", id: toolCallId });
+			} else if (slot.kind === "function") {
+				controller.enqueue({ type: "tool-input-end", id: slot.toolCallId });
 				controller.enqueue({
 					type: "tool-call",
-					toolCallId,
-					toolName: asString(item.name) ?? "",
+					toolCallId: slot.toolCallId,
+					toolName: asString(item.name) ?? slot.toolName,
 					input: asString(item.arguments) ?? "",
-					...(asString(item.namespace)
-						? { providerMetadata: { "openai-codex": { namespace: asString(item.namespace)! } } }
-						: {}),
+					...namespaceMetadata,
 				});
-			} else if (itemType === "custom_tool_call") {
-				const state = customToolInputsByItemId.get(itemId);
-				if (!state) return;
-				const input = asString(item.input) ?? state.buffer.input;
-				const delta = appendOpenAICodexGrammarInputJsonDelta(state.buffer, state.inputProperty, input, true);
-				if (delta) controller.enqueue({ type: "tool-input-delta", id: state.toolCallId, delta });
-				hasToolCalls = true;
-				controller.enqueue({ type: "tool-input-end", id: state.toolCallId });
+			} else {
+				const input = asString(item.input) ?? slot.buffer.input;
+				const delta = appendGrammarInputJsonDelta(slot.buffer, slot.inputProperty, input, true);
+				if (delta) controller.enqueue({ type: "tool-input-delta", id: slot.toolCallId, delta });
+				controller.enqueue({ type: "tool-input-end", id: slot.toolCallId });
 				controller.enqueue({
 					type: "tool-call",
-					toolCallId: state.toolCallId,
-					toolName: state.toolName,
-					input: JSON.stringify({ [state.inputProperty]: input }),
-					...(asString(item.namespace)
-						? { providerMetadata: { "openai-codex": { namespace: asString(item.namespace)! } } }
-						: {}),
+					toolCallId: slot.toolCallId,
+					toolName: slot.toolName,
+					input: JSON.stringify({ [slot.inputProperty]: input }),
+					...namespaceMetadata,
 				});
-				customToolInputsByItemId.delete(itemId);
 			}
 		};
 
-		return new TransformStream<CodexEvent, LanguageModelV3StreamPart>({
+		return new TransformStream<ResponsesEvent, LanguageModelV3StreamPart>({
 			start(controller) {
 				controller.enqueue({ type: "stream-start", warnings });
 			},
@@ -529,80 +539,66 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 
 					case "response.output_item.added": {
 						const item = asRecord(event.item);
-						if (item) handleOutputItemAdded(item, controller);
+						const key = item ? slotKey(event, item) : undefined;
+						if (item && key) startSlot(key, item, controller);
 						break;
 					}
 
 					case "response.output_text.delta": {
-						const itemId = asString(event.item_id);
+						const slot = slots.get(slotKey(event) ?? "");
 						const delta = asString(event.delta);
-						if (itemId && delta) controller.enqueue({ type: "text-delta", id: itemId, delta });
+						if (slot?.kind === "text" && delta) controller.enqueue({ type: "text-delta", id: slot.id, delta });
 						break;
 					}
 
 					case "response.reasoning_text.delta":
 					case "response.reasoning_summary_text.delta": {
-						const itemId = asString(event.item_id);
+						const slot = slots.get(slotKey(event) ?? "");
 						const delta = asString(event.delta);
-						if (itemId && delta) controller.enqueue({ type: "reasoning-delta", id: itemId, delta });
+						if (slot?.kind === "reasoning" && delta) {
+							controller.enqueue({ type: "reasoning-delta", id: slot.id, delta });
+						}
 						break;
 					}
 
 					case "response.function_call_arguments.delta": {
-						const itemId = asString(event.item_id);
+						const slot = slots.get(slotKey(event) ?? "");
 						const delta = asString(event.delta);
-						const toolCallId = itemId ? toolCallIdsByItemId.get(itemId) : undefined;
-						if (toolCallId && delta) controller.enqueue({ type: "tool-input-delta", id: toolCallId, delta });
+						if (slot?.kind === "function" && delta) {
+							controller.enqueue({ type: "tool-input-delta", id: slot.toolCallId, delta });
+						}
 						break;
 					}
 
-					case "response.custom_tool_call_input.delta": {
-						const itemId = asString(event.item_id);
-						const delta = asString(event.delta);
-						const state = itemId ? customToolInputsByItemId.get(itemId) : undefined;
-						if (!state || delta === undefined) break;
-						const jsonDelta = appendOpenAICodexGrammarInputJsonDelta(
-							state.buffer,
-							state.inputProperty,
-							state.buffer.input + delta,
-							false,
-						);
-						if (jsonDelta)
-							controller.enqueue({ type: "tool-input-delta", id: state.toolCallId, delta: jsonDelta });
-						break;
-					}
-
+					case "response.custom_tool_call_input.delta":
 					case "response.custom_tool_call_input.done": {
-						const itemId = asString(event.item_id);
-						const input = asString(event.input);
-						const state = itemId ? customToolInputsByItemId.get(itemId) : undefined;
-						if (!state || input === undefined) break;
-						const jsonDelta = appendOpenAICodexGrammarInputJsonDelta(
-							state.buffer,
-							state.inputProperty,
-							input,
-							true,
-						);
+						const slot = slots.get(slotKey(event) ?? "");
+						if (slot?.kind !== "custom") break;
+						const done = type === "response.custom_tool_call_input.done";
+						const input = done ? asString(event.input) : slot.buffer.input + (asString(event.delta) ?? "");
+						if (input === undefined) break;
+						const jsonDelta = appendGrammarInputJsonDelta(slot.buffer, slot.inputProperty, input, done);
 						if (jsonDelta)
-							controller.enqueue({ type: "tool-input-delta", id: state.toolCallId, delta: jsonDelta });
+							controller.enqueue({ type: "tool-input-delta", id: slot.toolCallId, delta: jsonDelta });
 						break;
 					}
 
 					case "response.output_item.done": {
 						const item = asRecord(event.item);
-						if (item) handleOutputItemDone(item, controller);
+						const key = item ? slotKey(event, item) : undefined;
+						if (item && key) endSlot(key, item, controller);
 						break;
 					}
 
 					case "response.completed":
 					case "response.incomplete": {
 						const response = asRecord(event.response);
-						usage = (response?.usage as OpenAICodexUsage | undefined) ?? usage;
+						usage = (response?.usage as ResponsesUsage | undefined) ?? usage;
 						servedServiceTier = asString(response?.service_tier) ?? servedServiceTier;
 						const status =
 							asString(response?.status) ?? (type === "response.incomplete" ? "incomplete" : "completed");
 						const incompleteReason = asString(asRecord(response?.incomplete_details)?.reason);
-						finishReason = mapOpenAICodexFinishReason(status, hasToolCalls, incompleteReason);
+						finishReason = mapResponsesFinishReason(status, hasToolCalls, incompleteReason);
 						finish(controller);
 						controller.terminate();
 						break;
@@ -614,8 +610,8 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 						finishReason = { unified: "error", raw: "failed" };
 						fail(
 							controller,
-							createOpenAICodexStreamError({
-								error: error ?? { message: "OpenAI Codex response failed" },
+							createResponsesStreamError({
+								error: error ?? { message: `${request.label} response failed` },
 								...request,
 							}),
 						);
@@ -625,7 +621,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 					case "error": {
 						const code = asString(event.code);
 						finishReason = { unified: "error", raw: code ?? "error" };
-						fail(controller, createOpenAICodexStreamError({ error: event, ...request }));
+						fail(controller, createResponsesStreamError({ error: event, ...request }));
 						break;
 					}
 
@@ -640,7 +636,7 @@ export class OpenAICodexLanguageModel implements LanguageModelV3 {
 					finished = true;
 					controller.enqueue({
 						type: "error",
-						error: createOpenAICodexPrematureCloseError(request),
+						error: createResponsesPrematureCloseError(request),
 					});
 				}
 			},

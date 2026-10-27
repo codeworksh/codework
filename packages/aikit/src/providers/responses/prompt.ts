@@ -7,12 +7,12 @@ import type {
 	LanguageModelV4ToolResultOutput,
 } from "@ai-sdk/provider";
 import { shortHash } from "../../utils/hash.ts";
-import type { OpenAICodexDeferredToolsMode, OpenAICodexTool } from "./codex-tools.ts";
+import { toResponsesTool, type ResponsesTool, type ResponsesToolChange } from "./tools.ts";
 
 /**
- * OpenAI Responses API input item types accepted by the Codex backend.
+ * OpenAI Responses API input item types this transport sends.
  */
-export type OpenAICodexInputItem =
+export type ResponsesInputItem =
 	| {
 			role: "user";
 			content: Array<
@@ -60,9 +60,13 @@ export type OpenAICodexInputItem =
 			output: string;
 	  }
 	| {
+			role: "developer";
+			content: string;
+	  }
+	| {
 			type: "additional_tools";
 			role: "developer";
-			tools: OpenAICodexTool[];
+			tools: ResponsesTool[];
 	  }
 	| {
 			type: "tool_search_call";
@@ -76,19 +80,25 @@ export type OpenAICodexInputItem =
 			call_id: string;
 			execution: "client";
 			status: "completed";
-			tools: OpenAICodexTool[];
+			tools: ResponsesTool[];
 	  };
 
-export type OpenAICodexPrompt = {
-	instructions: string;
-	input: OpenAICodexInputItem[];
+export type ResponsesPrompt = {
+	/** The system prompt, when it travels in the `instructions` field. */
+	instructions?: string;
+	input: ResponsesInputItem[];
 };
 
 const DEFAULT_INSTRUCTIONS = "You are a helpful assistant.";
 
-export type OpenAICodexPromptOptions = {
-	deferredTools?: ReadonlyMap<string, OpenAICodexTool>;
-	deferredToolsMode?: OpenAICodexDeferredToolsMode;
+export type ResponsesPromptOptions = {
+	/** The providerOptions key this transport reads, e.g. `openai-codex`. */
+	provider: string;
+	/**
+	 * Where system prompt text goes: the `instructions` field (the Codex backend requires
+	 * one), or a developer message in place.
+	 */
+	systemPrompt: "instructions" | "developer";
 	grammarToolInputProperties?: ReadonlyMap<string, string>;
 	supportsImages?: boolean;
 };
@@ -138,7 +148,7 @@ function imageUrlFromFilePart(part: LanguageModelV3FilePart | LanguageModelV4Fil
 function toolResultOutput(
 	output: LanguageModelV3ToolResultOutput | LanguageModelV4ToolResultOutput,
 	supportsImages: boolean,
-): Extract<OpenAICodexInputItem, { type: "function_call_output" }>["output"] {
+): Extract<ResponsesInputItem, { type: "function_call_output" }>["output"] {
 	switch (output.type) {
 		case "text":
 		case "error-text":
@@ -207,110 +217,107 @@ function customToolOutput(
 	return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function codexProviderMetadata(
+function providerMetadata(
 	providerOptions: Record<string, unknown> | undefined,
+	provider: string,
 ): Record<string, unknown> | undefined {
-	const codex = providerOptions?.["openai-codex"];
-	return typeof codex === "object" && codex !== null && !Array.isArray(codex)
-		? (codex as Record<string, unknown>)
+	const metadata = providerOptions?.[provider];
+	return typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
+		? (metadata as Record<string, unknown>)
 		: undefined;
 }
 
-function addedToolNames(providerOptions: Record<string, unknown> | undefined): string[] {
-	const names = codexProviderMetadata(providerOptions)?.addedToolNames;
-	return Array.isArray(names) ? names.filter((name): name is string => typeof name === "string") : [];
+function toolChange(
+	providerOptions: Record<string, unknown> | undefined,
+	provider: string,
+): ResponsesToolChange | undefined {
+	return providerMetadata(providerOptions, provider)?.toolChange as ResponsesToolChange | undefined;
 }
 
 function reasoningItem(
 	providerOptions: Record<string, unknown> | undefined,
-): Extract<OpenAICodexInputItem, { type: "reasoning" }> | undefined {
-	const value = codexProviderMetadata(providerOptions)?.reasoningItem;
+	provider: string,
+): Extract<ResponsesInputItem, { type: "reasoning" }> | undefined {
+	const value = providerMetadata(providerOptions, provider)?.reasoningItem;
 	if (typeof value !== "string") return undefined;
 	try {
 		const parsed = JSON.parse(value) as unknown;
 		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
 		const item = parsed as Record<string, unknown>;
 		return item.type === "reasoning" && typeof item.id === "string"
-			? (item as Extract<OpenAICodexInputItem, { type: "reasoning" }>)
+			? (item as Extract<ResponsesInputItem, { type: "reasoning" }>)
 			: undefined;
 	} catch {
 		return undefined;
 	}
 }
 
-/** Collect definitions that were introduced at a transcript load point rather than at request start. */
-export function collectOpenAICodexDeferredToolNames(
+/** Names of every tool declared in place by a system message's tool change. */
+export function collectInPlaceToolNames(
 	prompt: LanguageModelV3Prompt | LanguageModelV4Prompt,
+	provider: string,
 ): Set<string> {
-	const deferredNames = new Set<string>();
-	const usedNames = new Set<string>();
-
+	const names = new Set<string>();
 	for (const message of prompt) {
-		if (message.role === "assistant") {
-			for (const part of message.content) {
-				if (part.type === "tool-call") usedNames.add(part.toolName);
-				if (part.type === "tool-result") {
-					for (const name of addedToolNames(part.providerOptions)) {
-						if (!usedNames.has(name)) deferredNames.add(name);
-					}
-				}
-			}
-			continue;
-		}
-		if (message.role !== "tool") continue;
-		for (const part of message.content) {
-			if (part.type !== "tool-result") continue;
-			for (const name of addedToolNames(part.providerOptions)) {
-				if (!usedNames.has(name)) deferredNames.add(name);
-			}
-		}
+		if (message.role !== "system") continue;
+		for (const tool of toolChange(message.providerOptions, provider)?.tools ?? []) names.add(tool.name);
 	}
-
-	return deferredNames;
+	return names;
 }
 
-function deferredToolCallId(toolCallId: string, names: readonly string[]): string {
-	return `cdwrk_aikit_tool_${shortHash(`${toolCallId}:${names.join(",")}`)}`;
+/*
+ * `additional_tools` items accumulate: a later item adds tools and replaces same-name
+ * definitions from earlier ones, but cannot remove any. Without this notice, models read the
+ * latest item as the complete tool set once a removal was announced, and restating the tools
+ * that are still unavailable keeps smaller models from calling them after later loads.
+ */
+function incrementalToolsNotice(unavailable: ReadonlySet<string>): string {
+	const notice =
+		"This is an incremental tools update. Previously declared tools remain available unless explicitly marked unavailable. A tool declared again here is available again, and its latest definition replaces the earlier one.";
+	return unavailable.size > 0 ? `${notice}\nStill unavailable: ${[...unavailable].join(", ")}.` : notice;
+}
+
+function toolRemovalNotice(names: readonly string[]): string {
+	return `The following tools are no longer available. Do not call them:\n${names.map((name) => `- ${name}`).join("\n")}`;
 }
 
 /**
- * Convert an AI SDK V3 prompt into the Codex Responses request shape.
- * System messages become `instructions`; everything else maps to `input` items.
+ * Convert an AI SDK V3 prompt into the Responses request shape. Tool changes are
+ * declared in place, other system messages go where `options.systemPrompt` says,
+ * and everything else maps to `input` items.
  */
-export function convertToOpenAICodexPrompt(
+export function convertToResponsesPrompt(
 	prompt: LanguageModelV3Prompt | LanguageModelV4Prompt,
-	options?: OpenAICodexPromptOptions,
-): OpenAICodexPrompt {
+	options: ResponsesPromptOptions,
+): ResponsesPrompt {
+	const { provider } = options;
 	let instructions: string | undefined;
-	const input: OpenAICodexInputItem[] = [];
+	const input: ResponsesInputItem[] = [];
 	let syntheticMessageCounter = 0;
-	const loadedToolNames = new Set<string>();
+	let toolChangeCounter = 0;
+	let declaredAdditionalTools = false;
+	/** Tools announced as removed and not declared again since. */
+	const unavailableTools = new Set<string>();
 
-	const appendDeferredTools = (toolCallId: string, names: readonly string[]): void => {
-		const tools: OpenAICodexTool[] = [];
-		for (const name of names) {
-			const tool = options?.deferredTools?.get(name);
-			if (!tool || loadedToolNames.has(name)) continue;
-			loadedToolNames.add(name);
-			tools.push(tool);
-		}
-		if (tools.length === 0) return;
-
-		if (options?.deferredToolsMode === "additional-tools") {
+	const appendToolChange = (change: ResponsesToolChange): void => {
+		const seed = toolChangeCounter++;
+		const tools = change.tools.map((tool) => toResponsesTool(tool, provider));
+		for (const tool of tools) unavailableTools.delete(tool.name);
+		if (tools.length > 0 && change.mode === "changes") {
+			if (declaredAdditionalTools) {
+				input.push({ role: "developer", content: incrementalToolsNotice(unavailableTools) });
+			}
+			declaredAdditionalTools = true;
 			input.push({ type: "additional_tools", role: "developer", tools });
-			return;
-		}
-		if (options?.deferredToolsMode === "tool-search") {
-			const callId = deferredToolCallId(
-				toolCallId,
-				tools.map((tool) => tool.name),
-			);
+		} else if (tools.length > 0) {
+			const names = tools.map((tool) => tool.name);
+			const callId = `cdwrk_aikit_tool_${shortHash(`${seed}:${names.join(",")}`)}`;
 			input.push({
 				type: "tool_search_call",
 				call_id: callId,
 				execution: "client",
 				status: "completed",
-				arguments: { query: tools.map((tool) => tool.name).join(" "), limit: tools.length },
+				arguments: { query: names.join(" "), limit: names.length },
 			});
 			input.push({
 				type: "tool_search_output",
@@ -320,17 +327,33 @@ export function convertToOpenAICodexPrompt(
 				tools: tools.map((tool) => ({ ...tool, defer_loading: true })),
 			});
 		}
+		// A redefinition is a removal plus an addition of the same name; only true removals are announced.
+		const added = new Set(tools.map((tool) => tool.name));
+		const removed = change.removed.filter((name) => !added.has(name));
+		if (removed.length === 0) return;
+		input.push({ role: "developer", content: toolRemovalNotice(removed) });
+		// Recorded after this change's additions, whose notice precedes this removal notice.
+		for (const name of removed) unavailableTools.add(name);
 	};
 
 	for (const message of prompt) {
 		switch (message.role) {
 			case "system": {
+				const change = toolChange(message.providerOptions, provider);
+				if (change) {
+					appendToolChange(change);
+					break;
+				}
+				if (options.systemPrompt === "developer") {
+					if (message.content.length > 0) input.push({ role: "developer", content: message.content });
+					break;
+				}
 				instructions = instructions == null ? message.content : `${instructions}\n\n${message.content}`;
 				break;
 			}
 
 			case "user": {
-				const content: Extract<OpenAICodexInputItem, { role: "user" }>["content"] = [];
+				const content: Extract<ResponsesInputItem, { role: "user" }>["content"] = [];
 				for (const part of message.content) {
 					if (part.type === "text") {
 						content.push({ type: "input_text", text: part.text });
@@ -348,11 +371,11 @@ export function convertToOpenAICodexPrompt(
 			case "assistant": {
 				for (const part of message.content) {
 					if (part.type === "reasoning") {
-						const item = reasoningItem(part.providerOptions);
+						const item = reasoningItem(part.providerOptions, provider);
 						if (item) input.push(item);
 					} else if (part.type === "text") {
 						syntheticMessageCounter++;
-						const messageId = codexProviderMetadata(part.providerOptions)?.messageId;
+						const messageId = providerMetadata(part.providerOptions, provider)?.messageId;
 						input.push({
 							type: "message",
 							role: "assistant",
@@ -365,9 +388,9 @@ export function convertToOpenAICodexPrompt(
 						});
 					} else if (part.type === "tool-call") {
 						const { callId, itemId } = splitToolCallId(part.toolCallId);
-						const metadata = codexProviderMetadata(part.providerOptions);
+						const metadata = providerMetadata(part.providerOptions, provider);
 						const namespace = metadata?.namespace;
-						const inputProperty = options?.grammarToolInputProperties?.get(part.toolName);
+						const inputProperty = options.grammarToolInputProperties?.get(part.toolName);
 						if (inputProperty) {
 							input.push({
 								type: "custom_tool_call",
@@ -396,25 +419,25 @@ export function convertToOpenAICodexPrompt(
 				for (const part of message.content) {
 					if (part.type !== "tool-result") continue;
 					const { callId } = splitToolCallId(part.toolCallId);
-					if (options?.grammarToolInputProperties?.has(part.toolName)) {
+					if (options.grammarToolInputProperties?.has(part.toolName)) {
 						input.push({
 							type: "custom_tool_call_output",
 							call_id: callId,
-							output: customToolOutput(part.output, options?.supportsImages ?? true),
+							output: customToolOutput(part.output, options.supportsImages ?? true),
 						});
 					} else {
 						input.push({
 							type: "function_call_output",
 							call_id: callId,
-							output: toolResultOutput(part.output, options?.supportsImages ?? true),
+							output: toolResultOutput(part.output, options.supportsImages ?? true),
 						});
 					}
-					appendDeferredTools(part.toolCallId, addedToolNames(part.providerOptions));
 				}
 				break;
 			}
 		}
 	}
 
+	if (options.systemPrompt === "developer") return { input };
 	return { instructions: instructions || DEFAULT_INSTRUCTIONS, input };
 }

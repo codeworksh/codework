@@ -66,7 +66,7 @@ const setup = Effect.gen(function* () {
 		title: "Context test",
 	});
 	let seq = 0;
-	const appendMessage = Effect.fnUntraced(function* (message: Message.Message) {
+	const appendMessage = Effect.fnUntraced(function* (message: ContextCodec.ContextMessage) {
 		const encoded = yield* ContextCodec.encodeMessage(message);
 		seq += 1;
 		yield* sessions.append({
