@@ -18,6 +18,7 @@ This file is the canonical source for unreleased changes and published release n
 #### Added
 
 - Prompts queued while the agent works can be read and changed before it takes them in. `Control.pending` lists them, steers and follow-ups, in the order they were sent. `Control.cancel` withdraws one, recorded as a `session.prompt.cancelled` event; it returns `false` when the prompt was already taken in, and a cancelled message id may be sent again. `Control.update` moves one to the other lane or rewrites its text, keeping its place, recorded as a `session.prompt.updated` event; moving it to the steer lane also wakes the session, so a prompt left queued by a stop runs now.
+- Tools declare an `exposure`. Only `"direct"` and `"model"` tools reach the request, the `<tools>` list and the tool rules, and only they run; a call to any other tool gets `Unknown tool: <name>`. The bash file-ops rule and the skills hint name only declared tools, and `<skills>` is left out when neither `read` nor `bash` is declared. A plugin registering an unknown exposure fails in its `setup`.
 - `read` tells a model without image input that the image it read is left out of the request: `[Current model does not support images. The image will be omitted from this request.]` is added to its note.
 - A run cut off by a crash or a shutdown resumes when the server starts again (`Control.resumeUnfinished`). A crash counts as a restart and a shutdown does not; a committed turn starts the count over. After 5 restarts (`Control.RESTART_LIMIT`) the session is parked instead of resumed: `Session.Info.parked` is `true`, and its next prompt runs it again. A resumed run answers the reply it was cut off in before a queued follow-up goes in; steers join it at once. A run the user stopped is not resumed, and what was queued behind it stays queued.
 
@@ -92,6 +93,7 @@ This file is the canonical source for unreleased changes and published release n
 #### Added
 
 - `ToolCallContext.modelInput`: the input modalities of the model the tool call answers, such as `["text"]` or `["text", "image"]`. It is optional, and tool hooks receive it too.
+- `exposure` on tool definitions: `"direct"` (default), `"model"`, `"codemode"`, `"deferred"` or `"hidden"`, as the `ToolExposure` schema. `declared(def)` is true for `"direct"` and `"model"`, the tools declared to the model.
 
 ## [@codeworksh/cli@0.4.0] - 2026-10-20
 

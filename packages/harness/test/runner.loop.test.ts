@@ -1755,3 +1755,83 @@ describe("runner loop — lifecycle hooks", () => {
 		);
 	});
 });
+
+describe("runner loop — tool exposure", () => {
+	const tool = (name: string, exposure?: Tool.ToolExposure) =>
+		Tool.register(
+			Tool.make({
+				name,
+				description: `${name} tool`,
+				promptSnippet: `${name} snippet`,
+				promptGuidelines: [`${name} guideline`],
+				...(exposure === undefined ? {} : { exposure }),
+				parameters: Schema.Struct({ value: Schema.String }),
+				success: Schema.String,
+				encodeContent: (value: string) => [{ type: "text", text: value }],
+				handler: ({ value }) => Effect.succeed(value),
+			}),
+		);
+	const contexts: Message.Context[] = [];
+	const next = toolTurn({
+		type: "toolCall",
+		callID: "call_deferred",
+		name: "x_deferred",
+		arguments: { value: "hello" },
+		status: "pending",
+		time: { start: 1, end: 1 },
+	});
+	const { effect: it } = testEffect(
+		runtime({
+			open: (input, signal) => {
+				contexts.push(input.context);
+				return next(input, signal);
+			},
+			plugins: [
+				...plugins,
+				{
+					id: "test.tool.exposure",
+					kind: "tool",
+					setup: (ctx) => {
+						ctx.plugin.tools.add(tool("x_direct"));
+						ctx.plugin.tools.add(tool("x_model", "model"));
+						ctx.plugin.tools.add(tool("x_codemode", "codemode"));
+						ctx.plugin.tools.add(tool("x_deferred", "deferred"));
+						ctx.plugin.tools.add(tool("x_hidden", "hidden"));
+						// Overrides the built-in, so the bash file-ops rule must go with it.
+						ctx.plugin.tools.add(tool("bash", "hidden"));
+					},
+				},
+			],
+		}),
+	);
+
+	it(
+		"declares only direct and model tools, in the request and the prompt, and refuses the rest",
+		Effect.gen(function* () {
+			const execution = yield* RunnerExecution.Service;
+			const sessionId = yield* seedSession();
+			yield* admit({ id: "msg_exposure", sessionId, delivery: "steer" });
+
+			yield* execution.resume(sessionId);
+
+			expect(contexts).toHaveLength(2);
+			const section = (name: string) =>
+				new RegExp(`<${name}>\\n([\\s\\S]*?)\\n</${name}>`).exec(contexts[0]!.systemPrompt ?? "")?.[1];
+			const reply = contexts[1]!.messages[1]!;
+			const call = reply.role === "assistant" ? reply.parts.find((part) => part.type === "toolCall") : undefined;
+			const result = {
+				requestTools: contexts.map((context) => (context.tools ?? []).map((tool) => tool.name)),
+				tools: section("tools"),
+				rules: section("rules"),
+				deferredCall: call,
+			};
+			expect(result.requestTools[0]).toContain("x_model");
+			expect(result.requestTools[0]).not.toContain("bash");
+			yield* Effect.promise(() =>
+				expect(`${JSON.stringify(result, null, "\t")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/tools.exposure.json",
+				),
+			);
+		}),
+	);
+});
