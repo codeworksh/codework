@@ -78,9 +78,20 @@ const retryAfter = (headers: Record<string, string> | undefined): number | undef
 	if (Number.isFinite(date)) return Math.max(0, date - Date.now());
 };
 
+const parseJson = (text: string | undefined): unknown => {
+	if (text === undefined) return undefined;
+	try {
+		return JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+};
+
 const apiMetadata = (error: APICallError): Metadata => {
-	const code = errorCode(error.data);
-	const data = record(error.data);
+	// An adapter fronting another vendor's error shape (Copilot's OpenAI-style errors on the
+	// Anthropic route) leaves `data` unset; the raw body still carries the message and code.
+	const data = record(error.data) ?? record(parseJson(error.responseBody));
+	const code = errorCode(data);
 	const nested = record(data?.error);
 	const structuredMessage = nonEmptyString(data?.message) ?? nonEmptyString(nested?.message);
 	const message = normalizeMessage(

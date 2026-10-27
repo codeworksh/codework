@@ -1,6 +1,7 @@
 import { APICallError } from "@ai-sdk/provider";
 import { RetryError, streamText, type TextStreamPart, type ToolSet } from "ai";
 import * as Message from "../message/message.ts";
+import * as Transcript from "../message/transcript.ts";
 import * as Model from "../model/model.ts";
 import { AssistantMessageEventStream } from "../utils/eventstream.ts";
 import { compact } from "../utils/helpers.ts";
@@ -15,9 +16,11 @@ import * as Thinking from "./thinking.ts";
 import {
 	googleThoughtSignature,
 	convertMessages,
+	isOwnResponses,
 	convertTools,
 	createAssistantMessage,
 	encodeOpenAIReasoningSignature,
+	grammarToolInputProperties,
 	mapFinishReason,
 	mapUsage,
 	toolCallFromPart,
@@ -79,11 +82,18 @@ function cacheProviderOptions(model: Model.Info, options: RuntimeOptions): Provi
 	return {};
 }
 
-function resolveProviderOptions(model: Model.Info, options: RuntimeOptions, plan: Thinking.Plan): ProviderOptionBag {
+function resolveProviderOptions(
+	model: Model.Info,
+	context: Message.Context,
+	options: RuntimeOptions,
+	plan: Thinking.Plan,
+): ProviderOptionBag {
+	const grammars = grammarToolInputProperties(context, model, options.method);
 	return mergeProviderOptions(
 		model.providerOptions as ProviderOptionBag | undefined,
 		cacheProviderOptions(model, options),
 		Thinking.reasoningProviderOptions(model, plan),
+		grammars === undefined ? undefined : { [Model.optionsKey(model)]: { grammarToolInputProperties: grammars } },
 		options.providerOptions as ProviderOptionBag | undefined,
 	);
 }
@@ -92,9 +102,10 @@ function partIndex(output: Message.AssistantMessage, block: StreamBlock): number
 	return output.parts.indexOf(block as Message.AssistantMessage["parts"][number]);
 }
 
-function openAICodexMetadata(value: unknown): Record<string, unknown> | undefined {
+/** Metadata our Responses transport attaches under the model's provider key. */
+function responsesMetadata(value: unknown, model: Model.Info): Record<string, unknown> | undefined {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-	const metadata = (value as Record<string, unknown>)["openai-codex"];
+	const metadata = (value as Record<string, unknown>)[Model.optionsKey(model)];
 	return typeof metadata === "object" && metadata !== null && !Array.isArray(metadata)
 		? (metadata as Record<string, unknown>)
 		: undefined;
@@ -206,6 +217,7 @@ function finishToolInput(output: Message.AssistantMessage, id: string, stream: A
 function finalizeToolCall(
 	output: Message.AssistantMessage,
 	part: Extract<TextStreamPart<ToolSet>, { type: "tool-call" }>,
+	model: Model.Info,
 	stream: AssistantMessageEventStream,
 ): void {
 	const existing = output.parts.find((item) => item.type === "toolCall" && item.callID === part.toolCallId) as
@@ -216,7 +228,7 @@ function finalizeToolCall(
 	block.name = part.toolName;
 	block.arguments =
 		typeof part.input === "object" && part.input !== null ? (part.input as Record<string, unknown>) : {};
-	const namespace = openAICodexMetadata(part.providerMetadata)?.namespace;
+	const namespace = responsesMetadata(part.providerMetadata, model)?.namespace;
 	const thoughtSignature = googleThoughtSignature(part.providerMetadata);
 	if (thoughtSignature) block.thoughtSignature = thoughtSignature;
 	if (typeof namespace === "string") block.namespace = namespace;
@@ -262,7 +274,7 @@ function handlePart(
 			break;
 		}
 		case "text-end": {
-			const messageId = openAICodexMetadata(part.providerMetadata)?.messageId;
+			const messageId = responsesMetadata(part.providerMetadata, model)?.messageId;
 			finishTextBlock(output, part.id, stream, typeof messageId === "string" ? messageId : undefined);
 			break;
 		}
@@ -288,7 +300,7 @@ function handlePart(
 			break;
 		}
 		case "reasoning-end": {
-			const reasoningItem = openAICodexMetadata(part.providerMetadata)?.reasoningItem;
+			const reasoningItem = responsesMetadata(part.providerMetadata, model)?.reasoningItem;
 			const openAISignature = encodeOpenAIReasoningSignature(part.providerMetadata);
 			finishThinkingBlock(
 				output,
@@ -317,7 +329,7 @@ function handlePart(
 			finishToolInput(output, part.id, stream);
 			break;
 		case "tool-call":
-			finalizeToolCall(output, part, stream);
+			finalizeToolCall(output, part, model, stream);
 			break;
 		case "start-step":
 			stampProviderThinkingLevel(output, part.request.body);
@@ -402,9 +414,10 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 		try {
 			const plan = Thinking.resolvePlan(model, context, runtimeOptions);
 			const languageModel = await resolveAISDKLanguageModel(model, runtimeOptions, plan.budget);
-			const tools = convertTools(context.tools, model);
-			const messages = convertMessages(context, model, runtimeOptions.method);
-			const providerOptions = resolveProviderOptions(model, runtimeOptions, plan) as Parameters<
+			// Every tool callable now, so calls to tools declared in place still parse.
+			const tools = convertTools(Transcript.getCurrentTools(context), model, runtimeOptions.method);
+			const messages = convertMessages(context, model, runtimeOptions.method, runtimeOptions.activeTools);
+			const providerOptions = resolveProviderOptions(model, context, runtimeOptions, plan) as Parameters<
 				typeof streamText<ToolSet>
 			>[0]["providerOptions"];
 			const pricing: Pricing = {
@@ -418,8 +431,11 @@ export const stream: Protocol.StreamFunction<Model.KnownProviderEnum, typeof Opt
 
 			let params: Parameters<typeof streamText<ToolSet>>[0] = compact({
 				model: languageModel,
-				system: context.systemPrompt,
+				// Our own Responses transport receives the system prompt among the messages.
+				system: isOwnResponses(model, runtimeOptions.method) ? undefined : context.systemPrompt,
 				messages,
+				// Tool changes declared in place travel as system messages.
+				allowSystemInMessages: messages.some((message) => message.role === "system") || undefined,
 				tools,
 				toolChoice: runtimeOptions.toolChoice as Parameters<typeof streamText<ToolSet>>[0]["toolChoice"],
 				activeTools,

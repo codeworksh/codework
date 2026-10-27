@@ -473,17 +473,32 @@ describe("GitHub Copilot thinking replay", () => {
 		});
 	const openaiSignature = JSON.stringify({ itemId: "rs_9", reasoningEncryptedContent: "enc-9" });
 
-	it("round-trips Responses signatures under the github-copilot key", () => {
+	it("replays Responses reasoning items under the github-copilot key, including older signatures", () => {
 		const model = copilotModel(Model.APIMethodEnum.responses);
+		const item = JSON.stringify({ type: "reasoning", id: "rs_1", encrypted_content: "enc-1", summary: [] });
 		const message = makeAssistantMessage(model, {
-			parts: [{ type: "thinking", thinking: "reasoned", thinkingSignature: openaiSignature }],
+			parts: [
+				{ type: "thinking", thinking: "current", thinkingSignature: item },
+				{ type: "thinking", thinking: "older", thinkingSignature: openaiSignature },
+				{ type: "thinking", thinking: "unsigned" },
+			],
 		});
 		const converted = convertMessages({ messages: [message] }, model);
 		expect(converted[0]?.content).toEqual([
+			{ type: "reasoning", text: "current", providerOptions: { "github-copilot": { reasoningItem: item } } },
 			{
 				type: "reasoning",
-				text: "reasoned",
-				providerOptions: { "github-copilot": { itemId: "rs_9", reasoningEncryptedContent: "enc-9" } },
+				text: "older",
+				providerOptions: {
+					"github-copilot": {
+						reasoningItem: JSON.stringify({
+							type: "reasoning",
+							id: "rs_9",
+							encrypted_content: "enc-9",
+							summary: [],
+						}),
+					},
+				},
 			},
 		]);
 	});
@@ -680,24 +695,35 @@ describe("convertMessages", () => {
 		]);
 	});
 
-	it("attaches Codex namespace and deferred-tool metadata", () => {
-		const codexModel = makeCodexModel();
+	it("attaches Codex namespace metadata and declares later tools in place", () => {
+		const codexModel = makeCodexModel({ compat: { supportsAdditionalTools: true } });
 		const toolCall: Message.ToolCallCompletedPart = {
 			...makeCompletedToolCall("call-1|fc-1", "search", [{ type: "text", text: "found" }], { query: "x" }),
 			namespace: "workspace",
-			addedToolNames: ["late_tool"],
 		};
 		const assistant = makeAssistantMessage(codexModel, { stopReason: "toolUse", parts: [toolCall] });
-		const messages = convertMessages({ messages: [assistant] }, codexModel);
+		const lateTool: Message.Tool = { name: "late_tool", description: "Late", parameters: { type: "object" } };
+		const loaded = Message.createSystemMessage({ toolsAdded: [lateTool] });
+		const messages = convertMessages({ messages: [assistant, loaded] }, codexModel);
 
 		expect(messages[0]).toMatchObject({
 			role: "assistant",
 			content: [{ providerOptions: { "openai-codex": { namespace: "workspace" } } }],
 		});
-		expect(messages[1]).toMatchObject({
-			role: "tool",
-			content: [{ providerOptions: { "openai-codex": { addedToolNames: ["late_tool"] } } }],
+		expect(messages[1]).toMatchObject({ role: "tool" });
+		expect(messages[2]).toMatchObject({
+			role: "system",
+			content: "",
+			providerOptions: {
+				"openai-codex": { toolChange: { mode: "changes", tools: [{ name: "late_tool" }], removed: [] } },
+			},
 		});
+
+		// `activeTools` filters only the top-level list, so a limited request declares nothing in place.
+		const limited = convertMessages({ messages: [assistant, loaded], tools: [lateTool] }, codexModel, undefined, [
+			"late_tool",
+		]);
+		expect(limited.some((message) => message.role === "system")).toBe(false);
 	});
 
 	it("omits item ids when replaying a prior Codex model id", () => {

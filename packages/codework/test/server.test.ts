@@ -680,6 +680,47 @@ describe("WebSocket client", () => {
 			expect(yield* rpc["auth.status"]({ provider: "openai-codex" })).toMatchObject({ accountId: "acct_server" });
 		}).pipe(Effect.scoped, Effect.provide(websocket()), Effect.timeout("10 seconds"), Effect.runPromise));
 
+	it("model.list keeps only the Copilot models the login can reach", () => {
+		// The env token would make Copilot an API-key provider, which is never filtered.
+		vi.stubEnv("COPILOT_GITHUB_TOKEN", "");
+		return Effect.gen(function* () {
+			const rpc = yield* connectedClient;
+			const copilotModels = () =>
+				rpc["model.list"]({}).pipe(
+					Effect.map(({ providers }) =>
+						(providers.find(({ id }) => id === "github-copilot")?.models ?? []).map(({ id }) => id).sort(),
+					),
+				);
+			const before = yield* copilotModels();
+			yield* rpc["auth.save"]({
+				credentials: {
+					provider: "github-copilot",
+					access: "ghu_token",
+					refresh: "ghu_token",
+					expires: 0,
+					apiEndpoint: "https://api.individual.githubcopilot.com",
+					availableModelIds: ["gpt-6-luna", "claude-sonnet-5.5", "not-in-the-catalog"],
+				},
+			});
+			const after = yield* copilotModels();
+			expect(before).toEqual([]);
+			expect(after).toEqual(["claude-sonnet-5.5", "gpt-6-luna"]);
+			return { before, after };
+		})
+			.pipe(
+				Effect.scoped,
+				Effect.provide(websocket()),
+				Effect.timeout("10 seconds"),
+				Effect.ensuring(Effect.sync(() => vi.unstubAllEnvs())),
+				Effect.runPromise,
+			)
+			.then((artifact) =>
+				expect(`${JSON.stringify(artifact, null, "\t")}\n`).toMatchFileSnapshot(
+					"./__artifacts__/server.model-list-copilot.json",
+				),
+			);
+	});
+
 	it("refreshes server OpenAI Codex credentials", () => {
 		const nativeFetch = globalThis.fetch.bind(globalThis);
 		const encode = (value: Record<string, unknown>) => Buffer.from(JSON.stringify(value)).toString("base64url");

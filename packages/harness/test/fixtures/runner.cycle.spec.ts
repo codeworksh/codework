@@ -79,13 +79,13 @@ const inputStateFor = (sql: SqlClient.SqlClient) =>
 		`,
 	});
 
-const textOf = (message: Message.Message): string =>
+const textOf = (message: Message.UserMessage | Message.AssistantMessage): string =>
 	message.parts
 		.flatMap((part) => (part.type === "text" ? [part.text] : []))
 		.join("\n")
 		.trim();
 
-const thinkingOf = (message: Message.Message): string =>
+const thinkingOf = (message: Message.UserMessage | Message.AssistantMessage): string =>
 	message.parts
 		.flatMap((part) => (part.type === "thinking" ? [part.thinking] : []))
 		.join("\n")

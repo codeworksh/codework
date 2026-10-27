@@ -288,6 +288,13 @@ const OPENAI_LONG_CONTEXT_PRICING_MODELS = new Set([
 	"gpt-5.5-pro",
 ]);
 
+function openAiAcceptsNoReasoning(id: string): boolean {
+	return (
+		OPENAI_RESPONSES_NONE_REASONING_MODELS.has(id) ||
+		(OPENAI_GPT6_MODELS.has(id) && !OPENAI_GPT6_NO_NONE_MODELS.has(id))
+	);
+}
+
 function isOpenAiResponses(model: Model.Info): boolean {
 	return model.protocol === Model.KnownProviderEnum.openai || model.protocol === Model.KnownProviderEnum.openaiCodex;
 }
@@ -494,6 +501,20 @@ const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
 	"gpt-6-sol",
 	"gpt-6.1-sol",
 ]);
+// Copilot passes `additional_tools` items through to OpenAI for these Responses models.
+const GITHUB_COPILOT_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
+	"gpt-5.4",
+	"gpt-5.4-mini",
+	"gpt-5.4-pro",
+	"gpt-5.5",
+	"gpt-5.6-sol",
+	"gpt-5.6-terra",
+	"gpt-5.6-luna",
+	"gpt-6-astra",
+	"gpt-6-sol",
+	"gpt-6-luna",
+	"gpt-6.1-sol",
+]);
 // Checked live: the Codex backend accepts reasoning.effort "none" for these.
 const OPENAI_CODEX_NONE_REASONING_MODEL_IDS = new Set(["gpt-5.6-luna", "gpt-6-luna", "gpt-6-sol"]);
 
@@ -557,21 +578,20 @@ const GITHUB_COPILOT_EXTENDED_CONTEXT = 1_000_000;
 // models as supporting the extended 1 million token context window (pi).
 const GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS = new Set([
 	"claude-fable-5",
-	"claude-opus-4.6",
-	"claude-opus-4.7",
 	"claude-opus-4.8",
 	"claude-opus-5",
+	"claude-opus-5.5",
 	"claude-sonnet-4.6",
 	"claude-sonnet-5",
 	"gpt-5.3-codex",
-	"gpt-5.4",
-	"gpt-5.5",
+	"gpt-6-astra",
+	"gpt-6-luna",
+	"gpt-6-sol",
 ]);
 
 // Checked manually against the authenticated GitHub Copilot /models endpoint
 // (pi). Narrow corrections over models.dev metadata, not a catalog snapshot.
 const GITHUB_COPILOT_THINKING_LEVEL_OVERRIDES: Record<string, ThinkingLevelMap> = {
-	"claude-opus-4.7": { minimal: "low" },
 	"claude-opus-4.8": { minimal: "low" },
 	"claude-opus-5": { minimal: "low" },
 	"claude-sonnet-4.6": { minimal: "low", max: "max" },
@@ -610,8 +630,8 @@ function githubCopilotThinkingLevels(model: ModelsDevModel, method: Model.APIMet
 	const listed = modelsDevEfforts(model);
 	const efforts = listed ? new Set(listed) : undefined;
 	const map: ThinkingLevelMap = {};
-	// Copilot rejects `reasoningEffort: "none"` (pi), and the chat route has no
-	// reasoning control, so only Messages models can disable thinking.
+	// Off is opt-in per model on Responses (Grok and MAI reject "none"), and the chat route
+	// has no reasoning control.
 	if (method !== Model.APIMethodEnum.messages) map.off = null;
 	if (!efforts) return Object.keys(map).length > 0 ? map : undefined;
 
@@ -650,19 +670,6 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 			api: { id, url: GITHUB_COPILOT_BASE_URL, method },
 			providerOptionsKey: GITHUB_COPILOT_PROVIDER_ID,
 			protocol: Model.KnownProviderEnum.githubCopilot,
-			// Copilot's Responses route requires store=false + encrypted reasoning
-			// content for thinking to round-trip.
-			...(method === Model.APIMethodEnum.responses
-				? {
-						providerOptions: {
-							...base.providerOptions,
-							[GITHUB_COPILOT_PROVIDER_ID]: {
-								store: false,
-								include: ["reasoning.encrypted_content"],
-							},
-						},
-					}
-				: {}),
 		};
 
 		if (GITHUB_COPILOT_EXTENDED_CONTEXT_MODELS.has(id)) info.contextWindow = GITHUB_COPILOT_EXTENDED_CONTEXT;
@@ -675,6 +682,9 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 		if (method === Model.APIMethodEnum.responses && gpt !== null && Number(gpt[1]) >= 5) {
 			mergeCompat(info, { supportsOpenAIGrammarTools: true });
 		}
+		if (method === Model.APIMethodEnum.responses && GITHUB_COPILOT_ADDITIONAL_TOOLS_MODEL_IDS.has(id)) {
+			mergeCompat(info, { supportsAdditionalTools: true });
+		}
 		if (id.startsWith("gpt-5")) mergeThinkingLevelMap(info, { off: null, minimal: "low" });
 		if (id.includes("fable-5")) mergeThinkingLevelMap(info, { off: null, xhigh: "xhigh", max: "max" });
 
@@ -682,6 +692,11 @@ export function githubCopilotBuiltInModels(provider: ModelsDevProvider | undefin
 		if (levels) mergeThinkingLevelMap(info, levels);
 		const override = GITHUB_COPILOT_THINKING_LEVEL_OVERRIDES[id];
 		if (override) mergeThinkingLevelMap(info, override);
+		// Copilot forwards reasoning.effort to OpenAI unchanged, so the GPT models OpenAI lets
+		// turn reasoning off take "none" here too (checked live).
+		if (method === Model.APIMethodEnum.responses && openAiAcceptsNoReasoning(id)) {
+			mergeThinkingLevelMap(info, { off: "none" });
+		}
 
 		models[id] = info;
 	}

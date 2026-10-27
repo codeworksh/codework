@@ -333,7 +333,9 @@ describe("runner loop — tool continuation and lifecycle gate", () => {
 
 			expect(contexts).toHaveLength(2);
 			expect(snapshots).toBe(2);
-			const firstTool = contexts[1]!.messages[1]!.parts.find((part) => part.type === "toolCall");
+			const second = contexts[1]!.messages[1]!;
+			const firstTool =
+				second.role === "assistant" ? second.parts.find((part) => part.type === "toolCall") : undefined;
 			expect(firstTool).toMatchObject({ callID: "call_echo", status: "completed" });
 
 			const path = yield* sessions.path(sessionId);

@@ -1,7 +1,7 @@
 import { EventSourceParserStream, type EventSourceMessage } from "eventsource-parser/stream";
 
-/** Parse standards-compliant event streams from the Codex Responses endpoint. */
-export function parseOpenAICodexSSEStream(body: ReadableStream<Uint8Array>): ReadableStream<Record<string, unknown>> {
+/** Parse standards-compliant event streams from a Responses endpoint. */
+export function parseResponsesSSEStream(body: ReadableStream<Uint8Array>): ReadableStream<Record<string, unknown>> {
 	const decoder = new TextDecoder();
 	return body
 		.pipeThrough(
@@ -26,11 +26,11 @@ export function parseOpenAICodexSSEStream(body: ReadableStream<Uint8Array>): Rea
 					try {
 						const parsed: unknown = JSON.parse(data);
 						if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-							throw new TypeError("codex SSE data must be a JSON object");
+							throw new TypeError("Responses SSE data must be a JSON object");
 						}
 						controller.enqueue(parsed as Record<string, unknown>);
 					} catch (cause) {
-						controller.error(new Error(`invalid OpenAI Codex SSE JSON: ${data.slice(0, 200)}`, { cause }));
+						controller.error(new Error(`invalid Responses SSE JSON: ${data.slice(0, 200)}`, { cause }));
 					}
 				},
 			}),

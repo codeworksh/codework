@@ -1,5 +1,9 @@
 [
 	{
+		"role": "system",
+		"content": "string"
+	},
+	{
 		"role": "user",
 		"content": [
 			"text"

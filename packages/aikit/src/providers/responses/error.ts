@@ -1,6 +1,6 @@
 import { APICallError } from "@ai-sdk/provider";
 
-type OpenAICodexError = {
+type ResponsesError = {
 	code?: string;
 	type?: string;
 	message?: string;
@@ -8,8 +8,8 @@ type OpenAICodexError = {
 	resets_at?: number;
 };
 
-type OpenAICodexErrorPayload = {
-	error?: OpenAICodexError;
+type ResponsesErrorPayload = {
+	error?: ResponsesError;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -20,7 +20,7 @@ const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 const asString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.trim() ? value.trim() : undefined;
 
-function normalizeErrorPayload(value: unknown): OpenAICodexErrorPayload {
+function normalizeErrorPayload(value: unknown): ResponsesErrorPayload {
 	const record = asRecord(value);
 	const nested = asRecord(record?.error);
 	const source = nested ?? record ?? {};
@@ -28,7 +28,7 @@ function normalizeErrorPayload(value: unknown): OpenAICodexErrorPayload {
 	const type = asString(source.type);
 	const message = asString(source.message);
 	const planType = asString(source.plan_type);
-	const error: OpenAICodexError = {
+	const error: ResponsesError = {
 		...(code !== undefined && { code }),
 		...(type !== undefined && { type }),
 		...(message !== undefined && { message }),
@@ -38,7 +38,7 @@ function normalizeErrorPayload(value: unknown): OpenAICodexErrorPayload {
 	return { error };
 }
 
-function parseErrorPayload(body: string): OpenAICodexErrorPayload | undefined {
+function parseErrorPayload(body: string): ResponsesErrorPayload | undefined {
 	try {
 		return normalizeErrorPayload(JSON.parse(body) as unknown);
 	} catch {
@@ -46,16 +46,16 @@ function parseErrorPayload(body: string): OpenAICodexErrorPayload | undefined {
 	}
 }
 
-function errorIdentifiers(error: OpenAICodexError | undefined): string {
+function errorIdentifiers(error: ResponsesError | undefined): string {
 	return `${error?.code ?? ""} ${error?.type ?? ""}`.toLowerCase();
 }
 
-function hasIdentifier(error: OpenAICodexError | undefined, identifiers: readonly string[]): boolean {
+function hasIdentifier(error: ResponsesError | undefined, identifiers: readonly string[]): boolean {
 	const value = errorIdentifiers(error);
 	return identifiers.some((identifier) => value.includes(identifier));
 }
 
-function isUsageLimitError(error: OpenAICodexError | undefined): boolean {
+function isUsageLimitError(error: ResponsesError | undefined): boolean {
 	return hasIdentifier(error, ["usage_limit_reached", "gousagelimiterror", "freeusagelimiterror"]);
 }
 
@@ -69,7 +69,7 @@ function isTerminalRateLimitError(body: string, payload = parseErrorPayload(body
 	);
 }
 
-function streamErrorStatus(error: OpenAICodexError | undefined): number {
+function streamErrorStatus(error: ResponsesError | undefined): number {
 	if (isUsageLimitError(error) || hasIdentifier(error, ["usage_not_included", "insufficient_quota", "rate_limit"])) {
 		return 429;
 	}
@@ -97,11 +97,12 @@ function retryAfterHeader(message: string | undefined): Record<string, string> {
 }
 
 /**
- * Turn a Codex error payload into a human-friendly message. Only terminal
+ * Turn a Responses error payload into a human-friendly message. Only terminal
  * ChatGPT plan exhaustion is rewritten; transient 429s retain backend detail.
+ * `label` names the backend, e.g. "OpenAI Codex".
  */
-export function openAICodexErrorMessage(_status: number, body: string, statusText?: string): string {
-	let message = body || statusText || "OpenAI Codex request failed";
+export function responsesErrorMessage(label: string, body: string, statusText?: string): string {
+	let message = body || statusText || `${label} request failed`;
 	const payload = parseErrorPayload(body);
 	const error = payload?.error;
 
@@ -118,7 +119,8 @@ export function openAICodexErrorMessage(_status: number, body: string, statusTex
 	return message;
 }
 
-export async function createOpenAICodexAPICallError(args: {
+export async function createResponsesAPICallError(args: {
+	label: string;
 	response: Response;
 	url: string;
 	requestBodyValues: unknown;
@@ -132,7 +134,7 @@ export async function createOpenAICodexAPICallError(args: {
 	const data = parseErrorPayload(responseBody);
 
 	return new APICallError({
-		message: openAICodexErrorMessage(response.status, responseBody, response.statusText),
+		message: responsesErrorMessage(args.label, responseBody, response.statusText),
 		url,
 		requestBodyValues,
 		statusCode: response.status,
@@ -148,7 +150,8 @@ export async function createOpenAICodexAPICallError(args: {
 }
 
 /** Map an error embedded in a successful SSE response to the same API error shape as HTTP failures. */
-export function createOpenAICodexStreamError(args: {
+export function createResponsesStreamError(args: {
+	label: string;
 	error: unknown;
 	url: string;
 	requestBodyValues: unknown;
@@ -165,7 +168,7 @@ export function createOpenAICodexStreamError(args: {
 	};
 
 	return new APICallError({
-		message: openAICodexErrorMessage(statusCode, responseBody),
+		message: responsesErrorMessage(args.label, responseBody),
 		url,
 		requestBodyValues,
 		statusCode,
@@ -178,13 +181,14 @@ export function createOpenAICodexStreamError(args: {
 }
 
 /** A transport failure used when an SSE response ends without a terminal Responses event. */
-export function createOpenAICodexPrematureCloseError(args: {
+export function createResponsesPrematureCloseError(args: {
+	label: string;
 	url: string;
 	requestBodyValues: unknown;
 	responseHeaders?: Record<string, string>;
 }): APICallError {
 	return new APICallError({
-		message: "OpenAI Codex stream closed before response.completed",
+		message: `${args.label} stream closed before response.completed`,
 		url: args.url,
 		requestBodyValues: args.requestBodyValues,
 		...(args.responseHeaders !== undefined && { responseHeaders: args.responseHeaders }),
@@ -197,7 +201,7 @@ export function createOpenAICodexPrematureCloseError(args: {
  * it the way AI SDK providers do, so it reads as a retryable transport failure that
  * carries the request. Aborts pass through untouched.
  */
-export function openAICodexFetchError(error: unknown, url: string, requestBodyValues: unknown): unknown {
+export function responsesFetchError(error: unknown, url: string, requestBodyValues: unknown): unknown {
 	if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) return error;
 	const cause = error instanceof Error && error.cause instanceof Error ? error.cause : error;
 	return new APICallError({
