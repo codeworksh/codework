@@ -65,3 +65,6 @@ videos
 
 # Catalog CI output (.github/workflows/catalog.yml)
 .artifacts
+
+.agents/skills/emil-*
+.claude/skills/emil-*
